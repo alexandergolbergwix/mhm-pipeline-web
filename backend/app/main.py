@@ -1,0 +1,71 @@
+"""FastAPI application factory.
+
+In production (Heroku) the same dyno serves the API at ``/api/*`` and the
+pre-built Vite frontend from ``frontend/dist/``. In development the
+frontend is run separately by ``vite dev`` on port 5173 and proxies
+``/api`` calls back here.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.routers import auth, health
+from app.settings import get_settings
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title="MHM Pipeline Web",
+        version="0.1.0",
+        docs_url="/api/docs" if not settings.is_production else None,
+        redoc_url=None,
+    )
+
+    # CORS — needed during dev when the frontend runs on 5173. In
+    # production the frontend is served from the same origin, so the
+    # CORS layer is a no-op (no cross-origin requests).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.frontend_origin],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+        allow_headers=["*"],
+    )
+
+    # Routers — all under /api so the static-file mount below doesn't
+    # shadow them.
+    app.include_router(health.router, prefix="/api")
+    app.include_router(auth.router, prefix="/api")
+
+    # Frontend static assets (production). Mounted last so any /api
+    # route still wins.
+    _mount_frontend(app)
+
+    return app
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if not frontend_dist.exists():
+        return  # dev mode: ``vite dev`` serves the assets directly
+
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    index_file = frontend_dist / "index.html"
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> FileResponse:  # noqa: ARG001
+        """Catch-all so client-side React Router handles deep links."""
+        return FileResponse(index_file)
+
+
+app = create_app()

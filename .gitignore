@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv-*/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.log
+.npm/
+.pnpm-store/
+
+# Env / secrets — NEVER commit these
+.env
+.env.local
+.env.*.local
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
+
+# Build outputs
+frontend/dist/
+backend/dist/
+build/

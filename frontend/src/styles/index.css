@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Phase-1 fallback liquid-glass via CSS only.
+   Phase 8 (R3F MeshTransmissionMaterial overlay) replaces this on capable
+   devices; on weak hardware / prefers-reduced-motion this remains the
+   surface. */
+
+html, body, #root { height: 100%; }
+
+body {
+  /* Animated background gradient — gives glass surfaces something to
+     refract once the WebGL layer ships. */
+  background:
+    radial-gradient(at 20% 10%,  rgba(105, 79, 255, 0.35), transparent 50%),
+    radial-gradient(at 80% 90%,  rgba( 88, 200, 220, 0.25), transparent 55%),
+    radial-gradient(at 50% 50%,  rgba(255, 110, 175, 0.20), transparent 60%),
+    #0b0f14;
+  background-attachment: fixed;
+}
+
+.glass {
+  background: theme('colors.glass.base');
+  border: 1px solid theme('colors.glass.edge');
+  backdrop-filter: blur(theme('backdropBlur.glass')) saturate(180%);
+  -webkit-backdrop-filter: blur(theme('backdropBlur.glass')) saturate(180%);
+  box-shadow: theme('boxShadow.glass');
+  border-radius: 16px;
+}
+
+.input-glass {
+  @apply glass px-3 py-2 outline-none focus:border-white/40 transition w-full;
+  color: theme('colors.glass.ink');
+}
+
+.button-primary {
+  @apply glass px-4 py-2 font-medium cursor-pointer transition hover:bg-white/15 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  color: theme('colors.glass.ink');
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body { background-attachment: scroll; }
+}
