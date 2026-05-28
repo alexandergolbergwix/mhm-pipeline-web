@@ -18,6 +18,11 @@ dist/
 *.log
 .npm/
 .pnpm-store/
+*.tsbuildinfo
+# Stale outputs from accidental ``tsc -b`` runs against vite.config.ts.
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/vite.config.js.map
 
 # Env / secrets — NEVER commit these
 .env
