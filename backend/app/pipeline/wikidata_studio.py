@@ -187,23 +187,35 @@ def _serialise_item(item: Any) -> dict[str, Any]:
 
 def _enrich_snak(snak: Any) -> None:
     """In-place: stamp ``property_label`` + ``value_label`` on a
-    statement / qualifier / reference dict."""
+    statement / qualifier / reference dict.
+
+    Only stamp when the desktop's static dictionary actually carries
+    the label — never the bare PID/QID. (desktop's ``property_label`` /
+    ``qid_label`` helpers fall back to the id string, which would
+    short-circuit the frontend's lazy lookup against live Wikidata.
+    Q652 was the canonical regression: returned "Q652" instead of
+    "Italian", so the lazy store never got a chance to resolve.)
+    """
     if not isinstance(snak, dict):
         return
-    from converter.wikidata.property_labels import property_label, qid_label  # noqa: PLC0415
+    from converter.wikidata.property_labels import PROPERTY_LABELS, QID_LABELS  # noqa: PLC0415
 
     prop = snak.get("property") or snak.get("property_id")
     if isinstance(prop, str) and prop:
-        snak["property_label"] = property_label(prop)
+        plabel = PROPERTY_LABELS.get(prop)
+        if plabel:
+            snak["property_label"] = plabel
 
-    # value_label: when the value is a Q-id, look it up. Otherwise the
-    # value is the label itself (string, date, URL, …).
+    # value_label: only set if the value is a Q-id AND the static dict
+    # knows it. Otherwise the frontend's useLabelStore lazy-fetches.
     val = snak.get("value")
     vid = snak.get("value_id")
     qid = vid if isinstance(vid, str) and vid.startswith("Q") else \
           (val if isinstance(val, str) and val.startswith("Q") and val[1:].isdigit() else None)
     if qid:
-        snak["value_label"] = qid_label(qid)
+        vlabel = QID_LABELS.get(qid)
+        if vlabel:
+            snak["value_label"] = vlabel
 
 
 def _to_dict_list(
