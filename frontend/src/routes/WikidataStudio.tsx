@@ -201,27 +201,37 @@ export default function WikidataStudio() {
             <aside className="glass p-3 max-h-[78vh] overflow-auto space-y-3">
               <input
                 value={query} onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search labels, aliases, descriptions, QIDs…"
-                className="input-glass !py-1 text-sm" />
+                placeholder="Search…"
+                className="input-glass !py-1.5 text-sm" />
 
-              <div className="space-y-1.5">
-                <FilterRow label="Type">
-                  {(["all", "manuscript", "person", "work"] as EntityFilter[]).map((f) => (
-                    <Chip key={f} active={entityFilter === f} onClick={() => setEntityFilter(f)}>{f}</Chip>
-                  ))}
-                </FilterRow>
-                <FilterRow label="On Wikidata">
-                  {(["any", "existing", "new"] as ExistFilter[]).map((f) => (
-                    <Chip key={f} active={existFilter === f} onClick={() => setExistFilter(f)}>{f}</Chip>
-                  ))}
-                </FilterRow>
-                <FilterRow label="≥ statements">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {(["all", "manuscript", "person", "work"] as EntityFilter[]).map((f) => (
+                  <Chip key={f} active={entityFilter === f} onClick={() => setEntityFilter(f)}>
+                    {f}
+                  </Chip>
+                ))}
+              </div>
+
+              <div className="text-xs space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <label className="muted text-[11px] w-20 shrink-0">On Wikidata</label>
+                  <select className="input-glass !py-1 text-xs flex-1"
+                          value={existFilter}
+                          onChange={(e) => setExistFilter(e.target.value as ExistFilter)}>
+                    <option value="any">any</option>
+                    <option value="existing">already exists</option>
+                    <option value="new">not yet</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="muted text-[11px] w-20 shrink-0">Min stmts</label>
                   <input type="number" min={0} value={minStmts}
                          onChange={(e) => setMinStmts(Math.max(0, parseInt(e.target.value) || 0))}
-                         className="input-glass !py-0.5 !px-2 text-xs w-16" />
-                </FilterRow>
-                <FilterRow label="Sort">
-                  <select className="input-glass !py-0.5 text-xs flex-1"
+                         className="input-glass !py-1 text-xs flex-1" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="muted text-[11px] w-20 shrink-0">Sort</label>
+                  <select className="input-glass !py-1 text-xs flex-1"
                           value={sortKey}
                           onChange={(e) => setSortKey(e.target.value as SortKey)}>
                     <option value="label">label</option>
@@ -229,15 +239,17 @@ export default function WikidataStudio() {
                     <option value="entity_type">entity type</option>
                     <option value="wikidata">existing QID</option>
                   </select>
-                  <Chip active={sortDesc} onClick={() => setSortDesc((v) => !v)}>
+                  <button onClick={() => setSortDesc((v) => !v)}
+                          title={sortDesc ? "descending" : "ascending"}
+                          className="button-ghost !py-0.5 !px-2 text-xs">
                     {sortDesc ? "↓" : "↑"}
-                  </Chip>
-                </FilterRow>
+                  </button>
+                </div>
               </div>
 
-              <p className="muted text-[10px] uppercase tracking-wider">
+              <div className="border-t border-white/5 pt-2 text-[10px] muted uppercase tracking-wider">
                 {view.length} of {build.items.length}
-              </p>
+              </div>
 
               <ul>
                 {view.map(({ it, key }, listIdx) => {
@@ -398,21 +410,13 @@ function ItemPanel({
 }
 
 
-function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="kicker w-24 shrink-0">{label}</span>
-      <div className="flex items-center gap-1 flex-wrap">{children}</div>
-    </div>
-  );
-}
-
-
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick}
-            className={`px-2 py-0.5 rounded-full transition text-[11px] ${
-              active ? "bg-white/12 text-ink" : "muted hover:text-ink hover:bg-white/5"
+            className={`px-2 py-1 rounded-md transition text-[11px] text-center border border-transparent ${
+              active
+                ? "bg-white/12 text-ink border-white/15"
+                : "muted hover:text-ink hover:bg-white/5"
             }`}>{children}</button>
   );
 }

@@ -143,17 +143,29 @@ class DesktopMatcher(AuthorityMatcher):
             reasoning_parts.append("No authority source matched this heading.")
             confidence = "low"
             source_label = ""
-        elif len(sources) >= 2:
+        elif len(sources) >= 3:
             confidence = "high"
             source_label = "cross_source"
             reasoning_parts.append(
-                f"Cross-sourced across {len(sources)} authorities — strong match.",
+                f"Cross-sourced across all {len(sources)} authorities — strong match.",
+            )
+        elif len(sources) == 2:
+            confidence = "high"
+            source_label = "cross_source"
+            reasoning_parts.append(
+                f"Two-source agreement ({', '.join(sources)}) — strong match.",
             )
         else:
-            confidence = "medium"
+            # Single source — refine on signal richness instead of a flat
+            # "medium". A long name with a patronymic + role compatible
+            # with the manuscript date is much higher confidence than a
+            # bare first name like "אליהו".
+            confidence = _single_source_bucket(text, role=role)
             source_label = sources[0]
             reasoning_parts.append(
-                f"Single-source ({sources[0]}) match; consider manual confirmation.",
+                f"Single-source ({sources[0]}) match; confidence={confidence}"
+                f"{' — long name + patronymic suggests unambiguous identification' if confidence == 'high' else ''}"
+                f"{' — short or generic surface form, confirm manually' if confidence == 'low' else ''}.",
             )
 
         # Stage 3 date guard via desktop's stage3_guards.
@@ -297,3 +309,31 @@ def _role_kind(role: str) -> str:
     if r == "subject":
         return "subject"
     return "other"
+
+
+def _single_source_bucket(text: str, *, role: str) -> str:
+    """Tier a single-source match without cross-source agreement.
+
+    Signals (Hebrew-name aware — desktop's curators care about these):
+    * length              — longer surface form has more identifying power
+    * patronymic ("בן ")  — "X בן Y" is far less ambiguous than "X"
+    * inverted form ", "  — "Surname, Given" is a catalog heading
+                            (curator already vetted)
+    * role known          — a known role narrows the candidate space
+    """
+    n = len(text.strip())
+    has_patronymic = " בן " in text or " בת " in text or " ben " in text.lower()
+    has_inverted = "," in text
+    has_role = bool((role or "").strip())
+
+    score = 0
+    if n >= 20:           score += 2
+    elif n >= 12:         score += 1
+    if has_patronymic:    score += 2
+    if has_inverted:      score += 1
+    if has_role:          score += 1
+    if n < 6:             score -= 2
+
+    if score >= 4: return "high"
+    if score >= 2: return "medium"
+    return "low"
