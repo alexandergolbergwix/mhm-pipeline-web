@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 async def build_items_for_run(
     *, marc_records: list[dict[str, Any]],
     approved_matches: list[dict[str, Any]],
+    return_native: bool = False,
 ) -> dict[str, Any]:
     """Build Wikidata items + QuickStatements for *marc_records* enriched
     with *approved_matches*.
@@ -65,10 +66,10 @@ async def build_items_for_run(
         ]
         enriched.append(out)
 
-    return await run_in_threadpool(_build_sync, enriched)
+    return await run_in_threadpool(_build_sync, enriched, return_native)
 
 
-def _build_sync(records: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_sync(records: list[dict[str, Any]], return_native: bool = False) -> dict[str, Any]:
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
     from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
 
@@ -88,6 +89,7 @@ def _build_sync(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "items": [_serialise_item(i) for i in items],
+        "native_items": items if return_native else None,
         "quickstatements": qs_text,
         "summary": summary,
     }

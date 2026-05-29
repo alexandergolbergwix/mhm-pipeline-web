@@ -37,11 +37,56 @@ export interface StudioBuild {
   record_count: number;
 }
 
+export interface ReconcileOutcome {
+  local_id: string;
+  label: string;
+  entity_type: string;
+  existing_qid: string | null;
+  method: string;
+  message: string;
+}
+
+export interface ReconcileResponse {
+  reconciled: number;
+  matched: number;
+  outcomes: ReconcileOutcome[];
+}
+
+export interface UploadOutcome {
+  local_id: string;
+  label: string;
+  entity_type: string;
+  qid: string | null;
+  status: "success" | "updated" | "exists" | "skipped" | "failed" | "pending" | string;
+  message: string;
+  added_properties: string[];
+}
+
+export interface UploadResponse {
+  dry_run: boolean;
+  moratorium_lifted: boolean;
+  test_mode: boolean;
+  outcomes: UploadOutcome[];
+}
+
 export const Studio = {
   build: (runId: string, approvedOnly = false) =>
     api.get<StudioBuild>(
       `/runs/${runId}/wikidata-studio?approved_only=${approvedOnly ? "true" : "false"}`,
     ),
+
   qsUrl: (runId: string, approvedOnly = false) =>
     `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}`,
+
+  reconcile: (runId: string, approvedOnly = false) =>
+    api.post<ReconcileResponse>(
+      `/runs/${runId}/wikidata-studio/reconcile?approved_only=${approvedOnly ? "true" : "false"}`,
+      {},
+    ),
+
+  upload: (runId: string, opts: { dry_run: boolean; approved_only: boolean }) =>
+    api.post<UploadResponse>(
+      `/runs/${runId}/wikidata-studio/upload?dry_run=${opts.dry_run ? "true" : "false"}&approved_only=${opts.approved_only ? "true" : "false"}`,
+      {},
+    ),
 };
