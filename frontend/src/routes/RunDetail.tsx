@@ -14,17 +14,22 @@ import {
   ConfidenceBadge, MatchDetailDialog, VerdictBadge,
 } from "@/components/MatchDetailDialog";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
+import { SelectAllVisible } from "@/components/SelectAllVisible";
 
 const COLUMNS = [
-  { key: "control_number", label: "Record",     kind: "text" as const },
-  { key: "entity_text",    label: "Entity",     kind: "text" as const },
-  { key: "role",           label: "Role",       kind: "text" as const },
-  { key: "matched_name",   label: "Matched",    kind: "text" as const },
-  { key: "confidence",     label: "Confidence", kind: "text" as const },
-  { key: "source",         label: "Sources",    kind: "text" as const },
-  { key: "ai_verdict",     label: "AI verdict", kind: "text" as const },
-  { key: "approved",       label: "Approved",   kind: "boolean" as const },
+  { key: "control_number", label: "Record",     kind: "text" as const, sortable: true  },
+  { key: "entity_text",    label: "Entity",     kind: "text" as const, sortable: true  },
+  { key: "role",           label: "Role",       kind: "text" as const, sortable: true  },
+  { key: "matched_name",   label: "Matched",    kind: "text" as const, sortable: true  },
+  { key: "confidence",     label: "Confidence", kind: "text" as const, sortable: true  },
+  { key: "source",         label: "Sources",    kind: "text" as const, sortable: true  },
+  { key: "ai_verdict",     label: "AI verdict", kind: "text" as const, sortable: true  },
+  { key: "approved",       label: "Approved",   kind: "boolean" as const, sortable: true },
 ];
+
+type SortDir = "asc" | "desc";
+const CONFIDENCE_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2 };
+const VERDICT_ORDER:    Record<string, number> = { fail: 0, partial: 1, abstain: 2, pass: 3 };
 
 export default function RunDetail() {
   const { runId } = useParams<{ runId: string }>();
@@ -34,6 +39,16 @@ export default function RunDetail() {
   const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
   const [openMatch, setOpenMatch] = useState<AuthorityMatch | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Sort state — persisted across reloads so curators don't lose their place.
+  const [sortKey, setSortKey] = useState<string | null>(() =>
+    localStorage.getItem("mhm.runDetail.sortKey") || null);
+  const [sortDir, setSortDir] = useState<SortDir>(() =>
+    (localStorage.getItem("mhm.runDetail.sortDir") as SortDir) || "asc");
+  useEffect(() => {
+    if (sortKey) localStorage.setItem("mhm.runDetail.sortKey", sortKey);
+    else         localStorage.removeItem("mhm.runDetail.sortKey");
+    localStorage.setItem("mhm.runDetail.sortDir", sortDir);
+  }, [sortKey, sortDir]);
 
   async function refresh() {
     if (!runId) return;
@@ -106,15 +121,33 @@ export default function RunDetail() {
 
   const filtered = useMemo(() => {
     if (!run) return [];
-    return applyConditions(run.matches, conditions, (m, col) => cellString(m, col));
-  }, [run, conditions]);
+    const rows = applyConditions(run.matches, conditions, (m, col) => cellString(m, col));
+    if (!sortKey) return rows;
+    const cmp = sortComparator(sortKey, sortDir);
+    return [...rows].sort(cmp);
+  }, [run, conditions, sortKey, sortDir]);
+
+  // Cycle: not-sorted → asc → desc → not-sorted.
+  function toggleSort(col: string) {
+    if (sortKey !== col)     { setSortKey(col); setSortDir("asc"); return; }
+    if (sortDir === "asc")   { setSortDir("desc");                  return; }
+    setSortKey(null); setSortDir("asc");
+  }
+
+  function selectAllVisible() {
+    const next = new Set(selected);
+    filtered.forEach((m) => next.add(m.id));
+    setSelected(next);
+  }
+  function clearSelection() { setSelected(new Set()); }
+  // Count how many of the currently-selected rows are ALSO visible —
+  // used for the indeterminate state on the SelectAllVisible widget.
+  const selectedInVisible = filtered.reduce((n, m) => n + (selected.has(m.id) ? 1 : 0), 0);
 
   if (error)
     return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
   if (!run)
     return <Layout><p className="muted">Loading run…</p></Layout>;
-
-  const allFilteredSelected = filtered.length > 0 && filtered.every((m) => selected.has(m.id));
 
   return (
     <Layout>
@@ -161,20 +194,37 @@ export default function RunDetail() {
             onChange={setConditions}
           />
 
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
+            <SelectAllVisible
+              visibleCount={filtered.length}
+              selectedCount={selectedInVisible}
+              onSelectAll={selectAllVisible}
+              onClear={clearSelection}
+              label="matches" />
+            {sortKey && (
+              <button onClick={() => setSortKey(null)}
+                      className="text-xs text-biu-sky hover:underline">
+                Clear sort
+              </button>
+            )}
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead className="muted text-left">
                 <tr className="border-b border-white/5">
-                  <th className="py-2 pr-2">
-                    <input type="checkbox" checked={allFilteredSelected}
-                           onChange={(e) => {
-                             const next = new Set(selected);
-                             if (e.target.checked) filtered.forEach((m) => next.add(m.id));
-                             else                  filtered.forEach((m) => next.delete(m.id));
-                             setSelected(next);
-                           }} />
-                  </th>
-                  {COLUMNS.map((c) => <th key={c.key} className="py-2 pr-3">{c.label}</th>)}
+                  <th className="py-2 pr-2"></th>
+                  {COLUMNS.map((c) => (
+                    <th key={c.key} className="py-2 pr-3 select-none">
+                      {c.sortable
+                        ? <button onClick={() => toggleSort(c.key)}
+                                  className="inline-flex items-center gap-1 hover:text-ink transition">
+                            <span>{c.label}</span>
+                            <SortGlyph active={sortKey === c.key} dir={sortDir} />
+                          </button>
+                        : c.label}
+                    </th>
+                  ))}
                   <th className="py-2 pr-3"></th>
                 </tr>
               </thead>
@@ -271,6 +321,45 @@ function cellString(m: AuthorityMatch, col: string): string {
     if (list?.length) return list.join(",");
   }
   return String((m as unknown as Record<string, unknown>)[col] ?? "");
+}
+
+
+/** Tiny up/down/idle indicator next to a sortable header. */
+function SortGlyph({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active)        return <span className="muted text-[9px]">⇅</span>;
+  if (dir === "asc")  return <span className="text-biu-sky text-[10px]">↑</span>;
+  return                    <span className="text-biu-sky text-[10px]">↓</span>;
+}
+
+
+/** Returns a stable comparator for the given key + direction. Uses
+ *  per-column orderings for confidence and ai_verdict (those aren't
+ *  alphabetical) and source_count first for the Sources column. */
+function sortComparator(
+  key: string, dir: SortDir,
+): (a: AuthorityMatch, b: AuthorityMatch) => number {
+  const mul = dir === "asc" ? 1 : -1;
+  return (a, b) => {
+    let r = 0;
+    if (key === "confidence") {
+      r = (CONFIDENCE_ORDER[a.confidence] ?? -1) - (CONFIDENCE_ORDER[b.confidence] ?? -1);
+    } else if (key === "ai_verdict") {
+      const av = (a.payload?.ai_verdict as { overall?: string } | undefined)?.overall ?? "";
+      const bv = (b.payload?.ai_verdict as { overall?: string } | undefined)?.overall ?? "";
+      r = (VERDICT_ORDER[av] ?? -1) - (VERDICT_ORDER[bv] ?? -1);
+    } else if (key === "source") {
+      const ac = Number(a.payload?.source_count ?? 0);
+      const bc = Number(b.payload?.source_count ?? 0);
+      r = ac - bc;
+      if (r === 0) r = cellString(a, key).localeCompare(cellString(b, key));
+    } else if (key === "approved") {
+      r = (a.approved ? 1 : 0) - (b.approved ? 1 : 0);
+    } else {
+      r = cellString(a, key).localeCompare(cellString(b, key), undefined,
+                                           { sensitivity: "base", numeric: true });
+    }
+    return r * mul;
+  };
 }
 
 

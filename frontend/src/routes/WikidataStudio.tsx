@@ -6,6 +6,10 @@ import { ApiError } from "@/api/client";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import { useLabelStore } from "@/api/wikidataLabels";
 import {
+  collectIds, FRIENDLY_S_PROP, PropertyPill, ValueRendering,
+  type LabelStore,
+} from "@/components/StatementCells";
+import {
   Studio,
   type ReconcileOutcome,
   type Snak,
@@ -14,11 +18,14 @@ import {
   type UploadOutcome,
 } from "@/api/wikidataStudio";
 
-type LabelStore = ReturnType<typeof useLabelStore>;
-
 type EntityFilter = "all" | "manuscript" | "person" | "work";
 type ExistFilter  = "any" | "existing" | "new";
 type SortKey      = "label" | "statements" | "entity_type" | "wikidata";
+type View         = "item" | "table";
+
+// Studio table-view sort
+type StmtSortKey  = "item" | "type" | "property" | "value" | "rank";
+type SortDir      = "asc" | "desc";
 
 
 export default function WikidataStudio() {
@@ -47,6 +54,12 @@ export default function WikidataStudio() {
   } | null>(null);
   const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
   const labelStore = useLabelStore();
+
+  // Item view (one item at a time) vs. table view (every statement in
+  // the run, flat). Persisted across reloads.
+  const [view, setView] = useState<View>(() =>
+    (localStorage.getItem("mhm.studio.view") as View) || "item");
+  useEffect(() => { localStorage.setItem("mhm.studio.view", view); }, [view]);
 
   async function refresh(nextApprovedOnly?: boolean) {
     if (!runId) return;
@@ -88,7 +101,7 @@ export default function WikidataStudio() {
   }
 
   // ── filtered + sorted items ───────────────────────────────────────────
-  const view = useMemo(() => {
+  const itemRows = useMemo(() => {
     if (!build) return [] as Array<{ it: StudioItem; idx: number; key: string }>;
     const raw = build.items.map((it, idx) => ({
       it, idx, key: `${it.entity_type ?? "other"}:${idx}`,
@@ -120,8 +133,8 @@ export default function WikidataStudio() {
   if (error) return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
   if (!build) return <Layout><p className="muted">{loading ? "Building items…" : "Loading…"}</p></Layout>;
 
-  const current = view.length > 0 ? view[Math.min(selectedIdx, view.length - 1)].it : null;
-  const currentKey = view.length > 0 ? view[Math.min(selectedIdx, view.length - 1)].key : "";
+  const current = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].it : null;
+  const currentKey = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].key : "";
 
   return (
     <Layout>
@@ -180,6 +193,21 @@ export default function WikidataStudio() {
             <a href={Studio.qsUrl(runId!, approvedOnly)} download className="button-ghost text-sm">
               Download QuickStatements.txt
             </a>
+
+            {/* View-mode toggle — Item (focus on one item's statements)
+                vs. Table (every statement across every item, flat). */}
+            <div className="glass-pill px-1 py-1 flex gap-1 text-xs ml-auto">
+              <button
+                onClick={() => setView("item")}
+                className={`px-3 py-1 rounded-full transition ${
+                  view === "item" ? "bg-white/12 text-ink" : "muted hover:text-ink"
+                }`}>Item view</button>
+              <button
+                onClick={() => setView("table")}
+                className={`px-3 py-1 rounded-full transition ${
+                  view === "table" ? "bg-white/12 text-ink" : "muted hover:text-ink"
+                }`}>Table view</button>
+            </div>
           </div>
 
           {lastUpload && (
@@ -201,6 +229,19 @@ export default function WikidataStudio() {
                   <Link to={`/runs/${runId}`} className="text-biu-sky hover:underline">Review</Link> page.</>
               : <>No items yet. Upload a MARC file via the project page first.</>}
           </section>
+        ) : view === "table" ? (
+          <StatementTableView
+            items={itemRows.map(({ it, idx }) => ({ it, idx }))}
+            allItems={build.items}
+            labelStore={labelStore}
+            onOpenItem={(idx) => {
+              setView("item");
+              // Position selectedIdx so that itemRows[selectedIdx] is the
+              // clicked item (if it survives the current filter).
+              const pos = itemRows.findIndex(({ idx: i }) => i === idx);
+              if (pos >= 0) setSelectedIdx(pos);
+            }}
+            onOpenMarc={setMarcPopupCn} />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
 
@@ -255,11 +296,11 @@ export default function WikidataStudio() {
               </div>
 
               <div className="border-t border-white/5 pt-2 text-[10px] muted uppercase tracking-wider">
-                {view.length} of {build.items.length}
+                {itemRows.length} of {build.items.length}
               </div>
 
               <ul>
-                {view.map(({ it, key }, listIdx) => {
+                {itemRows.map(({ it, key }, listIdx) => {
                   const rec = reconcileMap[key];
                   const up  = uploadMap[key];
                   return (
@@ -296,7 +337,7 @@ export default function WikidataStudio() {
                     </li>
                   );
                 })}
-                {view.length === 0 && (
+                {itemRows.length === 0 && (
                   <p className="muted text-sm italic px-2">Nothing matches your filter.</p>
                 )}
               </ul>
@@ -358,20 +399,7 @@ function ItemPanel({
   // labels even for ids the desktop's static dictionary doesn't carry.
   useEffect(() => {
     const ids: string[] = [];
-    const walk = (s: Snak | undefined) => {
-      if (!s) return;
-      ids.push(s.property ?? s.property_id ?? "");
-      ids.push(s.value_id ?? "");
-      if (typeof s.value === "string") ids.push(s.value);
-      (s.qualifiers ?? []).forEach(walk);
-      (s.references ?? []).forEach((r) => {
-        const snaks = Array.isArray((r as { snaks?: unknown }).snaks)
-          ? ((r as { snaks: Snak[] }).snaks)
-          : [r as Snak];
-        snaks.forEach(walk);
-      });
-    };
-    statements.forEach(walk);
+    statements.forEach((s) => collectIds(s, ids));
     labelStore.resolve(ids);
   }, [item, statements, labelStore]);
 
@@ -431,22 +459,11 @@ function ItemPanel({
             const quals = s.qualifiers ?? [];
             const refs  = s.references ?? [];
             const prop  = s.property ?? s.property_id;
-            const isNli = prop === "P8189" && typeof s.value === "string";
             return (
               <li key={i} className="glass-pill px-3 py-2 text-sm">
                 <div className="flex items-baseline gap-2 flex-wrap">
                   <PropertyPill p={prop} label={s.property_label} store={labelStore} />
-                  {isNli
-                    ? (
-                      <button
-                        onClick={() => onOpenMarc(String(s.value))}
-                        className="text-xs text-biu-sky hover:underline">
-                        <span className="font-mono">{String(s.value)}</span> ↗
-                      </button>
-                    )
-                    : (
-                      <ValueRendering snak={s} store={labelStore} />
-                    )}
+                  <ValueRendering snak={s} store={labelStore} onOpenMarc={onOpenMarc} />
                   {s.rank && s.rank !== "normal" && (
                     <span className="ml-2 kicker text-biu-sky">{s.rank}</span>
                   )}
@@ -524,20 +541,15 @@ function ReferenceRow({ ref_, store }: { ref_: Snak | { snaks?: Snak[] }; store:
     <li className="flex flex-col gap-0.5 border-l-2 border-biu-sky/30 pl-2">
       {snaks.map((s, i) => {
         const prop = s.property ?? s.property_id;
-        const friendly = _FRIENDLY_S_PROP[prop ?? ""]
+        const friendly = FRIENDLY_S_PROP[prop ?? ""]
                       ?? s.property_label
                       ?? store.label(prop ?? "");
-        const raw  = (s.value ?? s.value_id) as unknown;
-        const isUrl = typeof raw === "string" && /^https?:\/\//.test(raw);
         return (
           <span key={i} className="flex items-baseline gap-2 flex-wrap">
             <span className="muted shrink-0">
               {friendly ?? prop}{prop && friendly ? ` (${prop})` : ""}:
             </span>
-            {isUrl
-              ? <a href={raw} target="_blank" rel="noreferrer"
-                   className="text-biu-sky font-mono text-[11px] hover:underline truncate">{String(raw)}</a>
-              : <ValueRendering snak={s} store={store} small />}
+            <ValueRendering snak={s} store={store} small />
           </span>
         );
       })}
@@ -546,80 +558,359 @@ function ReferenceRow({ ref_, store }: { ref_: Snak | { snaks?: Snak[] }; store:
 }
 
 
-// S-properties from desktop's QuickStatements exporter (Rule 23/24/26/28).
-const _FRIENDLY_S_PROP: Record<string, string> = {
-  P248:  "stated in",
-  P854:  "URL",
-  P813:  "retrieved",
-  P143:  "imported from",
-  P3452: "inferred from",
-  P887:  "based on heuristic",
+// ── all-statements table view ──────────────────────────────────────────
+
+
+type FlatRow = {
+  /** Index into the original build.items list — stable handle for "open in Item view". */
+  itemIdx: number;
+  /** Index of the statement inside its item. */
+  stmtIdx: number;
+  item: StudioItem;
+  snak: Snak;
 };
 
 
-/** Renders e.g. ``instance of (P31)`` — backend stamps property_label
- *  via desktop's static dictionary; for unknowns we fall back to the
- *  lazy label store, then to the raw P-id. */
-function PropertyPill({
-  p, label, store,
-}: { p?: string; label?: string; store: LabelStore }) {
-  if (!p) return <span className="muted">P?</span>;
-  const text = label ?? store.label(p);
+function StatementTableView({
+  items, allItems, labelStore, onOpenItem, onOpenMarc,
+}: {
+  /** Items SURVIVING the sidebar's current filter, so the table view
+   *  respects the "manuscript only" / "approved only" etc. choices the
+   *  curator already made. */
+  items: Array<{ it: StudioItem; idx: number }>;
+  /** Full items array — used only to compute the property-filter dropdown
+   *  options so they stay stable across filter changes. */
+  allItems: StudioItem[];
+  labelStore: LabelStore;
+  onOpenItem: (idx: number) => void;
+  onOpenMarc: (cn: string) => void;
+}) {
+  // Local search + per-table filters + sort. Persisted to localStorage
+  // so refreshing the page doesn't reset a curator's working state.
+  const [tQuery, setTQuery]       = useState(() => localStorage.getItem("mhm.studio.t.q") ?? "");
+  const [propFilter, setPropFilter] = useState<string>(() => localStorage.getItem("mhm.studio.t.prop") ?? "");
+  const [refFilter, setRefFilter]   = useState<"any"|"sourced"|"unsourced">(
+    () => (localStorage.getItem("mhm.studio.t.ref") as "any"|"sourced"|"unsourced") ?? "any");
+  const [sKey, setSKey]   = useState<StmtSortKey>(
+    () => (localStorage.getItem("mhm.studio.t.sk") as StmtSortKey) ?? "item");
+  const [sDir, setSDir]   = useState<SortDir>(
+    () => (localStorage.getItem("mhm.studio.t.sd") as SortDir) ?? "asc");
+  useEffect(() => { localStorage.setItem("mhm.studio.t.q", tQuery); }, [tQuery]);
+  useEffect(() => { localStorage.setItem("mhm.studio.t.prop", propFilter); }, [propFilter]);
+  useEffect(() => { localStorage.setItem("mhm.studio.t.ref", refFilter); }, [refFilter]);
+  useEffect(() => { localStorage.setItem("mhm.studio.t.sk", sKey); }, [sKey]);
+  useEffect(() => { localStorage.setItem("mhm.studio.t.sd", sDir); }, [sDir]);
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Flatten visible items into (item × statement) rows.
+  const rows: FlatRow[] = useMemo(() => {
+    const out: FlatRow[] = [];
+    for (const { it, idx } of items) {
+      (it.statements ?? []).forEach((snak, stmtIdx) => {
+        out.push({ itemIdx: idx, stmtIdx, item: it, snak });
+      });
+    }
+    return out;
+  }, [items]);
+
+  // Lazy-resolve every P/Q id appearing anywhere in the flattened rows.
+  // One batched fetch per opening of the Table view.
+  useEffect(() => {
+    const ids: string[] = [];
+    rows.forEach((r) => collectIds(r.snak, ids));
+    labelStore.resolve(ids);
+  }, [rows, labelStore]);
+
+  // Distinct property options for the property-filter dropdown.
+  const propOptions = useMemo(() => {
+    const seen = new Map<string, string>();   // p-id → label or ""
+    for (const it of allItems) {
+      for (const s of it.statements ?? []) {
+        const p = s.property ?? s.property_id;
+        if (!p) continue;
+        if (!seen.has(p) || (s.property_label && !seen.get(p))) {
+          seen.set(p, s.property_label ?? "");
+        }
+      }
+    }
+    return Array.from(seen.entries())
+      .map(([id, label]) => ({ id, label: label || labelStore.label(id) || "" }))
+      .sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
+  }, [allItems, labelStore]);
+
+  // Filter + sort.
+  const filtered = useMemo(() => {
+    const q = tQuery.trim().toLowerCase();
+    const result = rows.filter((r) => {
+      const p = r.snak.property ?? r.snak.property_id;
+      if (propFilter && p !== propFilter) return false;
+      const refsLen = (r.snak.references ?? []).length;
+      if (refFilter === "sourced"   && refsLen === 0) return false;
+      if (refFilter === "unsourced" && refsLen >  0) return false;
+      if (q) {
+        const v = r.snak.value;
+        const haystack = [
+          labelOf(r.item),
+          r.item.entity_type ?? "",
+          r.item.existing_qid ?? "",
+          p ?? "",
+          r.snak.property_label ?? "",
+          r.snak.value_id ?? "",
+          r.snak.value_label ?? "",
+          typeof v === "string" ? v : "",
+        ].join(" ").toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+    const mul = sDir === "asc" ? 1 : -1;
+    result.sort((a, b) => {
+      let r = 0;
+      if (sKey === "item") {
+        r = labelOf(a.item).localeCompare(labelOf(b.item), undefined, { sensitivity: "base" });
+      } else if (sKey === "type") {
+        r = (a.item.entity_type ?? "").localeCompare(b.item.entity_type ?? "");
+      } else if (sKey === "property") {
+        const ap = a.snak.property_label ?? a.snak.property ?? a.snak.property_id ?? "";
+        const bp = b.snak.property_label ?? b.snak.property ?? b.snak.property_id ?? "";
+        r = ap.localeCompare(bp);
+      } else if (sKey === "value") {
+        const av = a.snak.value_label ?? a.snak.value_id ?? String(a.snak.value ?? "");
+        const bv = b.snak.value_label ?? b.snak.value_id ?? String(b.snak.value ?? "");
+        r = av.localeCompare(bv, undefined, { sensitivity: "base" });
+      } else if (sKey === "rank") {
+        r = (a.snak.rank ?? "normal").localeCompare(b.snak.rank ?? "normal");
+      }
+      return r * mul;
+    });
+    return result;
+  }, [rows, tQuery, propFilter, refFilter, sKey, sDir]);
+
+  function toggleSort(k: StmtSortKey) {
+    if (sKey !== k) { setSKey(k); setSDir("asc"); return; }
+    if (sDir === "asc") { setSDir("desc"); return; }
+    setSKey("item"); setSDir("asc");
+  }
+
+  function toggleExpand(k: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  }
+
   return (
-    <a href={`https://www.wikidata.org/wiki/Property:${p}`}
-       target="_blank" rel="noreferrer"
-       className="text-biu-sky text-xs hover:underline">
-      {text ? <>{text} <span className="font-mono muted">({p})</span></>
-            : <span className="font-mono">{p}</span>}
-    </a>
+    <section className="glass p-4 space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          value={tQuery} onChange={(e) => setTQuery(e.target.value)}
+          placeholder="Search property / value / item label…"
+          className="input-glass !py-1.5 text-sm flex-1 min-w-[260px]" />
+        <div className="flex items-center gap-2 text-xs">
+          <label className="muted">Property</label>
+          <select value={propFilter} onChange={(e) => setPropFilter(e.target.value)}
+                  className="input-glass !py-1 text-xs max-w-xs">
+            <option value="">all properties</option>
+            {propOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label ? `${o.label} (${o.id})` : o.id}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <label className="muted">References</label>
+          <select value={refFilter}
+                  onChange={(e) => setRefFilter(e.target.value as "any"|"sourced"|"unsourced")}
+                  className="input-glass !py-1 text-xs">
+            <option value="any">any</option>
+            <option value="sourced">sourced</option>
+            <option value="unsourced">unsourced ⚠</option>
+          </select>
+        </div>
+        <span className="text-[11px] muted ml-auto">
+          {filtered.length} of {rows.length} statements
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead className="muted text-left">
+            <tr className="border-b border-white/5">
+              <th className="py-2 pr-2 w-8"></th>
+              <TableHeader label="Item"      col="item"     sKey={sKey} sDir={sDir} onClick={toggleSort} />
+              <TableHeader label="Type"      col="type"     sKey={sKey} sDir={sDir} onClick={toggleSort} />
+              <TableHeader label="Property"  col="property" sKey={sKey} sDir={sDir} onClick={toggleSort} />
+              <TableHeader label="Value"     col="value"    sKey={sKey} sDir={sDir} onClick={toggleSort} />
+              <TableHeader label="Rank"      col="rank"     sKey={sKey} sDir={sDir} onClick={toggleSort} />
+              <th className="py-2 pr-3">Qual.</th>
+              <th className="py-2 pr-3">Refs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((r) => {
+              const key   = `${r.itemIdx}:${r.stmtIdx}`;
+              const open  = expanded.has(key);
+              const quals = r.snak.qualifiers ?? [];
+              const refs  = r.snak.references ?? [];
+              const refSummary = summariseRefs(refs);
+              const prop  = r.snak.property ?? r.snak.property_id;
+              return (
+                <FlatRowView key={key}
+                  rowKey={key} open={open} onToggle={() => toggleExpand(key)}
+                  r={r} prop={prop} quals={quals} refs={refs}
+                  refSummary={refSummary} labelStore={labelStore}
+                  onOpenItem={onOpenItem} onOpenMarc={onOpenMarc} />
+              );
+            })}
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} className="py-6 text-center muted">
+                No statements match. Try clearing the property / search filters above.
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
 
-/** Renders the value of a snak. For Q-ids we show ``Ktiv (Q118384267)``
- *  using the backend's value_label, falling back to the lazy store.
- *  Bare strings, dates, and somevalue/novalue render verbatim. */
-function ValueRendering({
-  snak, store, small,
-}: { snak: Snak; store: LabelStore; small?: boolean }) {
-  const cls = small ? "text-[11px]" : "text-xs";
-  const kind = snak.value_type;
-  if (kind === "somevalue") return <span className={`${cls} muted`}>(somevalue)</span>;
-  if (kind === "novalue")   return <span className={`${cls} muted`}>(novalue)</span>;
-
-  const vid = snak.value_id;
-  if (vid && /^Q\d+$/.test(vid)) {
-    const text = snak.value_label ?? store.label(vid);
-    return (
-      <a href={`https://www.wikidata.org/wiki/${vid}`}
-         target="_blank" rel="noreferrer"
-         className={`${cls} text-biu-sky hover:underline`}>
-        {text ? <>{text} <span className="font-mono muted">({vid})</span></>
-              : <span className="font-mono">{vid}</span>}
-      </a>
-    );
-  }
-  if (vid) return <span className={`${cls} font-mono`}>{vid}</span>;
-
-  const v = snak.value;
-  if (typeof v === "string") {
-    // The desktop converter sometimes emits a raw Q-id as a value string.
-    if (/^Q\d+$/.test(v)) {
-      const text = snak.value_label ?? store.label(v);
-      return (
-        <a href={`https://www.wikidata.org/wiki/${v}`}
-           target="_blank" rel="noreferrer"
-           className={`${cls} text-biu-sky hover:underline`}>
-          {text ? <>{text} <span className="font-mono muted">({v})</span></>
-                : <span className="font-mono">{v}</span>}
-        </a>
-      );
-    }
-    return <span className={`${cls} font-mono`}>{v}</span>;
-  }
-  if (v == null) return <span className={`${cls} muted`}>—</span>;
-  return <span className={`${cls} font-mono`}>{JSON.stringify(v)}</span>;
+function TableHeader({
+  label, col, sKey, sDir, onClick,
+}: {
+  label: string; col: StmtSortKey;
+  sKey: StmtSortKey; sDir: SortDir;
+  onClick: (k: StmtSortKey) => void;
+}) {
+  const active = sKey === col;
+  return (
+    <th className="py-2 pr-3 select-none">
+      <button onClick={() => onClick(col)}
+              className="inline-flex items-center gap-1 hover:text-ink transition">
+        <span>{label}</span>
+        {active
+          ? <span className="text-biu-sky text-[10px]">{sDir === "asc" ? "↑" : "↓"}</span>
+          : <span className="muted text-[9px]">⇅</span>}
+      </button>
+    </th>
+  );
 }
+
+
+function FlatRowView({
+  rowKey, open, onToggle, r, prop, quals, refs, refSummary,
+  labelStore, onOpenItem, onOpenMarc,
+}: {
+  rowKey: string; open: boolean; onToggle: () => void;
+  r: FlatRow; prop: string | undefined;
+  quals: Snak[]; refs: Array<Snak | { snaks?: Snak[] }>;
+  refSummary: string;
+  labelStore: LabelStore;
+  onOpenItem: (idx: number) => void;
+  onOpenMarc: (cn: string) => void;
+}) {
+  const itemLabel = labelOf(r.item) || "(no label)";
+  return (
+    <>
+      <tr className="border-b border-white/5 hover:bg-white/[0.03] transition align-top">
+        <td className="py-2 pr-2">
+          {(quals.length > 0 || refs.length > 0) && (
+            <button onClick={onToggle}
+                    className="muted hover:text-ink text-xs"
+                    title={open ? "Collapse details" : "Expand qualifiers + references"}>
+              {open ? "▾" : "▸"}
+            </button>
+          )}
+        </td>
+        <td className="py-2 pr-3">
+          <button onClick={() => onOpenItem(r.itemIdx)}
+                  className="text-left hover:text-ink hover:underline">
+            <span className="block max-w-[220px] truncate">{itemLabel}</span>
+            {r.item.existing_qid && (
+              <span className="font-mono text-[10px] text-biu-sky">↻ {r.item.existing_qid}</span>
+            )}
+          </button>
+        </td>
+        <td className="py-2 pr-3"><span className="kicker">{r.item.entity_type ?? "?"}</span></td>
+        <td className="py-2 pr-3"><PropertyPill p={prop} label={r.snak.property_label} store={labelStore} /></td>
+        <td className="py-2 pr-3">
+          <ValueRendering snak={r.snak} store={labelStore} onOpenMarc={onOpenMarc} />
+        </td>
+        <td className="py-2 pr-3">
+          {r.snak.rank && r.snak.rank !== "normal"
+            ? <span className="kicker text-biu-sky">{r.snak.rank}</span>
+            : <span className="muted text-xs">normal</span>}
+        </td>
+        <td className="py-2 pr-3 text-xs">
+          {quals.length > 0 ? <span className="text-ink">{quals.length}</span> : <span className="muted">—</span>}
+        </td>
+        <td className="py-2 pr-3 text-xs">
+          {refs.length > 0
+            ? <span title={refSummary} className="text-ink">{refs.length} <span className="muted">·</span> {refSummary}</span>
+            : <span className="text-red-300" title="No reference attached">⚠ unsourced</span>}
+        </td>
+      </tr>
+      {open && (quals.length > 0 || refs.length > 0) && (
+        <tr className="border-b border-white/5 bg-white/[0.02]">
+          <td className="py-2 pr-2"></td>
+          <td colSpan={7} className="py-2 pr-3">
+            {quals.length > 0 && (
+              <div className="mb-2">
+                <div className="kicker mb-1">Qualifiers</div>
+                <ul className="space-y-1 text-xs">
+                  {quals.map((q, qi) => <QualifierRow key={`${rowKey}-q-${qi}`} q={q} store={labelStore} />)}
+                </ul>
+              </div>
+            )}
+            {refs.length > 0 && (
+              <div>
+                <div className="kicker mb-1">References — where this claim comes from</div>
+                <ul className="space-y-1 text-xs">
+                  {refs.map((rf, ri) => <ReferenceRow key={`${rowKey}-r-${ri}`} ref_={rf} store={labelStore} />)}
+                </ul>
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+
+/** Build a short "NLI · VIAF" summary from a list of reference blocks
+ *  by reading their P248 (stated in) values. Used only for the Refs
+ *  column to give curators a glance at the sources without expanding. */
+function summariseRefs(refs: Array<Snak | { snaks?: Snak[] }>): string {
+  const sources = new Set<string>();
+  for (const r of refs) {
+    const snaks: Snak[] = Array.isArray((r as { snaks?: Snak[] }).snaks)
+      ? (r as { snaks: Snak[] }).snaks
+      : [r as Snak];
+    for (const s of snaks) {
+      const p = s.property ?? s.property_id;
+      if (p === "P248") {
+        const id = s.value_id ?? (typeof s.value === "string" ? s.value : "");
+        if (id) sources.add(_REF_SOURCE_LABELS[id] ?? id);
+      } else if (p === "P854" && typeof s.value === "string") {
+        try   { sources.add(new URL(s.value).hostname.replace(/^www\./, "")); }
+        catch { /* not a URL */ }
+      }
+    }
+  }
+  return Array.from(sources).slice(0, 4).join(" · ") || "—";
+}
+
+
+const _REF_SOURCE_LABELS: Record<string, string> = {
+  Q118384267: "Ktiv",         // NLI manuscript catalog
+  Q54919:     "VIAF",
+  Q1378214:   "GND",
+  Q1389135:   "BnF",
+};
 
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
