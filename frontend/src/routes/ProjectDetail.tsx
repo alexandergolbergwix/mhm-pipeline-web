@@ -1,9 +1,10 @@
-import { type FormEvent, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { Projects, type Member, type ProjectDetail as Detail, type ProjectRole } from "@/api/projects";
+import { Runs, type RunListItem } from "@/api/runs";
 
 export default function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -39,22 +40,8 @@ export default function ProjectDetail() {
                          navigate("/", { replace: true });
                        }} />
 
-        <section className="glass p-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="kicker">Phase 4 preview</div>
-              <h3 className="text-lg font-medium">Runs</h3>
-            </div>
-            <button className="button-ghost opacity-60 cursor-not-allowed" disabled>
-              Upload MARC (Phase 4)
-            </button>
-          </div>
-          <p className="muted text-sm">
-            MARC upload, Mazal authority matching, RDF, SHACL, and Wikidata
-            upload land here in Phase 4. For now the workspace is fully wired
-            for collaboration.
-          </p>
-        </section>
+        <RunsPanel projectId={proj.id} canUpload={canEdit} />
+
 
         <MembersPanel proj={proj} canManage={canManageMembers} onChanged={refresh} />
       </div>
@@ -212,6 +199,91 @@ function MembersPanel({
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+
+function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boolean }) {
+  const [items, setItems] = useState<RunListItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function refresh() {
+    try {
+      setItems(await Runs.listForProject(projectId));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+    }
+  }
+  useEffect(() => { void refresh(); }, [projectId]);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setError(null);
+    try {
+      await Runs.create(projectId, file);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <section className="glass p-6 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="kicker">Pipeline runs</div>
+          <h3 className="text-lg font-medium">MARC uploads &amp; authority matching</h3>
+        </div>
+        {canUpload && (
+          <>
+            <input ref={fileRef} type="file" accept=".json,.jsonl,application/json"
+                   onChange={onPick} hidden />
+            <button onClick={() => fileRef.current?.click()}
+                    disabled={uploading} className="button-primary">
+              {uploading ? "Uploading…" : "Upload MARC"}
+            </button>
+          </>
+        )}
+      </div>
+      <p className="muted text-sm">
+        Upload a <code>marc_extracted.json</code> or JSONL file. The
+        authority matcher returns candidate matches you can review and
+        approve in the next step. (Real Mazal/VIAF/Wikidata adapters
+        plug into <code>app.pipeline.authority</code>; current build
+        ships the placeholder.)
+      </p>
+      {error && <p className="text-red-300 text-sm">{error}</p>}
+
+      {items === null && <p className="muted text-sm">Loading runs…</p>}
+      {items && items.length === 0 && (
+        <p className="muted text-sm italic">No runs yet.</p>
+      )}
+      {items && items.length > 0 && (
+        <ul className="divide-y divide-white/5">
+          {items.map((r) => (
+            <li key={r.id} className="py-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <Link to={`/runs/${r.id}`} className="font-medium hover:text-biu-sky truncate block">
+                  {r.name}
+                </Link>
+                <p className="muted text-xs">
+                  {r.record_count} record{r.record_count === 1 ? "" : "s"} ·{" "}
+                  {r.match_count} match{r.match_count === 1 ? "" : "es"} ·{" "}
+                  {new Date(r.created_at).toLocaleString()}
+                </p>
+              </div>
+              <span className="glass-pill px-3 py-1 text-[10px] kicker">{r.status}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

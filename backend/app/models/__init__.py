@@ -12,12 +12,22 @@ from app.models.project import (
     Membership,
     Project,
 )
+from app.models.run import (
+    RUN_STATUS_FAILED,
+    RUN_STATUS_PENDING,
+    RUN_STATUS_RUNNING,
+    RUN_STATUS_SUCCEEDED,
+    AuthorityMatch,
+    Run,
+    RunRecord,
+)
 from app.models.session import Session
 from app.models.user import ROLE_ADMIN, ROLE_EDITOR, User
 
 __all__ = [
     "ALL_PROJECT_ROLES",
     "ApiKey",
+    "AuthorityMatch",
     "Base",
     "Invitation",
     "Membership",
@@ -28,6 +38,12 @@ __all__ = [
     "Project",
     "ROLE_ADMIN",
     "ROLE_EDITOR",
+    "RUN_STATUS_FAILED",
+    "RUN_STATUS_PENDING",
+    "RUN_STATUS_RUNNING",
+    "RUN_STATUS_SUCCEEDED",
+    "Run",
+    "RunRecord",
     "Session",
     "User",
 ]
