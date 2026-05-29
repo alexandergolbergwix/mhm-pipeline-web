@@ -87,5 +87,14 @@ export const Runs = {
       judged_at: string;
       fallback: boolean;
     }>(`/runs/${runId}/matches/${matchId}/ai-verify`, {}),
+
+  /** Backfill birth_year / death_year on every match in the run, in
+   *  place, using the IDs already stored (mazal_id, viaf_id, qid).
+   *  Doesn't re-match — preserves approvals + match decisions. */
+  backfillDates: (runId: string) =>
+    api.post<{
+      checked: number; updated: number;
+      births_filled: number; deaths_filled: number;
+    }>(`/runs/${runId}/matches/backfill-dates`, {}),
 };
 

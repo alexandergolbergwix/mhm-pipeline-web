@@ -39,6 +39,10 @@ export default function RunDetail() {
   const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
   const [openMatch, setOpenMatch] = useState<AuthorityMatch | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{
+    checked: number; updated: number; births_filled: number; deaths_filled: number;
+  } | null>(null);
   // Sort state — persisted across reloads so curators don't lose their place.
   const [sortKey, setSortKey] = useState<string | null>(() =>
     localStorage.getItem("mhm.runDetail.sortKey") || null);
@@ -89,6 +93,22 @@ export default function RunDetail() {
       setSelected(new Set());
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
+    }
+  }
+
+  async function backfillDates() {
+    if (!runId) return;
+    setBackfillBusy(true); setError(null); setBackfillResult(null);
+    try {
+      const r = await Runs.backfillDates(runId);
+      setBackfillResult(r);
+      // Re-pull every match so the Dates & guards panel + the row
+      // tooltips reflect the new birth/death values.
+      await refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+    } finally {
+      setBackfillBusy(false);
     }
   }
 
@@ -181,9 +201,21 @@ export default function RunDetail() {
                 Review &amp; approve · <span className="muted">{filtered.length} of {run.matches.length}</span>
               </h3>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <button disabled={selected.size === 0} onClick={() => bulk(true)}  className="button-primary !py-1.5 text-sm">Approve selected</button>
               <button disabled={selected.size === 0} onClick={() => bulk(false)} className="button-ghost   !py-1.5 text-sm">Unapprove selected</button>
+              <button onClick={backfillDates} disabled={!!backfillBusy}
+                      title="Walk every match and pull birth / death years from the IDs already stored (Mazal, VIAF, Wikidata). Leaves approvals untouched."
+                      className="button-ghost !py-1.5 text-sm">
+                {backfillBusy ? "Backfilling…" : "Backfill dates"}
+              </button>
+              {backfillResult && (
+                <span className="muted text-xs">
+                  {backfillResult.updated > 0
+                    ? <>✓ {backfillResult.updated} rows updated · +{backfillResult.births_filled} births · +{backfillResult.deaths_filled} deaths</>
+                    : <>No new dates available from Mazal / VIAF / Wikidata for the remaining matches</>}
+                </span>
+              )}
             </div>
           </div>
 

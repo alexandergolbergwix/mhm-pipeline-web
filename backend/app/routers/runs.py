@@ -239,6 +239,119 @@ async def bulk_approve(
     return [AuthorityMatchResponse(**serialise_match(m)) for m in rows]
 
 
+# ── Backfill: enrich existing matches with birth/death years ──────────
+
+
+@router.post("/runs/{run_id}/matches/backfill-dates")
+async def backfill_dates(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Patch payload.birth_year / payload.death_year on every match in
+    the run, in place, using the IDs already stored (mazal_id, viaf_id,
+    wikidata_qid). Doesn't re-match — preserves approvals, sources, the
+    confidence verdict. Designed for runs that were created before the
+    matchers started populating years.
+
+    Returns how many rows were updated and how many years were filled.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    # Lazy-import so this endpoint doesn't pull the converter tree on
+    # cold start.
+    from app.pipeline.authority import get_default_matcher  # noqa: PLC0415
+    from converter.transformer.date_resolver import (        # noqa: PLC0415
+        resolve_person_dates,
+    )
+
+    rows = (
+        await db.execute(
+            select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
+        )
+    ).scalars().all()
+
+    matcher = get_default_matcher()
+    mazal    = matcher._mazal    if matcher else None     # type: ignore[attr-defined]
+    viaf     = matcher._viaf     if matcher else None     # type: ignore[attr-defined]
+    wikidata = matcher._wikidata if matcher else None     # type: ignore[attr-defined]
+
+    touched_rows = 0
+    births_filled = 0
+    deaths_filled = 0
+
+    for m in rows:
+        payload = dict(m.payload or {})
+        birth = payload.get("birth_year")
+        death = payload.get("death_year")
+        if birth and death:
+            continue   # nothing to do — already enriched
+
+        new_b: int | None = birth if isinstance(birth, int) else None
+        new_d: int | None = death if isinstance(death, int) else None
+
+        # — Mazal: cheap, in-process sqlite. Try first because for
+        # medieval Hebrew it's the most authoritative source.
+        if (new_b is None or new_d is None) and m.mazal_id and mazal is not None:
+            try:
+                details = mazal.get_person_details(m.mazal_id) or {}
+                dstr = (details.get("dates") or "").strip()
+                if dstr:
+                    parsed = resolve_person_dates(dstr)
+                    if new_b is None and parsed.get("birth_year"):
+                        new_b = parsed["birth_year"]
+                    if new_d is None and parsed.get("death_year"):
+                        new_d = parsed["death_year"]
+            except Exception:  # noqa: BLE001
+                pass
+
+        # — VIAF: each call hits the network; honour rate limits.
+        if (new_b is None or new_d is None) and m.viaf_id and viaf is not None:
+            try:
+                cluster = viaf.get_cluster_identifiers(m.viaf_id) or {}
+                # _year_from is private; re-derive defensively.
+                from converter.authority.viaf_matcher import _year_from   # noqa: PLC0415
+                b = _year_from(cluster.get("birth_date"))
+                d = _year_from(cluster.get("death_date"))
+                if new_b is None and b is not None:
+                    new_b = int(b)
+                if new_d is None and d is not None:
+                    new_d = int(d)
+            except Exception:  # noqa: BLE001
+                pass
+
+        # — Wikidata: SPARQL probe; on-disk cache amortises repeat calls.
+        if (new_b is None or new_d is None) and m.wikidata_qid and wikidata is not None:
+            try:
+                b, d = wikidata.find_dates_by_qid(m.wikidata_qid)
+                if new_b is None and b is not None:
+                    new_b = int(b)
+                if new_d is None and d is not None:
+                    new_d = int(d)
+            except Exception:  # noqa: BLE001
+                pass
+
+        changed = False
+        if new_b is not None and new_b != payload.get("birth_year"):
+            payload["birth_year"] = new_b; changed = True
+            if not birth: births_filled += 1
+        if new_d is not None and new_d != payload.get("death_year"):
+            payload["death_year"] = new_d; changed = True
+            if not death: deaths_filled += 1
+        if changed:
+            # JSON column needs a fresh dict to register the mutation.
+            m.payload = payload
+            touched_rows += 1
+
+    await db.commit()
+    return {
+        "checked":       len(rows),
+        "updated":       touched_rows,
+        "births_filled": births_filled,
+        "deaths_filled": deaths_filled,
+    }
+
+
 # ── Editable fields (curator overrides on matches + records) ──────────
 
 
