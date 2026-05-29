@@ -295,14 +295,16 @@ function SourcesCell({ match, sourceCount }: { match: AuthorityMatch; sourceCoun
     return <span className="muted text-xs italic">—</span>;
   }
   return (
-    <span className="flex items-center gap-1 flex-wrap">
+    <span className="inline-flex items-center gap-1 flex-wrap"
+          title={`Sources: ${sources.join(", ")}${sourceCount >= 2 ? ` · cross-source ×${sourceCount}` : ""}`}>
       {sources.map((s) => (
-        <span key={s} className="glass-pill px-1.5 py-0 text-[10px] uppercase tracking-wider">
+        <span key={s}
+              className="glass-pill px-2 py-[1px] text-[10px] uppercase tracking-wider whitespace-nowrap shrink-0">
           {s}
         </span>
       ))}
       {sourceCount >= 2 && (
-        <span className="text-biu-sky text-[10px]" title="Cross-source agreement">✓×{sourceCount}</span>
+        <span className="text-biu-sky text-[10px] shrink-0" title="Cross-source agreement">✓×{sourceCount}</span>
       )}
     </span>
   );
