@@ -88,7 +88,7 @@ async def create_run(
     )
     db.add(run)
     await db.flush()
-    await execute_run(db, run=run, upload=raw)
+    await execute_run(db, run=run, upload=raw, filename=file.filename)
     await append_event(
         db, project_id=ctx.project.id, actor_id=ctx.user_id, type="run.created",
         payload={"run_id": str(run.id), "name": run.name,

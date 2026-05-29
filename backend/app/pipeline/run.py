@@ -33,12 +33,13 @@ async def execute_run(
     *,
     run: Run,
     upload: bytes,
+    filename: str | None = None,
 ) -> Run:
     run.status = RUN_STATUS_RUNNING
     await db.flush()
 
     try:
-        records = marc_ingest.parse_marc_upload(upload)
+        records = marc_ingest.parse_marc_upload(upload, filename=filename)
     except ValueError as exc:
         run.status = RUN_STATUS_FAILED
         run.error = f"MARC parse failed: {exc}"

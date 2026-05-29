@@ -242,7 +242,8 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
         </div>
         {canUpload && (
           <>
-            <input ref={fileRef} type="file" accept=".json,.jsonl,application/json"
+            <input ref={fileRef} type="file"
+                   accept=".json,.jsonl,.mrc,.marc,.tsv,.csv,application/json,application/marc,text/tab-separated-values,text/csv"
                    onChange={onPick} hidden />
             <button onClick={() => fileRef.current?.click()}
                     disabled={uploading} className="button-primary">
@@ -252,11 +253,14 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
         )}
       </div>
       <p className="muted text-sm">
-        Upload a <code>marc_extracted.json</code> or JSONL file. The
-        authority matcher returns candidate matches you can review and
-        approve in the next step. (Real Mazal/VIAF/Wikidata adapters
-        plug into <code>app.pipeline.authority</code>; current build
-        ships the placeholder.)
+        Accepts <code>.json</code>, <code>.jsonl</code>,{" "}
+        <code>.mrc</code> / <code>.marc</code> (binary MARC21),{" "}
+        <code>.tsv</code>, and <code>.csv</code>. Tabular uploads use the
+        first row as headers — the parser recognises{" "}
+        <code>control_number</code> / <code>title</code> /{" "}
+        <code>authors</code> / <code>contributors</code> /{" "}
+        <code>subjects</code> (multi-value separators: <code>|</code>{" "}
+        or <code>;</code>).
       </p>
       {error && <p className="text-red-300 text-sm">{error}</p>}
 
