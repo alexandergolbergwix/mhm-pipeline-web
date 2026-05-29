@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/stores/auth";
 
@@ -21,7 +21,7 @@ export default function Login() {
       const dest = (location.state as { from?: string } | null)?.from ?? "/";
       navigate(dest, { replace: true });
     } catch {
-      /* error surfaced via the auth store */
+      /* handled by store */
     } finally {
       setSubmitting(false);
     }
@@ -29,14 +29,15 @@ export default function Login() {
 
   return (
     <div className="grid place-items-center min-h-screen px-4">
-      <form onSubmit={onSubmit} className="glass p-8 w-full max-w-sm space-y-4">
+      <form onSubmit={onSubmit} className="glass p-8 w-full max-w-sm space-y-5">
         <header className="space-y-1">
+          <div className="kicker">Bar-Ilan University · MHM</div>
           <h1 className="text-2xl font-semibold tracking-tight">MHM Pipeline</h1>
-          <p className="text-sm text-glass-inkSub">Sign in to continue.</p>
+          <p className="text-sm muted">Sign in to continue.</p>
         </header>
 
         <label className="block space-y-1">
-          <span className="text-sm text-glass-inkSub">Email</span>
+          <span className="text-sm muted">Email</span>
           <input
             type="email"
             autoComplete="email"
@@ -48,7 +49,7 @@ export default function Login() {
         </label>
 
         <label className="block space-y-1">
-          <span className="text-sm text-glass-inkSub">Password</span>
+          <span className="text-sm muted">Password</span>
           <input
             type="password"
             autoComplete="current-password"
@@ -60,18 +61,19 @@ export default function Login() {
         </label>
 
         {error && (
-          <p className="text-sm text-red-300" role="alert">
-            {error}
-          </p>
+          <p className="text-sm text-red-300" role="alert">{error}</p>
         )}
 
         <button type="submit" disabled={submitting} className="button-primary w-full">
           {submitting ? "Signing in…" : "Sign in"}
         </button>
 
-        <p className="text-xs text-glass-inkSub text-center">
-          Accounts are admin-invited. Contact your project owner.
-        </p>
+        <div className="flex items-center justify-between text-xs muted">
+          <Link to="/forgot-password" className="hover:text-ink underline-offset-2 hover:underline">
+            Forgot password?
+          </Link>
+          <span>Accounts are admin-invited.</span>
+        </div>
       </form>
     </div>
   );

@@ -2,42 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Phase-1 fallback liquid-glass via CSS only.
-   Phase 8 (R3F MeshTransmissionMaterial overlay) replaces this on capable
-   devices; on weak hardware / prefers-reduced-motion this remains the
-   surface. */
+/* Bar-Ilan palette — matches the presentation deck. */
+
+:root {
+  --biu-navy: #00190d;
+  --biu-black: #000000;
+  --biu-green: #004027;
+  --biu-sky: #77cce5;
+  --ink: #eaf6fb;
+  --muted: #b7d8e3;
+  --panel: rgba(255, 255, 255, 0.08);
+  --panel-strong: rgba(255, 255, 255, 0.12);
+  --line: rgba(119, 204, 229, 0.24);
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
 
 html, body, #root { height: 100%; }
 
 body {
-  /* Animated background gradient — gives glass surfaces something to
-     refract once the WebGL layer ships. */
   background:
-    radial-gradient(at 20% 10%,  rgba(105, 79, 255, 0.35), transparent 50%),
-    radial-gradient(at 80% 90%,  rgba( 88, 200, 220, 0.25), transparent 55%),
-    radial-gradient(at 50% 50%,  rgba(255, 110, 175, 0.20), transparent 60%),
-    #0b0f14;
+    radial-gradient(circle at 12% 18%, rgba(119, 204, 229, 0.16), transparent 20%),
+    radial-gradient(circle at 85% 16%, rgba(0, 64, 39, 0.35),  transparent 22%),
+    radial-gradient(circle at 50% 120%, rgba(119, 204, 229, 0.12), transparent 30%),
+    linear-gradient(145deg, #00190d 0%, #002217 36%, #001008 70%, #000000 100%);
   background-attachment: fixed;
+  color: var(--ink);
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Subtle grid overlay — same one the deck uses behind hero content. */
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(119, 204, 229, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(119, 204, 229, 0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  pointer-events: none;
+  mask-image: radial-gradient(circle at center, black 38%, transparent 92%);
+  z-index: 0;
+}
+
+#root { position: relative; z-index: 1; }
+
 .glass {
-  background: theme('colors.glass.base');
-  border: 1px solid theme('colors.glass.edge');
-  backdrop-filter: blur(theme('backdropBlur.glass')) saturate(180%);
-  -webkit-backdrop-filter: blur(theme('backdropBlur.glass')) saturate(180%);
-  box-shadow: theme('boxShadow.glass');
-  border-radius: 16px;
+  background: linear-gradient(180deg, var(--panel-strong), rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  box-shadow: var(--shadow);
+  border-radius: 26px;
+}
+
+.glass-pill {
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+  border-radius: 999px;
 }
 
 .input-glass {
-  @apply glass px-3 py-2 outline-none focus:border-white/40 transition w-full;
-  color: theme('colors.glass.ink');
+  @apply px-3 py-2 outline-none transition w-full;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink);
 }
+.input-glass:focus { border-color: var(--biu-sky); }
 
 .button-primary {
-  @apply glass px-4 py-2 font-medium cursor-pointer transition hover:bg-white/15 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
-  color: theme('colors.glass.ink');
+  @apply px-4 py-2 font-medium cursor-pointer transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  background: linear-gradient(180deg, rgba(119, 204, 229, 0.22), rgba(119, 204, 229, 0.08));
+  border: 1px solid var(--biu-sky);
+  border-radius: 14px;
+  color: var(--ink);
+  box-shadow: 0 8px 24px rgba(119, 204, 229, 0.18);
 }
+.button-primary:hover { background: linear-gradient(180deg, rgba(119, 204, 229, 0.32), rgba(119, 204, 229, 0.14)); }
+
+.button-ghost {
+  @apply px-4 py-2 cursor-pointer transition active:scale-[0.98] disabled:opacity-50;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  color: var(--ink);
+  backdrop-filter: blur(12px);
+}
+.button-ghost:hover { background: rgba(255, 255, 255, 0.06); }
+
+.kicker {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--biu-sky);
+}
+
+.muted { color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
   body { background-attachment: scroll; }

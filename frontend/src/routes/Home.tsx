@@ -1,46 +1,82 @@
+import { Link } from "react-router-dom";
+
+import { Layout } from "@/components/Layout";
 import { useAuth } from "@/stores/auth";
 
 export default function Home() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   return (
-    <div className="min-h-screen p-8 space-y-6 max-w-3xl mx-auto">
-      <header className="flex items-center justify-between glass px-6 py-4">
-        <div>
-          <h1 className="text-xl font-semibold">MHM Pipeline</h1>
-          <p className="text-sm text-glass-inkSub">
-            Signed in as <span className="text-glass-ink">{user?.name}</span> ·{" "}
-            {user?.email}
+    <Layout>
+      <div className="space-y-6">
+        <section className="glass p-8 space-y-3">
+          <div className="kicker">Phase 1+2 — authentication, invites, password flows</div>
+          <h2 className="text-2xl font-semibold">
+            Hello {user?.name?.split(" ")[0] ?? "there"}.
+          </h2>
+          <p className="muted leading-relaxed max-w-2xl">
+            You're signed in via a zero-knowledge session. Your encryption key
+            lives wrapped in <code className="text-biu-sky">sessions.kek_wrapped</code>{" "}
+            and only unlocks while your cookie is presented. Below are the
+            upcoming surfaces — they ship as the next phases land.
           </p>
-        </div>
-        <button onClick={() => logout()} className="button-primary">
-          Sign out
-        </button>
-      </header>
 
-      <section className="glass p-6 space-y-3">
-        <h2 className="text-lg font-medium">Phase 1 — Authentication ✓</h2>
-        <p className="text-glass-inkSub text-sm leading-relaxed">
-          You're signed in via a zero-knowledge session. Your KEK lives wrapped
-          in <code>sessions.kek_wrapped</code> and only unlocks while your
-          cookie is presented. Next phases will add projects, the pipeline,
-          real-time collaboration, version history, and the Three.js liquid-glass
-          overlay.
-        </p>
-      </section>
+          <div className="flex flex-wrap gap-3 pt-2">
+            {isAdmin && (
+              <Link to="/admin/invites" className="button-primary">
+                Invite a teammate
+              </Link>
+            )}
+            <Link to="/settings" className="button-ghost">
+              Account settings
+            </Link>
+          </div>
+        </section>
 
-      <section className="glass p-6 space-y-2">
-        <h2 className="text-lg font-medium text-glass-inkSub">Coming next</h2>
-        <ul className="text-sm text-glass-inkSub list-disc list-inside space-y-1">
-          <li>Phase 2 — invites + password change/reset</li>
-          <li>Phase 3 — projects + memberships</li>
-          <li>Phase 4 — MARC upload + authority resolution</li>
-          <li>Phase 5 — Authority Review UI with approvals</li>
-          <li>Phase 6 — Git-styled history (event sourcing + restore)</li>
-          <li>Phase 7 — Real-time collaboration</li>
-          <li>Phase 8 — Three.js liquid-glass hero surfaces</li>
-        </ul>
-      </section>
-    </div>
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <RoadmapCard
+            tag="Phase 3"
+            title="Projects + memberships"
+            body="Create projects, invite collaborators per project, and switch between them from the top nav."
+          />
+          <RoadmapCard
+            tag="Phase 4–5"
+            title="MARC upload + Authority review"
+            body="Drop in a MARC export, see authority matches in a structured-filter table, approve them collaboratively."
+          />
+          <RoadmapCard
+            tag="Phase 6"
+            title="Git-styled history"
+            body="Every approval / edit is an event in an append-only log. Tag named snapshots. Restore the project to any prior state."
+          />
+          <RoadmapCard
+            tag="Phase 7"
+            title="Real-time collaboration"
+            body="Two curators on the same project see each other's approvals land instantly, with presence avatars."
+          />
+          <RoadmapCard
+            tag="Phase 8"
+            title="Liquid-glass surfaces"
+            body="Three.js MeshTransmissionMaterial overlays on hero surfaces: real refraction, specular highlights, gentle ripple."
+          />
+          <RoadmapCard
+            tag="Phase 9"
+            title="Encrypted API keys"
+            body="Per-user Gemini/Wikidata/Wikibase tokens — wrapped with your password-derived KEK, never readable on the server alone."
+          />
+        </section>
+      </div>
+    </Layout>
+  );
+}
+
+function RoadmapCard({ tag, title, body }: { tag: string; title: string; body: string }) {
+  return (
+    <article className="glass p-6 space-y-2">
+      <div className="kicker">{tag}</div>
+      <h3 className="text-lg font-medium">{title}</h3>
+      <p className="text-sm muted leading-relaxed">{body}</p>
+    </article>
   );
 }

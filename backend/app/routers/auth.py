@@ -16,6 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cryptography.exceptions import InvalidTag
+from sqlalchemy import delete
+
 from app.auth import password as pw
 from app.auth.session import (
     AuthContext,
@@ -28,9 +31,17 @@ from app.auth.session import (
 from app.crypto import index as idx
 from app.crypto import kek as kek_mod
 from app.crypto import pii
+from app.crypto import secrets as secrets_mod
 from app.db import get_session
+from app.models.api_key import ApiKey
+from app.models.session import Session as SessionRow
 from app.models.user import User
-from app.schemas.auth import LoginRequest, LoginResponse, MeResponse
+from app.schemas.auth import (
+    LoginRequest,
+    LoginResponse,
+    MeResponse,
+    PasswordChangeRequest,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -73,6 +84,7 @@ async def login(
         id=user.id,
         email=pii.decrypt_pii(user.email_encrypted),
         name=pii.decrypt_pii(user.name_encrypted),
+        role=user.role,
     )
 
 
@@ -94,4 +106,70 @@ async def me(auth: AuthContext = Depends(current_auth)) -> MeResponse:
         id=auth.user.id,
         email=pii.decrypt_pii(auth.user.email_encrypted),
         name=pii.decrypt_pii(auth.user.name_encrypted),
+        role=auth.user.role,
     )
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    payload: PasswordChangeRequest,
+    response: Response,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Re-derive the user's KEK from the new password and re-wrap every
+    stored DEK in place. This preserves the user's saved API keys —
+    unlike :func:`reset_password`, which has no old password to decrypt
+    with and therefore must wipe them.
+    """
+    if not pw.verify_password(payload.current_password, auth.user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is wrong",
+        )
+    if payload.current_password == payload.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must differ from the current one",
+        )
+
+    old_kek = auth.kek  # already unwrapped for this request
+    new_salt = pii.random_bytes(16)
+    new_kek = kek_mod.derive_kek(payload.new_password, salt=new_salt)
+
+    # Re-wrap every DEK in-place: decrypt with old_kek, re-wrap with new_kek.
+    keys = (
+        await db.execute(select(ApiKey).where(ApiKey.user_id == auth.user.id))
+    ).scalars().all()
+    for k in keys:
+        try:
+            wrapped = secrets_mod.WrappedSecret(
+                ciphertext=k.ciphertext,
+                ciphertext_nonce=k.ciphertext_nonce,
+                dek_wrapped=k.dek_wrapped,
+                dek_wrap_nonce=k.dek_wrap_nonce,
+            )
+            plaintext = secrets_mod.unwrap_secret(wrapped, kek=old_kek)
+            re_wrapped = secrets_mod.wrap_secret(plaintext, kek=new_kek)
+        except InvalidTag as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not re-wrap stored secrets; aborting change",
+            ) from exc
+        k.ciphertext = re_wrapped.ciphertext
+        k.ciphertext_nonce = re_wrapped.ciphertext_nonce
+        k.dek_wrapped = re_wrapped.dek_wrapped
+        k.dek_wrap_nonce = re_wrapped.dek_wrap_nonce
+
+    auth.user.password_hash = pw.hash_password(payload.new_password)
+    auth.user.kek_salt = new_salt
+
+    # Invalidate every existing session — the cookie-wrapped KEK is now
+    # stale. The current session is replaced with a fresh one bound to
+    # the new KEK so the user stays logged in seamlessly.
+    await db.execute(delete(SessionRow).where(SessionRow.user_id == auth.user.id))
+    new_session, new_secret = await create_session(db, user=auth.user, kek=new_kek)
+    await db.commit()
+    set_session_cookie(
+        response, session_id=new_session.id, session_secret=new_secret,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import auth, health
+from app.routers import auth, health, invites, onboarding
 from app.settings import get_settings
 
 
@@ -43,6 +43,8 @@ def create_app() -> FastAPI:
     # shadow them.
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
+    app.include_router(onboarding.router, prefix="/api")
+    app.include_router(invites.router, prefix="/api")
 
     # Frontend static assets (production). Mounted last so any /api
     # route still wins.

@@ -15,6 +15,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, _new_uuid
 
+ROLE_ADMIN = "admin"
+ROLE_EDITOR = "editor"
+
 
 class User(Base, TimestampMixin):
     __tablename__ = "users"
@@ -40,3 +43,9 @@ class User(Base, TimestampMixin):
     # changes; on password change we keep the salt and re-derive KEK from
     # the new password so wrapped DEKs can be re-wrapped in place.
     kek_salt: Mapped[bytes] = mapped_column(LargeBinary(16), nullable=False)
+
+    # Org-wide role. ``admin`` can invite + manage users; ``editor`` is a
+    # regular collaborator. Project-level roles (owner/editor/viewer) come
+    # in Phase 3's ``memberships`` table and override this for per-project
+    # operations.
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default=ROLE_EDITOR)
