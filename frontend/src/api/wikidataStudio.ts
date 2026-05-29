@@ -8,22 +8,28 @@ export interface StudioSummary {
   statements: number;
 }
 
+export interface Snak {
+  property?: string;
+  property_id?: string;
+  property_label?: string;
+  value?: unknown;
+  value_id?: string;
+  value_type?: string;
+  value_label?: string;
+  rank?: string;
+  qualifiers?: Snak[];
+  references?: Array<Snak | { snaks?: Snak[] }>;
+  [k: string]: unknown;
+}
+
 export interface StudioItem {
   labels?: Record<string, string>;
   descriptions?: Record<string, string>;
   aliases?: Record<string, string[]>;
-  statements?: Array<{
-    property?: string;
-    property_id?: string;
-    value?: unknown;
-    value_id?: string;
-    value_type?: string;
-    rank?: string;
-    qualifiers?: unknown[];
-    references?: unknown[];
-  }>;
+  statements?: Snak[];
   existing_qid?: string | null;
   entity_type?: string;
+  local_id?: string;
 }
 
 export interface StudioBuild {

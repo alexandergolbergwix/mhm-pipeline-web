@@ -79,6 +79,7 @@ class DesktopMatcher(AuthorityMatcher):
         self._mazal = _load_mazal_matcher()
         self._viaf = _load_viaf_matcher() if os.getenv("DISABLE_VIAF") != "1" else None
         self._wikidata = _load_wikidata_matcher() if os.getenv("DISABLE_WIKIDATA") != "1" else None
+        self._kima = _load_kima_matcher() if os.getenv("DISABLE_KIMA") != "1" else None
 
     async def match(
         self, entity: dict[str, str], marc_record: dict[str, Any],
@@ -105,6 +106,25 @@ class DesktopMatcher(AuthorityMatcher):
         death_year: int | None = None
         guards: list[str] = []
         reasoning_parts: list[str] = []
+
+        # — KIMA (places only) —
+        # KIMA is the desktop's geographic-authority adapter. It returns
+        # a Wikidata URI for matched places, so we hand the QID straight
+        # to the same wikidata_qid slot the persons path uses (with
+        # source=kima).
+        is_place = role in ("place", "subject") and _looks_like_place(text, marc_record)
+        if is_place and self._kima is not None:
+            try:
+                uri = self._kima.match_place(text)
+                if uri:
+                    sources.append("kima")
+                    # Pull the QID off the URI for the wikidata column.
+                    qid = uri.rsplit("/", 1)[-1]
+                    if qid.startswith("Q"):
+                        wikidata_qid = qid
+                    reasoning_parts.append(f"KIMA hit ({uri}).")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("KIMA matcher raised for %r: %s", text, exc)
 
         # — Mazal —
         if self._mazal is not None:
@@ -263,6 +283,58 @@ def _load_wikidata_matcher():  # type: ignore[no-untyped-def]
     except Exception as exc:  # noqa: BLE001
         logger.error("Could not initialise WikidataMatcher: %s", exc)
         return None
+
+
+@lru_cache(maxsize=1)
+def _load_kima_matcher():  # type: ignore[no-untyped-def]
+    """KIMA places — desktop's geographic-authority adapter. Reads from
+    ``data/kima/kima_index.db`` (we ship the 15 MB DB inside the web
+    backend; override with KIMA_DB_PATH if you want a different copy)."""
+    try:
+        from pathlib import Path  # noqa: PLC0415
+
+        from converter.authority.kima_matcher import KimaMatcher  # noqa: PLC0415
+
+        db_path = os.getenv("KIMA_DB_PATH")
+        if not db_path:
+            # backend/data/kima/kima_index.db — copied at adopt-time.
+            default = (
+                Path(__file__).resolve().parents[2]
+                / "data" / "kima" / "kima_index.db"
+            )
+            db_path = str(default) if default.exists() else None
+        return KimaMatcher(index_path=db_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not initialise KimaMatcher: %s", exc)
+        return None
+
+
+def _looks_like_place(text: str, record: dict[str, Any]) -> bool:
+    """Heuristic — was *text* a place entity in the source record?
+
+    KIMA gets called for entities whose role is 'place'/'subject' AND
+    the surface form appears in one of the place-typed slots
+    (subjects[type=place], 651, 752, related_places). When in doubt
+    we DO call KIMA — it's a cheap SQLite read.
+    """
+    s = text.strip()
+    if not s:
+        return False
+    # Direct hit in any place-typed subject.
+    for sub in record.get("subjects") or []:
+        if isinstance(sub, dict):
+            kind = sub.get("type") or sub.get("kind") or ""
+            name = sub.get("name") or sub.get("term") or ""
+            if kind in ("place", "geographic") and isinstance(name, str) and s in name:
+                return True
+    # MARC 651 / 752 / related_places slots.
+    for slot in ("related_places", "places"):
+        for entry in record.get(slot) or []:
+            if isinstance(entry, str) and s in entry:
+                return True
+            if isinstance(entry, dict) and s in str(entry.get("name") or entry.get("term") or ""):
+                return True
+    return False
 
 
 def get_default_matcher() -> AuthorityMatcher:

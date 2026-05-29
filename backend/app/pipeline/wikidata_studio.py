@@ -146,18 +146,22 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
 
 
 def _serialise_item(item: Any) -> dict[str, Any]:
-    """Best-effort dataclass-to-dict so the JSON response carries every
-    label/description/alias/statement the builder emitted.
+    """Best-effort dataclass-to-dict + English-label enrichment.
 
-    ``WikidataItem`` is a dataclass; ``asdict`` recurses through its
-    statements + qualifiers + references. The few non-dataclass values
-    (Enum ranks, etc.) are coerced to strings.
+    Every emitted statement / qualifier / reference snak gets two extra
+    fields the UI consumes directly:
+
+        ``property_label`` — e.g. "instance of"  for P31
+        ``value_label``    — e.g. "Ktiv (NLI manuscript catalog)" for Q118384267
+
+    Both fall back to the bare PID / QID when the desktop's static
+    label dictionary doesn't cover the value. The frontend then lazily
+    fetches unknown labels via /api/wikidata/labels and patches in.
     """
     try:
-        return _coerce(asdict(item))
+        data = _coerce(asdict(item))
     except Exception:
-        # Fall back to public attrs.
-        return {
+        data = {
             "labels":       getattr(item, "labels", {}),
             "descriptions": getattr(item, "descriptions", {}),
             "aliases":      getattr(item, "aliases", {}),
@@ -165,6 +169,41 @@ def _serialise_item(item: Any) -> dict[str, Any]:
             "existing_qid": getattr(item, "existing_qid", None),
             "entity_type":  getattr(item, "entity_type", None),
         }
+
+    # Enrich every statement (+ its qualifiers + references) with labels.
+    for stmt in data.get("statements") or []:
+        _enrich_snak(stmt)
+        for q in stmt.get("qualifiers") or []:
+            _enrich_snak(q)
+        for r in stmt.get("references") or []:
+            # Reference snaks come either as a flat dict or wrapped in
+            # {"snaks": [...]} — desktop emits both shapes.
+            if isinstance(r, dict):
+                _enrich_snak(r)
+                for s in r.get("snaks") or []:
+                    _enrich_snak(s)
+    return data
+
+
+def _enrich_snak(snak: Any) -> None:
+    """In-place: stamp ``property_label`` + ``value_label`` on a
+    statement / qualifier / reference dict."""
+    if not isinstance(snak, dict):
+        return
+    from converter.wikidata.property_labels import property_label, qid_label  # noqa: PLC0415
+
+    prop = snak.get("property") or snak.get("property_id")
+    if isinstance(prop, str) and prop:
+        snak["property_label"] = property_label(prop)
+
+    # value_label: when the value is a Q-id, look it up. Otherwise the
+    # value is the label itself (string, date, URL, …).
+    val = snak.get("value")
+    vid = snak.get("value_id")
+    qid = vid if isinstance(vid, str) and vid.startswith("Q") else \
+          (val if isinstance(val, str) and val.startswith("Q") and val[1:].isdigit() else None)
+    if qid:
+        snak["value_label"] = qid_label(qid)
 
 
 def _to_dict_list(

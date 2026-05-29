@@ -4,13 +4,17 @@ import { Link, useParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
+import { useLabelStore } from "@/api/wikidataLabels";
 import {
   Studio,
   type ReconcileOutcome,
+  type Snak,
   type StudioBuild,
   type StudioItem,
   type UploadOutcome,
 } from "@/api/wikidataStudio";
+
+type LabelStore = ReturnType<typeof useLabelStore>;
 
 type EntityFilter = "all" | "manuscript" | "person" | "work";
 type ExistFilter  = "any" | "existing" | "new";
@@ -42,6 +46,7 @@ export default function WikidataStudio() {
     dry_run: boolean; moratorium_lifted: boolean; test_mode: boolean;
   } | null>(null);
   const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
+  const labelStore = useLabelStore();
 
   async function refresh(nextApprovedOnly?: boolean) {
     if (!runId) return;
@@ -304,7 +309,8 @@ export default function WikidataStudio() {
                   item={current}
                   reconcile={reconcileMap[currentKey]}
                   upload={uploadMap[currentKey]}
-                  onOpenMarc={setMarcPopupCn} />
+                  onOpenMarc={setMarcPopupCn}
+                  labelStore={labelStore} />
               )}
             </main>
           </div>
@@ -334,17 +340,40 @@ export default function WikidataStudio() {
 
 
 function ItemPanel({
-  item, reconcile, upload, onOpenMarc,
+  item, reconcile, upload, onOpenMarc, labelStore,
 }: {
   item: StudioItem;
   reconcile?: ReconcileOutcome;
   upload?: UploadOutcome;
   onOpenMarc: (cn: string) => void;
+  labelStore: LabelStore;
 }) {
   const labels = item.labels ?? {};
   const descriptions = item.descriptions ?? {};
   const aliases = item.aliases ?? {};
   const statements = item.statements ?? [];
+
+  // Lazy-resolve every P/Q id appearing in this item's snaks against
+  // live Wikidata, so PropertyPill / value rendering can show English
+  // labels even for ids the desktop's static dictionary doesn't carry.
+  useEffect(() => {
+    const ids: string[] = [];
+    const walk = (s: Snak | undefined) => {
+      if (!s) return;
+      ids.push(s.property ?? s.property_id ?? "");
+      ids.push(s.value_id ?? "");
+      if (typeof s.value === "string") ids.push(s.value);
+      (s.qualifiers ?? []).forEach(walk);
+      (s.references ?? []).forEach((r) => {
+        const snaks = Array.isArray((r as { snaks?: unknown }).snaks)
+          ? ((r as { snaks: Snak[] }).snaks)
+          : [r as Snak];
+        snaks.forEach(walk);
+      });
+    };
+    statements.forEach(walk);
+    labelStore.resolve(ids);
+  }, [item, statements, labelStore]);
 
   return (
     <div className="glass p-6 space-y-5 max-h-[78vh] overflow-auto">
@@ -399,26 +428,24 @@ function ItemPanel({
         </p>
         <ul className="space-y-2">
           {statements.map((s, i) => {
-            const quals = (s.qualifiers as unknown[] | undefined) ?? [];
-            const refs  = (s.references as unknown[] | undefined) ?? [];
+            const quals = s.qualifiers ?? [];
+            const refs  = s.references ?? [];
             const prop  = s.property ?? s.property_id;
             const isNli = prop === "P8189" && typeof s.value === "string";
             return (
               <li key={i} className="glass-pill px-3 py-2 text-sm">
                 <div className="flex items-baseline gap-2 flex-wrap">
-                  <PropertyPill p={prop} />
+                  <PropertyPill p={prop} label={s.property_label} store={labelStore} />
                   {isNli
                     ? (
                       <button
                         onClick={() => onOpenMarc(String(s.value))}
-                        className="font-mono text-xs text-biu-sky hover:underline">
-                        {String(s.value)} ↗
+                        className="text-xs text-biu-sky hover:underline">
+                        <span className="font-mono">{String(s.value)}</span> ↗
                       </button>
                     )
                     : (
-                      <span className="font-mono text-xs">
-                        {renderValue(s.value, s.value_id, s.value_type)}
-                      </span>
+                      <ValueRendering snak={s} store={labelStore} />
                     )}
                   {s.rank && s.rank !== "normal" && (
                     <span className="ml-2 kicker text-biu-sky">{s.rank}</span>
@@ -431,7 +458,7 @@ function ItemPanel({
                       {quals.length} qualifier{quals.length === 1 ? "" : "s"}
                     </summary>
                     <ul className="mt-1 ml-4 space-y-1 text-xs">
-                      {quals.map((q, qi) => <QualifierRow key={qi} q={q} />)}
+                      {quals.map((q, qi) => <QualifierRow key={qi} q={q} store={labelStore} />)}
                     </ul>
                   </details>
                 )}
@@ -443,7 +470,7 @@ function ItemPanel({
                       🔍 {refs.length} reference{refs.length === 1 ? "" : "s"} — where this claim comes from
                     </summary>
                     <ul className="mt-1 ml-4 space-y-1 text-xs">
-                      {refs.map((r, ri) => <ReferenceRow key={ri} ref_={r} />)}
+                      {refs.map((r, ri) => <ReferenceRow key={ri} ref_={r} store={labelStore} />)}
                     </ul>
                   </details>
                 ) : (
@@ -473,41 +500,44 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 
-/** One qualifier inside a statement — usually { property, value }. */
-function QualifierRow({ q }: { q: unknown }) {
-  const rec = (q ?? {}) as Record<string, unknown>;
-  const prop = (rec.property ?? rec.property_id) as string | undefined;
-  const value = (rec.value ?? rec.value_id ?? "—") as unknown;
+/** One qualifier inside a statement. */
+function QualifierRow({ q, store }: { q: Snak; store: LabelStore }) {
+  const prop = q.property ?? q.property_id;
   return (
-    <li className="flex gap-2">
-      <PropertyPill p={prop} />
-      <span className="font-mono">{String(value)}</span>
+    <li className="flex items-baseline gap-2 flex-wrap">
+      <PropertyPill p={prop} label={q.property_label} store={store} />
+      <ValueRendering snak={q} store={store} />
     </li>
   );
 }
 
 
 /** One reference. Friendly labels for the common S-props from the
-    desktop pipeline (S248 = stated in, S854 = reference URL, S813 =
+    desktop pipeline (P248 = stated in, P854 = reference URL, P813 =
     retrieved). */
-function ReferenceRow({ ref_ }: { ref_: unknown }) {
-  const rec = (ref_ ?? {}) as Record<string, unknown>;
+function ReferenceRow({ ref_, store }: { ref_: Snak | { snaks?: Snak[] }; store: LabelStore }) {
   // Reference snaks can be a list or a flat dict — handle both.
-  const snaks = Array.isArray(rec.snaks) ? rec.snaks as Array<Record<string, unknown>>
-              : [rec];
+  const snaks: Snak[] = Array.isArray((ref_ as { snaks?: Snak[] }).snaks)
+    ? (ref_ as { snaks: Snak[] }).snaks
+    : [ref_ as Snak];
   return (
     <li className="flex flex-col gap-0.5 border-l-2 border-biu-sky/30 pl-2">
       {snaks.map((s, i) => {
-        const prop = (s.property ?? s.property_id) as string | undefined;
+        const prop = s.property ?? s.property_id;
+        const friendly = _FRIENDLY_S_PROP[prop ?? ""]
+                      ?? s.property_label
+                      ?? store.label(prop ?? "");
         const raw  = (s.value ?? s.value_id) as unknown;
         const isUrl = typeof raw === "string" && /^https?:\/\//.test(raw);
         return (
-          <span key={i} className="flex items-baseline gap-2">
-            <span className="muted shrink-0">{_FRIENDLY_S_PROP[prop ?? ""] ?? prop}:</span>
+          <span key={i} className="flex items-baseline gap-2 flex-wrap">
+            <span className="muted shrink-0">
+              {friendly ?? prop}{prop && friendly ? ` (${prop})` : ""}:
+            </span>
             {isUrl
               ? <a href={raw} target="_blank" rel="noreferrer"
                    className="text-biu-sky font-mono text-[11px] hover:underline truncate">{String(raw)}</a>
-              : <span className="font-mono text-[11px]">{String(raw)}</span>}
+              : <ValueRendering snak={s} store={store} small />}
           </span>
         );
       })}
@@ -527,23 +557,68 @@ const _FRIENDLY_S_PROP: Record<string, string> = {
 };
 
 
-function PropertyPill({ p }: { p?: string }) {
+/** Renders e.g. ``instance of (P31)`` — backend stamps property_label
+ *  via desktop's static dictionary; for unknowns we fall back to the
+ *  lazy label store, then to the raw P-id. */
+function PropertyPill({
+  p, label, store,
+}: { p?: string; label?: string; store: LabelStore }) {
   if (!p) return <span className="muted">P?</span>;
+  const text = label ?? store.label(p);
   return (
     <a href={`https://www.wikidata.org/wiki/Property:${p}`}
        target="_blank" rel="noreferrer"
-       className="text-biu-sky font-mono text-xs hover:underline">{p}</a>
+       className="text-biu-sky text-xs hover:underline">
+      {text ? <>{text} <span className="font-mono muted">({p})</span></>
+            : <span className="font-mono">{p}</span>}
+    </a>
   );
 }
 
 
-function renderValue(v: unknown, vid?: string, kind?: string): string {
-  if (kind === "somevalue") return "(somevalue)";
-  if (kind === "novalue")   return "(novalue)";
-  if (vid) return vid;
-  if (typeof v === "string") return v;
-  if (v == null) return "—";
-  return JSON.stringify(v);
+/** Renders the value of a snak. For Q-ids we show ``Ktiv (Q118384267)``
+ *  using the backend's value_label, falling back to the lazy store.
+ *  Bare strings, dates, and somevalue/novalue render verbatim. */
+function ValueRendering({
+  snak, store, small,
+}: { snak: Snak; store: LabelStore; small?: boolean }) {
+  const cls = small ? "text-[11px]" : "text-xs";
+  const kind = snak.value_type;
+  if (kind === "somevalue") return <span className={`${cls} muted`}>(somevalue)</span>;
+  if (kind === "novalue")   return <span className={`${cls} muted`}>(novalue)</span>;
+
+  const vid = snak.value_id;
+  if (vid && /^Q\d+$/.test(vid)) {
+    const text = snak.value_label ?? store.label(vid);
+    return (
+      <a href={`https://www.wikidata.org/wiki/${vid}`}
+         target="_blank" rel="noreferrer"
+         className={`${cls} text-biu-sky hover:underline`}>
+        {text ? <>{text} <span className="font-mono muted">({vid})</span></>
+              : <span className="font-mono">{vid}</span>}
+      </a>
+    );
+  }
+  if (vid) return <span className={`${cls} font-mono`}>{vid}</span>;
+
+  const v = snak.value;
+  if (typeof v === "string") {
+    // The desktop converter sometimes emits a raw Q-id as a value string.
+    if (/^Q\d+$/.test(v)) {
+      const text = snak.value_label ?? store.label(v);
+      return (
+        <a href={`https://www.wikidata.org/wiki/${v}`}
+           target="_blank" rel="noreferrer"
+           className={`${cls} text-biu-sky hover:underline`}>
+          {text ? <>{text} <span className="font-mono muted">({v})</span></>
+                : <span className="font-mono">{v}</span>}
+        </a>
+      );
+    }
+    return <span className={`${cls} font-mono`}>{v}</span>;
+  }
+  if (v == null) return <span className={`${cls} muted`}>—</span>;
+  return <span className={`${cls} font-mono`}>{JSON.stringify(v)}</span>;
 }
 
 

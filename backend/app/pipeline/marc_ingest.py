@@ -321,13 +321,29 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
             })
 
     for sub in record.get("subjects", []):
-        if isinstance(sub, dict) and sub.get("type") == "person" and sub.get("name"):
-            out.append({
-                "text": str(sub["name"]).strip(),
-                "kind": "person",
-                "role": "subject",
-                "field": "600",
-            })
+        if not isinstance(sub, dict):
+            continue
+        kind = sub.get("type") or sub.get("kind") or ""
+        name = sub.get("name") or sub.get("term") or ""
+        if not name:
+            continue
+        name = str(name).strip()
+        if kind == "person":
+            out.append({"text": name, "kind": "person", "role": "subject", "field": "600"})
+        elif kind in ("place", "geographic"):
+            out.append({"text": name, "kind": "place", "role": "place", "field": "651"})
+
+    # MARC 651 / 752 / related_places — yield place entities so KIMA fires.
+    for slot in ("related_places", "places"):
+        for entry in record.get(slot) or []:
+            if isinstance(entry, str):
+                text = entry.strip()
+            elif isinstance(entry, dict):
+                text = str(entry.get("name") or entry.get("term") or "").strip()
+            else:
+                text = ""
+            if text:
+                out.append({"text": text, "kind": "place", "role": "place", "field": "752"})
 
     seen: set[tuple[str, str]] = set()
     deduped: list[dict[str, str]] = []
