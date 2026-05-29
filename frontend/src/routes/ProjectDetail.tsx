@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { Projects, type Member, type ProjectDetail as Detail, type ProjectRole } from "@/api/projects";
+import { useProjectEvents } from "@/api/realtime";
 import { Runs, type RunListItem } from "@/api/runs";
 
 export default function ProjectDetail() {
@@ -21,6 +22,14 @@ export default function ProjectDetail() {
     }
   }
   useEffect(() => { void refresh(); }, [projectId]);
+
+  useProjectEvents(projectId, (msg) => {
+    // Member/role changes ripple into the detail panel; run.created
+    // gets caught by the nested RunsPanel which has its own refresh.
+    if (msg.type.startsWith("member.") || msg.type === "project.updated") {
+      void refresh();
+    }
+  });
 
   if (error)
     return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
@@ -217,6 +226,10 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
     }
   }
   useEffect(() => { void refresh(); }, [projectId]);
+
+  useProjectEvents(projectId, (msg) => {
+    if (msg.type === "run.created") void refresh();
+  });
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

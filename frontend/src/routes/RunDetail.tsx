@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
+import { useProjectEvents } from "@/api/realtime";
 import {
   Runs, type AuthorityMatch, type RunDetail as Detail, type RunMarcRecord,
 } from "@/api/runs";
@@ -37,6 +38,14 @@ export default function RunDetail() {
     }
   }
   useEffect(() => { void refresh(); }, [runId]);
+
+  // Real-time collab — refresh whenever any teammate touches a match
+  // or uploads a new run inside this project.
+  useProjectEvents(run?.project_id, (msg) => {
+    if (msg.type.startsWith("match.") || msg.type === "snapshot.restored") {
+      void refresh();
+    }
+  });
 
   async function toggle(m: AuthorityMatch) {
     if (!runId) return;

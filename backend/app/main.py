@@ -8,6 +8,7 @@ frontend is run separately by ``vite dev`` on port 5173 and proxies
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -15,10 +16,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.realtime import start_listener, stop_listener
 from app.routers import (
-    api_keys, auth, health, history, invites, onboarding, projects, runs,
+    api_keys, auth, health, history, invites, onboarding, projects, runs, ws,
 )
 from app.settings import get_settings
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
+    """Boot/teardown — keep the Postgres LISTEN bridge running across
+    the whole process lifetime."""
+    await start_listener()
+    try:
+        yield
+    finally:
+        await stop_listener()
 
 
 def create_app() -> FastAPI:
@@ -28,6 +41,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         docs_url="/api/docs" if not settings.is_production else None,
         redoc_url=None,
+        lifespan=lifespan,
     )
 
     # CORS — needed during dev when the frontend runs on 5173. In
@@ -51,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(runs.router, prefix="/api")
     app.include_router(history.router, prefix="/api")
     app.include_router(api_keys.router, prefix="/api")
+    app.include_router(ws.router, prefix="/api")
 
     # Frontend static assets (production). Mounted last so any /api
     # route still wins.

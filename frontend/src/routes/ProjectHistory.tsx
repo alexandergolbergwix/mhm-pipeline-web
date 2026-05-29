@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { History, type ProjectEvent, type Snapshot } from "@/api/history";
+import { useProjectEvents } from "@/api/realtime";
 
 const FRIENDLY: Record<string, string> = {
   "project.created":      "Created project",
@@ -36,6 +37,8 @@ export default function ProjectHistory() {
     }
   }
   useEffect(() => { void refresh(); }, [projectId]);
+
+  useProjectEvents(projectId, () => { void refresh(); });
 
   if (!projectId) return null;
 
