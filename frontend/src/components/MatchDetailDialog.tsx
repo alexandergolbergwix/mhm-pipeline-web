@@ -8,6 +8,7 @@ import { useState } from "react";
 
 import { Runs, type AuthorityMatch } from "@/api/runs";
 import { ApiError } from "@/api/client";
+import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 
 interface Props {
   runId: string;
@@ -21,6 +22,7 @@ type Tab = "overview" | "why" | "dates" | "ai" | "sources";
 
 export function MatchDetailDialog({ runId, match, onClose, onPatched }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
+  const [marcCn, setMarcCn] = useState<string | null>(null);
   const p = (match.payload ?? {}) as Record<string, unknown>;
 
   return (
@@ -31,7 +33,13 @@ export function MatchDetailDialog({ runId, match, onClose, onPatched }: Props) {
 
         <header className="px-6 py-4 flex items-start justify-between gap-4 border-b border-white/10">
           <div className="min-w-0">
-            <div className="kicker">{strOr(p.matcher, "match")} · record {match.control_number}</div>
+            <div className="kicker">
+              {strOr(p.matcher, "match")} · record{" "}
+              <button onClick={() => setMarcCn(match.control_number)}
+                      className="text-biu-sky hover:underline font-mono normal-case tracking-normal">
+                {match.control_number}
+              </button>
+            </div>
             <h3 className="text-xl font-semibold truncate">{match.entity_text}</h3>
             <p className="muted text-sm mt-1">
               {match.role && <><span className="kicker">{match.role}</span> · </>}
@@ -68,6 +76,11 @@ export function MatchDetailDialog({ runId, match, onClose, onPatched }: Props) {
           {tab === "sources"  && <Sources match={match} payload={p} />}
         </div>
       </div>
+
+      {marcCn && (
+        <MarcRecordPopup runId={runId} controlNumber={marcCn}
+                         onClose={() => setMarcCn(null)} />
+      )}
     </div>
   );
 }
@@ -251,8 +264,61 @@ function Sources({ match, payload }: { match: AuthorityMatch; payload: Record<st
   const sources = (payload.sources as string[] | undefined) ?? [];
   const cluster = (payload.cluster_ids as Record<string, string> | undefined) ?? {};
 
+  // Evidence — every claim the system makes about this match needs a
+  // source. The MARC field that produced the entity, the matcher that
+  // returned the authority record, the URLs we'd cite on Wikidata.
+  const marcField = (payload.field as string | undefined)
+                 || (payload.marc_field as string | undefined)
+                 || (match.role && match.role === "author" ? "100$a / 700$a" : "700$a");
+
+  const evidenceRows: Array<{ src: string; what: string; href?: string }> = [];
+  evidenceRows.push({
+    src: "MARC",
+    what: `extracted from ${marcField} on record ${match.control_number}`,
+  });
+  if (match.mazal_id) {
+    evidenceRows.push({
+      src: "Mazal/NLI",
+      what: `authority record ${match.mazal_id}`,
+      href: `https://www.nli.org.il/he/authorities/${encodeURIComponent(match.mazal_id)}`,
+    });
+  }
+  if (match.viaf_id) {
+    evidenceRows.push({
+      src: "VIAF",
+      what: `cluster ${match.viaf_id}`,
+      href: `https://viaf.org/viaf/${match.viaf_id}`,
+    });
+  }
+  if (match.wikidata_qid) {
+    evidenceRows.push({
+      src: "Wikidata",
+      what: `item ${match.wikidata_qid}`,
+      href: `https://www.wikidata.org/wiki/${match.wikidata_qid}`,
+    });
+  }
+
   return (
     <div className="space-y-4">
+      <section>
+        <div className="kicker mb-2">Evidence behind this match</div>
+        <p className="muted text-xs mb-2">
+          Every claim the system makes is anchored to a source. These are
+          the sources backing this candidate.
+        </p>
+        <ul className="space-y-1.5">
+          {evidenceRows.map((e, i) => (
+            <li key={i} className="glass-pill px-3 py-1.5 text-sm flex items-baseline justify-between gap-3">
+              <span><b className="text-ink">{e.src}</b> · {e.what}</span>
+              {e.href && (
+                <a href={e.href} target="_blank" rel="noreferrer"
+                   className="text-biu-sky text-xs hover:underline shrink-0">open ↗</a>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section>
         <div className="kicker mb-2">Authority sources matched</div>
         <ul className="grid grid-cols-2 gap-2">

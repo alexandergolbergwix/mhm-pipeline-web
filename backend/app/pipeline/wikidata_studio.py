@@ -32,6 +32,7 @@ async def build_items_for_run(
     *, marc_records: list[dict[str, Any]],
     approved_matches: list[dict[str, Any]],
     return_native: bool = False,
+    overrides: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build Wikidata items + QuickStatements for *marc_records* enriched
     with *approved_matches*.
@@ -66,15 +67,26 @@ async def build_items_for_run(
         ]
         enriched.append(out)
 
-    return await run_in_threadpool(_build_sync, enriched, return_native)
+    return await run_in_threadpool(_build_sync, enriched, return_native, overrides or {})
 
 
-def _build_sync(records: list[dict[str, Any]], return_native: bool = False) -> dict[str, Any]:
+def _build_sync(
+    records: list[dict[str, Any]],
+    return_native: bool = False,
+    overrides: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
     from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
 
     builder = WikidataItemBuilder(reconciler=None)  # SPARQL-free for the web
     items = builder.build_all(records)
+
+    # Apply per-item curator overrides in place.
+    if overrides:
+        for it in items:
+            ov = overrides.get(_local_id_for(it))
+            if ov:
+                _apply_override(it, ov)
 
     exporter = QuickStatementsExporter()
     qs_text = exporter.export(items)
@@ -185,3 +197,112 @@ def _coerce(value: Any) -> Any:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def local_id_for_item(item: Any) -> str:
+    """Stable handle for one built item, used to key overrides.
+
+    Matches what the frontend computes per row (entity_type:index works
+    in the visible list, but for *persisted* edits we need something
+    stable across rebuilds — pick a real identifier instead).
+    """
+    return _local_id_for(item)
+
+
+def _local_id_for(item: Any) -> str:
+    for attr in ("local_id", "id"):
+        v = getattr(item, attr, None)
+        if v:
+            return str(v)
+    # Fallback: stable composite of entity_type + first label + first
+    # external ID. Good enough for runs whose contents don't change.
+    et = getattr(item, "entity_type", "") or "item"
+    labels = getattr(item, "labels", {}) or {}
+    label = labels.get("en") or labels.get("he") or next(iter(labels.values()), "")
+    # Pull the first external-id-shaped statement value (Mazal, VIAF, Wikidata)
+    ext = ""
+    for s in getattr(item, "statements", []) or []:
+        prop = getattr(s, "property", None) or getattr(s, "property_id", None)
+        if prop in ("P8189", "P214", "P244", "P227", "P213"):
+            ext = str(getattr(s, "value", "") or getattr(s, "value_id", "") or "")
+            break
+    return f"{et}::{ext or label or 'unknown'}"
+
+
+def _apply_override(item: Any, ov: dict[str, Any]) -> None:
+    """Shallow-merge a curator override onto a native WikidataItem."""
+    labels       = ov.get("labels")       or {}
+    descriptions = ov.get("descriptions") or {}
+    aliases      = ov.get("aliases")      or {}
+    remove       = set(int(i) for i in (ov.get("remove_statements") or []))
+    edits        = ov.get("statement_edits") or {}        # {"3": {value: "Q5"}}
+    add          = ov.get("add_statements") or []
+
+    if labels:
+        cur = getattr(item, "labels", {}) or {}
+        cur.update({k: v for k, v in labels.items() if v is not None})
+        # remove keys explicitly set to None
+        for k, v in labels.items():
+            if v is None and k in cur:
+                cur.pop(k, None)
+        item.labels = cur
+    if descriptions:
+        cur = getattr(item, "descriptions", {}) or {}
+        cur.update({k: v for k, v in descriptions.items() if v is not None})
+        for k, v in descriptions.items():
+            if v is None and k in cur:
+                cur.pop(k, None)
+        item.descriptions = cur
+    if aliases:
+        cur = getattr(item, "aliases", {}) or {}
+        for lang, vals in aliases.items():
+            if vals is None:
+                cur.pop(lang, None)
+            else:
+                cur[lang] = list(vals)
+        item.aliases = cur
+
+    stmts = list(getattr(item, "statements", []) or [])
+
+    # Statement edits — shallow-set attributes on the dataclass.
+    for k, patch in edits.items():
+        try:
+            idx = int(k)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= idx < len(stmts):
+            stmt = stmts[idx]
+            for field, value in (patch or {}).items():
+                if hasattr(stmt, field):
+                    setattr(stmt, field, value)
+
+    # Statement removals (apply after edits so indices stay stable).
+    if remove:
+        stmts = [s for i, s in enumerate(stmts) if i not in remove]
+
+    # Appended statements — only safe if we have the desktop's
+    # WikidataStatement available; otherwise stash a plain dict that
+    # the QS exporter can stringify.
+    for raw in add:
+        if isinstance(raw, dict):
+            stmts.append(_dict_to_stmt(raw))
+
+    item.statements = stmts
+
+
+def _dict_to_stmt(d: dict[str, Any]) -> Any:
+    """Best-effort: build a WikidataStatement from a flat dict the UI
+    sent (``{"property":"P31","value":"Q5"}``)."""
+    try:
+        from converter.wikidata.item_builder import WikidataStatement  # noqa: PLC0415
+
+        return WikidataStatement(
+            property=str(d.get("property") or d.get("property_id") or ""),
+            value=d.get("value"),
+            value_id=str(d.get("value_id") or "") or None,
+            value_type=str(d.get("value_type") or "") or None,
+            rank=str(d.get("rank") or "normal"),
+        )
+    except Exception:
+        # Bare dict — the exporter coerces via _coerce on serialisation.
+        return d

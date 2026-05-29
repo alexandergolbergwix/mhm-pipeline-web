@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
+import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import {
   Studio,
   type ReconcileOutcome,
@@ -40,6 +41,7 @@ export default function WikidataStudio() {
   const [lastUpload, setLastUpload] = useState<{
     dry_run: boolean; moratorium_lifted: boolean; test_mode: boolean;
   } | null>(null);
+  const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
 
   async function refresh(nextApprovedOnly?: boolean) {
     if (!runId) return;
@@ -301,7 +303,8 @@ export default function WikidataStudio() {
                 <ItemPanel
                   item={current}
                   reconcile={reconcileMap[currentKey]}
-                  upload={uploadMap[currentKey]} />
+                  upload={uploadMap[currentKey]}
+                  onOpenMarc={setMarcPopupCn} />
               )}
             </main>
           </div>
@@ -317,6 +320,11 @@ export default function WikidataStudio() {
           </pre>
         </details>
       </div>
+
+      {marcPopupCn && runId && (
+        <MarcRecordPopup runId={runId} controlNumber={marcPopupCn}
+                         onClose={() => setMarcPopupCn(null)} />
+      )}
     </Layout>
   );
 }
@@ -326,11 +334,12 @@ export default function WikidataStudio() {
 
 
 function ItemPanel({
-  item, reconcile, upload,
+  item, reconcile, upload, onOpenMarc,
 }: {
   item: StudioItem;
   reconcile?: ReconcileOutcome;
   upload?: UploadOutcome;
+  onOpenMarc: (cn: string) => void;
 }) {
   const labels = item.labels ?? {};
   const descriptions = item.descriptions ?? {};
@@ -383,26 +392,68 @@ function ItemPanel({
       )}
 
       <Section title={`Statements (${statements.length})`}>
+        <p className="muted text-xs mb-2">
+          Each row is a Wikidata claim. The <b className="text-ink">references</b>{" "}
+          show where the system got it from — NLI catalog (P1343=Q118384267),
+          Mazal authority IDs, VIAF clusters. Nothing here is unsourced.
+        </p>
         <ul className="space-y-2">
-          {statements.map((s, i) => (
-            <li key={i} className="glass-pill px-3 py-2 text-sm">
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <PropertyPill p={s.property ?? s.property_id} />
-                <span className="font-mono text-xs">
-                  {renderValue(s.value, s.value_id, s.value_type)}
-                </span>
-                {s.rank && s.rank !== "normal" && (
-                  <span className="ml-2 kicker text-biu-sky">{s.rank}</span>
+          {statements.map((s, i) => {
+            const quals = (s.qualifiers as unknown[] | undefined) ?? [];
+            const refs  = (s.references as unknown[] | undefined) ?? [];
+            const prop  = s.property ?? s.property_id;
+            const isNli = prop === "P8189" && typeof s.value === "string";
+            return (
+              <li key={i} className="glass-pill px-3 py-2 text-sm">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <PropertyPill p={prop} />
+                  {isNli
+                    ? (
+                      <button
+                        onClick={() => onOpenMarc(String(s.value))}
+                        className="font-mono text-xs text-biu-sky hover:underline">
+                        {String(s.value)} ↗
+                      </button>
+                    )
+                    : (
+                      <span className="font-mono text-xs">
+                        {renderValue(s.value, s.value_id, s.value_type)}
+                      </span>
+                    )}
+                  {s.rank && s.rank !== "normal" && (
+                    <span className="ml-2 kicker text-biu-sky">{s.rank}</span>
+                  )}
+                </div>
+
+                {quals.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="muted text-xs cursor-pointer hover:text-ink">
+                      {quals.length} qualifier{quals.length === 1 ? "" : "s"}
+                    </summary>
+                    <ul className="mt-1 ml-4 space-y-1 text-xs">
+                      {quals.map((q, qi) => <QualifierRow key={qi} q={q} />)}
+                    </ul>
+                  </details>
                 )}
-              </div>
-              {(s.qualifiers && (s.qualifiers as unknown[]).length > 0) && (
-                <p className="muted text-xs mt-1">{(s.qualifiers as unknown[]).length} qualifier(s)</p>
-              )}
-              {(s.references && (s.references as unknown[]).length > 0) && (
-                <p className="muted text-xs">{(s.references as unknown[]).length} reference(s)</p>
-              )}
-            </li>
-          ))}
+
+                {refs.length > 0 ? (
+                  <details className="mt-2" open={refs.length === 1}>
+                    <summary className="text-xs cursor-pointer hover:text-ink"
+                             style={{ color: "var(--biu-sky)" }}>
+                      🔍 {refs.length} reference{refs.length === 1 ? "" : "s"} — where this claim comes from
+                    </summary>
+                    <ul className="mt-1 ml-4 space-y-1 text-xs">
+                      {refs.map((r, ri) => <ReferenceRow key={ri} ref_={r} />)}
+                    </ul>
+                  </details>
+                ) : (
+                  <p className="text-red-300 text-xs mt-1">
+                    ⚠ Unsourced — this claim has no reference. Curate before upload.
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </Section>
     </div>
@@ -420,6 +471,60 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
             }`}>{children}</button>
   );
 }
+
+
+/** One qualifier inside a statement — usually { property, value }. */
+function QualifierRow({ q }: { q: unknown }) {
+  const rec = (q ?? {}) as Record<string, unknown>;
+  const prop = (rec.property ?? rec.property_id) as string | undefined;
+  const value = (rec.value ?? rec.value_id ?? "—") as unknown;
+  return (
+    <li className="flex gap-2">
+      <PropertyPill p={prop} />
+      <span className="font-mono">{String(value)}</span>
+    </li>
+  );
+}
+
+
+/** One reference. Friendly labels for the common S-props from the
+    desktop pipeline (S248 = stated in, S854 = reference URL, S813 =
+    retrieved). */
+function ReferenceRow({ ref_ }: { ref_: unknown }) {
+  const rec = (ref_ ?? {}) as Record<string, unknown>;
+  // Reference snaks can be a list or a flat dict — handle both.
+  const snaks = Array.isArray(rec.snaks) ? rec.snaks as Array<Record<string, unknown>>
+              : [rec];
+  return (
+    <li className="flex flex-col gap-0.5 border-l-2 border-biu-sky/30 pl-2">
+      {snaks.map((s, i) => {
+        const prop = (s.property ?? s.property_id) as string | undefined;
+        const raw  = (s.value ?? s.value_id) as unknown;
+        const isUrl = typeof raw === "string" && /^https?:\/\//.test(raw);
+        return (
+          <span key={i} className="flex items-baseline gap-2">
+            <span className="muted shrink-0">{_FRIENDLY_S_PROP[prop ?? ""] ?? prop}:</span>
+            {isUrl
+              ? <a href={raw} target="_blank" rel="noreferrer"
+                   className="text-biu-sky font-mono text-[11px] hover:underline truncate">{String(raw)}</a>
+              : <span className="font-mono text-[11px]">{String(raw)}</span>}
+          </span>
+        );
+      })}
+    </li>
+  );
+}
+
+
+// S-properties from desktop's QuickStatements exporter (Rule 23/24/26/28).
+const _FRIENDLY_S_PROP: Record<string, string> = {
+  P248:  "stated in",
+  P854:  "URL",
+  P813:  "retrieved",
+  P143:  "imported from",
+  P3452: "inferred from",
+  P887:  "based on heuristic",
+};
 
 
 function PropertyPill({ p }: { p?: string }) {

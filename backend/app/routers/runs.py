@@ -42,9 +42,11 @@ from app.schemas.runs import (
     AiVerdictResponse,
     ApprovalBatch,
     ApprovalUpdate,
+    AuthorityMatchEdit,
     AuthorityMatchResponse,
     RunDetail,
     RunListItem,
+    RecordEdit,
     RunMarcRecord,
 )
 
@@ -235,6 +237,94 @@ async def bulk_approve(
         )
     await db.commit()
     return [AuthorityMatchResponse(**serialise_match(m)) for m in rows]
+
+
+# ── Editable fields (curator overrides on matches + records) ──────────
+
+
+@router.patch(
+    "/runs/{run_id}/matches/{match_id}/edit", response_model=AuthorityMatchResponse,
+)
+async def edit_match(
+    run_id: uuid.UUID, match_id: uuid.UUID,
+    payload: AuthorityMatchEdit,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> AuthorityMatchResponse:
+    """Hand-edit any of the authority match fields the curator can fix
+    in the Match Detail dialog (matched_name, IDs, confidence, role,
+    entity_text). Approval state is *not* touched here — use
+    :func:`update_approval` for that."""
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    m = (
+        await db.execute(
+            select(AuthorityMatch).where(
+                AuthorityMatch.id == match_id, AuthorityMatch.run_id == run_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if m is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+
+    changes: dict[str, dict[str, Any]] = {}
+    fields = ("matched_name", "mazal_id", "viaf_id", "wikidata_qid",
+              "confidence", "role", "entity_text")
+    for field in fields:
+        new = getattr(payload, field, None)
+        if new is None:
+            continue
+        old = getattr(m, field)
+        if new != old:
+            changes[field] = {"from": old, "to": new}
+            setattr(m, field, new)
+
+    if changes:
+        run_for_pid = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+        await append_event(
+            db, project_id=run_for_pid.project_id, actor_id=auth.user.id,
+            type="match.edited",
+            payload={"run_id": str(run_id), "match_id": str(m.id), "changes": changes},
+        )
+    await db.commit()
+    return AuthorityMatchResponse(**serialise_match(m))
+
+
+@router.patch(
+    "/runs/{run_id}/records/{control_number}", response_model=RunMarcRecord,
+)
+async def edit_record(
+    run_id: uuid.UUID, control_number: str,
+    payload: RecordEdit,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> RunMarcRecord:
+    """Hand-edit the MARC JSON for one record in this run.
+
+    The replacement payload becomes the new ``run_records.marc`` —
+    every downstream stage that reads the record (authority rerun,
+    Wikidata Studio build) picks up the edit immediately.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    rec = (
+        await db.execute(
+            select(RunRecord).where(
+                RunRecord.run_id == run_id, RunRecord.control_number == control_number,
+            )
+        )
+    ).scalar_one_or_none()
+    if rec is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
+
+    rec.marc = payload.marc
+    # Audit
+    run_for_pid = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+    await append_event(
+        db, project_id=run_for_pid.project_id, actor_id=auth.user.id,
+        type="record.edited",
+        payload={"run_id": str(run_id), "control_number": control_number},
+    )
+    await db.commit()
+    return RunMarcRecord(control_number=rec.control_number, marc=rec.marc)
 
 
 # ── AI verification ────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
+from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.pipeline import wikidata_studio, wikidata_upload
 from app.routers.runs import _lookup_run_with_access  # noqa: PLF401 — module-internal
@@ -97,9 +98,18 @@ async def build_studio(
         for m in matches
     ]
 
+    overrides = await _load_overrides(db, run_id)
     result = await wikidata_studio.build_items_for_run(
         marc_records=marc_records, approved_matches=approved_matches,
+        overrides=overrides, return_native=True,
     )
+    # Stamp local_id onto each serialised item so the frontend can key
+    # edits against persisted overrides across rebuilds.
+    if result.get("native_items"):
+        for it_dict, it_native in zip(
+            result["items"], result["native_items"], strict=True,
+        ):
+            it_dict["local_id"] = wikidata_studio.local_id_for_item(it_native)
 
     return StudioBuildResponse(
         items=result["items"],
@@ -244,6 +254,128 @@ async def upload_to_wikidata(
     )
 
 
+# ── Per-item editing (curator overrides) ───────────────────────────────
+
+
+class ItemOverridePayload(BaseModel):
+    """Partial update — every field optional. The persisted row is
+    merged with the existing override, so the UI can PATCH one tab
+    at a time."""
+    labels:            dict[str, str | None] | None = None
+    descriptions:      dict[str, str | None] | None = None
+    aliases:           dict[str, list[str] | None] | None = None
+    add_statements:    list[dict[str, Any]] | None = None
+    remove_statements: list[int] | None = None
+    statement_edits:   dict[str, dict[str, Any]] | None = None
+
+
+class ItemOverrideResponse(BaseModel):
+    run_id: uuid.UUID
+    local_id: str
+    labels: dict[str, Any]
+    descriptions: dict[str, Any]
+    aliases: dict[str, Any]
+    add_statements: list[dict[str, Any]]
+    remove_statements: list[int]
+    statement_edits: dict[str, Any]
+
+
+@router.patch(
+    "/{run_id}/wikidata-studio/items/{local_id:path}",
+    response_model=ItemOverrideResponse,
+)
+async def patch_item_override(
+    run_id: uuid.UUID, local_id: str,
+    payload: ItemOverridePayload,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> ItemOverrideResponse:
+    """Persist a curator override for one Studio item.
+
+    All fields optional. Sending ``labels: {"he": null}`` clears the
+    Hebrew label override (reverts to whatever the builder produced).
+    Statement edits use ``{"<index>": {"value": "Q5"}}`` — index is
+    relative to the builder output AFTER removals are applied.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    row = (
+        await db.execute(
+            select(WikidataItemOverride).where(
+                WikidataItemOverride.run_id == run_id,
+                WikidataItemOverride.local_id == local_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = WikidataItemOverride(
+            run_id=run_id, local_id=local_id, updated_by=auth.user.id,
+        )
+        db.add(row)
+
+    if payload.labels is not None:
+        # Merge non-null, drop keys set to null. Force a new dict so
+        # SQLAlchemy notices the change.
+        new = dict(row.labels or {})
+        for k, v in payload.labels.items():
+            if v is None: new.pop(k, None)
+            else:         new[k] = v
+        row.labels = new
+    if payload.descriptions is not None:
+        new = dict(row.descriptions or {})
+        for k, v in payload.descriptions.items():
+            if v is None: new.pop(k, None)
+            else:         new[k] = v
+        row.descriptions = new
+    if payload.aliases is not None:
+        new = dict(row.aliases or {})
+        for lang, vals in payload.aliases.items():
+            if vals is None: new.pop(lang, None)
+            else:            new[lang] = list(vals)
+        row.aliases = new
+    if payload.add_statements is not None:
+        row.add_statements = list(payload.add_statements)
+    if payload.remove_statements is not None:
+        row.remove_statements = list(payload.remove_statements)
+    if payload.statement_edits is not None:
+        new_edits = dict(row.statement_edits or {})
+        for k, v in payload.statement_edits.items():
+            if v is None: new_edits.pop(k, None)
+            else:         new_edits[k] = v
+        row.statement_edits = new_edits
+
+    row.updated_by = auth.user.id
+    await db.commit()
+    return ItemOverrideResponse(
+        run_id=run_id, local_id=local_id,
+        labels=row.labels or {}, descriptions=row.descriptions or {},
+        aliases=row.aliases or {}, add_statements=row.add_statements or [],
+        remove_statements=row.remove_statements or [],
+        statement_edits=row.statement_edits or {},
+    )
+
+
+@router.delete(
+    "/{run_id}/wikidata-studio/items/{local_id:path}/overrides",
+    status_code=204,
+)
+async def clear_item_override(
+    run_id: uuid.UUID, local_id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> None:
+    """Drop every curator edit for this item — next rebuild returns to
+    what the builder + matchers produced."""
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    await db.execute(
+        WikidataItemOverride.__table__.delete().where(
+            (WikidataItemOverride.run_id == run_id)
+            & (WikidataItemOverride.local_id == local_id)
+        )
+    )
+    await db.commit()
+
+
 # ── helpers ─────────────────────────────────────────────────────────────
 
 
@@ -265,6 +397,7 @@ async def _build_native_items(
     ).scalars().all()
     matches = [m for m in all_matches if m.approved] if approved_only else all_matches
 
+    overrides = await _load_overrides(db, run_id)
     result = await wikidata_studio.build_items_for_run(
         marc_records=[dict(r.marc) for r in records],
         approved_matches=[
@@ -283,9 +416,31 @@ async def _build_native_items(
             }
             for m in matches
         ],
+        overrides=overrides,
         return_native=True,
     )
     return result.get("native_items") or []
+
+
+async def _load_overrides(
+    db: AsyncSession, run_id: uuid.UUID,
+) -> dict[str, dict[str, Any]]:
+    rows = (
+        await db.execute(
+            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+        )
+    ).scalars().all()
+    return {
+        r.local_id: {
+            "labels":            r.labels,
+            "descriptions":      r.descriptions,
+            "aliases":           r.aliases,
+            "add_statements":    r.add_statements,
+            "remove_statements": r.remove_statements,
+            "statement_edits":   r.statement_edits,
+        }
+        for r in rows
+    }
 
 
 async def _unwrap_user_secret(db: AsyncSession, auth: AuthContext, key_name: str) -> str | None:

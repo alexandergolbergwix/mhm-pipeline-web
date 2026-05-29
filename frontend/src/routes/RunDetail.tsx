@@ -5,7 +5,7 @@ import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { useProjectEvents } from "@/api/realtime";
 import {
-  Runs, type AuthorityMatch, type RunDetail as Detail, type RunMarcRecord,
+  Runs, type AuthorityMatch, type RunDetail as Detail,
 } from "@/api/runs";
 import {
   applyConditions, type FilterCondition, StructuredFilter,
@@ -13,6 +13,7 @@ import {
 import {
   ConfidenceBadge, MatchDetailDialog, VerdictBadge,
 } from "@/components/MatchDetailDialog";
+import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 
 const COLUMNS = [
   { key: "control_number", label: "Record",     kind: "text" as const },
@@ -30,7 +31,7 @@ export default function RunDetail() {
   const [run, setRun] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
-  const [marcPopup, setMarcPopup] = useState<RunMarcRecord | null>(null);
+  const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
   const [openMatch, setOpenMatch] = useState<AuthorityMatch | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -85,13 +86,8 @@ export default function RunDetail() {
     if (openMatch && openMatch.id === next.id) setOpenMatch(next);
   }
 
-  async function openRecord(cn: string) {
-    if (!runId) return;
-    try {
-      setMarcPopup(await Runs.getRecord(runId, cn));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.detail : String(e));
-    }
+  function openRecord(cn: string) {
+    setMarcPopupCn(cn);
   }
 
   const distinct = useMemo<Record<string, string[]>>(() => {
@@ -245,7 +241,10 @@ export default function RunDetail() {
         </section>
       </div>
 
-      {marcPopup && <MarcPopup record={marcPopup} onClose={() => setMarcPopup(null)} />}
+      {marcPopupCn && runId && (
+        <MarcRecordPopup runId={runId} controlNumber={marcPopupCn}
+                         onClose={() => setMarcPopupCn(null)} />
+      )}
       {openMatch && (
         <MatchDetailDialog
           runId={runId!}
@@ -320,23 +319,3 @@ function StatusPill({ status }: { status: string }) {
 }
 
 
-function MarcPopup({ record, onClose }: { record: RunMarcRecord; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60" onClick={onClose}>
-      <div className="glass max-w-3xl w-full max-h-[80vh] overflow-auto p-6 space-y-3"
-           onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="kicker">MARC record</div>
-            <h3 className="font-mono">{record.control_number}</h3>
-          </div>
-          <button onClick={onClose} className="button-ghost text-sm">Close</button>
-        </div>
-        <pre className="text-xs font-mono whitespace-pre-wrap"
-             style={{ background: "rgba(0,0,0,0.36)", border: "1px solid var(--line)", borderRadius: 12, padding: 12 }}>
-          {JSON.stringify(record.marc, null, 2)}
-        </pre>
-      </div>
-    </div>
-  );
-}

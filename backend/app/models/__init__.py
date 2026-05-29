@@ -4,6 +4,7 @@ from app.models.api_key import ApiKey
 from app.models.base import Base
 from app.models.event import ProjectEvent, ProjectSnapshot
 from app.models.invitation import Invitation
+from app.models.item_override import WikidataItemOverride
 from app.models.password_reset import PasswordResetToken
 from app.models.project import (
     ALL_PROJECT_ROLES,
@@ -39,6 +40,7 @@ __all__ = [
     "Project",
     "ProjectEvent",
     "ProjectSnapshot",
+    "WikidataItemOverride",
     "ROLE_ADMIN",
     "ROLE_EDITOR",
     "RUN_STATUS_FAILED",

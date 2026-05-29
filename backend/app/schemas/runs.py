@@ -59,6 +59,22 @@ class RunMarcRecord(BaseModel):
     marc: dict[str, Any]
 
 
+class AuthorityMatchEdit(BaseModel):
+    """Partial update of an authority match — every field optional."""
+    matched_name: str | None = None
+    mazal_id: str | None = None
+    viaf_id: str | None = None
+    wikidata_qid: str | None = None
+    confidence: Literal["high", "medium", "low"] | None = None
+    role: str | None = None
+    entity_text: str | None = None
+
+
+class RecordEdit(BaseModel):
+    """MARC JSON replacement — UI sends the dict, server stores it."""
+    marc: dict[str, Any]
+
+
 class AiVerdictResponse(BaseModel):
     """Returned by /runs/{id}/matches/{mid}/ai-verify and embedded in
     payload['ai_verdict'] on the match itself."""
