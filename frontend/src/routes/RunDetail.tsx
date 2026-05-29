@@ -129,7 +129,12 @@ export default function RunDetail() {
           </div>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <h2 className="text-2xl font-semibold">{run.name}</h2>
-            <StatusPill status={run.status} />
+            <div className="flex items-center gap-3">
+              <Link to={`/runs/${run.id}/wikidata-studio`} className="button-ghost text-sm">
+                Wikidata Studio →
+              </Link>
+              <StatusPill status={run.status} />
+            </div>
           </div>
           <p className="muted text-sm">
             {run.record_count} record{run.record_count === 1 ? "" : "s"} ·{" "}

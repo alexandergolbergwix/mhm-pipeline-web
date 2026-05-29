@@ -12,6 +12,7 @@ import ProjectsList from "@/routes/ProjectsList";
 import ResetPassword from "@/routes/ResetPassword";
 import RunDetail from "@/routes/RunDetail";
 import Settings from "@/routes/Settings";
+import WikidataStudio from "@/routes/WikidataStudio";
 import { useAuth } from "@/stores/auth";
 
 export default function App() {
@@ -31,6 +32,7 @@ export default function App() {
       <Route path="/projects/:projectId"         element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
       <Route path="/projects/:projectId/history" element={<ProtectedRoute><ProjectHistory /></ProtectedRoute>} />
       <Route path="/runs/:runId"                 element={<ProtectedRoute><RunDetail /></ProtectedRoute>} />
+      <Route path="/runs/:runId/wikidata-studio" element={<ProtectedRoute><WikidataStudio /></ProtectedRoute>} />
       <Route path="/settings"                    element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/admin/invites"               element={<ProtectedRoute><AdminInvites /></ProtectedRoute>} />
     </Routes>
