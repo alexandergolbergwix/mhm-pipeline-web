@@ -211,8 +211,85 @@ def _normalise_records(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
             cn = f"row{i:04d}"
         record = dict(row)
         record["_control_number"] = str(cn)
+        # If the record carries raw MARC subfield keys (``100$a``,
+        # ``700$a``, ``600$a``, …) — typical of NLI-style TSV exports —
+        # collapse them into the normalised authors/contributors/subjects
+        # shape the entity extractor + the desktop item builder expect.
+        if any("$" in k for k in row):
+            _collapse_marc_subfields(record)
         out.append(record)
     return out
+
+
+def _collapse_marc_subfields(record: dict[str, Any]) -> None:
+    """In-place normalisation: ``100$a`` → ``authors[]``, ``700$a`` →
+    ``contributors[]``, ``600$a`` → ``subjects[]`` (type=person),
+    ``650$a`` → ``subjects[]`` (type=topic), ``651$a`` → place subjects,
+    ``245$a/$b`` → ``title``, ``008`` → ``dates.year``.
+
+    Multi-value subfields are pipe-separated. Roles travel through
+    ``$e`` parallel arrays where present.
+    """
+    # ── Title ────────────────────────────────────────────────────────
+    title_a = _str(record.get("245$a"))
+    title_b = _str(record.get("245$b"))
+    if title_a and not record.get("title"):
+        record["title"] = (title_a + (f" {title_b}" if title_b else "")).strip(" :./,")
+
+    # ── Authors (MARC 100, 110, 111) ────────────────────────────────
+    authors = list(record.get("authors") or [])
+    for tag in ("100", "110", "111"):
+        a = _split_multi(_str(record.get(f"{tag}$a")))
+        e = _split_multi(_str(record.get(f"{tag}$e")))
+        for i, name in enumerate(a):
+            role = e[i] if i < len(e) else "author"
+            authors.append({"name": name, "role": role, "field": tag})
+    if authors:
+        record["authors"] = authors
+
+    # ── Contributors (700, 710, 711, 800, 810, 811) ─────────────────
+    contributors = list(record.get("contributors") or [])
+    for tag in ("700", "710", "711", "800", "810", "811"):
+        a = _split_multi(_str(record.get(f"{tag}$a")))
+        e = _split_multi(_str(record.get(f"{tag}$e")))
+        for i, name in enumerate(a):
+            role = e[i] if i < len(e) else "contributor"
+            contributors.append({"name": name, "role": role, "field": tag})
+    if contributors:
+        record["contributors"] = contributors
+
+    # ── Subjects ─────────────────────────────────────────────────────
+    subjects = list(record.get("subjects") or [])
+    # 600 = personal-name subject; 610 = corporate; 611 = meeting
+    for tag, kind in (("600", "person"), ("610", "organization"), ("611", "meeting")):
+        for name in _split_multi(_str(record.get(f"{tag}$a"))):
+            subjects.append({"name": name, "type": kind, "field": tag})
+    # 650 topical, 651 geographic
+    for name in _split_multi(_str(record.get("650$a"))):
+        subjects.append({"name": name, "type": "topic", "field": "650"})
+    for name in _split_multi(_str(record.get("651$a"))):
+        subjects.append({"name": name, "type": "place", "field": "651"})
+    if subjects:
+        record["subjects"] = subjects
+
+    # ── Dates (008 positions 7-10 are the production year) ──────────
+    f008 = _str(record.get("008"))
+    if f008 and len(f008) >= 11 and not record.get("dates"):
+        # Be lenient: accept any 4-digit run starting at byte 7.
+        candidate = "".join(c for c in f008[7:11] if c.isdigit())
+        if candidate and len(candidate) == 4:
+            record["dates"] = {"year": int(candidate)}
+
+    # ── Genre/form ──────────────────────────────────────────────────
+    genres = list(record.get("genres") or [])
+    for name in _split_multi(_str(record.get("655$a"))):
+        genres.append({"name": name, "field": "655"})
+    if genres:
+        record["genres"] = genres
+
+
+def _str(v: Any) -> str:
+    return v.strip() if isinstance(v, str) else ""
 
 
 # ── Entity extraction ───────────────────────────────────────────────────
