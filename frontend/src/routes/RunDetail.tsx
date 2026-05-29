@@ -10,6 +10,9 @@ import {
 import {
   applyConditions, type FilterCondition, StructuredFilter,
 } from "@/components/StructuredFilter";
+import {
+  ConfidenceBadge, MatchDetailDialog, VerdictBadge,
+} from "@/components/MatchDetailDialog";
 
 const COLUMNS = [
   { key: "control_number", label: "Record",     kind: "text" as const },
@@ -17,7 +20,8 @@ const COLUMNS = [
   { key: "role",           label: "Role",       kind: "text" as const },
   { key: "matched_name",   label: "Matched",    kind: "text" as const },
   { key: "confidence",     label: "Confidence", kind: "text" as const },
-  { key: "source",         label: "Source",     kind: "text" as const },
+  { key: "source",         label: "Sources",    kind: "text" as const },
+  { key: "ai_verdict",     label: "AI verdict", kind: "text" as const },
   { key: "approved",       label: "Approved",   kind: "boolean" as const },
 ];
 
@@ -26,7 +30,8 @@ export default function RunDetail() {
   const [run, setRun] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conditions, setConditions] = useState<FilterCondition[]>([]);
-  const [popup, setPopup] = useState<RunMarcRecord | null>(null);
+  const [marcPopup, setMarcPopup] = useState<RunMarcRecord | null>(null);
+  const [openMatch, setOpenMatch] = useState<AuthorityMatch | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   async function refresh() {
@@ -39,8 +44,6 @@ export default function RunDetail() {
   }
   useEffect(() => { void refresh(); }, [runId]);
 
-  // Real-time collab — refresh whenever any teammate touches a match
-  // or uploads a new run inside this project.
   useProjectEvents(run?.project_id, (msg) => {
     if (msg.type.startsWith("match.") || msg.type === "snapshot.restored") {
       void refresh();
@@ -51,9 +54,7 @@ export default function RunDetail() {
     if (!runId) return;
     try {
       const updated = await Runs.setApproval(runId, m.id, !m.approved);
-      setRun((prev) =>
-        prev ? { ...prev, matches: prev.matches.map((x) => x.id === m.id ? updated : x) } : prev,
-      );
+      patchMatch(updated);
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     }
@@ -75,10 +76,19 @@ export default function RunDetail() {
     }
   }
 
+  function patchMatch(next: AuthorityMatch) {
+    setRun((prev) =>
+      prev
+        ? { ...prev, matches: prev.matches.map((x) => (x.id === next.id ? next : x)) }
+        : prev,
+    );
+    if (openMatch && openMatch.id === next.id) setOpenMatch(next);
+  }
+
   async function openRecord(cn: string) {
     if (!runId) return;
     try {
-      setPopup(await Runs.getRecord(runId, cn));
+      setMarcPopup(await Runs.getRecord(runId, cn));
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     }
@@ -90,7 +100,7 @@ export default function RunDetail() {
     for (const m of run.matches) {
       for (const c of COLUMNS) {
         acc[c.key] = acc[c.key] ?? new Set();
-        acc[c.key].add(String((m as unknown as Record<string, unknown>)[c.key] ?? ""));
+        acc[c.key].add(cellString(m, c.key));
       }
     }
     const out: Record<string, string[]> = {};
@@ -100,9 +110,7 @@ export default function RunDetail() {
 
   const filtered = useMemo(() => {
     if (!run) return [];
-    return applyConditions(run.matches, conditions, (m, col) =>
-      String((m as unknown as Record<string, unknown>)[col] ?? ""),
-    );
+    return applyConditions(run.matches, conditions, (m, col) => cellString(m, col));
   }, [run, conditions]);
 
   if (error)
@@ -166,38 +174,65 @@ export default function RunDetail() {
                            }} />
                   </th>
                   {COLUMNS.map((c) => <th key={c.key} className="py-2 pr-3">{c.label}</th>)}
+                  <th className="py-2 pr-3"></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((m) => (
-                  <tr key={m.id} className="border-b border-white/5 hover:bg-white/[0.03] transition">
-                    <td className="py-2 pr-2">
-                      <input type="checkbox"
-                             checked={selected.has(m.id)}
-                             onChange={(e) => {
-                               const next = new Set(selected);
-                               if (e.target.checked) next.add(m.id); else next.delete(m.id);
-                               setSelected(next);
-                             }} />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <button onClick={() => openRecord(m.control_number)}
-                              className="text-biu-sky hover:underline font-mono text-xs">
-                        {m.control_number}
-                      </button>
-                    </td>
-                    <td className="py-2 pr-3 max-w-xs truncate">{m.entity_text}</td>
-                    <td className="py-2 pr-3"><span className="kicker">{m.role || "—"}</span></td>
-                    <td className="py-2 pr-3">{m.matched_name || <span className="muted">—</span>}</td>
-                    <td className="py-2 pr-3"><ConfidencePill c={m.confidence} /></td>
-                    <td className="py-2 pr-3 muted text-xs">{m.source}</td>
-                    <td className="py-2 pr-3">
-                      <input type="checkbox" checked={m.approved} onChange={() => toggle(m)} />
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((m) => {
+                  const p = (m.payload ?? {}) as Record<string, unknown>;
+                  const ai = (p.ai_verdict ?? null) as null | { overall: string };
+                  const guards = (p.guard_flags as string[] | undefined) ?? [];
+                  const sourceCount = Number(p.source_count ?? 0);
+                  return (
+                    <tr key={m.id} className="border-b border-white/5 hover:bg-white/[0.03] transition">
+                      <td className="py-2 pr-2">
+                        <input type="checkbox"
+                               checked={selected.has(m.id)}
+                               onChange={(e) => {
+                                 const next = new Set(selected);
+                                 if (e.target.checked) next.add(m.id); else next.delete(m.id);
+                                 setSelected(next);
+                               }} />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <button onClick={() => openRecord(m.control_number)}
+                                className="text-biu-sky hover:underline font-mono text-xs">
+                          {m.control_number}
+                        </button>
+                      </td>
+                      <td className="py-2 pr-3 max-w-xs truncate">{m.entity_text}</td>
+                      <td className="py-2 pr-3"><span className="kicker">{m.role || "—"}</span></td>
+                      <td className="py-2 pr-3 max-w-xs truncate">
+                        {m.matched_name || <span className="muted">—</span>}
+                        {guards.length > 0 && (
+                          <span className="text-red-300 ml-1" title={guards.join(", ")}>⚠</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span title={confidenceTooltip(m)} className="cursor-help">
+                          <ConfidenceBadge confidence={m.confidence} />
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <SourcesCell match={m} sourceCount={sourceCount} />
+                      </td>
+                      <td className="py-2 pr-3">
+                        {ai
+                          ? <VerdictBadge overall={ai.overall} />
+                          : <span className="muted text-xs italic">—</span>}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input type="checkbox" checked={m.approved} onChange={() => toggle(m)} />
+                      </td>
+                      <td className="py-2 pr-1 text-right">
+                        <button onClick={() => setOpenMatch(m)}
+                                className="button-ghost text-xs">Details</button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={COLUMNS.length + 1} className="py-6 text-center muted">No rows match this filter.</td></tr>
+                  <tr><td colSpan={COLUMNS.length + 2} className="py-6 text-center muted">No rows match this filter.</td></tr>
                 )}
               </tbody>
             </table>
@@ -205,8 +240,67 @@ export default function RunDetail() {
         </section>
       </div>
 
-      {popup && <MarcPopup record={popup} onClose={() => setPopup(null)} />}
+      {marcPopup && <MarcPopup record={marcPopup} onClose={() => setMarcPopup(null)} />}
+      {openMatch && (
+        <MatchDetailDialog
+          runId={runId!}
+          match={openMatch}
+          onClose={() => setOpenMatch(null)}
+          onPatched={patchMatch}
+        />
+      )}
     </Layout>
+  );
+}
+
+
+// ── helpers ─────────────────────────────────────────────────────────────
+
+
+function cellString(m: AuthorityMatch, col: string): string {
+  if (col === "ai_verdict") {
+    const v = m.payload?.ai_verdict as { overall?: string } | undefined;
+    return v?.overall ?? "";
+  }
+  if (col === "source") {
+    const list = m.payload?.sources as string[] | undefined;
+    if (list?.length) return list.join(",");
+  }
+  return String((m as unknown as Record<string, unknown>)[col] ?? "");
+}
+
+
+function confidenceTooltip(m: AuthorityMatch): string {
+  const p = (m.payload ?? {}) as Record<string, unknown>;
+  const sources = (p.sources as string[] | undefined) ?? [];
+  const guards  = (p.guard_flags as string[] | undefined) ?? [];
+  const lines: string[] = [
+    `Confidence: ${m.confidence}`,
+    `Sources (${sources.length}): ${sources.join(", ") || "none"}`,
+    guards.length ? `Guards fired: ${guards.join(", ")}` : "No guards fired",
+  ];
+  const reasoning = p.reasoning as string | undefined;
+  if (reasoning) lines.push("", reasoning);
+  return lines.join("\n");
+}
+
+
+function SourcesCell({ match, sourceCount }: { match: AuthorityMatch; sourceCount: number }) {
+  const sources = (match.payload?.sources as string[] | undefined) ?? [];
+  if (sources.length === 0) {
+    return <span className="muted text-xs italic">—</span>;
+  }
+  return (
+    <span className="flex items-center gap-1 flex-wrap">
+      {sources.map((s) => (
+        <span key={s} className="glass-pill px-1.5 py-0 text-[10px] uppercase tracking-wider">
+          {s}
+        </span>
+      ))}
+      {sourceCount >= 2 && (
+        <span className="text-biu-sky text-[10px]" title="Cross-source agreement">✓×{sourceCount}</span>
+      )}
+    </span>
   );
 }
 
@@ -218,15 +312,6 @@ function StatusPill({ status }: { status: string }) {
     : status === "failed"  ? "text-red-300"
     : "muted";
   return <span className={`glass-pill px-3 py-1 text-[10px] kicker ${tone}`}>{status}</span>;
-}
-
-
-function ConfidencePill({ c }: { c: string }) {
-  const tone =
-    c === "high"   ? "text-biu-sky"
-    : c === "medium" ? "text-yellow-300"
-    : "muted";
-  return <span className={`text-xs ${tone}`}>{c}</span>;
 }
 
 

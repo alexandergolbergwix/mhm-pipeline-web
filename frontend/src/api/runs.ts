@@ -78,4 +78,14 @@ export const Runs = {
     api.post<AuthorityMatch[]>(`/runs/${runId}/matches/bulk-approve`, {
       match_ids: matchIds, approved,
     }),
+
+  aiVerify: (runId: string, matchId: string) =>
+    api.post<{
+      overall: "full" | "partial" | "fail" | "abstain";
+      reasoning: string;
+      model: string;
+      judged_at: string;
+      fallback: boolean;
+    }>(`/runs/${runId}/matches/${matchId}/ai-verify`, {}),
 };
+
