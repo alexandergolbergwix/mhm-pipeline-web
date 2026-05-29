@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -42,32 +42,42 @@ class StudioBuildResponse(BaseModel):
     items: list[dict[str, Any]]
     quickstatements: str
     summary: StudioSummary
-    approved_match_count: int
+    approved_match_count: int     # how many of the feed are approved
+    pending_match_count: int      # how many are still pending review
+    used_match_count: int         # what we actually fed the builder
+    approved_only: bool           # which mode was used
     record_count: int
 
 
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
 async def build_studio(
     run_id: uuid.UUID,
+    approved_only: bool = Query(
+        default=False,
+        description="When true, only approved matches feed the item "
+                    "builder. Default false — every candidate match is "
+                    "used so persons + cross-source IDs surface immediately.",
+    ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StudioBuildResponse:
     await _lookup_run_with_access(db, run_id, auth)
 
-    # Pull every record + every *approved* match for the run.
+    # Pull every record + every match (filtered to approved on request).
     records = (
         await db.execute(
             select(RunRecord).where(RunRecord.run_id == run_id)
             .order_by(RunRecord.control_number.asc())
         )
     ).scalars().all()
-    matches = (
+    all_matches = (
         await db.execute(
-            select(AuthorityMatch).where(
-                AuthorityMatch.run_id == run_id, AuthorityMatch.approved.is_(True),
-            )
+            select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
         )
     ).scalars().all()
+    approved_count = sum(1 for m in all_matches if m.approved)
+    pending_count = len(all_matches) - approved_count
+    matches = [m for m in all_matches if m.approved] if approved_only else all_matches
 
     marc_records = [dict(r.marc) for r in records]
     approved_matches = [
@@ -95,7 +105,10 @@ async def build_studio(
         items=result["items"],
         quickstatements=result["quickstatements"],
         summary=StudioSummary(**result["summary"]),
-        approved_match_count=len(approved_matches),
+        approved_match_count=approved_count,
+        pending_match_count=pending_count,
+        used_match_count=len(approved_matches),
+        approved_only=approved_only,
         record_count=len(marc_records),
     )
 
@@ -103,17 +116,19 @@ async def build_studio(
 @router.get("/{run_id}/wikidata-studio/quickstatements.txt", response_class=PlainTextResponse)
 async def download_quickstatements(
     run_id: uuid.UUID,
+    approved_only: bool = Query(default=False),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> PlainTextResponse:
-    """Plain-text download of the QuickStatements TSV — what the curator
-    pastes into https://quickstatements.toolforge.org."""
-    studio = await build_studio(run_id, auth, db)  # type: ignore[arg-type]
+    """Plain-text QuickStatements TSV — paste into
+    https://quickstatements.toolforge.org."""
+    studio = await build_studio(run_id, approved_only, auth, db)  # type: ignore[arg-type]
+    suffix = "approved" if approved_only else "all"
     return PlainTextResponse(
         studio.quickstatements,
         headers={
             "Content-Disposition": (
-                f'attachment; filename="run-{run_id}-quickstatements.txt"'
+                f'attachment; filename="run-{run_id}-{suffix}-quickstatements.txt"'
             ),
         },
     )

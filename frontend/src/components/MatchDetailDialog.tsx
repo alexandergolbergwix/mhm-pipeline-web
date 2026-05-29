@@ -1,7 +1,7 @@
 /**
  * Rich match-detail dialog — Overview / Why / Dates & guards /
- * AI verification / Sources & cluster — fed by the desktop pipeline's
- * full marc_authority_matches payload.
+ * AI verification / Sources & cluster — fed by the matcher's full
+ * marc_authority_matches payload.
  */
 
 import { useState } from "react";

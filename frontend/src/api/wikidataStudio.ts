@@ -31,10 +31,17 @@ export interface StudioBuild {
   quickstatements: string;
   summary: StudioSummary;
   approved_match_count: number;
+  pending_match_count: number;
+  used_match_count: number;
+  approved_only: boolean;
   record_count: number;
 }
 
 export const Studio = {
-  build: (runId: string) => api.get<StudioBuild>(`/runs/${runId}/wikidata-studio`),
-  qsUrl: (runId: string) => `/api/runs/${runId}/wikidata-studio/quickstatements.txt`,
+  build: (runId: string, approvedOnly = false) =>
+    api.get<StudioBuild>(
+      `/runs/${runId}/wikidata-studio?approved_only=${approvedOnly ? "true" : "false"}`,
+    ),
+  qsUrl: (runId: string, approvedOnly = false) =>
+    `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}`,
 };

@@ -12,22 +12,27 @@ export default function WikidataStudio() {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<number>(0);
   const [filter, setFilter] = useState<"all" | "manuscript" | "person" | "work">("all");
+  // Default OFF: feed every candidate match to the builder so persons +
+  // cross-source IDs surface immediately. Curators flip this on before
+  // exporting the final QuickStatements run.
+  const [approvedOnly, setApprovedOnly] = useState<boolean>(false);
 
-  async function refresh() {
+  async function refresh(nextApprovedOnly?: boolean) {
     if (!runId) return;
+    const flag = nextApprovedOnly ?? approvedOnly;
     setLoading(true); setError(null);
     try {
-      setBuild(await Studio.build(runId));
+      setBuild(await Studio.build(runId, flag));
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
       setLoading(false);
     }
   }
-  useEffect(() => { void refresh(); }, [runId]);
+  useEffect(() => { void refresh(); }, [runId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
-  if (!build) return <Layout><p className="muted">{loading ? "Building items via the desktop pipeline…" : "Loading…"}</p></Layout>;
+  if (!build) return <Layout><p className="muted">{loading ? "Building items…" : "Loading…"}</p></Layout>;
 
   const items = build.items
     .map((it, idx) => ({ it, idx }))
@@ -43,27 +48,44 @@ export default function WikidataStudio() {
           </div>
           <h2 className="text-2xl font-semibold">Items ready to upload</h2>
           <p className="muted text-sm leading-relaxed max-w-2xl">
-            Built by the same{" "}
-            <code className="text-biu-sky">converter.wikidata.item_builder.WikidataItemBuilder</code>{" "}
-            the desktop pipeline uses — every safety guard, every property mapping,
-            every Hebrew transliteration. Only your <b className="text-ink">approved</b>{" "}
-            authority matches feed it.
+            Every candidate match feeds the builder by default so you can
+            see the persons, works, and statements the run would emit.
+            Flip <b className="text-ink">Approved only</b> before exporting
+            the final QuickStatements — only matches you've ticked on the
+            Review page survive that filter. The 14 pre-upload safety guards
+            (multi-P31 with rank, Hebrew label transliteration, P3959 /
+            P8189 hygiene, identity-conflict gate, …) run on every block
+            below regardless of mode.
           </p>
 
           <div className="grid grid-cols-5 gap-3 pt-2">
             <Stat label="Records" value={build.record_count} />
-            <Stat label="Approved matches" value={build.approved_match_count} />
+            <Stat label="Matches fed"
+                  value={`${build.used_match_count}`}
+                  sub={`${build.approved_match_count} approved · ${build.pending_match_count} pending`} />
             <Stat label="Items" value={build.summary.total_items} highlight />
             <Stat label="Statements" value={build.summary.statements} />
             <Stat label="MS / P / W"
                   value={`${build.summary.manuscripts} / ${build.summary.persons} / ${build.summary.works}`} />
           </div>
 
-          <div className="flex flex-wrap gap-2 pt-2">
-            <button onClick={refresh} disabled={loading} className="button-ghost text-sm">
+          <div className="flex flex-wrap gap-2 pt-2 items-center">
+            <div className="glass-pill px-1 py-1 flex gap-1 text-xs">
+              <button
+                onClick={() => { setApprovedOnly(false); void refresh(false); }}
+                className={`px-3 py-1 rounded-full transition ${
+                  !approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"
+                }`}>All matches</button>
+              <button
+                onClick={() => { setApprovedOnly(true); void refresh(true); }}
+                className={`px-3 py-1 rounded-full transition ${
+                  approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"
+                }`}>Approved only</button>
+            </div>
+            <button onClick={() => refresh()} disabled={loading} className="button-ghost text-sm">
               {loading ? "Rebuilding…" : "Rebuild"}
             </button>
-            <a href={Studio.qsUrl(runId!)} download className="button-primary text-sm">
+            <a href={Studio.qsUrl(runId!, approvedOnly)} download className="button-primary text-sm">
               Download QuickStatements.txt
             </a>
           </div>
@@ -71,9 +93,11 @@ export default function WikidataStudio() {
 
         {build.summary.total_items === 0 ? (
           <section className="glass p-6 text-center muted">
-            No items yet. Approve some authority matches first — go to the{" "}
-            <Link to={`/runs/${runId}`} className="text-biu-sky hover:underline">Review</Link>{" "}
-            page and tick the rows you trust.
+            {build.used_match_count === 0 && approvedOnly
+              ? <>No approved matches yet. Either click <b className="text-ink">All matches</b> above
+                  to preview the full run, or approve rows on the{" "}
+                  <Link to={`/runs/${runId}`} className="text-biu-sky hover:underline">Review</Link> page.</>
+              : <>No items yet. Upload a MARC file via the project page first.</>}
           </section>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
@@ -254,11 +278,14 @@ function KvList({ items }: { items: Record<string, string> }) {
 }
 
 
-function Stat({ label, value, highlight }: { label: string; value: number | string; highlight?: boolean }) {
+function Stat({
+  label, value, highlight, sub,
+}: { label: string; value: number | string; highlight?: boolean; sub?: string }) {
   return (
     <div className="glass-pill px-3 py-2">
       <div className="kicker">{label}</div>
       <div className={`text-xl font-semibold ${highlight ? "text-biu-sky" : ""}`}>{value}</div>
+      {sub && <div className="muted text-[10px] leading-tight mt-0.5">{sub}</div>}
     </div>
   );
 }
