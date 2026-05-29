@@ -164,6 +164,10 @@ function Dates({ payload }: { match: AuthorityMatch; payload: Record<string, unk
   const death  = payload.death_year as number | null | undefined;
   const role   = (payload.role_kind as string | undefined) || "other";
   const conflict = (payload.guard_flags as string[] | undefined)?.includes("date_conflict");
+  // The Stage-3 guard only runs when at least one candidate year is
+  // known. Otherwise the "✓ Dates compatible" line was misleading —
+  // it didn't pass the check, it skipped it.
+  const dateGuardRan = (birth || death) && msYear;
 
   return (
     <div className="space-y-4">
@@ -185,7 +189,11 @@ function Dates({ payload }: { match: AuthorityMatch; payload: Record<string, unk
         <p className="text-sm">
           {conflict
             ? <span className="text-red-300">⚠ Stage-3 date guard fired — see the Why tab.</span>
-            : <span className="text-biu-sky">✓ Dates compatible with the role.</span>}
+            : dateGuardRan
+              ? <span className="text-biu-sky">✓ Dates compatible with the role.</span>
+              : <span className="muted">— Date guard skipped: no candidate birth / death years
+                  available from Mazal, VIAF, or Wikidata. Re-run the run after the matchers
+                  populate years to enable this check.</span>}
         </p>
       </section>
     </div>

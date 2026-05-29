@@ -126,6 +126,15 @@ class DesktopMatcher(AuthorityMatcher):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("KIMA matcher raised for %r: %s", text, exc)
 
+        # Each matcher also surfaces birth/death years when the source
+        # carries them. The web app used to drop these on the floor,
+        # which made the MatchDetailDialog show "—" even on HIGH-
+        # confidence matches AND caused the Stage 3 date guard to be a
+        # no-op (it short-circuits when both years are None). We now
+        # pull years from every source and OR them together — the
+        # first source that knows the dates wins, ordered Mazal → VIAF
+        # → Wikidata (most authoritative for medieval Hebrew → least).
+
         # — Mazal —
         if self._mazal is not None:
             try:
@@ -134,17 +143,44 @@ class DesktopMatcher(AuthorityMatcher):
                     mazal_id = str(mid)
                     sources.append("mazal")
                     reasoning_parts.append(f"Mazal hit ({mid}).")
+                    # Pull the free-text "dates" column off the Mazal
+                    # authority row and resolve it (handles Hebrew
+                    # century, "נפטר 1628", "1542-1620", …).
+                    try:
+                        details = self._mazal.get_person_details(mid) or {}
+                        dates_str = (details.get("dates") or "").strip()
+                        if dates_str:
+                            from converter.transformer.date_resolver import (  # noqa: PLC0415
+                                resolve_person_dates,
+                            )
+                            parsed = resolve_person_dates(dates_str)
+                            if birth_year is None and parsed.get("birth_year"):
+                                birth_year = parsed["birth_year"]
+                            if death_year is None and parsed.get("death_year"):
+                                death_year = parsed["death_year"]
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("Mazal date lookup failed for %s: %s", mid, exc)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal matcher raised for %r: %s", text, exc)
 
         # — VIAF —
         if self._viaf is not None:
             try:
-                vid = self._viaf.match_person(text)
-                if vid:
-                    viaf_id = str(vid)
-                    sources.append("viaf")
-                    reasoning_parts.append(f"VIAF hit ({vid}).")
+                # match_person_with_metadata wraps match_person + the
+                # cluster fetch in one call, so we get the years (and
+                # the GND/LCCN/ISNI/BnF cluster IDs the desktop pipeline
+                # threads into person Wikidata items) without a second
+                # round-trip per candidate.
+                meta = self._viaf.match_person_with_metadata(text)
+                if meta:
+                    viaf_id = str(meta.get("viaf_id") or "")
+                    if viaf_id:
+                        sources.append("viaf")
+                        reasoning_parts.append(f"VIAF hit ({viaf_id}).")
+                        if birth_year is None and meta.get("birth_year"):
+                            birth_year = int(meta["birth_year"])
+                        if death_year is None and meta.get("death_year"):
+                            death_year = int(meta["death_year"])
             except Exception as exc:  # noqa: BLE001
                 logger.warning("VIAF matcher raised for %r: %s", text, exc)
 
@@ -156,6 +192,16 @@ class DesktopMatcher(AuthorityMatcher):
                     wikidata_qid = str(qid)
                     sources.append("wikidata")
                     reasoning_parts.append(f"Wikidata hit ({qid}).")
+                    # Backfill via SPARQL — Rule 49 §B "Wikidata date
+                    # backfill". Cheap with the on-disk cache.
+                    try:
+                        b, d = self._wikidata.find_dates_by_qid(wikidata_qid)
+                        if birth_year is None and b is not None:
+                            birth_year = int(b)
+                        if death_year is None and d is not None:
+                            death_year = int(d)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("Wikidata date backfill failed for %s: %s", wikidata_qid, exc)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Wikidata matcher raised for %r: %s", text, exc)
 
