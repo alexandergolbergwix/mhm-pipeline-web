@@ -1,0 +1,11 @@
+{
+  "name": "mhm-pipeline-web",
+  "version": "0.1.0",
+  "description": "Heroku root shim — Node buildpack uses this to build the Vite frontend during slug compile.",
+  "private": true,
+  "engines": { "node": "20.x" },
+  "scripts": {
+    "build": "cd frontend && npm install --no-audit --no-fund && npm run build",
+    "heroku-postbuild": "echo 'frontend/dist built by `npm run build` above'"
+  }
+}
