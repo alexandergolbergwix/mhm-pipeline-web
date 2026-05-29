@@ -57,3 +57,15 @@ class ApprovalBatch(BaseModel):
 class RunMarcRecord(BaseModel):
     control_number: str
     marc: dict[str, Any]
+
+
+class AiVerdictResponse(BaseModel):
+    """Returned by /runs/{id}/matches/{mid}/ai-verify and embedded in
+    payload['ai_verdict'] on the match itself."""
+
+    overall: Literal["full", "partial", "fail", "abstain"]
+    reasoning: str
+    model: str
+    judged_at: str
+    fallback: bool = False    # true when we couldn't reach Gemini
+

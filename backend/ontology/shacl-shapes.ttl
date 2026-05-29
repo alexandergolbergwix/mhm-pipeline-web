@@ -1,0 +1,1016 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+@prefix cidoc-crm: <http://www.cidoc-crm.org/cidoc-crm/> .
+@prefix hm: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+@prefix hmsh: <http://www.ontology.org.il/HebrewManuscripts/shapes/> .
+
+#################################################################
+# SHACL Shapes for Hebrew Manuscripts Ontology
+#
+# These shapes validate RDF data against the ontology requirements.
+# Only canonical ontology terms are validated (see LEGACY_TO_CANONICAL_CHECKLIST.md).
+# Run with: pyshacl -s shacl-shapes.ttl -d data.ttl
+#################################################################
+
+#################################################################
+# Manuscript (F4_Manifestation_Singleton) Shape
+#################################################################
+
+hmsh:ManuscriptShape a sh:NodeShape ;
+    sh:targetClass lrmoo:F4_Manifestation_Singleton ;
+    sh:name "Manuscript Shape"@en ;
+    sh:description "Validates Hebrew manuscript instances"@en ;
+    
+    # Required properties
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Manuscript must have at least one label"@en ;
+        sh:severity sh:Violation ;
+    ] ;
+    
+    # Identifier
+    sh:property [
+        sh:path hm:external_identifier_nli ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "NLI identifier must be a single string value"@en ;
+    ] ;
+    
+    # Physical dimensions (allows for scrolls up to 50 meters)
+    sh:property [
+        sh:path hm:has_height_mm ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 50000 ;
+        sh:message "Height must be a positive integer in mm (1-50000, allowing for scrolls)"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:has_width_mm ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 50000 ;
+        sh:message "Width must be a positive integer in mm (1-50000, allowing for scrolls)"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:has_number_of_folios ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:message "Folio count must be a positive integer"@en ;
+    ] ;
+    
+    # Material
+    sh:property [
+        sh:path hm:has_material ;
+        sh:class cidoc-crm:E57_Material ;
+        sh:message "Material must be an instance of E57_Material"@en ;
+    ] ;
+    
+    # Script type (regional)
+    sh:property [
+        sh:path hm:has_script_type ;
+        sh:class hm:TypeScriptType ;
+        sh:message "Script type must be an instance of TypeScriptType"@en ;
+    ] ;
+    
+    # Script mode
+    sh:property [
+        sh:path hm:has_script_mode ;
+        sh:class hm:ModeScriptType ;
+        sh:message "Script mode must be an instance of ModeScriptType"@en ;
+    ] ;
+    
+    # Digital representation URL
+    sh:property [
+        sh:path hm:has_digital_representation_url ;
+        sh:datatype xsd:anyURI ;
+        sh:pattern "^https?://" ;
+        sh:message "Digital URL must be a valid HTTP(S) URI"@en ;
+    ] ;
+    
+    # Condition
+    sh:property [
+        sh:path hm:P44_has_condition ;
+        sh:class hm:ConditionType ;
+        sh:maxCount 1 ;
+        sh:message "Condition must be a single ConditionType instance"@en ;
+    ] ;
+    
+    # Colophon
+    sh:property [
+        sh:path hm:has_colophon ;
+        sh:class hm:Colophon ;
+        sh:message "Colophon must be an instance of Colophon class"@en ;
+    ] ;
+    
+    # Embodied expressions
+    sh:property [
+        sh:path lrmoo:R4_embodies ;
+        sh:class lrmoo:F2_Expression ;
+        sh:message "Embodied content must be an Expression"@en ;
+    ] .
+
+#################################################################
+# Codicological Unit Shape
+#################################################################
+
+hmsh:CodicologicalUnitShape a sh:NodeShape ;
+    sh:targetClass hm:Codicological_Unit ;
+    sh:name "Codicological Unit Shape"@en ;
+    
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Codicological unit must have a label"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:has_lines_per_page ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 100 ;
+        sh:message "Lines per page must be between 1 and 100"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:has_columns ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 10 ;
+        sh:message "Column count must be between 1 and 10"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:has_catchwords ;
+        sh:datatype xsd:boolean ;
+        sh:maxCount 1 ;
+    ] .
+
+#################################################################
+# Work Shape
+#################################################################
+
+hmsh:WorkShape a sh:NodeShape ;
+    sh:targetClass lrmoo:F1_Work ;
+    sh:name "Work Shape"@en ;
+    
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Work must have at least one label"@en ;
+        sh:severity sh:Violation ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:has_title ;
+        sh:or (
+            [ sh:datatype xsd:string ]
+            [ sh:datatype rdf:langString ]
+        ) ;
+        sh:message "Title must be a string or language-tagged string"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path cidoc-crm:P2_has_type ;
+        sh:class hm:SubjectType ;
+        sh:message "Subject type must be an instance of SubjectType"@en ;
+    ] ;
+    
+    # Translation relationship
+    sh:property [
+        sh:path hm:is_translation_of ;
+        sh:class lrmoo:F1_Work ;
+        sh:message "Translation source must be a Work"@en ;
+    ] ;
+    
+    # Commentary relationship
+    sh:property [
+        sh:path hm:has_commentary_on ;
+        sh:class lrmoo:F1_Work ;
+        sh:message "Commentary target must be a Work"@en ;
+    ] .
+
+#################################################################
+# Expression Shape
+#################################################################
+
+hmsh:ExpressionShape a sh:NodeShape ;
+    sh:targetClass lrmoo:F2_Expression ;
+    sh:name "Expression Shape"@en ;
+    
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Expression must have a label"@en ;
+    ] ;
+    
+    # Must realize a Work
+    sh:property [
+        sh:path lrmoo:R3i_realises ;
+        sh:class lrmoo:F1_Work ;
+        sh:minCount 1 ;
+        sh:message "Expression must realize at least one Work"@en ;
+        sh:severity sh:Warning ;
+    ] ;
+    
+    # Folio range format when present
+    sh:property [
+        sh:path hm:has_folio_range ;
+        sh:datatype xsd:string ;
+        sh:message "Folio range must be a string"@en ;
+        sh:severity sh:Warning ;
+    ] ;
+    
+    # Language
+    sh:property [
+        sh:path cidoc-crm:P72_has_language ;
+        sh:class cidoc-crm:E56_Language ;
+        sh:message "Language must be an E56_Language instance"@en ;
+    ] ;
+    
+    # Incipit
+    sh:property [
+        sh:path hm:has_incipit ;
+        sh:datatype xsd:string ;
+        sh:message "Incipit must be a string"@en ;
+    ] ;
+    
+    # Explicit
+    sh:property [
+        sh:path hm:has_explicit ;
+        sh:datatype xsd:string ;
+        sh:message "Explicit must be a string"@en ;
+    ] ;
+    
+    # Vocalization
+    sh:property [
+        sh:path hm:has_vocalization ;
+        sh:class hm:VocalizationType ;
+        sh:maxCount 1 ;
+        sh:message "Vocalization type must be a single VocalizationType"@en ;
+    ] .
+
+#################################################################
+# Person Shape
+#################################################################
+
+hmsh:PersonShape a sh:NodeShape ;
+    sh:targetClass cidoc-crm:E21_Person ;
+    sh:name "Person Shape"@en ;
+    
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Person must have at least one label"@en ;
+    ] ;
+    
+    # VIAF ID format
+    sh:property [
+        sh:path hm:viaf_id ;
+        sh:datatype xsd:string ;
+        sh:pattern "^[0-9]+$" ;
+        sh:message "VIAF ID must be numeric"@en ;
+    ] ;
+    
+    # Wikidata ID format
+    sh:property [
+        sh:path hm:wikidata_id ;
+        sh:datatype xsd:string ;
+        sh:pattern "^Q[0-9]+$" ;
+        sh:message "Wikidata ID must match Q[number] format"@en ;
+    ] ;
+    
+    # NLI identifier
+    sh:property [
+        sh:path hm:external_identifier_nli ;
+        sh:datatype xsd:string ;
+        sh:message "NLI identifier must be a string"@en ;
+    ] .
+
+#################################################################
+# Place Shape
+#################################################################
+
+hmsh:PlaceShape a sh:NodeShape ;
+    sh:targetClass cidoc-crm:E53_Place ;
+    sh:name "Place Shape"@en ;
+    
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Place must have a label"@en ;
+    ] ;
+    
+    # Wikidata link
+    sh:property [
+        sh:path hm:external_wikidata_uri ;
+        sh:datatype xsd:anyURI ;
+        sh:pattern "^https?://www\\.wikidata\\.org/entity/Q[0-9]+$" ;
+        sh:message "Wikidata URI must follow format http(s)://www.wikidata.org/entity/Q..."@en ;
+    ] ;
+    
+    # Hierarchical relationship
+    sh:property [
+        sh:path cidoc-crm:P89_falls_within ;
+        sh:class cidoc-crm:E53_Place ;
+        sh:message "Parent location must be a Place"@en ;
+    ] .
+
+#################################################################
+# Colophon Shape
+#################################################################
+
+hmsh:ColophonShape a sh:NodeShape ;
+    sh:targetClass hm:Colophon ;
+    sh:name "Colophon Shape"@en ;
+    
+    sh:property [
+        sh:path hm:colophon_text ;
+        # Removed sh:datatype xsd:string to allow language-tagged literals
+        sh:minCount 1 ;
+        sh:message "Colophon must have text content"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:mentions_scribe ;
+        sh:class cidoc-crm:E21_Person ;
+        sh:message "Mentioned scribe must be a Person"@en ;
+        sh:severity sh:Warning ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:mentions_date ;
+        sh:class cidoc-crm:E52_Time-Span ;
+        sh:message "Mentioned date must be a Time-Span"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:mentions_place ;
+        sh:class cidoc-crm:E53_Place ;
+        sh:message "Mentioned place must be a Place"@en ;
+    ] .
+
+#################################################################
+# Time-Span Shape
+#################################################################
+
+hmsh:TimeSpanShape a sh:NodeShape ;
+    sh:targetClass cidoc-crm:E52_Time-Span ;
+    sh:name "Time-Span Shape"@en ;
+    
+    sh:property [
+        sh:path hm:earliest_possible_date ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive -500 ;
+        sh:maxInclusive 2100 ;
+        sh:message "Earliest date must be a valid year (-500 to 2100)"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:latest_possible_date ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive -500 ;
+        sh:maxInclusive 2100 ;
+        sh:message "Latest date must be a valid year (-500 to 2100)"@en ;
+    ] ;
+    
+    # Date range consistency
+    sh:sparql [
+        sh:message "Latest date must be >= earliest date"@en ;
+        sh:select """
+            SELECT $this
+            WHERE {
+                $this hm:earliest_possible_date ?early .
+                $this hm:latest_possible_date ?late .
+                FILTER (?late < ?early)
+            }
+        """ ;
+    ] .
+
+#################################################################
+# Production Event Shape
+#################################################################
+
+hmsh:ProductionEventShape a sh:NodeShape ;
+    sh:targetClass lrmoo:F32_Item_Production_Event ;
+    sh:name "Production Event Shape"@en ;
+    
+    # Must have agent (scribe)
+    sh:property [
+        sh:path cidoc-crm:P14_carried_out_by ;
+        sh:class cidoc-crm:E39_Actor ;
+        sh:message "Production must have an agent"@en ;
+        sh:severity sh:Warning ;
+    ] ;
+    
+    # Must have place
+    sh:property [
+        sh:path cidoc-crm:P7_took_place_at ;
+        sh:class cidoc-crm:E53_Place ;
+        sh:message "Production place must be a Place"@en ;
+        sh:severity sh:Warning ;
+    ] ;
+    
+    # Must have time-span
+    sh:property [
+        sh:path cidoc-crm:P4_has_time-span ;
+        sh:minCount 1 ;
+        sh:class cidoc-crm:E52_Time-Span ;
+        sh:message "Production time must be a Time-Span"@en ;
+        sh:severity sh:Violation ;
+    ] ;
+    
+    # Must produce manuscript
+    sh:property [
+        sh:path lrmoo:R27_materialized ;
+        sh:class lrmoo:F4_Manifestation_Singleton ;
+        sh:minCount 1 ;
+        sh:message "Production event must produce at least one manuscript"@en ;
+    ] .
+
+#################################################################
+# Decoration Shape
+#################################################################
+
+hmsh:DecorationShape a sh:NodeShape ;
+    sh:targetClass hm:Decoration ;
+    sh:name "Decoration Shape"@en ;
+    
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Decoration must have a description"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path cidoc-crm:P2_has_type ;
+        sh:class hm:DecorationType ;
+        sh:message "Decoration type must be a DecorationType instance"@en ;
+    ] .
+
+#################################################################
+# Binding Shape
+#################################################################
+
+hmsh:BindingShape a sh:NodeShape ;
+    sh:targetClass hm:Binding ;
+    sh:name "Binding Shape"@en ;
+    
+    sh:property [
+        sh:path cidoc-crm:P2_has_type ;
+        sh:class hm:BindingType ;
+        sh:maxCount 1 ;
+        sh:message "Binding type must be a single BindingType"@en ;
+    ] .
+
+#################################################################
+# Cross-Entity Validation Rules
+#################################################################
+
+# Manuscript must embody at least one Expression (Warning)
+hmsh:ManuscriptContentRule a sh:NodeShape ;
+    sh:targetClass lrmoo:F4_Manifestation_Singleton ;
+    sh:sparql [
+        sh:severity sh:Warning ;
+        sh:message "Manuscript should embody at least one Expression"@en ;
+        sh:select """
+            SELECT $this
+            WHERE {
+                $this a lrmoo:F4_Manifestation_Singleton .
+                FILTER NOT EXISTS {
+                    $this lrmoo:R4_embodies ?expr .
+                }
+            }
+        """ ;
+    ] .
+
+# Expression should be realized by a Work
+hmsh:ExpressionWorkRule a sh:NodeShape ;
+    sh:targetClass lrmoo:F2_Expression ;
+    sh:sparql [
+        sh:severity sh:Warning ;
+        sh:message "Expression should realize a Work"@en ;
+        sh:select """
+            SELECT $this
+            WHERE {
+                $this a lrmoo:F2_Expression .
+                FILTER NOT EXISTS {
+                    $this lrmoo:R3i_realises ?work .
+                }
+            }
+        """ ;
+    ] .
+
+#################################################################
+# NEW SHAPES for v1.3 - Text Tradition, Granularity, Canonical
+#################################################################
+
+#################################################################
+# Text Tradition Shape
+#################################################################
+
+hmsh:TextTraditionShape a sh:NodeShape ;
+    sh:targetClass hm:TextTradition ;
+    sh:name "Text Tradition Shape"@en ;
+    
+    sh:property [
+        sh:path hm:tradition_name ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Text tradition must have a name"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:tradition_description ;
+        sh:datatype xsd:string ;
+        sh:message "Tradition description must be a string"@en ;
+    ] .
+
+#################################################################
+# Textual Variant Shape
+#################################################################
+
+hmsh:TextualVariantShape a sh:NodeShape ;
+    sh:targetClass hm:TextualVariant ;
+    sh:name "Textual Variant Shape"@en ;
+    
+    sh:property [
+        sh:path hm:variant_text ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Variant must have text content"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:variant_at_location ;
+        sh:class hm:TextLocation ;
+        sh:minCount 1 ;
+        sh:message "Variant must specify its location"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:standard_text ;
+        sh:datatype xsd:string ;
+        sh:message "Standard text must be a string"@en ;
+    ] .
+
+#################################################################
+# Text Location Shape (Base)
+#################################################################
+
+hmsh:TextLocationShape a sh:NodeShape ;
+    sh:targetClass hm:TextLocation ;
+    sh:name "Text Location Shape"@en ;
+    
+    # At minimum, should have either folio_number or location_string
+    sh:or (
+        [ sh:property [
+            sh:path hm:folio_number ;
+            sh:minCount 1 ;
+        ] ]
+        [ sh:property [
+            sh:path hm:location_string ;
+            sh:minCount 1 ;
+        ] ]
+    ) ;
+    
+    sh:property [
+        sh:path hm:folio_number ;
+        sh:datatype xsd:string ;
+        sh:pattern "^[0-9]+[rvab]?$" ;
+        sh:message "Folio number must follow format: number + optional recto/verso (e.g., 15r, 23v)"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:line_number ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 200 ;
+        sh:message "Line number must be between 1 and 200"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:column_number ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 10 ;
+        sh:message "Column number must be between 1 and 10"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:word_position ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:message "Word position must be a positive integer"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:coordinates_iiif ;
+        sh:datatype xsd:string ;
+        sh:pattern "^[0-9]+,[0-9]+,[0-9]+,[0-9]+$" ;
+        sh:message "IIIF coordinates must follow x,y,w,h format"@en ;
+    ] .
+
+#################################################################
+# Text Span Shape
+#################################################################
+
+hmsh:TextSpanShape a sh:NodeShape ;
+    sh:targetClass hm:TextSpan ;
+    sh:name "Text Span Shape"@en ;
+    
+    sh:property [
+        sh:path hm:span_start ;
+        sh:class hm:TextLocation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Span must have exactly one start location"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:span_end ;
+        sh:class hm:TextLocation ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Span must have exactly one end location"@en ;
+    ] .
+
+#################################################################
+# Canonical Reference Shape
+#################################################################
+
+hmsh:CanonicalReferenceShape a sh:NodeShape ;
+    sh:targetClass hm:CanonicalReference ;
+    sh:name "Canonical Reference Shape"@en ;
+    
+    sh:property [
+        sh:path hm:canonical_hierarchy ;
+        sh:class hm:CanonicalHierarchyType ;
+        sh:minCount 1 ;
+        sh:message "Canonical reference must specify hierarchy type"@en ;
+    ] .
+
+#################################################################
+# Biblical Reference Shape
+#################################################################
+
+hmsh:BiblicalReferenceShape a sh:NodeShape ;
+    sh:targetClass hm:BiblicalReference ;
+    sh:name "Biblical Reference Shape"@en ;
+    
+    sh:property [
+        sh:path hm:book_name ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Biblical reference must have a book name"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:chapter_number ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 150 ;
+        sh:message "Chapter number must be between 1 and 150"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:verse_number ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 200 ;
+        sh:message "Verse number must be between 1 and 200"@en ;
+    ] .
+
+#################################################################
+# Mishnaic Reference Shape
+#################################################################
+
+hmsh:MishnaicReferenceShape a sh:NodeShape ;
+    sh:targetClass hm:MishnaicReference ;
+    sh:name "Mishnaic Reference Shape"@en ;
+    
+    sh:property [
+        sh:path hm:tractate_name ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Mishnaic reference must have tractate name"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:chapter_number ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 30 ;
+        sh:message "Mishnah chapter must be between 1 and 30"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:mishnah_number ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 25 ;
+        sh:message "Mishnah number must be between 1 and 25"@en ;
+    ] .
+
+#################################################################
+# Talmudic Reference Shape
+#################################################################
+
+hmsh:TalmudicReferenceShape a sh:NodeShape ;
+    sh:targetClass hm:TalmudicReference ;
+    sh:name "Talmudic Reference Shape"@en ;
+    
+    sh:property [
+        sh:path hm:tractate_name ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Talmudic reference must have tractate name"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:talmud_folio ;
+        sh:datatype xsd:string ;
+        sh:pattern "^[0-9]+[ab]$" ;
+        sh:message "Talmud folio must follow format: number + a/b (e.g., 2a, 15b)"@en ;
+    ] .
+
+#################################################################
+# Halachic Reference Shape
+#################################################################
+
+hmsh:HalachicReferenceShape a sh:NodeShape ;
+    sh:targetClass hm:HalachicReference ;
+    sh:name "Halachic Reference Shape"@en ;
+    sh:property [
+        sh:path hm:halacha_section ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Halachic reference must have halacha section"@en ;
+    ] .
+
+#################################################################
+# Stemma Position Shape
+#################################################################
+
+hmsh:StemmaPositionShape a sh:NodeShape ;
+    sh:targetClass hm:StemmaPosition ;
+    sh:name "Stemma Position Shape"@en ;
+    
+    sh:property [
+        sh:path hm:stemma_parent ;
+        sh:class hm:StemmaPosition ;
+        sh:maxCount 1 ;
+        sh:message "Stemma position can have at most one parent"@en ;
+    ] .
+
+#################################################################
+# Codicological Unit Status Shape (Enhanced)
+#################################################################
+
+hmsh:CodicologicalUnitStatusRule a sh:NodeShape ;
+    sh:targetClass hm:Codicological_Unit ;
+    sh:property [
+        sh:path hm:has_unit_status ;
+        sh:class hm:UnitStatusType ;
+        sh:maxCount 1 ;
+        sh:message "Unit can have at most one status type"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:is_foreign_addition ;
+        sh:datatype xsd:boolean ;
+        sh:maxCount 1 ;
+        sh:message "Foreign addition flag must be a single boolean"@en ;
+    ] .
+
+#################################################################
+# Paleographical Unit Shape
+#################################################################
+
+hmsh:PaleographicalUnitShape a sh:NodeShape ;
+    sh:targetClass hm:Paleographical_Unit ;
+    sh:name "Paleographical Unit Shape"@en ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Paleographical unit must have a label"@en ;
+    ] .
+
+#################################################################
+# Multi-Volume Set Shape
+#################################################################
+
+hmsh:MultiVolumeSetShape a sh:NodeShape ;
+    sh:targetClass hm:MultiVolumeSet ;
+    sh:name "Multi-Volume Set Shape"@en ;
+    sh:property [
+        sh:path hm:has_volume ;
+        sh:minCount 2 ;
+        sh:message "Multi-volume set must have at least two volumes"@en ;
+    ] .
+
+#################################################################
+# Anthology Position Shape
+#################################################################
+
+hmsh:AnthologyPositionShape a sh:NodeShape ;
+    sh:targetClass hm:AnthologyPosition ;
+    sh:name "Anthology Position Shape"@en ;
+    sh:property [
+        sh:path hm:anthology_order ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ;
+        sh:message "Anthology position must have anthology order"@en ;
+    ] .
+
+#################################################################
+# Scribal Intervention Shape
+#################################################################
+
+hmsh:ScribalInterventionShape a sh:NodeShape ;
+    sh:targetClass hm:ScribalIntervention ;
+    sh:name "Scribal Intervention Shape"@en ;
+    sh:property [
+        sh:path hm:intervention_location ;
+        sh:class hm:TextLocation ;
+        sh:minCount 1 ;
+        sh:message "Scribal intervention must have intervention location"@en ;
+    ] .
+
+#################################################################
+# Marginalia Shape
+#################################################################
+
+hmsh:MarginaliaShape a sh:NodeShape ;
+    sh:targetClass hm:Marginalia ;
+    sh:name "Marginalia Shape"@en ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Marginalia must have a label"@en ;
+    ] .
+
+#################################################################
+# Watermark Shape
+#################################################################
+
+hmsh:WatermarkShape a sh:NodeShape ;
+    sh:targetClass hm:Watermark ;
+    sh:name "Watermark Shape"@en ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "Watermark must have a label"@en ;
+    ] .
+
+#################################################################
+# Physical Holding Shape
+#################################################################
+
+hmsh:PhysicalHoldingShape a sh:NodeShape ;
+    sh:targetClass hm:PhysicalHolding ;
+    sh:name "Physical Holding Shape"@en ;
+    sh:property [
+        sh:path hm:holding_institution ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Physical holding must have holding institution"@en ;
+    ] .
+
+#################################################################
+# Digital Access Shape
+#################################################################
+
+hmsh:DigitalAccessShape a sh:NodeShape ;
+    sh:targetClass hm:DigitalAccess ;
+    sh:name "Digital Access Shape"@en ;
+    sh:property [
+        sh:path hm:digital_access_url ;
+        sh:datatype xsd:anyURI ;
+        sh:minCount 1 ;
+        sh:message "Digital access must have digital access URL"@en ;
+    ] .
+
+#################################################################
+# Usage Restriction Shape
+#################################################################
+
+hmsh:UsageRestrictionShape a sh:NodeShape ;
+    sh:targetClass hm:UsageRestriction ;
+    sh:name "Usage Restriction Shape"@en ;
+    sh:property [
+        sh:path hm:restriction_type ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Usage restriction must have restriction type"@en ;
+    ] .
+
+#################################################################
+# Rights Determination Shape
+#################################################################
+
+hmsh:RightsDeterminationShape a sh:NodeShape ;
+    sh:targetClass hm:RightsDetermination ;
+    sh:name "Rights Determination Shape"@en ;
+    sh:property [
+        sh:path hm:rights_status ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "Rights determination must have rights status"@en ;
+    ] .
+
+#################################################################
+# Evidence Chain Shape (v1.4 Epistemological)
+#################################################################
+
+hmsh:EvidenceChainShape a sh:NodeShape ;
+    sh:targetClass hm:EvidenceChain ;
+    sh:name "Evidence Chain Shape"@en ;
+    sh:property [
+        sh:path hm:evidence_step ;
+        sh:class hm:EvidenceStep ;
+        sh:minCount 1 ;
+        sh:message "Evidence chain must have at least one evidence step"@en ;
+    ] .
+
+#################################################################
+# Paradigm Bridge Shape (v1.4 Dual Paradigm)
+#################################################################
+
+hmsh:ParadigmBridgeShape a sh:NodeShape ;
+    sh:targetClass hm:ParadigmBridge ;
+    sh:name "Paradigm Bridge Shape"@en ;
+    sh:property [
+        sh:path hm:has_linked_work ;
+        sh:class lrmoo:F1_Work ;
+        sh:minCount 1 ;
+        sh:message "Paradigm bridge must link to a Work"@en ;
+    ] ;
+    sh:property [
+        sh:path hm:has_linked_tradition ;
+        sh:class hm:TextTradition ;
+        sh:minCount 1 ;
+        sh:message "Paradigm bridge must link to a TextTradition"@en ;
+    ] .
+
+#################################################################
+# Composite Codicological Unit Shape (v1.4 Nested CU)
+#################################################################
+
+hmsh:CompositeCodicologicalUnitShape a sh:NodeShape ;
+    sh:targetClass hm:CompositeCodicologicalUnit ;
+    sh:name "Composite Codicological Unit Shape"@en ;
+    sh:property [
+        sh:path hm:has_sub_unit ;
+        sh:class hm:Codicological_Unit ;
+        sh:minCount 1 ;
+        sh:message "Composite codicological unit must have at least one sub-unit"@en ;
+    ] .
+
+#################################################################
+# Manuscript View Shape (v1.4 Dual Paradigm)
+#################################################################
+
+hmsh:ManuscriptViewShape a sh:NodeShape ;
+    sh:targetClass hm:ManuscriptView ;
+    sh:name "Manuscript View Shape"@en ;
+    sh:property [
+        sh:path hm:view_type ;
+        sh:class hm:ViewType ;
+        sh:minCount 1 ;
+        sh:message "Manuscript view must have a view type"@en ;
+    ] .
+
+#################################################################
+# Expression-Tradition Link Validation
+#################################################################
+
+hmsh:ExpressionTraditionRule a sh:NodeShape ;
+    sh:targetClass lrmoo:F2_Expression ;
+    sh:property [
+        sh:path hm:belongs_to_tradition ;
+        sh:class hm:TextTradition ;
+        sh:message "Tradition link must be to a TextTradition instance"@en ;
+        sh:severity sh:Info ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:has_variant_reading ;
+        sh:class hm:TextualVariant ;
+        sh:message "Variant must be a TextualVariant instance"@en ;
+    ] ;
+    
+    sh:property [
+        sh:path hm:covers_canonical_range ;
+        sh:class hm:CanonicalReference ;
+        sh:message "Canonical range must be a CanonicalReference"@en ;
+    ] .

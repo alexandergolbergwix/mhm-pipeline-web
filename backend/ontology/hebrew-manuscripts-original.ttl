@@ -1,0 +1,1953 @@
+@prefix : <http://data.hebrewmanuscripts.org/ontology/vatican44/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+@prefix cidoc-crm: <http://www.cidoc-crm.org/cidoc-crm/> .
+@prefix HebrewManuscripts: <http://www.ontology.org.il/HebrewManuscripts/2025-08-19#> .
+@base <http://data.hebrewmanuscripts.org/ontology/vatican44/> .
+
+<http://www.ontology.org.il/HebrewManuscripts/2025-08-19> rdf:type owl:Ontology ;
+                                                           owl:versionIRI <http://www.ontology.org.il/HebrewManuscripts/2025-08-19/1.0> ;
+                                                           owl:imports <http://iflastandards.info/ns/lrm/lrmoo/1.0> .
+
+#################################################################
+#    Annotation properties
+#################################################################
+
+###  http://iflastandards.info/ns/lrm/lrmoo/R16_created
+lrmoo:R16_created rdf:type owl:AnnotationProperty .
+
+
+###  http://iflastandards.info/ns/lrm/lrmoo/R27_materialized
+lrmoo:R27_materialized rdf:type owl:AnnotationProperty .
+
+
+###  http://www.w3.org/2002/07/owl#sameAs
+owl:sameAs rdf:type owl:AnnotationProperty ;
+           rdfs:range owl:Thing .
+
+
+#################################################################
+#    Object Properties
+#################################################################
+
+###  http://iflastandards.info/ns/lrm/lrmoo/R3_is_realised_in
+lrmoo:R3_is_realised_in rdfs:domain lrmoo:F1_Work ;
+                        rdfs:range lrmoo:F2_Expression .
+
+
+###  http://iflastandards.info/ns/lrm/lrmoo/R4_embodies
+lrmoo:R4_embodies rdfs:domain lrmoo:F4_Manifestation_Singleton .
+
+
+###  http://iflastandards.info/ns/lrm/lrmoo/R4i_is_embodied_in
+lrmoo:R4i_is_embodied_in rdfs:domain lrmoo:F2_Expression ;
+                         rdfs:range lrmoo:F3_Manifestation ,
+                                    lrmoo:F4_Manifestation_Singleton .
+
+
+###  http://iflastandards.info/ns/lrm/lrmoo/R5_has_component
+lrmoo:R5_has_component rdf:type owl:ObjectProperty ;
+                       rdfs:subPropertyOf cidoc-crm:P46_is_composed_of ;
+                       rdf:type owl:TransitiveProperty ;
+                       rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                       rdfs:range lrmoo:F3_Manifestation ,
+                                  lrmoo:F4_Manifestation_Singleton ;
+                       rdfs:comment """R5 has component is a specialization of P46 is composed of, 
+used specifically for bibliographic entities (Manifestations, manuscripts)."""@en ,
+                                    """Domain/Range: F3 Manifestation ↔ F3 Manifestation
+
+משמעות: קישור פיזי/ביבליו־טכני בין חלקי מהדורה (Manifestation).
+
+שימוש: תיאור חלוקה של מהדורה לחלקים פיזיים.
+
+דוגמאות:
+
+מהדורת תלמוד בבלי מורכבת מ־6 כרכים (כל כרך הוא Manifestation).
+
+כתב יד גדול מורכב משני כרכים (כרך א' + כרך ב').""" .
+
+
+###  http://iflastandards.info/ns/lrm/lrmoo/R5i_is_component_by
+lrmoo:R5i_is_component_by rdfs:subPropertyOf cidoc-crm:P46_is_composed_of .
+
+
+###  http://iflastandards.info/ns/lrmoo/R10_has_member
+<http://iflastandards.info/ns/lrmoo/R10_has_member> rdf:type owl:ObjectProperty ;
+                                                    owl:inverseOf <http://iflastandards.info/ns/lrmoo/R10i_is_member_of> ;
+                                                    rdfs:domain lrmoo:F1_Work ;
+                                                    rdfs:range lrmoo:F1_Work ;
+                                                    rdfs:comment """Domain/Range: F1 Work ↔ F1 Work
+
+משמעות: קישור אינטלקטואלי/תוכני בין חלקי יצירה (Work).
+
+שימוש: תיאור מבנה היררכי של יצירה מבחינה רעיונית/ספרותית.
+
+דוגמאות:
+
+משנה תורה כוללת את ספר המדע, ספר אהבה, ספר זמנים וכו'.
+
+תנ\"ך כולל את תורה, נביאים, כתובים.""" .
+
+
+###  http://iflastandards.info/ns/lrmoo/R10i_is_member_of
+<http://iflastandards.info/ns/lrmoo/R10i_is_member_of> rdf:type owl:ObjectProperty .
+
+
+###  http://iflastandards.info/ns/lrmoo/R16_created
+<http://iflastandards.info/ns/lrmoo/R16_created> rdf:type owl:ObjectProperty ;
+                                                 rdfs:subPropertyOf cidoc-crm:P94_has_created ;
+                                                 rdfs:domain <http://iflastandards.info/ns/lrmoo/F27_Work_Creation> ;
+                                                 rdfs:range lrmoo:F1_Work ;
+                                                 rdfs:label "created (Work Creation → Work)"@en .
+
+
+###  http://iflastandards.info/ns/lrmoo/R17_created
+<http://iflastandards.info/ns/lrmoo/R17_created> rdf:type owl:ObjectProperty ;
+                                                 rdfs:subPropertyOf cidoc-crm:P94_has_created ;
+                                                 rdfs:domain <http://iflastandards.info/ns/lrmoo/F28_Expression_Creation> ;
+                                                 rdfs:range lrmoo:F2_Expression ;
+                                                 rdfs:label "created (Expression Creation → Expression)"@en .
+
+
+###  http://iflastandards.info/ns/lrmoo/R24_created
+<http://iflastandards.info/ns/lrmoo/R24_created> rdf:type owl:ObjectProperty ;
+                                                 rdfs:subPropertyOf cidoc-crm:P94_has_created ;
+                                                 rdfs:domain <http://iflastandards.info/ns/lrmoo/F30_Manifestation_Creation> ;
+                                                 rdfs:range lrmoo:F3_Manifestation ;
+                                                 rdfs:label "created (Manifestation Creation → Manifestation)"@en .
+
+
+###  http://iflastandards.info/ns/lrmoo/R27_materialized
+<http://iflastandards.info/ns/lrmoo/R27_materialized> rdf:type owl:ObjectProperty ;
+                                                      rdfs:subPropertyOf cidoc-crm:P94_has_created ;
+                                                      rdfs:domain <http://iflastandards.info/ns/lrmoo/F32_Item_Production_Event> ;
+                                                      rdfs:range lrmoo:F4_Manifestation_Singleton ;
+                                                      rdfs:label "materialized (Item Production → Item)"@en .
+
+
+###  http://iflastandards.info/ns/lrmoo/R69_has_physical_form
+<http://iflastandards.info/ns/lrmoo/R69_has_physical_form> rdf:type owl:ObjectProperty ;
+                                                           rdfs:subPropertyOf owl:topObjectProperty ;
+                                                           rdfs:domain lrmoo:F3_Manifestation ,
+                                                                       lrmoo:F4_Manifestation_Singleton ;
+                                                           rdfs:range cidoc-crm:E55_Type ;
+                                                           rdfs:comment """This property associates an instance of F3 [F4]
+ Manifestation with an instance of E55 Type
+describing the kind of physical form that characterizes instances of F5 Item carrying this
+F3 Manifestation.""" ;
+                                                           rdfs:label "as physical form"@en ,
+                                                                      "בעל צורה פיסית"@he .
+
+
+###  http://iflastandards.info/ns/lrmoo/R7_exemplifies
+<http://iflastandards.info/ns/lrmoo/R7_exemplifies> rdf:type owl:ObjectProperty ;
+                                                    owl:inverseOf <http://iflastandards.info/ns/lrmoo/R7i_is_exemplified_by> ;
+                                                    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                                    rdfs:range lrmoo:F3_Manifestation ;
+                                                    rdfs:comment "עותק יחידני (כתב יד או ספר מודפס) מגלם מהדורה (Manifestation). לדוגמה: כתב יד פריס Heb. 671 מגלם את המהדורה הספרדית של 'משנה תורה'.\""@he ;
+                                                    rdfs:label "exemplifies"@en ,
+                                                               "מגלם"@he .
+
+
+###  http://iflastandards.info/ns/lrmoo/R7i_is_exemplified_by
+<http://iflastandards.info/ns/lrmoo/R7i_is_exemplified_by> rdf:type owl:ObjectProperty .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P102_has_title
+cidoc-crm:P102_has_title rdf:type owl:ObjectProperty ;
+                         rdfs:domain cidoc-crm:E22_Human-Made_Object ;
+                         rdfs:range cidoc-crm:E35_Title ;
+                         rdfs:comment "מקשרת בין אובייקט לכותרת שלו" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P138i_has_representation
+cidoc-crm:P138i_has_representation rdf:type owl:ObjectProperty ;
+                                   rdfs:subPropertyOf owl:topObjectProperty ;
+                                   rdfs:range cidoc-crm:E73_Information_Object ;
+                                   rdfs:label "has representation@en" ,
+                                              "יש ייצוג@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P14_carried_out_by
+cidoc-crm:P14_carried_out_by rdf:type owl:ObjectProperty ;
+                             rdfs:domain cidoc-crm:E7_Activity ;
+                             rdfs:range cidoc-crm:E39_Actor ;
+                             rdfs:label "carried out by"@en ,
+                                        "בוצע על ידי"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P16_used_specific_object
+cidoc-crm:P16_used_specific_object rdf:type owl:ObjectProperty ;
+                                   rdfs:domain cidoc-crm:E7_Activity ;
+                                   rdfs:comment """MS_Barberini_82_Digitization_Event P16_used_specific_object MS_Barberini_82
+זה אומר: אירוע הדיגיטציה השתמש בכתב היד הפיזי ברברין 82 כדי ליצור את הגרסה הדיגיטלית\"""" ;
+                                   rdfs:label "used specific object@en" ,
+                                              "השתמש בחפץ ספציפי@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P16i_was_used_for
+cidoc-crm:P16i_was_used_for rdf:type owl:ObjectProperty ;
+                            rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                            rdfs:range cidoc-crm:E7_Activity ;
+                            rdfs:label "was used for@en" ,
+                                       "שימש עבור@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P1_is_identified_by
+cidoc-crm:P1_is_identified_by rdf:type owl:ObjectProperty ;
+                              rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                              rdfs:range cidoc-crm:E42_Identifier ;
+                              rdfs:label "is identified by"@en ,
+                                         "מזוהה על ידי"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P23_transferred_title_to
+cidoc-crm:P23_transferred_title_to rdf:type owl:ObjectProperty ;
+                                   owl:inverseOf cidoc-crm:P24_transferred_title_from ;
+                                   rdfs:domain cidoc-crm:E8_Acquisition ;
+                                   rdfs:range cidoc-crm:E39_Actor ;
+                                   rdfs:label "transferred title to"@en ,
+                                              "הועבר אל"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P24_transferred_title_from
+cidoc-crm:P24_transferred_title_from rdf:type owl:ObjectProperty ;
+                                     rdfs:domain cidoc-crm:E8_Acquisition ;
+                                     rdfs:range cidoc-crm:E39_Actor ;
+                                     rdfs:label "transferred title from"@en ,
+                                                "הועבר מ"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P28_custody_surrendered_by
+cidoc-crm:P28_custody_surrendered_by rdf:type owl:ObjectProperty ;
+                                     owl:inverseOf cidoc-crm:P28i_custody_surrendered_in ;
+                                     rdfs:domain cidoc-crm:E10_Transfer_of_Custody ;
+                                     rdfs:range cidoc-crm:E39_Actor ;
+                                     rdfs:label "custody surrendered by"@en ,
+                                                "מסר משמורת"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P28i_custody_surrendered_in
+cidoc-crm:P28i_custody_surrendered_in rdf:type owl:ObjectProperty ;
+                                      rdfs:domain cidoc-crm:E39_Actor ;
+                                      rdfs:range cidoc-crm:E10_Transfer_of_Custody .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P29_custody_received_by
+cidoc-crm:P29_custody_received_by rdf:type owl:ObjectProperty ;
+                                  rdfs:domain cidoc-crm:E10_Transfer_of_Custody ;
+                                  rdfs:range cidoc-crm:E39_Actor ;
+                                  rdfs:label "custody received by"@en ,
+                                             "קיבל משמורת"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P2_has_type
+cidoc-crm:P2_has_type rdf:type owl:ObjectProperty ;
+                      rdfs:range cidoc-crm:E55_Type ;
+                      rdfs:label "has type"@en ,
+                                 "מסוג"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P46_is_composed_of
+cidoc-crm:P46_is_composed_of rdf:type owl:ObjectProperty ;
+                             rdfs:subPropertyOf owl:topObjectProperty ;
+                             rdfs:domain cidoc-crm:E22_Human-Made_Object ;
+                             rdfs:range cidoc-crm:E22_Human-Made_Object ;
+                             rdfs:label "is composed of"@en ,
+                                        "מורכב מ"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P4_has_time-span
+cidoc-crm:P4_has_time-span rdf:type owl:ObjectProperty ;
+                           rdfs:domain cidoc-crm:E7_Activity ;
+                           rdfs:range cidoc-crm:E52_Time-Span ;
+                           rdfs:label "has time-span@en" ,
+                                      "תקופת זמן@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P70_documents
+cidoc-crm:P70_documents rdf:type owl:ObjectProperty ;
+                        rdfs:subPropertyOf owl:topObjectProperty ;
+                        rdfs:domain lrmoo:F3_Manifestation ;
+                        rdfs:range lrmoo:F4_Manifestation_Singleton ;
+                        rdfs:label "documents"@en ,
+                                   "מתעד"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P70i_is_documented_in
+cidoc-crm:P70i_is_documented_in rdf:type owl:ObjectProperty ;
+                                rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                rdfs:range lrmoo:F3_Manifestation ;
+                                rdfs:comment "Links a manuscript to bibliographic sources that document it" ;
+                                rdfs:label "is documented in"@en ,
+                                           "מתועד ב"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P72_has_language
+cidoc-crm:P72_has_language rdf:type owl:ObjectProperty ;
+                           rdfs:domain lrmoo:F2_Expression ;
+                           rdfs:range cidoc-crm:E56_Language ;
+                           rdfs:label "has language\""@en ,
+                                      "כתוב בשפה"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P74_has_current_or_former_residence
+cidoc-crm:P74_has_current_or_former_residence rdf:type owl:ObjectProperty ;
+                                              rdfs:domain cidoc-crm:E39_Actor ;
+                                              rdfs:range cidoc-crm:E53_Place ;
+                                              rdfs:label "has current or former residence"@en ,
+                                                         "ממוקם ב"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P7_took_place_at
+cidoc-crm:P7_took_place_at rdf:type owl:ObjectProperty ;
+                           rdfs:domain cidoc-crm:E7_Activity ;
+                           rdfs:range cidoc-crm:E53_Place ;
+                           rdfs:label "\"התרחש ב\""@he ,
+                                      "took place at"@en .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P94_has_created
+cidoc-crm:P94_has_created rdf:type owl:ObjectProperty ;
+                          rdfs:domain cidoc-crm:E65_Creation ;
+                          rdfs:range cidoc-crm:E28_Conceptual_Object ;
+                          rdfs:label "has created"@en ,
+                                     "יצר"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#P44_has_condition
+HebrewManuscripts:P44_has_condition rdf:type owl:ObjectProperty ;
+                                    rdfs:range cidoc-crm:E55_Type ;
+                                    rdfs:comment "This property describes the condition of an object (excellent, good, fair, poor, damaged)" ;
+                                    rdfs:label "has condition"@en ,
+                                               "מצב פיסי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_Script_Mode
+HebrewManuscripts:has_Script_Mode rdf:type owl:ObjectProperty ;
+                                  rdfs:subPropertyOf owl:topObjectProperty ;
+                                  rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                  rdfs:range cidoc-crm:E55_Type ;
+                                  rdfs:label "Scripts Types/Modes"@en ,
+                                             "סוג הכתב (מרובע, בינוני,רהוט)"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_colophon
+HebrewManuscripts:has_colophon rdf:type owl:ObjectProperty ;
+                               rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                               rdfs:range HebrewManuscripts:Colophon ;
+                               rdfs:label "has colophon@en" ,
+                                          "יש קולופון@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_date_of_creation
+HebrewManuscripts:has_date_of_creation rdf:type owl:ObjectProperty ;
+                                       rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                       rdfs:range cidoc-crm:E52_Time-Span .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_material
+HebrewManuscripts:has_material rdf:type owl:ObjectProperty ;
+                               rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                               rdfs:range cidoc-crm:E57_Material ;
+                               rdfs:label "has material@en" ,
+                                          "חומר@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_script_type
+HebrewManuscripts:has_script_type rdf:type owl:ObjectProperty ;
+                                  rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                  rdfs:range cidoc-crm:E55_Type ;
+                                  rdfs:label "has script type@en" ,
+                                             "סוג כתב@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#mentions_date
+HebrewManuscripts:mentions_date rdf:type owl:ObjectProperty ;
+                                rdfs:domain HebrewManuscripts:Colophon ;
+                                rdfs:range cidoc-crm:E52_Time-Span .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#mentions_person
+HebrewManuscripts:mentions_person rdf:type owl:ObjectProperty ;
+                                  rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                  rdfs:range cidoc-crm:E21_Person ;
+                                  rdfs:label "שם אדם שמוזכר בכתב היד." .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#mentions_place
+HebrewManuscripts:mentions_place rdf:type owl:ObjectProperty ;
+                                 rdfs:domain HebrewManuscripts:Colophon ;
+                                 rdfs:range cidoc-crm:E53_Place .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#mentions_scribe
+HebrewManuscripts:mentions_scribe rdf:type owl:ObjectProperty ;
+                                  rdfs:domain HebrewManuscripts:Colophon ;
+                                  rdfs:range cidoc-crm:E21_Person ;
+                                  rdfs:label "סופר מוזכר"@he ,
+                                             "mentions scribe@en" .
+
+
+#################################################################
+#    Data properties
+#################################################################
+
+###  http://www.cidoc-crm.org/cidoc-crm/P190_has_symbolic_content
+cidoc-crm:P190_has_symbolic_content rdf:type owl:DatatypeProperty ;
+                                    rdfs:domain cidoc-crm:E33_Linguistic_Object ;
+                                    rdfs:range xsd:string ;
+                                    rdfs:comment "This property allows for the direct linking of an E62 String with its string content\"" ;
+                                    rdfs:label "has symbolic content" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P82a_begin_of_the_begin
+cidoc-crm:P82a_begin_of_the_begin rdf:type owl:DatatypeProperty ;
+                                  rdfs:domain cidoc-crm:E21_Person ;
+                                  rdfs:range xsd:integer ;
+                                  rdfs:label "end of the end"@en ,
+                                             "סוף הסוף"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/P82b_end_of_the_end
+cidoc-crm:P82b_end_of_the_end rdf:type owl:DatatypeProperty ;
+                              rdfs:domain cidoc-crm:E21_Person ;
+                              rdfs:range xsd:integer ;
+                              rdfs:label "end of the end"@en ,
+                                         "סוף הסוף"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#colophon_text
+HebrewManuscripts:colophon_text rdf:type owl:DatatypeProperty ;
+                                rdfs:domain HebrewManuscripts:Colophon ;
+                                rdfs:range xsd:string .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#date_attribution_source
+HebrewManuscripts:date_attribution_source rdf:type owl:DatatypeProperty ;
+                                          rdfs:range xsd:string ;
+                                          rdfs:comment "Values: \"colophon\", \"paleographic\", \"historical\", \"catalog\"" ;
+                                          rdfs:label "מקור ייחוס התאריך"@he ,
+                                                     "date attribution source@en" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#earliest_possible_date
+HebrewManuscripts:earliest_possible_date rdf:type owl:DatatypeProperty ;
+                                         rdfs:domain cidoc-crm:E52_Time-Span ;
+                                         rdfs:range xsd:integer ;
+                                         rdfs:label "earliest possible date"@en ,
+                                                    "תאריך מוקדם ביותר"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#external_identifier_nli
+HebrewManuscripts:external_identifier_nli rdf:type owl:DatatypeProperty ;
+                                          rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                          rdfs:range xsd:string ;
+                                          rdfs:comment "Identifier from National Library of Israel authorities" ;
+                                          rdfs:label "NLI Identifier"@en ,
+                                                     "מזהה NLI"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#external_uri_nli
+HebrewManuscripts:external_uri_nli rdf:type owl:DatatypeProperty ;
+                                   rdfs:domain HebrewManuscripts:SubjectType ;
+                                   rdfs:range xsd:anyURI ;
+                                   rdfs:comment "URI from National Library of Israel authorities" ;
+                                   rdfs:label "NLI URI"@en ,
+                                              "קישור NLI"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#external_wikidata_id
+HebrewManuscripts:external_wikidata_id rdf:type owl:DatatypeProperty ;
+                                       rdfs:subPropertyOf owl:topDataProperty ;
+                                       rdfs:domain owl:Thing ;
+                                       rdfs:range xsd:string ;
+                                       rdfs:comment "Wikidata entity identifier (e.g., Q1805)" ;
+                                       rdfs:label "Wikidata ID"@en .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#external_wikidata_uri
+HebrewManuscripts:external_wikidata_uri rdf:type owl:DatatypeProperty ;
+                                        rdfs:domain owl:Thing ;
+                                        rdfs:range xsd:anyURI ;
+                                        rdfs:comment "Full Wikidata entity URI" ;
+                                        rdfs:label "Wikidata URI"@en .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_digital_representation_url
+HebrewManuscripts:has_digital_representation_url rdf:type owl:DatatypeProperty ;
+                                                 rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                                 rdfs:range xsd:anyURI ;
+                                                 rdfs:label "has digital representation URL@en" ,
+                                                            "קישור לייצוג דיגיטלי@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_folio_range
+HebrewManuscripts:has_folio_range rdf:type owl:DatatypeProperty ;
+                                  rdfs:range xsd:string ;
+                                  rdfs:label "has folio range@en" ,
+                                             "טווח דפים@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_height_mm
+HebrewManuscripts:has_height_mm rdf:type owl:DatatypeProperty ;
+                                rdfs:range xsd:decimal ;
+                                rdfs:label "height (mm)@en" ,
+                                           "גובה (מ\"מ)@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_number_of_folios
+HebrewManuscripts:has_number_of_folios rdf:type owl:DatatypeProperty ;
+                                       rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                       rdfs:range xsd:int ;
+                                       rdfs:label "has number of folios@en" ,
+                                                  "מספר דפים@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_title
+HebrewManuscripts:has_title rdf:type owl:DatatypeProperty ;
+                            rdfs:domain lrmoo:F1_Work ;
+                            rdfs:range xsd:string .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#has_width_mm
+HebrewManuscripts:has_width_mm rdf:type owl:DatatypeProperty ;
+                               rdfs:range xsd:decimal ;
+                               rdfs:label "width (mm)@en" ,
+                                          "רוחב (מ\"מ)@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#latest_possible_date
+HebrewManuscripts:latest_possible_date rdf:type owl:DatatypeProperty ;
+                                       rdfs:domain cidoc-crm:E52_Time-Span ;
+                                       rdfs:range xsd:integer ;
+                                       rdfs:label "latest possible date"@en ,
+                                                  "תאריך מאוחר ביותר"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#material_arrangement
+HebrewManuscripts:material_arrangement rdf:type owl:DatatypeProperty ;
+                                       rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                       rdfs:range xsd:string ;
+                                       rdfs:label "material arrangement@en" ,
+                                                  "סידור חומרים@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#mentions_occasion
+HebrewManuscripts:mentions_occasion rdf:type owl:DatatypeProperty ;
+                                    rdfs:domain HebrewManuscripts:Colophon ;
+                                    rdfs:range xsd:string ;
+                                    rdfs:comment "Records the occasion or purpose mentioned in the colophon" ;
+                                    rdfs:label "mentions occasion"@en ,
+                                               "מזכיר אירוע"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#opening_text
+HebrewManuscripts:opening_text rdf:type owl:DatatypeProperty ;
+                               rdfs:domain lrmoo:F2_Expression ;
+                               rdfs:range xsd:string ;
+                               rdfs:label "opening text"@en ,
+                                          "טקסט פתיחה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#ownership_history
+HebrewManuscripts:ownership_history rdf:type owl:DatatypeProperty ;
+                                    rdfs:range xsd:string ;
+                                    rdfs:comment "Chronological list of owners" ;
+                                    rdfs:label "ownership history"@en ,
+                                               "היסטוריית בעלות"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#place_attribution_source
+HebrewManuscripts:place_attribution_source rdf:type owl:DatatypeProperty ;
+                                           rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+                                           rdfs:range xsd:string ;
+                                           rdfs:comment "Values: \"colophon\", \"paleographic\", \"historical\", \"catalog\"" ;
+                                           rdfs:label "place attribution source@en" ,
+                                                      "מקור ייחוס מקום@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#sfardata_id
+HebrewManuscripts:sfardata_id rdf:type owl:DatatypeProperty ;
+                              rdfs:subPropertyOf owl:topDataProperty ;
+                              rdfs:range xsd:string ;
+                              rdfs:comment "Identifier from Sfardata database" ;
+                              rdfs:label "Sfardata ID"@en ,
+                                         "מזהה Sfardata"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#variation_note
+HebrewManuscripts:variation_note rdf:type owl:DatatypeProperty ;
+                                 rdfs:domain lrmoo:F2_Expression ;
+                                 rdfs:range xsd:string ;
+                                 rdfs:label "variation note"@en ,
+                                            "הערת וריאציה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#viaf_id
+HebrewManuscripts:viaf_id rdf:type owl:DatatypeProperty ;
+                          rdfs:domain cidoc-crm:E21_Person ;
+                          rdfs:range xsd:string ;
+                          rdfs:label "VIAF ID"@en ,
+                                     "מזהה VIAF"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#wikidata_id
+HebrewManuscripts:wikidata_id rdf:type owl:DatatypeProperty ;
+                              rdfs:domain cidoc-crm:E21_Person ;
+                              rdfs:range xsd:string ;
+                              rdfs:label "Wikidata ID"@en ,
+                                         "מזהה ויקידאטה"@he .
+
+
+#################################################################
+#    Classes
+#################################################################
+
+###  http://iflastandards.info/ns/lrm/lrmoo/F3_Manifestation
+lrmoo:F3_Manifestation rdfs:subClassOf cidoc-crm:E22_Human-Made_Object .
+
+
+###  http://iflastandards.info/ns/lrm/lrmoo/F4_Manifestation_Singleton
+lrmoo:F4_Manifestation_Singleton rdf:type owl:Class ;
+                                 owl:equivalentClass <http://iflastandards.info/ns/lrmoo/F5_Item> ;
+                                 rdfs:subClassOf lrmoo:F3_Manifestation ;
+                                 rdfs:comment "A unique physical object that embodies an expression"@en ,
+                                              """In LRMoo: F4 Deprecated. Merged with F3 Manifestation and 
+requires a single instance of F5 Item to be instantiated""" ;
+                                 rdfs:label "Manifestation Singleton"@en ,
+                                            "עותק יחיד"@he .
+
+
+###  http://iflastandards.info/ns/lrmoo/F27_Work_Creation
+<http://iflastandards.info/ns/lrmoo/F27_Work_Creation> rdf:type owl:Class ;
+                                                       rdfs:subClassOf cidoc-crm:E65_Creation ;
+                                                       rdfs:label "פעולה שיצרה Work (רעיון / תוכן מופשט)."@he .
+
+
+###  http://iflastandards.info/ns/lrmoo/F28_Expression_Creation
+<http://iflastandards.info/ns/lrmoo/F28_Expression_Creation> rdf:type owl:Class ;
+                                                             rdfs:subClassOf cidoc-crm:E12_Production ,
+                                                                             cidoc-crm:E65_Creation ;
+                                                             rdfs:label "פעולה שיצרה Expression (נוסח מסוים של עבודה)."@he .
+
+
+###  http://iflastandards.info/ns/lrmoo/F30_Manifestation_Creation
+<http://iflastandards.info/ns/lrmoo/F30_Manifestation_Creation> rdf:type owl:Class ;
+                                                                rdfs:subClassOf cidoc-crm:E12_Production ,
+                                                                                cidoc-crm:E65_Creation ;
+                                                                rdfs:label "פעולה שיצרה Manifestation (ייצוג פיזי כללי, כמו כתב־יד או דפוס)."@he .
+
+
+###  http://iflastandards.info/ns/lrmoo/F32_Item_Production_Event
+<http://iflastandards.info/ns/lrmoo/F32_Item_Production_Event> rdf:type owl:Class ;
+                                                               rdfs:subClassOf cidoc-crm:E65_Creation ;
+                                                               rdfs:label "פעולה שייצרה Item יחיד ומוחשי (עותק מסוים)."@he .
+
+
+###  http://iflastandards.info/ns/lrmoo/F5_Item
+<http://iflastandards.info/ns/lrmoo/F5_Item> rdf:type owl:Class ;
+                                             rdfs:subClassOf cidoc-crm:E18_Physical_Thing ;
+                                             rdfs:comment "rdfs:comment \"In FRBRoo, F4 Manifestation Singleton is a subclass of F3 Manifestation. In LRMoo, F4 was deprecated and replaced by F5 Item (subclass of E18 Physical Thing). Here F4 is retained for continuity but declared equivalent to F5 to ensure interoperability.\"@en ."@en ,
+                                                          "rdfs:comment \"ב-FRBRoo המחלקה F4 Manifestation Singleton הוגדרה כתת-מחלקה של F3 Manifestation. ב-LRMoo בוטלה F4 והוחלפה ב-F5 Item כתת-מחלקה של E18 Physical Thing. כאן נשמרת F4 לצורך רצף, אך הוגדרה כשקולה ל-F5 לצורך תאימות.\"@he ."@he ;
+                                             rdfs:label "Item"@en .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E10_Transfer_of_Custody
+cidoc-crm:E10_Transfer_of_Custody rdf:type owl:Class ;
+                                  rdfs:subClassOf cidoc-crm:E7_Activity ;
+                                  rdfs:label "Transfer of Custody@en" ,
+                                             "העברת משמורת@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E12_Production
+cidoc-crm:E12_Production rdf:type owl:Class ;
+                         rdfs:subClassOf cidoc-crm:E7_Activity ;
+                         rdfs:label "אירוע יצירת כתב היד"@he ,
+                                    "Production@en" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E18_Physical_Thing
+cidoc-crm:E18_Physical_Thing rdf:type owl:Class ;
+                             rdfs:subClassOf cidoc-crm:E1_CRM_Entity ;
+                             rdfs:label "Physical Thing"@en ,
+                                        "דבר פיסי"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E1_CRM_Entity
+cidoc-crm:E1_CRM_Entity rdfs:subClassOf owl:Thing .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E21_Person
+cidoc-crm:E21_Person rdfs:subClassOf cidoc-crm:E39_Actor ;
+                     rdfs:comment """This class comprises real persons who live or are assumed to have lived.
+
+Legendary figures that may have existed, such as Ulysses and King Arthur, fall into this class if the documentation refers to them as historical figures. In cases where doubt exists as to whether several persons are in fact identical, multiple instances can be created and linked to indicate their relationship. The CIDOC CRM does not propose a specific form to support reasoning about possible identity.
+
+In a bibliographic context, a name presented following the conventions usually employed for personal names will be assumed to correspond to an actual real person (an instance of E21 Person), unless evidence is available to indicate that this is not the case. The fact that a persona may erroneously be classified as an instance of E21 Person does not imply that the concept comprises personae.""" ;
+                     rdfs:label "Person"@en ,
+                                "אדם"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E22_Human-Made_Object
+cidoc-crm:E22_Human-Made_Object rdfs:subClassOf cidoc-crm:E18_Physical_Thing .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E28_Conceptual_Object
+cidoc-crm:E28_Conceptual_Object rdfs:subClassOf cidoc-crm:E1_CRM_Entity .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E31_Document
+cidoc-crm:E31_Document rdf:type owl:Class ;
+                       rdfs:subClassOf cidoc-crm:E7_Activity ;
+                       rdfs:comment "E31_Document - מיועד לפעילויות של יצירת מסמכים/דיגיטציה:" ;
+                       rdfs:label "Document@en" ,
+                                  "מסמך@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E33_Linguistic_Object
+cidoc-crm:E33_Linguistic_Object rdf:type owl:Class ;
+                                rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+                                rdfs:comment "This class comprises identifiable expressions in natural language"@en ;
+                                rdfs:label "Linguistic Object"@en .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E35_Title
+cidoc-crm:E35_Title rdf:type owl:Class ;
+                    rdfs:subClassOf cidoc-crm:E33_Linguistic_Object ;
+                    rdfs:comment """מיועד לתיאור כותרות או שמות המוקצים לעבודות יצירתיות, ביטויים, או ביטויים פיזיים. 
+כותרת היא זיהוי לשוני שמבחין בין יצירה אחת לאחרת או בין ביטוי אחד למשנהו."""@he ;
+                    rdfs:label "Title"@en ,
+                               "כותר"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E39_Actor
+cidoc-crm:E39_Actor rdfs:subClassOf cidoc-crm:E1_CRM_Entity .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E41_Appellation
+cidoc-crm:E41_Appellation rdfs:subClassOf cidoc-crm:E1_CRM_Entity .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E42_Identifier
+cidoc-crm:E42_Identifier rdf:type owl:Class ;
+                         rdfs:subClassOf cidoc-crm:E41_Appellation ;
+                         rdfs:label "Identifier@en"@en ,
+                                    "מזהה"@he .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E52_Time-Span
+cidoc-crm:E52_Time-Span rdfs:subClassOf cidoc-crm:E1_CRM_Entity ;
+                        rdfs:comment """E52 הוא מחלקה גנרית של CIDOC CRM לכל טווח זמן.
+
+F10 יורש/מתבסס על E52 ומיועד במיוחד להקשרים ביבליוגרפיים לפי LRMoo (למשל זמן יצירה של Work, זמן פרסום, וכו’).
+
+📌 לכן:
+
+אם את עובדת בעיקר עם LRMoo (כפי שאמרת), כדאי להיצמד ל־F10_Time-span ולהשתמש בו כסטנדרט.
+
+E52 נשאר רקע/היררכיה כללית — אין צורך להשתמש בו ישירות אם F10 נותן לך את המענה.
+
+הכפילות עצמה לא \"טעות\" – זה פשוט כי LRMoo יורש מ־CRM – אבל בפרקטיקה כדאי לבחור אחד לעבודה שוטפת, אחרת זה מבלבל את המודל.
+
+👉 ההמלצה שלי:
+
+תשאירי את E52 כ־Superclass במבנה (כי ככה מוגדר הסטנדרט),
+
+אבל תשתמשי רק ב־F10 כדי לייצג טווחי זמן ממשיים בנתונים שלך (למשל: \"1248–1305\", \"שבט קס\"ז 1407\").""" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E53_Place
+cidoc-crm:E53_Place rdfs:subClassOf cidoc-crm:E1_CRM_Entity ;
+                    rdfs:comment """E53 Place – מחלקה גנרית של CIDOC CRM לכל מקום (עיר, אזור, מדינה, אתר).
+
+F11 Place – הרחבה של LRMoo/FRBRoo ל־Place בהקשר ביבליוגרפי/ספרותי (מקום יצירה, מקום כתיבה, מקום פרסום).
+
+🔑 מה שקורה בפועל:
+
+E53 נשאר ה־Superclass הכללי (שממנו יורש F11).
+
+F11 מותאם למודל שלך (כי את מתארת כתבי יד, מקומות כתיבה, שימור וכו’).
+
+📌 ההמלצה:
+
+תמשיכי לעבוד עם F11 Place בנתונים עצמם (כמו “קנדיה”, “אירקליו”, “ותיקן”).
+
+תשאירי את E53 Place ברקע במבנה (אי אפשר למחוק אותו, כי זה חלק מה־CRM).
+
+כך שמה שציינת נכון — בדיוק כמו עם Time-span, עדיף להתבסס בפרקטיקה על המחלקה הייעודית (F11), ולתת ל־E53/E52 להישאר בתור ירושה כללית.""" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E55_Type
+cidoc-crm:E55_Type rdf:type owl:Class ;
+                   rdfs:label "Type@en" ,
+                              "סוג@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E56_Language
+cidoc-crm:E56_Language rdf:type owl:Class ;
+                       rdfs:subClassOf cidoc-crm:E55_Type ;
+                       rdfs:label "Language@en" ,
+                                  "שפה@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E57_Material
+cidoc-crm:E57_Material rdf:type owl:Class ;
+                       rdfs:subClassOf cidoc-crm:E55_Type ;
+                       rdfs:label "Material@en" ,
+                                  "חומר@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E65_Creation
+cidoc-crm:E65_Creation rdf:type owl:Class ;
+                       rdfs:subClassOf cidoc-crm:E7_Activity ;
+                       rdfs:label "אירוע יצירת היצירה המקורית"@he ,
+                                  "Creation@en" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E73_Information_Object
+cidoc-crm:E73_Information_Object rdf:type owl:Class ;
+                                 rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+                                 rdfs:comment """E73_Information_Object - כולל כל סוגי המידע הדיגיטלי:
+תמונות דיגיטליות
+קבצי PDF
+מטא-דאטה
+בסיסי נתונים""" ;
+                                 rdfs:label "Information Object@en" ,
+                                            "אובייקט מידע@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E74_Group
+cidoc-crm:E74_Group rdfs:subClassOf cidoc-crm:E39_Actor .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E7_Activity
+cidoc-crm:E7_Activity rdf:type owl:Class ;
+                      rdfs:subClassOf cidoc-crm:E1_CRM_Entity ;
+                      rdfs:comment "Activity@en" ,
+                                   "פעילות@he" .
+
+
+###  http://www.cidoc-crm.org/cidoc-crm/E8_Acquisition
+cidoc-crm:E8_Acquisition rdf:type owl:Class ;
+                         rdfs:subClassOf cidoc-crm:E7_Activity ;
+                         rdfs:label "Acquisition@en" ,
+                                    "רכישה@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Bibliographic_Unit
+HebrewManuscripts:Bibliographic_Unit rdf:type owl:Class ;
+                                     rdfs:subClassOf lrmoo:F4_Manifestation_Singleton ;
+                                     rdfs:comment "(Hebrew): \"הישות הפיזית השלמה של כתב יד עם מספר מדף בספרייה. יכולה להכיל יחידה קודיקולוגית אחת (unified codex) או מספר יחידות (assembled codex).\"" ;
+                                     rdfs:label "Bibliographic Unit"@en ,
+                                                "יחידה ביבליוגרפית"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Codicological_Unit
+HebrewManuscripts:Codicological_Unit rdf:type owl:Class ;
+                                     rdfs:subClassOf lrmoo:F4_Manifestation_Singleton ;
+                                     rdfs:comment "(Hebrew): \"יחידת הקטלוג הבסיסית המתארת חלק של כתב יד שיוצר במקום וזמן ספציפיים על ידי סופר או קבוצת סופרים.\"" ;
+                                     rdfs:label "\"Codicological Unit\""@en ,
+                                                "יחידה קודיקולוגית"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Colophon
+HebrewManuscripts:Colophon rdf:type owl:Class ;
+                           rdfs:subClassOf cidoc-crm:E73_Information_Object ;
+                           rdfs:comment "Colophon@en" ,
+                                        "קולופון@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#HebrewScriptType
+HebrewManuscripts:HebrewScriptType rdf:type owl:Class ;
+                                   rdfs:subClassOf cidoc-crm:E55_Type ;
+                                   rdfs:label "Hebrew Script Type"@en ,
+                                              "סוג כתב עברי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#ModeScriptType
+HebrewManuscripts:ModeScriptType rdf:type owl:Class ;
+                                 rdfs:subClassOf HebrewManuscripts:HebrewScriptType ;
+                                 rdfs:label "Mode Script Type"@en ,
+                                            """סוג כתב לפי סגנון
+(מרובע, בינוני, רהוט("""@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Paleographical_Unit
+HebrewManuscripts:Paleographical_Unit rdf:type owl:Class ;
+                                      rdfs:subClassOf lrmoo:F4_Manifestation_Singleton ;
+                                      rdfs:comment "(Hebrew): \"חלק מיחידה קודיקולוגית שנכתב על ידי כותב ספציפי או סגנון כתיבה מסוים\"" ;
+                                      rdfs:label "Paleographical Unit"@en ,
+                                                 "יחידה פלאוגרפית"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#ParticipationRole
+HebrewManuscripts:ParticipationRole rdf:type owl:Class ;
+                                    rdfs:subClassOf cidoc-crm:E55_Type ;
+                                    rdfs:label "Participation Role"@en ,
+                                               "תפקיד השתתפות"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Reference_Event
+HebrewManuscripts:Reference_Event rdf:type owl:Class ;
+                                  rdfs:subClassOf cidoc-crm:E7_Activity ;
+                                  rdfs:comment "אירוע שבו חוקר או מוסד מתייחס לכתב יד במחקר או בקטלוג" ;
+                                  rdfs:label "Reference Event"@en ,
+                                             "אירוע הפניה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#SubjectType
+HebrewManuscripts:SubjectType rdf:type owl:Class ;
+                              rdfs:subClassOf cidoc-crm:E55_Type ;
+                              rdfs:comment "lassification of subject matters for Hebrew manuscripts" ;
+                              rdfs:label "Subject Type"@en ,
+                                         "סוג נושא"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#TypeScriptType
+HebrewManuscripts:TypeScriptType rdf:type owl:Class ;
+                                 rdfs:subClassOf HebrewManuscripts:HebrewScriptType ;
+                                 rdfs:label "Geographical Script Type"@en ,
+                                            """סוג/סגנון כתב לפי אזור
+(אשכנזי, ספרדי וכו')"""@he .
+
+
+#################################################################
+#    Individuals
+#################################################################
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#AdditionalText
+HebrewManuscripts:AdditionalText rdf:type owl:NamedIndividual ,
+                                          cidoc-crm:E55_Type ;
+                                 rdfs:label "Additional Text"@en ,
+                                            "טקסט נוסף"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Aharon_HaCohen_Hazzan
+HebrewManuscripts:Aharon_HaCohen_Hazzan rdf:type owl:NamedIndividual ,
+                                                 cidoc-crm:E21_Person ;
+                                        rdfs:label "Aharon ha-Cohen the Hazzan"@en ,
+                                                   "אהרן הכהן החזן"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Al_Shemot_Hashem_Expression_MS_Barberini_82
+HebrewManuscripts:Al_Shemot_Hashem_Expression_MS_Barberini_82 rdf:type owl:NamedIndividual ,
+                                                                       lrmoo:F2_Expression ;
+                                                              lrmoo:R3_is_realised_in HebrewManuscripts:Al_Shemot_Hashem_Work ;
+                                                              cidoc-crm:P2_has_type HebrewManuscripts:AdditionalText ;
+                                                              HebrewManuscripts:has_folio_range "בראש כה\"י" ;
+                                                              rdfs:label "On Divine Names expression in MS Barberini 82"@en ,
+                                                                         "על שמות ה' - כתב יד ברברין  82"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Al_Shemot_Hashem_Work
+HebrewManuscripts:Al_Shemot_Hashem_Work rdf:type owl:NamedIndividual ,
+                                                 lrmoo:F1_Work ;
+                                        rdfs:label "On Divine Names"@en ,
+                                                   "על שמות ה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Allony_Loewinger_Catalog_1968
+HebrewManuscripts:Allony_Loewinger_Catalog_1968 rdf:type owl:NamedIndividual ,
+                                                         lrmoo:F3_Manifestation ;
+                                                cidoc-crm:P70_documents HebrewManuscripts:MS_Barberini_82 ;
+                                                rdfs:label "Allony-Loewinger, Catalog of Hebrew Manuscripts - Part 3"@en ,
+                                                           "אלוני. נ. ולוינגר ד. ש., רשימת תצלומי כתבי-היד העבריים במכון. חלק ג : כתבי-היד שבספריית הוואטיקן (ירושלים תשכ\"ח)"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Alphabet_Ben_Sira_Expression_MS_Vatican_44
+HebrewManuscripts:Alphabet_Ben_Sira_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                      lrmoo:F2_Expression ;
+                                                             lrmoo:R3_is_realised_in HebrewManuscripts:Alphabet_Ben_Sira_Work ;
+                                                             lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                             HebrewManuscripts:has_folio_range "304ב–322ב"@he ;
+                                                             rdfs:label "Alphabet of Ben Sira – Expression in Vatican Ms. 44"@en ,
+                                                                        "אלפא ביתא דבן סירא – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Alphabet_Ben_Sira_Work
+HebrewManuscripts:Alphabet_Ben_Sira_Work rdf:type owl:NamedIndividual ,
+                                                  lrmoo:F1_Work ;
+                                         rdfs:label "Alphabet of Ben Sira"@en ,
+                                                    "אלפא ביתא דבן סירא"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Anton_Fugger
+HebrewManuscripts:Anton_Fugger rdf:type owl:NamedIndividual ,
+                                        cidoc-crm:E21_Person ;
+                               rdfs:comment "\"German merchant banker, acquired manuscript in 1541\""@en ,
+                                            "\"בנקאי סוחר גרמני, רכש את כתב היד ב-1541\""@he ;
+                               rdfs:label "Anton Fugger"@en ,
+                                          "א׳ פוגר"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Arabic
+HebrewManuscripts:Arabic rdf:type owl:NamedIndividual ,
+                                  cidoc-crm:E56_Language .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Aramaic
+HebrewManuscripts:Aramaic rdf:type owl:NamedIndividual ,
+                                   cidoc-crm:E56_Language ;
+                          rdfs:label "Aramaic"@en ,
+                                     "ארמית"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#AshkenaziScript
+HebrewManuscripts:AshkenaziScript rdf:type owl:NamedIndividual ,
+                                           HebrewManuscripts:TypeScriptType ;
+                                  rdfs:label "Ashkenazi script@en" ,
+                                             "כתב אשכנזי@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Author_role
+HebrewManuscripts:Author_role rdf:type owl:NamedIndividual ,
+                                       cidoc-crm:E55_Type ;
+                              rdfs:label "author"@en ,
+                                         "מחבר יצירה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Avot_Rabbi_Natan_A_Expression_MS_Vatican_44
+HebrewManuscripts:Avot_Rabbi_Natan_A_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                       lrmoo:F2_Expression ;
+                                                              lrmoo:R3_is_realised_in HebrewManuscripts:Avot_Rabbi_Natan_A_Work ;
+                                                              lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                              HebrewManuscripts:has_folio_range "357ב–374ב"@he ;
+                                                              rdfs:label "Avot de-Rabbi Natan – Expression in Vatican Ms. 44"@en ,
+                                                                         "אבות דר׳ נתן – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Avot_Rabbi_Natan_A_Work
+HebrewManuscripts:Avot_Rabbi_Natan_A_Work rdf:type owl:NamedIndividual ,
+                                                   lrmoo:F1_Work ;
+                                          rdfs:label "Avot de-Rabbi Natan, Version A"@en ,
+                                                     "אבות דר׳ נתן נוסח א"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Bahya_ben_Asher_ibn_Hlava
+HebrewManuscripts:Bahya_ben_Asher_ibn_Hlava rdf:type owl:NamedIndividual ,
+                                                     cidoc-crm:E21_Person ;
+                                            HebrewManuscripts:external_identifier_nli "987007258134405171"^^xsd:anyURI ;
+                                            HebrewManuscripts:external_uri_nli "http://nli.org.il/he/authorities/987007258134405171"^^xsd:anyURI ;
+                                            rdfs:comment "Jewish biblical commentator, d. 1340" ;
+                                            rdfs:label "Bahya ben Asher ibn Hlava"@en ,
+                                                       "בחיי בן אשר אבן חלאוה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Bible_Pentateuch_Commentaries_Subject
+HebrewManuscripts:Bible_Pentateuch_Commentaries_Subject rdf:type owl:NamedIndividual ,
+                                                                 HebrewManuscripts:SubjectType ;
+                                                        HebrewManuscripts:external_identifier_nli "987007287474205171"^^xsd:anyURI ,
+                                                                                                  "http://nli.org.il/he/authorities/987007287474205171"^^xsd:anyURI ;
+                                                        rdfs:label "תנ\"ך. תורה פירושים"@he ,
+                                                                   "Bible. Pentateuch Commentaries" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#BoardBinding
+HebrewManuscripts:BoardBinding rdf:type owl:NamedIndividual ,
+                                        cidoc-crm:E55_Type ;
+                               rdfs:label "Board binding@en" ,
+                                          "כריכת קרטון@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#ByzantineScript
+HebrewManuscripts:ByzantineScript rdf:type owl:NamedIndividual ,
+                                           HebrewManuscripts:TypeScriptType ;
+                                  rdfs:label "Byzantine Script"@en ,
+                                             "כתב ביזנטי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Candia_Herakleion
+HebrewManuscripts:Candia_Herakleion rdf:type owl:NamedIndividual ,
+                                             cidoc-crm:E53_Place ;
+                                    rdfs:comment "\"Historical name Candia, modern Herakleion, Crete\"@en" ,
+                                                 "\"השם ההיסטורי קנדיאה, כיום הרקליון, כרתים\"@he" ;
+                                    rdfs:label "Ērakleion (Greece)"@en ,
+                                               "Candia (Herakleion)@en" ,
+                                               "קנדיאה (הרקליון)@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Cassuto_Vatican_Catalog
+HebrewManuscripts:Cassuto_Vatican_Catalog rdf:type owl:NamedIndividual ,
+                                                   lrmoo:F3_Manifestation ;
+                                          rdfs:comment "U. Cassuto, Codices Vaticani Hebraici (codices 1-115), Citta del Vaticano, 1956." ;
+                                          rdfs:label "Cassuto, Codices Vaticani Hebraici"@en .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Century_14
+HebrewManuscripts:Century_14 rdf:type owl:NamedIndividual ,
+                                      cidoc-crm:E52_Time-Span ;
+                             rdfs:label "14th century"@en .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Commentary_Ten_Sefirot_Work
+HebrewManuscripts:Commentary_Ten_Sefirot_Work rdf:type owl:NamedIndividual ,
+                                                       lrmoo:F1_Work ;
+                                              rdfs:label "Commentary on Ten Sefirot@en" ,
+                                                         "פרוש עשר ספירות@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#CursiveScript
+HebrewManuscripts:CursiveScript rdf:type owl:NamedIndividual ,
+                                         HebrewManuscripts:ModeScriptType ;
+                                rdfs:label "Cursive Script"@en ,
+                                           "כתב רהוט"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Darkhei_Yichud_Expression_MS_Barberini_82
+HebrewManuscripts:Darkhei_Yichud_Expression_MS_Barberini_82 rdf:type owl:NamedIndividual ,
+                                                                     lrmoo:F2_Expression ;
+                                                            lrmoo:R3_is_realised_in HebrewManuscripts:Darkhei_Yichud_Work ;
+                                                            cidoc-crm:P2_has_type HebrewManuscripts:AdditionalText ;
+                                                            HebrewManuscripts:has_folio_range "148א-148ב" ;
+                                                            HebrewManuscripts:opening_text "עתה אודיעך מה שכל העולם תלוי בו והוא ראשית לכל ראשית"@he ;
+                                                            rdfs:label "Ways of Divine Unification expression in MS Barberini 82"@en ,
+                                                                       "ביטוי דרכי יחוד ה' בכתב יד ברברין 82"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Darkhei_Yichud_Work
+HebrewManuscripts:Darkhei_Yichud_Work rdf:type owl:NamedIndividual ,
+                                               lrmoo:F1_Work ;
+                                      rdfs:label "Ways of Divine Unification"@en ,
+                                                 "דרכי יחוד ה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#David_ben_Meir_HaCohen_Metzburg
+HebrewManuscripts:David_ben_Meir_HaCohen_Metzburg rdf:type owl:NamedIndividual ,
+                                                           cidoc-crm:E21_Person ;
+                                                  rdfs:label "David ben Meir ha-Cohen, from Metzburg"@en ,
+                                                             "דוד בן מאיר הכהן, ממינצבורג"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Elijah_ben_Elkanah_Capsali
+HebrewManuscripts:Elijah_ben_Elkanah_Capsali rdf:type owl:NamedIndividual ,
+                                                      cidoc-crm:E21_Person ;
+                                             HebrewManuscripts:external_identifier_nli 987007259291105171 ;
+                                             HebrewManuscripts:external_uri_nli "http://nli.org.il/he/authorities/987007259291105171"^^xsd:anyURI ;
+                                             rdfs:comment "\"1500-1555, היסטוריון ופוסק כרתי\""@he ,
+                                                          "1500-1555, Cretan historian and halakhist" ;
+                                             rdfs:label "Elijah ben Elkanah Capsali"@en ,
+                                                        "אליהו בן אלקנה קפשאלי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Formation_Fetus_Expression_MS_Vatican_44
+HebrewManuscripts:Formation_Fetus_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                    lrmoo:F2_Expression ;
+                                                           lrmoo:R3_is_realised_in HebrewManuscripts:Formation_Fetus_Work ;
+                                                           lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                           HebrewManuscripts:has_folio_range "323א–324ב"@he ;
+                                                           rdfs:label "Formation of the Fetus – Expression in Vatican Ms. 44"@en ,
+                                                                      "יצירת הולד – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Formation_Fetus_Work
+HebrewManuscripts:Formation_Fetus_Work rdf:type owl:NamedIndividual ,
+                                                lrmoo:F1_Work ;
+                                       cidoc-crm:P72_has_language HebrewManuscripts:Hebrew ;
+                                       rdfs:label "Formation of the Fetus"@en ,
+                                                  "יצירת הולד"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Ginat_Egoz_Creation_Event
+HebrewManuscripts:Ginat_Egoz_Creation_Event rdf:type owl:NamedIndividual ,
+                                                     <http://iflastandards.info/ns/lrmoo/F27_Work_Creation> ;
+                                            <http://iflastandards.info/ns/lrmoo/R16_created> HebrewManuscripts:Ginat_Egoz_Work ;
+                                            cidoc-crm:P14_carried_out_by HebrewManuscripts:Joseph_ben_Abraham_Gikatilla ;
+                                            cidoc-crm:P7_took_place_at HebrewManuscripts:Spain ;
+                                            HebrewManuscripts:earliest_possible_date 1248 ;
+                                            HebrewManuscripts:latest_possible_date 1325 ;
+                                            rdfs:label "Work Creation of Ginat Egoz by Joseph ben Abraham Gikatilla (d. ca. 1305, Spain)"@en .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Ginat_Egoz_Expression_MS_Barberini_82
+HebrewManuscripts:Ginat_Egoz_Expression_MS_Barberini_82 rdf:type owl:NamedIndividual ;
+                                                        lrmoo:R3i_realises HebrewManuscripts:Ginat_Egoz_Work ;
+                                                        lrmoo:R4i_is_embodied_in HebrewManuscripts:MS_Barberini_82 ;
+                                                        cidoc-crm:P2_has_type HebrewManuscripts:MainText ;
+                                                        rdfs:label "Ginat Egoz Expression in MS Barberini 82"@en ,
+                                                                   "גינת אגוז - ביטוי בכתב יד ברברין   82"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Ginat_Egoz_Work
+HebrewManuscripts:Ginat_Egoz_Work rdf:type owl:NamedIndividual ,
+                                           lrmoo:F1_Work ;
+                                  cidoc-crm:P2_has_type HebrewManuscripts:Kabbalah_Subject ;
+                                  cidoc-crm:P72_has_language HebrewManuscripts:Hebrew ;
+                                  HebrewManuscripts:external_uri_nli "https://www.nli.org.il/he/authorities/987011551672705171" ;
+                                  HebrewManuscripts:has_title "גינת אגוז"@he ,
+                                                              "גנת אגוז"@he ;
+                                  HebrewManuscripts:viaf_id 6063166479528107840006 ;
+                                  rdfs:label "Ginat Egoz"@en ,
+                                             "גינת אגוז"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Halukat_Parashiyyot_Expression_MS_Vatican_44
+HebrewManuscripts:Halukat_Parashiyyot_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                        lrmoo:F2_Expression ;
+                                                               lrmoo:R3_is_realised_in HebrewManuscripts:Halukat_Parashiyyot_Work ;
+                                                               lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                               HebrewManuscripts:has_folio_range "291א–295ב"@he ;
+                                                               rdfs:label "Division of Torah Readings – Expression in Vatican Ms. 44"@en ,
+                                                                          "חלוקת פרשיות – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Halukat_Parashiyyot_Work
+HebrewManuscripts:Halukat_Parashiyyot_Work rdf:type owl:NamedIndividual ,
+                                                    lrmoo:F1_Work ;
+                                           rdfs:label "Division of Torah Readings"@en ,
+                                                      "חלוקת הפרשיות לקרואים"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Hebrew
+HebrewManuscripts:Hebrew rdf:type owl:NamedIndividual ,
+                                  cidoc-crm:E56_Language ;
+                         rdfs:label "Hebrew"@en ,
+                                    "עברית"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Illuminator_role
+HebrewManuscripts:Illuminator_role rdf:type owl:NamedIndividual ,
+                                            cidoc-crm:E55_Type ;
+                                   rdfs:label "illuminator"@en ,
+                                              "מאייר, צייר"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#ItalianScript
+HebrewManuscripts:ItalianScript rdf:type owl:NamedIndividual ,
+                                         HebrewManuscripts:TypeScriptType ;
+                                rdfs:label "Italian Script"@en ,
+                                           "כתב איטלקי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Joseph_ben_Abraham_Gikatilla
+HebrewManuscripts:Joseph_ben_Abraham_Gikatilla rdf:type owl:NamedIndividual ,
+                                                        cidoc-crm:E21_Person ;
+                                               cidoc-crm:P82a_begin_of_the_begin 1248 ;
+                                               cidoc-crm:P82b_end_of_the_end 1305 ;
+                                               HebrewManuscripts:external_identifier_nli 987007261755405171 ;
+                                               HebrewManuscripts:viaf_id "https://viaf.org/en/viaf/51777166" ;
+                                               HebrewManuscripts:wikidata_id "Q1704663" ;
+                                               rdfs:label "Joseph ben Abraham Gikatilla@en" ,
+                                                          "יוסף בן אברהם ג'יקטיליה@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#JudeoArabic
+HebrewManuscripts:JudeoArabic rdf:type owl:NamedIndividual ,
+                                       cidoc-crm:E56_Language ;
+                              rdfs:label "Judeo-Arabic"@en ,
+                                         "ערבית יהודית"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Kabbalah_Subject
+HebrewManuscripts:Kabbalah_Subject rdf:type owl:NamedIndividual ,
+                                            HebrewManuscripts:SubjectType ;
+                                   HebrewManuscripts:external_identifier_nli "987007293773005171" ;
+                                   HebrewManuscripts:external_uri_nli "http://nli.org.il/he/authorities/987007293773005171"^^xsd:anyURI ;
+                                   rdfs:label "Kabbalah"@en ,
+                                              "קבלה"@en .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Kenis_Beit_Alausta_Library_Sanaa
+HebrewManuscripts:Kenis_Beit_Alausta_Library_Sanaa rdf:type owl:NamedIndividual ;
+                                                   cidoc-crm:P74_has_current_or_former_residence HebrewManuscripts:Sanaa_Yemen ;
+                                                   rdfs:label "Synagogue library in Sana'a, Yemen"@en ,
+                                                              "ספריית כניס בית אלאוסטא - צנעא"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Ktiv_Project
+HebrewManuscripts:Ktiv_Project rdf:type owl:NamedIndividual .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#LeatherBinding
+HebrewManuscripts:LeatherBinding rdf:type owl:NamedIndividual ,
+                                          cidoc-crm:E55_Type ;
+                                 rdfs:label "Leather binding@en" ,
+                                            "כריכת עור@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Barberini_82
+HebrewManuscripts:MS_Barberini_82 rdf:type owl:NamedIndividual ,
+                                           lrmoo:F4_Manifestation_Singleton ,
+                                           HebrewManuscripts:Codicological_Unit ;
+                                  lrmoo:R4_embodies HebrewManuscripts:Darkhei_Yichud_Expression_MS_Barberini_82 ,
+                                                    HebrewManuscripts:Ginat_Egoz_Expression_MS_Barberini_82 ,
+                                                    HebrewManuscripts:Miscellaneous_Kabbalistic_Texts_Expression_MS_Barberini_82 ,
+                                                    HebrewManuscripts:Perush_Eser_Sefirot_Expression_MS_Barberini_82 ,
+                                                    HebrewManuscripts:Sefer_Yetzirah_Work ;
+                                  cidoc-crm:P16i_was_used_for HebrewManuscripts:MS_Barberini_82_Digitization_Event ;
+                                  cidoc-crm:P1_is_identified_by HebrewManuscripts:Sfardata_01785 ;
+                                  cidoc-crm:P70i_is_documented_in HebrewManuscripts:Allony_Loewinger_Catalog_1968 ,
+                                                                  HebrewManuscripts:Richler_Vatican_Catalog ;
+                                  HebrewManuscripts:has_Script_Mode HebrewManuscripts:SemicursiveScript ;
+                                  HebrewManuscripts:has_colophon HebrewManuscripts:MS_Barberini_82_Colophon ;
+                                  HebrewManuscripts:has_date_of_creation HebrewManuscripts:Year_1407_Shvat ;
+                                  HebrewManuscripts:has_material HebrewManuscripts:Paper ,
+                                                                 HebrewManuscripts:Parchment ;
+                                  HebrewManuscripts:has_script_type HebrewManuscripts:SepharadicScript ;
+                                  HebrewManuscripts:external_identifier_nli "microfilm:F 8566" ;
+                                  HebrewManuscripts:has_digital_representation_url "https://digi.vatlib.it/mss/detail/203104"^^xsd:anyURI ;
+                                  HebrewManuscripts:has_number_of_folios "151" ;
+                                  HebrewManuscripts:material_arrangement "outer and inner bifolia of each quire" ;
+                                  HebrewManuscripts:place_attribution_source "Colopon" ;
+                                  HebrewManuscripts:sfardata_id "01785" ;
+                                  rdfs:label "Ms. Barb. Or. 82 – Ginat Egoz@en" ,
+                                             "כתב יד ברברין 82 – גינת אגוז@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Barberini_82_Colophon
+HebrewManuscripts:MS_Barberini_82_Colophon rdf:type owl:NamedIndividual ,
+                                                    HebrewManuscripts:Colophon ;
+                                           HebrewManuscripts:mentions_date HebrewManuscripts:Year_1407_Shvat ;
+                                           HebrewManuscripts:mentions_scribe HebrewManuscripts:Moshe_ben_Yitzhak_Ibn_Tibbon ;
+                                           HebrewManuscripts:colophon_text "נשלם ספר גינת אגוז ע\"י הצעיר משה בר' יצחק אבן תבון וסיימתיו בחדש שבט שנת הקס\"ז לבריא' עולם למנין שאנו מונין פה בעיר קנדיאה" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Barberini_82_Digitization_Event
+HebrewManuscripts:MS_Barberini_82_Digitization_Event rdf:type owl:NamedIndividual ,
+                                                              cidoc-crm:E31_Document ;
+                                                     cidoc-crm:P16_used_specific_object HebrewManuscripts:MS_Barberini_82 .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Barberini_82_Ownership_History_Event
+HebrewManuscripts:MS_Barberini_82_Ownership_History_Event rdf:type owl:NamedIndividual ,
+                                                                   cidoc-crm:E10_Transfer_of_Custody ;
+                                                          cidoc-crm:P16_used_specific_object HebrewManuscripts:MS_Barberini_82 ;
+                                                          cidoc-crm:P28_custody_surrendered_by HebrewManuscripts:Yaakov_Muati ;
+                                                          cidoc-crm:P29_custody_received_by HebrewManuscripts:Vatican_Library ;
+                                                          HebrewManuscripts:ownership_history "\"1. Yaakov Muati; 2. Vatican Library\"" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Barberini_82_Production_Event
+HebrewManuscripts:MS_Barberini_82_Production_Event rdf:type owl:NamedIndividual ,
+                                                            cidoc-crm:E12_Production ;
+                                                   cidoc-crm:P14_carried_out_by HebrewManuscripts:Moshe_ben_Yitzhak_Ibn_Tibbon ;
+                                                   cidoc-crm:P4_has_time-span HebrewManuscripts:Year_1407_Shvat ;
+                                                   cidoc-crm:P7_took_place_at HebrewManuscripts:Candia_Herakleion ;
+                                                   lrmoo:R27_materialized HebrewManuscripts:MS_Barberini_82 ;
+                                                   rdfs:label "Production of MS Barberini 82@en" ,
+                                                              "יצירת כתב יד ברברין 82@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Barberini_82_Reference_Event
+HebrewManuscripts:MS_Barberini_82_Reference_Event rdf:type owl:NamedIndividual ,
+                                                           HebrewManuscripts:Reference_Event ;
+                                                  cidoc-crm:P16_used_specific_object HebrewManuscripts:MS_Barberini_82 ;
+                                                  cidoc-crm:P70i_is_documented_in HebrewManuscripts:Allony_Loewinger_Catalog_1968 ,
+                                                                                  HebrewManuscripts:Richler_Vatican_Catalog ;
+                                                  rdfs:label "Bibliographic references to MS Barberini 82"@en ,
+                                                             "הפניות ביבליוגרפיות לכתב יד ברברין 82"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Iraqi_226
+HebrewManuscripts:MS_Iraqi_226 rdf:type owl:NamedIndividual ,
+                                        lrmoo:F4_Manifestation_Singleton ,
+                                        HebrewManuscripts:Codicological_Unit ;
+                               lrmoo:R4_embodies HebrewManuscripts:Torah_Commentary_Expression_MS_Iraqi_226 ;
+                               HebrewManuscripts:has_colophon HebrewManuscripts:MS_Iraqi_226_Colophon ;
+                               HebrewManuscripts:has_script_type HebrewManuscripts:YemeniteScript ;
+                               HebrewManuscripts:external_identifier_nli "990001975660205171" ;
+                               HebrewManuscripts:has_number_of_folios "248" ;
+                               rdfs:comment "Yemenite manuscript, copy from Venice print edition, 1653" ;
+                               rdfs:label "Torah Commentary by Bahya ben Asher - MS Iraqi 226"@en ,
+                                          "פירוש התורה לבחיי בן אשר - כתב יד עראקי 226"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Iraqi_226_Colophon
+HebrewManuscripts:MS_Iraqi_226_Colophon rdf:type owl:NamedIndividual ,
+                                                 HebrewManuscripts:Colophon ;
+                                        HebrewManuscripts:mentions_date HebrewManuscripts:Year_1653 ;
+                                        HebrewManuscripts:colophon_text "נשלם ... שנת אלף ותשע מאות ארבע וששים לשטרות"^^xsd:anyURI ;
+                                        HebrewManuscripts:mentions_occasion "completion of copying" ;
+                                        rdfs:label "rdfs:label: קולופון כתב יד עראקי 226" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Iraqi_226_Digitization_Event
+HebrewManuscripts:MS_Iraqi_226_Digitization_Event rdf:type owl:NamedIndividual ,
+                                                           cidoc-crm:E31_Document ;
+                                                  cidoc-crm:P16_used_specific_object HebrewManuscripts:MS_Iraqi_226 .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Iraqi_226_Ownership_History_Event
+HebrewManuscripts:MS_Iraqi_226_Ownership_History_Event rdf:type owl:NamedIndividual ,
+                                                                cidoc-crm:E10_Transfer_of_Custody ;
+                                                       cidoc-crm:P16_used_specific_object HebrewManuscripts:MS_Iraqi_226 ;
+                                                       cidoc-crm:P28_custody_surrendered_by HebrewManuscripts:Menachem_Saida_Yaakov_Collection ;
+                                                       cidoc-crm:P29_custody_received_by HebrewManuscripts:Yosef_Iraqi_HaCohen ;
+                                                       HebrewManuscripts:ownership_history "ownership_history: \"1. Kenis Beit Alausta Library, Sana'a; 2. Yehuda ben Musa ben Haim Iraqi; 3. Menachem and Saida Yaakov Collection, Nahariya; 4. Yosef Iraqi HaCohen, Bnei Brak\"" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Iraqi_226_Production_Event
+HebrewManuscripts:MS_Iraqi_226_Production_Event rdf:type owl:NamedIndividual ,
+                                                         cidoc-crm:E12_Production ;
+                                                cidoc-crm:P4_has_time-span HebrewManuscripts:Year_1653 ;
+                                                lrmoo:R27_materialized HebrewManuscripts:MS_Iraqi_226 .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Vatican_Ebr_44
+HebrewManuscripts:MS_Vatican_Ebr_44 rdf:type owl:NamedIndividual ,
+                                             lrmoo:F4_Manifestation_Singleton ,
+                                             HebrewManuscripts:Bibliographic_Unit ;
+                                    lrmoo:R5_has_component HebrewManuscripts:MS_Vatican_Ebr_44_CU_01 ,
+                                                           HebrewManuscripts:MS_Vatican_Ebr_44_CU_02 ,
+                                                           HebrewManuscripts:MS_Vatican_Ebr_44_CU_03 ,
+                                                           HebrewManuscripts:MS_Vatican_Ebr_44_CU_04 ;
+                                    cidoc-crm:P70i_is_documented_in HebrewManuscripts:Allony_Loewinger_Catalog_1968 ,
+                                                                    HebrewManuscripts:Cassuto_Vatican_Catalog ,
+                                                                    HebrewManuscripts:Richler_Vatican_Catalog ;
+                                    HebrewManuscripts:has_date_of_creation HebrewManuscripts:Century_14 ;
+                                    HebrewManuscripts:has_script_type HebrewManuscripts:ByzantineScript ,
+                                                                      HebrewManuscripts:OrientalScript ,
+                                                                      HebrewManuscripts:SepharadicScript ;
+                                    HebrewManuscripts:date_attribution_source "catalog"^^xsd:anyURI ;
+                                    HebrewManuscripts:has_number_of_folios 284 ;
+                                    HebrewManuscripts:material_arrangement """2 כרכים: 
+כרך א׳ דפים 1-192, כרך ב׳ דפים 193-384""" ;
+                                    HebrewManuscripts:ownership_history "1. Elijah ben Elkanah Capsali (until 1541); 2. Anton Fugger (purchased Nov 8, 1541); 3. Vatican Library" ;
+                                    rdfs:comment "כתב יד קובץ מהמאה ה-14 המכיל 14 יצירות שונות"@he ,
+                                                 "14th century collection manuscript containing 14 different works" ;
+                                    rdfs:label "Vatican Library Ms. ebr. 44"@en ,
+                                               "כת״י וותיקן עבר׳ 44 - קובץ"@he ,
+                                               "כת״י וטיקן עברי 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Vatican_Ebr_44_CU_01
+HebrewManuscripts:MS_Vatican_Ebr_44_CU_01 rdf:type owl:NamedIndividual ,
+                                                   HebrewManuscripts:Codicological_Unit ;
+                                          lrmoo:R4_embodies HebrewManuscripts:Midrash_Tanchuma_Work ;
+                                          lrmoo:R5i_is_component_by HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                          cidoc-crm:P2_has_type HebrewManuscripts:MainText ,
+                                                                <http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Illustrated_works_(Manuscript)_Subject> ;
+                                          cidoc-crm:P72_has_language HebrewManuscripts:Hebrew ;
+                                          HebrewManuscripts:has_script_type HebrewManuscripts:ByzantineScript ;
+                                          HebrewManuscripts:mentions_person HebrewManuscripts:Aharon_HaCohen_Hazzan ,
+                                                                            HebrewManuscripts:David_ben_Meir_HaCohen_Metzburg ,
+                                                                            HebrewManuscripts:Nehemiah_ben_Yitzhak ;
+                                          HebrewManuscripts:external_identifier_nli 990001967560205171 ;
+                                          HebrewManuscripts:has_folio_range "דף 1א-289ב" ;
+                                          rdfs:comment "עד פרשת וישלח, כולל נוסח מהדורת בובר, עם חסרונות ותוספות. מצויינים ציורים בדף 289ב. הוספות בדפים 1–2, 94–97, ו־197א."@he ;
+                                          rdfs:label "Midrash Tanchuma – Expression in Vatican Ms. 44"@en ,
+                                                     "מדרש תנחומא - ביטוי בכת״י וותיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Vatican_Ebr_44_CU_02
+HebrewManuscripts:MS_Vatican_Ebr_44_CU_02 rdf:type owl:NamedIndividual ,
+                                                   HebrewManuscripts:Codicological_Unit ;
+                                          lrmoo:R4_embodies HebrewManuscripts:Halukat_Parashiyyot_Work ;
+                                          lrmoo:R5i_is_component_by HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                          cidoc-crm:P2_has_type HebrewManuscripts:AdditionalText ;
+                                          cidoc-crm:P72_has_language HebrewManuscripts:Arabic ,
+                                                                     HebrewManuscripts:Hebrew ;
+                                          HebrewManuscripts:has_script_type HebrewManuscripts:ByzantineScript ;
+                                          HebrewManuscripts:has_folio_range "דף 291א-295ב" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Vatican_Ebr_44_CU_03
+HebrewManuscripts:MS_Vatican_Ebr_44_CU_03 rdf:type owl:NamedIndividual ;
+                                          lrmoo:R4_embodies HebrewManuscripts:Massekhet_Semahot_Work ;
+                                          cidoc-crm:P72_has_language HebrewManuscripts:Hebrew ;
+                                          HebrewManuscripts:has_script_type HebrewManuscripts:ByzantineScript ;
+                                          HebrewManuscripts:external_identifier_nli 990001967580205171 ;
+                                          HebrewManuscripts:has_folio_range "דף 299א-298ב" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Vatican_Ebr_44_CU_04
+HebrewManuscripts:MS_Vatican_Ebr_44_CU_04 rdf:type owl:NamedIndividual ,
+                                                   HebrewManuscripts:Codicological_Unit ;
+                                          lrmoo:R4_embodies HebrewManuscripts:Maaseh_Torah_Work ;
+                                          lrmoo:R5i_is_component_by HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                          cidoc-crm:P72_has_language HebrewManuscripts:Hebrew ;
+                                          HebrewManuscripts:has_script_type HebrewManuscripts:ByzantineScript ;
+                                          HebrewManuscripts:external_identifier_nli 990001967590205171 ;
+                                          HebrewManuscripts:has_folio_range "דף 298ב-302ב" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Vatican_Ebr_44_Ownership_History_Event
+HebrewManuscripts:MS_Vatican_Ebr_44_Ownership_History_Event rdf:type owl:NamedIndividual ,
+                                                                     cidoc-crm:E10_Transfer_of_Custody ;
+                                                            cidoc-crm:P16_used_specific_object HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                            cidoc-crm:P23_transferred_title_to HebrewManuscripts:Anton_Fugger ;
+                                                            cidoc-crm:P24_transferred_title_from HebrewManuscripts:Elijah_ben_Elkanah_Capsali ;
+                                                            cidoc-crm:P29_custody_received_by HebrewManuscripts:Vatican_Library ;
+                                                            cidoc-crm:P4_has_time-span HebrewManuscripts:November_8_1541 ;
+                                                            HebrewManuscripts:ownership_history "\"1. Elijah ben Elkanah Capsali (until 1541); 2. Anton Fugger (purchased Nov 8, 1541); 3. Vatican Library\"" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MS_Vatican_Ebr_44_Production_Event
+HebrewManuscripts:MS_Vatican_Ebr_44_Production_Event rdf:type owl:NamedIndividual ,
+                                                              cidoc-crm:E12_Production ;
+                                                     cidoc-crm:P4_has_time-span HebrewManuscripts:Century_14 ;
+                                                     lrmoo:R27_materialized HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                     rdfs:comment "\"Production event for MS Vatican Ebr 44. Scribe and place of creation unknown.\"" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Maaseh_Torah_Expression_MS_Vatican_44
+HebrewManuscripts:Maaseh_Torah_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                 lrmoo:F2_Expression ;
+                                                        lrmoo:R3_is_realised_in HebrewManuscripts:Maaseh_Torah_Work ;
+                                                        lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                        HebrewManuscripts:has_folio_range "298ב–302ב"@he ;
+                                                        rdfs:label "Ma‘aseh Torah – Expression in Vatican Ms. 44"@en ,
+                                                                   "מעשה תורה – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Maaseh_Torah_Work
+HebrewManuscripts:Maaseh_Torah_Work rdf:type owl:NamedIndividual ,
+                                             lrmoo:F1_Work ;
+                                    rdfs:label "Ma‘aseh Torah"@en ,
+                                               "מעשה תורה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Maaseh_Yehoshua_ben_Levi_Work
+HebrewManuscripts:Maaseh_Yehoshua_ben_Levi_Work rdf:type owl:NamedIndividual ,
+                                                         lrmoo:F1_Work ;
+                                                rdfs:label "Ma‘aseh Rabbi Yehoshua ben Levi"@en ,
+                                                           "מעשה רבי יהושע בן לוי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Maasim_Expression_MS_Vatican_44
+HebrewManuscripts:Maasim_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                           lrmoo:F2_Expression ;
+                                                  lrmoo:R3_is_realised_in HebrewManuscripts:Maasim_Work ;
+                                                  lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                  HebrewManuscripts:has_folio_range "356א–357ב"@he ;
+                                                  rdfs:label "Stories – Expression in Vatican Ms. 44"@en ,
+                                                             "מעשים – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Maasim_Work
+HebrewManuscripts:Maasim_Work rdf:type owl:NamedIndividual ,
+                                       lrmoo:F1_Work ;
+                              rdfs:label "Stories"@en ,
+                                         "מעשים"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MainText
+HebrewManuscripts:MainText rdf:type owl:NamedIndividual ,
+                                    cidoc-crm:E55_Type ;
+                           rdfs:label "Main Text"@en ,
+                                      "טקסט עקרי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#MarginalText
+HebrewManuscripts:MarginalText rdf:type owl:NamedIndividual ,
+                                        cidoc-crm:E55_Type ;
+                               rdfs:label "Marginal Text"@en ,
+                                          "טקסט בשוליים"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Massekhet_Semahot_Expression_MS_Vatican_44
+HebrewManuscripts:Massekhet_Semahot_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                      lrmoo:F2_Expression ;
+                                                             lrmoo:R3_is_realised_in HebrewManuscripts:Massekhet_Semahot_Work ;
+                                                             lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                             HebrewManuscripts:has_folio_range "295א–298ב"@he ;
+                                                             rdfs:label "Tractate Semahot – Expression in Vatican Ms. 44"@en ,
+                                                                        "מסכת שמחות – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Massekhet_Semahot_Work
+HebrewManuscripts:Massekhet_Semahot_Work rdf:type owl:NamedIndividual ,
+                                                  lrmoo:F1_Work ;
+                                         rdfs:label "Tractate Semahot of Rabbi Hiyya"@en ,
+                                                    "מסכת שמחות דר׳ חייא"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Menachem_Saida_Yaakov_Collection
+HebrewManuscripts:Menachem_Saida_Yaakov_Collection rdf:type owl:NamedIndividual ,
+                                                            cidoc-crm:E74_Group ;
+                                                   rdfs:label "Menachem and Saida Yaakov Collection"@en ,
+                                                              "אוסף מנחם וסעידה יעקב"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Micrography
+HebrewManuscripts:Micrography rdf:type owl:NamedIndividual ,
+                                       cidoc-crm:E55_Type ;
+                              rdfs:label "Micrography@en" ,
+                                         "מיקרוגרפיה@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Midrash_Mishlei_Expression_MS_Vatican_44
+HebrewManuscripts:Midrash_Mishlei_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                    lrmoo:F2_Expression ;
+                                                           lrmoo:R3_is_realised_in HebrewManuscripts:Midrash_Mishlei_Work ;
+                                                           lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                           HebrewManuscripts:has_folio_range "324ב–355ב"@he ;
+                                                           rdfs:label "Midrash Mishlei – Expression in Vatican Ms. 44"@en ,
+                                                                      "מדרש משלי – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Midrash_Mishlei_Work
+HebrewManuscripts:Midrash_Mishlei_Work rdf:type owl:NamedIndividual ,
+                                                lrmoo:F1_Work ;
+                                       rdfs:label "Midrash Mishlei"@en ,
+                                                  "מדרש משלי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Midrash_Subject
+HebrewManuscripts:Midrash_Subject rdf:type owl:NamedIndividual ,
+                                           HebrewManuscripts:SubjectType ;
+                                  rdfs:label "Midrash"@en ,
+                                             "מדרש"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Midrash_Tanchuma_Creation_Event
+HebrewManuscripts:Midrash_Tanchuma_Creation_Event rdf:type owl:NamedIndividual ,
+                                                           cidoc-crm:E65_Creation ;
+                                                  cidoc-crm:P94_has_created HebrewManuscripts:Midrash_Tanchuma_Work ;
+                                                  HebrewManuscripts:earliest_possible_date 801 ;
+                                                  HebrewManuscripts:latest_possible_date 850 ;
+                                                  lrmoo:R16_created HebrewManuscripts:Midrash_Tanchuma_Work ;
+                                                  rdfs:comment """מדרש תנחומא, המכונה גם מדרש ילמדנו, הוא שם כולל לשלושה קובצי מדרש אגדה. מדרש תנחומא החדש והישן קיימים בדפוס, ובנוסף אליהם היה קיים גם מדרש שאבד, אך מצוטט במקורות אחרים...
+מדרש זה הגיע לכלל גיבוש במחצית הראשונה של המאה ה-9 לספירה...
+    (ויקיפדיה)"""@he ,
+                                                               "Midrashic composition of uncertain authorship" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Midrash_Tanchuma_Work
+HebrewManuscripts:Midrash_Tanchuma_Work rdf:type owl:NamedIndividual ,
+                                                 lrmoo:F1_Work ;
+                                        cidoc-crm:P2_has_type HebrewManuscripts:Midrash_Subject ;
+                                        rdfs:label "Midrash Tanchuma"@en ,
+                                                   "מדרש תנחומא"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Miscellaneous_Kabbalistic_Texts_Expression_MS_Barberini_82
+HebrewManuscripts:Miscellaneous_Kabbalistic_Texts_Expression_MS_Barberini_82 rdf:type owl:NamedIndividual ,
+                                                                                      lrmoo:F2_Expression ;
+                                                                             cidoc-crm:P2_has_type HebrewManuscripts:AdditionalText ;
+                                                                             HebrewManuscripts:has_folio_range "149ב-151ב" ;
+                                                                             HebrewManuscripts:opening_text "כולל: ברכה לחולה וסדר שינוי השם (149ב), קמעות וסגולות (150ב), י\"ג מדות יב צירופים ותיקון הקדיש (151ב)\""@he ;
+                                                                             rdfs:label "Miscellaneous content in MS Barberini 82"@en ,
+                                                                                        "רכיבי תוכן נוספים בכתב יד ברברין 82"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Moshe_ben_Yitzhak_Ibn_Tibbon
+HebrewManuscripts:Moshe_ben_Yitzhak_Ibn_Tibbon rdf:type owl:NamedIndividual ,
+                                                        cidoc-crm:E21_Person ;
+                                               rdfs:label "Moshe ben Yitzhak Ibn Tibbon@en" ,
+                                                          "משה בן יצחק אבן תבון@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Nehemiah_ben_Yitzhak
+HebrewManuscripts:Nehemiah_ben_Yitzhak rdf:type owl:NamedIndividual ,
+                                                cidoc-crm:E21_Person ;
+                                       rdfs:label "Nehemiah ben Yitzhak"@en ,
+                                                  "נחמיה בן יצחק"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Note_on_the_unity_of_the_Lord_Work
+HebrewManuscripts:Note_on_the_unity_of_the_Lord_Work rdf:type owl:NamedIndividual ,
+                                                              lrmoo:F1_Work ;
+                                                     HebrewManuscripts:has_folio_range "148r–v" ;
+                                                     rdfs:label "Note on the unity of the Lord"@en ,
+                                                                "דרכי יחוד ה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#November_8_1541
+HebrewManuscripts:November_8_1541 rdf:type owl:NamedIndividual ,
+                                           cidoc-crm:E52_Time-Span ;
+                                  rdfs:label "November 8, 1541"@en .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#OrientalScript
+HebrewManuscripts:OrientalScript rdf:type owl:NamedIndividual ,
+                                          cidoc-crm:E55_Type ;
+                                 rdfs:label "Oriental Script"@en ,
+                                            "כתב מזרחי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Paper
+HebrewManuscripts:Paper rdf:type owl:NamedIndividual ,
+                                 cidoc-crm:E57_Material ;
+                        rdfs:label "Paper"@en ,
+                                   "נייר"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Papyrus
+HebrewManuscripts:Papyrus rdf:type owl:NamedIndividual ,
+                                   cidoc-crm:E57_Material ;
+                          rdfs:label "Papyrus"@en ,
+                                     "פפירוס"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Parchment
+HebrewManuscripts:Parchment rdf:type owl:NamedIndividual ,
+                                     cidoc-crm:E57_Material ;
+                            rdfs:label "Parchment"@en ,
+                                       "קלף"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#PersianScript
+HebrewManuscripts:PersianScript rdf:type owl:NamedIndividual ,
+                                         HebrewManuscripts:TypeScriptType ;
+                                rdfs:label "Persian Script"@en ,
+                                           "כתב פרסי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Perush_Eser_Sefirot_Expression_MS_Barberini_82
+HebrewManuscripts:Perush_Eser_Sefirot_Expression_MS_Barberini_82 rdf:type owl:NamedIndividual ,
+                                                                          lrmoo:F2_Expression ;
+                                                                 lrmoo:R3_is_realised_in HebrewManuscripts:Perush_Eser_Sefirot_Work ;
+                                                                 cidoc-crm:P2_has_type HebrewManuscripts:AdditionalText ;
+                                                                 HebrewManuscripts:has_folio_range "\"146ב-147ב\"" ;
+                                                                 HebrewManuscripts:opening_text "כתר חכמה בינה ... הסתכל בזה הסדר אשר אסדרנו לך להודיעך בו סוד מערכת עשר ספירות" ;
+                                                                 rdfs:comment "Opens with \"Crown Wisdom Understanding\", folios 146b-147b" ;
+                                                                 rdfs:label "Commentary on Ten Sefirot - Expression in MS Barberini"@en ,
+                                                                            "פרוש עשר ספירות - ביטוי בכתב יד ברבריני 82"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Perush_Eser_Sefirot_Work
+HebrewManuscripts:Perush_Eser_Sefirot_Work rdf:type owl:NamedIndividual ,
+                                                    lrmoo:F1_Work ;
+                                           cidoc-crm:P2_has_type HebrewManuscripts:Kabbalah_Subject ;
+                                           rdfs:comment "Kabbalistic commentary opening with \"Crown Wisdom Understanding...\", folios 146b-147b" ;
+                                           rdfs:label "Commentary on the Ten Sefirot"@en ,
+                                                      "פרוש עשר ספירות"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Philosophy_QA_Expression_MS_Vatican_44
+HebrewManuscripts:Philosophy_QA_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                  lrmoo:F2_Expression ;
+                                                         lrmoo:R3_is_realised_in HebrewManuscripts:Philosophy_QA_Work ;
+                                                         lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                         HebrewManuscripts:has_folio_range "383ב"@he ;
+                                                         rdfs:label "Philosophical Q&A – Expression in Vatican Ms. 44"@en ,
+                                                                    "שאלות ותשובות פילוסופיות – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Philosophy_QA_Work
+HebrewManuscripts:Philosophy_QA_Work rdf:type owl:NamedIndividual ,
+                                              lrmoo:F1_Work ;
+                                     rdfs:label "Philosophical Questions and Answers"@en ,
+                                                "שאלות ותשובות בענייני פילוסופיה"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Proverbs_Expression_MS_Vatican_44
+HebrewManuscripts:Proverbs_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                             lrmoo:F2_Expression ;
+                                                    lrmoo:R3_is_realised_in HebrewManuscripts:Proverbs_Work ;
+                                                    lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                    HebrewManuscripts:has_folio_range "323א"@he ;
+                                                    rdfs:label "Sayings – Expression in Vatican Ms. 44"@en ,
+                                                               "פתגמים – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Proverbs_Work
+HebrewManuscripts:Proverbs_Work rdf:type owl:NamedIndividual ,
+                                         lrmoo:F1_Work ;
+                                rdfs:label "Sayings"@en ,
+                                           "פתגמים"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Richler_Vatican_Catalog
+HebrewManuscripts:Richler_Vatican_Catalog rdf:type owl:NamedIndividual ,
+                                                   lrmoo:F3_Manifestation ;
+                                          cidoc-crm:P70_documents HebrewManuscripts:MS_Barberini_82 ;
+                                          rdfs:comment "Hebrew Manuscripts in the Vatican Library Catalogue, ..., edited by Benjamin Richler, palaeographical and codicological descriptions by Malachi Beit-Arié in collaboration with Nurit Pasternak. Città del Vaticano, Biblioteca Apostolica Vaticana, 2008 (Studi e Testi 438" ;
+                                          rdfs:label "Richler, Hebrew Manuscripts in the Vatican Library"@en ,
+                                                     "ריצ'לר, כתבי יד עבריים בספריית הווטיקן"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Riddles_Expression_MS_Vatican_44
+HebrewManuscripts:Riddles_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                            lrmoo:F2_Expression ;
+                                                   lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                   HebrewManuscripts:has_folio_range "384א–384ב"@he ;
+                                                   rdfs:label "Riddles – Expression in Vatican Ms. 44"@en ,
+                                                              "חידות – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Riddles_Work
+HebrewManuscripts:Riddles_Work rdf:type owl:NamedIndividual ,
+                                        lrmoo:F1_Work ;
+                               lrmoo:R3_is_realised_in HebrewManuscripts:Riddles_Expression_MS_Vatican_44 ;
+                               rdfs:label "Riddles"@en ,
+                                          "חידות"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Sanaa_Yemen
+HebrewManuscripts:Sanaa_Yemen rdf:type owl:NamedIndividual ,
+                                       cidoc-crm:E53_Place ;
+                              HebrewManuscripts:external_wikidata_id "Q1805" ;
+                              HebrewManuscripts:external_wikidata_uri "http://www.wikidata.org/entity/Q1805"^^xsd:anyURI ;
+                              rdfs:label "Sana'a, Yemen"@en ,
+                                         "צנעא, תימן"@he ;
+                              owl:sameAs "http://www.wikidata.org/entity/Q1805" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Scribe_role
+HebrewManuscripts:Scribe_role rdf:type owl:NamedIndividual ,
+                                       cidoc-crm:E55_Type ;
+                              rdfs:label "Scribe"@en ,
+                                         "סופר, מעתיק כתב יד"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Sefer_Yetzirah_Expression_MS_Barberini_82
+HebrewManuscripts:Sefer_Yetzirah_Expression_MS_Barberini_82 rdf:type owl:NamedIndividual ,
+                                                                     lrmoo:F2_Expression ;
+                                                            lrmoo:R3_is_realised_in HebrewManuscripts:Sefer_Yetzirah_Work ;
+                                                            cidoc-crm:P2_has_type HebrewManuscripts:AdditionalText ;
+                                                            HebrewManuscripts:has_folio_range "144א-146ב" ;
+                                                            HebrewManuscripts:variation_note "עם שינויים מהנדפס" ;
+                                                            rdfs:comment "Version with changes from the printed edition, folios 144a-146b" ;
+                                                            rdfs:label "Sefer Yetzirah - Expression in MS Barberini 82"@en ,
+                                                                       "ספר יצירה - ביטוי בכתב יד ברבריני  82"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Sefer_Yetzirah_Title_Object
+HebrewManuscripts:Sefer_Yetzirah_Title_Object rdf:type owl:NamedIndividual ,
+                                                       cidoc-crm:E33_Linguistic_Object ;
+                                              cidoc-crm:P190_has_symbolic_content "ספר יצירה" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Sefer_Yetzirah_Work
+HebrewManuscripts:Sefer_Yetzirah_Work rdf:type owl:NamedIndividual ,
+                                               lrmoo:F1_Work ;
+                                      cidoc-crm:P2_has_type HebrewManuscripts:Kabbalah_Subject ;
+                                      rdfs:comment "Ancient kabbalistic text on cosmogony and cosmology" ;
+                                      rdfs:label "Sefer Yetzirah (Book of Creation)"@en ,
+                                                 "ספר יצירה@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#SemicursiveScript
+HebrewManuscripts:SemicursiveScript rdf:type owl:NamedIndividual ,
+                                             HebrewManuscripts:ModeScriptType ;
+                                    rdfs:label "Semicursive Script"@en ,
+                                               "כתב בינוני"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#SepharadicScript
+HebrewManuscripts:SepharadicScript rdf:type owl:NamedIndividual ,
+                                            HebrewManuscripts:TypeScriptType ;
+                                   rdfs:label "Sepharadic Script"@en ,
+                                              "כתב ספרדי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Sfardata_01785
+HebrewManuscripts:Sfardata_01785 rdf:type owl:NamedIndividual ,
+                                          cidoc-crm:E42_Identifier ;
+                                 rdfs:label "Sfardata record 01785@en" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Spain
+HebrewManuscripts:Spain rdf:type owl:NamedIndividual ,
+                                 lrmoo:F11_Place ;
+                        rdfs:comment "מדינה באירופה"@he ;
+                        rdfs:label "ספרד" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#SquareScript
+HebrewManuscripts:SquareScript rdf:type owl:NamedIndividual ,
+                                        HebrewManuscripts:ModeScriptType ;
+                               rdfs:label "Square Script"@en ,
+                                          "כתב מרובע"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Torah_Commentary_Bahya_Creation_Event
+HebrewManuscripts:Torah_Commentary_Bahya_Creation_Event rdf:type owl:NamedIndividual ,
+                                                                 cidoc-crm:E65_Creation ;
+                                                        cidoc-crm:P14_carried_out_by HebrewManuscripts:Bahya_ben_Asher_ibn_Hlava ;
+                                                        cidoc-crm:P94_has_created HebrewManuscripts:Torah_Commentary_Bahya_Work ;
+                                                        lrmoo:R16_created HebrewManuscripts:Torah_Commentary_Bahya_Work .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Torah_Commentary_Bahya_Work
+HebrewManuscripts:Torah_Commentary_Bahya_Work rdf:type owl:NamedIndividual ,
+                                                       lrmoo:F1_Work ;
+                                              cidoc-crm:P2_has_type HebrewManuscripts:Bible_Pentateuch_Commentaries_Subject ;
+                                              HebrewManuscripts:earliest_possible_date 1255 ;
+                                              HebrewManuscripts:latest_possible_date 1340 ;
+                                              rdfs:comment "Biblical commentary on the Pentateuch" ;
+                                              rdfs:label "Torah Commentary by Bahya ben Asher"@en ,
+                                                         "פירוש התורה לבחיי בן אשר"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Torah_Commentary_Expression_MS_Iraqi_226
+HebrewManuscripts:Torah_Commentary_Expression_MS_Iraqi_226 rdf:type owl:NamedIndividual ,
+                                                                    lrmoo:F2_Expression ;
+                                                           lrmoo:R3_is_realised_in HebrewManuscripts:Torah_Commentary_Bahya_Work ;
+                                                           rdfs:comment "Copy from Venice print edition, complete text" ;
+                                                           rdfs:label "Torah Commentary by Bahya - Expression in MS Iraqi 226"@en ,
+                                                                      "פירוש התורה לבחיי בן אשר - ביטוי בכתב יד עראקי 226"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Vatican_Library
+HebrewManuscripts:Vatican_Library rdf:type owl:NamedIndividual ,
+                                           cidoc-crm:E74_Group ;
+                                  rdfs:label "Vatican Library@en" ,
+                                             "ספריית הוותיקן@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Yaakov_Muati
+HebrewManuscripts:Yaakov_Muati rdf:type owl:NamedIndividual ,
+                                        cidoc-crm:E21_Person ;
+                               cidoc-crm:P28i_custody_surrendered_in HebrewManuscripts:MS_Barberini_82_Ownership_History_Event ;
+                               rdfs:label "Yaakov Muati@en" ,
+                                          "יעקב מואטי@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Year_1407_Shvat
+HebrewManuscripts:Year_1407_Shvat rdf:type owl:NamedIndividual ,
+                                           cidoc-crm:E52_Time-Span ;
+                                  rdfs:label "1407, Shvat@en" ,
+                                             "קס\"ז, שבט@he" .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Year_1653
+HebrewManuscripts:Year_1653 rdf:type owl:NamedIndividual ,
+                                     cidoc-crm:E52_Time-Span .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Yehuda_ben_Musa_ben_Haim_Iraqi
+HebrewManuscripts:Yehuda_ben_Musa_ben_Haim_Iraqi rdf:type owl:NamedIndividual ,
+                                                          cidoc-crm:E21_Person ;
+                                                 rdfs:label "Yehuda ben Musa ben Haim Iraqi"@en ,
+                                                            "יהודה בן מוסא בן חיים עראקי"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#YemeniteScript
+HebrewManuscripts:YemeniteScript rdf:type owl:NamedIndividual ,
+                                          HebrewManuscripts:TypeScriptType ;
+                                 rdfs:label "Yemenite Script"@en ,
+                                            "כתב תימני"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Yosef_Iraqi_HaCohen
+HebrewManuscripts:Yosef_Iraqi_HaCohen rdf:type owl:NamedIndividual ,
+                                               cidoc-crm:E21_Person ;
+                                      HebrewManuscripts:external_identifier_nli "987007302329605171"^^xsd:anyURI ;
+                                      HebrewManuscripts:external_uri_nli "http://nli.org.il/he/authorities/987007302329605171"^^xsd:anyURI ;
+                                      rdfs:label "Yosef Iraqi HaCohen"@en ,
+                                                 "יוסף עראקי הכהן"@en .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Zuwaib_al_Miqra_Expression_MS_Vatican_44
+HebrewManuscripts:Zuwaib_al_Miqra_Expression_MS_Vatican_44 rdf:type owl:NamedIndividual ,
+                                                                    lrmoo:F2_Expression ;
+                                                           lrmoo:R3_is_realised_in HebrewManuscripts:Zuwaib_al_Miqra_Work ;
+                                                           lrmoo:R4_embodies HebrewManuscripts:MS_Vatican_Ebr_44 ;
+                                                           HebrewManuscripts:has_folio_range "375א–383ב"@he ;
+                                                           rdfs:label "Zuwaib al-Miqra – Expression in Vatican Ms. 44"@en ,
+                                                                      "זואיב אלמקרא – ביטוי בכת״י וטיקן 44"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Zuwaib_al_Miqra_Work
+HebrewManuscripts:Zuwaib_al_Miqra_Work rdf:type owl:NamedIndividual ,
+                                                lrmoo:F1_Work ;
+                                       rdfs:label "Zuwaib al-Miqra and Nuqatseha"@en ,
+                                                  "זואיב אלמקרא ונואקצהא"@he .
+
+
+###  http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Illustrated_works_(Manuscript)_Subject
+<http://www.ontology.org.il/HebrewManuscripts/2025-08-19#Illustrated_works_(Manuscript)_Subject> rdf:type owl:NamedIndividual ,
+                                                                                                          HebrewManuscripts:SubjectType ;
+                                                                                                 HebrewManuscripts:external_identifier_nli 987007603930805171 ;
+                                                                                                 rdfs:label "Illustrated works (Manuscript)"@en ,
+                                                                                                            "עבודות מאוירות (כתבי יד)"@he .
+
+
+###  Generated by the OWL API (version 4.5.29.2024-05-13T12:11:03Z) https://github.com/owlcs/owlapi

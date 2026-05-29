@@ -1,0 +1,2648 @@
+"""Build Wikidata item representations from authority-enriched pipeline records.
+
+Converts the structured JSON output of Stage 2 (authority matching) into
+WikidataItem dataclasses ready for upload or QuickStatements export.
+
+Uses ALL available pipeline data: NER entities, VIAF/Mazal authority matches,
+KIMA place links, subjects, genres, physical features, provenance, colophon,
+contents, condition, and epistemological tracking.
+
+Entity linking: VIAF IDs and NLI/Mazal IDs are resolved to Wikidata QIDs
+via the reconciler. Person claims on manuscripts use the resolved QIDs
+when available, ensuring proper LOD wiring.
+
+Follows WikiProject Manuscripts Data Model and Digital Scriptorium methodology.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from converter.wikidata.hebrew_translit import english_label_for_hebrew
+from converter.wikidata.property_mapping import (
+    CONDITION_TO_QID,
+    GENRE_TO_QID,
+    HMO_NS_TEMPLATE,
+    KNOWN_WORK_QIDS,
+    LANG_TO_QID,
+    MATERIAL_TO_QID,
+    P_APPLIES_TO_PART,
+    P_AUTHOR,
+    P_BASED_ON_HEURISTIC,
+    P_CATALOG_CODE,
+    P_COLLECTION,
+    P_CONDITION,
+    P_DATE_OF_BIRTH,
+    P_DATE_OF_DEATH,
+    P_DESCRIBED_AT_URL,
+    P_EARLIEST_DATE,
+    P_EXACT_MATCH,
+    P_EXEMPLAR_OF,
+    P_GENRE,
+    P_HEIGHT,
+    P_IIIF_MANIFEST,
+    P_INCEPTION,
+    P_INSCRIPTION,
+    P_INSTANCE_OF,
+    P_INVENTORY_NUMBER,
+    P_LANGUAGE,
+    P_LAST_LINE,
+    P_LATEST_DATE,
+    P_LOCATION_OF_CREATION,
+    P_MAIN_SUBJECT,
+    P_MATERIAL,
+    P_NATURE_OF_STATEMENT,
+    P_NLI_J9U_ID,
+    P_NUMBER_OF_FOLIOS,
+    P_NUMBER_OF_PAGES,
+    P_NUMBER_OF_PARTS,
+    P_OBJECT_HAS_ROLE,
+    P_OBJECT_NAMED_AS,
+    P_OCCUPATION,
+    P_ON_FOCUS_LIST,
+    P_OWNED_BY,
+    P_REASON_DEPRECATED_RANK,
+    P_SCRIPT_STYLE,
+    P_SIGNIFICANT_PLACE,
+    P_SOURCING_CIRCUMSTANCES,
+    P_START_TIME,
+    P_STATEMENT_SUPPORTED_BY,
+    P_TITLE,
+    P_VIAF_ID,
+    P_VOLUME,
+    P_WIDTH,
+    P_WRITING_SYSTEM,
+    PRECISION_CENTURY,
+    PRECISION_YEAR,
+    Q_AUTHOR_OCCUPATION,
+    Q_CIRCA,
+    Q_CODEX,
+    Q_COLOPHON,
+    Q_COMMENTATOR_OCCUPATION,
+    Q_COMPOSITE_MANUSCRIPT,
+    Q_CORRECTION,
+    Q_DUBIOUS,
+    Q_GLOSS,
+    Q_HEBREW_ALPHABET,
+    Q_HUMAN,
+    Q_HYPOTHESIS,
+    Q_ILLUMINATED_MANUSCRIPT,
+    Q_KTIV,
+    Q_MANUSCRIPT,
+    Q_MARGINALIA,
+    Q_NLI,
+    Q_ORGANIZATION,
+    Q_PALIMPSEST,
+    Q_POSSIBLY,
+    Q_PRESUMABLY,
+    Q_SCRIBE,
+    Q_TRANSLATOR_OCCUPATION,
+    Q_WIKIPROJECT_MANUSCRIPTS,
+    Q_WRITTEN_WORK,
+    ROLE_TO_PID,
+    SCRIPT_TYPE_TO_QID,
+    date_to_wikidata,
+    extract_viaf_id,
+    extract_wikidata_qid,
+    hmo_wikibase_page_url,
+    nli_j9u_id,
+    nli_reference,
+    viaf_reference,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ── Data classes ─────────────────────────────────────────────────────
+
+
+@dataclass
+class WikidataStatement:
+    """A single Wikidata statement (claim) with optional qualifiers and references.
+
+    ``rank`` and ``value_type ∈ {"somevalue","novalue"}`` were added in
+    Rule 42 (Phase 1 HMO fidelity, 2026-05-17). Default rank "normal"
+    preserves every existing call site; somevalue/novalue carry ``value=None``.
+    """
+
+    property_id: str
+    value: str | int | float | None  # None only for value_type in {somevalue,novalue}
+    value_type: str  # "item" | "string" | "time" | "quantity" | "url"
+                    # | "monolingualtext" | "external-id" | "somevalue" | "novalue"
+    qualifiers: list[dict[str, object]] = field(default_factory=list)
+    references: list[dict[str, str]] = field(default_factory=list)
+    precision: int = PRECISION_YEAR
+    language: str = "he"
+    unit: str = ""
+    rank: str = "normal"  # "preferred" | "normal" | "deprecated"
+
+
+@dataclass
+class WikidataItem:
+    """A Wikidata item ready for upload."""
+
+    labels: dict[str, str] = field(default_factory=dict)
+    descriptions: dict[str, str] = field(default_factory=dict)
+    aliases: dict[str, list[str]] = field(default_factory=dict)
+    statements: list[WikidataStatement] = field(default_factory=list)
+    existing_qid: str | None = None
+    entity_type: str = ""  # "manuscript" | "person" | "work"
+    local_id: str = ""
+
+
+# ── Person deduplication key ─────────────────────────────────────────
+
+
+def _person_key(name: str, viaf_uri: str | None, mazal_id: str | None) -> str:
+    """Create a deduplication key for a person entity."""
+    if mazal_id:
+        return f"mazal:{mazal_id}"
+    if viaf_uri:
+        viaf_id = extract_viaf_id(viaf_uri)
+        if viaf_id:
+            return f"viaf:{viaf_id}"
+    normalized = re.sub(r"[,.\s]+", "_", name.strip().lower())
+    return f"name:{normalized}"
+
+
+_INSTITUTIONAL_KEYWORDS: tuple[str, ...] = (
+    "library",
+    "museum",
+    "university",
+    "institute",
+    "seminary",
+    "school",
+    "college",
+    "society",
+    "academy",
+    "foundation",
+    "association",
+    "trust",
+    "centre",
+    "center",
+    "archive",
+    "bodleian",   # Bodleian Library, Oxford
+    "palatina",   # Bibliotheca Palatina
+    "ספרייה",
+    "מכון",
+    "אוניברסיטה",
+    "מוזיאון",
+    "קהילה",
+    "מכללה",
+    "ארכיון",
+)
+
+
+# Names that should never produce Wikidata person items — they are generic
+# catalog placeholders for unknown or anonymous persons/authors.
+# Fix 2026-04-15 third audit Fix #5.
+_ANONYMOUS_NAMES: frozenset[str] = frozenset(
+    {
+        "unknown",
+        "anonymous",
+        "anon",
+        "לא ידוע",
+        "לא נודע",
+        "סופר לא ידוע",
+        "מחבר לא ידוע",
+        "author unknown",
+        "scribe unknown",
+        "unknown author",
+        "unknown scribe",
+    }
+)
+
+
+def _is_anonymous_name(name: str) -> bool:
+    """True if the name is a generic placeholder for an unknown person."""
+    return name.strip().lower().rstrip(".,;:") in _ANONYMOUS_NAMES
+
+
+# Role-descriptors and bare place-names that MARC catalogers use as person
+# identifiers when no real name is known.  Wikidata items must not be created
+# for these — they are descriptions of a person's role or origin, not names.
+# Found in the wild: "משומד" (apostate), "שאלוניקי" (from Salonika).
+_ROLE_DESCRIPTOR_NAMES: frozenset[str] = frozenset({
+    # Hebrew role/status descriptors
+    "משומד",    # apostate (male)
+    "משומדת",   # apostate (female)
+    "מומר",     # apostate/convert (male)
+    "מומרת",    # apostate/convert (female)
+    "הגר",      # female convert to Judaism
+    "כוהן",     # priest (without a name)
+    "הכוהן",    # the priest
+    "לוי",      # Levite (without a name — "לוי" as a surname is fine)
+    "הלוי",     # the Levite
+    "הסופר",    # the scribe
+    "הנביא",    # the prophet
+    "הרב",      # the rabbi (without a name)
+    "הרופא",    # the physician
+    "הדיין",    # the judge
+    "הנגיד",    # the leader
+    "הפרנס",    # the community leader
+    # Bare city/country names used as sole personal identifiers
+    "שאלוניקי",   # Salonika/Thessaloniki
+    "סלוניקי",    # Salonika variant
+    "קושטא",      # Constantinople/Istanbul
+    "קושטנדינא",  # Constantinople variant
+    "אשכנז",      # Germany
+    "ספרד",       # Spain
+    "ונציה",      # Venice
+    "פאס",        # Fez
+    "תוניס",      # Tunis
+    "מצרים",      # Egypt
+    "בגדאד",      # Baghdad
+    "פראג",       # Prague
+    "קרקא",       # Kraków
+    "ויניציאה",   # Venice (variant)
+    "ליוורנו",    # Livorno
+    "אמשטרדם",    # Amsterdam
+})
+
+
+def _is_role_descriptor(name: str) -> bool:
+    """True when the entire name is a role-word or bare place-name.
+
+    These appear in MARC records when a cataloger identified someone only by
+    their social role ('apostate') or city of origin ('from Salonika') without
+    knowing their actual name.  Creating Wikidata items for these produces
+    garbage entries with generic labels that violate Wikidata notability.
+    """
+    return name.strip() in _ROLE_DESCRIPTOR_NAMES
+
+
+# NLI's catalog stores the source filename as the first MARC 500 general-note
+# field (e.g. "990000623390205171.mrc", "BIBLIOGRAPHIC_50929717600005171_5.txt").
+# These must never be emitted as P7535 scope/content notes on Wikidata.
+_SOURCE_FILENAME_RE = re.compile(
+    r"^[A-Za-z0-9_\-]+\.(mrc|txt|csv|xml|json)$", re.IGNORECASE
+)
+
+# Hebrew Unicode block (U+0590..U+05FF). A title like "Bible" or "Diodati
+# Segre" has no characters in this range and must NOT land in the `he`
+# label slot — that triggers HE_LABEL_IS_LATIN in item_validator.py
+# (see Kolja21 community report on Q139231608).
+_HEBREW_SCRIPT_RE = re.compile(r"[\u0590-\u05ff]")
+
+
+def _has_hebrew_script(text: str | None) -> bool:
+    """True iff `text` contains at least one Hebrew-block code point."""
+    return bool(text) and bool(_HEBREW_SCRIPT_RE.search(text))
+
+# ── Genre classifier lazy singleton ─────────────────────────────────
+# Loaded on first use; None when model file is absent (graceful degradation).
+_GENRE_CLASSIFIER: object | None = "unloaded"
+
+
+def _get_genre_classifier() -> object | None:
+    global _GENRE_CLASSIFIER
+    if _GENRE_CLASSIFIER == "unloaded":
+        # PyInstaller-frozen exe stages the .pt under sys._MEIPASS/ner/;
+        # the dev / .app fallback is the repo-relative path.
+        model_path: Path | None = None
+        try:
+            from mhm_pipeline.platform_.paths import bundled_resource_root  # noqa: PLC0415
+            frozen = bundled_resource_root() / "ner" / "genre_classifier_model.pt"
+            if frozen.exists():
+                model_path = frozen
+        except Exception:
+            pass
+        if model_path is None:
+            dev = Path(__file__).resolve().parent.parent.parent / "ner" / "genre_classifier_model.pt"
+            if dev.exists():
+                model_path = dev
+        if model_path is not None:
+            try:
+                from converter.authority.genre_classifier import GenreClassifier  # noqa: PLC0415
+                _GENRE_CLASSIFIER = GenreClassifier(str(model_path))
+            except Exception as exc:
+                logger.warning("Could not load genre classifier: %s", exc)
+                _GENRE_CLASSIFIER = None
+        else:
+            _GENRE_CLASSIFIER = None
+    return _GENRE_CLASSIFIER
+
+
+def is_institutional_name(name: str) -> bool:
+    """True if the name looks like an institution (library, museum, etc.).
+
+    Used to re-route MARC 710 (added entry — corporate name) values away
+    from P50 (author) to P195 (collection) — fix for the Q139085958 pattern
+    Geagea reported (2026-04-15) where institutions were being assigned as
+    authors of manuscripts.
+    """
+    if not name:
+        return False
+    lowered = name.lower()
+    return any(kw in lowered for kw in _INSTITUTIONAL_KEYWORDS)
+
+
+_is_institutional_name = is_institutional_name  # backward-compat alias for internal callers
+
+
+def _to_natural_name_order(name: str) -> str:
+    """Convert MARC's inverted name form 'Surname, Given' to Wikidata's
+    natural-order convention 'Given Surname'.
+
+    Bug fix (2026-04-15, Geagea complaint on Q139230386, label "סופינו, עמנואל"):
+    Wikidata expects person labels in natural order. The inverted form is a
+    cataloging convention that belongs in P1559 (native name) for searchability,
+    not in the human-facing label.
+
+    Rules:
+    - "Surname, Given" → "Given Surname"
+    - "Surname, Given (qualifier)" → "Given Surname (qualifier)"
+    - "Surname, Given, second-Given" → "second-Given Given Surname" (rare,
+      conservatively NOT flipped — leave as-is to avoid worse mistakes)
+    - Names without exactly one comma → returned unchanged
+    - Trailing dates "Surname, Given, 1850-1900" → "Given Surname (1850-1900)"
+    """
+    if not name or "," not in name:
+        return name
+    # Split off any trailing date range like ", 1850-1900" or ", -1900"
+    date_match = re.search(r",\s*(-?\d{2,4}(?:[-–]\d{0,4})?)\s*$", name)
+    date_suffix = ""
+    base = name
+    if date_match:
+        date_suffix = f" ({date_match.group(1)})"
+        base = name[: date_match.start()]
+    parts = [p.strip() for p in base.split(",")]
+    # Drop empty parts (trailing comma case)
+    parts = [p for p in parts if p]
+    if len(parts) != 2:
+        # Either zero commas (unchanged) or more than one comma (ambiguous);
+        # return unchanged + any trailing date suffix.
+        return name if not date_suffix else (base.strip() + date_suffix)
+    surname, given = parts
+    return f"{given} {surname}{date_suffix}"
+
+
+# ── Work deduplication key ──────────────────────────────────────────
+
+
+def _work_key(title: str) -> str:
+    """Create a deduplication key for a work entity."""
+    normalized = re.sub(r'[,.\s"׳״]+', "_", title.strip().lower())
+    return f"work:{normalized}"
+
+
+def _cap_description(desc: str, max_len: int = 250) -> str:
+    """Truncate a Wikidata description to the community-recommended maximum.
+
+    Wikidata's soft limit is 250 characters (Help:Description). Descriptions
+    over this length are accepted by the API but flagged by quality tools.
+    Fix 2026-04-15 third audit Fix #14.
+    """
+    return desc[:max_len] if len(desc) > max_len else desc
+
+
+def _ascii_dates(s: str) -> str:
+    """Return only the ASCII portion of a dates string for English descriptions.
+
+    MARC authority data for medieval scholars (Geonim etc.) sometimes stores
+    Arabic date expressions (e.g. 'توفي 1013' = 'died 1013'). Wikidata English
+    descriptions must be readable by all patrollers regardless of script.
+    Non-ASCII chars are dropped; surrounding noise is trimmed.
+    """
+    cleaned = "".join(c for c in s if ord(c) < 128).strip(" .,;:-")
+    return cleaned
+
+
+def _build_work_description(author_name: str | None, century: str | None) -> str:
+    """Build a disambiguating English description for a work item.
+
+    Wikidata requires descriptions to disambiguate same-label items.
+    Bug fix 2026-04-15 (web audit): previously all work descriptions were
+    identical ('Hebrew manuscript work'), making same-titled works
+    indistinguishable. Now includes author and century when available.
+    """
+    parts = ["Hebrew manuscript work"]
+    if author_name:
+        cleaned = author_name.strip().rstrip(",;:")
+        if cleaned:
+            parts.append(f"by {cleaned}")
+    if century:
+        parts.append(f"({century})")
+    return _cap_description(" ".join(parts))
+
+
+_ROLE_TO_LABEL: dict[str, str] = {
+    "AUTHOR": "author",
+    "author": "author",
+    "SCRIBE": "scribe",
+    "scribe": "scribe",
+    # The keyword classifier in ``ner/inference_pipeline.py`` emits
+    # ``TRANSCRIBER`` (not ``SCRIBE``); both alias to the same label.
+    "TRANSCRIBER": "scribe",
+    "transcriber": "scribe",
+    "OWNER": "owner",
+    "owner": "owner",
+    "TRANSLATOR": "translator",
+    "translator": "translator",
+    "EDITOR": "editor",
+    "editor": "editor",
+    "COMMENTATOR": "commentator",
+    "commentator": "commentator",
+    "PATRON": "patron",
+    "patron": "patron",
+}
+
+
+def _is_placeholder_title(title: str | None) -> bool:
+    """Return True if a MARC 245 title is a generic catalog placeholder.
+
+    Bug fix 2026-04-15 (Geagea complaint, 2026-04-15): catalogers use
+    "קובץ" / "קבץ" (= "compilation" / "file") and short topical variants
+    ("קובץ בקבלה" = "Kabbalah compilation") as the title field of MARC
+    records for multi-text anthologies that have no overarching real
+    title. When emitted as a Wikidata Hebrew label, these strings are
+    useless for disambiguation and were flagged as nonsense by the
+    Hebrew-Wikidata community.
+
+    We treat as placeholder:
+    - exact "קובץ" / "קבץ" (with optional trailing punctuation)
+    - "קובץ X" / "קבץ X" where the whole string is short (≤ 25 chars)
+
+    The original string is preserved as a Hebrew alias by the caller so
+    it remains searchable; the Wikidata LABEL falls back to a synthetic
+    shelfmark-based label.
+    """
+    if not title:
+        return False
+    cleaned = title.strip().rstrip(".,;:")
+    if cleaned in {"קובץ", "קבץ"}:
+        return True
+    # Short topical placeholder like "קובץ בקבלה" or "קבץ מדרשים"
+    if cleaned.startswith(("קובץ ", "קבץ ")) and len(cleaned) <= 25:
+        return True
+    return False
+
+
+def _build_person_description(role: str, dates_str: str, is_org: bool) -> str:
+    """Build a disambiguating English description for a person item.
+
+    Wikidata expects descriptions to disambiguate same-label items.
+    Bug fix 2026-04-16 (deeper audit Fix #13): previously emitted a bare
+    "person (1200-1280)" or generic "person associated with Hebrew
+    manuscripts". Now incorporates the role so e.g. two different scribes
+    with the same name can be told apart.
+    """
+    # Strip non-ASCII from dates_str: NLI/Mazal authority data for Gaonic-era
+    # scholars stores Arabic date expressions (e.g. 'توفي 1013'). English
+    # descriptions must be ASCII-readable for all Wikidata patrollers.
+    safe_dates = _ascii_dates(dates_str) if dates_str else ""
+    if is_org:
+        if safe_dates:
+            return _cap_description(f"organization ({safe_dates})")
+        return "organization associated with Hebrew manuscripts"
+    role_label = _ROLE_TO_LABEL.get((role or "").strip(), "")
+    if role_label and safe_dates:
+        return _cap_description(f"{role_label} ({safe_dates})")
+    if role_label:
+        return _cap_description(f"Hebrew manuscript {role_label}")
+    if safe_dates:
+        return _cap_description(f"person ({safe_dates})")
+    return "person associated with Hebrew manuscripts"
+
+
+def _extract_inception_year(record: dict[str, object]) -> int | None:
+    """Return the manuscript's earliest known year (CE) if available.
+
+    Used by the public-domain (P6216) gate so we only assert public-domain
+    status on demonstrably pre-1900 works. Returns ``None`` when no year
+    can be determined — caller should err on the side of NOT asserting
+    public domain.
+
+    Looks at: record["dates"]["year"], MARC 008 date1, and a fallback
+    parse of the original Hebrew/English date string.
+    """
+    dates = record.get("dates")
+    if isinstance(dates, dict):
+        year = dates.get("year") or dates.get("date1") or dates.get("year_start")
+        if year is not None:
+            try:
+                return int(year)
+            except (TypeError, ValueError):
+                pass
+        original = str(dates.get("original_string") or "")
+        m = re.search(r"\b(\d{3,4})\b", original)
+        if m:
+            try:
+                return int(m.group(1))
+            except ValueError:
+                return None
+    return None
+
+
+def _extract_century_for_work(source_record: dict[str, object]) -> str | None:
+    """Extract a human-readable century string for the work description.
+
+    Pulls from the manuscript's date data when present (e.g. '16th century',
+    'מאה ט"ז'). Returns None when no century info is available so the
+    description omits the parenthetical.
+    """
+    dates = source_record.get("dates")
+    if not isinstance(dates, dict):
+        return None
+    original = str(dates.get("original_string") or "").replace('""', '"').strip()
+    if not original:
+        return None
+    eng_match = re.search(r"\d{1,2}(?:th|st|nd|rd)\s*century", original, re.IGNORECASE)
+    if eng_match:
+        return eng_match.group(0).lower()
+    if "מאה" in original:
+        # Take just up to the closing date ordinal
+        snippet = re.search(r"מאה\s+[א-ת][\u05F4\"\']?[א-ת]?", original)
+        if snippet:
+            return snippet.group(0)
+    return None
+
+
+# ── Role → occupation QID ────────────────────────────────────────────
+
+_ROLE_TO_OCCUPATION: dict[str, str] = {
+    "AUTHOR": Q_AUTHOR_OCCUPATION,
+    "author": Q_AUTHOR_OCCUPATION,
+    "TRANSCRIBER": Q_SCRIBE,
+    "scribe": Q_SCRIBE,
+    "copyist": Q_SCRIBE,
+    "TRANSLATOR": Q_TRANSLATOR_OCCUPATION,
+    "translator": Q_TRANSLATOR_OCCUPATION,
+    "COMMENTATOR": Q_COMMENTATOR_OCCUPATION,
+    "commentator": Q_COMMENTATOR_OCCUPATION,
+}
+
+
+# ── Builder ──────────────────────────────────────────────────────────
+
+
+class WikidataItemBuilder:
+    """Build Wikidata item representations from authority-enriched records.
+
+    Covers ALL 53 fields from ExtractedData plus NER entities and
+    authority matches. Entity linking uses resolved Wikidata QIDs
+    from the reconciliation phase.
+
+    Usage::
+
+        builder = WikidataItemBuilder()
+        items = builder.build_all(records)
+    """
+
+    def __init__(self, reconciler: object | None = None) -> None:
+        """Initialize the builder.
+
+        Args:
+            reconciler: Optional WikidataReconciler instance. When provided,
+                _get_or_create_work() will SPARQL-query Wikidata for an
+                existing work item before creating a new one. This catches
+                duplicates of classical Hebrew works (Talmud tractates,
+                Rashi commentaries, Maimonides, etc.) that already exist
+                on Wikidata. Bug fix 2026-04-15 (web audit Fix #2).
+                Pass None to disable SPARQL reconciliation (faster offline
+                builds; falls back to KNOWN_WORK_QIDS hardcoded mapping).
+        """
+        self._person_items: dict[str, WikidataItem] = {}
+        self._person_qids: dict[str, str] = {}  # person_key -> resolved Wikidata QID
+        # Persons that the notability gate or role-descriptor gate rejected.
+        # Their stub WikidataItems are NOT added to _person_items (so they do
+        # not flow into build_all's output as empty shells) but we still need
+        # to remember the key to avoid re-logging the same warning every time
+        # the same MARC 100/700 entry is referenced.
+        self._skipped_person_keys: set[str] = set()
+        self._skipped_person_stubs: dict[str, WikidataItem] = {}
+        self._work_items: dict[str, WikidataItem] = {}
+        self._manuscript_items: list[WikidataItem] = []
+        self._reconciler = reconciler
+
+    def build_manuscript_item(self, record: dict[str, object]) -> WikidataItem:
+        """Build a Wikidata item for a single manuscript record."""
+        control_number = str(record.get("_control_number", "") or "")
+        # Explicit ``or ""`` before ``str(...)``: when the record contains an
+        # explicit ``title: None`` (rather than the key being absent),
+        # ``record.get("title", "")`` returns ``None``, and ``str(None)`` is
+        # the four-character string ``"None"`` — which was ending up in the
+        # Hebrew label slot and triggering HE_LABEL_IS_LATIN on the validator.
+        # Discovered 2026-04-24 via six-NER triage (record 990001330520205171).
+        title = str(record.get("title") or "").strip().rstrip(" .,;:/-")
+        ref = nli_reference(control_number)
+
+        item = WikidataItem(entity_type="manuscript", local_id=control_number)
+
+        # ── Labels & descriptions ────────────────────────────────
+        self._set_labels(item, record, title)
+
+        # ── Core identity ────────────────────────────────────────
+        # Rule 42: emit one P31 per applicable class. When more than one is
+        # emitted, the specific QIDs get rank="preferred" so consumers
+        # querying wdt:P31 see the most-specific class first; the base
+        # Q_MANUSCRIPT keeps the default "normal" rank.
+        instance_qids = self._determine_instance_type(record)
+        multi = len(instance_qids) > 1
+        for qid in instance_qids:
+            stmt_rank = "preferred" if multi and qid != Q_MANUSCRIPT else "normal"
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_INSTANCE_OF,
+                    value=qid,
+                    value_type="item",
+                    references=ref,
+                    rank=stmt_rank,
+                )
+            )
+
+        # Rule 42: P2888 (exact match) bridges the Wikidata item to the
+        # project-owned page in mhm-hmo.wikibase.cloud. We deliberately do
+        # NOT emit the synthetic HMO graph IRI (record["hmo_iri"]) here —
+        # that namespace is for internal TTL traversal and is not hosted
+        # on any web server (audit response 2026-05-17). The wikibase.cloud
+        # slug URL is project-owned and becomes resolvable once Phase 3
+        # uploads the HMO entities and creates the corresponding redirect
+        # pages. We emit only when a control number is available.
+        wikibase_url = hmo_wikibase_page_url(control_number)
+        if wikibase_url:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_EXACT_MATCH,
+                    value=wikibase_url,
+                    value_type="url",
+                    references=ref,
+                )
+            )
+            # Rule 44 (Phase 2, 2026-05-17): P973 (described at URL) carries
+            # the **direct** wikibase.cloud browse link. Today this is the
+            # same URL as P2888, but the two have distinct semantics:
+            # P2888 is the academic permalink ("exact match" — survives any
+            # hosting migration via the w3id.org redirect once it merges),
+            # while P973 always points at the live wikibase.cloud page for
+            # humans clicking through. The split becomes meaningful when
+            # P2888 switches to https://w3id.org/mhm/manuscript/<cn>.
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_DESCRIBED_AT_URL,
+                    value=wikibase_url,
+                    value_type="url",
+                    references=ref,
+                )
+            )
+
+        item.statements.append(
+            WikidataStatement(
+                property_id=P_COLLECTION,
+                value=Q_NLI,
+                value_type="item",
+                references=ref,
+            )
+        )
+        # P17 = country (Israel — all NLI manuscripts are held in Israel)
+        item.statements.append(
+            WikidataStatement(
+                property_id="P17",
+                value="Q801",
+                value_type="item",
+                references=ref,
+            )
+        )
+        # P131 = located in administrative entity (Jerusalem)
+        item.statements.append(
+            WikidataStatement(
+                property_id="P131",
+                value="Q1218",
+                value_type="item",
+                references=ref,
+            )
+        )
+
+        shelfmark = record.get("shelfmark")
+        if shelfmark:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_INVENTORY_NUMBER,
+                    value=str(shelfmark),
+                    value_type="string",
+                    # P217 constraint requires P195 (collection) as a qualifier
+                    # on the statement itself (not just a top-level P195 claim).
+                    # Fix 2026-04-15 third audit Fix #1.
+                    qualifiers=[{"property": P_COLLECTION, "value": Q_NLI, "type": "item"}],
+                    references=ref,
+                )
+            )
+        # P8189 (NLI J9U ID) is an AUTHORITY-record identifier — only values
+        # with the '9870…' prefix are valid. Manuscript control numbers are
+        # bibliographic (prefix '990…'), which do NOT belong on P8189.
+        # (Rule 25 bug #2, reinforced by 2026-04-24 six-NER triage where 100/100
+        # manuscripts were being blocked by the validator for exactly this.)
+        if control_number:
+            j9u = nli_j9u_id(control_number)
+            if j9u.startswith("9870"):
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_NLI_J9U_ID,
+                        value=j9u,
+                        value_type="external-id",
+                        references=ref,
+                    )
+                )
+            # Otherwise the bibliographic control number is already captured
+            # in P217 (inventory number, added above with P195 qualifier).
+        if title:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_TITLE,
+                    value=title,
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                )
+            )
+
+        # ── Language & writing system ────────────────────────────
+        self._add_languages(item, record, ref)
+
+        # ── Script type (paleographic) ───────────────────────────
+        script_type = record.get("script_type")
+        if script_type and str(script_type) in SCRIPT_TYPE_TO_QID:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_SCRIPT_STYLE,
+                    value=SCRIPT_TYPE_TO_QID[str(script_type)],
+                    value_type="item",
+                    references=ref,
+                )
+            )
+
+        # ── Dates ────────────────────────────────────────────────
+        colophon_fields = set(record.get("data_from_colophon") or [])
+        dates = record.get("dates") or {}
+        date_result = date_to_wikidata(dates)
+        if date_result:
+            time_value, precision, calendarmodel, earliest_year, latest_year = date_result
+            # Add P1480 (circa) qualifier when date certainty is not exact
+            qualifiers: list[dict[str, object]] = []
+            cert_levels = record.get("certainty_levels") or {}
+            date_cert = cert_levels.get("date", "")
+            if date_cert and date_cert != "Certain":
+                qualifiers.append(
+                    {
+                        "property": P_SOURCING_CIRCUMSTANCES,
+                        "value": Q_CIRCA,
+                        "type": "item",
+                    }
+                )
+            # Fix 2026-04-15 third audit Fix #12: century-precision dates lack
+            # explicit start/end bounds. Add P1319 (earliest date) and P1326
+            # (latest date) qualifiers so reviewers can understand the full range
+            # rather than mistaking the century-start year for an exact date.
+            if precision == PRECISION_CENTURY and earliest_year and latest_year:
+                qualifiers.append(
+                    {
+                        "property": P_EARLIEST_DATE,
+                        "value": f"+{earliest_year:04d}-00-00T00:00:00Z",
+                        "type": "time",
+                        "precision": PRECISION_YEAR,
+                    }
+                )
+                qualifiers.append(
+                    {
+                        "property": P_LATEST_DATE,
+                        "value": f"+{latest_year:04d}-00-00T00:00:00Z",
+                        "type": "time",
+                        "precision": PRECISION_YEAR,
+                    }
+                )
+            # P887 (based on heuristic) = colophon when date is from colophon.
+            # P887's property-scope constraint is "as reference" only — it must
+            # NOT be used as a statement qualifier. Move it into the reference
+            # block alongside P248/P813. Fix 2026-04-15 third audit Fix #3.
+            if "dates" in colophon_fields or "colophon_text" in colophon_fields:
+                colophon_ref = list(ref) + [
+                    {
+                        "property": P_BASED_ON_HEURISTIC,
+                        "value": Q_COLOPHON,
+                        "type": "item",
+                    }
+                ]
+                inception_ref = colophon_ref
+            else:
+                inception_ref = ref
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_INCEPTION,
+                    value=time_value,
+                    value_type="time",
+                    precision=precision,
+                    qualifiers=qualifiers,
+                    references=inception_ref,
+                )
+            )
+
+        # ── Location of creation (KIMA places → Wikidata QIDs) ──
+        kima_places = record.get("kima_places") or {}
+        for _place_name, wikidata_uri in kima_places.items():
+            qid = extract_wikidata_qid(str(wikidata_uri))
+            if qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_LOCATION_OF_CREATION,
+                        value=qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+
+        # ── Physical description ─────────────────────────────────
+        self._add_physical_description(item, record, ref)
+
+        # ── Digital access ───────────────────────────────────────
+        digital_url = record.get("digital_url")
+        if digital_url:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_DESCRIBED_AT_URL,
+                    value=str(digital_url),
+                    value_type="url",
+                    references=ref,
+                )
+            )
+        # Rule 45 P6108 coexistence (2026-05-18): the two manifests carry
+        # different payloads — NLI's manifest (from MARC 856) hosts the
+        # real high-resolution Canvas images, while ours (published to
+        # mhm-hmo.wikibase.cloud by Stage 6.5) carries the HMO scholarly
+        # overlay (Codicological_Unit Ranges, ScribalIntervention /
+        # Colophon / Marginalia AnnotationCollections, seeAlso to the
+        # HMO graph node) on placeholder Canvases. Both must be reachable
+        # from Wikidata or the consumer loses one of the two views.
+        #
+        # Rank semantics: when both URLs exist, NLI's image-rich manifest
+        # is ranked "preferred" so image-only IIIF consumers pick it by
+        # default; our overlay manifest stays at "normal" rank and
+        # remains discoverable via P6108 (see Rule 45 sub-section
+        # "P6108 coexistence"). When only one URL is present, it is
+        # emitted at "normal" rank (current behaviour preserved).
+        nli_iiif_url = record.get("iiif_manifest_url")
+        published_iiif_url = record.get("iiif_manifest_published_url")
+        both_present = bool(nli_iiif_url) and bool(published_iiif_url)
+        if nli_iiif_url:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_IIIF_MANIFEST,
+                    value=str(nli_iiif_url),
+                    value_type="url",
+                    references=ref,
+                    rank="preferred" if both_present else "normal",
+                )
+            )
+        if published_iiif_url:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_IIIF_MANIFEST,
+                    value=str(published_iiif_url),
+                    value_type="url",
+                    references=ref,
+                    rank="normal",
+                )
+            )
+
+        # ── Genres (MARC 655) ────────────────────────────────────
+        marc_genres = record.get("genres") or []
+        for genre in marc_genres:
+            qid = GENRE_TO_QID.get(str(genre))
+            if qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_GENRE,
+                        value=qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+
+        # ── Genre fallback: classifier when MARC 655 absent ──────
+        if not marc_genres:
+            _clf = _get_genre_classifier()
+            if _clf is not None:
+                heuristic_ref = list(ref) + [
+                    {"property": P_BASED_ON_HEURISTIC, "value": "Q2539", "type": "item"},
+                ]
+                inferred = _clf.predict(
+                    title,
+                    record.get("notes") or [],
+                )
+                for genre_str, _conf in inferred:
+                    if genre_str == "other":
+                        continue  # NOTA predicted — no genre claim
+                    qid = GENRE_TO_QID.get(genre_str)
+                    if qid:
+                        # Rule 42: classifier-inferred genres carry both
+                        # P1480 (presumably) and P5102 (hypothesis) to make
+                        # the epistemic status explicit. P887 stays in the
+                        # reference block (Rule 28 #3 regress guard).
+                        item.statements.append(
+                            WikidataStatement(
+                                property_id=P_GENRE,
+                                value=qid,
+                                value_type="item",
+                                qualifiers=[
+                                    {
+                                        "property": P_SOURCING_CIRCUMSTANCES,
+                                        "value": Q_PRESUMABLY,
+                                        "type": "item",
+                                    },
+                                    {
+                                        "property": P_NATURE_OF_STATEMENT,
+                                        "value": Q_HYPOTHESIS,
+                                        "type": "item",
+                                    },
+                                ],
+                                references=heuristic_ref,
+                            )
+                        )
+
+        # ── Subjects from canonical_references → P921 ────────────
+        self._add_canonical_subjects(item, record, ref)
+
+        # ── Contents / works (P1574 exemplar of) ────────────────
+        self._add_contents(item, record, ref)
+
+        # ── Incipit (first line of text) → P1922 ───────────────
+        incipit = record.get("has_incipit")
+        if incipit and str(incipit).strip() and str(incipit) != "None":
+            from converter.wikidata.property_mapping import P_FIRST_LINE  # noqa: PLC0415
+
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_FIRST_LINE,
+                    value=str(incipit).strip().strip('"'),
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                )
+            )
+
+        # ── Explicit (last line of text) → P3132 ───────────────
+        explicit = record.get("has_explicit")
+        if explicit and str(explicit).strip() and str(explicit) != "None":
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_LAST_LINE,
+                    value=str(explicit).strip().strip('"'),
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                )
+            )
+
+        # ── Condition → P5816 (keyword → QID mapping + date parsing)
+        for cond_note in record.get("condition_notes") or []:
+            cond_text = str(cond_note).strip()
+            # Try keyword → QID
+            matched = False
+            for keyword, qid in CONDITION_TO_QID.items():
+                if keyword in cond_text.lower():
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id=P_CONDITION,
+                            value=qid,
+                            value_type="item",
+                            references=ref,
+                        )
+                    )
+                    matched = True
+                    break
+            if matched:
+                continue
+            # Try YYYYMMDD date → restoration date
+            date_match = re.match(r"(\d{4})(\d{2})(\d{2})", cond_text)
+            if date_match:
+                y, m, d = date_match.groups()
+                from converter.wikidata.property_mapping import Q_RESTORED  # noqa: PLC0415
+
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_CONDITION,
+                        value=Q_RESTORED,
+                        value_type="item",
+                        references=ref,
+                        qualifiers=[
+                            {
+                                "property": "P585",
+                                "value": f"+{y}-{m}-{d}T00:00:00Z",
+                                "type": "time",
+                            }
+                        ],
+                    )
+                )
+
+        # ── Catalog references ───────────────────────────────────
+        for cat_ref in record.get("catalog_references") or []:
+            cat_name = cat_ref.get("catalog", "") if isinstance(cat_ref, dict) else str(cat_ref)
+            if cat_name:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_CATALOG_CODE,
+                        value=str(cat_name),
+                        value_type="string",
+                        references=ref,
+                    )
+                )
+
+        # ── Summary (MARC 520) → P7535 ─────────────────────────
+        summary = record.get("summary")
+        if summary and str(summary).strip() and str(summary) != "None":
+            item.statements.append(
+                WikidataStatement(
+                    property_id="P7535",
+                    value=str(summary),
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                )
+            )
+
+        # ── Rights (MARC 540) → P6216 ───────────────────────────
+        # Historical Hebrew manuscripts are public domain (pre-1900 works).
+        # Rights statements from NLI describe digital copy access, not copyright.
+        # Bug fix 2026-04-16 (deeper audit Fix #15): only assert public-domain
+        # status when the inception date is known AND before 1900. A 20th-c.
+        # manuscript could otherwise receive an incorrect public-domain claim.
+        rights = record.get("rights_statement")
+        if rights and str(rights).strip() and str(rights) != "None":
+            inception_year = _extract_inception_year(record)
+            if inception_year is not None and inception_year < 1900:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id="P6216",
+                        value="Q19652",
+                        value_type="item",
+                        # Fix 2026-04-15 third audit Fix #11: P6216 without a
+                        # jurisdiction qualifier asserts *universal* public domain,
+                        # which is legally incorrect. Scope to Israel (Q801) under
+                        # Israeli copyright law.
+                        qualifiers=[
+                            {
+                                "property": "P1001",
+                                "value": "Q801",
+                                "type": "item",
+                            }
+                        ],
+                        references=ref,
+                    )
+                )
+
+        # ── Person claims (authors, scribes, owners from MARC + NER) ──
+        self._add_person_claims(item, record, ref)
+
+        # ── Provenance claims (owners from NER on MARC 561) ─────
+        self._add_provenance_claims(item, record, ref)
+
+        # ── Number of codicological units → P2635 ───────────────
+        codic_units = record.get("codicological_units") or []
+        if len(codic_units) > 1:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_NUMBER_OF_PARTS,
+                    value=len(codic_units),
+                    value_type="quantity",
+                    references=ref,
+                )
+            )
+
+        # ── Colophon text → P1684 (inscription) ─────────────────
+        colophon = record.get("colophon_text")
+        if colophon and str(colophon).strip() and str(colophon) != "None":
+            colophon_qualifiers: list[dict[str, object]] = [
+                {
+                    "property": P_OBJECT_HAS_ROLE,
+                    "value": Q_COLOPHON,
+                    "type": "item",
+                }
+            ]
+            # Rule 42: when upstream (NER post-filter or HMO TextLocation)
+            # surfaces a folio reference for the colophon, attach it as
+            # P7416. Never invent folio data when absent.
+            colophon_folio = record.get("colophon_folio")
+            if colophon_folio and str(colophon_folio).strip():
+                colophon_qualifiers.append(
+                    {
+                        "property": P_NUMBER_OF_FOLIOS,
+                        "value": str(colophon_folio).strip(),
+                        "type": "string",
+                    }
+                )
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_INSCRIPTION,
+                    value=str(colophon).strip()[:1500],
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                    qualifiers=colophon_qualifiers,
+                )
+            )
+
+        # ── Scribal interventions → P1684 (inscription) ─────────
+        for intervention in record.get("scribal_interventions") or []:
+            text = (
+                str(intervention.get("text", "")).strip()
+                if isinstance(intervention, dict)
+                else str(intervention).strip()
+            )
+            if not text or text == "None":
+                continue
+            int_type = (
+                str(intervention.get("type", "")).lower() if isinstance(intervention, dict) else ""
+            )
+            role_qid = (
+                Q_GLOSS
+                if "gloss" in int_type
+                else Q_CORRECTION
+                if "correct" in int_type
+                else Q_MARGINALIA
+            )
+            intervention_qualifiers: list[dict[str, object]] = [
+                {
+                    "property": P_OBJECT_HAS_ROLE,
+                    "value": role_qid,
+                    "type": "item",
+                }
+            ]
+            # Rule 42: same conditional folio wiring as colophon above.
+            intervention_folio = (
+                intervention.get("folio") if isinstance(intervention, dict) else None
+            )
+            if intervention_folio and str(intervention_folio).strip():
+                intervention_qualifiers.append(
+                    {
+                        "property": P_NUMBER_OF_FOLIOS,
+                        "value": str(intervention_folio).strip(),
+                        "type": "string",
+                    }
+                )
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_INSCRIPTION,
+                    value=text[:1500],
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                    qualifiers=intervention_qualifiers,
+                )
+            )
+
+        # ── Multi-volume: emit P2635 if volume count > CU count ────
+        # P478 (volume in series) is for "Vol. 3 of set X" labels — NOT for
+        # "total number of volumes = 4". When volume_info contains a total
+        # count ("4 כרכים ;"), parse the number and emit P2635 only if it
+        # differs from the CU-based P2635 already emitted above.
+        vol_info = record.get("volume_info")
+        if vol_info and str(vol_info).strip() and str(vol_info) != "None":
+            vol_text = str(vol_info).strip().rstrip(";., ")
+            _vol_count_match = re.search(r"\d+", vol_text)
+            if _vol_count_match:
+                vol_count = int(_vol_count_match.group())
+                cu_count = len(record.get("codicological_units") or [])
+                # Emit P2635 only when volume count is informative and
+                # different from the already-emitted CU-based count.
+                if vol_count > 1 and vol_count != cu_count:
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id=P_NUMBER_OF_PARTS,
+                            value=vol_count,
+                            value_type="quantity",
+                            references=ref,
+                        )
+                    )
+
+        # ── Related places → P7153 (significant place) ──────────
+        for place_name in record.get("related_places") or []:
+            for _name, uri in (record.get("kima_places") or {}).items():
+                if place_name.strip() in _name or _name in place_name.strip():
+                    qid = extract_wikidata_qid(str(uri))
+                    if qid:
+                        item.statements.append(
+                            WikidataStatement(
+                                property_id=P_SIGNIFICANT_PLACE,
+                                value=qid,
+                                value_type="item",
+                                # P7153 constraint requires P3831 (object of statement
+                                # has role) qualifier. Use Q1773840 (provenance) as the
+                                # role — the closest concept for "place associated with
+                                # the manuscript's custody history". Bug fix 2026-04-16:
+                                # Q1616923 was previously used but is a disambiguation
+                                # page (Heydeck), not a role concept.
+                                qualifiers=[
+                                    {
+                                        "property": P_OBJECT_HAS_ROLE,
+                                        "value": "Q1773840",
+                                        "type": "item",
+                                    }
+                                ],
+                                references=ref,
+                            )
+                        )
+                        break
+
+        # ── General notes (MARC 500) → P7535 ────────────────────
+        for note in record.get("notes") or []:
+            note_text = str(note).strip()
+            if not note_text or note_text == "None" or len(note_text) <= 5:
+                continue
+            if _SOURCE_FILENAME_RE.match(note_text):
+                continue  # skip internal NLI catalog filenames (MARC 500 artifact)
+            item.statements.append(
+                WikidataStatement(
+                    property_id="P7535",
+                    value=note_text[:1500],
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                )
+            )
+
+        # ── Provenance raw text (MARC 561) → P7535 + provenance qualifier
+        prov_text = record.get("provenance")
+        if prov_text and str(prov_text).strip() and str(prov_text) != "None":
+            item.statements.append(
+                WikidataStatement(
+                    property_id="P7535",
+                    value=str(prov_text).strip()[:1500],
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                    qualifiers=[
+                        {
+                            "property": P_OBJECT_HAS_ROLE,
+                            "value": "Q1145267",
+                            "type": "item",  # provenance
+                        }
+                    ],
+                )
+            )
+
+        # ── Multiple scribal hands → P7535 note ─────────────────
+        if record.get("has_multiple_hands"):
+            item.statements.append(
+                WikidataStatement(
+                    property_id="P7535",
+                    value="Written in multiple scribal hands",
+                    value_type="monolingualtext",
+                    language="en",
+                    references=ref,
+                )
+            )
+
+        # ── Related works → P1574 via work items ────────────────
+        for rw in record.get("related_works") or []:
+            rw_title = rw.get("title", "") if isinstance(rw, dict) else str(rw)
+            rw_title = rw_title.strip().strip('".')
+            if not rw_title:
+                continue
+            rw_qid = KNOWN_WORK_QIDS.get(rw_title)
+            if rw_qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=rw_qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+            else:
+                rw_item = self._get_or_create_work(rw_title, None, record)
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=f"__LOCAL:{rw_item.local_id}",
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+
+        # ── WikiProject Manuscripts ──────────────────────────────
+        item.statements.append(
+            WikidataStatement(
+                property_id=P_ON_FOCUS_LIST,
+                value=Q_WIKIPROJECT_MANUSCRIPTS,
+                value_type="item",
+            )
+        )
+
+        return item
+
+    def _set_labels(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        title: str,
+    ) -> None:
+        """Set labels, descriptions, and aliases for a manuscript item.
+
+        Bug fix 2026-04-15 (Geagea complaint): MARC 245 sometimes contains
+        a generic placeholder like "קובץ." (= "compilation") rather than a
+        real title, used by catalogers when an anthology has no overarching
+        name. Emitting that as the Hebrew label produced 94 useless labels
+        on Wikidata. We now detect placeholder titles and route them to
+        an alias slot, falling back to a shelfmark-based label.
+        """
+        is_placeholder = _is_placeholder_title(title)
+        shelfmark = record.get("shelfmark")
+        title_clean = title.rstrip(". ") if title else ""
+        title_has_hebrew = _has_hebrew_script(title_clean)
+        if title_clean and not is_placeholder:
+            # Latin-only titles (e.g. "Meir Netiv in Latin", "Referat über
+            # den XI Zionistischen Kongress in Basel") must NOT go into the
+            # he-label slot — the validator flags that as HE_LABEL_IS_LATIN.
+            # Route them to the en slot only and keep them as an en-alias for
+            # searchability (the en label may later be overwritten by the
+            # shelfmark-based form).
+            if title_has_hebrew:
+                item.labels["he"] = title_clean
+                item.labels["en"] = title_clean
+            else:
+                item.labels["en"] = title_clean
+                item.aliases.setdefault("en", []).append(title_clean)
+        elif title:
+            # Placeholder: keep the original cataloger string as a Hebrew
+            # alias for searchability, but do NOT use it as the label.
+            item.aliases.setdefault("he", []).append(title)
+
+        if shelfmark:
+            item.labels["en"] = f"Jerusalem, NLI, {shelfmark}"
+            if title_clean and not is_placeholder and title_has_hebrew:
+                item.aliases.setdefault("he", []).append(title_clean)
+            # When the title was a placeholder OR Latin-only AND we have a
+            # shelfmark, synthesise a useful Hebrew label from the shelfmark.
+            if "he" not in item.labels and (is_placeholder or not title_has_hebrew):
+                item.labels["he"] = f"כתב יד עברי, ספרייה לאומית, {shelfmark}"
+
+        # Variant titles as aliases
+        for vt in record.get("variant_titles") or []:
+            item.aliases.setdefault("he", []).append(str(vt).strip().rstrip(". "))
+
+        # Description
+        langs = record.get("languages") or []
+        lang_str = "Hebrew" if "heb" in langs else ", ".join(langs) if langs else "Hebrew"
+        dates = record.get("dates") or {}
+        year = dates.get("year", "")
+        desc_parts = [f"{lang_str} manuscript"]
+        if year:
+            desc_parts.append(str(year))
+        desc_parts.append("National Library of Israel")
+        item.descriptions["en"] = ", ".join(desc_parts)
+
+    def _determine_instance_type(self, record: dict[str, object]) -> list[str]:
+        """Return all applicable P31 QIDs, most-specific first.
+
+        HMO models manuscripts as multiple intersecting classes (illuminated +
+        composite + palimpsest + codex etc.). The Wikidata equivalent is
+        multiple P31 statements. We always emit at least Q87167 (manuscript)
+        as the base type, placed last. WikiProject Manuscripts endorses
+        multi-P31 when no pair is in a subclass relation (Rule 42, Phase 1
+        HMO fidelity, 2026-05-17).
+        """
+        qids: list[str] = []
+        if record.get("has_decoration"):
+            qids.append(Q_ILLUMINATED_MANUSCRIPT)
+        if record.get("is_multi_volume") or record.get("is_anthology"):
+            qids.append(Q_CODEX)
+        if record.get("is_composite"):
+            qids.append(Q_COMPOSITE_MANUSCRIPT)
+        if record.get("is_palimpsest"):
+            qids.append(Q_PALIMPSEST)
+        qids.append(Q_MANUSCRIPT)  # base type always last
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for qid in qids:
+            if qid not in seen:
+                seen.add(qid)
+                ordered.append(qid)
+        return ordered
+
+    def _add_languages(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add P407 language and P282 writing system statements."""
+        langs = record.get("languages") or []
+        for lang_code in langs:
+            qid = LANG_TO_QID.get(str(lang_code))
+            if qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_LANGUAGE,
+                        value=qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+        if any(str(c) in ("heb", "arc", "yid", "lad", "jrb", "jpr") for c in langs):
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_WRITING_SYSTEM,
+                    value=Q_HEBREW_ALPHABET,
+                    value_type="item",
+                    references=ref,
+                )
+            )
+
+    def _add_physical_description(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add material, dimensions, folio count."""
+        for material in record.get("materials") or []:
+            qid = MATERIAL_TO_QID.get(str(material))
+            if qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_MATERIAL,
+                        value=qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+        height = record.get("height_mm")
+        if height and float(height) > 0:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_HEIGHT,
+                    value=float(height),
+                    value_type="quantity",
+                    unit="mm",
+                    references=ref,
+                )
+            )
+        width = record.get("width_mm")
+        if width and float(width) > 0:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_WIDTH,
+                    value=float(width),
+                    value_type="quantity",
+                    unit="mm",
+                    references=ref,
+                )
+            )
+        extent = record.get("extent")
+        if extent:
+            extent_str = str(extent)
+            folio_match = re.search(r"(\d+)", extent_str)
+            if folio_match:
+                # Bug fix 2026-04-16 (deeper audit Fix #11): manuscripts are
+                # counted in folios (leaves), not pages. P1104 (number of
+                # pages) is wrong; the correct property is P7416 (number of
+                # folios). Heuristic: if the extent string explicitly says
+                # "page(s)" use P1104; otherwise default to P7416 since
+                # virtually all manuscript catalogues count in folios/leaves.
+                low = extent_str.lower()
+                says_pages = "page" in low or "עמוד" in low
+                prop = P_NUMBER_OF_PAGES if says_pages else P_NUMBER_OF_FOLIOS
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=prop,
+                        value=int(folio_match.group(1)),
+                        value_type="quantity",
+                        references=ref,
+                    )
+                )
+
+    def _add_contents(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add P1574 (exemplar of) for contained works.
+
+        Links manuscript to known Wikidata work items when possible.
+        Also processes NER-extracted WORK entities from MARC 505.
+        """
+        seen_works: set[str] = set()
+
+        # From structured MARC 505 data
+        for content in record.get("contents") or []:
+            work_title = (
+                str(content.get("title", "")) if isinstance(content, dict) else str(content)
+            )
+            if not work_title or not work_title.strip():
+                continue
+            work_title = work_title.strip()
+            if work_title in seen_works:
+                continue
+            seen_works.add(work_title)
+
+            qualifiers: list[dict[str, object]] = []
+            if isinstance(content, dict) and content.get("folio_range"):
+                qualifiers.append(
+                    {
+                        "property": "P958",
+                        "value": str(content["folio_range"]),
+                        "type": "string",
+                    }
+                )
+
+            work_qid = KNOWN_WORK_QIDS.get(work_title)
+            if work_qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=work_qid,
+                        value_type="item",
+                        qualifiers=qualifiers,
+                        references=ref,
+                    )
+                )
+            else:
+                # Work identified by title matching only (not in KNOWN_WORK_QIDS
+                # and not reconciled to an existing Wikidata item). Add P1480
+                # (presumably) to express `possibly_realises` — the manuscript
+                # may exemplify this work, but the identification is uncertain.
+                work_item = self._get_or_create_work(work_title, None, record)
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=f"__LOCAL:{work_item.local_id}",
+                        value_type="item",
+                        qualifiers=qualifiers + [
+                            {"property": P_SOURCING_CIRCUMSTANCES, "value": Q_PRESUMABLY, "type": "item"}
+                        ],
+                        references=ref,
+                    )
+                )
+
+        # From NER-extracted contents entities (WORK + FOLIO)
+        entities = record.get("entities") or []
+        cont_entities = [e for e in entities if e.get("source") == "contents_ner"]
+        works = [e for e in cont_entities if e.get("type") == "WORK"]
+        folios = [e for e in cont_entities if e.get("type") == "FOLIO"]
+
+        for work in works:
+            work_title = str(work.get("text", "")).strip().strip('".')
+            if not work_title or work_title in seen_works:
+                continue
+            seen_works.add(work_title)
+
+            work_qid = KNOWN_WORK_QIDS.get(work_title)
+            qualifiers_ner: list[dict[str, object]] = []
+
+            # Find associated folio entity (nearest by position)
+            for folio in folios:
+                if abs(folio.get("end", 0) - work.get("start", 0)) < 3:
+                    qualifiers_ner.append(
+                        {
+                            "property": "P958",
+                            "value": str(folio.get("text", "")).strip(":"),
+                            "type": "string",
+                        }
+                    )
+                    break
+
+            if work_qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=work_qid,
+                        value_type="item",
+                        qualifiers=qualifiers_ner,
+                        references=ref,
+                    )
+                )
+            else:
+                # Find associated WORK_AUTHOR entity by position proximity
+                work_authors = [e for e in cont_entities if e.get("type") == "WORK_AUTHOR"]
+                author_name = None
+                for wa in work_authors:
+                    if abs(wa.get("start", 0) - work.get("end", 0)) < 20:
+                        author_name = str(wa.get("text", "")).strip()
+                        break
+                work_item = self._get_or_create_work(work_title, author_name, record)
+                # NER-identified works are inherently uncertain → add P1480 (presumably)
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=f"__LOCAL:{work_item.local_id}",
+                        value_type="item",
+                        qualifiers=qualifiers_ner + [
+                            {"property": P_SOURCING_CIRCUMSTANCES, "value": Q_PRESUMABLY, "type": "item"}
+                        ],
+                        references=ref,
+                    )
+                )
+
+    def _add_canonical_subjects(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add P921 (main subject) from canonical_references.
+
+        Maps Bible book names and Talmud Bavli tractate names to Wikidata QIDs.
+        """
+        from converter.wikidata.property_mapping import (  # noqa: PLC0415
+            BIBLE_BOOK_TO_QID,
+            SUBJECT_TO_QID,
+            TALMUD_TRACTATE_TO_QID,
+        )
+
+        seen_qids: set[str] = set()
+
+        # From canonical references (Bible books, Talmud tractates)
+        for cr in record.get("canonical_references") or []:
+            hierarchy = cr.get("hierarchy", "")
+            qid = None
+            if hierarchy == "Bible":
+                book = cr.get("book", "")
+                qid = BIBLE_BOOK_TO_QID.get(book)
+            elif hierarchy == "Talmud_Bavli":
+                tractate = cr.get("tractate", "")
+                qid = TALMUD_TRACTATE_TO_QID.get(tractate)
+            if qid and qid not in seen_qids:
+                seen_qids.add(qid)
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_MAIN_SUBJECT,
+                        value=qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+
+        # From LCSH subject headings
+        for subj in record.get("subjects") or []:
+            term = subj.get("term", "") if isinstance(subj, dict) else str(subj)
+            if not term:
+                continue
+            qid = SUBJECT_TO_QID.get(term)
+            if qid and qid not in seen_qids:
+                seen_qids.add(qid)
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_MAIN_SUBJECT,
+                        value=qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+            elif not qid and term.strip():
+                # Person names as subjects → try to create person item, link via P921
+                person = self._get_or_create_person(
+                    term.strip(),
+                    None,
+                    None,
+                    "subject",
+                    record,
+                )
+                p_key = _person_key(term.strip(), None, None)
+                resolved = self._person_qids.get(p_key) or person.existing_qid
+                if resolved and resolved not in seen_qids:
+                    seen_qids.add(resolved)
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id=P_MAIN_SUBJECT,
+                            value=resolved,
+                            value_type="item",
+                            references=ref,
+                        )
+                    )
+                elif not person.labels:
+                    # Notability gate skipped this person — no external IDs.
+                    # Skip P921 entirely for bare subject names with no authority
+                    # record; adding a string value to P921 is not valid.
+                    pass
+                elif person.local_id not in seen_qids:
+                    seen_qids.add(person.local_id)
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id=P_MAIN_SUBJECT,
+                            value=f"__LOCAL:{person.local_id}",
+                            value_type="item",
+                            references=ref,
+                        )
+                    )
+
+    def _add_provenance_claims(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add provenance claims from NER-extracted MARC 561 entities.
+
+        OWNER → P127 (owned by) with optional P580/P582 date qualifiers.
+        COLLECTION → noted via P1932 (named as) qualifier on P195.
+        """
+        entities = record.get("entities") or []
+        prov_entities = [e for e in entities if e.get("source") == "provenance_ner"]
+        if not prov_entities:
+            return
+
+        owners = [e for e in prov_entities if e.get("type") == "OWNER"]
+        dates = [e for e in prov_entities if e.get("type") == "DATE"]
+        collections = [e for e in prov_entities if e.get("type") == "COLLECTION"]
+
+        # Build date qualifiers from DATE entities (P580/P582 per WikiProject Data Model)
+        date_qualifiers: list[dict[str, object]] = []
+        for date_ent in dates:
+            date_text = str(date_ent.get("text", "")).strip().strip('".:')
+            if not date_text:
+                continue
+            # Try to parse as Gregorian year
+            year_match = re.search(r"(\d{4})", date_text)
+            if year_match:
+                year = int(year_match.group(1))
+                date_qualifiers.append(
+                    {
+                        "property": P_START_TIME,
+                        "value": f"+{year:04d}-00-00T00:00:00Z",
+                        "type": "time",
+                    }
+                )
+
+        seen_owners: set[str] = set()
+        for owner in owners:
+            owner_name = str(owner.get("text", "")).strip().strip('".')
+            if not owner_name or owner_name in seen_owners:
+                continue
+            seen_owners.add(owner_name)
+
+            viaf_uri = owner.get("viaf_uri")
+            mazal_id = owner.get("mazal_id")
+            key = _person_key(owner_name, viaf_uri, mazal_id)
+
+            person_item = self._get_or_create_person(
+                owner_name,
+                viaf_uri,
+                mazal_id,
+                "OWNER",
+                record,
+            )
+            resolved_qid = self._person_qids.get(key) or person_item.existing_qid
+
+            # Attach date qualifiers to the ownership statement
+            owner_qualifiers = list(date_qualifiers)  # Copy shared dates
+            if resolved_qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_OWNED_BY,
+                        value=resolved_qid,
+                        value_type="item",
+                        qualifiers=owner_qualifiers,
+                        references=ref,
+                    )
+                )
+            else:
+                owner_qualifiers.append(
+                    {
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": owner_name.rstrip(",;:"),
+                        "type": "string",
+                    }
+                )
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_OWNED_BY,
+                        value=f"__LOCAL:{person_item.local_id}",
+                        value_type="item",
+                        qualifiers=owner_qualifiers,
+                        references=ref,
+                    )
+                )
+
+        seen_colls: set[str] = set()
+        for coll in collections:
+            coll_name = str(coll.get("text", "")).strip().strip('".')
+            if not coll_name or coll_name in seen_colls:
+                continue
+            seen_colls.add(coll_name)
+            # P195 (collection) expects item QIDs, not strings.
+            # NER-extracted collection names are skipped — would need
+            # reconciliation to Wikidata institution QIDs.
+
+    def _add_person_claims(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add person-related claims using resolved Wikidata QIDs.
+
+        Wikidata convention (per WikiProject Manuscripts):
+        - P50 (author) belongs on WORK items, not manuscripts
+        - P11603 (transcribed by) goes directly on manuscripts (scribes)
+        - P127 (owned by) goes directly on manuscripts (owners)
+
+        Authors are linked via P1574: MS → exemplar of → Work → P50 → Author.
+        When no separate work item exists, P50 is placed on the MS as fallback.
+
+        Entity linking flow:
+        1. Person has VIAF URI → reconciler resolves to Wikidata QID → use QID
+        2. Person has Mazal/NLI ID → reconciler resolves to Wikidata QID → use QID
+        3. Person not found on Wikidata → create new person item with P214 + P8189
+        """
+        seen_person_keys: set[str] = set()
+
+        def _add_person_statement(
+            name: str,
+            role: str,
+            viaf_uri: str | None,
+            mazal_id: str | None,
+        ) -> None:
+            if not name:
+                return
+            key = _person_key(name, viaf_uri, mazal_id)
+            if key in seen_person_keys:
+                return
+            seen_person_keys.add(key)
+
+            # Normalize role for lookup (case-insensitive, strip whitespace)
+            role_norm = role.strip().lower()
+            pid = ROLE_TO_PID.get(role_norm, ROLE_TO_PID.get(role, P_AUTHOR))
+
+            # Bug fix (2026-04-15, Geagea complaint on Q139085958): an
+            # institutional contributor (MARC 710 "current owner" = National
+            # Library of Israel, etc.) was being attached as P50 (author).
+            # Institutions cannot be authors of manuscripts. Re-route them:
+            #   - If pid would be P50 (author) AND the name is institutional,
+            #     change pid to P195 (collection) instead.
+            #   - "owner" / "current_owner" roles already map to P127 (owned
+            #     by) which is correct.
+            if pid == P_AUTHOR and _is_institutional_name(name):
+                pid = "P195"  # collection
+
+            # Rule 42 Phase 1 (HMO fidelity, 2026-05-17): known-anonymous
+            # author. Rule 28 already blocks the creation of a person item
+            # for placeholder names ("Anonymous", "לא ידוע", …). Instead of
+            # dropping the signal or emitting only a flat P2093 string,
+            # encode it as a manuscript-side P50 somevalue with role and
+            # name-as-qualifier plus P5102=hypothesis. This makes the
+            # assertion "this manuscript has an author, identity unknown"
+            # machine-readable rather than silent.
+            clean_name_anon = name.strip().strip('"\'').strip().rstrip(",;:.")
+            if pid == P_AUTHOR and _is_anonymous_name(clean_name_anon):
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_AUTHOR,
+                        value=None,
+                        value_type="somevalue",
+                        qualifiers=[
+                            {
+                                "property": P_OBJECT_HAS_ROLE,
+                                "value": Q_AUTHOR_OCCUPATION,
+                                "type": "item",
+                            },
+                            {
+                                "property": "P2093",
+                                "value": clean_name_anon,
+                                "type": "string",
+                            },
+                            {
+                                "property": P_NATURE_OF_STATEMENT,
+                                "value": Q_HYPOTHESIS,
+                                "type": "item",
+                            },
+                        ],
+                        references=ref,
+                    )
+                )
+                return
+
+            person_item = self._get_or_create_person(name, viaf_uri, mazal_id, role, record)
+            resolved_qid = self._person_qids.get(key) or person_item.existing_qid
+
+            # For scribes/owners → direct claim on manuscript
+            # For authors → P50 on MS as fallback (proper model uses Work item)
+            if resolved_qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=pid,
+                        value=resolved_qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+            elif not person_item.labels and not _is_institutional_name(name):
+                # Fix 2026-04-15 third audit Fix #8: the notability gate skipped
+                # this person (no external identifiers). Use P2093 (author name
+                # string) as a string fallback so the name is not silently lost.
+                # P2093 is appropriate for unresolved person names in bibliographic
+                # statements; it avoids creating stub items that would be deleted.
+                #
+                # Fix 2026-04-16: OWNER role has no string-fallback property —
+                # P127 (owned by) requires an item value. For owners without a
+                # Wikidata item, the MARC 561 provenance text already goes to
+                # P7535 (scope and content), so we suppress P2093 for this role.
+                # For all other roles, add P3831 (object has role) qualifier so
+                # curators can distinguish author/scribe/translator fallbacks.
+                role_norm_lower = role.strip().lower()
+                if role_norm_lower in ("owner", "current_owner", "בעלים"):
+                    pass  # skip — provenance text captured in P7535
+                else:
+                    role_qid = _ROLE_TO_OCCUPATION.get(role, _ROLE_TO_OCCUPATION.get(role_norm_lower))
+                    p2093_qualifiers: list[dict] = []
+                    if role_qid:
+                        p2093_qualifiers = [
+                            {"property": P_OBJECT_HAS_ROLE, "value": role_qid, "type": "item"}
+                        ]
+                    cleaned_name_for_p2093 = name.strip().rstrip(",;:")
+                    # Rule 46 (2026-05-18): when the name string is Hebrew-
+                    # only, append an additional P1810 (named as) qualifier
+                    # carrying the smart Latin transliteration. Without this,
+                    # curators searching Wikidata in English have no way to
+                    # find the P2093 fallback. The romanization is for human
+                    # searchability — it never replaces the Hebrew P2093
+                    # value, which remains the authoritative form.
+                    en_alias = english_label_for_hebrew(cleaned_name_for_p2093, record)
+                    if en_alias and en_alias != cleaned_name_for_p2093:
+                        p2093_qualifiers = list(p2093_qualifiers) + [
+                            {"property": P_OBJECT_NAMED_AS, "value": en_alias, "type": "string"}
+                        ]
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id="P2093",
+                            value=cleaned_name_for_p2093,
+                            value_type="string",
+                            references=ref,
+                            qualifiers=p2093_qualifiers,
+                        )
+                    )
+            else:
+                # Person identified via MARC/NER but not confirmed by authority
+                # matching → add P1480 (presumably) to signal uncertain attribution.
+                # This directly addresses the certainty/confidence mechanism
+                # requested by domain experts (Lavee, Baumgarten, Univ. Haifa).
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=pid,
+                        value=f"__LOCAL:{person_item.local_id}",
+                        value_type="item",
+                        references=ref,
+                        qualifiers=[
+                            {"property": P_OBJECT_NAMED_AS, "value": name.strip().rstrip(",;:"), "type": "string"},
+                            {"property": P_SOURCING_CIRCUMSTANCES, "value": Q_PRESUMABLY, "type": "item"},
+                        ],
+                    )
+                )
+
+        # From MARC authority matches (structured name fields 100/700/etc.)
+        for match in record.get("marc_authority_matches") or []:
+            _add_person_statement(
+                str(match.get("name", "")),
+                str(match.get("role", "")),
+                match.get("viaf_uri"),
+                match.get("mazal_id"),
+            )
+
+        # From NER entities (extracted from note fields)
+        for entity in record.get("entities") or []:
+            _add_person_statement(
+                str(entity.get("person", "")),
+                str(entity.get("role", "")),
+                entity.get("viaf_uri"),
+                entity.get("mazal_id"),
+            )
+
+    def _get_or_create_person(
+        self,
+        name: str,
+        viaf_uri: str | None,
+        mazal_id: str | None,
+        role: str,
+        source_record: dict[str, object],
+    ) -> WikidataItem:
+        """Get existing or create new person item with full authority data."""
+        key = _person_key(name, viaf_uri, mazal_id)
+        if key in self._person_items:
+            return self._person_items[key]
+        if key in self._skipped_person_keys:
+            # Same skip decision already made; return the cached stub so
+            # callers can still inspect .labels==() to route to P2093,
+            # but don't re-emit the warning.
+            return self._skipped_person_stubs[key]
+
+        person = WikidataItem(entity_type="person", local_id=key)
+
+        # Clean name: strip surrounding quotes and trailing MARC ISBD punctuation.
+        # The full set ",;:." matches the validator's TRAILING_PUNCTUATION rule —
+        # missing the period here let "בחיי בן יוסף אבן פקודה." through unfiltered.
+        clean_name = name.strip().strip('"\'').strip().rstrip(",;:.")
+        if not clean_name or len(clean_name) < 2:
+            # Stub, but do NOT add to _person_items — see _skipped_person_keys
+            self._skipped_person_keys.add(key)
+            self._skipped_person_stubs[key] = person
+            return person
+
+        # Fix 2026-04-15 third audit Fix #5: skip generic anonymous placeholders.
+        if _is_anonymous_name(clean_name):
+            logger.warning("Skipping anonymous/placeholder person name: %r", clean_name)
+            self._skipped_person_keys.add(key)
+            self._skipped_person_stubs[key] = person
+            return person
+
+        # Skip names that are role-descriptors or bare place-names — these are
+        # MARC catalog conventions for unnamed persons ("apostate", "from Salonika")
+        # and must never become Wikidata item labels.  Root cause of the
+        # "משומד"/"שאלוניקי" deletion batch (2026-04-20).
+        if _is_role_descriptor(clean_name):
+            logger.warning(
+                "Skipping role-descriptor/place-name used as person identifier: %r",
+                clean_name,
+            )
+            self._skipped_person_keys.add(key)
+            self._skipped_person_stubs[key] = person
+            return person
+
+        # Fix 2026-04-15 third audit Fix #4: Wikidata:Notability requires person
+        # items to have at least one external identifier (VIAF, NLI J9U, LCCN,
+        # GND, ISNI, BnF). Creating items with only a name and no identifiers
+        # invites mass deletion requests from the community. Skip the item and
+        # let callers fall back to P2093 (author name string) for the statement.
+        match_info: dict[str, object] = {}
+        for m in source_record.get("marc_authority_matches") or []:
+            mid = str(m.get("mazal_id", ""))
+            vid = str(m.get("viaf_uri", ""))
+            if (mazal_id and mid == mazal_id) or (viaf_uri and vid == viaf_uri):
+                match_info = m  # type: ignore[assignment]
+                break
+        has_identifier = any(
+            [
+                viaf_uri,
+                mazal_id,
+                match_info.get("gnd_id"),
+                match_info.get("lc_id"),
+                match_info.get("isni"),
+                match_info.get("bnf_id"),
+            ]
+        )
+        if not has_identifier:
+            logger.warning(
+                "Skipping person %r — no external identifier (Wikidata:Notability). "
+                "Callers should use P2093 (author name string) instead.",
+                clean_name,
+            )
+            # Return the stub (so the caller's `if not person_item.labels`
+            # branch fires and routes to P2093) but do NOT persist it in
+            # ``_person_items`` — otherwise 251 empty-label items surface in
+            # build_all's output and get rejected as NO_IDENTIFIER/EMPTY_LABEL.
+            self._skipped_person_keys.add(key)
+            self._skipped_person_stubs[key] = person
+            return person
+
+        # Label-based deduplication: search Wikidata for an existing human with
+        # the same Hebrew/Latin label before creating a new item.  This catches
+        # persons who exist in Wikidata without any of our identifier properties
+        # (VIAF/NLI/LCCN not yet recorded there), preventing duplicate items.
+        # Only fires when the reconciler has not already found a QID via identifiers.
+        if self._reconciler is not None and not person.existing_qid:
+            existing_qid = self._reconciler.reconcile_person_by_label(clean_name)
+            if isinstance(existing_qid, str) and existing_qid:
+                person.existing_qid = existing_qid
+                logger.info(
+                    "Label-based dedup: %r matched existing Wikidata item %s",
+                    clean_name, existing_qid,
+                )
+
+        # Bug fix 2026-04-16 (deeper audit Fix #1): every person statement
+        # must carry a P248 reference. Use VIAF cluster URL when the person
+        # has a VIAF ID; otherwise fall back to the parent manuscript's
+        # NLI catalog URL where the name was first encountered. Without
+        # references, WikiProject Authority Control flags the bot at WD:AN.
+        viaf_id_for_ref = extract_viaf_id(str(viaf_uri)) if viaf_uri else None
+        if viaf_id_for_ref:
+            person_ref = viaf_reference(viaf_id_for_ref)
+        else:
+            ms_ctrl = str(source_record.get("_control_number") or "")
+            person_ref = nli_reference(ms_ctrl) if ms_ctrl else []
+
+        # Detect script: Hebrew vs Latin
+        has_hebrew = any("\u0590" <= c <= "\u05ff" for c in clean_name)
+        label_lang = "he" if has_hebrew else "en"
+        # Wikidata convention is "Given Surname" (natural order), NOT MARC's
+        # inverted "Surname, Given" form. Bug fix (2026-04-15, Geagea complaint
+        # on Q139230386 where label was "סופינו, עמנואל"): flip inverted forms
+        # to natural order for the LABEL. The original inverted form is
+        # preserved in P1559 (native name) below for searchability.
+        person.labels[label_lang] = _to_natural_name_order(clean_name)
+
+        # P31 = human (or organization) — uses the shared institutional
+        # keyword list (see _is_institutional_name above).
+        is_org = _is_institutional_name(name)
+        person.statements.append(
+            WikidataStatement(
+                property_id=P_INSTANCE_OF,
+                value=Q_ORGANIZATION if is_org else Q_HUMAN,
+                value_type="item",
+            )
+        )
+
+        # Extract dates: first try direct authority ID match, then name match
+        birth_year = None
+        death_year = None
+        dates_str = ""
+
+        # Strategy 1: Match by authority ID (most reliable)
+        for match in source_record.get("marc_authority_matches") or []:
+            mid = str(match.get("mazal_id", ""))
+            vid = str(match.get("viaf_uri", ""))
+            if (mazal_id and mid == mazal_id) or (viaf_uri and vid == viaf_uri):
+                birth_year = match.get("birth_year")
+                death_year = match.get("death_year")
+                dates_str = str(match.get("dates", ""))
+                break
+
+        # Strategy 2: Name matching across all sources
+        if not birth_year and not death_year:
+            for person_list in [
+                source_record.get("authors") or [],
+                source_record.get("contributors") or [],
+                source_record.get("marc_authority_matches") or [],
+            ]:
+                for entry in person_list:
+                    entry_name = str(entry.get("name", ""))
+                    if entry_name and name and entry_name[:5] == name[:5]:
+                        birth_year = entry.get("birth_year")
+                        death_year = entry.get("death_year")
+                        dates_str = str(entry.get("dates", ""))
+                        break
+                if birth_year or death_year:
+                    break
+
+        # Strategy 3: Parse dates string if we have it but not individual years
+        if not birth_year and not death_year and dates_str and dates_str != "None":
+            parts = re.split(r"[-–]", dates_str.strip())
+            for p in parts:
+                p = p.strip()
+                if p and p.isdigit():
+                    yr = int(p)
+                    if 100 < yr < 2100:
+                        if birth_year is None:
+                            birth_year = yr
+                        else:
+                            death_year = yr
+
+        # Bug fix 2026-04-16 (deeper audit Fix #13): person descriptions
+        # should disambiguate, not just restate dates. Build as
+        # "<role> (<dates>)" when role is known. Falls back gracefully.
+        person.descriptions["en"] = _build_person_description(
+            role=role,
+            dates_str=dates_str,
+            is_org=is_org,
+        )
+
+        # P569/P570 = birth/death dates
+        if birth_year and not is_org:
+            person.statements.append(
+                WikidataStatement(
+                    property_id=P_DATE_OF_BIRTH,
+                    value=f"+{int(birth_year):04d}-00-00T00:00:00Z",
+                    value_type="time",
+                    precision=PRECISION_YEAR,
+                )
+            )
+        if death_year and not is_org:
+            person.statements.append(
+                WikidataStatement(
+                    property_id=P_DATE_OF_DEATH,
+                    value=f"+{int(death_year):04d}-00-00T00:00:00Z",
+                    value_type="time",
+                    precision=PRECISION_YEAR,
+                )
+            )
+
+        # P106 = occupation (from role)
+        occupation_qid = _ROLE_TO_OCCUPATION.get(role)
+        if occupation_qid and not is_org:
+            person.statements.append(
+                WikidataStatement(
+                    property_id=P_OCCUPATION,
+                    value=occupation_qid,
+                    value_type="item",
+                )
+            )
+
+        # P214 = VIAF ID (critical for LOD linking)
+        # Guard 1: never assign VIAF to an organisation item.
+        # Guard 2: reject non-Personal VIAF clusters (nameType cross-validation).
+        #   Root cause of "שאלוניקי" incident (2026-04-20): VIAF cluster 76186581
+        #   is a Geographic cluster for Salonika; it was attached to person items
+        #   because match_info["name_type"] was never checked here.
+        #   Root cause of "משומד" incident: VIAF 11810679 (Domenico Gerosolimitano,
+        #   the manuscript censor) was attached to unnamed apostates because the
+        #   authority matcher found the censor's VIAF in the same manuscript.
+        viaf_id = extract_viaf_id(str(viaf_uri)) if viaf_uri else None
+        viaf_name_type = str(match_info.get("name_type") or "")
+        if viaf_name_type and viaf_name_type != "Personal":
+            logger.warning(
+                "Skipping VIAF %s for %r — cluster nameType=%r is not Personal",
+                viaf_id, clean_name, viaf_name_type,
+            )
+            viaf_id = None
+        if viaf_id and not is_org:
+            person.statements.append(
+                WikidataStatement(
+                    property_id=P_VIAF_ID,
+                    value=viaf_id,
+                    value_type="external-id",
+                )
+            )
+
+        # P8189 = NLI J9U ID — STRICT: only attach when ALL three are true:
+        #   1. The ID exists (mazal_id is non-empty)
+        #   2. The ID has the AUTHORITY-record prefix '9870…' (NOT bibliographic '990…')
+        #   3. The target item is a person, not an organisation
+        # Bug fix (2026-04-15, Geagea complaint): bibliographic record IDs were
+        # being attached to person items, causing the Property talk:P8189
+        # /Duplicates/humans page to flood with false-positive duplicates.
+        # P8189's format URL is nli.org.il/en/authorities/$1 — authority-only.
+        mazal_str = str(mazal_id) if mazal_id else ""
+        if mazal_str and mazal_str.startswith("9870") and not is_org:
+            person.statements.append(
+                WikidataStatement(
+                    property_id=P_NLI_J9U_ID,
+                    value=mazal_str,
+                    value_type="external-id",
+                )
+            )
+        elif mazal_str and not mazal_str.startswith("9870"):
+            # Bibliographic ID (990…) or unknown prefix — do NOT attach P8189.
+            # Could be logged for offline review.
+            pass
+
+        # P21 (sex or gender): intentionally NOT set.
+        # Bug fix 2026-04-15 (web audit): the MARC source records carry no
+        # reliable gender information, and unsourced bot-added gender claims
+        # are flagged by the community (UW iSchool 2023 "P21 Problem" study).
+        # For medieval scribes, gender is often genuinely unknown. Future
+        # enrichment may derive P21 from MARC 375 if/when it is populated by
+        # the cataloger. Until then, omit P21 entirely rather than asserting
+        # a default that is unsourced and may be wrong.
+
+        # P1343 = described by source: intentionally NOT emitted as a main statement.
+        # Fix 2026-04-15 third audit Fix #10: P1343 is for publications that
+        # *describe* a subject (encyclopedias, biographies). Ktiv (Q118384267)
+        # is a library catalog — not a descriptive publication. The NLI catalog
+        # reference is already recorded as a reference snak (P248=Q118384267)
+        # on every statement via nli_reference() / viaf_reference(), so the
+        # provenance is not lost. Emitting it as a main statement is semantically
+        # wrong and may generate constraint-violation reports.
+
+        # P1412 = languages spoken, written or signed.
+        # Bug fix 2026-04-15 (web audit): previously hardcoded to Hebrew.
+        # Bug fix 2026-04-16 (deeper audit Fix #12): the manuscript's MARC
+        # 008/041 languages are MANUSCRIPT-level data, NOT person-level.
+        # A scribe who only copied a Hebrew manuscript may not have written
+        # Hebrew themselves; an owner mentioned in provenance may speak
+        # something else entirely. Only emit P1412 when the role is
+        # "author" — for that role the manuscript's language is a defensible
+        # proxy for the author's writing language. For all other roles
+        # (scribe, owner, mentioned-person), omit P1412 to avoid asserting
+        # something we cannot defend.
+        role_norm = role.strip().lower() if role else ""
+        if not is_org and role_norm == "author":
+            seen_lang_qids: set[str] = set()
+            for lang_code in source_record.get("languages") or []:
+                lang_qid = LANG_TO_QID.get(str(lang_code))
+                if lang_qid and lang_qid not in seen_lang_qids:
+                    seen_lang_qids.add(lang_qid)
+                    person.statements.append(
+                        WikidataStatement(
+                            property_id="P1412",
+                            value=lang_qid,
+                            value_type="item",
+                        )
+                    )
+
+        # P1559 = name in native language — use language matching the script.
+        # Skip names with trailing commas/incomplete entries.
+        # Bug fix 2026-04-16 (deeper audit Fix #14): Latin-script names were
+        # being emitted with language "la" (Latin), which is wrong for modern
+        # European names like "Emanuel Sofino" (Italian). The label already
+        # carries the same value with a more accurate language tag (en),
+        # so omit P1559 entirely for Latin-script names.
+        cleaned_name = name.strip().rstrip(",;:")
+        if cleaned_name and not is_org and len(cleaned_name) >= 2:
+            # Detect script: Hebrew, Cyrillic, Arabic. Latin is intentionally
+            # excluded because we cannot reliably infer the true language.
+            if any("\u0590" <= c <= "\u05ff" for c in cleaned_name):
+                native_lang = "he"
+            elif any("\u0400" <= c <= "\u04ff" for c in cleaned_name):
+                native_lang = "ru"
+            elif any("\u0600" <= c <= "\u06ff" for c in cleaned_name):
+                native_lang = "ar"
+            else:
+                native_lang = None  # Latin and unknown scripts → omit P1559
+
+            if native_lang:
+                person.statements.append(
+                    WikidataStatement(
+                        property_id="P1559",
+                        value=cleaned_name,
+                        value_type="monolingualtext",
+                        language=native_lang,
+                    )
+                )
+
+        # Additional authority IDs from VIAF cluster harvesting
+        for match in source_record.get("marc_authority_matches") or []:
+            mid = str(match.get("mazal_id", ""))
+            vid = str(match.get("viaf_uri", ""))
+            if (mazal_id and mid == mazal_id) or (viaf_uri and vid == viaf_uri):
+                if match.get("gnd_id"):
+                    person.statements.append(
+                        WikidataStatement(
+                            property_id="P227",
+                            value=str(match["gnd_id"]),
+                            value_type="external-id",
+                        )
+                    )
+                if match.get("lc_id"):
+                    person.statements.append(
+                        WikidataStatement(
+                            property_id="P244",
+                            value=str(match["lc_id"]),
+                            value_type="external-id",
+                        )
+                    )
+                if match.get("isni"):
+                    person.statements.append(
+                        WikidataStatement(
+                            property_id="P213",
+                            value=str(match["isni"]),
+                            value_type="external-id",
+                        )
+                    )
+                if match.get("bnf_id"):
+                    person.statements.append(
+                        WikidataStatement(
+                            property_id="P268",
+                            value=str(match["bnf_id"]),
+                            value_type="external-id",
+                        )
+                    )
+                break
+
+        # Bug fix 2026-04-16 (deeper audit Fix #1): attach person_ref to
+        # every statement that does not already carry references. Done as
+        # a post-build pass so each `WikidataStatement(...)` callsite above
+        # does not need an explicit references= kwarg.
+        if person_ref:
+            for stmt in person.statements:
+                if not stmt.references:
+                    stmt.references = list(person_ref)
+
+        self._person_items[key] = person
+        return person
+
+    def _get_or_create_work(
+        self,
+        title: str,
+        author_name: str | None,
+        source_record: dict[str, object],
+    ) -> WikidataItem:
+        """Get existing or create new work item for a Hebrew manuscript work."""
+        # Strip trailing MARC ISBD punctuation (", ;", " :", " .", " /") BEFORE
+        # the title is used for deduplication keys, labels, and reconciler
+        # queries. Rule 33 handled P1476 and manuscript labels; this extends
+        # the same hygiene to work items. Discovered 2026-04-24 via validator
+        # error on 'פרושי תפלה מלוקטים (קטעים) :'.
+        title = title.strip().rstrip(" .,;:/-")
+        key = _work_key(title)
+        if key in self._work_items:
+            return self._work_items[key]
+
+        # Bug fix 2026-04-15 (web audit Fix #2): consult the reconciler to
+        # find an existing Wikidata work matching this Hebrew title before
+        # creating a duplicate. The KNOWN_WORK_QIDS hardcoded mapping is a
+        # fast first pass (handled by callers); this is the SPARQL fallback
+        # for works not in that list. The reconciler's
+        # reconcile_work_by_label_and_author() also rejects matches whose
+        # P50 author conflicts with our proposed author (cross-verification
+        # pattern reused from person reconciliation).
+        existing_qid: str | None = None
+        if self._reconciler is not None:
+            try:
+                # Resolve author QID from cache when available so the
+                # reconciler can perform author-conflict rejection.
+                author_qid: str | None = None
+                if author_name and author_name.strip():
+                    author_key = _person_key(author_name, None, None)
+                    author_qid = self._person_qids.get(author_key)
+                existing_qid = self._reconciler.reconcile_work_by_label_and_author(
+                    title=title,
+                    lang="he",
+                    author_qid=author_qid,
+                )
+            except Exception as exc:  # noqa: BLE001 - reconciler failures must not block builds
+                logger.warning(
+                    "reconcile_work_by_label_and_author failed for %r: %s; "
+                    "proceeding with new-item creation",
+                    title,
+                    exc,
+                )
+
+        work = WikidataItem(entity_type="work", local_id=key)
+        if existing_qid:
+            work.existing_qid = existing_qid
+        # Latin-only work titles (e.g. "Bible", "Diodati Segre") must NOT
+        # land in the he-label slot — validator rule HE_LABEL_IS_LATIN.
+        # Route them to en only and store as a he-alias for searchability.
+        if _has_hebrew_script(title):
+            work.labels["he"] = title
+            if title and all(ord(c) < 256 for c in title if c.isalpha()):
+                work.labels["en"] = title
+            else:
+                # Rule 46 (2026-05-18, fourth iteration): TaatikNet (the
+                # `malper/taatiknet` ByT5 transliterator that replaced the
+                # broken DICTA Nakdan) now powers Tier 4 and produces
+                # real readable output, e.g. "Takanut rivno gereshem meor
+                # hagola" for the user's canonical example. Tier 5
+                # (consonantal ALA-LC) stays disabled — its "Tknot rvno..."
+                # output is still too ugly.
+                #
+                # Final label format = "<translit> (NLI <control_number>)"
+                # when both are available. The NLI identifier suffix gives
+                # an unambiguous link back to the source record, and the
+                # ML transliteration gives readability — exactly what the
+                # user asked for 2026-05-18.
+                en_candidate = english_label_for_hebrew(
+                    title,
+                    source_record,
+                    allow_algorithmic=False,  # consonantal output too ugly
+                )
+                ms_control_number = str(
+                    source_record.get("_control_number", "") or ""
+                ).strip()
+                if en_candidate and ms_control_number:
+                    work.labels["en"] = (
+                        f"{en_candidate} (NLI {ms_control_number})"
+                    )
+                elif en_candidate:
+                    work.labels["en"] = en_candidate
+                elif ms_control_number:
+                    work.labels["en"] = f"NLI {ms_control_number}"
+        else:
+            # Latin-only title (e.g. "Bible", "Diodati Segre"): route to the en
+            # slot only — never any he slot (label OR alias). Putting Latin text
+            # in any he-tagged slot was the original Kolja21/Geagea complaint.
+            work.labels["en"] = title
+            work.aliases.setdefault("en", []).append(title)
+        # Bug fix 2026-04-15 (web audit): all 3,970 work items previously
+        # received the identical description "Hebrew manuscript work", which
+        # made same-label items indistinguishable on Wikidata. Build a
+        # disambiguating description that includes the author when known
+        # (Wikidata requires descriptions to disambiguate same-label items).
+        work.descriptions["en"] = _build_work_description(
+            author_name=author_name,
+            century=_extract_century_for_work(source_record),
+        )
+
+        work.statements.append(
+            WikidataStatement(
+                property_id=P_INSTANCE_OF,
+                value=Q_WRITTEN_WORK,
+                value_type="item",
+            )
+        )
+        work.statements.append(
+            WikidataStatement(
+                property_id=P_TITLE,
+                value=title,
+                value_type="monolingualtext",
+                language="he",
+            )
+        )
+        # Fix 2026-04-15 third audit Fix #7: P407 was hardcoded to Q9288
+        # (Hebrew) for all works. Manuscripts in Aramaic, Judeo-Arabic, Latin,
+        # or Arabic would receive an incorrect language tag. Derive from the
+        # manuscript's MARC 008/041 language codes instead; fall back to Hebrew.
+        lang_qids_for_work = [
+            LANG_TO_QID[str(lc)]
+            for lc in (source_record.get("languages") or [])
+            if str(lc) in LANG_TO_QID
+        ]
+        if not lang_qids_for_work:
+            lang_qids_for_work = ["Q9288"]  # default: Hebrew
+        for lqid in lang_qids_for_work:
+            work.statements.append(
+                WikidataStatement(
+                    property_id=P_LANGUAGE,
+                    value=lqid,
+                    value_type="item",
+                )
+            )
+
+        # Link to author if available
+        if author_name and author_name.strip():
+            author_key = _person_key(author_name, None, None)
+            person = self._person_items.get(author_key)
+            if person:
+                resolved_qid = self._person_qids.get(author_key) or person.existing_qid
+                if resolved_qid:
+                    work.statements.append(
+                        WikidataStatement(
+                            property_id=P_AUTHOR,
+                            value=resolved_qid,
+                            value_type="item",
+                        )
+                    )
+                else:
+                    work.statements.append(
+                        WikidataStatement(
+                            property_id=P_AUTHOR,
+                            value=f"__LOCAL:{person.local_id}",
+                            value_type="item",
+                        )
+                    )
+
+        # Bug fix 2026-04-16 (deeper audit Fix #2): attach a P248 reference
+        # to every work statement. Use the parent manuscript's NLI catalog
+        # URL — the work was extracted from that record.
+        ms_ctrl = str(source_record.get("_control_number") or "")
+        if ms_ctrl:
+            work_ref = nli_reference(ms_ctrl)
+            for stmt in work.statements:
+                if not stmt.references:
+                    stmt.references = list(work_ref)
+
+        self._work_items[key] = work
+        return work
+
+    def build_all(
+        self,
+        records: list[dict[str, object]],
+        progress_cb: Callable[[int, int], None] | None = None,
+    ) -> list[WikidataItem]:
+        """Build all Wikidata items from authority-enriched records.
+
+        Returns manuscripts first, then deduplicated persons.
+        """
+        self._person_items.clear()
+        self._person_qids.clear()
+        self._skipped_person_keys.clear()
+        self._skipped_person_stubs.clear()
+        self._work_items.clear()
+        self._manuscript_items.clear()
+        total = len(records)
+
+        for idx, record in enumerate(records):
+            ms_item = self.build_manuscript_item(record)
+            self._manuscript_items.append(ms_item)
+            if progress_cb:
+                progress_cb(idx + 1, total)
+
+        # Order: works → persons → manuscripts (for __LOCAL: resolution)
+        all_items = (
+            list(self._work_items.values())
+            + list(self._person_items.values())
+            + self._manuscript_items
+        )
+        logger.info(
+            "Built %d items: %d manuscripts + %d persons + %d works",
+            len(all_items),
+            len(self._manuscript_items),
+            len(self._person_items),
+            len(self._work_items),
+        )
+        return all_items
+
+    @property
+    def person_count(self) -> int:
+        """Return the number of unique person items built."""
+        return len(self._person_items)
+
+    def apply_reconciliation(self, reconciled: dict[str, str | None]) -> None:
+        """Apply reconciliation results — set resolved Wikidata QIDs on persons.
+
+        When a person is found on Wikidata via VIAF/NLI lookup, their
+        existing QID is stored so manuscript claims can reference it
+        directly (proper LOD wiring instead of local references).
+
+        Also resolves __LOCAL: references in manuscript statements so
+        QuickStatements/dry-run exports get proper QIDs too.
+        """
+        for key, qid in reconciled.items():
+            if qid:
+                self._person_qids[key] = qid
+                if key in self._person_items:
+                    self._person_items[key].existing_qid = qid
+
+        # Resolve __LOCAL: references in manuscript statements
+        resolved = 0
+        for ms_item in self._manuscript_items:
+            for stmt in ms_item.statements:
+                if isinstance(stmt.value, str) and stmt.value.startswith("__LOCAL:"):
+                    local_ref = stmt.value[len("__LOCAL:") :]
+                    qid = self._person_qids.get(local_ref)
+                    if qid:
+                        stmt.value = qid
+                        resolved += 1
+        if resolved:
+            logger.info("Resolved %d __LOCAL: references from reconciliation", resolved)

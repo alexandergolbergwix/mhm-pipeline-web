@@ -1,0 +1,783 @@
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix cidoc-crm: <http://www.cidoc-crm.org/cidoc-crm/> .
+@prefix hm: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+@prefix hmv: <http://www.ontology.org.il/HebrewManuscripts/vocab/> .
+
+#################################################################
+# Controlled Vocabularies for Hebrew Manuscripts Ontology
+# 
+# Organized as SKOS concept schemes for interoperability
+#################################################################
+
+#################################################################
+# Script Type Vocabulary (Regional)
+#################################################################
+
+hmv:ScriptTypeScheme a skos:ConceptScheme ;
+    dcterms:title "Hebrew Script Types (Regional)"@en ,
+                  "סוגי כתב עברי (אזורי)"@he ;
+    dcterms:description "Regional script traditions of Hebrew manuscripts"@en ;
+    dcterms:creator "Hebrew Manuscripts Ontology Project" ;
+    skos:hasTopConcept hmv:AshkenaziScript ,
+                       hmv:SepharadicScript ,
+                       hmv:ItalianScript ,
+                       hmv:ByzantineScript ,
+                       hmv:YemeniteScript ,
+                       hmv:OrientalScript ,
+                       hmv:PersianScript .
+
+hmv:AshkenaziScript a skos:Concept ;
+    skos:inScheme hmv:ScriptTypeScheme ;
+    skos:prefLabel "Ashkenazi Script"@en ,
+                   "כתב אשכנזי"@he ;
+    skos:altLabel "German Script"@en ,
+                  "French Script"@en ;
+    skos:definition "Script tradition of Central and Eastern European Jews"@en ;
+    skos:scopeNote "Includes German, French, and Eastern European variants"@en ;
+    skos:exactMatch hm:AshkenaziScript .
+
+hmv:SepharadicScript a skos:Concept ;
+    skos:inScheme hmv:ScriptTypeScheme ;
+    skos:prefLabel "Sephardic Script"@en ,
+                   "כתב ספרדי"@he ;
+    skos:altLabel "Spanish Script"@en ,
+                  "Maghrebi Script"@en ;
+    skos:definition "Script tradition of Iberian and North African Jews"@en ;
+    skos:scopeNote "Includes Spanish, Portuguese, and Maghrebi variants"@en ;
+    skos:exactMatch hm:SepharadicScript .
+
+hmv:ItalianScript a skos:Concept ;
+    skos:inScheme hmv:ScriptTypeScheme ;
+    skos:prefLabel "Italian Script"@en ,
+                   "כתב איטלקי"@he ;
+    skos:definition "Script tradition of Italian Jews"@en ;
+    skos:scopeNote "Distinctive regional style with influences from both Ashkenazi and Sephardic"@en ;
+    skos:exactMatch hm:ItalianScript .
+
+hmv:ByzantineScript a skos:Concept ;
+    skos:inScheme hmv:ScriptTypeScheme ;
+    skos:prefLabel "Byzantine Script"@en ,
+                   "כתב ביזנטי"@he ;
+    skos:altLabel "Romaniote Script"@en ,
+                  "Greek Script"@en ;
+    skos:definition "Script tradition of Greek-speaking Jews"@en ;
+    skos:scopeNote "Used in Byzantine Empire, Greece, Crete, and Balkans"@en ;
+    skos:exactMatch hm:ByzantineScript .
+
+hmv:YemeniteScript a skos:Concept ;
+    skos:inScheme hmv:ScriptTypeScheme ;
+    skos:prefLabel "Yemenite Script"@en ,
+                   "כתב תימני"@he ;
+    skos:definition "Script tradition of Yemenite Jews"@en ;
+    skos:scopeNote "Preserved ancient characteristics due to geographic isolation"@en ;
+    skos:exactMatch hm:YemeniteScript .
+
+hmv:OrientalScript a skos:Concept ;
+    skos:inScheme hmv:ScriptTypeScheme ;
+    skos:prefLabel "Oriental Script"@en ,
+                   "כתב מזרחי"@he ;
+    skos:altLabel "Eastern Script"@en ,
+                  "Mizrachi Script"@en ;
+    skos:definition "Script tradition of Middle Eastern Jews (excluding Yemen and Persia)"@en ;
+    skos:scopeNote "Includes Iraqi, Syrian, Egyptian variants"@en ;
+    skos:exactMatch hm:OrientalScript .
+
+hmv:PersianScript a skos:Concept ;
+    skos:inScheme hmv:ScriptTypeScheme ;
+    skos:prefLabel "Persian Script"@en ,
+                   "כתב פרסי"@he ;
+    skos:definition "Script tradition of Persian Jews"@en ;
+    skos:scopeNote "Used in Iran and Central Asia"@en ;
+    skos:exactMatch hm:PersianScript .
+
+#################################################################
+# Script Mode Vocabulary
+#################################################################
+
+hmv:ScriptModeScheme a skos:ConceptScheme ;
+    dcterms:title "Hebrew Script Modes"@en ,
+                  "אופני כתב עברי"@he ;
+    dcterms:description "Writing modes/styles in Hebrew manuscripts"@en ;
+    skos:hasTopConcept hmv:SquareMode ,
+                       hmv:SemicursiveMode ,
+                       hmv:CursiveMode .
+
+hmv:SquareMode a skos:Concept ;
+    skos:inScheme hmv:ScriptModeScheme ;
+    skos:prefLabel "Square Script"@en ,
+                   "כתב מרובע"@he ;
+    skos:altLabel "Book Hand"@en ;
+    skos:definition "Formal, angular script used for biblical and liturgical texts"@en ;
+    skos:exactMatch hm:SquareScript .
+
+hmv:SemicursiveMode a skos:Concept ;
+    skos:inScheme hmv:ScriptModeScheme ;
+    skos:prefLabel "Semicursive Script"@en ,
+                   "כתב בינוני"@he ;
+    skos:altLabel "Semi-square"@en ,
+                  "Rabbinic Script"@en ;
+    skos:definition "Intermediate style between square and cursive"@en ;
+    skos:exactMatch hm:SemicursiveScript .
+
+hmv:CursiveMode a skos:Concept ;
+    skos:inScheme hmv:ScriptModeScheme ;
+    skos:prefLabel "Cursive Script"@en ,
+                   "כתב רהוט"@he ;
+    skos:definition "Rapid, flowing script for everyday writing"@en ;
+    skos:exactMatch hm:CursiveScript .
+
+#################################################################
+# Material Vocabulary
+#################################################################
+
+hmv:MaterialScheme a skos:ConceptScheme ;
+    dcterms:title "Writing Materials"@en ,
+                  "חומרי כתיבה"@he ;
+    skos:hasTopConcept hmv:Parchment ,
+                       hmv:Paper ,
+                       hmv:Papyrus .
+
+hmv:Parchment a skos:Concept ;
+    skos:inScheme hmv:MaterialScheme ;
+    skos:prefLabel "Parchment"@en ,
+                   "קלף"@he ;
+    skos:altLabel "Vellum"@en ,
+                  "Membrane"@en ;
+    skos:definition "Animal skin prepared for writing"@en ;
+    skos:scopeNote "Includes both sheepskin and calfskin (vellum)"@en ;
+    skos:exactMatch hm:Parchment .
+
+hmv:Paper a skos:Concept ;
+    skos:inScheme hmv:MaterialScheme ;
+    skos:prefLabel "Paper"@en ,
+                   "נייר"@he ;
+    skos:definition "Processed plant fiber material"@en ;
+    skos:scopeNote "Both Oriental and Western paper types"@en ;
+    skos:exactMatch hm:Paper .
+
+hmv:Papyrus a skos:Concept ;
+    skos:inScheme hmv:MaterialScheme ;
+    skos:prefLabel "Papyrus"@en ,
+                   "פפירוס"@he ;
+    skos:definition "Plant-based writing material from papyrus plant"@en ;
+    skos:scopeNote "Rare in medieval Hebrew manuscripts"@en ;
+    skos:exactMatch hm:Papyrus .
+
+#################################################################
+# Language Vocabulary
+#################################################################
+
+hmv:LanguageScheme a skos:ConceptScheme ;
+    dcterms:title "Languages in Hebrew Manuscripts"@en ,
+                  "שפות בכתבי יד עבריים"@he ;
+    skos:hasTopConcept hmv:Hebrew ,
+                       hmv:Aramaic ,
+                       hmv:Arabic ,
+                       hmv:JudeoArabic ,
+                       hmv:Ladino ,
+                       hmv:Yiddish ,
+                       hmv:JudeoPersian .
+
+hmv:Hebrew a skos:Concept ;
+    skos:inScheme hmv:LanguageScheme ;
+    skos:prefLabel "Hebrew"@en ,
+                   "עברית"@he ;
+    skos:notation "heb" ;
+    skos:exactMatch <http://id.loc.gov/vocabulary/languages/heb> ;
+    skos:exactMatch hm:Hebrew .
+
+hmv:Aramaic a skos:Concept ;
+    skos:inScheme hmv:LanguageScheme ;
+    skos:prefLabel "Aramaic"@en ,
+                   "ארמית"@he ;
+    skos:notation "arc" ;
+    skos:exactMatch <http://id.loc.gov/vocabulary/languages/arc> ;
+    skos:exactMatch hm:Aramaic .
+
+hmv:Arabic a skos:Concept ;
+    skos:inScheme hmv:LanguageScheme ;
+    skos:prefLabel "Arabic"@en ,
+                   "ערבית"@he ;
+    skos:notation "ara" ;
+    skos:exactMatch <http://id.loc.gov/vocabulary/languages/ara> ;
+    skos:exactMatch hm:Arabic .
+
+hmv:JudeoArabic a skos:Concept ;
+    skos:inScheme hmv:LanguageScheme ;
+    skos:prefLabel "Judeo-Arabic"@en ,
+                   "יהודית-ערבית"@he ;
+    skos:notation "jrb" ;
+    skos:definition "Arabic language written in Hebrew script"@en ;
+    skos:exactMatch <http://id.loc.gov/vocabulary/languages/jrb> ;
+    skos:exactMatch hm:JudeoArabic .
+
+hmv:Ladino a skos:Concept ;
+    skos:inScheme hmv:LanguageScheme ;
+    skos:prefLabel "Ladino"@en ,
+                   "לאדינו"@he ;
+    skos:altLabel "Judeo-Spanish"@en ,
+                  "ג'ודזמו"@he ;
+    skos:notation "lad" ;
+    skos:exactMatch <http://id.loc.gov/vocabulary/languages/lad> ;
+    skos:exactMatch hm:Ladino .
+
+hmv:Yiddish a skos:Concept ;
+    skos:inScheme hmv:LanguageScheme ;
+    skos:prefLabel "Yiddish"@en ,
+                   "יידיש"@he ;
+    skos:notation "yid" ;
+    skos:exactMatch <http://id.loc.gov/vocabulary/languages/yid> ;
+    skos:exactMatch hm:Yiddish .
+
+hmv:JudeoPersian a skos:Concept ;
+    skos:inScheme hmv:LanguageScheme ;
+    skos:prefLabel "Judeo-Persian"@en ,
+                   "יהודית-פרסית"@he ;
+    skos:notation "jpr" ;
+    skos:exactMatch <http://id.loc.gov/vocabulary/languages/jpr> ;
+    skos:exactMatch hm:JudeoPersian .
+
+#################################################################
+# Subject/Genre Vocabulary
+#################################################################
+
+hmv:SubjectScheme a skos:ConceptScheme ;
+    dcterms:title "Hebrew Manuscript Subject Categories"@en ,
+                  "נושאים בכתבי יד עבריים"@he ;
+    skos:hasTopConcept hmv:Bible ,
+                       hmv:Talmud ,
+                       hmv:Midrash ,
+                       hmv:Halakha ,
+                       hmv:Kabbalah ,
+                       hmv:Philosophy ,
+                       hmv:Liturgy ,
+                       hmv:Poetry ,
+                       hmv:Medicine ,
+                       hmv:Science .
+
+hmv:Bible a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Bible"@en ,
+                   "מקרא"@he ;
+    skos:narrower hmv:Pentateuch ,
+                  hmv:Prophets ,
+                  hmv:Writings ,
+                  hmv:BibleCommentary ;
+    skos:exactMatch hm:Bible_Subject .
+
+hmv:Pentateuch a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Pentateuch"@en ,
+                   "חומש"@he ;
+    skos:broader hmv:Bible .
+
+hmv:Prophets a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Prophets"@en ,
+                   "נביאים"@he ;
+    skos:broader hmv:Bible .
+
+hmv:Writings a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Writings"@en ,
+                   "כתובים"@he ;
+    skos:broader hmv:Bible .
+
+hmv:BibleCommentary a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Bible Commentary"@en ,
+                   "פירושי מקרא"@he ;
+    skos:broader hmv:Bible .
+
+hmv:Talmud a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Talmud"@en ,
+                   "תלמוד"@he ;
+    skos:narrower hmv:BabylonianTalmud ,
+                  hmv:JerusalemTalmud ,
+                  hmv:TalmudCommentary ;
+    skos:exactMatch hm:Talmud_Subject .
+
+hmv:BabylonianTalmud a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Babylonian Talmud"@en ,
+                   "תלמוד בבלי"@he ;
+    skos:broader hmv:Talmud .
+
+hmv:JerusalemTalmud a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Jerusalem Talmud"@en ,
+                   "תלמוד ירושלמי"@he ;
+    skos:broader hmv:Talmud .
+
+hmv:TalmudCommentary a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Talmud Commentary"@en ,
+                   "פירושי תלמוד"@he ;
+    skos:broader hmv:Talmud .
+
+hmv:Midrash a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Midrash"@en ,
+                   "מדרש"@he ;
+    skos:exactMatch hm:Midrash_Subject .
+
+hmv:Halakha a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Halakha"@en ,
+                   "הלכה"@he ;
+    skos:altLabel "Jewish Law"@en ;
+    skos:exactMatch hm:Halakha_Subject .
+
+hmv:Kabbalah a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Kabbalah"@en ,
+                   "קבלה"@he ;
+    skos:altLabel "Jewish Mysticism"@en ;
+    skos:exactMatch hm:Kabbalah_Subject .
+
+hmv:Philosophy a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Philosophy"@en ,
+                   "פילוסופיה"@he ;
+    skos:exactMatch hm:Philosophy_Subject .
+
+hmv:Liturgy a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Liturgy"@en ,
+                   "ליטורגיה"@he ;
+    skos:altLabel "Prayer"@en ,
+                  "תפילה"@he ;
+    skos:exactMatch hm:Liturgy_Subject .
+
+hmv:Poetry a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Poetry"@en ,
+                   "שירה"@he ;
+    skos:narrower hmv:LiturgicalPoetry ,
+                  hmv:SecularPoetry ;
+    skos:exactMatch hm:Poetry_Subject .
+
+hmv:LiturgicalPoetry a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Liturgical Poetry"@en ,
+                   "פיוט"@he ;
+    skos:altLabel "Piyyut"@en ;
+    skos:broader hmv:Poetry .
+
+hmv:SecularPoetry a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Secular Poetry"@en ,
+                   "שירה חילונית"@he ;
+    skos:broader hmv:Poetry .
+
+hmv:Medicine a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Medicine"@en ,
+                   "רפואה"@he ;
+    skos:exactMatch hm:Medicine_Subject .
+
+hmv:Science a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Science"@en ,
+                   "מדעים"@he ;
+    skos:narrower hmv:Astronomy ,
+                  hmv:Mathematics ;
+    skos:exactMatch hm:Science_Subject .
+
+hmv:Astronomy a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Astronomy"@en ,
+                   "אסטרונומיה"@he ;
+    skos:broader hmv:Science .
+
+hmv:Mathematics a skos:Concept ;
+    skos:inScheme hmv:SubjectScheme ;
+    skos:prefLabel "Mathematics"@en ,
+                   "מתמטיקה"@he ;
+    skos:broader hmv:Science .
+
+#################################################################
+# Condition Vocabulary
+#################################################################
+
+hmv:ConditionScheme a skos:ConceptScheme ;
+    dcterms:title "Manuscript Condition States"@en ,
+                  "מצבי כתבי יד"@he ;
+    skos:hasTopConcept hmv:Excellent ,
+                       hmv:Good ,
+                       hmv:Fair ,
+                       hmv:Poor ,
+                       hmv:Fragmentary .
+
+hmv:Excellent a skos:Concept ;
+    skos:inScheme hmv:ConditionScheme ;
+    skos:prefLabel "Excellent"@en ,
+                   "מצוין"@he ;
+    skos:definition "Complete, undamaged, fully legible"@en ;
+    skos:exactMatch hm:Excellent .
+
+hmv:Good a skos:Concept ;
+    skos:inScheme hmv:ConditionScheme ;
+    skos:prefLabel "Good"@en ,
+                   "טוב"@he ;
+    skos:definition "Minor wear, fully legible"@en ;
+    skos:exactMatch hm:Good .
+
+hmv:Fair a skos:Concept ;
+    skos:inScheme hmv:ConditionScheme ;
+    skos:prefLabel "Fair"@en ,
+                   "סביר"@he ;
+    skos:definition "Some damage or wear, mostly legible"@en ;
+    skos:exactMatch hm:Fair .
+
+hmv:Poor a skos:Concept ;
+    skos:inScheme hmv:ConditionScheme ;
+    skos:prefLabel "Poor"@en ,
+                   "גרוע"@he ;
+    skos:definition "Significant damage, partially legible"@en ;
+    skos:exactMatch hm:Poor .
+
+hmv:Fragmentary a skos:Concept ;
+    skos:inScheme hmv:ConditionScheme ;
+    skos:prefLabel "Fragmentary"@en ,
+                   "חלקי/קטעי"@he ;
+    skos:definition "Incomplete, missing portions"@en ;
+    skos:exactMatch hm:Fragmentary .
+
+#################################################################
+# Decoration Type Vocabulary
+#################################################################
+
+hmv:DecorationScheme a skos:ConceptScheme ;
+    dcterms:title "Manuscript Decoration Types"@en ,
+                  "סוגי עיטור כתבי יד"@he ;
+    skos:hasTopConcept hmv:FullPageIllumination ,
+                       hmv:InitialLetters ,
+                       hmv:MarginalDecoration ,
+                       hmv:CarpetPage ,
+                       hmv:Micrography .
+
+hmv:FullPageIllumination a skos:Concept ;
+    skos:inScheme hmv:DecorationScheme ;
+    skos:prefLabel "Full Page Illumination"@en ,
+                   "עיטור דף שלם"@he ;
+    skos:exactMatch hm:FullPageIllumination .
+
+hmv:InitialLetters a skos:Concept ;
+    skos:inScheme hmv:DecorationScheme ;
+    skos:prefLabel "Decorated Initial Letters"@en ,
+                   "אותיות פותחות מעוטרות"@he ;
+    skos:exactMatch hm:InitialLetters .
+
+hmv:MarginalDecoration a skos:Concept ;
+    skos:inScheme hmv:DecorationScheme ;
+    skos:prefLabel "Marginal Decoration"@en ,
+                   "עיטור שוליים"@he ;
+    skos:exactMatch hm:MarginalDecoration .
+
+hmv:CarpetPage a skos:Concept ;
+    skos:inScheme hmv:DecorationScheme ;
+    skos:prefLabel "Carpet Page"@en ,
+                   "דף שטיח"@he ;
+    skos:definition "Full page decorative design, often geometric"@en ;
+    skos:exactMatch hm:CarpetPage .
+
+hmv:Micrography a skos:Concept ;
+    skos:inScheme hmv:DecorationScheme ;
+    skos:prefLabel "Micrography"@en ,
+                   "מיקרוגרפיה"@he ;
+    skos:definition "Decorative designs formed from tiny Hebrew letters"@en ;
+    skos:scopeNote "Characteristic of Hebrew Bible manuscripts, often containing Masorah"@en ;
+    skos:exactMatch hm:Micrography .
+
+#################################################################
+# Canonical Hierarchy Vocabulary (v1.3)
+#################################################################
+
+hmv:CanonicalHierarchyScheme a skos:ConceptScheme ;
+    dcterms:title "Jewish Canonical Text Hierarchies"@en ,
+                  "היררכיות טקסטים קנוניים יהודיים"@he ;
+    dcterms:description "Canonical structures for referencing Jewish texts"@en ;
+    skos:hasTopConcept hmv:BibleHierarchy ,
+                       hmv:MishnahHierarchy ,
+                       hmv:TalmudBavliHierarchy ,
+                       hmv:TalmudYerushalmiHierarchy ,
+                       hmv:MishnehTorahHierarchy ,
+                       hmv:ShulchanAruchHierarchy ,
+                       hmv:ZoharHierarchy ,
+                       hmv:MidrashHierarchy .
+
+hmv:BibleHierarchy a skos:Concept ;
+    skos:inScheme hmv:CanonicalHierarchyScheme ;
+    skos:prefLabel "Bible (Tanakh)"@en ,
+                   "מקרא (תנ״ך)"@he ;
+    skos:definition "Torah, Nevi'im, Ketuvim structure: Book/Chapter/Verse"@en ;
+    skos:scopeNote "Standard biblical citation format"@en ;
+    skos:exactMatch hm:Bible_hierarchy .
+
+hmv:MishnahHierarchy a skos:Concept ;
+    skos:inScheme hmv:CanonicalHierarchyScheme ;
+    skos:prefLabel "Mishnah"@en ,
+                   "משנה"@he ;
+    skos:definition "Seder/Tractate/Chapter/Mishnah structure"@en ;
+    skos:scopeNote "Six sedarim, 63 tractates"@en ;
+    skos:exactMatch hm:Mishnah_hierarchy .
+
+hmv:TalmudBavliHierarchy a skos:Concept ;
+    skos:inScheme hmv:CanonicalHierarchyScheme ;
+    skos:prefLabel "Talmud Bavli"@en ,
+                   "תלמוד בבלי"@he ;
+    skos:definition "Tractate/Folio/Side structure (e.g., Berakhot 2a)"@en ;
+    skos:scopeNote "Standard Vilna pagination"@en ;
+    skos:exactMatch hm:Talmud_Bavli_hierarchy .
+
+hmv:TalmudYerushalmiHierarchy a skos:Concept ;
+    skos:inScheme hmv:CanonicalHierarchyScheme ;
+    skos:prefLabel "Talmud Yerushalmi"@en ,
+                   "תלמוד ירושלמי"@he ;
+    skos:definition "Tractate/Chapter/Halacha structure"@en ;
+    skos:scopeNote "Also called Palestinian Talmud"@en ;
+    skos:exactMatch hm:Talmud_Yerushalmi_hierarchy .
+
+hmv:MishnehTorahHierarchy a skos:Concept ;
+    skos:inScheme hmv:CanonicalHierarchyScheme ;
+    skos:prefLabel "Mishneh Torah"@en ,
+                   "משנה תורה"@he ;
+    skos:definition "Book/Section/Chapter/Halacha structure"@en ;
+    skos:scopeNote "Maimonides' legal code, 14 books"@en ;
+    skos:exactMatch hm:Mishneh_Torah_hierarchy .
+
+hmv:ShulchanAruchHierarchy a skos:Concept ;
+    skos:inScheme hmv:CanonicalHierarchyScheme ;
+    skos:prefLabel "Shulchan Aruch"@en ,
+                   "שולחן ערוך"@he ;
+    skos:definition "Part/Siman/Se'if structure"@en ;
+    skos:scopeNote "Four parts: Orach Chaim, Yoreh De'ah, Even HaEzer, Choshen Mishpat"@en ;
+    skos:exactMatch hm:Shulchan_Aruch_hierarchy .
+
+hmv:ZoharHierarchy a skos:Concept ;
+    skos:inScheme hmv:CanonicalHierarchyScheme ;
+    skos:prefLabel "Zohar"@en ,
+                   "זוהר"@he ;
+    skos:definition "Parasha/Folio structure"@en ;
+    skos:scopeNote "Main Zoharic corpus and related texts"@en ;
+    skos:exactMatch hm:Zohar_hierarchy .
+
+hmv:MidrashHierarchy a skos:Concept ;
+    skos:inScheme hmv:CanonicalHierarchyScheme ;
+    skos:prefLabel "Midrash"@en ,
+                   "מדרש"@he ;
+    skos:definition "Various structures depending on specific midrash"@en ;
+    skos:scopeNote "Includes Midrash Rabbah, Tanchuma, etc."@en ;
+    skos:exactMatch hm:Midrash_hierarchy .
+
+#################################################################
+# Unit Status Vocabulary (v1.3)
+#################################################################
+
+hmv:UnitStatusScheme a skos:ConceptScheme ;
+    dcterms:title "Manuscript Unit Status Types"@en ,
+                  "סטטוס יחידות כתב יד"@he ;
+    dcterms:description "Classification of units as core or foreign/supplementary"@en ;
+    skos:hasTopConcept hmv:CoreUnitStatus ,
+                       hmv:LaterAdditionStatus ,
+                       hmv:BinderAdditionStatus ,
+                       hmv:UnrelatedFragmentStatus ,
+                       hmv:ProtectiveLeafStatus .
+
+hmv:CoreUnitStatus a skos:Concept ;
+    skos:inScheme hmv:UnitStatusScheme ;
+    skos:prefLabel "Core Unit"@en ,
+                   "יחידת ליבה"@he ;
+    skos:definition "Part of original manuscript conception"@en ;
+    skos:scopeNote "The primary content for which the manuscript was created"@en ;
+    skos:exactMatch hm:CoreUnit_status .
+
+hmv:LaterAdditionStatus a skos:Concept ;
+    skos:inScheme hmv:UnitStatusScheme ;
+    skos:prefLabel "Later Addition"@en ,
+                   "תוספת מאוחרת"@he ;
+    skos:definition "Added by later hand after initial creation"@en ;
+    skos:scopeNote "May be related or unrelated content"@en ;
+    skos:exactMatch hm:LaterAddition_status .
+
+hmv:BinderAdditionStatus a skos:Concept ;
+    skos:inScheme hmv:UnitStatusScheme ;
+    skos:prefLabel "Binder Addition"@en ,
+                   "תוספת כורך"@he ;
+    skos:definition "Added during rebinding process"@en ;
+    skos:scopeNote "Often fragments used as binding material"@en ;
+    skos:exactMatch hm:BinderAddition_status .
+
+hmv:UnrelatedFragmentStatus a skos:Concept ;
+    skos:inScheme hmv:UnitStatusScheme ;
+    skos:prefLabel "Unrelated Fragment"@en ,
+                   "שבר לא קשור"@he ;
+    skos:definition "Fragment bound with MS but unrelated to main content"@en ;
+    skos:scopeNote "May be from entirely different text/period"@en ;
+    skos:exactMatch hm:UnrelatedFragment_status .
+
+hmv:ProtectiveLeafStatus a skos:Concept ;
+    skos:inScheme hmv:UnitStatusScheme ;
+    skos:prefLabel "Protective Leaf"@en ,
+                   "דף מגן"@he ;
+    skos:definition "Leaves added for protection"@en ;
+    skos:scopeNote "Includes flyleaves, pastedowns, guard sheets"@en ;
+    skos:exactMatch hm:ProtectiveLeaf_status .
+
+#################################################################
+# Variant Significance Vocabulary (v1.3)
+#################################################################
+
+hmv:VariantTypeScheme a skos:ConceptScheme ;
+    dcterms:title "Textual Variant Types"@en ,
+                  "סוגי גרסאות טקסטואליות"@he ;
+    dcterms:description "Classification of textual variants by significance"@en ;
+    skos:hasTopConcept hmv:OrthographicVariant ,
+                       hmv:LexicalVariant ,
+                       hmv:SyntacticVariant ,
+                       hmv:SemanticVariant ,
+                       hmv:AdditionVariant ,
+                       hmv:OmissionVariant .
+
+hmv:OrthographicVariant a skos:Concept ;
+    skos:inScheme hmv:VariantTypeScheme ;
+    skos:prefLabel "Orthographic Variant"@en ,
+                   "גרסה כתיבית"@he ;
+    skos:definition "Spelling difference only, no meaning change"@en ;
+    skos:example "מלא vs חסר spelling"@he ;
+    skos:exactMatch hm:Orthographic_variant .
+
+hmv:LexicalVariant a skos:Concept ;
+    skos:inScheme hmv:VariantTypeScheme ;
+    skos:prefLabel "Lexical Variant"@en ,
+                   "גרסה לקסיקלית"@he ;
+    skos:definition "Different word choice with similar meaning"@en ;
+    skos:exactMatch hm:Lexical_variant .
+
+hmv:SyntacticVariant a skos:Concept ;
+    skos:inScheme hmv:VariantTypeScheme ;
+    skos:prefLabel "Syntactic Variant"@en ,
+                   "גרסה תחבירית"@he ;
+    skos:definition "Different word order or grammatical structure"@en ;
+    skos:exactMatch hm:Syntactic_variant .
+
+hmv:SemanticVariant a skos:Concept ;
+    skos:inScheme hmv:VariantTypeScheme ;
+    skos:prefLabel "Semantic Variant"@en ,
+                   "גרסה משמעותית"@he ;
+    skos:definition "Meaning-changing variant"@en ;
+    skos:scopeNote "Most significant for textual criticism"@en ;
+    skos:exactMatch hm:Semantic_variant .
+
+hmv:AdditionVariant a skos:Concept ;
+    skos:inScheme hmv:VariantTypeScheme ;
+    skos:prefLabel "Addition"@en ,
+                   "הוספה"@he ;
+    skos:definition "Text present in this witness but not in standard text"@en ;
+    skos:exactMatch hm:Addition_variant .
+
+hmv:OmissionVariant a skos:Concept ;
+    skos:inScheme hmv:VariantTypeScheme ;
+    skos:prefLabel "Omission"@en ,
+                   "השמטה"@he ;
+    skos:definition "Text missing from this witness"@en ;
+    skos:scopeNote "May be intentional or accidental"@en ;
+    skos:exactMatch hm:Omission_variant .
+
+#################################################################
+# Biblical Book Vocabulary (v1.3)
+#################################################################
+
+hmv:BiblicalBookScheme a skos:ConceptScheme ;
+    dcterms:title "Biblical Books"@en ,
+                  "ספרי המקרא"@he ;
+    dcterms:description "Books of the Hebrew Bible (Tanakh)"@en ;
+    skos:hasTopConcept hmv:Genesis ,
+                       hmv:Exodus ,
+                       hmv:Leviticus ,
+                       hmv:Numbers ,
+                       hmv:Deuteronomy .
+
+hmv:Genesis a skos:Concept ;
+    skos:inScheme hmv:BiblicalBookScheme ;
+    skos:prefLabel "Genesis"@en ,
+                   "בראשית"@he ;
+    skos:notation "Gen" .
+
+hmv:Exodus a skos:Concept ;
+    skos:inScheme hmv:BiblicalBookScheme ;
+    skos:prefLabel "Exodus"@en ,
+                   "שמות"@he ;
+    skos:notation "Exod" .
+
+hmv:Leviticus a skos:Concept ;
+    skos:inScheme hmv:BiblicalBookScheme ;
+    skos:prefLabel "Leviticus"@en ,
+                   "ויקרא"@he ;
+    skos:notation "Lev" .
+
+hmv:Numbers a skos:Concept ;
+    skos:inScheme hmv:BiblicalBookScheme ;
+    skos:prefLabel "Numbers"@en ,
+                   "במדבר"@he ;
+    skos:notation "Num" .
+
+hmv:Deuteronomy a skos:Concept ;
+    skos:inScheme hmv:BiblicalBookScheme ;
+    skos:prefLabel "Deuteronomy"@en ,
+                   "דברים"@he ;
+    skos:notation "Deut" .
+
+#################################################################
+# Mishnah Tractate Vocabulary (v1.3 - Sample)
+#################################################################
+
+hmv:MishnahTractateScheme a skos:ConceptScheme ;
+    dcterms:title "Mishnah Tractates"@en ,
+                  "מסכתות המשנה"@he ;
+    dcterms:description "Tractates of the Mishnah"@en ;
+    skos:hasTopConcept hmv:Berakhot ,
+                       hmv:Shabbat ,
+                       hmv:Pesachim ,
+                       hmv:Sanhedrin ,
+                       hmv:Avot .
+
+hmv:Berakhot a skos:Concept ;
+    skos:inScheme hmv:MishnahTractateScheme ;
+    skos:prefLabel "Berakhot"@en ,
+                   "ברכות"@he ;
+    skos:definition "Tractate on blessings and prayers"@en .
+
+hmv:Shabbat a skos:Concept ;
+    skos:inScheme hmv:MishnahTractateScheme ;
+    skos:prefLabel "Shabbat"@en ,
+                   "שבת"@he ;
+    skos:definition "Tractate on Sabbath laws"@en .
+
+hmv:Pesachim a skos:Concept ;
+    skos:inScheme hmv:MishnahTractateScheme ;
+    skos:prefLabel "Pesachim"@en ,
+                   "פסחים"@he ;
+    skos:definition "Tractate on Passover"@en .
+
+hmv:Sanhedrin a skos:Concept ;
+    skos:inScheme hmv:MishnahTractateScheme ;
+    skos:prefLabel "Sanhedrin"@en ,
+                   "סנהדרין"@he ;
+    skos:definition "Tractate on courts and judicial procedure"@en .
+
+hmv:Avot a skos:Concept ;
+    skos:inScheme hmv:MishnahTractateScheme ;
+    skos:prefLabel "Avot"@en ,
+                   "אבות"@he ;
+    skos:altLabel "Pirkei Avot"@en ,
+                  "פרקי אבות"@he ;
+    skos:definition "Ethics of the Fathers"@en .
+

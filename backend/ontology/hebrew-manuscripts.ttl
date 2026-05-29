@@ -1,0 +1,3553 @@
+## Namespace policy
+## `:` – unversioned base (kept for Protege compatibility; not used for entity definitions)
+## `hm:` – versioned namespace used for all ontology entities
+## All domain entities MUST use the hm: prefix.
+
+@prefix : <http://www.ontology.org.il/HebrewManuscripts/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix nli: <https://www.nli.org.il/en/authorities/> .
+@prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+@prefix cidoc-crm: <http://www.cidoc-crm.org/cidoc-crm/> .
+@prefix hm: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+@prefix hmo: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+@base <http://www.ontology.org.il/HebrewManuscripts/> .
+
+<http://www.ontology.org.il/HebrewManuscripts/2025-12-06> rdf:type owl:Ontology ;
+    owl:versionIRI <http://www.ontology.org.il/HebrewManuscripts/2025-12-06/1.8> ;
+    owl:imports <http://iflastandards.info/ns/lrm/lrmoo/1.0> ,
+                 <http://www.cidoc-crm.org/cidoc-crm/7.1.3> ;
+    dcterms:title "Hebrew Manuscripts Ontology"@en ,
+                  "אונטולוגיה לכתבי יד עבריים"@he ;
+    dcterms:description """An ontology for describing Hebrew manuscripts metadata based on LRMoo and CIDOC-CRM, developed for the National Library of Israel Linked Open Data project.
+
+VERSION 1.4 - 100% Expert Feedback Coverage
+============================================
+
+This version addresses all expert feedback from Prof. Moshe Lavi, Dr. Eliezer Baumgarten, and Prof. Gila Prebor on the Hebrew manuscript ontology.
+
+NEW FEATURES:
+
+1. DUAL PARADIGM SUPPORT (Resolves Gila's philosophical tension)
+   - CatalogingView: Bibliographic-practical approach using LRM Work-Expression model
+   - PhilologicalView: New philology approach treating each MS as unique cultural event
+   - ParadigmBridge: Explicit bridging between Work and TextTradition concepts
+   - Manuscripts can exist in both paradigms simultaneously
+   - Suitable for both Wikidata integration and philological research
+
+2. NESTED CODICOLOGICAL STRUCTURE (Addresses Eliezer's hierarchy concern)
+   - has_sub_unit: Transitive property enabling recursive CU nesting
+   - CodicologicalHierarchy: Manages complex manuscript compositions
+   - CompositeCodicologicalUnit: Parent units containing sub-divisions
+   - AtomicCodicologicalUnit: Leaf-level units
+   - Supports MTM (Multiple Text Manuscripts), Sammelbands, complex anthologies
+
+3. EPISTEMOLOGICAL FRAMEWORK (Addresses Moshe's fact vs interpretation concern)
+   - EpistemologicalStatus: DirectObservation, ScholarlyInterpretation, ComputationalDerivation
+   - EvidenceChain: Documents reasoning paths from raw data to conclusions
+   - EvidenceStep hierarchy: DirectObservationStep, InterpretationStep, ComputationalStep
+   - InterpretationMethod: Paleographic, Codicological, Linguistic, AI-based analysis
+   - DataCategory: Distinguishes physical measurements, attributions, relationships
+
+PREVIOUSLY IMPLEMENTED (v1.1-1.3):
+- Certainty/confidence mechanisms with categorical and percentage values
+- Variant and partial identification relationships
+- Textual overlap properties for overlapping scribal units
+- Multi-volume and anthology structures
+- Scribal intervention documentation
+- Lost manuscript handling
+- Full granularity support (folio to character level)
+- Canonical hierarchy references (Bible, Mishnah, Talmud, Mishneh Torah, Shulchan Aruch)
+- Foreign unit marking for non-core manuscript components
+- Text Tradition layer for philological transmission analysis
+
+EXPERT FEEDBACK TEST CASES ADDRESSED:
+- Vat 44: Multi-volume mechanism (MultiVolumeSet, is_volume_of)
+- Huntington 115: Overlapping scribal hands (has_textual_overlap_with)
+- Oppenheimer 128: Rigid hierarchy (nested CU with has_sub_unit)
+- Parma 3122: Anthology structure (AnthologyStructure, AnthologyPosition)
+- London Sifrei Toviah: Marginalia relationships (Marginalia, has_marginalia)
+- Jerusalem 8210: Foreign units (UnitStatusType, is_foreign_addition)
+- London 9599: Lost manuscripts (LostManuscript, is_copy_of_lost)
+
+USAGE NOTES:
+- For cataloging purposes: Use CatalogingView with Work-Expression-Manifestation
+- For philological research: Use PhilologicalView with TextTradition-TransmissionWitness
+- For complex manuscripts: Use CodicologicalHierarchy with nested has_sub_unit
+- For all assertions: Attach EpistemologicalStatus to distinguish facts from interpretations
+- For AI-derived data: Use ComputationalDerivation status with AIBasedAnalysis method
+
+VERSION 1.5 - Administrative & Access Metadata (February 2026)
+==============================================================
+
+New classes: PhysicalHolding, DigitalAccess, UsageRestriction, RightsDetermination
+New object properties: has_physical_holding, has_digital_access, has_usage_restriction, 
+    has_rights_determination, has_related_material, held_at
+New datatype properties: copyright_notice, related_material_note, acquisition_source,
+    collection_name, restriction_type, restriction_url, rights_status, rights_basis,
+    holding_institution, holding_sublibrary, holding_collection, holding_call_number,
+    holding_availability, digital_access_url, digital_access_note, digital_access_type
+
+These additions ensure complete coverage of all semantically meaningful MARC fields
+from NLI records, including physical holdings (AVA), digital access (AVE), usage 
+restrictions (939), rights determination (952), copyright (597), related materials 
+(544), acquisition sources (541), and collection names (966).
+
+VERSION 1.5.1 - Ontology Hygiene (February 2026)
+==================================================
+
+- Added named inverse hm:has_volume for hm:is_volume_of (replaces anonymous inverse in MultiVolumeSet restriction).
+- Removed legacy hm:anthology_position datatype shortcut; canonical pattern: hm:has_anthology_position + hm:AnthologyPosition + hm:anthology_order.
+- Added disjointness axioms: LostManuscript/AnthologyStructure, text-tradition classes, canonical reference subtypes.
+- Documented Functional property semantics for is_volume_of.
+- Clarified namespace policy (: vs hm: prefix).
+
+VERSION 1.6 - Ontology Improvements (February 2026)
+====================================================
+
+- Documented anthology position: enhanced rdfs:comment on hm:has_anthology_position and hm:anthology_order.
+- New inverse properties: hm:was_former_owner_of (inverse of hm:former_owner), hm:hosts_part (inverse of hm:is_part_of_host).
+- Colophon: rdfs:comment clarifying that every Colophon must have at least one hm:colophon_text value.
+- Disjointness: owl:AllDisjointClasses for E55_Type subclasses (ConditionType, VocalizationType, BindingType, etc.) and location classes (FolioLocation, LineLocation, WordLocation, CharacterLocation) already present.
+- SHACL: minCount 1 for hm:external_identifier_nli (ManuscriptShape), hm:has_folio_range and hm:mentions_scribe (Warning), cidoc-crm:P4_has_time-span (Violation for production events).
+- Breaking cleanup: removed legacy properties has_Script_Mode, external_wikidata_id, anthology_position, links_work_to_tradition, links_tradition_to_work; use canonical replacements only (see LEGACY_TO_CANONICAL_CHECKLIST.md).
+- CIDOC-CRM: added E26_Physical_Feature class declaration (superclass of hm:Watermark).
+
+VERSION 1.7 - Structural & Semantic Fixes (February 2026)
+===========================================================
+
+- R69_has_physical_form: domain changed from comma-intersection to owl:unionOf (F3_Manifestation OR F4_Manifestation_Singleton).
+- Added lrmoo:R3i_realises as inverse of R3_is_realised_in; SHACL ExpressionShape and ExpressionWorkRule now use R3i_realises.
+- hm:P44_has_condition: range narrowed from cidoc-crm:E55_Type to hm:ConditionType to match SHACL and usage.
+- SHACL ProductionEventShape: replaced full IRIs with lrmoo: prefixed names (F32_Item_Production_Event, R27_materialized) so shape targets correct class.
+
+VERSION 1.8 - Ontology Hygiene & SHACL (February 2026)
+=========================================================
+
+- Legacy aliases removed (breaking); canonical terms only.
+- Removed redundant standalone owl:disjointWith for CatalogingView/PhilologicalView (kept AllDisjointClasses).
+- Unified symmetric property syntax: rdf:type owl:ObjectProperty , owl:SymmetricProperty for parallels, has_textual_overlap_with, is_paradigm_compatible, adjacent_unit, competing_interpretation.
+- Removed redundant rdfs:domain owl:Thing from 14 properties (has_certainty, attribution_source, attributed_by, has_location, external_identifier_nli, external_uri_nli, external_wikidata_uri, wikidata_id, certainty_percentage, certainty_note, has_epistemological_status, has_evidence_chain, data_category, is_factual).
+- SHACL: added EvidenceChainShape, ParadigmBridgeShape, CompositeCodicologicalUnitShape, ManuscriptViewShape.
+
+REASONING NOTES:
+- This ontology is designed to be used with OWL-DL reasoners (e.g. Pellet, HermiT).
+- Functional, Inverse, Transitive, and Asymmetric property characteristics are declared where appropriate.
+- AllDisjointClasses and AllDifferent axioms enable reasoners to detect classification errors.
+- For data validation beyond OWA entailment, use the companion SHACL shapes (shacl-shapes.ttl)."""@en ;
+    dcterms:creator "Alexander Goldberg" ;
+    dcterms:contributor "Prof. Gila Prebor" ,
+                        "Prof. Moshe Lavi" ,
+                        "Dr. Eliezer Baumgarten" ;
+    dcterms:created "2025-12-06"^^xsd:date ;
+    dcterms:modified "2026-02-06"^^xsd:date ;
+    owl:versionInfo "1.9 - Query compatibility and LOD alignment with canonical + bridge properties; MARC-only external identifier policy retained; ontology hygiene fixes preserved from 1.8." .
+
+#################################################################
+#    Object Properties
+#################################################################
+
+### LRMoo Properties
+
+lrmoo:R3_is_realised_in rdf:type owl:ObjectProperty ;
+    owl:inverseOf lrmoo:R3i_realises ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F2_Expression ;
+    rdfs:label "is realised in"@en ,
+               "ממומש ב"@he .
+
+lrmoo:R3i_realises rdf:type owl:ObjectProperty ;
+    owl:inverseOf lrmoo:R3_is_realised_in ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "realises"@en ,
+               "מממש"@he .
+
+lrmoo:R4_embodies rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F2_Expression ;
+    rdfs:label "embodies"@en ,
+               "מגלם"@he .
+
+lrmoo:R4i_is_embodied_in rdf:type owl:ObjectProperty ;
+    owl:inverseOf lrmoo:R4_embodies ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range [ a owl:Class ;
+        owl:unionOf ( lrmoo:F3_Manifestation lrmoo:F4_Manifestation_Singleton ) ] .
+
+lrmoo:R5_has_component rdf:type owl:ObjectProperty , owl:TransitiveProperty ;
+    rdfs:subPropertyOf cidoc-crm:P46_is_composed_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range [ a owl:Class ;
+        owl:unionOf ( lrmoo:F3_Manifestation lrmoo:F4_Manifestation_Singleton ) ] ;
+    rdfs:label "has component"@en ,
+               "מורכב מ"@he ;
+    rdfs:comment "Links a composite manuscript to its components"@en .
+
+lrmoo:R10_has_member rdf:type owl:ObjectProperty ;
+    owl:inverseOf lrmoo:R10i_is_member_of ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "has member"@en ,
+               "כולל חבר"@he .
+
+lrmoo:R10i_is_member_of rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "is member of"@en .
+
+lrmoo:R16_created rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P94_has_created ;
+    rdfs:domain lrmoo:F27_Work_Creation ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "created (Work Creation → Work)"@en .
+
+lrmoo:R17_created rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P94_has_created ;
+    rdfs:domain lrmoo:F28_Expression_Creation ;
+    rdfs:range lrmoo:F2_Expression ;
+    rdfs:label "created (Expression Creation → Expression)"@en .
+
+lrmoo:R24_created rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P94_has_created ;
+    rdfs:domain lrmoo:F30_Manifestation_Creation ;
+    rdfs:range lrmoo:F3_Manifestation ;
+    rdfs:label "created (Manifestation Creation → Manifestation)"@en .
+
+lrmoo:R27_materialized rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P94_has_created ;
+    rdfs:domain lrmoo:F32_Item_Production_Event ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "materialized (Item Production → Item)"@en .
+
+lrmoo:R69_has_physical_form rdf:type owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ;
+        owl:unionOf ( lrmoo:F3_Manifestation lrmoo:F4_Manifestation_Singleton ) ] ;
+    rdfs:range cidoc-crm:E55_Type ;
+    rdfs:label "has physical form"@en ,
+               "בעל צורה פיסית"@he .
+
+lrmoo:R7_exemplifies rdf:type owl:ObjectProperty ;
+    owl:inverseOf lrmoo:R7i_is_exemplified_by ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F3_Manifestation ;
+    rdfs:label "exemplifies"@en ,
+               "מגלם"@he .
+
+lrmoo:R7i_is_exemplified_by rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F3_Manifestation ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is exemplified by"@en ,
+               "מגולם על ידי"@he .
+
+### CIDOC-CRM Properties
+
+cidoc-crm:P102_has_title rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E22_Human-Made_Object ;
+    rdfs:range cidoc-crm:E35_Title ;
+    rdfs:label "has title"@en ,
+               "יש כותרת"@he ;
+    rdfs:comment "Associates a human-made object with its title"@en .
+
+cidoc-crm:P129_is_about rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E73_Information_Object ;
+    rdfs:range cidoc-crm:E1_CRM_Entity ;
+    rdfs:label "is about"@en ,
+               "עוסק ב"@he .
+
+cidoc-crm:P138i_has_representation rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E73_Information_Object ;
+    rdfs:range cidoc-crm:E36_Visual_Item ;
+    rdfs:label "has representation"@en ,
+               "יש ייצוג"@he .
+
+cidoc-crm:P14_carried_out_by rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E7_Activity ;
+    rdfs:range cidoc-crm:E39_Actor ;
+    rdfs:label "carried out by"@en ,
+               "בוצע על ידי"@he .
+
+cidoc-crm:P16_used_specific_object rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E7_Activity ;
+    rdfs:range cidoc-crm:E19_Physical_Object ;
+    rdfs:label "used specific object"@en ,
+               "השתמש בחפץ ספציפי"@he .
+
+cidoc-crm:P16i_was_used_for rdf:type owl:ObjectProperty ;
+    owl:inverseOf cidoc-crm:P16_used_specific_object ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E7_Activity ;
+    rdfs:label "was used for"@en ,
+               "שימש עבור"@he .
+
+cidoc-crm:P1_is_identified_by rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E42_Identifier ;
+    rdfs:label "is identified by"@en ,
+               "מזוהה על ידי"@he .
+
+cidoc-crm:P23_transferred_title_to rdf:type owl:ObjectProperty ;
+    owl:inverseOf cidoc-crm:P24_transferred_title_from ;
+    rdfs:domain cidoc-crm:E8_Acquisition ;
+    rdfs:range cidoc-crm:E39_Actor ;
+    rdfs:label "transferred title to"@en ,
+               "הועבר אל"@he .
+
+cidoc-crm:P24_transferred_title_from rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E8_Acquisition ;
+    rdfs:range cidoc-crm:E39_Actor ;
+    rdfs:label "transferred title from"@en ,
+               "הועבר מ"@he .
+
+cidoc-crm:P28_custody_surrendered_by rdf:type owl:ObjectProperty ;
+    owl:inverseOf cidoc-crm:P28i_custody_surrendered_in ;
+    rdfs:domain cidoc-crm:E10_Transfer_of_Custody ;
+    rdfs:range cidoc-crm:E39_Actor ;
+    rdfs:label "custody surrendered by"@en ,
+               "מסר משמורת"@he .
+
+cidoc-crm:P28i_custody_surrendered_in rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E39_Actor ;
+    rdfs:range cidoc-crm:E10_Transfer_of_Custody ;
+    rdfs:label "custody surrendered in"@en ,
+               "מסר משמורת ב"@he ;
+    rdfs:comment "Transfer of custody in which the actor surrendered custody"@en .
+
+cidoc-crm:P29_custody_received_by rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E10_Transfer_of_Custody ;
+    rdfs:range cidoc-crm:E39_Actor ;
+    rdfs:label "custody received by"@en ,
+               "קיבל משמורת"@he .
+
+cidoc-crm:P2_has_type rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E1_CRM_Entity ;
+    rdfs:range cidoc-crm:E55_Type ;
+    rdfs:label "has type"@en ,
+               "מסוג"@he .
+
+cidoc-crm:P46_is_composed_of rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E22_Human-Made_Object ;
+    rdfs:range cidoc-crm:E22_Human-Made_Object ;
+    rdfs:label "is composed of"@en ,
+               "מורכב מ"@he .
+
+cidoc-crm:P4_has_time-span rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E7_Activity ;
+    rdfs:range cidoc-crm:E52_Time-Span ;
+    rdfs:label "has time-span"@en ,
+               "תקופת זמן"@he .
+
+cidoc-crm:P70_documents rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F3_Manifestation ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "documents"@en ,
+               "מתעד"@he .
+
+cidoc-crm:P70i_is_documented_in rdf:type owl:ObjectProperty ;
+    owl:inverseOf cidoc-crm:P70_documents ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F3_Manifestation ;
+    rdfs:label "is documented in"@en ,
+               "מתועד ב"@he .
+
+cidoc-crm:P72_has_language rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range cidoc-crm:E56_Language ;
+    rdfs:label "has language"@en ,
+               "כתוב בשפה"@he .
+
+cidoc-crm:P74_has_current_or_former_residence rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E39_Actor ;
+    rdfs:range cidoc-crm:E53_Place ;
+    rdfs:label "has current or former residence"@en ,
+               "ממוקם ב"@he .
+
+cidoc-crm:P7_took_place_at rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E7_Activity ;
+    rdfs:range cidoc-crm:E53_Place ;
+    rdfs:label "took place at"@en ,
+               "התרחש ב"@he .
+
+cidoc-crm:P89_falls_within rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E53_Place ;
+    rdfs:range cidoc-crm:E53_Place ;
+    rdfs:label "falls within"@en ,
+               "נופל בתוך"@he .
+
+cidoc-crm:P94_has_created rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E65_Creation ;
+    rdfs:range cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "has created"@en ,
+               "יצר"@he .
+
+cidoc-crm:E12_Production rdfs:subClassOf [ a owl:Restriction ;
+    owl:onProperty cidoc-crm:P14_carried_out_by ;
+    owl:someValuesFrom cidoc-crm:E21_Person ] .
+
+### Hebrew Manuscripts Custom Object Properties
+
+hm:P44_has_condition rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:ConditionType ;
+    rdfs:label "has condition"@en ,
+               "מצב פיסי"@he ;
+    rdfs:comment "Physical condition of the manuscript"@en .
+
+hm:has_script_mode rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:ModeScriptType ;
+    rdfs:label "has script mode"@en ,
+               "סוג הכתב (מרובע, בינוני, רהוט)"@he .
+
+hm:has_colophon rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_colophon_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:Colophon ;
+    rdfs:label "has colophon"@en ,
+               "יש קולופון"@he ;
+    rdfs:comment "Links a manuscript to its colophon(s)"@en .
+
+hm:is_colophon_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_colophon ;
+    rdfs:domain hm:Colophon ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is colophon of"@en ,
+               "קולופון של"@he ;
+    rdfs:comment "Links a colophon to the manuscript it belongs to"@en .
+
+hm:has_date_of_creation rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E52_Time-Span ;
+    rdfs:label "has date of creation"@en ,
+               "תאריך יצירה"@he ;
+    rdfs:comment "Links a manuscript to its creation date or time-span"@en .
+
+hm:has_material rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E57_Material ;
+    rdfs:label "has material"@en ,
+               "חומר"@he ;
+    rdfs:comment "Links a manuscript to its writing support material (e.g. parchment, paper)"@en .
+
+hm:has_script_type rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:TypeScriptType ;
+    rdfs:label "has script type"@en ,
+               "סוג כתב"@he ;
+    rdfs:comment "Links a manuscript to its script type (e.g. Square, Semicursive, Cursive)"@en .
+
+hm:mentions_date rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:Colophon ;
+    rdfs:range cidoc-crm:E52_Time-Span ;
+    rdfs:label "mentions date"@en ,
+               "מזכיר תאריך"@he ;
+    rdfs:comment "Links a colophon to the date or time-span it mentions"@en .
+
+hm:mentions_person rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E21_Person ;
+    rdfs:label "mentions person"@en ,
+               "שם אדם שמוזכר בכתב היד"@he ;
+    rdfs:comment "Links a manuscript to a person mentioned in it"@en .
+
+hm:mentions_place rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:Colophon ;
+    rdfs:range cidoc-crm:E53_Place ;
+    rdfs:label "mentions place"@en ,
+               "מזכיר מקום"@he ;
+    rdfs:comment "Links a colophon to the place it mentions"@en .
+
+hm:mentions_scribe rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:Colophon ;
+    rdfs:range cidoc-crm:E21_Person ;
+    rdfs:label "mentions scribe"@en ,
+               "סופר מוזכר"@he ;
+    rdfs:comment "Links a colophon to the scribe it mentions"@en .
+
+### NEW Object Properties (Added in v1.1)
+
+hm:has_binding rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_binding_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:Binding ;
+    rdfs:label "has binding"@en ,
+               "כריכה"@he ;
+    rdfs:comment "Links a manuscript to its binding description"@en .
+
+hm:is_binding_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_binding ;
+    rdfs:domain hm:Binding ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is binding of"@en ,
+               "כריכה של"@he ;
+    rdfs:comment "Links a binding to the manuscript it belongs to"@en .
+
+hm:has_decoration rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_decoration_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:Decoration ;
+    rdfs:label "has decoration"@en ,
+               "קישוט"@he ;
+    rdfs:comment "Links a manuscript to its decorative elements"@en .
+
+hm:is_decoration_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_decoration ;
+    rdfs:domain hm:Decoration ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is decoration of"@en ,
+               "קישוט של"@he ;
+    rdfs:comment "Links a decoration to the manuscript it belongs to"@en .
+
+hm:has_marginalia rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_marginalia_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:Marginalia ;
+    rdfs:label "has marginalia"@en ,
+               "הערות שוליים"@he ;
+    rdfs:comment "Links a manuscript to its marginal annotations"@en .
+
+hm:is_marginalia_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_marginalia ;
+    rdfs:domain hm:Marginalia ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is marginalia of"@en ,
+               "הערות שוליים של"@he ;
+    rdfs:comment "Links marginalia to the manuscript it belongs to"@en .
+
+hm:is_translation_of rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "is translation of"@en ,
+               "תרגום של"@he ;
+    rdfs:comment "Links a work to the work it translates"@en .
+
+hm:has_commentary_on rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "has commentary on"@en ,
+               "פירוש על"@he ;
+    rdfs:comment "Links a commentary work to the work it comments on"@en .
+
+hm:has_vocalization rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range cidoc-crm:E55_Type ;
+    rdfs:label "has vocalization"@en ,
+               "ניקוד"@he ;
+    rdfs:comment "Type of vowel pointing (Tiberian, Babylonian, Palestinian, none)"@en .
+
+hm:has_cantillation rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range cidoc-crm:E55_Type ;
+    rdfs:label "has cantillation"@en ,
+               "טעמי המקרא"@he ;
+    rdfs:comment "Links an expression to its cantillation/trope type"@en .
+
+hm:copied_from rdf:type owl:ObjectProperty , owl:AsymmetricProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "copied from"@en ,
+               "הועתק מ"@he ;
+    rdfs:comment "Links a manuscript to its exemplar"@en .
+
+hm:is_scribe_mentioned_in rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:mentions_scribe ;
+    rdfs:domain cidoc-crm:E21_Person ;
+    rdfs:range hm:Colophon ;
+    rdfs:label "is scribe mentioned in"@en ,
+               "מוזכר כסופר ב"@he .
+
+### NEW Properties addressing reviewer feedback (v1.2)
+
+## Certainty/Confidence Properties
+
+hm:has_certainty rdf:type owl:ObjectProperty ;
+    rdfs:range hm:CertaintyLevel ;
+    rdfs:label "has certainty"@en ,
+               "רמת וודאות"@he ;
+    rdfs:comment "Indicates the degree of certainty for any attribution or identification"@en .
+
+hm:attribution_source rdf:type owl:ObjectProperty ;
+    rdfs:range hm:AttributionSource ;
+    rdfs:label "attribution source"@en ,
+               "מקור הייחוס"@he ;
+    rdfs:comment "Source of an attribution (human expert, AI system, catalog)"@en .
+
+hm:attributed_by rdf:type owl:ObjectProperty ;
+    rdfs:range cidoc-crm:E39_Actor ;
+    rdfs:label "attributed by"@en ,
+               "יוחס על ידי"@he ;
+    rdfs:comment "Person or system that made the attribution"@en .
+
+## Variant and Partial Identification Properties
+
+hm:is_variant_of rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "is variant of"@en ,
+               "גרסה של"@he ;
+    rdfs:comment "Links a work that is a variant, adaptation, or abridgment of another work"@en .
+
+hm:possibly_realises rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "possibly realises"@en ,
+               "אולי ממומש של"@he ;
+    rdfs:comment "Indicates uncertain identification of an expression with a known work"@en .
+
+hm:is_abridgment_of rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf hm:is_variant_of ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "is abridgment of"@en ,
+               "קיצור של"@he ;
+    rdfs:comment "Links a work to the work it abbreviates"@en .
+
+hm:is_adaptation_of rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf hm:is_variant_of ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "is adaptation of"@en ,
+               "עיבוד של"@he ;
+    rdfs:comment "Links a work to the work it adapts"@en .
+
+hm:parallels rdf:type owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "parallels"@en ,
+               "מקביל ל"@he ;
+    rdfs:comment "Links works that share content but relationship is unclear"@en .
+
+## Textual Overlap Properties
+
+hm:has_textual_overlap_with rdf:type owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:domain hm:Paleographical_Unit ;
+    rdfs:range hm:Paleographical_Unit ;
+    rdfs:label "has textual overlap with"@en ,
+               "חופף טקסטואלית ל"@he ;
+    rdfs:comment "Two scribal units that copy overlapping portions of the same text"@en .
+
+hm:duplicates_part_of rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range lrmoo:F2_Expression ;
+    rdfs:label "duplicates part of"@en ,
+               "מכפיל חלק מ"@he ;
+    rdfs:comment "Expression that duplicates a portion of another expression in same MS"@en .
+
+## Multi-Volume and Anthology Structure Properties
+
+hm:is_volume_of rdf:type owl:ObjectProperty , owl:FunctionalProperty ;
+    owl:inverseOf hm:has_volume ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:MultiVolumeSet ;
+    rdfs:label "is volume of"@en ,
+               "כרך של"@he ;
+    rdfs:comment "Links a physical volume to the multi-volume set it belongs to. Declared Functional: each volume belongs to at most one set. If a volume is asserted in two sets the reasoner will infer those sets are identical."@en .
+
+hm:has_volume rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_volume_of ;
+    rdfs:domain hm:MultiVolumeSet ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "has volume"@en ,
+               "כולל כרך"@he ;
+    rdfs:comment "Links a multi-volume set to one of its constituent volumes"@en .
+
+hm:former_owner rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:was_former_owner_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E21_Person ;
+    rdfs:label "former owner"@en ,
+               "בעלים קודם"@he ;
+    rdfs:comment "Previous owner(s) of the manuscript (e.g. from MARC 700 with owner role)"@en .
+
+hm:was_former_owner_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:former_owner ;
+    rdfs:domain cidoc-crm:E21_Person ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "was former owner of"@en ,
+               "היה בעלים קודם של"@he ;
+    rdfs:comment "Links a person to manuscripts they formerly owned"@en .
+
+hm:is_part_of_host rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:hosts_part ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is part of host"@en ,
+               "חלק מפריט מארח"@he ;
+    rdfs:comment "Links to host item when this manuscript is part of a larger item (MARC 773)"@en .
+
+hm:hosts_part rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_part_of_host ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "hosts part"@en ,
+               "מארח חלק"@he ;
+    rdfs:comment "Links a host item to manuscripts that are part of it"@en .
+
+hm:has_anthology_position rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range hm:AnthologyPosition ;
+    rdfs:label "has anthology position"@en ,
+               "מיקום באנתולוגיה"@he ;
+    rdfs:comment "Position and ordering of text within an anthology manuscript. Use Expression -> has_anthology_position -> AnthologyPosition -> anthology_order -> integer."@en .
+
+## Scribal Layer and Intervention Properties
+
+hm:has_scribal_intervention rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_intervention_in ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:ScribalIntervention ;
+    rdfs:label "has scribal intervention"@en ,
+               "התערבות סופר"@he ;
+    rdfs:comment "Corrections, additions, or modifications by scribes"@en .
+
+hm:is_intervention_in rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_scribal_intervention ;
+    rdfs:domain hm:ScribalIntervention ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is intervention in"@en ,
+               "התערבות ב"@he ;
+    rdfs:comment "Links a scribal intervention to the manuscript it occurs in"@en .
+
+hm:intervention_location rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:ScribalIntervention ;
+    rdfs:range hm:TextLocation ;
+    rdfs:label "intervention location"@en ,
+               "מיקום ההתערבות"@he ;
+    rdfs:comment "Links a scribal intervention to its location in the manuscript"@en .
+
+hm:intervention_by rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:ScribalIntervention ;
+    rdfs:range cidoc-crm:E21_Person ;
+    rdfs:label "intervention by"@en ,
+               "התערבות על ידי"@he ;
+    rdfs:comment "Links a scribal intervention to the person who made it"@en .
+
+## Lost Manuscript Properties
+
+hm:is_copy_of_lost rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:known_through ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:LostManuscript ;
+    rdfs:label "is copy of lost manuscript"@en ,
+               "עותק של כתב יד אבוד"@he ;
+    rdfs:comment "Links an extant manuscript to the lost exemplar it is a copy of"@en .
+
+hm:known_through rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_copy_of_lost ;
+    rdfs:domain hm:LostManuscript ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "known through"@en ,
+               "ידוע דרך"@he ;
+    rdfs:comment "Extant manuscript through which a lost manuscript is known"@en .
+
+### NEW Properties for v1.3 - Text Tradition Layer (Hybrid Philological Approach)
+
+## Text Tradition Properties
+
+hm:belongs_to_tradition rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range hm:TextTradition ;
+    rdfs:label "belongs to tradition"@en ,
+               "שייך למסורת"@he ;
+    rdfs:comment "Links an expression to its textual tradition stream"@en .
+
+hm:witnesses rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:TextTradition ;
+    rdfs:label "witnesses"@en ,
+               "מעיד על"@he ;
+    rdfs:comment "Manuscript as witness to a textual tradition (philological view)"@en .
+
+hm:has_variant_reading rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range hm:TextualVariant ;
+    rdfs:label "has variant reading"@en ,
+               "יש גרסה חלופית"@he ;
+    rdfs:comment "Links expression to specific textual variants it contains"@en .
+
+hm:variant_at_location rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:TextualVariant ;
+    rdfs:range hm:TextLocation ;
+    rdfs:label "variant at location"@en ,
+               "גרסה במיקום"@he ;
+    rdfs:comment "Links a textual variant to its location in the text"@en .
+
+hm:stemma_parent rdf:type owl:ObjectProperty , owl:AsymmetricProperty , owl:IrreflexiveProperty ;
+    rdfs:domain hm:StemmaPosition ;
+    rdfs:range hm:StemmaPosition ;
+    rdfs:label "stemma parent"@en ,
+               "אב בסטמה"@he ;
+    rdfs:comment "Parent position in textual stemma"@en .
+
+hm:stemma_child rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:stemma_parent ;
+    rdfs:domain hm:StemmaPosition ;
+    rdfs:range hm:StemmaPosition ;
+    rdfs:label "stemma child"@en ,
+               "צאצא בסטמה"@he .
+
+hm:has_stemma_position rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:StemmaPosition ;
+    rdfs:label "has stemma position"@en ,
+               "מיקום בסטמה"@he ;
+    rdfs:comment "Position of manuscript in a textual stemma"@en .
+
+hm:tradition_includes rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:belongs_to_tradition ;
+    rdfs:domain hm:TextTradition ;
+    rdfs:range lrmoo:F2_Expression ;
+    rdfs:comment "Links a textual tradition to the expressions that belong to it"@en ;
+    rdfs:label "tradition includes"@en ,
+               "מסורת כוללת"@he .
+
+## Full Granularity Location Properties
+
+hm:has_location rdf:type owl:ObjectProperty ;
+    rdfs:range hm:TextLocation ;
+    rdfs:label "has location"@en ,
+               "במיקום"@he ;
+    rdfs:comment "Generic property linking any entity to a text location"@en .
+
+hm:span_start rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:TextSpan ;
+    rdfs:range hm:TextLocation ;
+    rdfs:label "span start"@en ,
+               "תחילת טווח"@he ;
+    rdfs:comment "Start location of a text span"@en .
+
+hm:span_end rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:TextSpan ;
+    rdfs:range hm:TextLocation ;
+    rdfs:label "span end"@en ,
+               "סוף טווח"@he ;
+    rdfs:comment "End location of a text span"@en .
+
+hm:iiif_region rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:TextLocation ;
+    rdfs:range hm:IIIFRegion ;
+    rdfs:label "IIIF region"@en ,
+               "אזור IIIF"@he ;
+    rdfs:comment "Links to IIIF image region for visual reference"@en .
+
+## Canonical Hierarchy Properties
+
+hm:covers_canonical_range rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range hm:CanonicalReference ;
+    rdfs:label "covers canonical range"@en ,
+               "מכסה טווח קנוני"@he ;
+    rdfs:comment "Links expression to canonical text coverage"@en .
+
+hm:canonical_start rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range hm:CanonicalReference ;
+    rdfs:label "canonical start"@en ,
+               "תחילת טווח קנוני"@he ;
+    rdfs:comment "Start of a canonical reference range"@en .
+
+hm:canonical_end rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range hm:CanonicalReference ;
+    rdfs:label "canonical end"@en ,
+               "סוף טווח קנוני"@he ;
+    rdfs:comment "End of a canonical reference range"@en .
+
+hm:is_commentary_on_canonical rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range hm:CanonicalReference ;
+    rdfs:label "is commentary on canonical"@en ,
+               "פירוש על"@he ;
+    rdfs:comment "Links expression to canonical sections it comments on"@en .
+
+hm:canonical_hierarchy rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range hm:CanonicalHierarchyType ;
+    rdfs:label "canonical hierarchy"@en ,
+               "היררכיה קנונית"@he ;
+    rdfs:comment "Type of canonical hierarchy (Bible, Mishnah, Talmud, etc.)"@en .
+
+## Foreign Unit Properties
+
+hm:has_unit_status rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range hm:UnitStatusType ;
+    rdfs:label "has unit status"@en ,
+               "סטטוס יחידה"@he ;
+    rdfs:comment "Indicates whether unit is core or foreign/supplementary"@en .
+
+#################################################################
+#    Data Properties
+#################################################################
+
+cidoc-crm:P190_has_symbolic_content rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E73_Information_Object ;
+    rdfs:range xsd:string ;
+    rdfs:label "has symbolic content"@en .
+
+cidoc-crm:P82a_begin_of_the_begin rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E52_Time-Span ;
+    rdfs:range xsd:integer ;
+    rdfs:label "begin of the begin"@en .
+
+cidoc-crm:P82b_end_of_the_end rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E52_Time-Span ;
+    rdfs:range xsd:integer ;
+    rdfs:label "end of the end"@en .
+
+hm:colophon_text rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Colophon ;
+    rdfs:range xsd:string ;
+    rdfs:label "colophon text"@en ,
+               "טקסט הקולופון"@he .
+
+hm:date_attribution_source rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "date attribution source"@en ,
+               "מקור קביעת התאריך"@he ;
+    rdfs:comment "Source of dating: colophon, paleographic, catalog, historical"@en .
+
+hm:earliest_possible_date rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E52_Time-Span ;
+    rdfs:range xsd:integer ;
+    rdfs:label "earliest possible date"@en ,
+               "תאריך מוקדם ביותר"@he .
+
+hm:latest_possible_date rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E52_Time-Span ;
+    rdfs:range xsd:integer ;
+    rdfs:label "latest possible date"@en ,
+               "תאריך מאוחר ביותר"@he .
+
+hm:has_date_format rdf:type owl:ObjectProperty ;
+    rdfs:domain cidoc-crm:E52_Time-Span ;
+    rdfs:range hm:DateFormatType ;
+    rdfs:label "has date format"@en ,
+               "פורמט התאריך"@he ;
+    rdfs:comment "The format type of the date: Gregorian year, Hebrew year, full date, or unstructured"@en .
+
+hm:date_original_string rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E52_Time-Span ;
+    rdfs:range xsd:string ;
+    rdfs:label "date original string"@en ,
+               "מחרוזת תאריך מקורית"@he ;
+    rdfs:comment "The original date string as it appears in the source (before parsing)"@en .
+
+hm:external_identifier_nli rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:label "NLI identifier"@en ,
+               "מספר מזהה בספריה הלאומית"@he .
+
+hm:external_uri_nli rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:anyURI ;
+    rdfs:label "NLI URI"@en ,
+               "כתובת NLI"@he .
+
+hm:external_wikidata_uri rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:anyURI ;
+    rdfs:label "Wikidata URI"@en ,
+               "כתובת ויקידאטה"@he .
+
+hm:has_digital_representation_url rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:anyURI ;
+    rdfs:label "digital representation URL"@en ,
+               "קישור לייצוג דיגיטלי"@he .
+
+hm:has_folio_range rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range xsd:string ;
+    rdfs:label "folio range"@en ,
+               "טווח דפים"@he .
+
+hm:has_height_mm rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:integer ;
+    rdfs:label "height (mm)"@en ,
+               "גובה (מ״מ)"@he .
+
+hm:has_width_mm rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:integer ;
+    rdfs:label "width (mm)"@en ,
+               "רוחב (מ״מ)"@he .
+
+hm:has_number_of_folios rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:integer ;
+    rdfs:label "number of folios"@en ,
+               "מספר דפים"@he .
+
+hm:shelfmark rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "shelfmark"@en ,
+               "סימן מדף"@he ;
+    rdfs:comment "Shelf or call number (e.g. MARC 942$z)"@en .
+
+hm:has_multiple_hands rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "has multiple hands"@en ,
+               "כתוב בכמה ידיים"@he ;
+    rdfs:comment "True if manuscript was written by multiple scribes"@en .
+
+hm:has_title rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range xsd:string ;
+    rdfs:label "title"@en ,
+               "כותרת"@he .
+
+hm:material_arrangement rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:string ;
+    rdfs:label "material arrangement"@en ,
+               "סידור החומר"@he ;
+    rdfs:comment "Quire structure and material arrangement"@en .
+
+hm:mentions_occasion rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Colophon ;
+    rdfs:range xsd:string ;
+    rdfs:label "mentions occasion"@en ,
+               "מזכיר אירוע"@he .
+
+hm:opening_text rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range xsd:string ;
+    rdfs:label "opening text"@en ,
+               "פתיחה"@he ;
+    rdfs:comment "Incipit text"@en .
+
+hm:ownership_history rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "ownership history"@en ,
+               "היסטוריית בעלות"@he .
+
+hm:place_attribution_source rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "place attribution source"@en ,
+               "מקור קביעת המקום"@he .
+
+hm:sfardata_id rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "Sfardata ID"@en ,
+               "מזהה ספרדאטה"@he .
+
+hm:variation_note rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range xsd:string ;
+    rdfs:label "variation note"@en ,
+               "הערות שונות"@he .
+
+hm:viaf_id rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E21_Person ;
+    rdfs:range xsd:string ;
+    rdfs:label "VIAF ID"@en ,
+               "מזהה VIAF"@he .
+
+hm:wikidata_id rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:label "Wikidata ID"@en ,
+               "מזהה ויקידאטה"@he .
+
+### NEW Data Properties (Added in v1.1)
+
+hm:has_incipit rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range xsd:string ;
+    rdfs:label "incipit"@en ,
+               "אינציפיט"@he ;
+    rdfs:comment "Opening words of the text"@en .
+
+hm:has_explicit rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F2_Expression ;
+    rdfs:range xsd:string ;
+    rdfs:label "explicit"@en ,
+               "אקספליציט"@he ;
+    rdfs:comment "Closing words of the text"@en .
+
+hm:has_lines_per_page rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:integer ;
+    rdfs:label "lines per page"@en ,
+               "שורות בעמוד"@he .
+
+hm:has_columns rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:integer ;
+    rdfs:label "number of columns"@en ,
+               "מספר טורים"@he .
+
+hm:has_preferred_citation rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "preferred citation"@en ,
+               "אופן ציטוט מועדף"@he .
+
+hm:has_rights_statement rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "rights statement"@en ,
+               "הצהרת זכויות"@he .
+
+hm:has_quire_structure rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:string ;
+    rdfs:label "quire structure"@en ,
+               "מבנה קונטרסים"@he .
+
+hm:has_ruling_description rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:string ;
+    rdfs:label "ruling description"@en ,
+               "תיאור שרטוט"@he .
+
+hm:has_catchwords rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "has catchwords"@en ,
+               "יש שומר דף"@he .
+
+### NEW Datatype Properties addressing reviewer feedback (v1.2)
+
+hm:certainty_percentage rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "certainty percentage"@en ,
+               "אחוז וודאות"@he ;
+    rdfs:comment "Numeric confidence level (0-100) for an attribution"@en .
+
+hm:certainty_note rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:label "certainty note"@en ,
+               "הערת וודאות"@he ;
+    rdfs:comment "Textual explanation of uncertainty or basis for attribution"@en .
+
+hm:intervention_description rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:ScribalIntervention ;
+    rdfs:range xsd:string ;
+    rdfs:label "intervention description"@en ,
+               "תיאור התערבות"@he .
+
+hm:anthology_order rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:AnthologyPosition ;
+    rdfs:range xsd:integer ;
+    rdfs:label "anthology order"@en ,
+               "סדר באנתולוגיה"@he ;
+    rdfs:comment "Integer order of the expression within the anthology. Use with hm:has_anthology_position: Expression -> has_anthology_position -> AnthologyPosition -> anthology_order -> integer."@en .
+
+hm:overlap_folio_range rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:ScribalIntervention ;
+    rdfs:range xsd:string ;
+    rdfs:label "overlap folio range"@en ,
+               "טווח דפים חופף"@he ;
+    rdfs:comment "Folio range where overlap or intervention occurs"@en .
+
+hm:volume_number rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:integer ;
+    rdfs:label "volume number"@en ,
+               "מספר כרך"@he .
+
+### NEW Datatype Properties for v1.3 - Full Granularity Support
+
+## Text Location Properties
+
+hm:folio_number rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextLocation ;
+    rdfs:range xsd:string ;
+    rdfs:label "folio number"@en ,
+               "מספר דף"@he ;
+    rdfs:comment "Folio designation (e.g., '15r', '15v', '16')"@en .
+
+hm:line_number rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextLocation ;
+    rdfs:range xsd:integer ;
+    rdfs:label "line number"@en ,
+               "מספר שורה"@he .
+
+hm:column_number rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextLocation ;
+    rdfs:range xsd:integer ;
+    rdfs:label "column number"@en ,
+               "מספר טור"@he .
+
+hm:word_position rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextLocation ;
+    rdfs:range xsd:integer ;
+    rdfs:label "word position"@en ,
+               "מיקום מילה"@he ;
+    rdfs:comment "Word position within line (1-indexed)"@en .
+
+hm:character_position rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextLocation ;
+    rdfs:range xsd:integer ;
+    rdfs:label "character position"@en ,
+               "מיקום תו"@he ;
+    rdfs:comment "Character position within word or line"@en .
+
+hm:coordinates_iiif rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextLocation ;
+    rdfs:range xsd:string ;
+    rdfs:label "IIIF coordinates"@en ,
+               "קואורדינטות IIIF"@he ;
+    rdfs:comment "IIIF image region coordinates (x,y,w,h format)"@en .
+
+hm:location_string rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextLocation ;
+    rdfs:range xsd:string ;
+    rdfs:label "location string"@en ,
+               "מחרוזת מיקום"@he ;
+    rdfs:comment "Human-readable location description"@en .
+
+## Canonical Reference Properties
+
+hm:book_name rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range xsd:string ;
+    rdfs:label "book name"@en ,
+               "שם ספר"@he .
+
+hm:chapter_number rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range xsd:integer ;
+    rdfs:label "chapter number"@en ,
+               "מספר פרק"@he .
+
+hm:verse_number rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range xsd:integer ;
+    rdfs:label "verse number"@en ,
+               "מספר פסוק"@he .
+
+hm:tractate_name rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range xsd:string ;
+    rdfs:label "tractate name"@en ,
+               "שם מסכת"@he .
+
+hm:mishnah_number rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range xsd:integer ;
+    rdfs:label "mishnah number"@en ,
+               "מספר משנה"@he .
+
+hm:talmud_folio rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range xsd:string ;
+    rdfs:label "Talmud folio"@en ,
+               "דף תלמוד"@he ;
+    rdfs:comment "Talmud folio designation (e.g., '2a', '15b')"@en .
+
+hm:halacha_section rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CanonicalReference ;
+    rdfs:range xsd:string ;
+    rdfs:label "halacha section"@en ,
+               "סימן/הלכה"@he ;
+    rdfs:comment "Section in Mishneh Torah or Shulchan Aruch"@en .
+
+## Text Tradition Properties
+
+hm:variant_text rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextualVariant ;
+    rdfs:range xsd:string ;
+    rdfs:label "variant text"@en ,
+               "נוסח הגרסה"@he ;
+    rdfs:comment "The actual variant reading text"@en .
+
+hm:standard_text rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextualVariant ;
+    rdfs:range xsd:string ;
+    rdfs:label "standard text"@en ,
+               "נוסח מקובל"@he ;
+    rdfs:comment "The standard/received text for comparison"@en .
+
+hm:variant_significance rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextualVariant ;
+    rdfs:range xsd:string ;
+    rdfs:label "variant significance"@en ,
+               "משמעות הגרסה"@he ;
+    rdfs:comment "Scholarly assessment of variant significance"@en .
+
+hm:tradition_name rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextTradition ;
+    rdfs:range xsd:string ;
+    rdfs:label "tradition name"@en ,
+               "שם מסורת"@he .
+
+hm:tradition_description rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:TextTradition ;
+    rdfs:range xsd:string ;
+    rdfs:label "tradition description"@en ,
+               "תיאור מסורת"@he .
+
+## Foreign Unit Properties
+
+hm:is_foreign_addition rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "is foreign addition"@en ,
+               "האם תוספת זרה"@he ;
+    rdfs:comment "Quick filter: true if unit is not part of original manuscript"@en .
+
+hm:addition_period rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:string ;
+    rdfs:label "addition period"@en ,
+               "תקופת ההוספה"@he ;
+    rdfs:comment "When the foreign unit was added to the manuscript"@en .
+
+#################################################################
+#    Classes
+#################################################################
+
+### LRMoo Classes
+
+lrmoo:F1_Work rdf:type owl:Class ;
+    rdfs:label "Work"@en ,
+               "יצירה"@he ;
+    rdfs:comment "An abstract intellectual creation"@en .
+
+lrmoo:F2_Expression rdf:type owl:Class ;
+    rdfs:label "Expression"@en ,
+               "ביטוי"@he ;
+    rdfs:comment "The intellectual or artistic realization of a work"@en .
+
+lrmoo:F3_Manifestation rdf:type owl:Class ;
+    rdfs:label "Manifestation"@en ,
+               "מהדורה"@he ;
+    rdfs:comment "The physical embodiment of an expression"@en .
+
+lrmoo:F4_Manifestation_Singleton rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E22_Human-Made_Object ;
+    rdfs:label "Manifestation Singleton"@en ,
+               "עותק יחידני"@he ;
+    rdfs:comment "A unique physical object - the manuscript"@en .
+
+lrmoo:F27_Work_Creation rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E65_Creation ;
+    rdfs:label "Work Creation"@en ,
+               "יצירת יצירה"@he .
+
+lrmoo:F28_Expression_Creation rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E65_Creation ;
+    rdfs:label "Expression Creation"@en ,
+               "יצירת ביטוי"@he .
+
+lrmoo:F30_Manifestation_Creation rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E65_Creation ;
+    rdfs:label "Manifestation Creation"@en ,
+               "יצירת מהדורה"@he .
+
+lrmoo:F32_Item_Production_Event rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E12_Production ;
+    rdfs:label "Item Production Event"@en ,
+               "אירוע ייצור עותק"@he .
+
+lrmoo:F5_Item rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E22_Human-Made_Object ;
+    rdfs:label "Item"@en ,
+               "פריט"@he .
+
+### CIDOC-CRM Classes
+
+cidoc-crm:E10_Transfer_of_Custody rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E7_Activity ;
+    rdfs:label "Transfer of Custody"@en ,
+               "העברת משמורת"@he .
+
+cidoc-crm:E12_Production rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E7_Activity ;
+    rdfs:label "Production"@en ,
+               "ייצור"@he .
+
+cidoc-crm:E18_Physical_Thing rdf:type owl:Class ;
+    rdfs:label "Physical Thing"@en .
+
+cidoc-crm:E26_Physical_Feature rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E18_Physical_Thing ;
+    rdfs:label "Physical Feature"@en .
+
+cidoc-crm:E21_Person rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E39_Actor ;
+    rdfs:label "Person"@en ,
+               "אדם"@he .
+
+cidoc-crm:E22_Human-Made_Object rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E18_Physical_Thing ;
+    rdfs:label "Human-Made Object"@en .
+
+cidoc-crm:E31_Document rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E73_Information_Object ;
+    rdfs:label "Document"@en ,
+               "מסמך"@he .
+
+cidoc-crm:E33_Linguistic_Object rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E73_Information_Object ;
+    rdfs:label "Linguistic Object"@en ,
+               "אובייקט לשוני"@he .
+
+cidoc-crm:E35_Title rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E33_Linguistic_Object ;
+    rdfs:label "Title"@en ,
+               "כותרת"@he .
+
+cidoc-crm:E39_Actor rdf:type owl:Class ;
+    rdfs:label "Actor"@en ,
+               "פועל"@he .
+
+cidoc-crm:E42_Identifier rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E33_Linguistic_Object ;
+    rdfs:label "Identifier"@en ,
+               "מזהה"@he .
+
+cidoc-crm:E52_Time-Span rdf:type owl:Class ;
+    rdfs:label "Time-Span"@en ,
+               "פרק זמן"@he .
+
+cidoc-crm:E53_Place rdf:type owl:Class ;
+    rdfs:label "Place"@en ,
+               "מקום"@he .
+
+cidoc-crm:E55_Type rdf:type owl:Class ;
+    rdfs:label "Type"@en ,
+               "סוג"@he .
+
+cidoc-crm:E56_Language rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Language"@en ,
+               "שפה"@he .
+
+cidoc-crm:E57_Material rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Material"@en ,
+               "חומר"@he .
+
+cidoc-crm:E65_Creation rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E7_Activity ;
+    rdfs:label "Creation"@en ,
+               "יצירה"@he .
+
+cidoc-crm:E73_Information_Object rdf:type owl:Class ;
+    rdfs:label "Information Object"@en ,
+               "אובייקט מידע"@he .
+
+cidoc-crm:E74_Group rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E39_Actor ;
+    rdfs:label "Group"@en ,
+               "קבוצה"@he .
+
+cidoc-crm:E7_Activity rdf:type owl:Class ;
+    rdfs:label "Activity"@en ,
+               "פעילות"@he .
+
+cidoc-crm:E8_Acquisition rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E7_Activity ;
+    rdfs:label "Acquisition"@en ,
+               "רכישה"@he .
+
+### Hebrew Manuscripts Custom Classes
+
+hm:Bibliographic_Unit rdf:type owl:Class ;
+    rdfs:subClassOf lrmoo:F4_Manifestation_Singleton ;
+    rdfs:subClassOf [ a owl:Restriction ;
+        owl:onProperty lrmoo:R5_has_component ;
+        owl:someValuesFrom hm:Codicological_Unit ] ;
+    rdfs:label "Bibliographic Unit"@en ,
+               "יחידה ביבליוגרפית"@he ;
+    rdfs:comment "A manuscript or book as a cataloging unit"@en .
+
+hm:Codicological_Unit rdf:type owl:Class ;
+    rdfs:subClassOf lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "Codicological Unit"@en ,
+               "יחידה קודיקולוגית"@he ;
+    rdfs:comment "A section produced as a physical unit"@en .
+
+hm:Colophon rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E33_Linguistic_Object ;
+    rdfs:subClassOf [ a owl:Restriction ;
+        owl:onProperty hm:colophon_text ;
+        owl:someValuesFrom xsd:string ] ;
+    rdfs:label "Colophon"@en ,
+               "קולופון"@he ;
+    rdfs:comment "Scribe's statement at the end of a text. Every Colophon instance must have at least one hm:colophon_text value (string)."@en .
+
+hm:HebrewScriptType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Hebrew Script Type"@en ,
+               "סוג כתב עברי"@he ;
+    rdfs:comment "Type of Hebrew script (e.g. by region or by form: square, semicursive, cursive)"@en .
+
+hm:ModeScriptType rdf:type owl:Class ;
+    rdfs:subClassOf hm:HebrewScriptType ;
+    rdfs:label "Script Mode Type"@en ,
+               "סוג אופן הכתב"@he ;
+    rdfs:comment "Square, Semicursive, or Cursive"@en .
+
+hm:TypeScriptType rdf:type owl:Class ;
+    rdfs:subClassOf hm:HebrewScriptType ;
+    rdfs:label "Script Regional Type"@en ,
+               "סוג כתב אזורי"@he ;
+    rdfs:comment "Ashkenazi, Sephardic, Byzantine, etc."@en .
+
+hm:Paleographical_Unit rdf:type owl:Class ;
+    rdfs:subClassOf lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "Paleographical Unit"@en ,
+               "יחידה פליאוגרפית"@he ;
+    rdfs:comment "Section with consistent script characteristics"@en .
+
+hm:ModeScriptType owl:disjointWith hm:TypeScriptType .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:Bibliographic_Unit hm:Codicological_Unit hm:Paleographical_Unit ) .
+
+hm:ParticipationRole rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Participation Role"@en ,
+               "תפקיד השתתפות"@he .
+
+hm:Reference_Event rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E7_Activity ;
+    rdfs:label "Reference Event"@en ,
+               "אירוע הפניה"@he ;
+    rdfs:comment "Event in which a manuscript or part of it is referenced (e.g. citation, mention)"@en .
+
+hm:SubjectType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Subject Type"@en ,
+               "נושא"@he ;
+    rdfs:comment "Type of subject or genre of a work (e.g. halakha, liturgy, philosophy)"@en .
+
+### NEW Classes (Added in v1.1)
+
+hm:Binding rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E22_Human-Made_Object ;
+    rdfs:label "Binding"@en ,
+               "כריכה"@he ;
+    rdfs:comment "Physical binding of a manuscript"@en .
+
+hm:Decoration rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E22_Human-Made_Object ;
+    rdfs:label "Decoration"@en ,
+               "קישוט"@he ;
+    rdfs:comment "Decorative element in a manuscript"@en .
+
+hm:DecorationType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Decoration Type"@en ,
+               "סוג קישוט"@he ;
+    rdfs:comment "Type of decoration in a manuscript (e.g. illumination, micrography, border)"@en .
+
+hm:Marginalia rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E33_Linguistic_Object ;
+    rdfs:label "Marginalia"@en ,
+               "הערות שוליים"@he ;
+    rdfs:comment "Marginal annotations in a manuscript"@en .
+
+hm:Watermark rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E26_Physical_Feature ;
+    rdfs:label "Watermark"@en ,
+               "סימן מים"@he ;
+    rdfs:comment "Physical feature (e.g. in paper) used for dating or provenance"@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:Colophon hm:Binding hm:Decoration hm:Marginalia hm:Watermark ) .
+
+hm:ConditionType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Condition Type"@en ,
+               "סוג מצב"@he .
+
+hm:VocalizationType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Vocalization Type"@en ,
+               "סוג ניקוד"@he .
+
+hm:BindingType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Binding Type"@en ,
+               "סוג כריכה"@he .
+
+hm:DateFormatType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Date Format Type"@en ,
+               "סוג פורמט תאריך"@he ;
+    rdfs:comment "Classification of date format: Gregorian year (YYYY), Hebrew year (תשפ״ד), full date (DD/MM/YYYY), or unstructured text"@en .
+
+### NEW Classes addressing reviewer feedback (v1.2)
+
+hm:CertaintyLevel rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Certainty Level"@en ,
+               "רמת וודאות"@he ;
+    rdfs:comment "Degree of certainty for attributions (certain, probable, possible, uncertain)"@en .
+
+hm:AttributionSource rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Attribution Source"@en ,
+               "מקור ייחוס"@he ;
+    rdfs:comment "Type of source for an attribution (expert, AI, catalog, colophon)"@en .
+
+hm:MultiVolumeSet rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E78_Curated_Holding ;
+    rdfs:subClassOf [ a owl:Restriction ;
+        owl:onProperty hm:has_volume ;
+        owl:minCardinality 2 ] ;
+    rdfs:label "Multi-Volume Set"@en ,
+               "סט רב-כרכי"@he ;
+    rdfs:comment "A set of manuscript volumes that belong together (at least 2 volumes required)"@en .
+
+hm:AnthologyStructure rdf:type owl:Class ;
+    rdfs:subClassOf lrmoo:F4_Manifestation_Singleton ;
+    owl:equivalentClass [ a owl:Class ;
+        owl:intersectionOf ( lrmoo:F4_Manifestation_Singleton
+            [ a owl:Restriction ;
+              owl:onProperty lrmoo:R4_embodies ;
+              owl:someValuesFrom [ a owl:Class ;
+                owl:intersectionOf ( lrmoo:F2_Expression
+                    [ a owl:Restriction ;
+                      owl:onProperty hm:has_anthology_position ;
+                      owl:someValuesFrom hm:AnthologyPosition ] ) ] ] ) ] ;
+    rdfs:label "Anthology Structure"@en ,
+               "מבנה אנתולוגי"@he ;
+    rdfs:comment "Manuscript with intentional anthology arrangement"@en .
+
+hm:AnthologyPosition rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Anthology Position"@en ,
+               "מיקום באנתולוגיה"@he ;
+    rdfs:comment "Position of a text within an anthology with ordering info"@en .
+
+hm:ScribalIntervention rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E7_Activity ;
+    rdfs:label "Scribal Intervention"@en ,
+               "התערבות סופר"@he ;
+    rdfs:comment "Corrections, additions, or modifications made by scribes"@en .
+
+hm:TextCorrection rdf:type owl:Class ;
+    rdfs:subClassOf hm:ScribalIntervention ;
+    rdfs:label "Text Correction"@en ,
+               "תיקון טקסט"@he ;
+    rdfs:comment "Scribal intervention that corrects or emends the text"@en .
+
+hm:MarginalAddition rdf:type owl:Class ;
+    rdfs:subClassOf hm:ScribalIntervention ;
+    rdfs:label "Marginal Addition"@en ,
+               "הוספה בשוליים"@he ;
+    rdfs:comment "Scribal intervention that adds text in the margins"@en .
+
+hm:HandChange rdf:type owl:Class ;
+    rdfs:subClassOf hm:ScribalIntervention ;
+    rdfs:label "Hand Change"@en ,
+               "חילופי יד"@he ;
+    rdfs:comment "Point where one scribe's work ends and another begins"@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:TextCorrection hm:MarginalAddition hm:HandChange ) .
+
+hm:TextLocation rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Text Location"@en ,
+               "מיקום בטקסט"@he ;
+    rdfs:comment "Specific location within a manuscript (folio, line, column)"@en .
+
+hm:LostManuscript rdf:type owl:Class ;
+    rdfs:subClassOf lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "Lost Manuscript"@en ,
+               "כתב יד אבוד"@he ;
+    rdfs:comment "A manuscript that no longer exists but is known through copies or references"@en .
+
+hm:HypotheticalExemplar rdf:type owl:Class ;
+    rdfs:subClassOf hm:LostManuscript ;
+    rdfs:label "Hypothetical Exemplar"@en ,
+               "אב טיפוס משוער"@he ;
+    rdfs:comment "A reconstructed source manuscript based on textual analysis"@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:LostManuscript hm:AnthologyStructure ) .
+
+### NEW Classes for v1.3 - Text Tradition Layer (Hybrid Philological Approach)
+
+## Text Tradition Classes
+
+hm:TextTradition rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Text Tradition"@en ,
+               "מסורת טקסטואלית"@he ;
+    rdfs:comment "A transmission stream of a text, independent of 'original Work' concept. Supports philological view where each MS is a unique cultural event."@en .
+
+hm:TransmissionWitness rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E73_Information_Object ;
+    rdfs:label "Transmission Witness"@en ,
+               "עד מסירה"@he ;
+    rdfs:comment "A manuscript viewed as witness to a textual tradition rather than just a 'copy'"@en .
+
+hm:TextualVariant rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E73_Information_Object ;
+    rdfs:label "Textual Variant"@en ,
+               "גרסה טקסטואלית"@he ;
+    rdfs:comment "A specific variant reading within a textual tradition"@en .
+
+hm:StemmaPosition rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Stemma Position"@en ,
+               "מיקום בסטמה"@he ;
+    rdfs:comment "Position of a manuscript in a textual stemma (for critical edition work)"@en .
+
+hm:StemmaHypothesis rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Stemma Hypothesis"@en ,
+               "השערת סטמה"@he ;
+    rdfs:comment "A scholarly hypothesis about textual relationships"@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:TextTradition hm:TransmissionWitness hm:TextualVariant hm:StemmaPosition hm:StemmaHypothesis ) .
+
+## Full Granularity Location Classes
+
+hm:FolioLocation rdf:type owl:Class ;
+    rdfs:subClassOf hm:TextLocation ;
+    rdfs:label "Folio Location"@en ,
+               "מיקום דף"@he ;
+    rdfs:comment "Location at folio/page level (e.g., '15r')"@en .
+
+hm:LineLocation rdf:type owl:Class ;
+    rdfs:subClassOf hm:TextLocation ;
+    rdfs:label "Line Location"@en ,
+               "מיקום שורה"@he ;
+    rdfs:comment "Location at line level (e.g., '15r, line 5')"@en .
+
+hm:WordLocation rdf:type owl:Class ;
+    rdfs:subClassOf hm:TextLocation ;
+    rdfs:label "Word Location"@en ,
+               "מיקום מילה"@he ;
+    rdfs:comment "Location at word level (e.g., '15r, line 5, word 3')"@en .
+
+hm:CharacterLocation rdf:type owl:Class ;
+    rdfs:subClassOf hm:TextLocation ;
+    rdfs:label "Character Location"@en ,
+               "מיקום תו"@he ;
+    rdfs:comment "Location at character level (for paleographic analysis)"@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:FolioLocation hm:LineLocation hm:WordLocation hm:CharacterLocation hm:TextSpan ) .
+
+hm:TextSpan rdf:type owl:Class ;
+    rdfs:subClassOf hm:TextLocation ;
+    rdfs:label "Text Span"@en ,
+               "טווח טקסט"@he ;
+    rdfs:comment "A range from location A to location B"@en .
+
+hm:IIIFRegion rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E73_Information_Object ;
+    rdfs:label "IIIF Region"@en ,
+               "אזור IIIF"@he ;
+    rdfs:comment "Reference to IIIF image region for visual location"@en .
+
+## Canonical Reference Classes
+
+hm:CanonicalReference rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Canonical Reference"@en ,
+               "הפניה קנונית"@he ;
+    rdfs:comment "Reference to canonical Jewish text structure"@en .
+
+hm:BiblicalReference rdf:type owl:Class ;
+    rdfs:subClassOf hm:CanonicalReference ;
+    rdfs:label "Biblical Reference"@en ,
+               "הפניה מקראית"@he ;
+    rdfs:comment "Book/Chapter/Verse reference (e.g., Genesis 1:1)"@en .
+
+hm:MishnaicReference rdf:type owl:Class ;
+    rdfs:subClassOf hm:CanonicalReference ;
+    rdfs:label "Mishnaic Reference"@en ,
+               "הפניה משנאית"@he ;
+    rdfs:comment "Tractate/Chapter/Mishnah reference"@en .
+
+hm:TalmudicReference rdf:type owl:Class ;
+    rdfs:subClassOf hm:CanonicalReference ;
+    rdfs:label "Talmudic Reference"@en ,
+               "הפניה תלמודית"@he ;
+    rdfs:comment "Tractate/Folio/Side reference (e.g., Berakhot 2a)"@en .
+
+hm:HalachicReference rdf:type owl:Class ;
+    rdfs:subClassOf hm:CanonicalReference ;
+    rdfs:label "Halachic Reference"@en ,
+               "הפניה הלכתית"@he ;
+    rdfs:comment "Reference for Mishneh Torah or Shulchan Aruch"@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:BiblicalReference hm:MishnaicReference hm:TalmudicReference hm:HalachicReference ) .
+
+hm:CanonicalHierarchyType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Canonical Hierarchy Type"@en ,
+               "סוג היררכיה קנונית"@he ;
+    rdfs:comment "Type of canonical text hierarchy (Bible, Mishnah, etc.)"@en .
+
+## Unit Status Classes
+
+hm:UnitStatusType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Unit Status Type"@en ,
+               "סוג סטטוס יחידה"@he ;
+    rdfs:comment "Type indicating if unit is core or foreign to manuscript"@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:ConditionType hm:VocalizationType hm:BindingType hm:DateFormatType hm:CertaintyLevel hm:AttributionSource hm:DecorationType hm:SubjectType hm:ParticipationRole hm:CanonicalHierarchyType hm:UnitStatusType hm:EpistemologicalStatus hm:DataCategory hm:InterpretationMethod hm:ConsensusLevelType hm:RestrictionType hm:DigitalAccessType hm:HierarchyType hm:ViewType hm:HebrewScriptType ) .
+
+#################################################################
+#    Controlled Vocabulary Instances
+#################################################################
+
+### AllDifferent declarations for controlled vocabulary individuals
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:AshkenaziScript hm:SepharadicScript hm:ItalianScript hm:ByzantineScript hm:YemeniteScript hm:OrientalScript hm:PersianScript ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:SquareScript hm:SemicursiveScript hm:CursiveScript ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Excellent hm:Good hm:Fair hm:Poor hm:Fragmentary ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Parchment hm:Paper hm:Papyrus ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Hebrew hm:Aramaic hm:Arabic hm:JudeoArabic hm:Ladino hm:Yiddish hm:JudeoPersian ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:FullPageIllumination hm:InitialLetters hm:MarginalDecoration hm:CarpetPage hm:Micrography ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:TiberianVocalization hm:BabylonianVocalization hm:PalestinianVocalization hm:NoVocalization ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:OriginalBinding hm:Rebinding hm:ConservationBinding hm:Unbound ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:GregorianYear hm:HebrewYear hm:FullDate hm:UnstructuredDate ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Certain hm:Probable hm:Possible hm:Uncertain ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:ExpertAttribution hm:AIAttribution hm:CatalogAttribution hm:ColophonAttribution hm:PaleographicAttribution ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Scribe_role hm:Author_role hm:Illuminator_role hm:Commentator_role hm:Translator_role hm:Owner_role ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Bible_Subject hm:Talmud_Subject hm:Midrash_Subject hm:Halakha_Subject hm:Kabbalah_Subject hm:Philosophy_Subject hm:Liturgy_Subject hm:Poetry_Subject hm:Medicine_Subject hm:Science_Subject ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:CoreUnit_status hm:LaterAddition_status hm:BinderAddition_status hm:UnrelatedFragment_status hm:ProtectiveLeaf_status ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Bible_hierarchy hm:Mishnah_hierarchy hm:Talmud_Bavli_hierarchy hm:Talmud_Yerushalmi_hierarchy hm:Mishneh_Torah_hierarchy hm:Shulchan_Aruch_hierarchy hm:Zohar_hierarchy hm:Midrash_hierarchy ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:DirectObservation hm:ScholarlyInterpretation hm:ComputationalDerivation hm:CatalogInherited hm:TraditionalAttribution ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:PhysicalMeasurement hm:ColophonContent hm:MaterialObservation hm:DateAttribution hm:AuthorshipAttribution hm:ScribeIdentification hm:PlaceAttribution hm:WorkIdentification hm:TextualRelationship ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:PaleographicAnalysis hm:CodicologicalAnalysis hm:LinguisticAnalysis hm:HistoricalContextAnalysis hm:ComparativeTextualAnalysis hm:AIBasedAnalysis hm:RadiocarbonDating hm:WatermarkAnalysis ) .
+
+### Script Types (Regional)
+
+hm:AshkenaziScript rdf:type owl:NamedIndividual , hm:TypeScriptType ;
+    rdfs:label "Ashkenazi Script"@en ,
+               "כתב אשכנזי"@he .
+
+hm:SepharadicScript rdf:type owl:NamedIndividual , hm:TypeScriptType ;
+    rdfs:label "Sephardic Script"@en ,
+               "כתב ספרדי"@he .
+
+hm:ItalianScript rdf:type owl:NamedIndividual , hm:TypeScriptType ;
+    rdfs:label "Italian Script"@en ,
+               "כתב איטלקי"@he .
+
+hm:ByzantineScript rdf:type owl:NamedIndividual , hm:TypeScriptType ;
+    rdfs:label "Byzantine Script"@en ,
+               "כתב ביזנטי"@he .
+
+hm:YemeniteScript rdf:type owl:NamedIndividual , hm:TypeScriptType ;
+    rdfs:label "Yemenite Script"@en ,
+               "כתב תימני"@he .
+
+hm:OrientalScript rdf:type owl:NamedIndividual , hm:TypeScriptType ;
+    rdfs:label "Oriental Script"@en ,
+               "כתב מזרחי"@he .
+
+hm:PersianScript rdf:type owl:NamedIndividual , hm:TypeScriptType ;
+    rdfs:label "Persian Script"@en ,
+               "כתב פרסי"@he .
+
+### Script Modes
+
+hm:SquareScript rdf:type owl:NamedIndividual , hm:ModeScriptType ;
+    rdfs:label "Square Script"@en ,
+               "כתב מרובע"@he .
+
+hm:SemicursiveScript rdf:type owl:NamedIndividual , hm:ModeScriptType ;
+    rdfs:label "Semicursive Script"@en ,
+               "כתב בינוני"@he .
+
+hm:CursiveScript rdf:type owl:NamedIndividual , hm:ModeScriptType ;
+    rdfs:label "Cursive Script"@en ,
+               "כתב רהוט"@he .
+
+### Materials
+
+hm:Parchment rdf:type owl:NamedIndividual , cidoc-crm:E57_Material ;
+    rdfs:label "Parchment"@en ,
+               "קלף"@he .
+
+hm:Paper rdf:type owl:NamedIndividual , cidoc-crm:E57_Material ;
+    rdfs:label "Paper"@en ,
+               "נייר"@he .
+
+hm:Papyrus rdf:type owl:NamedIndividual , cidoc-crm:E57_Material ;
+    rdfs:label "Papyrus"@en ,
+               "פפירוס"@he .
+
+### Languages
+
+hm:Hebrew rdf:type owl:NamedIndividual , cidoc-crm:E56_Language ;
+    rdfs:label "Hebrew"@en ,
+               "עברית"@he .
+
+hm:Aramaic rdf:type owl:NamedIndividual , cidoc-crm:E56_Language ;
+    rdfs:label "Aramaic"@en ,
+               "ארמית"@he .
+
+hm:Arabic rdf:type owl:NamedIndividual , cidoc-crm:E56_Language ;
+    rdfs:label "Arabic"@en ,
+               "ערבית"@he .
+
+hm:JudeoArabic rdf:type owl:NamedIndividual , cidoc-crm:E56_Language ;
+    rdfs:label "Judeo-Arabic"@en ,
+               "יהודית-ערבית"@he .
+
+hm:Ladino rdf:type owl:NamedIndividual , cidoc-crm:E56_Language ;
+    rdfs:label "Ladino"@en ,
+               "לאדינו"@he .
+
+hm:Yiddish rdf:type owl:NamedIndividual , cidoc-crm:E56_Language ;
+    rdfs:label "Yiddish"@en ,
+               "יידיש"@he .
+
+hm:JudeoPersian rdf:type owl:NamedIndividual , cidoc-crm:E56_Language ;
+    rdfs:label "Judeo-Persian"@en ,
+               "יהודית-פרסית"@he .
+
+### Condition Types
+
+hm:Excellent rdf:type owl:NamedIndividual , hm:ConditionType ;
+    rdfs:label "Excellent"@en ,
+               "מצוין"@he .
+
+hm:Good rdf:type owl:NamedIndividual , hm:ConditionType ;
+    rdfs:label "Good"@en ,
+               "טוב"@he .
+
+hm:Fair rdf:type owl:NamedIndividual , hm:ConditionType ;
+    rdfs:label "Fair"@en ,
+               "סביר"@he .
+
+hm:Poor rdf:type owl:NamedIndividual , hm:ConditionType ;
+    rdfs:label "Poor"@en ,
+               "גרוע"@he .
+
+hm:Fragmentary rdf:type owl:NamedIndividual , hm:ConditionType ;
+    rdfs:label "Fragmentary"@en ,
+               "חלקי/קטעי"@he .
+
+### Decoration Types
+
+hm:FullPageIllumination rdf:type owl:NamedIndividual , hm:DecorationType ;
+    rdfs:label "Full Page Illumination"@en ,
+               "עיטור דף שלם"@he .
+
+hm:InitialLetters rdf:type owl:NamedIndividual , hm:DecorationType ;
+    rdfs:label "Decorated Initial Letters"@en ,
+               "אותיות פותחות מעוטרות"@he .
+
+hm:MarginalDecoration rdf:type owl:NamedIndividual , hm:DecorationType ;
+    rdfs:label "Marginal Decoration"@en ,
+               "עיטור שוליים"@he .
+
+hm:CarpetPage rdf:type owl:NamedIndividual , hm:DecorationType ;
+    rdfs:label "Carpet Page"@en ,
+               "דף שטיח"@he .
+
+hm:Micrography rdf:type owl:NamedIndividual , hm:DecorationType ;
+    rdfs:label "Micrography"@en ,
+               "מיקרוגרפיה"@he .
+
+### Vocalization Types
+
+hm:TiberianVocalization rdf:type owl:NamedIndividual , hm:VocalizationType ;
+    rdfs:label "Tiberian Vocalization"@en ,
+               "ניקוד טברייני"@he .
+
+hm:BabylonianVocalization rdf:type owl:NamedIndividual , hm:VocalizationType ;
+    rdfs:label "Babylonian Vocalization"@en ,
+               "ניקוד בבלי"@he .
+
+hm:PalestinianVocalization rdf:type owl:NamedIndividual , hm:VocalizationType ;
+    rdfs:label "Palestinian Vocalization"@en ,
+               "ניקוד ארץ-ישראלי"@he .
+
+hm:NoVocalization rdf:type owl:NamedIndividual , hm:VocalizationType ;
+    rdfs:label "No Vocalization"@en ,
+               "ללא ניקוד"@he .
+
+### Binding Types
+
+hm:OriginalBinding rdf:type owl:NamedIndividual , hm:BindingType ;
+    rdfs:label "Original Binding"@en ,
+               "כריכה מקורית"@he .
+
+hm:Rebinding rdf:type owl:NamedIndividual , hm:BindingType ;
+    rdfs:label "Rebinding"@en ,
+               "כריכה מחדש"@he .
+
+hm:ConservationBinding rdf:type owl:NamedIndividual , hm:BindingType ;
+    rdfs:label "Conservation Binding"@en ,
+               "כריכת שימור"@he .
+
+hm:Unbound rdf:type owl:NamedIndividual , hm:BindingType ;
+    rdfs:label "Unbound"@en ,
+               "ללא כריכה"@he .
+
+### Date Format Types
+
+hm:GregorianYear rdf:type owl:NamedIndividual , hm:DateFormatType ;
+    rdfs:label "Gregorian Year"@en ,
+               "שנה גרגוריאנית"@he ;
+    rdfs:comment "Four-digit year format (e.g., 1407, 1523)"@en .
+
+hm:HebrewYear rdf:type owl:NamedIndividual , hm:DateFormatType ;
+    rdfs:label "Hebrew Year"@en ,
+               "שנה עברית"@he ;
+    rdfs:comment "Hebrew calendar year notation (e.g., תש״ה, תשפ״ד, ה'קס\"ז)"@en .
+
+hm:FullDate rdf:type owl:NamedIndividual , hm:DateFormatType ;
+    rdfs:label "Full Date"@en ,
+               "תאריך מלא"@he ;
+    rdfs:comment "Complete date with day/month/year (e.g., 15/03/1407, כ״ג אדר תשפ״ד)"@en .
+
+hm:UnstructuredDate rdf:type owl:NamedIndividual , hm:DateFormatType ;
+    rdfs:label "Unstructured Date"@en ,
+               "טקסט חופשי"@he ;
+    rdfs:comment "Free-form date text that cannot be parsed into structured format"@en .
+
+### Participation Roles
+
+hm:Scribe_role rdf:type owl:NamedIndividual , hm:ParticipationRole ;
+    rdfs:label "Scribe"@en ,
+               "סופר, מעתיק כתב יד"@he .
+
+hm:Author_role rdf:type owl:NamedIndividual , hm:ParticipationRole ;
+    rdfs:label "Author"@en ,
+               "מחבר"@he .
+
+hm:Illuminator_role rdf:type owl:NamedIndividual , hm:ParticipationRole ;
+    rdfs:label "Illuminator"@en ,
+               "מאייר"@he .
+
+hm:Commentator_role rdf:type owl:NamedIndividual , hm:ParticipationRole ;
+    rdfs:label "Commentator"@en ,
+               "פרשן"@he .
+
+hm:Translator_role rdf:type owl:NamedIndividual , hm:ParticipationRole ;
+    rdfs:label "Translator"@en ,
+               "מתרגם"@he .
+
+hm:Owner_role rdf:type owl:NamedIndividual , hm:ParticipationRole ;
+    rdfs:label "Former Owner"@en ,
+               "בעלים קודם"@he .
+
+### Text Types
+
+hm:MainText rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Main Text"@en ,
+               "טקסט עיקרי"@he .
+
+hm:CommentaryText rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Commentary Text"@en ,
+               "פירוש"@he ;
+    rdfs:comment "Commentary on another text"@en .
+
+hm:AdditionalText rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Additional Text"@en ,
+               "טקסט נוסף"@he .
+
+hm:MarginalText rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Marginal Text"@en ,
+               "טקסט בשוליים"@he .
+
+hm:SupercommentaryText rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Supercommentary Text"@en ,
+               "פירוש על פירוש"@he ;
+    rdfs:comment "A commentary on another commentary"@en .
+
+hm:GlossText rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Gloss Text"@en ,
+               "ביאור"@he ;
+    rdfs:comment "Short explanatory note or annotation"@en .
+
+hm:ResponsumText rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Responsum Text"@en ,
+               "תשובה"@he ;
+    rdfs:comment "Rabbinical response to halakhic questions"@en .
+
+### Common Subjects
+
+hm:Bible_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Bible"@en ,
+               "מקרא"@he .
+
+hm:Talmud_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Talmud"@en ,
+               "תלמוד"@he .
+
+hm:Midrash_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Midrash"@en ,
+               "מדרש"@he .
+
+hm:Halakha_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Halakha"@en ,
+               "הלכה"@he .
+
+hm:Kabbalah_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Kabbalah"@en ,
+               "קבלה"@he .
+
+hm:Philosophy_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Philosophy"@en ,
+               "פילוסופיה"@he .
+
+hm:Liturgy_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Liturgy"@en ,
+               "ליטורגיה"@he .
+
+hm:Poetry_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Poetry"@en ,
+               "שירה"@he .
+
+hm:Medicine_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Medicine"@en ,
+               "רפואה"@he .
+
+hm:Science_Subject rdf:type owl:NamedIndividual , hm:SubjectType ;
+    rdfs:label "Science"@en ,
+               "מדעים"@he .
+
+### NEW Controlled Vocabulary Instances (v1.2)
+
+## Certainty Levels
+
+hm:Certain rdf:type owl:NamedIndividual , hm:CertaintyLevel ;
+    rdfs:label "Certain"@en ,
+               "וודאי"@he ;
+    rdfs:comment "High confidence, well-documented identification"@en .
+
+hm:Probable rdf:type owl:NamedIndividual , hm:CertaintyLevel ;
+    rdfs:label "Probable"@en ,
+               "סביר"@he ;
+    rdfs:comment "Likely correct based on available evidence"@en .
+
+hm:Possible rdf:type owl:NamedIndividual , hm:CertaintyLevel ;
+    rdfs:label "Possible"@en ,
+               "אפשרי"@he ;
+    rdfs:comment "One plausible interpretation among others"@en .
+
+hm:Uncertain rdf:type owl:NamedIndividual , hm:CertaintyLevel ;
+    rdfs:label "Uncertain"@en ,
+               "לא וודאי"@he ;
+    rdfs:comment "Identification is speculative or contested"@en .
+
+## Attribution Sources
+
+hm:ExpertAttribution rdf:type owl:NamedIndividual , hm:AttributionSource ;
+    rdfs:label "Expert Attribution"@en ,
+               "ייחוס מומחה"@he ;
+    rdfs:comment "Attribution made by human domain expert"@en .
+
+hm:AIAttribution rdf:type owl:NamedIndividual , hm:AttributionSource ;
+    rdfs:label "AI Attribution"@en ,
+               "ייחוס אוטומטי (AI)"@he ;
+    rdfs:comment "Attribution made by automated AI system (e.g., MIDRASH)"@en .
+
+hm:CatalogAttribution rdf:type owl:NamedIndividual , hm:AttributionSource ;
+    rdfs:label "Catalog Attribution"@en ,
+               "ייחוס מקטלוג"@he ;
+    rdfs:comment "Attribution from existing catalog record"@en .
+
+hm:ColophonAttribution rdf:type owl:NamedIndividual , hm:AttributionSource ;
+    rdfs:label "Colophon Attribution"@en ,
+               "ייחוס מקולופון"@he ;
+    rdfs:comment "Attribution based on colophon information"@en .
+
+hm:PaleographicAttribution rdf:type owl:NamedIndividual , hm:AttributionSource ;
+    rdfs:label "Paleographic Attribution"@en ,
+               "ייחוס פליאוגרפי"@he ;
+    rdfs:comment "Attribution based on paleographic analysis"@en .
+
+## Intervention Types
+
+hm:Correction_type rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Correction"@en ,
+               "תיקון"@he .
+
+hm:Erasure_type rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Erasure"@en ,
+               "מחיקה"@he .
+
+hm:Interlinear_addition_type rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Interlinear Addition"@en ,
+               "הוספה בין השורות"@he .
+
+hm:Marginal_gloss_type rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Marginal Gloss"@en ,
+               "ביאור בשוליים"@he .
+
+hm:Later_hand_type rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Later Hand"@en ,
+               "יד מאוחרת"@he .
+
+### NEW Controlled Vocabulary Instances for v1.3
+
+## Canonical Hierarchy Types
+
+hm:Bible_hierarchy rdf:type owl:NamedIndividual , hm:CanonicalHierarchyType ;
+    rdfs:label "Bible"@en ,
+               "מקרא"@he ;
+    rdfs:comment "Torah, Nevi'im, Ketuvim structure"@en .
+
+hm:Mishnah_hierarchy rdf:type owl:NamedIndividual , hm:CanonicalHierarchyType ;
+    rdfs:label "Mishnah"@en ,
+               "משנה"@he ;
+    rdfs:comment "Seder/Tractate/Chapter/Mishnah structure"@en .
+
+hm:Talmud_Bavli_hierarchy rdf:type owl:NamedIndividual , hm:CanonicalHierarchyType ;
+    rdfs:label "Talmud Bavli"@en ,
+               "תלמוד בבלי"@he ;
+    rdfs:comment "Tractate/Folio/Side structure"@en .
+
+hm:Talmud_Yerushalmi_hierarchy rdf:type owl:NamedIndividual , hm:CanonicalHierarchyType ;
+    rdfs:label "Talmud Yerushalmi"@en ,
+               "תלמוד ירושלמי"@he ;
+    rdfs:comment "Tractate/Chapter/Halacha structure"@en .
+
+hm:Mishneh_Torah_hierarchy rdf:type owl:NamedIndividual , hm:CanonicalHierarchyType ;
+    rdfs:label "Mishneh Torah"@en ,
+               "משנה תורה"@he ;
+    rdfs:comment "Rambam's code: Book/Section/Chapter/Halacha"@en .
+
+hm:Shulchan_Aruch_hierarchy rdf:type owl:NamedIndividual , hm:CanonicalHierarchyType ;
+    rdfs:label "Shulchan Aruch"@en ,
+               "שולחן ערוך"@he ;
+    rdfs:comment "Part/Siman/Se'if structure"@en .
+
+hm:Zohar_hierarchy rdf:type owl:NamedIndividual , hm:CanonicalHierarchyType ;
+    rdfs:label "Zohar"@en ,
+               "זוהר"@he ;
+    rdfs:comment "Zoharic literature structure"@en .
+
+hm:Midrash_hierarchy rdf:type owl:NamedIndividual , hm:CanonicalHierarchyType ;
+    rdfs:label "Midrash"@en ,
+               "מדרש"@he ;
+    rdfs:comment "Various midrashic text structures"@en .
+
+## Unit Status Types
+
+hm:CoreUnit_status rdf:type owl:NamedIndividual , hm:UnitStatusType ;
+    rdfs:label "Core Unit"@en ,
+               "יחידת ליבה"@he ;
+    rdfs:comment "Part of original manuscript conception"@en .
+
+hm:LaterAddition_status rdf:type owl:NamedIndividual , hm:UnitStatusType ;
+    rdfs:label "Later Addition"@en ,
+               "תוספת מאוחרת"@he ;
+    rdfs:comment "Added by later hand after initial creation"@en .
+
+hm:BinderAddition_status rdf:type owl:NamedIndividual , hm:UnitStatusType ;
+    rdfs:label "Binder Addition"@en ,
+               "תוספת כורך"@he ;
+    rdfs:comment "Added during rebinding process"@en .
+
+hm:UnrelatedFragment_status rdf:type owl:NamedIndividual , hm:UnitStatusType ;
+    rdfs:label "Unrelated Fragment"@en ,
+               "שבר לא קשור"@he ;
+    rdfs:comment "Fragment bound with MS but unrelated to main content"@en .
+
+hm:ProtectiveLeaf_status rdf:type owl:NamedIndividual , hm:UnitStatusType ;
+    rdfs:label "Protective Leaf"@en ,
+               "דף מגן"@he ;
+    rdfs:comment "Leaves added for protection (flyleaves, pastedowns)"@en .
+
+## Variant Significance Types
+
+hm:Orthographic_variant rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Orthographic Variant"@en ,
+               "גרסה כתיבית"@he ;
+    rdfs:comment "Spelling difference only"@en .
+
+hm:Lexical_variant rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Lexical Variant"@en ,
+               "גרסה לקסיקלית"@he ;
+    rdfs:comment "Different word choice"@en .
+
+hm:Syntactic_variant rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Syntactic Variant"@en ,
+               "גרסה תחבירית"@he ;
+    rdfs:comment "Different word order or structure"@en .
+
+hm:Semantic_variant rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Semantic Variant"@en ,
+               "גרסה משמעותית"@he ;
+    rdfs:comment "Meaning-changing variant"@en .
+
+hm:Addition_variant rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Addition"@en ,
+               "הוספה"@he ;
+    rdfs:comment "Text present in this witness but not standard"@en .
+
+hm:Omission_variant rdf:type owl:NamedIndividual , cidoc-crm:E55_Type ;
+    rdfs:label "Omission"@en ,
+               "השמטה"@he ;
+    rdfs:comment "Text missing from this witness"@en .
+
+#################################################################
+#    v1.4 - DUAL PARADIGM SUPPORT (Expert Feedback Phase 1)
+#    Resolves philosophical tension between bibliographic-practical
+#    and new philological approaches
+#################################################################
+
+### Dual Paradigm Object Properties
+
+hm:has_cataloging_perspective rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:CatalogingView ;
+    rdfs:label "has cataloging perspective"@en ,
+               "בעל פרספקטיבה קטלוגית"@he ;
+    rdfs:comment "Links manuscript to its bibliographic/cataloging view following LRM Work-Expression model"@en .
+
+hm:has_philological_perspective rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:PhilologicalView ;
+    rdfs:label "has philological perspective"@en ,
+               "בעל פרספקטיבה פילולוגית"@he ;
+    rdfs:comment "Links manuscript to its philological view treating it as unique cultural event"@en .
+
+hm:paradigm_bridge rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:ParadigmBridge ;
+    rdfs:range owl:Thing ;
+    rdfs:label "paradigm bridge"@en ,
+               "גשר פרדיגמטי"@he ;
+    rdfs:comment "Generic bridging property connecting entities across paradigms"@en .
+
+hm:has_linked_work rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:ParadigmBridge ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "has linked work"@en ,
+               "יצירה מקושרת"@he ;
+    rdfs:comment "ParadigmBridge links to the Work (bibliographic side)"@en .
+
+hm:has_linked_tradition rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:ParadigmBridge ;
+    rdfs:range hm:TextTradition ;
+    rdfs:label "has linked tradition"@en ,
+               "מסורת מקושרת"@he ;
+    rdfs:comment "ParadigmBridge links to the TextTradition (philological side)"@en .
+
+
+hm:view_type rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:ManuscriptView ;
+    rdfs:range hm:ViewType ;
+    rdfs:label "view type"@en ,
+               "סוג תצוגה"@he ;
+    rdfs:comment "Type of manuscript view (cataloging, philological, etc.)"@en .
+
+hm:cataloging_work rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:CatalogingView ;
+    rdfs:range lrmoo:F1_Work ;
+    rdfs:label "cataloging work"@en ,
+               "יצירה לקטלוג"@he ;
+    rdfs:comment "The Work entity used for cataloging purposes"@en .
+
+hm:cataloging_expression rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:CatalogingView ;
+    rdfs:range lrmoo:F2_Expression ;
+    rdfs:label "cataloging expression"@en ,
+               "ביטוי לקטלוג"@he ;
+    rdfs:comment "The Expression entity used for cataloging purposes"@en .
+
+hm:philological_tradition rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:PhilologicalView ;
+    rdfs:range hm:TextTradition ;
+    rdfs:label "philological tradition"@en ,
+               "מסורת פילולוגית"@he ;
+    rdfs:comment "The TextTradition this manuscript witnesses in philological view"@en .
+
+hm:philological_witness rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:PhilologicalView ;
+    rdfs:range hm:TransmissionWitness ;
+    rdfs:label "philological witness"@en ,
+               "עד פילולוגי"@he ;
+    rdfs:comment "The TransmissionWitness entity representing MS as cultural event"@en .
+
+hm:has_philological_witness rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:TransmissionWitness ;
+    rdfs:label "has philological witness"@en ,
+               "בעל עד פילולוגי"@he ;
+    rdfs:comment "Direct link from manuscript to its transmission witness (shortcut property)"@en .
+
+hm:is_paradigm_compatible rdf:type owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:domain hm:ManuscriptView ;
+    rdfs:range hm:ManuscriptView ;
+    rdfs:label "is paradigm compatible"@en ,
+               "תואם פרדיגמה"@he ;
+    rdfs:comment "Indicates two views can coexist without conflict"@en .
+
+### Dual Paradigm Datatype Properties
+
+hm:paradigm_note rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:ManuscriptView ;
+    rdfs:range xsd:string ;
+    rdfs:label "paradigm note"@en ,
+               "הערת פרדיגמה"@he ;
+    rdfs:comment "Explanation of how this paradigm applies to the manuscript"@en .
+
+hm:is_primary_paradigm rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:ManuscriptView ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "is primary paradigm"@en ,
+               "פרדיגמה עיקרית"@he ;
+    rdfs:comment "Whether this is the primary/preferred paradigm for this MS"@en .
+
+hm:paradigm_justification rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:ParadigmBridge ;
+    rdfs:range xsd:string ;
+    rdfs:label "paradigm justification"@en ,
+               "הצדקת גשר פרדיגמטי"@he ;
+    rdfs:comment "Scholarly justification for bridging Work and TextTradition"@en .
+
+### Dual Paradigm Classes
+
+hm:ManuscriptView rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Manuscript View"@en ,
+               "תצוגת כתב יד"@he ;
+    rdfs:comment "Abstract class for different paradigmatic views of a manuscript"@en .
+
+hm:CatalogingView rdf:type owl:Class ;
+    rdfs:subClassOf hm:ManuscriptView ;
+    rdfs:label "Cataloging View"@en ,
+               "תצוגה קטלוגית"@he ;
+    rdfs:comment "Bibliographic-practical view following LRM Work-Expression-Manifestation model. Suitable for Wikidata integration and library cataloging."@en .
+
+hm:PhilologicalView rdf:type owl:Class ;
+    rdfs:subClassOf hm:ManuscriptView ;
+    rdfs:label "Philological View"@en ,
+               "תצוגה פילולוגית"@he ;
+    rdfs:comment "New philological view treating each MS as unique cultural event, emphasizing textual fluidity. Rejects unified 'Work' concept."@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:CatalogingView hm:PhilologicalView ) .
+
+hm:ParadigmBridge rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Paradigm Bridge"@en ,
+               "גשר פרדיגמות"@he ;
+    rdfs:comment "Entity that explicitly links Work (bibliographic) to TextTradition (philological) when both views apply to same content"@en .
+
+hm:ViewType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "View Type"@en ,
+               "סוג תצוגה"@he ;
+    rdfs:comment "Type classification for manuscript views"@en .
+
+### Dual Paradigm Controlled Vocabulary
+
+hm:BibliographicParadigm rdf:type owl:NamedIndividual , hm:ViewType ;
+    rdfs:label "Bibliographic Paradigm"@en ,
+               "פרדיגמה ביבליוגרפית"@he ;
+    rdfs:comment "LRM-based cataloging approach with unified Work concept"@en .
+
+hm:PhilologicalParadigm rdf:type owl:NamedIndividual , hm:ViewType ;
+    rdfs:label "Philological Paradigm"@en ,
+               "פרדיגמה פילולוגית"@he ;
+    rdfs:comment "New philology approach emphasizing textual fluidity and cultural events"@en .
+
+hm:HybridParadigm rdf:type owl:NamedIndividual , hm:ViewType ;
+    rdfs:label "Hybrid Paradigm"@en ,
+               "פרדיגמה היברידית"@he ;
+    rdfs:comment "Both bibliographic and philological views apply with explicit bridging"@en .
+
+#################################################################
+#    v1.4 - NESTED CODICOLOGICAL STRUCTURE (Expert Feedback Phase 2)
+#    Enables recursive CU composition for complex manuscripts
+#    Addresses Eliezer's concern about rigid hierarchy
+#################################################################
+
+### Nested CU Object Properties
+
+hm:has_sub_unit rdf:type owl:ObjectProperty , owl:TransitiveProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range hm:Codicological_Unit ;
+    rdfs:label "has sub-unit"@en ,
+               "מכיל תת-יחידה"@he ;
+    rdfs:comment "Links a codicological unit to its nested sub-units. Transitive property allowing arbitrary nesting depth."@en .
+
+hm:is_sub_unit_of rdf:type owl:ObjectProperty , owl:TransitiveProperty ;
+    owl:inverseOf hm:has_sub_unit ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range hm:Codicological_Unit ;
+    rdfs:label "is sub-unit of"@en ,
+               "תת-יחידה של"@he ;
+    rdfs:comment "Links a codicological unit to its parent unit in the hierarchy"@en .
+
+hm:has_parent_unit rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf hm:is_sub_unit_of ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range hm:Codicological_Unit ;
+    rdfs:label "has parent unit"@en ,
+               "יחידת אב"@he ;
+    rdfs:comment "Direct parent codicological unit only (non-transitive); implies is_sub_unit_of."@en .
+
+hm:has_hierarchy rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:CodicologicalHierarchy ;
+    rdfs:label "has hierarchy"@en ,
+               "בעל היררכיה"@he ;
+    rdfs:comment "Links manuscript to its codicological hierarchy structure"@en .
+
+hm:hierarchy_root rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:CodicologicalHierarchy ;
+    rdfs:range hm:Codicological_Unit ;
+    rdfs:label "hierarchy root"@en ,
+               "שורש היררכיה"@he ;
+    rdfs:comment "The top-level codicological unit(s) in the hierarchy"@en .
+
+hm:hierarchy_type rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:CodicologicalHierarchy ;
+    rdfs:range hm:HierarchyType ;
+    rdfs:label "hierarchy type"@en ,
+               "סוג היררכיה"@he ;
+    rdfs:comment "Type of codicological hierarchy (simple, nested, etc.)"@en .
+
+hm:adjacent_unit rdf:type owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range hm:Codicological_Unit ;
+    rdfs:label "adjacent unit"@en ,
+               "יחידה סמוכה"@he ;
+    rdfs:comment "Units that are physically adjacent at the same hierarchy level"@en .
+
+hm:precedes_unit rdf:type owl:ObjectProperty , owl:AsymmetricProperty , owl:IrreflexiveProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range hm:Codicological_Unit ;
+    rdfs:label "precedes unit"@en ,
+               "קודם ליחידה"@he ;
+    rdfs:comment "This unit comes before another in physical sequence"@en .
+
+hm:follows_unit rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:precedes_unit ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range hm:Codicological_Unit ;
+    rdfs:label "follows unit"@en ,
+               "עוקב ליחידה"@he ;
+    rdfs:comment "Links a codicological unit to the unit that follows it in order"@en .
+
+### Nested CU Datatype Properties
+
+hm:nesting_level rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:integer ;
+    rdfs:label "nesting level"@en ,
+               "רמת קינון"@he ;
+    rdfs:comment "Depth in the codicological hierarchy (0 = root/top level)"@en .
+
+hm:is_atomic_unit rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "is atomic unit"@en ,
+               "יחידה אטומית"@he ;
+    rdfs:comment "True if this is a leaf node with no sub-units"@en .
+
+hm:unit_sequence rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:Codicological_Unit ;
+    rdfs:range xsd:integer ;
+    rdfs:label "unit sequence"@en ,
+               "מספר סידורי"@he ;
+    rdfs:comment "Order position among sibling units"@en .
+
+hm:hierarchy_description rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CodicologicalHierarchy ;
+    rdfs:range xsd:string ;
+    rdfs:label "hierarchy description"@en ,
+               "תיאור היררכיה"@he ;
+    rdfs:comment "Textual description of the codicological structure complexity"@en .
+
+hm:max_nesting_depth rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:CodicologicalHierarchy ;
+    rdfs:range xsd:integer ;
+    rdfs:label "max nesting depth"@en ,
+               "עומק קינון מקסימלי"@he ;
+    rdfs:comment "Maximum depth of unit nesting in this manuscript"@en .
+
+### Nested CU Classes
+
+hm:CodicologicalHierarchy rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:label "Codicological Hierarchy"@en ,
+               "היררכיה קודיקולוגית"@he ;
+    rdfs:comment "Describes the overall structure of nested codicological units in a manuscript. Manages complex compositions like MTM (Multiple Text Manuscripts)."@en .
+
+hm:CompositeCodicologicalUnit rdf:type owl:Class ;
+    rdfs:subClassOf hm:Codicological_Unit ;
+    owl:equivalentClass [ a owl:Class ;
+        owl:intersectionOf ( hm:Codicological_Unit
+            [ a owl:Restriction ;
+              owl:onProperty hm:has_sub_unit ;
+              owl:someValuesFrom hm:Codicological_Unit ] ) ] ;
+    rdfs:label "Composite Codicological Unit"@en ,
+               "יחידה קודיקולוגית מורכבת"@he ;
+    rdfs:comment "A codicological unit that contains sub-units (not atomic)"@en .
+
+hm:AtomicCodicologicalUnit rdf:type owl:Class ;
+    rdfs:subClassOf hm:Codicological_Unit ;
+    owl:equivalentClass [ a owl:Class ;
+        owl:intersectionOf ( hm:Codicological_Unit
+            [ a owl:Class ;
+              owl:complementOf [ a owl:Restriction ;
+                owl:onProperty hm:has_sub_unit ;
+                owl:someValuesFrom hm:Codicological_Unit ] ] ) ] ;
+    rdfs:label "Atomic Codicological Unit"@en ,
+               "יחידה קודיקולוגית אטומית"@he ;
+    rdfs:comment "A leaf-level codicological unit with no sub-divisions"@en .
+
+hm:CompositeCodicologicalUnit owl:disjointWith hm:AtomicCodicologicalUnit .
+
+hm:HierarchyType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Hierarchy Type"@en ,
+               "סוג היררכיה"@he ;
+    rdfs:comment "Classification of codicological hierarchy complexity"@en .
+
+### Nested CU Controlled Vocabulary
+
+hm:SimpleHierarchy rdf:type owl:NamedIndividual , hm:HierarchyType ;
+    rdfs:label "Simple Hierarchy"@en ,
+               "היררכיה פשוטה"@he ;
+    rdfs:comment "Single level: manuscript contains CUs directly"@en .
+
+hm:NestedHierarchy rdf:type owl:NamedIndividual , hm:HierarchyType ;
+    rdfs:label "Nested Hierarchy"@en ,
+               "היררכיה מקוננת"@he ;
+    rdfs:comment "Multiple levels: CUs contain sub-CUs"@en .
+
+hm:ComplexHierarchy rdf:type owl:NamedIndividual , hm:HierarchyType ;
+    rdfs:label "Complex Hierarchy"@en ,
+               "היררכיה מורכבת"@he ;
+    rdfs:comment "Deeply nested with irregular structure (MTM, Sammelband)"@en .
+
+hm:FragmentaryHierarchy rdf:type owl:NamedIndividual , hm:HierarchyType ;
+    rdfs:label "Fragmentary Hierarchy"@en ,
+               "היררכיה קטעית"@he ;
+    rdfs:comment "Incomplete structure due to loss or damage"@en .
+
+#################################################################
+#    v1.4 - EPISTEMOLOGICAL FRAMEWORK (Expert Feedback Phase 3)
+#    Systematic distinction between facts vs. scholarly interpretations
+#    Addresses Moshe's concern about data classification
+#################################################################
+
+### Epistemological Object Properties
+
+hm:has_epistemological_status rdf:type owl:ObjectProperty ;
+    rdfs:range hm:EpistemologicalStatus ;
+    rdfs:label "has epistemological status"@en ,
+               "סטטוס אפיסטמולוגי"@he ;
+    rdfs:comment "Classifies any data point as fact, interpretation, or derived data"@en .
+
+hm:has_evidence_chain rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_chain_for ;
+    rdfs:range hm:EvidenceChain ;
+    rdfs:label "has evidence chain"@en ,
+               "שרשרת ראיות"@he ;
+    rdfs:comment "Links an assertion to its supporting evidence chain"@en .
+
+hm:is_chain_for rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_evidence_chain ;
+    rdfs:domain hm:EvidenceChain ;
+    rdfs:range owl:Thing ;
+    rdfs:label "is chain for"@en ,
+               "שרשרת עבור"@he .
+
+hm:evidence_step rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:EvidenceChain ;
+    rdfs:range hm:EvidenceStep ;
+    rdfs:label "evidence step"@en ,
+               "צעד ראייתי"@he ;
+    rdfs:comment "An individual step in the evidence chain"@en .
+
+hm:evidence_source rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range cidoc-crm:E73_Information_Object ;
+    rdfs:label "evidence source"@en ,
+               "מקור ראיה"@he ;
+    rdfs:comment "The source document or data supporting this step"@en .
+
+hm:evidence_agent rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range cidoc-crm:E39_Actor ;
+    rdfs:label "evidence agent"@en ,
+               "סוכן ראייתי"@he ;
+    rdfs:comment "Person or system that provided/generated this evidence"@en .
+
+hm:derives_from rdf:type owl:ObjectProperty , owl:AsymmetricProperty , owl:IrreflexiveProperty , owl:TransitiveProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range hm:EvidenceStep ;
+    rdfs:label "derives from"@en ,
+               "נגזר מ"@he ;
+    rdfs:comment "Links evidence steps in derivation chain"@en .
+
+hm:supports_assertion rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:EvidenceChain ;
+    rdfs:range owl:Thing ;
+    rdfs:label "supports assertion"@en ,
+               "תומך בטענה"@he ;
+    rdfs:comment "The assertion this evidence chain supports"@en .
+
+hm:contradicts_assertion rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:EvidenceChain ;
+    rdfs:range owl:Thing ;
+    rdfs:label "contradicts assertion"@en ,
+               "סותר טענה"@he ;
+    rdfs:comment "An assertion this evidence contradicts"@en .
+
+hm:data_category rdf:type owl:ObjectProperty ;
+    rdfs:range hm:DataCategory ;
+    rdfs:label "data category"@en ,
+               "קטגוריית נתונים"@he ;
+    rdfs:comment "Classification of data type for epistemological purposes"@en .
+
+hm:interpretation_method rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range hm:InterpretationMethod ;
+    rdfs:label "interpretation method"@en ,
+               "שיטת פרשנות"@he ;
+    rdfs:comment "The method used to derive this interpretation"@en .
+
+hm:competing_interpretation rdf:type owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range hm:EvidenceStep ;
+    rdfs:label "competing interpretation"@en ,
+               "פרשנות מתחרה"@he ;
+    rdfs:comment "Links alternative interpretations of the same evidence"@en .
+
+### Epistemological Datatype Properties
+
+hm:is_factual rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "is factual"@en ,
+               "האם עובדתי"@he ;
+    rdfs:comment "Quick filter: true if data is directly observable fact, false if interpretation"@en .
+
+hm:interpretation_date rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range xsd:date ;
+    rdfs:label "interpretation date"@en ,
+               "תאריך פרשנות"@he ;
+    rdfs:comment "When this interpretation was made"@en .
+
+hm:evidence_strength rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "evidence strength"@en ,
+               "עוצמת ראיה"@he ;
+    rdfs:comment "Numeric strength of this evidence (0-1 scale)"@en .
+
+hm:reasoning_text rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range xsd:string ;
+    rdfs:label "reasoning text"@en ,
+               "טקסט נימוק"@he ;
+    rdfs:comment "Textual explanation of the reasoning behind this step"@en .
+
+hm:methodology_reference rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range xsd:string ;
+    rdfs:label "methodology reference"@en ,
+               "הפניה למתודולוגיה"@he ;
+    rdfs:comment "Citation to scholarly methodology used"@en .
+
+hm:consensus_level rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range xsd:string ;
+    rdfs:label "consensus level"@en ,
+               "רמת קונצנזוס"@he ;
+    rdfs:comment "Degree of scholarly consensus (free text). Prefer has_consensus_level_type for controlled values."@en .
+
+hm:has_consensus_level_type rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range hm:ConsensusLevelType ;
+    rdfs:label "has consensus level type"@en ,
+               "סוג רמת קונצנזוס"@he ;
+    rdfs:comment "Controlled vocabulary for degree of scholarly consensus"@en .
+
+hm:supersedes_interpretation rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:EvidenceStep ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "supersedes interpretation"@en ,
+               "מחליף פרשנות קודמת"@he ;
+    rdfs:comment "True if this interpretation supersedes a previous one"@en .
+
+### Epistemological Classes
+
+hm:EpistemologicalStatus rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Epistemological Status"@en ,
+               "סטטוס אפיסטמולוגי"@he ;
+    rdfs:comment "Classification of data according to its epistemological nature: direct observation, scholarly interpretation, or computational derivation"@en .
+
+hm:EvidenceChain rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E28_Conceptual_Object ;
+    rdfs:subClassOf [ a owl:Restriction ;
+        owl:onProperty hm:evidence_step ;
+        owl:minCardinality 1 ] ;
+    rdfs:label "Evidence Chain"@en ,
+               "שרשרת ראיות"@he ;
+    rdfs:comment "A chain of evidence steps supporting an assertion, documenting the reasoning path from raw data to conclusion"@en .
+
+hm:EvidenceStep rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E7_Activity ;
+    rdfs:label "Evidence Step"@en ,
+               "צעד ראייתי"@he ;
+    rdfs:comment "A single step in an evidence chain, representing one observation, interpretation, or derivation"@en .
+
+hm:DirectObservationStep rdf:type owl:Class ;
+    rdfs:subClassOf hm:EvidenceStep ;
+    rdfs:label "Direct Observation Step"@en ,
+               "צעד תצפית ישירה"@he ;
+    rdfs:comment "Evidence step based on direct observation of manuscript (measurements, colophon text, physical features)"@en .
+
+hm:InterpretationStep rdf:type owl:Class ;
+    rdfs:subClassOf hm:EvidenceStep ;
+    rdfs:label "Interpretation Step"@en ,
+               "צעד פרשנות"@he ;
+    rdfs:comment "Evidence step involving scholarly interpretation (dating, attribution, identification)"@en .
+
+hm:ComputationalStep rdf:type owl:Class ;
+    rdfs:subClassOf hm:EvidenceStep ;
+    rdfs:label "Computational Step"@en ,
+               "צעד חישובי"@he ;
+    rdfs:comment "Evidence step derived through computational analysis (AI, statistical methods)"@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:DirectObservationStep hm:InterpretationStep hm:ComputationalStep ) .
+
+hm:DataCategory rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Data Category"@en ,
+               "קטגוריית נתונים"@he ;
+    rdfs:comment "Classification of manuscript data by epistemological origin"@en .
+
+hm:InterpretationMethod rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Interpretation Method"@en ,
+               "שיטת פרשנות"@he ;
+    rdfs:comment "Scholarly method used for interpretation"@en .
+
+### Epistemological Status Instances
+
+hm:DirectObservation rdf:type owl:NamedIndividual , hm:EpistemologicalStatus ;
+    rdfs:label "Direct Observation"@en ,
+               "תצפית ישירה"@he ;
+    rdfs:comment "Data derived from direct observation of the manuscript - unambiguous facts"@en .
+
+hm:ScholarlyInterpretation rdf:type owl:NamedIndividual , hm:EpistemologicalStatus ;
+    rdfs:label "Scholarly Interpretation"@en ,
+               "פרשנות חוקר"@he ;
+    rdfs:comment "Data resulting from scholarly decision/interpretation - requires expert judgment"@en .
+
+hm:ComputationalDerivation rdf:type owl:NamedIndividual , hm:EpistemologicalStatus ;
+    rdfs:label "Computational Derivation"@en ,
+               "גזירה חישובית"@he ;
+    rdfs:comment "Data derived through computational/AI methods (e.g., MIDRASH system)"@en .
+
+hm:CatalogInherited rdf:type owl:NamedIndividual , hm:EpistemologicalStatus ;
+    rdfs:label "Catalog Inherited"@en ,
+               "ירושה מקטלוג"@he ;
+    rdfs:comment "Data inherited from existing catalog without independent verification"@en .
+
+hm:TraditionalAttribution rdf:type owl:NamedIndividual , hm:EpistemologicalStatus ;
+    rdfs:label "Traditional Attribution"@en ,
+               "ייחוס מסורתי"@he ;
+    rdfs:comment "Long-standing attribution without modern scholarly verification"@en .
+
+### Data Category Instances
+
+hm:PhysicalMeasurement rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Physical Measurement"@en ,
+               "מדידה פיסית"@he ;
+    rdfs:comment "Directly measurable physical properties (size, folios, lines)"@en .
+
+hm:ColophonContent rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Colophon Content"@en ,
+               "תוכן קולופון"@he ;
+    rdfs:comment "Text directly quoted from colophon"@en .
+
+hm:MaterialObservation rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Material Observation"@en ,
+               "תצפית חומר"@he ;
+    rdfs:comment "Observable material properties (parchment, paper, ink)"@en .
+
+hm:DateAttribution rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Date Attribution"@en ,
+               "ייחוס תאריך"@he ;
+    rdfs:comment "Dating of manuscript - usually requires interpretation"@en .
+
+hm:AuthorshipAttribution rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Authorship Attribution"@en ,
+               "ייחוס מחברות"@he ;
+    rdfs:comment "Attribution of authorship - often requires interpretation"@en .
+
+hm:ScribeIdentification rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Scribe Identification"@en ,
+               "זיהוי סופר"@he ;
+    rdfs:comment "Identification of scribe - requires paleographic interpretation"@en .
+
+hm:PlaceAttribution rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Place Attribution"@en ,
+               "ייחוס מקום"@he ;
+    rdfs:comment "Geographic origin attribution"@en .
+
+hm:WorkIdentification rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Work Identification"@en ,
+               "זיהוי יצירה"@he ;
+    rdfs:comment "Identification of which Work the text represents"@en .
+
+hm:TextualRelationship rdf:type owl:NamedIndividual , hm:DataCategory ;
+    rdfs:label "Textual Relationship"@en ,
+               "יחס טקסטואלי"@he ;
+    rdfs:comment "Relationship between texts/manuscripts - derived through analysis"@en .
+
+### Interpretation Method Instances
+
+hm:PaleographicAnalysis rdf:type owl:NamedIndividual , hm:InterpretationMethod ;
+    rdfs:label "Paleographic Analysis"@en ,
+               "ניתוח פליאוגרפי"@he ;
+    rdfs:comment "Analysis of script characteristics"@en .
+
+hm:CodicologicalAnalysis rdf:type owl:NamedIndividual , hm:InterpretationMethod ;
+    rdfs:label "Codicological Analysis"@en ,
+               "ניתוח קודיקולוגי"@he ;
+    rdfs:comment "Analysis of physical manuscript structure"@en .
+
+hm:LinguisticAnalysis rdf:type owl:NamedIndividual , hm:InterpretationMethod ;
+    rdfs:label "Linguistic Analysis"@en ,
+               "ניתוח לשוני"@he ;
+    rdfs:comment "Analysis of language features"@en .
+
+hm:HistoricalContextAnalysis rdf:type owl:NamedIndividual , hm:InterpretationMethod ;
+    rdfs:label "Historical Context Analysis"@en ,
+               "ניתוח הקשר היסטורי"@he ;
+    rdfs:comment "Analysis based on historical context"@en .
+
+hm:ComparativeTextualAnalysis rdf:type owl:NamedIndividual , hm:InterpretationMethod ;
+    rdfs:label "Comparative Textual Analysis"@en ,
+               "ניתוח טקסטואלי השוואתי"@he ;
+    rdfs:comment "Comparison with other manuscript witnesses"@en .
+
+hm:AIBasedAnalysis rdf:type owl:NamedIndividual , hm:InterpretationMethod ;
+    rdfs:label "AI-Based Analysis"@en ,
+               "ניתוח מבוסס AI"@he ;
+    rdfs:comment "Machine learning or AI-based analytical method"@en .
+
+hm:RadiocarbonDating rdf:type owl:NamedIndividual , hm:InterpretationMethod ;
+    rdfs:label "Radiocarbon Dating"@en ,
+               "תיארוך פחמן-14"@he ;
+    rdfs:comment "Scientific dating through radiocarbon analysis"@en .
+
+hm:WatermarkAnalysis rdf:type owl:NamedIndividual , hm:InterpretationMethod ;
+    rdfs:label "Watermark Analysis"@en ,
+               "ניתוח סימני מים"@he ;
+    rdfs:comment "Dating/localization through watermark identification"@en .
+
+#################################################################
+#    v1.5 - ADMINISTRATIVE & ACCESS METADATA (Comprehensive MARC Coverage)
+#    Captures institutional holdings, usage rights, digital access,
+#    and related materials information from NLI MARC records.
+#################################################################
+
+### v1.5 Classes
+
+hm:PhysicalHolding rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E78_Curated_Holding ;
+    rdfs:label "Physical Holding"@en ,
+               "אחזקה פיזית"@he ;
+    rdfs:comment "Represents a physical holding of the manuscript at a specific institution, including location details and availability status. Derived from MARC AVA fields."@en .
+
+hm:DigitalAccess rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E73_Information_Object ;
+    rdfs:label "Digital Access Point"@en ,
+               "נקודת גישה דיגיטלית"@he ;
+    rdfs:comment "Represents a digital access point for a manuscript, including online viewer links and IIIF endpoints. Derived from MARC AVE fields."@en .
+
+hm:UsageRestriction rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E30_Right ;
+    rdfs:label "Usage Restriction"@en ,
+               "הגבלת שימוש"@he ;
+    rdfs:comment "Describes usage restrictions and permissions for a manuscript, including copying rights and reproduction policies. Derived from MARC 939 fields."@en .
+
+hm:RightsDetermination rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E30_Right ;
+    rdfs:label "Rights Determination"@en ,
+               "קביעת זכויות"@he ;
+    rdfs:comment "Records the rights status determination for a manuscript, including domain classification and determination rationale. Derived from MARC 952 fields."@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:UsageRestriction hm:RightsDetermination ) .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( hm:PhysicalHolding hm:MultiVolumeSet ) .
+
+### v1.5 Object Properties
+
+hm:has_physical_holding rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:holds_manuscript ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:PhysicalHolding ;
+    rdfs:label "has physical holding"@en ,
+               "יש אחזקה פיזית"@he ;
+    rdfs:comment "Links a manuscript to its physical holding information at a specific institution."@en .
+
+hm:holds_manuscript rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_physical_holding ;
+    rdfs:domain hm:PhysicalHolding ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "holds manuscript"@en ,
+               "מחזיק כתב יד"@he ;
+    rdfs:comment "Links a physical holding to the manuscript it holds"@en .
+
+hm:has_digital_access rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_digital_access_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:DigitalAccess ;
+    rdfs:label "has digital access"@en ,
+               "יש גישה דיגיטלית"@he ;
+    rdfs:comment "Links a manuscript to a digital access point (online viewer, IIIF)."@en .
+
+hm:is_digital_access_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_digital_access ;
+    rdfs:domain hm:DigitalAccess ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is digital access of"@en ,
+               "גישה דיגיטלית של"@he ;
+    rdfs:comment "Links a digital access point to the manuscript it provides access to"@en .
+
+hm:has_usage_restriction rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_usage_restriction_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:UsageRestriction ;
+    rdfs:label "has usage restriction"@en ,
+               "יש הגבלת שימוש"@he ;
+    rdfs:comment "Links a manuscript to its usage restriction policy."@en .
+
+hm:is_usage_restriction_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_usage_restriction ;
+    rdfs:domain hm:UsageRestriction ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is usage restriction of"@en ,
+               "הגבלת שימוש של"@he ;
+    rdfs:comment "Links a usage restriction to the manuscript it applies to"@en .
+
+hm:has_rights_determination rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_rights_determination_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:RightsDetermination ;
+    rdfs:label "has rights determination"@en ,
+               "יש קביעת זכויות"@he ;
+    rdfs:comment "Links a manuscript to its formal rights status determination."@en .
+
+hm:is_rights_determination_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:has_rights_determination ;
+    rdfs:domain hm:RightsDetermination ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is rights determination of"@en ,
+               "קביעת זכויות של"@he ;
+    rdfs:comment "Links a rights determination to the manuscript it applies to"@en .
+
+hm:has_related_material rdf:type owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "has related material"@en ,
+               "יש חומר קשור"@he ;
+    rdfs:comment "Links a manuscript to related materials (other copies, fragments, related texts). Derived from MARC 544 field. Bidirectional."@en .
+
+hm:held_at rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:PhysicalHolding ;
+    rdfs:range cidoc-crm:E74_Group ;
+    rdfs:label "held at"@en ,
+               "מוחזק ב"@he ;
+    rdfs:comment "Institution or sublibrary where the physical holding is located."@en .
+
+### v1.5 Datatype Properties
+
+hm:copyright_notice rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "copyright notice"@en ,
+               "הודעת זכויות יוצרים"@he ;
+    rdfs:comment "Copyright statement associated with the manuscript record. Derived from MARC 597 field."@en .
+
+hm:related_material_note rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "related material note"@en ,
+               "הערת חומר קשור"@he ;
+    rdfs:comment "Free-text note about related manuscripts, copies, or fragments. Derived from MARC 544 field."@en .
+
+hm:restriction_type rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:UsageRestriction ;
+    rdfs:range xsd:string ;
+    rdfs:label "restriction type"@en ,
+               "סוג הגבלה"@he ;
+    rdfs:comment "Type of usage restriction (free text). Prefer has_restriction_type_value for controlled values."@en .
+
+hm:has_restriction_type_value rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:UsageRestriction ;
+    rdfs:range hm:RestrictionType ;
+    rdfs:label "has restriction type value"@en ,
+               "ערך סוג הגבלה"@he ;
+    rdfs:comment "Controlled vocabulary for usage restriction type"@en .
+
+hm:restriction_url rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:UsageRestriction ;
+    rdfs:range xsd:anyURI ;
+    rdfs:label "restriction policy URL"@en ,
+               "קישור למדיניות הגבלה"@he ;
+    rdfs:comment "URL to the full usage restriction policy."@en .
+
+hm:rights_status rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:RightsDetermination ;
+    rdfs:range xsd:string ;
+    rdfs:label "rights status"@en ,
+               "מצב זכויות"@he ;
+    rdfs:comment "The rights status classification (e.g., 'Public domain; Contract')."@en .
+
+hm:rights_basis rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:RightsDetermination ;
+    rdfs:range xsd:string ;
+    rdfs:label "rights basis"@en ,
+               "בסיס קביעת זכויות"@he ;
+    rdfs:comment "Rationale for the rights determination (e.g., 'Over 140 years from publishing date')."@en .
+
+hm:holding_institution rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:PhysicalHolding ;
+    rdfs:range xsd:string ;
+    rdfs:label "holding institution"@en ,
+               "מוסד מחזיק"@he ;
+    rdfs:comment "Name of the institution or sublibrary holding the item."@en .
+
+hm:holding_sublibrary rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:PhysicalHolding ;
+    rdfs:range xsd:string ;
+    rdfs:label "holding sublibrary"@en ,
+               "ספריית משנה"@he ;
+    rdfs:comment "Sublibrary or collection within the institution."@en .
+
+hm:holding_collection rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:PhysicalHolding ;
+    rdfs:range xsd:string ;
+    rdfs:label "holding collection"@en ,
+               "אוסף"@he ;
+    rdfs:comment "Collection name within the sublibrary."@en .
+
+hm:holding_call_number rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:PhysicalHolding ;
+    rdfs:range xsd:string ;
+    rdfs:label "holding call number"@en ,
+               "מספר קריאה"@he ;
+    rdfs:comment "Call number or location identifier within the holding institution."@en .
+
+hm:holding_availability rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:PhysicalHolding ;
+    rdfs:range xsd:string ;
+    rdfs:label "availability status"@en ,
+               "מצב זמינות"@he ;
+    rdfs:comment "Availability status of the physical holding."@en .
+
+hm:digital_access_url rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:DigitalAccess ;
+    rdfs:range xsd:anyURI ;
+    rdfs:label "digital access URL"@en ,
+               "קישור גישה דיגיטלית"@he ;
+    rdfs:comment "URL for accessing the digital version of the manuscript."@en .
+
+hm:digital_access_note rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:DigitalAccess ;
+    rdfs:range xsd:string ;
+    rdfs:label "digital access note"@en ,
+               "הערת גישה דיגיטלית"@he ;
+    rdfs:comment "Description of the digital access point (e.g., 'Online viewer', 'IIIF image')."@en .
+
+hm:digital_access_type rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:DigitalAccess ;
+    rdfs:range xsd:string ;
+    rdfs:label "digital access type"@en ,
+               "סוג גישה דיגיטלית"@he ;
+    rdfs:comment "Type of digital access (free text). Prefer has_digital_access_type_value for controlled values."@en .
+
+hm:has_digital_access_type_value rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:DigitalAccess ;
+    rdfs:range hm:DigitalAccessType ;
+    rdfs:label "has digital access type value"@en ,
+               "ערך סוג גישה דיגיטלית"@he ;
+    rdfs:comment "Controlled vocabulary for digital access type"@en .
+
+hm:acquisition_source rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "acquisition source"@en ,
+               "מקור רכישה"@he ;
+    rdfs:comment "Source or donor information for the manuscript acquisition. Derived from MARC 541 field."@en .
+
+hm:collection_name rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:string ;
+    rdfs:label "collection name"@en ,
+               "שם אוסף"@he ;
+    rdfs:comment "Named collection the manuscript belongs to. Derived from MARC 966 field."@en .
+
+#################################################################
+#    Controlled vocabulary classes and individuals for string-typed properties
+#################################################################
+
+hm:ConsensusLevelType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Consensus Level Type"@en ,
+               "סוג רמת קונצנזוס"@he ;
+    rdfs:comment "Level of scholarly consensus on an attribution or claim (e.g. unanimous, disputed)"@en .
+
+hm:Unanimous rdf:type owl:NamedIndividual , hm:ConsensusLevelType ;
+    rdfs:label "Unanimous"@en ,
+               "קונצנזוס מלא"@he .
+
+hm:Majority rdf:type owl:NamedIndividual , hm:ConsensusLevelType ;
+    rdfs:label "Majority"@en ,
+               "רוב"@he .
+
+hm:Disputed rdf:type owl:NamedIndividual , hm:ConsensusLevelType ;
+    rdfs:label "Disputed"@en ,
+               "שנוי במחלוקת"@he .
+
+hm:Controversial rdf:type owl:NamedIndividual , hm:ConsensusLevelType ;
+    rdfs:label "Controversial"@en ,
+               "שנוי במחלוקת קשה"@he .
+
+hm:RestrictionType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Restriction Type"@en ,
+               "סוג הגבלה"@he ;
+    rdfs:comment "Type of usage restriction (e.g. copying prohibited, public domain, restricted access)"@en .
+
+hm:CopyingProhibited rdf:type owl:NamedIndividual , hm:RestrictionType ;
+    rdfs:label "Copying Prohibited"@en ,
+               "העתקה אסורה"@he .
+
+hm:PublicDomain rdf:type owl:NamedIndividual , hm:RestrictionType ;
+    rdfs:label "Public Domain"@en ,
+               "נחלת הכלל"@he .
+
+hm:RestrictedAccess rdf:type owl:NamedIndividual , hm:RestrictionType ;
+    rdfs:label "Restricted Access"@en ,
+               "גישה מוגבלת"@he .
+
+hm:DigitalAccessType rdf:type owl:Class ;
+    rdfs:subClassOf cidoc-crm:E55_Type ;
+    rdfs:label "Digital Access Type"@en ,
+               "סוג גישה דיגיטלית"@he ;
+    rdfs:comment "Type of digital access (e.g. online viewer, IIIF, PDF)"@en .
+
+hm:Viewer rdf:type owl:NamedIndividual , hm:DigitalAccessType ;
+    rdfs:label "Online Viewer"@en ,
+               "צופה מקוון"@he .
+
+hm:IIIF rdf:type owl:NamedIndividual , hm:DigitalAccessType ;
+    rdfs:label "IIIF"@en ,
+               "IIIF"@he .
+
+hm:PDF rdf:type owl:NamedIndividual , hm:DigitalAccessType ;
+    rdfs:label "PDF"@en ,
+               "PDF"@he .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Unanimous hm:Majority hm:Disputed hm:Controversial ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:CopyingProhibited hm:PublicDomain hm:RestrictedAccess ) .
+
+[] a owl:AllDifferent ;
+    owl:members ( hm:Viewer hm:IIIF hm:PDF ) .
+
+#################################################################
+#    v1.9 - LOD Alignment (Canonical Properties Only)
+#################################################################
+
+hm:has_material owl:equivalentProperty <http://www.wikidata.org/prop/direct/P186> .
+
+hm:has_script_type owl:equivalentProperty <http://www.wikidata.org/prop/direct/P6573> .
+
+hm:external_identifier_nli owl:equivalentProperty <http://www.wikidata.org/prop/direct/P8189> .
+
+hm:has_number_of_folios owl:equivalentProperty <http://www.wikidata.org/prop/direct/P792> .
+
+#################################################################
+#    v1.9 - Compatibility Properties for Query Interoperability
+#################################################################
+
+hm:has_expression rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf lrmoo:R4_embodies ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F2_Expression ;
+    rdfs:label "has expression"@en ,
+               "יש ביטוי"@he ;
+    rdfs:comment "Compatibility property: manuscript to expression relation used in external query templates."@en .
+
+hm:has_work rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F1_Work ;
+    owl:propertyChainAxiom ( hm:has_expression lrmoo:R3i_realises ) ;
+    rdfs:label "has work"@en ,
+               "יש יצירה"@he ;
+    rdfs:comment "Compatibility property inferred from manuscript->expression and expression->work."@en .
+
+hm:has_author rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range cidoc-crm:E21_Person ;
+    rdfs:label "has author"@en ,
+               "יש מחבר"@he ;
+    rdfs:comment "Direct work-to-author compatibility property."@en .
+
+hm:has_expression_creation rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range lrmoo:F28_Expression_Creation ;
+    rdfs:label "has expression creation event"@en ,
+               "יש אירוע יצירת ביטוי"@he .
+
+hm:has_production_event rdf:type owl:ObjectProperty ;
+    owl:inverseOf lrmoo:R27_materialized ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E12_Production ;
+    rdfs:label "has production event"@en ,
+               "יש אירוע הפקה"@he .
+
+hm:has_production_place rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P7_took_place_at ;
+    rdfs:domain cidoc-crm:E12_Production ;
+    rdfs:range cidoc-crm:E53_Place ;
+    rdfs:label "has production place"@en ,
+               "יש מקום הפקה"@he .
+
+hm:has_production_time rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P4_has_time-span ;
+    rdfs:domain cidoc-crm:E12_Production ;
+    rdfs:range cidoc-crm:E52_Time-Span ;
+    rdfs:label "has production time"@en ,
+               "יש זמן הפקה"@he .
+
+hm:has_scribe rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P14_carried_out_by ;
+    rdfs:domain cidoc-crm:E12_Production ;
+    rdfs:range cidoc-crm:E21_Person ;
+    rdfs:label "has scribe"@en ,
+               "יש סופר"@he .
+
+hm:has_owner rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E39_Actor ;
+    rdfs:label "has owner"@en ,
+               "יש בעלים"@he .
+
+hm:has_acquisition_event rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E8_Acquisition ;
+    rdfs:label "has acquisition event"@en ,
+               "יש אירוע רכישה"@he .
+
+hm:has_transfer_of_custody rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E10_Transfer_of_Custody ;
+    rdfs:label "has transfer of custody"@en ,
+               "יש אירוע העברת משמורת"@he .
+
+hm:is_documented_in rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P70i_is_documented_in ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F3_Manifestation ;
+    rdfs:label "is documented in"@en ,
+               "מתועד ב"@he .
+
+hm:has_reference_event rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:Reference_Event ;
+    rdfs:label "has reference event"@en ,
+               "יש אירוע הפניה"@he .
+
+hm:is_composed_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:forms_part_of ;
+    rdfs:subPropertyOf cidoc-crm:P46_is_composed_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "is composed of"@en ,
+               "מורכב מ"@he .
+
+hm:forms_part_of rdf:type owl:ObjectProperty ;
+    owl:inverseOf hm:is_composed_of ;
+    rdfs:subPropertyOf cidoc-crm:P46i_forms_part_of ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range lrmoo:F4_Manifestation_Singleton ;
+    rdfs:label "forms part of"@en ,
+               "מהווה חלק מ"@he .
+
+hm:has_subject rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P129_is_about ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range cidoc-crm:E1_CRM_Entity ;
+    rdfs:label "has subject"@en ,
+               "יש נושא"@he .
+
+hm:has_genre rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf cidoc-crm:P2_has_type ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range cidoc-crm:E55_Type ;
+    rdfs:label "has genre"@en ,
+               "יש ז'אנר"@he .
+
+hm:has_text_tradition rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf hm:witnesses ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:TextTradition ;
+    rdfs:label "has text tradition"@en ,
+               "יש מסורת טקסט"@he .
+
+hm:has_transmission_witness rdf:type owl:ObjectProperty ;
+    rdfs:domain hm:TextTradition ;
+    rdfs:range hm:TransmissionWitness ;
+    rdfs:label "has transmission witness"@en ,
+               "יש עד נוסח"@he .
+
+hm:has_digital_representation rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf hm:has_digital_access ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range hm:DigitalAccess ;
+    rdfs:label "has digital representation"@en ,
+               "יש ייצוג דיגיטלי"@he .
+
+hm:has_holding_institution rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E74_Group ;
+    owl:propertyChainAxiom ( hm:has_physical_holding hm:held_at ) ;
+    rdfs:label "has holding institution"@en ,
+               "יש מוסד מחזיק"@he .
+
+hm:has_attribution_source rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf hm:attribution_source ;
+    rdfs:label "has attribution source"@en ,
+               "יש מקור ייחוס"@he .
+
+hm:has_colophon_text rdf:type owl:DatatypeProperty ;
+    rdfs:subPropertyOf hm:colophon_text ;
+    rdfs:domain hm:Colophon ;
+    rdfs:range xsd:string ;
+    rdfs:label "has colophon text"@en ,
+               "יש טקסט קולופון"@he .
+
+hm:has_alternate_title rdf:type owl:DatatypeProperty ;
+    rdfs:subPropertyOf hm:has_title ;
+    rdfs:domain lrmoo:F1_Work ;
+    rdfs:range xsd:string ;
+    rdfs:label "has alternate title"@en ,
+               "יש כותר חלופי"@he .
+
+hm:has_role rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E39_Actor ;
+    rdfs:range xsd:string ;
+    rdfs:label "has role"@en ,
+               "יש תפקיד"@he .
+
+hm:geonames_id rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E53_Place ;
+    rdfs:range xsd:string ;
+    rdfs:label "GeoNames ID"@en ,
+               "מזהה GeoNames"@he .
+
+hm:has_geonames_id rdf:type owl:DatatypeProperty ;
+    rdfs:subPropertyOf hm:geonames_id ;
+    rdfs:domain cidoc-crm:E53_Place ;
+    rdfs:range xsd:string ;
+    rdfs:label "has GeoNames ID"@en ,
+               "יש מזהה GeoNames"@he .
+
+hm:lcsh_id rdf:type owl:DatatypeProperty ;
+    rdfs:domain hm:SubjectType ;
+    rdfs:range xsd:string ;
+    rdfs:label "LCSH ID"@en ,
+               "מזהה LCSH"@he .
+
+hm:has_LCSH_id rdf:type owl:DatatypeProperty ;
+    rdfs:subPropertyOf hm:lcsh_id ;
+    rdfs:domain hm:SubjectType ;
+    rdfs:range xsd:string ;
+    rdfs:label "has LCSH ID"@en ,
+               "יש מזהה LCSH"@he .
+
+hm:has_VIAF_ID rdf:type owl:DatatypeProperty ;
+    rdfs:subPropertyOf hm:viaf_id ;
+    rdfs:domain cidoc-crm:E21_Person ;
+    rdfs:range xsd:string ;
+    rdfs:label "has VIAF ID"@en ,
+               "יש מזהה VIAF"@he .
+
+hm:has_production_date_certain rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E12_Production ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "has production date certain"@en ,
+               "וודאות תאריך הפקה"@he .
+
+hm:iiif_manifest_url rdf:type owl:DatatypeProperty ;
+    rdfs:subPropertyOf hm:digital_access_url ;
+    rdfs:domain hm:DigitalAccess ;
+    rdfs:range xsd:anyURI ;
+    rdfs:label "IIIF manifest URL"@en ,
+               "כתובת IIIF manifest"@he .
+
+hm:usage_restriction_note rdf:type owl:DatatypeProperty ;
+    rdfs:subPropertyOf hm:restriction_type ;
+    rdfs:domain hm:UsageRestriction ;
+    rdfs:range xsd:string ;
+    rdfs:label "usage restriction note"@en ,
+               "הערת הגבלת שימוש"@he .
+
+hm:has_censorship_mark rdf:type owl:DatatypeProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "has censorship mark"@en ,
+               "יש סימן צנזורה"@he .

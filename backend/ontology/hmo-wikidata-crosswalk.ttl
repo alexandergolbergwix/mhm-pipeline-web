@@ -1,0 +1,323 @@
+@prefix hm:    <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+@prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+@prefix crm:   <http://www.cidoc-crm.org/cidoc-crm/> .
+@prefix wd:    <http://www.wikidata.org/entity/> .
+@prefix wdp:   <http://www.wikidata.org/prop/direct/> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dct:   <http://purl.org/dc/terms/> .
+
+# ─────────────────────────────────────────────────────────────────────
+# HMO ↔ Wikidata ↔ CIDOC-CRM class crosswalk
+#
+# Companion document to the runtime crosswalk in
+# `converter/wikidata/projection_coverage.py`. This file is the public,
+# RDF-readable equivalent for external consumers (catalog reasoners,
+# federated SPARQL queries, ontology comparison tools).
+#
+# Mapping levels:
+#   skos:exactMatch  → identical real-world denotation
+#   skos:closeMatch  → near-identical for most purposes
+#   skos:relatedMatch → topical overlap; not interchangeable
+#   skos:broadMatch  → target is broader than source
+#   skos:narrowMatch → target is narrower than source
+#
+# Project    : Mapping Hebrew Manuscripts (MHM), Bar-Ilan University
+# Maintainer : Alexander Goldberg <alexandergo@wix.com>
+# Repository : https://github.com/alexandergolbergwix/pipeline
+# Permalink  : https://w3id.org/mhm/ (pending merge at perma-id/w3id.org #6081)
+# Version    : 2026-05-17
+# License    : GPL-3.0 (same as the rest of the MHM pipeline)
+# See also   : docs/wikidata/HMO_TO_WIKIDATA_GAP_ANALYSIS.md
+#              plans/smooth-humming-feather.md (Phase 2)
+#              CLAUDE.md Rule 44
+# ─────────────────────────────────────────────────────────────────────
+
+
+<https://w3id.org/mhm/ontology>
+    a owl:Ontology ;
+    rdfs:label "HMO–Wikidata–CIDOC-CRM crosswalk" ;
+    dct:title "HMO–Wikidata–CIDOC-CRM crosswalk" ;
+    dct:creator "Alexander Goldberg" ;
+    dct:publisher "Bar-Ilan University" ;
+    dct:license <https://www.gnu.org/licenses/gpl-3.0.html> ;
+    dct:issued "2026-05-17"^^<http://www.w3.org/2001/XMLSchema#date> ;
+    rdfs:comment """One-row-per-HMO-class mapping table connecting the
+        Hebrew Manuscripts Ontology to Wikidata QIDs and to CIDOC-CRM /
+        LRMoo class IRIs. Used both as documentation for human readers
+        and as a federated-SPARQL bridge for consumers that need to
+        reconcile HMO graph nodes against Wikidata or CIDOC-CRM.""" .
+
+
+# ── Tier A: classes with their own Wikidata item (P31 statement) ──────
+
+lrmoo:F4_Manifestation_Singleton
+    skos:exactMatch wd:Q87167 ;                     # manuscript
+    skos:exactMatch crm:E22_Human-Made_Object ;
+    rdfs:label "Manifestation Singleton (LRMoo)" .
+
+lrmoo:F1_Work
+    skos:exactMatch wd:Q47461344 ;                  # written work
+    rdfs:label "Work (LRMoo)" .
+
+crm:E21_Person
+    skos:exactMatch wd:Q5 ;                         # human
+    rdfs:label "Person (CIDOC-CRM)" .
+
+crm:E53_Place
+    skos:exactMatch wd:Q17334923 ;                  # geographic location
+    rdfs:label "Place (CIDOC-CRM)" .
+
+crm:E74_Group
+    skos:exactMatch wd:Q43229 ;                     # organization
+    rdfs:label "Group (CIDOC-CRM)" .
+
+hm:DigitalAccess
+    skos:relatedMatch wd:Q838948 ;                  # digital library item
+    rdfs:label "Digital Access (HMO)" ;
+    rdfs:comment """Represented in Wikidata via P6108 (IIIF manifest URL),
+        P973 (described at URL), and P953 (full work URL).""" .
+
+
+# ── Tier B: represented as qualifiers on other Wikidata statements ────
+
+lrmoo:F2_Expression
+    skos:closeMatch wd:Q17537576 ;                  # creative work
+    rdfs:label "Expression (LRMoo)" ;
+    rdfs:comment "Collapsed into manuscript/work statements with P1476/P407/P50 qualifiers." .
+
+hm:Bibliographic_Unit
+    skos:closeMatch wd:Q571 ;                       # book
+    rdfs:label "Bibliographic Unit (HMO)" ;
+    rdfs:comment "Implicit in the manuscript Wikidata item; no separate Q." .
+
+hm:Codicological_Unit
+    skos:closeMatch wd:Q123476271 ;                 # codicological unit (Wikidata)
+    rdfs:label "Codicological Unit (HMO)" ;
+    rdfs:comment "Projected via P2635 (number of parts), P958 (section/folio), P527 (has parts)." .
+
+hm:Paleographical_Unit
+    rdfs:label "Paleographical Unit (HMO)" ;
+    rdfs:comment "Projected via P9302 (script style), P518 (applies to part), P1684 (inscription)." .
+
+hm:Colophon
+    skos:exactMatch wd:Q372474 ;                    # colophon
+    rdfs:label "Colophon (HMO)" ;
+    rdfs:comment "Projected via P1684 (inscription) + P3831=Q372474 role qualifier." .
+
+hm:ScribalIntervention
+    skos:closeMatch wd:Q860740 ;                    # gloss (one common type)
+    rdfs:label "Scribal Intervention (HMO)" ;
+    rdfs:comment "Projected via P1684 with P3831 role qualifier (gloss/correction/marginalia)." .
+
+hm:Marginalia
+    skos:exactMatch wd:Q1136474 ;                   # marginalia
+    rdfs:label "Marginalia (HMO)" .
+
+hm:Decoration
+    skos:closeMatch wd:Q11743184 ;                  # decoration
+    rdfs:label "Decoration (HMO)" ;
+    rdfs:comment "Triggers P31=Q48498 (illuminated manuscript) on the manuscript item." .
+
+hm:CanonicalReference
+    skos:relatedMatch wdp:P921 ;                    # main subject
+    rdfs:label "Canonical Reference (HMO)" ;
+    rdfs:comment "Projected as P921 (main subject) with mapped Bible/Talmud/Mishnah/Halacha QID." .
+
+hm:BiblicalReference
+    skos:relatedMatch wd:Q1845 ;                    # Bible
+    rdfs:label "Biblical Reference (HMO)" .
+
+hm:TalmudicReference
+    skos:relatedMatch wd:Q43290 ;                   # Talmud
+    rdfs:label "Talmudic Reference (HMO)" .
+
+hm:MishnaicReference
+    skos:relatedMatch wd:Q191825 ;                  # Mishnah
+    rdfs:label "Mishnaic Reference (HMO)" .
+
+hm:HalachicReference
+    skos:relatedMatch wd:Q107427 ;                  # Halakha
+    rdfs:label "Halachic Reference (HMO)" .
+
+hm:SubjectType
+    skos:relatedMatch wdp:P136 ;                    # genre property
+    rdfs:label "Subject Type (HMO)" ;
+    rdfs:comment "Projected via P136 (genre) and P921 (main subject) with mapped QIDs." .
+
+hm:RightsDetermination
+    skos:relatedMatch wdp:P6216 ;                   # copyright status
+    rdfs:label "Rights Determination (HMO)" .
+
+hm:AnthologyPosition
+    rdfs:label "Anthology Position (HMO)" ;
+    rdfs:comment "Projected via P958 (section/folio) + P478 (volume) on P1574 (exemplar of)." .
+
+hm:AnthologyStructure
+    rdfs:label "Anthology Structure (HMO)" ;
+    rdfs:comment "Projected via P2635 (number of parts) + P527 (has parts)." .
+
+hm:CodicologicalHierarchy
+    rdfs:label "Codicological Hierarchy (HMO)" ;
+    rdfs:comment "Projected via P527 + P2635; deep nesting stays HMO-only." .
+
+hm:TextLocation
+    rdfs:label "Text Location (HMO)" ;
+    rdfs:comment "Projected via P958 (section) qualifier; word/character coordinates stay HMO-only." .
+
+hm:FolioLocation
+    skos:relatedMatch wdp:P7416 ;                   # folios property
+    rdfs:label "Folio Location (HMO)" .
+
+hm:HebrewScriptType
+    skos:relatedMatch wd:Q33513 ;                   # Hebrew alphabet
+    rdfs:label "Hebrew Script Type (HMO)" ;
+    rdfs:comment "Projected via P9302 (script style) with mapped script QID." .
+
+hm:ModeScriptType
+    rdfs:label "Mode Script Type (HMO)" ;
+    rdfs:comment "Projected via P9302 (square/semi-cursive/cursive)." .
+
+hm:ConditionType
+    skos:relatedMatch wdp:P5816 ;                   # state of conservation
+    rdfs:label "Condition Type (HMO)" .
+
+hm:ParticipationRole
+    skos:relatedMatch wdp:P3831 ;                   # object has role
+    rdfs:label "Participation Role (HMO)" ;
+    rdfs:comment "Projected via P3831 (object has role) qualifier." .
+
+hm:Binding
+    skos:relatedMatch wdp:P1552 ;                   # has quality
+    rdfs:label "Binding (HMO)" .
+
+hm:HandChange
+    rdfs:label "Hand Change (HMO)" ;
+    rdfs:comment "Projected via P1684 with P3831 role qualifier when text content is present." .
+
+hm:TextCorrection
+    skos:exactMatch wd:Q3299332 ;                   # correction
+    rdfs:label "Text Correction (HMO)" .
+
+hm:MarginalAddition
+    rdfs:label "Marginal Addition (HMO)" .
+
+crm:E12_Production
+    skos:exactMatch crm:E12_Production ;
+    rdfs:label "Production (CIDOC-CRM)" ;
+    rdfs:comment "Projected via P571 (inception) + P1071 (location of creation) + P50/P11603 (agent)." .
+
+crm:E8_Acquisition
+    skos:exactMatch crm:E8_Acquisition ;
+    rdfs:label "Acquisition (CIDOC-CRM)" ;
+    rdfs:comment "Projected via P127 (owned by) + P580/P582 (start/end) + P1932 (named as)." .
+
+crm:E52_Time-Span
+    skos:relatedMatch wd:Q186081 ;                  # time period
+    rdfs:label "Time-Span (CIDOC-CRM)" ;
+    rdfs:comment "Projected as Wikidata date claims with calendar-model and precision qualifiers." .
+
+crm:E56_Language
+    skos:exactMatch wd:Q34770 ;                     # language
+    rdfs:label "Language (CIDOC-CRM)" ;
+    rdfs:comment "Projected via P407 (language of work) + P282 (writing system)." .
+
+crm:E57_Material
+    skos:relatedMatch wdp:P186 ;                    # material used
+    rdfs:label "Material (CIDOC-CRM)" .
+
+lrmoo:F27_Work_Creation
+    skos:closeMatch crm:E65_Creation ;
+    rdfs:label "Work Creation (LRMoo)" ;
+    rdfs:comment "Projected via P571 + P1071 + P50 on the work item." .
+
+
+# ── Tier D: intentionally HMO-only (Wikidata data model cannot express) ──
+
+hm:TransmissionWitness
+    rdfs:label "Transmission Witness (HMO)" ;
+    rdfs:comment """Philological-infrastructure node; no Wikidata
+        representation. Tradition membership is internal-only.""" .
+
+hm:TextTradition
+    rdfs:label "Text Tradition (HMO)" ;
+    rdfs:comment """Scholarly construct grouping witnesses; no Wikidata
+        equivalent. Future P-property proposal candidate.""" .
+
+hm:ParadigmBridge
+    rdfs:label "Paradigm Bridge (HMO)" ;
+    rdfs:comment """Methodological linker between Work (cataloging
+        paradigm) and TextTradition (philological paradigm). Wikidata's
+        single-paradigm model cannot accommodate paradigm-bridging.""" .
+
+hm:PhilologicalView
+    rdfs:label "Philological View (HMO)" ;
+    rdfs:comment "Interpretive frame; HMO-only by design." .
+
+hm:CatalogingView
+    rdfs:label "Cataloging View (HMO)" ;
+    rdfs:comment "Interpretive frame; HMO-only by design." .
+
+hm:ManuscriptView
+    rdfs:label "Manuscript View (HMO)" ;
+    rdfs:comment "Abstract base class for paradigm variants; not instantiable in Wikidata." .
+
+hm:EvidenceChain
+    rdfs:label "Evidence Chain (HMO)" ;
+    rdfs:comment """Full epistemological reasoning chain; Wikidata uses
+        P1480/P887/statement ranks for coarse certainty only.""" .
+
+hm:StemmaPosition
+    rdfs:label "Stemma Position (HMO)" ;
+    rdfs:comment "Textual-stemma position; HMO-only philological apparatus." .
+
+hm:AttributionSource
+    rdfs:label "Attribution Source (HMO)" ;
+    rdfs:comment """Fine-grained classification of where an attribution
+        came from. Wikidata uses P248/P854 references for this.""" .
+
+hm:CanonicalHierarchyType
+    rdfs:label "Canonical Hierarchy Type (HMO)" ;
+    rdfs:comment "Hierarchy classification metadata; HMO-only." .
+
+
+# ── Property crosswalk (selected) ─────────────────────────────────────
+
+hm:has_production_event
+    skos:closeMatch crm:P108i_was_produced_by ;
+    rdfs:label "has production event" .
+
+hm:has_acquisition_event
+    skos:closeMatch crm:P24i_changed_ownership_through ;
+    rdfs:label "has acquisition event" .
+
+hm:has_colophon
+    rdfs:label "has colophon" ;
+    rdfs:comment "Projected as P1684 (inscription) with P3831=Q372474 role qualifier." .
+
+hm:has_scribal_intervention
+    rdfs:label "has scribal intervention" ;
+    rdfs:comment "Projected as P1684 (inscription) with P3831 role qualifier." .
+
+hm:is_composed_of
+    skos:closeMatch crm:P46_is_composed_of ;
+    rdfs:label "is composed of" ;
+    rdfs:comment "Projected as P527 (has parts) plus P2635 (number of parts)." .
+
+hm:has_folio_range
+    skos:relatedMatch wdp:P7416 ;
+    rdfs:label "has folio range" ;
+    rdfs:comment "Projected as P7416 (folios) qualifier on related statements." .
+
+hm:has_iiif_manifest_url
+    skos:exactMatch wdp:P6108 ;
+    rdfs:label "has IIIF manifest URL" .
+
+hm:external_identifier_nli
+    skos:relatedMatch wdp:P8189 ;
+    rdfs:label "NLI external identifier" ;
+    rdfs:comment """Mapped to P8189 (NLI J9U ID) for authority records
+        only (prefix 9870…); never to P3959 (NNL bibliographic) or to
+        anything beginning with 990… (Geagea complaint 2026-04-15).""" .

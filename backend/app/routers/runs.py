@@ -36,8 +36,10 @@ from app.models.project import (
     Project,
 )
 from app.models.run import AuthorityMatch, Run, RunRecord
+from app.pipeline import ai_verifier
 from app.pipeline.run import execute_run, serialise_match
 from app.schemas.runs import (
+    AiVerdictResponse,
     ApprovalBatch,
     ApprovalUpdate,
     AuthorityMatchResponse,
@@ -233,6 +235,68 @@ async def bulk_approve(
         )
     await db.commit()
     return [AuthorityMatchResponse(**serialise_match(m)) for m in rows]
+
+
+# ── AI verification ────────────────────────────────────────────────────
+
+
+@router.post(
+    "/runs/{run_id}/matches/{match_id}/ai-verify",
+    response_model=AiVerdictResponse,
+)
+async def ai_verify_match(
+    run_id: uuid.UUID, match_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> AiVerdictResponse:
+    """Ask Gemini (or the heuristic fallback) whether this candidate is
+    the correct authority match. Stores the verdict in payload[ai_verdict]
+    and returns it inline."""
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    m = (
+        await db.execute(
+            select(AuthorityMatch).where(
+                AuthorityMatch.id == match_id, AuthorityMatch.run_id == run_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if m is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+
+    # Pull the full MARC record so the prompt has context.
+    rec = (
+        await db.execute(
+            select(RunRecord).where(
+                RunRecord.run_id == run_id, RunRecord.control_number == m.control_number,
+            )
+        )
+    ).scalar_one_or_none()
+
+    # Try the user's Gemini key. Falls back to the heuristic verdict.
+    key = await ai_verifier.unwrap_user_gemini_key(
+        db, user_id=auth.user.id, kek=auth.kek,
+    )
+    verdict = await ai_verifier.verify_match(
+        m, marc_record=rec.marc if rec else None, gemini_key=key,
+    )
+
+    payload = dict(m.payload or {})
+    payload["ai_verdict"] = {
+        "overall": verdict.overall,
+        "reasoning": verdict.reasoning,
+        "model": verdict.model,
+        "judged_at": verdict.judged_at,
+    }
+    m.payload = payload
+    await db.commit()
+
+    return AiVerdictResponse(
+        overall=verdict.overall,  # type: ignore[arg-type]
+        reasoning=verdict.reasoning,
+        model=verdict.model,
+        judged_at=verdict.judged_at,
+        fallback=(verdict.model == "heuristic"),
+    )
 
 
 # ── helpers ────────────────────────────────────────────────────────────

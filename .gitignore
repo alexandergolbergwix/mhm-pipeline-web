@@ -24,6 +24,15 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 frontend/vite.config.js.map
 
+# Large authority data — Mazal SQLite is ~983 MB. The web backend reads
+# from the user's desktop install via $MAZAL_DB_PATH (or, in prod, from
+# a copy uploaded out-of-band).
+backend/converter/authority/mazal_index.db
+backend/data/mazal_index.db
+
+# The placeholder pipeline we wrote before adopting the desktop copy.
+backend/app/_pipeline_placeholder.bak/
+
 # Env / secrets — NEVER commit these
 .env
 .env.local
