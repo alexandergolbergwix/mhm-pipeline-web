@@ -2,6 +2,7 @@
 
 from app.models.api_key import ApiKey
 from app.models.base import Base
+from app.models.event import ProjectEvent, ProjectSnapshot
 from app.models.invitation import Invitation
 from app.models.password_reset import PasswordResetToken
 from app.models.project import (
@@ -36,6 +37,8 @@ __all__ = [
     "PROJECT_ROLE_VIEWER",
     "PasswordResetToken",
     "Project",
+    "ProjectEvent",
+    "ProjectSnapshot",
     "ROLE_ADMIN",
     "ROLE_EDITOR",
     "RUN_STATUS_FAILED",

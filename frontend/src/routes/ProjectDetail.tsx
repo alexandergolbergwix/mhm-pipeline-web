@@ -94,17 +94,16 @@ function ProjectHeader({
           <p className="muted leading-relaxed max-w-2xl">
             {proj.description || <span className="italic opacity-70">No description.</span>}
           </p>
-          {(canEdit || canDelete) && (
-            <div className="flex gap-2 pt-2">
-              {canEdit && <button onClick={() => setEditing(true)} className="button-ghost text-sm">Edit</button>}
-              {canDelete && (
-                <button
-                  onClick={async () => { if (confirm("Delete this project?")) await onDeleted(); }}
-                  className="button-ghost text-sm text-red-300 hover:text-red-200"
-                >Delete project</button>
-              )}
-            </div>
-          )}
+          <div className="flex gap-2 pt-2 flex-wrap">
+            <Link to={`/projects/${proj.id}/history`} className="button-ghost text-sm">History &amp; restore</Link>
+            {canEdit && <button onClick={() => setEditing(true)} className="button-ghost text-sm">Edit</button>}
+            {canDelete && (
+              <button
+                onClick={async () => { if (confirm("Delete this project?")) await onDeleted(); }}
+                className="button-ghost text-sm text-red-300 hover:text-red-200"
+              >Delete project</button>
+            )}
+          </div>
         </>
       )}
     </section>

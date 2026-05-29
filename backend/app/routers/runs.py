@@ -27,6 +27,7 @@ from app.auth.project_perms import (
 )
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
+from app.events import append_event
 from app.models.project import (
     PROJECT_ROLE_EDITOR,
     PROJECT_ROLE_OWNER,
@@ -88,6 +89,13 @@ async def create_run(
     db.add(run)
     await db.flush()
     await execute_run(db, run=run, upload=raw)
+    await append_event(
+        db, project_id=ctx.project.id, actor_id=ctx.user_id, type="run.created",
+        payload={"run_id": str(run.id), "name": run.name,
+                 "records": run.record_count, "matches": run.match_count,
+                 "status": run.status},
+    )
+    await db.commit()
     return _to_list_item(run)
 
 
@@ -175,6 +183,17 @@ async def update_approval(
     if m is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
     _apply_approval(m, payload.approved, auth.user.id)
+    # Look up the project_id for the event log.
+    run_for_pid = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+    await append_event(
+        db, project_id=run_for_pid.project_id, actor_id=auth.user.id,
+        type="match.approved" if payload.approved else "match.unapproved",
+        payload={
+            "run_id": str(run_id), "match_id": str(m.id),
+            "control_number": m.control_number, "entity": m.entity_text,
+            "matched_name": m.matched_name,
+        },
+    )
     await db.commit()
     return AuthorityMatchResponse(**serialise_match(m))
 
@@ -200,6 +219,18 @@ async def bulk_approve(
     ).scalars().all()
     for m in rows:
         _apply_approval(m, payload.approved, auth.user.id)
+    if rows:
+        run_for_pid = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+        await append_event(
+            db, project_id=run_for_pid.project_id, actor_id=auth.user.id,
+            type="match.bulk_approved",
+            payload={
+                "run_id": str(run_id),
+                "match_ids": [str(m.id) for m in rows],
+                "approved": payload.approved,
+                "count": len(rows),
+            },
+        )
     await db.commit()
     return [AuthorityMatchResponse(**serialise_match(m)) for m in rows]
 

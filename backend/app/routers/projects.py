@@ -18,6 +18,7 @@ from app.auth.session import AuthContext, current_auth
 from app.crypto import index as idx
 from app.crypto import pii
 from app.db import get_session
+from app.events import append_event
 from app.models.project import (
     ALL_PROJECT_ROLES,
     PROJECT_ROLE_OWNER,
@@ -99,6 +100,10 @@ async def create_project(
     db.add(
         Membership(project_id=proj.id, user_id=auth.user.id, role=PROJECT_ROLE_OWNER),
     )
+    await append_event(
+        db, project_id=proj.id, actor_id=auth.user.id, type="project.created",
+        payload={"name": proj.name},
+    )
     await db.commit()
     return ProjectListItem(
         id=proj.id, name=proj.name, description=proj.description,
@@ -128,10 +133,18 @@ async def update_project(
     ctx: ProjectContext = Depends(require_editor),
     db: AsyncSession = Depends(get_session),
 ) -> ProjectDetail:
-    if payload.name is not None:
+    changes: dict[str, object] = {}
+    if payload.name is not None and payload.name != ctx.project.name:
+        changes["name"] = {"from": ctx.project.name, "to": payload.name}
         ctx.project.name = payload.name
-    if payload.description is not None:
+    if payload.description is not None and payload.description != ctx.project.description:
+        changes["description"] = {"changed": True}
         ctx.project.description = payload.description
+    if changes:
+        await append_event(
+            db, project_id=ctx.project.id, actor_id=ctx.user_id, type="project.updated",
+            payload=changes,
+        )
     await db.commit()
     members = await _list_members(db, ctx.project.id)
     return ProjectDetail(
@@ -198,6 +211,11 @@ async def add_member(
             status_code=status.HTTP_409_CONFLICT, detail="Already a member",
         )
     db.add(Membership(project_id=ctx.project.id, user_id=user.id, role=payload.role))
+    await append_event(
+        db, project_id=ctx.project.id, actor_id=ctx.user_id, type="member.added",
+        payload={"user_id": str(user.id), "email": pii.decrypt_pii(user.email_encrypted),
+                 "role": payload.role},
+    )
     await db.commit()
     return MemberItem(
         user_id=user.id,
