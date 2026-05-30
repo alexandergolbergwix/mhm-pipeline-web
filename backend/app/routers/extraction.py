@@ -74,6 +74,7 @@ def _results_path(run_id: uuid.UUID) -> Path:
 @router.post("/runs/{run_id}/extraction/start-stream")
 async def start_extraction_stream(
     run_id: uuid.UUID,
+    mode: str | None = None,    # "local" | "hf-api"; default env / "local"
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
@@ -122,6 +123,7 @@ async def start_extraction_stream(
             marc_records=marc_records,
             output_dir=output_dir,
             hf_token=hf_token,
+            mode=mode,
         ))),
         media_type="text/event-stream",
         headers={

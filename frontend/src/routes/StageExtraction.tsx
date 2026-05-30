@@ -31,6 +31,37 @@ import {
 type Phase = "idle" | "running" | "complete" | "error";
 
 
+type ModelRole   = "person" | "provenance" | "contents" | "genre";
+type ModelStatus = "idle" | "ready" | "unavailable" | "warming" | "error";
+
+
+interface ModelState {
+  status: ModelStatus;
+  note:   string;
+}
+
+
+const _ROLE_LABELS: Record<ModelRole, string> = {
+  person:     "Person NER",
+  provenance: "Provenance NER",
+  contents:   "Contents NER",
+  genre:      "Genre classifier",
+};
+
+
+function _initialModels(): Record<ModelRole, ModelState> {
+  return {
+    person:     { status: "idle", note: "" },
+    provenance: { status: "idle", note: "" },
+    contents:   { status: "idle", note: "" },
+    genre:      { status: "idle", note: "" },
+  };
+}
+
+
+type ExtractionMode = "local" | "hf-api";
+
+
 export default function StageExtraction() {
   const { runId } = useParams<{ runId: string }>();
 
@@ -41,6 +72,13 @@ export default function StageExtraction() {
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [models, setModels] = useState<Record<ModelRole, ModelState>>(_initialModels);
+  // Persisted per-user preference, so a curator's "always use HF"
+  // choice survives reloads. Local default = the safest option.
+  const [mode, setMode] = useState<ExtractionMode>(() =>
+    (localStorage.getItem("mhm.extraction.mode") as ExtractionMode) || "local",
+  );
+  useEffect(() => { localStorage.setItem("mhm.extraction.mode", mode); }, [mode]);
 
   const cancelRef = useRef<(() => void) | null>(null);
 
@@ -87,8 +125,9 @@ export default function StageExtraction() {
     setProcessed(0);
     setTotal(0);
     setLog([]);
+    setModels(_initialModels());
     setPhase("running");
-    const { events, cancel } = streamExtraction(runId);
+    const { events, cancel } = streamExtraction(runId, mode);
     cancelRef.current = cancel;
     try {
       for await (const ev of events) {
@@ -119,7 +158,30 @@ export default function StageExtraction() {
     if (ev.type === "extraction.start") {
       const t = Number(ev.total ?? 0);
       setTotal(t);
-      pushLog(`Starting extraction over ${t} record${t === 1 ? "" : "s"}…`);
+      const m = String(ev.mode ?? mode);
+      pushLog(`Starting extraction over ${t} record${t === 1 ? "" : "s"} · mode=${m}`);
+      return;
+    }
+    if (ev.type === "extraction.model.ready" ||
+        ev.type === "extraction.model.unavailable") {
+      const role  = String(ev.model ?? "") as ModelRole;
+      const ready = ev.type === "extraction.model.ready";
+      const note  = String(ev.note ?? "");
+      setModels((prev) => ({
+        ...prev,
+        [role]: { status: ready ? "ready" : "unavailable", note },
+      }));
+      pushLog(`${role}: ${ready ? "ready" : "unavailable"}${note ? ` (${note})` : ""}`);
+      return;
+    }
+    if (ev.type === "extraction.model.warming") {
+      const role = String(ev.model ?? "") as ModelRole;
+      const est  = Number(ev.estimated_seconds ?? 0);
+      setModels((prev) => ({
+        ...prev,
+        [role]: { status: "warming", note: est ? `~${est}s cold start` : "warming" },
+      }));
+      pushLog(`${role}: warming (~${est}s)`);
       return;
     }
     if (ev.type === "extraction.record.done") {
@@ -190,7 +252,7 @@ export default function StageExtraction() {
 
         <section className="glass p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               {phase !== "running" && (
                 <button onClick={start} className="button-primary text-sm">
                   {phase === "complete" ? "Re-run extraction" : "Start extraction"}
@@ -201,6 +263,30 @@ export default function StageExtraction() {
                   Cancel
                 </button>
               )}
+              {/* Inference-backend toggle. Local = on our server
+                  (~500ms/record, no cold start). HF = on HuggingFace
+                  Inference Providers (300ms warm / 5–10s cold, lighter
+                  backend image). Persisted per user. */}
+              <span className="kicker muted ml-2">Backend:</span>
+              <div className="glass-pill px-1 py-1 flex gap-1 text-xs"
+                   title="Local runs on our server. HuggingFace runs on HF's compute (faster warm, but cold-starts).">
+                <button
+                  onClick={() => setMode("local")}
+                  disabled={phase === "running"}
+                  className={`px-3 py-1 rounded-full transition ${
+                    mode === "local" ? "bg-white/12 text-ink" : "muted hover:text-ink"
+                  }`}>
+                  Local
+                </button>
+                <button
+                  onClick={() => setMode("hf-api")}
+                  disabled={phase === "running"}
+                  className={`px-3 py-1 rounded-full transition ${
+                    mode === "hf-api" ? "bg-white/12 text-ink" : "muted hover:text-ink"
+                  }`}>
+                  HuggingFace
+                </button>
+              </div>
               {phase === "running" && total > 0 && (
                 <span className="muted text-sm">{processed} / {total} ({pct}%)</span>
               )}
@@ -225,6 +311,19 @@ export default function StageExtraction() {
                   background: "linear-gradient(90deg, #77cce5 0%, #004027 100%)",
                 }}
               />
+            </div>
+          )}
+
+          {/* Per-model status pills — surfaces availability + cold-start
+              progress in real time. Visible during runs and after; goes
+              away on a fresh "Start" click. */}
+          {(phase === "running" || phase === "complete" || phase === "error") && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {(["person", "provenance", "contents", "genre"] as ModelRole[]).map((role) => (
+                <ModelPill key={role}
+                            label={_ROLE_LABELS[role]}
+                            state={models[role]} />
+              ))}
             </div>
           )}
 
@@ -437,5 +536,50 @@ function PhasePill({ phase }: { phase: Phase }) {
     <span className={`glass-pill px-3 py-1 text-[10px] kicker ${tone}`}>
       {phase}
     </span>
+  );
+}
+
+
+/** One pill summarising a model's availability + state.
+ *
+ * Four states drive the colour:
+ *   idle         — muted, "—"
+ *   warming      — yellow-300, "warming (~Ns)"
+ *   ready        — biu-sky, "ready"
+ *   unavailable  — red-300, "unavailable" (hover for reason)
+ *   error        — red-300, "error" (hover for message)
+ */
+function ModelPill({
+  label, state,
+}: {
+  label: string;
+  state: ModelState;
+}) {
+  const tone =
+    state.status === "ready"        ? "text-biu-sky"
+    : state.status === "warming"     ? "text-yellow-300"
+    : state.status === "unavailable" ? "text-red-300"
+    : state.status === "error"       ? "text-red-300"
+    : "muted";
+  const glyph =
+    state.status === "ready"        ? "✓"
+    : state.status === "warming"     ? "⏱"
+    : state.status === "unavailable" ? "✗"
+    : state.status === "error"       ? "⚠"
+    : "—";
+  return (
+    <div className="glass-pill px-3 py-2"
+         title={state.note || state.status}>
+      <div className="kicker">{label}</div>
+      <div className={`text-xs font-medium ${tone}`}>
+        {glyph} {state.status}
+      </div>
+      {state.note && (
+        <div className="muted text-[10px] leading-tight mt-0.5 truncate"
+             title={state.note}>
+          {state.note}
+        </div>
+      )}
+    </div>
   );
 }

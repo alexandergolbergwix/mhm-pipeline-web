@@ -48,6 +48,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator
 
+from app.pipeline.extraction_backend import (
+    InferenceBackend, build_backend, resolve_mode,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,6 +86,7 @@ async def extract_entities_stream(
     output_dir: Path,
     hf_token: str | None,
     model_overrides: dict[str, str] | None = None,
+    mode: str | None = None,
 ) -> AsyncIterator[ExtractionEvent]:
     """Stream NER + genre predictions for the given parsed MARC records.
 
@@ -109,17 +114,18 @@ async def extract_entities_stream(
         ``agent_runner.py``.
     """
     total = len(marc_records)
+    resolved_mode = resolve_mode(mode)
     yield ExtractionEvent(
         type="extraction.start",
-        payload={"total": total, "person_ner_repo": _PERSON_NER_REPO},
+        payload={
+            "total":            total,
+            "mode":             resolved_mode,
+            "person_ner_repo":  _PERSON_NER_REPO,
+        },
     )
 
     if total == 0:
-        # Nothing to do but still write an empty results file so the
-        # downstream "has Stage 2 run?" check can use file presence.
-        output_path = await asyncio.to_thread(
-            _write_results, output_dir, []
-        )
+        output_path = await asyncio.to_thread(_write_results, output_dir, [])
         yield ExtractionEvent(
             type="extraction.end",
             payload={
@@ -130,48 +136,45 @@ async def extract_entities_stream(
         )
         return
 
-    overrides = dict(model_overrides or {})
-    person_repo = overrides.get("person") or _PERSON_NER_REPO
-
-    # ── Load the Person NER model once. Errors here are fatal.
+    # ── Build the backend (local torch OR HF Inference API).
     yield ExtractionEvent(
         type="extraction.step",
-        payload={"message": f"Loading Person NER ({person_repo})"},
+        payload={"message": f"Warming up models (mode={resolved_mode})"},
     )
     try:
-        person_pipeline = await asyncio.to_thread(
-            _load_person_pipeline, person_repo, hf_token,
+        backend: InferenceBackend = build_backend(
+            resolved_mode, hf_token=hf_token, model_overrides=model_overrides,
         )
+        availability = await backend.warm_up()
     except Exception as exc:  # noqa: BLE001
-        logger.exception("Person NER load failed")
+        logger.exception("Backend warm-up failed")
         yield ExtractionEvent(
             type="extraction.error",
-            payload={"message": f"Person NER load failed: {exc}"},
+            payload={"message": f"Backend warm-up failed: {exc}"},
         )
         return
 
-    # ── Provenance / Contents / Genre — local weight stubs. Each
-    # returns ``None`` when the .pt isn't on disk. Stubs emit zero
-    # entities so the rest of the pipeline still runs.
-    provenance_pipeline = await asyncio.to_thread(
-        _maybe_load_local_ner, overrides.get("provenance") or _PROVENANCE_MODEL_FILE,
-    )
-    contents_pipeline = await asyncio.to_thread(
-        _maybe_load_local_ner, overrides.get("contents") or _CONTENTS_MODEL_FILE,
-    )
-    genre_classifier = await asyncio.to_thread(
-        _maybe_load_genre_classifier, overrides.get("genre") or _GENRE_MODEL_FILE,
-    )
-    yield ExtractionEvent(
-        type="extraction.step",
-        payload={
-            "message": "Models ready",
-            "person":      True,
-            "provenance":  provenance_pipeline is not None,
-            "contents":    contents_pipeline is not None,
-            "genre":       genre_classifier is not None,
-        },
-    )
+    # One ``extraction.model.ready`` per role so the UI's
+    # ModelStatusPanel can light up four pills independently. The
+    # HF backend may still need to cold-start on first call; the
+    # backend will emit nothing extra in that path (we lean on the
+    # caller's per-record progress for now). Future enhancement: have
+    # backends optionally push ``model.warming`` events for cold starts.
+    for role, ready in (
+        ("person",     availability.person),
+        ("provenance", availability.provenance),
+        ("contents",   availability.contents),
+        ("genre",      availability.genre),
+    ):
+        yield ExtractionEvent(
+            type="extraction.model.ready" if ready else "extraction.model.unavailable",
+            payload={
+                "model":   role,
+                "ready":   ready,
+                "note":    availability.notes.get(role, ""),
+                "backend": resolved_mode,
+            },
+        )
 
     results: list[dict[str, Any]] = []
     entity_total = 0
@@ -183,14 +186,7 @@ async def extract_entities_stream(
         )
 
         try:
-            per_record = await asyncio.to_thread(
-                _process_one_record,
-                record,
-                person_pipeline,
-                provenance_pipeline,
-                contents_pipeline,
-                genre_classifier,
-            )
+            per_record = await _process_one_record(record, backend)
         except Exception as exc:  # noqa: BLE001 — never let one record stop the stream
             logger.warning("Stage 2 record %s failed: %s", cn, exc)
             per_record = {
@@ -229,7 +225,16 @@ async def extract_entities_stream(
     )
 
 
-# ── Model loaders (all called inside asyncio.to_thread) ───────────────
+# ── Legacy model loaders ──────────────────────────────────────────────
+#
+# These four helpers and the ``_PersonNer`` class below were the
+# in-process model loaders before the backend abstraction landed
+# (``extraction_backend.py``). The Local backend now owns model
+# discovery / loading; the only thing still consumed from here is
+# ``_PersonNer``, which the local backend instantiates. The other three
+# loaders are kept temporarily so any external caller still importing
+# them from this module gets the same behaviour. Remove in a follow-up
+# once we're confident nothing external imports them.
 
 
 def _load_person_pipeline(repo_id: str, hf_token: str | None) -> Any:
@@ -336,14 +341,11 @@ def _resolve_local_weights(filename_or_path: str) -> Path | None:
 # ── Per-record inference (called inside asyncio.to_thread) ────────────
 
 
-def _process_one_record(
+async def _process_one_record(
     record: dict[str, Any],
-    person_pipeline: Any,
-    provenance_pipeline: Any | None,
-    contents_pipeline: Any | None,
-    genre_classifier: Any | None,
+    backend: InferenceBackend,
 ) -> dict[str, Any]:
-    """Synchronous worker that runs every model on one record.
+    """Async worker that runs every model on one record via *backend*.
 
     Mirrors the desktop ``NerWorker.run`` per-record loop. Output shape
     matches ``ner_results.json`` exactly:
@@ -371,43 +373,45 @@ def _process_one_record(
     texts = _extract_person_texts(record)
     for i, text in enumerate(texts):
         offset = _segment_offset(texts, i)
-        segment_entities = person_pipeline.process_text(text)
+        try:
+            segment_entities = await backend.person_ner(text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Person NER failed on %s: %s", cn, exc)
+            continue
         for ent in segment_entities:
             _shift_offsets(ent, offset)
             ent["source"] = "person_ner"
         all_entities.extend(segment_entities)
 
     # ── 2. Provenance NER on MARC 561 ─────────────────────────────────
-    if provenance_pipeline is not None:
-        provenance_text = record.get("provenance") or ""
-        if isinstance(provenance_text, str) and provenance_text.strip():
-            clean = provenance_text.replace('""', '"')
-            for segment in _split_pipe(clean):
-                if len(segment) < 3:
-                    continue
-                try:
-                    prov_entities = provenance_pipeline.process_text(segment)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Provenance NER failed on %s: %s", cn, exc)
-                    continue
-                for ent in prov_entities:
-                    ent["source"] = "provenance_ner"
-                all_entities.extend(prov_entities)
-
-    # ── 3. Contents NER on MARC 505 ───────────────────────────────────
-    if contents_pipeline is not None:
-        for content in record.get("contents") or []:
-            text_505 = _flatten_content(content)
-            if not text_505 or len(text_505) < 5:
+    provenance_text = record.get("provenance") or ""
+    if isinstance(provenance_text, str) and provenance_text.strip():
+        clean = provenance_text.replace('""', '"')
+        for segment in _split_pipe(clean):
+            if len(segment) < 3:
                 continue
             try:
-                cont_entities = contents_pipeline.process_text(text_505)
+                prov_entities = await backend.provenance_ner(segment)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Contents NER failed on %s: %s", cn, exc)
+                logger.warning("Provenance NER failed on %s: %s", cn, exc)
                 continue
-            for ent in cont_entities:
-                ent["source"] = "contents_ner"
-            all_entities.extend(cont_entities)
+            for ent in prov_entities:
+                ent["source"] = "provenance_ner"
+            all_entities.extend(prov_entities)
+
+    # ── 3. Contents NER on MARC 505 ───────────────────────────────────
+    for content in record.get("contents") or []:
+        text_505 = _flatten_content(content)
+        if not text_505 or len(text_505) < 5:
+            continue
+        try:
+            cont_entities = await backend.contents_ner(text_505)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Contents NER failed on %s: %s", cn, exc)
+            continue
+        for ent in cont_entities:
+            ent["source"] = "contents_ner"
+        all_entities.extend(cont_entities)
 
     # ── 4. Build the full text for global offset rebasing ─────────────
     full_text = _build_full_text(texts, record)
@@ -425,24 +429,18 @@ def _process_one_record(
 
     # ── 6. Genre classifier (P136 fallback) ───────────────────────────
     ml_genres: list[dict[str, Any]] = []
-    if genre_classifier is not None:
-        try:
-            title = str(record.get("title") or "").strip()
-            notes_list = [str(n) for n in (record.get("notes") or []) if n]
-            predictions = genre_classifier.predict(title, notes_list)
-            for item in predictions or []:
-                if isinstance(item, tuple) and len(item) >= 2:
-                    label, conf = item[0], float(item[1])
-                elif isinstance(item, dict):
-                    label = item.get("label", "")
-                    conf = float(item.get("confidence", 0.0))
-                else:
-                    continue
-                if not label or label == "other":
-                    continue
-                ml_genres.append({"label": str(label), "confidence": conf})
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Genre classifier failed on %s: %s", cn, exc)
+    try:
+        title = str(record.get("title") or "").strip()
+        notes_list = [str(n) for n in (record.get("notes") or []) if n]
+        predictions = await backend.genre_classify(title, notes_list)
+        for item in predictions or []:
+            label = str(item.get("label") or "")
+            conf  = float(item.get("confidence") or 0.0)
+            if not label or label == "other":
+                continue
+            ml_genres.append({"label": label, "confidence": conf})
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Genre classifier failed on %s: %s", cn, exc)
 
     return {
         "_control_number":         cn,
