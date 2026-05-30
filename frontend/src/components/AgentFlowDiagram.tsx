@@ -7,7 +7,7 @@
  * a particle along the matching edge for ~700ms.
  *
  * The component is purely presentational — it doesn't fetch or stream.
- * Feed it a sequence of OrchestratorEvent dicts via the `lastEvent`
+ * Feed it a sequence of AgentEvent dicts via the `lastEvent`
  * prop; it animates the right node and shows the right pill.
  *
  * Three node states per node:
@@ -19,7 +19,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import type { OrchestratorEvent } from "@/api/orchestrator";
+import type { AgentEvent } from "@/api/aiVerify";
 
 
 interface NodeDef {
@@ -97,7 +97,7 @@ export function makeInitialFlowState(): FlowState {
  * Pure — tests can replay a trace.jsonl through this and snapshot the
  * intermediate states without rendering.
  */
-export function reduceFlow(prev: FlowState, ev: OrchestratorEvent): FlowState {
+export function reduceFlow(prev: FlowState, ev: AgentEvent): FlowState {
   const next: FlowState = {
     nodeStatus: { ...prev.nodeStatus },
     stepCount:  prev.stepCount,
@@ -153,7 +153,7 @@ export function reduceFlow(prev: FlowState, ev: OrchestratorEvent): FlowState {
 export function AgentFlowDiagram({
   lastEvent, flow,
 }: {
-  lastEvent: OrchestratorEvent | null;
+  lastEvent: AgentEvent | null;
   flow:      FlowState;
 }) {
   // Brief particle on the edge of the most recent tool dispatch.

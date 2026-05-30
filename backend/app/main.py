@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.realtime import start_listener, stop_listener
 from app.routers import (
-    api_keys, auth, health, history, invites, onboarding, orchestrator,
+    ai_verify, api_keys, auth, health, history, invites, onboarding,
     projects, runs, wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
@@ -68,7 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(api_keys.router, prefix="/api")
     app.include_router(wikidata_studio.router, prefix="/api")
     app.include_router(wikidata_labels.router, prefix="/api")
-    app.include_router(orchestrator.router, prefix="/api")
+    app.include_router(ai_verify.router, prefix="/api")
     app.include_router(ws.router, prefix="/api")
 
     # Frontend static assets (production). Mounted last so any /api

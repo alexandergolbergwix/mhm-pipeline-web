@@ -6,7 +6,6 @@ import AcceptInvite from "@/routes/AcceptInvite";
 import AdminInvites from "@/routes/AdminInvites";
 import ForgotPassword from "@/routes/ForgotPassword";
 import Login from "@/routes/Login";
-import Orchestrator from "@/routes/Orchestrator";
 import ProjectDetail from "@/routes/ProjectDetail";
 import ProjectHistory from "@/routes/ProjectHistory";
 import ProjectsList from "@/routes/ProjectsList";
@@ -34,7 +33,6 @@ export default function App() {
       <Route path="/projects/:projectId/history" element={<ProtectedRoute><ProjectHistory /></ProtectedRoute>} />
       <Route path="/runs/:runId"                 element={<ProtectedRoute><RunDetail /></ProtectedRoute>} />
       <Route path="/runs/:runId/wikidata-studio" element={<ProtectedRoute><WikidataStudio /></ProtectedRoute>} />
-      <Route path="/orchestrator"                element={<ProtectedRoute><Orchestrator /></ProtectedRoute>} />
       <Route path="/settings"                    element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/admin/invites"               element={<ProtectedRoute><AdminInvites /></ProtectedRoute>} />
     </Routes>
