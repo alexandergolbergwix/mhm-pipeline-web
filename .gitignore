@@ -52,3 +52,7 @@ build/
 frontend/playwright-report/
 frontend/test-results/
 
+
+# Run state artefacts — regeneratable from MARC inputs.
+backend/state/
+
