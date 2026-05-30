@@ -19,6 +19,13 @@ dependencies = [
     "pymarc>=5.2",
     "rdflib>=7.0",
     "pyshacl>=0.27",
+    # Server-side graph layout for the RDF / Knowledge graph view. The
+    # browser used to run cose-bilkent over 500 nodes which froze the
+    # canvas for seconds; we now ship pre-computed (x, y) positions.
+    # scipy unlocks kamada_kawai_layout for nicer force-directed
+    # results than spring_layout's default.
+    "networkx>=3.0",
+    "scipy>=1.10",
     "requests>=2.32",
     "aiosqlite>=0.20",
     "wikibaseintegrator>=0.12",

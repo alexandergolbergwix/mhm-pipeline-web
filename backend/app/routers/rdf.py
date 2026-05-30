@@ -29,11 +29,14 @@ from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.pipeline.rdf_build import (
+    LAYOUT_KINDS,
     RdfBuildResult,
     ShaclReport,
     build_rdf_graph,
+    compute_layout,
     graph_to_cytoscape_json,
     load_graph,
+    node_detail,
     normalise_matches,
     rdf_output_path_for_run,
     validate_with_shacl,
@@ -58,12 +61,21 @@ class RdfBuildResponse(BaseModel):
     mapping_errors: list[str]
 
 
+class CytoscapeNodePosition(BaseModel):
+    x: float
+    y: float
+
+
 class CytoscapeNode(BaseModel):
     id: str
     label: str
     type: str
     color: str
     properties: dict[str, list[str]] = {}
+    # Pre-computed by the server so the browser uses Cytoscape's
+    # ``preset`` layout (zero-cost placement). Absent when the legacy
+    # layout endpoint is hit.
+    position: CytoscapeNodePosition | None = None
 
 
 class CytoscapeEdge(BaseModel):
@@ -80,6 +92,43 @@ class CytoscapeGraphResponse(BaseModel):
     truncated: bool
     total_nodes: int
     total_edges: int
+    layout: str | None = None
+
+
+class NodeTypeRef(BaseModel):
+    uri: str
+    label: str
+
+
+class NodeProperty(BaseModel):
+    predicate: str
+    predicate_label: str
+    value: str
+    datatype: str | None = None
+
+
+class NodeEdgeRef(BaseModel):
+    predicate: str
+    predicate_label: str
+    target_id: str | None = None
+    target_label: str | None = None
+    target_type: str | None = None
+    target_color: str | None = None
+    source_id: str | None = None
+    source_label: str | None = None
+    source_type: str | None = None
+    source_color: str | None = None
+
+
+class NodeDetailResponse(BaseModel):
+    id: str
+    label: str
+    type: str
+    color: str
+    types: list[NodeTypeRef]
+    properties: list[NodeProperty]
+    outgoing: list[NodeEdgeRef]
+    incoming: list[NodeEdgeRef]
 
 
 class ShaclViolationDto(BaseModel):
@@ -163,12 +212,93 @@ async def build(
 async def graph(
     run_id: uuid.UUID,
     max_nodes: int = 500,
+    # Server-side layout — browser used to freeze running cose-bilkent
+    # on 500 nodes. Layouts are cheap to recompute (~1s for spring on
+    # 500 nodes) and cached to disk per (run, layout, max_nodes).
+    layout: str = "spring",
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> CytoscapeGraphResponse:
-    """Return Cytoscape.js JSON for the latest build."""
+    """Return Cytoscape.js JSON for the latest build, with positions."""
     await _lookup_run_with_access(db, run_id, auth)
 
+    if layout not in LAYOUT_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"unknown layout={layout!r}; valid: {list(LAYOUT_KINDS)}",
+        )
+
+    ttl = rdf_output_path_for_run(str(run_id))
+    if not ttl.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No RDF graph yet for this run — POST /rdf/build first.",
+        )
+
+    import asyncio  # noqa: PLC0415
+    import json  # noqa: PLC0415
+
+    # Per-(layout, max_nodes) cache. Invalidated implicitly when the
+    # underlying .ttl is rebuilt (mtime check).
+    cache_path = ttl.parent / f"graph_{layout}_{max_nodes}.json"
+    if cache_path.exists() and cache_path.stat().st_mtime >= ttl.stat().st_mtime:
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            return CytoscapeGraphResponse(**cached)
+        except (json.JSONDecodeError, ValueError):
+            # Cache corrupt — fall through and rebuild.
+            pass
+
+    g = await asyncio.to_thread(load_graph, ttl)
+    total_nodes_pre = {str(s) for s, _, _ in g} | {
+        str(o) for _, _, o in g if not _is_literal_value(o)
+    }
+    raw_total_edges = sum(
+        1 for _s, p, o in g
+        if not _is_literal_value(o)
+        and str(p) != "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    )
+
+    payload = await asyncio.to_thread(
+        graph_to_cytoscape_json, g, max_nodes=max_nodes,
+    )
+    payload = await asyncio.to_thread(
+        compute_layout, payload, kind=layout,
+    )
+    truncated = len(payload["nodes"]) < len(total_nodes_pre)
+
+    response = CytoscapeGraphResponse(
+        nodes=[CytoscapeNode(**n) for n in payload["nodes"]],
+        edges=[CytoscapeEdge(**e) for e in payload["edges"]],
+        truncated=truncated,
+        total_nodes=len(total_nodes_pre),
+        total_edges=raw_total_edges,
+        layout=layout,
+    )
+    try:
+        cache_path.write_text(response.model_dump_json(), encoding="utf-8")
+    except OSError:
+        pass  # caching is best-effort
+    return response
+
+
+@router.get("/{run_id}/rdf/node", response_model=NodeDetailResponse)
+async def node(
+    run_id: uuid.UUID,
+    id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> NodeDetailResponse:
+    """Return full detail for ONE node (clicked in the graph view).
+
+    Includes every ``rdf:type``, every literal property, every
+    outgoing edge (with target's label + colour), every incoming
+    edge. The frontend renders this as a side panel.
+
+    ``id`` is passed as a query parameter (not a path segment) so URIs
+    containing slashes don't need encoding gymnastics.
+    """
+    await _lookup_run_with_access(db, run_id, auth)
     ttl = rdf_output_path_for_run(str(run_id))
     if not ttl.exists():
         raise HTTPException(
@@ -179,22 +309,8 @@ async def graph(
     import asyncio  # noqa: PLC0415
 
     g = await asyncio.to_thread(load_graph, ttl)
-    total_nodes_pre = {str(s) for s, _, _ in g} | {
-        str(o) for _, _, o in g if not _is_literal_value(o)
-    }
-    raw_total_edges = sum(1 for _s, p, o in g if not _is_literal_value(o) and str(p) != "http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
-
-    payload = await asyncio.to_thread(
-        graph_to_cytoscape_json, g, max_nodes=max_nodes,
-    )
-    truncated = len(payload["nodes"]) < len(total_nodes_pre)
-    return CytoscapeGraphResponse(
-        nodes=[CytoscapeNode(**n) for n in payload["nodes"]],
-        edges=[CytoscapeEdge(**e) for e in payload["edges"]],
-        truncated=truncated,
-        total_nodes=len(total_nodes_pre),
-        total_edges=raw_total_edges,
-    )
+    detail = await asyncio.to_thread(node_detail, g, id)
+    return NodeDetailResponse(**detail)
 
 
 def _is_literal_value(o: Any) -> bool:

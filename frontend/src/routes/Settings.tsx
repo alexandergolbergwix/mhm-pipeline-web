@@ -24,7 +24,14 @@ const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
   },
   huggingface: {
     label: "Hugging Face token",
-    hint: "Optional. Used when fetching gated model weights for the desktop pipeline.",
+    hint: (
+      "Used to download the Hebrew NER model weights (gated repo) AND to " +
+      "call inference on HuggingFace's servers. Create at " +
+      "huggingface.co/settings/tokens with Fine-grained type. Tick: " +
+      "Repositories → 'Read access to contents of all public gated repos " +
+      "you can access' + Inference → 'Make calls to Inference Providers'. " +
+      "Leave everything else unchecked."
+    ),
   },
 };
 

@@ -22,6 +22,9 @@ export interface GraphNode {
   type: string;
   color: string;
   properties?: Record<string, string[]>;
+  /** Server-computed position. Cytoscape uses ``preset`` layout to
+   *  pin these so we don't pay for a browser-side layout pass. */
+  position?: { x: number; y: number };
 }
 
 
@@ -40,6 +43,56 @@ export interface GraphResponse {
   truncated: boolean;
   total_nodes: number;
   total_edges: number;
+  layout?: string;
+}
+
+
+// Layouts the BACKEND can compute. The browser no longer runs layouts.
+export type ServerLayout =
+  | "spring"
+  | "kamada_kawai"
+  | "circular"
+  | "shell"
+  | "concentric";
+
+
+// One RDF type attached to a node (rdf:type triple).
+export interface NodeTypeRef {
+  uri:   string;
+  label: string;
+}
+
+// Datatype property: literal value with a predicate.
+export interface NodeProperty {
+  predicate:       string;
+  predicate_label: string;
+  value:           string;
+  datatype?:       string | null;
+}
+
+// One incoming or outgoing edge to/from another node.
+export interface NodeEdgeRef {
+  predicate:       string;
+  predicate_label: string;
+  target_id?:      string;     // outgoing direction
+  target_label?:   string;
+  target_type?:    string;
+  target_color?:   string;
+  source_id?:      string;     // incoming direction
+  source_label?:   string;
+  source_type?:    string;
+  source_color?:   string;
+}
+
+export interface NodeDetail {
+  id:         string;
+  label:      string;
+  type:       string;
+  color:      string;
+  types:      NodeTypeRef[];
+  properties: NodeProperty[];
+  outgoing:   NodeEdgeRef[];
+  incoming:   NodeEdgeRef[];
 }
 
 
@@ -81,8 +134,18 @@ export const Rdf = {
   build: (runId: string) =>
     api.post<RdfBuildResponse>(`/runs/${runId}/rdf/build`, {}),
 
-  graph: (runId: string, maxNodes = 500) =>
-    api.get<GraphResponse>(`/runs/${runId}/rdf/graph?max_nodes=${maxNodes}`),
+  graph: (runId: string, maxNodes = 500, layout: ServerLayout = "spring") =>
+    api.get<GraphResponse>(
+      `/runs/${runId}/rdf/graph?max_nodes=${maxNodes}&layout=${layout}`,
+    ),
+
+  /** Fetch full detail for one node (clicked in the graph view).
+   *  ``nodeId`` is passed as a query param so URIs with slashes work
+   *  without encoding the whole path. */
+  node: (runId: string, nodeId: string) =>
+    api.get<NodeDetail>(
+      `/runs/${runId}/rdf/node?id=${encodeURIComponent(nodeId)}`,
+    ),
 
   validate: (runId: string) =>
     api.post<ShaclReport>(`/runs/${runId}/rdf/validate`, {}),

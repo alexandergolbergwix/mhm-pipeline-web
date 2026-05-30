@@ -407,6 +407,203 @@ def graph_to_cytoscape_json(
     return {"nodes": nodes, "edges": edges}
 
 
+# ── Server-side layout ────────────────────────────────────────────────
+
+
+# Layout names accepted by ``compute_layout``. ``preset`` means
+# positions are already on the nodes; nothing to compute.
+LAYOUT_KINDS = (
+    "spring",        # networkx spring_layout (force-directed)
+    "kamada_kawai",  # better quality, slightly slower (needs scipy)
+    "circular",      # ring
+    "shell",         # concentric rings by node type
+    "concentric",    # alias of shell
+)
+
+
+def compute_layout(
+    payload: dict[str, Any], *,
+    kind: str = "spring",
+    scale: float = 1000.0,
+    seed: int = 42,
+) -> dict[str, Any]:
+    """Return *payload* with each node decorated with a ``position`` dict.
+
+    The browser used to run cose-bilkent over 500 nodes which froze
+    the canvas for seconds. We now ship pre-computed (x, y) positions
+    and the frontend uses Cytoscape's ``preset`` layout (zero-cost
+    placement). Layout takes ~1s for 500 nodes on the server.
+
+    The output shape adds ``position: {x, y}`` to every node dict.
+    Edges are unchanged.
+    """
+    import networkx as nx  # noqa: PLC0415 — keep import lazy
+
+    nodes = list(payload.get("nodes") or [])
+    edges = list(payload.get("edges") or [])
+    if not nodes:
+        return payload
+
+    g = nx.DiGraph()
+    for n in nodes:
+        g.add_node(n["id"], **{"type": n.get("type", "Other")})
+    for e in edges:
+        if e["source"] in g and e["target"] in g:
+            g.add_edge(e["source"], e["target"])
+
+    pos: dict[str, tuple[float, float]]
+    if kind == "kamada_kawai":
+        try:
+            pos = nx.kamada_kawai_layout(g, scale=scale)
+        except Exception:  # noqa: BLE001 — scipy missing, etc.
+            pos = nx.spring_layout(g, scale=scale, seed=seed, iterations=80)
+    elif kind == "circular":
+        pos = nx.circular_layout(g, scale=scale)
+    elif kind in ("shell", "concentric"):
+        # Group nodes by category so each ring is a class.
+        by_class: dict[str, list[str]] = {}
+        for n in nodes:
+            by_class.setdefault(n.get("type", "Other"), []).append(n["id"])
+        # Most-populated class in the center, smaller classes on outer rings.
+        shells = sorted(by_class.values(), key=lambda v: -len(v))
+        pos = nx.shell_layout(g, nlist=shells, scale=scale)
+    else:  # spring (default)
+        # Bound iterations so 500-node graphs finish in <1s.
+        pos = nx.spring_layout(
+            g, scale=scale, seed=seed, iterations=60,
+            # Larger k spreads dense clusters out so the page isn't a blob.
+            k=1.2 / max(1.0, (len(nodes) ** 0.5)),
+        )
+
+    positioned_nodes: list[dict[str, Any]] = []
+    for n in nodes:
+        xy = pos.get(n["id"])
+        if xy is None:
+            xy = (0.0, 0.0)
+        positioned_nodes.append({
+            **n,
+            "position": {"x": float(xy[0]), "y": float(xy[1])},
+        })
+    return {"nodes": positioned_nodes, "edges": edges, "layout": kind}
+
+
+# ── Per-node detail (for the click-side panel) ────────────────────────
+
+
+def node_detail(graph: rdflib.Graph, node_id: str) -> dict[str, Any]:
+    """Return the full detail blob for one node:
+
+    * ``id`` + ``label`` + ``color`` + primary ``type`` (matches the
+      same category the cytoscape JSON uses).
+    * ``types[]`` — every ``rdf:type`` value attached to the node,
+      with the URI + the local-name as label.
+    * ``properties[]`` — every datatype triple (predicate + literal
+      value) keyed off the node.
+    * ``outgoing[]`` — every object-property triple where the node is
+      the subject. Each entry: ``{predicate, predicate_label,
+      target_id, target_label, target_type, target_color}``.
+    * ``incoming[]`` — symmetrically, every triple where the node is
+      the object.
+
+    The frontend renders these as four sections in the side panel.
+    """
+    from rdflib import Literal, URIRef  # noqa: PLC0415
+
+    subj = URIRef(node_id)
+    types: list[dict[str, str]] = []
+    properties: list[dict[str, Any]] = []
+    outgoing: list[dict[str, Any]] = []
+    incoming: list[dict[str, Any]] = []
+
+    label = _local_name(node_id)
+    primary_type = "Other"
+
+    for s, p, o in graph.triples((subj, None, None)):
+        p_uri = str(p)
+        # rdf:type
+        if p_uri == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type":
+            type_uri = str(o)
+            types.append({
+                "uri":   type_uri,
+                "label": _local_name(type_uri),
+            })
+            cat = _infer_category_from_uri(type_uri)
+            if cat != "Other" or primary_type == "Other":
+                primary_type = cat
+            continue
+        # rdfs:label / hm:label / preferred name → headline label
+        if p_uri.endswith("label") or p_uri.endswith("preferredName"):
+            if isinstance(o, Literal):
+                label = str(o)
+                continue
+        # Datatype property → goes in ``properties``.
+        if isinstance(o, Literal):
+            properties.append({
+                "predicate":       p_uri,
+                "predicate_label": _shorten_uri(p_uri),
+                "value":           str(o),
+                "datatype":        str(o.datatype) if o.datatype else None,
+            })
+            continue
+        # Object property → outgoing edge.
+        target_id = str(o)
+        outgoing.append({
+            "predicate":       p_uri,
+            "predicate_label": _shorten_uri(p_uri),
+            "target_id":       target_id,
+            "target_label":    _resolve_label(graph, target_id),
+            "target_type":     _resolve_category(graph, target_id),
+            "target_color":    PALETTE.get(_resolve_category(graph, target_id), PALETTE["Other"]),
+        })
+
+    for s, p, _ in graph.triples((None, None, subj)):
+        source_id = str(s)
+        incoming.append({
+            "predicate":       str(p),
+            "predicate_label": _shorten_uri(str(p)),
+            "source_id":       source_id,
+            "source_label":    _resolve_label(graph, source_id),
+            "source_type":     _resolve_category(graph, source_id),
+            "source_color":    PALETTE.get(_resolve_category(graph, source_id), PALETTE["Other"]),
+        })
+
+    return {
+        "id":         node_id,
+        "label":      label[:120],
+        "type":       primary_type,
+        "color":      PALETTE.get(primary_type, PALETTE["Other"]),
+        "types":      types,
+        "properties": properties,
+        "outgoing":   outgoing,
+        "incoming":   incoming,
+    }
+
+
+def _resolve_label(graph: rdflib.Graph, uri: str) -> str:
+    """Best-effort label lookup for a referenced node."""
+    from rdflib import Literal, URIRef  # noqa: PLC0415
+    n = URIRef(uri)
+    for _, p, o in graph.triples((n, None, None)):
+        p_uri = str(p)
+        if p_uri.endswith("label") or p_uri.endswith("preferredName"):
+            if isinstance(o, Literal):
+                return str(o)[:80]
+    return _local_name(uri)
+
+
+def _resolve_category(graph: rdflib.Graph, uri: str) -> str:
+    """Best-effort rdf:type-based category for a referenced node."""
+    from rdflib import URIRef  # noqa: PLC0415
+    n = URIRef(uri)
+    for _, _, o in graph.triples(
+        (n, URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"), None),
+    ):
+        cat = _infer_category_from_uri(str(o))
+        if cat != "Other":
+            return cat
+    return _infer_category_from_uri(uri)
+
+
 def load_graph(ttl_path: Path) -> rdflib.Graph:
     """Parse a Turtle file from disk — thin helper for the router."""
     g = Graph()
