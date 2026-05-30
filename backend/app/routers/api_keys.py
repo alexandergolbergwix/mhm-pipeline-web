@@ -28,8 +28,18 @@ from app.models.api_key import ApiKey
 router = APIRouter(prefix="/me/api-keys", tags=["api-keys"])
 
 
-KeyName = Literal["gemini", "wikidata", "wikibase_cloud_bot_password"]
-_VALID_KEYS: set[str] = {"gemini", "wikidata", "wikibase_cloud_bot_password"}
+KeyName = Literal[
+    "gemini",
+    "wikidata",
+    "wikibase_cloud_bot_password",
+    "huggingface",
+]
+_VALID_KEYS: set[str] = {
+    "gemini",
+    "wikidata",
+    "wikibase_cloud_bot_password",
+    "huggingface",
+}
 
 
 class ApiKeyStatus(BaseModel):

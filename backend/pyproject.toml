@@ -22,12 +22,20 @@ dependencies = [
     "requests>=2.32",
     "aiosqlite>=0.20",
     "wikibaseintegrator>=0.12",
+    # Stage 2 — NER + classifier inference. CPU-only torch is fine; the
+    # web tier currently runs the Person model on the HF Hub. Heroku has
+    # no GPU so we deliberately don't pin a CUDA build.
+    "torch>=2.0,<3",
+    "transformers>=4.40",
+    "huggingface-hub>=0.20",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "aiosqlite>=0.20",
     "ruff>=0.7",
 ]
 

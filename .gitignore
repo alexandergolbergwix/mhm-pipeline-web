@@ -47,3 +47,8 @@ backend/app/_pipeline_placeholder.bak/
 frontend/dist/
 backend/dist/
 build/
+
+# Playwright run reports — regeneratable, large.
+frontend/playwright-report/
+frontend/test-results/
+

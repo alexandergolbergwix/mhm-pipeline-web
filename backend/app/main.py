@@ -18,8 +18,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.realtime import start_listener, stop_listener
 from app.routers import (
-    ai_verify, api_keys, auth, health, history, invites, onboarding,
-    projects, runs, wikidata_labels, wikidata_studio, ws,
+    ai_verify, api_keys, auth, extraction, health, history, invites,
+    onboarding, projects, rdf, runs, wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
 
@@ -64,6 +64,8 @@ def create_app() -> FastAPI:
     app.include_router(invites.router, prefix="/api")
     app.include_router(projects.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")
+    app.include_router(extraction.router, prefix="/api")
+    app.include_router(rdf.router, prefix="/api")
     app.include_router(history.router, prefix="/api")
     app.include_router(api_keys.router, prefix="/api")
     app.include_router(wikidata_studio.router, prefix="/api")
