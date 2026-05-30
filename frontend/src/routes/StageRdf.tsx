@@ -13,44 +13,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import cytoscape, { type Core, type LayoutOptions, type StylesheetJsonBlock } from "cytoscape";
-import coseBilkent from "cytoscape-cose-bilkent";
-import dagre from "cytoscape-dagre";
+import { type Core, type LayoutOptions, type StylesheetJsonBlock } from "cytoscape";
 import CytoscapeComponent from "react-cytoscapejs";
 
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
+import { NodeDetailPanel } from "@/components/NodeDetailPanel";
 import {
   Rdf,
   type GraphResponse,
   type RdfStatus,
+  type ServerLayout,
   type ShaclReport,
 } from "@/api/rdf";
 
 
-// Register layout extensions once. The plugin export is the function
-// cytoscape's static API expects — guard against double-registration
-// during Vite HMR.
-let LAYOUTS_REGISTERED = false;
-function registerLayouts() {
-  if (LAYOUTS_REGISTERED) return;
-  // The two plugins call ``cytoscape("layout", name, impl)`` themselves.
-  cytoscape.use(coseBilkent);
-  cytoscape.use(dagre);
-  LAYOUTS_REGISTERED = true;
-}
-registerLayouts();
+// All layouts are computed SERVER-SIDE (networkx) — Cytoscape just uses
+// ``preset`` to read pre-computed positions off node data. No layout
+// extensions needed in the browser.
 
 
-type LayoutName = "cose-bilkent" | "cose" | "dagre" | "concentric" | "breadthfirst";
-
-
-const LAYOUT_NAMES: Array<{ value: LayoutName; label: string }> = [
-  { value: "cose-bilkent", label: "Force (cose-bilkent)" },
-  { value: "cose",         label: "Force (cose)" },
-  { value: "dagre",        label: "Hierarchical (dagre)" },
-  { value: "concentric",   label: "Concentric" },
-  { value: "breadthfirst", label: "Breadth-first" },
+// Server-computed layouts. The browser used to run cose-bilkent over
+// 500 nodes which froze the canvas for seconds; positions now arrive
+// pre-computed by networkx on the backend, and Cytoscape uses
+// ``preset`` (zero-cost) placement.
+const LAYOUT_NAMES: Array<{ value: ServerLayout; label: string }> = [
+  { value: "spring",       label: "Force (spring)" },
+  { value: "kamada_kawai", label: "Force (kamada-kawai)" },
+  { value: "shell",        label: "Concentric (by class)" },
+  { value: "circular",     label: "Circular" },
 ];
 
 
@@ -77,12 +68,14 @@ export default function StageRdf() {
   const [error, setError]   = useState<string | null>(null);
 
   const [busy, setBusy] = useState<"build" | "validate" | "graph" | null>(null);
-  // Default = concentric: deterministic, finishes in <100ms even on 500
-  // nodes, and ALWAYS positions every node visibly. Force layouts
-  // (cose / cose-bilkent) are gorgeous but block the canvas while they
-  // run; pick them from the dropdown when you want the spider-web look.
-  const [layout, setLayout] = useState<LayoutName>("concentric");
+  // Layout is computed SERVER-SIDE (networkx) — the browser just renders
+  // pre-positioned nodes. Default = spring (force-directed, plain).
+  const [layout, setLayout] = useState<ServerLayout>("spring");
   const [shaclOpen, setShaclOpen] = useState(false);
+  // ID of the node the user clicked on the graph. When set, the side
+  // panel mounts and fetches the full RDF detail (types + properties +
+  // in/out edges) for it.
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const cyRef = useRef<Core | null>(null);
 
@@ -108,11 +101,11 @@ export default function StageRdf() {
     return () => { cancelled = true; };
   }, [runId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadGraph() {
+  async function loadGraph(layoutOverride?: ServerLayout) {
     if (!runId) return;
     setBusy("graph"); setError(null);
     try {
-      setGraph(await Rdf.graph(runId));
+      setGraph(await Rdf.graph(runId, 500, layoutOverride ?? layout));
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
@@ -120,12 +113,23 @@ export default function StageRdf() {
     }
   }
 
+  // Re-fetch graph when the user picks a different server layout.
+  // First call triggers a server-side networkx layout pass; subsequent
+  // calls hit the on-disk cache and return in milliseconds.
+  useEffect(() => {
+    if (!graph) return;            // don't fetch before initial mount loaded data
+    void loadGraph(layout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout]);
+
   async function build() {
     if (!runId) return;
     setBusy("build"); setError(null);
     try {
       await Rdf.build(runId);
-      const [st, g] = await Promise.all([Rdf.status(runId), Rdf.graph(runId)]);
+      const [st, g] = await Promise.all([
+        Rdf.status(runId), Rdf.graph(runId, 500, layout),
+      ]);
       setStatus(st);
       setGraph(g);
     } catch (e) {
@@ -149,10 +153,15 @@ export default function StageRdf() {
     }
   }
 
+  // Cytoscape elements built with pre-computed positions. Using the
+  // ``preset`` layout downstream means zero browser-side layout cost.
   const elements = useMemo(() => {
     if (!graph) return [];
     return [
-      ...graph.nodes.map((n) => ({ data: n })),
+      ...graph.nodes.map((n) => ({
+        data:     n,
+        position: n.position ?? undefined,
+      })),
       ...graph.edges.map((e) => ({ data: e })),
     ];
   }, [graph]);
@@ -211,37 +220,17 @@ export default function StageRdf() {
     },
   ]), []);
 
-  const layoutOptions = useMemo<LayoutOptions>(() => {
-    const base = {
-      name:    layout,
-      animate: false,
-      fit:     true,
-      padding: 30,
-    };
-    if (layout === "cose-bilkent") {
-      // Bounded iterations: with 500 nodes and 1500+ edges the
-      // unbounded sim runs for tens of seconds and the canvas stays
-      // blank in the meantime. 2000 iterations is plenty for a
-      // visually-coherent layout and finishes in ~1s.
-      return { ...base, name: "cose-bilkent",
-        nodeRepulsion: 4500, idealEdgeLength: 80,
-        numIter: 2000, randomize: true, quality: "default",
-      } as unknown as LayoutOptions;
-    }
-    if (layout === "cose") {
-      // Stock cose has a similar issue — bound runtime so the page
-      // doesn't appear empty.
-      return { ...base, name: "cose",
-        numIter: 1500, animate: false,
-      } as unknown as LayoutOptions;
-    }
-    if (layout === "dagre") {
-      return { ...base, name: "dagre", rankDir: "LR", nodeSep: 40, rankSep: 70 } as unknown as LayoutOptions;
-    }
-    return base as LayoutOptions;
-  }, [layout]);
+  // Always ``preset`` — node positions are already in the data thanks
+  // to the server-side networkx pass. Cytoscape's preset layout just
+  // reads ``data.position`` and pins each node there.
+  const layoutOptions = useMemo<LayoutOptions>(() => ({
+    name:    "preset",
+    fit:     true,
+    padding: 30,
+  } as unknown as LayoutOptions), []);
 
   // Reveal node labels as the user zooms in. Hover always reveals.
+  // Single-click selects the node → opens the side detail panel.
   function attachCy(cy: Core) {
     cyRef.current = cy;
     cy.on("zoom", () => {
@@ -257,37 +246,27 @@ export default function StageRdf() {
     });
     cy.on("mouseover", "edge", (evt) => evt.target.addClass("hover"));
     cy.on("mouseout",  "edge", (evt) => evt.target.removeClass("hover"));
+    cy.on("tap", "node", (evt) => {
+      const id = evt.target.id();
+      if (id) setSelectedNodeId(id);
+    });
+    // Click on empty canvas closes the side panel.
+    cy.on("tap", (evt) => {
+      if (evt.target === cy) setSelectedNodeId(null);
+    });
   }
 
-  // ── React-cytoscapejs quirk: the ``layout`` prop only runs once at
-  // mount. When elements load asynchronously (status fetch → setGraph
-  // → re-render), the canvas adds the nodes but never positions them
-  // — every node sits at (0,0). Solution: when elements arrive, run a
-  // fresh layout against the cy instance, then fit + center.
-  // Also re-runs when the user picks a different layout from the
-  // dropdown.
-  const [layoutRunning, setLayoutRunning] = useState(false);
-
+  // Re-fit on element-set changes (layout switch, build, etc.). No
+  // browser-side layout pass — positions are already on the data.
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || elements.length === 0) return;
-    setLayoutRunning(true);
-    // Give the layout extension time to register if HMR just re-loaded.
     const handle = window.requestAnimationFrame(() => {
       try {
-        const lay = cy.layout(layoutOptions);
-        lay.one("layoutstop", () => {
-          cy.fit(undefined, 30);
-          setLayoutRunning(false);
-        });
-        lay.run();
-        // Synchronous layouts (concentric / breadthfirst / grid) don't
-        // emit layoutstop the way force layouts do — fit immediately
-        // as well so the user always sees the graph.
+        cy.layout(layoutOptions).run();
         cy.fit(undefined, 30);
       } catch (exc) {
-        console.warn("cy layout failed:", exc);
-        setLayoutRunning(false);
+        console.warn("cy fit failed:", exc);
       }
     });
     return () => window.cancelAnimationFrame(handle);
@@ -296,6 +275,21 @@ export default function StageRdf() {
   function fitToScreen() {
     cyRef.current?.fit(undefined, 30);
   }
+
+  // Highlight the selected node + recenter on it when selection
+  // changes (e.g. via NodeDetailPanel's edge-row "navigate" link).
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.$("node:selected").unselect();
+    if (selectedNodeId) {
+      const n = cy.getElementById(selectedNodeId);
+      if (n.nonempty()) {
+        n.select();
+        cy.center(n);
+      }
+    }
+  }, [selectedNodeId]);
 
   const statusLabel = status?.status ?? "idle";
   const violations  = shacl?.violations ?? [];
@@ -341,7 +335,7 @@ export default function StageRdf() {
               <span className="muted text-sm ml-2">
                 Layout:&nbsp;
                 <select value={layout}
-                        onChange={(e) => setLayout(e.target.value as LayoutName)}
+                        onChange={(e) => setLayout(e.target.value as ServerLayout)}
                         className="input-glass !py-1 !w-auto text-xs inline">
                   {LAYOUT_NAMES.map((l) => (
                     <option key={l.value} value={l.value}>{l.label}</option>
@@ -374,6 +368,12 @@ export default function StageRdf() {
             <div className="glass-pill px-3 py-2 text-sm text-red-300">{error}</div>
           )}
 
+          {/* Two-column body when a node is selected; full-width canvas otherwise. */}
+          <div className={
+            selectedNodeId && runId
+              ? "grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4"
+              : "block"
+          }>
           <div className="relative w-full" style={{ height: "600px" }}>
             <CytoscapeComponent
               elements={elements}
@@ -397,20 +397,45 @@ export default function StageRdf() {
                 Showing {graph.nodes.length} of {graph.total_nodes} nodes (top by degree)
               </div>
             )}
-            {!graph && busy !== "build" && (
+            {!graph && busy !== "build" && busy !== "graph" && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <p className="muted">
                   {statusLabel === "idle"
                     ? "No graph yet — click Build RDF."
-                    : busy === "graph" ? "Loading graph…" : "Click Build RDF to refresh."}
+                    : "Click Build RDF to refresh."}
                 </p>
               </div>
             )}
-            {graph && layoutRunning && (
-              <div className="absolute top-3 right-3 glass-pill px-3 py-1 text-[10px] kicker text-biu-sky">
-                Computing layout…
+            {/* Loading overlay — covers the canvas while the server
+                computes layout. Networkx for 500 nodes is ~1 s on
+                first request; cached calls return in ~50ms. */}
+            {(busy === "graph" || busy === "build") && (
+              <div className="absolute inset-0 flex items-center justify-center
+                              bg-black/40 backdrop-blur-sm rounded-2xl">
+                <div className="glass-pill px-4 py-3 text-center space-y-1.5">
+                  <div className="text-sm text-ink">
+                    {busy === "build" ? "Building RDF graph…" : "Computing layout on server…"}
+                  </div>
+                  <div className="muted text-[11px]">
+                    {busy === "build"
+                      ? "Running MarcToRdfMapper across the run's records."
+                      : "Networkx is positioning the nodes. First request takes ~1 s; cached layouts return instantly."}
+                  </div>
+                  <div className="mt-2 mx-auto w-32 h-1 rounded-full overflow-hidden bg-white/10">
+                    <div className="h-full w-1/3 bg-biu-sky animate-pulse" />
+                  </div>
+                </div>
               </div>
             )}
+          </div>
+          {selectedNodeId && runId && (
+            <NodeDetailPanel
+              runId={runId}
+              nodeId={selectedNodeId}
+              onClose={() => setSelectedNodeId(null)}
+              onNavigate={(id) => setSelectedNodeId(id)}
+            />
+          )}
           </div>
         </section>
 
