@@ -31,12 +31,14 @@ router = APIRouter(prefix="/me/api-keys", tags=["api-keys"])
 KeyName = Literal[
     "gemini",
     "wikidata",
+    "wikibase_cloud_bot_username",
     "wikibase_cloud_bot_password",
     "huggingface",
 ]
 _VALID_KEYS: set[str] = {
     "gemini",
     "wikidata",
+    "wikibase_cloud_bot_username",
     "wikibase_cloud_bot_password",
     "huggingface",
 }

@@ -15,6 +15,8 @@ import {
 } from "@/components/MatchDetailDialog";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import { SelectAllVisible } from "@/components/SelectAllVisible";
+import { AiVerificationModal } from "@/components/AiVerificationModal";
+import type { ScopeKind } from "@/api/aiVerify";
 
 const COLUMNS = [
   { key: "control_number", label: "Record",     kind: "text" as const, sortable: true  },
@@ -43,6 +45,7 @@ export default function RunDetail() {
   const [backfillResult, setBackfillResult] = useState<{
     checked: number; updated: number; births_filled: number; deaths_filled: number;
   } | null>(null);
+  const [verifyScope, setVerifyScope] = useState<{ kind: ScopeKind; matchIds?: string[]; label: string } | null>(null);
   // Sort state — persisted across reloads so curators don't lose their place.
   const [sortKey, setSortKey] = useState<string | null>(() =>
     localStorage.getItem("mhm.runDetail.sortKey") || null);
@@ -174,7 +177,30 @@ export default function RunDetail() {
       <div className="space-y-6">
         <section className="glass p-6 space-y-2">
           <div className="kicker">
-            Run · <Link to={`/projects/${run.project_id}`} className="hover:text-ink underline">back to project</Link>
+            Run ·{" "}
+            <Link to={`/projects/${run.project_id}`} className="hover:text-ink underline">
+              back to project
+            </Link>
+            {" · "}
+            <Link to={`/runs/${run.id}/overview`} className="hover:text-ink underline">
+              Overview
+            </Link>
+            {" · "}
+            <Link to={`/runs/${run.id}/extraction`} className="hover:text-ink underline">
+              Extraction
+            </Link>
+            {" · "}
+            <Link to={`/runs/${run.id}/rdf`} className="hover:text-ink underline">
+              RDF
+            </Link>
+            {" · "}
+            <Link to={`/runs/${run.id}/hmo-studio`} className="hover:text-ink underline">
+              HMO Studio
+            </Link>
+            {" · "}
+            <Link to={`/runs/${run.id}/wikidata-studio`} className="hover:text-ink underline">
+              Wikidata Studio
+            </Link>
           </div>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <h2 className="text-2xl font-semibold">{run.name}</h2>
@@ -201,9 +227,27 @@ export default function RunDetail() {
                 Review &amp; approve · <span className="muted">{filtered.length} of {run.matches.length}</span>
               </h3>
             </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
               <button disabled={selected.size === 0} onClick={() => bulk(true)}  className="button-primary !py-1.5 text-sm">Approve selected</button>
               <button disabled={selected.size === 0} onClick={() => bulk(false)} className="button-ghost   !py-1.5 text-sm">Unapprove selected</button>
+              <button disabled={selected.size === 0}
+                      onClick={() => setVerifyScope({
+                        kind: "selection",
+                        matchIds: Array.from(selected),
+                        label: `${selected.size} selected`,
+                      })}
+                      className="button-ghost !py-1.5 text-sm text-biu-sky">
+                ✨ Verify selected with AI
+              </button>
+              <button onClick={() => setVerifyScope({
+                        kind: "all",
+                        matchIds: filtered.map((m) => m.id),
+                        label: `${filtered.length} visible`,
+                      })}
+                      disabled={filtered.length === 0}
+                      className="button-ghost !py-1.5 text-sm text-biu-sky">
+                ✨ Verify all visible with AI
+              </button>
               <button onClick={backfillDates} disabled={!!backfillBusy}
                       title="Walk every match and pull birth / death years from the IDs already stored (Mazal, VIAF, Wikidata). Leaves approvals untouched."
                       className="button-ghost !py-1.5 text-sm">
@@ -333,6 +377,15 @@ export default function RunDetail() {
           match={openMatch}
           onClose={() => setOpenMatch(null)}
           onPatched={patchMatch}
+        />
+      )}
+      {verifyScope && runId && (
+        <AiVerificationModal
+          runId={runId}
+          scopeKind={verifyScope.kind}
+          matchIds={verifyScope.matchIds}
+          scopeLabel={verifyScope.label}
+          onClose={() => setVerifyScope(null)}
         />
       )}
     </Layout>

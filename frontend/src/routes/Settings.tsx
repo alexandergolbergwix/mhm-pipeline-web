@@ -12,11 +12,19 @@ const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
   },
   wikidata: {
     label: "Wikidata token",
-    hint: "Bot password (User@Bot:hex) or OAuth credentials for Stage 6 upload.",
+    hint: "Bot password (User@Bot:hex) or OAuth credentials for live Wikidata upload.",
+  },
+  wikibase_cloud_bot_username: {
+    label: "Wikibase Cloud bot username",
+    hint: "Your account name on mhm-hmo.wikibase.cloud (without the @bot suffix).",
   },
   wikibase_cloud_bot_password: {
     label: "Wikibase Cloud bot password",
-    hint: "For mhm-hmo.wikibase.cloud — IIIF manifest publishing.",
+    hint: "Bot password from Special:BotPasswords on mhm-hmo.wikibase.cloud — IIIF manifest publishing.",
+  },
+  huggingface: {
+    label: "Hugging Face token",
+    hint: "Optional. Used when fetching gated model weights for the desktop pipeline.",
   },
 };
 

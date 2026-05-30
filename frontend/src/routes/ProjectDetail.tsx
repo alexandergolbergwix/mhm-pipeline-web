@@ -284,22 +284,43 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
       {items && items.length > 0 && (
         <ul className="divide-y divide-white/5">
           {items.map((r) => (
-            <li key={r.id} className="py-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <Link to={`/runs/${r.id}`} className="font-medium hover:text-biu-sky truncate block">
-                  {r.name}
-                </Link>
-                <p className="muted text-xs">
-                  {r.record_count} record{r.record_count === 1 ? "" : "s"} ·{" "}
-                  {r.match_count} match{r.match_count === 1 ? "" : "es"} ·{" "}
-                  {new Date(r.created_at).toLocaleString()}
-                </p>
+            <li key={r.id} className="py-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Link to={`/runs/${r.id}/overview`} className="font-medium hover:text-biu-sky truncate block">
+                    {r.name}
+                  </Link>
+                  <p className="muted text-xs">
+                    {r.record_count} record{r.record_count === 1 ? "" : "s"} ·{" "}
+                    {r.match_count} match{r.match_count === 1 ? "" : "es"} ·{" "}
+                    {new Date(r.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <span className="glass-pill px-3 py-1 text-[10px] kicker">{r.status}</span>
               </div>
-              <span className="glass-pill px-3 py-1 text-[10px] kicker">{r.status}</span>
+              {/* Quick access to each sub-section of the run */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                <StageTile to={`/runs/${r.id}/extraction`}      label="AI Extraction"    hint="NER + genre" />
+                <StageTile to={`/runs/${r.id}`}                 label="Authority"        hint="Mazal · VIAF · Wikidata · KIMA" />
+                <StageTile to={`/runs/${r.id}/rdf`}             label="RDF Graph"        hint="HMO ontology" />
+                <StageTile to={`/runs/${r.id}/hmo-studio`}      label="HMO Wikibase"     hint="IIIF + crosswalk" />
+                <StageTile to={`/runs/${r.id}/wikidata-studio`} label="Wikidata Studio"  hint="QuickStatements" />
+              </div>
             </li>
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+
+function StageTile({ to, label, hint }: { to: string; label: string; hint: string }) {
+  return (
+    <Link to={to}
+          className="glass-pill px-3 py-2 hover:bg-white/[0.06] transition block">
+      <div className="text-xs font-medium text-ink">{label}</div>
+      <div className="muted text-[10px] leading-tight mt-0.5">{hint}</div>
+    </Link>
   );
 }

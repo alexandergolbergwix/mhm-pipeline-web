@@ -352,6 +352,133 @@ async def backfill_dates(
     }
 
 
+# ── Authority hardening rebuild ───────────────────────────────────────
+
+
+@router.post("/runs/{run_id}/authority/rebuild")
+async def rebuild_authority_guards(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Re-run the seven hardening guards on every persisted match.
+
+    Walks every ``AuthorityMatch`` row for the run, groups by control
+    number so the cross-row guards (cluster collapse, mazal-pair
+    collision) have full sibling context, and re-applies the
+    hardening orchestrator. Updates ``payload.guard_flags`` and
+    downgrades ``confidence`` when any guard fires. Does NOT re-match
+    against external APIs — this is a pure hardening pass over the
+    data already in the DB.
+
+    Returns counts: ``checked``, ``downgraded``, ``flags_added``.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    from app.pipeline import authority_hardening  # noqa: PLC0415
+
+    rows = (
+        await db.execute(
+            select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
+        )
+    ).scalars().all()
+
+    # Bucket rows by control number so siblings travel with the candidate
+    # through the cross-row guards.
+    by_cn: dict[str, list[AuthorityMatch]] = {}
+    for m in rows:
+        by_cn.setdefault(m.control_number, []).append(m)
+
+    checked = 0
+    downgraded = 0
+    flags_added = 0
+    confidence_rank = {"low": 0, "medium": 1, "high": 2}
+
+    for cn_rows in by_cn.values():
+        # Serialise each row into the shape the orchestrator expects.
+        snapshots: list[dict[str, Any]] = [
+            {
+                "matched_name": m.matched_name,
+                "entity_text": m.entity_text,
+                "entity_kind": m.entity_kind,
+                "role": m.role,
+                "confidence": m.confidence,
+                "mazal_id": m.mazal_id,
+                "viaf_id": m.viaf_id,
+                "wikidata_qid": m.wikidata_qid,
+                "payload": dict(m.payload or {}),
+                "_db_row": m,  # private — popped before passing to guards
+            }
+            for m in cn_rows
+        ]
+
+        for snap in snapshots:
+            m = snap.pop("_db_row")
+            checked += 1
+            payload_pre = dict(snap.get("payload") or {})
+            old_flags = set(payload_pre.get("guard_flags") or [])
+            old_conf = snap["confidence"]
+
+            siblings = [
+                {k: v for k, v in other.items() if k != "_db_row"}
+                for other in snapshots if other is not snap
+            ]
+            ctx = authority_hardening.HardeningContext(
+                siblings=siblings,
+                preferred_name_lat=payload_pre.get("preferred_name_lat"),
+                biographical_dates_in_marc=bool(
+                    payload_pre.get("birth_year") or payload_pre.get("death_year")
+                ),
+                entity_kind=str(snap.get("entity_kind") or "person"),
+                enable_wikidata_crosscheck=False,
+            )
+            hardened = authority_hardening.apply_hardening_guards(snap, context=ctx)
+
+            new_flags = set(hardened["payload"].get("guard_flags") or [])
+            added = new_flags - old_flags
+            flags_added += len(added)
+
+            new_conf = str(hardened["confidence"])
+            conf_changed = (
+                confidence_rank.get(new_conf, 1) < confidence_rank.get(old_conf, 1)
+            )
+            if conf_changed:
+                downgraded += 1
+
+            # Re-derive source from the IDs that survived hardening.
+            sources = [
+                s for s, val in (
+                    ("mazal", hardened["mazal_id"]),
+                    ("viaf", hardened["viaf_id"]),
+                    ("wikidata", hardened["wikidata_qid"]),
+                ) if val
+            ]
+            if len(sources) >= 2:
+                new_source = "cross_source"
+            elif sources:
+                new_source = sources[0]
+            else:
+                new_source = m.source or ""
+
+            # Persist back. JSON column needs a fresh dict to register.
+            payload_post = dict(hardened["payload"])
+            payload_post["sources"] = sources
+            payload_post["source_count"] = len(sources)
+            m.confidence = new_conf
+            m.mazal_id = hardened["mazal_id"] or ""
+            m.viaf_id = hardened["viaf_id"] or ""
+            m.wikidata_qid = hardened["wikidata_qid"] or ""
+            m.source = new_source
+            m.payload = payload_post
+
+    await db.commit()
+    return {
+        "checked": checked,
+        "downgraded": downgraded,
+        "flags_added": flags_added,
+    }
+
+
 # ── Editable fields (curator overrides on matches + records) ──────────
 
 

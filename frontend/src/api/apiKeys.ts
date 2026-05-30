@@ -1,6 +1,11 @@
 import { api } from "@/api/client";
 
-export type ApiKeyName = "gemini" | "wikidata" | "wikibase_cloud_bot_password";
+export type ApiKeyName =
+  | "gemini"
+  | "wikidata"
+  | "wikibase_cloud_bot_username"
+  | "wikibase_cloud_bot_password"
+  | "huggingface";
 
 export interface ApiKeyStatus {
   name: ApiKeyName;

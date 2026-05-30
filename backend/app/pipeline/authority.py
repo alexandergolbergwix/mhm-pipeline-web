@@ -264,6 +264,73 @@ class DesktopMatcher(AuthorityMatcher):
             # unmatched" honestly.
             return []
 
+        # ── Stage 3 hardening guards (Rules 23–29) ──────────────────────
+        # The seven guards mirror the desktop's
+        # ``AuthorityWorker._match_marc_person_entry`` post-pass:
+        # placeholder filter, short-name homonym, cluster collapse,
+        # NLI-strict, Wikidata cross-check, Mazal-pair collision,
+        # corporate / meeting routing. Each guard is pure; the
+        # orchestrator accumulates fired flags into payload.guard_flags
+        # and downgrades confidence to the lowest fired bucket.
+        #
+        # Cross-row guards (cluster collapse, mazal-pair collision) need
+        # sibling matches in the same record. At first-pass match time
+        # we don't yet know the siblings (matches stream into the DB
+        # row-by-row), so we pass ``[]``. The ``/authority/rebuild``
+        # endpoint re-runs the guards after every match is persisted,
+        # at which point sibling context is complete.
+        from app.pipeline import authority_hardening  # noqa: PLC0415
+
+        prelim = {
+            "matched_name": text,
+            "entity_text": text,
+            "entity_kind": "person" if role != "place" else "place",
+            "confidence": confidence,
+            "mazal_id": mazal_id,
+            "viaf_id": viaf_id,
+            "wikidata_qid": wikidata_qid,
+            "payload": {
+                "guard_flags": guards,
+                "viaf_uri": f"https://viaf.org/viaf/{viaf_id}" if viaf_id else "",
+            },
+        }
+        hardened = authority_hardening.apply_hardening_guards(
+            prelim,
+            context=authority_hardening.HardeningContext(
+                siblings=[],
+                preferred_name_lat=text,
+                biographical_dates_in_marc=bool(birth_year or death_year),
+                entity_kind=prelim["entity_kind"],
+                enable_wikidata_crosscheck=False,
+            ),
+        )
+        confidence = str(hardened["confidence"])
+        mazal_id = hardened["mazal_id"] or ""
+        viaf_id = hardened["viaf_id"] or ""
+        wikidata_qid = hardened["wikidata_qid"] or ""
+        guards = list(hardened["payload"].get("guard_flags") or [])
+        hard_reasoning = (hardened["payload"].get("reasoning") or "").strip()
+        if hard_reasoning:
+            reasoning_parts.append(hard_reasoning)
+
+        # If the placeholder guard cleared every id, drop the candidate
+        # so the Review UI doesn't get an empty row.
+        if not (mazal_id or viaf_id or wikidata_qid):
+            return []
+
+        # Re-derive the source label after guards may have stripped ids.
+        sources_after = [
+            s for s, val in (
+                ("mazal", mazal_id), ("viaf", viaf_id), ("wikidata", wikidata_qid),
+            ) if val
+        ]
+        if len(sources_after) >= 2:
+            source_label = "cross_source"
+        elif len(sources_after) == 1:
+            source_label = sources_after[0]
+        else:
+            source_label = "heuristic"
+
         primary = Candidate(
             matched_name=text,
             confidence=confidence,
@@ -272,8 +339,8 @@ class DesktopMatcher(AuthorityMatcher):
             viaf_id=viaf_id,
             wikidata_qid=wikidata_qid,
             payload={
-                "sources": sources,
-                "source_count": len(sources),
+                "sources": sources_after or sources,
+                "source_count": len(sources_after) or len(sources),
                 "guard_flags": guards,
                 "birth_year": birth_year,
                 "death_year": death_year,

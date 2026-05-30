@@ -1,0 +1,53 @@
+# Skill — mhm-pipeline-web-runtime
+
+Operate the MHM Pipeline Web app: start services, run tests,
+smoke-check routers, sync from the desktop pipeline, and follow the
+architectural invariants in `CLAUDE.md`.
+
+## When to invoke
+
+Any prompt that asks to:
+- Run, stop, or restart the FastAPI backend or Vite frontend.
+- Run unit / integration / e2e tests.
+- Verify router registration after a backend change.
+- Re-mirror `backend/converter/` from the desktop tree.
+- Add a new section / route to the 5-section project hierarchy.
+
+## Invariants this skill enforces
+
+Read `CLAUDE.md` Rules W-1 through W-10 in full before suggesting any
+architectural change. Highlights:
+
+- **W-1**: eval-agent stays a subprocess (argv + env + stdout). No
+  cross-imports.
+- **W-2**: AI verify UI never accepts free-text prompts; only
+  registry actions in `backend/app/pipeline/agent_actions.py`.
+- **W-3**: No "Stage N" in user-facing strings. Use real names:
+  AI Extraction · Authority · RDF Graph · HMO Wikibase ·
+  Wikidata Studio.
+- **W-4 / W-5**: Wikidata + Wikibase Cloud safety guards are
+  byte-identical to desktop. Never weaken in isolation.
+- **W-6**: Secrets are encrypted per user; passed via env to
+  subprocesses, never argv.
+- **W-7**: No top-level `import torch / transformers / huggingface_hub`.
+- **W-8**: Sync libs go through `asyncio.to_thread` /
+  `run_in_threadpool`.
+- **W-9**: SSE cancellation SIGTERMs the child subprocess.
+- **W-10**: `backend/converter/` is a byte-identical mirror of
+  `pipeline/converter/`.
+
+## Standard commands
+
+See `.codex/commands/*.md` for the executable form. The skill should
+prefer calling those over inlining new bash blocks.
+
+## Common pitfalls
+
+- Forgetting to restart uvicorn after a route change → 404 in the
+  browser. `/smoke-routers` then `/run-backend`.
+- Editing a file in `backend/converter/` without also updating the
+  desktop tree → next `/sync-from-desktop` clobbers the edit.
+- Adding an `import torch` at module top-level → breaks GUI-only
+  smokes. Move it inside the function body.
+- Surfacing a free-text prompt textarea in the AI verify modal →
+  violates W-2. Add the action to the registry instead.
