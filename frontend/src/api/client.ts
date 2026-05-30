@@ -32,6 +32,21 @@ async function request<T>(
     throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
+  // Guard against the FastAPI SPA-fallback "200 HTML" pathology: if a
+  // backend route is misregistered, FastAPI serves the prebuilt
+  // index.html with 200 and a text/html content-type. Without this
+  // check the SDK would throw a confusing "Unexpected token '<'" deep
+  // inside JSON.parse. Surfacing it here lets the caller show a clear
+  // "endpoint missing or backend stale — restart uvicorn" message.
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new ApiError(
+      502,
+      `Backend returned ${contentType || "no content-type"} instead of JSON for ` +
+        `${path}. Likely the route isn't registered or the dev server is stale; ` +
+        `restart uvicorn.`,
+    );
+  }
   return (await res.json()) as T;
 }
 
