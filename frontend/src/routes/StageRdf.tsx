@@ -77,7 +77,11 @@ export default function StageRdf() {
   const [error, setError]   = useState<string | null>(null);
 
   const [busy, setBusy] = useState<"build" | "validate" | "graph" | null>(null);
-  const [layout, setLayout] = useState<LayoutName>("cose-bilkent");
+  // Default = concentric: deterministic, finishes in <100ms even on 500
+  // nodes, and ALWAYS positions every node visibly. Force layouts
+  // (cose / cose-bilkent) are gorgeous but block the canvas while they
+  // run; pick them from the dropdown when you want the spider-web look.
+  const [layout, setLayout] = useState<LayoutName>("concentric");
   const [shaclOpen, setShaclOpen] = useState(false);
 
   const cyRef = useRef<Core | null>(null);
@@ -215,7 +219,21 @@ export default function StageRdf() {
       padding: 30,
     };
     if (layout === "cose-bilkent") {
-      return { ...base, name: "cose-bilkent", nodeRepulsion: 4500, idealEdgeLength: 80 } as unknown as LayoutOptions;
+      // Bounded iterations: with 500 nodes and 1500+ edges the
+      // unbounded sim runs for tens of seconds and the canvas stays
+      // blank in the meantime. 2000 iterations is plenty for a
+      // visually-coherent layout and finishes in ~1s.
+      return { ...base, name: "cose-bilkent",
+        nodeRepulsion: 4500, idealEdgeLength: 80,
+        numIter: 2000, randomize: true, quality: "default",
+      } as unknown as LayoutOptions;
+    }
+    if (layout === "cose") {
+      // Stock cose has a similar issue — bound runtime so the page
+      // doesn't appear empty.
+      return { ...base, name: "cose",
+        numIter: 1500, animate: false,
+      } as unknown as LayoutOptions;
     }
     if (layout === "dagre") {
       return { ...base, name: "dagre", rankDir: "LR", nodeSep: 40, rankSep: 70 } as unknown as LayoutOptions;
@@ -239,6 +257,44 @@ export default function StageRdf() {
     });
     cy.on("mouseover", "edge", (evt) => evt.target.addClass("hover"));
     cy.on("mouseout",  "edge", (evt) => evt.target.removeClass("hover"));
+  }
+
+  // ── React-cytoscapejs quirk: the ``layout`` prop only runs once at
+  // mount. When elements load asynchronously (status fetch → setGraph
+  // → re-render), the canvas adds the nodes but never positions them
+  // — every node sits at (0,0). Solution: when elements arrive, run a
+  // fresh layout against the cy instance, then fit + center.
+  // Also re-runs when the user picks a different layout from the
+  // dropdown.
+  const [layoutRunning, setLayoutRunning] = useState(false);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || elements.length === 0) return;
+    setLayoutRunning(true);
+    // Give the layout extension time to register if HMR just re-loaded.
+    const handle = window.requestAnimationFrame(() => {
+      try {
+        const lay = cy.layout(layoutOptions);
+        lay.one("layoutstop", () => {
+          cy.fit(undefined, 30);
+          setLayoutRunning(false);
+        });
+        lay.run();
+        // Synchronous layouts (concentric / breadthfirst / grid) don't
+        // emit layoutstop the way force layouts do — fit immediately
+        // as well so the user always sees the graph.
+        cy.fit(undefined, 30);
+      } catch (exc) {
+        console.warn("cy layout failed:", exc);
+        setLayoutRunning(false);
+      }
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [elements, layoutOptions]);
+
+  function fitToScreen() {
+    cyRef.current?.fit(undefined, 30);
   }
 
   const statusLabel = status?.status ?? "idle";
@@ -292,6 +348,12 @@ export default function StageRdf() {
                   ))}
                 </select>
               </span>
+              <button onClick={fitToScreen}
+                      disabled={!graph || elements.length === 0}
+                      title="Recenter + zoom to fit the visible graph"
+                      className="button-ghost text-sm">
+                Fit
+              </button>
             </div>
             {status && (
               <div className="muted text-sm">
@@ -342,6 +404,11 @@ export default function StageRdf() {
                     ? "No graph yet — click Build RDF."
                     : busy === "graph" ? "Loading graph…" : "Click Build RDF to refresh."}
                 </p>
+              </div>
+            )}
+            {graph && layoutRunning && (
+              <div className="absolute top-3 right-3 glass-pill px-3 py-1 text-[10px] kicker text-biu-sky">
+                Computing layout…
               </div>
             )}
           </div>
