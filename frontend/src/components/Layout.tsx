@@ -19,6 +19,7 @@ export function Layout({ children }: Props) {
 
         <nav className="flex items-center gap-3 text-sm">
           <NavItem to="/">Projects</NavItem>
+          <NavItem to="/orchestrator">AI orchestrator</NavItem>
           {user?.role === "admin" && <NavItem to="/admin/invites">Invites</NavItem>}
           <NavItem to="/settings">Settings</NavItem>
         </nav>
