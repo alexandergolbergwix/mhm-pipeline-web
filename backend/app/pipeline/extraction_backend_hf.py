@@ -191,21 +191,36 @@ class HfApiInferenceBackend(InferenceBackend):
         self, slot: _ModelSlot, text: str, *,
         kind: str,
     ) -> Any:
-        """Call HF's serverless inference; retry on 503 cold-start."""
+        """Call HF's serverless inference; retry on 503 cold-start.
+
+        The huggingface_hub 1.x InferenceClient occasionally leaks a
+        ``StopIteration`` out of its internal generator pipeline. PEP
+        479 forbids that propagating through ``asyncio.to_thread``,
+        so we wrap the call in a thunk that catches StopIteration and
+        re-raises as RuntimeError.
+        """
         assert self._client is not None
         last_exc: Exception | None = None
+        client = self._client
+
+        def _call_token() -> Any:
+            try:
+                return client.token_classification(text, model=slot.repo_id)
+            except StopIteration as exc:
+                raise RuntimeError(f"InferenceClient leaked StopIteration: {exc}")
+
+        def _call_text() -> Any:
+            try:
+                return client.text_classification(text, model=slot.repo_id)
+            except StopIteration as exc:
+                raise RuntimeError(f"InferenceClient leaked StopIteration: {exc}")
+
         for attempt in range(_MAX_RETRIES):
             try:
                 if kind == "token-classification":
-                    out = await asyncio.to_thread(
-                        self._client.token_classification,
-                        text, model=slot.repo_id,
-                    )
+                    out = await asyncio.to_thread(_call_token)
                 else:
-                    out = await asyncio.to_thread(
-                        self._client.text_classification,
-                        text, model=slot.repo_id,
-                    )
+                    out = await asyncio.to_thread(_call_text)
                 return out
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
@@ -263,18 +278,34 @@ def _is_rate_limited(exc: Exception) -> bool:
 # ── Output normalisation ─────────────────────────────────────────────
 
 
+def _attr(item: Any, name: str, default: Any = None) -> Any:
+    """Read a field from either a dict OR a HF 1.x typed dataclass.
+
+    huggingface_hub 1.x returns typed dataclass objects (no ``.get``);
+    earlier versions returned plain dicts. Production code needs to
+    tolerate both.
+    """
+    if isinstance(item, dict):
+        return item.get(name, default)
+    return getattr(item, name, default)
+
+
 def _normalise_token_classification(
     raw: Any, *, role: str,
 ) -> list[Entity]:
     """Convert HF token-classification output to our Entity shape.
 
-    HF returns a list of:
-        {entity_group: "PERSON" | "OWNER" | …,
-         score: float,
-         word: str,
-         start: int, end: int}
+    HF returns a list of either dicts (pre-1.0) or
+    ``TokenClassificationOutputElement`` dataclasses (1.x+) with
+    fields::
 
-    Our pipeline expects (per the desktop NerWorker shape):
+        entity_group: "PERSON" | "OWNER" | …
+        score: float
+        word: str
+        start: int, end: int
+
+    Our pipeline expects (per the desktop NerWorker shape)::
+
         {text, role/type, start, end, confidence, source}
     """
     out: list[Entity] = []
@@ -282,14 +313,12 @@ def _normalise_token_classification(
         return out
     label_field = "role" if role == "person" else "type"
     for item in raw:
-        if not isinstance(item, dict):
-            continue
         ent: Entity = {
-            "text":       str(item.get("word") or "").strip(),
-            label_field:  str(item.get("entity_group") or item.get("entity") or "").upper(),
-            "start":      int(item.get("start") or 0),
-            "end":        int(item.get("end") or 0),
-            "confidence": float(item.get("score") or 0.0),
+            "text":       str(_attr(item, "word") or "").strip(),
+            label_field:  str(_attr(item, "entity_group") or _attr(item, "entity") or "").upper(),
+            "start":      int(_attr(item, "start") or 0),
+            "end":        int(_attr(item, "end") or 0),
+            "confidence": float(_attr(item, "score") or 0.0),
         }
         # Person NER on the desktop also emits ``model_confidence``;
         # HF returns one score so we set both to the same value.
@@ -303,20 +332,27 @@ def _normalise_token_classification(
 def _normalise_text_classification(raw: Any) -> list[GenrePred]:
     """Convert HF text-classification output to genre predictions.
 
-    HF returns either a single dict or a list of dicts:
-        {label: str, score: float}
-
-    We pass through every label (the caller drops ``"other"``).
+    HF 1.x returns a list of ``TextClassificationOutputElement``
+    dataclasses with ``label`` + ``score`` attrs; earlier versions
+    returned dicts. We pass through every label (caller drops "other").
     """
     out: list[GenrePred] = []
-    items = raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) else []
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, (dict, object)) and (
+        _attr(raw, "label") is not None
+    ):
+        items = [raw]
+    else:
+        items = []
     for item in items:
-        if not isinstance(item, dict):
-            continue
-        label = str(item.get("label") or "").strip()
+        label = str(_attr(item, "label") or "").strip()
         if not label:
             continue
-        out.append({"label": label, "confidence": float(item.get("score") or 0.0)})
+        out.append({
+            "label":      label,
+            "confidence": float(_attr(item, "score") or 0.0),
+        })
     return out
 
 
