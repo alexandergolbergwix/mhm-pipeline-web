@@ -205,7 +205,14 @@ class HfApiInferenceBackend(InferenceBackend):
         """
         import httpx  # noqa: PLC0415
 
-        url = f"https://api-inference.huggingface.co/models/{slot.repo_id}"
+        # HF migrated the Serverless Inference API endpoint in 2025.
+        # The old api-inference.huggingface.co host is decommissioned;
+        # requests now go through the provider router under
+        # router.huggingface.co. For the ``hf-inference`` provider
+        # (HF's own infra) + non-feature-extraction pipeline tasks,
+        # the URL pattern is ``/hf-inference/models/{model_id}``
+        # (no /v1 prefix; that's only for chat/completions).
+        url = f"https://router.huggingface.co/hf-inference/models/{slot.repo_id}"
         headers = {
             "Authorization":  f"Bearer {self._token}",
             "Accept":         "application/json",
