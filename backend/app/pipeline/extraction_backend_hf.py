@@ -120,19 +120,64 @@ class HfApiInferenceBackend(InferenceBackend):
                 "HuggingFace token is required for hf-api mode. "
                 "Add one in Settings → Credentials.",
             )
-        # We bypass InferenceClient in 1.x (see _invoke for the rationale)
-        # and go direct against api-inference.huggingface.co. No client
-        # construction needed.
         self._client = "direct-http"
 
+        # Probe each model's deployment status on hf-inference. HF
+        # stopped auto-warming arbitrary user-pushed models — the
+        # ``inference`` field on the model-info API is the canonical
+        # signal: "warm" / "cold" → deployed; null → not enabled.
+        # Models with no serverless deployment will silently return
+        # errors at inference time, so we surface that state up-front.
+        import httpx  # noqa: PLC0415
+
         notes: dict[str, str] = {}
-        for role, slot in self._slots.items():
-            if not slot.repo_id:
-                notes[role] = "no model id configured (push to HF first)"
-                slot.available = False
-                continue
-            slot.available = True
-            notes[role] = slot.repo_id
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            for role, slot in self._slots.items():
+                if not slot.repo_id:
+                    notes[role] = "no model id configured"
+                    slot.available = False
+                    continue
+                try:
+                    r = await http.get(
+                        f"https://huggingface.co/api/models/{slot.repo_id}",
+                        headers={"Authorization": f"Bearer {self._token}"},
+                    )
+                except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+                    notes[role] = f"could not reach HF API: {exc}"
+                    slot.available = False
+                    continue
+                if r.status_code == 401:
+                    notes[role] = "HF token rejected (401) — re-check it in Settings"
+                    slot.available = False
+                    continue
+                if r.status_code == 403:
+                    notes[role] = "gated/private — accept terms or grant token access"
+                    slot.available = False
+                    continue
+                if r.status_code == 404:
+                    notes[role] = f"not found on HF: {slot.repo_id}"
+                    slot.available = False
+                    continue
+                if r.status_code != 200:
+                    notes[role] = f"HF API {r.status_code}: {r.text[:120]}"
+                    slot.available = False
+                    continue
+                meta = r.json() if r.content else {}
+                inference_state = meta.get("inference")
+                if inference_state in ("warm", "cold"):
+                    slot.available = True
+                    notes[role] = f"{slot.repo_id} ({inference_state})"
+                else:
+                    # The decisive condition: model is on the Hub but
+                    # not deployed for serverless inference. Curator
+                    # action required: visit the model page and click
+                    # 'Deploy → Inference Providers → hf-inference'.
+                    slot.available = False
+                    notes[role] = (
+                        f"not enabled for HF Serverless Inference. "
+                        f"Visit huggingface.co/{slot.repo_id} and click "
+                        "'Deploy → Inference Providers' to enable."
+                    )
 
         self._availability = ModelAvailability(
             person=self._slots["person"].available,
