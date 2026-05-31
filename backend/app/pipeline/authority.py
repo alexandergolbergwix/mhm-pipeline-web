@@ -20,6 +20,7 @@ Configuration (env vars, optional — sensible local-dev defaults):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -27,8 +28,6 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-
-from fastapi.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +222,9 @@ class DesktopMatcher(AuthorityMatcher):
         is_place = role in ("place", "subject") and _looks_like_place(text, marc_record)
         if is_place and self._kima is not None:
             try:
-                uri = self._kima.match_place(text)
+                uri = await self._kima_match_place(
+                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                )
                 if uri:
                     sources.append("kima")
                     # Pull the QID off the URI for the wikidata column.
@@ -246,7 +247,9 @@ class DesktopMatcher(AuthorityMatcher):
         # — Mazal —
         if self._mazal is not None:
             try:
-                mid = self._mazal.match_person(text)
+                mid = await self._mazal_match_person(
+                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                )
                 if mid:
                     mazal_id = str(mid)
                     sources.append("mazal")
@@ -255,7 +258,10 @@ class DesktopMatcher(AuthorityMatcher):
                     # authority row and resolve it (handles Hebrew
                     # century, "נפטר 1628", "1542-1620", …).
                     try:
-                        details = self._mazal.get_person_details(mid) or {}
+                        details = await self._mazal_get_details(
+                            mid, db_session=db_session, user_id=user_id,
+                            skip_cache=skip_cache,
+                        ) or {}
                         dates_str = (details.get("dates") or "").strip()
                         if dates_str:
                             from converter.transformer.date_resolver import (  # noqa: PLC0415
@@ -279,7 +285,9 @@ class DesktopMatcher(AuthorityMatcher):
                 # the GND/LCCN/ISNI/BnF cluster IDs the desktop pipeline
                 # threads into person Wikidata items) without a second
                 # round-trip per candidate.
-                meta = self._viaf.match_person_with_metadata(text)
+                meta = await self._viaf_match_with_metadata(
+                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                )
                 if meta:
                     viaf_id = str(meta.get("viaf_id") or "")
                     if viaf_id:
@@ -295,7 +303,9 @@ class DesktopMatcher(AuthorityMatcher):
         # — Wikidata —
         if self._wikidata is not None:
             try:
-                qid = self._wikidata.match_person(text)
+                qid = await self._wikidata_match_person(
+                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                )
                 if qid:
                     wikidata_qid = str(qid)
                     sources.append("wikidata")
@@ -303,7 +313,12 @@ class DesktopMatcher(AuthorityMatcher):
                     # Backfill via SPARQL — Rule 49 §B "Wikidata date
                     # backfill". Cheap with the on-disk cache.
                     try:
-                        b, d = self._wikidata.find_dates_by_qid(wikidata_qid)
+                        dates = await self._wikidata_dates(
+                            wikidata_qid, db_session=db_session, user_id=user_id,
+                            skip_cache=skip_cache,
+                        ) or {}
+                        b = dates.get("birth_year")
+                        d = dates.get("death_year")
                         if birth_year is None and b is not None:
                             birth_year = int(b)
                         if death_year is None and d is not None:

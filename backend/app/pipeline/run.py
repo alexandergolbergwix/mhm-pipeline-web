@@ -65,7 +65,10 @@ async def execute_run(
         entities = marc_ingest.extract_named_entities(rec)
         for entity in entities:
             try:
-                candidates = await matcher.match(entity, rec)
+                candidates = await matcher.match(
+                    entity, rec,
+                    db_session=db, user_id=run.created_by, skip_cache=False,
+                )
             except Exception as exc:  # noqa: BLE001 — never let one bad entity kill the run
                 logger.exception("authority match failed for %s", entity.get("text"))
                 candidates = []
