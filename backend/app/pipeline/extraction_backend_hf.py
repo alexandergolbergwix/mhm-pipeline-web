@@ -120,9 +120,10 @@ class HfApiInferenceBackend(InferenceBackend):
                 "HuggingFace token is required for hf-api mode. "
                 "Add one in Settings → Credentials.",
             )
-        # Lazy import: keeps the module clean on torch-only deploys.
-        from huggingface_hub import InferenceClient  # noqa: PLC0415
-        self._client = InferenceClient(token=self._token, timeout=60.0)
+        # We bypass InferenceClient in 1.x (see _invoke for the rationale)
+        # and go direct against api-inference.huggingface.co. No client
+        # construction needed.
+        self._client = "direct-http"
 
         notes: dict[str, str] = {}
         for role, slot in self._slots.items():
@@ -130,9 +131,6 @@ class HfApiInferenceBackend(InferenceBackend):
                 notes[role] = "no model id configured (push to HF first)"
                 slot.available = False
                 continue
-            # Mark available without calling — we discover cold-start
-            # state on first real call. A pre-warm hit per model would
-            # 4x the perceived startup cost without changing outcomes.
             slot.available = True
             notes[role] = slot.repo_id
 
@@ -191,54 +189,75 @@ class HfApiInferenceBackend(InferenceBackend):
         self, slot: _ModelSlot, text: str, *,
         kind: str,
     ) -> Any:
-        """Call HF's serverless inference; retry on 503 cold-start.
+        """Call HF's serverless inference via direct HTTP POST.
 
-        The huggingface_hub 1.x InferenceClient occasionally leaks a
-        ``StopIteration`` out of its internal generator pipeline. PEP
-        479 forbids that propagating through ``asyncio.to_thread``,
-        so we wrap the call in a thunk that catches StopIteration and
-        re-raises as RuntimeError.
+        We deliberately bypass huggingface_hub.InferenceClient's typed
+        wrappers — in 1.17 they leak ``StopIteration`` out of an
+        internal generator pipeline when a model isn't on the curated
+        Inference Providers list, which surfaces as cryptic errors at
+        every layer above. Direct HTTP against the legacy endpoint
+        ``api-inference.huggingface.co/models/{id}`` is older but still
+        works for any model the token has read access to, and the
+        error shapes are explicit (503 body carries ``estimated_time``).
+
+        Retries: cold-start (503 with estimated_time) up to 3 times,
+        429 with exponential backoff. Permanent errors propagate.
         """
-        assert self._client is not None
+        import httpx  # noqa: PLC0415
+
+        url = f"https://api-inference.huggingface.co/models/{slot.repo_id}"
+        headers = {
+            "Authorization":  f"Bearer {self._token}",
+            "Accept":         "application/json",
+            "Content-Type":   "application/json",
+        }
+        body = {
+            "inputs": text,
+            # Tell HF to block the response until the model is loaded
+            # (up to 60s) instead of returning 503 on cold starts.
+            "options": {"wait_for_model": True, "use_cache": True},
+        }
+
         last_exc: Exception | None = None
-        client = self._client
+        async with httpx.AsyncClient(timeout=120.0) as http:
+            for attempt in range(_MAX_RETRIES):
+                try:
+                    r = await http.post(url, json=body, headers=headers)
+                except (httpx.ConnectError, httpx.ReadTimeout) as exc:
+                    last_exc = exc
+                    if attempt < _MAX_RETRIES - 1:
+                        await asyncio.sleep(_BACKOFF_BASE_SEC * (2 ** attempt))
+                        continue
+                    raise _HfRequestFailed(f"network: {exc}") from exc
 
-        def _call_token() -> Any:
-            try:
-                return client.token_classification(text, model=slot.repo_id)
-            except StopIteration as exc:
-                raise RuntimeError(f"InferenceClient leaked StopIteration: {exc}")
-
-        def _call_text() -> Any:
-            try:
-                return client.text_classification(text, model=slot.repo_id)
-            except StopIteration as exc:
-                raise RuntimeError(f"InferenceClient leaked StopIteration: {exc}")
-
-        for attempt in range(_MAX_RETRIES):
-            try:
-                if kind == "token-classification":
-                    out = await asyncio.to_thread(_call_token)
-                else:
-                    out = await asyncio.to_thread(_call_text)
-                return out
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                est = _estimated_cold_start(exc)
-                if est is not None and attempt < _MAX_RETRIES - 1:
-                    wait = max(_COLD_START_MIN_SEC,
-                                min(_COLD_START_MAX_SEC, est + 1.0))
-                    logger.info("HF %s warming up; retry in %.1fs (attempt %d)",
-                                 slot.role, wait, attempt + 1)
+                if r.status_code == 200:
+                    return r.json()
+                # Cold start — HF returns 503 with {"error": "...loading", "estimated_time": N}
+                if r.status_code == 503 and attempt < _MAX_RETRIES - 1:
+                    body_json = _safe_json(r)
+                    est = float(body_json.get("estimated_time") or _COLD_START_MIN_SEC)
+                    wait = max(_COLD_START_MIN_SEC, min(_COLD_START_MAX_SEC, est + 1.0))
+                    logger.info(
+                        "HF %s warming up; retry in %.1fs (attempt %d/%d)",
+                        slot.role, wait, attempt + 1, _MAX_RETRIES,
+                    )
                     await asyncio.sleep(wait)
                     continue
-                if _is_rate_limited(exc) and attempt < _MAX_RETRIES - 1:
+                if r.status_code == 429 and attempt < _MAX_RETRIES - 1:
                     backoff = _BACKOFF_BASE_SEC * (2 ** attempt)
                     logger.info("HF %s rate-limited; backoff %.1fs", slot.role, backoff)
                     await asyncio.sleep(backoff)
                     continue
-                # Permanent error or attempts exhausted.
-                raise _HfRequestFailed(str(exc)) from exc
+                # Permanent error — surface the HF body verbatim so the
+                # operator sees the real reason (model not deployed,
+                # unauthorised, gated, etc).
+                body_json = _safe_json(r)
+                detail = (body_json.get("error")
+                          or body_json.get("warnings")
+                          or r.text[:300])
+                raise _HfRequestFailed(
+                    f"HTTP {r.status_code} from {slot.repo_id}: {detail}",
+                )
         raise _HfRequestFailed(f"max retries exhausted ({last_exc})")
 
 
@@ -273,6 +292,15 @@ def _estimated_cold_start(exc: Exception) -> float | None:
 
 def _is_rate_limited(exc: Exception) -> bool:
     return bool(_RATE_LIMIT_RE.search(str(exc)))
+
+
+def _safe_json(r: Any) -> dict[str, Any]:
+    """Best-effort JSON parse of an httpx Response. Never raises."""
+    try:
+        out = r.json()
+    except Exception:  # noqa: BLE001
+        return {}
+    return out if isinstance(out, dict) else {"value": out}
 
 
 # ── Output normalisation ─────────────────────────────────────────────
