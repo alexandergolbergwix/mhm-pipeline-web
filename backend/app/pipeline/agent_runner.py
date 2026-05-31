@@ -303,7 +303,12 @@ async def session_sandbox(
     """
     root = locate_eval_agent()
     state = root / "state"
-    base = state / "ai-verify-sessions" / run_id / session_id
+    # The verdict cache + the accumulated `runs/<ts>/` artefacts live at
+    # the per-run root so opening the modal again warm-hits prior
+    # Gemini judgements. The per-session subdir holds only the
+    # filtered fixture + SSE event log.
+    state_dir = state / "ai-verify-sessions" / run_id
+    base = state_dir / "sessions" / session_id
     pipeline_output = base / "pipeline-output"
     yield pipeline_output, base
 
@@ -372,31 +377,64 @@ def persist_session_event(session_dir: Path, ev: AgentEvent) -> None:
         fp.write(line + "\n")
 
 
+def _resolve_session_dir(run_id: str, session_id: str) -> Path | None:
+    """Find the on-disk dir for one session, accepting both layouts.
+
+    New layout (post-cache-fix): per-run ``state_dir`` with sessions
+    isolated under ``sessions/<session_id>/``; cache + runs/ live at
+    the state_dir root so verdicts warm-hit across sessions.
+
+    Legacy layout: session_id was a direct child of the run_id dir.
+    Old sessions written before the fix still load via this fallback.
+    """
+    try:
+        root = locate_eval_agent()
+    except FileNotFoundError:
+        return None
+    new = root / "state" / "ai-verify-sessions" / run_id / "sessions" / session_id
+    if new.exists():
+        return new
+    legacy = root / "state" / "ai-verify-sessions" / run_id / session_id
+    if legacy.exists():
+        return legacy
+    return None
+
+
 def list_sessions(run_id: str) -> list[dict[str, Any]]:
-    """Return all past AI verification sessions for *run_id*, newest first."""
+    """Return all past AI verification sessions for *run_id*, newest first.
+
+    Walks both the new ``sessions/<session_id>/`` subdir and the legacy
+    direct-child layout so sessions written before the cache-fix still
+    appear in the list.
+    """
     try:
         root = locate_eval_agent()
     except FileNotFoundError:
         return []
-    base = root / "state" / "ai-verify-sessions" / run_id
-    if not base.exists():
+    run_root = root / "state" / "ai-verify-sessions" / run_id
+    if not run_root.exists():
         return []
-    out: list[dict[str, Any]] = []
-    for child in sorted(base.iterdir(), reverse=True):
-        if not child.is_dir():
+    candidates: list[Path] = []
+    new_sessions = run_root / "sessions"
+    if new_sessions.exists():
+        candidates.extend(p for p in new_sessions.iterdir() if p.is_dir())
+    # Legacy layout: every direct child that has a trace.jsonl is a
+    # session. Skip the new "sessions" / "cache" / "runs" dirs.
+    for p in run_root.iterdir():
+        if not p.is_dir() or p.name in {"sessions", "cache", "runs"}:
             continue
+        if (p / "trace.jsonl").exists():
+            candidates.append(p)
+    out: list[dict[str, Any]] = []
+    for child in sorted(candidates, key=lambda p: p.name, reverse=True):
         meta = _session_meta(child)
         out.append({"session_id": child.name, **meta})
     return out
 
 
 def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
-    try:
-        root = locate_eval_agent()
-    except FileNotFoundError:
-        return None
-    base = root / "state" / "ai-verify-sessions" / run_id / session_id
-    if not base.exists():
+    base = _resolve_session_dir(run_id, session_id)
+    if base is None:
         return None
     events: list[dict[str, Any]] = []
     trace = base / "trace.jsonl"
@@ -410,11 +448,17 @@ def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
                     events.append(json.loads(line))
                 except json.JSONDecodeError:
                     continue
+    # Verdicts live next to the per-run state_dir's runs/ folder. For
+    # new-layout sessions that means base.parent.parent (state_dir);
+    # legacy sessions wrote runs/ under the session_dir, so fall back
+    # to the session_dir itself.
+    state_dir = base.parent.parent if base.parent.name == "sessions" else base
+    verdicts = read_run_verdicts(state_dir) or read_run_verdicts(base)
     return {
         "session_id": session_id,
         "run_id":     run_id,
         "events":     events,
-        "verdicts":   read_run_verdicts(base),
+        "verdicts":   verdicts,
     }
 
 
@@ -453,12 +497,8 @@ def _session_meta(session_dir: Path) -> dict[str, Any]:
 
 
 def purge_session_dir(run_id: str, session_id: str) -> None:
-    try:
-        root = locate_eval_agent()
-    except FileNotFoundError:
-        return
-    base = root / "state" / "ai-verify-sessions" / run_id / session_id
-    if base.exists():
+    base = _resolve_session_dir(run_id, session_id)
+    if base is not None and base.exists():
         shutil.rmtree(base, ignore_errors=True)
 
 

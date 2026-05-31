@@ -181,8 +181,17 @@ async def _session_event_stream(
     ``session.end`` framing and persists every event to disk for replay.
     """
     eval_root = locate_eval_agent()
-    base = eval_root / "state" / "ai-verify-sessions" / run_id / session_id
-    pipeline_output = base / "pipeline-output"
+    # Two paths, on purpose:
+    #   state_dir    — shared across every session of this run. Holds
+    #                  the eval-agent's verdict cache (so opening the
+    #                  modal again warm-hits prior judgements) and the
+    #                  accumulated `runs/<ts>/` artefacts.
+    #   session_dir  — isolated per session. Holds the filtered fixture
+    #                  fed to eval-agent and the SSE event audit log.
+    state_dir = eval_root / "state" / "ai-verify-sessions" / run_id
+    session_dir = state_dir / "sessions" / session_id
+    pipeline_output = session_dir / "pipeline-output"
+    base = session_dir  # legacy alias, kept for the trace + verdict reads below
 
     # Build the filtered fixture.
     by_cn: dict[str, list[dict[str, Any]]] = {}
@@ -229,7 +238,7 @@ async def _session_event_stream(
             pipeline_output=pipeline_output,
             evaluators=action.evaluators,
             api_key=api_key,
-            state_dir=base,
+            state_dir=state_dir,
             tier_model=tier_model,
             override_cache=override_cache,
             rpm=action.rate_limit_rpm,
@@ -242,7 +251,7 @@ async def _session_event_stream(
         # so the UI's verdict table fills in fully even if the live
         # event stream missed some (cache hits don't emit per-cand
         # progress lines).
-        for v in read_run_verdicts(base):
+        for v in read_run_verdicts(state_dir):
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)
             yield ev
