@@ -48,7 +48,7 @@ PredictText   = Callable[[str], Awaitable[list[Entity]]]
 PredictGenre  = Callable[[str, list[str]], Awaitable[list[GenrePred]]]
 
 
-ExtractionMode = Literal["local", "hf-api"]
+ExtractionMode = Literal["local", "hf-api", "modal"]
 
 
 @dataclass(frozen=True)
@@ -115,8 +115,12 @@ def resolve_mode(explicit: str | None = None) -> ExtractionMode:
     3. ``"local"`` default.
     """
     raw = (explicit or os.environ.get("EXTRACTION_MODE") or "local").strip().lower()
-    if raw in ("local", "hf-api", "hf"):
-        return "hf-api" if raw in ("hf-api", "hf") else "local"
+    if raw in ("local",):
+        return "local"
+    if raw in ("hf-api", "hf"):
+        return "hf-api"
+    if raw in ("modal",):
+        return "modal"
     logger.warning("Unknown EXTRACTION_MODE=%r; falling back to local", raw)
     return "local"
 
@@ -141,6 +145,15 @@ def build_backend(
     use the table since local-mode latency is dominated by torch +
     CPU, not by external I/O.
     """
+    if mode == "modal":
+        from app.pipeline.extraction_backend_modal import (  # noqa: PLC0415
+            ModalInferenceBackend,
+        )
+        return ModalInferenceBackend(
+            db_session=db_session,
+            user_id=user_id,
+            skip_cache=skip_cache,
+        )
     if mode == "hf-api":
         from app.pipeline.extraction_backend_hf import (  # noqa: PLC0415
             HfApiInferenceBackend,
