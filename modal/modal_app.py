@@ -202,8 +202,7 @@ class MhmNer:
         )
         print("MhmNer: all four models loaded")
 
-    @modal.fastapi_endpoint(method="POST", docs=True)
-    def extract(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _extract_sync(self, payload: dict[str, Any]) -> dict[str, Any]:
         """One record → all four model outputs.
 
         Request body:
@@ -248,35 +247,34 @@ class MhmNer:
             out["genre"] = []
         return out
 
-    @modal.fastapi_endpoint(method="GET")
-    def health(self) -> dict[str, Any]:
-        """Liveness probe — returns availability per model."""
-        return {
-            "ok":         True,
-            "person":     self.person     is not None,
-            "provenance": self.provenance is not None,
-            "contents":   self.contents   is not None,
-            "genre":      self.genre      is not None,
-        }
+    @modal.asgi_app()
+    def web(self):
+        """One ASGI app serving /extract (POST) + /health (GET) at the
+        same base URL. The backend's ModalInferenceBackend appends
+        these subpaths to MODAL_NER_URL — keeping both routes under one
+        base is what makes that work."""
+        from fastapi import FastAPI  # noqa: PLC0415
+
+        api = FastAPI(title="MHM NER", docs_url="/docs")
+
+        @api.post("/extract")
+        def extract(payload: dict[str, Any]):
+            return self._extract_sync(payload)
+
+        @api.get("/health")
+        def health():
+            return {
+                "ok":         True,
+                "person":     self.person     is not None,
+                "provenance": self.provenance is not None,
+                "contents":   self.contents   is not None,
+                "genre":      self.genre      is not None,
+            }
+
+        return api
 
 
-# ── Local entry point so `modal run modal_app.py` works for smoke tests ──
-
-
-@app.local_entrypoint()
-def smoke() -> None:
-    """Smoke-test against a real container. Prints the extracted entities."""
-    test_text = (
-        "ביאור על התורה / משה בן מימון. "
-        "הספר הוא העתקה של כתב יד מהמאה הט\"ז."
-    )
-    ner = MhmNer()
-    result = ner.extract.remote({
-        "text":  test_text,
-        "title": "ביאור על התורה",
-        "notes": [test_text],
-    })
-    print("person:    ", len(result.get("person", [])))
-    print("provenance:", len(result.get("provenance", [])))
-    print("contents:  ", len(result.get("contents", [])))
-    print("genre:     ", result.get("genre"))
+# Smoke-test after deploy with:
+#   curl -X POST "<deployed-url>/extract" \
+#     -H "Content-Type: application/json" \
+#     -d '{"text":"...","title":"...","notes":[]}'
