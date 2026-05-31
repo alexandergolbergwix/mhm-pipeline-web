@@ -75,6 +75,7 @@ def _results_path(run_id: uuid.UUID) -> Path:
 async def start_extraction_stream(
     run_id: uuid.UUID,
     mode: str | None = None,    # "local" | "hf-api"; default env / "local"
+    models: str | None = None,  # CSV of {person,provenance,contents,genre}
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
@@ -117,6 +118,16 @@ async def start_extraction_stream(
             ),
         )
 
+    # Parse the enabled-models CSV. Default: all four. Unknown roles
+    # are silently dropped; an empty set after parsing means "all".
+    _ALLOWED = {"person", "provenance", "contents", "genre"}
+    enabled: set[str] | None = None
+    if models:
+        picked = {p.strip() for p in models.split(",") if p.strip()}
+        enabled = picked & _ALLOWED
+        if not enabled:
+            enabled = None    # treat as "all"
+
     output_dir = _run_output_dir(run_id)
     return StreamingResponse(
         sse_stream(_as_agent_events(extract_entities_stream(
@@ -124,6 +135,7 @@ async def start_extraction_stream(
             output_dir=output_dir,
             hf_token=hf_token,
             mode=mode,
+            enabled_models=enabled,
         ))),
         media_type="text/event-stream",
         headers={

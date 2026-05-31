@@ -87,6 +87,7 @@ async def extract_entities_stream(
     hf_token: str | None,
     model_overrides: dict[str, str] | None = None,
     mode: str | None = None,
+    enabled_models: set[str] | None = None,
 ) -> AsyncIterator[ExtractionEvent]:
     """Stream NER + genre predictions for the given parsed MARC records.
 
@@ -154,24 +155,39 @@ async def extract_entities_stream(
         )
         return
 
+    # Apply the user's per-role on/off choice (from the Models
+    # settings panel). Disabled roles drop to "unavailable" before
+    # any inference runs, which means _process_one_record skips them.
+    selected = enabled_models if enabled_models is not None else {
+        "person", "provenance", "contents", "genre",
+    }
+    effective_availability = type(availability)(
+        person=     availability.person     and ("person"     in selected),
+        provenance= availability.provenance and ("provenance" in selected),
+        contents=   availability.contents   and ("contents"   in selected),
+        genre=      availability.genre      and ("genre"      in selected),
+        notes={
+            **availability.notes,
+            **{r: "disabled by user"
+               for r in ("person", "provenance", "contents", "genre")
+               if r not in selected},
+        },
+    )
+
     # One ``extraction.model.ready`` per role so the UI's
-    # ModelStatusPanel can light up four pills independently. The
-    # HF backend may still need to cold-start on first call; the
-    # backend will emit nothing extra in that path (we lean on the
-    # caller's per-record progress for now). Future enhancement: have
-    # backends optionally push ``model.warming`` events for cold starts.
+    # ModelStatusPanel can light up four pills independently.
     for role, ready in (
-        ("person",     availability.person),
-        ("provenance", availability.provenance),
-        ("contents",   availability.contents),
-        ("genre",      availability.genre),
+        ("person",     effective_availability.person),
+        ("provenance", effective_availability.provenance),
+        ("contents",   effective_availability.contents),
+        ("genre",      effective_availability.genre),
     ):
         yield ExtractionEvent(
             type="extraction.model.ready" if ready else "extraction.model.unavailable",
             payload={
                 "model":   role,
                 "ready":   ready,
-                "note":    availability.notes.get(role, ""),
+                "note":    effective_availability.notes.get(role, ""),
                 "backend": resolved_mode,
             },
         )
@@ -186,7 +202,9 @@ async def extract_entities_stream(
         )
 
         try:
-            per_record = await _process_one_record(record, backend)
+            per_record = await _process_one_record(
+                record, backend, enabled=selected,
+            )
         except Exception as exc:  # noqa: BLE001 — never let one record stop the stream
             logger.warning("Stage 2 record %s failed: %s", cn, exc)
             per_record = {
@@ -344,6 +362,8 @@ def _resolve_local_weights(filename_or_path: str) -> Path | None:
 async def _process_one_record(
     record: dict[str, Any],
     backend: InferenceBackend,
+    *,
+    enabled: set[str] | None = None,
 ) -> dict[str, Any]:
     """Async worker that runs every model on one record via *backend*.
 
@@ -368,50 +388,54 @@ async def _process_one_record(
 
     cn = str(record.get("_control_number") or record.get("control_number") or "")
     all_entities: list[dict[str, Any]] = []
+    en = enabled if enabled is not None else {"person", "provenance", "contents", "genre"}
 
     # ── 1. Person NER on notes + colophon ─────────────────────────────
     texts = _extract_person_texts(record)
-    for i, text in enumerate(texts):
-        offset = _segment_offset(texts, i)
-        try:
-            segment_entities = await backend.person_ner(text)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Person NER failed on %s: %s", cn, exc)
-            continue
-        for ent in segment_entities:
-            _shift_offsets(ent, offset)
-            ent["source"] = "person_ner"
-        all_entities.extend(segment_entities)
+    if "person" in en:
+        for i, text in enumerate(texts):
+            offset = _segment_offset(texts, i)
+            try:
+                segment_entities = await backend.person_ner(text)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Person NER failed on %s: %s", cn, exc)
+                continue
+            for ent in segment_entities:
+                _shift_offsets(ent, offset)
+                ent["source"] = "person_ner"
+            all_entities.extend(segment_entities)
 
     # ── 2. Provenance NER on MARC 561 ─────────────────────────────────
-    provenance_text = record.get("provenance") or ""
-    if isinstance(provenance_text, str) and provenance_text.strip():
-        clean = provenance_text.replace('""', '"')
-        for segment in _split_pipe(clean):
-            if len(segment) < 3:
-                continue
-            try:
-                prov_entities = await backend.provenance_ner(segment)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Provenance NER failed on %s: %s", cn, exc)
-                continue
-            for ent in prov_entities:
-                ent["source"] = "provenance_ner"
-            all_entities.extend(prov_entities)
+    if "provenance" in en:
+        provenance_text = record.get("provenance") or ""
+        if isinstance(provenance_text, str) and provenance_text.strip():
+            clean = provenance_text.replace('""', '"')
+            for segment in _split_pipe(clean):
+                if len(segment) < 3:
+                    continue
+                try:
+                    prov_entities = await backend.provenance_ner(segment)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Provenance NER failed on %s: %s", cn, exc)
+                    continue
+                for ent in prov_entities:
+                    ent["source"] = "provenance_ner"
+                all_entities.extend(prov_entities)
 
     # ── 3. Contents NER on MARC 505 ───────────────────────────────────
-    for content in record.get("contents") or []:
-        text_505 = _flatten_content(content)
-        if not text_505 or len(text_505) < 5:
-            continue
-        try:
-            cont_entities = await backend.contents_ner(text_505)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Contents NER failed on %s: %s", cn, exc)
-            continue
-        for ent in cont_entities:
-            ent["source"] = "contents_ner"
-        all_entities.extend(cont_entities)
+    if "contents" in en:
+        for content in record.get("contents") or []:
+            text_505 = _flatten_content(content)
+            if not text_505 or len(text_505) < 5:
+                continue
+            try:
+                cont_entities = await backend.contents_ner(text_505)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Contents NER failed on %s: %s", cn, exc)
+                continue
+            for ent in cont_entities:
+                ent["source"] = "contents_ner"
+            all_entities.extend(cont_entities)
 
     # ── 4. Build the full text for global offset rebasing ─────────────
     full_text = _build_full_text(texts, record)
@@ -429,18 +453,19 @@ async def _process_one_record(
 
     # ── 6. Genre classifier (P136 fallback) ───────────────────────────
     ml_genres: list[dict[str, Any]] = []
-    try:
-        title = str(record.get("title") or "").strip()
-        notes_list = [str(n) for n in (record.get("notes") or []) if n]
-        predictions = await backend.genre_classify(title, notes_list)
-        for item in predictions or []:
-            label = str(item.get("label") or "")
-            conf  = float(item.get("confidence") or 0.0)
-            if not label or label == "other":
-                continue
-            ml_genres.append({"label": label, "confidence": conf})
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Genre classifier failed on %s: %s", cn, exc)
+    if "genre" in en:
+        try:
+            title = str(record.get("title") or "").strip()
+            notes_list = [str(n) for n in (record.get("notes") or []) if n]
+            predictions = await backend.genre_classify(title, notes_list)
+            for item in predictions or []:
+                label = str(item.get("label") or "")
+                conf  = float(item.get("confidence") or 0.0)
+                if not label or label == "other":
+                    continue
+                ml_genres.append({"label": label, "confidence": conf})
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Genre classifier failed on %s: %s", cn, exc)
 
     return {
         "_control_number":         cn,

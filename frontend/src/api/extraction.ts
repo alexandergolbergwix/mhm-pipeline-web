@@ -66,14 +66,23 @@ export interface ExtractionStatus {
 
 /** Open the Stage-2 SSE stream. Cancel by calling cancel().
  *  ``mode`` picks the inference backend ("local" = on our server,
- *  "hf-api" = HuggingFace Inference Providers). Default is whatever
- *  the server's EXTRACTION_MODE env says (usually "local"). */
-export function streamExtraction(runId: string, mode?: "local" | "hf-api"): {
+ *  "hf-api" = HuggingFace Inference Providers). The web app always
+ *  uses "hf-api"; ``mode`` stays in the signature for future flexibility.
+ *  ``models`` enables a subset of {person, provenance, contents, genre};
+ *  omit to run every available model. */
+export function streamExtraction(
+  runId: string,
+  mode?: "local" | "hf-api",
+  models?: string[],
+): {
   events: AsyncIterableIterator<ExtractionEvent>;
   cancel: () => void;
 } {
   const controller = new AbortController();
-  const qs = mode ? `?mode=${encodeURIComponent(mode)}` : "";
+  const params: string[] = [];
+  if (mode)              params.push(`mode=${encodeURIComponent(mode)}`);
+  if (models?.length)    params.push(`models=${encodeURIComponent(models.join(","))}`);
+  const qs = params.length > 0 ? `?${params.join("&")}` : "";
   const events = (async function* (): AsyncIterableIterator<ExtractionEvent> {
     const res = await fetch(`/api/runs/${runId}/extraction/start-stream${qs}`, {
       method:      "POST",
