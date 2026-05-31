@@ -93,14 +93,17 @@ def _bake_weights() -> None:
 # ── Image: code + deps + pre-baked weights ───────────────────────────────
 
 
+# Resolve the desktop pipeline repo path. This file is at
+# <web-repo>/modal/modal_app.py, so the sibling pipeline repo lives
+# at <web-repo>/../pipeline.
+#
+# We do NOT pre-check the path here — Modal re-imports this module
+# inside its build container (where the path resolves to /pipeline
+# and obviously doesn't exist) when running _bake_weights. Any
+# top-level os.path check there raises SystemExit and kills the build.
+# add_local_dir already errors clearly when run locally and the
+# local_path is missing, so the runtime check is redundant.
 PIPELINE_ROOT = Path(__file__).resolve().parent.parent.parent / "pipeline"
-
-# Sanity check at deploy time so a missing sibling repo errors loudly.
-if not (PIPELINE_ROOT / "ner" / "inference_pipeline.py").exists():
-    raise SystemExit(
-        f"Desktop pipeline repo not found at {PIPELINE_ROOT}. "
-        "Expected sibling layout: ../pipeline/ner/inference_pipeline.py"
-    )
 
 
 image = (
