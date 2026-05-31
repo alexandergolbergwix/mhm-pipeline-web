@@ -375,14 +375,24 @@ def _match_to_desktop_shape(m: AuthorityMatch) -> dict[str, Any]:
 async def _resolve_gemini_key(
     db: AsyncSession, auth: AuthContext,
 ) -> str | None:
+    """Unwrap the user's encrypted Gemini key.
+
+    Fixed: ``unwrap_user_gemini_key`` takes ``(db, *, user_id, kek)``
+    as keyword-only args. The earlier ``unwrap_user_gemini_key(db, auth)``
+    call raised TypeError silently (caught by the broad except → DEBUG
+    log → return None), which surfaced as 'No Gemini API key configured'
+    even when the row was present in the DB.
+    """
     import os
     try:
         from app.pipeline.ai_verifier import (  # noqa: PLC0415
             unwrap_user_gemini_key,
         )
-        key = await unwrap_user_gemini_key(db, auth)
+        key = await unwrap_user_gemini_key(
+            db, user_id=auth.user.id, kek=auth.kek,
+        )
         if key:
             return key
     except Exception as exc:  # noqa: BLE001
-        logger.debug("could not unwrap stored Gemini key: %s", exc)
+        logger.warning("could not unwrap stored Gemini key: %s", exc)
     return os.environ.get("GEMINI_API_KEY")
