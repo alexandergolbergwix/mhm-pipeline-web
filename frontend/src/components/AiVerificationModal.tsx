@@ -25,6 +25,7 @@ import {
 import {
   AgentFlowDiagram, makeInitialFlowState, reduceFlow, type FlowState,
 } from "@/components/AgentFlowDiagram";
+import { VerdictsTable } from "@/components/VerdictsTable";
 
 
 export interface AiVerificationModalProps {
@@ -104,12 +105,6 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
     [actions, actionId],
   );
 
-  // Stats card.
-  const verdictCount   = Object.values(verdicts).length;
-  const passCount      = Object.values(verdicts).filter((v) => verdictOverall(v) === "pass" || verdictOverall(v) === "full").length;
-  const partialCount   = Object.values(verdicts).filter((v) => verdictOverall(v) === "partial").length;
-  const failCount      = Object.values(verdicts).filter((v) => verdictOverall(v) === "fail").length;
-
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 backdrop-blur-md p-4 md:p-6"
          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -163,46 +158,26 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
         </section>
 
-        {/* Two-column body: verdicts left, step log right */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Verdicts */}
-          <section className="glass-pill p-3">
-            <div className="flex items-baseline justify-between mb-2">
-              <div className="kicker">Verdicts ({verdictCount})</div>
-              <div className="text-[11px] flex gap-2">
-                <span className="text-biu-sky">{passCount} pass</span>
-                <span className="text-yellow-300">{partialCount} partial</span>
-                <span className="text-red-300">{failCount} fail</span>
-              </div>
-            </div>
-            <ul className="space-y-1 text-xs max-h-72 overflow-auto">
-              {verdictCount === 0 && <li className="muted italic">Waiting for verdicts…</li>}
-              {Object.entries(verdicts).map(([id, v]) => (
-                <li key={id} className="flex gap-2 items-baseline">
-                  <VerdictPill overall={verdictOverall(v)} />
-                  <span className="flex-1 truncate" title={verdictReasoning(v)}>
-                    {verdictCandidateName(v)}
-                  </span>
-                  <span className="muted text-[10px]">{verdictRole(v)}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+        {/* Verdicts — full-width research table. Replaces the
+            previous tiny truncated list. */}
+        <VerdictsTable verdicts={verdicts} />
 
-          {/* Step log */}
-          <section className="glass-pill p-3">
-            <div className="kicker mb-2">Step log ({events.length})</div>
-            <ul className="space-y-1 text-[11px] font-mono max-h-72 overflow-auto">
-              {events.length === 0 && <li className="muted italic">Waiting for the first event…</li>}
-              {events.slice(-80).map((ev, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="muted shrink-0 w-28">{(ev.type as string).slice(0, 18).padEnd(18)}</span>
-                  <span className="text-ink/90 truncate">{stepLogLine(ev)}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
+        {/* Step log — collapsed by default so it doesn't compete
+            with the verdict table for attention. */}
+        <details className="glass-pill p-3">
+          <summary className="kicker cursor-pointer hover:text-ink">
+            Step log ({events.length})
+          </summary>
+          <ul className="space-y-1 text-[11px] font-mono max-h-48 overflow-auto mt-2">
+            {events.length === 0 && <li className="muted italic">Waiting for the first event…</li>}
+            {events.slice(-80).map((ev, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="muted shrink-0 w-28">{(ev.type as string).slice(0, 18).padEnd(18)}</span>
+                <span className="text-ink/90 truncate">{stepLogLine(ev)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       </div>
     </div>
   );
@@ -210,50 +185,6 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
 
 
 // ── Helpers ───────────────────────────────────────────────────────────
-
-
-function verdictOverall(ev: AgentEvent): string {
-  const v = (ev.verdict ?? ev.candidate ?? {}) as Record<string, unknown>;
-  return String(v.overall ?? "").toLowerCase() || "unknown";
-}
-
-
-function verdictCandidateName(ev: AgentEvent): string {
-  const c = (ev.candidate ?? {}) as Record<string, unknown>;
-  return String(c.name ?? c.text ?? c.entity_text ?? c.record_id ?? "(unknown)");
-}
-
-
-function verdictRole(ev: AgentEvent): string {
-  const c = (ev.candidate ?? {}) as Record<string, unknown>;
-  return String(c.role ?? c.sub_type ?? "");
-}
-
-
-function verdictReasoning(ev: AgentEvent): string {
-  const v = (ev.verdict ?? {}) as Record<string, unknown>;
-  return String(v.reasoning ?? v.note ?? "");
-}
-
-
-function VerdictPill({ overall }: { overall: string }) {
-  const tone =
-    overall === "pass" || overall === "full"  ? "text-biu-sky"
-    : overall === "partial"                    ? "text-yellow-300"
-    : overall === "fail"                       ? "text-red-300"
-    : "muted";
-  const glyph =
-    overall === "pass" || overall === "full"  ? "✓"
-    : overall === "partial"                    ? "~"
-    : overall === "fail"                       ? "✗"
-    : "?";
-  return (
-    <span className={`shrink-0 inline-block w-5 text-center font-bold ${tone}`}
-          title={overall}>
-      {glyph}
-    </span>
-  );
-}
 
 
 function stepLogLine(ev: AgentEvent): string {

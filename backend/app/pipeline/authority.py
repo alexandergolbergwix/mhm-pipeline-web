@@ -83,20 +83,128 @@ class DesktopMatcher(AuthorityMatcher):
 
     async def match(
         self, entity: dict[str, str], marc_record: dict[str, Any],
+        *,
+        # Optional inference-cache plumbing. When supplied, every
+        # external authority lookup (Mazal / VIAF / Wikidata / KIMA)
+        # routes through the shared inference_cache table. First call
+        # across the team populates; everyone else hits cache.
+        # ``skip_cache=True`` forces fresh upstream calls; the refresh
+        # still lands in the cache so the next caller warm-hits.
+        db_session: Any | None = None,
+        user_id: Any | None = None,
+        skip_cache: bool = False,
     ) -> list[Candidate]:
         text = (entity.get("text") or "").strip()
         if not text:
             return []
         role = entity.get("role", "")
-
-        # Run all three lookups on a worker thread so the sync sqlite +
-        # requests calls don't block uvicorn.
-        return await run_in_threadpool(
-            self._match_sync, text=text, role=role, marc_record=marc_record,
+        return await self._match_one(
+            text=text, role=role, marc_record=marc_record,
+            db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
 
-    def _match_sync(
-        self, *, text: str, role: str, marc_record: dict[str, Any],
+    # ── Cached per-matcher wrappers ────────────────────────────────────
+
+    async def _cached(
+        self, *, kind: str, query_summary: dict[str, Any],
+        fetch: Any,
+        db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> Any:
+        """Route through inference_cache when db_session is set."""
+        if db_session is None:
+            return await fetch()
+        from app.pipeline.inference_cache import cache_lookup_or_call  # noqa: PLC0415
+        return await cache_lookup_or_call(
+            db_session, kind=kind, query_summary=query_summary,
+            fetch=fetch, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _kima_match_place(
+        self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> str | None:
+        if self._kima is None:
+            return None
+        async def _f() -> str | None:
+            return await asyncio.to_thread(self._kima.match_place, text)
+        return await self._cached(
+            kind="authority.kima",
+            query_summary={"op": "match_place", "text": text},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _mazal_match_person(
+        self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> str | None:
+        if self._mazal is None:
+            return None
+        async def _f() -> str | None:
+            r = await asyncio.to_thread(self._mazal.match_person, text)
+            return str(r) if r else None
+        return await self._cached(
+            kind="authority.mazal",
+            query_summary={"op": "match_person", "text": text},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _mazal_get_details(
+        self, mazal_id: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> dict[str, Any] | None:
+        if self._mazal is None:
+            return None
+        async def _f() -> dict[str, Any]:
+            return await asyncio.to_thread(self._mazal.get_person_details, mazal_id)
+        return await self._cached(
+            kind="authority.mazal",
+            query_summary={"op": "get_details", "mazal_id": mazal_id},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _viaf_match_with_metadata(
+        self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> dict[str, Any] | None:
+        if self._viaf is None:
+            return None
+        async def _f() -> dict[str, Any] | None:
+            return await asyncio.to_thread(self._viaf.match_person_with_metadata, text)
+        return await self._cached(
+            kind="authority.viaf",
+            query_summary={"op": "match_person_with_metadata", "text": text},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _wikidata_match_person(
+        self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> str | None:
+        if self._wikidata is None:
+            return None
+        async def _f() -> str | None:
+            r = await asyncio.to_thread(self._wikidata.match_person, text)
+            return str(r) if r else None
+        return await self._cached(
+            kind="authority.wikidata",
+            query_summary={"op": "match_person", "text": text},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _wikidata_dates(
+        self, qid: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> dict[str, int | None] | None:
+        if self._wikidata is None:
+            return None
+        async def _f() -> dict[str, int | None]:
+            b, d = await asyncio.to_thread(self._wikidata.find_dates_by_qid, qid)
+            return {"birth_year": int(b) if b else None,
+                    "death_year": int(d) if d else None}
+        return await self._cached(
+            kind="authority.wikidata",
+            query_summary={"op": "find_dates_by_qid", "qid": qid},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _match_one(
+        self, *,
+        text: str, role: str, marc_record: dict[str, Any],
+        db_session: Any, user_id: Any, skip_cache: bool,
     ) -> list[Candidate]:
         sources: list[str] = []
         mazal_id = ""
