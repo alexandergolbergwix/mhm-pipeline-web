@@ -42,10 +42,18 @@ logger = logging.getLogger(__name__)
 
 # Canonical model ids. Override via the ``overrides`` constructor arg
 # or env vars (``HF_PERSON_NER_REPO``, ``HF_PROVENANCE_NER_REPO``, …).
+#
+# Provenance + Contents are published as CUSTOM-CODE repos (their head
+# is a 2-layer Linear-ReLU-Linear that doesn't fit stock
+# BertForTokenClassification). They're not deployable to HF's
+# serverless Inference Providers tier; we leave their IDs empty so
+# this backend gracefully returns ``[]`` and the web app keeps loading
+# the local .pt files for those two roles. Set the env var to opt
+# back in if you've configured a dedicated Inference Endpoint.
 _DEFAULT_PERSON_REPO     = "alexgoldberg/hebrew-manuscript-joint-ner-v2"
-_DEFAULT_PROVENANCE_REPO = ""   # not yet on HF — Phase-3 push
-_DEFAULT_CONTENTS_REPO   = ""   # not yet on HF — Phase-3 push
-_DEFAULT_GENRE_REPO      = ""   # not yet on HF — Phase-3 push
+_DEFAULT_PROVENANCE_REPO = ""   # custom-code; not on Inference Providers
+_DEFAULT_CONTENTS_REPO   = ""   # custom-code; not on Inference Providers
+_DEFAULT_GENRE_REPO      = "alexgoldberg/hebrew-manuscript-genre-classifier"
 
 
 # Retry + timeout defaults. ``estimated_time`` in 503 bodies tells us
