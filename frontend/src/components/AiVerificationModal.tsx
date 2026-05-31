@@ -52,17 +52,64 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
   const [verdicts,   setVerdicts]   = useState<Record<string, AgentEvent>>({});
   const [flow,       setFlow]       = useState<FlowState>(makeInitialFlowState());
   const [error,      setError]      = useState<string | null>(null);
+  // The most recent prior session for this run — drives the "showing
+  // results from <date>" banner and lets the curator re-open old
+  // verdicts without paying for a fresh Gemini judge run.
+  const [lastSession, setLastSession] = useState<
+    null | { session_id: string; started_at: string | null; scope_size: number; action_id: string | null }
+  >(null);
+  const [showingHistorical, setShowingHistorical] = useState(false);
 
   const cancelRef = useRef<(() => void) | null>(null);
 
-  // Load actions for this scope kind.
+  // Load actions for this scope kind AND auto-prefill verdicts from
+  // the most recent prior session if one exists. The curator gets to
+  // see the last AI-verified results immediately on modal open — no
+  // re-run required.
   useEffect(() => {
-    AiVerify.listActions(runId, scopeKind)
-      .then((list) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [list, sessions] = await Promise.all([
+          AiVerify.listActions(runId, scopeKind),
+          AiVerify.listSessions(runId).catch(() => []),
+        ]);
+        if (cancelled) return;
         setActions(list);
         if (list.length > 0) setActionId(list[0].id);
-      })
-      .catch((e) => setError((e as Error).message));
+
+        const newest = (sessions ?? []).find(
+          (s) => (s.scope_size ?? 0) > 0 && (s.outcome === "complete" || s.outcome === null),
+        );
+        if (newest) {
+          setLastSession({
+            session_id: newest.session_id,
+            started_at: newest.started_at,
+            scope_size: newest.scope_size,
+            action_id:  newest.action_id,
+          });
+          try {
+            const full = await AiVerify.session(runId, newest.session_id);
+            if (cancelled) return;
+            const seeded: Record<string, AgentEvent> = {};
+            for (const v of full.verdicts ?? []) {
+              const cand = (v.candidate ?? {}) as Record<string, unknown>;
+              const matchId = String(cand._match_id ?? cand.record_id ?? "");
+              if (matchId) seeded[matchId] = { type: "agent.verdict", ...v };
+            }
+            if (Object.keys(seeded).length > 0) {
+              setVerdicts(seeded);
+              setShowingHistorical(true);
+            }
+          } catch {
+            /* the session may be incomplete; ignore */
+          }
+        }
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [runId, scopeKind]);
 
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
@@ -71,6 +118,7 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
     if (running) return;
     setRunning(true); setError(null);
     setEvents([]); setVerdicts({}); setFlow(makeInitialFlowState());
+    setShowingHistorical(false);
     const { events: stream, cancel } = streamVerification(runId, {
       action_id:      actionId,
       match_ids:      matchIds,
@@ -144,13 +192,33 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
           {!running
             ? <button onClick={start} disabled={!action}
                       className="button-primary text-sm">
-                Start verification
+                {showingHistorical ? "Re-run verification" : "Start verification"}
               </button>
             : <button onClick={stop} className="button-ghost text-sm text-yellow-300">
                 Stop
               </button>}
           {error && <span className="text-red-300 text-xs">{error}</span>}
         </div>
+
+        {/* Historical-session banner — visible when we auto-loaded
+            verdicts from the most recent prior session. The curator
+            can review without paying for a fresh Gemini run. */}
+        {showingHistorical && lastSession && !running && (
+          <div className="text-xs flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg"
+               style={{ background: "rgba(127,196,255,0.08)",
+                        border: "1px solid rgba(127,196,255,0.25)" }}>
+            <span className="text-ink/90">
+              Showing the last verification — {lastSession.started_at
+                ? new Date(lastSession.started_at).toLocaleString()
+                : "(no timestamp)"} · {lastSession.scope_size} matches
+              {lastSession.action_id && ` · ${lastSession.action_id}`}
+            </span>
+            <button onClick={() => { setVerdicts({}); setShowingHistorical(false); }}
+                    className="button-ghost !py-0.5 !px-2 text-[11px] ml-auto">
+              Clear
+            </button>
+          </div>
+        )}
 
         {/* Live diagram */}
         <section className="glass-pill p-3">

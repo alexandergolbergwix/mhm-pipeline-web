@@ -251,10 +251,24 @@ async def _session_event_stream(
         # so the UI's verdict table fills in fully even if the live
         # event stream missed some (cache hits don't emit per-cand
         # progress lines).
-        for v in read_run_verdicts(state_dir):
+        on_disk_verdicts = read_run_verdicts(state_dir)
+        for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)
             yield ev
+
+        # Persist verdicts back to AuthorityMatch.payload.ai_verdict so
+        # the matches table shows them after the modal closes and the
+        # curator can revisit them later without re-running the agent.
+        if on_disk_verdicts:
+            try:
+                await _persist_ai_verdicts_to_matches(
+                    run_id=run_id,
+                    session_id=session_id,
+                    verdicts=on_disk_verdicts,
+                )
+            except Exception:  # noqa: BLE001 — UI must still get session.end
+                logger.exception("failed to persist ai verdicts to matches")
 
         end_ev = AgentEvent(
             type="session.end",
@@ -266,6 +280,66 @@ async def _session_event_stream(
         )
         persist_session_event(base, end_ev)
         yield end_ev
+
+
+async def _persist_ai_verdicts_to_matches(
+    *,
+    run_id: str,
+    session_id: str,
+    verdicts: list[dict[str, Any]],
+) -> None:
+    """Write each verdict back to its AuthorityMatch.payload.ai_verdict.
+
+    Joins on ``candidate._match_id`` (which we set in
+    :func:`_match_to_desktop_shape`). Uses a fresh DB session because
+    the request-scoped session that started the SSE stream is closed
+    by the time this finally-block runs.
+    """
+    from app.db import session_scope  # noqa: PLC0415
+
+    # Build {match_id_uuid: verdict_summary} for one bulk UPDATE pass.
+    summaries: dict[uuid.UUID, dict[str, Any]] = {}
+    for v in verdicts:
+        cand = (v.get("candidate") or {}) if isinstance(v, dict) else {}
+        raw = cand.get("_match_id") if isinstance(cand, dict) else None
+        if not raw:
+            continue
+        try:
+            mid = uuid.UUID(str(raw))
+        except (ValueError, TypeError):
+            continue
+        vd = (v.get("verdict") or {}) if isinstance(v, dict) else {}
+        summary = {
+            "overall":     vd.get("overall"),
+            "name_ok":     vd.get("name_ok"),
+            "type_ok":     vd.get("type_ok"),
+            "role_ok":     vd.get("role_ok"),
+            "reasoning":   vd.get("reasoning"),
+            "model":       v.get("judge_id") or v.get("model"),
+            "judged_at":   v.get("judged_at"),
+            "cache_key":   v.get("cache_key"),
+            "session_id":  session_id,
+            "evaluator":   v.get("evaluator_id") or v.get("evaluator"),
+        }
+        summaries[mid] = summary
+
+    if not summaries:
+        return
+
+    async with session_scope() as db:
+        rows = (
+            await db.execute(
+                select(AuthorityMatch).where(
+                    AuthorityMatch.run_id == uuid.UUID(run_id),
+                    AuthorityMatch.id.in_(list(summaries.keys())),
+                )
+            )
+        ).scalars().all()
+        for m in rows:
+            payload = dict(m.payload or {})
+            payload["ai_verdict"] = summaries[m.id]
+            m.payload = payload
+        await db.commit()
 
 
 # ── GET /runs/{run_id}/ai-verify/sessions ─────────────────────────────
