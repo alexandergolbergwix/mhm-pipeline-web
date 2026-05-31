@@ -108,30 +108,42 @@ image = (
     .pip_install_from_requirements(
         str(Path(__file__).parent / "requirements.txt"),
     )
+    # Bake every weight artefact into the image at build time. Runs
+    # BEFORE the add_local_dir steps so it doesn't depend on any of
+    # the desktop source — keeps the image cache stable when the
+    # desktop NER code changes.
+    .run_function(_bake_weights)
     # Desktop NER + classifier source. The whole ner/ tree is needed
     # because the inference pipelines reference each other and the
     # training-model classes (JointModel, NERModel, GenreClassificationModel)
     # are imported at load time to reconstruct the architecture before
     # state_dict.load(). The ignore list keeps the image lean — .pt
     # files come from /weights, not the local copy.
+    #
+    # copy=True is required because we have a follow-up run_commands
+    # step. Without it, Modal mounts the local files at container
+    # start-time and refuses any build step that comes after the mount.
     .add_local_dir(
         local_path=str(PIPELINE_ROOT / "ner"),
         remote_path="/root/ner",
         ignore=["*.pt", "*.pyc", "__pycache__", ".pytest_cache",
                 "*.csv", "*.tsv", "*.bin", "datasets/*"],
+        copy=True,
     )
     .add_local_dir(
         local_path=str(PIPELINE_ROOT / "converter" / "authority"),
         remote_path="/root/converter/authority",
         ignore=["*.pyc", "__pycache__", "*.db"],
+        copy=True,
     )
-    # Empty __init__.py so `converter.authority.genre_classifier` resolves.
+    # /root/converter/__init__.py + /root/ner/__init__.py — the
+    # desktop layout has converter/__init__.py at the converter/ root
+    # level (not under authority/), and ner/ has no __init__.py at
+    # all. Without these the imports in @modal.enter fail.
     .run_commands(
-        "touch /root/converter/__init__.py /root/converter/authority/__init__.py",
+        "touch /root/converter/__init__.py",
         "touch /root/ner/__init__.py",
     )
-    # Bake every weight artefact into the image at build time.
-    .run_function(_bake_weights)
     .env({
         "PYTHONPATH":          "/root:/root/ner",
         "TOKENIZERS_PARALLELISM": "false",
