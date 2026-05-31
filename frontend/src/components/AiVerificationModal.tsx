@@ -39,10 +39,14 @@ export interface AiVerificationModalProps {
 export function AiVerificationModal(props: AiVerificationModalProps) {
   const { runId, scopeKind, matchIds, scopeLabel, onClose } = props;
 
-  const [actions,    setActions]    = useState<AgentActionMeta[]>([]);
-  const [actionId,   setActionId]   = useState<string>("audit_match");
-  const [useStubLlm, setUseStubLlm] = useState(false);
-  const [running,    setRunning]    = useState(false);
+  const [actions,       setActions]       = useState<AgentActionMeta[]>([]);
+  const [actionId,      setActionId]      = useState<string>("audit_match");
+  // Verdicts are cached on disk by eval-agent — repeated runs over
+  // the same scope are nearly free. Tick this to force a fresh
+  // Gemini judgement on every candidate (the cache is still
+  // refreshed by the new verdicts, so subsequent runs warm-hit).
+  const [overrideCache, setOverrideCache] = useState(false);
+  const [running,       setRunning]       = useState(false);
   const [events,     setEvents]     = useState<AgentEvent[]>([]);
   const [verdicts,   setVerdicts]   = useState<Record<string, AgentEvent>>({});
   const [flow,       setFlow]       = useState<FlowState>(makeInitialFlowState());
@@ -67,9 +71,9 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
     setRunning(true); setError(null);
     setEvents([]); setVerdicts({}); setFlow(makeInitialFlowState());
     const { events: stream, cancel } = streamVerification(runId, {
-      action_id:    actionId,
-      match_ids:    matchIds,
-      use_no_llm:   useStubLlm,
+      action_id:      actionId,
+      match_ids:      matchIds,
+      override_cache: overrideCache,
     });
     cancelRef.current = cancel;
     try {
@@ -135,11 +139,12 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
               ))}
             </select>
           </div>
-          <label className="muted text-xs flex items-center gap-2">
-            <input type="checkbox" checked={useStubLlm}
-                   onChange={(e) => setUseStubLlm(e.target.checked)}
+          <label className="muted text-xs flex items-center gap-2"
+                 title="Verdicts are cached on disk. Repeated runs over the same candidates serve from cache for free. Tick to skip the cache and force a fresh Gemini judgement on every candidate.">
+            <input type="checkbox" checked={overrideCache}
+                   onChange={(e) => setOverrideCache(e.target.checked)}
                    disabled={running} />
-            <span>Stub judge (no LLM — demo)</span>
+            <span>Override cache (force fresh LLM call)</span>
           </label>
           {!running
             ? <button onClick={start} disabled={!action}

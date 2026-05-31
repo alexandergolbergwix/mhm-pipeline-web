@@ -122,11 +122,11 @@ async def spawn_eval_agent_run(
     *,
     pipeline_output: Path,
     evaluators: tuple[str, ...],
-    api_key: str | None,
+    api_key: str,
     state_dir: Path | None = None,
     eval_agent_root: Path | None = None,
     tier_model: str | None = None,
-    use_no_llm: bool = False,
+    override_cache: bool = False,
     rpm: int = 60,
 ) -> AsyncIterator[AgentEvent]:
     """Run ``eval-agent run`` and yield each parsed event.
@@ -139,10 +139,16 @@ async def spawn_eval_agent_run(
 
     Cancellation: cancelling the consumer terminates the child process
     so we never keep paying Gemini for an orphaned conversation.
+
+    Caching: eval-agent's verdict cache (``state/cache/
+    verdict_cache.jsonl``) is used by default — repeated runs over the
+    same candidates skip the Gemini call entirely. Pass
+    ``override_cache=True`` to force fresh judgements; cached entries
+    are still overwritten with the new verdict so the next run benefits.
     """
     root = eval_agent_root or locate_eval_agent()
-    if not use_no_llm and not api_key:
-        raise ValueError("Gemini API key required unless use_no_llm is True")
+    if not api_key:
+        raise ValueError("Gemini API key required for verification.")
 
     py = _python_for(root)
     cmd: list[str] = [
@@ -156,8 +162,10 @@ async def spawn_eval_agent_run(
         cmd += ["--state-dir", str(state_dir)]
     if tier_model:
         cmd += ["--tier-model", tier_model]
-    if use_no_llm:
-        cmd += ["--dry-run"]
+    if override_cache:
+        # --no-cache skips cache READS but still writes fresh verdicts
+        # so the next session warm-hits whichever ones overlap.
+        cmd += ["--no-cache"]
 
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")

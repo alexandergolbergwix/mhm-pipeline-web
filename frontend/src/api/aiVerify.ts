@@ -53,7 +53,10 @@ export interface VerifySession {
 export interface StartRequest {
   action_id:   string;
   match_ids?:  string[];
-  use_no_llm?: boolean;
+  /** When true, skip the eval-agent verdict cache so Gemini is hit
+   *  fresh on every candidate. Default false — repeated runs over the
+   *  same scope serve from cache in milliseconds. */
+  override_cache?: boolean;
   tier_model?: string;
 }
 

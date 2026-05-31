@@ -50,9 +50,12 @@ class StartRequest(BaseModel):
     action_id: str = Field(..., min_length=1, max_length=64)
     # When None → ALL matches in the run. When set → only these.
     match_ids: list[uuid.UUID] | None = None
-    # No-LLM demo path. The CLI's --dry-run prints counts only; useful
-    # for exercising the UI without a Gemini key.
-    use_no_llm: bool = False
+    # Gemini verdicts are cached on disk by eval-agent (see
+    # state/cache/verdict_cache.jsonl). Repeated runs over the same
+    # candidates skip the LLM call entirely. Setting this True forces
+    # fresh judgements — the cache is still populated by the new
+    # verdicts, so the next session warm-hits.
+    override_cache: bool = False
     # Optional override; defaults to the project's gemini-3.5-flash.
     tier_model: str | None = Field(default=None, max_length=64)
 
@@ -120,18 +123,17 @@ async def start_stream(
             ),
         )
 
-    # Resolve Gemini key (unless stub-mode).
-    api_key: str | None = None
-    if not payload.use_no_llm:
-        api_key = await _resolve_gemini_key(db, auth)
-        if not api_key:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "No Gemini API key configured. Open Settings → "
-                    "Credentials, or send use_no_llm=true for the demo."
-                ),
-            )
+    # Resolve Gemini key (always required — no stub path).
+    api_key = await _resolve_gemini_key(db, auth)
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "No Gemini API key configured. Open Settings → "
+                "Credentials and add one from "
+                "https://aistudio.google.com/app/apikey."
+            ),
+        )
 
     # Locate eval-agent early so a missing sibling repo fails the POST
     # rather than mysteriously failing mid-stream.
@@ -151,7 +153,7 @@ async def start_stream(
             action=action,
             matches=matches,
             api_key=api_key,
-            use_no_llm=payload.use_no_llm,
+            override_cache=payload.override_cache,
             tier_model=payload.tier_model,
         )),
         media_type="text/event-stream",
@@ -169,8 +171,8 @@ async def _session_event_stream(
     session_id: str,
     action: agent_actions.AgentAction,
     matches: list[tuple[AuthorityMatch, RunRecord]],
-    api_key: str | None,
-    use_no_llm: bool,
+    api_key: str,
+    override_cache: bool,
     tier_model: str | None,
 ):
     """Async generator producing the SSE event sequence for one session.
@@ -229,7 +231,7 @@ async def _session_event_stream(
             api_key=api_key,
             state_dir=base,
             tier_model=tier_model,
-            use_no_llm=use_no_llm,
+            override_cache=override_cache,
             rpm=action.rate_limit_rpm,
         ):
             persist_session_event(base, ev)
