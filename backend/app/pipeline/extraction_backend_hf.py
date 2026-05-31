@@ -77,7 +77,13 @@ class _ModelSlot:
 
 
 class HfApiInferenceBackend(InferenceBackend):
-    """HuggingFace Inference Providers backend."""
+    """HuggingFace Inference Providers backend.
+
+    When the optional ``db_session`` is supplied, every inference call
+    routes through :mod:`app.pipeline.inference_cache` — content-
+    addressed, shared across every user. ``skip_cache=True`` forces a
+    fresh call (and refreshes the cache for subsequent callers).
+    """
 
     name = "hf-api"
 
@@ -85,10 +91,18 @@ class HfApiInferenceBackend(InferenceBackend):
         self, *,
         hf_token: str,
         overrides: dict[str, str] | None = None,
+        # Optional cache plumbing. When db_session is None the backend
+        # behaves exactly as before — uncached direct HTTP calls.
+        db_session: Any | None = None,
+        user_id: Any | None = None,
+        skip_cache: bool = False,
     ) -> None:
         import os  # noqa: PLC0415
         ov = overrides or {}
         self._token = hf_token
+        self._db = db_session
+        self._user_id = user_id
+        self._skip_cache = skip_cache
         self._slots: dict[str, _ModelSlot] = {
             "person":     _ModelSlot(
                 role="person",     task="token-classification",
@@ -205,8 +219,16 @@ class HfApiInferenceBackend(InferenceBackend):
             return []
         # Genre classifier sees the title + the notes joined.
         joined = "\n".join([title.strip()] + [str(n).strip() for n in notes if n])
+        if not joined.strip():
+            return []
+        async def _fresh() -> Any:
+            return await self._invoke(slot, joined, kind="text-classification")
         try:
-            raw = await self._invoke(slot, joined, kind="text-classification")
+            raw = await self._cached(
+                kind="genre.classify",
+                query_summary={"model": slot.repo_id, "text": joined},
+                fetch=_fresh,
+            )
         except _HfRequestFailed as exc:
             slot.last_error = str(exc); slot.available = False
             logger.warning("HF genre_classify failed (%s); disabling: %s", slot.repo_id, exc)
@@ -219,8 +241,14 @@ class HfApiInferenceBackend(InferenceBackend):
         slot = self._slots[role]
         if not slot.available or self._client is None or not text.strip():
             return []
+        async def _fresh() -> Any:
+            return await self._invoke(slot, text, kind="token-classification")
         try:
-            raw = await self._invoke(slot, text, kind="token-classification")
+            raw = await self._cached(
+                kind=f"ner.{role}",
+                query_summary={"model": slot.repo_id, "text": text},
+                fetch=_fresh,
+            )
         except _HfRequestFailed as exc:
             slot.last_error = str(exc); slot.available = False
             logger.warning(
@@ -229,6 +257,29 @@ class HfApiInferenceBackend(InferenceBackend):
             )
             return []
         return _normalise_token_classification(raw, role=role)
+
+    # ── Cache shim ─────────────────────────────────────────────────────
+
+    async def _cached(
+        self, *,
+        kind: str,
+        query_summary: dict[str, Any],
+        fetch: Any,
+    ) -> Any:
+        """Route through the shared inference cache when a DB session
+        was supplied; otherwise call directly. The fast-path stays
+        zero-overhead for direct (uncached) callers."""
+        if self._db is None:
+            return await fetch()
+        from app.pipeline.inference_cache import cache_lookup_or_call  # noqa: PLC0415
+        return await cache_lookup_or_call(
+            self._db,
+            kind=kind,
+            query_summary=query_summary,
+            fetch=fetch,
+            user_id=self._user_id,
+            skip_cache=self._skip_cache,
+        )
 
     async def _invoke(
         self, slot: _ModelSlot, text: str, *,

@@ -79,6 +79,12 @@ export default function StageExtraction() {
   // SSE call keeps its ?mode= query in case we need a flag day later.
   const mode: ExtractionMode = "hf-api";
 
+  // Cross-user shared cache. Default OFF (= use cache for efficiency);
+  // tick to force a fresh call against HF when you want to test a
+  // newly-tuned model. Either way, the fresh result lands in the cache
+  // so the NEXT user warm-hits.
+  const [skipCache, setSkipCache] = useState(false);
+
   // Per-role enable/disable. Persisted to localStorage so a curator's
   // "I only want Person NER" choice survives reloads. Default = all 4.
   // Provenance + Contents are archival-only on HF Inference Providers
@@ -156,7 +162,7 @@ export default function StageExtraction() {
       setPhase("idle");
       return;
     }
-    const { events, cancel } = streamExtraction(runId, mode, selectedRoles);
+    const { events, cancel } = streamExtraction(runId, mode, selectedRoles, skipCache);
     cancelRef.current = cancel;
     try {
       for await (const ev of events) {
@@ -301,6 +307,13 @@ export default function StageExtraction() {
                     title="HuggingFace Inference Providers · cold ~5–10s, warm ~300ms">
                 Inference: HuggingFace
               </span>
+              <label className="muted text-xs flex items-center gap-2"
+                     title="Inference results are cached in the DB and shared across every user. Tick to skip the cache and force a fresh call — the new result still lands in the cache for the next caller.">
+                <input type="checkbox" checked={skipCache}
+                       onChange={(e) => setSkipCache(e.target.checked)}
+                       disabled={phase === "running"} />
+                <span>Skip cache</span>
+              </label>
               {phase === "running" && total > 0 && (
                 <span className="muted text-sm">{processed} / {total} ({pct}%)</span>
               )}

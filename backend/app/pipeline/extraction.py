@@ -88,6 +88,12 @@ async def extract_entities_stream(
     model_overrides: dict[str, str] | None = None,
     mode: str | None = None,
     enabled_models: set[str] | None = None,
+    # Cross-user inference cache plumbing (optional). When db_session
+    # is supplied the HF backend reads/writes the shared
+    # ``inference_cache`` table; skip_cache=True forces fresh calls.
+    db_session: Any | None = None,
+    user_id: Any | None = None,
+    skip_cache: bool = False,
 ) -> AsyncIterator[ExtractionEvent]:
     """Stream NER + genre predictions for the given parsed MARC records.
 
@@ -145,6 +151,7 @@ async def extract_entities_stream(
     try:
         backend: InferenceBackend = build_backend(
             resolved_mode, hf_token=hf_token, model_overrides=model_overrides,
+            db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
         availability = await backend.warm_up()
     except Exception as exc:  # noqa: BLE001

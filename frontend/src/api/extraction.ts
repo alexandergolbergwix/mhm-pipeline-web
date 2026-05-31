@@ -74,6 +74,7 @@ export function streamExtraction(
   runId: string,
   mode?: "local" | "hf-api",
   models?: string[],
+  skipCache?: boolean,
 ): {
   events: AsyncIterableIterator<ExtractionEvent>;
   cancel: () => void;
@@ -82,6 +83,7 @@ export function streamExtraction(
   const params: string[] = [];
   if (mode)              params.push(`mode=${encodeURIComponent(mode)}`);
   if (models?.length)    params.push(`models=${encodeURIComponent(models.join(","))}`);
+  if (skipCache)         params.push(`skip_cache=true`);
   const qs = params.length > 0 ? `?${params.join("&")}` : "";
   const events = (async function* (): AsyncIterableIterator<ExtractionEvent> {
     const res = await fetch(`/api/runs/${runId}/extraction/start-stream${qs}`, {

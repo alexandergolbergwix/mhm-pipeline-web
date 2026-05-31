@@ -126,11 +126,20 @@ def build_backend(
     *,
     hf_token: str | None,
     model_overrides: dict[str, str] | None = None,
+    db_session: Any | None = None,
+    user_id: Any | None = None,
+    skip_cache: bool = False,
 ) -> InferenceBackend:
     """Construct the right backend for *mode*.
 
     Lazy-imports so a hf-api-only deployment never imports torch and a
     local-only deployment never needs huggingface_hub at module load.
+
+    ``db_session`` + ``user_id`` + ``skip_cache`` are plumbed into the
+    HF backend's shared inference cache. When ``db_session`` is None,
+    calls go through uncached as before — the local backend doesn't
+    use the table since local-mode latency is dominated by torch +
+    CPU, not by external I/O.
     """
     if mode == "hf-api":
         from app.pipeline.extraction_backend_hf import (  # noqa: PLC0415
@@ -139,6 +148,9 @@ def build_backend(
         return HfApiInferenceBackend(
             hf_token=hf_token or "",
             overrides=dict(model_overrides or {}),
+            db_session=db_session,
+            user_id=user_id,
+            skip_cache=skip_cache,
         )
     from app.pipeline.extraction_backend_local import (  # noqa: PLC0415
         LocalInferenceBackend,

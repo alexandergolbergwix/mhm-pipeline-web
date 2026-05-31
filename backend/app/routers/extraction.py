@@ -77,6 +77,7 @@ async def start_extraction_stream(
     run_id: uuid.UUID,
     mode: str | None = None,    # "local" | "hf-api"; default env / "local"
     models: str | None = None,  # CSV of {person,provenance,contents,genre}
+    skip_cache: bool = False,   # skip shared inference_cache (force fresh)
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
@@ -137,6 +138,9 @@ async def start_extraction_stream(
             hf_token=hf_token,
             mode=mode,
             enabled_models=enabled,
+            db_session=db,
+            user_id=auth.user.id,
+            skip_cache=skip_cache,
         ))),
         media_type="text/event-stream",
         headers={
