@@ -55,4 +55,116 @@ frontend/test-results/
 
 # Run state artefacts — regeneratable from MARC inputs.
 backend/state/
+backend/uploads/
+backend/runs/
+backend/tmp/
+
+# ── Secrets & credentials — NEVER commit any of these ─────────────────
+# Generic env-shaped files (catch dotenv files in subdirectories too).
+.env
+.env.*
+!.env.example
+.envrc
+secrets.json
+secrets.yaml
+secrets.yml
+*.credentials
+credentials.json
+service-account*.json
+gcloud-*.json
+
+# Cloud / SaaS CLI state (token caches).
+.aws/
+.azure/
+.gcp/
+.kube/
+.modal/
+.heroku/
+.netrc
+
+# Private keys + certs (any depth).
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_dsa
+id_dsa.*
+id_ed25519
+id_ed25519.*
+*.kdbx
+*.gpg
+
+# Database / data dumps — keep these out of git regardless of location.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+*.tar.gz
+*.tgz
+*.zip
+*.bak
+*.backup
+# Re-allow the small KIMA reference DB which IS committed on purpose.
+!backend/data/kima/kima_index.db
+
+# Model weights & big ML artefacts (in case they ever drop into the repo).
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.gguf
+*.pkl
+*.joblib
+models/
+weights/
+.cache/
+.cache/huggingface/
+
+# Heroku slug / build artefacts.
+slug.tgz
+release.tar.gz
+.profile.d/
+
+# IDE / editor extras (beyond .idea + .vscode + .DS_Store above).
+.history/
+.idea_modules/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+._*
+Thumbs.db
+
+# Tooling caches.
+.eslintcache
+.stylelintcache
+.parcel-cache/
+.turbo/
+.next/
+.tox/
+.nox/
+.cache_ggshield
+.ipynb_checkpoints/
+
+# Coverage / profiling.
+.coverage
+.coverage.*
+coverage.xml
+coverage/
+*.prof
+*.lcov
+
+# Scratch dirs.
+tmp/
+scratch/
+private/
+personal/
 
