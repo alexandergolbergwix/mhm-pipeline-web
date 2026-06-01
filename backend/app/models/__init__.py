@@ -3,6 +3,8 @@
 from app.models.api_key import ApiKey
 from app.models.base import Base
 from app.models.event import ProjectEvent, ProjectSnapshot
+from app.models.extraction_approval import ExtractionApproval
+from app.models.inference_cache import InferenceCache
 from app.models.invitation import Invitation
 from app.models.item_override import WikidataItemOverride
 from app.models.password_reset import PasswordResetToken
@@ -31,6 +33,8 @@ __all__ = [
     "ApiKey",
     "AuthorityMatch",
     "Base",
+    "ExtractionApproval",
+    "InferenceCache",
     "Invitation",
     "Membership",
     "PROJECT_ROLE_EDITOR",
