@@ -1,7 +1,15 @@
 """SQLAlchemy declarative base + model re-exports."""
 
+from app.models.access_request import (
+    STATUS_APPROVED,
+    STATUS_DENIED,
+    STATUS_PENDING_ADMIN,
+    STATUS_PENDING_EMAIL_CONFIRM,
+    AccessRequest,
+)
 from app.models.api_key import ApiKey
 from app.models.base import Base
+from app.models.email_throttle import EmailThrottle
 from app.models.event import ProjectEvent, ProjectSnapshot
 from app.models.extraction_approval import ExtractionApproval
 from app.models.inference_cache import InferenceCache
@@ -30,9 +38,11 @@ from app.models.user import ROLE_ADMIN, ROLE_EDITOR, User
 
 __all__ = [
     "ALL_PROJECT_ROLES",
+    "AccessRequest",
     "ApiKey",
     "AuthorityMatch",
     "Base",
+    "EmailThrottle",
     "ExtractionApproval",
     "InferenceCache",
     "Invitation",
@@ -53,6 +63,10 @@ __all__ = [
     "RUN_STATUS_SUCCEEDED",
     "Run",
     "RunRecord",
+    "STATUS_APPROVED",
+    "STATUS_DENIED",
+    "STATUS_PENDING_ADMIN",
+    "STATUS_PENDING_EMAIL_CONFIRM",
     "Session",
     "User",
 ]

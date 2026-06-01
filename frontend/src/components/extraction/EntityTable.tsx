@@ -30,6 +30,7 @@ import {
   EntityType,
   ExtractionApprovals,
 } from "@/api/extractionApprovals";
+import { langOf } from "@/utils/hebrew";
 
 export type SortDirection = "asc" | "desc";
 
@@ -278,6 +279,7 @@ export function EntityTable(props: EntityTableProps) {
         </button>
         <button type="button" onClick={() => onOpenEdit(entity)}
                 className="truncate text-left hover:underline" dir="auto"
+                lang={langOf(entity.text)}
                 title={entity.text}>
           {entity.text}
         </button>

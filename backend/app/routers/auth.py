@@ -12,7 +12,7 @@ plaintext KEK both fall out of scope as soon as the response is built.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,7 @@ from app.crypto import kek as kek_mod
 from app.crypto import pii
 from app.crypto import secrets as secrets_mod
 from app.db import get_session
+from app.middleware.rate_limit import limiter
 from app.models.api_key import ApiKey
 from app.models.session import Session as SessionRow
 from app.models.user import User
@@ -45,9 +46,16 @@ from app.schemas.auth import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Computed once at import time so the no-such-user branch of /login has the
+# same ~150ms cost as a real Argon2id verify — defeats timing-based account
+# enumeration. The plaintext is irrelevant; only the hash's parameters matter.
+_DUMMY_HASH = pw.hash_password("dummy-password-for-timing-parity-do-not-remove")
+
 
 @router.post("/login", response_model=LoginResponse)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     payload: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_session),
@@ -58,12 +66,20 @@ async def login(
     ).scalar_one_or_none()
 
     # Defence: same response for "no such user" and "wrong password" so
-    # an attacker can't enumerate accounts via timing or error text.
-    invalid = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password",
-    )
-    if user is None or not pw.verify_password(payload.password, user.password_hash):
-        raise invalid
+    # an attacker can't enumerate accounts via timing or error text. The
+    # 401 detail string MUST be identical for both branches.
+    if user is None:
+        # Burn the same ~150ms a real verify would take, then 401.
+        pw.verify_password(payload.password, _DUMMY_HASH)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+    if not pw.verify_password(payload.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
 
     # Derive KEK from the now-verified password + the user's stored salt.
     kek = kek_mod.derive_kek(payload.password, salt=user.kek_salt)

@@ -35,6 +35,8 @@ dependencies = [
     "torch>=2.0,<3",
     "transformers>=4.40",
     "huggingface-hub>=0.20",
+    "resend>=2.0",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]

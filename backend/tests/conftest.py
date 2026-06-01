@@ -48,6 +48,10 @@ def _seed_test_env() -> None:
     os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
     # Skip the Postgres LISTEN bridge — it crashes against SQLite.
     os.environ.setdefault("DISABLE_PG_LISTENER", "1")
+    # Default admin notification recipient so access-request confirm
+    # tests fire the email path without needing a fixture-created admin
+    # user. Tests can override per-case via monkeypatch.
+    os.environ.setdefault("ADMIN_NOTIFICATION_EMAIL", "admin@test.local")
 
 
 _seed_test_env()

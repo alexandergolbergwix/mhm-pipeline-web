@@ -15,12 +15,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from app.middleware.csrf import CsrfMiddleware
+from app.middleware.rate_limit import limiter
 from app.realtime import start_listener, stop_listener
 from app.routers import (
-    ai_verify, api_keys, auth, extraction, extraction_verify, health, history,
-    hmo_studio, invites, onboarding, projects, rdf, runs, wikidata_labels,
-    wikidata_studio, ws,
+    access_request, ai_verify, api_keys, auth, extraction, extraction_verify,
+    health, history, hmo_studio, invites, onboarding, projects, rdf, runs,
+    wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
 
@@ -46,6 +50,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
     # CORS — needed during dev when the frontend runs on 5173. In
     # production the frontend is served from the same origin, so the
     # CORS layer is a no-op (no cross-origin requests).
@@ -56,6 +63,8 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
         allow_headers=["*"],
     )
+
+    app.add_middleware(CsrfMiddleware)
 
     # Routers — all under /api so the static-file mount below doesn't
     # shadow them.
@@ -74,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(wikidata_labels.router, prefix="/api")
     app.include_router(ai_verify.router, prefix="/api")
     app.include_router(extraction_verify.router, prefix="/api")
+    app.include_router(access_request.router, prefix="/api")
     app.include_router(ws.router, prefix="/api")
 
     # Frontend static assets (production). Mounted last so any /api

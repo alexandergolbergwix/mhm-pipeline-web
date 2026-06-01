@@ -26,6 +26,15 @@ async function request<T>(
     "Pragma":        "no-cache",
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  // CSRF double-submit: for state-changing requests, echo the
+  // ``mhm_csrf`` cookie value back as an ``X-CSRF-Token`` header.
+  // The backend rejects with 403 when the header is missing or does
+  // not match the cookie. GET/HEAD are exempt (safe methods).
+  const upperMethod = method.toUpperCase();
+  if (upperMethod !== "GET" && upperMethod !== "HEAD") {
+    const csrf = _readCookie("mhm_csrf");
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+  }
   const res = await fetch(`/api${path}`, {
     method,
     credentials: "include",
@@ -106,6 +115,24 @@ function stringifyValidationError(d: unknown): string {
   if (msg)        return msg;
   if (loc)        return loc;
   try { return JSON.stringify(r); } catch { return "<error>"; }
+}
+
+/** Read a cookie value from ``document.cookie`` by name. Returns the
+ *  decoded value or an empty string when the cookie is absent.
+ *  Used by the CSRF double-submit logic to echo the ``mhm_csrf``
+ *  cookie back as an ``X-CSRF-Token`` request header.
+ */
+function _readCookie(name: string): string {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(
+    new RegExp("(?:^|;\\s*)" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "=([^;]*)"),
+  );
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 export const api = {

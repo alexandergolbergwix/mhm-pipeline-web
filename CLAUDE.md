@@ -330,6 +330,43 @@ backend call shape. Unit tests are reserved for pure functions
 "every click is a test" bias mirrors the user directive on
 2026-06-01.
 
+### Rule W-20 — Public endpoints carry the full spam + brute-force stack (added 2026-06-01)
+
+Two endpoints on the web port answer unauthenticated traffic:
+`POST /api/access-request` (self-service request-access form) and
+`POST /api/auth/login`. Both MUST carry the defences below; the
+unit + e2e suites are the regression barrier.
+
+- **slowapi rate-limit** per client IP (extracted from
+  `X-Forwarded-For`): 3/hour on `/access-request`, 10/minute on
+  `/auth/login`. In-memory storage on the single Heroku dyno today;
+  the upgrade path is Heroku Redis Mini behind
+  `RATELIMIT_STORAGE_URI` once we scale past one web dyno.
+- **Timing-parity dummy Argon2 verify** on `/auth/login`'s
+  missing-user branch so response time cannot leak account
+  existence.
+- **`/access-request` only**: Cloudflare Turnstile token verified
+  server-side + honeypot field that must stay empty + free-text
+  justification of at least 40 characters + double opt-in (email
+  confirmation token before the admin queue sees the row).
+- **All outbound mail** routes through `EmailSender` (Resend wrapper
+  at `app/services/email.py`) which enforces a per-recipient
+  throttle of max 1 email per 60 s and 5 per 24 h via the
+  `EmailThrottle` Postgres table. `EmailSender` NEVER raises into
+  the request path — it logs and degrades to a no-op so a Resend
+  outage cannot turn the form into a 5xx.
+- **Strict account non-enumeration**: `/access-request` returns the
+  same generic `202` body whether the email is brand new, already
+  has a pending request, or already has an account. The
+  already-has-an-account branch sends an out-of-band "someone tried
+  to register with your email" notice email to the existing user
+  instead of leaking the collision.
+
+Tests: `backend/tests/test_access_request_router.py` (~13 cases),
+`test_email_throttle.py` (6), `test_login_timing_parity.py` (3),
+`frontend/e2e/access-request.spec.ts` (~8). Anything added to
+either public endpoint MUST extend at least one of those suites.
+
 ---
 
 ## Project structure

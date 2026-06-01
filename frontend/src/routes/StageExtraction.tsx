@@ -399,41 +399,49 @@ export default function StageExtraction() {
             </div>
           </div>
 
-          {phase === "running" && statusMessage && (
-            <div className="flex items-start gap-3 px-3 py-2 rounded-lg"
-                 style={{
-                   background: "rgba(127,196,255,0.08)",
-                   border: "1px solid rgba(127,196,255,0.25)",
-                 }}>
-              {/* Spinner — animates while any operation is in flight. */}
-              <span
-                className="inline-block h-3 w-3 rounded-full shrink-0 mt-1 animate-spin"
-                style={{
-                  border: "2px solid rgba(127,196,255,0.3)",
-                  borderTopColor: "rgba(127,196,255,0.95)",
-                }}
-              />
-              <div className="flex-1 text-sm leading-tight">
-                <div className="text-ink">{statusMessage}</div>
-                {statusStartedAt !== null && (
-                  <div className="muted text-[11px] mt-0.5">
-                    {((Date.now() - statusStartedAt) / 1000).toFixed(1)}s elapsed
-                    {statusPhase === "warming" && " · containers cold-start in ~30–60s"}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
           {phase === "running" && (
-            <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden">
+            <div role="status" aria-live="polite" aria-atomic="true" className="space-y-4">
+              {statusMessage && (
+                <div className="flex items-start gap-3 px-3 py-2 rounded-lg"
+                     style={{
+                       background: "rgba(127,196,255,0.08)",
+                       border: "1px solid rgba(127,196,255,0.25)",
+                     }}>
+                  {/* Spinner — animates while any operation is in flight. */}
+                  <span
+                    className="inline-block h-3 w-3 rounded-full shrink-0 mt-1 animate-spin"
+                    style={{
+                      border: "2px solid rgba(127,196,255,0.3)",
+                      borderTopColor: "rgba(127,196,255,0.95)",
+                    }}
+                  />
+                  <div className="flex-1 text-sm leading-tight">
+                    <div className="text-ink">{statusMessage}</div>
+                    {statusStartedAt !== null && (
+                      <div className="muted text-[11px] mt-0.5">
+                        {((Date.now() - statusStartedAt) / 1000).toFixed(1)}s elapsed
+                        {statusPhase === "warming" && " · containers cold-start in ~30–60s"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div
-                className="h-full transition-all"
-                style={{
-                  width: `${pct}%`,
-                  background: "linear-gradient(90deg, #77cce5 0%, #004027 100%)",
-                }}
-              />
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="h-2 w-full rounded-full bg-white/5 overflow-hidden"
+              >
+                <div
+                  className="h-full transition-all"
+                  style={{
+                    width: `${pct}%`,
+                    background: "linear-gradient(90deg, #77cce5 0%, #004027 100%)",
+                  }}
+                />
+              </div>
             </div>
           )}
 
@@ -674,7 +682,15 @@ function RecordRow({
         onClick={onToggle}
       >
         <td className="py-2 pr-3 text-center muted">
-          {open ? "▾" : "▸"}
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-label={"Toggle record " + record._control_number}
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            className="bg-transparent border-0 p-0 cursor-pointer text-inherit"
+          >
+            {open ? "▾" : "▸"}
+          </button>
         </td>
         <td className="py-2 pr-3 font-mono text-xs">{record._control_number}</td>
         <td className="py-2 pr-3">{counts.persons || <span className="muted">—</span>}</td>

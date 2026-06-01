@@ -25,7 +25,7 @@
  * AI verdict pill, and 👁 button all open this single drawer.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MarcSourceApi, type MarcSource } from "@/api/marcSource";
 import {
@@ -36,6 +36,8 @@ import {
   ENTITY_EXPECTED_FIELDS, MARC_FIELD_LABELS,
   orderedMarcKeys, stringifyMarcValue,
 } from "@/components/extraction/marc-field-labels";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { langOf } from "@/utils/hebrew";
 
 
 export interface EntityDetailDrawerProps {
@@ -60,9 +62,12 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
   const [error, setError] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
   const [busy, setBusy] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
 
   const open = entity !== null;
   const cn = entity?.control_number ?? null;
+
+  useFocusTrap(open, drawerRef);
 
   // Load the MARC record + sibling entities when entity changes.
   useEffect(() => {
@@ -114,7 +119,10 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
 
   return (
     <aside
-      aria-hidden={!open}
+      ref={drawerRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="entity-detail-drawer-title"
       data-testid="entity-detail-drawer"
       style={{
         position:      "fixed",
@@ -133,7 +141,10 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
       <header className="flex items-start justify-between gap-3 px-4 pt-4 pb-2 border-b border-white/5">
         <div className="min-w-0">
           <div className="kicker">Entity review</div>
-          <h3 className="text-base font-semibold truncate" dir="auto" title={entity?.text ?? ""}>
+          <h3 id="entity-detail-drawer-title"
+              className="text-base font-semibold truncate" dir="auto"
+              lang={langOf(entity?.text)}
+              title={entity?.text ?? ""}>
             {entity?.text ?? ""}
           </h3>
           <div className="text-[11px] muted truncate">
@@ -314,13 +325,15 @@ function GroundingCard({
               {ex!.fields.map((k) => {
                 const lbl = MARC_FIELD_LABELS[k];
                 const raw = marc?.marc?.[k];
+                const valueStr = stringifyMarcValue(raw);
                 return (
                   <li key={k}>
                     <div className="text-biu-sky">
                       {lbl?.label ?? k} <span className="muted">({lbl?.tag ?? "—"})</span>
                     </div>
-                    <div className="text-ink/90 line-clamp-2 break-words" dir="auto">
-                      {stringifyMarcValue(raw)}
+                    <div className="text-ink/90 line-clamp-2 break-words" dir="auto"
+                         lang={langOf(valueStr)}>
+                      {valueStr}
                     </div>
                   </li>
                 );
@@ -429,7 +442,8 @@ function MarcRecordCard({
                 <div className="text-ink">{lbl?.label ?? k}</div>
                 <div className="muted font-mono">{lbl?.tag ?? ""}</div>
               </div>
-              <div className="text-[11px] text-ink/90 break-words leading-relaxed" dir="auto">
+              <div className="text-[11px] text-ink/90 break-words leading-relaxed" dir="auto"
+                   lang={langOf(value)}>
                 <Highlighted value={value}
                              primary={primaryHighlight}
                              secondaries={secondaryHighlights} />

@@ -69,6 +69,26 @@ heroku config:set --app "$APP" \
 > survive the loss of `MASTER_KEY` — but the user must log in once to
 > have them unwrapped server-side.
 
+The full set of server-held config vars, including the seven new ones
+added for the public **request-access** flow (§2.2), is:
+
+| Var | Purpose | Required? |
+|---|---|---|
+| `MASTER_KEY` | AES-GCM master key for PII columns | yes |
+| `EMAIL_HMAC_KEY` | HMAC key for the email blind-index | yes |
+| `ENV` | `production` enables strict cookie + CORS | yes |
+| `COOKIE_SECURE` | `true` in production (HTTPS-only cookies) | yes |
+| `SESSION_TTL_HOURS` | sliding session lifetime | yes |
+| `FRONTEND_ORIGIN` | CORS allow-list — your real public URL | yes |
+| `RESEND_API_KEY` | Resend (resend.com) API key for outbound mail | yes (prod) |
+| `RESEND_FROM_EMAIL` | `From:` header — e.g. `MHM Pipeline <noreply@yourdomain.org>` | yes (prod) |
+| `ADMIN_NOTIFICATION_EMAIL` | inbox that receives new-request alerts | yes (prod) |
+| `TURNSTILE_SITE_KEY` | Cloudflare Turnstile public site key | yes (prod) |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile server secret | yes (prod) |
+| `EXTRACTION_MODE` | `modal` / `hf-api` / `local` (see §2.1) | yes |
+| `MODAL_NER_URL` | Modal endpoint when `EXTRACTION_MODE=modal` | conditional |
+| `HF_TOKEN` | HF token when `EXTRACTION_MODE=hf-api` | conditional |
+
 ### 2.1 — Extraction backend (Modal vs local vs HF)
 
 `EXTRACTION_MODE` picks which inference backend AI Extraction uses
@@ -101,6 +121,53 @@ cd modal && modal deploy modal_app.py
 ```
 The deploy prints the URL to set as `MODAL_NER_URL`. See
 `modal/README.md` and `.claude/commands/deploy-modal.md` for details.
+
+### 2.2 — Spam protection setup (request-access flow)
+
+The public `/request-access` page is protected by a layered spam stack:
+a hidden honeypot field, a Cloudflare Turnstile challenge, a free-text
+justification ≥ 40 characters, and a double-opt-in email confirmation
+before the request is queued for admin review. Outbound mail (the
+confirm-your-email link, admin notifications, and the
+"someone-tried-to-register-with-your-email" notice) is sent via
+[Resend](https://resend.com).
+
+**Resend.** Free tier covers 3,000 emails/month — plenty for this flow.
+Sign up at resend.com, then either verify your own domain (recommended
+for production) or use the shared `onboarding@resend.dev` sender while
+you're still developing. Generate an API key from the Resend dashboard
+(it starts with `re_`).
+
+**Cloudflare Turnstile.** Free, unlimited, no CAPTCHA-fatigue UX.
+Go to [challenges.cloudflare.com](https://challenges.cloudflare.com) →
+**My Account → Turnstile → Add Site**, point it at your production
+hostname, and copy the **Site Key** (public, embedded in the form) and
+**Secret Key** (server-side verification).
+
+Then set the five new config vars:
+
+```bash
+heroku config:set --app "$APP" \
+    RESEND_API_KEY="re_..." \
+    RESEND_FROM_EMAIL="MHM Pipeline <noreply@yourdomain.org>" \
+    ADMIN_NOTIFICATION_EMAIL="you@yourdomain.org" \
+    TURNSTILE_SITE_KEY="0x..." \
+    TURNSTILE_SECRET_KEY="0x..."
+```
+
+**Local dev.** Leave `RESEND_API_KEY` unset and the email transport
+falls back to stdout — every outbound message is logged to the console
+so you can copy confirmation links by hand. For Turnstile, Cloudflare
+publishes documented **test keys** that always pass without contacting
+their servers:
+
+| Var | Test value |
+|---|---|
+| `TURNSTILE_SITE_KEY` | `1x00000000000000000000AA` |
+| `TURNSTILE_SECRET_KEY` | `1x0000000000000000000000000000000AA` |
+
+With those set, the widget renders and submits successfully without
+real verification — perfect for local + CI.
 
 ---
 
@@ -199,6 +266,70 @@ heroku ps:resize web=standard-1x --app "$APP"
 heroku pg:backups:capture --app "$APP"
 heroku pg:backups:download --app "$APP"
 ```
+
+### 6.5 — DDoS hardening (Cloudflare in front of Heroku)
+
+The `slowapi` rate-limit middleware on the dyno is the **last** line of
+defence, not the first — it sees every request that's already paid the
+TLS + bandwidth + dyno-CPU cost. For production, put Cloudflare's free
+proxy in front of Heroku so the abusive traffic never reaches the dyno
+at all.
+
+Steps:
+
+1. Add your custom hostname to the Heroku app:
+   ```bash
+   heroku domains:add myapp.example.org --app "$APP"
+   ```
+   Heroku will print a target like `whispering-foo-1234.herokudns.com`.
+2. In Cloudflare DNS, create a **CNAME** record:
+   `myapp.example.org → whispering-foo-1234.herokudns.com`, with
+   **Proxy status: Proxied (orange cloud) ON**.
+3. In the Cloudflare dashboard under **Security → Bots**, enable
+   **Bot Fight Mode** (free).
+4. Add a **Rate Limiting Rule** (or a legacy **Page Rule**) for
+   `/api/access-request` and `/api/auth/login` — e.g. 10 requests/minute
+   per IP for the access-request endpoint, 20/minute for login. These
+   are the two endpoints that are reachable without a session and so
+   carry the most spam + brute-force risk.
+
+This is optional but strongly recommended for any deployment exposed to
+the open internet: Cloudflare absorbs the volumetric layer for free,
+Bot Fight Mode swats the obvious automated traffic, and `slowapi`
+remains the in-process safety net for anything that slips through.
+
+### 6.6 — GDPR retention purge
+
+The self-service access-request flow collects PII (email, name,
+affiliation, justification). GDPR Article 5(1)(e) — storage limitation
+— forbids us from keeping that PII any longer than the lawful basis
+lasts. The `scripts/run_purge.py` job enforces a daily TTL sweep; run
+it under Heroku Scheduler.
+
+- Add the free Scheduler add-on:
+  ```bash
+  heroku addons:create scheduler:standard --app "$APP"
+  ```
+- Open the Scheduler dashboard to register the job:
+  ```bash
+  heroku addons:open scheduler --app "$APP"
+  ```
+- Add a daily job at **03:00 UTC** with command `python -m scripts.run_purge`.
+- What it deletes:
+  - `pending_email_confirm` rows older than **7 days** from `created_at` —
+    the requester never clicked the double-opt-in link, so we have no
+    lawful basis to keep their PII.
+  - `denied` rows older than **30 days** from `reviewed_at` — the audit
+    window for triaging a denial has by then expired.
+- What it does NOT delete:
+  - `approved` rows (audit trail of who let whom in).
+  - `pending_admin` rows. If one has been sitting un-reviewed for more
+    than **14 days** since `confirmed_at` the job logs a `WARNING` with
+    the row IDs so an admin can act — but never auto-decides on the
+    requester's behalf.
+
+The job is idempotent and safe to run on demand:
+`heroku run --app "$APP" "cd backend && python -m scripts.run_purge"`.
 
 ---
 

@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     master_key: str = Field(default="")
     email_hmac_key: str = Field(default="")
 
+    # ── Registration / spam protection ────────────────────────────────
+    resend_api_key: str = Field(default="")
+    resend_from_email: str = Field(default="MHM Pipeline <noreply@example.org>")
+    admin_notification_email: str = Field(default="")
+    turnstile_site_key: str = Field(default="")
+    turnstile_secret_key: str = Field(default="")
+    request_confirm_ttl_hours: int = Field(default=24)
+    admin_decision_ttl_hours: int = Field(default=168)
+
     @field_validator("database_url", mode="before")
     @classmethod
     def _normalise_db_url(cls, v: str) -> str:

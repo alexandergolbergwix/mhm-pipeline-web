@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,66 +30,89 @@ def _accept_url(token: str) -> str:
     return f"{base}/accept-invite?token={token}"
 
 
+async def create_invitation_for_email(
+    db: AsyncSession,
+    *,
+    email: str,
+    role: str,
+    invited_by: uuid.UUID,
+    bypass_duplicate_checks: bool = False,
+) -> tuple[Invitation, str]:
+    """Mint an invitation + return (row, accept_url).
+
+    Used by both /api/admin/invites AND the approve-access-request path
+    (which already validated the email when the request was submitted).
+
+    When ``bypass_duplicate_checks=True`` the existing-user and
+    pending-invite 409 checks are skipped — the caller has already
+    asserted the email is eligible for invitation.
+    """
+    email_norm = email.lower()
+    email_idx = idx.blind_index(email_norm)
+    now = datetime.now(timezone.utc)
+
+    if not bypass_duplicate_checks:
+        # Reject if a user with that email already exists.
+        existing_user = (
+            await db.execute(select(User).where(User.email_index == email_idx))
+        ).scalar_one_or_none()
+        if existing_user is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email already exists",
+            )
+
+        # Reject if there's an outstanding (un-accepted, un-expired) invite.
+        pending = (
+            await db.execute(
+                select(Invitation).where(
+                    Invitation.email_index == email_idx,
+                    Invitation.accepted_at.is_(None),
+                    Invitation.expires_at > now,
+                )
+            )
+        ).scalar_one_or_none()
+        if pending is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An active invitation already exists for this email",
+            )
+
+    plaintext, token_hash = new_token()
+    inv = Invitation(
+        email_index=email_idx,
+        email_encrypted=pii.encrypt_pii(email_norm),
+        role=role,
+        token_hash=token_hash,
+        invited_by=invited_by,
+        expires_at=now + timedelta(hours=INVITE_TTL_HOURS),
+    )
+    db.add(inv)
+    await db.flush()
+    await db.commit()
+
+    return inv, _accept_url(plaintext)
+
+
 @router.post("", response_model=InviteResponse, status_code=status.HTTP_201_CREATED)
 async def create_invite(
     payload: InviteCreateRequest,
     admin: AuthContext = Depends(require_admin),  # noqa: ARG001 — gate
     db: AsyncSession = Depends(get_session),
 ) -> InviteResponse:
-    email_norm = payload.email.lower()
-    email_idx = idx.blind_index(email_norm)
-
-    # Reject if a user with that email already exists.
-    existing_user = (
-        await db.execute(select(User).where(User.email_index == email_idx))
-    ).scalar_one_or_none()
-    if existing_user is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
-        )
-
-    # Reject if there's an outstanding (un-accepted, un-expired) invite.
-    now = datetime.now(timezone.utc)
-    pending = (
-        await db.execute(
-            select(Invitation).where(
-                Invitation.email_index == email_idx,
-                Invitation.accepted_at.is_(None),
-                Invitation.expires_at > now,
-            )
-        )
-    ).scalar_one_or_none()
-    if pending is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An active invitation already exists for this email",
-        )
-
-    plaintext, token_hash = new_token()
-    inv = Invitation(
-        email_index=email_idx,
-        email_encrypted=pii.encrypt_pii(email_norm),
+    inv, accept_url = await create_invitation_for_email(
+        db,
+        email=payload.email,
         role=payload.role,
-        token_hash=token_hash,
         invited_by=admin.user.id,
-        expires_at=now + timedelta(hours=INVITE_TTL_HOURS),
     )
-    # Stash the invitee's name on a private attribute so the response
-    # below can echo it; the field is intentionally not part of the
-    # Invitation model (name is set during accept based on what the
-    # invitee enters).
-    db.add(inv)
-    await db.flush()
-    await db.commit()
-
     return InviteResponse(
         id=inv.id,
         email=payload.email,
         name=payload.name,
         role=payload.role,
         expires_at=inv.expires_at,
-        accept_url=_accept_url(plaintext),
+        accept_url=accept_url,
     )
 
 

@@ -3,13 +3,17 @@ import { Route, Routes } from "react-router-dom";
 
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import AcceptInvite from "@/routes/AcceptInvite";
+import AccessRequestsQueue from "@/routes/admin/AccessRequestsQueue";
 import AdminInvites from "@/routes/AdminInvites";
+import ConfirmRequest from "@/routes/ConfirmRequest";
 import ForgotPassword from "@/routes/ForgotPassword";
 import HmoStudio from "@/routes/HmoStudio";
 import Login from "@/routes/Login";
 import ProjectDetail from "@/routes/ProjectDetail";
 import ProjectHistory from "@/routes/ProjectHistory";
+import Privacy from "@/routes/Privacy";
 import ProjectsList from "@/routes/ProjectsList";
+import RequestAccess from "@/routes/RequestAccess";
 import ResetPassword from "@/routes/ResetPassword";
 import RunDetail from "@/routes/RunDetail";
 import RunOverview from "@/routes/RunOverview";
@@ -30,6 +34,9 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password"  element={<ResetPassword />} />
       <Route path="/accept-invite"   element={<AcceptInvite />} />
+      <Route path="/request-access"                  element={<RequestAccess />} />
+      <Route path="/access-request/confirm/:token"   element={<ConfirmRequest />} />
+      <Route path="/privacy"                         element={<Privacy />} />
 
       {/* Authenticated */}
       <Route path="/"                            element={<ProtectedRoute><ProjectsList /></ProtectedRoute>} />
@@ -43,6 +50,7 @@ export default function App() {
       <Route path="/runs/:runId/hmo-studio"      element={<ProtectedRoute><HmoStudio /></ProtectedRoute>} />
       <Route path="/settings"                    element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/admin/invites"               element={<ProtectedRoute><AdminInvites /></ProtectedRoute>} />
+      <Route path="/admin/access-requests"           element={<ProtectedRoute><AccessRequestsQueue /></ProtectedRoute>} />
     </Routes>
   );
 }

@@ -72,7 +72,12 @@ export default function Login() {
           <Link to="/forgot-password" className="hover:text-ink underline-offset-2 hover:underline">
             Forgot password?
           </Link>
-          <span>Accounts are admin-invited.</span>
+          <span>
+            Don't have an account?{" "}
+            <Link to="/request-access" className="hover:text-ink underline-offset-2 hover:underline">
+              Request access
+            </Link>
+          </span>
         </div>
       </form>
     </div>
