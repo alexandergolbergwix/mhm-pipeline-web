@@ -350,11 +350,31 @@ def _flatten_records(records: list[dict]) -> list[dict]:
         full_text = str(rec.get("text") or "")
         for ent in rec.get("entities") or []:
             src   = str(ent.get("source") or "")
-            text  = str(ent.get("text") or "").strip()
+            # JointNERPipeline (Person NER, source=person_ner) emits
+            # entity dicts with a ``person`` field rather than ``text``;
+            # the other NER channels (provenance / contents) use
+            # ``text``. Accept both so person rows aren't silently
+            # dropped from the entity table.
+            text  = str(ent.get("text") or ent.get("person") or "").strip()
             start = int(ent.get("start") or 0)
             end   = int(ent.get("end") or 0)
             if not (cn and src and text):
                 continue
+            # Each NER channel has a canonical entity TYPE in the
+            # entity-table sense:
+            #   person_ner     → PERSON (always)
+            #   provenance_ner → uses the per-entity ``type`` field
+            #                    (OWNER / DATE / COLLECTION)
+            #   contents_ner   → uses the per-entity ``type`` field
+            #                    (WORK / FOLIO / WORK_AUTHOR)
+            # When the entity dict has no ``type`` field (the joint
+            # Person NER doesn't write one — it writes the role
+            # instead), fall back to PERSON for person_ner rows so the
+            # type chip filter + the type column aren't blank.
+            raw_type = ent.get("type")
+            ent_type = (str(raw_type) if raw_type
+                        else "PERSON" if src == "person_ner"
+                        else "")
             flat.append({
                 "id":               _entity_id(
                     control_number=cn, source=src, text=text,
@@ -365,8 +385,8 @@ def _flatten_records(records: list[dict]) -> list[dict]:
                 "text":             text,
                 "start":            start,
                 "end":              end,
-                "type":             ent.get("type"),
-                "role":             ent.get("role"),
+                "type":             ent_type,
+                "role":             ent.get("role") or "",
                 "confidence":       ent.get("confidence"),
                 "model_confidence": ent.get("model_confidence"),
                 "full_text":        full_text,
@@ -375,18 +395,21 @@ def _flatten_records(records: list[dict]) -> list[dict]:
             label = str(genre.get("label") or "").strip()
             if not (cn and label):
                 continue
+            # Use ``genre_ml`` as the source so the frontend chip
+            # filter (Source = genre_ml) matches; type=GENRE so the
+            # Type filter also categorises it.
             flat.append({
                 "id":               _entity_id(
-                    control_number=cn, source="genre", text=label,
+                    control_number=cn, source="genre_ml", text=label,
                     start=0, end=0,
                 ),
                 "control_number":   cn,
-                "source":           "genre",
+                "source":           "genre_ml",
                 "text":             label,
                 "start":            0,
                 "end":              0,
-                "type":             None,
-                "role":             None,
+                "type":             "GENRE",
+                "role":             "",
                 "confidence":       float(genre.get("confidence") or 0.0),
                 "model_confidence": float(genre.get("confidence") or 0.0),
                 "full_text":        full_text,
