@@ -73,11 +73,15 @@ export default function StageExtraction() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [models, setModels] = useState<Record<ModelRole, ModelState>>(_initialModels);
-  // Web app runs inference on HuggingFace Inference Providers only —
-  // the backend never bundles torch + ~2 GB of model weights. Local
-  // inference is the desktop app's job. Kept as a constant so the
-  // SSE call keeps its ?mode= query in case we need a flag day later.
-  const mode: ExtractionMode = "hf-api";
+  // Mode is undefined → backend picks from its own EXTRACTION_MODE
+  // env var (resolve_mode in extraction_backend.py). Used to be
+  // hard-coded "hf-api" here, which overrode the backend's preference
+  // — fine when HF was the only option, broken once Modal landed
+  // (CLAUDE.md Rule W-11). Drop the override; let the env decide.
+  const mode: ExtractionMode | undefined = undefined;
+  // The actual mode the backend chose, filled in from the
+  // `extraction.start` event payload. The UI label reads this.
+  const [resolvedMode, setResolvedMode] = useState<string>("");
 
   // Cross-user shared cache. Default OFF (= use cache for efficiency);
   // tick to force a fresh call against HF when you want to test a
@@ -193,7 +197,8 @@ export default function StageExtraction() {
     if (ev.type === "extraction.start") {
       const t = Number(ev.total ?? 0);
       setTotal(t);
-      const m = String(ev.mode ?? mode);
+      const m = String(ev.mode ?? mode ?? "");
+      if (m) setResolvedMode(m);
       pushLog(`Starting extraction over ${t} record${t === 1 ? "" : "s"} · mode=${m}`);
       return;
     }
@@ -298,14 +303,17 @@ export default function StageExtraction() {
                   Cancel
                 </button>
               )}
-              {/* Inference runs on HuggingFace Inference Providers.
-                  Person NER + Genre classifier are served from HF;
-                  Provenance + Contents NER stay archival-only (their
-                  custom 2-layer head doesn't fit HF's serverless
-                  tier — see scripts/push_to_hf/README.md). */}
+              {/* Reads the resolved EXTRACTION_MODE the backend picked
+                  out of the `extraction.start` SSE event. Until the
+                  first run fires, this stays blank. */}
               <span className="muted text-xs ml-2"
-                    title="HuggingFace Inference Providers · cold ~5–10s, warm ~300ms">
-                Inference: HuggingFace
+                    title="Inference backend currently configured on the server (EXTRACTION_MODE env var)">
+                {resolvedMode
+                  ? `Inference: ${resolvedMode === "modal" ? "Modal"
+                                : resolvedMode === "hf-api" ? "HuggingFace"
+                                : resolvedMode === "local"  ? "Local (in-process)"
+                                : resolvedMode}`
+                  : "Inference: (auto)"}
               </span>
               <label className="muted text-xs flex items-center gap-2"
                      title="Inference results are cached in the DB and shared across every user. Tick to skip the cache and force a fresh call — the new result still lands in the cache for the next caller.">
