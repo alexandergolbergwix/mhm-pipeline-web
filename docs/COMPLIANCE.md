@@ -136,9 +136,8 @@ deployment guide at `docs/DEPLOY.md`.
 
 ## Operational
 
-- Privacy contact: `privacy@TODO` — **TODO**: set the real address
-  before the site goes public. The Privacy Notice at `/privacy`
-  references this placeholder and must be updated in lockstep.
+- Privacy contact: `shvedbook@gmail.com` — reachable via the
+  Privacy Notice at `/privacy` (mailto link). SLA: 30 days.
 - Last reviewed: 2026-06-01.
 
 ## Known follow-ups (test-fixture, not production)

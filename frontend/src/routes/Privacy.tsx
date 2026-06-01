@@ -33,9 +33,11 @@ export default function Privacy() {
               Alex Goldberg, Bar-Ilan University
             </span>{" "}
             (contact:{" "}
-            <span data-testid="controller-contact">
-              privacy@TODO
-            </span>
+            <a data-testid="controller-contact"
+               href="mailto:shvedbook@gmail.com"
+               className="underline hover:text-biu-sky">
+              shvedbook@gmail.com
+            </a>
             ).
           </p>
         </section>
@@ -154,8 +156,11 @@ export default function Privacy() {
           </ul>
           <p className="text-sm muted">
             To exercise any of these rights, contact{" "}
-            <span data-testid="rights-contact">privacy@TODO</span>. We aim to
-            respond within 30 days.
+            <a data-testid="rights-contact"
+               href="mailto:shvedbook@gmail.com"
+               className="underline hover:text-biu-sky">
+              shvedbook@gmail.com
+            </a>. We aim to respond within 30 days.
           </p>
           <p className="text-sm muted">
             You also have the right to lodge a complaint with the Israeli
