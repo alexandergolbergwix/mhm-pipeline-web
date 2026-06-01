@@ -15,10 +15,22 @@ async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
+  // Force-bypass any browser / service-worker cache. The SPA's index
+  // fallback (text/html) can otherwise stick to API URLs forever if a
+  // previous response got cached during a dev-server hiccup. The
+  // ``cache: "no-store"`` directive tells Fetch to skip both the
+  // HTTP cache AND ServiceWorker cache; ``Cache-Control: no-cache``
+  // covers any intermediate proxy.
+  const headers: Record<string, string> = {
+    "Cache-Control": "no-cache",
+    "Pragma":        "no-cache",
+  };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(`/api${path}`, {
     method,
     credentials: "include",
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    cache:       "no-store",
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
@@ -33,18 +45,30 @@ async function request<T>(
   }
   if (res.status === 204) return undefined as T;
   // Guard against the FastAPI SPA-fallback "200 HTML" pathology: if a
-  // backend route is misregistered, FastAPI serves the prebuilt
-  // index.html with 200 and a text/html content-type. Without this
-  // check the SDK would throw a confusing "Unexpected token '<'" deep
-  // inside JSON.parse. Surfacing it here lets the caller show a clear
-  // "endpoint missing or backend stale — restart uvicorn" message.
+  // backend route is misregistered OR the browser served a stale
+  // cached SPA index for this URL (we've seen Vite proxy hiccups do
+  // this), FastAPI / Vite return index.html with 200 + text/html.
+  // Without this check the SDK would throw a confusing "Unexpected
+  // token '<'" deep inside JSON.parse.
+  //
+  // Recovery: text/html on an API URL almost always means the user's
+  // session expired (cookie auth bounced through the SPA fallback)
+  // OR the browser cached an old fallback response. We force a hard
+  // navigate to /login so the SPA re-authenticates, which clears
+  // both states without the user having to debug their browser cache.
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
+    if (typeof window !== "undefined" &&
+        !window.location.pathname.startsWith("/login")) {
+      // Push the user to /login. Their session probably expired or
+      // their browser cached the SPA fallback for this API URL.
+      window.location.assign("/login?next=" + encodeURIComponent(
+        window.location.pathname + window.location.search,
+      ));
+    }
     throw new ApiError(
-      502,
-      `Backend returned ${contentType || "no content-type"} instead of JSON for ` +
-        `${path}. Likely the route isn't registered or the dev server is stale; ` +
-        `restart uvicorn.`,
+      401,
+      "Session expired or stale browser cache. Reloading to log in…",
     );
   }
   return (await res.json()) as T;
