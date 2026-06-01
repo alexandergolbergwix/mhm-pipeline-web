@@ -72,7 +72,7 @@ export interface ExtractionStatus {
  *  omit to run every available model. */
 export function streamExtraction(
   runId: string,
-  mode?: "local" | "hf-api",
+  mode?: "local" | "hf-api" | "modal",
   models?: string[],
   skipCache?: boolean,
 ): {

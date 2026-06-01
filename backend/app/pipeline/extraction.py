@@ -143,11 +143,26 @@ async def extract_entities_stream(
         )
         return
 
-    # ── Build the backend (local torch OR HF Inference API).
+    # ── Build the backend (local torch / HF Inference API / Modal).
+    # The warm-up call is what gates progress, so we surface it as
+    # a distinct "warming" phase. Modal cold starts are 30–60 s on
+    # the first call after idle; without this the UI hangs at 0%
+    # with no explanation.
+    backend_human = {
+        "modal":   "Modal (pay-per-call serverless)",
+        "hf-api":  "HuggingFace Inference Providers",
+        "local":   "in-process torch",
+    }.get(resolved_mode, resolved_mode)
+    cold_start_hint = " — first call after idle can take 30–60s" if resolved_mode == "modal" else ""
     yield ExtractionEvent(
         type="extraction.step",
-        payload={"message": f"Warming up models (mode={resolved_mode})"},
+        payload={
+            "phase":   "warming",
+            "message": f"Contacting {backend_human}{cold_start_hint}",
+        },
     )
+    import time  # noqa: PLC0415
+    t0 = time.monotonic()
     try:
         backend: InferenceBackend = build_backend(
             resolved_mode, hf_token=hf_token, model_overrides=model_overrides,
@@ -161,6 +176,17 @@ async def extract_entities_stream(
             payload={"message": f"Backend warm-up failed: {exc}"},
         )
         return
+    elapsed = time.monotonic() - t0
+    ready_count = sum(1 for f in (availability.person, availability.provenance,
+                                  availability.contents, availability.genre) if f)
+    yield ExtractionEvent(
+        type="extraction.step",
+        payload={
+            "phase":   "warmed",
+            "message": f"Models ready ({ready_count}/4) in {elapsed:.1f}s",
+            "elapsed_s": elapsed,
+        },
+    )
 
     # Apply the user's per-role on/off choice (from the Models
     # settings panel). Disabled roles drop to "unavailable" before
@@ -198,6 +224,14 @@ async def extract_entities_stream(
                 "backend": resolved_mode,
             },
         )
+
+    yield ExtractionEvent(
+        type="extraction.step",
+        payload={
+            "phase":   "processing",
+            "message": f"Processing {total} record{'s' if total != 1 else ''}",
+        },
+    )
 
     results: list[dict[str, Any]] = []
     entity_total = 0

@@ -59,13 +59,29 @@ function _initialModels(): Record<ModelRole, ModelState> {
 }
 
 
-type ExtractionMode = "local" | "hf-api";
+type ExtractionMode = "local" | "hf-api" | "modal";
 
 
 export default function StageExtraction() {
   const { runId } = useParams<{ runId: string }>();
 
   const [phase, setPhase] = useState<Phase>("idle");
+  // Live operational status — the latest `extraction.step` message
+  // from the backend. Surfaces "Contacting Modal…", "Models ready
+  // (4/4) in 12.3s", "Processing 68 records" etc. so the curator
+  // never sees a silent 0% bar during the warm-up window.
+  const [statusMessage, setStatusMessage] = useState<string>("");
+  const [statusPhase,   setStatusPhase]   = useState<"warming" | "warmed" | "processing" | "">("");
+  // When did the current status begin? Lets the banner show a live
+  // "(12s)" counter so the user knows nothing is actually stuck.
+  const [statusStartedAt, setStatusStartedAt] = useState<number | null>(null);
+  const [statusTick, setStatusTick] = useState(0);
+  useEffect(() => {
+    if (statusStartedAt === null) return;
+    const id = window.setInterval(() => setStatusTick((t) => t + 1), 500);
+    return () => window.clearInterval(id);
+  }, [statusStartedAt]);
+  void statusTick; // dependency only — value isn't read directly
   const [records, setRecords] = useState<ExtractionRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [processed, setProcessed] = useState(0);
@@ -158,6 +174,9 @@ export default function StageExtraction() {
     setTotal(0);
     setLog([]);
     setModels(_initialModels());
+    setStatusMessage("Starting…");
+    setStatusPhase("warming");
+    setStatusStartedAt(Date.now());
     setPhase("running");
     const selectedRoles = (Object.keys(enabledRoles) as ModelRole[])
       .filter((r) => enabledRoles[r]);
@@ -231,7 +250,21 @@ export default function StageExtraction() {
       pushLog(`#${idx} — ${cn}`);
       return;
     }
+    if (ev.type === "extraction.step") {
+      const msg   = String(ev.message ?? "");
+      const phase = String(ev.phase ?? "") as typeof statusPhase;
+      if (msg) {
+        setStatusMessage(msg);
+        setStatusPhase(phase || "");
+        setStatusStartedAt(Date.now());
+        pushLog(msg);
+      }
+      return;
+    }
     if (ev.type === "extraction.end") {
+      setStatusMessage("");
+      setStatusPhase("");
+      setStatusStartedAt(null);
       pushLog("Extraction finished. Loading results…");
       return;
     }
@@ -336,6 +369,32 @@ export default function StageExtraction() {
               )}
             </div>
           </div>
+
+          {phase === "running" && statusMessage && (
+            <div className="flex items-start gap-3 px-3 py-2 rounded-lg"
+                 style={{
+                   background: "rgba(127,196,255,0.08)",
+                   border: "1px solid rgba(127,196,255,0.25)",
+                 }}>
+              {/* Spinner — animates while any operation is in flight. */}
+              <span
+                className="inline-block h-3 w-3 rounded-full shrink-0 mt-1 animate-spin"
+                style={{
+                  border: "2px solid rgba(127,196,255,0.3)",
+                  borderTopColor: "rgba(127,196,255,0.95)",
+                }}
+              />
+              <div className="flex-1 text-sm leading-tight">
+                <div className="text-ink">{statusMessage}</div>
+                {statusStartedAt !== null && (
+                  <div className="muted text-[11px] mt-0.5">
+                    {((Date.now() - statusStartedAt) / 1000).toFixed(1)}s elapsed
+                    {statusPhase === "warming" && " · containers cold-start in ~30–60s"}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {phase === "running" && (
             <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden">
