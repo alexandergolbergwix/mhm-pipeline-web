@@ -45,6 +45,7 @@ from app.models.extraction_approval import ExtractionApproval
 from app.models.run import RunRecord
 from app.pipeline.agent_runner import AgentEvent, sse_stream
 from app.pipeline.extraction import ExtractionEvent, extract_entities_stream
+from app.pipeline.marc_structured_index import MarcStructuredIndex
 from app.routers.runs import _lookup_run_with_access
 
 logger = logging.getLogger(__name__)
@@ -436,21 +437,113 @@ async def list_entities(
         for r in rows
     }
 
-    # 3. Merge.
+    # 3. Build a request-scoped MARC index so each entity gets a cheap
+    #    novelty/grounding classification (Rule W-16 / Wave 3 of the
+    #    Stage-2 review-UI plan).
+    marc_rows = (
+        await db.execute(
+            select(RunRecord).where(RunRecord.run_id == run_id)
+        )
+    ).scalars().all()
+    marc_index = MarcStructuredIndex.from_records(
+        dict(r.marc or {}) for r in marc_rows
+    )
+
+    # 4. Merge.
     out: list[dict] = []
     for ent in flat:
         a = approvals.get(ent["id"])
+        candidate_type = ent.get("type") or ent.get("role") or ent.get("source")
+        exists_in = marc_index.classify(
+            ent["control_number"], ent["text"],
+            candidate_type=str(candidate_type) if candidate_type else None,
+        )
         out.append({
             **ent,
             "approved":         bool(a.approved) if a else False,
+            "rejected":         False,  # placeholder for Phase B reject UX
             "override_type":    (a.override_type if a else None),
             "override_role":    (a.override_role if a else None),
             "effective_type":   (a.override_type if a and a.override_type else ent["type"]),
             "effective_role":   (a.override_role if a and a.override_role else ent["role"]),
             "ai_verdict":       (a.ai_verdict if a else None),
             "ai_verdict_at":    (a.ai_verdict_at.isoformat() if a and a.ai_verdict_at else None),
+            "exists_in":        exists_in,
         })
     return out
+
+
+# ── GET /runs/{run_id}/extraction/marc-source/{control_number} ────────
+
+
+@router.get("/runs/{run_id}/extraction/marc-source/{control_number}")
+async def get_marc_source(
+    run_id: uuid.UUID,
+    control_number: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Return the full MARC record + its extracted entities.
+
+    Powers the right-side MARC source drawer in the Stage-2 review
+    surface (Rule W-16): a curator clicks one NER hit and sees the
+    manuscript's full structured fields side-by-side with every entity
+    Stage 2 found for that record. The entity list is drawn from
+    ``ExtractionApproval`` so curator overrides + approvals are
+    reflected.
+
+    404 when no MARC record exists for that control_number under this
+    run (the URL is misspelled or the run is mis-scoped).
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+
+    rec = (
+        await db.execute(
+            select(RunRecord).where(
+                RunRecord.run_id == run_id,
+                RunRecord.control_number == control_number,
+            )
+        )
+    ).scalar_one_or_none()
+    if rec is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"No MARC record for control_number {control_number!r} "
+                f"under this run."
+            ),
+        )
+
+    ext_rows = (
+        await db.execute(
+            select(ExtractionApproval).where(
+                ExtractionApproval.run_id == run_id,
+                ExtractionApproval.control_number == control_number,
+            ).order_by(
+                ExtractionApproval.source,
+                ExtractionApproval.start,
+                ExtractionApproval.text,
+            )
+        )
+    ).scalars().all()
+
+    entities = [
+        {
+            "id":     str(r.id),
+            "text":   r.text,
+            "type":   r.override_type or r.type,
+            "role":   r.override_role or r.role,
+            "start":  int(r.start or 0),
+            "end":    int(r.end or 0),
+            "source": r.source,
+        }
+        for r in ext_rows
+    ]
+    return {
+        "control_number": control_number,
+        "marc":           dict(rec.marc or {}),
+        "entities":       entities,
+    }
 
 
 @router.patch("/runs/{run_id}/extraction/entities/{entity_id}")

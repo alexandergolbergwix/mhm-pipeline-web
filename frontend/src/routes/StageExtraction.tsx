@@ -26,6 +26,18 @@ import {
   type ExtractionEvent,
   type ExtractionRecord,
 } from "@/api/extraction";
+import {
+  ExtractionApprovals,
+  type Entity,
+} from "@/api/extractionApprovals";
+import { useApprovalStore } from "@/hooks/useApprovalStore";
+import { EntityTable } from "@/components/extraction/EntityTable";
+import { EntityFilterChips } from "@/components/extraction/EntityFilterChips";
+import { EntityActionsBar } from "@/components/extraction/EntityActionsBar";
+import { EntityEditModal } from "@/components/extraction/EntityEditModal";
+import { AutoApproveRuleBuilder } from "@/components/extraction/AutoApproveRuleBuilder";
+import { MarcSourceDrawer } from "@/components/extraction/MarcSourceDrawer";
+import { NerVerificationModal } from "@/components/extraction/NerVerificationModal";
 
 
 type Phase = "idle" | "running" | "complete" | "error";
@@ -89,6 +101,24 @@ export default function StageExtraction() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [models, setModels] = useState<Record<ModelRole, ModelState>>(_initialModels);
+
+  // ─── Stage-2 review UI state (Rule W-16) ─────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [columnFilters, setColumnFilters] = useState<Record<string, Set<string>>>({});
+  const [filteredEntities, setFilteredEntities] = useState<Entity[]>([]);
+  const [editEntity, setEditEntity] = useState<Entity | null>(null);
+  const [drawerCn, setDrawerCn] = useState<string | null>(null);
+  const [drawerHighlight, setDrawerHighlight] = useState<
+    null | { id: string; text: string; start: number | null; end: number | null }
+  >(null);
+  const [autoApproveOpen, setAutoApproveOpen] = useState(false);
+  const [verifyScope, setVerifyScope] = useState<
+    null | { scopeKind: "selection" | "all"; entityIds: string[]; label: string }
+  >(null);
+  const approvalStore = useApprovalStore(runId ?? "", {
+    active: verifyScope !== null,
+  });
+  const refreshEntities = approvalStore.refresh;
   // Mode is undefined → backend picks from its own EXTRACTION_MODE
   // env var (resolve_mode in extraction_backend.py). Used to be
   // hard-coded "hf-api" here, which overrode the backend's preference
@@ -456,16 +486,88 @@ export default function StageExtraction() {
           )}
         </section>
 
-        {records.length > 0 && (
-          <section className="glass p-6 space-y-4">
+        {/* Rich Stage-2 review UI (Rule W-16). Replaces the legacy
+            per-record collapsible list with an entity-level table +
+            filters + bulk actions + AI verification entry points. */}
+        {runId && approvalStore.entities.length > 0 && (
+          <section className="glass p-6 space-y-4" data-testid="entity-review">
             <div>
-              <div className="kicker">Per-record results</div>
+              <div className="kicker">Entity review</div>
               <h3 className="text-lg font-medium">
-                Expand a row to see the entities and ML genres
+                Validate, edit, and approve every extracted entity
               </h3>
             </div>
 
-            <div className="overflow-x-auto">
+            <EntityActionsBar
+              totalCount={approvalStore.total || approvalStore.entities.length}
+              visibleCount={filteredEntities.length}
+              selectedIds={selectedIds}
+              visibleEntities={filteredEntities}
+              onSelectAllVisible={() => {
+                const next = new Set(selectedIds);
+                for (const e of filteredEntities) next.add(e.id);
+                setSelectedIds(next);
+              }}
+              onApproveSelected={async () => {
+                if (selectedIds.size === 0) return;
+                await ExtractionApprovals.bulkApprove(
+                  runId, Array.from(selectedIds), true,
+                );
+                await refreshEntities();
+              }}
+              onRejectSelected={async () => {
+                if (selectedIds.size === 0) return;
+                await ExtractionApprovals.bulkApprove(
+                  runId, Array.from(selectedIds), false,
+                );
+                await refreshEntities();
+              }}
+              onOpenAutoApprove={() => setAutoApproveOpen(true)}
+              onVerifyScope={(scopeKind, entityIds) => {
+                const label = scopeKind === "selection"
+                  ? `${entityIds.length} selected`
+                  : `${entityIds.length} visible`;
+                setVerifyScope({ scopeKind, entityIds, label });
+              }}
+            />
+
+            <EntityFilterChips
+              entities={approvalStore.entities}
+              onFilteredChange={setFilteredEntities}
+            />
+
+            <EntityTable
+              runId={runId}
+              entities={filteredEntities}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              onEntityUpdated={() => { void refreshEntities(); }}
+              onOpenEdit={setEditEntity}
+              onViewSource={(e) => {
+                setDrawerCn(e.control_number);
+                setDrawerHighlight({
+                  id: e.id, text: e.text, start: e.start, end: e.end,
+                });
+              }}
+              onOpenMarc={(cn) => {
+                setDrawerCn(cn);
+                setDrawerHighlight(null);
+              }}
+              columnFilters={columnFilters}
+              onColumnFiltersChange={setColumnFilters}
+            />
+          </section>
+        )}
+
+        {/* Legacy per-record results table — kept as a secondary view
+            for users who prefer the by-MS grouping while the new
+            entity-level table is the primary review surface. */}
+        {records.length > 0 && (
+          <details className="glass p-6 space-y-4">
+            <summary className="kicker cursor-pointer">
+              Per-record overview ({records.length} records)
+            </summary>
+            <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm border-collapse">
                 <thead className="muted text-left">
                   <tr className="border-b border-white/5">
@@ -494,9 +596,44 @@ export default function StageExtraction() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </details>
         )}
       </div>
+
+      {/* ─── Modals + drawer ──────────────────────────────────────── */}
+      {editEntity && runId && (
+        <EntityEditModal
+          runId={runId}
+          entity={editEntity}
+          onClose={() => setEditEntity(null)}
+          onSaved={() => { void refreshEntities(); setEditEntity(null); }}
+        />
+      )}
+      {runId && (
+        <MarcSourceDrawer
+          runId={runId}
+          controlNumber={drawerCn}
+          highlightEntity={drawerHighlight}
+          onClose={() => { setDrawerCn(null); setDrawerHighlight(null); }}
+        />
+      )}
+      {autoApproveOpen && runId && (
+        <AutoApproveRuleBuilder
+          runId={runId}
+          onClose={() => setAutoApproveOpen(false)}
+          onComplete={() => { void refreshEntities(); setAutoApproveOpen(false); }}
+        />
+      )}
+      {verifyScope && runId && (
+        <NerVerificationModal
+          runId={runId}
+          scopeKind={verifyScope.scopeKind}
+          entityIds={verifyScope.entityIds}
+          scopeLabel={verifyScope.label}
+          onClose={() => setVerifyScope(null)}
+          onVerdictsLanded={() => { void refreshEntities(); }}
+        />
+      )}
     </Layout>
   );
 }
