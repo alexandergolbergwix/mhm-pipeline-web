@@ -49,7 +49,12 @@ router = APIRouter(tags=["extraction-verify"])
 
 class StartRequest(BaseModel):
     action_id: str = Field(..., min_length=1, max_length=64)
-    entity_ids: list[uuid.UUID] | None = None
+    # Content-hash base64 ids from the frontend's entity table — NOT
+    # UUIDs. They decode via ``extraction._parse_entity_id`` to a
+    # content-tuple (control_number, source, text, start, end) that
+    # uniquely identifies the entity even when no ExtractionApproval
+    # row has been created yet.
+    entity_ids: list[str] | None = None
     override_cache: bool = False
     tier_model: str | None = Field(default=None, max_length=64)
 
@@ -384,20 +389,124 @@ def _read_extraction_session(
 async def _fetch_entities(
     db: AsyncSession,
     run_id: uuid.UUID,
-    entity_ids: list[uuid.UUID] | None,
+    entity_ids: list[str] | None,
 ) -> list[tuple[ExtractionApproval, RunRecord]]:
-    q = select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
-    if entity_ids:
-        q = q.where(ExtractionApproval.id.in_(entity_ids))
-    q = q.order_by(
-        ExtractionApproval.control_number,
-        ExtractionApproval.source,
-        ExtractionApproval.text,
+    """Resolve scope → ``(ExtractionApproval, RunRecord)`` pairs.
+
+    The frontend sends content-hash ids (the same key
+    ``app.routers.extraction._entity_id`` emits on every row of
+    ``GET /entities``). We:
+      1. Decode each id → ``(control_number, source, text, start, end)``.
+      2. Look up any existing ``ExtractionApproval`` rows by that
+         5-tuple; create a synthetic in-memory row for any entity
+         that doesn't have a persisted approval yet (curator hasn't
+         clicked anything for it). The synthetic row is NOT committed
+         — it just carries the fields the eval-agent fixture needs.
+      3. Pull every needed ``RunRecord`` in one query for MARC context.
+
+    When ``entity_ids`` is None → return every ``ExtractionApproval``
+    row for the run + the matching RunRecord. (Existing-rows-only —
+    a curator who scopes by "all" presumably wants whatever has been
+    touched.)
+    """
+    from app.routers.extraction import (   # noqa: PLC0415
+        _parse_entity_id, _flatten_records, _results_path,
     )
+    import json as _json
+
+    # — Branch A: ``entity_ids`` provided → decode + upsert-synthetic
+    if entity_ids:
+        decoded: list[tuple[str, str, str, int, int]] = []
+        for eid in entity_ids:
+            try:
+                decoded.append(_parse_entity_id(eid))
+            except Exception:  # noqa: BLE001
+                continue
+        if not decoded:
+            return []
+
+        # Build a key set for fast lookup.
+        keys = {(cn, src, text, start, end)
+                for (cn, src, text, start, end) in decoded}
+        cns = sorted({k[0] for k in keys})
+
+        existing_rows = (
+            await db.execute(
+                select(ExtractionApproval).where(
+                    ExtractionApproval.run_id == run_id,
+                    ExtractionApproval.control_number.in_(cns),
+                )
+            )
+        ).scalars().all()
+        existing_by_key = {
+            (r.control_number, r.source, r.text, r.start or 0, r.end or 0): r
+            for r in existing_rows
+        }
+
+        # Pull the ner_results.json snapshot for fields not in the
+        # approval row (type/role/confidence) so synthetic rows carry
+        # the original prediction.
+        snapshot: dict[tuple[str, str, str, int, int], dict] = {}
+        path = _results_path(run_id)
+        if path.exists():
+            try:
+                records = _json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(records, list):
+                    for ent in _flatten_records(records):
+                        k = (ent["control_number"], ent["source"], ent["text"],
+                             int(ent.get("start") or 0), int(ent.get("end") or 0))
+                        snapshot[k] = ent
+            except _json.JSONDecodeError:
+                pass
+
+        # Build rows: real approval where it exists, synthetic
+        # transient otherwise.
+        records = (
+            await db.execute(
+                select(RunRecord).where(
+                    RunRecord.run_id == run_id,
+                    RunRecord.control_number.in_(cns),
+                )
+            )
+        ).scalars().all()
+        rec_by_cn = {r.control_number: r for r in records}
+
+        out: list[tuple[ExtractionApproval, RunRecord]] = []
+        for (cn, src, text, start, end) in decoded:
+            key = (cn, src, text, start, end)
+            ext = existing_by_key.get(key)
+            if ext is None:
+                snap = snapshot.get(key, {})
+                ext = ExtractionApproval(
+                    run_id=run_id, control_number=cn, source=src,
+                    text=text, start=start, end=end,
+                    type=snap.get("type") or "",
+                    role=snap.get("role") or "",
+                    confidence=snap.get("confidence"),
+                    model_confidence=snap.get("model_confidence"),
+                    approved=False,
+                )
+                # Persist so verdict writeback in the finally block
+                # has a real id to join against.
+                db.add(ext)
+            rec = rec_by_cn.get(cn) or RunRecord(
+                run_id=run_id, control_number=cn, marc={},
+            )
+            out.append((ext, rec))
+        await db.commit()
+        return out
+
+    # — Branch B: ``entity_ids`` omitted → every existing row.
+    q = (select(ExtractionApproval)
+         .where(ExtractionApproval.run_id == run_id)
+         .order_by(
+             ExtractionApproval.control_number,
+             ExtractionApproval.source,
+             ExtractionApproval.text,
+         ))
     rows = (await db.execute(q)).scalars().all()
     if not rows:
         return []
-
     cns = sorted({r.control_number for r in rows})
     records = (
         await db.execute(
@@ -407,16 +516,9 @@ async def _fetch_entities(
         )
     ).scalars().all()
     rec_by_cn = {r.control_number: r for r in records}
-
-    out: list[tuple[ExtractionApproval, RunRecord]] = []
-    for ext in rows:
-        rec = rec_by_cn.get(ext.control_number)
-        if rec is None:
-            rec = RunRecord(
-                run_id=run_id, control_number=ext.control_number, marc={},
-            )
-        out.append((ext, rec))
-    return out
+    return [(ext, rec_by_cn.get(ext.control_number) or RunRecord(
+                 run_id=run_id, control_number=ext.control_number, marc={}))
+            for ext in rows]
 
 
 def _approval_to_ner_shape(ext: ExtractionApproval) -> dict[str, Any]:

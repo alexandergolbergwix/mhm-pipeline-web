@@ -36,10 +36,10 @@ async function request<T>(
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      const data = (await res.json()) as { detail?: string };
-      if (data?.detail) detail = data.detail;
+      const data = (await res.json()) as { detail?: unknown };
+      detail = coerceErrorDetail(data?.detail, res.statusText);
     } catch {
-      /* ignore */
+      /* response wasn't JSON — keep statusText */
     }
     throw new ApiError(res.status, detail);
   }
@@ -72,6 +72,40 @@ async function request<T>(
     );
   }
   return (await res.json()) as T;
+}
+
+
+/** Render whatever ``response.json().detail`` carried into a single
+ *  human-readable string. FastAPI returns three shapes:
+ *    - string (HTTPException.detail) — use directly
+ *    - object {msg, loc, type, …} — single Pydantic validation error
+ *    - array of objects — list of Pydantic validation errors
+ *
+ *  Without this coercion the array case ended up rendered as
+ *  ``[object Object],[object Object],...`` because React's JSX
+ *  stringifies an array of objects with Array.prototype.toString().
+ */
+function coerceErrorDetail(detail: unknown, fallback: string): string {
+  if (detail === undefined || detail === null) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((d) => stringifyValidationError(d)).join("; ") || fallback;
+  }
+  if (typeof detail === "object") return stringifyValidationError(detail);
+  return String(detail);
+}
+
+function stringifyValidationError(d: unknown): string {
+  if (!d) return "";
+  if (typeof d === "string") return d;
+  if (typeof d !== "object") return String(d);
+  const r = d as Record<string, unknown>;
+  const msg = typeof r.msg === "string" ? r.msg : "";
+  const loc = Array.isArray(r.loc) ? r.loc.join(".") : "";
+  if (msg && loc) return `${loc}: ${msg}`;
+  if (msg)        return msg;
+  if (loc)        return loc;
+  try { return JSON.stringify(r); } catch { return "<error>"; }
 }
 
 export const api = {

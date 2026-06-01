@@ -397,4 +397,90 @@ test.describe("AI Extraction entity-review UI", () => {
     await expect(failPill).toBeVisible();
   });
 
+  // ── 11. ERROR-RENDERING PATHS (regression of bugs caught by the user) ──
+
+  test("422 validation-error array renders as readable text, not '[object Object]'", async ({ page }) => {
+    const state = makeMockState();
+    await installExtractionMocks(page, state);
+    // Override the actions endpoint to return a FastAPI-shaped 422
+    // (list of validation-error dicts) — regression test for the bug
+    // where the api client stringified the array as
+    // "[object Object],[object Object],..." in the modal.
+    await page.route(
+      `**/api/runs/${TEST_RUN_ID}/extraction/ai-verify/actions*`,
+      async (route) => {
+        await route.fulfill({
+          status: 422,
+          contentType: "application/json",
+          body: JSON.stringify({
+            detail: [
+              { type: "missing", loc: ["body", "action_id"], msg: "Field required" },
+              { type: "string_too_short", loc: ["body", "tier_model"], msg: "min_length" },
+            ],
+          }),
+        });
+      },
+    );
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+    await page.getByTestId("btn-verify-all-visible").click();
+    // Whatever the modal renders, it MUST NOT contain "[object Object]"
+    // — that's the stringify-array-of-dicts bug.
+    await page.waitForTimeout(500);
+    const body = await page.textContent("body");
+    expect(body ?? "").not.toContain("[object Object]");
+  });
+
+  test("Sticky header shares the same horizontal scroll axis as body rows", async ({ page }) => {
+    const state = makeMockState();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+    // Regression: clicking a column filter or scrolling horizontally
+    // used to leave the title row behind. The header + body must live
+    // inside the SAME horizontally-scrollable ancestor.
+    const sameAncestor = await page.evaluate(() => {
+      const header = document.querySelector('[data-testid="col-type"]');
+      const cell   = document.querySelector('[data-testid="entity-row"]');
+      if (!header || !cell) return false;
+      function scrollAncestor(el: Element | null): Element | null {
+        while (el && el !== document.body) {
+          const s = getComputedStyle(el as HTMLElement).overflowX;
+          if (s === "auto" || s === "scroll") return el;
+          el = el.parentElement;
+        }
+        return null;
+      }
+      return scrollAncestor(header) === scrollAncestor(cell);
+    });
+    expect(sameAncestor).toBe(true);
+  });
+
+  // ── 12. ENTITY DETAIL DRAWER ──────────────────────────────────
+
+  test("clicking the 👁 button opens the EntityDetailDrawer with all 4 cards", async ({ page }) => {
+    const state = makeMockState();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+    await page.getByTestId("entity-view-source").first().click();
+    const drawer = page.getByTestId("entity-detail-drawer");
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByTestId("card-confidence")).toBeVisible();
+    await expect(drawer.getByTestId("card-grounding")).toBeVisible();
+    await expect(drawer.getByTestId("card-ai-verdict")).toBeVisible();
+    await expect(drawer.getByTestId("card-marc-record")).toBeVisible({ timeout: 5000 });
+  });
+
+  test("Detail drawer Approve button persists state via PATCH", async ({ page }) => {
+    const state = makeMockState();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+    await page.getByTestId("entity-view-source").first().click();
+    await page.getByTestId("detail-approve").click();
+    await expect.poll(() => state.patchCalls.length).toBeGreaterThan(0);
+    expect(state.patchCalls.some((c) => c.body.approved === true)).toBe(true);
+  });
+
 });
