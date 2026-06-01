@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
 
 export interface ColumnFilterPopupProps {
   columnLabel: string;
@@ -83,19 +84,24 @@ export function ColumnFilterPopup({
   }, [values]);
 
   const style = useMemo<CSSProperties>(() => {
-    const maxX = typeof window !== "undefined" ? window.innerWidth - 320 : x;
-    const maxY = typeof window !== "undefined" ? window.innerHeight - 360 : y;
+    const maxX = typeof window !== "undefined" ? window.innerWidth - 340 : x;
+    const maxY = typeof window !== "undefined" ? window.innerHeight - 400 : y;
     return {
       position: "fixed",
       left: Math.max(8, Math.min(x, maxX)),
       top: Math.max(8, Math.min(y, maxY)),
-      width: "300px",
-      zIndex: 100,
+      width: "320px",
+      // Above the page chrome (z-50 modals) but the entity table
+      // surface doesn't carry a zIndex itself. 9999 guarantees we
+      // overlay everything else without competing with modal stacks.
+      zIndex: 9999,
     };
   }, [x, y]);
 
-  return (
-    <div ref={ref} style={style} className="glass shadow-lg" role="dialog">
+  const popup = (
+    <div ref={ref} style={style}
+         className="glass shadow-2xl"
+         role="dialog">
       <div className="border-b border-white/10 px-3 py-2">
         <div className="kicker">Filter</div>
         <div className="text-sm text-ink">{columnLabel}</div>
@@ -169,4 +175,11 @@ export function ColumnFilterPopup({
       </div>
     </div>
   );
+
+  // Portal to document.body so the popup escapes the table's
+  // overflow-hidden ancestor and renders ABOVE the page layout
+  // instead of getting clipped or pushing rows around. SSR-safe
+  // fallback returns the popup directly when document is absent.
+  if (typeof document === "undefined") return popup;
+  return createPortal(popup, document.body);
 }

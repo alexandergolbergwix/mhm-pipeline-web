@@ -286,7 +286,7 @@ export function EntityTable(props: EntityTableProps) {
           onChange={(e: ChangeEvent<HTMLSelectElement>) => updateEntity(entity, { type: e.target.value as EntityType })}
           aria-label="Entity type"
           data-testid="entity-type"
-          className="input-glass h-7 text-xs"
+          className="h-7 w-full rounded-md border border-white/10 bg-black/30 px-2 text-xs text-ink outline-none focus:border-biu-sky"
         >
           {ENTITY_TYPES.map((t) => (<option key={t} value={t}>{t}</option>))}
         </select>
@@ -295,7 +295,7 @@ export function EntityTable(props: EntityTableProps) {
           onChange={(e: ChangeEvent<HTMLSelectElement>) => updateEntity(entity, { role: e.target.value as EntityRole })}
           aria-label="Entity role"
           data-testid="entity-role"
-          className="input-glass h-7 text-xs"
+          className="h-7 w-full rounded-md border border-white/10 bg-black/30 px-2 text-xs text-ink outline-none focus:border-biu-sky"
         >
           {ENTITY_ROLES.map((r) => (<option key={r || "_blank"} value={r}>{r || "—"}</option>))}
         </select>
@@ -381,9 +381,10 @@ export function EntityTable(props: EntityTableProps) {
       {/* Inline per-column filter row. Free-text inputs for MS (the
           control number) + Text (the entity surface form). Other
           columns get a "▾" button that opens the same ColumnFilterPopup
-          the right-click would. */}
+          the right-click would. Slim rounding (rounded-md = 6px) so
+          inputs don't look like pills overflowing their cells. */}
       <div
-        className="grid items-center gap-2 border-b border-white/10 bg-white/[0.02] px-2 py-1 text-xs"
+        className="grid items-center gap-1 border-b border-white/10 bg-white/[0.02] px-2 py-1 text-xs"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         <span />
@@ -401,7 +402,7 @@ export function EntityTable(props: EntityTableProps) {
                 }
                 aria-label={`filter ${col.label}`}
                 data-testid={`text-filter-${col.key}`}
-                className="input-glass h-6 text-[11px] w-full"
+                className="h-6 w-full rounded-md border border-white/10 bg-black/30 px-2 text-[11px] text-ink outline-none focus:border-biu-sky"
               />
             );
           }
@@ -416,7 +417,7 @@ export function EntityTable(props: EntityTableProps) {
                 onClick={(e) =>
                   setPopup({ column: col.key, x: e.clientX, y: e.clientY + 4 })
                 }
-                className={`h-6 text-[10px] rounded border border-white/10 hover:border-biu-sky truncate ${active ? "text-biu-sky border-biu-sky" : "muted"}`}
+                className={`h-6 truncate rounded-md border border-white/10 text-[10px] hover:border-biu-sky ${active ? "text-biu-sky border-biu-sky" : "muted"}`}
               >
                 {active ? `${columnFilters[col.key]?.size}` : "▾"}
               </button>
