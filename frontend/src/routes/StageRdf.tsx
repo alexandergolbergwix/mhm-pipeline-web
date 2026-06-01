@@ -19,6 +19,12 @@ import CytoscapeComponent from "react-cytoscapejs";
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { NodeDetailPanel } from "@/components/NodeDetailPanel";
+import { GraphFilters } from "@/components/rdf/GraphFilters";
+import {
+  emptyFilterState,
+  useGraphFilters,
+  type GraphFilterState,
+} from "@/components/rdf/useGraphFilters";
 import {
   Rdf,
   type GraphResponse,
@@ -76,6 +82,10 @@ export default function StageRdf() {
   // panel mounts and fetches the full RDF detail (types + properties +
   // in/out edges) for it.
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // — Filter state for the chip bar above the canvas. See
+  //   [useGraphFilters] for the actual filter-set computation.
+  const [filterState, setFilterState] = useState<GraphFilterState>(() => emptyFilterState());
 
   const cyRef = useRef<Core | null>(null);
 
@@ -170,19 +180,24 @@ export default function StageRdf() {
     {
       selector: "node",
       style: {
-        "background-color":  "data(color)",
-        "label":             "data(label)",
-        "color":             "#0c1014",
-        "font-size":         10,
-        "text-valign":       "center",
-        "text-halign":       "center",
-        "text-wrap":         "ellipsis",
-        "text-max-width":    "80px",
-        "text-opacity":      0,         // hidden by default; revealed at zoom + hover
-        "border-width":      1,
-        "border-color":      "rgba(0, 0, 0, 0.25)",
-        "width":             "32px",
-        "height":            "32px",
+        "background-color":        "data(color)",
+        "label":                   "data(label)",
+        "color":                   "#e8edf4",
+        "font-size":               9,
+        "text-valign":             "bottom",      // outside the dot
+        "text-halign":             "center",
+        "text-margin-y":           4,
+        "text-wrap":               "ellipsis",
+        "text-max-width":          "120px",
+        "text-opacity":            1,             // always-on label
+        "text-background-color":   "rgba(0,16,8,0.75)",
+        "text-background-opacity": 0.75,
+        "text-background-shape":   "roundrectangle",
+        "text-background-padding": "2px",
+        "border-width":            1,
+        "border-color":            "rgba(0, 0, 0, 0.25)",
+        "width":                   "32px",
+        "height":                  "32px",
       },
     },
     {
@@ -190,24 +205,30 @@ export default function StageRdf() {
       style: {
         "border-width": 3,
         "border-color": "#77cce5",
-        "text-opacity": 1,
       },
     },
     {
       selector: "edge",
       style: {
-        "width":              1,
-        "line-color":         "rgba(183, 216, 227, 0.4)",
-        "curve-style":        "bezier",
-        "target-arrow-shape": "triangle",
-        "target-arrow-color": "rgba(183, 216, 227, 0.55)",
-        "arrow-scale":        0.7,
-        "label":              "",
-        "font-size":          8,
-        "color":              "#b7d8e3",
-        "text-background-color": "#001008",
+        "width":                   1,
+        "line-color":              "rgba(183, 216, 227, 0.4)",
+        "curve-style":             "bezier",
+        "target-arrow-shape":      "triangle",
+        "target-arrow-color":      "rgba(183, 216, 227, 0.55)",
+        "arrow-scale":             0.7,
+        "label":                   "",            // gated by .show-label / hover / select
+        "font-size":               8,
+        "color":                   "#b7d8e3",
+        "text-background-color":   "#001008",
         "text-background-opacity": 0.8,
         "text-background-padding": "2px",
+        "text-rotation":           "autorotate",  // read along the edge
+      },
+    },
+    {
+      selector: "edge.show-label, edge:selected, edge.hover",
+      style: {
+        "label": "data(predicate_label)",
       },
     },
     {
@@ -215,7 +236,22 @@ export default function StageRdf() {
       style: {
         "width":      2,
         "line-color": "#77cce5",
-        "label":      "data(predicate_label)",
+      },
+    },
+    // — Dim: applied to elements filtered out of the active set. We
+    //   keep them visible (15% opacity) so the user retains spatial
+    //   context instead of having the graph re-layout.
+    {
+      selector: "node.dim",
+      style: {
+        "opacity":      0.15,
+        "text-opacity": 0.15,
+      },
+    },
+    {
+      selector: "edge.dim",
+      style: {
+        "opacity": 0.10,
       },
     },
   ]), []);
@@ -229,21 +265,18 @@ export default function StageRdf() {
     padding: 30,
   } as unknown as LayoutOptions), []);
 
-  // Reveal node labels as the user zooms in. Hover always reveals.
-  // Single-click selects the node → opens the side detail panel.
+  // Node labels are now always-on (handled by the stylesheet). The
+  // zoom handler toggles the ``show-label`` class on every edge —
+  // edges stay unlabelled at low zoom (50-edge alphabet soup) and
+  // pick up their predicate label at zoom > 0.6 or on hover.
   function attachCy(cy: Core) {
     cyRef.current = cy;
-    cy.on("zoom", () => {
-      const z = cy.zoom();
-      cy.nodes().style("text-opacity", z > 0.6 ? 1 : 0);
-    });
-    cy.on("mouseover", "node", (evt) => {
-      evt.target.style("text-opacity", 1);
-    });
-    cy.on("mouseout", "node", (evt) => {
-      const z = cy.zoom();
-      if (z <= 0.6) evt.target.style("text-opacity", 0);
-    });
+    const applyEdgeLabelClass = () => {
+      const show = cy.zoom() > 0.6;
+      cy.edges().toggleClass("show-label", show);
+    };
+    cy.on("zoom", applyEdgeLabelClass);
+    applyEdgeLabelClass();
     cy.on("mouseover", "edge", (evt) => evt.target.addClass("hover"));
     cy.on("mouseout",  "edge", (evt) => evt.target.removeClass("hover"));
     cy.on("tap", "node", (evt) => {
@@ -294,6 +327,38 @@ export default function StageRdf() {
   const statusLabel = status?.status ?? "idle";
   const violations  = shacl?.violations ?? [];
   const grouped     = useMemo(() => groupBySeverity(violations), [violations]);
+
+  // SHACL focus_node ids match GraphNode.id 1:1, so the SHACL chip
+  // can intersect the two sets directly. Empty until Validate runs.
+  const shaclFocus = useMemo(
+    () => new Set(violations.map((v) => v.focus_node).filter(Boolean)),
+    [violations],
+  );
+
+  // Compute filtered node + edge id sets via the pure hook.
+  const activeSets = useGraphFilters({
+    nodes:      graph?.nodes ?? [],
+    edges:      graph?.edges ?? [],
+    state:      filterState,
+    shaclFocus,
+    selectedId: selectedNodeId,
+  });
+
+  // Apply ``.dim`` to elements that the filter set rejected. Uses
+  // ``cy.batch()`` so 500 nodes don't trigger 500 re-paints (the
+  // exact bug that motivated moving layout server-side).
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        n.toggleClass("dim", !activeSets.nodeIds.has(n.id()));
+      });
+      cy.edges().forEach((e) => {
+        e.toggleClass("dim", !activeSets.edgeIds.has(e.id()));
+      });
+    });
+  }, [activeSets]);
 
   return (
     <Layout>
@@ -366,6 +431,20 @@ export default function StageRdf() {
 
           {error && (
             <div className="glass-pill px-3 py-2 text-sm text-red-300">{error}</div>
+          )}
+
+          {/* Filter bar — always rendered once a graph is loaded. */}
+          {graph && graph.nodes.length > 0 && (
+            <GraphFilters
+              nodes={graph.nodes}
+              edges={graph.edges}
+              shaclFocus={shaclFocus}
+              selectedId={selectedNodeId}
+              state={filterState}
+              onChange={setFilterState}
+              visibleCount={activeSets.nodeIds.size}
+              totalCount={graph.nodes.length}
+            />
           )}
 
           {/* Two-column body when a node is selected; full-width canvas otherwise. */}
