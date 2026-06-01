@@ -108,7 +108,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
   }
 
   return (
-    <section className="glass-pill p-3 space-y-3">
+    <section className="glass p-3 space-y-3">
       <div className="flex items-baseline justify-between flex-wrap gap-2">
         <div className="kicker">
           Verdicts ({visible.length}{rows.length !== visible.length && ` of ${rows.length}`})

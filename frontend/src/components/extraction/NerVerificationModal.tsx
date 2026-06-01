@@ -279,7 +279,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
         )}
 
         {/* Live diagram */}
-        <section className="glass-pill p-3">
+        <section className="glass p-3">
           <div className="kicker mb-2">Agent flow</div>
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
         </section>
@@ -288,7 +288,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
         <VerdictsTable verdicts={verdicts} />
 
         {/* Step log — collapsed by default. */}
-        <details className="glass-pill p-3">
+        <details className="glass p-3">
           <summary className="kicker cursor-pointer hover:text-ink">
             Step log ({events.length})
           </summary>

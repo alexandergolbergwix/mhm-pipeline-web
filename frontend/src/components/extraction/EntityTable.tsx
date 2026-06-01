@@ -60,17 +60,20 @@ interface ColumnDef {
 }
 
 const COLUMNS: ColumnDef[] = [
-  { key: "control_number", label: "MS", width: "160px", sortable: true, filterable: true },
-  { key: "text", label: "Text", width: "minmax(220px, 1.6fr)", sortable: true, filterable: false },
-  { key: "type", label: "Type", width: "170px", sortable: true, filterable: true },
-  { key: "role", label: "Role", width: "170px", sortable: true, filterable: true },
-  { key: "source", label: "Source", width: "150px", sortable: true, filterable: true },
-  { key: "confidence", label: "Conf.", width: "80px", sortable: true, filterable: true },
-  { key: "model_confidence", label: "Model", width: "80px", sortable: true, filterable: false },
-  { key: "exists_in", label: "MARC", width: "110px", sortable: true, filterable: true },
-  { key: "ai_verdict", label: "AI Check", width: "130px", sortable: true, filterable: true },
-  { key: "approved", label: "✓", width: "60px", sortable: true, filterable: true },
-  { key: "edit", label: "", width: "100px", sortable: false, filterable: false },
+  // Widths are tuned to fit a ~1280px viewport without horizontal
+  // scroll. Type/Role are deliberately wide enough for the longest
+  // enum value (WORK_AUTHOR / TRANSCRIBER / COMMENTATOR).
+  { key: "control_number", label: "MS", width: "minmax(110px, 130px)", sortable: true, filterable: true },
+  { key: "text", label: "Text", width: "minmax(180px, 1.4fr)", sortable: true, filterable: false },
+  { key: "type", label: "Type", width: "140px", sortable: true, filterable: true },
+  { key: "role", label: "Role", width: "140px", sortable: true, filterable: true },
+  { key: "source", label: "Source", width: "130px", sortable: true, filterable: true },
+  { key: "confidence", label: "Conf.", width: "70px", sortable: true, filterable: true },
+  { key: "model_confidence", label: "Model", width: "70px", sortable: true, filterable: false },
+  { key: "exists_in", label: "MARC", width: "100px", sortable: true, filterable: true },
+  { key: "ai_verdict", label: "AI Check", width: "110px", sortable: true, filterable: true },
+  { key: "approved", label: "✓", width: "44px", sortable: true, filterable: true },
+  { key: "edit", label: "", width: "78px", sortable: false, filterable: false },
 ];
 
 export interface EntityTableProps {
