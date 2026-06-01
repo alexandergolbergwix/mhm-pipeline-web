@@ -69,6 +69,39 @@ heroku config:set --app "$APP" \
 > survive the loss of `MASTER_KEY` — but the user must log in once to
 > have them unwrapped server-side.
 
+### 2.1 — Extraction backend (Modal vs local vs HF)
+
+`EXTRACTION_MODE` picks which inference backend Stage 2 uses
+(CLAUDE.md Rule W-11). The Heroku slug is too small to bundle the
+model weights, so the realistic choices in production are:
+
+```bash
+# Modal (recommended — pay-per-call, all four models in one container)
+heroku config:set --app "$APP" \
+    EXTRACTION_MODE=modal \
+    MODAL_NER_URL=https://<workspace>--mhm-ner-mhmner-web.modal.run
+
+# HF Inference Providers — only works for repos HF has actually
+# deployed. Our four models all currently return `inference: None`
+# on the free tier, so this mode is for repos HF will serve (i.e.
+# none of ours, today).
+heroku config:set --app "$APP" \
+    EXTRACTION_MODE=hf-api \
+    HF_TOKEN=hf_xxxxx
+
+# Local — only if you've upgraded to a Performance dyno with ≥2.5 GB
+# RAM AND solved the slug-size problem (e.g. pulling .pt files from
+# HF Hub at boot). Not recommended on Heroku.
+heroku config:set --app "$APP" EXTRACTION_MODE=local
+```
+
+Deploy the Modal app from the web repo:
+```bash
+cd modal && modal deploy modal_app.py
+```
+The deploy prints the URL to set as `MODAL_NER_URL`. See
+`modal/README.md` and `.claude/commands/deploy-modal.md` for details.
+
 ---
 
 ## 3. Tell the Node buildpack to build the frontend

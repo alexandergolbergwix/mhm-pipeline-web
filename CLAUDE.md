@@ -135,6 +135,107 @@ verbatim. Diffing the two trees should produce zero output for those
 paths. If desktop adds a Rule, the web inherits it the next time the
 files are re-mirrored. Never fork these files.
 
+### Rule W-11 — three extraction backends; one selector
+
+`backend/app/pipeline/extraction_backend.py` exposes one
+`InferenceBackend` Protocol with three implementations:
+
+| Backend | When | Notes |
+|---|---|---|
+| `LocalInferenceBackend` | `EXTRACTION_MODE=local` | torch + transformers inside the FastAPI dyno. Works offline but bloats the dyno (~3 GB RAM for all four warm) |
+| `HfApiInferenceBackend` | `EXTRACTION_MODE=hf-api` | Calls HF Inference Providers. **Dead end for our four models** on the free serverless tier — HF refuses to deploy custom-code repos (Provenance/Contents) and won't allocate hardware for low-traffic standard repos (Person/Genre). Kept for repos HF does deploy |
+| `ModalInferenceBackend` | `EXTRACTION_MODE=modal` | Calls the deployed `mhm-ner` Modal app at `MODAL_NER_URL`. All four models in one container, shared DictaBERT base, pay-per-second. The current production answer |
+
+`resolve_mode()` picks one from the env var; `build_backend()` lazy-imports
+the right module so a Modal-only deploy never imports torch and an
+hf-api-only deploy never reads weight files. New backends go through
+this Protocol — no direct calls from `extraction.py` to vendor SDKs.
+
+### Rule W-12 — shared cross-user inference cache
+
+`backend/app/models/inference_cache.py` is the team-wide content-addressed
+cache for every external inference call. Keyed by `(kind, query_hash)`
+where `query_hash` is SHA-256 of canonical JSON of the query summary.
+`cache_lookup_or_call(db, kind=..., query_summary=..., fetch=...)` in
+`backend/app/pipeline/inference_cache.py` is the only entry point;
+never write to the table directly.
+
+Three call sites use it today:
+1. **HF backend** — `extraction_backend_hf.py::_cached()` for every
+   NER + genre call.
+2. **Modal backend** — `extraction_backend_modal.py::_cached()` mirrors
+   the HF pattern.
+3. **Authority matchers** — `pipeline/authority.py::DesktopMatcher`
+   has six cached wrappers (`_kima_match_place`, `_mazal_match_person`,
+   `_mazal_get_details`, `_viaf_match_with_metadata`,
+   `_wikidata_match_person`, `_wikidata_dates`). `_match_one` routes
+   every external call through them so the first team member to
+   resolve a name populates the cache; everyone else warm-hits.
+
+TTL is per-kind via `KIND_TTL`. NER + genre + ai_verdict are
+content-addressed → no expiry (`None`). Authority lookups expire at
+30 days because the upstream record can change.
+
+`skip_cache=True` is the explicit "force fresh" escape hatch. UI
+exposes it as "Override cache (force fresh LLM call)" on the AI
+verification modal and "Skip cache" on the extraction panel. Never
+default to True — the user must opt in.
+
+### Rule W-13 — AI verdicts persist to AuthorityMatch.payload.ai_verdict
+
+When the AI verification SSE stream finishes,
+`backend/app/routers/ai_verify.py::_persist_ai_verdicts_to_matches`
+opens a fresh `session_scope` (the request-scoped DB session is
+closed by the time the finally fires) and writes the verdict
+summary back to each `AuthorityMatch.payload["ai_verdict"]` joined
+by `candidate._match_id`. Without this the matches table shows
+verdicts only for the row scoped to "single match" runs and
+forgets everything after the modal closes.
+
+The persisted summary carries: `overall`, `name_ok`, `type_ok`,
+`role_ok`, `reasoning`, `model`, `judged_at`, `cache_key`,
+`session_id`, `evaluator`. The matches-table column reads
+`payload.ai_verdict.overall`.
+
+### Rule W-14 — AI verify state_dir is per-RUN, not per-session
+
+`state/ai-verify-sessions/<run_id>/` is the shared per-run state
+dir. The eval-agent's verdict cache (`<state_dir>/cache/`) and
+accumulated `runs/<ts>/` artefacts live here so opening the modal
+again warm-hits prior Gemini judgements.
+
+Per-session isolation goes one level deeper:
+`<state_dir>/sessions/<session_id>/` holds the filtered fixture +
+SSE trace audit log. Two sessions of the same run share the cache;
+each session has its own audit trail.
+
+`agent_runner.py::_resolve_session_dir(run_id, session_id)` accepts
+BOTH the new layout and the legacy direct-child layout so sessions
+written before this rule still load. Never write a session into
+the legacy layout — that path is read-only.
+
+### Rule W-15 — modal/ is a deploy target, not a backend dependency
+
+`modal/modal_app.py` is the Modal app definition (deployed once via
+`modal deploy modal_app.py`). It is NEVER imported by the FastAPI
+backend. Communication is HTTPS only — the backend's
+`ModalInferenceBackend` POSTs to `<MODAL_NER_URL>/extract`.
+
+The Modal app vendors the desktop's `ner/` + `converter/authority/`
+modules via `image.add_local_dir(..., copy=True)`. Weight artefacts
+(~3 GB) are pre-baked into the image at build time via
+`run_function(_bake_weights)` BEFORE the local-dir adds so a
+desktop NER code edit doesn't invalidate the weight layer.
+
+`_bake_weights` runs first because Modal's rule is "add_local_*
+must be last unless copy=True". A misordered chain like
+`add_local_* → run_function` is rejected at build time. The fix
+that landed in c19b9f3 + 98a0ca6 is the canonical layout.
+
+Cold start: ~30-60s for all four BERT models on a CPU-2 container.
+`scaledown_window=300` keeps it warm for 5 min after the last
+call. After that, $0.
+
 ---
 
 ## Project structure
@@ -154,6 +255,8 @@ files are re-mirrored. Never fork these files.
 | `frontend/tests/` | Vitest unit tests |
 | `frontend/e2e/` | Playwright browser tests |
 | `backend/tests/` | pytest + httpx route tests |
+| `modal/modal_app.py` | Modal app for the four NER + genre models (deployed; not imported by backend) |
+| `modal/README.md` | Modal deploy + economics |
 | `docs/project-hierarchy-plan.md` | Authoritative plan reference |
 | `docs/testing.md` | Three-layer test pyramid documentation |
 
@@ -182,6 +285,15 @@ cd frontend && yarn tsc --noEmit
 
 # Full smoke: ensure all routers register
 cd backend && .venv/bin/python -c "from app.main import app; print(len(app.routes))"
+
+# Modal — deploy the NER app (after editing modal/modal_app.py)
+cd modal && modal deploy modal_app.py
+
+# Modal — tail container logs (for cold-start debugging)
+modal app logs mhm-ner
+
+# Switch extraction to Modal (heroku)
+heroku config:set EXTRACTION_MODE=modal MODAL_NER_URL=https://<workspace>--mhm-ner-mhmner-web.modal.run
 ```
 
 ---
