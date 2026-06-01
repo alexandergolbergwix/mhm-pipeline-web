@@ -346,10 +346,20 @@ export function EntityTable(props: EntityTableProps) {
 
   const allVisibleSelected = display.length > 0 && display.every((e) => selectedIds.has(e.id));
 
+  // Single horizontally-scrollable container holds header + filter
+  // row + body so they all scroll together. Header + filter row are
+  // pinned vertically with position:sticky so they stay visible while
+  // the curator scrolls through rows; horizontally they share the
+  // same scroll axis as the body so columns line up at every offset.
+  // ``min-w-max`` on the inner block forces the grid to its full
+  // intrinsic width, triggering horizontal scroll when the viewport
+  // is narrower than the column total.
   return (
     <div className="glass overflow-hidden" data-testid="entity-table">
+      <div className="max-h-[640px] overflow-auto" ref={parentRef}>
+       <div className="min-w-max">
       <div
-        className="grid items-center gap-2 border-b border-white/10 bg-white/5 px-2 py-2 text-xs uppercase tracking-wide kicker"
+        className="sticky top-0 z-20 grid items-center gap-2 border-b border-white/10 bg-[rgba(16,24,36,0.92)] backdrop-blur px-2 py-2 text-xs uppercase tracking-wide kicker"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         <input
@@ -384,7 +394,7 @@ export function EntityTable(props: EntityTableProps) {
           the right-click would. Slim rounding (rounded-md = 6px) so
           inputs don't look like pills overflowing their cells. */}
       <div
-        className="grid items-center gap-1 border-b border-white/10 bg-white/[0.02] px-2 py-1 text-xs"
+        className="sticky top-[42px] z-10 grid items-center gap-1 border-b border-white/10 bg-[rgba(16,24,36,0.85)] backdrop-blur px-2 py-1 text-xs"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         <span />
@@ -426,14 +436,14 @@ export function EntityTable(props: EntityTableProps) {
           return <span key={col.key} />;
         })}
       </div>
-      <div ref={parentRef} className="max-h-[640px] overflow-auto">
-        {display.map((entity) => renderRow(entity))}
-        {display.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm muted" data-testid="entity-table-empty">
-            No entities match the current filters.
-          </div>
-        ) : null}
-      </div>
+      {display.map((entity) => renderRow(entity))}
+      {display.length === 0 ? (
+        <div className="px-4 py-8 text-center text-sm muted" data-testid="entity-table-empty">
+          No entities match the current filters.
+        </div>
+      ) : null}
+       </div>{/* /min-w-max */}
+      </div>{/* /scroll container */}
       {popup ? (
         <ColumnFilterPopup
           columnLabel={COLUMNS.find((c) => c.key === popup.column)?.label ?? ""}

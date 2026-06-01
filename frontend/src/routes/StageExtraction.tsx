@@ -36,7 +36,7 @@ import { EntityFilterChips } from "@/components/extraction/EntityFilterChips";
 import { EntityActionsBar } from "@/components/extraction/EntityActionsBar";
 import { EntityEditModal } from "@/components/extraction/EntityEditModal";
 import { AutoApproveRuleBuilder } from "@/components/extraction/AutoApproveRuleBuilder";
-import { MarcSourceDrawer } from "@/components/extraction/MarcSourceDrawer";
+import { EntityDetailDrawer } from "@/components/extraction/EntityDetailDrawer";
 import { NerVerificationModal } from "@/components/extraction/NerVerificationModal";
 
 
@@ -107,10 +107,9 @@ export default function StageExtraction() {
   const [columnFilters, setColumnFilters] = useState<Record<string, Set<string>>>({});
   const [filteredEntities, setFilteredEntities] = useState<Entity[]>([]);
   const [editEntity, setEditEntity] = useState<Entity | null>(null);
-  const [drawerCn, setDrawerCn] = useState<string | null>(null);
-  const [drawerHighlight, setDrawerHighlight] = useState<
-    null | { id: string; text: string; start: number | null; end: number | null }
-  >(null);
+  // The new EntityDetailDrawer takes the full Entity row; clicking a
+  // table row, the 👁 button, OR the AI verdict pill opens it.
+  const [detailEntity, setDetailEntity] = useState<Entity | null>(null);
   const [autoApproveOpen, setAutoApproveOpen] = useState(false);
   const [verifyScope, setVerifyScope] = useState<
     null | { scopeKind: "selection" | "all"; entityIds: string[]; label: string }
@@ -543,15 +542,12 @@ export default function StageExtraction() {
               onSelectionChange={setSelectedIds}
               onEntityUpdated={() => { void refreshEntities(); }}
               onOpenEdit={setEditEntity}
-              onViewSource={(e) => {
-                setDrawerCn(e.control_number);
-                setDrawerHighlight({
-                  id: e.id, text: e.text, start: e.start, end: e.end,
-                });
-              }}
+              onViewSource={setDetailEntity}
+              onOpenVerdict={setDetailEntity}
               onOpenMarc={(cn) => {
-                setDrawerCn(cn);
-                setDrawerHighlight(null);
+                // Open detail with the first entity from that record.
+                const first = approvalStore.entities.find((e) => e.control_number === cn);
+                if (first) setDetailEntity(first);
               }}
               columnFilters={columnFilters}
               onColumnFiltersChange={setColumnFilters}
@@ -610,11 +606,12 @@ export default function StageExtraction() {
         />
       )}
       {runId && (
-        <MarcSourceDrawer
+        <EntityDetailDrawer
           runId={runId}
-          controlNumber={drawerCn}
-          highlightEntity={drawerHighlight}
-          onClose={() => { setDrawerCn(null); setDrawerHighlight(null); }}
+          entity={detailEntity}
+          onClose={() => setDetailEntity(null)}
+          onEntityChanged={() => { void refreshEntities(); }}
+          onOpenEdit={(e) => setEditEntity(e)}
         />
       )}
       {autoApproveOpen && runId && (

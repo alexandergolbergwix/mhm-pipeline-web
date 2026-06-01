@@ -1,0 +1,518 @@
+/**
+ * EntityDetailDrawer — right-side drawer that surfaces EVERY signal
+ * a curator needs to approve/reject one NER extraction:
+ *
+ *  1. Confidence breakdown — keyword classifier (0.60 / 0.85
+ *     buckets, Rule 41) + BIO softmax probability, each with a
+ *     short explanation of what the number means.
+ *  2. MARC grounding — exists_in status (grounded / wrong_field /
+ *     novel / unknown), the fields the classifier checked, the
+ *     fields where the candidate actually matched (with their MARC
+ *     values shown side-by-side).
+ *  3. AI verification verdict — overall + sub-judgements
+ *     (name_ok / type_ok / role_ok) + the full reasoning the
+ *     LLM produced.
+ *  4. Full MARC record — every populated key, ordered by a
+ *     researcher-friendly weight (title → contributors → subjects
+ *     → places → provenance → physical → dates → notes).
+ *     Entity text is highlighted in yellow everywhere it appears,
+ *     other entities in the same record in blue (so the curator
+ *     sees the full population at a glance).
+ *  5. Quick action row — Approve / Reject / Edit (closes drawer +
+ *     opens the edit modal).
+ *
+ * Replaces the older MarcSourceDrawer; the EntityTable's row click,
+ * AI verdict pill, and 👁 button all open this single drawer.
+ */
+
+import { useEffect, useMemo, useState } from "react";
+
+import { MarcSourceApi, type MarcSource } from "@/api/marcSource";
+import {
+  ExtractionApprovals,
+  type Entity,
+} from "@/api/extractionApprovals";
+import {
+  ENTITY_EXPECTED_FIELDS, MARC_FIELD_LABELS,
+  orderedMarcKeys, stringifyMarcValue,
+} from "@/components/extraction/marc-field-labels";
+
+
+export interface EntityDetailDrawerProps {
+  runId: string;
+  /** The entity currently being inspected. ``null`` ⇒ drawer closed. */
+  entity: Entity | null;
+  onClose: () => void;
+  /** Fired when the curator saves a change (approve / reject / edit).
+   *  Parent should call ``useApprovalStore().refresh()`` to repaint. */
+  onEntityChanged?: (updated: Entity) => void;
+  /** Optional callback to open the full edit modal (text/type/role
+   *  side-by-side editor). */
+  onOpenEdit?: (entity: Entity) => void;
+}
+
+
+export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
+  const { runId, entity, onClose, onEntityChanged, onOpenEdit } = props;
+
+  const [marc, setMarc] = useState<MarcSource | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pinned, setPinned] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const open = entity !== null;
+  const cn = entity?.control_number ?? null;
+
+  // Load the MARC record + sibling entities when entity changes.
+  useEffect(() => {
+    if (!cn) { setMarc(null); setError(null); return; }
+    let cancelled = false;
+    setLoading(true); setError(null);
+    MarcSourceApi.get(runId, cn)
+      .then((m) => { if (!cancelled) setMarc(m); })
+      .catch((e: Error) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [runId, cn]);
+
+  // Esc closes (unless pinned).
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pinned) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, pinned, onClose]);
+
+  async function patchEntity(patch: Record<string, unknown>): Promise<void> {
+    if (!entity) return;
+    setBusy(true);
+    try {
+      const updated = await ExtractionApprovals.patch(runId, entity.id, patch);
+      onEntityChanged?.(updated);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Other entities in the same record — used for secondary (blue)
+  // highlights in the MARC field renderer.
+  const siblingTexts = useMemo<string[]>(() => {
+    if (!marc || !entity) return [];
+    const out: string[] = [];
+    for (const e of marc.entities) {
+      if (e.id === entity.id) continue;
+      const t = (e.text ?? "").trim();
+      if (t.length >= 2) out.push(t);
+    }
+    return out;
+  }, [marc, entity]);
+
+  return (
+    <aside
+      aria-hidden={!open}
+      data-testid="entity-detail-drawer"
+      style={{
+        position:      "fixed",
+        top:           0,
+        right:         0,
+        bottom:        0,
+        width:         "min(640px, 95vw)",
+        zIndex:        40,
+        transform:     open ? "translateX(0)" : "translateX(110%)",
+        transition:    "transform 220ms ease-out",
+        pointerEvents: open ? "auto" : "none",
+      }}
+      className="glass flex flex-col p-0"
+    >
+      {/* Header — entity identity + pin/close */}
+      <header className="flex items-start justify-between gap-3 px-4 pt-4 pb-2 border-b border-white/5">
+        <div className="min-w-0">
+          <div className="kicker">Entity review</div>
+          <h3 className="text-base font-semibold truncate" dir="auto" title={entity?.text ?? ""}>
+            {entity?.text ?? ""}
+          </h3>
+          <div className="text-[11px] muted truncate">
+            MS <span className="font-mono">{entity?.control_number}</span> ·
+            <span className="ml-1 uppercase">{entity?.source}</span>
+            {entity?.type && <span className="ml-1 text-ink">{entity.type}</span>}
+            {entity?.role && <span className="ml-1 text-biu-sky">{entity.role}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-[11px]">
+          <label className="muted flex items-center gap-1 cursor-pointer select-none"
+                 title="Keep this drawer open while browsing the table.">
+            <input type="checkbox" checked={pinned}
+                   onChange={(e) => setPinned(e.target.checked)} />
+            Pin
+          </label>
+          <button onClick={onClose}
+                  className="button-ghost !py-0.5 !px-2 text-xs"
+                  title="Close (Esc)">✕</button>
+        </div>
+      </header>
+
+      {/* Quick action row — sticky at top so curator can decide
+          without scrolling. */}
+      {entity && (
+        <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 border-b border-white/5 bg-[rgba(16,24,36,0.6)]">
+          <button type="button"
+                  disabled={busy}
+                  onClick={() => patchEntity({ approved: !entity.approved })}
+                  data-testid="detail-approve"
+                  className={`button-${entity.approved ? "ghost" : "primary"} h-7 px-3 text-xs`}>
+            {entity.approved ? "✓ Approved" : "Approve"}
+          </button>
+          <button type="button"
+                  disabled={busy}
+                  onClick={() => patchEntity({ approved: false, rejected: true })}
+                  data-testid="detail-reject"
+                  className="button-ghost h-7 px-3 text-xs">
+            Reject
+          </button>
+          {onOpenEdit && (
+            <button type="button"
+                    onClick={() => { onOpenEdit(entity); onClose(); }}
+                    data-testid="detail-edit"
+                    className="button-ghost h-7 px-3 text-xs">
+              Edit text/type/role…
+            </button>
+          )}
+          <span className="muted text-[11px] ml-auto">
+            {entity.start !== null && entity.end !== null
+              ? `chars ${entity.start}–${entity.end}`
+              : ""}
+          </span>
+        </div>
+      )}
+
+      {/* Scroll body */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-xs">
+        {entity && (
+          <>
+            <ConfidenceCard entity={entity} />
+            <GroundingCard entity={entity} marc={marc} />
+            <AiVerdictCard entity={entity} />
+            <MarcRecordCard marc={marc} loading={loading} error={error}
+                            primaryHighlight={entity.text} secondaryHighlights={siblingTexts} />
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+
+// ── Confidence card ───────────────────────────────────────────────────
+
+
+function ConfidenceCard({ entity }: { entity: Entity }) {
+  const keyword = entity.confidence;
+  const model = entity.model_confidence;
+  const bucket = (n: number | null): string => {
+    if (n === null) return "—";
+    if (n >= 0.85) return "high";
+    if (n >= 0.60) return "medium";
+    return "low";
+  };
+  return (
+    <section className="glass p-3 space-y-2" data-testid="card-confidence">
+      <div className="kicker">📊 Confidence</div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="muted text-[10px] uppercase">Keyword classifier</div>
+          <div className="text-sm">
+            <span className="font-mono">{keyword?.toFixed(2) ?? "—"}</span>{" "}
+            <span className="muted">({bucket(keyword)})</span>
+          </div>
+          <p className="muted text-[10px] mt-0.5 leading-snug">
+            Buckets 0.60 / 0.85 from the role-keyword heuristic
+            (Rule 41). Drives Stage-3 date guards.
+          </p>
+        </div>
+        <div>
+          <div className="muted text-[10px] uppercase">Model softmax</div>
+          <div className="text-sm">
+            <span className="font-mono">{model?.toFixed(2) ?? "—"}</span>{" "}
+            <span className="muted">({bucket(model)})</span>
+          </div>
+          <p className="muted text-[10px] mt-0.5 leading-snug">
+            BIO softmax probability averaged over the entity's tokens.
+            Pure model signal, no rule layer.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+// ── MARC grounding card ──────────────────────────────────────────────
+
+
+function GroundingCard({
+  entity, marc,
+}: {
+  entity: Entity;
+  marc: MarcSource | null;
+}) {
+  const ex = entity.exists_in;
+  const expected = ENTITY_EXPECTED_FIELDS[entity.type] ?? [];
+
+  const statusLabel: Record<string, { label: string; bg: string; fg: string; explain: string }> = {
+    grounded:    { label: "Grounded", bg: "rgba(120,200,140,0.18)", fg: "#7adf95",
+                   explain: "The extracted text appears in the MARC field(s) the NER's type expects. High-confidence approval candidate." },
+    wrong_field: { label: "Wrong field", bg: "rgba(253,224,71,0.18)", fg: "#fde047",
+                   explain: "The text appears in MARC but in a field other than the one this entity type usually maps to. Worth double-checking." },
+    novel:       { label: "Novel", bg: "rgba(127,196,255,0.18)", fg: "#77cce5",
+                   explain: "Not present in any catalogued MARC field. NER surfaced new information from free-text notes — review carefully." },
+    unknown:     { label: "—", bg: "transparent", fg: "var(--muted)",
+                   explain: "No MARC record indexed for this control number." },
+  };
+  const status = statusLabel[ex?.status ?? "unknown"] ?? statusLabel.unknown;
+
+  return (
+    <section className="glass p-3 space-y-2" data-testid="card-grounding">
+      <div className="kicker">🔍 MARC grounding</div>
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center rounded-full text-[10px] py-0.5 px-2"
+              style={{ background: status.bg, color: status.fg, border: `1px solid ${status.fg}33` }}>
+          {status.label}
+        </span>
+        <span className="muted text-[11px] leading-snug">{status.explain}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mt-1">
+        <div>
+          <div className="muted text-[10px] uppercase mb-1">Expected fields</div>
+          {expected.length === 0 ? (
+            <div className="muted text-[11px] italic">(none registered for type {entity.type})</div>
+          ) : (
+            <ul className="space-y-0.5 text-[11px]">
+              {expected.map((k) => {
+                const lbl = MARC_FIELD_LABELS[k];
+                const hit = ex?.fields?.includes(k) ?? false;
+                return (
+                  <li key={k} className={hit ? "text-ink" : "muted"}>
+                    {hit ? "✓ " : "· "}
+                    {lbl?.label ?? k} <span className="muted">({lbl?.tag ?? "—"})</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        <div>
+          <div className="muted text-[10px] uppercase mb-1">Matched in</div>
+          {(ex?.fields?.length ?? 0) === 0 ? (
+            <div className="muted text-[11px] italic">(no MARC fields matched)</div>
+          ) : (
+            <ul className="space-y-1 text-[11px]">
+              {ex!.fields.map((k) => {
+                const lbl = MARC_FIELD_LABELS[k];
+                const raw = marc?.marc?.[k];
+                return (
+                  <li key={k}>
+                    <div className="text-biu-sky">
+                      {lbl?.label ?? k} <span className="muted">({lbl?.tag ?? "—"})</span>
+                    </div>
+                    <div className="text-ink/90 line-clamp-2 break-words" dir="auto">
+                      {stringifyMarcValue(raw)}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+      {ex?.note && (
+        <p className="muted text-[11px] mt-1 leading-snug">{ex.note}</p>
+      )}
+    </section>
+  );
+}
+
+
+// ── AI verdict card ──────────────────────────────────────────────────
+
+
+function AiVerdictCard({ entity }: { entity: Entity }) {
+  const v = entity.ai_verdict;
+  if (!v) {
+    return (
+      <section className="glass p-3" data-testid="card-ai-verdict">
+        <div className="kicker">🤖 AI verification</div>
+        <div className="muted text-[11px] mt-1">
+          Not yet judged. Open the AI verification modal to score this
+          entity (audit_ner_extraction action).
+        </div>
+      </section>
+    );
+  }
+  const overall = String(v.overall ?? "").toLowerCase();
+  const tone: Record<string, { label: string; bg: string; fg: string }> = {
+    pass:    { label: "Looks right", bg: "rgba(120,200,140,0.18)", fg: "#7adf95" },
+    full:    { label: "Looks right", bg: "rgba(120,200,140,0.18)", fg: "#7adf95" },
+    partial: { label: "Partly",      bg: "rgba(253,224,71,0.18)",  fg: "#fde047" },
+    fail:    { label: "Wrong",       bg: "rgba(248,113,113,0.18)", fg: "#fca5a5" },
+    abstain: { label: "Unsure",      bg: "rgba(255,255,255,0.06)", fg: "var(--muted)" },
+    unknown: { label: "—",           bg: "transparent",            fg: "var(--muted)" },
+  };
+  const t = tone[overall] ?? tone.unknown;
+  const sub = (label: string, val: unknown) => {
+    const b = typeof val === "boolean" ? val : null;
+    const glyph = b === true ? "✓" : b === false ? "✗" : "—";
+    const color = b === true ? "text-emerald-300" : b === false ? "text-red-300" : "muted";
+    return <span className={color}>{glyph} {label}</span>;
+  };
+  return (
+    <section className="glass p-3 space-y-2" data-testid="card-ai-verdict">
+      <div className="kicker">🤖 AI verification</div>
+      <div className="flex items-center gap-3">
+        <span className="inline-flex items-center rounded-full text-[10px] py-0.5 px-2"
+              style={{ background: t.bg, color: t.fg, border: `1px solid ${t.fg}33` }}>
+          {t.label}
+        </span>
+        <div className="text-[11px] flex gap-3 muted">
+          {sub("name", v.name_ok)}
+          {sub("type", v.type_ok)}
+          {sub("role", v.role_ok)}
+        </div>
+      </div>
+      {v.reasoning && (
+        <blockquote className="border-l-2 border-biu-sky/40 pl-2 text-[11px] text-ink/90 leading-snug">
+          {v.reasoning}
+        </blockquote>
+      )}
+      <div className="muted text-[10px]">
+        {v.model && <span>model: {v.model}</span>}
+        {v.judged_at && <span className="ml-2">judged: {new Date(v.judged_at).toLocaleString()}</span>}
+        {v.evaluator && <span className="ml-2">evaluator: {v.evaluator}</span>}
+      </div>
+    </section>
+  );
+}
+
+
+// ── MARC record card ─────────────────────────────────────────────────
+
+
+function MarcRecordCard({
+  marc, loading, error, primaryHighlight, secondaryHighlights,
+}: {
+  marc:                MarcSource | null;
+  loading:             boolean;
+  error:               string | null;
+  primaryHighlight:    string;
+  secondaryHighlights: string[];
+}) {
+  if (loading) return <section className="glass p-3 muted text-[11px] italic">Loading MARC record…</section>;
+  if (error) return <section className="glass p-3 text-red-300 text-[11px]">MARC source failed: {error}</section>;
+  if (!marc) return null;
+  const keys = orderedMarcKeys(marc.marc);
+  if (keys.length === 0) return <section className="glass p-3 muted text-[11px] italic">No MARC fields available.</section>;
+  return (
+    <section className="glass p-3 space-y-2" data-testid="card-marc-record">
+      <div className="kicker">📜 MARC record ({keys.length} fields)</div>
+      <div className="space-y-2">
+        {keys.map((k) => {
+          const lbl = MARC_FIELD_LABELS[k];
+          const value = stringifyMarcValue(marc.marc[k]);
+          if (!value) return null;
+          return (
+            <div key={k} className="grid grid-cols-[140px_1fr] gap-2 items-baseline">
+              <div className="text-right text-[10px]">
+                <div className="text-ink">{lbl?.label ?? k}</div>
+                <div className="muted font-mono">{lbl?.tag ?? ""}</div>
+              </div>
+              <div className="text-[11px] text-ink/90 break-words leading-relaxed" dir="auto">
+                <Highlighted value={value}
+                             primary={primaryHighlight}
+                             secondaries={secondaryHighlights} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+
+// ── Pure highlight renderer ──────────────────────────────────────────
+
+
+function Highlighted({
+  value, primary, secondaries,
+}: {
+  value:       string;
+  primary:     string;
+  secondaries: string[];
+}) {
+  const parts = useMemo(() => splitHighlights(value, primary, secondaries), [value, primary, secondaries]);
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (p.kind === "plain") return <span key={i}>{p.text}</span>;
+        if (p.kind === "primary") return (
+          <mark key={i} style={{ background: "rgba(253,224,71,0.42)", color: "var(--ink)",
+                                 padding: "0 2px", borderRadius: 3 }}>{p.text}</mark>
+        );
+        return (
+          <mark key={i} style={{ background: "rgba(127,196,255,0.28)", color: "var(--ink)",
+                                 padding: "0 2px", borderRadius: 3 }}>{p.text}</mark>
+        );
+      })}
+    </>
+  );
+}
+
+
+type Part =
+  | { kind: "plain";     text: string }
+  | { kind: "primary";   text: string }
+  | { kind: "secondary"; text: string };
+
+
+function splitHighlights(value: string, primary: string, secondaries: string[]): Part[] {
+  if (!value) return [];
+  type Range = { start: number; end: number; kind: "primary" | "secondary" };
+  const ranges: Range[] = [];
+  const lcVal = value.toLowerCase();
+  function push(needle: string, kind: Range["kind"]) {
+    const n = needle.trim();
+    if (n.length < 2) return;
+    const lcN = n.toLowerCase();
+    let from = 0;
+    while (true) {
+      const idx = lcVal.indexOf(lcN, from);
+      if (idx < 0) break;
+      ranges.push({ start: idx, end: idx + n.length, kind });
+      from = idx + n.length;
+    }
+  }
+  if (primary) push(primary, "primary");
+  for (const s of secondaries) push(s, "secondary");
+  if (ranges.length === 0) return [{ kind: "plain", text: value }];
+
+  ranges.sort((a, b) => a.start - b.start || (a.kind === "primary" ? -1 : 1));
+  const chosen: Range[] = [];
+  for (const r of ranges) {
+    const last = chosen[chosen.length - 1];
+    if (!last || r.start >= last.end) { chosen.push(r); continue; }
+    if (r.kind === "primary" && last.kind !== "primary") chosen[chosen.length - 1] = r;
+  }
+  const out: Part[] = [];
+  let cursor = 0;
+  for (const r of chosen) {
+    if (r.start > cursor) out.push({ kind: "plain", text: value.slice(cursor, r.start) });
+    out.push({ kind: r.kind, text: value.slice(r.start, r.end) });
+    cursor = r.end;
+  }
+  if (cursor < value.length) out.push({ kind: "plain", text: value.slice(cursor) });
+  return out;
+}
