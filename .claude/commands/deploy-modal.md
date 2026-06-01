@@ -36,7 +36,7 @@ Look for `MhmNer: all four models loaded` — that's the success
 sentinel from `@modal.enter()`. If you don't see it within ~60 s of
 the first request, the load() step is hung or erroring.
 
-## Common build failures
+## Common build / runtime failures
 
 1. **`Desktop pipeline repo not found at /pipeline`** — a pre-flight
    check ran inside the build container. Should be impossible after
@@ -49,6 +49,20 @@ the first request, the load() step is hung or erroring.
    resolves `PIPELINE_ROOT` as a sibling of the web repo. If the user
    relocated the desktop pipeline, point at the new path via env or
    edit the constant.
+4. **`ModuleNotFoundError: No module named 'sklearn'`** (or any other
+   missing module) at `@modal.enter()` time — the desktop's training
+   scripts import other libs at module top (e.g. sklearn, pandas).
+   `JointNERPipeline` lazily imports `train_joint_entity_role_model_kfold`
+   which pulls those in. Add the missing package to
+   `modal/requirements.txt`. Surfaced by `modal app logs mhm-ner`.
+   Fixed for sklearn in commit 4f5b765.
+5. **`ConnectionError` to dictabert at @modal.enter()** — the
+   `NERInferencePipeline` doesn't honour `MHM_BUNDLED_DICTABERT` and
+   may attempt an HF Hub fetch at load time. The image bakes
+   DictaBERT to `/weights/dicta-il__dictabert/` so the network call
+   succeeds if egress is allowed; if not, port the env-var awareness
+   from `JointNERPipeline._resolve_model_directory_alias` to the
+   generic loader.
 
 ## Cost reminder
 
