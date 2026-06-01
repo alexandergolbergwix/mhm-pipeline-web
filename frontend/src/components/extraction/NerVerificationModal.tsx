@@ -69,24 +69,31 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
     null | { session_id: string; started_at: string | null; scope_size: number; action_id: string | null }
   >(null);
   const [showingHistorical, setShowingHistorical] = useState(false);
+  // Bumping this triggers the actions-loading effect to re-fire — used
+  // by the Retry button when the initial load failed mid-dev-reload.
+  const [reloadKey, setReloadKey] = useState(0);
 
   const cancelRef = useRef<(() => void) | null>(null);
 
   // Load actions for this scope kind AND auto-prefill verdicts from
   // the most recent prior session if one exists. The curator gets to
   // see the last AI-verified results immediately on modal open — no
-  // re-run required.
+  // re-run required. If the actions request fails (e.g. dev server was
+  // mid-reload), we auto-retry once after 1.5 s before surfacing the
+  // error to the user.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let attempt = 0;
+    async function loadOnce(): Promise<boolean> {
       try {
         const [list, sessions] = await Promise.all([
           NerVerify.listActions(runId, scopeKind),
           NerVerify.listSessions(runId).catch(() => []),
         ]);
-        if (cancelled) return;
+        if (cancelled) return true;
         setActions(list);
         if (list.length > 0) setActionId(list[0].id);
+        setError(null);
 
         const newest = (sessions ?? []).find(
           (s) => (s.scope_size ?? 0) > 0 && (s.outcome === "complete" || s.outcome === null),
@@ -100,7 +107,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
           });
           try {
             const full = await NerVerify.session(runId, newest.session_id);
-            if (cancelled) return;
+            if (cancelled) return true;
             const seeded: Record<string, AgentEvent> = {};
             for (const v of full.verdicts ?? []) {
               const cand = (v.candidate ?? {}) as Record<string, unknown>;
@@ -115,12 +122,23 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
             /* the session may be incomplete; ignore */
           }
         }
+        return true;
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
+        if (cancelled) return true;
+        attempt += 1;
+        if (attempt < 2) return false;
+        setError((e as Error).message);
+        return true;
+      }
+    }
+    (async () => {
+      while (!(await loadOnce())) {
+        if (cancelled) return;
+        await new Promise((r) => setTimeout(r, 1500));
       }
     })();
     return () => { cancelled = true; };
-  }, [runId, scopeKind]);
+  }, [runId, scopeKind, reloadKey]);
 
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
 
@@ -222,7 +240,16 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
             : <button onClick={stop} className="button-ghost text-sm text-yellow-300">
                 Stop
               </button>}
-          {error && <span className="text-red-300 text-xs">{error}</span>}
+          {error && (
+            <span className="text-red-300 text-xs flex items-center gap-2">
+              {error}
+              <button type="button"
+                      onClick={() => { setError(null); setReloadKey((k) => k + 1); }}
+                      className="button-ghost !py-0.5 !px-2 text-[11px]">
+                Retry
+              </button>
+            </span>
+          )}
         </div>
 
         {/* Historical-session banner — visible when we auto-loaded
