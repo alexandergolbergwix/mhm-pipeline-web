@@ -4,3 +4,10 @@ huggingface_hub>=0.26.0,<2.0
 safetensors>=0.4.5
 numpy<2.0
 fastapi>=0.115
+# scikit-learn is imported at module-top by the desktop's
+# train_joint_entity_role_model_kfold.py, which JointNERPipeline
+# imports to reconstruct the JointModel architecture before
+# state_dict.load(). Without sklearn the @modal.enter() load() step
+# crashes with ModuleNotFoundError. We only use the loader half of
+# the training script, but the import side effects pull sklearn in.
+scikit-learn>=1.4
