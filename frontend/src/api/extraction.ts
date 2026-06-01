@@ -1,5 +1,5 @@
 /**
- * Stage 2 — AI extraction client.
+ * AI Extraction — AI extraction client.
  *
  * Two read endpoints (status + results) and one SSE stream
  * (start-stream). The stream POST body is empty — the server reads
@@ -64,7 +64,7 @@ export interface ExtractionStatus {
 }
 
 
-/** Open the Stage-2 SSE stream. Cancel by calling cancel().
+/** Open the AI Extraction SSE stream. Cancel by calling cancel().
  *  ``mode`` picks the inference backend ("local" = on our server,
  *  "hf-api" = HuggingFace Inference Providers). The web app always
  *  uses "hf-api"; ``mode`` stays in the signature for future flexibility.

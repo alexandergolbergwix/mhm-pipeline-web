@@ -129,7 +129,7 @@ async def build_manifests(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "No RDF graph for this run yet. Build the RDF (Stage 4) "
+                "No RDF graph for this run yet. Build the RDF (RDF Graph) "
                 "before generating IIIF manifests."
             ),
         )
@@ -250,7 +250,7 @@ async def coverage(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "No RDF graph for this run yet. Build the RDF (Stage 4) "
+                "No RDF graph for this run yet. Build the RDF (RDF Graph) "
                 "before requesting coverage."
             ),
         )

@@ -1,4 +1,4 @@
-"""Inference-backend abstraction for Stage 2 (AI Extraction).
+"""Inference-backend abstraction for AI Extraction (AI Extraction).
 
 Two implementations share one Protocol:
 
@@ -70,7 +70,7 @@ class ModelAvailability:
 
 
 class InferenceBackend(Protocol):
-    """Anything that can run the four Stage-2 models on a text input."""
+    """Anything that can run the four AI Extraction models on a text input."""
 
     name: ExtractionMode
 

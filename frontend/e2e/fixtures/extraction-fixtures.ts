@@ -1,5 +1,5 @@
 /**
- * E2E test fixtures + Playwright route mocking for the Stage-2 entity
+ * E2E test fixtures + Playwright route mocking for the AI Extraction entity
  * review surface. Every backend endpoint the page touches is mocked
  * deterministically so the UI is exercised in isolation — no DB,
  * Modal, or Gemini dependency.

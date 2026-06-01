@@ -1,4 +1,4 @@
-"""Prefab AI-agent actions for Stage 2 NER review.
+"""Prefab AI-agent actions for AI Extraction NER review.
 
 Mirrors :mod:`app.pipeline.agent_actions` but the actions here target
 NER + classifier candidates (``ExtractionApproval`` rows) rather than

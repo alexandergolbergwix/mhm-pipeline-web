@@ -6,7 +6,7 @@ Supported uploads:
 * ``.json`` / ``.jsonl`` — already-parsed MARC dicts (e.g. desktop's
   ``marc_extracted.json``).
 * ``.mrc`` / ``.marc`` — binary MARC21, parsed via desktop's
-  ``converter.parser.unified_reader.UnifiedReader`` so every Stage-1
+  ``converter.parser.unified_reader.UnifiedReader`` so every MARC Parsing
   field handler runs (extract_all_data → identical to the desktop run).
 * ``.tsv`` / ``.csv`` — tabular, one record per row, headers recognised
   case-insensitively (control_number, title, authors, contributors,
@@ -69,7 +69,7 @@ def parse_marc_upload(raw: bytes, *, filename: str | None = None) -> list[dict[s
 
 def _parse_mrc_via_desktop(raw: bytes) -> list[dict[str, Any]]:
     """Use desktop's ``UnifiedReader`` + ``extract_all_data`` so every
-    Stage-1 field handler the desktop ships with runs here too."""
+    MARC Parsing field handler the desktop ships with runs here too."""
     from converter.parser.unified_reader import UnifiedReader  # noqa: PLC0415
     from converter.transformer.field_handlers import extract_all_data  # noqa: PLC0415
 

@@ -3,7 +3,7 @@
 Phase 3 of the HMO-fidelity plan (see CLAUDE.md Rule 45). Combines
 :class:`IiifManifestBuilder` (pure RDF → IIIF dict) with
 :class:`WikibaseCloudWriter` (authenticated MediaWiki API edits) so the
-Stage 6 worker can publish manifests as JSON pages under the ``IIIF:``
+Wikidata Studio worker can publish manifests as JSON pages under the ``IIIF:``
 namespace on ``mhm-hmo.wikibase.cloud``.
 
 Idempotency, retry-with-backoff, and ``assert=bot`` enforcement all

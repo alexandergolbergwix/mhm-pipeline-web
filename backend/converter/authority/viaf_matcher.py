@@ -98,7 +98,7 @@ class VIAFMatcher:
         """Match a personal name and return cluster metadata in one call.
 
         Wraps :meth:`match_person` + :meth:`get_cluster_identifiers` so
-        the AuthorityWorker can score Stage 3 confidence guards without
+        the AuthorityWorker can score Authority Enrichment confidence guards without
         a second round-trip.
 
         Returns ``None`` if no cluster matched. Otherwise a dict with::

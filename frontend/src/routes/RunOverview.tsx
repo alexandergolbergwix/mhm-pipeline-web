@@ -6,9 +6,9 @@
  * as a per-tile muted message rather than crashing the whole page.
  *
  * Tiles:
- *   1. Stage 2 · AI Extraction      → /runs/:id/extraction
- *   2. Stage 3 · Authority          → /runs/:id   (legacy RunDetail)
- *   3. Stage 4 · RDF Graph          → /runs/:id/rdf
+ *   1. AI Extraction      → /runs/:id/extraction
+ *   2. Authority Enrichment · Authority          → /runs/:id   (legacy RunDetail)
+ *   3. RDF Graph          → /runs/:id/rdf
  *   4. HMO Wikibase Studio          → /runs/:id/hmo-studio  (not wired yet)
  *   5. Wikidata Studio              → /runs/:id/wikidata-studio
  */

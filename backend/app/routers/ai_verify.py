@@ -410,7 +410,7 @@ async def _fetch_matches(
     for m in rows:
         rec = rec_by_cn.get(m.control_number)
         if rec is None:
-            # Stage-1 should have persisted every record; if not, fall
+            # MARC Parsing should have persisted every record; if not, fall
             # back to a synthetic empty MARC record so eval-agent still
             # sees the match (just without rich MARC context).
             rec = RunRecord(

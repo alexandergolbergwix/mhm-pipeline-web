@@ -408,7 +408,7 @@ def guard_corporate_meeting(
     so VIAF SRU never runs. Web matcher already routed those calls but
     we still need to defensively drop a VIAF id that crept onto an
     organisation row (e.g. an institution mis-classified as a person at
-    Stage 2 and corrected later).
+    AI Extraction and corrected later).
     """
     kind = (entity_kind or candidate.get("entity_kind") or "").lower()
     if kind not in _CORPORATE_KIND_VALUES:

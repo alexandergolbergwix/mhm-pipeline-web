@@ -1,8 +1,8 @@
-"""AI-agent verification endpoints for Stage 2 (NER + classifier).
+"""AI-agent verification endpoints for AI Extraction (NER + classifier).
 
 Sibling of :mod:`app.routers.ai_verify`. Where ``ai_verify`` audits
-Stage 3 authority matches (one row per ``AuthorityMatch``), this
-router audits Stage 2 extracted entities (one row per
+Authority Enrichment authority matches (one row per ``AuthorityMatch``), this
+router audits AI Extraction extracted entities (one row per
 ``ExtractionApproval``). The shape is intentionally parallel:
 
 * ``GET  /runs/{run_id}/extraction/ai-verify/actions?scope_kind=...``

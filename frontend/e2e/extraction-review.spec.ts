@@ -1,5 +1,5 @@
 /**
- * E2E suite for the Stage-2 entity-review UI (CLAUDE.md Rule W-16).
+ * E2E suite for the AI Extraction entity-review UI (CLAUDE.md Rule W-16).
  *
  * Every backend endpoint the page touches is mocked via
  * `installExtractionMocks`, so the suite is deterministic and runs in
@@ -35,7 +35,7 @@ import {
 
 test.describe.configure({ mode: "parallel" });
 
-test.describe("Stage-2 entity-review UI", () => {
+test.describe("AI Extraction entity-review UI", () => {
 
   // ── 1. PAGE LOAD ────────────────────────────────────────────────
 

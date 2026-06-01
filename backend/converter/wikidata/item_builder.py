@@ -1,6 +1,6 @@
 """Build Wikidata item representations from authority-enriched pipeline records.
 
-Converts the structured JSON output of Stage 2 (authority matching) into
+Converts the structured JSON output of AI Extraction (authority matching) into
 WikidataItem dataclasses ready for upload or QuickStatements export.
 
 Uses ALL available pipeline data: NER entities, VIAF/Mazal authority matches,
@@ -871,7 +871,7 @@ class WikidataItemBuilder:
         # Rule 45 P6108 coexistence (2026-05-18): the two manifests carry
         # different payloads — NLI's manifest (from MARC 856) hosts the
         # real high-resolution Canvas images, while ours (published to
-        # mhm-hmo.wikibase.cloud by Stage 6.5) carries the HMO scholarly
+        # mhm-hmo.wikibase.cloud by Wikidata Studio.5) carries the HMO scholarly
         # overlay (Codicological_Unit Ranges, ScribalIntervention /
         # Colophon / Marginalia AnnotationCollections, seeAlso to the
         # HMO graph node) on placeholder Canvases. Both must be reachable

@@ -3,8 +3,8 @@
  *
  * Sibling of {@link "@/api/aiVerify"} that targets the new
  * ``/runs/{id}/extraction/ai-verify/...`` endpoint family. The
- * eval-agent runs over Stage-2 NER entities (person / provenance /
- * contents / genre) rather than Stage-3 authority matches; otherwise
+ * eval-agent runs over AI Extraction NER entities (person / provenance /
+ * contents / genre) rather than Authority Enrichment authority matches; otherwise
  * the SSE event shapes, scope kinds, action registry, and session
  * replay surface are byte-identical to the authority flow.
  *

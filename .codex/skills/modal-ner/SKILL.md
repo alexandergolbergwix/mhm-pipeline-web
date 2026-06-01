@@ -2,7 +2,7 @@
 
 Operate the Modal-hosted NER + Genre classifier app at
 `mhm-pipeline-web/modal/modal_app.py`. This is the production
-extraction backend for Stage 2 ("AI Extraction") in the web port.
+extraction backend for AI Extraction ("AI Extraction") in the web port.
 
 ## When to invoke
 

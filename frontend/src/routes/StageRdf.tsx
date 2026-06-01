@@ -1,5 +1,5 @@
 /**
- * Stage 4 · RDF Graph — per-run page.
+ * RDF Graph — per-run page.
  *
  * Build → Visualise → Validate → Download. The Cytoscape canvas is
  * the headline; SHACL findings collapse underneath.

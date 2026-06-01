@@ -1,4 +1,4 @@
-"""Modal app — Stage 2 NER + Genre inference for the MHM Pipeline.
+"""Modal app — AI Extraction NER + Genre inference for the MHM Pipeline.
 
 Bundles the four desktop models into one Modal container so the
 FastAPI backend can call a single HTTPS endpoint per record:

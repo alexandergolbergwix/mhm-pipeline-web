@@ -1,6 +1,6 @@
 /**
  * useApprovalStore — lightweight polling-based entity store for
- * Stage 2 (web replacement for the desktop's QFileSystemWatcher
+ * AI Extraction (web replacement for the desktop's QFileSystemWatcher
  * live sync).
  *
  * Two consumers cooperate:

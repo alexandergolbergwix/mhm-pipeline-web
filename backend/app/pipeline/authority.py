@@ -238,7 +238,7 @@ class DesktopMatcher(AuthorityMatcher):
         # Each matcher also surfaces birth/death years when the source
         # carries them. The web app used to drop these on the floor,
         # which made the MatchDetailDialog show "—" even on HIGH-
-        # confidence matches AND caused the Stage 3 date guard to be a
+        # confidence matches AND caused the Authority Enrichment date guard to be a
         # no-op (it short-circuits when both years are None). We now
         # pull years from every source and OR them together — the
         # first source that knows the dates wins, ordered Mazal → VIAF
@@ -357,7 +357,7 @@ class DesktopMatcher(AuthorityMatcher):
                 f"{' — short or generic surface form, confirm manually' if confidence == 'low' else ''}.",
             )
 
-        # Stage 3 date guard via desktop's stage3_guards.
+        # Authority Enrichment date guard via desktop's stage3_guards.
         ms_year = _record_year(marc_record)
         try:
             from converter.authority import stage3_guards  # noqa: PLC0415
@@ -376,7 +376,7 @@ class DesktopMatcher(AuthorityMatcher):
                     if "date_conflict" in guards:
                         confidence = "low"
                     reasoning_parts.append(
-                        f"⚠ Stage 3 date guard fired: {getattr(verdict, 'reason', '')}",
+                        f"⚠ Authority Enrichment date guard fired: {getattr(verdict, 'reason', '')}",
                     )
         except Exception:  # noqa: BLE001 — desktop guards evolve; never let one kill ingest
             logger.debug("stage3_guards unavailable for this candidate", exc_info=True)
@@ -387,7 +387,7 @@ class DesktopMatcher(AuthorityMatcher):
             # unmatched" honestly.
             return []
 
-        # ── Stage 3 hardening guards (Rules 23–29) ──────────────────────
+        # ── Authority Enrichment hardening guards (Rules 23–29) ──────────────────────
         # The seven guards mirror the desktop's
         # ``AuthorityWorker._match_marc_person_entry`` post-pass:
         # placeholder filter, short-name homonym, cluster collapse,

@@ -1,6 +1,6 @@
 # MHM NER on Modal
 
-Bundles the four Stage-2 inference models — Person NER (joint v2),
+Bundles the four AI Extraction inference models — Person NER (joint v2),
 Provenance NER, Contents NER, Genre classifier — into one Modal app
 and exposes them as one HTTPS endpoint. The FastAPI backend calls
 this endpoint per record, so the dyno stays small and there's no

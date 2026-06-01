@@ -71,7 +71,7 @@ heroku config:set --app "$APP" \
 
 ### 2.1 — Extraction backend (Modal vs local vs HF)
 
-`EXTRACTION_MODE` picks which inference backend Stage 2 uses
+`EXTRACTION_MODE` picks which inference backend AI Extraction uses
 (CLAUDE.md Rule W-11). The Heroku slug is too small to bundle the
 model weights, so the realistic choices in production are:
 

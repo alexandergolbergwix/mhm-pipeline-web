@@ -18,7 +18,7 @@ cannot express natively:
 
 The result is a Python ``dict`` ready for ``json.dumps``. The builder is
 **pure** (no I/O, no network). The caller (typically
-:class:`IiifManifestUploader` or the Stage 6 worker) owns persistence.
+:class:`IiifManifestUploader` or the Wikidata Studio worker) owns persistence.
 
 Reference: https://iiif.io/api/presentation/3.0/
 """

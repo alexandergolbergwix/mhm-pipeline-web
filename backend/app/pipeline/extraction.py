@@ -1,4 +1,4 @@
-"""Stage 2 extraction — NER + classifier inference orchestrator.
+"""AI Extraction extraction — NER + classifier inference orchestrator.
 
 This is the web port of the desktop ``NerWorker`` in
 ``src/mhm_pipeline/controller/workers.py``. It runs up to four models
@@ -14,7 +14,7 @@ browser:
   we push the weights to a private HF org or container-bundle them.
 * Contents NER (``ner/contents_ner_model.pt``) — WORK / FOLIO /
   WORK_AUTHOR on MARC 505. Same stub story.
-* Genre classifier (``ner/genre_classifier_model.pt``) — Stage 3 P136
+* Genre classifier (``ner/genre_classifier_model.pt``) — Authority Enrichment P136
   fallback. Same stub story.
 
 The same per-record post-filters that fire on desktop run here too
@@ -247,7 +247,7 @@ async def extract_entities_stream(
                 record, backend, enabled=selected,
             )
         except Exception as exc:  # noqa: BLE001 — never let one record stop the stream
-            logger.warning("Stage 2 record %s failed: %s", cn, exc)
+            logger.warning("AI Extraction record %s failed: %s", cn, exc)
             per_record = {
                 "_control_number":        cn,
                 "text":                   "",

@@ -3,7 +3,7 @@
  *
  * Thin typed wrapper for the new
  * ``/runs/{id}/extraction/marc-source/{control_number}`` endpoint.
- * Used by the right-side drawer in the Stage-2 review surface so the
+ * Used by the right-side drawer in the AI Extraction review surface so the
  * curator can see the full MARC record an entity was extracted from
  * (with the entity's span highlighted) while the entity table is
  * still browsable in the background.
@@ -19,7 +19,7 @@ import { api } from "@/api/client";
 
 
 export interface MarcSourceEntity {
-  /** Stable content-addressed id (same key Stage-2 uses everywhere). */
+  /** Stable content-addressed id (same key AI Extraction uses everywhere). */
   id:     string;
   text:   string;
   type:   string;
@@ -37,7 +37,7 @@ export interface MarcSourceEntity {
 
 export interface MarcSource {
   control_number: string;
-  /** Full MARC record dict — same shape Stage 1 persists; the drawer
+  /** Full MARC record dict — same shape MARC Parsing persists; the drawer
    *  renders it field-by-field. */
   marc:           Record<string, unknown>;
   entities:       MarcSourceEntity[];

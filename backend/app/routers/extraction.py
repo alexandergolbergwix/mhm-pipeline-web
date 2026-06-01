@@ -1,4 +1,4 @@
-"""Stage 2 — extraction (NER + genre classifier) endpoints.
+"""AI Extraction — extraction (NER + genre classifier) endpoints.
 
 All three endpoints are nested under a run, RBAC-gated through
 ``_lookup_run_with_access`` from the runs router so a viewer cannot
@@ -11,7 +11,7 @@ disclosure).
   ``backend/state/runs/{run_id}/``.
 
 * ``GET /runs/{run_id}/extraction/results`` — returns the parsed
-  ``ner_results.json`` (404 if Stage 2 hasn't completed for this run).
+  ``ner_results.json`` (404 if AI Extraction hasn't completed for this run).
 
 * ``GET /runs/{run_id}/extraction/status`` — ``idle``/``running``/
   ``complete``/``error``. Polled by the UI before deciding whether to
@@ -82,7 +82,7 @@ async def start_extraction_stream(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
-    """Fire Stage 2 inference + stream progress events via SSE.
+    """Fire AI Extraction inference + stream progress events via SSE.
 
     The caller must have editor role on the run's project. The HF token
     is read from the calling user's encrypted store. If they haven't
@@ -162,7 +162,7 @@ async def get_extraction_results(
 ) -> list[dict]:
     """Return the parsed ``ner_results.json`` for this run.
 
-    404 when Stage 2 hasn't been run yet (the caller can check
+    404 when AI Extraction hasn't been run yet (the caller can check
     ``/status`` first to avoid an exception).
     """
     await _lookup_run_with_access(db, run_id, auth, write=False)
@@ -170,7 +170,7 @@ async def get_extraction_results(
     if not path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Stage 2 results not found — run extraction first.",
+            detail="AI Extraction results not found — run extraction first.",
         )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -439,7 +439,7 @@ async def list_entities(
 
     # 3. Build a request-scoped MARC index so each entity gets a cheap
     #    novelty/grounding classification (Rule W-16 / Wave 3 of the
-    #    Stage-2 review-UI plan).
+    #    AI Extraction review-UI plan).
     marc_rows = (
         await db.execute(
             select(RunRecord).where(RunRecord.run_id == run_id)
@@ -485,65 +485,128 @@ async def get_marc_source(
 ) -> dict:
     """Return the full MARC record + its extracted entities.
 
-    Powers the right-side MARC source drawer in the Stage-2 review
+    Powers the right-side MARC source drawer in the AI Extraction review
     surface (Rule W-16): a curator clicks one NER hit and sees the
     manuscript's full structured fields side-by-side with every entity
-    Stage 2 found for that record. The entity list is drawn from
-    ``ExtractionApproval`` so curator overrides + approvals are
-    reflected.
+    AI Extraction found for that record.
+
+    The entity list is drawn from BOTH (a) the persisted
+    ``ExtractionApproval`` rows (with curator overrides applied) and
+    (b) the raw ``ner_results.json`` on disk when no approval row
+    exists yet. The latter is the common case for the first curator
+    to open a record — without it the drawer would show "no entities"
+    even though the table clearly does.
 
     404 when no MARC record exists for that control_number under this
     run (the URL is misspelled or the run is mis-scoped).
     """
     await _lookup_run_with_access(db, run_id, auth, write=False)
 
-    rec = (
-        await db.execute(
-            select(RunRecord).where(
-                RunRecord.run_id == run_id,
-                RunRecord.control_number == control_number,
+    try:
+        rec = (
+            await db.execute(
+                select(RunRecord).where(
+                    RunRecord.run_id == run_id,
+                    RunRecord.control_number == control_number,
+                )
             )
-        )
-    ).scalar_one_or_none()
-    if rec is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"No MARC record for control_number {control_number!r} "
-                f"under this run."
-            ),
-        )
-
-    ext_rows = (
-        await db.execute(
-            select(ExtractionApproval).where(
-                ExtractionApproval.run_id == run_id,
-                ExtractionApproval.control_number == control_number,
-            ).order_by(
-                ExtractionApproval.source,
-                ExtractionApproval.start,
-                ExtractionApproval.text,
+        ).scalar_one_or_none()
+        if rec is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"No MARC record for control_number {control_number!r} "
+                    f"under this run."
+                ),
             )
-        )
-    ).scalars().all()
 
-    entities = [
-        {
-            "id":     str(r.id),
-            "text":   r.text,
-            "type":   r.override_type or r.type,
-            "role":   r.override_role or r.role,
-            "start":  int(r.start or 0),
-            "end":    int(r.end or 0),
-            "source": r.source,
+        ext_rows = (
+            await db.execute(
+                select(ExtractionApproval).where(
+                    ExtractionApproval.run_id == run_id,
+                    ExtractionApproval.control_number == control_number,
+                ).order_by(
+                    ExtractionApproval.source,
+                    ExtractionApproval.start,
+                    ExtractionApproval.text,
+                )
+            )
+        ).scalars().all()
+
+        approval_ids: set[str] = set()
+        entities: list[dict] = []
+        for r in ext_rows:
+            eid = _entity_id(
+                control_number=r.control_number, source=r.source,
+                text=r.text, start=r.start, end=r.end,
+            )
+            approval_ids.add(eid)
+            entities.append({
+                "id":     eid,
+                "text":   r.text,
+                "type":   r.override_type or r.type or "",
+                "role":   r.override_role or r.role or "",
+                "start":  int(r.start or 0),
+                "end":    int(r.end or 0),
+                "source": r.source,
+            })
+
+        # Fallback to ner_results.json for entities that don't have an
+        # ExtractionApproval row yet (the common case before any
+        # curator approve/edit happens). Without this the drawer
+        # shows "No entities" even though the entity table clearly has
+        # rows.
+        path = _results_path(run_id)
+        if path.exists():
+            try:
+                records = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                records = []
+            if isinstance(records, list):
+                for raw in _flatten_records(records):
+                    if raw.get("control_number") != control_number:
+                        continue
+                    if raw["id"] in approval_ids:
+                        continue
+                    entities.append({
+                        "id":     raw["id"],
+                        "text":   raw["text"],
+                        "type":   raw.get("type") or "",
+                        "role":   raw.get("role") or "",
+                        "start":  int(raw.get("start") or 0),
+                        "end":    int(raw.get("end") or 0),
+                        "source": raw["source"],
+                    })
+
+        # Coerce the MARC payload to a JSON-able dict. RunRecord.marc
+        # is a JSONB column → returns a dict on Postgres, a parsed
+        # dict on SQLite. Defensive: if anything else (a string, a
+        # list) comes back, wrap it under a "_raw" key so the drawer
+        # still renders something useful.
+        raw_marc = rec.marc
+        if isinstance(raw_marc, dict):
+            marc_dict = raw_marc
+        elif raw_marc is None:
+            marc_dict = {}
+        else:
+            marc_dict = {"_raw": raw_marc}
+
+        return {
+            "control_number": control_number,
+            "marc":           marc_dict,
+            "entities":       entities,
         }
-        for r in ext_rows
-    ]
-    return {
-        "control_number": control_number,
-        "marc":           dict(rec.marc or {}),
-        "entities":       entities,
-    }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "get_marc_source failed for run_id=%s control_number=%s",
+            run_id, control_number,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not load MARC source — see server logs.",
+        )
 
 
 @router.patch("/runs/{run_id}/extraction/entities/{entity_id}")

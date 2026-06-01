@@ -1,4 +1,4 @@
-"""Stage 4 — RDF graph router.
+"""RDF Graph — RDF graph router.
 
 Five endpoints under ``/runs/{run_id}/rdf/``:
 

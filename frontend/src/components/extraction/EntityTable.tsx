@@ -1,5 +1,5 @@
 /**
- * EntityTable — virtualised, sortable, multi-select table over Stage 2
+ * EntityTable — virtualised, sortable, multi-select table over AI Extraction
  * NER entities. Renders the same 10-column layout as the PyQt6
  * ExtractionEditor (Rule 41 schema + Rule 49 §E confidence tooltips +
  * Rule 52 AI verdict column).
@@ -60,14 +60,14 @@ interface ColumnDef {
 }
 
 const COLUMNS: ColumnDef[] = [
-  { key: "control_number", label: "MS", width: "120px", sortable: true, filterable: true },
-  { key: "text", label: "Text", width: "minmax(180px, 1fr)", sortable: true, filterable: false },
-  { key: "type", label: "Type", width: "130px", sortable: true, filterable: true },
-  { key: "role", label: "Role", width: "130px", sortable: true, filterable: true },
-  { key: "source", label: "Source", width: "120px", sortable: true, filterable: true },
+  { key: "control_number", label: "MS", width: "160px", sortable: true, filterable: true },
+  { key: "text", label: "Text", width: "minmax(220px, 1.6fr)", sortable: true, filterable: false },
+  { key: "type", label: "Type", width: "170px", sortable: true, filterable: true },
+  { key: "role", label: "Role", width: "170px", sortable: true, filterable: true },
+  { key: "source", label: "Source", width: "150px", sortable: true, filterable: true },
   { key: "confidence", label: "Conf.", width: "80px", sortable: true, filterable: true },
   { key: "model_confidence", label: "Model", width: "80px", sortable: true, filterable: false },
-  { key: "exists_in", label: "MARC", width: "100px", sortable: true, filterable: true },
+  { key: "exists_in", label: "MARC", width: "110px", sortable: true, filterable: true },
   { key: "ai_verdict", label: "AI Check", width: "130px", sortable: true, filterable: true },
   { key: "approved", label: "✓", width: "60px", sortable: true, filterable: true },
   { key: "edit", label: "", width: "100px", sortable: false, filterable: false },
@@ -161,9 +161,25 @@ export function EntityTable(props: EntityTableProps) {
   const [sort, setSort] = useState<SortState | null>(null);
   const [popup, setPopup] = useState<{ column: ColumnKey; x: number; y: number } | null>(null);
 
+  // Per-column free-text filter — the user wants header-row search
+  // boxes on MS + Text alongside the right-click popup for enum
+  // columns. Keys are ColumnKey strings; value is the substring
+  // to match. AND-combines with the popup-based columnFilters.
+  const [textFilters, setTextFilters] = useState<Partial<Record<ColumnKey, string>>>({});
+
   const parentRef = useRef<HTMLDivElement | null>(null);
 
-  const filtered = useMemo(() => applyColumnFilters(entities, columnFilters), [entities, columnFilters]);
+  const filtered = useMemo(() => {
+    let out = applyColumnFilters(entities, columnFilters);
+    for (const [col, needle] of Object.entries(textFilters)) {
+      const n = (needle ?? "").trim().toLocaleLowerCase();
+      if (!n) continue;
+      out = out.filter((e) =>
+        cellValueFor(e, col as ColumnKey).toLocaleLowerCase().includes(n),
+      );
+    }
+    return out;
+  }, [entities, columnFilters, textFilters]);
   const display = useMemo(() => applySort(filtered, sort), [filtered, sort]);
 
 
@@ -357,6 +373,53 @@ export function EntityTable(props: EntityTableProps) {
               {col.label}{arrow}{filterActive ? " ▾" : ""}
             </div>
           );
+        })}
+      </div>
+      {/* Inline per-column filter row. Free-text inputs for MS (the
+          control number) + Text (the entity surface form). Other
+          columns get a "▾" button that opens the same ColumnFilterPopup
+          the right-click would. */}
+      <div
+        className="grid items-center gap-2 border-b border-white/10 bg-white/[0.02] px-2 py-1 text-xs"
+        style={{ gridTemplateColumns: gridTemplate }}
+      >
+        <span />
+        {COLUMNS.map((col) => {
+          const isText = col.key === "control_number" || col.key === "text";
+          if (isText) {
+            return (
+              <input
+                key={col.key}
+                type="text"
+                placeholder={`filter ${col.label}…`}
+                value={textFilters[col.key] ?? ""}
+                onChange={(e) =>
+                  setTextFilters((prev) => ({ ...prev, [col.key]: e.target.value }))
+                }
+                aria-label={`filter ${col.label}`}
+                data-testid={`text-filter-${col.key}`}
+                className="input-glass h-6 text-[11px] w-full"
+              />
+            );
+          }
+          if (col.filterable) {
+            const active = (columnFilters[col.key]?.size ?? 0) > 0;
+            return (
+              <button
+                key={col.key}
+                type="button"
+                data-testid={`open-filter-${col.key}`}
+                title={`Filter ${col.label}`}
+                onClick={(e) =>
+                  setPopup({ column: col.key, x: e.clientX, y: e.clientY + 4 })
+                }
+                className={`h-6 text-[10px] rounded border border-white/10 hover:border-biu-sky truncate ${active ? "text-biu-sky border-biu-sky" : "muted"}`}
+              >
+                {active ? `${columnFilters[col.key]?.size}` : "▾"}
+              </button>
+            );
+          }
+          return <span key={col.key} />;
         })}
       </div>
       <div ref={parentRef} className="max-h-[640px] overflow-auto">

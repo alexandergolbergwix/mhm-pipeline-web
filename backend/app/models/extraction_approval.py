@@ -1,4 +1,4 @@
-"""Per-entity approval store for Stage 2 (AI Extraction).
+"""Per-entity approval store for AI Extraction (AI Extraction).
 
 One row per (run, control_number, source, text, start, end) tuple —
 content-addressed, so re-running extraction on the same MARC input
@@ -7,8 +7,8 @@ re-attaches existing approvals (no silent wipe).
 Beyond the approval bool, the row carries:
 
 * ``override_type`` / ``override_role`` — curator-supplied corrections
-  to the model's prediction. Downstream stages (Stage 3 authority +
-  Stage 4 RDF) read these instead of the original prediction when
+  to the model's prediction. Downstream stages (Authority Enrichment authority +
+  RDF Graph RDF) read these instead of the original prediction when
   present (per user decision: edits flow downstream).
 * ``ai_verdict`` — the latest agent-judged verdict snapshot
   ({overall, reasoning, judged_at, action_id}). Written by the

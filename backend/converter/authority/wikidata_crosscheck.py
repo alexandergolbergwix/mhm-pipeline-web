@@ -3,7 +3,7 @@
 Background
 ==========
 
-Stage 3's existing guards (``stage3_guards.py``) reject 22 of the 22 false
+Authority Enrichment's existing guards (``stage3_guards.py``) reject 22 of the 22 false
 positives from the 2026-04-30 review by reasoning over MARC-side signals
 only — manuscript date, Mazal+VIAF agreement, name shape. Three rejects
 cannot be defended that way: VIAF SRU returned a *single* cluster URI, but
@@ -25,7 +25,7 @@ This module implements two complementary signals.
   pseudonym) that share a VIAF ID legitimately.
 
 * **F3 — Mazal-pair collision (``OverMergeTable.detect_pair_collision``).**
-  Within a single Stage-3 run, if two distinct MARC names with two
+  Within a single Authority Enrichment run, if two distinct MARC names with two
   distinct Mazal IDs both resolved to the same VIAF cluster, that
   cluster is over-merged on the VIAF side regardless of what Wikidata
   thinks. This is the strongest signal — Mazal/NLI is a curated,
@@ -165,7 +165,7 @@ def is_enabled() -> bool:
 
     The ``requests`` import at module top is required, but we still gate
     on ``ImportError`` defensively so a broken environment yields a
-    silent skip rather than a Stage-3 crash.
+    silent skip rather than a Authority Enrichment crash.
     """
     if os.environ.get(DISABLE_ENV_VAR) == "1":
         return False
@@ -449,7 +449,7 @@ def lookup_viaf(viaf_id: str) -> WikidataResult:
 
         result = _http_fetch(viaf_id)
         # Successful results AND error results both get cached: this stops
-        # us from hammering a flaky endpoint on every Stage-3 record.
+        # us from hammering a flaky endpoint on every Authority Enrichment record.
         cache[viaf_id] = _result_to_cache(result)
         _save_cache(cache)
         return result
@@ -578,7 +578,7 @@ class _MazalPairEntry:
 
 
 class OverMergeTable:
-    """Per-Stage-3-run aggregator.
+    """Per-Authority Enrichment-run aggregator.
 
     AuthorityWorker creates one instance for the run, calls
     :meth:`record_mazal_pair` after every successful joint Mazal+VIAF

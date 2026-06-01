@@ -1,4 +1,4 @@
-"""Stage 4 — RDF graph build + SHACL validation + Cytoscape JSON.
+"""RDF Graph — RDF graph build + SHACL validation + Cytoscape JSON.
 
 Wraps the synchronous ``MarcToRdfMapper`` and ``pyshacl.validate`` in
 ``asyncio.to_thread`` so they don't block the FastAPI event loop.

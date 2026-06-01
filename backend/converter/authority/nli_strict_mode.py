@@ -17,7 +17,7 @@ This module wraps that preference into a single function,
 
 1. **Path 1 — exact Mazal match.** Calls ``mazal.match_person(name, dates)``.
    If Mazal returns an NLI ID, that is the authoritative answer; we do
-   *not* call VIAF SRU. The caller (Stage 3 / F2 Wikidata crosscheck)
+   *not* call VIAF SRU. The caller (Authority Enrichment / F2 Wikidata crosscheck)
    is expected to follow up the Mazal ID with a Wikidata SPARQL query
    to harvest the VIAF identifier through P8189 cross-references —
    that path is more reliable than VIAF SRU for Hebrew names.
@@ -94,7 +94,7 @@ class StrictMatchResult:
             string (preferred Hebrew form). ``None`` for Paths 1 and 3.
         confidence_hint: ``"high"`` for exact Mazal matches,
             ``"medium"`` for Levenshtein near-misses, ``"low"`` for
-            fallback. Stage-3 guards may further degrade this.
+            fallback. Authority Enrichment guards may further degrade this.
     """
 
     mazal_id: str | None

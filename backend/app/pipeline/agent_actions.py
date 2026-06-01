@@ -98,7 +98,7 @@ _REGISTRY: dict[str, AgentAction] = {
         id="birth_death_check",
         label="Birth/death sanity check",
         description=(
-            "For matches where Stage 3 already resolved candidate years, "
+            "For matches where Authority Enrichment already resolved candidate years, "
             "is the life plausibly compatible with the MS year + role?"
         ),
         scope_kinds=("single", "selection", "all"),

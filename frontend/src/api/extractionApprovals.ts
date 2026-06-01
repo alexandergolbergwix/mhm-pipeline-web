@@ -2,7 +2,7 @@
  * ExtractionApprovals API client.
  *
  * Typed wrapper around the backend's per-entity approval, bulk approve,
- * and auto-approve endpoints. Mirrors the Stage 2 (AI-based Enrichment)
+ * and auto-approve endpoints. Mirrors the AI Extraction (AI-based Enrichment)
  * editor data model the PyQt6 app uses, including the eval-agent AI
  * verdict carried on each entity (CLAUDE.md Rule W-13).
  *

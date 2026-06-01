@@ -1,7 +1,7 @@
 """Index of MARC structured-field values, per record.
 
 Used by the AI-verification dialog AND the entity-listing endpoint to
-classify Stage-2 NER candidates against the manuscript's catalogued
+classify AI Extraction NER candidates against the manuscript's catalogued
 MARC fields:
 
 * ``is_novel(record_id, candidate_text)`` — boolean novelty check.
@@ -11,7 +11,7 @@ MARC fields:
   ``grounded`` (candidate appears in a MARC field of the *same* kind
   as the candidate's type), ``wrong_field`` (candidate appears in
   MARC but in a different structured field than expected),
-  ``novel`` (candidate is not in any MARC field — Stage 2 surfaced
+  ``novel`` (candidate is not in any MARC field — AI Extraction surfaced
   genuinely new info), or ``unknown`` (we have no MARC record for
   this control_number so we can't decide).
 

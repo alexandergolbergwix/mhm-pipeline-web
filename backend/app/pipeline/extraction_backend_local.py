@@ -1,6 +1,6 @@
 """Local (in-process) implementation of :class:`InferenceBackend`.
 
-Runs every Stage-2 model inside the FastAPI worker via torch +
+Runs every AI Extraction model inside the FastAPI worker via torch +
 transformers. Same behaviour as the original inline-inference code —
 this module exists so :mod:`app.pipeline.extraction` doesn't have to
 care which backend is configured.

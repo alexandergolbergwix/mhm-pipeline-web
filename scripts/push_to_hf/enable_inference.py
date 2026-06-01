@@ -1,4 +1,4 @@
-"""Enable HF Serverless Inference Providers on our four Stage 2 repos.
+"""Enable HF Serverless Inference Providers on our four AI Extraction repos.
 
 HuggingFace stopped auto-deploying small/private models on their free
 serverless tier. The opt-in signal is ``inference: true`` in the

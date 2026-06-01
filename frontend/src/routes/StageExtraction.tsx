@@ -1,5 +1,5 @@
 /**
- * Stage 2 · AI Extraction — per-run page.
+ * AI Extraction — per-run page.
  *
  * Three states:
  *  - ``idle``     — no ``ner_results.json`` on disk. Show big "Start"
@@ -102,7 +102,7 @@ export default function StageExtraction() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [models, setModels] = useState<Record<ModelRole, ModelState>>(_initialModels);
 
-  // ─── Stage-2 review UI state (Rule W-16) ─────────────────────────
+  // ─── AI Extraction review UI state (Rule W-16) ─────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [columnFilters, setColumnFilters] = useState<Record<string, Set<string>>>({});
   const [filteredEntities, setFilteredEntities] = useState<Entity[]>([]);
@@ -486,7 +486,7 @@ export default function StageExtraction() {
           )}
         </section>
 
-        {/* Rich Stage-2 review UI (Rule W-16). Replaces the legacy
+        {/* Rich AI Extraction review UI (Rule W-16). Replaces the legacy
             per-record collapsible list with an entity-level table +
             filters + bulk actions + AI verification entry points. */}
         {runId && approvalStore.entities.length > 0 && (

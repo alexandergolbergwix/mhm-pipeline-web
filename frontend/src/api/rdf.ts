@@ -1,5 +1,5 @@
 /**
- * Stage 4 — RDF graph client.
+ * RDF Graph — RDF graph client.
  *
  * Five endpoints under ``/runs/{id}/rdf/``:
  *

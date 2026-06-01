@@ -1,6 +1,6 @@
 """Project HMO RDF into Wikidata item objects.
 
-Stage 6 should start from the validated HMO graph whenever possible.  The
+Wikidata Studio should start from the validated HMO graph whenever possible.  The
 graph is the scholarly representation, while Wikidata is the public projection.
 When the RDF was built next to ``authority_enriched_reviewed.json`` we reuse
 that reviewed JSON as a provenance sidecar so the projection preserves the full

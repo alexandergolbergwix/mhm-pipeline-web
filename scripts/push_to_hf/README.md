@@ -1,4 +1,4 @@
-# Push the three local Stage 2 models to HuggingFace Hub
+# Push the three local AI Extraction models to HuggingFace Hub
 
 The web app's HF Inference Providers backend (Mode B in
 `backend/app/pipeline/extraction_backend_hf.py`) needs the four NER /
@@ -84,7 +84,7 @@ asyncio.run(main())
 ```
 
 When all three pushes are done, set `EXTRACTION_MODE=hf-api` (or pick
-the radio in Settings) and Stage 2 runs against HF.
+the radio in Settings) and AI Extraction runs against HF.
 
 ## What each script does
 

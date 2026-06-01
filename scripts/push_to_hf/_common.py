@@ -31,7 +31,7 @@ class PushArgs:
 
 def parse_args(*, default_base_model: str = "dicta-il/dictabert") -> PushArgs:
     p = argparse.ArgumentParser(
-        description="Push a local Stage-2 .pt checkpoint to HuggingFace Hub.",
+        description="Push a local AI Extraction .pt checkpoint to HuggingFace Hub.",
     )
     p.add_argument("--checkpoint", type=Path, required=True,
                     help="Path to the .pt file to convert + push.")
@@ -118,7 +118,7 @@ def configure_logging() -> None:
 
 
 def _render_card(kwargs: dict[str, str]) -> str:
-    title = kwargs.get("title", "MHM Pipeline · Stage 2 model")
+    title = kwargs.get("title", "MHM Pipeline · AI Extraction model")
     summary = kwargs.get("summary", "")
     return (
         f"# {title}\n\n"
