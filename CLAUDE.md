@@ -236,6 +236,100 @@ Cold start: ~30-60s for all four BERT models on a CPU-2 container.
 `scaledown_window=300` keeps it warm for 5 min after the last
 call. After that, $0.
 
+### Rule W-16 — Stage 2 review surface parity with the desktop
+
+The AI Extraction page surfaces a rich entity-review UI that mirrors
+the desktop's `ExtractionEditor`. Eleven independent capabilities,
+each owned by one component under `frontend/src/components/extraction/`:
+
+1. **10-column entity table** (`EntityTable.tsx`): Record · Entity ·
+   Type ▾ · Role ▾ · Source · Conf. · Model Conf. · Exists in · AI
+   verdict · Approved · Edit/View. Inline `<select>` for Type/Role;
+   double-click Entity opens edit modal; checkbox writes
+   `ExtractionApproval` immediately.
+2. **Three-dimensional filter chips** (`EntityFilterChips.tsx`):
+   Source / Type / Role. AND across dimensions, OR within. Free-text
+   search across entity text + control number.
+3. **Per-column distinct-value popup** (`ColumnFilterPopup.tsx`,
+   right-click header). Parity with desktop Rule 49 §E.
+4. **Sticky action bar** (`EntityActionsBar.tsx`): live counts,
+   Select-all-visible, Approve/Reject selected, Auto-approve…,
+   Verify selected / all visible with AI.
+5. **Auto-approve rule builder** (`AutoApproveRuleBuilder.tsx`):
+   min_confidence slider, source/type/not_role multi-checkboxes,
+   require_ai_pass / respect_ai_fail toggles, live preview count via
+   `/auto-approve/preview`, Apply via `/auto-approve`.
+6. **Edit modal** (`EntityEditModal.tsx`): side-by-side editor +
+   MARC source text with the current span highlighted yellow.
+7. **MARC source drawer** (`MarcSourceDrawer.tsx`): right-side slide-in
+   `<aside>`. Yellow primary highlight on the active entity, blue
+   secondary highlights on the record's other entities. Esc-to-close
+   + pin checkbox. Reads `/marc-source/{cn}`.
+8. **NER AI verification modal** (`NerVerificationModal.tsx`):
+   structural sibling of `AiVerificationModal` pinned to
+   `/extraction/ai-verify`. Reuses `AgentFlowDiagram` + `VerdictsTable`
+   evaluator-agnostically. Auto-loads last session on open.
+9. **AI verdict pill** (`AiVerdictPill.tsx`): 5-state inline pill
+   (pass / partial / fail / abstain / unknown) with reasoning tooltip.
+10. **Exists-in badge**: 4-state grounded / wrong_field / novel /
+    unknown, derived from `MarcStructuredIndex.classify(...)` on the
+    backend per-row. Powers the curator's at-a-glance scan for
+    "matched MARC", "in wrong field", or "genuinely new info from
+    free-text notes".
+11. **Approval store hook** (`useApprovalStore`): fast-poll (2s) while
+    a verify modal is open, slow-poll (30s) otherwise, emits a custom
+    `mhm.entities.refreshed` DOM event on every diff so the entity
+    table re-renders without prop-drilling.
+
+The legacy per-record collapsible body is preserved under a
+`<details>` element below the new review surface for users who prefer
+the by-MS grouping.
+
+### Rule W-17 — NER verdicts persist to ExtractionApproval.ai_verdict
+
+Mirror of Rule W-13 (authority verdicts). When the
+`NerVerificationModal`'s SSE stream finishes, the backend's
+`extraction_verify.py::_persist_ai_verdicts_to_entities` opens a fresh
+`session_scope` (the request session is closed by then) and joins
+`candidate._entity_id` → `ExtractionApproval.id`, writing the verdict
+summary into the JSONB `ai_verdict` column AND setting
+`ai_verdict_at = now()`.
+
+Summary shape (parity with `AuthorityMatch.payload.ai_verdict`):
+`overall`, `name_ok`, `type_ok`, `role_ok`, `reasoning`, `model`,
+`judged_at`, `cache_key`, `session_id`, `evaluator`.
+
+The frontend's `useApprovalStore` polls `/entities` and emits
+`mhm.entities.refreshed` whenever a verdict lands, so the inline
+pills on the EntityTable refresh without the user reloading the page.
+
+### Rule W-18 — Stage-2 verify state_dir per-RUN (matches Rule W-14)
+
+`extraction-verify-sessions/<run_id>/` is the shared per-run state
+dir; per-session artefacts live one level deeper under
+`sessions/<session_id>/`. The eval-agent's verdict cache lives at the
+state_dir root so opening the modal again warm-hits prior Gemini
+judgements. The per-session subdir holds only the filtered fixture
+(marc_extracted.json + ner_results.json) and the SSE trace audit log.
+
+Same trust boundary as Rule W-15: the eval-agent is a subprocess
+only; no Python imports across the FastAPI ↔ eval-agent boundary.
+
+### Rule W-19 — User-flow e2e is the canonical test surface
+
+`frontend/e2e/` Playwright specs are the canonical regression layer
+for the curator UI. Backend endpoints are mocked deterministically via
+`page.route()` (see `fixtures/extraction-fixtures.ts`) so the suite
+runs in full isolation from Modal, Gemini, and the database.
+
+Coverage rule: every user-visible UI surface (chip filter, sort
+header, column popup, bulk action, modal, drawer) gets at least one
+e2e spec that exercises the click path AND asserts the captured
+backend call shape. Unit tests are reserved for pure functions
+(`marc_structured_index.classify`, normalisation helpers). The
+"every click is a test" bias mirrors the user directive on
+2026-06-01.
+
 ---
 
 ## Project structure

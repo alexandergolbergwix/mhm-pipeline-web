@@ -31,6 +31,8 @@ research tool; not user-facing.
 | Stage 2 — Genre classifier | `converter/authority/genre_classifier.py` | ✓ shipped via Modal backend | **DONE** — same Modal container |
 | Stage 2 — Post-filters | `converter/authority/ner_post_filters.py` | absent | **COPY** |
 | Stage 2 — Inference host | n/a (desktop loads `.pt` locally) | three backends: local / hf-api / modal | **DONE** — `EXTRACTION_MODE` env switches; Modal is production default |
+| Stage 2 — Review UI (ExtractionEditor) | `gui/widgets/extraction_editor.py` (2,606 LOC) | ✓ shipped: 11-feature parity surface | **DONE** — `frontend/src/components/extraction/` (Rule W-16) |
+| Stage 2 — NER AI verification | `gui/dialogs/ai_verification_dialog.py` (NER scope) | ✓ shipped | **DONE** — `NerVerificationModal` + `extraction_verify.py` router (Rule W-17 / W-18) |
 | Stage 3 — Matchers (Mazal/VIAF/Wikidata/KIMA) | `converter/authority/*.py` | ✓ byte-identical | none |
 | Stage 3 — Hardening (7 guards) | `controller/workers.py::AuthorityWorker` | partial (date guard only) | **PORT** to `app/pipeline/authority_hardening.py` |
 | Stage 4 — RDF mapper | `converter/transformer/mapper.py` | ✓ already in web | wire endpoint |
