@@ -416,19 +416,23 @@ async def _fetch_entities(
 
     # — Branch A: ``entity_ids`` provided → decode + upsert-synthetic
     if entity_ids:
+        # Dedupe + decode in one pass so the same content-hash sent
+        # twice doesn't trigger a duplicate-key INSERT.
+        seen_keys: set[tuple[str, str, str, int, int]] = set()
         decoded: list[tuple[str, str, str, int, int]] = []
         for eid in entity_ids:
             try:
-                decoded.append(_parse_entity_id(eid))
+                k = _parse_entity_id(eid)
             except Exception:  # noqa: BLE001
                 continue
+            if k in seen_keys:
+                continue
+            seen_keys.add(k)
+            decoded.append(k)
         if not decoded:
             return []
 
-        # Build a key set for fast lookup.
-        keys = {(cn, src, text, start, end)
-                for (cn, src, text, start, end) in decoded}
-        cns = sorted({k[0] for k in keys})
+        cns = sorted({k[0] for k in decoded})
 
         existing_rows = (
             await db.execute(
@@ -443,25 +447,68 @@ async def _fetch_entities(
             for r in existing_rows
         }
 
-        # Pull the ner_results.json snapshot for fields not in the
-        # approval row (type/role/confidence) so synthetic rows carry
-        # the original prediction.
+        # Snapshot the original prediction (type/role/confidence) from
+        # ner_results.json so synthetic rows carry the prediction
+        # context the eval-agent's fixture needs.
         snapshot: dict[tuple[str, str, str, int, int], dict] = {}
         path = _results_path(run_id)
         if path.exists():
             try:
-                records = _json.loads(path.read_text(encoding="utf-8"))
-                if isinstance(records, list):
-                    for ent in _flatten_records(records):
-                        k = (ent["control_number"], ent["source"], ent["text"],
-                             int(ent.get("start") or 0), int(ent.get("end") or 0))
-                        snapshot[k] = ent
+                rec_data = _json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(rec_data, list):
+                    for ent in _flatten_records(rec_data):
+                        sk = (ent["control_number"], ent["source"], ent["text"],
+                              int(ent.get("start") or 0), int(ent.get("end") or 0))
+                        snapshot[sk] = ent
             except _json.JSONDecodeError:
                 pass
 
-        # Build rows: real approval where it exists, synthetic
-        # transient otherwise.
-        records = (
+        # Build a batch UPSERT for entities that don't have a row
+        # yet. ``on_conflict_do_nothing`` handles the race where
+        # another in-flight request just inserted the same key.
+        from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: PLC0415
+
+        missing = [k for k in decoded if k not in existing_by_key]
+        if missing:
+            rows_to_insert = []
+            for (cn, src, text, start, end) in missing:
+                snap = snapshot.get((cn, src, text, start, end), {})
+                rows_to_insert.append({
+                    "run_id":           run_id,
+                    "control_number":   cn,
+                    "source":           src,
+                    "text":             text,
+                    "start":            start,
+                    "end":              end,
+                    "type":             snap.get("type") or "",
+                    "role":             snap.get("role") or "",
+                    "confidence":       snap.get("confidence"),
+                    "model_confidence": snap.get("model_confidence"),
+                    "approved":         False,
+                })
+            stmt = pg_insert(ExtractionApproval).values(rows_to_insert)
+            stmt = stmt.on_conflict_do_nothing(
+                constraint="uq_extraction_approval_key",
+            )
+            await db.execute(stmt)
+            await db.commit()
+
+            # Re-read so we have the persisted UUID ids for the rows
+            # we just inserted.
+            refreshed = (
+                await db.execute(
+                    select(ExtractionApproval).where(
+                        ExtractionApproval.run_id == run_id,
+                        ExtractionApproval.control_number.in_(cns),
+                    )
+                )
+            ).scalars().all()
+            existing_by_key = {
+                (r.control_number, r.source, r.text, r.start or 0, r.end or 0): r
+                for r in refreshed
+            }
+
+        rec_rows = (
             await db.execute(
                 select(RunRecord).where(
                     RunRecord.run_id == run_id,
@@ -469,31 +516,20 @@ async def _fetch_entities(
                 )
             )
         ).scalars().all()
-        rec_by_cn = {r.control_number: r for r in records}
+        rec_by_cn = {r.control_number: r for r in rec_rows}
 
         out: list[tuple[ExtractionApproval, RunRecord]] = []
-        for (cn, src, text, start, end) in decoded:
-            key = (cn, src, text, start, end)
+        for key in decoded:
             ext = existing_by_key.get(key)
             if ext is None:
-                snap = snapshot.get(key, {})
-                ext = ExtractionApproval(
-                    run_id=run_id, control_number=cn, source=src,
-                    text=text, start=start, end=end,
-                    type=snap.get("type") or "",
-                    role=snap.get("role") or "",
-                    confidence=snap.get("confidence"),
-                    model_confidence=snap.get("model_confidence"),
-                    approved=False,
-                )
-                # Persist so verdict writeback in the finally block
-                # has a real id to join against.
-                db.add(ext)
-            rec = rec_by_cn.get(cn) or RunRecord(
-                run_id=run_id, control_number=cn, marc={},
+                # The upsert silently dropped (on_conflict_do_nothing)
+                # AND the row wasn't there before — should be very
+                # rare; skip to keep the rest of the scope alive.
+                continue
+            rec = rec_by_cn.get(key[0]) or RunRecord(
+                run_id=run_id, control_number=key[0], marc={},
             )
             out.append((ext, rec))
-        await db.commit()
         return out
 
     # — Branch B: ``entity_ids`` omitted → every existing row.
