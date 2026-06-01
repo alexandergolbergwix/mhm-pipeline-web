@@ -26,10 +26,11 @@ research tool; not user-facing.
 | Subsystem | Desktop module(s) | Web status | Action |
 |---|---|---|---|
 | Stage 1 — MARC parse | `marc_ingest.py` | ✓ already in web | none |
-| Stage 2 — Person NER (joint) | `ner/inference_pipeline.py` (HF Hub) | absent | **REWRITE** in `app/pipeline/extraction.py` |
-| Stage 2 — Provenance + Contents NER | `ner/ner_inference_pipeline.py` | absent | **COPY + threadpool** |
-| Stage 2 — Genre classifier | `converter/authority/genre_classifier.py` | already copied, unused | **WIRE** via threadpool |
+| Stage 2 — Person NER (joint) | `ner/inference_pipeline.py` | ✓ shipped via Modal backend | **DONE** — `extraction_backend_modal.py` (CLAUDE.md Rule W-11) |
+| Stage 2 — Provenance + Contents NER | `ner/ner_inference_pipeline.py` | ✓ shipped via Modal backend | **DONE** — vendored into `modal/modal_app.py` |
+| Stage 2 — Genre classifier | `converter/authority/genre_classifier.py` | ✓ shipped via Modal backend | **DONE** — same Modal container |
 | Stage 2 — Post-filters | `converter/authority/ner_post_filters.py` | absent | **COPY** |
+| Stage 2 — Inference host | n/a (desktop loads `.pt` locally) | three backends: local / hf-api / modal | **DONE** — `EXTRACTION_MODE` env switches; Modal is production default |
 | Stage 3 — Matchers (Mazal/VIAF/Wikidata/KIMA) | `converter/authority/*.py` | ✓ byte-identical | none |
 | Stage 3 — Hardening (7 guards) | `controller/workers.py::AuthorityWorker` | partial (date guard only) | **PORT** to `app/pipeline/authority_hardening.py` |
 | Stage 4 — RDF mapper | `converter/transformer/mapper.py` | ✓ already in web | wire endpoint |
