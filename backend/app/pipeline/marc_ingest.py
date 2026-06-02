@@ -222,13 +222,33 @@ def _normalise_records(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _collapse_marc_subfields(record: dict[str, Any]) -> None:
-    """In-place normalisation: ``100$a`` → ``authors[]``, ``700$a`` →
-    ``contributors[]``, ``600$a`` → ``subjects[]`` (type=person),
-    ``650$a`` → ``subjects[]`` (type=topic), ``651$a`` → place subjects,
-    ``245$a/$b`` → ``title``, ``008`` → ``dates.year``.
+    """In-place normalisation: collapses raw ``<tag>$<sub>`` subfield
+    columns (typical of NLI-style TSV / JSON exports) into the flat
+    keys the rest of the web pipeline expects.
+
+    Derived keys:
+
+    * ``title``       — ``245$a`` (+ optional ``$b``)
+    * ``authors``     — ``100/110/111$a`` with ``$e`` roles
+    * ``contributors``— ``700/710/711/800/810/811$a`` with ``$e`` roles
+    * ``subjects``    — ``600/610/611/650/651$a`` with type labels
+    * ``dates.year``  — ``008`` positions 7-10
+    * ``genres``      — ``655$a``
+    * ``notes``       — ``500/590/541$a`` (general/local/source notes —
+                        the AI-Extraction Person-NER input)
+    * ``provenance``  — ``561$a`` (the Provenance-NER input)
+    * ``contents``    — ``505$a`` split on ``--`` into title chunks
+                        (the Contents-NER input + work-item driver)
+    * ``colophon_text``— ``590$a`` (local notes — desktop convention)
 
     Multi-value subfields are pipe-separated. Roles travel through
     ``$e`` parallel arrays where present.
+
+    **Why every NER-input key matters:** the Stage-2 extractor reads
+    these flat keys (``extraction.py:_extract_person_texts`` /
+    ``provenance`` branch / ``contents`` branch). When they're empty,
+    Modal is called with empty strings → 0 entities → 0 work items
+    in the Studio. (Smoking gun, 2026-06-02.)
     """
     # ── Title ────────────────────────────────────────────────────────
     title_a = _str(record.get("245$a"))
@@ -286,6 +306,47 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
         genres.append({"name": name, "field": "655"})
     if genres:
         record["genres"] = genres
+
+    # ── Notes (500$a general note, 590$a local note, 541$a source) ─
+    notes: list[str] = list(record.get("notes") or [])
+    for tag in ("500", "590", "541"):
+        for piece in _split_multi(_str(record.get(f"{tag}$a"))):
+            if piece and piece not in notes:
+                notes.append(piece)
+    if notes:
+        record["notes"] = notes
+
+    # ── Colophon text (590$a — desktop's convention) ────────────────
+    # Some catalogues file the colophon as a 590$a local note. Without
+    # this, the desktop's Hebrew-Person-NER never sees the colophon at
+    # all. Safe to also include 500$a fragments — the model is robust
+    # to non-colophon prose; the cost is one extra Modal call's worth
+    # of tokens per record.
+    colophon_pieces: list[str] = []
+    for piece in _split_multi(_str(record.get("590$a"))):
+        if piece:
+            colophon_pieces.append(piece)
+    if colophon_pieces and not record.get("colophon_text"):
+        record["colophon_text"] = " | ".join(colophon_pieces)
+
+    # ── Provenance (561$a — Provenance-NER input) ──────────────────
+    provenance_pieces = _split_multi(_str(record.get("561$a")))
+    if provenance_pieces and not record.get("provenance"):
+        record["provenance"] = " | ".join(provenance_pieces)
+
+    # ── Contents (505$a — Contents-NER input + work driver) ────────
+    # Desktop's 505 handler splits on ``--`` to recover one row per
+    # contained work. We mirror that here so the contents_ner pipeline
+    # + the desktop WikidataItemBuilder's `_add_works_and_authorities`
+    # see a populated `contents` list.
+    contents: list[dict[str, Any]] = list(record.get("contents") or [])
+    for chunk in _split_multi(_str(record.get("505$a"))):
+        for title in chunk.split("--"):
+            title = title.strip().strip(".,;:")
+            if title:
+                contents.append({"title": title})
+    if contents:
+        record["contents"] = contents
 
 
 def _str(v: Any) -> str:

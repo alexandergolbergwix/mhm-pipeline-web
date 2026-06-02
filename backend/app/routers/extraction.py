@@ -30,6 +30,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
+from typing import Any
 
 from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -111,7 +112,19 @@ async def start_extraction_stream(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Run has no parsed records — re-upload the MARC file.",
         )
-    marc_records = [dict(r.marc) for r in rows]
+    # Defensive re-derivation of the flat NER-input keys (notes,
+    # provenance, contents, colophon_text) from raw MARC subfield
+    # columns. Without this, records uploaded before the marc_ingest
+    # fix have empty NER inputs and Modal returns 0 entities on
+    # every record. Idempotent — only fires when raw subfield keys
+    # are present.
+    from app.pipeline.marc_ingest import _collapse_marc_subfields  # noqa: PLC0415
+    marc_records: list[dict[str, Any]] = []
+    for r in rows:
+        rec = dict(r.marc) if r.marc else {}
+        if any("$" in k for k in rec):
+            _collapse_marc_subfields(rec)
+        marc_records.append(rec)
 
     # Unwrap the HF token. Hard-fail when absent; the UI prompts the
     # user to add one in Settings → Credentials.
