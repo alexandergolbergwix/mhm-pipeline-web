@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -230,6 +231,11 @@ def _run_mapper_sync(
             or rec.get("controlNumber")
             or f"rec_{id(raw_rec)}"
         )
+        # URI-safe CN: strip surrounding/embedded quotes and replace any
+        # character that is not valid inside a URI fragment with "_".
+        # Used only for URI construction in build_graph; the raw cn is kept
+        # for authority-match lookups so cross-references are not broken.
+        cn_uri = re.sub(r"[^\w.\-]", "_", cn.strip("\"'")).strip("_") or cn
         try:
             # Build ExtractedData from the dict — same pattern as
             # MarcToRdfMapper.map_json_records.
@@ -239,7 +245,7 @@ def _run_mapper_sync(
                     continue
                 if field_name in rec:
                     setattr(extracted, field_name, rec[field_name])
-            extracted.control_number = cn
+            extracted.control_number = cn_uri
             # Fold approved/cross-source authority matches into the
             # extracted bag the mapper consumes (best-effort — schema
             # mirrors the desktop pipeline's authority_enriched payload).
@@ -248,7 +254,7 @@ def _run_mapper_sync(
             ):
                 extracted.marc_authority_matches = matches_by_cn[cn]  # type: ignore[attr-defined]
 
-            graph = mapper.graph_builder.build_graph(extracted, cn)
+            graph = mapper.graph_builder.build_graph(extracted, cn_uri)
             for triple in graph:
                 combined.add(triple)
             manuscripts += 1

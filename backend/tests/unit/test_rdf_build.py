@@ -38,6 +38,31 @@ class TestRdfBuildCollapsedMarc:
             assert triples > 0
             assert out.stat().st_size > 0
 
+    def test_quoted_control_number_does_not_crash_uri_build(self) -> None:
+        """Control numbers stored with embedded quotes must not produce invalid URIs.
+
+        The quoted CN is allowed inside literal values (``xsd:string``) but must
+        never appear as part of a URI — i.e. not inside angle-bracket ``<...>``.
+        """
+        import re as _re
+
+        rec = {
+            "_control_number": '"990000403370205171"',
+            "title": "ספר תורה",
+            "authors": [{"name": "משה", "role": "author", "field": "100"}],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "out.ttl"
+            triples, manuscripts, errors = _run_mapper_sync([rec], [], out)
+            assert errors == [], errors
+            assert manuscripts == 1
+            assert triples > 0
+            ttl = out.read_text(encoding="utf-8")
+            # Verify no angle-bracket URI contains the quoted CN.
+            uri_fragments = _re.findall(r"<[^>]+>", ttl)
+            leaked = [u for u in uri_fragments if '"990000403370205171"' in u]
+            assert not leaked, f"raw quoted CN leaked into URI(s): {leaked}"
+
     def test_prepare_coerces_legacy_dict_genres(self) -> None:
         rec = {
             "_control_number": "X",
