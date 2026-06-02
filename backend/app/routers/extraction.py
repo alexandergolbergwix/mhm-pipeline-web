@@ -216,21 +216,37 @@ async def get_extraction_status(
     the run is in flight by virtue of holding the SSE stream open.
     """
     await _lookup_run_with_access(db, run_id, auth, write=False)
+    # Probe the resolved inference backend so the frontend can render
+    # "Inference: Modal" / "Inference: HuggingFace" / etc. before the
+    # first run streams an `extraction.start` event. Driven by the
+    # EXTRACTION_MODE env var via app.pipeline.extraction_backend.
+    from app.pipeline.extraction_backend import resolve_mode  # noqa: PLC0415
+    extraction_mode = resolve_mode()
+
     path = _results_path(run_id)
     if not path.exists():
-        return {"state": "idle"}
+        return {"state": "idle", "extraction_mode": extraction_mode}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
-        return {"state": "error", "detail": "ner_results.json unparseable"}
+        return {
+            "state": "error",
+            "detail": "ner_results.json unparseable",
+            "extraction_mode": extraction_mode,
+        }
     if not isinstance(data, list):
-        return {"state": "error", "detail": "ner_results.json malformed"}
+        return {
+            "state": "error",
+            "detail": "ner_results.json malformed",
+            "extraction_mode": extraction_mode,
+        }
     entity_total = sum(len((r or {}).get("entities") or []) for r in data)
     return {
-        "state":         "complete",
-        "records":       len(data),
-        "entity_total":  entity_total,
-        "results_path":  str(path),
+        "state":            "complete",
+        "records":          len(data),
+        "entity_total":     entity_total,
+        "results_path":     str(path),
+        "extraction_mode":  extraction_mode,
     }
 
 

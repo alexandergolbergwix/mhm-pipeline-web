@@ -151,9 +151,13 @@ export default function StageExtraction() {
   const [skipCache, setSkipCache] = useState(false);
 
   // Per-role enable/disable. Persisted to localStorage so a curator's
-  // "I only want Person NER" choice survives reloads. Default = all 4.
-  // Provenance + Contents are archival-only on HF Inference Providers
-  // (custom-code repos), so they default OFF in Mode B.
+  // "I only want Person NER" choice survives reloads. Default = all 4
+  // ENABLED. Provenance + Contents used to default OFF when HF
+  // Inference Providers was the only backend (HF refuses to deploy
+  // custom-code repos). Production now runs on Modal which bundles
+  // all four models in one container, so the historical exclusion no
+  // longer applies. The HF note below renders only when the backend
+  // reports EXTRACTION_MODE=hf-api at runtime.
   const [enabledRoles, setEnabledRoles] = useState<Record<ModelRole, boolean>>(() => {
     try {
       const stored = localStorage.getItem("mhm.extraction.enabledRoles");
@@ -161,8 +165,8 @@ export default function StageExtraction() {
     } catch { /* ignore */ }
     return {
       person:     true,
-      provenance: false,    // not on HF Inference Providers (custom-code)
-      contents:   false,    // not on HF Inference Providers (custom-code)
+      provenance: true,
+      contents:   true,
       genre:      true,
     };
   });
@@ -183,6 +187,12 @@ export default function StageExtraction() {
       try {
         const st = await Extraction.status(runId);
         if (cancelled) return;
+        // Reflect the resolved EXTRACTION_MODE in the header label
+        // immediately — without this, "Inference: (auto)" lingers
+        // until the first SSE event fires.
+        if (st.extraction_mode) {
+          setResolvedMode(st.extraction_mode);
+        }
         if (st.state === "complete") {
           const rows = await Extraction.results(runId);
           if (cancelled) return;
@@ -482,11 +492,14 @@ export default function StageExtraction() {
                            disabled={phase === "running"} />
               ))}
             </div>
-            {!enabledRoles.provenance && !enabledRoles.contents && (
+            {resolvedMode === "hf-api" &&
+             !enabledRoles.provenance &&
+             !enabledRoles.contents && (
               <p className="muted text-[10px] mt-1.5">
                 Provenance + Contents NER aren't on HuggingFace Inference Providers
                 (their custom 2-layer head doesn't fit HF's serverless tier).
-                They're archival-only on the Hub.
+                They're archival-only on the Hub. Switch the backend to Modal
+                (set EXTRACTION_MODE=modal) to use all four.
               </p>
             )}
           </div>

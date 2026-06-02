@@ -61,6 +61,10 @@ export interface ExtractionStatus {
   records?: number;
   entity_total?: number;
   detail?: string;
+  /** Backend's resolved EXTRACTION_MODE — surfaced in the page header so
+   *  the user sees which inference backend will run before the first
+   *  stream fires. */
+  extraction_mode?: "local" | "hf-api" | "modal" | string;
 }
 
 
