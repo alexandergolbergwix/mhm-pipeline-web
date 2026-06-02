@@ -211,12 +211,22 @@ function Row({
         <td className="py-2 pr-3 muted">{evaluatorId(ev)}</td>
         <td className="py-2 pr-3 muted">{subType(ev)}</td>
         <td className="py-2 pr-3">
-          {onOpenMarc
-            ? <button onClick={(e) => { e.stopPropagation(); onOpenMarc(recordId(ev)); }}
-                      className="text-biu-sky font-mono hover:underline">
-                {recordId(ev)}
+          {onOpenMarc ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="font-mono">{recordId(ev)}</span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpenMarc(recordId(ev)); }}
+                aria-label="View full MARC record"
+                title="View all MARC fields for this record (searchable)"
+                className="text-biu-sky hover:text-ink text-xs leading-none px-1 py-0.5 rounded hover:bg-white/10"
+              >
+                📋 MARC
               </button>
-            : <span className="font-mono">{recordId(ev)}</span>}
+            </span>
+          ) : (
+            <span className="font-mono">{recordId(ev)}</span>
+          )}
         </td>
         <td className="py-2 pr-3"><VerdictPill overall={o} /></td>
         <td className="py-2 pr-3">

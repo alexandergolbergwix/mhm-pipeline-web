@@ -31,6 +31,7 @@ import {
   AgentFlowDiagram, makeInitialFlowState, reduceFlow, type FlowState,
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
+import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 
 
 export interface NerVerificationModalProps {
@@ -49,6 +50,11 @@ export interface NerVerificationModalProps {
 
 export function NerVerificationModal(props: NerVerificationModalProps) {
   const { runId, scopeKind, entityIds, scopeLabel, onClose, onVerdictsLanded } = props;
+
+  // Control number whose full MARC record is being inspected in the
+  // searchable popup. Opened from the control-number column of any
+  // verdict row via VerdictsTable's onOpenMarc callback.
+  const [marcPopup, setMarcPopup] = useState<string | null>(null);
 
   const [actions,       setActions]       = useState<AgentActionMeta[]>([]);
   const [actionId,      setActionId]      = useState<string>("audit_ner_extraction");
@@ -284,8 +290,21 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
         </section>
 
-        {/* Verdicts — full-width research table. */}
-        <VerdictsTable verdicts={verdicts} />
+        {/* Verdicts — full-width research table. Each control-number
+            cell opens a searchable popup with the full MARC record for
+            that manuscript. */}
+        <VerdictsTable
+          verdicts={verdicts}
+          onOpenMarc={(controlNumber) => setMarcPopup(controlNumber)}
+        />
+
+        {marcPopup && (
+          <MarcRecordPopup
+            runId={runId}
+            controlNumber={marcPopup}
+            onClose={() => setMarcPopup(null)}
+          />
+        )}
 
         {/* Step log — collapsed by default. */}
         <details className="glass p-3">

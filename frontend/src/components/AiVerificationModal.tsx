@@ -26,6 +26,7 @@ import {
   AgentFlowDiagram, makeInitialFlowState, reduceFlow, type FlowState,
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
+import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 
 
 export interface AiVerificationModalProps {
@@ -39,6 +40,11 @@ export interface AiVerificationModalProps {
 
 export function AiVerificationModal(props: AiVerificationModalProps) {
   const { runId, scopeKind, matchIds, scopeLabel, onClose } = props;
+
+  // Control number whose full MARC record is being inspected in the
+  // searchable popup. Opened from the control-number column of any
+  // verdict row via VerdictsTable's onOpenMarc callback.
+  const [marcPopup, setMarcPopup] = useState<string | null>(null);
 
   const [actions,       setActions]       = useState<AgentActionMeta[]>([]);
   const [actionId,      setActionId]      = useState<string>("audit_match");
@@ -227,8 +233,21 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
         </section>
 
         {/* Verdicts — full-width research table. Replaces the
-            previous tiny truncated list. */}
-        <VerdictsTable verdicts={verdicts} />
+            previous tiny truncated list. Each control-number cell
+            opens a searchable popup with the full MARC record for
+            that manuscript. */}
+        <VerdictsTable
+          verdicts={verdicts}
+          onOpenMarc={(controlNumber) => setMarcPopup(controlNumber)}
+        />
+
+        {marcPopup && (
+          <MarcRecordPopup
+            runId={runId}
+            controlNumber={marcPopup}
+            onClose={() => setMarcPopup(null)}
+          />
+        )}
 
         {/* Step log — collapsed by default so it doesn't compete
             with the verdict table for attention. */}
