@@ -122,8 +122,10 @@ id_ed25519.*
 *.gguf
 *.pkl
 *.joblib
-models/
-weights/
+# Anchored at repo root so we don't shadow legit subdirs like
+# backend/app/models/ (the SQLAlchemy ORM package).
+/models/
+/weights/
 .cache/
 .cache/huggingface/
 
@@ -162,9 +164,10 @@ coverage/
 *.prof
 *.lcov
 
-# Scratch dirs.
-tmp/
-scratch/
-private/
-personal/
+# Scratch dirs — anchored at repo root so subdir names with the same
+# spelling (e.g. some library's tmp/ helper) aren't accidentally shadowed.
+/tmp/
+/scratch/
+/private/
+/personal/
 
