@@ -31,11 +31,22 @@ logger = logging.getLogger(__name__)
 async def build_items_for_run(
     *, marc_records: list[dict[str, Any]],
     approved_matches: list[dict[str, Any]],
+    entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
     return_native: bool = False,
     overrides: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build Wikidata items + QuickStatements for *marc_records* enriched
-    with *approved_matches*.
+    with *approved_matches* and Stage-2 NER *entities*.
+
+    ``entities_by_cn`` maps control_number → list of entity dicts in
+    the desktop's expected shape (``source`` ∈ {``person_ner``,
+    ``provenance_ner``, ``contents_ner``}, ``type``, ``text``,
+    ``start``, ``end``, ``role``, ``confidence``). The desktop builder
+    reads ``record["entities"]`` to drive work-item creation
+    (contents_ner WORK + FOLIO + WORK_AUTHOR — see Rule 47) and the
+    P127/P571 provenance fallbacks. Without this merge, the studio
+    creates zero work items (the rest of the pipeline's authority
+    surface comes through ``marc_authority_matches``).
 
     Returns::
 
@@ -50,10 +61,12 @@ async def build_items_for_run(
     # Build the desktop's expected per-record input shape:
     # each record carries its own ``marc_authority_matches`` list of
     # *approved* matches (mirroring what authority_enriched.json holds
-    # in the desktop pipeline).
+    # in the desktop pipeline) plus its NER ``entities`` (mirroring
+    # ner_results.json + the desktop's _merge_ner_into_records step).
     by_cn: dict[str, list[dict[str, Any]]] = {}
     for m in approved_matches:
         by_cn.setdefault(m["control_number"], []).append(m)
+    ents_by_cn = entities_by_cn or {}
 
     enriched: list[dict[str, Any]] = []
     for rec in marc_records:
@@ -65,6 +78,13 @@ async def build_items_for_run(
         out["marc_authority_matches"] = [
             _approved_match_to_desktop_shape(m) for m in by_cn.get(cn, [])
         ]
+        # Merge NER entities. Desktop _merge_ner_into_records uses
+        # setdefault, so we don't clobber a record that arrived with
+        # its own entities list (rare on the web — _to_dict_list above
+        # already canonicalises authors/contributors/subjects, but the
+        # ``entities`` channel is distinct).
+        existing = out.get("entities") or []
+        out["entities"] = list(existing) + ents_by_cn.get(cn, [])
         enriched.append(out)
 
     return await run_in_threadpool(_build_sync, enriched, return_native, overrides or {})

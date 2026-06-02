@@ -30,6 +30,7 @@ from app.models.event import (
     OP_PATCH,
     ProjectEvent,
 )
+from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.pipeline import wikidata_studio, wikidata_upload
@@ -109,8 +110,10 @@ async def build_studio(
     ]
 
     overrides = await _load_overrides(db, run_id)
+    entities_by_cn = await _load_entities_by_cn(db, run_id, approved_only)
     result = await wikidata_studio.build_items_for_run(
         marc_records=marc_records, approved_matches=approved_matches,
+        entities_by_cn=entities_by_cn,
         overrides=overrides, return_native=True,
     )
     # Stamp local_id onto each serialised item so the frontend can key
@@ -492,6 +495,7 @@ async def _build_native_items(
     matches = [m for m in all_matches if m.approved] if approved_only else all_matches
 
     overrides = await _load_overrides(db, run_id)
+    entities_by_cn = await _load_entities_by_cn(db, run_id, approved_only)
     result = await wikidata_studio.build_items_for_run(
         marc_records=[dict(r.marc) for r in records],
         approved_matches=[
@@ -510,10 +514,49 @@ async def _build_native_items(
             }
             for m in matches
         ],
+        entities_by_cn=entities_by_cn,
         overrides=overrides,
         return_native=True,
     )
     return result.get("native_items") or []
+
+
+async def _load_entities_by_cn(
+    db: AsyncSession, run_id: uuid.UUID, approved_only: bool,
+) -> dict[str, list[dict[str, Any]]]:
+    """Load Stage-2 NER entities, grouped by control_number.
+
+    Shape matches what the desktop ``WikidataItemBuilder`` expects on
+    ``record["entities"]``: each dict carries ``source``, ``type``,
+    ``text``, ``start``, ``end``, ``role``, ``confidence``,
+    ``model_confidence``. Curator-supplied ``override_type`` /
+    ``override_role`` (Rule 50 / desktop "edits flow downstream")
+    take precedence over the model's prediction.
+
+    When ``approved_only`` is True we filter out unapproved entities so
+    the studio output mirrors ``approved_only`` semantics already
+    applied to authority matches — matching the desktop pipeline's
+    "ship this in the final output" filter (extraction_approval.py
+    doctring).
+    """
+    stmt = select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
+    if approved_only:
+        stmt = stmt.where(ExtractionApproval.approved.is_(True))
+    rows = (await db.execute(stmt)).scalars().all()
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        grouped.setdefault(r.control_number, []).append({
+            "text":             r.text,
+            "type":             (r.override_type or r.type or "").upper(),
+            "role":             (r.override_role or r.role or "").upper(),
+            "source":           r.source,
+            "start":            int(r.start or 0),
+            "end":              int(r.end or 0),
+            "confidence":       r.confidence,
+            "model_confidence": r.model_confidence,
+            "approved":         bool(r.approved),
+        })
+    return grouped
 
 
 async def _load_overrides(
