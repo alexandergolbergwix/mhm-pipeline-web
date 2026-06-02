@@ -5,7 +5,6 @@
   "private": true,
   "engines": { "node": "20.x" },
   "scripts": {
-    "build": "cd frontend && npm install --no-audit --no-fund && npm run build",
-    "heroku-postbuild": "echo 'frontend/dist built by `npm run build` above'"
+    "heroku-postbuild": "cd frontend && npm install --no-audit --no-fund && npm run build"
   }
 }
