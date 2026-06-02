@@ -65,3 +65,10 @@ slowapi>=0.1.9
 
 # Versioned curator decisions (Rule W-21) — RFC 6902 JSON Patch
 jsonpatch>=1.33
+
+# eval-agent runtime deps (subprocess invoked via python -m eval_agent.cli)
+# The eval-agent itself is vendored at ./eval-agent/ (Rule W-1 trust
+# boundary: no Python imports across, subprocess + filesystem only).
+# Both deps are pure-Python + small (<2 MB combined).
+pyyaml>=6.0
+jsonschema>=4.20

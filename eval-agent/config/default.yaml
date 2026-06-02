@@ -1,0 +1,74 @@
+# eval-agent default configuration. CLI flags override these values.
+
+judge:
+  # Default judge: gemini-3.5-flash (stable, free-tier ~150 RPM,
+  # ~10× cheaper than Pro). Strong enough for the 5-field structured
+  # verdict this agent emits. Override per-run with `--judge <id>`:
+  #
+  #   --judge gemini-3.1-pro-preview   # higher-quality reasoning, ~10 RPM
+  #   --judge gemini-2.5-pro           # mature Pro alternative
+  #   --judge gemini-3-flash           # Flash preview variant
+  #
+  # The verdict cache key includes the judge id, so switching judges
+  # invalidates the cache cleanly — no cross-judge contamination.
+  id: "gemini-3.5-flash"
+  endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+  thinking_level: "low"          # "low" | "high" — keep CoT brief for structured tasks
+  max_output_tokens: 4096
+  temperature: 0.0
+  top_p: 0.95
+
+rate_limit:
+  # gemini-3.5-flash free tier sustains ~150 RPM. We default to 60 RPM,
+  # a safe sub-quota number that finishes 162 candidates in ~3 minutes
+  # while leaving headroom for bursty cache misses.
+  rpm: 60
+  parallel: 4                    # worker pool size — small to keep RPM honest
+  max_retries: 6
+  retry_base_seconds: 5
+  # Pro-safety: when --judge resolves to a Pro variant (3.1-pro-preview,
+  # 2.5-pro, etc.), SessionConfig.from_args silently swaps in these
+  # tighter limits unless the user explicitly passes --rpm / --parallel.
+  # gemini-3.1-pro-preview free tier is ~10 RPM; bursting above 1 worker
+  # at that rate triggers 429s on the first burst.
+  pro:
+    rpm: 10
+    parallel: 1
+
+threshold:
+  default: 0.85                  # auto-approve gate; entities below are skipped
+  per_evaluator:
+    marc500_colophon: 0.85       # raise above the per-fold 0.45 to reduce false-positive rate
+    genre_classifier: 0.85       # raise above 0.65 default
+
+# ── Agentic judging ───────────────────────────────────────────────────
+# The judge directs its own process: a ReAct tool-loop where the model
+# chooses which evidence to gather before committing a verdict, escalating
+# to a stronger model once when it stays uncertain.
+agentic:
+  enabled: true                  # default ON; --linear disables (citable path)
+  mode: gated                    # gated | all  (--agentic-all sets "all")
+  escalate_on: [abstain, partial]  # tier-1 overalls that trigger the tool-loop
+  max_steps: 6                   # ReAct budget per candidate
+  tier_model: gemini-3.5-flash   # cheap tier-1 pass (must resolve on the live API)
+  escalate_model: gemini-3.1-pro-preview  # loop escalates here when uncertain
+  tools: [fetch_marc_field, expand_note, list_record_entities, lookup_authority]
+  trace_dir: traces             # written under each run dir
+  authority:
+    viaf: true
+    wikidata: true
+    rpm: 60                      # authority-client rate cap (separate from judge)
+
+self_verify:
+  sample_rate: 0.05              # 5% of verdicts re-judged at the end of each run
+  agreement_floor: 0.95          # below this, the run is flagged as a self-verify regression
+  # Agentic verdicts legitimately diverge on re-run (the loop re-gathers
+  # evidence), so the gate samples LINEAR/tier-1 verdicts only; agentic
+  # agreement is reported separately and never fails the run.
+  linear_only_gate: true
+
+passes_floor:
+  default: 0.80                  # precision floor for a feature to be considered passing
+  per_evaluator:
+    person_ner: 0.70             # role-classification is hard; lower bar
+    marc500_colophon: 0.75       # tighter bar because of known precision issues

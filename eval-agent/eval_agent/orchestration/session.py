@@ -1,0 +1,685 @@
+"""Worker session lifecycle.
+
+Implements the Anthropic long-running-agent harness pattern for one
+run of the eval-agent against one pipeline output directory.
+
+Lifecycle
+---------
+
+1. ``startup()`` — print git log, tail progress.md, load feature_list
+   (informational only in Phase 1; Phase 2 will gate execution on
+   ``make verify`` success).
+2. ``execute(...)`` — for each evaluator: extract candidates, judge
+   each (cache-aware), accumulate Verdicts.
+3. ``checkpoint(...)`` — write run artefacts under
+   ``state/runs/<ts>/``: manifest.json, results.jsonl, summary.csv,
+   report.md.
+4. ``finalize()`` — append a session block to progress.md.
+
+The session is a class instead of a free function so the orchestrator
+can introspect per-session state (cache stats, token counts, errors)
+between phases.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from eval_agent.cache.verdict_cache import VerdictCache
+from eval_agent.client.gemini_client import GeminiJudge
+from eval_agent.client.judge_interface import Judge
+from eval_agent.client.rate_limiter import RateLimiter
+from eval_agent.evaluators import (
+    AUTHORITY_EVALUATORS,
+    REGISTRY,
+    build as build_evaluator,
+)
+from eval_agent.evaluators._base import Candidate, Evaluator, Verdict
+from eval_agent.ingest import marc_extract, ner_results, pipeline_run
+from eval_agent.logging_setup import get_logger
+from eval_agent.report.csv_writer import write_csv
+from eval_agent.report.jsonl_writer import write_jsonl
+from eval_agent.report.markdown_report import write_markdown
+from eval_agent import ui
+
+log = get_logger("eval_agent.session")
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_state_dir() -> Path:
+    """STATE_DIR resolution.
+
+    Mirrors ``eval_agent.cli._resolve_state_dir``. Precedence:
+      1. Caller of ``Session(...)`` may inject ``cache_path``,
+         ``runs_dir`` or ``progress_path`` to override per-instance.
+      2. ``EVAL_AGENT_STATE_DIR`` env var (used by the MHM Pipeline
+         bundle to point at a writable per-user dir).
+      3. ``REPO_ROOT / "state"`` — the in-tree default.
+    """
+    env = os.environ.get("EVAL_AGENT_STATE_DIR")
+    if env:
+        return Path(env)
+    return REPO_ROOT / "state"
+
+
+STATE_DIR = _resolve_state_dir()
+RUNS_DIR = STATE_DIR / "runs"
+CACHE_PATH = STATE_DIR / "cache" / "verdict_cache.jsonl"
+PROGRESS_PATH = STATE_DIR / "progress.md"
+CONFIG_PATH = REPO_ROOT / "config" / "default.yaml"
+VERDICT_SCHEMA_PATH = REPO_ROOT / "config" / "schemas" / "verdict.v1.json"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Configuration
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class SessionConfig:
+    pipeline_output: Path
+    threshold: float
+    rpm: int
+    parallel: int
+    judge_model: str
+    evaluators: list[str]
+    api_key: str
+    dry_run: bool = False
+    no_cache: bool = False  # skip cache reads (still appends new verdicts)
+    # ── Agentic mode (Rule 52 follow-on) ──────────────────────────────
+    # mode ∈ {"gated", "agentic_all", "linear"}.
+    #   gated       — default: tier-1 single-shot, escalate only hard cases.
+    #   agentic_all — every candidate runs the tool-loop.
+    #   linear      — old single-shot path (reproducible / citable).
+    mode: str = "gated"
+    escalate_on: tuple[str, ...] = ("abstain", "partial")
+    max_steps: int = 6
+    tier_model: str = "gemini-3.5-flash"
+    escalate_model: str = "gemini-3.1-pro-preview"
+    tools: tuple[str, ...] = (
+        "fetch_marc_field", "expand_note", "list_record_entities", "lookup_authority",
+    )
+    authority_rpm: int = 60
+
+    @classmethod
+    def from_args(cls, args: Any, defaults: dict[str, Any]) -> "SessionConfig":
+        judge_cfg = defaults.get("judge", {})
+        rl_cfg = defaults.get("rate_limit", {})
+        thr_cfg = defaults.get("threshold", {})
+        ag_cfg = defaults.get("agentic", {})
+
+        evals_arg = args.evaluators or "all"
+        if evals_arg == "all":
+            evaluators = list(REGISTRY)
+        else:
+            evaluators = [e.strip() for e in evals_arg.split(",") if e.strip()]
+            for e in evaluators:
+                if e not in REGISTRY:
+                    raise ValueError(
+                        f"unknown evaluator {e!r}; known: {sorted(REGISTRY)}"
+                    )
+
+        # Resolve agentic mode from flags (default = gated agentic).
+        tier_model = (
+            getattr(args, "tier_model", None)
+            or ag_cfg.get("tier_model")
+            or judge_cfg.get("id", "gemini-3.5-flash")
+        )
+        if getattr(args, "linear", False):
+            mode = "linear"
+        elif getattr(args, "agentic_all", False):
+            mode = "agentic_all"
+        else:
+            mode = ag_cfg.get("mode", "agentic") if ag_cfg.get("enabled", True) else "linear"
+
+        # In linear mode the judge model IS the tier model; in agentic modes
+        # tier-1 runs on tier_model and the loop escalates to escalate_model.
+        judge_model = args.judge or tier_model
+
+        # Pro-safety: free-tier RPM on Pro variants is roughly 10× tighter than
+        # Flash. When the user picks a Pro model without overriding --rpm /
+        # --parallel, fall back to Pro-safe defaults to avoid quota 429s.
+        # Explicit user values always win — we only fill in unset slots.
+        rpm = args.rpm
+        parallel = args.parallel
+        is_pro = _looks_like_pro_model(judge_model)
+        if is_pro:
+            pro_cfg = rl_cfg.get("pro", {})
+            pro_rpm = int(pro_cfg.get("rpm", 10))
+            pro_parallel = int(pro_cfg.get("parallel", 1))
+            if rpm is None:
+                rpm = pro_rpm
+            if parallel is None:
+                parallel = pro_parallel
+
+        escalate_on = tuple(ag_cfg.get("escalate_on", ["abstain", "partial"]))
+        auth_cfg = ag_cfg.get("authority", {})
+        return cls(
+            pipeline_output=Path(args.pipeline_output).expanduser().resolve(),
+            threshold=float(args.threshold or thr_cfg.get("default", 0.85)),
+            rpm=int(rpm if rpm is not None else rl_cfg.get("rpm", 25)),
+            parallel=int(parallel if parallel is not None else rl_cfg.get("parallel", 2)),
+            judge_model=judge_model,
+            evaluators=evaluators,
+            api_key=args.api_key or "",
+            dry_run=bool(args.dry_run),
+            no_cache=bool(getattr(args, "no_cache", False)),
+            mode=mode,
+            escalate_on=escalate_on,
+            max_steps=int(getattr(args, "agentic_max_steps", None) or ag_cfg.get("max_steps", 6)),
+            tier_model=tier_model,
+            escalate_model=(
+                getattr(args, "escalate_model", None)
+                or ag_cfg.get("escalate_model", "gemini-3.1-pro-preview")
+            ),
+            tools=tuple(ag_cfg.get("tools", list(cls.tools))),
+            authority_rpm=int(auth_cfg.get("rpm", 60)),
+        )
+
+
+def _looks_like_pro_model(judge_id: str) -> bool:
+    """True when the model id looks like a Gemini Pro variant.
+
+    Pro-tier free quotas are ~10 RPM (vs ~150 RPM on Flash). We detect by
+    substring match so future Pro variants (preview, GA, regional) all hit
+    the safer defaults without code changes.
+    """
+    return "pro" in judge_id.lower()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Session
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class SessionStats:
+    candidates_total: int = 0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    judged_full: int = 0
+    judged_partial: int = 0
+    judged_fail: int = 0
+    judged_error: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    finished_at: str = ""
+
+
+class Session:
+    """One Worker session against one pipeline-output directory."""
+
+    def __init__(
+        self,
+        config: SessionConfig,
+        *,
+        judge: Judge | None = None,
+        cache_path: Path | None = None,
+        runs_dir: Path | None = None,
+        progress_path: Path | None = None,
+    ) -> None:
+        """Construct a Worker session.
+
+        All file-system + judge dependencies are injectable to keep
+        e2e tests fast + hermetic. In production callers pass nothing
+        and the constructor falls back to the canonical paths.
+
+        Parameters
+        ----------
+        judge
+            If provided, used directly (skips ``_build_judge``). Tests
+            inject a ``MockJudge`` here. Production leaves this None
+            and the judge is built lazily at the start of ``execute``.
+        cache_path, runs_dir, progress_path
+            Override the on-disk locations. Tests point them at
+            ``tmp_path`` so the real ``state/`` directory is never
+            touched.
+        """
+        self.config = config
+        self.stats = SessionStats()
+        self._defaults = _load_defaults()
+
+        self._run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        self._runs_dir = runs_dir if runs_dir is not None else RUNS_DIR
+        self._run_dir = self._runs_dir / self._run_id
+        self._cache = VerdictCache(cache_path if cache_path is not None else CACHE_PATH)
+        self._progress_path = progress_path if progress_path is not None else PROGRESS_PATH
+        self._schema = _load_schema()
+        self._judge: Judge | None = judge  # built lazily in execute() if None
+
+        # Agentic loop + per-candidate indexes, built in execute() once the
+        # pipeline JSON is loaded. None in linear mode or until execute runs.
+        self._agent: Any | None = None
+        self._marc_index: dict[str, dict[str, Any]] = {}
+        self._ner_index: dict[str, dict[str, Any]] = {}
+
+        self._evaluators: list[Evaluator] = [
+            build_evaluator(e) for e in config.evaluators
+        ]
+
+    # ── Phase 1: startup ──────────────────────────────────────────────
+
+    def startup(self) -> None:
+        ui.header(f"eval-agent · session {self._run_id}")
+        is_pro = _looks_like_pro_model(self.config.judge_model)
+        judge_label = f"{self.config.judge_model}" + ("  (Pro tier)" if is_pro else "")
+        ui.kv("judge", judge_label)
+        ui.kv("threshold", self.config.threshold)
+        rpm_label = f"{self.config.rpm} / {self.config.parallel}"
+        if is_pro:
+            rpm_label += "  (Pro-safe defaults — override with --rpm / --parallel)"
+        ui.kv("rpm / parallel", rpm_label)
+        ui.kv("evaluators", ", ".join(self.config.evaluators))
+        ui.kv("pipeline output", self.config.pipeline_output)
+
+    # ── Phase 2: execute ──────────────────────────────────────────────
+
+    def execute(self) -> list[Verdict]:
+        run = pipeline_run.discover(self.config.pipeline_output)
+        marc_records = marc_extract.load(run.marc_extract)
+        marc_index = marc_extract.index_by_id(marc_records)
+        ner_records_list = (
+            ner_results.load(run.ner_results) if run.ner_results is not None else []
+        )
+        # Authority evaluators read authority_enriched.json instead of
+        # ner_results.json (the record carries marc_authority_matches).
+        authority_records_list = (
+            ner_results.load(run.authority_results)
+            if run.authority_results is not None
+            else []
+        )
+        # Stash indexes so the agentic tools (called inside _judge_one on the
+        # thread pool) can read the full record on demand. Prefer the
+        # authority record (a superset of MARC) when present.
+        self._marc_index = marc_index
+        self._ner_index = {
+            str(r.get("_control_number", "")): r
+            for r in (ner_records_list + authority_records_list)
+            if r.get("_control_number")
+        }
+
+        ui.section("Ingest")
+        ui.kv("MARC records", len(marc_records))
+        ui.kv("NER records", len(ner_records_list))
+        if authority_records_list:
+            ui.kv("Authority records", len(authority_records_list))
+
+        # Extract all candidates up-front so we can print a budget preview.
+        # Authority evaluators iterate authority_enriched.json; NER
+        # evaluators iterate ner_results.json.
+        candidates: list[tuple[Evaluator, Candidate]] = []
+        for ev in self._evaluators:
+            records = (
+                authority_records_list
+                if ev.id in AUTHORITY_EVALUATORS
+                else ner_records_list
+            )
+            for rec in records:
+                rid = str(rec.get("_control_number", ""))
+                marc_rec = marc_index.get(rid, {})
+                for cand in ev.extract_candidates(
+                    ner_record=rec,
+                    marc_record=marc_rec,
+                    threshold=self.config.threshold,
+                ):
+                    candidates.append((ev, cand))
+        self.stats.candidates_total = len(candidates)
+
+        ui.section(f"Candidates above threshold {self.config.threshold}  →  {len(candidates)}")
+        ui.summary_table([(ev_id, n) for ev_id, n in _count_by_evaluator(candidates)])
+
+        if self.config.dry_run:
+            ui.warn("dry-run: stopping before any judge calls")
+            return []
+
+        if self._judge is None:
+            self._judge = _build_judge(self.config)
+        if self.config.mode != "linear" and self._agent is None:
+            self._agent = _build_agent(self.config, self._judge, self._marc_index, self._ner_index)
+        ui.kv("mode", self.config.mode)
+        if self.config.mode != "linear":
+            ui.kv("escalate_model", self.config.escalate_model)
+        cache_judge_id = self._cache_judge_id()
+        if self.config.no_cache:
+            cache_hits = 0
+        else:
+            cache_hits = sum(
+                1 for ev, c in candidates
+                if self._cache.get(judge_id=cache_judge_id, prompt=ev.build_prompt(c))
+                is not None
+            )
+        self.stats.cache_hits = cache_hits
+        self.stats.cache_misses = len(candidates) - cache_hits
+
+        ui.section("Judging")
+        if self.config.no_cache:
+            ui.kv("cache", "DISABLED (--no-cache; every call hits Gemini)")
+        else:
+            ui.kv("cache", f"{cache_hits} hits / {self.stats.cache_misses} misses")
+
+        # Initial structured stats line for integrators (e.g. MHM Pipeline GUI).
+        ui.emit_stats(
+            candidates_total=self.stats.candidates_total,
+            cache_hits=self.stats.cache_hits,
+            candidates_judged=0,
+            input_tokens=self.stats.input_tokens,
+            output_tokens=self.stats.output_tokens,
+        )
+
+        # Judge in parallel; rate-limiter inside the Judge enforces the RPM cap.
+        verdicts: list[Verdict] = []
+        errors_seen = 0
+        t0 = time.time()
+        total = len(candidates)
+        with ThreadPoolExecutor(max_workers=self.config.parallel) as pool:
+            futures = {
+                pool.submit(self._judge_one, ev, c): (ev, c) for ev, c in candidates
+            }
+            for i, fut in enumerate(as_completed(futures), 1):
+                v = fut.result()
+                verdicts.append(v)
+                if v.error:
+                    errors_seen += 1
+                ui.progress_line(i, total,
+                                 elapsed=time.time() - t0,
+                                 errors=errors_seen)
+                if i % 5 == 0:
+                    ui.emit_stats(
+                        candidates_total=self.stats.candidates_total,
+                        cache_hits=self.stats.cache_hits,
+                        candidates_judged=i,
+                        input_tokens=self.stats.input_tokens,
+                        output_tokens=self.stats.output_tokens,
+                    )
+        ui.done_line()
+        # Final structured stats line.
+        ui.emit_stats(
+            candidates_total=self.stats.candidates_total,
+            cache_hits=self.stats.cache_hits,
+            candidates_judged=len(verdicts),
+            input_tokens=self.stats.input_tokens,
+            output_tokens=self.stats.output_tokens,
+        )
+
+        elapsed = time.time() - t0
+        if errors_seen:
+            ui.warn(f"{errors_seen} of {len(verdicts)} verdicts errored "
+                    f"({elapsed:.0f}s) — see results.jsonl 'error' field "
+                    f"or state/logs/")
+        else:
+            ui.ok(f"{len(verdicts)} verdicts in {elapsed:.0f}s")
+        log.debug("execute.done verdicts=%d errors=%d elapsed=%.1fs",
+                  len(verdicts), errors_seen, elapsed)
+        return verdicts
+
+    # ── Phase 3: checkpoint ───────────────────────────────────────────
+
+    def checkpoint(self, verdicts: list[Verdict]) -> Path:
+        # ``self._run_dir`` includes the injected runs_dir + run_id; this is
+        # the only place the on-disk run folder is created.
+        self._run_dir.mkdir(parents=True, exist_ok=True)
+        # Aggregate stats
+        for v in verdicts:
+            if v.error:
+                self.stats.judged_error += 1
+                continue
+            if v.overall == "full":
+                self.stats.judged_full += 1
+            elif v.overall == "partial":
+                self.stats.judged_partial += 1
+            elif v.overall == "fail":
+                self.stats.judged_fail += 1
+        self.stats.finished_at = datetime.now(timezone.utc).isoformat()
+
+        # Write artefacts
+        write_jsonl(self._run_dir / "results.jsonl", verdicts)
+        write_csv(self._run_dir / "summary.csv", verdicts)
+        write_markdown(
+            self._run_dir / "report.md", verdicts,
+            title=f"eval-agent run {self._run_id}",
+            judge_id=self.config.judge_model,
+            threshold=self.config.threshold,
+            pipeline_output=str(self.config.pipeline_output),
+        )
+        manifest = {
+            "run_id": self._run_id,
+            "config": {
+                "pipeline_output": str(self.config.pipeline_output),
+                "threshold": self.config.threshold,
+                "rpm": self.config.rpm,
+                "parallel": self.config.parallel,
+                "judge_model": self.config.judge_model,
+                "evaluators": self.config.evaluators,
+            },
+            "stats": self.stats.__dict__,
+        }
+        (self._run_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return self._run_dir
+
+    # ── Phase 4: finalize ─────────────────────────────────────────────
+
+    def finalize(self) -> None:
+        # Append narrative session block to progress.md (append-only invariant)
+        self._progress_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._progress_path.open("a", encoding="utf-8") as f:
+            f.write(f"\n## {self._run_id}\n\n")
+            f.write(f"- Judge: `{self.config.judge_model}` @ {self.config.rpm} RPM, "
+                    f"{self.config.parallel} parallel\n")
+            f.write(f"- Pipeline output: `{self.config.pipeline_output}`\n")
+            f.write(f"- Evaluators: {', '.join(self.config.evaluators)}\n")
+            f.write(f"- Candidates: {self.stats.candidates_total} "
+                    f"(hits {self.stats.cache_hits} / misses {self.stats.cache_misses})\n")
+            f.write(f"- Verdicts: full {self.stats.judged_full} / "
+                    f"partial {self.stats.judged_partial} / "
+                    f"fail {self.stats.judged_fail} / "
+                    f"error {self.stats.judged_error}\n")
+            f.write(f"- Artefacts: state/runs/{self._run_id}/\n")
+        print(f"\nProgress logged. Artefacts at: state/runs/{self._run_id}/")
+
+    # ── Internals ─────────────────────────────────────────────────────
+
+    def _cache_judge_id(self) -> str:
+        """Mode-tagged judge id so agentic + linear verdicts never collide."""
+        assert self._judge is not None
+        return f"{self._judge.id}::{self.config.mode}"
+
+    def _judge_one(self, evaluator: Evaluator, candidate: Candidate) -> Verdict:
+        assert self._judge is not None
+        prompt = evaluator.build_prompt(candidate)
+        cache_id = self._cache_judge_id()
+        key = VerdictCache.key(judge_id=cache_id, prompt=prompt)
+
+        if not self.config.no_cache:
+            cached = self._cache.get(judge_id=cache_id, prompt=prompt)
+            if cached is not None:
+                v = evaluator.parse_verdict(cached, candidate)
+                v.judge_id = self._judge.id
+                v.cache_key = key
+                return v
+
+        if self.config.mode == "linear":
+            return self._judge_linear(evaluator, candidate, prompt, cache_id, key)
+        if self.config.mode == "agentic_all":
+            return self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
+
+        # default gated: cheap tier-1 single-shot, escalate only hard cases.
+        response = self._judge.judge(prompt=prompt, schema=self._schema)
+        self._tally_tokens(response.input_tokens, response.output_tokens)
+        v1 = evaluator.parse_verdict(response.verdict, candidate)
+        if str(v1.overall).lower() in self.config.escalate_on and self._agent is not None:
+            return self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
+        if response.verdict is not None:
+            self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
+        v1.judge_id = self._judge.id
+        v1.cache_key = key
+        if response.error:
+            v1.error = response.error
+        return v1
+
+    def _judge_linear(self, evaluator, candidate, prompt, cache_id, key):  # noqa: ANN001
+        assert self._judge is not None
+        response = self._judge.judge(prompt=prompt, schema=self._schema)
+        if response.verdict is not None:
+            self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
+        v = evaluator.parse_verdict(response.verdict, candidate)
+        v.judge_id = self._judge.id
+        v.cache_key = key
+        if response.error:
+            v.error = response.error
+        self._tally_tokens(response.input_tokens, response.output_tokens)
+        return v
+
+    def _judge_agentic(self, evaluator, candidate, prompt, cache_id, key):  # noqa: ANN001
+        assert self._agent is not None
+        verdict, trace = self._agent.run(
+            evaluator, candidate, token_sink=self._tally_tokens,
+        )
+        self._write_trace(trace)
+        verdict.cache_key = key
+        verdict.agentic = True
+        verdict_dict = {
+            "name_ok": verdict.name_ok, "type_ok": verdict.type_ok,
+            "role_ok": verdict.role_ok, "overall": verdict.overall,
+            "reasoning": verdict.reasoning,
+        }
+        if not verdict.error:
+            self._cache.append(judge_id=cache_id, prompt=prompt, verdict=verdict_dict)
+        return verdict
+
+    def _tally_tokens(self, in_tok: int | None, out_tok: int | None) -> None:
+        if in_tok:
+            self.stats.input_tokens += in_tok
+        if out_tok:
+            self.stats.output_tokens += out_tok
+
+    def _write_trace(self, trace: Any) -> None:
+        """Append one candidate's agent trace to the run's traces dir."""
+        try:
+            tdir = self._run_dir / "traces"
+            tdir.mkdir(parents=True, exist_ok=True)
+            with (tdir / f"{trace.evaluator_id}.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(trace.to_dict(), ensure_ascii=False) + "\n")
+        except OSError as exc:
+            log.debug("trace.write_failed %s", exc)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _load_defaults() -> dict[str, Any]:
+    if not CONFIG_PATH.exists():
+        return {}
+    return yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+
+
+def _load_schema() -> dict[str, Any]:
+    """Return the inner ``verdict`` sub-schema for the judge to enforce.
+
+    ``verdict.v1.json`` describes the full ``results.jsonl`` row (envelope
+    + verdict + metadata). The judge only emits the inner verdict object —
+    ``{name_ok, type_ok, role_ok, overall, reasoning}`` — so we hand it
+    just that slice. ``GeminiJudge`` further sanitizes the schema for the
+    Gemini ``responseSchema`` subset (no ``additionalProperties`` etc.).
+    """
+    full = json.loads(VERDICT_SCHEMA_PATH.read_text(encoding="utf-8"))
+    return full.get("properties", {}).get("verdict", full)
+
+
+def _build_judge(config: SessionConfig) -> Judge:
+    api_key = config.api_key
+    if not api_key:
+        import getpass
+        import os
+        api_key = os.environ.get("GEMINI_API_KEY") or ""
+        if not api_key:
+            api_key = getpass.getpass("Gemini API key (hidden, not stored): ")
+    if not api_key:
+        raise RuntimeError("Gemini API key required (env GEMINI_API_KEY or prompt)")
+
+    defaults = _load_defaults().get("judge", {})
+    rl = RateLimiter(config.rpm)
+    return GeminiJudge(
+        model=config.judge_model,
+        api_key=api_key,
+        rate_limiter=rl,
+        thinking_level=str(defaults.get("thinking_level", "low")),
+        max_output_tokens=int(defaults.get("max_output_tokens", 4096)),
+        temperature=float(defaults.get("temperature", 0.0)),
+        top_p=float(defaults.get("top_p", 0.95)),
+    )
+
+
+def _build_agent(
+    config: SessionConfig,
+    judge: Judge,
+    marc_index: dict[str, Any],
+    ner_index: dict[str, Any],
+) -> Any:
+    """Construct the AgenticJudge for the loop modes."""
+    from eval_agent.agentic.loop import AgenticJudge  # noqa: PLC0415
+    from eval_agent.agentic.tools import ToolRegistry  # noqa: PLC0415
+
+    authority = None
+    if "lookup_authority" in config.tools:
+        from eval_agent.client.authority_client import AuthorityClient  # noqa: PLC0415
+        authority = AuthorityClient(rpm=config.authority_rpm)
+
+    rubric_path = REPO_ROOT / "config" / "rubrics" / "agentic_system.md"
+    system_prompt = rubric_path.read_text(encoding="utf-8") if rubric_path.exists() else ""
+
+    return AgenticJudge(
+        judge=judge,
+        registry=ToolRegistry(list(config.tools)),
+        marc_index=marc_index,
+        ner_index=ner_index,
+        agent_system_prompt=system_prompt,
+        authority=authority,
+        max_steps=config.max_steps,
+        escalate_model=config.escalate_model,
+        escalate_on=config.escalate_on,
+    )
+
+
+def _git_log(root: Path, *, lines: int = 5) -> list[str]:
+    if not (root / ".git").exists():
+        return []
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "log", f"-{lines}", "--oneline"],
+            capture_output=True, text=True, check=True, timeout=5,
+        ).stdout.strip().splitlines()
+        return out
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return []
+
+
+def _progress_tail(path: Path, *, lines: int = 20) -> list[str]:
+    if not path.exists():
+        return []
+    return path.read_text(encoding="utf-8").splitlines()[-lines:]
+
+
+def _count_by_evaluator(
+    candidates: list[tuple[Evaluator, Candidate]],
+) -> list[tuple[str, int]]:
+    counts: dict[str, int] = {}
+    for ev, _ in candidates:
+        counts[ev.id] = counts.get(ev.id, 0) + 1
+    return sorted(counts.items())
