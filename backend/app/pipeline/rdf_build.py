@@ -154,6 +154,46 @@ def _infer_category_from_uri(uri: str) -> str:
     return "Other"
 
 
+def _prepare_record_for_rdf(rec: dict[str, Any]) -> dict[str, Any]:
+    """Normalise a ``run_records.marc`` row before RDF mapping.
+
+    Ingest already runs ``_collapse_marc_subfields`` for uploads with raw
+    ``<tag>$<sub>`` keys, but rows persisted before 2026-06-02 may still
+    carry dict-shaped ``genres`` entries that crash ``GraphBuilder`` (it
+    expects ``list[str]`` like ``extract_all_data`` produces). Re-collapse
+    when subfield keys are present; always coerce genres to strings.
+    """
+    from app.pipeline.marc_ingest import _collapse_marc_subfields  # noqa: PLC0415
+
+    row = dict(rec)
+    cn = (
+        row.get("_control_number")
+        or row.get("control_number")
+        or row.get("controlNumber")
+        or row.get("001")
+        or row.get("id")
+    )
+    if cn:
+        row["_control_number"] = str(cn)
+    if any("$" in k for k in row):
+        _collapse_marc_subfields(row)
+    raw_genres = row.get("genres")
+    if raw_genres:
+        flat: list[str] = []
+        for g in raw_genres:
+            if isinstance(g, str) and g.strip():
+                flat.append(g.strip())
+            elif isinstance(g, dict):
+                term = str(g.get("name") or g.get("term") or "").strip()
+                if term:
+                    flat.append(term)
+        if flat:
+            row["genres"] = flat
+        elif isinstance(raw_genres, list) and raw_genres and isinstance(raw_genres[0], dict):
+            row["genres"] = []
+    return row
+
+
 def _run_mapper_sync(
     marc_records: list[dict],
     authority_matches: list[dict],
@@ -182,12 +222,13 @@ def _run_mapper_sync(
 
     manuscripts = 0
     errors: list[str] = []
-    for rec in marc_records:
+    for raw_rec in marc_records:
+        rec = _prepare_record_for_rdf(raw_rec)
         cn = str(
             rec.get("_control_number")
             or rec.get("control_number")
             or rec.get("controlNumber")
-            or f"rec_{id(rec)}"
+            or f"rec_{id(raw_rec)}"
         )
         try:
             # Build ExtractedData from the dict — same pattern as

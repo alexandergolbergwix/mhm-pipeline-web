@@ -262,6 +262,9 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
         a = _split_multi(_str(record.get(f"{tag}$a")))
         e = _split_multi(_str(record.get(f"{tag}$e")))
         for i, name in enumerate(a):
+            name = name.strip()
+            if not name:
+                continue
             role = e[i] if i < len(e) else "author"
             authors.append({"name": name, "role": role, "field": tag})
     if authors:
@@ -273,6 +276,9 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
         a = _split_multi(_str(record.get(f"{tag}$a")))
         e = _split_multi(_str(record.get(f"{tag}$e")))
         for i, name in enumerate(a):
+            name = name.strip()
+            if not name:
+                continue
             role = e[i] if i < len(e) else "contributor"
             contributors.append({"name": name, "role": role, "field": tag})
     if contributors:
@@ -301,9 +307,19 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             record["dates"] = {"year": int(candidate)}
 
     # ── Genre/form ──────────────────────────────────────────────────
-    genres = list(record.get("genres") or [])
+    # Flat list[str] — mirrors extract_all_data() / GraphBuilder expectations.
+    genres: list[str] = []
+    for existing in record.get("genres") or []:
+        if isinstance(existing, str) and existing.strip():
+            genres.append(existing.strip())
+        elif isinstance(existing, dict):
+            term = _str(existing.get("name") or existing.get("term"))
+            if term:
+                genres.append(term)
     for name in _split_multi(_str(record.get("655$a"))):
-        genres.append({"name": name, "field": "655"})
+        name = name.strip()
+        if name and name not in genres:
+            genres.append(name)
     if genres:
         record["genres"] = genres
 
