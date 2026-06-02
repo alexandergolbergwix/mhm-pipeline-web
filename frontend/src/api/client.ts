@@ -142,3 +142,19 @@ export const api = {
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   del: <T>(path: string) => request<T>("DELETE", path),
 };
+
+/**
+ * Return the headers that any state-changing request needs to clear
+ * the backend's CSRF double-submit check. GET/HEAD return ``{}``.
+ *
+ * Exported so call sites that bypass the typed ``api.*`` wrapper —
+ * raw ``fetch()`` for FormData uploads, SSE streams, etc. — can
+ * stitch the header into their own request init without re-reading
+ * ``document.cookie`` themselves.
+ */
+export function csrfHeaders(method: string): Record<string, string> {
+  const m = method.toUpperCase();
+  if (m === "GET" || m === "HEAD") return {};
+  const token = _readCookie("mhm_csrf");
+  return token ? { "X-CSRF-Token": token } : {};
+}

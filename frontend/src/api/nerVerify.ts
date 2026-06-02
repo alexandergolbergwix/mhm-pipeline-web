@@ -13,7 +13,7 @@
  * verdict candidates is ``_entity_id`` (not ``_match_id``).
  */
 
-import { api } from "@/api/client";
+import { api, csrfHeaders } from "@/api/client";
 
 
 export type ScopeKind = "single" | "selection" | "all";
@@ -85,7 +85,7 @@ export function streamNerVerification(
       {
         method:      "POST",
         credentials: "include",
-        headers:     { "Content-Type": "application/json" },
+        headers:     { "Content-Type": "application/json", ...csrfHeaders("POST") },
         body:        JSON.stringify(req),
         signal:      controller.signal,
       },

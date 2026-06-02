@@ -16,7 +16,7 @@
  * Consumers narrow on ``ev.type`` (string) and downstream fields.
  */
 
-import { api } from "@/api/client";
+import { api, csrfHeaders } from "@/api/client";
 
 
 export interface ExtractionEvent {
@@ -89,7 +89,7 @@ export function streamExtraction(
     const res = await fetch(`/api/runs/${runId}/extraction/start-stream${qs}`, {
       method:      "POST",
       credentials: "include",
-      headers:     { "Content-Type": "application/json" },
+      headers:     { "Content-Type": "application/json", ...csrfHeaders("POST") },
       body:        JSON.stringify({}),
       signal:      controller.signal,
     });

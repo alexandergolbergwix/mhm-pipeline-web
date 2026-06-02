@@ -8,7 +8,7 @@
  * action + scope on the same request that opens the stream.
  */
 
-import { api } from "@/api/client";
+import { api, csrfHeaders } from "@/api/client";
 
 
 export type ScopeKind = "single" | "selection" | "all";
@@ -78,7 +78,7 @@ export function streamVerification(
     const res = await fetch(`/api/runs/${runId}/ai-verify/start-stream`, {
       method:      "POST",
       credentials: "include",
-      headers:     { "Content-Type": "application/json" },
+      headers:     { "Content-Type": "application/json", ...csrfHeaders("POST") },
       body:        JSON.stringify(req),
       signal:      controller.signal,
     });

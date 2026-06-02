@@ -185,7 +185,14 @@ async def change_password(
     await db.execute(delete(SessionRow).where(SessionRow.user_id == auth.user.id))
     new_session, new_secret = await create_session(db, user=auth.user, kek=new_kek)
     await db.commit()
+
+    # Build the actual returned response. Setting the cookie on the
+    # FastAPI-injected ``response`` and then returning a fresh
+    # Response() (the old bug) silently dropped the cookie — the
+    # browser kept its now-invalidated session cookie and every
+    # subsequent request 401'd with "Session not found".
+    out = Response(status_code=status.HTTP_204_NO_CONTENT)
     set_session_cookie(
-        response, session_id=new_session.id, session_secret=new_secret,
+        out, session_id=new_session.id, session_secret=new_secret,
     )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return out

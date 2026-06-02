@@ -1,4 +1,4 @@
-import { api } from "@/api/client";
+import { api, csrfHeaders } from "@/api/client";
 
 export type RunStatus = "pending" | "running" | "succeeded" | "failed";
 
@@ -51,6 +51,7 @@ export const Runs = {
     const res = await fetch(`/api/projects/${projectId}/runs`, {
       method: "POST",
       credentials: "include",
+      headers: { ...csrfHeaders("POST") },
       body: fd,
     });
     if (!res.ok) {
