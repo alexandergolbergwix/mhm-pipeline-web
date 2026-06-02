@@ -108,12 +108,15 @@ def upgrade() -> None:
 
     # 11: snapshot table — three rolling slots per entity per UTC day.
     op.create_table(
-        "entity_snapshot",
+        "entity_snapshots",
         sa.Column(
             "id",
             postgresql.UUID(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("_new_uuid()"),
+            # UUID generation is Python-side (`default=_new_uuid` on the
+            # model). `_new_uuid` is NOT a Postgres function, so don't
+            # emit it as a SQL DEFAULT — the model layer fills the column
+            # at insert time.
         ),
         sa.Column(
             "project_id",
@@ -142,7 +145,7 @@ def upgrade() -> None:
     # 12: one snapshot per (entity, day, slot).
     op.create_index(
         "ux_entity_snapshot_slot",
-        "entity_snapshot",
+        "entity_snapshots",
         ["entity_type", "entity_id", "bucket", "slot"],
         unique=True,
     )
@@ -150,7 +153,7 @@ def upgrade() -> None:
     # 13: timeline-replay lookup — newest day + slot first inside a project.
     op.create_index(
         "ix_entity_snapshot_timeline",
-        "entity_snapshot",
+        "entity_snapshots",
         [
             "project_id",
             "entity_type",
