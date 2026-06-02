@@ -37,6 +37,7 @@ dependencies = [
     "huggingface-hub>=0.20",
     "resend>=2.0",
     "slowapi>=0.1.9",
+    "jsonpatch>=1.33",
 ]
 
 [project.optional-dependencies]

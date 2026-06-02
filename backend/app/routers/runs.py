@@ -13,6 +13,7 @@ Endpoints (RBAC notes):
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -28,6 +29,13 @@ from app.auth.project_perms import (
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.events import append_event
+from app.models.event import (
+    ENTITY_TYPE_AUTHORITY_MATCH,
+    ENTITY_TYPE_MARC_RECORD,
+    OP_CREATE,
+    OP_PATCH,
+    ProjectEvent,
+)
 from app.models.project import (
     PROJECT_ROLE_EDITOR,
     PROJECT_ROLE_OWNER,
@@ -49,6 +57,10 @@ from app.schemas.runs import (
     RecordEdit,
     RunMarcRecord,
 )
+from app.versioning import apply_event
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(tags=["runs"])
@@ -93,6 +105,31 @@ async def create_run(
     db.add(run)
     await db.flush()
     await execute_run(db, run=run, upload=raw, filename=file.filename)
+
+    # Emit OP_CREATE events for every MARC record persisted in this run.
+    # Versioning is best-effort; a failure here must NEVER block the upload.
+    inserted_records = (
+        await db.execute(
+            select(RunRecord).where(RunRecord.run_id == run.id)
+        )
+    ).scalars().all()
+    for rec in inserted_records:
+        try:
+            await apply_event(
+                db,
+                project_id=ctx.project.id,
+                entity_type=ENTITY_TYPE_MARC_RECORD,
+                entity_id=f"{run.id}:{rec.control_number}",
+                op=OP_CREATE,
+                new_state=rec.marc,
+                actor_id=ctx.user_id,
+                message="MARC upload",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "apply_event failed for marc_record %s: %s", rec.control_number, exc,
+            )
+
     await append_event(
         db, project_id=ctx.project.id, actor_id=ctx.user_id, type="run.created",
         payload={"run_id": str(run.id), "name": run.name,
@@ -189,14 +226,8 @@ async def update_approval(
     _apply_approval(m, payload.approved, auth.user.id)
     # Look up the project_id for the event log.
     run_for_pid = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
-    await append_event(
-        db, project_id=run_for_pid.project_id, actor_id=auth.user.id,
-        type="match.approved" if payload.approved else "match.unapproved",
-        payload={
-            "run_id": str(run_id), "match_id": str(m.id),
-            "control_number": m.control_number, "entity": m.entity_text,
-            "matched_name": m.matched_name,
-        },
+    await _record_match_event(
+        db, project_id=run_for_pid.project_id, actor_id=auth.user.id, row=m,
     )
     await db.commit()
     return AuthorityMatchResponse(**serialise_match(m))
@@ -225,16 +256,11 @@ async def bulk_approve(
         _apply_approval(m, payload.approved, auth.user.id)
     if rows:
         run_for_pid = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
-        await append_event(
-            db, project_id=run_for_pid.project_id, actor_id=auth.user.id,
-            type="match.bulk_approved",
-            payload={
-                "run_id": str(run_id),
-                "match_ids": [str(m.id) for m in rows],
-                "approved": payload.approved,
-                "count": len(rows),
-            },
-        )
+        for m in rows:
+            await _record_match_event(
+                db, project_id=run_for_pid.project_id,
+                actor_id=auth.user.id, row=m,
+            )
     await db.commit()
     return [AuthorityMatchResponse(**serialise_match(m)) for m in rows]
 
@@ -644,6 +670,67 @@ def _apply_approval(m: AuthorityMatch, approved: bool, user_id: uuid.UUID) -> No
     m.approved = approved
     m.approved_by = user_id if approved else None
     m.approved_at = datetime.now(timezone.utc) if approved else None
+
+
+async def _record_match_event(
+    db: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    row: AuthorityMatch,
+) -> None:
+    """Route an AuthorityMatch mutation through the versioned event log.
+
+    First touch on an entity gets ``op=create`` (carries full state).
+    Every subsequent touch gets ``op=patch`` (the diff against the
+    prior state). The caller commits the surrounding transaction.
+
+    Versioning failure does NOT 500 the request — log and continue so
+    the read-model write the curator just made is still persisted.
+    """
+
+    new_state: dict[str, Any] = {
+        "approved":     row.approved,
+        "approved_by":  str(row.approved_by) if row.approved_by else None,
+        "approved_at":  row.approved_at.isoformat() if row.approved_at else None,
+        "matched_name": row.matched_name,
+        "mazal_id":     row.mazal_id,
+        "viaf_id":      row.viaf_id,
+        "wikidata_qid": row.wikidata_qid,
+        "confidence":   row.confidence,
+        "source":       row.source,
+        "role":         row.role,
+        "entity_text":  row.entity_text,
+        "entity_kind":  row.entity_kind,
+        "payload":      dict(row.payload or {}),
+    }
+    entity_id_str = str(row.id)
+    try:
+        has_history = (
+            await db.execute(
+                select(ProjectEvent.id)
+                .where(
+                    ProjectEvent.entity_type == ENTITY_TYPE_AUTHORITY_MATCH,
+                    ProjectEvent.entity_id == entity_id_str,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
+        op_kind = OP_PATCH if has_history else OP_CREATE
+        await apply_event(
+            db,
+            project_id=project_id,
+            entity_type=ENTITY_TYPE_AUTHORITY_MATCH,
+            entity_id=entity_id_str,
+            op=op_kind,
+            new_state=new_state,
+            actor_id=actor_id,
+            message="authority approve" if row.approved else "authority unapprove",
+        )
+    except Exception as exc:  # noqa: BLE001 — versioning never fails the request
+        logger.warning(
+            "apply_event failed for authority_match %s: %s", row.id, exc,
+        )
 
 
 async def _lookup_run_with_access(

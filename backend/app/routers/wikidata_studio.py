@@ -12,6 +12,7 @@ workflow's unit of truth (see Rule 54 in the desktop CLAUDE.md).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
@@ -23,10 +24,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
+from app.models.event import (
+    ENTITY_TYPE_WIKIDATA_OVERRIDE,
+    OP_CREATE,
+    OP_PATCH,
+    ProjectEvent,
+)
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.pipeline import wikidata_studio, wikidata_upload
 from app.routers.runs import _lookup_run_with_access  # noqa: PLF401 — module-internal
+from app.versioning import apply_event
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 
@@ -297,7 +307,7 @@ async def patch_item_override(
     Statement edits use ``{"<index>": {"value": "Q5"}}`` — index is
     relative to the builder output AFTER removals are applied.
     """
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     row = (
         await db.execute(
@@ -312,6 +322,9 @@ async def patch_item_override(
             run_id=run_id, local_id=local_id, updated_by=auth.user.id,
         )
         db.add(row)
+        # Flush so the python-side UUID default is materialised before
+        # we use ``row.id`` as the versioning entity id.
+        await db.flush()
 
     if payload.labels is not None:
         # Merge non-null, drop keys set to null. Force a new dict so
@@ -345,6 +358,45 @@ async def patch_item_override(
         row.statement_edits = new_edits
 
     row.updated_by = auth.user.id
+
+    # Versioning event — audit the override edit on the same transaction
+    # as the row write. Failure must NEVER 500 the request.
+    entity_id_str = str(row.id)
+    try:
+        has_history = (
+            await db.execute(
+                select(ProjectEvent.id)
+                .where(
+                    ProjectEvent.entity_type == ENTITY_TYPE_WIKIDATA_OVERRIDE,
+                    ProjectEvent.entity_id == entity_id_str,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
+        op_kind = OP_PATCH if has_history else OP_CREATE
+        new_state = {
+            "labels":            dict(row.labels or {}),
+            "descriptions":      dict(row.descriptions or {}),
+            "aliases":           dict(row.aliases or {}),
+            "add_statements":    list(row.add_statements or []),
+            "remove_statements": list(row.remove_statements or []),
+            "statement_edits":   dict(row.statement_edits or {}),
+        }
+        await apply_event(
+            db,
+            project_id=run.project_id,
+            entity_type=ENTITY_TYPE_WIKIDATA_OVERRIDE,
+            entity_id=entity_id_str,
+            op=op_kind,
+            new_state=new_state,
+            actor_id=auth.user.id,
+            message=f"wikidata override edit ({local_id})",
+        )
+    except Exception as exc:  # noqa: BLE001 — versioning must never 500
+        logger.warning(
+            "apply_event failed for wikidata_override %s: %s", entity_id_str, exc,
+        )
+
     await db.commit()
     return ItemOverrideResponse(
         run_id=run_id, local_id=local_id,
@@ -366,7 +418,49 @@ async def clear_item_override(
 ) -> None:
     """Drop every curator edit for this item — next rebuild returns to
     what the builder + matchers produced."""
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    # Fetch the row first so we can record the tombstone against its
+    # stable UUID — the bulk DELETE below loses the id otherwise.
+    row = (
+        await db.execute(
+            select(WikidataItemOverride).where(
+                WikidataItemOverride.run_id == run_id,
+                WikidataItemOverride.local_id == local_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if row is not None:
+        entity_id_str = str(row.id)
+        try:
+            has_history = (
+                await db.execute(
+                    select(ProjectEvent.id)
+                    .where(
+                        ProjectEvent.entity_type == ENTITY_TYPE_WIKIDATA_OVERRIDE,
+                        ProjectEvent.entity_id == entity_id_str,
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none() is not None
+            op_kind = OP_PATCH if has_history else OP_CREATE
+            await apply_event(
+                db,
+                project_id=run.project_id,
+                entity_type=ENTITY_TYPE_WIKIDATA_OVERRIDE,
+                entity_id=entity_id_str,
+                op=op_kind,
+                new_state={"_deleted": True},
+                actor_id=auth.user.id,
+                message=f"wikidata override cleared ({local_id})",
+            )
+        except Exception as exc:  # noqa: BLE001 — versioning must never 500
+            logger.warning(
+                "apply_event failed for wikidata_override tombstone %s: %s",
+                entity_id_str, exc,
+            )
+
     await db.execute(
         WikidataItemOverride.__table__.delete().where(
             (WikidataItemOverride.run_id == run_id)

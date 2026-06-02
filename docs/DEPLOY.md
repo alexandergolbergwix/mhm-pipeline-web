@@ -333,6 +333,47 @@ The job is idempotent and safe to run on demand:
 
 ---
 
+### 6.7 — Entity versioning: snapshots + prune (Rule W-21)
+
+Two scheduled jobs back the entity-event log:
+
+1. **snapshot-entities** — runs 3 times per day at **00:05, 08:05, 16:05 UTC**.
+   - Command: `python -m scripts.run_snapshot`
+   - Frequency: Every 8 hours (00:05 / 08:05 / 16:05 UTC)
+   - Materialises a full-state row into `entity_snapshot` for every
+     `(project, entity_type, entity_id)` that was touched in the
+     just-finished slot. The `entity_snapshot` table is the cold archive
+     tier — kept forever, the only thing that survives the 1000-event
+     prune.
+
+2. **prune-events** — runs daily at **03:05 UTC**.
+   - Command: `python -m scripts.run_prune_events`
+   - Frequency: Every day at 03:05 UTC
+   - Deletes the oldest events past the 1000-per-entity cap. Never
+     deletes anchor events (latest create / snapshot) — those are
+     required to replay `state_at_rev` for older history.
+
+Before either job runs in production, the database tier **MUST** be
+Essential-1 or higher — Essential-0 (1 GB) will fill within one full
+100k-record upload + its event history (~1.7 GB per project). Upgrade
+with:
+
+```bash
+heroku addons:upgrade heroku-postgresql:essential-1 --app mhm-pipeline-web
+```
+
+One-time backfill — after the migration `0012_entity_versioning` lands,
+run the backfill script once to add `OP_CREATE` events for every
+existing read-model row:
+
+```bash
+heroku run --app mhm-pipeline-web -- bash -lc "cd backend && python -m scripts.backfill_versioning"
+```
+
+The script is idempotent; safe to re-run after partial failure.
+
+---
+
 ## 7. Cost reference (typical, as of 2026)
 
 | Item                                | $/month |

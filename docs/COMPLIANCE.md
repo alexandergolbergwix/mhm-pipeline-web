@@ -83,6 +83,9 @@ deployment guide at `docs/DEPLOY.md`.
 - Key rotation runbook for `MASTER_KEY` + `EMAIL_HMAC_KEY` — define
   the dual-key window (read with both, write with new), the
   re-encryption migration path, and the rollback procedure.
+- Article 15/20 self-service `/api/me/export` endpoint MUST also
+  export the user-scoped `entity_event` rows so the data subject sees
+  the full history of their own decisions (Rule W-21 surface).
 
 ## GDPR P2 backlog (nice-to-have)
 

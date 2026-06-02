@@ -22,9 +22,9 @@ from app.middleware.csrf import CsrfMiddleware
 from app.middleware.rate_limit import limiter
 from app.realtime import start_listener, stop_listener
 from app.routers import (
-    access_request, ai_verify, api_keys, auth, extraction, extraction_verify,
-    health, history, hmo_studio, invites, onboarding, projects, rdf, runs,
-    wikidata_labels, wikidata_studio, ws,
+    access_request, ai_verify, api_keys, auth, export, extraction,
+    extraction_verify, health, history, hmo_studio, invites, onboarding,
+    projects, rdf, runs, wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
 
@@ -77,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(extraction.router, prefix="/api")
     app.include_router(rdf.router, prefix="/api")
     app.include_router(history.router, prefix="/api")
+    app.include_router(export.router, prefix="/api")
     app.include_router(api_keys.router, prefix="/api")
     app.include_router(wikidata_studio.router, prefix="/api")
     app.include_router(hmo_studio.router, prefix="/api")

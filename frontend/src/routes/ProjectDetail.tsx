@@ -6,6 +6,7 @@ import { ApiError } from "@/api/client";
 import { Projects, type Member, type ProjectDetail as Detail, type ProjectRole } from "@/api/projects";
 import { useProjectEvents } from "@/api/realtime";
 import { Runs, type RunListItem } from "@/api/runs";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export default function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -105,6 +106,7 @@ function ProjectHeader({
           </p>
           <div className="flex gap-2 pt-2 flex-wrap">
             <Link to={`/projects/${proj.id}/history`} className="button-ghost text-sm">History &amp; restore</Link>
+            <ExportButton projectId={proj.id} mode="project" />
             {canEdit && <button onClick={() => setEditing(true)} className="button-ghost text-sm">Edit</button>}
             {canDelete && (
               <button

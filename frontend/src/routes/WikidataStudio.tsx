@@ -4,6 +4,8 @@ import { Link, useParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
+import { HistoryTimeline } from "@/components/history/HistoryTimeline";
+import { Runs } from "@/api/runs";
 import { useLabelStore } from "@/api/wikidataLabels";
 import {
   collectIds, FRIENDLY_S_PROP, PropertyPill, ValueRendering,
@@ -34,6 +36,22 @@ export default function WikidataStudio() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [approvedOnly, setApprovedOnly] = useState(false);
+
+  // Project id is needed for the per-item-card "📜 View edit history"
+  // affordance (HistoryTimeline is keyed by (project, entity_type,
+  // entity_id)). Fetched once on mount; empty until resolved, in
+  // which case the history button is hidden.
+  const [projectId, setProjectId] = useState<string>("");
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    Runs.get(runId)
+      .then((r) => { if (!cancelled) setProjectId(r.project_id); })
+      .catch(() => { /* non-fatal: history button stays hidden */ });
+    return () => { cancelled = true; };
+  }, [runId]);
+
+  const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
 
   // search + filter + sort state
   const [query, setQuery]               = useState("");
@@ -351,6 +369,11 @@ export default function WikidataStudio() {
                   reconcile={reconcileMap[currentKey]}
                   upload={uploadMap[currentKey]}
                   onOpenMarc={setMarcPopupCn}
+                  onOpenHistory={
+                    projectId
+                      ? (id) => setHistoryFor({ id })
+                      : undefined
+                  }
                   labelStore={labelStore} />
               )}
             </main>
@@ -372,6 +395,19 @@ export default function WikidataStudio() {
         <MarcRecordPopup runId={runId} controlNumber={marcPopupCn}
                          onClose={() => setMarcPopupCn(null)} />
       )}
+      {historyFor && projectId ? (
+        <aside
+          data-testid="wikidata-history-drawer"
+          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
+        >
+          <HistoryTimeline
+            projectId={projectId}
+            entityType="wikidata_override"
+            entityId={historyFor.id}
+            onClose={() => setHistoryFor(null)}
+          />
+        </aside>
+      ) : null}
     </Layout>
   );
 }
@@ -381,14 +417,16 @@ export default function WikidataStudio() {
 
 
 function ItemPanel({
-  item, reconcile, upload, onOpenMarc, labelStore,
+  item, reconcile, upload, onOpenMarc, onOpenHistory, labelStore,
 }: {
   item: StudioItem;
   reconcile?: ReconcileOutcome;
   upload?: UploadOutcome;
   onOpenMarc: (cn: string) => void;
+  onOpenHistory?: (entityId: string) => void;
   labelStore: LabelStore;
 }) {
+  const historyId = item.local_id ?? item.existing_qid ?? null;
   const labels = item.labels ?? {};
   const descriptions = item.descriptions ?? {};
   const aliases = item.aliases ?? {};
@@ -407,7 +445,19 @@ function ItemPanel({
     <div className="glass p-6 space-y-5 max-h-[78vh] overflow-auto">
       <header className="space-y-1">
         <div className="kicker">{item.entity_type ?? "item"}</div>
-        <h3 className="text-xl font-semibold">{labelOf(item) || "(no label)"}</h3>
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-xl font-semibold">{labelOf(item) || "(no label)"}</h3>
+          {onOpenHistory && historyId ? (
+            <button
+              type="button"
+              data-testid={`history-button-${historyId}`}
+              onClick={() => onOpenHistory(historyId)}
+              aria-label="View edit history"
+              title="View edit history"
+              className="button-ghost h-7 px-2 text-xs shrink-0"
+            >📜</button>
+          ) : null}
+        </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           {item.existing_qid && (
             <a className="text-biu-sky font-mono hover:underline"

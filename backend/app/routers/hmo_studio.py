@@ -36,9 +36,16 @@ from app.auth.session import AuthContext, current_auth
 from app.crypto import secrets as secrets_mod
 from app.db import get_session
 from app.models.api_key import ApiKey
+from app.models.event import (
+    ENTITY_TYPE_WIKIBASE_ITEM,
+    OP_CREATE,
+    OP_PATCH,
+    ProjectEvent,
+)
 from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.routers.runs import _lookup_run_with_access
+from app.versioning import apply_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["hmo-studio"])
@@ -164,7 +171,7 @@ async def upload_manifests(
     encrypted-secret store. Dry-run is allowed without credentials
     (handy for previewing what would be sent).
     """
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     manifest_dir = hmo_pipeline.manifest_dir_for_run(str(run_id))
     if not manifest_dir.exists():
@@ -200,6 +207,18 @@ async def upload_manifests(
                     + ", ".join(missing)
                 ),
             )
+
+    # Audit upload intent BEFORE the network call — one versioning event
+    # per manifest the pipeline will try to write. We persist the audit
+    # trail even if the remote write later fails (or never happens, in
+    # dry-run mode). Failure of the audit must NEVER 500 the upload.
+    await _audit_manifest_upload_intent(
+        db,
+        project_id=run.project_id,
+        actor_id=auth.user.id,
+        manifest_dir=manifest_dir,
+        dry_run=payload.dry_run,
+    )
 
     result = await hmo_pipeline.upload_manifests_for_run(
         manifest_dir=manifest_dir,
@@ -329,6 +348,94 @@ async def studio_status(
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
+
+
+async def _audit_manifest_upload_intent(
+    db: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    manifest_dir: Path,
+    dry_run: bool,
+) -> None:
+    """Emit one ``wikibase_item`` versioning event per manifest the
+    upload pipeline will try to write.
+
+    Called BEFORE the actual HTTP write so the audit trail records
+    *intent*, not outcome — useful for forensic recovery when a remote
+    write fails or the network drops mid-batch. A failure in this
+    helper must never 500 the surrounding upload request, so every
+    error path is logged and swallowed.
+
+    The helper commits its own writes (the surrounding handler does
+    not own a transaction); the commit happens once at the end so the
+    audit batch lands atomically even if one row in the middle fails
+    to serialise.
+    """
+    manifest_paths = sorted(manifest_dir.glob("MS_*.json"))
+    if not manifest_paths:
+        return
+
+    emitted = 0
+    for manifest_path in manifest_paths:
+        shelfmark = manifest_path.stem[len("MS_"):]
+        page_title = f"IIIF:MS_{shelfmark}/manifest.json"
+        try:
+            payload_dict = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning(
+                "Skipping audit for unreadable manifest %s: %s",
+                manifest_path, exc,
+            )
+            continue
+
+        try:
+            has_history = (
+                await db.execute(
+                    select(ProjectEvent.id)
+                    .where(
+                        ProjectEvent.entity_type == ENTITY_TYPE_WIKIBASE_ITEM,
+                        ProjectEvent.entity_id == page_title,
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none() is not None
+            op_kind = OP_PATCH if has_history else OP_CREATE
+            await apply_event(
+                db,
+                project_id=project_id,
+                entity_type=ENTITY_TYPE_WIKIBASE_ITEM,
+                entity_id=page_title,
+                op=op_kind,
+                new_state=payload_dict,
+                actor_id=actor_id,
+                message=(
+                    f"wikibase manifest upload intent "
+                    f"({'dry-run' if dry_run else 'live'})"
+                ),
+            )
+            emitted += 1
+        except Exception as exc:  # noqa: BLE001 — versioning must never 500
+            logger.warning(
+                "apply_event failed for wikibase_item %s: %s",
+                page_title, exc,
+            )
+
+    if emitted == 0:
+        return
+    try:
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001 — never break the upload on audit failure
+        logger.warning(
+            "Failed to commit %d wikibase_item audit events: %s", emitted, exc,
+        )
+        try:
+            await db.rollback()
+        except Exception as rollback_exc:  # noqa: BLE001
+            logger.warning(
+                "Rollback after audit commit failure also failed: %s",
+                rollback_exc,
+            )
 
 
 def _iso_mtime(path: Path) -> str:

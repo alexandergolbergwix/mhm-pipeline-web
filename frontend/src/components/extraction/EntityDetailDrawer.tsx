@@ -36,12 +36,14 @@ import {
   ENTITY_EXPECTED_FIELDS, MARC_FIELD_LABELS,
   orderedMarcKeys, stringifyMarcValue,
 } from "@/components/extraction/marc-field-labels";
+import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { langOf } from "@/utils/hebrew";
 
 
 export interface EntityDetailDrawerProps {
   runId: string;
+  projectId: string;
   /** The entity currently being inspected. ``null`` ⇒ drawer closed. */
   entity: Entity | null;
   onClose: () => void;
@@ -55,13 +57,14 @@ export interface EntityDetailDrawerProps {
 
 
 export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
-  const { runId, entity, onClose, onEntityChanged, onOpenEdit } = props;
+  const { runId, projectId, entity, onClose, onEntityChanged, onOpenEdit } = props;
 
   const [marc, setMarc] = useState<MarcSource | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
 
   const open = entity !== null;
@@ -155,6 +158,16 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
           </div>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
+          {entity && projectId ? (
+            <button
+              type="button"
+              data-testid={`history-button-${entity.id}`}
+              onClick={() => setHistoryFor({ id: String(entity.id) })}
+              aria-label="View edit history"
+              title="View edit history"
+              className="button-ghost h-7 px-2 text-xs"
+            >📜</button>
+          ) : null}
           <label className="muted flex items-center gap-1 cursor-pointer select-none"
                  title="Keep this drawer open while browsing the table.">
             <input type="checkbox" checked={pinned}
@@ -213,6 +226,19 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
           </>
         )}
       </div>
+      {historyFor ? (
+        <aside
+          data-testid="entity-detail-history-drawer"
+          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
+        >
+          <HistoryTimeline
+            projectId={projectId}
+            entityType="extraction_entity"
+            entityId={historyFor.id}
+            onClose={() => setHistoryFor(null)}
+          />
+        </aside>
+      ) : null}
     </aside>
   );
 }

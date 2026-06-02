@@ -30,6 +30,7 @@ import {
   ExtractionApprovals,
   type Entity,
 } from "@/api/extractionApprovals";
+import { Runs } from "@/api/runs";
 import { useApprovalStore } from "@/hooks/useApprovalStore";
 import { EntityTable } from "@/components/extraction/EntityTable";
 import { EntityFilterChips } from "@/components/extraction/EntityFilterChips";
@@ -76,6 +77,21 @@ type ExtractionMode = "local" | "hf-api" | "modal";
 
 export default function StageExtraction() {
   const { runId } = useParams<{ runId: string }>();
+
+  // Project id is needed for the per-row "📜 View edit history"
+  // affordance on EntityTable / EntityDetailDrawer (HistoryTimeline is
+  // keyed by (project, entity_type, entity_id)). Fetched once on mount;
+  // empty string while in-flight or unresolved — the history button is
+  // hidden in that state.
+  const [projectId, setProjectId] = useState<string>("");
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    Runs.get(runId)
+      .then((r) => { if (!cancelled) setProjectId(r.project_id); })
+      .catch(() => { /* non-fatal: history button stays hidden */ });
+    return () => { cancelled = true; };
+  }, [runId]);
 
   const [phase, setPhase] = useState<Phase>("idle");
   // Live operational status — the latest `extraction.step` message
@@ -545,6 +561,7 @@ export default function StageExtraction() {
 
             <EntityTable
               runId={runId}
+              projectId={projectId}
               entities={filteredEntities}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
@@ -616,6 +633,7 @@ export default function StageExtraction() {
       {runId && (
         <EntityDetailDrawer
           runId={runId}
+          projectId={projectId}
           entity={detailEntity}
           onClose={() => setDetailEntity(null)}
           onEntityChanged={() => { void refreshEntities(); }}

@@ -41,12 +41,19 @@ from app.auth.session import AuthContext, current_auth
 from app.crypto import secrets as secrets_mod
 from app.db import get_session
 from app.models.api_key import ApiKey
+from app.models.event import (
+    ENTITY_TYPE_EXTRACTION_ENTITY,
+    OP_CREATE,
+    OP_PATCH,
+    ProjectEvent,
+)
 from app.models.extraction_approval import ExtractionApproval
 from app.models.run import RunRecord
 from app.pipeline.agent_runner import AgentEvent, sse_stream
 from app.pipeline.extraction import ExtractionEvent, extract_entities_stream
 from app.pipeline.marc_structured_index import MarcStructuredIndex
 from app.routers.runs import _lookup_run_with_access
+from app.versioning import apply_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["extraction"])
@@ -331,6 +338,55 @@ def _parse_entity_id(eid: str) -> tuple[str, str, str, int, int]:
         raise ValueError(f"malformed entity id {eid!r}")
     return (str(parts[0]), str(parts[1]), str(parts[2]),
             int(parts[3]), int(parts[4]))
+
+
+async def _emit_extraction_event(
+    db: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    row: ExtractionApproval,
+    actor_id: uuid.UUID,
+    message: str = "extraction edit",
+) -> None:
+    """Append a versioning event for one ExtractionApproval row.
+
+    Failure is swallowed (logged at WARN) so a versioning bug can never
+    500 the surrounding handler. The caller owns the transaction and
+    must NOT commit here.
+    """
+    entity_id_str = str(row.id)
+    try:
+        has_history = (
+            await db.execute(
+                select(ProjectEvent.id)
+                .where(
+                    ProjectEvent.entity_type == ENTITY_TYPE_EXTRACTION_ENTITY,
+                    ProjectEvent.entity_id == entity_id_str,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
+        op_kind = OP_PATCH if has_history else OP_CREATE
+        new_state = {
+            "approved":      bool(row.approved),
+            "override_type": row.override_type,
+            "override_role": row.override_role,
+            "ai_verdict":    row.ai_verdict,
+        }
+        await apply_event(
+            db,
+            project_id=project_id,
+            entity_type=ENTITY_TYPE_EXTRACTION_ENTITY,
+            entity_id=entity_id_str,
+            op=op_kind,
+            new_state=new_state,
+            actor_id=actor_id,
+            message=message,
+        )
+    except Exception as exc:    # noqa: BLE001 — versioning must never 500
+        logger.warning(
+            "apply_event failed for extraction_entity %s: %s", row.id, exc,
+        )
 
 
 def _flatten_records(records: list[dict]) -> list[dict]:
@@ -647,7 +703,7 @@ async def patch_entity(
     type/role/confidence on first write so subsequent reads have full
     context even if the run's ner_results.json is rebuilt.
     """
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
     try:
         cn, src, text, start, end = _parse_entity_id(entity_id)
     except (ValueError, Exception) as exc:
@@ -700,6 +756,13 @@ async def patch_entity(
         set_=update_cols or {"updated_at": now},
     ).returning(ExtractionApproval)
     row = (await db.execute(stmt)).scalar_one()
+    await _emit_extraction_event(
+        db,
+        project_id=run.project_id,
+        row=row,
+        actor_id=auth.user.id,
+        message="extraction edit",
+    )
     await db.commit()
 
     return {
@@ -719,7 +782,7 @@ async def bulk_approve_entities(
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """Approve/unapprove many entities in one round-trip."""
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     now = datetime.now(timezone.utc)
     # Build (entity_id → prediction snapshot) map from disk so even
@@ -767,8 +830,16 @@ async def bulk_approve_entities(
             "approved_by":  stmt.excluded.approved_by,
             "approved_at":  stmt.excluded.approved_at,
         },
-    )
-    await db.execute(stmt)
+    ).returning(ExtractionApproval)
+    touched = (await db.execute(stmt)).scalars().all()
+    for row in touched:
+        await _emit_extraction_event(
+            db,
+            project_id=run.project_id,
+            row=row,
+            actor_id=auth.user.id,
+            message="extraction bulk approve",
+        )
     await db.commit()
     return {"updated": len(rows_to_upsert), "approved": payload.approved}
 
@@ -786,7 +857,7 @@ async def auto_approve_entities(
     ``payload.respect_ai_fail`` (skip rows the AI already failed).
     Returns ``{checked, approved}``.
     """
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     path = _results_path(run_id)
     if not path.exists():
@@ -847,8 +918,16 @@ async def auto_approve_entities(
                 "approved_by":  stmt.excluded.approved_by,
                 "approved_at":  stmt.excluded.approved_at,
             },
-        )
-        await db.execute(stmt)
+        ).returning(ExtractionApproval)
+        touched = (await db.execute(stmt)).scalars().all()
+        for row in touched:
+            await _emit_extraction_event(
+                db,
+                project_id=run.project_id,
+                row=row,
+                actor_id=auth.user.id,
+                message="extraction auto-approve",
+            )
         await db.commit()
 
     return {"checked": checked, "approved": len(eligible)}

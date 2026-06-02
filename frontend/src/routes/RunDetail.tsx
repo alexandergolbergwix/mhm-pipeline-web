@@ -16,6 +16,7 @@ import {
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import { SelectAllVisible } from "@/components/SelectAllVisible";
 import { AiVerificationModal } from "@/components/AiVerificationModal";
+import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import type { ScopeKind } from "@/api/aiVerify";
 
 const COLUMNS = [
@@ -46,6 +47,7 @@ export default function RunDetail() {
     checked: number; updated: number; births_filled: number; deaths_filled: number;
   } | null>(null);
   const [verifyScope, setVerifyScope] = useState<{ kind: ScopeKind; matchIds?: string[]; label: string } | null>(null);
+  const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   // Sort state — persisted across reloads so curators don't lose their place.
   const [sortKey, setSortKey] = useState<string | null>(() =>
     localStorage.getItem("mhm.runDetail.sortKey") || null);
@@ -352,8 +354,18 @@ export default function RunDetail() {
                         <input type="checkbox" checked={m.approved} onChange={() => toggle(m)} />
                       </td>
                       <td className="py-2 pr-1 text-right">
-                        <button onClick={() => setOpenMatch(m)}
-                                className="button-ghost text-xs">Details</button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => setOpenMatch(m)}
+                                  className="button-ghost text-xs">Details</button>
+                          <button
+                            type="button"
+                            data-testid={`history-button-${m.id}`}
+                            onClick={() => setHistoryFor({ id: String(m.id) })}
+                            aria-label="View edit history"
+                            title="View edit history"
+                            className="button-ghost h-7 px-2 text-xs"
+                          >📜</button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -388,6 +400,19 @@ export default function RunDetail() {
           onClose={() => setVerifyScope(null)}
         />
       )}
+      {historyFor && run ? (
+        <aside
+          data-testid="authority-history-drawer"
+          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
+        >
+          <HistoryTimeline
+            projectId={run.project_id}
+            entityType="authority_match"
+            entityId={historyFor.id}
+            onClose={() => setHistoryFor(null)}
+          />
+        </aside>
+      ) : null}
     </Layout>
   );
 }

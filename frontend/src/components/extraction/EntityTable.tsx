@@ -30,6 +30,7 @@ import {
   EntityType,
   ExtractionApprovals,
 } from "@/api/extractionApprovals";
+import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import { langOf } from "@/utils/hebrew";
 
 export type SortDirection = "asc" | "desc";
@@ -74,11 +75,12 @@ const COLUMNS: ColumnDef[] = [
   { key: "exists_in", label: "MARC", width: "100px", sortable: true, filterable: true },
   { key: "ai_verdict", label: "AI Check", width: "110px", sortable: true, filterable: true },
   { key: "approved", label: "✓", width: "44px", sortable: true, filterable: true },
-  { key: "edit", label: "", width: "78px", sortable: false, filterable: false },
+  { key: "edit", label: "", width: "108px", sortable: false, filterable: false },
 ];
 
 export interface EntityTableProps {
   runId: string;
+  projectId: string;
   entities: Entity[];
   selectedIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
@@ -157,13 +159,14 @@ function applySort(entities: Entity[], sort: SortState | null): Entity[] {
 
 export function EntityTable(props: EntityTableProps) {
   const {
-    runId, entities, selectedIds, onSelectionChange,
+    runId, projectId, entities, selectedIds, onSelectionChange,
     onEntityUpdated, onOpenEdit, onViewSource, onOpenMarc, onOpenVerdict,
     columnFilters, onColumnFiltersChange,
   } = props;
 
   const [sort, setSort] = useState<SortState | null>(null);
   const [popup, setPopup] = useState<{ column: ColumnKey; x: number; y: number } | null>(null);
+  const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
 
   // Per-column free-text filter — the user wants header-row search
   // boxes on MS + Text alongside the right-click popup for enum
@@ -341,6 +344,16 @@ export function EntityTable(props: EntityTableProps) {
                   data-testid="entity-view-source"
                   title="View MARC source"
                   onClick={() => onViewSource(entity)}>👁</button>
+          {projectId ? (
+            <button
+              type="button"
+              data-testid={`history-button-${entity.id}`}
+              onClick={() => setHistoryFor({ id: String(entity.id) })}
+              aria-label="View edit history"
+              title="View edit history"
+              className="button-ghost h-7 px-2 text-xs"
+            >📜</button>
+          ) : null}
         </div>
       </div>
     );
@@ -456,6 +469,19 @@ export function EntityTable(props: EntityTableProps) {
           onApply={handlePopupApply}
           onCancel={() => setPopup(null)}
         />
+      ) : null}
+      {historyFor ? (
+        <aside
+          data-testid="entity-history-drawer"
+          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
+        >
+          <HistoryTimeline
+            projectId={projectId}
+            entityType="extraction_entity"
+            entityId={historyFor.id}
+            onClose={() => setHistoryFor(null)}
+          />
+        </aside>
       ) : null}
     </div>
   );

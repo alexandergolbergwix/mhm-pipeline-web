@@ -1,0 +1,197 @@
+/**
+ * JsonTreeViewer — pure, read-only JSON tree.
+ *
+ * Used by HistoryDiffModal to render "before" / "after" sides of a diff.
+ * Highlights specific JSON Pointer paths (RFC 6902) with a yellow background
+ * so a curator can see at a glance which fields changed.
+ *
+ * No external dependencies — pure React + Tailwind + the existing glass
+ * CSS classes (.glass-pill, .muted, .kicker).
+ */
+
+import { useState, useCallback } from "react";
+
+export interface JsonTreeViewerProps {
+  value: unknown;
+  rootLabel?: string;
+  initiallyOpenDepth?: number;
+  highlightPaths?: string[];
+}
+
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+const STRING_TRUNCATE_AT = 80;
+
+/**
+ * Escape a single JSON Pointer reference token per RFC 6901:
+ * "~" → "~0", "/" → "~1". Order matters — "~" must be escaped first.
+ */
+function escapePointerToken(token: string): string {
+  return token.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function joinPointer(parent: string, token: string | number): string {
+  const t = typeof token === "number" ? String(token) : escapePointerToken(token);
+  return `${parent}/${t}`;
+}
+
+function isPlainObject(v: unknown): v is { [key: string]: JsonValue } {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function isJsonArray(v: unknown): v is JsonValue[] {
+  return Array.isArray(v);
+}
+
+function truncate(s: string, max: number): { text: string; truncated: boolean } {
+  if (s.length <= max) return { text: s, truncated: false };
+  return { text: `${s.slice(0, max)}…`, truncated: true };
+}
+
+interface NodeProps {
+  value: unknown;
+  path: string;
+  depth: number;
+  initiallyOpenDepth: number;
+  highlightPaths: Set<string>;
+  label?: string;
+}
+
+function PrimitiveValue({ value }: { value: unknown }): JSX.Element {
+  if (value === null) {
+    return <span className="muted italic">null</span>;
+  }
+  if (typeof value === "boolean") {
+    return <span className="muted">{value ? "true" : "false"}</span>;
+  }
+  if (typeof value === "number") {
+    return <span className="muted">{String(value)}</span>;
+  }
+  if (typeof value === "string") {
+    const { text, truncated } = truncate(value, STRING_TRUNCATE_AT);
+    return (
+      <span
+        className="text-emerald-200"
+        title={truncated ? value : undefined}
+      >
+        {`"${text}"`}
+      </span>
+    );
+  }
+  // Fallback for unexpected types (e.g. undefined, symbol, function).
+  return <span className="muted italic">{String(value)}</span>;
+}
+
+function TreeNode({
+  value,
+  path,
+  depth,
+  initiallyOpenDepth,
+  highlightPaths,
+  label,
+}: NodeProps): JSX.Element {
+  const [open, setOpen] = useState<boolean>(depth < initiallyOpenDepth);
+  const toggle = useCallback(() => setOpen((o) => !o), []);
+
+  const isHighlighted = highlightPaths.has(path);
+  const rowBg = isHighlighted ? "bg-yellow-300/30" : "";
+
+  // Primitive leaf.
+  if (!isPlainObject(value) && !isJsonArray(value)) {
+    return (
+      <div className={`flex items-start gap-2 py-0.5 px-1 rounded ${rowBg}`}>
+        {label !== undefined && (
+          <span className="kicker shrink-0">{label}:</span>
+        )}
+        <PrimitiveValue value={value} />
+      </div>
+    );
+  }
+
+  const isArray = isJsonArray(value);
+  const count = isArray ? value.length : Object.keys(value).length;
+  const summary = isArray
+    ? `[ ${count} item${count === 1 ? "" : "s"} ]`
+    : `{ ${count} key${count === 1 ? "" : "s"} }`;
+  const chevron = open ? "▼" : "▶";
+
+  return (
+    <div
+      className={`rounded ${rowBg}`}
+      data-testid={`json-node-${path}`}
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex items-center gap-2 py-0.5 px-1 w-full text-left hover:bg-white/5 rounded"
+        aria-expanded={open}
+      >
+        <span className="muted text-xs w-3 shrink-0">{chevron}</span>
+        {label !== undefined && (
+          <span className="kicker shrink-0">{label}:</span>
+        )}
+        <span className="muted text-xs">{summary}</span>
+      </button>
+      {open && count > 0 && (
+        <div className="ml-4 border-l border-white/10 pl-2">
+          {isArray
+            ? value.map((child, idx) => (
+                <TreeNode
+                  key={idx}
+                  value={child}
+                  path={joinPointer(path, idx)}
+                  depth={depth + 1}
+                  initiallyOpenDepth={initiallyOpenDepth}
+                  highlightPaths={highlightPaths}
+                  label={String(idx)}
+                />
+              ))
+            : Object.keys(value).map((key) => (
+                <TreeNode
+                  key={key}
+                  value={value[key]}
+                  path={joinPointer(path, key)}
+                  depth={depth + 1}
+                  initiallyOpenDepth={initiallyOpenDepth}
+                  highlightPaths={highlightPaths}
+                  label={key}
+                />
+              ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function JsonTreeViewer({
+  value,
+  rootLabel,
+  initiallyOpenDepth = 2,
+  highlightPaths = [],
+}: JsonTreeViewerProps): JSX.Element {
+  const highlightSet = new Set<string>(highlightPaths);
+
+  return (
+    <div
+      data-testid="json-tree-viewer"
+      className="glass-pill font-mono text-sm text-white/90 p-2 overflow-auto"
+    >
+      <TreeNode
+        value={value}
+        path=""
+        depth={0}
+        initiallyOpenDepth={initiallyOpenDepth}
+        highlightPaths={highlightSet}
+        label={rootLabel}
+      />
+    </div>
+  );
+}
+
+export default JsonTreeViewer;

@@ -10,7 +10,22 @@ from app.models.access_request import (
 from app.models.api_key import ApiKey
 from app.models.base import Base
 from app.models.email_throttle import EmailThrottle
-from app.models.event import ProjectEvent, ProjectSnapshot
+from app.models.entity_snapshot import EntitySnapshot
+from app.models.event import (
+    ALL_ENTITY_TYPES,
+    ALL_OPS,
+    ENTITY_TYPE_AUTHORITY_MATCH,
+    ENTITY_TYPE_EXTRACTION_ENTITY,
+    ENTITY_TYPE_MARC_RECORD,
+    ENTITY_TYPE_WIKIBASE_ITEM,
+    ENTITY_TYPE_WIKIDATA_OVERRIDE,
+    OP_CREATE,
+    OP_PATCH,
+    OP_REVERT,
+    OP_SNAPSHOT,
+    ProjectEvent,
+    ProjectSnapshot,
+)
 from app.models.extraction_approval import ExtractionApproval
 from app.models.inference_cache import InferenceCache
 from app.models.invitation import Invitation
@@ -37,16 +52,28 @@ from app.models.session import Session
 from app.models.user import ROLE_ADMIN, ROLE_EDITOR, User
 
 __all__ = [
+    "ALL_ENTITY_TYPES",
+    "ALL_OPS",
     "ALL_PROJECT_ROLES",
     "AccessRequest",
     "ApiKey",
     "AuthorityMatch",
     "Base",
+    "ENTITY_TYPE_AUTHORITY_MATCH",
+    "ENTITY_TYPE_EXTRACTION_ENTITY",
+    "ENTITY_TYPE_MARC_RECORD",
+    "ENTITY_TYPE_WIKIBASE_ITEM",
+    "ENTITY_TYPE_WIKIDATA_OVERRIDE",
     "EmailThrottle",
+    "EntitySnapshot",
     "ExtractionApproval",
     "InferenceCache",
     "Invitation",
     "Membership",
+    "OP_CREATE",
+    "OP_PATCH",
+    "OP_REVERT",
+    "OP_SNAPSHOT",
     "PROJECT_ROLE_EDITOR",
     "PROJECT_ROLE_OWNER",
     "PROJECT_ROLE_VIEWER",
