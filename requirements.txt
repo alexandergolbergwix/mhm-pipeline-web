@@ -35,15 +35,29 @@ requests>=2.32
 aiosqlite>=0.20
 wikibaseintegrator>=0.12
 
-# Stage 2 — NER + classifier inference paths still IMPORT torch /
-# transformers / huggingface-hub even when EXTRACTION_MODE=modal
-# (the converter/ tree from the desktop port references them). The
-# Modal container serves the actual inference; the web slug carries
-# the modules but never loads weights into memory. CPU-only torch
-# is fine — Heroku has no GPU.
-torch>=2.0,<3
-transformers>=4.40
-huggingface-hub>=0.20
+# INTENTIONALLY OMITTED from the Heroku slug:
+#   torch, transformers, huggingface-hub
+#
+# Modern torch wheels (>=2.10) default to the CUDA build and pull in
+# ~2.5 GB of nvidia-* / cuda-toolkit / triton transitive deps,
+# blowing Heroku's 1 GB slug-size cap. They live in backend/
+# pyproject.toml so local dev keeps the desktop-style inference path
+# available, but in production we always run with
+# EXTRACTION_MODE=modal — the Stage-2 NER container hosts torch +
+# the weights on Modal's GPU dynos, and the Heroku web slug only
+# orchestrates HTTPS calls.
+#
+# Every torch / transformers import on the web backend is lazy
+# (`import torch  # noqa: PLC0415` inside function bodies), so the
+# modules are referenced but never loaded when EXTRACTION_MODE=modal.
+#
+# If you ever need to run inference inside the dyno (NOT recommended
+# on Heroku — no GPU, slow CPU torch), add back as:
+#     --extra-index-url https://download.pytorch.org/whl/cpu
+#     torch>=2.0,<3
+#     transformers>=4.40
+#     huggingface-hub>=0.20
+# The +cpu wheel keeps the slug ~200 MB instead of 2.8 GB.
 
 # Self-service request-access feature (Rule W-20)
 resend>=2.0
