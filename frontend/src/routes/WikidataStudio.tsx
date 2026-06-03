@@ -35,7 +35,7 @@ export default function WikidataStudio() {
   const [build, setBuild] = useState<StudioBuild | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [approvedOnly, setApprovedOnly] = useState(false);
+  const [approvedOnly, setApprovedOnly] = useState(true);
 
   // Project id is needed for the per-item-card "📜 View edit history"
   // affordance (HistoryTimeline is keyed by (project, entity_type,

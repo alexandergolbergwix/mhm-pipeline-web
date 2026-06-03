@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
+from app.models.extraction_approval import ExtractionApproval
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.pipeline.rdf_build import (
     LAYOUT_KINDS,
@@ -182,11 +183,40 @@ async def build(
             detail="Run has no MARC records — ingest before building RDF.",
         )
 
+    # Only approved authority matches flow into the RDF graph so that
+    # unvetted candidates never produce sameAs / external-ID triples.
     matches = (
         await db.execute(
-            select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
+            select(AuthorityMatch)
+            .where(AuthorityMatch.run_id == run_id)
+            .where(AuthorityMatch.approved.is_(True))
         )
     ).scalars().all()
+
+    # Only approved NER entities feed the graph — same "ship this in the
+    # final output" semantics as Authority Enrichment (ExtractionApproval
+    # docstring).  Curator overrides (override_type / override_role) take
+    # precedence over the model's prediction, mirroring the Wikidata
+    # Studio path.
+    ner_rows = (
+        await db.execute(
+            select(ExtractionApproval)
+            .where(ExtractionApproval.run_id == run_id)
+            .where(ExtractionApproval.approved.is_(True))
+        )
+    ).scalars().all()
+    entities_by_cn: dict[str, list[dict[str, Any]]] = {}
+    for r in ner_rows:
+        entities_by_cn.setdefault(r.control_number, []).append({
+            "text":             r.text,
+            "type":             (r.override_type or r.type or "").upper(),
+            "role":             (r.override_role or r.role or "").upper(),
+            "source":           r.source,
+            "start":            int(r.start or 0),
+            "end":              int(r.end or 0),
+            "confidence":       r.confidence,
+            "model_confidence": r.model_confidence,
+        })
 
     marc_records = [dict(r.marc) for r in records]
     authority_matches = normalise_matches(matches)
@@ -196,6 +226,7 @@ async def build(
         result: RdfBuildResult = await build_rdf_graph(
             marc_records=marc_records,
             authority_matches=authority_matches,
+            entities_by_cn=entities_by_cn,
             output_path=out_path,
         )
     except Exception as exc:  # noqa: BLE001

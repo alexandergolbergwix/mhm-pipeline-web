@@ -153,15 +153,19 @@ async def start_extraction_stream(
 
     output_dir = _run_output_dir(run_id)
     return StreamingResponse(
-        sse_stream(_as_agent_events(extract_entities_stream(
-            marc_records=marc_records,
-            output_dir=output_dir,
-            hf_token=hf_token,
-            mode=mode,
-            enabled_models=enabled,
-            db_session=db,
-            user_id=auth.user.id,
-            skip_cache=skip_cache,
+        sse_stream(_as_agent_events(_extract_and_persist(
+            extract_entities_stream(
+                marc_records=marc_records,
+                output_dir=output_dir,
+                hf_token=hf_token,
+                mode=mode,
+                enabled_models=enabled,
+                db_session=db,
+                user_id=auth.user.id,
+                skip_cache=skip_cache,
+            ),
+            run_id=run_id,
+            db=db,
         ))),
         media_type="text/event-stream",
         headers={
@@ -238,6 +242,24 @@ async def get_extraction_status(
 
     path = _results_path(run_id)
     if not path.exists():
+        # File absent (ephemeral filesystem wipe on deploy/restart).
+        # Fall back to the durable DB store: if extraction_approvals has
+        # rows for this run, the extraction did complete at some point.
+        from sqlalchemy import func as _func  # noqa: PLC0415
+        entity_total = (
+            await db.execute(
+                select(_func.count(ExtractionApproval.id)).where(
+                    ExtractionApproval.run_id == run_id,
+                )
+            )
+        ).scalar_one()
+        if entity_total > 0:
+            return {
+                "state":           "complete",
+                "records":         None,
+                "entity_total":    entity_total,
+                "extraction_mode": extraction_mode,
+            }
         return {"state": "idle", "extraction_mode": extraction_mode}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -274,6 +296,86 @@ async def _as_agent_events(stream):
             yield AgentEvent(type=ev.type, payload=ev.payload)
         else:
             yield ev
+
+
+async def _extract_and_persist(
+    inner_stream,
+    *,
+    run_id: uuid.UUID,
+    db: "AsyncSession",
+):
+    """Wrap the extraction stream; on ``extraction.end`` bulk-upsert every
+    entity into ``extraction_approvals`` so they survive ephemeral-filesystem
+    wipes (Heroku deploy / dyno restart).
+
+    This is the canonical durable store.  ``ner_results.json`` becomes a
+    fast-path cache that speeds up subsequent reads; the DB is the source of
+    truth when the file is absent.
+    """
+    async for ev in inner_stream:
+        yield ev
+        if ev.type == "extraction.end":
+            path = _results_path(run_id)
+            if path.exists():
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    if isinstance(data, list):
+                        await _bulk_persist_entities(db, run_id, data)
+                except Exception as exc:   # noqa: BLE001
+                    logger.warning(
+                        "Entity persistence to DB failed for run %s: %s",
+                        run_id, exc,
+                    )
+
+
+async def _bulk_persist_entities(
+    db: "AsyncSession",
+    run_id: uuid.UUID,
+    results: list[dict],
+) -> None:
+    """Upsert all extracted entities into ``extraction_approvals``.
+
+    On INSERT: row is created with ``approved=False`` and the full
+    prediction snapshot (type, role, confidence, model_confidence).
+
+    On CONFLICT: only the prediction snapshot columns are updated so
+    curator decisions (approved, override_type, override_role, ai_verdict)
+    are never clobbered by a re-run.
+    """
+    flat = _flatten_records(results)
+    if not flat:
+        return
+    rows = [
+        {
+            "run_id":           run_id,
+            "control_number":   ent["control_number"],
+            "source":           ent["source"],
+            "text":             ent["text"],
+            "start":            int(ent.get("start") or 0),
+            "end":              int(ent.get("end") or 0),
+            "type":             ent.get("type") or None,
+            "role":             ent.get("role") or None,
+            "confidence":       ent.get("confidence"),
+            "model_confidence": ent.get("model_confidence"),
+            "approved":         False,
+        }
+        for ent in flat
+    ]
+    if not rows:
+        return
+    stmt = pg_insert(ExtractionApproval).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_extraction_approval_key",
+        set_={
+            "type":             stmt.excluded.type,
+            "role":             stmt.excluded.role,
+            "confidence":       stmt.excluded.confidence,
+            "model_confidence": stmt.excluded.model_confidence,
+        },
+    )
+    await db.execute(stmt)
+    await db.commit()
+    logger.info("Persisted %d entities to DB for run %s", len(rows), run_id)
 
 
 async def _unwrap_user_huggingface_key(
@@ -518,31 +620,52 @@ async def list_entities(
     await _lookup_run_with_access(db, run_id, auth, write=False)
 
     # 1. Read ner_results.json off disk + flatten.
+    #    When absent (ephemeral filesystem wipe) fall back to the durable
+    #    extraction_approvals rows whose type/role/confidence were
+    #    snapshotted at stream-end by _bulk_persist_entities.
     path = _results_path(run_id)
-    if not path.exists():
-        return []
-    try:
-        records = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(records, list):
-        return []
-    flat = _flatten_records(records)
-
-    # 2. Pull existing approval rows + key by entity_id.
-    rows = (
+    db_rows = (
         await db.execute(
-            select(ExtractionApproval).where(
-                ExtractionApproval.run_id == run_id,
-            )
+            select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
         )
     ).scalars().all()
+
+    if not path.exists():
+        if not db_rows:
+            return []
+        flat = [
+            {
+                "id":               _entity_id(
+                    control_number=r.control_number, source=r.source,
+                    text=r.text, start=int(r.start or 0), end=int(r.end or 0),
+                ),
+                "control_number":   r.control_number,
+                "source":           r.source,
+                "text":             r.text,
+                "start":            int(r.start or 0),
+                "end":              int(r.end or 0),
+                "type":             r.type or "",
+                "role":             r.role or "",
+                "confidence":       r.confidence,
+                "model_confidence": r.model_confidence,
+                "full_text":        "",
+            }
+            for r in db_rows
+        ]
+    else:
+        try:
+            records = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            records = []
+        flat = _flatten_records(records) if isinstance(records, list) else []
+
+    # 2. Key approval rows by entity_id.
     approvals = {
         _entity_id(
             control_number=r.control_number, source=r.source,
             text=r.text, start=r.start, end=r.end,
         ): r
-        for r in rows
+        for r in db_rows
     }
 
     # 3. Build a request-scoped MARC index so each entity gets a cheap
@@ -569,7 +692,7 @@ async def list_entities(
         out.append({
             **ent,
             "approved":         bool(a.approved) if a else False,
-            "rejected":         False,  # placeholder for Phase B reject UX
+            "rejected":         False,
             "override_type":    (a.override_type if a else None),
             "override_role":    (a.override_role if a else None),
             "effective_type":   (a.override_type if a and a.override_type else ent["type"]),

@@ -194,12 +194,25 @@ export default function StageExtraction() {
           setResolvedMode(st.extraction_mode);
         }
         if (st.state === "complete") {
-          const rows = await Extraction.results(runId);
-          if (cancelled) return;
-          setRecords(rows);
-          setProcessed(rows.length);
-          setTotal(rows.length);
-          setPhase("complete");
+          try {
+            const rows = await Extraction.results(runId);
+            if (cancelled) return;
+            setRecords(rows);
+            setProcessed(rows.length);
+            setTotal(rows.length);
+          } catch (e) {
+            // File absent (ephemeral filesystem wiped on Heroku
+            // deploy/restart). The entity table loads independently from
+            // extraction_approvals via useApprovalStore — leave records
+            // empty and still surface the complete state.
+            if (cancelled) return;
+            if (!(e instanceof ApiError && e.status === 404)) {
+              setError(e instanceof ApiError ? e.detail : String(e));
+              setPhase("error");
+              return;
+            }
+          }
+          if (!cancelled) setPhase("complete");
         } else if (st.state === "error") {
           setError(st.detail ?? "Extraction error on disk");
           setPhase("error");

@@ -76,15 +76,15 @@ export interface UploadResponse {
 }
 
 export const Studio = {
-  build: (runId: string, approvedOnly = false) =>
+  build: (runId: string, approvedOnly = true) =>
     api.get<StudioBuild>(
       `/runs/${runId}/wikidata-studio?approved_only=${approvedOnly ? "true" : "false"}`,
     ),
 
-  qsUrl: (runId: string, approvedOnly = false) =>
+  qsUrl: (runId: string, approvedOnly = true) =>
     `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}`,
 
-  reconcile: (runId: string, approvedOnly = false) =>
+  reconcile: (runId: string, approvedOnly = true) =>
     api.post<ReconcileResponse>(
       `/runs/${runId}/wikidata-studio/reconcile?approved_only=${approvedOnly ? "true" : "false"}`,
       {},

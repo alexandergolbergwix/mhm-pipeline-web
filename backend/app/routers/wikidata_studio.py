@@ -65,10 +65,11 @@ class StudioBuildResponse(BaseModel):
 async def build_studio(
     run_id: uuid.UUID,
     approved_only: bool = Query(
-        default=False,
-        description="When true, only approved matches feed the item "
-                    "builder. Default false — every candidate match is "
-                    "used so persons + cross-source IDs surface immediately.",
+        default=True,
+        description="When true (default), only approved authority matches "
+                    "and NER entities feed the item builder, matching the "
+                    "'ship this in the final output' semantics of the "
+                    "approval stores. Pass false to preview all candidates.",
     ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
@@ -139,7 +140,7 @@ async def build_studio(
 @router.get("/{run_id}/wikidata-studio/quickstatements.txt", response_class=PlainTextResponse)
 async def download_quickstatements(
     run_id: uuid.UUID,
-    approved_only: bool = Query(default=False),
+    approved_only: bool = Query(default=True),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> PlainTextResponse:
@@ -180,7 +181,7 @@ class ReconcileResponse(BaseModel):
 )
 async def reconcile_against_wikidata(
     run_id: uuid.UUID,
-    approved_only: bool = Query(default=False),
+    approved_only: bool = Query(default=True),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> ReconcileResponse:

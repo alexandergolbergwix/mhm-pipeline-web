@@ -176,10 +176,56 @@ def _prepare_record_for_rdf(rec: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _merge_ner_entities(rec: dict[str, Any], entities: list[dict[str, Any]]) -> None:
+    """Merge approved NER entities into the flat MARC record dict.
+
+    Called once per record before ``ExtractedData`` is built, so the
+    approved entities flow into the RDF graph like any other MARC-derived
+    field.  Three channels are supported:
+
+    * ``person_ner``    → ``rec["authors"]`` (role=AUTHOR) or
+                          ``rec["contributors"]`` (all other roles)
+    * ``genre_ml``      → ``rec["genres"]``
+    * ``contents_ner``  → ``rec["contents"]`` (WORK entities only)
+
+    Deduplicates by lowercased name / title so a person already captured
+    from a structured MARC field is not added a second time.
+    """
+    for ent in entities:
+        src  = ent.get("source", "")
+        text = (ent.get("text") or "").strip()
+        if not text:
+            continue
+        ent_type = (ent.get("type") or "").upper()
+        role     = (ent.get("role") or "").upper()
+
+        if src == "person_ner":
+            target_key = "authors" if role == "AUTHOR" else "contributors"
+            existing: list[dict] = rec.setdefault(target_key, []) or []
+            existing_names = {(a.get("name") or "").lower() for a in existing}
+            if text.lower() not in existing_names:
+                existing.append({"name": text, "role": role.lower() or "related"})
+            rec[target_key] = existing
+
+        elif src == "genre_ml":
+            genres: list[str] = rec.setdefault("genres", []) or []
+            if text not in genres:
+                genres.append(text)
+            rec["genres"] = genres
+
+        elif src == "contents_ner" and ent_type == "WORK":
+            contents: list[dict] = rec.setdefault("contents", []) or []
+            existing_titles = {(c.get("title") or "").lower() for c in contents}
+            if text.lower() not in existing_titles:
+                contents.append({"title": text})
+            rec["contents"] = contents
+
+
 def _run_mapper_sync(
     marc_records: list[dict],
     authority_matches: list[dict],
     output_path: Path,
+    entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
 ) -> tuple[int, int, list[str]]:
     """Synchronous core — runs in a thread. Returns
     (triples_count, manuscripts_count, mapping_errors)."""
@@ -194,6 +240,8 @@ def _run_mapper_sync(
         if not cn:
             continue
         matches_by_cn.setdefault(cn, []).append(m)
+
+    ents_by_cn: dict[str, list[dict[str, Any]]] = entities_by_cn or {}
 
     mapper = MarcToRdfMapper()
     combined = Graph()
@@ -217,6 +265,15 @@ def _run_mapper_sync(
         # Used only for URI construction in build_graph; the raw cn is kept
         # for authority-match lookups so cross-references are not broken.
         cn_uri = re.sub(r"[^\w.\-]", "_", cn.strip("\"'")).strip("_") or cn
+
+        # Merge approved NER entities into the MARC record's field lists.
+        # Try both the raw CN (possibly with surrounding quotes from the DB)
+        # and the stripped version so the lookup is robust.
+        cn_stripped = cn.strip("\"'")
+        ner_ents = ents_by_cn.get(cn) or ents_by_cn.get(cn_stripped) or []
+        if ner_ents:
+            _merge_ner_entities(rec, ner_ents)
+
         try:
             # Build ExtractedData from the dict — same pattern as
             # MarcToRdfMapper.map_json_records.
@@ -227,9 +284,9 @@ def _run_mapper_sync(
                 if field_name in rec:
                     setattr(extracted, field_name, rec[field_name])
             extracted.control_number = cn_uri
-            # Fold approved/cross-source authority matches into the
-            # extracted bag the mapper consumes (best-effort — schema
-            # mirrors the desktop pipeline's authority_enriched payload).
+            # Fold approved authority matches into the extracted bag the
+            # mapper consumes (best-effort — schema mirrors the desktop
+            # pipeline's authority_enriched payload).
             if cn in matches_by_cn and not getattr(
                 extracted, "marc_authority_matches", None,
             ):
@@ -253,8 +310,15 @@ async def build_rdf_graph(
     marc_records: list[dict],
     authority_matches: list[dict],
     output_path: Path,
+    entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
 ) -> RdfBuildResult:
     """Run ``MarcToRdfMapper`` over MARC + authority data, write Turtle.
+
+    ``entities_by_cn`` carries approved Stage-2 NER entities keyed by
+    ``control_number``.  When provided, approved persons / genres /
+    work-titles are merged into each MARC record's field lists before
+    ``ExtractedData`` is built, so they appear in the RDF graph alongside
+    the authority-enriched data.
 
     Returns a structured result so the router can report counts +
     timestamps without re-parsing the TTL.
@@ -262,6 +326,7 @@ async def build_rdf_graph(
     started = datetime.now(timezone.utc)
     triples_count, manuscripts_count, errors = await asyncio.to_thread(
         _run_mapper_sync, marc_records, authority_matches, output_path,
+        entities_by_cn or {},
     )
     finished = datetime.now(timezone.utc)
     return RdfBuildResult(
