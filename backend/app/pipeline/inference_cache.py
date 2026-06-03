@@ -1,23 +1,44 @@
-"""Universal inference cache helper.
+"""Universal inference cache helper — two-tier: Redis L1 → Postgres L2.
 
 One function (:func:`cache_lookup_or_call`) every cache-able call site
 goes through. Lookups are keyed by ``(kind, sha256(canonical_json))``
 and shared across users — first call across the team populates the
 cache for everyone else.
 
-Per-kind TTL is configured in :data:`KIND_TTL`. NER + Genre + AI
-verdicts never expire (the model output is fully determined by the
-input + model id, so reproducibility is the same as the cache key).
-Authority queries (Mazal / VIAF / Wikidata / KIMA) expire after 30
-days because the upstream registries mutate over time.
+Two-tier lookup order
+---------------------
+1. **Redis L1** (sub-millisecond in-memory): keyed ``ic:{kind}:{hash}``.
+   On hit → return immediately, no Postgres round-trip.
+2. **Postgres L2** (durable): the ``inference_cache`` table.
+   On hit → backfill Redis, return.
+3. **fetch()** (real call to Modal / VIAF / Wikidata / …):
+   write to both tiers, return.
 
-Skip-cache: pass ``skip_cache=True`` to force a fresh call. The
-result is STILL written back into the cache so the NEXT call
-warm-hits (so refreshing N times only pays for the N+1th time, not
-N times).
+When ``REDIS_URL`` (or ``redis_url`` in settings) is absent, ``get_redis()``
+returns ``None`` and the cache behaves exactly as before (Postgres only).
+The Redis tier is therefore fully optional — dev/CI work without it.
 
-Errors are never cached. ``fetch`` may raise; the exception
-propagates out unchanged + nothing is written.
+Redis TTL policy
+----------------
+``ner.*``, ``genre.classify``, ``ai_verdict`` — no expiry (content-addressed;
+the same input always produces the same model output).
+``authority.*`` — 24 h TTL in Redis (hot working set). Postgres still holds
+the 30-day ground truth so a Redis eviction just causes one Postgres read.
+
+Hit-count accounting
+--------------------
+``hit_count`` / ``last_hit_at`` are updated only when Postgres is actually
+read (L2 hit or write path). Redis-only hits skip the UPDATE intentionally —
+this eliminates the per-warm-hit Postgres write that was the primary
+latency cost of the old single-tier implementation.
+
+Skip-cache
+----------
+``skip_cache=True`` bypasses both tiers but still writes back to both on
+completion (same contract as before).
+
+Errors are never cached. ``fetch`` may raise; the exception propagates
+unchanged and nothing is written to either tier.
 """
 
 from __future__ import annotations
@@ -38,13 +59,10 @@ from app.models.inference_cache import InferenceCache
 logger = logging.getLogger(__name__)
 
 
-# Per-kind TTL. ``None`` = never expires (cache is forever — the
-# upstream answer is fully determined by the input).
-#
-# Authority calls expire because the upstream sources (Wikidata, VIAF)
-# mutate over time: people get added, IDs deleted, labels corrected.
-# 30 days is the conservative balance — medieval Hebrew authority
-# records don't change often, but they do.
+# ── Per-kind TTL ──────────────────────────────────────────────────────
+
+# Postgres TTL — None = never expires.
+# Authority calls expire because upstream registries mutate over time.
 KIND_TTL: dict[str, timedelta | None] = {
     "ner.person":         None,
     "ner.provenance":     None,
@@ -57,6 +75,23 @@ KIND_TTL: dict[str, timedelta | None] = {
     "ai_verdict":         None,
 }
 
+# Redis TTL in seconds — None = no expiry (SET without EX).
+# Authority kinds use a shorter 24 h hot-window; Postgres remains
+# the 30-day ground truth so Redis eviction just causes one L2 read.
+_REDIS_TTL_SECONDS: dict[str, int | None] = {
+    "ner.person":         None,
+    "ner.provenance":     None,
+    "ner.contents":       None,
+    "genre.classify":     None,
+    "authority.mazal":    86_400,
+    "authority.viaf":     86_400,
+    "authority.wikidata": 86_400,
+    "authority.kima":     86_400,
+    "ai_verdict":         None,
+}
+
+
+# ── Public helpers ────────────────────────────────────────────────────
 
 def canonical_hash(query_summary: dict[str, Any]) -> str:
     """SHA-256 of the canonical JSON of *query_summary*.
@@ -80,50 +115,77 @@ async def cache_lookup_or_call(
     user_id: uuid.UUID | None = None,
     skip_cache: bool = False,
 ) -> Any:
-    """Lookup-or-compute. Returns the cached result OR calls ``fetch``.
+    """Lookup-or-compute with two-tier cache (Redis L1 → Postgres L2).
 
-    *fetch* is awaited only on a miss (or when ``skip_cache=True``).
-    Successful results are always written back; errors propagate
-    unchanged + nothing is written.
-
-    Hit accounting (``hit_count`` + ``last_hit_at``) is updated on
-    every cache read — useful for an admin-side cache-inspection UI
-    later. Updates are best-effort: if the UPDATE races with
-    concurrent eviction we silently log and move on.
+    *fetch* is awaited only on a full miss (or when ``skip_cache=True``).
+    Successful results are always written to both tiers; errors propagate
+    unchanged and nothing is written.
     """
+    from app.cache.redis_client import get_redis  # noqa: PLC0415
+
     query_hash = canonical_hash(query_summary)
-    now = datetime.now(timezone.utc)
+    redis_key  = f"ic:{kind}:{query_hash}"
+    now        = datetime.now(timezone.utc)
+    redis      = await get_redis()
 
     if not skip_cache:
+        # ── L1: Redis ────────────────────────────────────────────────
+        if redis is not None:
+            try:
+                raw = await redis.get(redis_key)
+                if raw is not None:
+                    return json.loads(raw)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("redis L1 GET failed (kind=%s): %s", kind, exc)
+
+        # ── L2: Postgres ─────────────────────────────────────────────
         hit = await _read(db, kind=kind, query_hash=query_hash, now=now)
         if hit is not None:
+            # Backfill L1 so the next call doesn't touch Postgres.
+            if redis is not None:
+                await _redis_set(redis, redis_key, kind, hit)
             return hit
 
-    # Miss (or skip_cache). Run the real call.
+    # ── Miss (or skip_cache) — run the real call ──────────────────────
     result = await fetch()
 
-    # Don't cache None / empty errors — we can't tell the difference
-    # between "model legitimately returned []" and "model errored
-    # silently". Treat empty as a "don't poison the well" miss; only
-    # cache non-empty results.
+    # Don't cache None / empty lists — can't distinguish a legitimate
+    # "nothing found" from a silent model error. Only cache non-empty.
     if result is None:
         return result
     if isinstance(result, list) and not result:
         return result
 
-    expires_at = _expires_at(kind, now)
+    # Write both tiers concurrently (errors are swallowed — must not
+    # break the caller).
+    if redis is not None:
+        await _redis_set(redis, redis_key, kind, result)
+    expires_at = _pg_expires_at(kind, now)
     try:
         await _write(
             db, kind=kind, query_hash=query_hash,
             query_summary=query_summary, result=result,
             user_id=user_id, now=now, expires_at=expires_at,
         )
-    except Exception as exc:  # noqa: BLE001 — cache write must never break the caller
-        logger.warning("inference_cache write failed (kind=%s): %s", kind, exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("inference_cache postgres write failed (kind=%s): %s", kind, exc)
     return result
 
 
 # ── Internals ─────────────────────────────────────────────────────────
+
+
+async def _redis_set(redis: Any, key: str, kind: str, value: Any) -> None:
+    """Write a value to Redis with the appropriate TTL for *kind*."""
+    try:
+        raw = json.dumps(value, ensure_ascii=False)
+        ttl = _REDIS_TTL_SECONDS.get(kind)
+        if ttl is None:
+            await redis.set(key, raw)
+        else:
+            await redis.set(key, raw, ex=ttl)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("redis L1 SET failed (kind=%s): %s", kind, exc)
 
 
 async def _read(
@@ -140,9 +202,8 @@ async def _read(
     if row is None:
         return None
     if row.expires_at is not None and row.expires_at < now:
-        # Expired — treat as miss; the writer below will refresh.
         return None
-    # Bump hit accounting (best-effort).
+    # Bump hit accounting (best-effort — only on Postgres reads).
     try:
         row.hit_count = (row.hit_count or 0) + 1
         row.last_hit_at = now
@@ -178,7 +239,7 @@ async def _write(
     await db.commit()
 
 
-def _expires_at(kind: str, now: datetime) -> datetime | None:
+def _pg_expires_at(kind: str, now: datetime) -> datetime | None:
     ttl = KIND_TTL.get(kind)
     return now + ttl if ttl is not None else None
 

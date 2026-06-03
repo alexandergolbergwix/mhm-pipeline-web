@@ -40,6 +40,8 @@ Individual routes opt in with the ``@limiter.limit("N/period")`` decorator.
 
 from __future__ import annotations
 
+import os
+
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
@@ -65,4 +67,9 @@ def _real_client_ip(request: Request) -> str:
     return request.client.host if request.client else "0.0.0.0"
 
 
-limiter = Limiter(key_func=_real_client_ip)
+_storage_uri = (
+    os.environ.get("RATELIMIT_STORAGE_URI", "").strip()
+    or os.environ.get("REDIS_URL", "").strip()
+    or "memory://"
+)
+limiter = Limiter(key_func=_real_client_ip, storage_uri=_storage_uri)

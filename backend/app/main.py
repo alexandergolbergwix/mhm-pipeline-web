@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.cache.redis_client import close_redis
 from app.middleware.csrf import CsrfMiddleware
 from app.middleware.rate_limit import limiter
 from app.realtime import start_listener, stop_listener
@@ -38,6 +39,7 @@ async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
         yield
     finally:
         await stop_listener()
+        await close_redis()
 
 
 def create_app() -> FastAPI:

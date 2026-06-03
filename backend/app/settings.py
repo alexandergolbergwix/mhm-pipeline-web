@@ -34,6 +34,10 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://mhm:mhm@localhost:5432/mhm_pipeline_web",
     )
 
+    # ── Redis (L1 inference cache + optional slowapi storage) ─────────
+    # Heroku sets REDIS_URL when heroku-redis:mini is provisioned.
+    redis_url: str = Field(default="")
+
     # ── Server-held crypto keys ───────────────────────────────────────
     # Both must be 32 raw bytes (we accept urlsafe-base64 or hex).
     master_key: str = Field(default="")

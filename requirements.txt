@@ -62,6 +62,7 @@ wikibaseintegrator>=0.12
 # Self-service request-access feature (Rule W-20)
 resend>=2.0
 slowapi>=0.1.9
+redis[asyncio]>=5.0
 
 # Versioned curator decisions (Rule W-21) — RFC 6902 JSON Patch
 jsonpatch>=1.33
