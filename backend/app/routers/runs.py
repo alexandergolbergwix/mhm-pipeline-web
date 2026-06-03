@@ -179,6 +179,24 @@ async def list_matches(
     return [AuthorityMatchResponse(**serialise_match(m)) for m in matches]
 
 
+@router.get("/runs/{run_id}/records", response_model=list[str])
+async def list_records(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> list[str]:
+    """Return every control_number in this run (for MARC editor pickers)."""
+    await _lookup_run_with_access(db, run_id, auth)
+    rows = (
+        await db.execute(
+            select(RunRecord.control_number)
+            .where(RunRecord.run_id == run_id)
+            .order_by(RunRecord.control_number.asc())
+        )
+    ).scalars().all()
+    return list(rows)
+
+
 @router.get(
     "/runs/{run_id}/records/{control_number}",
     response_model=RunMarcRecord,

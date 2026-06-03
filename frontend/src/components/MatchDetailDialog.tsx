@@ -4,11 +4,12 @@
  * marc_authority_matches payload.
  */
 
-import { useState } from "react";
+import {useState} from "react";
 
-import { Runs, type AuthorityMatch } from "@/api/runs";
-import { ApiError } from "@/api/client";
-import { MarcRecordPopup } from "@/components/MarcRecordPopup";
+import {Runs, type AuthorityMatch} from "@/api/runs";
+import {ApiError} from "@/api/client";
+import {AuthorityMatchEditDialog} from "@/components/AuthorityMatchEditDialog";
+import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 
 interface Props {
   runId: string;
@@ -23,6 +24,7 @@ type Tab = "overview" | "why" | "dates" | "ai" | "sources";
 export function MatchDetailDialog({ runId, match, onClose, onPatched }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [marcCn, setMarcCn] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const p = (match.payload ?? {}) as Record<string, unknown>;
 
   return (
@@ -46,7 +48,14 @@ export function MatchDetailDialog({ runId, match, onClose, onPatched }: Props) {
               matched to <span className="text-ink">{match.matched_name || "—"}</span>
             </p>
           </div>
-          <ConfidenceBadge confidence={match.confidence} />
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <ConfidenceBadge confidence={match.confidence} />
+            <button type="button" onClick={() => setEditing(true)}
+                    data-testid="match-detail-edit"
+                    className="button-ghost text-xs">
+              Edit match
+            </button>
+          </div>
         </header>
 
         <nav className="px-6 py-2 flex flex-wrap gap-2 border-b border-white/5">
@@ -80,6 +89,14 @@ export function MatchDetailDialog({ runId, match, onClose, onPatched }: Props) {
       {marcCn && (
         <MarcRecordPopup runId={runId} controlNumber={marcCn}
                          onClose={() => setMarcCn(null)} />
+      )}
+      {editing && (
+        <AuthorityMatchEditDialog
+          runId={runId}
+          match={match}
+          onClose={() => setEditing(false)}
+          onSaved={(next) => { onPatched(next); setEditing(false); }}
+        />
       )}
     </div>
   );
@@ -327,10 +344,12 @@ function Sources({ match, payload }: { match: AuthorityMatch; payload: Record<st
         </ul>
       </section>
 
+      <KimaGeoSection payload={payload} />
+
       <section>
         <div className="kicker mb-2">Authority sources matched</div>
         <ul className="grid grid-cols-2 gap-2">
-          {["mazal", "viaf", "wikidata"].map((s) => {
+          {["mazal", "viaf", "kima", "wikidata"].map((s) => {
             const on = sources.includes(s);
             return (
               <li key={s} className="glass px-3 py-2 flex items-center justify-between">
@@ -372,6 +391,40 @@ function Sources({ match, payload }: { match: AuthorityMatch; payload: Record<st
         </pre>
       </section>
     </div>
+  );
+}
+
+
+function KimaGeoSection({payload}: {payload: Record<string, unknown>}) {
+  const lat = payload.kima_lat as number | string | undefined;
+  const lon = payload.kima_lon as number | string | undefined;
+  const heb = strOr(payload.kima_heb, "");
+  const rom = strOr(payload.kima_rom, "");
+  const geonames = strOr(payload.kima_geonames, "");
+  if (lat == null && lon == null && !heb && !rom) return null;
+  const latN = lat != null ? Number(lat) : NaN;
+  const lonN = lon != null ? Number(lon) : NaN;
+  const osmHref = !Number.isNaN(latN) && !Number.isNaN(lonN)
+    ? `https://www.openstreetmap.org/?mlat=${latN}&mlon=${lonN}#map=12/${latN}/${lonN}`
+    : undefined;
+  return (
+    <section className="glass-pill p-4 space-y-2">
+      <div className="kicker">KIMA location</div>
+      {heb ? <p className="text-sm"><span className="muted">Hebrew:</span> {heb}</p> : null}
+      {rom ? <p className="text-sm"><span className="muted">Romanized:</span> {rom}</p> : null}
+      {(lat != null || lon != null) && (
+        <p className="text-sm font-mono">
+          {lat ?? "—"}, {lon ?? "—"}
+          {osmHref && (
+            <a href={osmHref} target="_blank" rel="noreferrer"
+               className="ml-2 text-biu-sky text-xs hover:underline">OpenStreetMap ↗</a>
+          )}
+        </p>
+      )}
+      {geonames ? (
+        <p className="text-xs muted">GeoNames: {geonames}</p>
+      ) : null}
+    </section>
   );
 }
 

@@ -415,11 +415,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: E402
 class EntityEdit(BaseModel):
     """Patch payload for one extraction-approval row."""
 
-    approved:      bool | None = None
-    override_type: str | None = Field(default=None, max_length=64)
-    override_role: str | None = Field(default=None, max_length=64)
+    approved:       bool | None = None
+    override_type:  str | None = Field(default=None, max_length=64)
+    override_role:  str | None = Field(default=None, max_length=64)
+    override_text:  str | None = Field(default=None, max_length=512)
 
-    @field_validator("override_type", "override_role")
+    @field_validator("override_type", "override_role", "override_text")
     @classmethod
     def _strip(cls, v: str | None) -> str | None:
         if v is None:
@@ -499,10 +500,11 @@ async def _emit_extraction_event(
         ).scalar_one_or_none() is not None
         op_kind = OP_PATCH if has_history else OP_CREATE
         new_state = {
-            "approved":      bool(row.approved),
-            "override_type": row.override_type,
-            "override_role": row.override_role,
-            "ai_verdict":    row.ai_verdict,
+            "approved":       bool(row.approved),
+            "override_type":  row.override_type,
+            "override_role":  row.override_role,
+            "override_text":  row.override_text,
+            "ai_verdict":     row.ai_verdict,
         }
         await apply_event(
             db,
@@ -689,14 +691,22 @@ async def list_entities(
             ent["control_number"], ent["text"],
             candidate_type=str(candidate_type) if candidate_type else None,
         )
+        eff_type = (a.override_type if a and a.override_type else ent["type"])
+        eff_role = (a.override_role if a and a.override_role else ent["role"])
+        eff_text = (a.override_text if a and a.override_text else ent["text"])
         out.append({
             **ent,
             "approved":         bool(a.approved) if a else False,
             "rejected":         False,
             "override_type":    (a.override_type if a else None),
             "override_role":    (a.override_role if a else None),
-            "effective_type":   (a.override_type if a and a.override_type else ent["type"]),
-            "effective_role":   (a.override_role if a and a.override_role else ent["role"]),
+            "override_text":    (a.override_text if a else None),
+            "effective_type":   eff_type,
+            "effective_role":   eff_role,
+            "effective_text":   eff_text,
+            "type":             eff_type,
+            "role":             eff_role,
+            "text":             eff_text,
             "ai_verdict":       (a.ai_verdict if a else None),
             "ai_verdict_at":    (a.ai_verdict_at.isoformat() if a and a.ai_verdict_at else None),
             "exists_in":        exists_in,
@@ -774,7 +784,7 @@ async def get_marc_source(
             approval_ids.add(eid)
             entities.append({
                 "id":     eid,
-                "text":   r.text,
+                "text":   r.override_text or r.text,
                 "type":   r.override_type or r.type or "",
                 "role":   r.override_role or r.role or "",
                 "start":  int(r.start or 0),
@@ -893,6 +903,7 @@ async def patch_entity(
         approved_at=now if payload.approved else None,
         override_type=payload.override_type,
         override_role=payload.override_role,
+        override_text=payload.override_text,
     )
     update_cols: dict = {}
     if payload.approved is not None:
@@ -903,6 +914,8 @@ async def patch_entity(
         update_cols["override_type"] = payload.override_type or None
     if payload.override_role is not None:
         update_cols["override_role"] = payload.override_role or None
+    if payload.override_text is not None:
+        update_cols["override_text"] = payload.override_text or None
     stmt = stmt.on_conflict_do_update(
         constraint="uq_extraction_approval_key",
         set_=update_cols or {"updated_at": now},
@@ -917,11 +930,22 @@ async def patch_entity(
     )
     await db.commit()
 
+    eff_type = row.override_type or row.type or ""
+    eff_role = row.override_role or row.role or ""
+    eff_text = row.override_text or row.text
     return {
         "id":             entity_id,
+        "control_number": cn,
+        "text":           eff_text,
+        "type":           eff_type,
+        "role":           eff_role,
         "approved":       bool(row.approved),
         "override_type":  row.override_type,
         "override_role":  row.override_role,
+        "override_text":  row.override_text,
+        "effective_text": eff_text,
+        "effective_type": eff_type,
+        "effective_role": eff_role,
         "ai_verdict":     row.ai_verdict,
     }
 

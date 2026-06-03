@@ -82,8 +82,11 @@ export interface Entity {
   id: string;
   control_number: string;
   text: string;
+  effective_text?: string;
   type: EntityType;
   role: EntityRole;
+  effective_type?: string;
+  effective_role?: string;
   source: EntitySource;
   confidence: number | null;
   model_confidence: number | null;
@@ -143,7 +146,12 @@ export const ExtractionApprovals = {
   ): Promise<Entity> =>
     api.patch<Entity>(
       `${base(runId)}/${encodeURIComponent(entityId)}`,
-      patch,
+      {
+        approved:      patch.approved,
+        override_type: patch.type,
+        override_role: patch.role,
+        override_text: patch.text,
+      },
     ),
 
   bulkApprove: (

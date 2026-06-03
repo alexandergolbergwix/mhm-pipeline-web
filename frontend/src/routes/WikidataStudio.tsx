@@ -11,6 +11,7 @@ import {
   collectIds, FRIENDLY_S_PROP, PropertyPill, ValueRendering,
   type LabelStore,
 } from "@/components/StatementCells";
+import {ItemOverrideDialog} from "@/components/ItemOverrideDialog";
 import {
   Studio,
   type ReconcileOutcome,
@@ -52,6 +53,7 @@ export default function WikidataStudio() {
   }, [runId]);
 
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
+  const [editItem, setEditItem] = useState<StudioItem | null>(null);
 
   // search + filter + sort state
   const [query, setQuery]               = useState("");
@@ -369,6 +371,7 @@ export default function WikidataStudio() {
                   reconcile={reconcileMap[currentKey]}
                   upload={uploadMap[currentKey]}
                   onOpenMarc={setMarcPopupCn}
+                  onEdit={() => setEditItem(current)}
                   onOpenHistory={
                     projectId
                       ? (id) => setHistoryFor({ id })
@@ -395,6 +398,14 @@ export default function WikidataStudio() {
         <MarcRecordPopup runId={runId} controlNumber={marcPopupCn}
                          onClose={() => setMarcPopupCn(null)} />
       )}
+      {editItem && runId && (
+        <ItemOverrideDialog
+          runId={runId}
+          item={editItem}
+          onClose={() => setEditItem(null)}
+          onSaved={() => { setEditItem(null); void refresh(); }}
+        />
+      )}
       {historyFor && projectId ? (
         <aside
           data-testid="wikidata-history-drawer"
@@ -417,12 +428,13 @@ export default function WikidataStudio() {
 
 
 function ItemPanel({
-  item, reconcile, upload, onOpenMarc, onOpenHistory, labelStore,
+  item, reconcile, upload, onOpenMarc, onEdit, onOpenHistory, labelStore,
 }: {
   item: StudioItem;
   reconcile?: ReconcileOutcome;
   upload?: UploadOutcome;
   onOpenMarc: (cn: string) => void;
+  onEdit?: () => void;
   onOpenHistory?: (entityId: string) => void;
   labelStore: LabelStore;
 }) {
@@ -447,16 +459,25 @@ function ItemPanel({
         <div className="kicker">{item.entity_type ?? "item"}</div>
         <div className="flex items-baseline justify-between gap-3">
           <h3 className="text-xl font-semibold">{labelOf(item) || "(no label)"}</h3>
-          {onOpenHistory && historyId ? (
-            <button
-              type="button"
-              data-testid={`history-button-${historyId}`}
-              onClick={() => onOpenHistory(historyId)}
-              aria-label="View edit history"
-              title="View edit history"
-              className="button-ghost h-7 px-2 text-xs shrink-0"
-            >📜</button>
-          ) : null}
+          <div className="flex gap-1 shrink-0">
+            {onEdit ? (
+              <button type="button" onClick={onEdit}
+                      data-testid="studio-item-edit"
+                      className="button-ghost h-7 px-2 text-xs">
+                Edit
+              </button>
+            ) : null}
+            {onOpenHistory && historyId ? (
+              <button
+                type="button"
+                data-testid={`history-button-${historyId}`}
+                onClick={() => onOpenHistory(historyId)}
+                aria-label="View edit history"
+                title="View edit history"
+                className="button-ghost h-7 px-2 text-xs"
+              >📜</button>
+            ) : null}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           {item.existing_qid && (

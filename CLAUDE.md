@@ -441,6 +441,35 @@ a new entity type to the export bundle MUST extend
 `/export?entity_types=...` and add a matching
 `test_export_*_filter` case.
 
+### Rule W-23 — KIMA / VIAF / Mazal payload completeness (added 2026-06-03)
+
+- `payload.cluster_ids` MUST be populated from VIAF `meta`
+  (gnd/lc/isni/bnf/j9u) — never `{}` when VIAF matched.
+- `payload.preferred_name_lat` uses VIAF authority form > Mazal >
+  MARC heading fallback.
+- `payload.preferred_name_heb` stores Mazal Hebrew preferred name
+  when Mazal details are available.
+- `payload.kima_*` fields store the full KIMA index row (id, heb,
+  rom, lat, lon, geonames) for place matches via
+  `DesktopMatcher._kima_enrich_place`.
+- `payload.sources` MUST include `"kima"` when KIMA resolved the
+  place — not attributed to `"wikidata"` alone when only KIMA
+  supplied the QID.
+
+### Rule W-24 — All four curator surfaces support per-field manual editing (added 2026-06-03)
+
+- **NER**: `override_text`, `override_type`, `override_role` in
+  `extraction_approvals`; API key mapping lives in
+  `frontend/src/api/extractionApprovals.ts` (UI sends `{type, role,
+  text}` → backend `{override_*}`).
+- **Authority**: `AuthorityMatchEdit` PATCH
+  (`/matches/{id}/edit`) wired to `AuthorityMatchEditDialog`.
+- **Wikidata Studio**: `ItemOverridePayload` PATCH wired to
+  `ItemOverrideDialog`; override applied at next build.
+- **HMO Studio**: `RecordEdit` PATCH wired to `MarcFieldEditorDialog`
+  via `GET /runs/{id}/records` picker; requires RDF + manifest
+  rebuild to apply downstream.
+
 ---
 
 ## Project structure

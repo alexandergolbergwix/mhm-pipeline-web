@@ -179,17 +179,40 @@ export function makeMockState(): MockState {
  * assertions can inspect captured calls + emitted side-effects.
  */
 export async function installExtractionMocks(page: Page, state: MockState) {
+  // ── GET /runs/{id} — project id for per-row history buttons ─────
+  await page.route(`**/api/runs/${TEST_RUN_ID}`, async (route: Route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: TEST_RUN_ID,
+        project_id: TEST_PROJECT_ID,
+        name: "Test run",
+        status: "succeeded",
+        record_count: 3,
+        match_count: 0,
+        error: null,
+        created_at: "2026-06-01T08:00:00Z",
+        completed_at: "2026-06-01T09:00:00Z",
+        matches: [],
+      }),
+    });
+  });
+
   // ── /auth/me — the SPA's session-bootstrap check ─────────────────
   await page.route("**/api/auth/me", async (route: Route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        user: {
-          id: "33333333-3333-3333-3333-333333333333",
-          email: "test@example.org",
-          name: "Test User",
-        },
+        id: "33333333-3333-3333-3333-333333333333",
+        email: "test@example.org",
+        name: "Test User",
+        role: "editor",
       }),
     });
   });
@@ -272,11 +295,17 @@ export async function installExtractionMocks(page: Page, state: MockState) {
       if (idx >= 0) {
         const merged: MockEntity = { ...state.entities[idx] };
         if (typeof body.approved === "boolean") merged.approved = body.approved;
-        if (typeof body.type === "string") merged.type = body.type;
-        if (typeof body.role === "string") merged.role = body.role;
-        if (typeof body.text === "string") merged.text = body.text;
-        if (typeof body.override_type === "string") merged.override_type = body.override_type;
-        if (typeof body.override_role === "string") merged.override_role = body.override_role;
+        if (typeof body.override_type === "string") {
+          merged.override_type = body.override_type;
+          merged.type = body.override_type;
+        }
+        if (typeof body.override_role === "string") {
+          merged.override_role = body.override_role;
+          merged.role = body.override_role;
+        }
+        if (typeof body.override_text === "string") {
+          merged.text = body.override_text;
+        }
         state.entities[idx] = merged;
         await route.fulfill({
           status: 200,

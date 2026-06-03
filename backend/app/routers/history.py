@@ -432,6 +432,8 @@ async def _apply_revert_to_read_model(
             values["override_type"] = target_state.get("override_type")
         if "override_role" in target_state:
             values["override_role"] = target_state.get("override_role")
+        if "override_text" in target_state:
+            values["override_text"] = target_state.get("override_text")
         if "ai_verdict" in target_state:
             values["ai_verdict"] = target_state.get("ai_verdict")
         if values:

@@ -208,7 +208,7 @@ async def build(
     entities_by_cn: dict[str, list[dict[str, Any]]] = {}
     for r in ner_rows:
         entities_by_cn.setdefault(r.control_number, []).append({
-            "text":             r.text,
+            "text":             r.override_text or r.text,
             "type":             (r.override_type or r.type or "").upper(),
             "role":             (r.override_role or r.role or "").upper(),
             "source":           r.source,

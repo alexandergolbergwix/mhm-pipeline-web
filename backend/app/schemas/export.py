@@ -73,6 +73,7 @@ class ExportExtractionEntity(BaseModel):
     model_confidence: float | None
     override_type: str | None
     override_role: str | None
+    override_text: str | None
     approved: bool
     approved_by_email: str | None
     approved_at: datetime | None

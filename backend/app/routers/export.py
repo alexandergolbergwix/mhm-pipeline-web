@@ -294,6 +294,7 @@ async def export_project(
                 "model_confidence": r.model_confidence,
                 "override_type": r.override_type,
                 "override_role": r.override_role,
+                "override_text": r.override_text,
                 "approved": r.approved,
                 "approved_by_email": email_map.get(r.approved_by) if r.approved_by else None,
                 "approved_at": r.approved_at,

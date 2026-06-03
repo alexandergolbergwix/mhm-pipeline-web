@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { Layout } from "@/components/Layout";
-import { ApiError } from "@/api/client";
+import {Layout} from "@/components/Layout";
+import {ApiError} from "@/api/client";
+import {MarcFieldEditorDialog} from "@/components/MarcFieldEditorDialog";
+import {Runs} from "@/api/runs";
 import {
   HmoStudio,
   type HmoBuildResult,
@@ -26,6 +28,10 @@ export default function HmoStudioRoute() {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [dryRun, setDryRun] = useState(true);
+  const [recordCns, setRecordCns] = useState<string[]>([]);
+  const [recordQuery, setRecordQuery] = useState("");
+  const [editCn, setEditCn] = useState<string | null>(null);
+  const [showRecordPicker, setShowRecordPicker] = useState(false);
 
   // ── refreshers ─────────────────────────────────────────────────────────
 
@@ -51,6 +57,15 @@ export default function HmoStudioRoute() {
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    Runs.listRecords(runId)
+      .then((cns) => { if (!cancelled) setRecordCns(cns); })
+      .catch(() => { /* non-fatal */ });
+    return () => { cancelled = true; };
+  }, [runId]);
 
   // Auto-load coverage when the RDF is present and we haven't loaded it yet.
   useEffect(() => {
@@ -224,6 +239,46 @@ export default function HmoStudioRoute() {
           )}
         </section>
 
+        {/* MARC record editor */}
+        <section className="glass p-6 space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <div className="kicker">MARC records</div>
+              <h3 className="text-lg font-medium">Edit source catalog data</h3>
+              <p className="muted text-sm mt-1">
+                Hand-edit MARC fields before rebuilding the RDF graph and manifests.
+              </p>
+            </div>
+            <button type="button" onClick={() => setShowRecordPicker((v) => !v)}
+                    data-testid="hmo-edit-records-toggle"
+                    className="button-ghost text-sm">
+              {showRecordPicker ? "Hide records" : "Edit records…"}
+            </button>
+          </div>
+          {showRecordPicker && (
+            <div className="space-y-2">
+              <input value={recordQuery} onChange={(e) => setRecordQuery(e.target.value)}
+                     placeholder="Search control number…"
+                     className="input-glass text-sm w-full max-w-md" />
+              <ul className="max-h-48 overflow-auto border border-white/5 rounded-lg text-sm">
+                {recordCns
+                  .filter((cn) => !recordQuery || cn.includes(recordQuery))
+                  .slice(0, 200)
+                  .map((cn) => (
+                    <li key={cn} className="border-b border-white/5 px-3 py-1.5 flex justify-between">
+                      <span className="font-mono text-xs">{cn}</span>
+                      <button type="button" onClick={() => setEditCn(cn)}
+                              data-testid={`hmo-edit-marc-${cn}`}
+                              className="button-ghost text-xs">
+                        Edit MARC
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </section>
+
         {/* Bot creds */}
         <section className="glass p-6 space-y-2">
           <div className="kicker">Wikibase Cloud bot credentials</div>
@@ -246,6 +301,14 @@ export default function HmoStudioRoute() {
           </div>
         </section>
       </div>
+
+      {editCn && runId && (
+        <MarcFieldEditorDialog
+          runId={runId}
+          controlNumber={editCn}
+          onClose={() => setEditCn(null)}
+        />
+      )}
     </Layout>
   );
 }

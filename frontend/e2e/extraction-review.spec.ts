@@ -167,7 +167,7 @@ test.describe("AI Extraction entity-review UI", () => {
     await gotoExtraction(page);
     await page.getByTestId("entity-review").waitFor();
     await page.getByTestId("col-source").click({ button: "right" });
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog").filter({ hasText: "Filter" })).toBeVisible();
   });
 
   // ── 4. SELECTION + BULK ─────────────────────────────────────────
@@ -210,8 +210,14 @@ test.describe("AI Extraction entity-review UI", () => {
     await installExtractionMocks(page, state);
     await gotoExtraction(page);
     await page.getByTestId("entity-review").waitFor();
-    const approvedBox = page.getByTestId("entity-approved").first();
-    await approvedBox.check();
+    const approvedBox = page.locator('[data-testid="entity-approved"]:not(:checked)').first();
+    const patchReq = page.waitForRequest(
+      (req) =>
+        req.method() === "PATCH" &&
+        req.url().includes(`/extraction/entities/`),
+    );
+    await approvedBox.click();
+    await patchReq;
     await expect.poll(() => state.patchCalls.length).toBeGreaterThan(0);
     expect(state.patchCalls[0].body.approved).toBe(true);
   });
@@ -224,7 +230,7 @@ test.describe("AI Extraction entity-review UI", () => {
     const typeSelect = page.getByTestId("entity-type").first();
     await typeSelect.selectOption("OWNER");
     await expect.poll(() => state.patchCalls.length).toBeGreaterThan(0);
-    expect(state.patchCalls[0].body.type).toBe("OWNER");
+    expect(state.patchCalls[0].body.override_type).toBe("OWNER");
   });
 
   test("changing the inline Role select PATCHes the entity", async ({ page }) => {
@@ -235,7 +241,7 @@ test.describe("AI Extraction entity-review UI", () => {
     const roleSelect = page.getByTestId("entity-role").first();
     await roleSelect.selectOption("CENSOR");
     await expect.poll(() => state.patchCalls.length).toBeGreaterThan(0);
-    expect(state.patchCalls[0].body.role).toBe("CENSOR");
+    expect(state.patchCalls[0].body.override_role).toBe("CENSOR");
   });
 
   // ── 6. EDIT MODAL ───────────────────────────────────────────────
@@ -267,7 +273,7 @@ test.describe("AI Extraction entity-review UI", () => {
     await page.getByTestId("entity-edit-text").fill("Edited text");
     await page.getByTestId("entity-edit-save").click();
     await expect.poll(() => state.patchCalls.length).toBeGreaterThan(0);
-    expect(state.patchCalls[0].body.text).toBe("Edited text");
+    expect(state.patchCalls[0].body.override_text).toBe("Edited text");
     await expect(page.getByTestId("entity-edit-modal")).toHaveCount(0);
   });
 
@@ -279,7 +285,7 @@ test.describe("AI Extraction entity-review UI", () => {
     await gotoExtraction(page);
     await page.getByTestId("entity-review").waitFor();
     await page.getByTestId("entity-view-source").first().click();
-    const drawer = page.locator('aside:has-text("MARC source")');
+    const drawer = page.getByTestId("entity-detail-drawer");
     await expect(drawer).toBeVisible();
   });
 
@@ -290,7 +296,7 @@ test.describe("AI Extraction entity-review UI", () => {
     await page.getByTestId("entity-review").waitFor();
     const firstCn = state.entities[0].control_number;
     await page.getByTestId("entity-view-source").first().click();
-    const drawer = page.locator('aside:has-text("MARC source")');
+    const drawer = page.getByTestId("entity-detail-drawer");
     await expect(drawer).toContainText(firstCn);
   });
 
@@ -300,8 +306,8 @@ test.describe("AI Extraction entity-review UI", () => {
     await gotoExtraction(page);
     await page.getByTestId("entity-review").waitFor();
     await page.getByTestId("entity-view-source").first().click();
-    const drawer = page.locator('aside:has-text("MARC source")');
-    await expect(drawer).toContainText(/Entities in this record/);
+    const drawer = page.getByTestId("entity-detail-drawer");
+    await expect(drawer.getByTestId("card-marc-record")).toBeVisible();
   });
 
   // ── 8. AUTO-APPROVE RULE BUILDER ────────────────────────────────
@@ -322,11 +328,7 @@ test.describe("AI Extraction entity-review UI", () => {
     await page.getByTestId("entity-review").waitFor();
     await page.getByTestId("btn-auto-approve").click();
     const slider = page.getByTestId("min-confidence-slider");
-    await slider.evaluate((el: HTMLInputElement) => {
-      el.value = "0.95";
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await slider.fill("0.95");
     await expect(page.getByTestId("min-confidence-value")).toHaveText("0.95");
   });
 
@@ -359,6 +361,7 @@ test.describe("AI Extraction entity-review UI", () => {
     await page.getByTestId("entity-review").waitFor();
     await page.getByTestId("entity-select").first().check();
     await page.getByTestId("btn-verify-selected").click();
+    await page.getByRole("button", { name: /Start verification|Re-run verification/ }).click();
     await expect.poll(() => state.verifyStreamCalls.length).toBeGreaterThan(0);
   });
 
@@ -368,6 +371,7 @@ test.describe("AI Extraction entity-review UI", () => {
     await gotoExtraction(page);
     await page.getByTestId("entity-review").waitFor();
     await page.getByTestId("btn-verify-all-visible").click();
+    await page.getByRole("button", { name: /Start verification|Re-run verification/ }).click();
     await expect.poll(() => state.verifyStreamCalls.length).toBeGreaterThan(0);
     const call = state.verifyStreamCalls[0] as { entity_ids: string[] };
     expect(call.entity_ids).toHaveLength(state.entities.length);

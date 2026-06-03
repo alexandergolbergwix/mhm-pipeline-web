@@ -75,6 +75,26 @@ export interface UploadResponse {
   outcomes: UploadOutcome[];
 }
 
+export interface ItemOverridePayload {
+  labels?: Record<string, string | null>;
+  descriptions?: Record<string, string | null>;
+  aliases?: Record<string, string[] | null>;
+  add_statements?: Array<Record<string, unknown>>;
+  remove_statements?: number[];
+  statement_edits?: Record<string, Record<string, unknown>>;
+}
+
+export interface ItemOverrideResponse {
+  run_id: string;
+  local_id: string;
+  labels: Record<string, unknown>;
+  descriptions: Record<string, unknown>;
+  aliases: Record<string, unknown>;
+  add_statements: Array<Record<string, unknown>>;
+  remove_statements: number[];
+  statement_edits: Record<string, unknown>;
+}
+
 export const Studio = {
   build: (runId: string, approvedOnly = true) =>
     api.get<StudioBuild>(
@@ -94,5 +114,11 @@ export const Studio = {
     api.post<UploadResponse>(
       `/runs/${runId}/wikidata-studio/upload?dry_run=${opts.dry_run ? "true" : "false"}&approved_only=${opts.approved_only ? "true" : "false"}`,
       {},
+    ),
+
+  patchItemOverride: (runId: string, localId: string, payload: ItemOverridePayload) =>
+    api.patch<ItemOverrideResponse>(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}`,
+      payload,
     ),
 };

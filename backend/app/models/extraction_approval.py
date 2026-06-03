@@ -76,6 +76,7 @@ class ExtractionApproval(Base):
     # ── Curator overrides (downstream-influencing) ────────────────────
     override_type:  Mapped[str | None] = mapped_column(String(64), nullable=True)
     override_role:  Mapped[str | None] = mapped_column(String(64), nullable=True)
+    override_text:  Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     # ── Approval state ─────────────────────────────────────────────────
     approved:       Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

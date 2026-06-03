@@ -90,10 +90,10 @@ export function makeRequestSet(): MockAccessRequest[] {
 
 /** Outcome the mock returns from the confirm endpoint. */
 export type ConfirmOutcome =
-  | { status: "ok"; message?: string }
+  | { status: "ok" | "confirmed"; message?: string }
   | { status: "expired"; message?: string }
   | { status: "invalid"; message?: string }
-  | { status: "already_confirmed"; message?: string };
+  | { status: "already_confirmed" | "already_used"; message?: string };
 
 export interface MockAccessRequestState {
   /** When true, /api/auth/me returns a logged-in admin. */
@@ -118,7 +118,7 @@ export function makeAccessRequestState(
     confirmOutcomes:
       overrides.confirmOutcomes ?? {
         [TEST_CONFIRM_TOKEN_OK]: {
-          status: "ok",
+          status: "confirmed",
           message: "Thank you. Your request is now awaiting admin review.",
         },
         [TEST_CONFIRM_TOKEN_EXPIRED]: {
@@ -159,19 +159,17 @@ export async function installAccessRequestMocks(
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          user: {
-            id: TEST_ADMIN_ID,
-            email: "admin@example.org",
-            name: "Test Admin",
-            role: "admin",
-          },
+          id: TEST_ADMIN_ID,
+          email: "admin@example.org",
+          name: "Test Admin",
+          role: "admin",
         }),
       });
     } else {
       await route.fulfill({
-        status: 200,
+        status: 401,
         contentType: "application/json",
-        body: JSON.stringify({ user: null }),
+        body: JSON.stringify({ detail: "not authenticated" }),
       });
     }
   });
@@ -212,17 +210,29 @@ export async function installAccessRequestMocks(
           status: "invalid",
           message: "This confirmation link is not valid.",
         };
+      const wireStatus =
+        outcome.status === "ok" ? "confirmed"
+        : outcome.status === "already_confirmed" ? "already_used"
+        : outcome.status;
+      if (wireStatus === "invalid") {
+        await route.fulfill({
+          status: 410,
+          contentType: "application/json",
+          body: JSON.stringify({
+            detail: outcome.message ?? "Invalid or expired confirmation link.",
+          }),
+        });
+        return;
+      }
       const httpStatus =
-        outcome.status === "ok" || outcome.status === "already_confirmed"
+        wireStatus === "confirmed" || wireStatus === "already_used" || wireStatus === "expired"
           ? 200
-          : outcome.status === "expired"
-          ? 410
           : 404;
       await route.fulfill({
         status: httpStatus,
         contentType: "application/json",
         body: JSON.stringify({
-          status: outcome.status,
+          status: wireStatus,
           message: outcome.message ?? "",
         }),
       });
@@ -248,7 +258,7 @@ export async function installAccessRequestMocks(
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ requests: state.requests }),
+        body: JSON.stringify(state.requests),
       });
     },
   );
@@ -399,5 +409,5 @@ export async function gotoConfirmRequest(
   page: Page,
   token: string,
 ): Promise<void> {
-  await page.goto(`/request-access/confirm?token=${encodeURIComponent(token)}`);
+  await page.goto(`/access-request/confirm/${encodeURIComponent(token)}`);
 }

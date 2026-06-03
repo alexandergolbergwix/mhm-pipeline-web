@@ -69,6 +69,9 @@ export const Runs = {
 
   listMatches: (id: string) => api.get<AuthorityMatch[]>(`/runs/${id}/matches`),
 
+  listRecords: (id: string) =>
+    api.get<string[]>(`/runs/${id}/records`),
+
   getRecord: (id: string, controlNumber: string) =>
     api.get<RunMarcRecord>(`/runs/${id}/records/${encodeURIComponent(controlNumber)}`),
 
@@ -97,5 +100,29 @@ export const Runs = {
       checked: number; updated: number;
       births_filled: number; deaths_filled: number;
     }>(`/runs/${runId}/matches/backfill-dates`, {}),
+
+  editMatch: (
+    runId: string,
+    matchId: string,
+    patch: {
+      matched_name?: string;
+      mazal_id?: string;
+      viaf_id?: string;
+      wikidata_qid?: string;
+      confidence?: "high" | "medium" | "low";
+      role?: string;
+      entity_text?: string;
+    },
+  ) =>
+    api.patch<AuthorityMatch>(
+      `/runs/${runId}/matches/${matchId}/edit`,
+      patch,
+    ),
+
+  editRecord: (runId: string, controlNumber: string, marc: Record<string, unknown>) =>
+    api.patch<RunMarcRecord>(
+      `/runs/${runId}/records/${encodeURIComponent(controlNumber)}`,
+      {marc},
+    ),
 };
 

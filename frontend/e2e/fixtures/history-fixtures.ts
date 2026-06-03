@@ -23,6 +23,7 @@
 import type { Page, Route } from "@playwright/test";
 
 import {
+  TEST_PROJECT_ID,
   TEST_RUN_ID as EXTRACTION_TEST_RUN_ID,
   installExtractionMocks,
   makeMockState as makeExtractionMockState,
@@ -34,7 +35,7 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const TEST_PROJECT_ID = "11111111-1111-1111-1111-111111111111";
+export {TEST_PROJECT_ID};
 
 // Reuse the extraction-fixtures run id so the routes the SPA hits for
 // the StageExtraction page resolve against the same mocks regardless
@@ -203,20 +204,42 @@ export async function installHistoryMocks(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        user: {
-          id: "44444444-4444-4444-4444-444444444444",
-          email: "admin@example.org",
-          name: "Admin User",
-          is_admin: true,
-        },
+        id: "44444444-4444-4444-4444-444444444444",
+        email: "admin@example.org",
+        name: "Admin User",
+        role: "admin",
       }),
     });
   });
 
   // ── GET /projects/{id}/history?entity_type=…&entity_id=… ────────
-  // The HistoryDiffModal also hits `/history/diff` against the
-  // same base path; route those FIRST so the generic timeline
-  // regex doesn't shadow them.
+  // Playwright matches routes in reverse registration order, so the
+  // generic timeline handler is registered FIRST and the specific
+  // /diff, /revert, /snapshots handlers LAST (checked first).
+
+  // ── GET /history (the timeline) — register before /diff ─────────
+  await page.route(`${HISTORY_BASE}*`, async (route: Route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    const url = new URL(route.request().url());
+    const pathTail = url.pathname.slice(url.pathname.indexOf("/history"));
+    if (
+      pathTail.startsWith("/history/diff") ||
+      pathTail.startsWith("/history/revert") ||
+      pathTail.startsWith("/history/snapshots") ||
+      pathTail.startsWith("/history/at")
+    ) {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(state.events),
+    });
+  });
 
   // ── GET /history/diff ──────────────────────────────────────────
   await page.route(`${HISTORY_BASE}/diff*`, async (route: Route) => {
@@ -303,34 +326,6 @@ export async function installHistoryMocks(
     });
   });
 
-  // ── GET /history (the timeline) ────────────────────────────────
-  // Must register LAST so the more-specific /diff, /revert and
-  // /snapshots routes above are matched first. Playwright iterates
-  // registered routes in reverse insertion order.
-  await page.route(`${HISTORY_BASE}*`, async (route: Route) => {
-    if (route.request().method() !== "GET") {
-      await route.continue();
-      return;
-    }
-    const url = new URL(route.request().url());
-    // The /diff, /revert, /snapshots paths SHOULD have been caught
-    // already, but guard against an upstream change in route order.
-    const pathTail = url.pathname.slice(url.pathname.indexOf("/history"));
-    if (
-      pathTail.startsWith("/history/diff") ||
-      pathTail.startsWith("/history/revert") ||
-      pathTail.startsWith("/history/snapshots") ||
-      pathTail.startsWith("/history/at")
-    ) {
-      await route.continue();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(state.events),
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------

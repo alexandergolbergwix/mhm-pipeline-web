@@ -34,7 +34,9 @@ research tool; not user-facing.
 | AI Extraction — Review UI (ExtractionEditor) | `gui/widgets/extraction_editor.py` (2,606 LOC) | ✓ shipped: 11-feature parity surface | **DONE** — `frontend/src/components/extraction/` (Rule W-16) |
 | AI Extraction — NER AI verification | `gui/dialogs/ai_verification_dialog.py` (NER scope) | ✓ shipped | **DONE** — `NerVerificationModal` + `extraction_verify.py` router (Rule W-17 / W-18) |
 | Authority Enrichment — Matchers (Mazal/VIAF/Wikidata/KIMA) | `converter/authority/*.py` | ✓ byte-identical | none |
-| Authority Enrichment — Hardening (7 guards) | `controller/workers.py::AuthorityWorker` | partial (date guard only) | **PORT** to `app/pipeline/authority_hardening.py` |
+| Authority Enrichment — Hardening (7 guards) | `controller/workers.py::AuthorityWorker` | ✓ shipped (`authority_hardening.py`) | none |
+| Authority Enrichment — KIMA/VIAF payload completeness | `app/pipeline/authority.py` | ✓ shipped (Rule W-23) | none |
+| Curator field editing (all 4 surfaces) | desktop editors + web dialogs | ✓ shipped (Rule W-24) | none |
 | RDF Graph — RDF mapper | `converter/transformer/mapper.py` | ✓ already in web | wire endpoint |
 | RDF Graph — Ontology | `ontology/hebrew-manuscripts.ttl` | absent | **COPY** to `backend/ontology/` |
 | RDF Graph — SHACL | `ontology/shacl-shapes.ttl` + `pyshacl` | absent | **COPY + threadpool** |
@@ -42,7 +44,9 @@ research tool; not user-facing.
 | HMO — Manifest builder | `converter/wikidata/iiif_manifest_builder.py` | ✓ already in web | wire endpoint |
 | HMO — Uploader | `converter/wikidata/iiif_uploader.py` | ✓ already in web | wire endpoint |
 | HMO — Crosswalk + coverage | `converter/wikidata/hmo_crosswalk.py`, `projection_coverage.py` | ✓ already in web | wire endpoint |
-| HMO — Wikibase Cloud Writer | `converter/wikibase/cloud_client.py` | absent | **COPY + adapt creds** |
+| HMO — Wikibase Cloud Writer | `converter/wikibase/cloud_client.py` | ✓ shipped | none |
+| HMO — MARC field editor | `RecordEdit` + `MarcFieldEditorDialog` | ✓ shipped | none |
+| Wikidata Studio — per-item override editor | `ItemOverridePayload` + `ItemOverrideDialog` | ✓ shipped | none |
 | Wikidata Studio backend | `controller/workers.py::WikidataUploadWorker` | ✓ already wrapped | none |
 | Safety guards (Rule 38) | `converter/wikidata/uploader.py` | ✓ byte-identical | none |
 

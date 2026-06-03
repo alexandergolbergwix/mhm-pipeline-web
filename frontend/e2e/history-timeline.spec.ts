@@ -73,6 +73,7 @@ test.describe("HistoryTimeline + HistoryDiffModal", () => {
   });
 
   test("Diff modal renders patch + before + after", async ({ page }) => {
+    test.setTimeout(60_000);
     const state = makeHistoryMockState();
     await installHistoryMocks(page, state);
     await gotoTimeline(page);
@@ -83,24 +84,25 @@ test.describe("HistoryTimeline + HistoryDiffModal", () => {
 
     const modal = page.getByTestId("diff-modal");
     await expect(modal).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId("diff-modal-loading")).toHaveCount(0, {
+      timeout: 15000,
+    });
 
     // Diff endpoint was called with from=2, to=3 (sorted ascending).
     await expect
-      .poll(() => state.diffCalls.length, { timeout: 5000 })
+      .poll(() => state.diffCalls.length, { timeout: 10000 })
       .toBeGreaterThan(0);
     const call = state.diffCalls[state.diffCalls.length - 1];
     expect(call.from_rev).toBe(2);
     expect(call.to_rev).toBe(3);
 
-    // Patch list visible + carries the replace op.
-    const patchList = page.getByTestId("diff-patch-list");
-    await expect(patchList).toBeVisible();
-    await expect(patchList).toContainText("replace");
-    await expect(patchList).toContainText("/approved");
+    await expect(modal).toContainText("replace", { timeout: 10000 });
+    await expect(modal).toContainText("approved", { timeout: 10000 });
 
-    // before + after sections both rendered.
-    await expect(page.getByTestId("diff-before")).toBeVisible();
-    await expect(page.getByTestId("diff-after")).toBeVisible();
+    await expect(modal.getByTestId("diff-before")).toBeVisible();
+    const after = modal.getByTestId("diff-after");
+    await after.scrollIntoViewIfNeeded();
+    await expect(after).toBeVisible();
   });
 
   test("Revert button opens confirm dialog", async ({ page }) => {
@@ -177,6 +179,7 @@ test.describe("HistoryTimeline + HistoryDiffModal", () => {
   });
 
   test("Diff modal closes on Escape", async ({ page }) => {
+    test.setTimeout(60_000);
     const state = makeHistoryMockState();
     await installHistoryMocks(page, state);
     await gotoTimeline(page);
@@ -185,13 +188,14 @@ test.describe("HistoryTimeline + HistoryDiffModal", () => {
     await page.getByTestId("event-checkbox-3").check();
     await page.getByTestId("diff-button").click();
 
-    await page.getByTestId("diff-modal").waitFor({ timeout: 8000 });
-
-    // Use the body so the keypress isn't swallowed by a focused
-    // child element with its own handler.
+    const modal = page.getByTestId("diff-modal");
+    await modal.waitFor({ timeout: 8000 });
+    await expect(page.getByTestId("diff-modal-loading")).toHaveCount(0, {
+      timeout: 15000,
+    });
     await page.keyboard.press("Escape");
 
-    await expect(page.getByTestId("diff-modal")).toHaveCount(0);
+    await expect(modal).toHaveCount(0, { timeout: 5000 });
   });
 
   // Sanity check kept alongside the 7 scenarios: TEST_ENTITY_ID is

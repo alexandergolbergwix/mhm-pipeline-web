@@ -131,6 +131,28 @@ class DesktopMatcher(AuthorityMatcher):
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
 
+    async def _kima_enrich_place(
+        self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> dict[str, Any] | None:
+        """Return the full KIMA index row for *text*, or None."""
+        if self._kima is None:
+            return None
+
+        async def _f() -> dict[str, Any] | None:
+            def _sync() -> dict[str, Any] | None:
+                idx = self._kima.index  # type: ignore[union-attr]
+                if idx is None:
+                    return None
+                return idx.lookup_place(text)  # type: ignore[attr-defined]
+
+            return await asyncio.to_thread(_sync)
+
+        return await self._cached(
+            kind="authority.kima",
+            query_summary={"op": "lookup_place", "text": text},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
     async def _mazal_match_person(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
@@ -213,6 +235,10 @@ class DesktopMatcher(AuthorityMatcher):
         death_year: int | None = None
         guards: list[str] = []
         reasoning_parts: list[str] = []
+        kima_hit = False
+        kima_payload: dict[str, Any] = {}
+        mazal_details: dict[str, Any] | None = None
+        viaf_meta: dict[str, Any] | None = None
 
         # — KIMA (places only) —
         # KIMA is the desktop's geographic-authority adapter. It returns
@@ -226,12 +252,25 @@ class DesktopMatcher(AuthorityMatcher):
                     text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
                 )
                 if uri:
+                    kima_hit = True
                     sources.append("kima")
                     # Pull the QID off the URI for the wikidata column.
                     qid = uri.rsplit("/", 1)[-1]
                     if qid.startswith("Q"):
                         wikidata_qid = qid
                     reasoning_parts.append(f"KIMA hit ({uri}).")
+                    kima_row = await self._kima_enrich_place(
+                        text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                    )
+                    if kima_row:
+                        kima_payload = {
+                            "kima_id":       kima_row.get("kima_id"),
+                            "kima_heb":      kima_row.get("primary_heb"),
+                            "kima_rom":      kima_row.get("primary_rom"),
+                            "kima_lat":      kima_row.get("lat"),
+                            "kima_lon":      kima_row.get("lon"),
+                            "kima_geonames": kima_row.get("geonames_id"),
+                        }
             except Exception as exc:  # noqa: BLE001
                 logger.warning("KIMA matcher raised for %r: %s", text, exc)
 
@@ -258,11 +297,11 @@ class DesktopMatcher(AuthorityMatcher):
                     # authority row and resolve it (handles Hebrew
                     # century, "נפטר 1628", "1542-1620", …).
                     try:
-                        details = await self._mazal_get_details(
+                        mazal_details = await self._mazal_get_details(
                             mid, db_session=db_session, user_id=user_id,
                             skip_cache=skip_cache,
                         ) or {}
-                        dates_str = (details.get("dates") or "").strip()
+                        dates_str = (mazal_details.get("dates") or "").strip()
                         if dates_str:
                             from converter.transformer.date_resolver import (  # noqa: PLC0415
                                 resolve_person_dates,
@@ -285,18 +324,18 @@ class DesktopMatcher(AuthorityMatcher):
                 # the GND/LCCN/ISNI/BnF cluster IDs the desktop pipeline
                 # threads into person Wikidata items) without a second
                 # round-trip per candidate.
-                meta = await self._viaf_match_with_metadata(
+                viaf_meta = await self._viaf_match_with_metadata(
                     text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
                 )
-                if meta:
-                    viaf_id = str(meta.get("viaf_id") or "")
+                if viaf_meta:
+                    viaf_id = str(viaf_meta.get("viaf_id") or "")
                     if viaf_id:
                         sources.append("viaf")
                         reasoning_parts.append(f"VIAF hit ({viaf_id}).")
-                        if birth_year is None and meta.get("birth_year"):
-                            birth_year = int(meta["birth_year"])
-                        if death_year is None and meta.get("death_year"):
-                            death_year = int(meta["death_year"])
+                        if birth_year is None and viaf_meta.get("birth_year"):
+                            birth_year = int(viaf_meta["birth_year"])
+                        if death_year is None and viaf_meta.get("death_year"):
+                            death_year = int(viaf_meta["death_year"])
             except Exception as exc:  # noqa: BLE001
                 logger.warning("VIAF matcher raised for %r: %s", text, exc)
 
@@ -442,17 +481,34 @@ class DesktopMatcher(AuthorityMatcher):
             return []
 
         # Re-derive the source label after guards may have stripped ids.
-        sources_after = [
-            s for s, val in (
-                ("mazal", mazal_id), ("viaf", viaf_id), ("wikidata", wikidata_qid),
-            ) if val
-        ]
+        # KIMA resolves via wikidata_qid but must stay attributed to kima,
+        # not wikidata, when the SPARQL matcher did not fire.
+        sources_after = []
+        if mazal_id:
+            sources_after.append("mazal")
+        if viaf_id:
+            sources_after.append("viaf")
+        if kima_hit:
+            sources_after.append("kima")
+        if wikidata_qid and "wikidata" in sources:
+            sources_after.append("wikidata")
         if len(sources_after) >= 2:
             source_label = "cross_source"
         elif len(sources_after) == 1:
             source_label = sources_after[0]
         else:
             source_label = "heuristic"
+
+        cluster_ids = {
+            k: viaf_meta.get(k)
+            for k in ("gnd", "lc", "isni", "bnf", "j9u")
+            if viaf_meta and viaf_meta.get(k)
+        }
+        preferred_name_lat = (
+            (viaf_meta.get("preferred_name_lat") if viaf_meta else None)
+            or (mazal_details.get("preferred_name_lat") if mazal_details else None)
+            or text
+        )
 
         primary = Candidate(
             matched_name=text,
@@ -468,10 +524,12 @@ class DesktopMatcher(AuthorityMatcher):
                 "birth_year": birth_year,
                 "death_year": death_year,
                 "ms_year": ms_year,
-                "preferred_name_lat": text,        # desktop's real romanisation
-                                                    # lives in hebrew_translit and is
-                                                    # called by item_builder, not here
-                "cluster_ids": {},
+                "preferred_name_lat": preferred_name_lat,
+                "preferred_name_heb": (
+                    mazal_details.get("preferred_name_heb") if mazal_details else None
+                ),
+                "cluster_ids": cluster_ids,
+                **kima_payload,
                 "role_kind": _role_kind(role),
                 "reasoning": " ".join(reasoning_parts),
                 "ai_verdict": None,

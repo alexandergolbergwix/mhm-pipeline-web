@@ -43,13 +43,13 @@ test.describe("Public request-access form", () => {
     await expect(page.getByTestId("request-access-form")).toBeVisible({
       timeout: 8000,
     });
-    await expect(page.getByTestId("request-access-name")).toBeVisible();
-    await expect(page.getByTestId("request-access-email")).toBeVisible();
-    await expect(page.getByTestId("request-access-affiliation")).toBeVisible();
+    await expect(page.getByTestId("input-name")).toBeVisible();
+    await expect(page.getByTestId("input-email")).toBeVisible();
+    await expect(page.getByTestId("input-affiliation")).toBeVisible();
     await expect(
-      page.getByTestId("request-access-justification"),
+      page.getByTestId("input-justification"),
     ).toBeVisible();
-    await expect(page.getByTestId("request-access-submit")).toBeVisible();
+    await expect(page.getByTestId("submit-button")).toBeVisible();
   });
 
   test("submit disabled until justification >= 40 chars", async ({ page }) => {
@@ -58,28 +58,28 @@ test.describe("Public request-access form", () => {
     await gotoRequestAccess(page);
     await page.getByTestId("request-access-form").waitFor();
 
-    await page.getByTestId("request-access-name").fill("Test User");
-    await page.getByTestId("request-access-email").fill("user@example.org");
+    await page.getByTestId("input-name").fill("Test User");
+    await page.getByTestId("input-email").fill("user@example.org");
     await page
-      .getByTestId("request-access-affiliation")
+      .getByTestId("input-affiliation")
       .fill("Example University");
 
-    const submit = page.getByTestId("request-access-submit");
+    const submit = page.getByTestId("submit-button");
 
     // Below 40 chars → disabled.
-    await page.getByTestId("request-access-justification").fill("Too short.");
+    await page.getByTestId("input-justification").fill("Too short.");
     await expect(submit).toBeDisabled();
 
     // Exactly 40 chars → enabled.
     const exactly40 = "a".repeat(40);
     await page
-      .getByTestId("request-access-justification")
+      .getByTestId("input-justification")
       .fill(exactly40);
     await expect(submit).toBeEnabled();
 
     // Below 40 again → disabled again.
     await page
-      .getByTestId("request-access-justification")
+      .getByTestId("input-justification")
       .fill("a".repeat(39));
     await expect(submit).toBeDisabled();
   });
@@ -90,11 +90,11 @@ test.describe("Public request-access form", () => {
     await gotoRequestAccess(page);
     await page.getByTestId("request-access-form").waitFor();
 
-    const honeypot = page.getByTestId("request-access-honeypot");
+    const honeypot = page.getByTestId("input-website");
     // The element exists in the DOM (so a bot can fill it) but must
     // not be visible to a human.
     await expect(honeypot).toHaveCount(1);
-    await expect(honeypot).toBeHidden();
+    await expect(honeypot).not.toBeInViewport();
   });
 
   test("happy path: submit → generic success message replaces form", async ({
@@ -105,16 +105,21 @@ test.describe("Public request-access form", () => {
     await gotoRequestAccess(page);
     await page.getByTestId("request-access-form").waitFor();
 
-    await page.getByTestId("request-access-name").fill("Test User");
-    await page.getByTestId("request-access-email").fill("user@example.org");
+    await page.getByTestId("input-name").fill("Test User");
+    await page.getByTestId("input-email").fill("user@example.org");
     await page
-      .getByTestId("request-access-affiliation")
+      .getByTestId("input-affiliation")
       .fill("Example University");
     await page
-      .getByTestId("request-access-justification")
+      .getByTestId("input-justification")
       .fill(LONG_JUSTIFICATION);
 
-    await page.getByTestId("request-access-submit").click();
+    await page.evaluate(() => {
+      window.onTurnstileSuccess?.("e2e-turnstile-token");
+    });
+    const submit = page.getByTestId("submit-button");
+    await expect(submit).toBeEnabled();
+    await submit.click();
 
     // Backend received the submit.
     await expect.poll(() => state.submitCalls.length).toBeGreaterThan(0);
@@ -122,14 +127,14 @@ test.describe("Public request-access form", () => {
 
     // Form is replaced by the generic success message.
     await expect(
-      page.getByTestId("request-access-success"),
+      page.getByTestId("success-message"),
     ).toBeVisible({ timeout: 5000 });
     await expect(page.getByTestId("request-access-form")).toHaveCount(0);
 
     // The success copy is the OWASP-strict generic line — never
     // confirms whether the email already had an account.
     const successText = (
-      await page.getByTestId("request-access-success").textContent()
+      await page.getByTestId("success-message").textContent()
     ) ?? "";
     expect(successText).toMatch(/email|next steps|check/i);
     expect(successText).not.toMatch(/already (registered|exists)/i);
@@ -143,31 +148,28 @@ test.describe("Public request-access form", () => {
     await gotoRequestAccess(page);
     await page.getByTestId("request-access-form").waitFor();
 
-    await page.getByTestId("request-access-name").fill("Bot User");
-    await page.getByTestId("request-access-email").fill("bot@example.org");
-    await page.getByTestId("request-access-affiliation").fill("Botland");
+    await page.getByTestId("input-name").fill("Bot User");
+    await page.getByTestId("input-email").fill("bot@example.org");
+    await page.getByTestId("input-affiliation").fill("Botland");
     await page
-      .getByTestId("request-access-justification")
+      .getByTestId("input-justification")
       .fill(LONG_JUSTIFICATION);
 
-    // Bots fill EVERY field including the honeypot. Use evaluate so
-    // we bypass any visibility guards on the hidden input.
-    await page.getByTestId("request-access-honeypot").evaluate(
-      (el: HTMLInputElement) => {
-        el.value = "https://bot.example/spam";
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      },
-    );
+    await page
+      .getByTestId("input-website")
+      .fill("https://bot.example/spam", { force: true });
 
-    await page.getByTestId("request-access-submit").click();
+    await page.evaluate(() => {
+      window.onTurnstileSuccess?.("e2e-turnstile-token");
+    });
+    await page.getByTestId("submit-button").click();
     await expect.poll(() => state.submitCalls.length).toBeGreaterThan(0);
 
     // From the user's perspective the UI is identical to the
     // legitimate happy path — that's the enumeration-resistant
     // contract. The fixture's honeypotTripped flag is the only place
     // the trip is visible.
-    await expect(page.getByTestId("request-access-success")).toBeVisible();
+    await expect(page.getByTestId("success-message")).toBeVisible();
     expect(state.honeypotTripped).toBe(true);
   });
 });
@@ -181,14 +183,12 @@ test.describe("Confirm page", () => {
     await installAccessRequestMocks(page, state);
     await gotoConfirmRequest(page, TEST_CONFIRM_TOKEN_OK);
 
-    await expect(page.getByTestId("confirm-request-status")).toHaveAttribute(
-      "data-status",
-      "ok",
-      { timeout: 8000 },
+    await expect(page.getByTestId("confirm-status-confirmed")).toBeVisible({
+      timeout: 8000,
+    });
+    await expect(page.getByTestId("confirm-message")).toContainText(
+      /admin review|thank|awaiting/i,
     );
-    await expect(
-      page.getByTestId("confirm-request-message"),
-    ).toContainText(/admin review|thank|awaiting/i);
   });
 
   test("ConfirmRequest page shows the right message per status — expired", async ({
@@ -198,14 +198,10 @@ test.describe("Confirm page", () => {
     await installAccessRequestMocks(page, state);
     await gotoConfirmRequest(page, TEST_CONFIRM_TOKEN_EXPIRED);
 
-    await expect(page.getByTestId("confirm-request-status")).toHaveAttribute(
-      "data-status",
-      "expired",
-      { timeout: 8000 },
-    );
-    await expect(
-      page.getByTestId("confirm-request-message"),
-    ).toContainText(/expired/i);
+    await expect(page.getByTestId("confirm-status-expired")).toBeVisible({
+      timeout: 8000,
+    });
+    await expect(page.getByTestId("confirm-message")).toContainText(/expired/i);
   });
 
   test("ConfirmRequest page shows the right message per status — invalid", async ({
@@ -215,14 +211,12 @@ test.describe("Confirm page", () => {
     await installAccessRequestMocks(page, state);
     await gotoConfirmRequest(page, TEST_CONFIRM_TOKEN_INVALID);
 
-    await expect(page.getByTestId("confirm-request-status")).toHaveAttribute(
-      "data-status",
-      "invalid",
-      { timeout: 8000 },
+    await expect(page.getByTestId("confirm-error")).toBeVisible({
+      timeout: 8000,
+    });
+    await expect(page.getByTestId("confirm-error")).toContainText(
+      /not valid|invalid|expired/i,
     );
-    await expect(
-      page.getByTestId("confirm-request-message"),
-    ).toContainText(/not valid|invalid/i);
   });
 });
 
@@ -233,15 +227,15 @@ test.describe("Admin access-request queue", () => {
     await installAccessRequestMocks(page, state);
     await gotoAdminQueue(page);
 
-    await expect(page.getByTestId("access-requests-queue")).toBeVisible({
+    await expect(page.getByTestId("access-requests-page")).toBeVisible({
       timeout: 8000,
     });
+    await page.getByTestId("filter-chip-pending_admin").click();
 
-    // Default filter is "Pending" — only the two pending_admin rows.
     const pendingCount = state.requests.filter(
       (r) => r.status === "pending_admin",
     ).length;
-    await expect(page.getByTestId("access-request-row")).toHaveCount(
+    await expect(page.locator('[data-testid^="request-row-"]')).toHaveCount(
       pendingCount,
     );
   });
@@ -252,30 +246,23 @@ test.describe("Admin access-request queue", () => {
     const state = makeAccessRequestState({ authedAsAdmin: true });
     await installAccessRequestMocks(page, state);
     await gotoAdminQueue(page);
-    await page.getByTestId("access-requests-queue").waitFor();
+    await page.getByTestId("access-requests-page").waitFor();
+    await page.getByTestId("filter-chip-pending_admin").click();
 
     const pendingBefore = state.requests.filter(
       (r) => r.status === "pending_admin",
     ).length;
-    await expect(page.getByTestId("access-request-row")).toHaveCount(
+    await expect(page.locator('[data-testid^="request-row-"]')).toHaveCount(
       pendingBefore,
     );
 
-    // Click Approve on the first pending row.
-    await page.getByTestId("access-request-approve-btn").first().click();
+    const firstPending = state.requests.find((r) => r.status === "pending_admin");
+    expect(firstPending).toBeTruthy();
+    await page.getByTestId(`approve-button-${firstPending!.id}`).click();
 
-    // If a confirmation dialog is rendered (best practice for
-    // destructive-ish actions), confirm it. Otherwise this is a no-op.
-    const confirmBtn = page.getByTestId("access-request-approve-confirm");
-    if (await confirmBtn.count()) {
-      await confirmBtn.click();
-    }
-
-    // Backend was called.
     await expect.poll(() => state.approveCalls.length).toBeGreaterThan(0);
 
-    // Row count under the Pending filter shrinks by one.
-    await expect(page.getByTestId("access-request-row")).toHaveCount(
+    await expect(page.locator('[data-testid^="request-row-"]')).toHaveCount(
       pendingBefore - 1,
     );
   });
@@ -284,17 +271,19 @@ test.describe("Admin access-request queue", () => {
     const state = makeAccessRequestState({ authedAsAdmin: true });
     await installAccessRequestMocks(page, state);
     await gotoAdminQueue(page);
-    await page.getByTestId("access-requests-queue").waitFor();
+    await page.getByTestId("access-requests-page").waitFor();
 
-    await page.getByTestId("access-request-deny-btn").first().click();
+    const firstPending = state.requests.find((r) => r.status === "pending_admin");
+    expect(firstPending).toBeTruthy();
+    await page.getByTestId(`deny-button-${firstPending!.id}`).click();
 
-    const reasonModal = page.getByTestId("access-request-deny-modal");
+    const reasonModal = page.getByTestId("deny-modal");
     await expect(reasonModal).toBeVisible();
 
-    const reasonInput = page.getByTestId("access-request-deny-reason");
+    const reasonInput = page.getByTestId("deny-reason-input");
     await reasonInput.fill("Outside the scope of the corpus.");
 
-    await page.getByTestId("access-request-deny-submit").click();
+    await page.getByTestId("deny-confirm-button").click();
 
     await expect.poll(() => state.denyCalls.length).toBeGreaterThan(0);
     expect(state.denyCalls[0].reason).toBe("Outside the scope of the corpus.");
@@ -307,40 +296,28 @@ test.describe("Admin access-request queue", () => {
     const state = makeAccessRequestState({ authedAsAdmin: true });
     await installAccessRequestMocks(page, state);
     await gotoAdminQueue(page);
-    await page.getByTestId("access-requests-queue").waitFor();
+    await page.getByTestId("access-requests-page").waitFor();
 
-    // "All" should show every row in the mock corpus.
-    const allChip = page.getByTestId("access-requests-filter-all");
-    if (await allChip.count()) {
-      await allChip.click();
-      await expect(page.getByTestId("access-request-row")).toHaveCount(
-        state.requests.length,
-      );
-    }
+    await page.getByTestId("filter-chip-all").click();
+    await expect(page.locator('[data-testid^="request-row-"]')).toHaveCount(
+      state.requests.length,
+    );
 
-    // "Approved" should show only the approved row.
-    const approvedChip = page.getByTestId("access-requests-filter-approved");
-    if (await approvedChip.count()) {
-      await approvedChip.click();
-      const approvedCount = state.requests.filter(
-        (r) => r.status === "approved",
-      ).length;
-      await expect(page.getByTestId("access-request-row")).toHaveCount(
-        approvedCount,
-      );
-    }
+    await page.getByTestId("filter-chip-approved").click();
+    const approvedCount = state.requests.filter(
+      (r) => r.status === "approved",
+    ).length;
+    await expect(page.locator('[data-testid^="request-row-"]')).toHaveCount(
+      approvedCount,
+    );
 
-    // "Denied" should show only the denied row.
-    const deniedChip = page.getByTestId("access-requests-filter-denied");
-    if (await deniedChip.count()) {
-      await deniedChip.click();
-      const deniedCount = state.requests.filter(
-        (r) => r.status === "denied",
-      ).length;
-      await expect(page.getByTestId("access-request-row")).toHaveCount(
-        deniedCount,
-      );
-    }
+    await page.getByTestId("filter-chip-denied").click();
+    const deniedCount = state.requests.filter(
+      (r) => r.status === "denied",
+    ).length;
+    await expect(page.locator('[data-testid^="request-row-"]')).toHaveCount(
+      deniedCount,
+    );
   });
 
   test("non-admin visitor is redirected away from the queue", async ({
@@ -356,7 +333,7 @@ test.describe("Admin access-request queue", () => {
     // queue's "not authorized" sentinel — both are acceptable, but
     // the row table is never shown.
     await page.waitForTimeout(500);
-    const rows = page.getByTestId("access-request-row");
+    const rows = page.locator('[data-testid^="request-row-"]');
     await expect(rows).toHaveCount(0);
   });
 });

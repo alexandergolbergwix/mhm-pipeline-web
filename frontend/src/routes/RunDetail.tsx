@@ -357,6 +357,12 @@ export default function RunDetail() {
                         <div className="flex items-center justify-end gap-1">
                           <button onClick={() => setOpenMatch(m)}
                                   className="button-ghost text-xs">Details</button>
+                          <button onClick={() => setOpenMatch(m)}
+                                  data-testid={`match-edit-${m.id}`}
+                                  className="button-ghost text-xs"
+                                  title="Open details to edit match fields">
+                            Edit
+                          </button>
                           <button
                             type="button"
                             data-testid={`history-button-${m.id}`}

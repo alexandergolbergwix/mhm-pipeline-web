@@ -227,11 +227,10 @@ export async function installRdfMocks(page: Page, state: RdfMockState) {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        user: {
-          id: "33333333-3333-3333-3333-333333333333",
-          email: "test@example.org",
-          name: "Test User",
-        },
+        id: "33333333-3333-3333-3333-333333333333",
+        email: "test@example.org",
+        name: "Test User",
+        role: "editor",
       }),
     });
   });
