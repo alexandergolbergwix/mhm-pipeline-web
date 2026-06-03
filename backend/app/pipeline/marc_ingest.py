@@ -369,6 +369,43 @@ def _str(v: Any) -> str:
     return v.strip() if isinstance(v, str) else ""
 
 
+def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
+    """Normalise a ``run_records.marc`` JSONB row before any pipeline stage.
+
+    Must be called by every pipeline consumer that reads records straight
+    from the DB (Wikidata Studio, RDF build, etc.) so they all see the
+    same flat-key shape as ingest-time records.
+
+    Specifically:
+    - Collapses raw ``<tag>$<sub>`` subfield keys (``505$a`` → ``contents``,
+      ``561$a`` → ``provenance``, ``500$a`` → ``notes``, etc.) for records
+      uploaded before the 2026-06-02 ingest normalisation was deployed.
+    - Coerces ``genres`` to ``list[str]`` (the item builder and graph builder
+      both expect plain strings; old rows stored dicts).
+
+    Safe to call on already-normalised records — ``_collapse_marc_subfields``
+    is idempotent for all non-subfield-key paths.
+    """
+    row = dict(rec)
+    if any("$" in k for k in row):
+        _collapse_marc_subfields(row)
+    raw_genres = row.get("genres")
+    if raw_genres:
+        flat: list[str] = []
+        for g in raw_genres:
+            if isinstance(g, str) and g.strip():
+                flat.append(g.strip())
+            elif isinstance(g, dict):
+                term = _str(g.get("name") or g.get("term"))
+                if term:
+                    flat.append(term)
+        if flat:
+            row["genres"] = flat
+        elif isinstance(raw_genres, list) and raw_genres and isinstance(raw_genres[0], dict):
+            row["genres"] = []
+    return row
+
+
 # ── Entity extraction ───────────────────────────────────────────────────
 
 

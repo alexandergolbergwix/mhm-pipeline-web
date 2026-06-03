@@ -68,10 +68,17 @@ async def build_items_for_run(
         by_cn.setdefault(m["control_number"], []).append(m)
     ents_by_cn = entities_by_cn or {}
 
+    from app.pipeline.marc_ingest import prepare_record_for_pipeline  # noqa: PLC0415
+
     enriched: list[dict[str, Any]] = []
     for rec in marc_records:
-        cn = str(rec.get("_control_number", ""))
-        out = dict(rec)
+        out = prepare_record_for_pipeline(rec)
+        cn = str(
+            out.get("_control_number")
+            or out.get("control_number")
+            or out.get("controlNumber")
+            or ""
+        )
         out["authors"]      = _to_dict_list(out.get("authors"),      default_role="author",      default_field="100")
         out["contributors"] = _to_dict_list(out.get("contributors"), default_role="contributor", default_field="700")
         out["subjects"]     = _to_dict_list(out.get("subjects"),     default_role="subject",     default_field="600")

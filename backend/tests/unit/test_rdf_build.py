@@ -1,12 +1,15 @@
-"""RDF build must tolerate run_records.marc rows from NLI-style collapse."""
+"""Regression tests: RDF build + Wikidata Studio normalisation of run_records.marc rows."""
 
 from __future__ import annotations
 
-from pathlib import Path
+import asyncio
+import re as _re
 import tempfile
+from pathlib import Path
 
-from app.pipeline.marc_ingest import _collapse_marc_subfields
+from app.pipeline.marc_ingest import _collapse_marc_subfields, prepare_record_for_pipeline
 from app.pipeline.rdf_build import _prepare_record_for_rdf, _run_mapper_sync
+from app.pipeline.wikidata_studio import build_items_for_run
 
 
 def _nli_style_record() -> dict:
@@ -39,13 +42,7 @@ class TestRdfBuildCollapsedMarc:
             assert out.stat().st_size > 0
 
     def test_quoted_control_number_does_not_crash_uri_build(self) -> None:
-        """Control numbers stored with embedded quotes must not produce invalid URIs.
-
-        The quoted CN is allowed inside literal values (``xsd:string``) but must
-        never appear as part of a URI — i.e. not inside angle-bracket ``<...>``.
-        """
-        import re as _re
-
+        """Control numbers stored with embedded quotes must not produce invalid URIs."""
         rec = {
             "_control_number": '"990000403370205171"',
             "title": "ספר תורה",
@@ -58,7 +55,6 @@ class TestRdfBuildCollapsedMarc:
             assert manuscripts == 1
             assert triples > 0
             ttl = out.read_text(encoding="utf-8")
-            # Verify no angle-bracket URI contains the quoted CN.
             uri_fragments = _re.findall(r"<[^>]+>", ttl)
             leaked = [u for u in uri_fragments if '"990000403370205171"' in u]
             assert not leaked, f"raw quoted CN leaked into URI(s): {leaked}"
@@ -77,3 +73,36 @@ class TestRdfBuildCollapsedMarc:
         assert errors == []
         assert triples > 0
         assert manuscripts == 1
+
+
+class TestWikidataStudioWorks:
+    def test_works_created_from_505a_subfield_key(self) -> None:
+        """Records with raw 505$a (old DB rows) must produce work items."""
+        rec = {
+            "_control_number": "990001",
+            "245$a": "כתב יד",
+            "505$a": "פירוש א -- פירוש ב -- פירוש ג",
+            "100$a": "ראובן בן יעקב",
+        }
+        result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
+        summary = result["summary"]
+        assert summary["works"] == 3, f"expected 3 work items, got {summary['works']}"
+        assert summary["manuscripts"] == 1
+
+    def test_works_created_from_flat_contents(self) -> None:
+        """Records already normalised (flat contents list) still produce work items."""
+        rec = {
+            "_control_number": "990002",
+            "title": "כתב יד",
+            "contents": [{"title": "פירוש א"}, {"title": "פירוש ב"}],
+        }
+        result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
+        assert result["summary"]["works"] == 2
+
+    def test_prepare_record_for_pipeline_derives_contents(self) -> None:
+        rec = {"_control_number": "X", "505$a": "א -- ב -- ג"}
+        out = prepare_record_for_pipeline(rec)
+        titles = [c["title"] for c in out.get("contents") or []]
+        assert "א" in titles
+        assert "ב" in titles
+        assert "ג" in titles
