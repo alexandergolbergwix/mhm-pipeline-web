@@ -11,9 +11,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -56,12 +56,29 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # CORS — needed during dev when the frontend runs on 5173. In
-    # production the frontend is served from the same origin, so the
-    # CORS layer is a no-op (no cross-origin requests).
+    # HTTP → HTTPS redirect (production only). Heroku terminates TLS at its
+    # load balancer and sets X-Forwarded-Proto; the dyno always sees plain
+    # HTTP internally, so we check the forwarded proto header.
+    if settings.is_production:
+        @app.middleware("http")
+        async def enforce_https(request: Request, call_next):  # type: ignore[no-untyped-def]
+            proto = request.headers.get("x-forwarded-proto", "https")
+            if proto == "http":
+                url = request.url.replace(scheme="https")
+                return RedirectResponse(url=str(url), status_code=301)
+            return await call_next(request)
+
+    # CORS — needed during dev when the frontend runs on 5173. In production
+    # the frontend is served from the same origin so the CORS layer is a
+    # no-op, but we list both bare and www variants for safety.
+    allowed_origins = [settings.frontend_origin]
+    if settings.is_production:
+        bare = settings.frontend_origin.replace("//www.", "//")
+        www = settings.frontend_origin.replace("//", "//www.", 1) if "//www." not in settings.frontend_origin else settings.frontend_origin
+        allowed_origins = list({settings.frontend_origin, bare, www})
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.frontend_origin],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
         allow_headers=["*"],
