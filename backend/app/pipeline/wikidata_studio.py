@@ -205,12 +205,15 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
     """
     payload = m.get("payload") or {}
     cluster = payload.get("cluster_ids") or {}
-    # Strip surrounding/trailing quotes that MARC parsers sometimes leave in
-    # role strings (e.g. 'former owner"', '"(מעתיק)"') so ROLE_TO_PID can
-    # match them correctly.
-    raw_role = str(m.get("role") or "").strip().strip('"').strip()
+    # Strip surrounding/trailing quotes (ASCII + Unicode typographic) that
+    # MARC parsers sometimes leave in role and name strings — e.g.
+    # 'former owner"', '"(מעתיק)"', '"Meir Netiv"' — so ROLE_TO_PID can match
+    # and the builder's clean_name path doesn't need to double-strip.
+    _Q = '"\'\u201c\u201d\u2018\u2019\u00ab\u00bb\u2039\u203a'
+    raw_role = str(m.get("role") or "").strip().strip(_Q).strip()
+    raw_name = str(m.get("entity_text") or "").strip().strip(_Q).strip().rstrip(",;:.")
     return {
-        "name":               m.get("entity_text", ""),
+        "name":               raw_name,
         "role":               raw_role,
         "field":              "700/710/711",
         "mazal_id":           m.get("mazal_id", ""),
