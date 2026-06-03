@@ -437,11 +437,14 @@ class BulkApprovePayload(BaseModel):
 
 
 class AutoApprovePayload(BaseModel):
-    """``POST /extraction/entities/auto-approve`` body."""
+    """``POST /extraction/entities/auto-approve[/preview]`` body."""
 
-    min_confidence: float = Field(0.85, ge=0.0, le=1.0)
-    # When set, only auto-approve rows whose source is in this list.
-    sources:        list[str] | None = None
+    min_confidence:  float           = Field(0.85, ge=0.0, le=1.0)
+    sources:         list[str] | None = None
+    types:           list[str] | None = None
+    not_roles:       list[str] | None = None
+    # When True, only approve entities that already have an AI verdict of pass.
+    require_ai_pass: bool = False
     # When True, refuse to flip rows the AI already failed.
     respect_ai_fail: bool = True
 
@@ -1020,6 +1023,75 @@ async def bulk_approve_entities(
     return {"updated": len(rows_to_upsert), "approved": payload.approved}
 
 
+async def _auto_approve_eligible(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    payload: AutoApprovePayload,
+) -> list[dict]:
+    """Return the list of entity dicts that pass the auto-approve predicate.
+
+    Shared by the preview and apply endpoints so they can never diverge.
+    Does NOT write anything to the database.
+    """
+    path = _results_path(run_id)
+    if not path.exists():
+        return []
+    try:
+        records = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+
+    rows = (
+        await db.execute(
+            select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
+        )
+    ).scalars().all()
+
+    ai_verdict_map: dict[str, str] = {}
+    for r in rows:
+        if r.ai_verdict:
+            eid = _entity_id(
+                control_number=r.control_number, source=r.source,
+                text=r.text, start=r.start, end=r.end,
+            )
+            ai_verdict_map[eid] = str(r.ai_verdict.get("overall") or "").lower()
+
+    eligible: list[dict] = []
+    for ent in _flatten_records(records):
+        if payload.sources and ent["source"] not in payload.sources:
+            continue
+        if payload.types and ent.get("type") not in payload.types:
+            continue
+        mconf = float(ent.get("model_confidence") or 0.0)
+        if mconf < payload.min_confidence:
+            continue
+        verdict = ai_verdict_map.get(ent["id"], "")
+        if payload.require_ai_pass and verdict != "pass":
+            continue
+        if payload.respect_ai_fail and verdict == "fail":
+            continue
+        if payload.not_roles and ent.get("role") in payload.not_roles:
+            continue
+        eligible.append(ent)
+    return eligible
+
+
+@router.post("/runs/{run_id}/extraction/entities/auto-approve/preview")
+async def preview_auto_approve_entities(
+    run_id: uuid.UUID,
+    payload: AutoApprovePayload,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Dry-run of auto-approve: returns ``{matched, approved}`` without
+    writing. The frontend uses this to show a live preview count as the
+    curator adjusts the rule sliders.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    eligible = await _auto_approve_eligible(db, run_id, payload)
+    return {"matched": len(eligible), "approved": 0}
+
+
 @router.post("/runs/{run_id}/extraction/entities/auto-approve")
 async def auto_approve_entities(
     run_id: uuid.UUID,
@@ -1027,66 +1099,35 @@ async def auto_approve_entities(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Auto-approve every entity whose model_confidence ≥ threshold.
+    """Auto-approve every entity that passes the rule predicate.
 
-    Honours ``payload.sources`` (subset filter) and
-    ``payload.respect_ai_fail`` (skip rows the AI already failed).
-    Returns ``{checked, approved}``.
+    Returns ``{matched, approved}``.
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
-
-    path = _results_path(run_id)
-    if not path.exists():
-        return {"checked": 0, "approved": 0}
-    try:
-        records = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {"checked": 0, "approved": 0}
-
-    # Pull existing rows so we can honour respect_ai_fail.
-    rows = (
-        await db.execute(
-            select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
-        )
-    ).scalars().all()
-    ai_fail = set()
-    for r in rows:
-        if r.ai_verdict and str(r.ai_verdict.get("overall") or "").lower() == "fail":
-            ai_fail.add(_entity_id(
-                control_number=r.control_number, source=r.source,
-                text=r.text, start=r.start, end=r.end,
-            ))
-
     now = datetime.now(timezone.utc)
-    eligible: list[dict] = []
-    checked = 0
-    for ent in _flatten_records(records):
-        checked += 1
-        if payload.sources and ent["source"] not in payload.sources:
-            continue
-        mconf = float(ent.get("model_confidence") or 0.0)
-        if mconf < payload.min_confidence:
-            continue
-        if payload.respect_ai_fail and ent["id"] in ai_fail:
-            continue
-        eligible.append({
-            "run_id":          run_id,
-            "control_number":  ent["control_number"],
-            "source":          ent["source"],
-            "text":            ent["text"],
-            "start":           ent["start"],
-            "end":             ent["end"],
-            "type":            ent.get("type"),
-            "role":            ent.get("role"),
-            "confidence":      ent.get("confidence"),
-            "model_confidence": ent.get("model_confidence"),
-            "approved":        True,
-            "approved_by":     auth.user.id,
-            "approved_at":     now,
-        })
 
-    if eligible:
-        stmt = pg_insert(ExtractionApproval).values(eligible)
+    eligible = await _auto_approve_eligible(db, run_id, payload)
+    rows_to_insert = [
+        {
+            "run_id":           run_id,
+            "control_number":   ent["control_number"],
+            "source":           ent["source"],
+            "text":             ent["text"],
+            "start":            ent["start"],
+            "end":              ent["end"],
+            "type":             ent.get("type"),
+            "role":             ent.get("role"),
+            "confidence":       ent.get("confidence"),
+            "model_confidence": ent.get("model_confidence"),
+            "approved":         True,
+            "approved_by":      auth.user.id,
+            "approved_at":      now,
+        }
+        for ent in eligible
+    ]
+
+    if rows_to_insert:
+        stmt = pg_insert(ExtractionApproval).values(rows_to_insert)
         stmt = stmt.on_conflict_do_update(
             constraint="uq_extraction_approval_key",
             set_={
@@ -1106,4 +1147,4 @@ async def auto_approve_entities(
             )
         await db.commit()
 
-    return {"checked": checked, "approved": len(eligible)}
+    return {"matched": len(eligible), "approved": len(rows_to_insert)}
