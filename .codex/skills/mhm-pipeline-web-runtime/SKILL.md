@@ -15,7 +15,7 @@ Any prompt that asks to:
 
 ## Invariants this skill enforces
 
-Read `CLAUDE.md` Rules W-1 through W-10 in full before suggesting any
+Read `CLAUDE.md` Rules W-1 through W-26 in full before suggesting any
 architectural change. Highlights:
 
 - **W-1**: eval-agent stays a subprocess (argv + env + stdout). No
@@ -35,6 +35,14 @@ architectural change. Highlights:
 - **W-9**: SSE cancellation SIGTERMs the child subprocess.
 - **W-10**: `backend/converter/` is a byte-identical mirror of
   `pipeline/converter/`.
+- **W-12**: All external inference calls (NER/authority/LLM) go
+  through `cache_lookup_or_call` — never call a vendor SDK directly.
+- **W-25**: Redis L1 sits in front of Postgres L2 for inference
+  cache. `get_redis()` returns `None` when `REDIS_URL` absent (safe
+  fallback). New inference call sites must use `cache_lookup_or_call`.
+- **W-26**: Wikidata Studio build result cached in
+  `wikidata_studio_cache` table; keyed by `input_fingerprint`. Cache
+  auto-invalidates when input data changes — never clear manually.
 
 ## Standard commands
 
@@ -51,3 +59,9 @@ prefer calling those over inlining new bash blocks.
   smokes. Move it inside the function body.
 - Surfacing a free-text prompt textarea in the AI verify modal →
   violates W-2. Add the action to the registry instead.
+- Calling a vendor SDK (Modal, VIAF, Wikidata SPARQL) directly in a
+  route handler → bypasses W-25 two-tier cache. Always go through
+  `cache_lookup_or_call`.
+- On Heroku, `REDIS_URL` uses a self-signed `rediss://` cert — the
+  client initialises with `ssl_cert_reqs=None` intentionally.
+  Never remove that flag or Redis connections will fail.

@@ -244,8 +244,82 @@ def _pg_expires_at(kind: str, now: datetime) -> datetime | None:
     return now + ttl if ttl is not None else None
 
 
+async def write_to_inference_cache(
+    db: AsyncSession,
+    *,
+    kind: str,
+    query_summary: dict[str, Any],
+    result: Any,
+    user_id: uuid.UUID | None = None,
+) -> None:
+    """Write a result directly to both cache tiers without a fetch() callable.
+
+    Used after subprocess-based inference (eval-agent AI verdicts) where the
+    result is already known — the standard cache_lookup_or_call flow would
+    require wrapping the entire subprocess in a fetch() which is impractical
+    for streaming SSE runners.
+
+    Silently swallows write errors (same contract as cache_lookup_or_call).
+    """
+    from app.cache.redis_client import get_redis  # noqa: PLC0415
+
+    if result is None:
+        return
+    if isinstance(result, list) and not result:
+        return
+
+    query_hash = canonical_hash(query_summary)
+    redis_key = f"ic:{kind}:{query_hash}"
+    now = datetime.now(timezone.utc)
+    redis = await get_redis()
+
+    if redis is not None:
+        await _redis_set(redis, redis_key, kind, result)
+    expires_at = _pg_expires_at(kind, now)
+    try:
+        await _write(
+            db, kind=kind, query_hash=query_hash,
+            query_summary=query_summary, result=result,
+            user_id=user_id, now=now, expires_at=expires_at,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("inference_cache direct write failed (kind=%s): %s", kind, exc)
+
+
+async def read_from_inference_cache(
+    db: AsyncSession,
+    *,
+    kind: str,
+    query_summary: dict[str, Any],
+) -> Any:
+    """Read directly from the cache (Redis L1 → Postgres L2) without fetch().
+
+    Returns the cached result, or None on miss / expired entry.
+    Used for pre-checking before spawning an expensive subprocess so we can
+    skip the call entirely for already-verified entities.
+    """
+    from app.cache.redis_client import get_redis  # noqa: PLC0415
+
+    query_hash = canonical_hash(query_summary)
+    redis_key = f"ic:{kind}:{query_hash}"
+    now = datetime.now(timezone.utc)
+    redis = await get_redis()
+
+    if redis is not None:
+        try:
+            raw = await redis.get(redis_key)
+            if raw is not None:
+                return json.loads(raw)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("redis L1 GET failed (kind=%s): %s", kind, exc)
+
+    return await _read(db, kind=kind, query_hash=query_hash, now=now)
+
+
 __all__ = [
     "KIND_TTL",
     "cache_lookup_or_call",
     "canonical_hash",
+    "read_from_inference_cache",
+    "write_to_inference_cache",
 ]

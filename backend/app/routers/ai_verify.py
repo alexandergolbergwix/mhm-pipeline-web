@@ -36,6 +36,7 @@ from app.pipeline.agent_runner import (
     new_session_id, persist_session_event, read_session, read_run_verdicts,
     spawn_eval_agent_run, sse_stream,
 )
+from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.routers.runs import _lookup_run_with_access
 
 
@@ -179,87 +180,121 @@ async def _session_event_stream(
 
     Wraps the eval-agent runner with synthetic ``session.start`` /
     ``session.end`` framing and persists every event to disk for replay.
+
+    Global inference-cache integration
+    -----------------------------------
+    Before spawning the subprocess, each match is checked against the
+    shared ``inference_cache`` (Redis L1 → Postgres L2, kind ``ai_verdict``).
+    Matches with a cached verdict are streamed immediately as
+    ``agent.verdict`` events without calling Gemini. Only uncached matches
+    go through the eval-agent subprocess. After the subprocess completes,
+    each new verdict is written back to both cache tiers so subsequent
+    users warm-hit on the same entity.
+
+    ``override_cache=True`` skips the pre-check (forces fresh Gemini calls)
+    but still writes new verdicts to the cache afterwards.
     """
+    from app.db import session_scope  # noqa: PLC0415
+
     eval_root = locate_eval_agent()
-    # Two paths, on purpose:
-    #   state_dir    — shared across every session of this run. Holds
-    #                  the eval-agent's verdict cache (so opening the
-    #                  modal again warm-hits prior judgements) and the
-    #                  accumulated `runs/<ts>/` artefacts.
-    #   session_dir  — isolated per session. Holds the filtered fixture
-    #                  fed to eval-agent and the SSE event audit log.
     state_dir = eval_root / "state" / "ai-verify-sessions" / run_id
     session_dir = state_dir / "sessions" / session_id
     pipeline_output = session_dir / "pipeline-output"
-    base = session_dir  # legacy alias, kept for the trace + verdict reads below
+    base = session_dir
+    session_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build the filtered fixture.
+    # ── Pre-check inference cache ──────────────────────────────────────
+    # Split matches into already-verified (warm cache hit) and uncached.
+    # override_cache bypasses this check so every match goes through
+    # Gemini fresh — but we still write the new verdicts back afterwards.
+    pre_cached: list[tuple[AuthorityMatch, RunRecord, dict[str, Any]]] = []
+    uncached: list[tuple[AuthorityMatch, RunRecord]] = []
+    if not override_cache:
+        async with session_scope() as pre_db:
+            for match, record in matches:
+                qs = _authority_verdict_query_summary(match)
+                hit = await read_from_inference_cache(
+                    pre_db, kind="ai_verdict", query_summary=qs,
+                )
+                if hit is not None:
+                    pre_cached.append((match, record, hit))
+                else:
+                    uncached.append((match, record))
+    else:
+        uncached = list(matches)
+
+    # ── Build fixture (only uncached matches need to go to eval-agent) ─
     by_cn: dict[str, list[dict[str, Any]]] = {}
     marc_by_cn: dict[str, dict[str, Any]] = {}
-    for match, record in matches:
+    for match, record in uncached:
         cn = match.control_number
         by_cn.setdefault(cn, []).append(_match_to_desktop_shape(match))
         marc_by_cn.setdefault(cn, dict(record.marc or {}))
 
-    authority_records = []
-    for cn, ms in by_cn.items():
-        # Merge MARC fields onto the synthetic authority record so the
-        # eval-agent's evaluator sees the same shape it does for full
-        # pipeline outputs.
-        base_marc = dict(marc_by_cn.get(cn) or {"_control_number": cn})
-        base_marc.setdefault("_control_number", cn)
-        base_marc["marc_authority_matches"] = ms
-        authority_records.append(base_marc)
-
-    build_filtered_fixture(
-        dest_dir=pipeline_output,
-        marc_records=list(marc_by_cn.values()) or [
-            {"_control_number": cn} for cn in by_cn
-        ],
-        authority_records=authority_records,
-    )
+    if by_cn:
+        authority_records = []
+        for cn, ms in by_cn.items():
+            base_marc = dict(marc_by_cn.get(cn) or {"_control_number": cn})
+            base_marc.setdefault("_control_number", cn)
+            base_marc["marc_authority_matches"] = ms
+            authority_records.append(base_marc)
+        build_filtered_fixture(
+            dest_dir=pipeline_output,
+            marc_records=list(marc_by_cn.values()),
+            authority_records=authority_records,
+        )
 
     start_ev = AgentEvent(
         type="session.start",
         payload={
-            "session_id": session_id,
-            "run_id":     run_id,
-            "action_id":  action.id,
-            "scope_size": len(matches),
-            "scope_cn":   list(by_cn.keys()),
-            "goal":       agent_actions.render_goal(action, n_candidates=len(matches)),
+            "session_id":  session_id,
+            "run_id":      run_id,
+            "action_id":   action.id,
+            "scope_size":  len(matches),
+            "scope_cn":    sorted({m.control_number for m, _ in matches}),
+            "goal":        agent_actions.render_goal(action, n_candidates=len(matches)),
+            "cache_hits":  len(pre_cached),
         },
     )
     persist_session_event(base, start_ev)
     yield start_ev
 
+    # ── Emit pre-cached verdicts immediately ──────────────────────────
+    for match, _rec, cached_payload in pre_cached:
+        synthetic = {
+            "candidate": {**_match_to_desktop_shape(match), "_match_id": str(match.id)},
+            "verdict":   cached_payload.get("verdict") or {},
+            "judge_id":  cached_payload.get("judge_id"),
+            "judged_at": cached_payload.get("judged_at"),
+            "cache_key": cached_payload.get("cache_key"),
+            "evaluator_id": cached_payload.get("evaluator"),
+            "from_inference_cache": True,
+        }
+        ev = AgentEvent(type="agent.verdict", payload=synthetic)
+        persist_session_event(base, ev)
+        yield ev
+
+    # ── Subprocess for uncached matches ───────────────────────────────
     try:
-        async for ev in spawn_eval_agent_run(
-            pipeline_output=pipeline_output,
-            evaluators=action.evaluators,
-            api_key=api_key,
-            state_dir=state_dir,
-            tier_model=tier_model,
-            override_cache=override_cache,
-            rpm=action.rate_limit_rpm,
-        ):
-            persist_session_event(base, ev)
-            yield ev
+        if uncached:
+            async for ev in spawn_eval_agent_run(
+                pipeline_output=pipeline_output,
+                evaluators=action.evaluators,
+                api_key=api_key,
+                state_dir=state_dir,
+                tier_model=tier_model,
+                override_cache=override_cache,
+                rpm=action.rate_limit_rpm,
+            ):
+                persist_session_event(base, ev)
+                yield ev
     finally:
-        # When the subprocess exits (or is cancelled), synthesise the
-        # final per-candidate verdict events from the on-disk results
-        # so the UI's verdict table fills in fully even if the live
-        # event stream missed some (cache hits don't emit per-cand
-        # progress lines).
-        on_disk_verdicts = read_run_verdicts(state_dir)
+        on_disk_verdicts = read_run_verdicts(state_dir) if uncached else []
         for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)
             yield ev
 
-        # Persist verdicts back to AuthorityMatch.payload.ai_verdict so
-        # the matches table shows them after the modal closes and the
-        # curator can revisit them later without re-running the agent.
         if on_disk_verdicts:
             try:
                 await _persist_ai_verdicts_to_matches(
@@ -267,8 +302,18 @@ async def _session_event_stream(
                     session_id=session_id,
                     verdicts=on_disk_verdicts,
                 )
-            except Exception:  # noqa: BLE001 — UI must still get session.end
+            except Exception:  # noqa: BLE001
                 logger.exception("failed to persist ai verdicts to matches")
+
+            # Write new verdicts to the shared inference cache so future
+            # users verifying the same authority entity get a warm hit.
+            try:
+                await _write_authority_verdicts_to_cache(
+                    matches_by_id={str(m.id): m for m, _ in uncached},
+                    verdicts=on_disk_verdicts,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("failed to write authority verdicts to inference cache")
 
         end_ev = AgentEvent(
             type="session.end",
@@ -280,6 +325,50 @@ async def _session_event_stream(
         )
         persist_session_event(base, end_ev)
         yield end_ev
+
+
+def _authority_verdict_query_summary(match: AuthorityMatch) -> dict[str, Any]:
+    """Stable content key for caching an authority verdict across users/runs.
+
+    Keyed by the entity's canonical identity: name + role + authority IDs.
+    Two users verifying the same authority entity (same IDs) will always
+    produce the same hash and therefore share the cached Gemini verdict.
+    """
+    return {
+        "text":         (match.entity_text or "").strip(),
+        "role":         (match.role or "").strip(),
+        "mazal_id":     match.mazal_id or "",
+        "viaf_id":      match.viaf_id or "",
+        "wikidata_qid": match.wikidata_qid or "",
+    }
+
+
+async def _write_authority_verdicts_to_cache(
+    *,
+    matches_by_id: dict[str, AuthorityMatch],
+    verdicts: list[dict[str, Any]],
+) -> None:
+    """Persist newly-judged authority verdicts into the shared inference cache."""
+    from app.db import session_scope  # noqa: PLC0415
+
+    async with session_scope() as db:
+        for v in verdicts:
+            cand = v.get("candidate") if isinstance(v, dict) else None
+            match_id = cand.get("_match_id") if isinstance(cand, dict) else None
+            match = matches_by_id.get(str(match_id)) if match_id else None
+            if match is None:
+                continue
+            qs = _authority_verdict_query_summary(match)
+            cached_result = {
+                "verdict":   v.get("verdict") or {},
+                "judge_id":  v.get("judge_id") or v.get("model"),
+                "judged_at": v.get("judged_at"),
+                "cache_key": v.get("cache_key"),
+                "evaluator": v.get("evaluator_id") or v.get("evaluator"),
+            }
+            await write_to_inference_cache(
+                db, kind="ai_verdict", query_summary=qs, result=cached_result,
+            )
 
 
 async def _persist_ai_verdicts_to_matches(

@@ -88,6 +88,8 @@ added for the public **request-access** flow (§2.2), is:
 | `EXTRACTION_MODE` | `modal` / `hf-api` / `local` (see §2.1) | yes |
 | `MODAL_NER_URL` | Modal endpoint when `EXTRACTION_MODE=modal` | conditional |
 | `HF_TOKEN` | HF token when `EXTRACTION_MODE=hf-api` | conditional |
+| `REDIS_URL` | Set automatically by Heroku Redis add-on; used as inference cache L1 | strongly recommended |
+| `RATELIMIT_STORAGE_URI` | Same value as `REDIS_URL`; used by `slowapi` for distributed rate limiting | strongly recommended |
 
 ### 2.1 — Extraction backend (Modal vs local vs HF)
 
@@ -374,18 +376,44 @@ The script is idempotent; safe to re-run after partial failure.
 
 ---
 
+## 6.8 — Redis (inference cache L1 + rate-limit storage)
+
+A Heroku Redis Mini add-on ($3/month) provides the L1 inference
+cache and the distributed `slowapi` rate-limit storage.
+
+```bash
+# Provision (one-time)
+heroku addons:create heroku-redis:mini --app "$APP"
+
+# heroku-redis:mini auto-sets REDIS_URL. Wire it to the rate limiter:
+heroku config:set --app "$APP" \
+    RATELIMIT_STORAGE_URI="$(heroku config:get REDIS_URL --app "$APP")"
+```
+
+The backend reads `REDIS_URL` / `RATELIMIT_STORAGE_URI` at startup.
+When neither is set (dev/CI), `get_redis()` returns `None` and the
+app falls back to Postgres-only caching and in-process rate limiting
+— no code-path change required.
+
+**TLS note.** Heroku Redis uses a self-signed certificate on
+`rediss://` URLs. The client is initialised with
+`ssl_cert_reqs=None` to disable hostname verification while keeping
+transport encrypted — this is intentional (see Rule W-25 in
+`CLAUDE.md`).
+
 ## 7. Cost reference (typical, as of 2026)
 
 | Item                                | $/month |
 |-------------------------------------|--------:|
 | Heroku Basic dyno                   | **$7**  |
 | Heroku Postgres Essential-0 (1 GB)  | **$5**  |
+| Heroku Redis Mini                   | **$3**  |
 | Heroku Postgres Essential-1 (10 GB) | $10     |
 | Standard-1X dyno (if you outgrow Basic) | $25  |
 | Standard-0 Postgres (64 GB)         | $50     |
 
-Recommended starter: Basic + Essential-0 = **$12/month**. Step up to
-Essential-1 the moment you intend to load the full Mazal dump.
+Recommended starter: Basic + Essential-0 + Redis Mini = **$15/month**.
+Step up to Essential-1 the moment you intend to load the full Mazal dump.
 
 ---
 

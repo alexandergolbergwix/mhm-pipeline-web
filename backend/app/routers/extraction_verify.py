@@ -40,6 +40,7 @@ from app.pipeline.agent_runner import (
     new_session_id, persist_session_event, read_session, read_run_verdicts,
     spawn_eval_agent_run, sse_stream,
 )
+from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.routers.runs import _lookup_run_with_access
 
 
@@ -153,16 +154,39 @@ async def _session_event_stream(
     override_cache: bool,
     tier_model: str | None,
 ):
+    import json as _json  # noqa: PLC0415
+
+    from app.db import session_scope  # noqa: PLC0415
+
     eval_root = locate_eval_agent()
     state_dir = eval_root / "state" / "extraction-verify-sessions" / run_id
     session_dir = state_dir / "sessions" / session_id
     pipeline_output = session_dir / "pipeline-output"
     base = session_dir
+    session_dir.mkdir(parents=True, exist_ok=True)
 
+    # ── Pre-check inference cache ──────────────────────────────────────
+    pre_cached: list[tuple[ExtractionApproval, RunRecord, dict[str, Any]]] = []
+    uncached: list[tuple[ExtractionApproval, RunRecord]] = []
+    if not override_cache:
+        async with session_scope() as pre_db:
+            for ext, record in entities:
+                qs = _ner_verdict_query_summary(ext)
+                hit = await read_from_inference_cache(
+                    pre_db, kind="ai_verdict", query_summary=qs,
+                )
+                if hit is not None:
+                    pre_cached.append((ext, record, hit))
+                else:
+                    uncached.append((ext, record))
+    else:
+        uncached = list(entities)
+
+    # ── Build fixture (only uncached entities) ─────────────────────────
     by_cn_ents: dict[str, list[dict[str, Any]]] = {}
     by_cn_genres: dict[str, list[dict[str, Any]]] = {}
     marc_by_cn: dict[str, dict[str, Any]] = {}
-    for ext, record in entities:
+    for ext, record in uncached:
         cn = ext.control_number
         marc_by_cn.setdefault(cn, dict(record.marc or {}))
         if ext.source == "genre":
@@ -174,59 +198,84 @@ async def _session_event_stream(
         else:
             by_cn_ents.setdefault(cn, []).append(_approval_to_ner_shape(ext))
 
-    ner_records: list[dict[str, Any]] = []
-    for cn in sorted(set(marc_by_cn) | set(by_cn_ents) | set(by_cn_genres)):
-        rec_marc = dict(marc_by_cn.get(cn) or {"_control_number": cn})
-        rec_marc.setdefault("_control_number", cn)
-        ner_records.append({
-            "_control_number": cn,
-            "text":            str(rec_marc.get("text") or ""),
-            "entities":        by_cn_ents.get(cn, []),
-            "ml_genres":       by_cn_genres.get(cn, []),
-        })
+    if marc_by_cn or by_cn_ents or by_cn_genres:
+        ner_records: list[dict[str, Any]] = []
+        for cn in sorted(set(marc_by_cn) | set(by_cn_ents) | set(by_cn_genres)):
+            rec_marc = dict(marc_by_cn.get(cn) or {"_control_number": cn})
+            rec_marc.setdefault("_control_number", cn)
+            ner_records.append({
+                "_control_number": cn,
+                "text":       str(rec_marc.get("text") or ""),
+                "entities":   by_cn_ents.get(cn, []),
+                "ml_genres":  by_cn_genres.get(cn, []),
+            })
+        build_filtered_fixture(
+            dest_dir=pipeline_output,
+            marc_records=list(marc_by_cn.values()) or [
+                {"_control_number": cn} for cn in marc_by_cn
+            ],
+            authority_records=[],
+        )
+        (pipeline_output / "ner_results.json").write_text(
+            _json.dumps(ner_records, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
-    import json as _json
-
-    build_filtered_fixture(
-        dest_dir=pipeline_output,
-        marc_records=list(marc_by_cn.values()) or [
-            {"_control_number": cn} for cn in marc_by_cn
-        ],
-        authority_records=[],
+    all_cns = sorted(
+        {e.control_number for e, _ in entities}
     )
-    (pipeline_output / "ner_results.json").write_text(
-        _json.dumps(ner_records, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
     start_ev = AgentEvent(
         type="session.start",
         payload={
-            "session_id": session_id,
-            "run_id":     run_id,
-            "action_id":  action.id,
-            "scope_size": len(entities),
-            "scope_cn":   sorted(set(marc_by_cn) | set(by_cn_ents) | set(by_cn_genres)),
-            "goal":       agent_actions.render_goal(action, n_candidates=len(entities)),
+            "session_id":  session_id,
+            "run_id":      run_id,
+            "action_id":   action.id,
+            "scope_size":  len(entities),
+            "scope_cn":    all_cns,
+            "goal":        agent_actions.render_goal(action, n_candidates=len(entities)),
+            "cache_hits":  len(pre_cached),
         },
     )
     persist_session_event(base, start_ev)
     yield start_ev
 
+    # ── Emit pre-cached verdicts immediately ──────────────────────────
+    for ext, _rec, cached_payload in pre_cached:
+        synthetic = {
+            "candidate": {
+                "_entity_id": str(ext.id),
+                "text":       ext.override_text or ext.text or "",
+                "type":       ext.override_type or ext.entity_type or "",
+                "role":       ext.override_role or ext.role or "",
+                "source":     ext.source or "",
+            },
+            "verdict":   cached_payload.get("verdict") or {},
+            "judge_id":  cached_payload.get("judge_id"),
+            "judged_at": cached_payload.get("judged_at"),
+            "cache_key": cached_payload.get("cache_key"),
+            "evaluator_id": cached_payload.get("evaluator"),
+            "from_inference_cache": True,
+        }
+        ev = AgentEvent(type="agent.verdict", payload=synthetic)
+        persist_session_event(base, ev)
+        yield ev
+
+    # ── Subprocess for uncached entities ──────────────────────────────
     try:
-        async for ev in spawn_eval_agent_run(
-            pipeline_output=pipeline_output,
-            evaluators=action.evaluators,
-            api_key=api_key,
-            state_dir=state_dir,
-            tier_model=tier_model,
-            override_cache=override_cache,
-            rpm=action.rate_limit_rpm,
-        ):
-            persist_session_event(base, ev)
-            yield ev
+        if uncached:
+            async for ev in spawn_eval_agent_run(
+                pipeline_output=pipeline_output,
+                evaluators=action.evaluators,
+                api_key=api_key,
+                state_dir=state_dir,
+                tier_model=tier_model,
+                override_cache=override_cache,
+                rpm=action.rate_limit_rpm,
+            ):
+                persist_session_event(base, ev)
+                yield ev
     finally:
-        on_disk_verdicts = read_run_verdicts(state_dir)
+        on_disk_verdicts = read_run_verdicts(state_dir) if uncached else []
         for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)
@@ -242,6 +291,15 @@ async def _session_event_stream(
             except Exception:
                 logger.exception("failed to persist ai verdicts to entities")
 
+            # Write new verdicts to the shared inference cache.
+            try:
+                await _write_ner_verdicts_to_cache(
+                    entities_by_id={str(e.id): e for e, _ in uncached},
+                    verdicts=on_disk_verdicts,
+                )
+            except Exception:
+                logger.exception("failed to write ner verdicts to inference cache")
+
         end_ev = AgentEvent(
             type="session.end",
             payload={
@@ -252,6 +310,48 @@ async def _session_event_stream(
         )
         persist_session_event(base, end_ev)
         yield end_ev
+
+
+def _ner_verdict_query_summary(ext: ExtractionApproval) -> dict[str, Any]:
+    """Stable content key for caching an NER verdict across users/runs.
+
+    Keyed by the entity's canonical text + type + role. Two curators
+    verifying the same extracted entity on the same MARC record will share
+    the cached Gemini verdict.
+    """
+    return {
+        "text": (ext.override_text or ext.text or "").strip(),
+        "type": (ext.override_type or ext.entity_type or "").strip(),
+        "role": (ext.override_role or ext.role or "").strip(),
+    }
+
+
+async def _write_ner_verdicts_to_cache(
+    *,
+    entities_by_id: dict[str, ExtractionApproval],
+    verdicts: list[dict[str, Any]],
+) -> None:
+    """Persist newly-judged NER verdicts into the shared inference cache."""
+    from app.db import session_scope  # noqa: PLC0415
+
+    async with session_scope() as db:
+        for v in verdicts:
+            cand = v.get("candidate") if isinstance(v, dict) else None
+            entity_id = cand.get("_entity_id") if isinstance(cand, dict) else None
+            ext = entities_by_id.get(str(entity_id)) if entity_id else None
+            if ext is None:
+                continue
+            qs = _ner_verdict_query_summary(ext)
+            cached_result = {
+                "verdict":   v.get("verdict") or {},
+                "judge_id":  v.get("judge_id") or v.get("model"),
+                "judged_at": v.get("judged_at"),
+                "cache_key": v.get("cache_key"),
+                "evaluator": v.get("evaluator_id") or v.get("evaluator"),
+            }
+            await write_to_inference_cache(
+                db, kind="ai_verdict", query_summary=qs, result=cached_result,
+            )
 
 
 async def _persist_ai_verdicts_to_entities(

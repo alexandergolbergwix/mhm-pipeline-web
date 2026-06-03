@@ -339,9 +339,9 @@ unit + e2e suites are the regression barrier.
 
 - **slowapi rate-limit** per client IP (extracted from
   `X-Forwarded-For`): 3/hour on `/access-request`, 10/minute on
-  `/auth/login`. In-memory storage on the single Heroku dyno today;
-  the upgrade path is Heroku Redis Mini behind
-  `RATELIMIT_STORAGE_URI` once we scale past one web dyno.
+  `/auth/login`. Storage backend: Heroku Redis Mini (provisioned
+  2026-06-03, `$3/month`) via `RATELIMIT_STORAGE_URI`; falls back
+  to in-process memory when `REDIS_URL` is absent (dev/CI).
 - **Timing-parity dummy Argon2 verify** on `/auth/login`'s
   missing-user branch so response time cannot leak account
   existence.
@@ -440,6 +440,54 @@ Tests: `backend/tests/test_export_router.py` (8). Any addition of
 a new entity type to the export bundle MUST extend
 `/export?entity_types=...` and add a matching
 `test_export_*_filter` case.
+
+### Rule W-26 — Wikidata Studio build result is cached in Postgres (added 2026-06-03)
+
+`backend/app/models/wikidata_studio_cache.py::WikidataStudioCache`
+caches the last successful `build_studio` result per `(run_id,
+approved_only)` keyed by `input_fingerprint` (SHA-256 over
+records + matches + entities + overrides, computed by
+`pipeline/wikidata_studio.py::compute_build_fingerprint`).
+
+On every call to `POST /wikidata-studio/build`:
+1. Load raw data, compute fingerprint.
+2. If `WikidataStudioCache` hit with same fingerprint → return
+   cached `result_items`, `quickstatements`, `summary` instantly.
+3. On miss, run full `build_items_for_run`, upsert cache row.
+
+Cache is invalidated automatically whenever any input changes
+(new approvals, new matches, overrides edited). Never invalidate
+manually — changing the input data is sufficient.
+
+Migration: `0015_wikidata_studio_cache`.
+
+### Rule W-25 — Redis L1 in front of the Postgres inference cache (added 2026-06-03)
+
+`backend/app/cache/redis_client.py` exposes `get_redis()` — a lazy
+singleton that returns `None` when `REDIS_URL` is absent (dev/CI
+falls back to Postgres-only with no code-path change).
+
+`backend/app/pipeline/inference_cache.py::cache_lookup_or_call`
+now uses a two-tier lookup:
+
+1. **Redis GET `ic:{kind}:{hash}`** (<1 ms, in-memory)
+2. **Postgres SELECT** (backfills Redis on hit)
+3. **`fetch()`** (Modal / VIAF / Wikidata / …) — writes both tiers
+
+Redis TTL policy: `ner.*`, `genre.classify`, `ai_verdict` — no
+expiry (content-addressed). `authority.*` — 24 h hot window;
+Postgres remains the 30-day ground truth.
+
+`hit_count`/`last_hit_at` Postgres UPDATEs are skipped for Redis
+hits (intentional — that UPDATE was the main warm-run latency cost).
+
+`close_redis()` is called in the lifespan teardown in `main.py`.
+The `slowapi` rate limiter shares the same Redis instance via
+`RATELIMIT_STORAGE_URI`.
+
+**Do not bypass this layer** for new inference call sites. All new
+external calls (new authority APIs, new LLM calls) MUST go through
+`cache_lookup_or_call`; the Redis tier is automatic.
 
 ### Rule W-23 — KIMA / VIAF / Mazal payload completeness (added 2026-06-03)
 
