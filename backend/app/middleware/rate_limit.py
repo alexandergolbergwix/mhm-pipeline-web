@@ -72,4 +72,16 @@ _storage_uri = (
     or os.environ.get("REDIS_URL", "").strip()
     or "memory://"
 )
-limiter = Limiter(key_func=_real_client_ip, storage_uri=_storage_uri)
+
+# Heroku Redis uses a self-signed TLS certificate on rediss:// URLs.
+# Pass ssl_cert_reqs=None so the limits library skips cert verification,
+# matching the same bypass used in app/cache/redis_client.py.
+_storage_options: dict = (
+    {"ssl_cert_reqs": None} if _storage_uri.startswith("rediss://") else {}
+)
+
+limiter = Limiter(
+    key_func=_real_client_ip,
+    storage_uri=_storage_uri,
+    storage_options=_storage_options,
+)
