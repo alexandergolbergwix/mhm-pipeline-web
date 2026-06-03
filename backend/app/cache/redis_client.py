@@ -26,7 +26,14 @@ async def get_redis() -> Any:
         return None
     import redis.asyncio as aioredis  # noqa: PLC0415
 
-    _client = aioredis.from_url(url, decode_responses=False)
+    # Heroku Redis uses a self-signed TLS cert on rediss:// URLs.
+    # ssl_cert_reqs=None disables hostname verification for that cert
+    # while keeping the transport encrypted.
+    _client = aioredis.from_url(
+        url,
+        decode_responses=False,
+        ssl_cert_reqs=None,
+    )
     return _client
 
 
