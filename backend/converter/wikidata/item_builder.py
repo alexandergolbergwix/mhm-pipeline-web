@@ -1,6 +1,6 @@
 """Build Wikidata item representations from authority-enriched pipeline records.
 
-Converts the structured JSON output of AI Extraction (authority matching) into
+Converts the structured JSON output of Stage 2 (authority matching) into
 WikidataItem dataclasses ready for upload or QuickStatements export.
 
 Uses ALL available pipeline data: NER entities, VIAF/Mazal authority matches,
@@ -871,7 +871,7 @@ class WikidataItemBuilder:
         # Rule 45 P6108 coexistence (2026-05-18): the two manifests carry
         # different payloads — NLI's manifest (from MARC 856) hosts the
         # real high-resolution Canvas images, while ours (published to
-        # mhm-hmo.wikibase.cloud by Wikidata Studio.5) carries the HMO scholarly
+        # mhm-hmo.wikibase.cloud by Stage 6.5) carries the HMO scholarly
         # overlay (Codicological_Unit Ranges, ScribalIntervention /
         # Colophon / Marginalia AnnotationCollections, seeAlso to the
         # HMO graph node) on placeholder Canvases. Both must be reachable
@@ -2062,9 +2062,9 @@ class WikidataItemBuilder:
 
         # Fix 2026-04-15 third audit Fix #4: Wikidata:Notability requires person
         # items to have at least one external identifier (VIAF, NLI J9U, LCCN,
-        # GND, ISNI, BnF). Creating items with only a name and no identifiers
-        # invites mass deletion requests from the community. Skip the item and
-        # let callers fall back to P2093 (author name string) for the statement.
+        # GND, ISNI, BnF, or Wikidata QID). Creating items with only a name and
+        # no identifiers invites mass deletion requests from the community. Skip
+        # the item and let callers fall back to P2093 (author name string).
         match_info: dict[str, object] = {}
         for m in source_record.get("marc_authority_matches") or []:
             mid = str(m.get("mazal_id", ""))
@@ -2072,6 +2072,16 @@ class WikidataItemBuilder:
             if (mazal_id and mid == mazal_id) or (viaf_uri and vid == viaf_uri):
                 match_info = m  # type: ignore[assignment]
                 break
+        # Fallback: when no authority-ID match was found (neither viaf_uri nor
+        # mazal_id set), search by name prefix — catches persons resolved via
+        # direct Wikidata QID lookup rather than VIAF/Mazal.
+        if not match_info:
+            name_prefix = clean_name[:6] if len(clean_name) >= 6 else clean_name
+            for m in source_record.get("marc_authority_matches") or []:
+                entry_name = str(m.get("name", "") or "")
+                if entry_name and entry_name[:len(name_prefix)] == name_prefix:
+                    match_info = m  # type: ignore[assignment]
+                    break
         has_identifier = any(
             [
                 viaf_uri,
@@ -2080,6 +2090,9 @@ class WikidataItemBuilder:
                 match_info.get("lc_id"),
                 match_info.get("isni"),
                 match_info.get("bnf_id"),
+                # A known Wikidata QID is the strongest possible notability
+                # signal — the person already exists in Wikidata.
+                match_info.get("wikidata_qid"),
             ]
         )
         if not has_identifier:
@@ -2095,6 +2108,14 @@ class WikidataItemBuilder:
             self._skipped_person_keys.add(key)
             self._skipped_person_stubs[key] = person
             return person
+
+        # When a Wikidata QID is known from authority matching (direct QID
+        # lookup, not via VIAF/Mazal), pre-seed existing_qid so the manuscript
+        # claim uses the real Q-number and the person item gets UPDATE semantics
+        # in QuickStatements (not CREATE).
+        pre_known_qid = str(match_info.get("wikidata_qid") or "")
+        if pre_known_qid and not person.existing_qid:
+            person.existing_qid = pre_known_qid
 
         # Label-based deduplication: search Wikidata for an existing human with
         # the same Hebrew/Latin label before creating a new item.  This catches
