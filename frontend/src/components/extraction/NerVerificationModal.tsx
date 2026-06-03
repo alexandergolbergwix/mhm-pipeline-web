@@ -172,6 +172,10 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
             landed = true;
           }
         }
+        if (ev.type === "runner.error") {
+          setError((ev as {message?: string}).message ?? "Verification failed");
+          break;
+        }
         if (ev.type === "session.end") break;
       }
     } catch (e) {

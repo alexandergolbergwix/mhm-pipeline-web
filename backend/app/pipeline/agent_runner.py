@@ -341,6 +341,12 @@ async def sse_stream(
             async for ev in events:
                 payload = json.dumps(ev.payload, ensure_ascii=False)
                 await queue.put(f"event: {ev.type}\ndata: {payload}\n\n")
+        except Exception as exc:  # noqa: BLE001
+            # Propagate generator errors to the client so the browser
+            # gets a runner.error event instead of a silent stream-end
+            # that leaves the "Start verification" button stuck/reset.
+            err_payload = json.dumps({"message": str(exc)}, ensure_ascii=False)
+            await queue.put(f"event: runner.error\ndata: {err_payload}\n\n")
         finally:
             await queue.put("__DONE__")
 

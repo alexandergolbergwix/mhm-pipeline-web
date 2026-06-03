@@ -136,15 +136,10 @@ async def start_stream(
             ),
         )
 
-    # Locate eval-agent early so a missing sibling repo fails the POST
-    # rather than mysteriously failing mid-stream.
-    try:
-        locate_eval_agent()
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+    # locate_eval_agent() is intentionally NOT checked here — a
+    # fully-cached run never needs the eval-agent subprocess (e.g. Heroku).
+    # If uncached matches exist, the generator raises runner.error which
+    # sse_stream's producer forwards to the client.
 
     session_id = new_session_id()
     return StreamingResponse(
@@ -196,15 +191,9 @@ async def _session_event_stream(
     """
     from app.db import session_scope  # noqa: PLC0415
 
-    eval_root = locate_eval_agent()
-    state_dir = eval_root / "state" / "ai-verify-sessions" / run_id
-    session_dir = state_dir / "sessions" / session_id
-    pipeline_output = session_dir / "pipeline-output"
-    base = session_dir
-    session_dir.mkdir(parents=True, exist_ok=True)
-
     # ── Pre-check inference cache ──────────────────────────────────────
-    # Split matches into already-verified (warm cache hit) and uncached.
+    # Done BEFORE locate_eval_agent() so a fully-cached run never
+    # requires the eval-agent subprocess to be present (e.g. Heroku).
     # override_cache bypasses this check so every match goes through
     # Gemini fresh — but we still write the new verdicts back afterwards.
     pre_cached: list[tuple[AuthorityMatch, RunRecord, dict[str, Any]]] = []
@@ -223,6 +212,23 @@ async def _session_event_stream(
     else:
         uncached = list(matches)
 
+    # ── Resolve eval-agent root (only needed for uncached matches) ─────
+    eval_root: Path | None = None
+    state_dir: Path | None = None
+    session_dir: Path | None = None
+    pipeline_output: Path | None = None
+    base: Path
+    if uncached:
+        eval_root = locate_eval_agent()
+        state_dir = eval_root / "state" / "ai-verify-sessions" / run_id
+        session_dir = state_dir / "sessions" / session_id
+        pipeline_output = session_dir / "pipeline-output"
+        base = session_dir
+        session_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        import tempfile  # noqa: PLC0415
+        base = Path(tempfile.mkdtemp(prefix=f"mhm-auth-{session_id}-"))
+
     # ── Build fixture (only uncached matches need to go to eval-agent) ─
     by_cn: dict[str, list[dict[str, Any]]] = {}
     marc_by_cn: dict[str, dict[str, Any]] = {}
@@ -232,6 +238,7 @@ async def _session_event_stream(
         marc_by_cn.setdefault(cn, dict(record.marc or {}))
 
     if by_cn:
+        assert pipeline_output is not None
         authority_records = []
         for cn, ms in by_cn.items():
             base_marc = dict(marc_by_cn.get(cn) or {"_control_number": cn})
@@ -277,6 +284,7 @@ async def _session_event_stream(
     # ── Subprocess for uncached matches ───────────────────────────────
     try:
         if uncached:
+            assert pipeline_output is not None and state_dir is not None
             async for ev in spawn_eval_agent_run(
                 pipeline_output=pipeline_output,
                 evaluators=action.evaluators,
@@ -289,7 +297,7 @@ async def _session_event_stream(
                 persist_session_event(base, ev)
                 yield ev
     finally:
-        on_disk_verdicts = read_run_verdicts(state_dir) if uncached else []
+        on_disk_verdicts = read_run_verdicts(state_dir) if (uncached and state_dir) else []
         for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)

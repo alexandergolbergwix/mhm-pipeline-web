@@ -140,6 +140,10 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
           const matchId = String(candidate._match_id ?? candidate.record_id ?? "");
           if (matchId) setVerdicts((p) => ({ ...p, [matchId]: ev }));
         }
+        if (ev.type === "runner.error") {
+          setError((ev as {message?: string}).message ?? "Verification failed");
+          break;
+        }
         if (ev.type === "session.end") break;
       }
     } catch (e) {

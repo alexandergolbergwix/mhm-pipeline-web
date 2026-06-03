@@ -116,13 +116,13 @@ async def start_stream(
             ),
         )
 
-    try:
-        locate_eval_agent()
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+    # locate_eval_agent() is intentionally NOT checked here. The cache
+    # pre-check inside _session_event_stream may satisfy the entire
+    # request without ever spawning a subprocess. Requiring the eval-agent
+    # to be present even for fully-cached runs would break Heroku where
+    # only the web dyno (not the sibling eval-agent repo) is deployed.
+    # If uncached entities exist, the generator raises runner.error which
+    # the SSE stream forwards to the client via sse_stream's producer().
 
     session_id = new_session_id()
     return StreamingResponse(
@@ -158,14 +158,9 @@ async def _session_event_stream(
 
     from app.db import session_scope  # noqa: PLC0415
 
-    eval_root = locate_eval_agent()
-    state_dir = eval_root / "state" / "extraction-verify-sessions" / run_id
-    session_dir = state_dir / "sessions" / session_id
-    pipeline_output = session_dir / "pipeline-output"
-    base = session_dir
-    session_dir.mkdir(parents=True, exist_ok=True)
-
     # ── Pre-check inference cache ──────────────────────────────────────
+    # Done BEFORE locate_eval_agent() so a fully-cached run never
+    # requires the eval-agent subprocess to be present (e.g. Heroku).
     pre_cached: list[tuple[ExtractionApproval, RunRecord, dict[str, Any]]] = []
     uncached: list[tuple[ExtractionApproval, RunRecord]] = []
     if not override_cache:
@@ -181,6 +176,25 @@ async def _session_event_stream(
                     uncached.append((ext, record))
     else:
         uncached = list(entities)
+
+    # ── Resolve eval-agent root (only needed for uncached entities) ────
+    eval_root: Path | None = None
+    state_dir: Path | None = None
+    session_dir: Path | None = None
+    pipeline_output: Path | None = None
+    base: Path | None = None
+    if uncached:
+        eval_root = locate_eval_agent()
+        state_dir = eval_root / "state" / "extraction-verify-sessions" / run_id
+        session_dir = state_dir / "sessions" / session_id
+        pipeline_output = session_dir / "pipeline-output"
+        base = session_dir
+        session_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        # Cache-only run: create a temp session dir for the audit log.
+        import tempfile  # noqa: PLC0415
+        _tmp = Path(tempfile.mkdtemp(prefix=f"mhm-ner-{session_id}-"))
+        base = _tmp
 
     # ── Build fixture (only uncached entities) ─────────────────────────
     by_cn_ents: dict[str, list[dict[str, Any]]] = {}
@@ -199,6 +213,7 @@ async def _session_event_stream(
             by_cn_ents.setdefault(cn, []).append(_approval_to_ner_shape(ext))
 
     if marc_by_cn or by_cn_ents or by_cn_genres:
+        assert pipeline_output is not None
         ner_records: list[dict[str, Any]] = []
         for cn in sorted(set(marc_by_cn) | set(by_cn_ents) | set(by_cn_genres)):
             rec_marc = dict(marc_by_cn.get(cn) or {"_control_number": cn})
@@ -245,7 +260,7 @@ async def _session_event_stream(
             "candidate": {
                 "_entity_id": str(ext.id),
                 "text":       ext.override_text or ext.text or "",
-                "type":       ext.override_type or ext.entity_type or "",
+                "type":       ext.override_type or ext.type or "",
                 "role":       ext.override_role or ext.role or "",
                 "source":     ext.source or "",
             },
@@ -263,6 +278,7 @@ async def _session_event_stream(
     # ── Subprocess for uncached entities ──────────────────────────────
     try:
         if uncached:
+            assert pipeline_output is not None and state_dir is not None
             async for ev in spawn_eval_agent_run(
                 pipeline_output=pipeline_output,
                 evaluators=action.evaluators,
@@ -275,7 +291,7 @@ async def _session_event_stream(
                 persist_session_event(base, ev)
                 yield ev
     finally:
-        on_disk_verdicts = read_run_verdicts(state_dir) if uncached else []
+        on_disk_verdicts = read_run_verdicts(state_dir) if (uncached and state_dir) else []
         for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)
@@ -321,7 +337,7 @@ def _ner_verdict_query_summary(ext: ExtractionApproval) -> dict[str, Any]:
     """
     return {
         "text": (ext.override_text or ext.text or "").strip(),
-        "type": (ext.override_type or ext.entity_type or "").strip(),
+        "type": (ext.override_type or ext.type or "").strip(),
         "role": (ext.override_role or ext.role or "").strip(),
     }
 
