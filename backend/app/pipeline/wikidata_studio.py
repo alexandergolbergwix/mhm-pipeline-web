@@ -19,13 +19,73 @@ Rule 47 work-item CREATE ordering, …) is one ``cp`` away.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from dataclasses import asdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi.concurrency import run_in_threadpool
 
+if TYPE_CHECKING:
+    from app.models.extraction_approval import ExtractionApproval
+    from app.models.item_override import WikidataItemOverride
+    from app.models.run import AuthorityMatch, RunRecord
+
 logger = logging.getLogger(__name__)
+
+
+def compute_build_fingerprint(
+    records: list["RunRecord"],
+    all_matches: list["AuthorityMatch"],
+    entity_rows: list["ExtractionApproval"],
+    override_rows: list["WikidataItemOverride"],
+    approved_only: bool,
+) -> str:
+    """SHA-256 fingerprint of everything that feeds the Wikidata item builder.
+
+    Changing any approval flag, override field, match payload, or NER
+    text will produce a different fingerprint and trigger a rebuild on
+    the next request.
+    """
+    def _h(obj: Any) -> str:
+        return hashlib.sha256(
+            json.dumps(obj, sort_keys=True, default=str).encode()
+        ).hexdigest()[:16]
+
+    parts = {
+        "approved_only": approved_only,
+        "records": sorted(r.control_number for r in records),
+        "matches": sorted(
+            (
+                str(m.id), m.approved, m.wikidata_qid or "", m.viaf_id or "",
+                m.mazal_id or "", _h(m.payload or {}),
+            )
+            for m in all_matches
+        ),
+        "entities": sorted(
+            (
+                str(e.id), bool(e.approved),
+                e.override_text or "", e.override_type or "", e.override_role or "",
+            )
+            for e in entity_rows
+        ),
+        "overrides": sorted(
+            (
+                str(o.id), o.local_id,
+                _h({
+                    "labels": o.labels, "descriptions": o.descriptions,
+                    "aliases": o.aliases, "add_statements": o.add_statements,
+                    "remove_statements": o.remove_statements,
+                    "statement_edits": o.statement_edits,
+                }),
+            )
+            for o in override_rows
+        ),
+    }
+    return hashlib.sha256(
+        json.dumps(parts, sort_keys=True, default=str).encode()
+    ).hexdigest()
 
 
 async def build_items_for_run(

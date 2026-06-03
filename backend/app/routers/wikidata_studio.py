@@ -33,6 +33,7 @@ from app.models.event import (
 from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
+from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.pipeline import wikidata_studio, wikidata_upload
 from app.routers.runs import _lookup_run_with_access  # noqa: PLF401 — module-internal
 from app.versioning import apply_event
@@ -76,7 +77,7 @@ async def build_studio(
 ) -> StudioBuildResponse:
     await _lookup_run_with_access(db, run_id, auth)
 
-    # Pull every record + every match (filtered to approved on request).
+    # Load all raw rows needed for fingerprinting + building.
     records = (
         await db.execute(
             select(RunRecord).where(RunRecord.run_id == run_id)
@@ -88,9 +89,50 @@ async def build_studio(
             select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
         )
     ).scalars().all()
+    entity_rows = (
+        await db.execute(
+            select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
+        )
+    ).scalars().all()
+    override_rows = (
+        await db.execute(
+            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+        )
+    ).scalars().all()
+
+    fingerprint = wikidata_studio.compute_build_fingerprint(
+        records, list(all_matches), entity_rows, override_rows, approved_only,
+    )
+
+    # Check the build cache — return immediately if nothing changed.
+    cached = (
+        await db.execute(
+            select(WikidataStudioCache).where(
+                WikidataStudioCache.run_id == run_id,
+                WikidataStudioCache.approved_only == approved_only,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if cached is not None and cached.input_fingerprint == fingerprint:
+        logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
+        return StudioBuildResponse(
+            items=cached.result_items,
+            quickstatements=cached.quickstatements,
+            summary=StudioSummary(**cached.summary),
+            approved_match_count=cached.approved_match_count,
+            pending_match_count=cached.pending_match_count,
+            used_match_count=cached.used_match_count,
+            approved_only=approved_only,
+            record_count=cached.record_count,
+        )
+
+    # Cache miss — run the full build.
+    logger.debug("wikidata-studio cache miss for run %s (fp=%s)", run_id, fingerprint[:8])
+
     approved_count = sum(1 for m in all_matches if m.approved)
     pending_count = len(all_matches) - approved_count
-    matches = [m for m in all_matches if m.approved] if approved_only else all_matches
+    matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
 
     marc_records = [dict(r.marc) for r in records]
     approved_matches = [
@@ -110,25 +152,50 @@ async def build_studio(
         for m in matches
     ]
 
-    overrides = await _load_overrides(db, run_id)
-    entities_by_cn = await _load_entities_by_cn(db, run_id, approved_only)
+    overrides = {
+        r.local_id: {
+            "labels":            r.labels,
+            "descriptions":      r.descriptions,
+            "aliases":           r.aliases,
+            "add_statements":    r.add_statements,
+            "remove_statements": r.remove_statements,
+            "statement_edits":   r.statement_edits,
+        }
+        for r in override_rows
+    }
+    entities_by_cn = _group_entity_rows(entity_rows, approved_only)
     result = await wikidata_studio.build_items_for_run(
         marc_records=marc_records, approved_matches=approved_matches,
         entities_by_cn=entities_by_cn,
         overrides=overrides, return_native=True,
     )
-    # Stamp local_id onto each serialised item so the frontend can key
-    # edits against persisted overrides across rebuilds.
+    # Stamp local_id onto each serialised item.
     if result.get("native_items"):
         for it_dict, it_native in zip(
             result["items"], result["native_items"], strict=True,
         ):
             it_dict["local_id"] = wikidata_studio.local_id_for_item(it_native)
 
+    summary_dict = result["summary"]
+
+    # Upsert the cache row.
+    await _upsert_studio_cache(
+        db, run_id=run_id, approved_only=approved_only,
+        fingerprint=fingerprint,
+        items=result["items"],
+        quickstatements=result["quickstatements"],
+        summary=summary_dict,
+        approved_match_count=approved_count,
+        pending_match_count=pending_count,
+        used_match_count=len(approved_matches),
+        record_count=len(marc_records),
+        existing=cached,
+    )
+
     return StudioBuildResponse(
         items=result["items"],
         quickstatements=result["quickstatements"],
-        summary=StudioSummary(**result["summary"]),
+        summary=StudioSummary(**summary_dict),
         approved_match_count=approved_count,
         pending_match_count=pending_count,
         used_match_count=len(approved_matches),
@@ -493,10 +560,30 @@ async def _build_native_items(
     all_matches = (
         await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))
     ).scalars().all()
-    matches = [m for m in all_matches if m.approved] if approved_only else all_matches
+    entity_rows = (
+        await db.execute(
+            select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
+        )
+    ).scalars().all()
+    override_rows = (
+        await db.execute(
+            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+        )
+    ).scalars().all()
+    matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
 
-    overrides = await _load_overrides(db, run_id)
-    entities_by_cn = await _load_entities_by_cn(db, run_id, approved_only)
+    overrides = {
+        r.local_id: {
+            "labels":            r.labels,
+            "descriptions":      r.descriptions,
+            "aliases":           r.aliases,
+            "add_statements":    r.add_statements,
+            "remove_statements": r.remove_statements,
+            "statement_edits":   r.statement_edits,
+        }
+        for r in override_rows
+    }
+    entities_by_cn = _group_entity_rows(entity_rows, approved_only)
     result = await wikidata_studio.build_items_for_run(
         marc_records=[dict(r.marc) for r in records],
         approved_matches=[
@@ -522,30 +609,19 @@ async def _build_native_items(
     return result.get("native_items") or []
 
 
-async def _load_entities_by_cn(
-    db: AsyncSession, run_id: uuid.UUID, approved_only: bool,
+def _group_entity_rows(
+    rows: list[Any], approved_only: bool,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Load Stage-2 NER entities, grouped by control_number.
+    """Group ExtractionApproval rows into the per-control-number dict the
+    desktop WikidataItemBuilder expects on ``record["entities"]``.
 
-    Shape matches what the desktop ``WikidataItemBuilder`` expects on
-    ``record["entities"]``: each dict carries ``source``, ``type``,
-    ``text``, ``start``, ``end``, ``role``, ``confidence``,
-    ``model_confidence``. Curator-supplied ``override_type`` /
-    ``override_role`` (Rule 50 / desktop "edits flow downstream")
-    take precedence over the model's prediction.
-
-    When ``approved_only`` is True we filter out unapproved entities so
-    the studio output mirrors ``approved_only`` semantics already
-    applied to authority matches — matching the desktop pipeline's
-    "ship this in the final output" filter (extraction_approval.py
-    doctring).
+    Curator ``override_type`` / ``override_role`` / ``override_text``
+    take precedence over the model's prediction (Rule W-24).
     """
-    stmt = select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
-    if approved_only:
-        stmt = stmt.where(ExtractionApproval.approved.is_(True))
-    rows = (await db.execute(stmt)).scalars().all()
     grouped: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
+        if approved_only and not r.approved:
+            continue
         grouped.setdefault(r.control_number, []).append({
             "text":             r.override_text or r.text,
             "type":             (r.override_type or r.type or "").upper(),
@@ -560,25 +636,54 @@ async def _load_entities_by_cn(
     return grouped
 
 
-async def _load_overrides(
-    db: AsyncSession, run_id: uuid.UUID,
-) -> dict[str, dict[str, Any]]:
-    rows = (
-        await db.execute(
-            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
-        )
-    ).scalars().all()
-    return {
-        r.local_id: {
-            "labels":            r.labels,
-            "descriptions":      r.descriptions,
-            "aliases":           r.aliases,
-            "add_statements":    r.add_statements,
-            "remove_statements": r.remove_statements,
-            "statement_edits":   r.statement_edits,
-        }
-        for r in rows
-    }
+async def _upsert_studio_cache(
+    db: AsyncSession,
+    *,
+    run_id: uuid.UUID,
+    approved_only: bool,
+    fingerprint: str,
+    items: list[dict[str, Any]],
+    quickstatements: str,
+    summary: dict[str, Any],
+    approved_match_count: int,
+    pending_match_count: int,
+    used_match_count: int,
+    record_count: int,
+    existing: WikidataStudioCache | None,
+) -> None:
+    """Write (insert or update) the build cache row.  Errors are swallowed
+    so a cache write failure never degrades the user-facing response."""
+    try:
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        if existing is None:
+            row = WikidataStudioCache(
+                run_id=run_id,
+                approved_only=approved_only,
+                input_fingerprint=fingerprint,
+                result_items=items,
+                quickstatements=quickstatements,
+                summary=summary,
+                approved_match_count=approved_match_count,
+                pending_match_count=pending_match_count,
+                used_match_count=used_match_count,
+                record_count=record_count,
+            )
+            db.add(row)
+        else:
+            existing.input_fingerprint = fingerprint
+            existing.result_items = items
+            existing.quickstatements = quickstatements
+            existing.summary = summary
+            existing.approved_match_count = approved_match_count
+            existing.pending_match_count = pending_match_count
+            existing.used_match_count = used_match_count
+            existing.record_count = record_count
+            existing.built_at = datetime.now(timezone.utc)
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("wikidata-studio cache write failed for run %s: %s", run_id, exc)
+        await db.rollback()
 
 
 async def _unwrap_user_secret(db: AsyncSession, auth: AuthContext, key_name: str) -> str | None:
