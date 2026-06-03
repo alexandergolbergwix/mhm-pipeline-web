@@ -39,6 +39,8 @@ import { EntityEditModal } from "@/components/extraction/EntityEditModal";
 import { AutoApproveRuleBuilder } from "@/components/extraction/AutoApproveRuleBuilder";
 import { EntityDetailDrawer } from "@/components/extraction/EntityDetailDrawer";
 import { NerVerificationModal } from "@/components/extraction/NerVerificationModal";
+import { SectionExportMenu } from "@/components/export/SectionExportMenu";
+import { SectionImportButton } from "@/components/import/SectionImportButton";
 
 
 type Phase = "idle" | "running" | "complete" | "error";
@@ -398,6 +400,22 @@ export default function StageExtraction() {
                 <button onClick={start} className="button-primary text-sm">
                   {phase === "complete" ? "Re-run extraction" : "Start extraction"}
                 </button>
+              )}
+              {phase === "complete" && runId && (
+                <>
+                  <SectionExportMenu
+                    section="extraction"
+                    runId={runId}
+                    availableFormats={["json", "csv"]}
+                  />
+                  <SectionImportButton
+                    section="extraction"
+                    runId={runId}
+                    onComplete={() => {
+                      if (runId) Extraction.results(runId).then(setRecords).catch(() => null);
+                    }}
+                  />
+                </>
               )}
               {phase === "running" && (
                 <button onClick={cancelStream} className="button-ghost text-sm">

@@ -50,6 +50,7 @@ from app.models.run import (
 )
 from app.models.session import Session
 from app.models.user import ROLE_ADMIN, ROLE_EDITOR, User
+from app.models.wikidata_studio_cache import WikidataStudioCache
 
 __all__ = [
     "ALL_ENTITY_TYPES",
@@ -82,6 +83,7 @@ __all__ = [
     "ProjectEvent",
     "ProjectSnapshot",
     "WikidataItemOverride",
+    "WikidataStudioCache",
     "ROLE_ADMIN",
     "ROLE_EDITOR",
     "RUN_STATUS_FAILED",

@@ -40,6 +40,8 @@ import {
   type ServerLayout,
   type ShaclReport,
 } from "@/api/rdf";
+import { SectionExportMenu } from "@/components/export/SectionExportMenu";
+import { SectionImportButton } from "@/components/import/SectionImportButton";
 
 
 // All layouts are computed SERVER-SIDE (networkx) — Cytoscape just uses
@@ -446,6 +448,23 @@ export default function StageRdf() {
                  download>
                 Download .ttl
               </a>
+              {runId && (
+                <SectionExportMenu
+                  section="rdf"
+                  runId={runId}
+                  availableFormats={["ttl", "nt"]}
+                />
+              )}
+              {runId && (
+                <SectionImportButton
+                  section="rdf"
+                  runId={runId}
+                  accept=".ttl"
+                  onComplete={() => {
+                    if (runId) Rdf.status(runId).then(setStatus).catch(() => null);
+                  }}
+                />
+              )}
               <span className="muted text-sm ml-2">
                 Layout:&nbsp;
                 <select value={layout}

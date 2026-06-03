@@ -18,6 +18,8 @@ import { SelectAllVisible } from "@/components/SelectAllVisible";
 import { AiVerificationModal } from "@/components/AiVerificationModal";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import type { ScopeKind } from "@/api/aiVerify";
+import { SectionExportMenu } from "@/components/export/SectionExportMenu";
+import { SectionImportButton } from "@/components/import/SectionImportButton";
 
 const COLUMNS = [
   { key: "control_number", label: "Record",     kind: "text" as const, sortable: true  },
@@ -255,6 +257,22 @@ export default function RunDetail() {
                       className="button-ghost !py-1.5 text-sm">
                 {backfillBusy ? "Backfilling…" : "Backfill dates"}
               </button>
+              {runId && (
+                <SectionExportMenu
+                  section="authority"
+                  runId={runId}
+                  availableFormats={["json", "csv"]}
+                />
+              )}
+              {runId && (
+                <SectionImportButton
+                  section="authority"
+                  runId={runId}
+                  onComplete={() => {
+                    if (runId) Runs.get(runId).then((d) => setRun(d)).catch(() => null);
+                  }}
+                />
+              )}
               {backfillResult && (
                 <span className="muted text-xs">
                   {backfillResult.updated > 0

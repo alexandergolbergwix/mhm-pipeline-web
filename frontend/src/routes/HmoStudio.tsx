@@ -12,6 +12,8 @@ import {
   type HmoStudioStatus,
   type HmoUploadResult,
 } from "@/api/hmoStudio";
+import {SectionExportMenu} from "@/components/export/SectionExportMenu";
+import {SectionImportButton} from "@/components/import/SectionImportButton";
 
 
 type Busy = null | "build" | "upload" | "coverage";
@@ -200,6 +202,20 @@ export default function HmoStudioRoute() {
                     className="button-primary text-sm">
               {busy === "build" ? "Building…" : "Build manifests"}
             </button>
+            {runId && (
+              <SectionExportMenu
+                section="wikibase"
+                runId={runId}
+                availableFormats={["json", "csv", "ttl"]}
+              />
+            )}
+            {runId && (
+              <SectionImportButton
+                section="wikibase"
+                runId={runId}
+                accept=".json"
+              />
+            )}
 
             <div className="flex items-center gap-2 text-sm muted">
               <label className="flex items-center gap-1">

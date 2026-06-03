@@ -12,6 +12,8 @@ import {
   type LabelStore,
 } from "@/components/StatementCells";
 import {ItemOverrideDialog} from "@/components/ItemOverrideDialog";
+import {SectionExportMenu} from "@/components/export/SectionExportMenu";
+import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {
   Studio,
   type ReconcileOutcome,
@@ -213,6 +215,23 @@ export default function WikidataStudio() {
             <a href={Studio.qsUrl(runId!, approvedOnly)} download className="button-ghost text-sm">
               Download QuickStatements.txt
             </a>
+            {runId && (
+              <SectionExportMenu
+                section="wikidata-studio"
+                runId={runId}
+                availableFormats={["json", "csv", "ttl"]}
+                approvedOnly={approvedOnly}
+              />
+            )}
+            {runId && (
+              <SectionImportButton
+                section="wikidata-studio"
+                runId={runId}
+                onComplete={() => {
+                  if (runId) Studio.build(runId, approvedOnly).then(setBuild).catch(() => null);
+                }}
+              />
+            )}
 
             {/* View-mode toggle — Item (focus on one item's statements)
                 vs. Table (every statement across every item, flat). */}

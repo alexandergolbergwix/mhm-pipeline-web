@@ -37,9 +37,18 @@ _FROM_DISPLAY_NAME = "MHM Pipeline (Mapping Hebrew Manuscripts)"
 
 
 def _from_header(from_email: str) -> str:
-    """Render an RFC-5322 ``Display Name <addr@host>`` From header."""
+    """Render an RFC-5322 ``Display Name <addr@host>`` From header.
+
+    If ``from_email`` already contains ``<`` it is assumed to be a
+    complete RFC-5322 formatted address (e.g. ``Name <addr@host>``) and
+    is returned verbatim.  Otherwise the display name is prepended.
+    This prevents the double-wrap that would occur when
+    ``RESEND_FROM_EMAIL`` is already in the full ``Name <addr>`` form.
+    """
     if not from_email:
         return _FROM_DISPLAY_NAME
+    if "<" in from_email:
+        return from_email
     return f"{_FROM_DISPLAY_NAME} <{from_email}>"
 
 
