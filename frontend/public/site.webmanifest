@@ -1,0 +1,23 @@
+{
+  "name": "MHM Pipeline",
+  "short_name": "MHM",
+  "description": "Hebrew Manuscript curation pipeline",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#00190d",
+  "theme_color": "#00190d",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
