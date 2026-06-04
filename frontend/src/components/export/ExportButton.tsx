@@ -14,6 +14,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Export, type ExportEntityType } from "@/api/export";
 import { ExportProjectDialog } from "@/components/export/ExportProjectDialog";
@@ -59,12 +60,15 @@ export function ExportButton(props: ExportButtonProps): JSX.Element {
         >
           <span aria-hidden="true">📥</span> Export…
         </button>
-        {dialogOpen ? (
-          <ExportProjectDialog
-            projectId={projectId}
-            onClose={() => setDialogOpen(false)}
-          />
-        ) : null}
+        {dialogOpen
+          ? createPortal(
+              <ExportProjectDialog
+                projectId={projectId}
+                onClose={() => setDialogOpen(false)}
+              />,
+              document.body,
+            )
+          : null}
       </>
     );
   }

@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 
-import { Layout } from "@/components/Layout";
+import {AdminLayout} from "@/components/admin/AdminLayout";
 import { api, ApiError } from "@/api/client";
 import { useAuth } from "@/stores/auth";
 
@@ -44,12 +44,12 @@ export default function AdminInvites() {
 
   if (user?.role !== "admin") {
     return (
-      <Layout>
+      <AdminLayout>
         <div className="glass p-8">
           <h2 className="text-xl font-semibold">Admin only</h2>
           <p className="muted mt-2">Your role doesn't permit invitation management.</p>
         </div>
-      </Layout>
+      </AdminLayout>
     );
   }
 
@@ -80,7 +80,7 @@ export default function AdminInvites() {
   }
 
   return (
-    <Layout>
+    <AdminLayout>
       <div className="space-y-6">
         <section className="glass p-6">
           <div className="kicker mb-1">Admin · invitations</div>
@@ -172,6 +172,6 @@ export default function AdminInvites() {
           </table>
         </section>
       </div>
-    </Layout>
+    </AdminLayout>
   );
 }

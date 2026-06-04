@@ -4,7 +4,11 @@ import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import AcceptInvite from "@/routes/AcceptInvite";
 import AccessRequestsQueue from "@/routes/admin/AccessRequestsQueue";
+import AdminDashboard from "@/routes/admin/AdminDashboard";
 import AdminInvites from "@/routes/AdminInvites";
+import AdminProjects from "@/routes/admin/AdminProjects";
+import AdminUserDetail from "@/routes/admin/AdminUserDetail";
+import AdminUsers from "@/routes/admin/AdminUsers";
 import ConfirmRequest from "@/routes/ConfirmRequest";
 import ForgotPassword from "@/routes/ForgotPassword";
 import HmoStudio from "@/routes/HmoStudio";
@@ -49,8 +53,12 @@ export default function App() {
       <Route path="/runs/:runId/wikidata-studio" element={<ProtectedRoute><WikidataStudio /></ProtectedRoute>} />
       <Route path="/runs/:runId/hmo-studio"      element={<ProtectedRoute><HmoStudio /></ProtectedRoute>} />
       <Route path="/settings"                    element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/admin"                       element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/admin/users"                 element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+      <Route path="/admin/users/:userId"         element={<ProtectedRoute><AdminUserDetail /></ProtectedRoute>} />
+      <Route path="/admin/projects"              element={<ProtectedRoute><AdminProjects /></ProtectedRoute>} />
       <Route path="/admin/invites"               element={<ProtectedRoute><AdminInvites /></ProtectedRoute>} />
-      <Route path="/admin/access-requests"           element={<ProtectedRoute><AccessRequestsQueue /></ProtectedRoute>} />
+      <Route path="/admin/access-requests"       element={<ProtectedRoute><AccessRequestsQueue /></ProtectedRoute>} />
     </Routes>
   );
 }

@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 
-import { Layout } from "@/components/Layout";
+import {AdminLayout} from "@/components/admin/AdminLayout";
 import { ApiError } from "@/api/client";
 import {
   AccessRequests,
@@ -205,7 +205,7 @@ export default function AccessRequestsQueue() {
   }
 
   return (
-    <Layout>
+    <AdminLayout>
       <div data-testid="access-requests-page" className="space-y-6">
         <section className="glass p-6">
           <div className="kicker mb-1">Admin · access</div>
@@ -343,7 +343,7 @@ export default function AccessRequestsQueue() {
           if (denyTargetId) void handleDeny(denyTargetId, reason);
         }}
       />
-    </Layout>
+    </AdminLayout>
   );
 }
 
