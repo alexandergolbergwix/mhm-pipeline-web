@@ -151,7 +151,7 @@ def _parse_table(raw: bytes, *, delimiter: str) -> list[dict[str, Any]]:
             if not value:
                 continue
             if norm in _CN_HEADERS:
-                rec["_control_number"] = value
+                rec["_control_number"] = value.strip('"')
             elif norm in _TITLE_HEADERS:
                 rec["title"] = value
             elif norm in _AUTHOR_HEADERS:
@@ -210,7 +210,7 @@ def _normalise_records(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         if not cn:
             cn = f"row{i:04d}"
         record = dict(row)
-        record["_control_number"] = str(cn)
+        record["_control_number"] = str(cn).strip('"')
         # If the record carries raw MARC subfield keys (``100$a``,
         # ``700$a``, ``600$a``, …) — typical of NLI-style TSV exports —
         # collapse them into the normalised authors/contributors/subjects

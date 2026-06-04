@@ -64,6 +64,9 @@ _PLACEHOLDER_LABELS = {
     "כתב יד", "כתב יד.",
     "מחזור", "סידור",            # when standing alone without a discriminator
     "אוסף",
+    # Biblical category heading used as catch-all (Geagea audit 2026-04-15):
+    # "Writings" (ketuvim) was flagged as nonsense on manuscript labels.
+    "כתובים", "כתובים.",
 }
 
 _HEBREW_SCRIPT = re.compile(r"[\u0590-\u05ff]")

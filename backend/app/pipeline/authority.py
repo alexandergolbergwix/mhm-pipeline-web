@@ -504,6 +504,7 @@ class DesktopMatcher(AuthorityMatcher):
             for k in ("gnd", "lc", "isni", "bnf", "j9u")
             if viaf_meta and viaf_meta.get(k)
         }
+        viaf_name_type = (viaf_meta.get("name_type") or "") if viaf_meta else ""
         preferred_name_lat = (
             (viaf_meta.get("preferred_name_lat") if viaf_meta else None)
             or (mazal_details.get("preferred_name_lat") if mazal_details else None)
@@ -529,6 +530,7 @@ class DesktopMatcher(AuthorityMatcher):
                     mazal_details.get("preferred_name_heb") if mazal_details else None
                 ),
                 "cluster_ids": cluster_ids,
+                "viaf_name_type": viaf_name_type or None,
                 **kima_payload,
                 "role_kind": _role_kind(role),
                 "reasoning": " ".join(reasoning_parts),

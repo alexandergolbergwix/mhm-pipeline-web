@@ -72,15 +72,31 @@ def _reconcile_sync(items: list[Any]) -> list[ReconcileOutcome]:
 
         try:
             if et == "person":
-                # Try VIAF first, then NLI/Mazal.
+                # Try all five identity properties in order: VIAF, NLI/J9U,
+                # LCCN, GND, ISNI. This mirrors reconcile_person and prevents
+                # duplicate item creation when one authority has a match even
+                # if VIAF/NLI aren't available. The five-ID check was the fix
+                # for the April 2026 mass-duplicate incident.
                 viaf_id = _find_statement_value(item, "P214")
                 nli_id = _find_statement_value(item, "P8189")
+                lc_id = _find_statement_value(item, "P244")
+                gnd_id = _find_statement_value(item, "P227")
+                isni = _find_statement_value(item, "P213")
                 if viaf_id:
                     qid = rec.reconcile_person_by_viaf(str(viaf_id))
                     if qid: method = "viaf"
                 if not qid and nli_id:
                     qid = rec.reconcile_person_by_nli_id(str(nli_id))
                     if qid: method = "nli"
+                if not qid and lc_id:
+                    qid = rec.reconcile_person_by_external_id("P244", str(lc_id))
+                    if qid: method = "lccn"
+                if not qid and gnd_id:
+                    qid = rec.reconcile_person_by_external_id("P227", str(gnd_id))
+                    if qid: method = "gnd"
+                if not qid and isni:
+                    qid = rec.reconcile_person_by_external_id("P213", str(isni))
+                    if qid: method = "isni"
             elif et == "manuscript":
                 # Manuscript by NLI control number (P8189 or label fallback).
                 nli_id = _find_statement_value(item, "P8189")

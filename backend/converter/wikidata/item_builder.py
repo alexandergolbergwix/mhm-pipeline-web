@@ -487,7 +487,15 @@ def _is_placeholder_title(title: str | None) -> bool:
     if not title:
         return False
     cleaned = title.strip().rstrip(".,;:")
-    if cleaned in {"קובץ", "קבץ"}:
+    if cleaned in {
+        "קובץ", "קבץ",
+        # "Writings" — biblical category used as a catch-all heading for
+        # anthological MARC records with no specific title. Adding here
+        # prevents """כתובים""" or "כתובים" from landing as a Wikidata label.
+        "כתובים",
+        # Stand-alone generic headings without a discriminating subtitle:
+        "כתב יד", "מחזור", "סידור", "אוסף",
+    }:
         return True
     # Short topical placeholder like "קובץ בקבלה" or "קבץ מדרשים"
     if cleaned.startswith(("קובץ ", "קבץ ")) and len(cleaned) <= 25:
@@ -634,7 +642,7 @@ class WikidataItemBuilder:
 
     def build_manuscript_item(self, record: dict[str, object]) -> WikidataItem:
         """Build a Wikidata item for a single manuscript record."""
-        control_number = str(record.get("_control_number", "") or "")
+        control_number = str(record.get("_control_number", "") or "").strip('"')
         # Explicit ``or ""`` before ``str(...)``: when the record contains an
         # explicit ``title: None`` (rather than the key being absent),
         # ``record.get("title", "")`` returns ``None``, and ``str(None)`` is
@@ -1931,6 +1939,14 @@ class WikidataItemBuilder:
             person_item = self._get_or_create_person(name, viaf_uri, mazal_id, role, record)
             resolved_qid = self._person_qids.get(key) or person_item.existing_qid
 
+            # Guard: well-known institutional QIDs must never appear as P50
+            # (author). Q188915 = National Library of Israel — it was incorrectly
+            # assigned as P50 in the April 2026 incident (Q139085958 had NLI as
+            # 4 of its 5 author values). Re-route to P195 (collection).
+            _INSTITUTIONAL_QIDS_BLOCKLIST = {Q_NLI}  # Q188915
+            if pid == P_AUTHOR and resolved_qid in _INSTITUTIONAL_QIDS_BLOCKLIST:
+                pid = "P195"  # collection
+
             # For scribes/owners → direct claim on manuscript
             # For authors → P50 on MS as fallback (proper model uses Work item)
             if resolved_qid:
@@ -2448,7 +2464,11 @@ class WikidataItemBuilder:
         # queries. Rule 33 handled P1476 and manuscript labels; this extends
         # the same hygiene to work items. Discovered 2026-04-24 via validator
         # error on 'פרושי תפלה מלוקטים (קטעים) :'.
-        title = title.strip().rstrip(" .,;:/-")
+        # Also strip surrounding MARC-style quotation marks (ASCII " and all
+        # Unicode typographic quote chars in _QUOTE_CHARS) so titles stored as
+        # '"Diodati Segre"' or '"""כתובים"""' don't land in labels/aliases/
+        # P1476 with spurious surrounding quotes.
+        title = _strip_name_quotes(title).rstrip(" .,;:/-")
         key = _work_key(title)
         if key in self._work_items:
             return self._work_items[key]

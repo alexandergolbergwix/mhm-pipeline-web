@@ -40,7 +40,10 @@ def _format_value(stmt: WikidataStatement) -> str:
     if stmt.value_type == "item":
         value = str(stmt.value)
         if value.startswith("__LOCAL:"):
-            return f'"{_escape_qs(value)}"'
+            # Cross-reference slugs are resolved by the WBI two-pass uploader;
+            # QuickStatements has no mechanism to resolve them. Signal the
+            # caller to skip this statement entirely.
+            return "__SKIP__"
         return value
 
     if stmt.value_type == "string":
@@ -162,6 +165,13 @@ class QuickStatementsExporter:
 
         # Statements
         for stmt in item.statements:
+            value_str = _format_value(stmt)
+            # __LOCAL: cross-reference slugs (e.g. work→manuscript P1574
+            # links) cannot be resolved by QuickStatements — skip them here.
+            # The WBI two-pass uploader handles them correctly.
+            if value_str == "__SKIP__":
+                continue
+
             # Rule 42: QS v2 has no native rank syntax. Emit a leading
             # comment line documenting the intended rank; rank is actually
             # persisted by the WBI uploader. Reviewers reading the QS file
@@ -172,7 +182,6 @@ class QuickStatementsExporter:
                     f"(set via WBI; not expressible in QS v2) */"
                 )
 
-            value_str = _format_value(stmt)
             line_parts = [qid, stmt.property_id, value_str]
 
             # Qualifiers must appear before references per QS v2 format

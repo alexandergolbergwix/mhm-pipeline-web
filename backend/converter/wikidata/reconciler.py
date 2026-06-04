@@ -237,6 +237,16 @@ class WikidataReconciler:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
+        # Safety: only match authority-record IDs (prefix "9870").
+        # Bibliographic IDs start with "990" and belong on manuscripts, not persons.
+        if not nli_id.startswith("9870"):
+            logger.debug(
+                "reconcile_person_by_nli_id: skipping non-authority ID %r (not 9870 prefix)",
+                nli_id,
+            )
+            self._cache[cache_key] = None
+            return None
+
         sparql = f"""
         SELECT ?item WHERE {{
           ?item wdt:P8189 "{nli_id}" .
@@ -583,9 +593,14 @@ class WikidataReconciler:
             Dict mapping NLI ID → Wikidata QID for found items.
         """
         results: dict[str, str] = {}
+        # Safety: filter out bibliographic IDs (prefix "990") — they are manuscript
+        # control numbers and must never be looked up as person P8189 values.
+        authority_ids = [nid for nid in nli_ids if nid.startswith("9870")]
+        if not authority_ids:
+            return results
         # Process in chunks of 100 (SPARQL VALUES limit)
-        for i in range(0, len(nli_ids), 100):
-            chunk = nli_ids[i : i + 100]
+        for i in range(0, len(authority_ids), 100):
+            chunk = authority_ids[i : i + 100]
             values = " ".join(f'"{nid}"' for nid in chunk)
             sparql = f"""
             SELECT ?item ?nli WHERE {{

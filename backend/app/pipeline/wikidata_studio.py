@@ -163,10 +163,23 @@ def _build_sync(
     overrides: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
+    from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
     from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
 
     builder = WikidataItemBuilder(reconciler=None)  # SPARQL-free for the web
     items = builder.build_all(records)
+
+    # Validate every built item and log any errors/warnings so they surface
+    # in the server log. This catches P8189 wrong-prefix, P31 wrong type,
+    # placeholder labels, institutional P50, etc. before export.
+    for it in items:
+        issues = validate_item(it)
+        for issue in issues:
+            severity = issue.severity if hasattr(issue, "severity") else str(issue)
+            code = issue.code if hasattr(issue, "code") else ""
+            msg = issue.message if hasattr(issue, "message") else str(issue)
+            log_fn = logger.error if severity == "error" else logger.warning
+            log_fn("validate_item [%s] %s: %s", severity.upper(), code, msg)
 
     # Apply per-item curator overrides in place.
     if overrides:
@@ -230,10 +243,11 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
         "death_year":         payload.get("death_year"),
         "preferred_name_lat": payload.get("preferred_name_lat", ""),
         "gnd_id":             cluster.get("gnd", ""),
-        "lc_id":              cluster.get("lccn", ""),
+        "lc_id":              cluster.get("lc", ""),
         "isni":               cluster.get("isni", ""),
         "bnf_id":             cluster.get("bnf", ""),
         "guard_flags":        payload.get("guard_flags") or [],
+        "name_type":          payload.get("viaf_name_type") or "",
         "matched":            1,
         "approved":           True,
     }
