@@ -92,9 +92,10 @@ _REF_DATA_MODEL = (
 # Detected by the 2026-06-04 property audit: Q179808 = Palme d'Or (Cannes film
 # festival award) was our Q_PALIMPSEST constant — a copy-paste error that would
 # have tagged every palimpsest manuscript as "instance of: Palme d'Or".
+# NOTE: Q5 (human) is intentionally absent here — persons legitimately use P31=Q5.
+# The manuscript-specific guard (no manuscript may be P31=Q5) lives in check 16b below.
 _KNOWN_BAD_P31_QIDS: dict[str, str] = {
     "Q179808": "Palme d'Or (Cannes film award) — correct palimpsest QID is Q274076",
-    "Q5":      "human — manuscripts are never P31=Q5",
 }
 
 # QIDs that are NEVER valid as qualifier/property values anywhere in this project
@@ -464,6 +465,19 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                 "against live Wikidata before adding.",
                 _REF_DATA_MODEL,
             ))
+
+    # 16b. Manuscripts must never be P31=Q5 (human). Person items legitimately
+    #      use Q5; this guard is scoped to manuscript entity_type only.
+    if etype == "manuscript":
+        for p31_val in _stmt_values(item, "P31"):
+            if p31_val == "Q5":
+                issues.append(ValidationIssue(
+                    "error", "P31_MANUSCRIPT_AS_HUMAN",
+                    "Manuscript item has P31=Q5 (human). Manuscripts use "
+                    "Q87167 (manuscript) or a more specific subclass. "
+                    "Check property_mapping.py Q_MANUSCRIPT constant.",
+                    _REF_DATA_MODEL,
+                ))
 
     return issues
 

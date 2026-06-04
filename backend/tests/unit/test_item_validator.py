@@ -179,7 +179,7 @@ class TestP31WrongQid:
         issues = validate_item(item)
         assert "P31_WRONG_QID" not in _codes(issues)
 
-    def test_q5_human_as_p31_is_error(self) -> None:
+    def test_q5_human_as_p31_on_manuscript_is_error(self) -> None:
         """Manuscripts must never have P31=Q5 (human)."""
         item = _Item(
             entity_type="manuscript",
@@ -188,7 +188,20 @@ class TestP31WrongQid:
                 _Stmt("P31", "Q5"),  # ← human — always wrong for a manuscript
             ],
         )
-        assert "P31_WRONG_QID" in _codes(validate_item(item))
+        assert "P31_MANUSCRIPT_AS_HUMAN" in _codes(validate_item(item))
+
+    def test_q5_human_as_p31_on_person_is_clean(self) -> None:
+        """Person items legitimately use P31=Q5 — must NOT fire P31_WRONG_QID."""
+        item = _Item(
+            entity_type="person",
+            labels={"en": "Moses Gaster"},
+            statements=[
+                _Stmt("P31", "Q5"),  # ← human — correct for a person
+            ],
+        )
+        codes = _codes(validate_item(item))
+        assert "P31_WRONG_QID" not in codes
+        assert "P31_MANUSCRIPT_AS_HUMAN" not in codes
 
     def test_manuscript_qid_is_clean(self) -> None:
         item = _Item(
