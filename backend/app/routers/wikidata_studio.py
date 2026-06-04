@@ -661,6 +661,21 @@ async def _build_native_items(
     return result.get("native_items") or []
 
 
+# Hebrew common-noun strings that the NER sometimes extracts as person names.
+# These are definitely not names and must be filtered out before building Wikidata items.
+_NON_PERSON_STRINGS: frozenset[str] = frozenset({
+    "הסוחר",    # the merchant
+    "נפש",      # soul
+    "גוי",      # gentile
+    "כותי",     # Samaritan
+    "ישמעאל",   # Ishmael (used generically for Muslim/Arab, not as a person name)
+    "עמוד",     # page/column
+    "דף",       # folio
+    "פרשה",     # Torah portion
+    "פסוק",     # verse
+})
+
+
 def _group_entity_rows(
     rows: list[Any], approved_only: bool,
 ) -> dict[str, list[dict[str, Any]]]:
@@ -674,7 +689,7 @@ def _group_entity_rows(
     for r in rows:
         if approved_only and not r.approved:
             continue
-        grouped.setdefault(r.control_number, []).append({
+        ent_dict = {
             "text":             r.override_text or r.text,
             "type":             (r.override_type or r.type or "").upper(),
             "role":             (r.override_role or r.role or "").upper(),
@@ -684,7 +699,31 @@ def _group_entity_rows(
             "confidence":       r.confidence,
             "model_confidence": r.model_confidence,
             "approved":         bool(r.approved),
-        })
+        }
+        if ent_dict["type"] == "PERSON":
+            text_lo = ent_dict["text"].strip().lower()
+            if text_lo in _NON_PERSON_STRINGS:
+                continue
+            if (
+                len(ent_dict["text"].split()) == 1
+                and (r.confidence or 1.0) < 0.40
+            ):
+                continue
+        grouped.setdefault(r.control_number, []).append(ent_dict)
+
+    for cn, ents in grouped.items():
+        seen_keys: set[tuple[str, str, str]] = set()
+        deduped: list[dict[str, Any]] = []
+        for ent in ents:
+            key = (
+                ent["text"].strip().lower(),
+                ent["type"],
+                ent["role"] or "",
+            )
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduped.append(ent)
+        grouped[cn] = deduped
     return grouped
 
 

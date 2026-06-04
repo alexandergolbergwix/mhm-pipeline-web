@@ -721,6 +721,41 @@ _ROLE_TO_OCCUPATION: dict[str, str] = {
 }
 
 
+# ── Work-title / embedded-author splitter ────────────────────────────
+
+_PERSON_NAME_SIGNALS_RE = re.compile(
+    r'\bבן\b|\bב"ר\b|\bבר\b|\bibn\b|\bbar\b|\bben\b',
+    re.IGNORECASE,
+)
+
+
+def _split_work_title_author(text: str) -> tuple[str, str | None]:
+    """Split 'Title לAuthor' NLI citation format into (clean_title, author|None).
+
+    Only splits when the candidate author segment contains a genealogical
+    marker (בן/ב"ר/ibn/bar) or looks like a ≥2-token Hebrew personal name.
+    Returns (text, None) unchanged when no confident split is found.
+
+    Examples:
+      "ספר היראה ליונה בן אברהם גרונדי"  → ("ספר היראה", "יונה בן אברהם גרונדי")
+      "סדור מנהג אשכנז לכל השנה"          → ("סדור מנהג אשכנז לכל השנה", None)
+      "צוואת יהודה החסיד מרגנשבורג ליהודה בן שמואל החסיד"
+                                           → ("צוואת יהודה החסיד מרגנשבורג", "יהודה בן שמואל החסיד")
+    """
+    candidates = [m.start() for m in re.finditer(r" ל(?=[א-ת])", text)]
+    for pos in reversed(candidates):
+        author_part = text[pos + 2:].strip()
+        title_part = text[:pos].strip()
+        if not title_part:
+            continue
+        if _PERSON_NAME_SIGNALS_RE.search(author_part):
+            return title_part, author_part
+        heb_tokens = [t for t in author_part.split() if re.search(r"[א-ת]{3,}", t)]
+        if len(heb_tokens) >= 2:
+            return title_part, author_part
+    return text, None
+
+
 # ── Builder ──────────────────────────────────────────────────────────
 
 
@@ -1053,9 +1088,11 @@ class WikidataItemBuilder:
 
         # ── Genres (MARC 655) ────────────────────────────────────
         marc_genres = record.get("genres") or []
+        seen_genre_qids: set[str] = set()
         for genre in marc_genres:
             qid = GENRE_TO_QID.get(str(genre))
-            if qid:
+            if qid and qid not in seen_genre_qids:
+                seen_genre_qids.add(qid)
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_GENRE,
@@ -1080,7 +1117,8 @@ class WikidataItemBuilder:
                     if genre_str == "other":
                         continue  # NOTA predicted — no genre claim
                     qid = GENRE_TO_QID.get(genre_str)
-                    if qid:
+                    if qid and qid not in seen_genre_qids:
+                        seen_genre_qids.add(qid)
                         # Rule 42: classifier-inferred genres carry both
                         # P1480 (presumably) and P5102 (hypothesis) to make
                         # the epistemic status explicit. P887 stays in the
@@ -1105,6 +1143,32 @@ class WikidataItemBuilder:
                                 references=heuristic_ref,
                             )
                         )
+
+        # ── Genres from curator-approved NER extraction (genre_ml source) ──
+        ner_genre_ents = [
+            e for e in (record.get("entities") or [])
+            if e.get("type") == "GENRE" and e.get("approved", False)
+        ]
+        for ge in ner_genre_ents:
+            genre_text = str(ge.get("text", "")).strip()
+            qid = GENRE_TO_QID.get(genre_text)
+            if qid and qid not in seen_genre_qids:
+                seen_genre_qids.add(qid)
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_GENRE,
+                        value=qid,
+                        value_type="item",
+                        qualifiers=[
+                            {
+                                "property": P_SOURCING_CIRCUMSTANCES,
+                                "value": Q_PRESUMABLY,
+                                "type": "item",
+                            }
+                        ],
+                        references=ref,
+                    )
+                )
 
         # ── Subjects from canonical_references → P921 ────────────
         self._add_canonical_subjects(item, record, ref)
@@ -1738,7 +1802,8 @@ class WikidataItemBuilder:
         folios = [e for e in cont_entities if e.get("type") == "FOLIO"]
 
         for work in works:
-            work_title = str(work.get("text", "")).strip().strip(_QUOTE_CHARS + ".")
+            work_title_raw = str(work.get("text", "")).strip().strip(_QUOTE_CHARS + ".")
+            work_title, embedded_author = _split_work_title_author(work_title_raw)
             if not work_title or work_title in seen_works:
                 continue
             seen_works.add(work_title)
@@ -1769,9 +1834,10 @@ class WikidataItemBuilder:
                     )
                 )
             else:
-                # Find associated WORK_AUTHOR entity by position proximity
+                # Use embedded author extracted from the WORK title text as fallback
+                author_name = embedded_author
+                # Then try the WORK_AUTHOR positional lookup (overrides embedded_author if found)
                 work_authors = [e for e in cont_entities if e.get("type") == "WORK_AUTHOR"]
-                author_name = None
                 for wa in work_authors:
                     if abs(wa.get("start", 0) - work.get("end", 0)) < 20:
                         author_name = str(wa.get("text", "")).strip()
