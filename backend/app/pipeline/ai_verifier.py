@@ -37,11 +37,11 @@ VERDICT_ABSTAIN = "abstain"
 class AiVerdict:
     overall: str            # full | partial | fail | abstain
     reasoning: str
-    model: str              # "gemini-2.5-flash" | "heuristic"
+    model: str              # "gemini-3.5-flash" | "heuristic"
     judged_at: str          # ISO 8601
 
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash"
 
 
 async def verify_match(

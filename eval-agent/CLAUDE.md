@@ -245,7 +245,7 @@ diverge); their count is reported in `self_verify.json` as
 
 **Model-id caveat:** `gemini-3.5-flash` / `gemini-3.1-pro-preview` must
 resolve on the live API; they live in `config/default.yaml`. Fall back
-to `gemini-2.5-flash` / `gemini-2.5-pro` if rejected. The
+to `gemini-3.5-flash` / `gemini-3.1-pro-preview` if rejected. The
 function-response turn role in `loop.py:_function_response_turn` is set
 to `"user"` per v1beta — verify in the live smoke if tool turns error.
 

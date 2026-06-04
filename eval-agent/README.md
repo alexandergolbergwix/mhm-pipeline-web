@@ -207,7 +207,7 @@ Default judge is **`gemini-3.5-flash`** (stable, high free-tier quota,
 |---|---:|---:|---:|---:|
 | `gemini-3.5-flash` (default) | ~$0.0002 | **~$0.03** | 60 | ~3 min |
 | `gemini-3.1-pro-preview` | ~$0.0019 | ~$0.30 | 25 | ~7 min |
-| `gemini-2.5-pro` | ~$0.0021 | ~$0.34 | 25 | ~7 min |
+| `gemini-3.1-pro-preview` | ~$0.0019 | ~$0.30 | 25 | ~7 min (same as above) |
 
 Cache hits are free — incremental re-runs cost only the new
 candidates. The verdict cache key includes the judge id, so
