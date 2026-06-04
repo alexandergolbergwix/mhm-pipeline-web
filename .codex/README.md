@@ -18,6 +18,7 @@ collaborative, browser-based curator interface to the MHM Pipeline.
 - `/run-tests` — full three-layer pyramid (backend / vitest / playwright)
 - `/smoke-routers` — verify every FastAPI router imports + registers
 - `/sync-from-desktop` — re-mirror `backend/converter/` from the desktop pipeline (Rule W-10)
+- `/audit-wikidata-constants` — verify every P/Q constant in `property_mapping.py` against live Wikidata (Rule W-26)
 
 ## Authoritative refs
 

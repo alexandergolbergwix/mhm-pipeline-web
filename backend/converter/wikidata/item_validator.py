@@ -82,6 +82,20 @@ _REF_HELP_LABEL = "https://www.wikidata.org/wiki/Help:Label"
 _REF_VIAF_NAMETYPE = (
     "https://www.wikidata.org/wiki/Wikidata_talk:WikiProject_Authority_control"
 )
+_REF_P50_CONSTRAINT = "https://www.wikidata.org/wiki/Property:P50"
+_REF_P7416 = "https://www.wikidata.org/wiki/Property:P7416"
+_REF_DATA_MODEL = (
+    "https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model"
+)
+
+# QIDs that are NEVER valid P31 values for any item in this project.
+# Detected by the 2026-06-04 property audit: Q179808 = Palme d'Or (Cannes film
+# festival award) was our Q_PALIMPSEST constant — a copy-paste error that would
+# have tagged every palimpsest manuscript as "instance of: Palme d'Or".
+_KNOWN_BAD_P31_QIDS: dict[str, str] = {
+    "Q179808": "Palme d'Or (Cannes film award) — correct palimpsest QID is Q274076",
+    "Q5":      "human — manuscripts are never P31=Q5",
+}
 
 
 # ── The 11 checks ────────────────────────────────────────────────────────
@@ -340,6 +354,62 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                 "external identifier — ambiguous, fails Wikidata:Notability "
                 "(Epìdosis report, Q139231258).",
                 _REF_NOTABILITY,
+            ))
+
+    # 14. P50 directly on a manuscript — explicit Property:P50 constraint violation
+    #     (2026-06-04 property audit). The constraint page states: "use exemplar
+    #     of (P1574) to connect the manuscript to the work(s) it contains; NEVER
+    #     connect directly the manuscript to the author(s)". The correct chain is:
+    #     manuscript → P1574 → work → P50 → person. Any P50 on a manuscript item
+    #     is a data-model error regardless of how it got there.
+    if etype == "manuscript":
+        for s in getattr(item, "statements", []) or []:
+            if getattr(s, "property_id", "") == "P50":
+                issues.append(ValidationIssue(
+                    "error", "P50_ON_MANUSCRIPT",
+                    "P50 (author) appears directly on a manuscript item. "
+                    "Property:P50 constraint forbids this: 'use exemplar of "
+                    "(P1574) to connect the manuscript to the work(s) it "
+                    "contains; never connect directly the manuscript to the "
+                    "author(s)'. Route through manuscript→P1574→work→P50→person.",
+                    _REF_P50_CONSTRAINT,
+                ))
+                break  # one error is enough
+
+    # 15. P7416 used as a quantity/count — wrong property use
+    #     (2026-06-04 property audit). P7416 "folio(s)" is a STRING citation
+    #     qualifier meaning "this statement references folio N of source X".
+    #     It is NOT a physical count property. To record the number of leaves
+    #     in a manuscript use P1104 (number of pages) with unit Q107256474
+    #     (leaf). WikiProject Manuscripts Data Model, section "number of pages":
+    #     "Specifies the number of folia of a manuscript."
+    for s in getattr(item, "statements", []) or []:
+        if getattr(s, "property_id", "") == "P7416":
+            if getattr(s, "value_type", "") == "quantity":
+                issues.append(ValidationIssue(
+                    "error", "P7416_AS_QUANTITY",
+                    f"P7416 'folio(s)' is a STRING citation qualifier — its "
+                    f"data type on Wikidata is String, not Quantity. To record "
+                    f"the physical folio/leaf count use P1104 (number of pages) "
+                    f"with unit Q107256474 (leaf). P7416 may only appear as a "
+                    f"string qualifier (e.g. 'statement cites folio 15r').",
+                    _REF_P7416,
+                ))
+                break
+
+    # 16. Known-bad P31 QID — sanity check against copy-paste errors in
+    #     property_mapping.py. Catches cases like Q179808 (Palme d'Or) being
+    #     used instead of Q274076 (palimpsest), discovered in the 2026-06-04
+    #     audit. Any P31 value that is in _KNOWN_BAD_P31_QIDS is an error.
+    for p31_val in _stmt_values(item, "P31"):
+        if p31_val in _KNOWN_BAD_P31_QIDS:
+            explanation = _KNOWN_BAD_P31_QIDS[p31_val]
+            issues.append(ValidationIssue(
+                "error", "P31_WRONG_QID",
+                f"P31 value {p31_val!r} is known-wrong: {explanation}. "
+                "Check property_mapping.py constants and verify each QID "
+                "against live Wikidata before adding.",
+                _REF_DATA_MODEL,
             ))
 
     return issues

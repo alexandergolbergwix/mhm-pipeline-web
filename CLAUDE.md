@@ -504,6 +504,46 @@ external calls (new authority APIs, new LLM calls) MUST go through
   place — not attributed to `"wikidata"` alone when only KIMA
   supplied the QID.
 
+### Rule W-26 — Every Wikidata P/Q constant in property_mapping.py must be verified live (added 2026-06-04)
+
+The 2026-06-04 property audit found three silent catastrophes in
+`backend/converter/wikidata/property_mapping.py`:
+
+1. **`Q_PALIMPSEST = "Q179808"`** was the **Palme d'Or** (Cannes film
+   award). Every palimpsest manuscript was tagged `P31 = Palme d'Or`.
+   Correct QID: `Q274076`.
+2. **`P_NUMBER_OF_FOLIOS = "P7416"`** — P7416 "folio(s)" is a STRING
+   **citation qualifier** ("this statement references folio 15r of source
+   X"), not a count property. Folio count must use P1104 (number of pages)
+   with unit Q107256474 (leaf). P7416 as a folio-reference qualifier on
+   colophon/scribal-intervention statements is correct.
+3. **P50 directly on manuscript items** — Property:P50 has an explicit
+   Wikidata constraint: *"use exemplar of (P1574) to connect the manuscript
+   to the work(s) it contains; never connect directly the manuscript to the
+   author(s)"*. The correct chain: `manuscript → P1574 → work → P50 → person`.
+
+**Invariants enforced by the moat layer (`item_validator.py`):**
+
+- `P50_ON_MANUSCRIPT` (error): P50 on any `entity_type="manuscript"` item.
+- `P7416_AS_QUANTITY` (error): P7416 with `value_type="quantity"`.
+- `P31_WRONG_QID` (error): any P31 value in `_KNOWN_BAD_P31_QIDS`
+  (Q179808, Q5 on manuscripts, …).
+
+**Regression tests** (14 cases in `backend/tests/unit/test_item_validator.py`):
+`TestP50OnManuscript`, `TestP7416AsQuantity`, `TestP31WrongQid`,
+`TestBuilderNeverViolatesNewChecks`.
+
+**When adding or modifying a P/Q constant:**
+1. Open `https://www.wikidata.org/wiki/Property:PXXX` (or `/QXXX`).
+2. Read the **Statements** panel: confirm the label, data type, and
+   any scope-note constraints match your intended use.
+3. For `P_*` constants: check the *item of property constraint* notes —
+   these are the community's formal "never use this on X" rules.
+4. Add a `_KNOWN_BAD_P31_QIDS` entry and a unit test if you're removing
+   a wrong constant so it can never silently sneak back in.
+5. Never add a constant derived from memory or documentation alone —
+   always fetch the live page. Constants can change (merges, redirects).
+
 ### Rule W-24 — All four curator surfaces support per-field manual editing (added 2026-06-03)
 
 - **NER**: `override_text`, `override_type`, `override_role` in
