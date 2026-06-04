@@ -25,7 +25,7 @@ from app.realtime import start_listener, stop_listener
 from app.routers import (
     access_request, admin, ai_verify, api_keys, auth, export, extraction,
     extraction_verify, health, history, hmo_studio, invites, onboarding,
-    projects, rdf, runs, section_export, section_import,
+    projects, rdf, research, runs, section_export, section_import,
     wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
@@ -108,6 +108,7 @@ def create_app() -> FastAPI:
     app.include_router(access_request.router, prefix="/api")
     app.include_router(section_export.router, prefix="/api")
     app.include_router(section_import.router, prefix="/api")
+    app.include_router(research.router, prefix="/api")
     app.include_router(ws.router, prefix="/api")
 
     # Frontend static assets (production). Mounted last so any /api

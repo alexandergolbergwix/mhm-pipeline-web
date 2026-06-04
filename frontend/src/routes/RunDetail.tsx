@@ -48,6 +48,11 @@ export default function RunDetail() {
   const [backfillResult, setBackfillResult] = useState<{
     checked: number; updated: number; births_filled: number; deaths_filled: number;
   } | null>(null);
+  const [reEnrichBusy, setReEnrichBusy] = useState(false);
+  const [reEnrichSkipCache, setReEnrichSkipCache] = useState(false);
+  const [reEnrichResult, setReEnrichResult] = useState<{
+    checked: number; updated: number; newly_matched: number; skip_cache: boolean;
+  } | null>(null);
   const [verifyScope, setVerifyScope] = useState<{ kind: ScopeKind; matchIds?: string[]; label: string } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   // Sort state — persisted across reloads so curators don't lose their place.
@@ -109,13 +114,25 @@ export default function RunDetail() {
     try {
       const r = await Runs.backfillDates(runId);
       setBackfillResult(r);
-      // Re-pull every match so the Dates & guards panel + the row
-      // tooltips reflect the new birth/death values.
       await refresh();
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
       setBackfillBusy(false);
+    }
+  }
+
+  async function reEnrich() {
+    if (!runId) return;
+    setReEnrichBusy(true); setError(null); setReEnrichResult(null); setBackfillResult(null);
+    try {
+      const r = await Runs.reEnrichAuthority(runId, reEnrichSkipCache);
+      setReEnrichResult(r);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+    } finally {
+      setReEnrichBusy(false);
     }
   }
 
@@ -253,10 +270,31 @@ export default function RunDetail() {
                 ✨ Verify all visible with AI
               </button>
               <button onClick={backfillDates} disabled={!!backfillBusy}
-                      title="Walk every match and pull birth / death years from the IDs already stored (Mazal, VIAF, Wikidata). Leaves approvals untouched."
-                      className="button-ghost !py-1.5 text-sm">
-                {backfillBusy ? "Backfilling…" : "Backfill dates"}
+                      title="Pull birth / death years from the IDs already stored (Mazal · VIAF · Wikidata) without re-running enrichment. Fixes matches that show '—' in the Dates tab."
+                      className="button-ghost !py-1.5 text-sm text-amber-400">
+                {backfillBusy ? "⏳ Backfilling…" : "📅 Backfill dates"}
               </button>
+              {/* Re-run the full Mazal/VIAF/Wikidata matching while preserving approvals */}
+              <div className="flex items-center gap-1.5 border border-white/10 rounded px-2 py-1">
+                <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="accent-biu-sky"
+                    checked={reEnrichSkipCache}
+                    onChange={(e) => setReEnrichSkipCache(e.target.checked)}
+                  />
+                  Skip cache
+                </label>
+                <button
+                  onClick={reEnrich}
+                  disabled={reEnrichBusy}
+                  title={reEnrichSkipCache
+                    ? "Re-run full Mazal · VIAF · Wikidata matching with fresh API calls (ignores 30-day cache). Preserves approvals."
+                    : "Re-run full Mazal · VIAF · Wikidata matching, using cached results where available. Preserves approvals."}
+                  className="button-ghost !py-0.5 !px-2 text-xs text-biu-sky whitespace-nowrap">
+                  {reEnrichBusy ? "⏳ Re-enriching…" : "↻ Re-run enrichment"}
+                </button>
+              </div>
               {runId && (
                 <SectionExportMenu
                   section="authority"
@@ -278,6 +316,14 @@ export default function RunDetail() {
                   {backfillResult.updated > 0
                     ? <>✓ {backfillResult.updated} rows updated · +{backfillResult.births_filled} births · +{backfillResult.deaths_filled} deaths</>
                     : <>No new dates available from Mazal / VIAF / Wikidata for the remaining matches</>}
+                </span>
+              )}
+              {reEnrichResult && (
+                <span className="muted text-xs">
+                  {reEnrichResult.updated > 0 || reEnrichResult.newly_matched > 0
+                    ? <>✓ {reEnrichResult.updated} updated · {reEnrichResult.newly_matched} new
+                        {reEnrichResult.skip_cache && <> · cache bypassed</>}</>
+                    : <>No changes — all matches already up to date</>}
                 </span>
               )}
             </div>

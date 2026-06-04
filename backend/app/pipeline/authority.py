@@ -187,11 +187,24 @@ class DesktopMatcher(AuthorityMatcher):
             return None
         async def _f() -> dict[str, Any] | None:
             return await asyncio.to_thread(self._viaf.match_person_with_metadata, text)
-        return await self._cached(
+        result = await self._cached(
             kind="authority.viaf",
             query_summary={"op": "match_person_with_metadata", "text": text},
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
+        # Schema-migration guard: cache entries written before birth_year /
+        # death_year were added to match_person_with_metadata's return dict
+        # lack those keys entirely (vs. having them with value None). Force a
+        # one-time refresh so the new schema is stored and subsequent calls
+        # return dates. Without this, the 30-day authority cache TTL keeps
+        # returning stale entries that make the Dates tab show "—" forever.
+        if result is not None and "birth_year" not in result:
+            result = await self._cached(
+                kind="authority.viaf",
+                query_summary={"op": "match_person_with_metadata", "text": text},
+                fetch=_f, db_session=db_session, user_id=user_id, skip_cache=True,
+            )
+        return result
 
     async def _wikidata_match_person(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
@@ -270,6 +283,7 @@ class DesktopMatcher(AuthorityMatcher):
                             "kima_lat":      kima_row.get("lat"),
                             "kima_lon":      kima_row.get("lon"),
                             "kima_geonames": kima_row.get("geonames_id"),
+                            "kima_viaf_id":  kima_row.get("viaf_id") or "",
                         }
             except Exception as exc:  # noqa: BLE001
                 logger.warning("KIMA matcher raised for %r: %s", text, exc)

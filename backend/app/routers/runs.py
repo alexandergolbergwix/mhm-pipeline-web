@@ -9,6 +9,7 @@ Endpoints (RBAC notes):
 * ``GET    /runs/{id}/records/{cn}``        — viewer+ (popup with full MARC)
 * ``PATCH  /runs/{id}/matches/{mid}``       — editor+ (toggle approval)
 * ``POST   /runs/{id}/matches/bulk-approve``— editor+
+* ``POST   /runs/{id}/authority/re-enrich`` — editor+ (re-run full matching, skip_cache param)
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -520,6 +521,126 @@ async def rebuild_authority_guards(
         "checked": checked,
         "downgraded": downgraded,
         "flags_added": flags_added,
+    }
+
+
+@router.post("/runs/{run_id}/authority/re-enrich")
+async def re_enrich_authority(
+    run_id: uuid.UUID,
+    skip_cache: bool = Query(
+        False,
+        description="When true, bypass the shared inference cache and call "
+                    "Mazal / VIAF / Wikidata / KIMA fresh. Use to recover from "
+                    "stale cached results (e.g., missing birth/death years).",
+    ),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Re-run the full authority matching pipeline for every entity in the
+    run, updating match fields in-place while **preserving** the curator's
+    approval decisions (``approved``, ``approved_by``, ``approved_at``).
+
+    Unlike ``/authority/rebuild`` (which only re-applies hardening guards
+    over data already in the DB), this endpoint calls the live matchers —
+    Mazal, VIAF, Wikidata, KIMA — so it picks up updated authority records
+    and can fill in birth/death years that were missing on the original run.
+
+    ``skip_cache=true`` bypasses the 30-day shared inference cache so every
+    external API is called fresh.  Use this when you see "—" in the Dates
+    tab or when authority data may have changed upstream.
+
+    Returns: ``checked``, ``updated``, ``newly_matched``, ``skip_cache``.
+    """
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    from app.pipeline import authority as auth_pipeline  # noqa: PLC0415
+    from app.pipeline.marc_ingest import extract_named_entities  # noqa: PLC0415
+
+    matcher = auth_pipeline.get_default_matcher()
+
+    records = (
+        await db.execute(
+            select(RunRecord).where(RunRecord.run_id == run_id)
+        )
+    ).scalars().all()
+
+    existing_rows = (
+        await db.execute(
+            select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
+        )
+    ).scalars().all()
+
+    # Index existing rows by (control_number, entity_text, entity_kind) so
+    # we can upsert: update payload/IDs while preserving approval state.
+    existing_idx: dict[tuple[str, str, str], AuthorityMatch] = {
+        (m.control_number, m.entity_text.strip().lower(), m.entity_kind): m
+        for m in existing_rows
+    }
+
+    checked = 0
+    updated = 0
+    newly_matched = 0
+
+    for rec in records:
+        marc = dict(rec.marc or {})
+        entities = extract_named_entities(marc)
+        for entity in entities:
+            checked += 1
+            try:
+                candidates = await matcher.match(
+                    entity, marc,
+                    db_session=db,
+                    user_id=run.created_by,
+                    skip_cache=skip_cache,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "re-enrich: authority match failed for %r", entity.get("text"),
+                )
+                candidates = []
+
+            if not candidates:
+                continue
+
+            c = candidates[0]
+            key = (
+                rec.control_number,
+                (entity.get("text") or "").strip().lower(),
+                entity.get("kind", "person"),
+            )
+            if key in existing_idx:
+                m = existing_idx[key]
+                m.matched_name  = c.matched_name
+                m.mazal_id      = c.mazal_id
+                m.viaf_id       = c.viaf_id
+                m.wikidata_qid  = c.wikidata_qid
+                m.confidence    = c.confidence
+                m.source        = c.source
+                m.payload       = c.payload
+                updated += 1
+            else:
+                db.add(AuthorityMatch(
+                    run_id=run_id,
+                    control_number=rec.control_number,
+                    entity_text=entity.get("text", ""),
+                    entity_kind=entity.get("kind", "person"),
+                    role=entity.get("role", ""),
+                    matched_name=c.matched_name,
+                    mazal_id=c.mazal_id,
+                    viaf_id=c.viaf_id,
+                    wikidata_qid=c.wikidata_qid,
+                    confidence=c.confidence,
+                    source=c.source,
+                    payload=c.payload,
+                ))
+                newly_matched += 1
+
+    await db.commit()
+    return {
+        "checked": checked,
+        "updated": updated,
+        "newly_matched": newly_matched,
+        "skip_cache": skip_cache,
     }
 
 

@@ -16,6 +16,9 @@ from typing import Any
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, XSD
 
+_WGS84_LAT  = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#lat")
+_WGS84_LONG = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#long")
+
 from ..config.namespaces import CIDOC, HM, LRMOO, bind_namespaces
 from ..config.vocabularies import (
     DATA_CATEGORIES,
@@ -874,6 +877,19 @@ class GraphBuilder:
         elif subject_type == "place":
             subject_uri = self.uri_gen.place_uri(subject["term"])
             graph.add((subject_uri, RDF.type, CIDOC.E53_Place))
+            if subject.get("geonames_id"):
+                graph.add((
+                    subject_uri, OWL.sameAs,
+                    URIRef(f"https://www.geonames.org/{subject['geonames_id']}/"),
+                ))
+            if subject.get("lat") is not None and subject.get("lon") is not None:
+                graph.add((subject_uri, _WGS84_LAT,  Literal(str(subject["lat"]))))
+                graph.add((subject_uri, _WGS84_LONG, Literal(str(subject["lon"]))))
+            if subject.get("wikidata_id"):
+                graph.add((
+                    subject_uri, OWL.sameAs,
+                    URIRef(f"https://www.wikidata.org/entity/{subject['wikidata_id']}"),
+                ))
         else:
             subject_uri = self.uri_gen.subject_uri(subject["term"])
             graph.add((subject_uri, RDF.type, HM.SubjectType))

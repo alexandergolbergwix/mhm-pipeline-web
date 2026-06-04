@@ -175,16 +175,14 @@ function Why({ match, payload }: { match: AuthorityMatch; payload: Record<string
 }
 
 
-function Dates({ payload }: { match: AuthorityMatch; payload: Record<string, unknown> }) {
+function Dates({match, payload}: {match: AuthorityMatch; payload: Record<string, unknown>}) {
   const msYear = payload.ms_year as number | null | undefined;
   const birth  = payload.birth_year as number | null | undefined;
   const death  = payload.death_year as number | null | undefined;
   const role   = (payload.role_kind as string | undefined) || "other";
   const conflict = (payload.guard_flags as string[] | undefined)?.includes("date_conflict");
-  // The Authority Enrichment guard only runs when at least one candidate year is
-  // known. Otherwise the "✓ Dates compatible" line was misleading —
-  // it didn't pass the check, it skipped it.
   const dateGuardRan = (birth || death) && msYear;
+  const hasIds = !!(match.viaf_id || match.wikidata_qid || match.mazal_id);
 
   return (
     <div className="space-y-4">
@@ -208,9 +206,18 @@ function Dates({ payload }: { match: AuthorityMatch; payload: Record<string, unk
             ? <span className="text-red-300">⚠ Authority Enrichment date guard fired — see the Why tab.</span>
             : dateGuardRan
               ? <span className="text-biu-sky">✓ Dates compatible with the role.</span>
-              : <span className="muted">— Date guard skipped: no candidate birth / death years
-                  available from Mazal, VIAF, or Wikidata. Re-run the run after the matchers
-                  populate years to enable this check.</span>}
+              : hasIds
+                ? <span className="muted">
+                    — Dates not yet populated. This match has authority IDs (
+                    {[match.viaf_id && "VIAF", match.wikidata_qid && "Wikidata", match.mazal_id && "Mazal"]
+                      .filter(Boolean).join(" · ")}
+                    ) but the birth/death years were not stored — likely a stale authority cache entry
+                    from before date extraction was added. Click{" "}
+                    <b className="text-ink">Backfill dates</b> in the Authority panel header to pull
+                    years from these IDs without re-running the full enrichment.
+                  </span>
+                : <span className="muted">— Date guard skipped: no candidate birth / death years
+                    available from Mazal, VIAF, or Wikidata for this match.</span>}
         </p>
       </section>
     </div>

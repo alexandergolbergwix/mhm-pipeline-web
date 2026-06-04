@@ -2405,6 +2405,14 @@ class WikidataItemBuilder:
             )
         )
 
+        pref_lat = (match_info.get("preferred_name_lat") or "").strip()
+        if pref_lat:
+            person.labels["en"] = _normalise_label(pref_lat)
+
+        pref_heb = (match_info.get("preferred_name_heb") or "").strip()
+        if pref_heb:
+            person.labels["he"] = pref_heb
+
         # P31 = human (or organization) — uses the shared institutional
         # keyword list (see _is_institutional_name above).
         is_org = _is_institutional_name(name)
@@ -2549,6 +2557,17 @@ class WikidataItemBuilder:
             # Could be logged for offline review.
             pass
 
+        j9u_from_viaf = (match_info.get("j9u_id") or "").strip()
+        if j9u_from_viaf and j9u_from_viaf.startswith("987") and not is_org:
+            if not (mazal_str and mazal_str.startswith("9870")):
+                person.statements.append(
+                    WikidataStatement(
+                        property_id=P_NLI_J9U_ID,
+                        value=j9u_from_viaf,
+                        value_type="external-id",
+                    )
+                )
+
         # P21 (sex or gender): intentionally NOT set.
         # Bug fix 2026-04-15 (web audit): the MARC source records carry no
         # reliable gender information, and unsourced bot-added gender claims
@@ -2620,6 +2639,20 @@ class WikidataItemBuilder:
                         value=cleaned_name,
                         value_type="monolingualtext",
                         language=native_lang,
+                    )
+                )
+
+        if pref_heb and not is_org:
+            already_has_p1559 = any(
+                stmt.property_id == "P1559" for stmt in person.statements
+            )
+            if not already_has_p1559:
+                person.statements.append(
+                    WikidataStatement(
+                        property_id="P1559",
+                        value=pref_heb,
+                        value_type="monolingualtext",
+                        language="he",
                     )
                 )
 

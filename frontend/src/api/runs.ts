@@ -101,6 +101,16 @@ export const Runs = {
       births_filled: number; deaths_filled: number;
     }>(`/runs/${runId}/matches/backfill-dates`, {}),
 
+  /** Re-run the full Mazal / VIAF / Wikidata / KIMA matching pipeline for
+   *  every entity in the run, updating match fields in-place while
+   *  preserving curator approvals. skipCache=true bypasses the 30-day
+   *  shared inference cache for fresh API calls. */
+  reEnrichAuthority: (runId: string, skipCache: boolean) =>
+    api.post<{
+      checked: number; updated: number;
+      newly_matched: number; skip_cache: boolean;
+    }>(`/runs/${runId}/authority/re-enrich?skip_cache=${skipCache}`, {}),
+
   editMatch: (
     runId: string,
     matchId: string,

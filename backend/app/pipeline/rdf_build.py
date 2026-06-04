@@ -221,6 +221,64 @@ def _merge_ner_entities(rec: dict[str, Any], entities: list[dict[str, Any]]) -> 
             rec["contents"] = contents
 
 
+def _merge_authority_ids(rec: dict[str, Any], matches: list[dict[str, Any]]) -> None:
+    """Merge approved authority identifiers from *matches* into *rec*.
+
+    Person matches: viaf_id, birth_year, death_year, wikidata_id (and
+    authority_id when mazal_id carries an NLI number) are written into
+    the matching entry in rec["authors"] or rec["contributors"] by
+    case-insensitive name comparison.  Only absent fields are filled so
+    the curator's MARC-embedded values are never clobbered.
+
+    KIMA place matches (payload.kima_id is set): geonames_id, lat, lon,
+    wikidata_id are written into the matching entry in rec["subjects"]
+    by case-insensitive term comparison.  The graph builder then uses
+    these to emit OWL.sameAs + WGS84 triples for the place node.
+    """
+    for m in matches:
+        payload = m.get("payload") or {}
+        entity_text = (m.get("entity_text") or "").strip().lower()
+        if not entity_text:
+            continue
+
+        is_kima = bool(payload.get("kima_id"))
+        entity_kind = (m.get("entity_kind") or "person").lower()
+
+        if is_kima or entity_kind == "place":
+            for subj in rec.get("subjects") or []:
+                term = (subj.get("term") or "").strip().lower()
+                if not term:
+                    continue
+                if term == entity_text or entity_text in term or term in entity_text:
+                    if payload.get("kima_geonames") and "geonames_id" not in subj:
+                        subj["geonames_id"] = str(payload["kima_geonames"])
+                    if payload.get("kima_lat") is not None and "lat" not in subj:
+                        subj["lat"] = payload["kima_lat"]
+                    if payload.get("kima_lon") is not None and "lon" not in subj:
+                        subj["lon"] = payload["kima_lon"]
+                    if m.get("wikidata_qid") and "wikidata_id" not in subj:
+                        subj["wikidata_id"] = m["wikidata_qid"]
+                    break
+        else:
+            for target_key in ("authors", "contributors"):
+                for person in rec.get(target_key) or []:
+                    name = (person.get("name") or "").strip().lower()
+                    if not name:
+                        continue
+                    if name == entity_text or entity_text in name or name in entity_text:
+                        if m.get("viaf_id") and "viaf_id" not in person:
+                            person["viaf_id"] = str(m["viaf_id"])
+                        if payload.get("birth_year") is not None and "birth_year" not in person:
+                            person["birth_year"] = payload["birth_year"]
+                        if payload.get("death_year") is not None and "death_year" not in person:
+                            person["death_year"] = payload["death_year"]
+                        if m.get("wikidata_qid") and "wikidata_id" not in person:
+                            person["wikidata_id"] = m["wikidata_qid"]
+                        if m.get("mazal_id") and "authority_id" not in person:
+                            person["authority_id"] = str(m["mazal_id"])
+                        break
+
+
 def _run_mapper_sync(
     marc_records: list[dict],
     authority_matches: list[dict],
@@ -273,6 +331,10 @@ def _run_mapper_sync(
         ner_ents = ents_by_cn.get(cn) or ents_by_cn.get(cn_stripped) or []
         if ner_ents:
             _merge_ner_entities(rec, ner_ents)
+
+        rec_matches = matches_by_cn.get(cn) or matches_by_cn.get(cn_stripped) or []
+        if rec_matches:
+            _merge_authority_ids(rec, rec_matches)
 
         try:
             # Build ExtractedData from the dict — same pattern as
@@ -718,6 +780,7 @@ def rdf_output_path_for_run(run_id: str) -> Path:
 _MATCH_FIELDS: tuple[str, ...] = (
     "control_number", "entity_text", "role", "matched_name",
     "mazal_id", "viaf_id", "wikidata_qid", "confidence", "source",
+    "entity_kind",
 )
 
 

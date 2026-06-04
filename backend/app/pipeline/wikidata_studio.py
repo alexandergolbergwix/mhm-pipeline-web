@@ -146,6 +146,13 @@ async def build_items_for_run(
         out["marc_authority_matches"] = [
             _approved_match_to_desktop_shape(m) for m in by_cn.get(cn, [])
         ]
+        out["kima_places"] = {
+            m["entity_text"]: f"https://www.wikidata.org/entity/{m['wikidata_qid']}"
+            for m in by_cn.get(cn, [])
+            if (m.get("payload") or {}).get("kima_id")
+            and m.get("wikidata_qid")
+            and m.get("entity_text")
+        }
         # Merge NER entities. Desktop _merge_ner_into_records uses
         # setdefault, so we don't clobber a record that arrived with
         # its own entities list (rare on the web — _to_dict_list above
@@ -251,6 +258,9 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
         "birth_year":         payload.get("birth_year"),
         "death_year":         payload.get("death_year"),
         "preferred_name_lat": payload.get("preferred_name_lat", ""),
+        "preferred_name_heb": payload.get("preferred_name_heb") or "",
+        "kima_viaf_id":       payload.get("kima_viaf_id") or "",
+        "j9u_id":             (payload.get("cluster_ids") or {}).get("j9u") or "",
         "gnd_id":             cluster.get("gnd", ""),
         "lc_id":              cluster.get("lc", ""),
         "isni":               cluster.get("isni", ""),

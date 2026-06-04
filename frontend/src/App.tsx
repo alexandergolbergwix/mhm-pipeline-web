@@ -25,6 +25,7 @@ import Settings from "@/routes/Settings";
 import StageExtraction from "@/routes/StageExtraction";
 import StageRdf from "@/routes/StageRdf";
 import WikidataStudio from "@/routes/WikidataStudio";
+import Research from "@/routes/Research";
 import { useAuth } from "@/stores/auth";
 
 export default function App() {
@@ -45,7 +46,8 @@ export default function App() {
       {/* Authenticated */}
       <Route path="/"                            element={<ProtectedRoute><ProjectsList /></ProtectedRoute>} />
       <Route path="/projects/:projectId"         element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
-      <Route path="/projects/:projectId/history" element={<ProtectedRoute><ProjectHistory /></ProtectedRoute>} />
+      <Route path="/projects/:projectId/history"  element={<ProtectedRoute><ProjectHistory /></ProtectedRoute>} />
+      <Route path="/projects/:projectId/research" element={<ProtectedRoute><Research /></ProtectedRoute>} />
       <Route path="/runs/:runId"                 element={<ProtectedRoute><RunDetail /></ProtectedRoute>} />
       <Route path="/runs/:runId/overview"        element={<ProtectedRoute><RunOverview /></ProtectedRoute>} />
       <Route path="/runs/:runId/extraction"      element={<ProtectedRoute><StageExtraction /></ProtectedRoute>} />
