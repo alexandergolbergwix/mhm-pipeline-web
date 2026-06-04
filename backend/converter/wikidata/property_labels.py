@@ -50,7 +50,7 @@ PROPERTY_LABELS: dict[str, str] = {
     "P2048": "height",
     "P2049": "width",
     "P1104": "number of pages",
-    "P7416": "number of folios",
+    "P7416": "folio(s) [citation qualifier]",
     "P5816": "state of conservation",
     "P1552": "has characteristic",
     "P9302": "script style",

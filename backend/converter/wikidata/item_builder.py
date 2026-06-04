@@ -59,6 +59,7 @@ from converter.wikidata.property_mapping import (
     P_NLI_J9U_ID,
     P_NUMBER_OF_FOLIOS,
     P_NUMBER_OF_PAGES,
+    Q_LEAF_UNIT,
     P_NUMBER_OF_PARTS,
     P_OBJECT_HAS_ROLE,
     P_OBJECT_NAMED_AS,
@@ -1521,20 +1522,23 @@ class WikidataItemBuilder:
             extent_str = str(extent)
             folio_match = re.search(r"(\d+)", extent_str)
             if folio_match:
-                # Bug fix 2026-04-16 (deeper audit Fix #11): manuscripts are
-                # counted in folios (leaves), not pages. P1104 (number of
-                # pages) is wrong; the correct property is P7416 (number of
-                # folios). Heuristic: if the extent string explicitly says
-                # "page(s)" use P1104; otherwise default to P7416 since
-                # virtually all manuscript catalogues count in folios/leaves.
+                # WikiProject Manuscripts Data Model (2026-06-04 audit):
+                # ALL physical extent goes on P1104 (number of pages) with an
+                # explicit unit.  P7416 "folio(s)" is a STRING QUALIFIER for
+                # citing a source folio — it is NOT a count property.
+                # Units: page (Q1069725) when the extent string says "page/עמוד",
+                #        leaf (Q107256474) otherwise — manuscripts count in
+                #        leaves/folios and WikiProject mandates the leaf unit.
+                # https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model
                 low = extent_str.lower()
                 says_pages = "page" in low or "עמוד" in low
-                prop = P_NUMBER_OF_PAGES if says_pages else P_NUMBER_OF_FOLIOS
+                unit_qid = "Q1069725" if says_pages else Q_LEAF_UNIT  # page or leaf
                 item.statements.append(
                     WikidataStatement(
-                        property_id=prop,
+                        property_id=P_NUMBER_OF_PAGES,
                         value=int(folio_match.group(1)),
                         value_type="quantity",
+                        unit=unit_qid,
                         references=ref,
                     )
                 )
@@ -1951,8 +1955,26 @@ class WikidataItemBuilder:
             if pid == P_AUTHOR and resolved_qid in _INSTITUTIONAL_QIDS_BLOCKLIST:
                 pid = "P195"  # collection
 
+            # P50 (author) must NEVER appear directly on a manuscript item.
+            # Wikidata constraint (2026-06-04 audit, confirmed on Property:P50):
+            # "use exemplar of (P1574) to connect the manuscript to the work(s)
+            # it contains; never connect directly the manuscript to the author(s)
+            # of the work(s) it contains".
+            # The correct data model is: manuscript → P1574 → work → P50 → author.
+            # When we have a resolved QID for an author but no identified work
+            # item, we suppress the direct P50 link rather than violate the
+            # constraint. The person item IS still created with all its authority
+            # identifiers (P214, P8189, P244…) so the entity is not lost.
+            # Scribes (P11603), owners (P127), commissioners (P88), etc. are
+            # direct-manuscript properties and are unaffected by this guard.
+            if pid == P_AUTHOR and resolved_qid:
+                logger.debug(
+                    "Suppressing P50 → %s on manuscript (constraint: use P1574 path instead)",
+                    resolved_qid,
+                )
+                return  # person item created above; do NOT add P50 on manuscript
+
             # For scribes/owners → direct claim on manuscript
-            # For authors → P50 on MS as fallback (proper model uses Work item)
             if resolved_qid:
                 item.statements.append(
                     WikidataStatement(
@@ -2007,11 +2029,13 @@ class WikidataItemBuilder:
                             qualifiers=p2093_qualifiers,
                         )
                     )
-            else:
+            elif pid != P_AUTHOR:
                 # Person identified via MARC/NER but not confirmed by authority
                 # matching → add P1480 (presumably) to signal uncertain attribution.
                 # This directly addresses the certainty/confidence mechanism
                 # requested by domain experts (Lavee, Baumgarten, Univ. Haifa).
+                # Excluded: P50 (author) — see constraint above; authors require
+                # the P1574 → work → P50 path, never a direct manuscript P50.
                 item.statements.append(
                     WikidataStatement(
                         property_id=pid,

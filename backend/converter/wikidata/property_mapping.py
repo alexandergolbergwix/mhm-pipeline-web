@@ -46,7 +46,16 @@ P_MATERIAL = "P186"
 P_HEIGHT = "P2048"
 P_WIDTH = "P2049"
 P_NUMBER_OF_PAGES = "P1104"
-P_NUMBER_OF_FOLIOS = "P7416"  # preferred for manuscripts (counted in folios/leaves)
+# P7416 "folio(s)" is a STRING qualifier used to cite a specific folio in a
+# reference (e.g. "this scribe note is on folio 15r"). It is NOT a count property.
+# To record the physical extent of a manuscript in folios/leaves, use P1104
+# (number of pages) with unit Q107256474 (leaf) — the WikiProject Manuscripts
+# Data Model explicitly recommends this: "Specifies the number of folia of a
+# manuscript." (https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model)
+P_NUMBER_OF_FOLIOS = "P7416"  # folio reference QUALIFIER only — not a count
+
+# Unit QID for leaf (a bound sheet; each leaf = 2 pages/sides). Use with P1104.
+Q_LEAF_UNIT = "Q107256474"
 
 # Digital access
 P_DESCRIBED_AT_URL = "P973"
@@ -194,7 +203,7 @@ Q_MANUSCRIPT = "Q87167"
 Q_CODEX = "Q213924"
 Q_ILLUMINATED_MANUSCRIPT = "Q48498"
 Q_COMPOSITE_MANUSCRIPT = "Q33308141"  # multi-text codex with distinct production strata
-Q_PALIMPSEST = "Q179808"              # manuscript reused after scraping
+Q_PALIMPSEST = "Q274076"              # manuscript reused after scraping (Q179808 = Palme d'Or — WRONG)
 Q_HUMAN = "Q5"
 Q_WRITTEN_WORK = "Q47461344"
 Q_ORGANIZATION = "Q43229"
