@@ -1382,7 +1382,11 @@ class WikidataItemBuilder:
             # shelfmark-based form).
             if title_has_hebrew:
                 item.labels["he"] = title_clean
-                item.labels["en"] = title_clean
+                # Hebrew text must NOT go into the en label slot. The en label
+                # is set below to the shelfmark-based form ("Jerusalem, NLI,
+                # <shelfmark>"). Without a shelfmark the en slot stays absent,
+                # which is correct — an empty slot is far preferable to a
+                # Hebrew string masquerading as an English label.
             else:
                 item.labels["en"] = title_clean
                 item.aliases.setdefault("en", []).append(title_clean)

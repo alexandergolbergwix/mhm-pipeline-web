@@ -109,6 +109,32 @@ class TestEntitiesByCnDrivesWorkCreation:
         assert result["summary"]["manuscripts"] >= 1
 
     @pytest.mark.asyncio
+    async def test_en_label_is_not_hebrew(self) -> None:
+        """Regression for 2026-06-04 bug: Hebrew title must NOT appear in the
+        ``en`` label slot. Both `en` and `he` were identical Hebrew strings."""
+        import re
+
+        hebrew_re = re.compile(r"[\u0590-\u05ff]")
+        rec = _fake_marc_record(control_number="1")
+        rec["title"] = "פנקס חשבונות של סוחר היושב במנטובה"
+        rec["shelfmark"] = ""  # no shelfmark so the fallback logic is exercised
+
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[],
+            entities_by_cn={},
+            return_native=False,
+        )
+        for item in result["items"]:
+            if item.get("entity_type") != "manuscript":
+                continue
+            en_label = (item.get("labels") or {}).get("en") or ""
+            assert not (hebrew_re.search(en_label) and not re.search(r"[A-Za-z]", en_label)), (
+                f"en label contains Hebrew-only text: {en_label!r}. "
+                "Hebrew text must go in the `he` slot only."
+            )
+
+    @pytest.mark.asyncio
     async def test_entities_only_for_unmatched_cn_ignored(self) -> None:
         """An entity bucket for a control_number we never built must
         not crash the pipeline (silent skip)."""

@@ -297,6 +297,24 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                 _REF_HELP_LABEL,
             ))
 
+    # 12b. English label slot contains Hebrew script — regression guard for
+    #      the 2026-06-04 bug where Hebrew titles were assigned to both `en`
+    #      and `he` slots. An `en` label that is pure Hebrew is useless and
+    #      misleading to English-speaking Wikidata editors.
+    en_label = labels.get("en") if isinstance(labels, dict) else ""
+    if en_label and isinstance(en_label, str):
+        has_heb_in_en = bool(_HEBREW_SCRIPT.search(en_label))
+        has_latin_in_en = bool(_LATIN_SCRIPT.search(en_label))
+        if has_heb_in_en and not has_latin_in_en:
+            issues.append(ValidationIssue(
+                "error", "EN_LABEL_IS_HEBREW",
+                f"English label slot contains Hebrew-only text "
+                f"{en_label!r} — the `en` label must be a shelfmark-based "
+                "form (\"Jerusalem, NLI, <shelfmark>\") or a Latin "
+                "transliteration, never raw Hebrew script.",
+                _REF_HELP_LABEL,
+            ))
+
     # 13. Person label is a single short Latin surname with no identifier —
     #     Q139231258 style ("Winter"). Covered by NO_IDENTIFIER when no
     #     external IDs are attached, but we additionally surface this as
