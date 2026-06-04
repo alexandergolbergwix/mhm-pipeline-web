@@ -155,17 +155,90 @@ class WikidataItem:
     local_id: str = ""
 
 
-# ── Quote stripping ──────────────────────────────────────────────────
+# ── Label normalisation ──────────────────────────────────────────────
 
 # ASCII straight quotes + Unicode smart/typographic quotes found in
 # MARC catalog exports (left/right single and double, angle brackets).
 _QUOTE_CHARS = '"\'"\u201c\u201d\u2018\u2019\u00ab\u00bb\u2039\u203a'
 
+# MARC geresh / gershayim (Hebrew diacritics used as quotation marks)
+# that appear SURROUNDING a name rather than inside it.
+_HEBREW_QUOTE_CHARS = "\u05f3\u05f4"  # ׳ and ״
+
+# MARC relator terms that appear in parentheses after a name.
+# e.g. "Cohen, David (author)" → strip "(author)" before inverting.
+_MARC_RELATOR_RE = re.compile(
+    r"\s*\((?:"
+    r"author|ed(?:itor)?s?\.?|tr(?:anslator|ans)?\.?|ill(?:ustrator)?\.?|"
+    r"compiler|comp\.?|copyist|scribe|annotator|contributor|adapter|"
+    r"composer|performer|engraver|printer|publisher|collector|respondent|"
+    r"cartographer|photographer|joint\s+author|joint\s+editor|"
+    r"מעתיק|מחבר|עורך|מתרגם|מאייר"  # Hebrew relators
+    r")\.?\s*\)\s*$",
+    re.IGNORECASE,
+)
+
+# MARC "active/fl./circa Nth century" date suffix that isn't a numeric range.
+# "Nathan ben Abraham, active 11th century" → strip before comma-split.
+_MARC_ACTIVITY_DATE_RE = re.compile(
+    r",\s*(?:active|fl\.|flourished?|circa|ca\.|approximately|עפ\"י|בערך)"
+    r"[^,]*$",
+    re.IGNORECASE,
+)
+
+# Bracketed MARC notes that must not appear in Wikidata labels.
+# e.g. "[microform]", "[manuscript]", "[i.e. ...]", "[sic]", "[u.a.]"
+_MARC_BRACKET_NOTE_RE = re.compile(r"\s*\[[^\]]{1,60}\]\s*")
+
+# Trailing MARC ISBD punctuation including " /" (before statement of
+# responsibility) and " :" (before subtitle).
+_MARC_ISBD_TRAIL_RE = re.compile(r"[\s.,;:/\-–]+$")
+
+
+def _normalise_label(s: str) -> str:
+    """Comprehensive MARC-to-Wikidata label normalizer.
+
+    Applied to EVERY label and alias value before it is written to a
+    WikidataItem. Order matters — relator stripping must come before
+    trailing-punctuation stripping.
+
+    Steps:
+    1. Strip leading/trailing whitespace.
+    2. Strip surrounding ASCII and Unicode quote characters.
+    3. Strip surrounding Hebrew geresh/gershayim quote marks.
+    4. Strip MARC relator terms in trailing parentheses: "(author)",
+       "(ed.)", "(copyist)", "(מעתיק)", etc.
+    5. Strip bracketed MARC notes: "[microform]", "[sic]", etc.
+    6. Strip trailing MARC ISBD punctuation: . , ; : / - –
+    7. Collapse internal runs of multiple spaces to a single space.
+    8. Title-case ALL-CAPS Latin labels (e.g. "COHEN, DAVID" → "Cohen, David").
+       Hebrew and mixed-script names are left unchanged.
+    """
+    if not s:
+        return s
+    s = s.strip()
+    s = s.strip(_QUOTE_CHARS + _HEBREW_QUOTE_CHARS).strip()
+    s = _MARC_RELATOR_RE.sub("", s).strip()
+    s = _MARC_BRACKET_NOTE_RE.sub(" ", s).strip()
+    s = _MARC_ISBD_TRAIL_RE.sub("", s).strip()
+    s = re.sub(r" {2,}", " ", s)
+    # Title-case only when the string is entirely uppercase Latin script
+    # (i.e. no Hebrew/Arabic/Cyrillic characters, and >50% are uppercase letters).
+    has_nonlatin = bool(re.search(r"[\u0590-\u05ff\u0600-\u06ff\u0400-\u04ff]", s))
+    if not has_nonlatin:
+        latin_chars = [c for c in s if c.isalpha()]
+        if latin_chars and sum(c.isupper() for c in latin_chars) / len(latin_chars) > 0.8:
+            s = s.title()
+    return s
+
 
 def _strip_name_quotes(s: str) -> str:
-    """Strip surrounding quote characters (ASCII and Unicode typographic)
-    and trailing MARC ISBD punctuation from a person or place name."""
-    return s.strip().strip(_QUOTE_CHARS).strip().rstrip(",;:.")
+    """Strip surrounding quote characters and trailing MARC ISBD punctuation.
+
+    Retained for call sites that pre-date _normalise_label; internally
+    delegates to _normalise_label for consistency.
+    """
+    return _normalise_label(s)
 
 
 # ── Person deduplication key ─────────────────────────────────────────
@@ -406,16 +479,33 @@ def _to_natural_name_order(name: str) -> str:
       conservatively NOT flipped — leave as-is to avoid worse mistakes)
     - Names without exactly one comma → returned unchanged
     - Trailing dates "Surname, Given, 1850-1900" → "Given Surname (1850-1900)"
+    - "Surname, Given, active 11th century" → "Given Surname (active 11th century)"
     """
     if not name or "," not in name:
         return name
-    # Split off any trailing date range like ", 1850-1900" or ", -1900"
+
+    # Strip trailing MARC relator and bracket notes first so they don't
+    # confuse the comma-split logic.
+    name = _MARC_RELATOR_RE.sub("", name).strip()
+    name = _MARC_BRACKET_NOTE_RE.sub(" ", name).strip()
+    name = re.sub(r" {2,}", " ", name)
+
+    # Split off any trailing numeric date range like ", 1850-1900"
     date_match = re.search(r",\s*(-?\d{2,4}(?:[-–]\d{0,4})?)\s*$", name)
     date_suffix = ""
     base = name
     if date_match:
         date_suffix = f" ({date_match.group(1)})"
         base = name[: date_match.start()]
+
+    # Split off trailing "active/fl./circa Nth century" activity date
+    # e.g. "Nathan ben Abraham, active 11th century"
+    activity_match = _MARC_ACTIVITY_DATE_RE.search(base)
+    if activity_match:
+        activity_text = base[activity_match.start():].lstrip(",").strip()
+        date_suffix = (date_suffix or "") + f" ({activity_text})"
+        base = base[: activity_match.start()]
+
     parts = [p.strip() for p in base.split(",")]
     # Drop empty parts (trailing comma case)
     parts = [p for p in parts if p]
@@ -1404,7 +1494,7 @@ class WikidataItemBuilder:
         """
         is_placeholder = _is_placeholder_title(title)
         shelfmark = record.get("shelfmark")
-        title_clean = title.rstrip(". ") if title else ""
+        title_clean = _normalise_label(title) if title else ""
         title_has_hebrew = _has_hebrew_script(title_clean)
         if title_clean and not is_placeholder:
             # Latin-only titles (e.g. "Meir Netiv in Latin", "Referat über
@@ -1426,7 +1516,7 @@ class WikidataItemBuilder:
         elif title:
             # Placeholder: keep the original cataloger string as a Hebrew
             # alias for searchability, but do NOT use it as the label.
-            item.aliases.setdefault("he", []).append(title)
+            item.aliases.setdefault("he", []).append(_normalise_label(title))
 
         if shelfmark:
             item.labels["en"] = f"Jerusalem, NLI, {shelfmark}"
@@ -1439,7 +1529,9 @@ class WikidataItemBuilder:
 
         # Variant titles as aliases
         for vt in record.get("variant_titles") or []:
-            item.aliases.setdefault("he", []).append(str(vt).strip().rstrip(". "))
+            vt_clean = _normalise_label(str(vt))
+            if vt_clean:
+                item.aliases.setdefault("he", []).append(vt_clean)
 
         # Description
         langs = record.get("languages") or []
@@ -2241,8 +2333,10 @@ class WikidataItemBuilder:
         # on Q139230386 where label was "סופינו, עמנואל"): flip inverted forms
         # to natural order for the LABEL. The original inverted form is
         # preserved in P1559 (native name) below for searchability.
-        person.labels[label_lang] = _strip_person_name_qualifiers(
-            _to_natural_name_order(clean_name)
+        person.labels[label_lang] = _normalise_label(
+            _strip_person_name_qualifiers(
+                _to_natural_name_order(clean_name)
+            )
         )
 
         # P31 = human (or organization) — uses the shared institutional
@@ -2571,6 +2665,7 @@ class WikidataItemBuilder:
         # Latin-only work titles (e.g. "Bible", "Diodati Segre") must NOT
         # land in the he-label slot — validator rule HE_LABEL_IS_LATIN.
         # Route them to en only and store as a he-alias for searchability.
+        title = _normalise_label(title)
         if _has_hebrew_script(title):
             work.labels["he"] = title
             if title and all(ord(c) < 256 for c in title if c.isalpha()):
@@ -2610,7 +2705,8 @@ class WikidataItemBuilder:
             # slot only — never any he slot (label OR alias). Putting Latin text
             # in any he-tagged slot was the original Kolja21/Geagea complaint.
             work.labels["en"] = title
-            work.aliases.setdefault("en", []).append(title)
+            if title not in (work.aliases.get("en") or []):
+                work.aliases.setdefault("en", []).append(title)
         # Bug fix 2026-04-15 (web audit): all 3,970 work items previously
         # received the identical description "Hebrew manuscript work", which
         # made same-label items indistinguishable on Wikidata. Build a
