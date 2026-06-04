@@ -210,6 +210,38 @@ _INSTITUTIONAL_KEYWORDS: tuple[str, ...] = (
     "ארכיון",
 )
 
+# MARC-artifact qualifier words that sometimes leak into person-name fields.
+# E.g. MARC "Collection Gaster, Moses" inverts to "Moses Collection Gaster".
+# These are NOT part of the personal name; strip them from interior positions
+# (but not from boundary positions, where they signal a real institutional entity).
+_PERSON_NAME_QUALIFIER_WORDS: frozenset[str] = frozenset({
+    "collection", "papers", "correspondence", "records",
+    "letters", "documents", "bequest", "gift",
+})
+
+
+def _strip_person_name_qualifiers(name: str) -> str:
+    """Strip MARC-artifact qualifier words from the interior of a personal name.
+
+    "Moses Collection Gaster"  → "Moses Gaster"
+    "Gaster Collection"        → unchanged  (boundary — may be a real collection entity)
+    "Ibn Gerson, Levi"         → unchanged  (no qualifier words)
+    """
+    tokens = name.split()
+    if len(tokens) < 3:
+        return name  # 1- or 2-token names: too short to safely strip
+    lower_tokens = [t.lower().rstrip(".,") for t in tokens]
+    cleaned = [
+        tokens[i]
+        for i, lt in enumerate(lower_tokens)
+        if lt not in _PERSON_NAME_QUALIFIER_WORDS
+        or i == 0
+        or i == len(tokens) - 1
+    ]
+    if len(cleaned) == len(tokens):
+        return name
+    return " ".join(cleaned) if cleaned else name
+
 
 # Names that should never produce Wikidata person items — they are generic
 # catalog placeholders for unknown or anonymous persons/authors.
@@ -2209,7 +2241,9 @@ class WikidataItemBuilder:
         # on Q139230386 where label was "סופינו, עמנואל"): flip inverted forms
         # to natural order for the LABEL. The original inverted form is
         # preserved in P1559 (native name) below for searchability.
-        person.labels[label_lang] = _to_natural_name_order(clean_name)
+        person.labels[label_lang] = _strip_person_name_qualifiers(
+            _to_natural_name_order(clean_name)
+        )
 
         # P31 = human (or organization) — uses the shared institutional
         # keyword list (see _is_institutional_name above).

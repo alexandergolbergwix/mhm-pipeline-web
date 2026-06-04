@@ -127,9 +127,26 @@ def _any_label(item: Any) -> str:
 
 
 def _contains_institutional(text: str) -> str | None:
-    lo = text.lower()
+    """Return the matched keyword if *text* looks like an institutional label.
+
+    Uses word-boundary matching so "collection" inside "Moses Collection Gaster"
+    is only flagged when the keyword is the FIRST or LAST token (a boundary
+    position) — which signals a real institutional entity. A keyword sandwiched
+    between other name-like tokens is most likely a MARC-artifact qualifier
+    that the builder's _strip_person_name_qualifiers should have removed; we
+    suppress the false-positive here as a belt-and-suspenders guard.
+    """
+    import re as _re
+    lo = text.lower().strip()
+    tokens = lo.split()
     for kw in _INSTITUTIONAL_KEYWORDS:
-        if kw in lo:
+        if not _re.search(r"\b" + _re.escape(kw) + r"\b", lo):
+            continue
+        if len(tokens) <= 2:
+            return kw
+        # For 3+ token labels only flag when the keyword is at a boundary
+        # (first or last token), not when it is sandwiched between other tokens.
+        if tokens[0] == kw or tokens[-1].rstrip(".,") == kw:
             return kw
     return None
 

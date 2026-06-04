@@ -388,3 +388,58 @@ class TestBuilderNeverViolatesNewChecks:
             assert not p7416_stmts, (
                 "P7416 must not be used as a quantity; use P1104 with unit leaf"
             )
+
+
+# ── MARC artifact: "Collection" qualifier in person labels ─────────────────
+
+
+class TestPersonNameQualifierStripping:
+    """Regression for MARC-artifact qualifier words leaking into person labels.
+
+    MARC sometimes encodes "Collection Gaster, Moses" (corporate name entry for
+    a manuscript collection treated as a person entry). After _to_natural_name_order
+    this becomes "Moses Collection Gaster".  The builder must strip the interior
+    qualifier; the validator must not fire INSTITUTION_AS_PERSON.
+    """
+
+    def test_strip_collection_from_interior(self) -> None:
+        from converter.wikidata.item_builder import _strip_person_name_qualifiers
+        assert _strip_person_name_qualifiers("Moses Collection Gaster") == "Moses Gaster"
+        assert _strip_person_name_qualifiers("David Papers Cohen") == "David Cohen"
+
+    def test_boundary_collection_preserved(self) -> None:
+        from converter.wikidata.item_builder import _strip_person_name_qualifiers
+        assert _strip_person_name_qualifiers("Gaster Collection") == "Gaster Collection"
+        assert _strip_person_name_qualifiers("Collection Gaster") == "Collection Gaster"
+
+    def test_short_name_unchanged(self) -> None:
+        from converter.wikidata.item_builder import _strip_person_name_qualifiers
+        assert _strip_person_name_qualifiers("Moses Gaster") == "Moses Gaster"
+
+    def test_validator_does_not_fire_for_interior_keyword(self) -> None:
+        from converter.wikidata.item_validator import validate_item
+        item = _Item(
+            entity_type="person",
+            labels={"en": "Moses Collection Gaster"},
+            statements=[_Stmt("P31", "Q5")],
+        )
+        issues = validate_item(item)
+        inst_issues = [i for i in issues if i.code == "INSTITUTION_AS_PERSON"]
+        assert not inst_issues, (
+            "INSTITUTION_AS_PERSON must not fire when the institutional keyword "
+            f"is interior to a personal name: {[i.message for i in inst_issues]}"
+        )
+
+    def test_validator_fires_for_boundary_keyword(self) -> None:
+        from converter.wikidata.item_validator import validate_item
+        item = _Item(
+            entity_type="person",
+            labels={"en": "Gaster Collection"},
+            statements=[_Stmt("P31", "Q5")],
+        )
+        issues = validate_item(item)
+        codes = [i.code for i in issues]
+        assert "INSTITUTION_AS_PERSON" in codes, (
+            "INSTITUTION_AS_PERSON must fire when the institutional keyword is "
+            "the last token of a 2-word label"
+        )
