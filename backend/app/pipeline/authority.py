@@ -670,11 +670,15 @@ def _record_year(record: dict[str, Any]) -> int | None:
                     return int(v[:4])
                 except ValueError:
                     pass
-    for key in ("year", "production_year"):
+    # "date" (singular) is the key the NLI MARC ingest populates from the 008 field.
+    # "year" and "production_year" are alternate names from other ingest paths.
+    for key in ("date", "year", "production_year"):
         v = record.get(key)
         if isinstance(v, int):
             return v
         if isinstance(v, str):
+            # Strip surrounding quotes from stored strings like '"1612"'
+            v = v.strip("\"' ")
             try:
                 return int(v[:4])
             except ValueError:
