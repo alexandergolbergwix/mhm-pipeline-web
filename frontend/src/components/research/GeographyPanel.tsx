@@ -7,7 +7,7 @@
  * installed in this project).
  */
 import {useMemo, useState} from "react";
-import {researchApi, GeoPoint} from "@/api/research";
+import {researchApi, type GeoPoint} from "@/api/research";
 import {PanelShell, useAsync} from "./_shared";
 
 const TYPE_COLOR: Record<string, string> = {
