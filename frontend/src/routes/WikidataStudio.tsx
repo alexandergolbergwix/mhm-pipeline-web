@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import {useCallback, useEffect, useMemo, useState} from "react";
+import {Link, useParams} from "react-router-dom";
 
-import { Layout } from "@/components/Layout";
-import { ApiError } from "@/api/client";
-import { MarcRecordPopup } from "@/components/MarcRecordPopup";
-import { HistoryTimeline } from "@/components/history/HistoryTimeline";
-import { Runs } from "@/api/runs";
-import { useLabelStore } from "@/api/wikidataLabels";
+import {Layout} from "@/components/Layout";
+import {ApiError} from "@/api/client";
+import {MarcRecordPopup} from "@/components/MarcRecordPopup";
+import {HistoryTimeline} from "@/components/history/HistoryTimeline";
+import {Runs} from "@/api/runs";
+import {useLabelStore} from "@/api/wikidataLabels";
 import {
   collectIds, FRIENDLY_S_PROP, PropertyPill, ValueRendering,
   type LabelStore,
@@ -14,6 +14,8 @@ import {
 import {ItemOverrideDialog} from "@/components/ItemOverrideDialog";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
+import {ItemValidatorBadge} from "@/components/wikidata/ItemValidatorBadge";
+import {ItemApprovalBadge} from "@/components/wikidata/ItemApprovalBadge";
 import {
   Studio,
   type ReconcileOutcome,
@@ -74,6 +76,12 @@ export default function WikidataStudio() {
   const [lastUpload, setLastUpload] = useState<{
     dry_run: boolean; moratorium_lifted: boolean; test_mode: boolean;
   } | null>(null);
+  const [forceRebuild, setForceRebuild] = useState(false);
+  const [uploadApprovedOnly, setUploadApprovedOnly] = useState(false);
+
+  // approval toggle loading — keyed by local_id
+  const [approvalLoading, setApprovalLoading] = useState<Record<string, boolean>>({});
+
   const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
   const labelStore = useLabelStore();
 
@@ -83,11 +91,12 @@ export default function WikidataStudio() {
     (localStorage.getItem("mhm.studio.view") as View) || "item");
   useEffect(() => { localStorage.setItem("mhm.studio.view", view); }, [view]);
 
-  async function refresh(nextApprovedOnly?: boolean) {
+  async function refresh(nextApprovedOnly?: boolean, nextForceRebuild?: boolean) {
     if (!runId) return;
     const flag = nextApprovedOnly ?? approvedOnly;
+    const force = nextForceRebuild ?? forceRebuild;
     setLoading(true); setError(null);
-    try { setBuild(await Studio.build(runId, flag)); }
+    try { setBuild(await Studio.build(runId, flag, force)); }
     catch (e) { setError(e instanceof ApiError ? e.detail : String(e)); }
     finally   { setLoading(false); }
   }
@@ -110,7 +119,11 @@ export default function WikidataStudio() {
     if (!runId) return;
     setBusy(dry ? "dry" : "live"); setError(null);
     try {
-      const r = await Studio.upload(runId, { dry_run: dry, approved_only: approvedOnly });
+      const r = await Studio.upload(runId, {
+        dry_run: dry,
+        approved_only: approvedOnly,
+        upload_approved_only: uploadApprovedOnly,
+      });
       const map: Record<string, UploadOutcome> = {};
       r.outcomes.forEach((o, i) => { map[`${o.entity_type}:${i}`] = o; });
       setUploadMap(map);
@@ -121,6 +134,29 @@ export default function WikidataStudio() {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally { setBusy(null); }
   }
+
+  const toggleApproval = useCallback(async (item: StudioItem) => {
+    if (!runId || !item.local_id) return;
+    const id = item.local_id;
+    setApprovalLoading((prev) => ({...prev, [id]: true}));
+    try {
+      await Studio.patchItemOverride(runId, id, {approved: !item.approved});
+      // Optimistically update the build state
+      setBuild((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((it) =>
+            it.local_id === id ? {...it, approved: !item.approved} : it,
+          ),
+        };
+      });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+    } finally {
+      setApprovalLoading((prev) => ({...prev, [id]: false}));
+    }
+  }, [runId]);
 
   // ── filtered + sorted items ───────────────────────────────────────────
   const itemRows = useMemo(() => {
@@ -200,19 +236,46 @@ export default function WikidataStudio() {
                   approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"
                 }`}>Approved only</button>
             </div>
-            <button onClick={() => refresh()} disabled={loading || !!busy} className="button-ghost text-sm">
+            <button onClick={() => refresh(undefined, forceRebuild)} disabled={loading || !!busy} className="button-ghost text-sm">
               {loading ? "Rebuilding…" : "Rebuild"}
             </button>
+            <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={forceRebuild}
+                onChange={(e) => setForceRebuild(e.target.checked)}
+                className="accent-biu-sky"
+              />
+              Skip cache (force fresh build)
+            </label>
             <button onClick={reconcile} disabled={!!busy} className="button-ghost text-sm">
               {busy === "reconcile" ? "Reconciling…" : "Reconcile with Wikidata"}
             </button>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={uploadApprovedOnly}
+                  onChange={(e) => setUploadApprovedOnly(e.target.checked)}
+                  className="accent-biu-sky"
+                />
+                Approved items only
+              </label>
+              {build && (() => {
+                const total = build.items.length;
+                const nApproved = build.items.filter((it) => it.approved === true).length;
+                return total > 0
+                  ? <span className="text-[11px] muted">{nApproved} of {total} approved</span>
+                  : null;
+              })()}
+            </div>
             <button onClick={() => doUpload(true)} disabled={!!busy} className="button-primary text-sm">
               {busy === "dry" ? "Running…" : "Dry-run upload"}
             </button>
             <button onClick={() => doUpload(false)} disabled={!!busy} className="button-ghost text-sm text-yellow-300">
               {busy === "live" ? "Uploading…" : "Live upload"}
             </button>
-            <a href={Studio.qsUrl(runId!, approvedOnly)} download className="button-ghost text-sm">
+            <a href={Studio.qsUrl(runId!, approvedOnly, uploadApprovedOnly)} download className="button-ghost text-sm">
               Download QuickStatements.txt
             </a>
             {runId && (
@@ -342,6 +405,7 @@ export default function WikidataStudio() {
                 {itemRows.map(({ it, key }, listIdx) => {
                   const rec = reconcileMap[key];
                   const up  = uploadMap[key];
+                  const issues = it.validation_issues ?? [];
                   return (
                     <li key={key}>
                       <button onClick={() => setSelectedIdx(listIdx)}
@@ -350,11 +414,21 @@ export default function WikidataStudio() {
                                   ? "bg-white/8 text-ink"
                                   : "muted hover:text-ink hover:bg-white/5"
                               }`}>
-                        <div className="flex justify-between gap-2 items-baseline">
+                        <div className="flex justify-between gap-2 items-center">
                           <span className="text-sm truncate">
                             {labelOf(it) || "(no label)"}
                           </span>
-                          <span className="kicker shrink-0">{it.entity_type ?? "?"}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <ItemApprovalBadge
+                              approved={it.approved}
+                              loading={approvalLoading[it.local_id ?? ""] ?? false}
+                              onToggle={() => toggleApproval(it)}
+                            />
+                            {issues.length > 0 && (
+                              <ItemValidatorBadge issues={issues} />
+                            )}
+                            <span className="kicker">{it.entity_type ?? "?"}</span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1 flex-wrap mt-0.5 text-[10px]">
                           <span className="muted">{(it.statements ?? []).length} stmts</span>
@@ -386,6 +460,7 @@ export default function WikidataStudio() {
             <main>
               {current && (
                 <ItemPanel
+                  key={current.local_id ?? currentKey}
                   item={current}
                   reconcile={reconcileMap[currentKey]}
                   upload={uploadMap[currentKey]}
@@ -393,9 +468,16 @@ export default function WikidataStudio() {
                   onEdit={() => setEditItem(current)}
                   onOpenHistory={
                     projectId
-                      ? (id) => setHistoryFor({ id })
+                      ? (id) => setHistoryFor({id})
                       : undefined
                   }
+                  onToggleApproval={() => toggleApproval(current)}
+                  approvalLoading={approvalLoading[current.local_id ?? ""] ?? false}
+                  onSaveExcluded={async (indices: number[]) => {
+                    if (!runId || !current.local_id) return;
+                    await Studio.patchItemOverride(runId, current.local_id, {remove_statements: indices});
+                    void refresh();
+                  }}
                   labelStore={labelStore} />
               )}
             </main>
@@ -448,6 +530,7 @@ export default function WikidataStudio() {
 
 function ItemPanel({
   item, reconcile, upload, onOpenMarc, onEdit, onOpenHistory, labelStore,
+  onToggleApproval, approvalLoading, onSaveExcluded,
 }: {
   item: StudioItem;
   reconcile?: ReconcileOutcome;
@@ -456,12 +539,31 @@ function ItemPanel({
   onEdit?: () => void;
   onOpenHistory?: (entityId: string) => void;
   labelStore: LabelStore;
+  onToggleApproval?: () => void;
+  approvalLoading?: boolean;
+  onSaveExcluded?: (indices: number[]) => Promise<void>;
 }) {
   const historyId = item.local_id ?? item.existing_qid ?? null;
   const labels = item.labels ?? {};
   const descriptions = item.descriptions ?? {};
   const aliases = item.aliases ?? {};
   const statements = item.statements ?? [];
+  const issues = item.validation_issues ?? [];
+
+  // Optimistic excluded-statement indices (resets when item changes via key= on caller)
+  const [excluded, setExcluded] = useState<Set<number>>(new Set());
+  const [excludeSaving, setExcludeSaving] = useState(false);
+
+  async function toggleExclude(idx: number) {
+    const next = new Set(excluded);
+    if (next.has(idx)) next.delete(idx); else next.add(idx);
+    setExcluded(next);
+    if (onSaveExcluded) {
+      setExcludeSaving(true);
+      try { await onSaveExcluded(Array.from(next)); }
+      finally { setExcludeSaving(false); }
+    }
+  }
 
   // Lazy-resolve every P/Q id appearing in this item's snaks against
   // live Wikidata, so PropertyPill / value rendering can show English
@@ -478,7 +580,15 @@ function ItemPanel({
         <div className="kicker">{item.entity_type ?? "item"}</div>
         <div className="flex items-baseline justify-between gap-3">
           <h3 className="text-xl font-semibold">{labelOf(item) || "(no label)"}</h3>
-          <div className="flex gap-1 shrink-0">
+          <div className="flex gap-1 shrink-0 items-center">
+            {onToggleApproval && (
+              <ItemApprovalBadge
+                approved={item.approved}
+                onToggle={onToggleApproval}
+                loading={approvalLoading ?? false}
+                expanded
+              />
+            )}
             {onEdit ? (
               <button type="button" onClick={onEdit}
                       data-testid="studio-item-edit"
@@ -520,6 +630,9 @@ function ItemPanel({
             </span>
           )}
         </div>
+        {issues.length > 0 && (
+          <ItemValidatorBadge issues={issues} expanded />
+        )}
       </header>
 
       {Object.keys(labels).length > 0 && (
@@ -543,20 +656,47 @@ function ItemPanel({
           Each row is a Wikidata claim. The <b className="text-ink">references</b>{" "}
           show where the system got it from — NLI catalog (P1343=Q118384267),
           Mazal authority IDs, VIAF clusters. Nothing here is unsourced.
+          {excludeSaving && <span className="ml-2 text-biu-sky animate-pulse">Saving…</span>}
         </p>
         <ul className="space-y-2">
           {statements.map((s, i) => {
             const quals = s.qualifiers ?? [];
             const refs  = s.references ?? [];
             const prop  = s.property ?? s.property_id;
+            const isExcluded = excluded.has(i);
             return (
-              <li key={i} className="glass-pill px-3 py-2 text-sm">
-                <div className="flex items-baseline gap-2 flex-wrap">
+              <li key={i} className={`glass-pill px-3 py-2 text-sm transition ${
+                isExcluded ? "opacity-50" : ""
+              }`}>
+                <div className={`flex items-baseline gap-2 flex-wrap ${
+                  isExcluded ? "line-through" : ""
+                }`}>
                   <PropertyPill p={prop} label={s.property_label} store={labelStore} />
                   <ValueRendering snak={s} store={labelStore} onOpenMarc={onOpenMarc} />
                   {s.rank && s.rank !== "normal" && (
                     <span className="ml-2 kicker text-biu-sky">{s.rank}</span>
                   )}
+                  <span className="ml-auto shrink-0">
+                    {isExcluded ? (
+                      <button
+                        type="button"
+                        onClick={() => void toggleExclude(i)}
+                        className="text-[11px] text-biu-sky hover:underline"
+                        title="Restore this statement"
+                      >
+                        Undo
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void toggleExclude(i)}
+                        className="text-[11px] muted hover:text-red-300 transition"
+                        title="Exclude this statement from upload"
+                      >
+                        ✗ Exclude
+                      </button>
+                    )}
+                  </span>
                 </div>
 
                 {quals.length > 0 && (

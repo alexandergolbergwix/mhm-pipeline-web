@@ -46,9 +46,14 @@ research tool; not user-facing.
 | HMO — Crosswalk + coverage | `converter/wikidata/hmo_crosswalk.py`, `projection_coverage.py` | ✓ already in web | wire endpoint |
 | HMO — Wikibase Cloud Writer | `converter/wikibase/cloud_client.py` | ✓ shipped | none |
 | HMO — MARC field editor | `RecordEdit` + `MarcFieldEditorDialog` | ✓ shipped | none |
-| Wikidata Studio — per-item override editor | `ItemOverridePayload` + `ItemOverrideDialog` | ✓ shipped | none |
+| Wikidata Studio — per-item override editor | `ItemOverridePayload` + `ItemOverrideDialog` | ✓ shipped + extended 2026-06-04 | none |
+| Wikidata Studio — item approval | n/a | ✓ shipped 2026-06-04 | `approved` field; approve-only QS/upload filter |
+| Wikidata Studio — inline statement exclude | n/a | ✓ shipped 2026-06-04 | ✗/Undo per statement row; `remove_statements` PATCH |
+| Wikidata Studio — validator badge | `item_validator.py` | ✓ shipped 2026-06-04 | `validation_issues` in build response; inline red/yellow badge |
+| Wikidata Studio — force-rebuild toggle | `WikidataStudioCache` | ✓ shipped 2026-06-04 | `?force_rebuild=true` bypasses fingerprint |
 | Wikidata Studio backend | `controller/workers.py::WikidataUploadWorker` | ✓ already wrapped | none |
 | Safety guards (Rule 38) | `converter/wikidata/uploader.py` | ✓ byte-identical | none |
+| Wikidata property audit | n/a | ✓ 2026-06-04 | Fixed 4 wrong QIDs/P-misuse; 18 validator regression tests |
 
 ## URL surface
 
@@ -75,8 +80,10 @@ GET  /api/runs/{id}/hmo-studio/coverage           (Wikidata Studio.5)
 POST /api/runs/{id}/hmo-studio/build-manifests
 POST /api/runs/{id}/hmo-studio/upload-manifests
 
-GET  /api/runs/{id}/wikidata-studio               (existing)
-POST /api/runs/{id}/wikidata-studio/upload        (existing)
+GET  /api/runs/{id}/wikidata-studio               (existing; ?force_rebuild=true bypasses fingerprint cache)
+PATCH /api/runs/{id}/wikidata-studio/items/{local_id}  (existing; payload.approved, remove_statements)
+POST /api/runs/{id}/wikidata-studio/upload        (existing; ?upload_approved_only=true)
+GET  /api/runs/{id}/wikidata-studio/quickstatements.txt  (existing; ?approved_only=true)
 
 POST /api/runs/{id}/ai-verify/start-stream        (existing)
 GET  /api/runs/{id}/ai-verify/sessions            (existing)

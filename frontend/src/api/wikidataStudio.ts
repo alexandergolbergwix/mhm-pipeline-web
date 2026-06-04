@@ -22,6 +22,12 @@ export interface Snak {
   [k: string]: unknown;
 }
 
+export interface ValidationIssue {
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+}
+
 export interface StudioItem {
   labels?: Record<string, string>;
   descriptions?: Record<string, string>;
@@ -30,6 +36,8 @@ export interface StudioItem {
   existing_qid?: string | null;
   entity_type?: string;
   local_id?: string;
+  validation_issues?: ValidationIssue[];
+  approved?: boolean | null;
 }
 
 export interface StudioBuild {
@@ -82,6 +90,7 @@ export interface ItemOverridePayload {
   add_statements?: Array<Record<string, unknown>>;
   remove_statements?: number[];
   statement_edits?: Record<string, Record<string, unknown>>;
+  approved?: boolean;
 }
 
 export interface ItemOverrideResponse {
@@ -96,13 +105,13 @@ export interface ItemOverrideResponse {
 }
 
 export const Studio = {
-  build: (runId: string, approvedOnly = true) =>
+  build: (runId: string, approvedOnly = true, forceRebuild = false) =>
     api.get<StudioBuild>(
-      `/runs/${runId}/wikidata-studio?approved_only=${approvedOnly ? "true" : "false"}`,
+      `/runs/${runId}/wikidata-studio?approved_only=${approvedOnly ? "true" : "false"}${forceRebuild ? "&force_rebuild=true" : ""}`,
     ),
 
-  qsUrl: (runId: string, approvedOnly = true) =>
-    `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}`,
+  qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false) =>
+    `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}${uploadApprovedOnly ? "&upload_approved_only=true" : ""}`,
 
   reconcile: (runId: string, approvedOnly = true) =>
     api.post<ReconcileResponse>(
@@ -110,9 +119,9 @@ export const Studio = {
       {},
     ),
 
-  upload: (runId: string, opts: { dry_run: boolean; approved_only: boolean }) =>
+  upload: (runId: string, opts: { dry_run: boolean; approved_only: boolean; upload_approved_only?: boolean }) =>
     api.post<UploadResponse>(
-      `/runs/${runId}/wikidata-studio/upload?dry_run=${opts.dry_run ? "true" : "false"}&approved_only=${opts.approved_only ? "true" : "false"}`,
+      `/runs/${runId}/wikidata-studio/upload?dry_run=${opts.dry_run ? "true" : "false"}&approved_only=${opts.approved_only ? "true" : "false"}${opts.upload_approved_only ? "&upload_approved_only=true" : ""}`,
       {},
     ),
 

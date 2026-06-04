@@ -544,6 +544,44 @@ The 2026-06-04 property audit found three silent catastrophes in
 5. Never add a constant derived from memory or documentation alone —
    always fetch the live page. Constants can change (merges, redirects).
 
+### Rule W-27 — Wikidata Studio curator controls (added 2026-06-04)
+
+Five new controls were shipped in one session; any future Studio work must
+respect these invariants:
+
+**Force-rebuild toggle** (`?force_rebuild=true` on `GET /wikidata-studio`):
+Bypasses the `WikidataStudioCache` fingerprint lookup and always runs a
+full rebuild. The cache-write at the end still fires so the next normal
+GET is served from cache. UI: "Skip cache (force fresh build)" checkbox
+next to the Rebuild button.
+
+**Validator badge** (`validation_issues` in build response):
+`item_validator.validate_item(item)` is called for every built item inside
+`_build_sync`; issues are returned as `[{code, severity, message}]` on each
+serialised item. The frontend renders a red/yellow dot in the sidebar and
+inline alert chips in the ItemPanel header. This surfaces the moat-layer
+checks (P50_ON_MANUSCRIPT, P31_WRONG_QID, etc.) to curators before upload.
+
+**Item-level approval** (`approved: bool | None` on `ItemOverridePayload`):
+Stored in `wikidata_item_overrides.payload.approved`. The QS download
+(`?approved_only=true`) and upload (`POST /upload` with
+`upload_approved_only=true`) filter to approved items only when the flag is
+set. UI: `ItemApprovalBadge` (○ / ✓) in sidebar and ItemPanel header.
+
+**Inline statement exclude** (`remove_statements` via PATCH):
+Each statement row in the ItemPanel gets a ✗ Exclude / Undo button.
+Clicking immediately PATCHes `{remove_statements: [...current, i]}` on the
+override and strikes through the row optimistically. No new DB column — this
+reuses the existing `remove_statements` list in `ItemOverridePayload`.
+
+**Approved-items-only upload/QS gate**:
+"Approved items only" checkbox + live "N of M approved" count badge in the
+Studio header. When active, QS download appends `&approved_only=true` and
+upload POST includes `upload_approved_only: true`.
+
+DB migration: `0016_item_override_approved` adds `approved BOOLEAN` to
+`wikidata_item_overrides` (nullable; null = not reviewed).
+
 ### Rule W-24 — All four curator surfaces support per-field manual editing (added 2026-06-03)
 
 - **NER**: `override_text`, `override_type`, `override_role` in
@@ -573,6 +611,7 @@ The 2026-06-04 property audit found three silent catastrophes in
 | `backend/ontology/` | hebrew-manuscripts.ttl + shacl-shapes.ttl (HMO ontology) |
 | `frontend/src/routes/` | One page per route (RunDetail, StageExtraction, StageRdf, HmoStudio, WikidataStudio, …) |
 | `frontend/src/components/` | Shared widgets (AiVerificationModal, AgentFlowDiagram, MatchDetailDialog, SelectAllVisible, …) |
+| `frontend/src/components/wikidata/` | Studio-specific components: `ItemValidatorBadge`, `ItemApprovalBadge` |
 | `frontend/src/api/` | Per-resource API clients |
 | `frontend/tests/` | Vitest unit tests |
 | `frontend/e2e/` | Playwright browser tests |

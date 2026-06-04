@@ -136,6 +136,25 @@ guard is the highest-priority port target — it caught the
 2026-04-12 mass-edit incident and must remain regression-tested on
 both stacks.
 
+## Wikidata property-constraint regression suite (added 2026-06-04)
+
+`backend/tests/unit/test_item_validator.py` — **18 tests** pinning the
+four property-constraint violations discovered in the 2026-06-04 full
+audit. Each test class maps to a specific community-reported failure
+mode:
+
+| Class | Checks | Source incident |
+|---|---|---|
+| `TestP50OnManuscript` | P50 must never appear directly on a manuscript item | Property:P50 constraint page |
+| `TestP7416AsQuantity` | P7416 is a string citation qualifier — never use as `value_type=quantity` | 2026-06-04 property audit |
+| `TestP31WrongQid` | P31 blocklist (Q179808 = Palme d'Or, Q5 on manuscripts) | Q_PALIMPSEST copy-paste error |
+| `TestBadValueQid` | Any statement/qualifier value in `_KNOWN_BAD_VALUE_QIDS` | Q21857942 = Stolpersteine in Upper Austria used as Q_POSSIBLY |
+| `TestBuilderNeverViolatesNewChecks` | Integration: `build_items_for_run` output passes all new validator codes | All four bugs caught end-to-end |
+
+The `.codex/commands/audit-wikidata-constants.md` slash command
+documents the step-by-step checklist to run before any change to
+`property_mapping.py`.
+
 ## Next steps (deferred)
 
 1. Port `tests/unit/test_safety_guards.py` from

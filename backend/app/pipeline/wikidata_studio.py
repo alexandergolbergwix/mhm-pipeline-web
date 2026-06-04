@@ -73,6 +73,7 @@ def compute_build_fingerprint(
         "overrides": sorted(
             (
                 str(o.id), o.local_id,
+                o.approved,  # item-level approval affects QS/upload filters
                 _h({
                     "labels": o.labels, "descriptions": o.descriptions,
                     "aliases": o.aliases, "add_statements": o.add_statements,
@@ -169,24 +170,28 @@ def _build_sync(
     builder = WikidataItemBuilder(reconciler=None)  # SPARQL-free for the web
     items = builder.build_all(records)
 
-    # Validate every built item and log any errors/warnings so they surface
-    # in the server log. This catches P8189 wrong-prefix, P31 wrong type,
-    # placeholder labels, institutional P50, etc. before export.
-    for it in items:
-        issues = validate_item(it)
-        for issue in issues:
-            severity = issue.severity if hasattr(issue, "severity") else str(issue)
-            code = issue.code if hasattr(issue, "code") else ""
-            msg = issue.message if hasattr(issue, "message") else str(issue)
-            log_fn = logger.error if severity == "error" else logger.warning
-            log_fn("validate_item [%s] %s: %s", severity.upper(), code, msg)
-
-    # Apply per-item curator overrides in place.
+    # Apply per-item curator overrides FIRST so validation reflects the
+    # final curator-adjusted state (not the raw builder output).
     if overrides:
         for it in items:
             ov = overrides.get(_local_id_for(it))
             if ov:
                 _apply_override(it, ov)
+
+    # Validate every built item, log issues, and collect them per item so
+    # the UI can surface inline validation pills without a second round-trip.
+    per_item_issues: list[list[dict]] = []
+    for it in items:
+        raw_issues = validate_item(it)
+        issue_dicts: list[dict] = []
+        for issue in raw_issues:
+            sev = issue.severity if hasattr(issue, "severity") else str(issue)
+            code = issue.code if hasattr(issue, "code") else ""
+            msg = issue.message if hasattr(issue, "message") else str(issue)
+            log_fn = logger.error if sev == "error" else logger.warning
+            log_fn("validate_item [%s] %s: %s", sev.upper(), code, msg)
+            issue_dicts.append({"code": code, "severity": sev, "message": msg})
+        per_item_issues.append(issue_dicts)
 
     exporter = QuickStatementsExporter()
     qs_text = exporter.export(items)
@@ -199,8 +204,12 @@ def _build_sync(
         "statements":  sum(len(getattr(i, "statements", []) or []) for i in items),
     }
 
+    serialised = [_serialise_item(it) for it in items]
+    for d, vi in zip(serialised, per_item_issues):
+        d["validation_issues"] = vi
+
     return {
-        "items": [_serialise_item(i) for i in items],
+        "items": serialised,
         "native_items": items if return_native else None,
         "quickstatements": qs_text,
         "summary": summary,
@@ -356,6 +365,15 @@ def _coerce(value: Any) -> Any:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+async def quickstatements_for_items(items: list[Any]) -> str:
+    """Generate a QuickStatements TSV blob for an arbitrary list of native
+    WikidataItem objects (e.g. after filtering by curator approval)."""
+    def _sync() -> str:
+        from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
+        return QuickStatementsExporter().export(items)
+    return await run_in_threadpool(_sync)
 
 
 def local_id_for_item(item: Any) -> str:

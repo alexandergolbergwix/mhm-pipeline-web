@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
-    DateTime, ForeignKey, String, UniqueConstraint, func,
+    Boolean, DateTime, ForeignKey, String, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -55,6 +55,10 @@ class WikidataItemOverride(Base):
     add_statements: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     remove_statements: Mapped[list[int]] = mapped_column(JSONB, nullable=False, default=list)
     statement_edits: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+    # Curator item-level approval — distinct from authority-match approval.
+    # None = not reviewed; True = approved for export; False = explicitly rejected.
+    approved: Mapped[bool | None] = mapped_column(Boolean(), nullable=True, default=None)
 
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

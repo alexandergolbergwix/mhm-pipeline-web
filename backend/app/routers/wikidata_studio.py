@@ -72,6 +72,13 @@ async def build_studio(
                     "'ship this in the final output' semantics of the "
                     "approval stores. Pass false to preview all candidates.",
     ),
+    force_rebuild: bool = Query(
+        default=False,
+        description="When true, skip the fingerprint cache and rebuild from "
+                    "scratch. The result is still written to cache so the next "
+                    "normal GET is fast. Does not affect the inference cache "
+                    "(VIAF / authority calls).",
+    ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StudioBuildResponse:
@@ -114,7 +121,7 @@ async def build_studio(
         )
     ).scalar_one_or_none()
 
-    if cached is not None and cached.input_fingerprint == fingerprint:
+    if not force_rebuild and cached is not None and cached.input_fingerprint == fingerprint:
         logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
         return StudioBuildResponse(
             items=cached.result_items,
@@ -169,12 +176,15 @@ async def build_studio(
         entities_by_cn=entities_by_cn,
         overrides=overrides, return_native=True,
     )
-    # Stamp local_id onto each serialised item.
+    # Stamp local_id + curator approved flag onto each serialised item.
+    overrides_approved = {r.local_id: r.approved for r in override_rows}
     if result.get("native_items"):
         for it_dict, it_native in zip(
             result["items"], result["native_items"], strict=True,
         ):
-            it_dict["local_id"] = wikidata_studio.local_id_for_item(it_native)
+            lid = wikidata_studio.local_id_for_item(it_native)
+            it_dict["local_id"] = lid
+            it_dict["approved"] = overrides_approved.get(lid)
 
     summary_dict = result["summary"]
 
@@ -208,15 +218,37 @@ async def build_studio(
 async def download_quickstatements(
     run_id: uuid.UUID,
     approved_only: bool = Query(default=True),
+    item_approved_only: bool = Query(
+        default=False,
+        description="When true, only include items where the curator has "
+                    "explicitly ticked 'Approved' in the Studio item overlay. "
+                    "Independent of approved_only (which filters authority matches).",
+    ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> PlainTextResponse:
     """Plain-text QuickStatements TSV — paste into
     https://quickstatements.toolforge.org."""
-    studio = await build_studio(run_id, approved_only, auth, db)  # type: ignore[arg-type]
-    suffix = "approved" if approved_only else "all"
+    if item_approved_only:
+        native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
+        override_rows = (
+            await db.execute(
+                select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+            )
+        ).scalars().all()
+        approved_ids = {r.local_id for r in override_rows if r.approved}
+        filtered = [it for it in native if wikidata_studio.local_id_for_item(it) in approved_ids]
+        qs_text = await wikidata_studio.quickstatements_for_items(filtered)
+    else:
+        studio = await build_studio(
+            run_id=run_id, approved_only=approved_only, force_rebuild=False,
+            auth=auth, db=db,
+        )
+        qs_text = studio.quickstatements
+
+    suffix = "approved" if item_approved_only else ("match-approved" if approved_only else "all")
     return PlainTextResponse(
-        studio.quickstatements,
+        qs_text,
         headers={
             "Content-Disposition": (
                 f'attachment; filename="run-{run_id}-{suffix}-quickstatements.txt"'
@@ -296,6 +328,11 @@ async def upload_to_wikidata(
                     "MORATORIUM_LIFTED=true in the env (or WIKIDATA_TEST_MODE=true).",
     ),
     approved_only: bool = Query(default=True),
+    item_approved_only: bool = Query(
+        default=False,
+        description="When true, only upload items where the curator has "
+                    "explicitly ticked 'Approved' in the Studio item overlay.",
+    ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> UploadResponse:
@@ -306,6 +343,15 @@ async def upload_to_wikidata(
 
     # Build the items first (with the latest approval state).
     native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
+
+    if item_approved_only:
+        override_rows = (
+            await db.execute(
+                select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+            )
+        ).scalars().all()
+        approved_ids = {r.local_id for r in override_rows if r.approved}
+        native = [it for it in native if wikidata_studio.local_id_for_item(it) in approved_ids]
 
     token: str | None = None
     if not dry_run:
@@ -348,6 +394,7 @@ class ItemOverridePayload(BaseModel):
     add_statements:    list[dict[str, Any]] | None = None
     remove_statements: list[int] | None = None
     statement_edits:   dict[str, dict[str, Any]] | None = None
+    approved:          bool | None = None
 
 
 class ItemOverrideResponse(BaseModel):
@@ -359,6 +406,7 @@ class ItemOverrideResponse(BaseModel):
     add_statements: list[dict[str, Any]]
     remove_statements: list[int]
     statement_edits: dict[str, Any]
+    approved: bool | None = None
 
 
 @router.patch(
@@ -427,6 +475,8 @@ async def patch_item_override(
             if v is None: new_edits.pop(k, None)
             else:         new_edits[k] = v
         row.statement_edits = new_edits
+    if payload.approved is not None:
+        row.approved = payload.approved
 
     row.updated_by = auth.user.id
 
@@ -452,6 +502,7 @@ async def patch_item_override(
             "add_statements":    list(row.add_statements or []),
             "remove_statements": list(row.remove_statements or []),
             "statement_edits":   dict(row.statement_edits or {}),
+            "approved":          row.approved,
         }
         await apply_event(
             db,
@@ -475,6 +526,7 @@ async def patch_item_override(
         aliases=row.aliases or {}, add_statements=row.add_statements or [],
         remove_statements=row.remove_statements or [],
         statement_edits=row.statement_edits or {},
+        approved=row.approved,
     )
 
 
