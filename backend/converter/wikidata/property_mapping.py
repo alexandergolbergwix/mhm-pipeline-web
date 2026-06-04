@@ -218,7 +218,7 @@ Q_HEBREW_ALPHABET = "Q33513"
 # Sourcing / certainty
 Q_CIRCA = "Q5727902"
 Q_PRESUMABLY = "Q18122778"  # presumably — uncertain attribution (e.g. NER-identified scribe)
-Q_POSSIBLY = "Q21857942"    # possibly — very uncertain attribution
+Q_POSSIBLY = "Q30230067"    # possibly — very uncertain attribution (Q21857942 = Stolpersteine in Upper Austria — WRONG)
 Q_HYPOTHESIS = "Q41719"     # hypothesis — used as P5102 value for inferred claims
 Q_DUBIOUS = "Q104378399"    # dubious — used as P5102 value for contested claims
 

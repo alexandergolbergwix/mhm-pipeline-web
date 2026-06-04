@@ -97,6 +97,16 @@ _KNOWN_BAD_P31_QIDS: dict[str, str] = {
     "Q5":      "human — manuscripts are never P31=Q5",
 }
 
+# QIDs that are NEVER valid as qualifier/property values anywhere in this project
+# because they are wrong entities entirely. Keyed by QID, value is explanation.
+# Detected by the 2026-06-04 property audit.
+_KNOWN_BAD_VALUE_QIDS: dict[str, str] = {
+    "Q21857942": (
+        "Stolpersteine in Upper Austria (Wikimedia list) — was wrongly used as "
+        "Q_POSSIBLY. Correct 'possibly' QID is Q30230067."
+    ),
+}
+
 
 # ── The 11 checks ────────────────────────────────────────────────────────
 
@@ -396,6 +406,32 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                     _REF_P7416,
                 ))
                 break
+
+    # 16b. Known-bad value QID in ANY statement — catches copy-paste errors
+    #      that put wrong entities in qualifier or statement values.
+    #      Example: Q21857942 ("Stolpersteine in Upper Austria") was used as
+    #      Q_POSSIBLY in P1480/P5102 qualifiers.
+    for s in getattr(item, "statements", []) or []:
+        val = str(getattr(s, "value", "") or "")
+        if val in _KNOWN_BAD_VALUE_QIDS:
+            explanation = _KNOWN_BAD_VALUE_QIDS[val]
+            issues.append(ValidationIssue(
+                "error", "BAD_VALUE_QID",
+                f"Statement {getattr(s, 'property_id', '?')} has known-wrong "
+                f"value {val!r}: {explanation}",
+                _REF_DATA_MODEL,
+            ))
+        for q in getattr(s, "qualifiers", []) or []:
+            if isinstance(q, dict) and q.get("value") in _KNOWN_BAD_VALUE_QIDS:
+                qval = str(q["value"])
+                explanation = _KNOWN_BAD_VALUE_QIDS[qval]
+                issues.append(ValidationIssue(
+                    "error", "BAD_VALUE_QID",
+                    f"Qualifier {q.get('property', '?')} on "
+                    f"{getattr(s, 'property_id', '?')} has known-wrong "
+                    f"value {qval!r}: {explanation}",
+                    _REF_DATA_MODEL,
+                ))
 
     # 16. Known-bad P31 QID — sanity check against copy-paste errors in
     #     property_mapping.py. Catches cases like Q179808 (Palme d'Or) being

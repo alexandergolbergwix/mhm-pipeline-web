@@ -201,6 +201,68 @@ class TestP31WrongQid:
         assert "P31_WRONG_QID" not in _codes(validate_item(item))
 
 
+# ── BAD_VALUE_QID ─────────────────────────────────────────────────────────────
+
+class TestBadValueQid:
+    """2026-06-04 audit: Q21857942 = Stolpersteine in Upper Austria was used
+    as Q_POSSIBLY (P1480 value). Any statement or qualifier carrying this QID
+    is corrupt data."""
+
+    def test_stolpersteine_as_p1480_qualifier_is_error(self) -> None:
+        """Q21857942 in a qualifier must be caught as BAD_VALUE_QID."""
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Hebrew manuscript, NLI, MS 7"},
+            statements=[
+                _Stmt(
+                    "P1574", "Q12345",
+                    qualifiers=[
+                        {"property": "P1480", "value": "Q21857942", "type": "item"}
+                    ],
+                ),
+            ],
+        )
+        issues = validate_item(item)
+        assert "BAD_VALUE_QID" in _codes(issues)
+        assert any(i.severity == "error" for i in issues if i.code == "BAD_VALUE_QID")
+
+    def test_stolpersteine_as_statement_value_is_error(self) -> None:
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Hebrew manuscript, NLI, MS 8"},
+            statements=[
+                _Stmt("P1480", "Q21857942"),  # wrong directly as value
+            ],
+        )
+        assert "BAD_VALUE_QID" in _codes(validate_item(item))
+
+    def test_correct_possibly_qid_is_clean(self) -> None:
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Hebrew manuscript, NLI, MS 9"},
+            statements=[
+                _Stmt(
+                    "P1574", "Q12345",
+                    qualifiers=[
+                        {"property": "P1480", "value": "Q30230067", "type": "item"}
+                    ],
+                ),
+            ],
+        )
+        assert "BAD_VALUE_QID" not in _codes(validate_item(item))
+
+    def test_presumably_qid_is_clean(self) -> None:
+        """Q18122778 (presumably) is always valid."""
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Hebrew manuscript, NLI, MS 10"},
+            statements=[
+                _Stmt("P1480", "Q18122778"),
+            ],
+        )
+        assert "BAD_VALUE_QID" not in _codes(validate_item(item))
+
+
 # ── Integration: builder never produces these violations ─────────────────────
 
 class TestBuilderNeverViolatesNewChecks:

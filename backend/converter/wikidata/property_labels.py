@@ -140,7 +140,7 @@ QID_LABELS: dict[str, str] = {
     "Q2539":    "machine learning",
     # Sourcing circumstances
     "Q18122778": "presumably",
-    "Q21857942": "possibly",
+    "Q30230067": "possibly",
     # Copyright
     "Q19652":   "public domain",
 }
