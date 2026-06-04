@@ -270,12 +270,15 @@ async def _session_event_stream(
     # ── Emit pre-cached verdicts immediately ──────────────────────────
     for match, _rec, cached_payload in pre_cached:
         synthetic = {
-            "candidate": {**_match_to_desktop_shape(match), "_match_id": str(match.id)},
-            "verdict":   cached_payload.get("verdict") or {},
-            "judge_id":  cached_payload.get("judge_id"),
-            "judged_at": cached_payload.get("judged_at"),
-            "cache_key": cached_payload.get("cache_key"),
+            "candidate":   {**_match_to_desktop_shape(match), "_match_id": str(match.id)},
+            "verdict":     cached_payload.get("verdict") or {},
+            "judge_id":    cached_payload.get("judge_id"),
+            "judged_at":   cached_payload.get("judged_at"),
+            "cache_key":   cached_payload.get("cache_key"),
             "evaluator_id": cached_payload.get("evaluator"),
+            "confidence":  cached_payload.get("confidence"),
+            "record_id":   match.control_number,
+            "sub_type":    cached_payload.get("sub_type") or match.role or "",
             "from_inference_cache": True,
         }
         ev = AgentEvent(type="agent.verdict", payload=synthetic)
@@ -369,11 +372,13 @@ async def _write_authority_verdicts_to_cache(
                 continue
             qs = _authority_verdict_query_summary(match)
             cached_result = {
-                "verdict":   v.get("verdict") or {},
-                "judge_id":  v.get("judge_id") or v.get("model"),
-                "judged_at": v.get("judged_at"),
-                "cache_key": v.get("cache_key"),
-                "evaluator": v.get("evaluator_id") or v.get("evaluator"),
+                "verdict":    v.get("verdict") or {},
+                "judge_id":   v.get("judge_id") or v.get("model"),
+                "judged_at":  v.get("judged_at"),
+                "cache_key":  v.get("cache_key"),
+                "evaluator":  v.get("evaluator_id") or v.get("evaluator"),
+                "confidence": v.get("confidence"),
+                "sub_type":   v.get("sub_type"),
             }
             await write_to_inference_cache(
                 db, kind="ai_verdict", query_summary=qs, result=cached_result,

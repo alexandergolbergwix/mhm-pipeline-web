@@ -204,7 +204,7 @@ async def _session_event_stream(
     for ext, record in uncached:
         cn = ext.control_number
         marc_by_cn.setdefault(cn, dict(record.marc or {}))
-        if ext.source == "genre":
+        if ext.source in ("genre", "genre_ml"):
             by_cn_genres.setdefault(cn, []).append({
                 "label":      ext.text,
                 "confidence": float(ext.model_confidence or ext.confidence or 0.0),
@@ -265,11 +265,14 @@ async def _session_event_stream(
                 "role":       ext.override_role or ext.role or "",
                 "source":     ext.source or "",
             },
-            "verdict":   cached_payload.get("verdict") or {},
-            "judge_id":  cached_payload.get("judge_id"),
-            "judged_at": cached_payload.get("judged_at"),
-            "cache_key": cached_payload.get("cache_key"),
+            "verdict":     cached_payload.get("verdict") or {},
+            "judge_id":    cached_payload.get("judge_id"),
+            "judged_at":   cached_payload.get("judged_at"),
+            "cache_key":   cached_payload.get("cache_key"),
             "evaluator_id": cached_payload.get("evaluator"),
+            "confidence":  cached_payload.get("confidence"),
+            "record_id":   cached_payload.get("record_id") or ext.control_number or "",
+            "sub_type":    cached_payload.get("sub_type") or ext.type or "",
             "from_inference_cache": True,
         }
         ev = AgentEvent(type="agent.verdict", payload=synthetic)
@@ -360,11 +363,14 @@ async def _write_ner_verdicts_to_cache(
                 continue
             qs = _ner_verdict_query_summary(ext)
             cached_result = {
-                "verdict":   v.get("verdict") or {},
-                "judge_id":  v.get("judge_id") or v.get("model"),
-                "judged_at": v.get("judged_at"),
-                "cache_key": v.get("cache_key"),
-                "evaluator": v.get("evaluator_id") or v.get("evaluator"),
+                "verdict":    v.get("verdict") or {},
+                "judge_id":   v.get("judge_id") or v.get("model"),
+                "judged_at":  v.get("judged_at"),
+                "cache_key":  v.get("cache_key"),
+                "evaluator":  v.get("evaluator_id") or v.get("evaluator"),
+                "confidence": v.get("confidence"),
+                "sub_type":   v.get("sub_type"),
+                "record_id":  v.get("record_id"),
             }
             await write_to_inference_cache(
                 db, kind="ai_verdict", query_summary=qs, result=cached_result,
