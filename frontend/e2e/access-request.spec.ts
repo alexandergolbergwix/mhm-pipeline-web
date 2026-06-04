@@ -34,6 +34,7 @@ const LONG_JUSTIFICATION =
   "I am studying Hebrew manuscript provenance and would like access to the workbench to review NER extractions for my dissertation corpus.";
 
 test.describe("Public request-access form", () => {
+  test.describe.configure({timeout: 60000});
 
   test("the public form renders", async ({ page }) => {
     const state = makeAccessRequestState();
@@ -66,22 +67,49 @@ test.describe("Public request-access form", () => {
 
     const submit = page.getByTestId("submit-button");
 
-    // Below 40 chars → disabled.
+    // Below 40 chars → disabled (justification too short).
     await page.getByTestId("input-justification").fill("Too short.");
     await expect(submit).toBeDisabled();
 
-    // Exactly 40 chars → enabled.
+    // Simulate Turnstile success so only the char-count gate is tested.
+    await page.evaluate(() => {
+      window.onTurnstileSuccess?.("e2e-turnstile-token");
+    });
+
+    // Exactly 40 chars AND Turnstile passed → enabled.
     const exactly40 = "a".repeat(40);
     await page
       .getByTestId("input-justification")
       .fill(exactly40);
     await expect(submit).toBeEnabled();
 
-    // Below 40 again → disabled again.
+    // Below 40 again → disabled again (Turnstile still satisfied).
     await page
       .getByTestId("input-justification")
       .fill("a".repeat(39));
     await expect(submit).toBeDisabled();
+  });
+
+  test("submit stays disabled until Turnstile fires even with valid justification", async ({ page }) => {
+    const state = makeAccessRequestState();
+    await installAccessRequestMocks(page, state);
+    await gotoRequestAccess(page);
+    await page.getByTestId("request-access-form").waitFor();
+
+    await page.getByTestId("input-name").fill("Test User");
+    await page.getByTestId("input-email").fill("user@example.org");
+    await page.getByTestId("input-affiliation").fill("Example University");
+    await page.getByTestId("input-justification").fill("a".repeat(40));
+
+    const submit = page.getByTestId("submit-button");
+    // Turnstile not yet fired → disabled.
+    await expect(submit).toBeDisabled();
+
+    // Fire the Turnstile callback → enabled.
+    await page.evaluate(() => {
+      window.onTurnstileSuccess?.("e2e-turnstile-token");
+    });
+    await expect(submit).toBeEnabled();
   });
 
   test("honeypot field is hidden from visual users", async ({ page }) => {

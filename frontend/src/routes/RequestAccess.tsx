@@ -43,6 +43,7 @@ export default function RequestAccess() {
 
   const charCount = formState.justification.length;
   const justificationOk = charCount >= MIN_JUSTIFICATION_CHARS;
+  const turnstileReady = formState.turnstile_token.length > 0;
 
   const nameInvalid = attemptedSubmit && formState.name.trim().length === 0;
   const emailInvalid =
@@ -50,6 +51,7 @@ export default function RequestAccess() {
     (formState.email.trim().length === 0 || !EMAIL_RE.test(formState.email));
   const affiliationInvalid =
     attemptedSubmit && formState.affiliation.trim().length === 0;
+  const turnstileInvalid = attemptedSubmit && !turnstileReady;
 
   useEffect(() => {
     window.onTurnstileSuccess = (token: string) => {
@@ -70,7 +72,7 @@ export default function RequestAccess() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setAttemptedSubmit(true);
-    if (!justificationOk || submitting) return;
+    if (!justificationOk || !turnstileReady || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -220,6 +222,12 @@ export default function RequestAccess() {
           data-callback="onTurnstileSuccess"
         />
 
+        {turnstileInvalid && (
+          <p className="text-sm text-amber-300" role="alert" data-testid="turnstile-error">
+            Please complete the security check above before submitting.
+          </p>
+        )}
+
         {error && (
           <p className="text-sm text-red-300" role="alert">
             {error}
@@ -228,7 +236,7 @@ export default function RequestAccess() {
 
         <button
           type="submit"
-          disabled={submitting || !justificationOk}
+          disabled={submitting || !justificationOk || !turnstileReady}
           className="button-primary w-full"
           data-testid="submit-button"
         >
