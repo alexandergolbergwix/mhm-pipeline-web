@@ -14,11 +14,14 @@ Endpoints (RBAC notes):
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -642,6 +645,152 @@ async def re_enrich_authority(
         "newly_matched": newly_matched,
         "skip_cache": skip_cache,
     }
+
+
+@router.post("/runs/{run_id}/authority/re-enrich/stream")
+async def re_enrich_authority_stream(
+    run_id: uuid.UUID,
+    skip_cache: bool = Query(False),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """SSE version of re-enrich.  Emits one event per entity so the
+    frontend can show a live progress bar.
+
+    Event types (``data:`` is JSON):
+        authority.start      { total_records, total_entities }
+        authority.entity     { index, total, control_number, entity_text,
+                               entity_kind, matched, matched_name, source,
+                               confidence, is_new }
+        authority.done       { checked, updated, newly_matched, skip_cache }
+        authority.error      { message }
+    """
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    from app.pipeline import authority as auth_pipeline  # noqa: PLC0415
+    from app.pipeline.marc_ingest import extract_named_entities  # noqa: PLC0415
+
+    matcher = auth_pipeline.get_default_matcher()
+
+    records = (
+        await db.execute(select(RunRecord).where(RunRecord.run_id == run_id))
+    ).scalars().all()
+
+    existing_rows = (
+        await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))
+    ).scalars().all()
+
+    existing_idx: dict[tuple[str, str, str], AuthorityMatch] = {
+        (m.control_number, m.entity_text.strip().lower(), m.entity_kind): m
+        for m in existing_rows
+    }
+
+    # Pre-count total entities so the frontend can show X of N.
+    all_entities: list[tuple[RunRecord, dict]] = []
+    for rec in records:
+        marc = dict(rec.marc or {})
+        for entity in extract_named_entities(marc):
+            all_entities.append((rec, entity))
+
+    total_entities = len(all_entities)
+
+    async def _stream() -> AsyncIterator[str]:
+        def _sse(event_type: str, payload: dict) -> str:
+            return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
+
+        yield _sse("authority.start", {
+            "total_records": len(records),
+            "total_entities": total_entities,
+        })
+
+        checked = 0
+        updated = 0
+        newly_matched = 0
+
+        for idx, (rec, entity) in enumerate(all_entities):
+            checked += 1
+            candidates = []
+            try:
+                candidates = await matcher.match(
+                    entity, dict(rec.marc or {}),
+                    db_session=db,
+                    user_id=run.created_by,
+                    skip_cache=skip_cache,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "re-enrich stream: authority match failed for %r",
+                    entity.get("text"),
+                )
+
+            matched = bool(candidates)
+            c = candidates[0] if candidates else None
+            is_new = False
+
+            if c:
+                key = (
+                    rec.control_number,
+                    (entity.get("text") or "").strip().lower(),
+                    entity.get("kind", "person"),
+                )
+                if key in existing_idx:
+                    m = existing_idx[key]
+                    m.matched_name = c.matched_name
+                    m.mazal_id     = c.mazal_id
+                    m.viaf_id      = c.viaf_id
+                    m.wikidata_qid = c.wikidata_qid
+                    m.confidence   = c.confidence
+                    m.source       = c.source
+                    m.payload      = c.payload
+                    updated += 1
+                else:
+                    db.add(AuthorityMatch(
+                        run_id=run_id,
+                        control_number=rec.control_number,
+                        entity_text=entity.get("text", ""),
+                        entity_kind=entity.get("kind", "person"),
+                        role=entity.get("role", ""),
+                        matched_name=c.matched_name,
+                        mazal_id=c.mazal_id,
+                        viaf_id=c.viaf_id,
+                        wikidata_qid=c.wikidata_qid,
+                        confidence=c.confidence,
+                        source=c.source,
+                        payload=c.payload,
+                    ))
+                    newly_matched += 1
+                    is_new = True
+
+            yield _sse("authority.entity", {
+                "index": idx,
+                "total": total_entities,
+                "control_number": rec.control_number,
+                "entity_text": entity.get("text", ""),
+                "entity_kind": entity.get("kind", "person"),
+                "matched": matched,
+                "matched_name": c.matched_name if c else None,
+                "source": c.source if c else None,
+                "confidence": c.confidence if c else None,
+                "is_new": is_new,
+            })
+
+        await db.commit()
+
+        yield _sse("authority.done", {
+            "checked": checked,
+            "updated": updated,
+            "newly_matched": newly_matched,
+            "skip_cache": skip_cache,
+        })
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── Editable fields (curator overrides on matches + records) ──────────

@@ -35,7 +35,8 @@ research tool; not user-facing.
 | AI Extraction — NER AI verification | `gui/dialogs/ai_verification_dialog.py` (NER scope) | ✓ shipped | **DONE** — `NerVerificationModal` + `extraction_verify.py` router (Rule W-17 / W-18) |
 | Authority Enrichment — Matchers (Mazal/VIAF/Wikidata/KIMA) | `converter/authority/*.py` | ✓ byte-identical | none |
 | Authority Enrichment — Hardening (7 guards) | `controller/workers.py::AuthorityWorker` | ✓ shipped (`authority_hardening.py`) | none |
-| Authority Enrichment — KIMA/VIAF payload completeness | `app/pipeline/authority.py` | ✓ shipped (Rule W-23) | none |
+| Authority Enrichment — Mazal + KIMA in Heroku Postgres | `app/pipeline/authority_backend.py::PostgresAuthorityBackend` | ✓ shipped (Rule W-28) — migration 0018, import scripts | **DONE** 2026-06-05 — Mazal 7.8 M rows, KIMA 177 K rows imported; AUTHORITY_MODE=postgres |
+| Authority Enrichment — Payload completeness | `app/pipeline/authority.py` | ✓ shipped (Rules W-23, W-29) | **DONE** 2026-06-05 — viaf_uri, wikidata_uri, mazal_aleph_id, wikidata_he_label, _wikidata_enrich_qid |
 | Curator field editing (all 4 surfaces) | desktop editors + web dialogs | ✓ shipped (Rule W-24) | none |
 | RDF Graph — RDF mapper | `converter/transformer/mapper.py` | ✓ already in web | wire endpoint |
 | RDF Graph — Ontology | `ontology/hebrew-manuscripts.ttl` | absent | **COPY** to `backend/ontology/` |

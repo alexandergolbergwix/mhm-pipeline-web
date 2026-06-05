@@ -15,7 +15,7 @@ Any prompt that asks to:
 
 ## Invariants this skill enforces
 
-Read `CLAUDE.md` Rules W-1 through W-26 in full before suggesting any
+Read `CLAUDE.md` Rules W-1 through W-29 in full before suggesting any
 architectural change. Highlights:
 
 - **W-1**: eval-agent stays a subprocess (argv + env + stdout). No
@@ -65,3 +65,14 @@ prefer calling those over inlining new bash blocks.
 - On Heroku, `REDIS_URL` uses a self-signed `rediss://` cert — the
   client initialises with `ssl_cert_reqs=None` intentionally.
   Never remove that flag or Redis connections will fail.
+- **W-28**: Mazal and KIMA live in Heroku Postgres tables
+  `mazal_authorities`, `mazal_name_index`, `kima_places`,
+  `kima_name_index`. Activated by `AUTHORITY_MODE=postgres`. Import
+  scripts in `backend/scripts/import_{mazal,kima}_to_postgres.py` are
+  idempotent. Do NOT set `AUTHORITY_MODE=modal` on production — the
+  Modal authority app is legacy and no longer deployed.
+- **W-29**: `AuthorityMatch.payload` MUST carry `viaf_uri`,
+  `wikidata_uri`, `preferred_name_heb` (Mazal > Wikidata he_label),
+  `cluster_ids`, `mazal_aleph_id`, `wikidata_he_label`,
+  `wikidata_en_description`. All populated by `_match_one` + the new
+  `_wikidata_enrich_qid` helper. Never strip these fields downstream.

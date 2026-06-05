@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { useProjectEvents } from "@/api/realtime";
 import {
-  Runs, type AuthorityMatch, type RunDetail as Detail,
+  Runs, streamAuthorityEnrich, type AuthorityMatch, type RunDetail as Detail,
 } from "@/api/runs";
 import {
   applyConditions, type FilterCondition, StructuredFilter,
@@ -20,6 +20,8 @@ import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import type { ScopeKind } from "@/api/aiVerify";
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
+
+type EnrichPhase = "idle" | "running" | "done" | "error";
 
 const COLUMNS = [
   { key: "control_number", label: "Record",     kind: "text" as const, sortable: true  },
@@ -48,11 +50,28 @@ export default function RunDetail() {
   const [backfillResult, setBackfillResult] = useState<{
     checked: number; updated: number; births_filled: number; deaths_filled: number;
   } | null>(null);
-  const [reEnrichBusy, setReEnrichBusy] = useState(false);
   const [reEnrichSkipCache, setReEnrichSkipCache] = useState(false);
-  const [reEnrichResult, setReEnrichResult] = useState<{
+  // SSE-based re-enrichment progress
+  const [enrichPhase, setEnrichPhase] = useState<EnrichPhase>("idle");
+  const [enrichTotal, setEnrichTotal] = useState(0);
+  const [enrichProcessed, setEnrichProcessed] = useState(0);
+  const [enrichCurrentEntity, setEnrichCurrentEntity] = useState<string>("");
+  const [enrichCurrentSource, setEnrichCurrentSource] = useState<string | null>(null);
+  const [enrichCurrentMatched, setEnrichCurrentMatched] = useState<boolean | null>(null);
+  const [enrichResult, setEnrichResult] = useState<{
     checked: number; updated: number; newly_matched: number; skip_cache: boolean;
   } | null>(null);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
+  const enrichCancelRef = useRef<(() => void) | null>(null);
+  // Live elapsed-time ticker
+  const [enrichStartedAt, setEnrichStartedAt] = useState<number | null>(null);
+  const [enrichTick, setEnrichTick] = useState(0);
+  useEffect(() => {
+    if (enrichStartedAt === null) return;
+    const id = window.setInterval(() => setEnrichTick((t) => t + 1), 500);
+    return () => window.clearInterval(id);
+  }, [enrichStartedAt]);
+  void enrichTick;
   const [verifyScope, setVerifyScope] = useState<{ kind: ScopeKind; matchIds?: string[]; label: string } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   // Sort state — persisted across reloads so curators don't lose their place.
@@ -124,16 +143,58 @@ export default function RunDetail() {
 
   async function reEnrich() {
     if (!runId) return;
-    setReEnrichBusy(true); setError(null); setReEnrichResult(null); setBackfillResult(null);
+    setEnrichPhase("running");
+    setEnrichError(null);
+    setEnrichResult(null);
+    setBackfillResult(null);
+    setEnrichProcessed(0);
+    setEnrichTotal(0);
+    setEnrichCurrentEntity("");
+    setEnrichCurrentSource(null);
+    setEnrichCurrentMatched(null);
+    setEnrichStartedAt(Date.now());
+
+    const {events, cancel} = streamAuthorityEnrich(runId, reEnrichSkipCache);
+    enrichCancelRef.current = cancel;
+
     try {
-      const r = await Runs.reEnrichAuthority(runId, reEnrichSkipCache);
-      setReEnrichResult(r);
-      await refresh();
+      for await (const ev of events) {
+        if (ev.type === "authority.start") {
+          setEnrichTotal(Number(ev.total_entities ?? 0));
+        } else if (ev.type === "authority.entity") {
+          setEnrichProcessed(Number(ev.index ?? 0) + 1);
+          setEnrichCurrentEntity(String(ev.entity_text ?? ""));
+          setEnrichCurrentSource(ev.source != null ? String(ev.source) : null);
+          setEnrichCurrentMatched(Boolean(ev.matched));
+        } else if (ev.type === "authority.done") {
+          setEnrichResult({
+            checked: Number(ev.checked ?? 0),
+            updated: Number(ev.updated ?? 0),
+            newly_matched: Number(ev.newly_matched ?? 0),
+            skip_cache: Boolean(ev.skip_cache),
+          });
+          setEnrichPhase("done");
+          await refresh();
+        } else if (ev.type === "authority.error") {
+          setEnrichError(String(ev.message ?? "Unknown error"));
+          setEnrichPhase("error");
+        }
+      }
     } catch (e) {
-      setError(e instanceof ApiError ? e.detail : String(e));
+      if ((e as Error).name !== "AbortError") {
+        setEnrichError(e instanceof ApiError ? e.detail : String(e));
+        setEnrichPhase("error");
+      }
     } finally {
-      setReEnrichBusy(false);
+      enrichCancelRef.current = null;
+      setEnrichStartedAt(null);
     }
+  }
+
+  function cancelEnrich() {
+    enrichCancelRef.current?.();
+    setEnrichPhase("idle");
+    setEnrichStartedAt(null);
   }
 
   function patchMatch(next: AuthorityMatch) {
@@ -282,18 +343,26 @@ export default function RunDetail() {
                     className="accent-biu-sky"
                     checked={reEnrichSkipCache}
                     onChange={(e) => setReEnrichSkipCache(e.target.checked)}
+                    disabled={enrichPhase === "running"}
                   />
                   Skip cache
                 </label>
-                <button
-                  onClick={reEnrich}
-                  disabled={reEnrichBusy}
-                  title={reEnrichSkipCache
-                    ? "Re-run full Mazal · VIAF · Wikidata matching with fresh API calls (ignores 30-day cache). Preserves approvals."
-                    : "Re-run full Mazal · VIAF · Wikidata matching, using cached results where available. Preserves approvals."}
-                  className="button-ghost !py-0.5 !px-2 text-xs text-biu-sky whitespace-nowrap">
-                  {reEnrichBusy ? "⏳ Re-enriching…" : "↻ Re-run enrichment"}
-                </button>
+                {enrichPhase === "running" ? (
+                  <button
+                    onClick={cancelEnrich}
+                    className="button-ghost !py-0.5 !px-2 text-xs text-red-400 whitespace-nowrap">
+                    ✕ Cancel
+                  </button>
+                ) : (
+                  <button
+                    onClick={reEnrich}
+                    title={reEnrichSkipCache
+                      ? "Re-run full Mazal · VIAF · Wikidata · KIMA matching with fresh API calls (ignores 30-day cache). Preserves approvals."
+                      : "Re-run full Mazal · VIAF · Wikidata · KIMA matching, using cached results where available. Preserves approvals."}
+                    className="button-ghost !py-0.5 !px-2 text-xs text-biu-sky whitespace-nowrap">
+                    ↻ Re-run enrichment
+                  </button>
+                )}
               </div>
               {runId && (
                 <SectionExportMenu
@@ -318,16 +387,70 @@ export default function RunDetail() {
                     : <>No new dates available from Mazal / VIAF / Wikidata for the remaining matches</>}
                 </span>
               )}
-              {reEnrichResult && (
+              {enrichResult && enrichPhase === "done" && (
                 <span className="muted text-xs">
-                  {reEnrichResult.updated > 0 || reEnrichResult.newly_matched > 0
-                    ? <>✓ {reEnrichResult.updated} updated · {reEnrichResult.newly_matched} new
-                        {reEnrichResult.skip_cache && <> · cache bypassed</>}</>
+                  {enrichResult.updated > 0 || enrichResult.newly_matched > 0
+                    ? <>✓ {enrichResult.updated} updated · {enrichResult.newly_matched} new
+                        {enrichResult.skip_cache && <> · cache bypassed</>}</>
                     : <>No changes — all matches already up to date</>}
                 </span>
               )}
             </div>
           </div>
+
+          {/* Live re-enrichment progress panel */}
+          {enrichPhase === "running" && (
+            <div className="glass rounded-lg p-4 space-y-3 border border-biu-sky/20">
+              <div className="flex items-center justify-between gap-3">
+                <div className="kicker text-biu-sky flex items-center gap-2">
+                  <span className="animate-pulse">●</span> Re-enriching authority candidates…
+                </div>
+                {enrichStartedAt && (
+                  <span className="muted text-[11px]">
+                    {((Date.now() - enrichStartedAt) / 1000).toFixed(1)}s elapsed
+                  </span>
+                )}
+              </div>
+              {/* Progress bar */}
+              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-biu-sky rounded-full transition-all duration-300"
+                  style={{width: enrichTotal > 0 ? `${Math.round((enrichProcessed / enrichTotal) * 100)}%` : "0%"}}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  {enrichCurrentEntity && (
+                    <>
+                      <span className="muted shrink-0">Entity:</span>
+                      <span className="text-ink truncate max-w-xs">{enrichCurrentEntity}</span>
+                      {enrichCurrentMatched && enrichCurrentSource && (
+                        <span className="glass-pill px-2 py-[1px] text-[10px] uppercase tracking-wider text-biu-sky shrink-0">
+                          {enrichCurrentSource}
+                        </span>
+                      )}
+                      {enrichCurrentMatched === false && (
+                        <span className="muted text-[10px] shrink-0">no match</span>
+                      )}
+                    </>
+                  )}
+                </div>
+                <span className="muted shrink-0 tabular-nums">
+                  {enrichProcessed} / {enrichTotal}
+                  {enrichTotal > 0 && (
+                    <> ({Math.round((enrichProcessed / enrichTotal) * 100)}%)</>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Error banner */}
+          {enrichPhase === "error" && enrichError && (
+            <div className="glass rounded-lg p-3 border border-red-400/30 text-red-300 text-sm">
+              ✕ Re-enrichment failed: {enrichError}
+            </div>
+          )}
 
           <StructuredFilter
             columns={COLUMNS}

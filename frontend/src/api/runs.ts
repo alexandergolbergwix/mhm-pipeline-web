@@ -1,5 +1,10 @@
 import { api, csrfHeaders } from "@/api/client";
 
+export interface AuthorityEnrichEvent {
+  type: string;
+  [k: string]: unknown;
+}
+
 export type RunStatus = "pending" | "running" | "succeeded" | "failed";
 
 export interface RunListItem {
@@ -135,4 +140,55 @@ export const Runs = {
       {marc},
     ),
 };
+
+/** Stream authority re-enrichment SSE events.  Call cancel() to abort. */
+export function streamAuthorityEnrich(
+  runId: string,
+  skipCache: boolean,
+): {events: AsyncIterableIterator<AuthorityEnrichEvent>; cancel: () => void} {
+  const controller = new AbortController();
+  const qs = skipCache ? "?skip_cache=true" : "";
+  const events = (async function* (): AsyncIterableIterator<AuthorityEnrichEvent> {
+    const res = await fetch(`/api/runs/${runId}/authority/re-enrich/stream${qs}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {"Content-Type": "application/json", ...csrfHeaders("POST")},
+      body: JSON.stringify({}),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const d = (await res.json()) as {detail?: string};
+        if (d?.detail) detail = d.detail;
+      } catch { /* ignore */ }
+      throw new Error(detail);
+    }
+    if (!res.body) throw new Error("No SSE body");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buf = "";
+    for (;;) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream: true});
+      let sep = buf.indexOf("\n\n");
+      while (sep >= 0) {
+        const frame = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
+        if (dataLine) {
+          try {
+            const ev = JSON.parse(dataLine.slice(5).trim()) as AuthorityEnrichEvent;
+            const typeLine = frame.split("\n").find((l) => l.startsWith("event:"));
+            if (typeLine) ev.type = typeLine.slice(6).trim();
+            yield ev;
+          } catch { /* ignore */ }
+        }
+        sep = buf.indexOf("\n\n");
+      }
+    }
+  })();
+  return {events, cancel: () => controller.abort()};
+}
 
