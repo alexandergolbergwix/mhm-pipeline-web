@@ -191,6 +191,9 @@ async def _session_event_stream(
     but still writes new verdicts to the cache afterwards.
     """
     from app.db import session_scope  # noqa: PLC0415
+    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+
+    _judge_model = tier_model or GEMINI_MODEL
 
     # ── Pre-check inference cache ──────────────────────────────────────
     # Done BEFORE locate_eval_agent() so a fully-cached run never
@@ -202,7 +205,7 @@ async def _session_event_stream(
     if not override_cache:
         async with session_scope() as pre_db:
             for match, record in matches:
-                qs = _authority_verdict_query_summary(match)
+                qs = _authority_verdict_query_summary(match, _judge_model)
                 hit = await read_from_inference_cache(
                     pre_db, kind="ai_verdict", query_summary=qs,
                 )
@@ -339,12 +342,15 @@ async def _session_event_stream(
         yield end_ev
 
 
-def _authority_verdict_query_summary(match: AuthorityMatch) -> dict[str, Any]:
+def _authority_verdict_query_summary(
+    match: AuthorityMatch,
+    judge_model: str = "gemini-3.5-flash",
+) -> dict[str, Any]:
     """Stable content key for caching an authority verdict across users/runs.
 
-    Keyed by the entity's canonical identity: name + role + authority IDs.
-    Two users verifying the same authority entity (same IDs) will always
-    produce the same hash and therefore share the cached Gemini verdict.
+    Keyed by the entity's canonical identity: name + role + authority IDs +
+    the judge model. Including the model ensures that a verdict cached under
+    an older model is never served after an upgrade.
     """
     return {
         "text":         (match.entity_text or "").strip(),
@@ -352,6 +358,7 @@ def _authority_verdict_query_summary(match: AuthorityMatch) -> dict[str, Any]:
         "mazal_id":     match.mazal_id or "",
         "viaf_id":      match.viaf_id or "",
         "wikidata_qid": match.wikidata_qid or "",
+        "judge_model":  judge_model,
     }
 
 
@@ -370,7 +377,8 @@ async def _write_authority_verdicts_to_cache(
             match = matches_by_id.get(str(match_id)) if match_id else None
             if match is None:
                 continue
-            qs = _authority_verdict_query_summary(match)
+            _jm = v.get("judge_id") or v.get("model") or "gemini-3.5-flash"
+            qs = _authority_verdict_query_summary(match, _jm)
             cached_result = {
                 "verdict":    v.get("verdict") or {},
                 "judge_id":   v.get("judge_id") or v.get("model"),

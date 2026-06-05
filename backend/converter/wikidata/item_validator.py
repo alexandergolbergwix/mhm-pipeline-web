@@ -479,6 +479,41 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                     _REF_DATA_MODEL,
                 ))
 
+    # 17a. P3959 on a non-manuscript item — Geagea complaint 2026-04-15.
+    #      P3959 is a BIBLIOGRAPHIC record identifier: it belongs on the
+    #      manuscript (Q87167 instance), not on person or work items.
+    #      (The same control number appears inside reference snaks on persons/
+    #      works where it correctly documents the source record — that usage
+    #      is fine; only a MAIN STATEMENT on a non-manuscript is flagged.)
+    if etype != "manuscript":
+        if _stmt_values(item, "P3959"):
+            issues.append(ValidationIssue(
+                "error", "P3959_ON_NON_MANUSCRIPT",
+                "P3959 (NNL item ID) appears as a main statement on a "
+                f"non-manuscript item (entity_type={etype!r}). "
+                "P3959 is the bibliographic catalog number; it belongs only "
+                "on manuscript items. For persons use P8189 (J9U entity ID). "
+                "For works, add the catalog number inside the reference snak "
+                "block, not as a main claim.",
+                "https://www.wikidata.org/wiki/Property_talk:P8189/Duplicates/humans",
+            ))
+
+    # 17b. Manuscript missing P3959 (NNL item ID / MARC 001).
+    #     Every manuscript item must carry the NLI catalog control number as a
+    #     direct, queryable statement so the source MARC record is traceable.
+    #     Without P3959 the item is unlinked from the catalogue and SPARQL
+    #     cannot recover it via the identifier.
+    if etype == "manuscript":
+        if not _stmt_values(item, "P3959"):
+            issues.append(ValidationIssue(
+                "warning", "MISSING_P3959",
+                "Manuscript item has no P3959 (NNL item ID / MARC 001 field). "
+                "Every manuscript must carry the NLI catalog control number so "
+                "the source record is queryable via SPARQL. Rebuild via the "
+                "Wikidata Studio to populate this statement.",
+                "https://www.wikidata.org/wiki/Property:P3959",
+            ))
+
     return issues
 
 

@@ -20,10 +20,11 @@ The Redis tier is therefore fully optional — dev/CI work without it.
 
 Redis TTL policy
 ----------------
-``ner.*``, ``genre.classify``, ``ai_verdict`` — no expiry (content-addressed;
-the same input always produces the same model output).
-``authority.*`` — 24 h TTL in Redis (hot working set). Postgres still holds
-the 30-day ground truth so a Redis eviction just causes one Postgres read.
+``ner.*`` and ``genre.classify`` — no expiry (content-addressed).
+``ai_verdict`` — 7-day Redis hot window; Postgres holds a 90-day ground truth.
+``authority.mazal`` — 24 h Redis hot window; Postgres holds 90-day ground truth.
+``authority.viaf`` / ``authority.wikidata`` — 24 h Redis; 30-day Postgres.
+``authority.kima`` — 24 h Redis; 180-day Postgres (geographic index rarely changes).
 
 Hit-count accounting
 --------------------
@@ -34,8 +35,17 @@ latency cost of the old single-tier implementation.
 
 Skip-cache
 ----------
-``skip_cache=True`` bypasses both tiers but still writes back to both on
-completion (same contract as before).
+``skip_cache=True`` bypasses both read tiers and **always writes back**:
+
+* Non-empty result → replaces any existing row + resets ``expires_at`` to
+  ``now + TTL``, so the stored value stays in sync with the latest upstream
+  answer.
+* None / empty result → deletes the Redis key and overwrites the Postgres
+  row with ``{}`` so a stale positive match can never be served again after
+  a force-refresh that found nothing.
+
+Regular misses (``skip_cache=False``) still skip caching None / empty-list
+results to avoid storing transient model errors.
 
 Errors are never cached. ``fetch`` may raise; the exception propagates
 unchanged and nothing is written to either tier.
@@ -63,21 +73,21 @@ logger = logging.getLogger(__name__)
 
 # Postgres TTL — None = never expires.
 # Authority calls expire because upstream registries mutate over time.
+# ai_verdict expires after 90 days to force a refresh when the model changes.
 KIND_TTL: dict[str, timedelta | None] = {
     "ner.person":         None,
     "ner.provenance":     None,
     "ner.contents":       None,
     "genre.classify":     None,
-    "authority.mazal":    timedelta(days=30),
-    "authority.viaf":     timedelta(days=30),
-    "authority.wikidata": timedelta(days=30),
-    "authority.kima":     timedelta(days=30),
-    "ai_verdict":         None,
+    "authority.mazal":    timedelta(days=90),   # Mazal index changes slowly
+    "authority.viaf":     timedelta(days=30),   # VIAF clusters merge often
+    "authority.wikidata": timedelta(days=30),   # Wikidata is actively edited
+    "authority.kima":     timedelta(days=180),  # geographic index rarely changes
+    "ai_verdict":         timedelta(days=90),   # forces refresh when model changes
 }
 
 # Redis TTL in seconds — None = no expiry (SET without EX).
-# Authority kinds use a shorter 24 h hot-window; Postgres remains
-# the 30-day ground truth so Redis eviction just causes one L2 read.
+# Authority kinds use a 24 h hot-window; Postgres remains the ground truth.
 _REDIS_TTL_SECONDS: dict[str, int | None] = {
     "ner.person":         None,
     "ner.provenance":     None,
@@ -87,7 +97,7 @@ _REDIS_TTL_SECONDS: dict[str, int | None] = {
     "authority.viaf":     86_400,
     "authority.wikidata": 86_400,
     "authority.kima":     86_400,
-    "ai_verdict":         None,
+    "ai_verdict":         86_400 * 7,   # 7-day Redis hot window for verdicts
 }
 
 
@@ -149,12 +159,37 @@ async def cache_lookup_or_call(
     # ── Miss (or skip_cache) — run the real call ──────────────────────
     result = await fetch()
 
-    # Don't cache None / empty lists — can't distinguish a legitimate
-    # "nothing found" from a silent model error. Only cache non-empty.
-    if result is None:
-        return result
-    if isinstance(result, list) and not result:
-        return result
+    # When skip_cache=True we ALWAYS write back so the stored value stays
+    # in sync with the latest upstream answer.  On a regular miss we skip
+    # None / empty-list to avoid caching transient model errors.
+    if not skip_cache:
+        if result is None:
+            return result
+        if isinstance(result, list) and not result:
+            return result
+    else:
+        # Force-refresh: if the upstream returned nothing, invalidate any
+        # stale positive match that may be in the store.
+        if result is None or (isinstance(result, list) and not result):
+            expires_at = _pg_expires_at(kind, now)
+            try:
+                await _write(
+                    db, kind=kind, query_hash=query_hash,
+                    query_summary=query_summary,
+                    result=result if result is not None else {},
+                    user_id=user_id, now=now, expires_at=expires_at,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "inference_cache skip_cache invalidation failed (kind=%s): %s",
+                    kind, exc,
+                )
+            if redis is not None:
+                try:
+                    await redis.delete(redis_key)
+                except Exception:  # noqa: BLE001
+                    pass
+            return result
 
     # Write both tiers concurrently (errors are swallowed — must not
     # break the caller).

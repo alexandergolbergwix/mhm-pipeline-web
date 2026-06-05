@@ -158,6 +158,9 @@ async def _session_event_stream(
     import json as _json  # noqa: PLC0415
 
     from app.db import session_scope  # noqa: PLC0415
+    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+
+    _judge_model = tier_model or GEMINI_MODEL
 
     # ── Pre-check inference cache ──────────────────────────────────────
     # Done BEFORE locate_eval_agent() so a fully-cached run never
@@ -167,7 +170,7 @@ async def _session_event_stream(
     if not override_cache:
         async with session_scope() as pre_db:
             for ext, record in entities:
-                qs = _ner_verdict_query_summary(ext)
+                qs = _ner_verdict_query_summary(ext, _judge_model)
                 hit = await read_from_inference_cache(
                     pre_db, kind="ai_verdict", query_summary=qs,
                 )
@@ -332,17 +335,21 @@ async def _session_event_stream(
         yield end_ev
 
 
-def _ner_verdict_query_summary(ext: ExtractionApproval) -> dict[str, Any]:
+def _ner_verdict_query_summary(
+    ext: ExtractionApproval,
+    judge_model: str = "gemini-3.5-flash",
+) -> dict[str, Any]:
     """Stable content key for caching an NER verdict across users/runs.
 
-    Keyed by the entity's canonical text + type + role. Two curators
-    verifying the same extracted entity on the same MARC record will share
-    the cached Gemini verdict.
+    Keyed by the entity's canonical text + type + role + judge model.
+    Including the model ensures that a verdict cached under an older model
+    is never served after an upgrade.
     """
     return {
-        "text": (ext.override_text or ext.text or "").strip(),
-        "type": (ext.override_type or ext.type or "").strip(),
-        "role": (ext.override_role or ext.role or "").strip(),
+        "text":        (ext.override_text or ext.text or "").strip(),
+        "type":        (ext.override_type or ext.type or "").strip(),
+        "role":        (ext.override_role or ext.role or "").strip(),
+        "judge_model": judge_model,
     }
 
 
@@ -361,7 +368,8 @@ async def _write_ner_verdicts_to_cache(
             ext = entities_by_id.get(str(entity_id)) if entity_id else None
             if ext is None:
                 continue
-            qs = _ner_verdict_query_summary(ext)
+            _jm = v.get("judge_id") or v.get("model") or "gemini-3.5-flash"
+            qs = _ner_verdict_query_summary(ext, _jm)
             cached_result = {
                 "verdict":    v.get("verdict") or {},
                 "judge_id":   v.get("judge_id") or v.get("model"),

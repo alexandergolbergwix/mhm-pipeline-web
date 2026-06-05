@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.extraction_approval import ExtractionApproval
-from app.models.run import AuthorityMatch, Run, RunRecord
+from app.models.run import AuthorityMatch, RdfTripleOverride, Run, RunRecord
 from app.pipeline.rdf_build import (
     LAYOUT_KINDS,
     RdfBuildResult,
@@ -153,6 +153,25 @@ class RdfStatusResponse(BaseModel):
     error: str | None = None
 
 
+class TripleOverrideRequest(BaseModel):
+    subject_uri: str
+    predicate_uri: str
+    new_value: str
+    new_datatype: str | None = None
+    new_lang: str | None = None
+
+
+class TripleOverrideResponse(BaseModel):
+    id: str
+    subject_uri: str
+    predicate_uri: str
+    new_value: str
+    new_datatype: str | None
+    new_lang: str | None
+    old_value: str | None
+    created_at: str
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────
 
 
@@ -221,6 +240,22 @@ async def build(
     marc_records = [dict(r.marc) for r in records]
     authority_matches = normalise_matches(matches)
 
+    overrides_rows = (
+        await db.execute(
+            select(RdfTripleOverride).where(RdfTripleOverride.run_id == run_id)
+        )
+    ).scalars().all()
+    overrides = [
+        {
+            "subject_uri": r.subject_uri,
+            "predicate_uri": r.predicate_uri,
+            "new_value": r.new_value,
+            "new_datatype": r.new_datatype,
+            "new_lang": r.new_lang,
+        }
+        for r in overrides_rows
+    ]
+
     out_path = rdf_output_path_for_run(str(run_id))
     try:
         result: RdfBuildResult = await build_rdf_graph(
@@ -228,6 +263,7 @@ async def build(
             authority_matches=authority_matches,
             entities_by_cn=entities_by_cn,
             output_path=out_path,
+            overrides=overrides,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("RDF build failed for run %s", run_id)
@@ -235,6 +271,23 @@ async def build(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"RDF build failed: {exc}",
         ) from exc
+
+    # Bust every downstream cache so the fresh TTL is visible immediately:
+    # 1. Cytoscape JSON files (graph_{layout}_{max_nodes}.json) — delete them
+    #    so the next GET /graph re-derives from the new TTL.
+    for cache_file in out_path.parent.glob("graph_*.json"):
+        try:
+            cache_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    # 2. Research merged-graph LRU (in-process) — drop all entries that
+    #    include this run so the Research Explorer re-loads the new graph.
+    try:
+        from app.pipeline.research_graph import invalidate_cache as _inval  # noqa: PLC0415
+        _inval(str(run_id))
+    except Exception:  # noqa: BLE001
+        pass
 
     return RdfBuildResponse(**result.to_dict())
 
@@ -396,6 +449,106 @@ async def validate(
             detail=f"SHACL validation failed: {exc}",
         ) from exc
     return ShaclReportDto(**report.to_dict())
+
+
+@router.patch("/{run_id}/rdf/triple", response_model=TripleOverrideResponse)
+async def save_triple_override(
+    run_id: uuid.UUID,
+    body: TripleOverrideRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> TripleOverrideResponse:
+    """Save a curator edit to an RDF literal value.
+
+    Upserts: if an override for (run_id, subject_uri, predicate_uri) already
+    exists, updates it. Otherwise creates a new row. The override is applied
+    the next time POST /rdf/build is called.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    existing = (
+        await db.execute(
+            select(RdfTripleOverride)
+            .where(RdfTripleOverride.run_id == run_id)
+            .where(RdfTripleOverride.subject_uri == body.subject_uri)
+            .where(RdfTripleOverride.predicate_uri == body.predicate_uri)
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        existing.new_value = body.new_value
+        existing.new_datatype = body.new_datatype
+        existing.new_lang = body.new_lang
+        override = existing
+    else:
+        override = RdfTripleOverride(
+            run_id=run_id,
+            subject_uri=body.subject_uri,
+            predicate_uri=body.predicate_uri,
+            new_value=body.new_value,
+            new_datatype=body.new_datatype,
+            new_lang=body.new_lang,
+            created_by=getattr(auth, "user_id", None),
+        )
+        db.add(override)
+
+    await db.commit()
+    await db.refresh(override)
+
+    # Bust Cytoscape JSON cache and research LRU so the edit is visible
+    # immediately on the next graph/research load without a manual rebuild.
+    ttl_path = rdf_output_path_for_run(str(run_id))
+    for cache_file in ttl_path.parent.glob("graph_*.json"):
+        try:
+            cache_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+    try:
+        from app.pipeline.research_graph import invalidate_cache as _inval  # noqa: PLC0415
+        _inval(str(run_id))
+    except Exception:  # noqa: BLE001
+        pass
+
+    return TripleOverrideResponse(
+        id=str(override.id),
+        subject_uri=override.subject_uri,
+        predicate_uri=override.predicate_uri,
+        new_value=override.new_value,
+        new_datatype=override.new_datatype,
+        new_lang=override.new_lang,
+        old_value=override.old_value,
+        created_at=override.created_at.isoformat(),
+    )
+
+
+@router.get("/{run_id}/rdf/overrides", response_model=list[TripleOverrideResponse])
+async def list_triple_overrides(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> list[TripleOverrideResponse]:
+    """List all curator triple overrides for a run."""
+    await _lookup_run_with_access(db, run_id, auth)
+    rows = (
+        await db.execute(
+            select(RdfTripleOverride)
+            .where(RdfTripleOverride.run_id == run_id)
+            .order_by(RdfTripleOverride.created_at.asc())
+        )
+    ).scalars().all()
+    return [
+        TripleOverrideResponse(
+            id=str(r.id),
+            subject_uri=r.subject_uri,
+            predicate_uri=r.predicate_uri,
+            new_value=r.new_value,
+            new_datatype=r.new_datatype,
+            new_lang=r.new_lang,
+            old_value=r.old_value,
+            created_at=r.created_at.isoformat(),
+        )
+        for r in rows
+    ]
 
 
 @router.get("/{run_id}/rdf/status", response_model=RdfStatusResponse)

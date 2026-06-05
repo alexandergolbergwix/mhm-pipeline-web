@@ -284,6 +284,7 @@ def _run_mapper_sync(
     authority_matches: list[dict],
     output_path: Path,
     entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
+    overrides: list[dict] | None = None,
 ) -> tuple[int, int, list[str]]:
     """Synchronous core — runs in a thread. Returns
     (triples_count, manuscripts_count, mapping_errors)."""
@@ -362,6 +363,21 @@ def _run_mapper_sync(
             errors.append(f"record {cn}: {exc}")
             logger.warning("RDF mapping failed for %s: %s", cn, exc)
 
+    if overrides:
+        for ov in overrides:
+            subj = URIRef(ov["subject_uri"])
+            pred = URIRef(ov["predicate_uri"])
+            for triple in list(combined.triples((subj, pred, None))):
+                combined.remove(triple)
+            datatype = URIRef(ov["new_datatype"]) if ov.get("new_datatype") else None
+            lang = ov.get("new_lang")
+            if datatype:
+                combined.add((subj, pred, Literal(ov["new_value"], datatype=datatype)))
+            elif lang:
+                combined.add((subj, pred, Literal(ov["new_value"], lang=lang)))
+            else:
+                combined.add((subj, pred, Literal(ov["new_value"])))
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.serialize(destination=str(output_path), format="turtle")
     return len(combined), manuscripts, errors
@@ -373,6 +389,7 @@ async def build_rdf_graph(
     authority_matches: list[dict],
     output_path: Path,
     entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
+    overrides: list[dict] | None = None,
 ) -> RdfBuildResult:
     """Run ``MarcToRdfMapper`` over MARC + authority data, write Turtle.
 
@@ -388,8 +405,14 @@ async def build_rdf_graph(
     started = datetime.now(timezone.utc)
     triples_count, manuscripts_count, errors = await asyncio.to_thread(
         _run_mapper_sync, marc_records, authority_matches, output_path,
-        entities_by_cn or {},
+        entities_by_cn or {}, overrides,
     )
+    if errors:
+        logger.warning(
+            "RDF build completed with %d mapping error(s) out of %d record(s)",
+            len(errors),
+            len(marc_records),
+        )
     finished = datetime.now(timezone.utc)
     return RdfBuildResult(
         triples_count=triples_count,

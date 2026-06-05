@@ -172,9 +172,20 @@ Three call sites use it today:
    every external call through them so the first team member to
    resolve a name populates the cache; everyone else warm-hits.
 
-TTL is per-kind via `KIND_TTL`. NER + genre + ai_verdict are
-content-addressed → no expiry (`None`). Authority lookups expire at
-30 days because the upstream record can change.
+TTL is per-kind via `KIND_TTL`:
+
+| Kind | Postgres TTL | Redis hot window |
+|---|---|---|
+| `ner.*`, `genre.classify` | never | never |
+| `ai_verdict` | 90 days | 7 days |
+| `authority.mazal` | 90 days | 24 h |
+| `authority.viaf` | 30 days | 24 h |
+| `authority.wikidata` | 30 days | 24 h |
+| `authority.kima` | 180 days | 24 h |
+
+Expired rows are hard-deleted daily at 02:05 UTC by
+`scripts.run_prune_inference_cache` (Heroku Scheduler). NER rows
+(NULL `expires_at`) are never touched by the prune job.
 
 `skip_cache=True` is the explicit "force fresh" escape hatch. UI
 exposes it as "Override cache (force fresh LLM call)" on the AI
@@ -387,6 +398,11 @@ at 00:05 / 08:05 / 16:05 UTC. Additionally, every 50th event on a
 given entity auto-writes a snapshot so `state_at_rev` replay cost
 stays bounded.
 
+Heroku Scheduler job schedule summary:
+- 00:05 / 08:05 / 16:05 UTC — `scripts.run_snapshot` (entity snapshots)
+- 02:05 UTC — `scripts.run_prune_inference_cache` (expired cache rows)
+- 03:05 UTC — `scripts.run_prune_events` (1000-event-cap prune)
+
 Library: `jsonpatch>=1.33` (RFC 6902). `apply_event` auto-computes
 each patch via `jsonpatch.make_patch(prev, new)`. Revert is implemented
 as `jsonpatch.make_patch(current, target)` applied as a fresh revert
@@ -474,9 +490,11 @@ now uses a two-tier lookup:
 2. **Postgres SELECT** (backfills Redis on hit)
 3. **`fetch()`** (Modal / VIAF / Wikidata / …) — writes both tiers
 
-Redis TTL policy: `ner.*`, `genre.classify`, `ai_verdict` — no
-expiry (content-addressed). `authority.*` — 24 h hot window;
-Postgres remains the 30-day ground truth.
+Redis TTL policy: `ner.*` and `genre.classify` — no expiry
+(content-addressed). `ai_verdict` — 7-day hot window; Postgres
+holds 90-day ground truth. `authority.*` — 24 h hot window;
+Postgres ground truth is 90 days (mazal), 30 days (viaf/wikidata),
+or 180 days (kima).
 
 `hit_count`/`last_hit_at` Postgres UPDATEs are skipped for Redis
 hits (intentional — that UPDATE was the main warm-run latency cost).
@@ -582,6 +600,52 @@ upload POST includes `upload_approved_only: true`.
 DB migration: `0016_item_override_approved` adds `approved BOOLEAN` to
 `wikidata_item_overrides` (nullable; null = not reviewed).
 
+### Rule W-28 — Modal authority backend mirrors extraction backend pattern (added 2026-06-05)
+
+`modal/modal_authority.py` is the authority-enrichment counterpart to
+`modal/modal_app.py`. It exposes `POST /match_person` (Mazal, 983 MB
+SQLite index) and `POST /match_place` (KIMA, 15 MB SQLite index) as a
+Modal FastAPI ASGI app under the `mhm-authority` app name. Both databases
+are baked into the image at deploy time — cold start is just opening a
+file, no network download.
+
+`backend/app/pipeline/authority_backend.py` provides the `AuthorityBackend`
+Protocol with two implementations:
+
+| Class | When | Notes |
+|---|---|---|
+| `LocalAuthorityBackend` | `AUTHORITY_MODE=local` (default) | Calls local SQLite via `asyncio.to_thread`. Fails silently on Heroku where the 983 MB Mazal DB cannot be shipped. |
+| `ModalAuthorityBackend` | `AUTHORITY_MODE=modal` | POSTs to `MODAL_AUTHORITY_URL`. Handles Heroku slug limit + ephemeral filesystem. |
+
+`build_authority_backend()` is called once in `DesktopMatcher.__init__`; the
+choice is env-var-driven so no code change is needed to switch modes.
+
+The inference cache (`Rule W-12`) sits ABOVE the Modal HTTP layer in
+`authority.py`'s `cache_lookup_or_call` wrappers — cache hits never reach
+Modal. The first team member to resolve a name populates the cache (kind
+`authority.mazal` / `authority.kima`, TTL 30 days); everyone else
+warm-hits Postgres or Redis.
+
+**Within-request double-call elimination**: `_mazal_match_person` and
+`_kima_match_place` store full detail dicts in `_mazal_detail_cache` and
+`_kima_detail_cache` (per-instance) as a side-effect. The companion
+`_mazal_get_details` / `_kima_enrich_place` check those caches first so
+one HTTP call to Modal serves both the match and the enrichment.
+
+Never import `modal_authority.py` from the FastAPI backend. All
+communication is HTTPS only (mirrors Rule W-15).
+
+Deploy after any DB update:
+```bash
+cd modal && modal deploy modal_authority.py
+```
+
+Set on Heroku to activate:
+```bash
+heroku config:set AUTHORITY_MODE=modal \
+  MODAL_AUTHORITY_URL=https://<workspace>--mhm-authority-mhmauthority-web.modal.run
+```
+
 ### Rule W-24 — All four curator surfaces support per-field manual editing (added 2026-06-03)
 
 - **NER**: `override_text`, `override_type`, `override_role` in
@@ -655,6 +719,9 @@ modal app logs mhm-ner
 
 # Switch extraction to Modal (heroku)
 heroku config:set EXTRACTION_MODE=modal MODAL_NER_URL=https://<workspace>--mhm-ner-mhmner-web.modal.run
+
+# Switch authority enrichment to Modal (heroku) — Rule W-28
+heroku config:set AUTHORITY_MODE=modal MODAL_AUTHORITY_URL=https://<workspace>--mhm-authority-mhmauthority-web.modal.run
 ```
 
 ---

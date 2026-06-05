@@ -56,6 +56,7 @@ from converter.wikidata.property_mapping import (
     P_MAIN_SUBJECT,
     P_MATERIAL,
     P_NATURE_OF_STATEMENT,
+    P_NLI_CATALOG_ID,
     P_NLI_J9U_ID,
     P_NUMBER_OF_FOLIOS,
     P_NUMBER_OF_PAGES,
@@ -682,6 +683,107 @@ def _extract_inception_year(record: dict[str, object]) -> int | None:
     return None
 
 
+_LANG_CODE_TO_ENGLISH: dict[str, str] = {
+    "heb": "Hebrew",
+    "ara": "Arabic",
+    "jrb": "Judeo-Arabic",
+    "jpr": "Judeo-Persian",
+    "lat": "Latin",
+    "per": "Persian",
+    "yid": "Yiddish",
+    "grk": "Greek",
+    "ita": "Italian",
+    "spa": "Spanish",
+    "por": "Portuguese",
+    "ger": "German",
+    "fre": "French",
+    "tur": "Turkish",
+    "syr": "Syriac",
+    "cop": "Coptic",
+    "sam": "Samaritan",
+}
+
+_SCRIPT_TYPE_LABELS: dict[str, str] = {
+    "AshkenaziScript": "Ashkenazi script",
+    "SepharadicScript": "Sephardi script",
+    "ItalianScript": "Italian script",
+    "ByzantineScript": "Byzantine script",
+    "YemeniteScript": "Yemenite script",
+    "OrientalScript": "Oriental script",
+}
+
+_MATERIAL_LABELS: dict[str, str] = {
+    "Parchment": "parchment",
+    "parchment": "parchment",
+    "Vellum": "vellum",
+    "vellum": "vellum",
+    "Paper": "paper",
+    "paper": "paper",
+    "Papyrus": "papyrus",
+    "papyrus": "papyrus",
+    "קלף": "parchment",
+    "נייר": "paper",
+    "פפירוס": "papyrus",
+}
+
+
+def _build_manuscript_description(record: dict[str, object]) -> str:
+    """Build a rich, disambiguating English description for a manuscript item.
+
+    Format: "<language> manuscript, <date/century>, <script tradition>,
+              <material>, National Library of Israel"
+
+    Each fragment is included only when available so the description is
+    always meaningful but never padded with empty placeholders.
+
+    Examples:
+      "Hebrew manuscript, 16th century, Sephardi script, parchment, NLI"
+      "Hebrew manuscript, 1612, National Library of Israel"
+      "Judeo-Arabic manuscript, 12th–13th century, Oriental script, NLI"
+    """
+    langs = record.get("languages") or []
+    # Map the first MARC language code to a readable English name
+    primary_lang = str(langs[0]) if langs else "heb"
+    lang_str = _LANG_CODE_TO_ENGLISH.get(primary_lang, "Hebrew")
+
+    parts: list[str] = [f"{lang_str} manuscript"]
+
+    # Date — prefer a readable century string; fall back to exact year.
+    # Handles ranges like "12th–13th century" or "15th-16th century".
+    dates = record.get("dates") or {}
+    if isinstance(dates, dict):
+        original = str(dates.get("original_string") or "").replace('""', '"').strip()
+        # Century range: "12th–13th century" or "15th-16th century"
+        century_range = re.search(
+            r"\d{1,2}(?:th|st|nd|rd)\s*[-–]\s*\d{1,2}(?:th|st|nd|rd)\s*centur(?:y|ies)",
+            original, re.IGNORECASE,
+        )
+        if century_range:
+            parts.append(century_range.group(0).lower())
+        else:
+            single_century = re.search(r"\d{1,2}(?:th|st|nd|rd)\s*century", original, re.IGNORECASE)
+            if single_century:
+                parts.append(single_century.group(0).lower())
+            elif (year := str(dates.get("year") or "").strip('" ')):
+                if re.match(r"\d{3,4}$", year):
+                    parts.append(year)
+
+    # Script tradition
+    script_type = str(record.get("script_type") or "").strip()
+    script_label = _SCRIPT_TYPE_LABELS.get(script_type)
+    if script_label:
+        parts.append(script_label)
+
+    # Material — first recognised material only (keep description short)
+    for mat in list(record.get("materials") or [])[:1]:
+        mat_label = _MATERIAL_LABELS.get(str(mat))
+        if mat_label:
+            parts.append(mat_label)
+
+    parts.append("National Library of Israel")
+    return _cap_description(", ".join(parts))
+
+
 def _extract_century_for_work(source_record: dict[str, object]) -> str | None:
     """Extract a human-readable century string for the work description.
 
@@ -910,6 +1012,23 @@ class WikidataItemBuilder:
                     references=ref,
                 )
             )
+        # P3959 (NNL item ID) — the MARC 001 bibliographic control number.
+        # This is the direct Wikidata identifier for the NLI catalog record
+        # and makes the source MARC record queryable via SPARQL on every item.
+        # P3959 accepts 18-digit NLI ALEPH system numbers (990…) as well as the
+        # legacy 9-digit format.  It is emitted unconditionally when a control
+        # number is available; the J9U / P8189 path below handles AUTHORITY
+        # records (9870…) separately.
+        if control_number:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_NLI_CATALOG_ID,
+                    value=control_number,
+                    value_type="external-id",
+                    references=ref,
+                )
+            )
+
         # P8189 (NLI J9U ID) is an AUTHORITY-record identifier — only values
         # with the '9870…' prefix are valid. Manuscript control numbers are
         # bibliographic (prefix '990…'), which do NOT belong on P8189.
@@ -926,8 +1045,6 @@ class WikidataItemBuilder:
                         references=ref,
                     )
                 )
-            # Otherwise the bibliographic control number is already captured
-            # in P217 (inventory number, added above with P195 qualifier).
         if title:
             item.statements.append(
                 WikidataStatement(
@@ -1597,16 +1714,8 @@ class WikidataItemBuilder:
             if vt_clean:
                 item.aliases.setdefault("he", []).append(vt_clean)
 
-        # Description
-        langs = record.get("languages") or []
-        lang_str = "Hebrew" if "heb" in langs else ", ".join(langs) if langs else "Hebrew"
-        dates = record.get("dates") or {}
-        year = dates.get("year", "")
-        desc_parts = [f"{lang_str} manuscript"]
-        if year:
-            desc_parts.append(str(year))
-        desc_parts.append("National Library of Israel")
-        item.descriptions["en"] = ", ".join(desc_parts)
+        # Description — language, date/century, script tradition, material, NLI
+        item.descriptions["en"] = _build_manuscript_description(record)
 
     def _determine_instance_type(self, record: dict[str, object]) -> list[str]:
         """Return all applicable P31 QIDs, most-specific first.
@@ -2407,11 +2516,15 @@ class WikidataItemBuilder:
 
         pref_lat = (match_info.get("preferred_name_lat") or "").strip()
         if pref_lat:
-            person.labels["en"] = _normalise_label(pref_lat)
+            person.labels["en"] = _normalise_label(
+                _strip_person_name_qualifiers(_to_natural_name_order(pref_lat))
+            )
 
         pref_heb = (match_info.get("preferred_name_heb") or "").strip()
         if pref_heb:
-            person.labels["he"] = pref_heb
+            person.labels["he"] = _normalise_label(
+                _strip_person_name_qualifiers(pref_heb)
+            )
 
         # P31 = human (or organization) — uses the shared institutional
         # keyword list (see _is_institutional_name above).

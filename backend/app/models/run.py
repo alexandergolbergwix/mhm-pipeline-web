@@ -119,3 +119,35 @@ class AuthorityMatch(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
     )
+
+
+class RdfTripleOverride(Base):
+    """Curator edit to a literal value in the RDF graph.
+
+    Subject + predicate identify the triple. ``new_value`` replaces the
+    literal during the next RDF build (applied before serialising).
+    Overrides persist across rebuilds so the curator edit is preserved.
+    """
+
+    __tablename__ = "rdf_triple_overrides"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=_new_uuid,
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    subject_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    predicate_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    new_value: Mapped[str] = mapped_column(Text, nullable=False)
+    new_datatype: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_lang: Mapped[str | None] = mapped_column(Text, nullable=True)
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )

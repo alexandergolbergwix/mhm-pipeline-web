@@ -130,6 +130,45 @@ export interface RdfStatus {
 }
 
 
+export interface TripleOverrideRequest {
+  subject_uri: string;
+  predicate_uri: string;
+  new_value: string;
+  new_datatype?: string;
+  new_lang?: string;
+}
+
+export interface TripleOverrideResponse {
+  id: string;
+  subject_uri: string;
+  predicate_uri: string;
+  new_value: string;
+  new_datatype?: string;
+  new_lang?: string;
+  old_value?: string;
+  created_at: string;
+}
+
+export async function saveTripleOverride(
+  runId: string,
+  body: TripleOverrideRequest,
+): Promise<TripleOverrideResponse> {
+  const res = await fetch(`/api/runs/${runId}/rdf/triple`, {
+    method: "PATCH",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<TripleOverrideResponse>;
+}
+
+export async function listTripleOverrides(runId: string): Promise<TripleOverrideResponse[]> {
+  const res = await fetch(`/api/runs/${runId}/rdf/overrides`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<TripleOverrideResponse[]>;
+}
+
+
 export const Rdf = {
   build: (runId: string) =>
     api.post<RdfBuildResponse>(`/runs/${runId}/rdf/build`, {}),

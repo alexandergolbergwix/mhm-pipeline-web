@@ -29,6 +29,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from app.pipeline.authority_backend import AuthorityBackend, build_authority_backend
+
 logger = logging.getLogger(__name__)
 
 # Defaults that work on the dev machine.
@@ -79,6 +81,15 @@ class DesktopMatcher(AuthorityMatcher):
         self._viaf = _load_viaf_matcher() if os.getenv("DISABLE_VIAF") != "1" else None
         self._wikidata = _load_wikidata_matcher() if os.getenv("DISABLE_WIKIDATA") != "1" else None
         self._kima = _load_kima_matcher() if os.getenv("DISABLE_KIMA") != "1" else None
+        # Route Mazal/KIMA calls through local SQLite or the Modal HTTPS backend.
+        self._authority_backend: AuthorityBackend = build_authority_backend(
+            mazal_matcher=self._mazal,
+            kima_matcher=self._kima,
+        )
+        # Per-request caches populated by match_* calls so that the companion
+        # get_details / enrich_place methods avoid a second backend round-trip.
+        self._mazal_detail_cache: dict[str, dict] = {}
+        self._kima_detail_cache: dict[str, dict] = {}
 
     async def match(
         self, entity: dict[str, str], marc_record: dict[str, Any],
@@ -121,10 +132,18 @@ class DesktopMatcher(AuthorityMatcher):
     async def _kima_match_place(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
-        if self._kima is None:
+        # Guard: skip when neither local KIMA nor Modal backend is available.
+        if self._kima is None and os.getenv("AUTHORITY_MODE", "local") != "modal":
             return None
+
         async def _f() -> str | None:
-            return await asyncio.to_thread(self._kima.match_place, text)
+            result = await self._authority_backend.match_place(text)
+            if result is None:
+                return None
+            # Side-load enrichment so _kima_enrich_place avoids a second call.
+            self._kima_detail_cache[text] = result
+            return result.get("wikidata_uri")
+
         return await self._cached(
             kind="authority.kima",
             query_summary={"op": "match_place", "text": text},
@@ -134,7 +153,17 @@ class DesktopMatcher(AuthorityMatcher):
     async def _kima_enrich_place(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> dict[str, Any] | None:
-        """Return the full KIMA index row for *text*, or None."""
+        """Return the full KIMA index row for *text*, or None.
+
+        When the Modal backend is active, ``_kima_match_place`` already
+        fetches the enrichment row in the same HTTP call and stores it in
+        ``_kima_detail_cache``.  We return that cached value directly to
+        avoid a second backend round-trip.
+        """
+        # Fast path: Modal backend populated this during match_place.
+        if text in self._kima_detail_cache:
+            return self._kima_detail_cache[text]
+
         if self._kima is None:
             return None
 
@@ -156,11 +185,20 @@ class DesktopMatcher(AuthorityMatcher):
     async def _mazal_match_person(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
-        if self._mazal is None:
+        # Guard: skip when neither local Mazal nor Modal backend is available.
+        if self._mazal is None and os.getenv("AUTHORITY_MODE", "local") != "modal":
             return None
+
         async def _f() -> str | None:
-            r = await asyncio.to_thread(self._mazal.match_person, text)
-            return str(r) if r else None
+            result = await self._authority_backend.match_person(text)
+            if result is None:
+                return None
+            mid = result.get("mazal_id")
+            if mid:
+                # Side-load details so _mazal_get_details avoids a second call.
+                self._mazal_detail_cache[str(mid)] = result
+            return str(mid) if mid else None
+
         return await self._cached(
             kind="authority.mazal",
             query_summary={"op": "match_person", "text": text},
@@ -170,10 +208,23 @@ class DesktopMatcher(AuthorityMatcher):
     async def _mazal_get_details(
         self, mazal_id: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> dict[str, Any] | None:
+        """Return Mazal person detail dict for *mazal_id*.
+
+        When the Modal backend is active, ``_mazal_match_person`` already
+        fetches the full detail dict in the same HTTP call and stores it in
+        ``_mazal_detail_cache``.  We return that cached value directly to
+        avoid a second backend round-trip.
+        """
+        # Fast path: Modal backend populated this during match_person.
+        if mazal_id in self._mazal_detail_cache:
+            return self._mazal_detail_cache[mazal_id]
+
         if self._mazal is None:
             return None
+
         async def _f() -> dict[str, Any]:
             return await asyncio.to_thread(self._mazal.get_person_details, mazal_id)
+
         return await self._cached(
             kind="authority.mazal",
             query_summary={"op": "get_details", "mazal_id": mazal_id},

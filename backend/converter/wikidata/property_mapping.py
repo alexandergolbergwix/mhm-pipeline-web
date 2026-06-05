@@ -64,6 +64,7 @@ P_IMAGE = "P18"
 
 # Authority identifiers
 P_NLI_J9U_ID = "P8189"
+P_NLI_CATALOG_ID = "P3959"   # NNL item ID — MARC 001 / bibliographic catalog record
 P_VIAF_ID = "P214"
 P_GEONAMES_ID = "P1566"
 
@@ -544,19 +545,29 @@ def nli_reference(control_number: str) -> list[dict[str, str]]:
     """Build a Wikidata reference snak set for NLI catalog sourcing.
 
     Every statement added to Wikidata should include this reference.
+    P3959 (NNL item ID / MARC 001) is included so the exact source
+    bibliographic record is queryable via SPARQL on every item — not
+    just buried inside a URL string.
 
     Args:
-        control_number: NLI system number.
+        control_number: NLI system number (MARC 001 field, e.g. '990000403370205171').
 
     Returns:
-        List of reference snak dicts with P248, P854, P813.
+        List of reference snak dicts with P248, P3959, P854, P813.
     """
     today = datetime.now(tz=UTC).strftime("+%Y-%m-%dT00:00:00Z")
-    return [
+    snaks: list[dict[str, str]] = [
         {"property": P_STATED_IN, "value": Q_KTIV, "type": "item"},
+    ]
+    if control_number:
+        snaks.append(
+            {"property": P_NLI_CATALOG_ID, "value": control_number.strip(), "type": "external-id"}
+        )
+    snaks += [
         {"property": P_REFERENCE_URL, "value": nli_catalog_url(control_number), "type": "url"},
         {"property": P_RETRIEVED, "value": today, "type": "time", "precision": PRECISION_DAY},
     ]
+    return snaks
 
 
 def viaf_reference(viaf_id: str) -> list[dict[str, str]]:

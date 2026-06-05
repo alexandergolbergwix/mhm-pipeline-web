@@ -456,3 +456,108 @@ class TestPersonNameQualifierStripping:
             "INSTITUTION_AS_PERSON must fire when the institutional keyword is "
             "the last token of a 2-word label"
         )
+
+    def test_pref_lat_inverted_with_trailing_collection(self) -> None:
+        """Regression: pref_lat = 'Gaster, Moses Collection' from VIAF/Mazal
+        must be un-inverted AND stripped before becoming the EN label so
+        INVERTED_NAME_LABEL and INSTITUTION_AS_PERSON never fire.
+        """
+        from converter.wikidata.item_builder import (
+            _normalise_label,
+            _strip_person_name_qualifiers,
+            _to_natural_name_order,
+        )
+        pref_lat = "Gaster, Moses Collection"
+        cleaned = _normalise_label(
+            _strip_person_name_qualifiers(_to_natural_name_order(pref_lat))
+        )
+        assert cleaned == "Moses Gaster", (
+            f"pref_lat {pref_lat!r} should reduce to 'Moses Gaster', got {cleaned!r}"
+        )
+
+    def test_validator_clean_after_pref_lat_fix(self) -> None:
+        """After the pref_lat fix the built label is 'Moses Gaster' — the
+        validator must produce zero INVERTED_NAME_LABEL / INSTITUTION_AS_PERSON
+        errors for that item."""
+        from converter.wikidata.item_validator import validate_item
+        item = _Item(
+            entity_type="person",
+            labels={"en": "Moses Gaster"},
+            statements=[_Stmt("P31", "Q5")],
+        )
+        issues = validate_item(item)
+        bad_codes = {"INVERTED_NAME_LABEL", "INSTITUTION_AS_PERSON"}
+        fired = [i.code for i in issues if i.code in bad_codes]
+        assert not fired, (
+            f"Unexpected errors for clean label 'Moses Gaster': {fired}"
+        )
+
+
+class TestP3959MarcControlNumber:
+    """Regression tests for P3959 (NNL item ID / MARC 001) placement rules.
+
+    P3959 is a BIBLIOGRAPHIC record identifier (Geagea complaint 2026-04-15):
+      - MUST appear as a main statement on manuscript items.
+      - MUST NOT appear as a main statement on person or work items.
+    """
+
+    def test_manuscript_without_p3959_warns(self) -> None:
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Jerusalem, NLI, Ms. Heb. 4°1"},
+            statements=[_Stmt("P31", "Q87167")],
+        )
+        codes = [i.code for i in validate_item(item)]
+        assert "MISSING_P3959" in codes
+
+    def test_manuscript_with_p3959_is_clean(self) -> None:
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Jerusalem, NLI, Ms. Heb. 4°1"},
+            statements=[
+                _Stmt("P31", "Q87167"),
+                _Stmt("P3959", "990000403370205171", "external-id"),
+            ],
+        )
+        codes = [i.code for i in validate_item(item)]
+        assert "MISSING_P3959" not in codes
+
+    def test_p3959_on_person_item_is_error(self) -> None:
+        item = _Item(
+            entity_type="person",
+            labels={"en": "Moses Gaster"},
+            statements=[
+                _Stmt("P31", "Q5"),
+                _Stmt("P214", "51777166"),
+                _Stmt("P3959", "990000403370205171", "external-id"),
+            ],
+        )
+        codes = [i.code for i in validate_item(item)]
+        assert "P3959_ON_NON_MANUSCRIPT" in codes, (
+            "P3959 as a main statement on a person must raise P3959_ON_NON_MANUSCRIPT"
+        )
+
+    def test_p3959_on_work_item_is_error(self) -> None:
+        item = _Item(
+            entity_type="work",
+            labels={"en": "Mishneh Torah"},
+            statements=[
+                _Stmt("P31", "Q7725634"),
+                _Stmt("P3959", "990000403370205171", "external-id"),
+            ],
+        )
+        codes = [i.code for i in validate_item(item)]
+        assert "P3959_ON_NON_MANUSCRIPT" in codes
+
+    def test_person_without_p3959_main_claim_is_clean(self) -> None:
+        """Reference snaks may carry P3959; main claims must not."""
+        item = _Item(
+            entity_type="person",
+            labels={"en": "Moses Gaster"},
+            statements=[
+                _Stmt("P31", "Q5"),
+                _Stmt("P214", "51777166"),
+            ],
+        )
+        codes = [i.code for i in validate_item(item)]
+        assert "P3959_ON_NON_MANUSCRIPT" not in codes

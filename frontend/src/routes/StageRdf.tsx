@@ -16,7 +16,7 @@
  * disclosure uses aria-expanded/aria-controls.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { type Core, type LayoutOptions, type StylesheetJsonBlock } from "cytoscape";
@@ -36,6 +36,8 @@ import {
   type GraphEdge,
   type GraphNode,
   type GraphResponse,
+  type NodeDetail,
+  type RdfBuildResponse,
   type RdfStatus,
   type ServerLayout,
   type ShaclReport,
@@ -77,15 +79,17 @@ const LEGEND: Array<{ type: string; color: string }> = [
 
 // Group order used by the screen-reader-friendly list view. Keeping
 // it as a fixed tuple gives stable section ordering across runs.
-const NODE_TYPE_GROUPS: Array<{ key: string; label: string }> = [
-  { key: "Manuscript",    label: "Manuscripts" },
-  { key: "Person",        label: "Persons" },
-  { key: "Work",          label: "Works" },
-  { key: "Place",         label: "Places" },
-  { key: "Event",         label: "Events" },
-  { key: "Organization",  label: "Organizations" },
-  { key: "Codicological", label: "Codicological" },
-  { key: "Other",         label: "Other" },
+// Colors match the LEGEND palette so the triple view dot is consistent
+// with the canvas.
+const NODE_TYPE_GROUPS: Array<{ key: string; label: string; color: string }> = [
+  { key: "Manuscript",    label: "Manuscripts",   color: "#77cce5" },
+  { key: "Person",        label: "Persons",       color: "#f6c177" },
+  { key: "Work",          label: "Works",         color: "#c4a7e7" },
+  { key: "Place",         label: "Places",        color: "#9ccfd8" },
+  { key: "Event",         label: "Events",        color: "#eb6f92" },
+  { key: "Organization",  label: "Organizations", color: "#f6d6c5" },
+  { key: "Codicological", label: "Codicological", color: "#a3e0bc" },
+  { key: "Other",         label: "Other",         color: "#cfd2da" },
 ];
 
 
@@ -98,6 +102,7 @@ export default function StageRdf() {
   const [error, setError]   = useState<string | null>(null);
 
   const [busy, setBusy] = useState<"build" | "validate" | "graph" | null>(null);
+  const [mappingErrors, setMappingErrors] = useState<string[]>([]);
   // Layout is computed SERVER-SIDE (networkx) — the browser just renders
   // pre-positioned nodes. Default = spring (force-directed, plain).
   const [layout, setLayout] = useState<ServerLayout>("spring");
@@ -164,7 +169,8 @@ export default function StageRdf() {
     if (!runId) return;
     setBusy("build"); setError(null);
     try {
-      await Rdf.build(runId);
+      const buildResult: RdfBuildResponse = await Rdf.build(runId);
+      setMappingErrors(buildResult.mapping_errors ?? []);
       const [st, g] = await Promise.all([
         Rdf.status(runId), Rdf.graph(runId, 500, layout),
       ]);
@@ -512,6 +518,25 @@ export default function StageRdf() {
             <div className="glass-pill px-3 py-2 text-sm text-red-300">{error}</div>
           )}
 
+          {mappingErrors.length > 0 && (
+            <details className="mt-2 rounded border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-sm">
+              <summary className="cursor-pointer font-medium text-amber-400">
+                ⚠ {mappingErrors.length} record{mappingErrors.length !== 1 ? "s" : ""} failed to map to RDF — click to see errors
+              </summary>
+              <ul className="mt-2 space-y-1 text-amber-300/80 font-mono text-xs max-h-48 overflow-y-auto">
+                {mappingErrors.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {graph && graph.nodes.length > 0 && (
+            <p className="muted text-xs">
+              Built from approved AI extraction + authority enrichment data
+            </p>
+          )}
+
           {/* Filter bar — always rendered once a graph is loaded. */}
           {graph && graph.nodes.length > 0 && (
             <GraphFilters
@@ -615,9 +640,10 @@ export default function StageRdf() {
             )}
           </div>
 
-          {/* LIST VIEW — semantic HTML alternative to the canvas. Same
-              data, walkable heading-by-heading by a screen reader. */}
-          {viewMode === "list" && (
+          {/* LIST VIEW — RDF triple table, grouped by node type. Each
+              node row expands on demand to show its literal triples
+              (editable) and outgoing object triples (read-only). */}
+          {viewMode === "list" && runId && (
             <ListView
               testId="list-view"
               nodesByGroup={nodesByGroup}
@@ -625,6 +651,8 @@ export default function StageRdf() {
               totalNodes={totalNodes}
               onSelect={setSelectedNodeId}
               selectedNodeId={selectedNodeId}
+              runId={runId}
+              onTripleSaved={() => { void Rdf.status(runId).then(setStatus).catch(() => null); }}
             />
           )}
 
@@ -755,6 +783,16 @@ function indexOutgoingEdges(
 }
 
 
+// ─── Triple List View ────────────────────────────────────────────────────────
+
+interface EditState {
+  nodeId: string;
+  predicate: string;
+  value: string;
+  datatype: string | null;
+  lang: string | null;
+}
+
 interface ListViewProps {
   testId: string;
   nodesByGroup: Record<string, GraphNode[]>;
@@ -762,87 +800,249 @@ interface ListViewProps {
   totalNodes: number;
   selectedNodeId: string | null;
   onSelect: (id: string) => void;
+  runId: string;
+  onTripleSaved: () => void;
 }
 
 /**
- * Semantic HTML rendering of the graph — the WCAG 1.3.1 / 4.1.2
- * alternative to the opaque Cytoscape canvas. Headings + ul are the
- * structure a screen reader walks; each li is a button so the user
- * still gets parity with "click a node to select it".
+ * RDF triple table — grouped by node type. Each node row expands on
+ * demand to show its literal properties (editable) and outgoing object
+ * triples (read-only). Replaces the old summary-sentence list view.
  */
 function ListView({
   testId,
   nodesByGroup,
-  outgoingByNode,
   totalNodes,
   selectedNodeId,
   onSelect,
+  runId,
+  onTripleSaved,
 }: ListViewProps) {
+  const [expandedNodes, setExpandedNodes] = React.useState<Set<string>>(new Set());
+  const [nodeDetails, setNodeDetails] = React.useState<Record<string, NodeDetail>>({});
+  const [loadingNodes, setLoadingNodes] = React.useState<Set<string>>(new Set());
+  const [editState, setEditState] = React.useState<EditState | null>(null);
+  const [editValue, setEditValue] = React.useState("");
+  const [savingTriple, setSavingTriple] = React.useState(false);
+  const [saveResult, setSaveResult] = React.useState<{nodeId: string; predicate: string; ok: boolean; msg: string} | null>(null);
+  const [overrides, setOverrides] = React.useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    if (!runId) return;
+    fetch(`/api/runs/${runId}/rdf/overrides`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: Array<{subject_uri: string; predicate_uri: string; new_value: string}>) => {
+        const map: Record<string, string> = {};
+        for (const r of rows) map[`${r.subject_uri}||${r.predicate_uri}`] = r.new_value;
+        setOverrides(map);
+      })
+      .catch(() => {});
+  }, [runId]);
+
+  async function toggleNode(nodeId: string) {
+    if (expandedNodes.has(nodeId)) {
+      setExpandedNodes(prev => { const s = new Set(prev); s.delete(nodeId); return s; });
+      return;
+    }
+    setExpandedNodes(prev => new Set(prev).add(nodeId));
+    if (nodeDetails[nodeId]) return;
+    setLoadingNodes(prev => new Set(prev).add(nodeId));
+    try {
+      const res = await fetch(`/api/runs/${runId}/rdf/node?id=${encodeURIComponent(nodeId)}`);
+      if (res.ok) {
+        const detail = await res.json() as NodeDetail;
+        setNodeDetails(prev => ({...prev, [nodeId]: detail}));
+      }
+    } finally {
+      setLoadingNodes(prev => { const s = new Set(prev); s.delete(nodeId); return s; });
+    }
+  }
+
+  function startEdit(nodeId: string, predicate: string, value: string, datatype: string | null | undefined, lang: string | null) {
+    setEditState({nodeId, predicate, value, datatype: datatype ?? null, lang});
+    setEditValue(overrides[`${nodeId}||${predicate}`] ?? value);
+    setSaveResult(null);
+  }
+
+  function cancelEdit() { setEditState(null); setSaveResult(null); }
+
+  async function commitEdit() {
+    if (!editState) return;
+    setSavingTriple(true);
+    try {
+      const body: Record<string, string> = {
+        subject_uri: editState.nodeId,
+        predicate_uri: editState.predicate,
+        new_value: editValue,
+      };
+      if (editState.datatype) body.new_datatype = editState.datatype;
+      if (editState.lang) body.new_lang = editState.lang;
+      const res = await fetch(`/api/runs/${runId}/rdf/triple`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const key = `${editState.nodeId}||${editState.predicate}`;
+      setOverrides(prev => ({...prev, [key]: editValue}));
+      setSaveResult({nodeId: editState.nodeId, predicate: editState.predicate, ok: true, msg: "Saved ✓"});
+      setEditState(null);
+      onTripleSaved();
+      setTimeout(() => setSaveResult(null), 2500);
+    } catch (err) {
+      setSaveResult({nodeId: editState.nodeId, predicate: editState.predicate, ok: false, msg: String(err)});
+    } finally {
+      setSavingTriple(false);
+    }
+  }
+
   return (
-    <section data-testid={testId} className="space-y-6">
-      <h3 className="text-lg font-medium">Nodes ({totalNodes})</h3>
+    <section data-testid={testId} className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-medium">RDF Triples ({totalNodes} nodes)</h3>
+        <span className="text-xs muted">Click a node to expand its triples · ✏ to edit literal values</span>
+      </div>
+      <p className="text-xs muted">
+        Built from <strong className="text-green-400">approved AI extraction</strong> + <strong className="text-blue-400">authority enrichment</strong> data.
+        Edits below override literal values in the next rebuild.
+      </p>
+
       {NODE_TYPE_GROUPS.map((g) => {
         const items = nodesByGroup[g.key] ?? [];
         if (items.length === 0) return null;
         return (
-          <section key={g.key} className="space-y-2">
+          <section key={g.key} className="space-y-1">
             <h4 className="kicker">{g.label} ({items.length})</h4>
-            <ul className="space-y-1.5 text-sm">
+            <div className="space-y-0.5">
               {items.map((n) => {
-                const outgoing = outgoingByNode.get(n.id) ?? [];
-                const grouped = groupOutgoingByPredicate(outgoing);
-                const summary = grouped
-                  .map((g2) => `${g2.predicateLabel}: ${g2.targets.join(", ")}`)
-                  .join("; ");
+                const isExpanded = expandedNodes.has(n.id);
+                const isLoading = loadingNodes.has(n.id);
+                const detail = nodeDetails[n.id];
                 const isSelected = selectedNodeId === n.id;
                 return (
-                  <li key={n.id}>
+                  <div key={n.id} className={`rounded border border-white/5 ${isSelected ? "border-white/20" : ""}`}>
                     <button
                       type="button"
-                      onClick={() => onSelect(n.id)}
-                      aria-pressed={isSelected}
-                      className={`text-left w-full px-2 py-1 rounded ${
-                        isSelected ? "bg-white/10 text-ink" : "hover:bg-white/5"
-                      }`}
+                      onClick={() => { void toggleNode(n.id); onSelect(n.id); }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-white/5 rounded"
                     >
-                      <span className="text-ink">{n.label}</span>
-                      {summary && (
-                        <>
-                          {" — "}
-                          <span className="muted">{summary}</span>
-                        </>
-                      )}
+                      <span className="text-xs text-white/40 select-none">{isExpanded ? "▼" : "▶"}</span>
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{background: g.color}} />
+                      <span className="text-sm text-ink font-medium truncate">{n.label}</span>
+                      {isLoading && <span className="text-xs muted ml-auto">Loading…</span>}
                     </button>
-                  </li>
+
+                    {isExpanded && detail && (
+                      <div className="px-3 pb-2">
+                        {detail.types.length > 0 && (
+                          <div className="text-xs muted mb-1.5">
+                            rdf:type: {detail.types.map(t => t.label).join(", ")}
+                          </div>
+                        )}
+
+                        {detail.properties.length > 0 && (
+                          <table className="w-full text-xs border-collapse mb-2">
+                            <thead>
+                              <tr className="border-b border-white/10">
+                                <th className="text-left py-1 pr-3 muted w-1/3">Predicate</th>
+                                <th className="text-left py-1 muted">Value</th>
+                                <th className="w-8" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {detail.properties.map((prop, pi) => {
+                                const overrideKey = `${n.id}||${prop.predicate}`;
+                                const currentValue = overrides[overrideKey] ?? prop.value;
+                                const isEdited = !!overrides[overrideKey];
+                                const isBeingEdited =
+                                  editState?.nodeId === n.id && editState.predicate === prop.predicate;
+                                const result = saveResult?.nodeId === n.id && saveResult.predicate === prop.predicate
+                                  ? saveResult : null;
+                                return (
+                                  <tr key={pi} className="border-b border-white/5 hover:bg-white/3">
+                                    <td className="py-1 pr-3 muted font-mono align-top">{prop.predicate_label}</td>
+                                    <td className="py-1 align-top">
+                                      {isBeingEdited ? (
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="text"
+                                            value={editValue}
+                                            onChange={e => setEditValue(e.target.value)}
+                                            className="flex-1 bg-white/10 border border-white/20 rounded px-2 py-0.5 text-ink text-xs focus:outline-none focus:border-emerald-400"
+                                            onKeyDown={e => { if (e.key === "Enter") void commitEdit(); if (e.key === "Escape") cancelEdit(); }}
+                                            autoFocus
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => void commitEdit()}
+                                            disabled={savingTriple}
+                                            className="text-emerald-400 hover:text-emerald-300 px-1 disabled:opacity-50"
+                                            title="Save"
+                                          >✓</button>
+                                          <button
+                                            type="button"
+                                            onClick={cancelEdit}
+                                            className="text-red-400 hover:text-red-300 px-1"
+                                            title="Cancel"
+                                          >✕</button>
+                                        </div>
+                                      ) : (
+                                        <span className={isEdited ? "text-amber-300" : "text-ink/80"}>
+                                          {currentValue}
+                                          {isEdited && <span className="ml-1 text-amber-500/70 text-[10px]">✏ edited</span>}
+                                        </span>
+                                      )}
+                                      {result && (
+                                        <div className={`text-[10px] mt-0.5 ${result.ok ? "text-emerald-400" : "text-red-400"}`}>
+                                          {result.msg}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="py-1 text-center align-top">
+                                      {!isBeingEdited && (
+                                        <button
+                                          type="button"
+                                          onClick={() => startEdit(n.id, prop.predicate, currentValue, prop.datatype, null)}
+                                          className="text-white/30 hover:text-white/70 text-[11px] px-1"
+                                          title="Edit this triple value"
+                                        >✏</button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+
+                        {detail.outgoing.length > 0 && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer muted mb-1">
+                              {detail.outgoing.length} object propert{detail.outgoing.length !== 1 ? "ies" : "y"}
+                            </summary>
+                            <table className="w-full border-collapse">
+                              <tbody>
+                                {detail.outgoing.map((o, oi) => (
+                                  <tr key={oi} className="border-b border-white/5">
+                                    <td className="py-0.5 pr-3 muted font-mono w-1/3">{o.predicate_label}</td>
+                                    <td className="py-0.5 text-ink/70">{o.target_label ?? o.target_id ?? ""}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           </section>
         );
       })}
     </section>
   );
-}
-
-
-/**
- * Collapse repeats of the same predicate into one entry — so a node
- * with three "author of" edges renders as `author of: A, B, C`
- * rather than three separate `author of: A; author of: B;` clauses.
- */
-function groupOutgoingByPredicate(
-  outgoing: Array<{ predicateLabel: string; targetLabel: string }>,
-): Array<{ predicateLabel: string; targets: string[] }> {
-  const order: string[] = [];
-  const acc = new Map<string, string[]>();
-  for (const e of outgoing) {
-    if (!acc.has(e.predicateLabel)) {
-      acc.set(e.predicateLabel, []);
-      order.push(e.predicateLabel);
-    }
-    acc.get(e.predicateLabel)!.push(e.targetLabel);
-  }
-  return order.map((p) => ({ predicateLabel: p, targets: acc.get(p) ?? [] }));
 }
 
 
