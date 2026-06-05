@@ -104,7 +104,12 @@ class DesktopMatcher(AuthorityMatcher):
         user_id: Any | None = None,
         skip_cache: bool = False,
     ) -> list[Candidate]:
-        text = (entity.get("text") or "").strip()
+        raw = (entity.get("text") or "").strip()
+        # Strip leading/trailing ASCII straight-quotes and Unicode curly-quotes
+        # that sometimes wrap MARC-extracted entity strings (e.g. '"חביב, שמעון אבן"').
+        # Mazal normalises them away internally so it still matched; VIAF/Wikidata
+        # do not, causing them to miss persons that are genuinely in their indexes.
+        text = raw.strip('\'""\u201c\u201d\u2018\u2019')
         if not text:
             return []
         role = entity.get("role", "")
