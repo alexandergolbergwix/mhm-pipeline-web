@@ -108,8 +108,9 @@ class DesktopMatcher(AuthorityMatcher):
         if not text:
             return []
         role = entity.get("role", "")
+        entity_kind = entity.get("kind", "")
         return await self._match_one(
-            text=text, role=role, marc_record=marc_record,
+            text=text, role=role, entity_kind=entity_kind, marc_record=marc_record,
             db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
 
@@ -247,9 +248,11 @@ class DesktopMatcher(AuthorityMatcher):
                 try:
                     import psycopg2  # noqa: PLC0415
 
-                    dsn = os.getenv("DATABASE_URL", "")
-                    if dsn.startswith("postgres://"):
-                        dsn = dsn.replace("postgres://", "postgresql://", 1)
+                    from app.pipeline.authority_backend import (  # noqa: PLC0415
+                        _pg_dsn_for_psycopg2,
+                    )
+
+                    dsn = _pg_dsn_for_psycopg2(os.getenv("DATABASE_URL", ""))
                     if not dsn:
                         return {}
                     conn = psycopg2.connect(dsn)
@@ -417,7 +420,7 @@ class DesktopMatcher(AuthorityMatcher):
 
     async def _match_one(
         self, *,
-        text: str, role: str, marc_record: dict[str, Any],
+        text: str, role: str, entity_kind: str, marc_record: dict[str, Any],
         db_session: Any, user_id: Any, skip_cache: bool,
     ) -> list[Candidate]:
         sources: list[str] = []
@@ -440,7 +443,13 @@ class DesktopMatcher(AuthorityMatcher):
         # to the same wikidata_qid slot the persons path uses (with
         # source=kima).
         _mode = os.getenv("AUTHORITY_MODE", "local").lower()
-        is_place = role in ("place", "subject") and _looks_like_place(text, marc_record)
+        normalized_kind = entity_kind.lower().strip()
+        normalized_role = role.lower().strip()
+        is_place = (
+            normalized_kind in ("place", "location", "geographic")
+            or normalized_role in ("place", "location", "geographic")
+            or (normalized_role == "subject" and _looks_like_place(text, marc_record))
+        )
         if is_place and (self._kima is not None or _mode in ("modal", "postgres")):
             try:
                 uri = await self._kima_match_place(
@@ -672,7 +681,7 @@ class DesktopMatcher(AuthorityMatcher):
         prelim = {
             "matched_name": text,
             "entity_text": text,
-            "entity_kind": "person" if role != "place" else "place",
+            "entity_kind": "place" if kima_hit or is_place else "person",
             "confidence": confidence,
             "mazal_id": mazal_id,
             "viaf_id": viaf_id,

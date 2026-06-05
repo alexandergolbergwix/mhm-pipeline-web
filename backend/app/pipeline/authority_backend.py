@@ -155,17 +155,21 @@ class PostgresAuthorityBackend:
 
     def _get_conn(self) -> Any:
         import psycopg2  # noqa: PLC0415
-        import psycopg2.extras  # noqa: PLC0415
+
+        def _open() -> Any:
+            conn = psycopg2.connect(self._dsn)
+            conn.autocommit = True
+            return conn
 
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg2.connect(self._dsn)
-            self._conn.autocommit = True
+            self._conn = _open()
         else:
             try:
-                self._conn.cursor().execute("SELECT 1")
+                cur = self._conn.cursor()
+                cur.execute("SELECT 1")
+                cur.close()
             except Exception:  # noqa: BLE001
-                self._conn = psycopg2.connect(self._dsn)
-                self._conn.autocommit = True
+                self._conn = _open()
         return self._conn
 
     # ── Normalisation (mirrors MazalIndex.normalize_name) ─────────────
@@ -362,6 +366,23 @@ class PostgresAuthorityBackend:
         return await asyncio.to_thread(_sync)
 
 
+def _pg_dsn_for_psycopg2(raw: str) -> str:
+    """Convert a Heroku DATABASE_URL to a psycopg2-compatible DSN with SSL.
+
+    psycopg2 uses ``postgresql://`` not ``postgres://``, and Heroku's
+    RDS-backed instances require ``sslmode=require`` for ALL connections
+    (even from the same dyno).  This helper normalises both.
+    """
+    dsn = raw.strip()
+    if dsn.startswith("postgres://"):
+        dsn = dsn.replace("postgres://", "postgresql://", 1)
+    if dsn and "localhost" not in dsn and "127.0.0.1" not in dsn:
+        sep = "&" if "?" in dsn else "?"
+        if "sslmode" not in dsn:
+            dsn = dsn + sep + "sslmode=require"
+    return dsn
+
+
 def build_authority_backend(
     mazal_matcher: Any | None = None,
     kima_matcher: Any | None = None,
@@ -376,9 +397,7 @@ def build_authority_backend(
     mode = os.getenv("AUTHORITY_MODE", "local").lower()
 
     if mode == "postgres":
-        dsn = os.getenv("DATABASE_URL", "")
-        if dsn.startswith("postgres://"):
-            dsn = dsn.replace("postgres://", "postgresql://", 1)
+        dsn = _pg_dsn_for_psycopg2(os.getenv("DATABASE_URL", ""))
         if not dsn:
             logger.warning(
                 "AUTHORITY_MODE=postgres but DATABASE_URL not set — "
