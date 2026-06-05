@@ -638,6 +638,7 @@ async def re_enrich_authority(
                 ))
                 newly_matched += 1
 
+    run.match_count = len(existing_rows) + newly_matched
     await db.commit()
     return {
         "checked": checked,
@@ -706,9 +707,18 @@ async def re_enrich_authority_stream(
         checked = 0
         updated = 0
         newly_matched = 0
+        matched_count = 0
+        source_counts: dict[str, int] = {}
 
         for idx, (rec, entity) in enumerate(all_entities):
             checked += 1
+            yield _sse("authority.entity_start", {
+                "index": idx,
+                "total": total_entities,
+                "control_number": rec.control_number,
+                "entity_text": entity.get("text", ""),
+                "entity_kind": entity.get("kind", "person"),
+            })
             candidates = []
             try:
                 candidates = await matcher.match(
@@ -726,6 +736,15 @@ async def re_enrich_authority_stream(
             matched = bool(candidates)
             c = candidates[0] if candidates else None
             is_new = False
+            if matched:
+                matched_count += 1
+            if c:
+                payload_sources = c.payload.get("sources") if isinstance(c.payload, dict) else None
+                sources = payload_sources if isinstance(payload_sources, list) else [c.source]
+                for source in sources:
+                    source_key = str(source or "").strip()
+                    if source_key:
+                        source_counts[source_key] = source_counts.get(source_key, 0) + 1
 
             if c:
                 key = (
@@ -774,12 +793,15 @@ async def re_enrich_authority_stream(
                 "is_new": is_new,
             })
 
+        run.match_count = len(existing_rows) + newly_matched
         await db.commit()
 
         yield _sse("authority.done", {
             "checked": checked,
+            "matched": matched_count,
             "updated": updated,
             "newly_matched": newly_matched,
+            "source_counts": source_counts,
             "skip_cache": skip_cache,
         })
 

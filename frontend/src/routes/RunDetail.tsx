@@ -38,6 +38,16 @@ type SortDir = "asc" | "desc";
 const CONFIDENCE_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2 };
 const VERDICT_ORDER:    Record<string, number> = { fail: 0, partial: 1, abstain: 2, pass: 3 };
 
+function toNumberRecord(value: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (typeof value !== "object" || value === null) return out;
+  for (const [key, raw] of Object.entries(value)) {
+    const n = Number(raw);
+    if (Number.isFinite(n)) out[key] = n;
+  }
+  return out;
+}
+
 export default function RunDetail() {
   const { runId } = useParams<{ runId: string }>();
   const [run, setRun] = useState<Detail | null>(null);
@@ -59,7 +69,12 @@ export default function RunDetail() {
   const [enrichCurrentSource, setEnrichCurrentSource] = useState<string | null>(null);
   const [enrichCurrentMatched, setEnrichCurrentMatched] = useState<boolean | null>(null);
   const [enrichResult, setEnrichResult] = useState<{
-    checked: number; updated: number; newly_matched: number; skip_cache: boolean;
+    checked: number;
+    matched: number;
+    updated: number;
+    newly_matched: number;
+    source_counts: Record<string, number>;
+    skip_cache: boolean;
   } | null>(null);
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const enrichCancelRef = useRef<(() => void) | null>(null);
@@ -161,6 +176,11 @@ export default function RunDetail() {
       for await (const ev of events) {
         if (ev.type === "authority.start") {
           setEnrichTotal(Number(ev.total_entities ?? 0));
+        } else if (ev.type === "authority.entity_start") {
+          setEnrichProcessed(Number(ev.index ?? 0));
+          setEnrichCurrentEntity(String(ev.entity_text ?? ""));
+          setEnrichCurrentSource(null);
+          setEnrichCurrentMatched(null);
         } else if (ev.type === "authority.entity") {
           setEnrichProcessed(Number(ev.index ?? 0) + 1);
           setEnrichCurrentEntity(String(ev.entity_text ?? ""));
@@ -169,8 +189,10 @@ export default function RunDetail() {
         } else if (ev.type === "authority.done") {
           setEnrichResult({
             checked: Number(ev.checked ?? 0),
+            matched: Number(ev.matched ?? 0),
             updated: Number(ev.updated ?? 0),
             newly_matched: Number(ev.newly_matched ?? 0),
+            source_counts: toNumberRecord(ev.source_counts),
             skip_cache: Boolean(ev.skip_cache),
           });
           setEnrichPhase("done");
@@ -248,6 +270,12 @@ export default function RunDetail() {
   // Count how many of the currently-selected rows are ALSO visible —
   // used for the indeterminate state on the SelectAllVisible widget.
   const selectedInVisible = filtered.reduce((n, m) => n + (selected.has(m.id) ? 1 : 0), 0);
+  const enrichSourceSummary = enrichResult
+    ? Object.entries(enrichResult.source_counts)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([source, count]) => `${source}: ${count}`)
+        .join(" · ")
+    : "";
 
   if (error)
     return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
@@ -389,10 +417,10 @@ export default function RunDetail() {
               )}
               {enrichResult && enrichPhase === "done" && (
                 <span className="muted text-xs">
-                  {enrichResult.updated > 0 || enrichResult.newly_matched > 0
-                    ? <>✓ {enrichResult.updated} updated · {enrichResult.newly_matched} new
-                        {enrichResult.skip_cache && <> · cache bypassed</>}</>
-                    : <>No changes — all matches already up to date</>}
+                  ✓ checked {enrichResult.checked} · matched {enrichResult.matched} ·{" "}
+                  {enrichResult.updated} updated · {enrichResult.newly_matched} new
+                  {enrichSourceSummary && <> · {enrichSourceSummary}</>}
+                  {enrichResult.skip_cache && <> · cache bypassed</>}
                 </span>
               )}
             </div>
@@ -711,5 +739,3 @@ function StatusPill({ status }: { status: string }) {
     : "muted";
   return <span className={`glass-pill px-3 py-1 text-[10px] kicker ${tone}`}>{status}</span>;
 }
-
-

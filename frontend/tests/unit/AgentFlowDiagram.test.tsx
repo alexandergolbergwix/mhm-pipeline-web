@@ -33,69 +33,85 @@ describe("reduceFlow — pure reducer", () => {
     }
   });
 
-  it("session.start activates judge and marks goal done", () => {
+  it("session.start activates candidate intake and records scope size", () => {
     const next = reduceFlow(makeInitialFlowState(), {
       type: "session.start",
+      scope_size: 3,
     } as AgentEvent);
-    expect(next.nodeStatus.goal).toBe("done");
-    expect(next.nodeStatus.judge).toBe("active");
+    expect(next.nodeStatus.inputs).toBe("done");
+    expect(next.nodeStatus.rubric).toBe("done");
+    expect(next.nodeStatus.candidates).toBe("active");
+    expect(next.total).toBe(3);
   });
 
-  it("llm.turn increments stepCount and keeps judge active", () => {
-    const start = reduceFlow(makeInitialFlowState(), {
-      type: "session.start",
-    } as AgentEvent);
-    const next = reduceFlow(start, { type: "llm.turn" } as AgentEvent);
-    expect(next.stepCount).toBe(1);
-    expect(next.nodeStatus.judge).toBe("active");
-  });
-
-  it("tool.dispatch routes a known tool to the right target node", () => {
+  it("agent.stats routes cache misses to the judge", () => {
     const start = reduceFlow(makeInitialFlowState(), {
       type: "session.start",
     } as AgentEvent);
     const next = reduceFlow(start, {
-      type: "tool.dispatch",
-      tool: "inspect_state",
+      type: "agent.stats",
+      judged: 1,
+      total: 2,
     } as AgentEvent);
-    expect(next.nodeStatus.tools).toBe("active");
-    expect(next.nodeStatus.state).toBe("active");
-    expect(next.nodeStatus.policy).toBe("done");
+    expect(next.judged).toBe(1);
+    expect(next.total).toBe(2);
+    expect(next.nodeStatus.cache).toBe("done");
+    expect(next.nodeStatus.judge).toBe("active");
+    expect(next.lastEdge).toEqual(["cache", "judge"]);
   });
 
-  it("tool.result with ok=true marks tools done, ok=false flags error", () => {
+  it("agent.stats routes cache hits straight to verdict", () => {
     const start = reduceFlow(makeInitialFlowState(), {
       type: "session.start",
     } as AgentEvent);
-    const dispatch = reduceFlow(start, {
-      type: "tool.dispatch",
-      tool: "inspect_state",
+    const next = reduceFlow(start, {
+      type: "agent.stats",
+      hits: 1,
     } as AgentEvent);
-
-    const ok = reduceFlow(dispatch, {
-      type: "tool.result",
-      tool: "inspect_state",
-      ok: true,
-    } as AgentEvent);
-    expect(ok.nodeStatus.tools).toBe("done");
-    expect(ok.nodeStatus.state).toBe("done");
-    expect(ok.nodeStatus.trace).toBe("active");
-
-    const bad = reduceFlow(dispatch, {
-      type: "tool.result",
-      tool: "inspect_state",
-      ok: false,
-    } as AgentEvent);
-    expect(bad.nodeStatus.tools).toBe("error");
-    expect(bad.nodeStatus.state).toBe("error");
+    expect(next.cacheHits).toBe(1);
+    expect(next.nodeStatus.cache).toBe("active");
+    expect(next.lastEdge).toEqual(["cache", "verdict"]);
   });
 
-  it("session.end marks final + judge done and sets finished=true", () => {
+  it("runner.step marks tool and escalation activity", () => {
+    const start = reduceFlow(makeInitialFlowState(), {
+      type: "session.start",
+    } as AgentEvent);
+    const toolStep = reduceFlow(start, {
+      type: "runner.step",
+      message: "tool inspect_state",
+    } as AgentEvent);
+    expect(toolStep.nodeStatus.judge).toBe("done");
+    expect(toolStep.nodeStatus.tools).toBe("active");
+    expect(toolStep.stepCount).toBe(1);
+    expect(toolStep.lastEdge).toEqual(["judge", "tools"]);
+
+    const escalateStep = reduceFlow(start, {
+      type: "runner.step",
+      message: "escalate abstain",
+    } as AgentEvent);
+    expect(escalateStep.nodeStatus.escalate).toBe("active");
+    expect(escalateStep.stepCount).toBe(1);
+    expect(escalateStep.lastEdge).toEqual(["judge", "escalate"]);
+  });
+
+  it("agent.verdict marks verdict active and completes the source node", () => {
+    const start = reduceFlow(makeInitialFlowState(), {
+      type: "runner.step",
+      message: "tool inspect_state",
+    } as AgentEvent);
+    const next = reduceFlow(start, { type: "agent.verdict" } as AgentEvent);
+    expect(next.nodeStatus.verdict).toBe("active");
+    expect(next.nodeStatus.judge).toBe("done");
+    expect(next.lastEdge).toEqual(["judge", "verdict"]);
+  });
+
+  it("session.end marks verdict/report done and sets finished=true", () => {
     const next = reduceFlow(makeInitialFlowState(), {
       type: "session.end",
     } as AgentEvent);
-    expect(next.nodeStatus.final).toBe("done");
-    expect(next.nodeStatus.judge).toBe("done");
+    expect(next.nodeStatus.verdict).toBe("done");
+    expect(next.nodeStatus.report).toBe("done");
     expect(next.finished).toBe(true);
   });
 
@@ -106,7 +122,7 @@ describe("reduceFlow — pure reducer", () => {
     const errored = reduceFlow(start, { type: "llm.error" } as AgentEvent);
     expect(errored.nodeStatus.judge).toBe("error");
 
-    // Subsequent session.end should still mark final done.
+    // Subsequent session.end should still mark the report done.
     const ended = reduceFlow(errored, { type: "session.end" } as AgentEvent);
     expect(ended.finished).toBe(true);
   });
@@ -117,13 +133,10 @@ describe("reduceFlow — replay a synthetic trace", () => {
   it("replays a happy-path session and lands every node in a terminal state", () => {
     const trace: AgentEvent[] = [
       { type: "session.start" } as AgentEvent,
-      { type: "llm.turn"      } as AgentEvent,
-      { type: "tool.dispatch", tool: "inspect_state" } as AgentEvent,
-      { type: "tool.result",   tool: "inspect_state", ok: true } as AgentEvent,
-      { type: "llm.turn"      } as AgentEvent,
-      { type: "tool.dispatch", tool: "summarize_feature_list" } as AgentEvent,
-      { type: "tool.result",   tool: "summarize_feature_list", ok: true } as AgentEvent,
-      { type: "session.final" } as AgentEvent,
+      { type: "agent.stats", judged: 1, total: 2 } as AgentEvent,
+      { type: "runner.step", message: "tool inspect_state" } as AgentEvent,
+      { type: "agent.verdict" } as AgentEvent,
+      { type: "agent.stats", hits: 1, judged: 1, total: 2 } as AgentEvent,
       { type: "session.end"   } as AgentEvent,
     ];
 
@@ -131,12 +144,12 @@ describe("reduceFlow — replay a synthetic trace", () => {
     for (const ev of trace) state = reduceFlow(state, ev);
 
     expect(state.finished).toBe(true);
-    expect(state.stepCount).toBe(2);
+    expect(state.stepCount).toBe(1);
     expect(state.nodeStatus.judge).toBe("done");
-    expect(state.nodeStatus.final).toBe("done");
-    // Tools/state/features all touched at some point → done.
-    expect(state.nodeStatus.tools).toBe("done");
-    expect(state.nodeStatus.features).toBe("done");
+    expect(state.nodeStatus.verdict).toBe("done");
+    expect(state.nodeStatus.report).toBe("done");
+    expect(state.cacheHits).toBe(1);
+    expect(state.judged).toBe(1);
   });
 });
 
@@ -155,18 +168,22 @@ describe("<AgentFlowDiagram> render smoke", () => {
   it("re-renders with an updated flow without throwing", () => {
     const final: FlowState = {
       nodeStatus: {
-        goal:     "done",
-        judge:    "done",
-        policy:   "done",
-        tools:    "done",
-        state:    "done",
-        reports:  "idle",
-        features: "idle",
-        trace:    "done",
-        final:    "done",
+        inputs:     "done",
+        rubric:     "done",
+        candidates: "done",
+        cache:      "done",
+        judge:      "done",
+        tools:      "done",
+        escalate:   "idle",
+        verdict:    "done",
+        report:     "done",
       },
       stepCount: 5,
       finished:  true,
+      cacheHits: 1,
+      judged:    4,
+      total:     5,
+      lastEdge:  null,
     };
     expect(() =>
       render(<AgentFlowDiagram lastEvent={null} flow={final} />),

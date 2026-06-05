@@ -59,30 +59,87 @@ class LocalAuthorityBackend:
 
         if self._mazal is None:
             return None
-        mid = await asyncio.to_thread(self._mazal.match_person, name)
-        if mid is None:
-            return None
-        details: dict = (
-            await asyncio.to_thread(self._mazal.get_person_details, str(mid)) or {}
-        )
-        return {"mazal_id": str(mid), **details}
+
+        def _sync() -> dict[str, Any] | None:
+            mid = self._mazal.match_person(name)
+            fuzzy = False
+            if mid is None:
+                idx = self._mazal.index
+                if idx is None:
+                    return None
+                norm = idx.normalize_name(name)
+                if len(norm) < 6:
+                    return None
+                row = idx.conn.execute(
+                    """
+                    SELECT n.nli_id
+                    FROM name_index n
+                    WHERE n.entity_type = 'person'
+                      AND (
+                        n.normalized_name LIKE ?
+                        OR ? LIKE '%' || n.normalized_name || '%'
+                      )
+                    ORDER BY abs(length(n.normalized_name) - length(?)),
+                             length(n.normalized_name)
+                    LIMIT 1
+                    """,
+                    (f"%{norm}%", norm, norm),
+                ).fetchone()
+                if row is None:
+                    return None
+                mid = row["nli_id"]
+                fuzzy = True
+            details: dict = self._mazal.get_person_details(str(mid)) or {}
+            if fuzzy:
+                details["_fuzzy"] = True
+            return {"mazal_id": str(mid), **details}
+
+        return await asyncio.to_thread(_sync)
 
     async def match_place(self, text: str) -> dict[str, Any] | None:
         import asyncio  # noqa: PLC0415
 
         if self._kima is None:
             return None
-        uri = await asyncio.to_thread(self._kima.match_place, text)
-        if uri is None:
-            return None
-        row: dict = {}
-        try:
+
+        def _sync() -> dict[str, Any] | None:
             idx = self._kima.index
-            if idx is not None and hasattr(idx, "lookup_place"):
-                row = idx.lookup_place(text) or {}
-        except AttributeError:
-            pass
-        return {"wikidata_uri": str(uri), **row}
+            if idx is None or not hasattr(idx, "lookup_place"):
+                return None
+            row = idx.lookup_place(text) or {}
+            fuzzy = False
+            if not row:
+                norm = idx.normalize_name(text)
+                if len(norm) < 4:
+                    return None
+                cur = idx.conn.cursor()
+                cur.execute(
+                    """
+                    SELECT p.kima_id, p.primary_heb, p.primary_rom,
+                           p.wikidata_id, p.viaf_id, p.geonames_id, p.lat, p.lon
+                    FROM name_index n
+                    JOIN places p ON n.kima_id = p.kima_id
+                    WHERE n.normalized_name LIKE ?
+                       OR ? LIKE '%' || n.normalized_name || '%'
+                    ORDER BY abs(length(n.normalized_name) - length(?)),
+                             length(n.normalized_name)
+                    LIMIT 1
+                    """,
+                    (f"%{norm}%", norm, norm),
+                )
+                hit = cur.fetchone()
+                if hit is None:
+                    return None
+                row = dict(hit)
+                fuzzy = True
+            wd = row.get("wikidata_id")
+            if not wd:
+                return None
+            if fuzzy:
+                row["_fuzzy"] = True
+            return {"wikidata_uri": f"https://www.wikidata.org/entity/{wd}", **row}
+
+        return await asyncio.to_thread(_sync)
 
 
 class ModalAuthorityBackend:
@@ -144,11 +201,16 @@ class PostgresAuthorityBackend:
     ``normalized_name`` column values are compatible.
     """
 
-    def __init__(self, dsn: str) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        fallback: LocalAuthorityBackend | None = None,
+    ) -> None:
         import re  # noqa: PLC0415
         import unicodedata  # noqa: PLC0415
 
         self._dsn = dsn
+        self._fallback = fallback
         self._conn: Any = None
         self._re = re
         self._uni = unicodedata
@@ -276,7 +338,13 @@ class PostgresAuthorityBackend:
             finally:
                 cur.close()
 
-        return await asyncio.to_thread(_sync)
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres Mazal lookup failed for %r: %s", name, exc)
+            if self._fallback is not None:
+                return await self._fallback.match_person(name)
+            return None
 
     async def match_place(self, text: str) -> dict[str, Any] | None:
         import asyncio  # noqa: PLC0415
@@ -363,7 +431,13 @@ class PostgresAuthorityBackend:
             finally:
                 cur.close()
 
-        return await asyncio.to_thread(_sync)
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres KIMA lookup failed for %r: %s", text, exc)
+            if self._fallback is not None:
+                return await self._fallback.match_place(text)
+            return None
 
 
 def _pg_dsn_for_psycopg2(raw: str) -> str:
@@ -405,7 +479,13 @@ def build_authority_backend(
             )
         else:
             logger.info("Authority backend: Postgres")
-            return PostgresAuthorityBackend(dsn=dsn)
+            return PostgresAuthorityBackend(
+                dsn=dsn,
+                fallback=LocalAuthorityBackend(
+                    mazal_matcher=mazal_matcher,
+                    kima_matcher=kima_matcher,
+                ),
+            )
 
     if mode == "modal":
         url = os.getenv("MODAL_AUTHORITY_URL", "")
