@@ -202,12 +202,16 @@ class PostgresAuthorityBackend:
     async def match_person(self, name: str) -> dict[str, Any] | None:
         import asyncio  # noqa: PLC0415
 
+        FUZZY_MIN_SIM = 0.45
+
         def _sync() -> dict[str, Any] | None:
             norm = self._normalize_mazal(name)
             if not norm:
                 return None
-            cur = self._get_conn().cursor()
+            conn = self._get_conn()
+            cur = conn.cursor()
             try:
+                # 1. Exact (fast path, uses the hash index)
                 cur.execute(
                     """
                     SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
@@ -220,16 +224,51 @@ class PostgresAuthorityBackend:
                     (norm,),
                 )
                 row = cur.fetchone()
-                if not row:
-                    return None
-                return {
-                    "mazal_id": row[0],
-                    "entity_type": row[1],
-                    "preferred_name_heb": row[2],
-                    "preferred_name_lat": row[3],
-                    "dates": row[4],
-                    "aleph_id": row[5],
-                }
+                if row:
+                    return {
+                        "mazal_id": row[0],
+                        "entity_type": row[1],
+                        "preferred_name_heb": row[2],
+                        "preferred_name_lat": row[3],
+                        "dates": row[4],
+                        "aleph_id": row[5],
+                    }
+
+                # 2. Fuzzy trigram fallback (for spelling variants / orthographic differences
+                # after our normalization). Requires pg_trgm + GIN index on the column.
+                # Graceful: if the extension/operator is unavailable we just return None.
+                try:
+                    cur.execute(
+                        """
+                        SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                               a.preferred_name_lat, a.dates, a.aleph_id,
+                               similarity(n.normalized_name, %s) AS sim
+                        FROM mazal_name_index n
+                        JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                        WHERE n.normalized_name %% %s
+                          AND n.entity_type = 'person'
+                        ORDER BY sim DESC
+                        LIMIT 1
+                        """,
+                        (norm, norm),
+                    )
+                    row = cur.fetchone()
+                    if row and row[6] is not None and float(row[6]) >= FUZZY_MIN_SIM:
+                        return {
+                            "mazal_id": row[0],
+                            "entity_type": row[1],
+                            "preferred_name_heb": row[2],
+                            "preferred_name_lat": row[3],
+                            "dates": row[4],
+                            "aleph_id": row[5],
+                            # Mark that this was a fuzzy hit so downstream (date guard,
+                            # UI) can surface lower confidence or reasoning if desired.
+                            "_fuzzy": True,
+                            "_fuzzy_sim": float(row[6]),
+                        }
+                except Exception:  # noqa: BLE001 — no pg_trgm, no index, or syntax
+                    pass
+                return None
             finally:
                 cur.close()
 
@@ -238,12 +277,16 @@ class PostgresAuthorityBackend:
     async def match_place(self, text: str) -> dict[str, Any] | None:
         import asyncio  # noqa: PLC0415
 
+        FUZZY_MIN_SIM = 0.45
+
         def _sync() -> dict[str, Any] | None:
             norm = self._normalize_kima(text)
             if not norm:
                 return None
-            cur = self._get_conn().cursor()
+            conn = self._get_conn()
+            cur = conn.cursor()
             try:
+                # 1. Exact
                 cur.execute(
                     """
                     SELECT p.kima_id, p.primary_heb, p.primary_rom,
@@ -257,23 +300,62 @@ class PostgresAuthorityBackend:
                     (norm,),
                 )
                 row = cur.fetchone()
-                if not row:
-                    return None
-                wd = row[3]
-                if not wd:
-                    return None
-                return {
-                    "wikidata_uri": f"https://www.wikidata.org/entity/{wd}",
-                    "kima_id": row[0],
-                    "primary_heb": row[1],
-                    "primary_rom": row[2],
-                    "wikidata_id": wd,
-                    "viaf_id": row[4],
-                    "geonames_id": row[5],
-                    "mazal_nli_id": row[6],
-                    "lat": row[7],
-                    "lon": row[8],
-                }
+                if row:
+                    wd = row[3]
+                    if not wd:
+                        return None
+                    return {
+                        "wikidata_uri": f"https://www.wikidata.org/entity/{wd}",
+                        "kima_id": row[0],
+                        "primary_heb": row[1],
+                        "primary_rom": row[2],
+                        "wikidata_id": wd,
+                        "viaf_id": row[4],
+                        "geonames_id": row[5],
+                        "mazal_nli_id": row[6],
+                        "lat": row[7],
+                        "lon": row[8],
+                    }
+
+                # 2. Fuzzy trigram fallback (proximity for Hebrew place-name variants).
+                try:
+                    cur.execute(
+                        """
+                        SELECT p.kima_id, p.primary_heb, p.primary_rom,
+                               p.wikidata_id, p.viaf_id, p.geonames_id,
+                               p.mazal_nli_id, p.lat, p.lon,
+                               similarity(n.normalized_name, %s) AS sim
+                        FROM kima_name_index n
+                        JOIN kima_places p ON n.kima_id = p.kima_id
+                        WHERE n.normalized_name %% %s
+                        ORDER BY sim DESC
+                        LIMIT 1
+                        """,
+                        (norm, norm),
+                    )
+                    row = cur.fetchone()
+                    if row and row[9] is not None and float(row[9]) >= FUZZY_MIN_SIM:
+                        wd = row[3]
+                        if not wd:
+                            return None
+                        res = {
+                            "wikidata_uri": f"https://www.wikidata.org/entity/{wd}",
+                            "kima_id": row[0],
+                            "primary_heb": row[1],
+                            "primary_rom": row[2],
+                            "wikidata_id": wd,
+                            "viaf_id": row[4],
+                            "geonames_id": row[5],
+                            "mazal_nli_id": row[6],
+                            "lat": row[7],
+                            "lon": row[8],
+                            "_fuzzy": True,
+                            "_fuzzy_sim": float(row[9]),
+                        }
+                        return res
+                except Exception:  # noqa: BLE001
+                    pass
+                return None
             finally:
                 cur.close()
 

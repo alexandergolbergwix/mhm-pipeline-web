@@ -132,7 +132,7 @@ class DesktopMatcher(AuthorityMatcher):
     async def _kima_match_place(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
-        _mode = os.getenv("AUTHORITY_MODE", "local")
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
         # Guard: skip when no KIMA source is available at all.
         if self._kima is None and _mode not in ("modal", "postgres"):
             return None
@@ -161,14 +161,28 @@ class DesktopMatcher(AuthorityMatcher):
         ``_kima_detail_cache``.  We return that cached value directly to
         avoid a second backend round-trip.
         """
-        # Fast path: Modal backend populated this during match_place.
+        # Fast path: Modal/Postgres backend populated this during match_place.
         if text in self._kima_detail_cache:
             return self._kima_detail_cache[text]
 
-        if self._kima is None:
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
+        if self._kima is None and _mode not in ("modal", "postgres"):
             return None
 
         async def _f() -> dict[str, Any] | None:
+            if _mode == "postgres":
+                # Delegate through the cached match path; it will populate
+                # the instance cache as a side-effect and respect inference cache.
+                try:
+                    await self._kima_match_place(
+                        text, db_session=db_session, user_id=user_id, skip_cache=skip_cache
+                    )
+                    return self._kima_detail_cache.get(text)
+                except Exception:  # noqa: BLE001
+                    return None
+
+            if self._kima is None:
+                return None
             def _sync() -> dict[str, Any] | None:
                 idx = self._kima.index  # type: ignore[union-attr]
                 if idx is None:
@@ -186,7 +200,7 @@ class DesktopMatcher(AuthorityMatcher):
     async def _mazal_match_person(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
-        _mode = os.getenv("AUTHORITY_MODE", "local")
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
         # Guard: skip when no Mazal source is available at all.
         if self._mazal is None and _mode not in ("modal", "postgres"):
             return None
@@ -217,14 +231,56 @@ class DesktopMatcher(AuthorityMatcher):
         ``_mazal_detail_cache``.  We return that cached value directly to
         avoid a second backend round-trip.
         """
-        # Fast path: Modal backend populated this during match_person.
+        # Fast path: Modal/Postgres backend populated this during match_person.
         if mazal_id in self._mazal_detail_cache:
             return self._mazal_detail_cache[mazal_id]
 
-        if self._mazal is None:
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
+        if self._mazal is None and _mode not in ("modal", "postgres"):
             return None
 
         async def _f() -> dict[str, Any]:
+            if _mode == "postgres":
+                # For postgres the full details were already returned by
+                # match_person and stashed in the instance cache under the id.
+                # If we reach here without it, fall back to a direct id lookup.
+                try:
+                    import psycopg2  # noqa: PLC0415
+
+                    dsn = os.getenv("DATABASE_URL", "")
+                    if dsn.startswith("postgres://"):
+                        dsn = dsn.replace("postgres://", "postgresql://", 1)
+                    if not dsn:
+                        return {}
+                    conn = psycopg2.connect(dsn)
+                    conn.autocommit = True
+                    cur = conn.cursor()
+                    try:
+                        cur.execute(
+                            """
+                            SELECT entity_type, preferred_name_heb, preferred_name_lat,
+                                   dates, aleph_id
+                            FROM mazal_authorities
+                            WHERE nli_id = %s
+                            LIMIT 1
+                            """,
+                            (mazal_id,),
+                        )
+                        row = cur.fetchone()
+                        if row:
+                            return {
+                                "entity_type": row[0],
+                                "preferred_name_heb": row[1],
+                                "preferred_name_lat": row[2],
+                                "dates": row[3],
+                                "aleph_id": row[4],
+                            }
+                        return {}
+                    finally:
+                        cur.close()
+                        conn.close()
+                except Exception:  # noqa: BLE001
+                    return {}
             return await asyncio.to_thread(self._mazal.get_person_details, mazal_id)
 
         return await self._cached(
@@ -383,8 +439,9 @@ class DesktopMatcher(AuthorityMatcher):
         # a Wikidata URI for matched places, so we hand the QID straight
         # to the same wikidata_qid slot the persons path uses (with
         # source=kima).
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
         is_place = role in ("place", "subject") and _looks_like_place(text, marc_record)
-        if is_place and self._kima is not None:
+        if is_place and (self._kima is not None or _mode in ("modal", "postgres")):
             try:
                 uri = await self._kima_match_place(
                     text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
@@ -409,7 +466,13 @@ class DesktopMatcher(AuthorityMatcher):
                             "kima_lon":      kima_row.get("lon"),
                             "kima_geonames": kima_row.get("geonames_id"),
                             "kima_viaf_id":  kima_row.get("viaf_id") or "",
+                            "_fuzzy":        kima_row.get("_fuzzy"),
+                            "_fuzzy_sim":    kima_row.get("_fuzzy_sim"),
                         }
+                        if kima_row.get("_fuzzy"):
+                            reasoning_parts.append(
+                                f"Fuzzy KIMA match (sim≈{kima_row.get('_fuzzy_sim', 0):.2f})."
+                            )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("KIMA matcher raised for %r: %s", text, exc)
 
@@ -423,7 +486,7 @@ class DesktopMatcher(AuthorityMatcher):
         # → Wikidata (most authoritative for medieval Hebrew → least).
 
         # — Mazal —
-        if self._mazal is not None:
+        if self._mazal is not None or _mode in ("modal", "postgres"):
             try:
                 mid = await self._mazal_match_person(
                     text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
@@ -440,6 +503,10 @@ class DesktopMatcher(AuthorityMatcher):
                             mid, db_session=db_session, user_id=user_id,
                             skip_cache=skip_cache,
                         ) or {}
+                        if mazal_details.get("_fuzzy"):
+                            reasoning_parts.append(
+                                f"Fuzzy Mazal match (sim≈{mazal_details.get('_fuzzy_sim', 0):.2f})."
+                            )
                         dates_str = (mazal_details.get("dates") or "").strip()
                         if dates_str:
                             from converter.transformer.date_resolver import (  # noqa: PLC0415
@@ -689,6 +756,12 @@ class DesktopMatcher(AuthorityMatcher):
                     (mazal_details.get("preferred_name_heb") if mazal_details else None)
                     or (_wd_enrich.get("he_label") if _wd_enrich else None)
                 ),
+                # Fuzzy/proximity indicators (populated only when trigram fallback was used
+                # in PostgresAuthorityBackend because exact normalized missed).
+                "mazal_fuzzy": (mazal_details.get("_fuzzy") if mazal_details else None),
+                "mazal_fuzzy_sim": (mazal_details.get("_fuzzy_sim") if mazal_details else None),
+                "kima_fuzzy": (kima_payload.get("_fuzzy") if kima_payload else None),
+                "kima_fuzzy_sim": (kima_payload.get("_fuzzy_sim") if kima_payload else None),
                 # Canonical URIs for owl:sameAs in RDF + Wikidata/Wikibase import
                 "viaf_uri": f"https://viaf.org/viaf/{viaf_id}" if viaf_id else None,
                 "wikidata_uri": f"https://www.wikidata.org/entity/{wikidata_qid}" if wikidata_qid else None,
@@ -842,7 +915,15 @@ def _record_year(record: dict[str, Any]) -> int | None:
 
 
 def _role_kind(role: str) -> str:
-    r = role.lower()
+    # Map raw MARC $e (Hebrew or English) to our canonical English role labels
+    # so the date-guard classification below can treat "סופר" as "scribe" etc.
+    try:
+        from converter.config.vocabularies import ROLE_MAPPINGS  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        ROLE_MAPPINGS = {}
+    raw = (role or "").strip().rstrip(".").lower()
+    mapped = ROLE_MAPPINGS.get(raw, raw)
+    r = mapped.lower()
     if r in _PROD_ROLES:
         return "production"
     if r in _AUTHORSHIP_ROLES:
