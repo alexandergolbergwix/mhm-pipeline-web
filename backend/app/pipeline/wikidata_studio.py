@@ -265,6 +265,11 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
         "lc_id":              cluster.get("lc", ""),
         "isni":               cluster.get("isni", ""),
         "bnf_id":             cluster.get("bnf", ""),
+        # Wikidata enrichment: Hebrew label + English description from SPARQL
+        "wikidata_he_label":  payload.get("wikidata_he_label") or "",
+        "wikidata_en_description": payload.get("wikidata_en_description") or "",
+        # Mazal supplementary IDs
+        "mazal_aleph_id":     payload.get("mazal_aleph_id") or "",
         "guard_flags":        payload.get("guard_flags") or [],
         "name_type":          payload.get("viaf_name_type") or "",
         "matched":            1,

@@ -276,6 +276,19 @@ def _merge_authority_ids(rec: dict[str, Any], matches: list[dict[str, Any]]) -> 
                             person["wikidata_id"] = m["wikidata_qid"]
                         if m.get("mazal_id") and "authority_id" not in person:
                             person["authority_id"] = str(m["mazal_id"])
+                        # Preferred names for RDF label triples
+                        if payload.get("preferred_name_lat") and "preferred_name_lat" not in person:
+                            person["preferred_name_lat"] = payload["preferred_name_lat"]
+                        if payload.get("preferred_name_heb") and "preferred_name_heb" not in person:
+                            person["preferred_name_heb"] = payload["preferred_name_heb"]
+                        # Canonical URIs for owl:sameAs
+                        if payload.get("viaf_uri") and "viaf_uri" not in person:
+                            person["viaf_uri"] = payload["viaf_uri"]
+                        # GND, LCCN, ISNI from VIAF cluster (Rule W-23)
+                        cluster = payload.get("cluster_ids") or {}
+                        for id_key in ("gnd", "lc", "isni", "bnf", "j9u"):
+                            if cluster.get(id_key) and id_key not in person:
+                                person[id_key] = cluster[id_key]
                         break
 
 

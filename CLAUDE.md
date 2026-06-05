@@ -600,51 +600,82 @@ upload POST includes `upload_approved_only: true`.
 DB migration: `0016_item_override_approved` adds `approved BOOLEAN` to
 `wikidata_item_overrides` (nullable; null = not reviewed).
 
-### Rule W-28 — Modal authority backend mirrors extraction backend pattern (added 2026-06-05)
+### Rule W-28 — Mazal + KIMA live in Heroku Postgres (added 2026-06-05)
 
-`modal/modal_authority.py` is the authority-enrichment counterpart to
-`modal/modal_app.py`. It exposes `POST /match_person` (Mazal, 983 MB
-SQLite index) and `POST /match_place` (KIMA, 15 MB SQLite index) as a
-Modal FastAPI ASGI app under the `mhm-authority` app name. Both databases
-are baked into the image at deploy time — cold start is just opening a
-file, no network download.
+**Production default since 2026-06-05.** Mazal (2.5 M authority records +
+5.3 M name-index rows, ~980 MB SQLite → ~600 MB Postgres) and KIMA
+(48 K places + 129 K name-index rows, 15 MB) are imported into the same
+Heroku Essential-1 Postgres instance via:
 
-`backend/app/pipeline/authority_backend.py` provides the `AuthorityBackend`
-Protocol with two implementations:
+```bash
+# One-time import — run locally pointing at Heroku DATABASE_URL
+# Idempotent (TRUNCATE + re-import).
+cd backend && DATABASE_URL=... KIMA_DB_PATH=backend/data/kima/kima_index.db \
+  .venv/bin/python -m scripts.import_kima_to_postgres   # ~15 s
 
-| Class | When | Notes |
+cd backend && DATABASE_URL=... MAZAL_DB_PATH=.../mazal_index.db \
+  .venv/bin/python -m scripts.import_mazal_to_postgres  # ~10 min
+```
+
+`backend/app/pipeline/authority_backend.py` now has three implementations:
+
+| Class | `AUTHORITY_MODE` | Notes |
 |---|---|---|
-| `LocalAuthorityBackend` | `AUTHORITY_MODE=local` (default) | Calls local SQLite via `asyncio.to_thread`. Fails silently on Heroku where the 983 MB Mazal DB cannot be shipped. |
-| `ModalAuthorityBackend` | `AUTHORITY_MODE=modal` | POSTs to `MODAL_AUTHORITY_URL`. Handles Heroku slug limit + ephemeral filesystem. |
+| `PostgresAuthorityBackend` | `postgres` | Direct Postgres SELECT over `mazal_*` / `kima_*` tables. **Production.** |
+| `LocalAuthorityBackend` | `local` | Local SQLite via `asyncio.to_thread`. Works in dev when SQLite files are present. |
+| `ModalAuthorityBackend` | `modal` | Legacy Modal HTTPS endpoint. Kept as fallback; no longer deployed. |
 
-`build_authority_backend()` is called once in `DesktopMatcher.__init__`; the
-choice is env-var-driven so no code change is needed to switch modes.
-
-The inference cache (`Rule W-12`) sits ABOVE the Modal HTTP layer in
-`authority.py`'s `cache_lookup_or_call` wrappers — cache hits never reach
-Modal. The first team member to resolve a name populates the cache (kind
-`authority.mazal` / `authority.kima`, TTL 30 days); everyone else
-warm-hits Postgres or Redis.
-
-**Within-request double-call elimination**: `_mazal_match_person` and
-`_kima_match_place` store full detail dicts in `_mazal_detail_cache` and
-`_kima_detail_cache` (per-instance) as a side-effect. The companion
-`_mazal_get_details` / `_kima_enrich_place` check those caches first so
-one HTTP call to Modal serves both the match and the enrichment.
-
-Never import `modal_authority.py` from the FastAPI backend. All
-communication is HTTPS only (mirrors Rule W-15).
-
-Deploy after any DB update:
+Set on Heroku:
 ```bash
-cd modal && modal deploy modal_authority.py
+heroku config:set AUTHORITY_MODE=postgres
 ```
 
-Set on Heroku to activate:
-```bash
-heroku config:set AUTHORITY_MODE=modal \
-  MODAL_AUTHORITY_URL=https://<workspace>--mhm-authority-mhmauthority-web.modal.run
-```
+**Postgres tables (created by migration `0018_authority_pg_tables`):**
+- `mazal_authorities` — nli_id PK, entity_type, preferred_name_heb,
+  preferred_name_lat, dates, aleph_id
+- `mazal_name_index` — normalized_name (hash idx), nli_id, entity_type,
+  script
+- `kima_places` — kima_id PK, primary_heb/rom, wikidata_id, viaf_id,
+  geonames_id, mazal_nli_id, lat, lon
+- `kima_name_index` — normalized_name (hash idx), kima_id, script
+
+Hash indexes are used for both `normalized_name` columns — exact-match
+only, no btree 8191-byte limit. A corrupt KIMA name_index entry
+(~900 KB blob) is silently skipped by the import script.
+
+The inference cache (`Rule W-12`) still sits ABOVE this layer —
+`authority.mazal` (90-day Postgres, 24 h Redis) and `authority.kima`
+(180-day Postgres, 24 h Redis) wrap every Postgres lookup, so the first
+resolution populates the cache and subsequent calls hit Redis or the
+inference_cache table without touching `mazal_*`/`kima_*`.
+
+**Within-request double-call elimination** is preserved:
+`_mazal_match_person` and `_kima_match_place` store full detail dicts in
+`_mazal_detail_cache`/`_kima_detail_cache` (per-instance) so
+`_mazal_get_details`/`_kima_enrich_place` don't issue a second SELECT.
+
+### Rule W-29 — Authority payload completeness (added 2026-06-05)
+
+Every `AuthorityMatch.payload` produced by `DesktopMatcher._match_one`
+MUST carry these fields when available:
+
+| Field | Source | Used by |
+|---|---|---|
+| `viaf_uri` | VIAF match | RDF `owl:sameAs`, Wikidata P214 |
+| `wikidata_uri` | Wikidata QID | RDF `owl:sameAs` |
+| `preferred_name_lat` | VIAF > Mazal > MARC | RDF labels, Wikidata preferred label |
+| `preferred_name_heb` | Mazal > `wikidata_he_label` | RDF labels, Wikibase Hebrew label |
+| `cluster_ids` | VIAF cluster (gnd/lc/isni/bnf/j9u) | Wikidata identifier statements |
+| `mazal_aleph_id` | Mazal details | NLI identifier in Wikidata (P8189) |
+| `mazal_dates_raw` | Mazal dates string | Debug / date-resolver fallback |
+| `wikidata_he_label` | SPARQL `rdfs:label@he` | `preferred_name_heb` fallback |
+| `wikidata_en_description` | SPARQL `schema:description@en` | Wikidata/Wikibase description |
+| `kima_id/heb/rom/lat/lon/geonames/viaf_id` | KIMA row | RDF place nodes (WGS84, GeoNames) |
+
+New `_wikidata_enrich_qid` makes one SPARQL call per confirmed QID for
+`he_label` + `en_description` + P214 VIAF cross-reference. Cached 30 days
+under `authority.wikidata / op=enrich_qid`. VIAF cross-enrichment from
+Wikidata P214 fills `viaf_id` when the VIAF SRU matcher returned no hit.
 
 ### Rule W-24 — All four curator surfaces support per-field manual editing (added 2026-06-03)
 
@@ -720,8 +751,15 @@ modal app logs mhm-ner
 # Switch extraction to Modal (heroku)
 heroku config:set EXTRACTION_MODE=modal MODAL_NER_URL=https://<workspace>--mhm-ner-mhmner-web.modal.run
 
-# Switch authority enrichment to Modal (heroku) — Rule W-28
-heroku config:set AUTHORITY_MODE=modal MODAL_AUTHORITY_URL=https://<workspace>--mhm-authority-mhmauthority-web.modal.run
+# Switch authority enrichment to Postgres (production default — Rule W-28)
+heroku config:set AUTHORITY_MODE=postgres
+
+# Import Mazal + KIMA from local SQLite into Heroku Postgres (one-time, idempotent)
+# Run locally pointing at Heroku DATABASE_URL — 15 s for KIMA, ~10 min for Mazal
+cd backend && DATABASE_URL=... KIMA_DB_PATH=backend/data/kima/kima_index.db \
+  .venv/bin/python -m scripts.import_kima_to_postgres
+cd backend && DATABASE_URL=... MAZAL_DB_PATH=.../mazal_index.db \
+  .venv/bin/python -m scripts.import_mazal_to_postgres
 ```
 
 ---

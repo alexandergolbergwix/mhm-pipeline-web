@@ -132,8 +132,9 @@ class DesktopMatcher(AuthorityMatcher):
     async def _kima_match_place(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
-        # Guard: skip when neither local KIMA nor Modal backend is available.
-        if self._kima is None and os.getenv("AUTHORITY_MODE", "local") != "modal":
+        _mode = os.getenv("AUTHORITY_MODE", "local")
+        # Guard: skip when no KIMA source is available at all.
+        if self._kima is None and _mode not in ("modal", "postgres"):
             return None
 
         async def _f() -> str | None:
@@ -185,8 +186,9 @@ class DesktopMatcher(AuthorityMatcher):
     async def _mazal_match_person(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
-        # Guard: skip when neither local Mazal nor Modal backend is available.
-        if self._mazal is None and os.getenv("AUTHORITY_MODE", "local") != "modal":
+        _mode = os.getenv("AUTHORITY_MODE", "local")
+        # Guard: skip when no Mazal source is available at all.
+        if self._mazal is None and _mode not in ("modal", "postgres"):
             return None
 
         async def _f() -> str | None:
@@ -286,6 +288,77 @@ class DesktopMatcher(AuthorityMatcher):
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
 
+    async def _wikidata_enrich_qid(
+        self, qid: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> dict[str, Any] | None:
+        """One SPARQL call per confirmed QID: fetches Hebrew label,
+        English description, and P214 (VIAF) for VIAF cross-enrichment.
+
+        Result shape:
+            { "he_label": str|None, "en_description": str|None,
+              "viaf_id": str|None }
+
+        Cached 30 days under authority.wikidata / op=enrich_qid so the
+        extra SPARQL hop only fires on first use (and on skip_cache=True).
+        """
+        if self._wikidata is None:
+            return None
+
+        async def _f() -> dict[str, Any]:
+            import requests  # noqa: PLC0415
+
+            # P214 (VIAF cluster ID) via the desktop matcher's
+            # find_viaf_by_qid which handles its own on-disk cache.
+            viaf_from_wd: str | None = await asyncio.to_thread(
+                self._wikidata.find_viaf_by_qid, qid,
+            )
+
+            # Hebrew label + English description — one WDQS query.
+            he_label: str | None = None
+            en_description: str | None = None
+            try:
+                safe_qid = qid.strip()
+                if safe_qid.startswith("Q") and safe_qid[1:].isdigit():
+                    query = (
+                        "SELECT ?heLabel ?enDesc WHERE { "
+                        f"OPTIONAL {{ wd:{safe_qid} rdfs:label ?heLabel . "
+                        "FILTER(LANG(?heLabel)=\"he\") }} "
+                        f"OPTIONAL {{ wd:{safe_qid} schema:description ?enDesc . "
+                        "FILTER(LANG(?enDesc)=\"en\") }} "
+                        "} LIMIT 1"
+                    )
+                    resp = await asyncio.to_thread(
+                        lambda: requests.get(
+                            "https://query.wikidata.org/sparql",
+                            params={"query": query, "format": "json"},
+                            headers={
+                                "Accept": "application/sparql-results+json",
+                                "User-Agent": "mhm-pipeline-web/1.0",
+                            },
+                            timeout=10,
+                        )
+                    )
+                    if resp.ok:
+                        bindings = resp.json().get("results", {}).get("bindings", [])
+                        if bindings:
+                            b = bindings[0]
+                            he_label = b.get("heLabel", {}).get("value")
+                            en_description = b.get("enDesc", {}).get("value")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("_wikidata_enrich_qid SPARQL failed for %s: %s", qid, exc)
+
+            return {
+                "viaf_id": viaf_from_wd,
+                "he_label": he_label,
+                "en_description": en_description,
+            }
+
+        return await self._cached(
+            kind="authority.wikidata",
+            query_summary={"op": "enrich_qid", "qid": qid},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
     async def _match_one(
         self, *,
         text: str, role: str, marc_record: dict[str, Any],
@@ -303,6 +376,7 @@ class DesktopMatcher(AuthorityMatcher):
         kima_payload: dict[str, Any] = {}
         mazal_details: dict[str, Any] | None = None
         viaf_meta: dict[str, Any] | None = None
+        _wd_enrich: dict[str, Any] | None = None
 
         # — KIMA (places only) —
         # KIMA is the desktop's geographic-authority adapter. It returns
@@ -429,6 +503,26 @@ class DesktopMatcher(AuthorityMatcher):
                             death_year = int(d)
                     except Exception as exc:  # noqa: BLE001
                         logger.debug("Wikidata date backfill failed for %s: %s", wikidata_qid, exc)
+
+                    # Extra enrichment: Hebrew label, English description,
+                    # and VIAF P214 cross-reference (when VIAF matcher missed).
+                    # One SPARQL call, cached 30 days.
+                    try:
+                        _wd_enrich = await self._wikidata_enrich_qid(
+                            wikidata_qid, db_session=db_session, user_id=user_id,
+                            skip_cache=skip_cache,
+                        )
+                        if _wd_enrich and not viaf_id:
+                            wd_viaf = (_wd_enrich.get("viaf_id") or "").strip()
+                            if wd_viaf:
+                                viaf_id = wd_viaf
+                                if "viaf" not in sources:
+                                    sources.append("viaf")
+                                reasoning_parts.append(
+                                    f"VIAF cross-enriched from Wikidata P214 ({wd_viaf})."
+                                )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("Wikidata enrich_qid failed for %s: %s", wikidata_qid, exc)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Wikidata matcher raised for %r: %s", text, exc)
 
@@ -592,8 +686,18 @@ class DesktopMatcher(AuthorityMatcher):
                 "ms_year": ms_year,
                 "preferred_name_lat": preferred_name_lat,
                 "preferred_name_heb": (
-                    mazal_details.get("preferred_name_heb") if mazal_details else None
+                    (mazal_details.get("preferred_name_heb") if mazal_details else None)
+                    or (_wd_enrich.get("he_label") if _wd_enrich else None)
                 ),
+                # Canonical URIs for owl:sameAs in RDF + Wikidata/Wikibase import
+                "viaf_uri": f"https://viaf.org/viaf/{viaf_id}" if viaf_id else None,
+                "wikidata_uri": f"https://www.wikidata.org/entity/{wikidata_qid}" if wikidata_qid else None,
+                # Mazal extra fields
+                "mazal_aleph_id": (mazal_details.get("aleph_id") if mazal_details else None),
+                "mazal_dates_raw": (mazal_details.get("dates") if mazal_details else None),
+                # Wikidata enrichment (SPARQL-fetched, cached 30d)
+                "wikidata_he_label": _wd_enrich.get("he_label") if _wd_enrich else None,
+                "wikidata_en_description": _wd_enrich.get("en_description") if _wd_enrich else None,
                 "cluster_ids": cluster_ids,
                 "viaf_name_type": viaf_name_type or None,
                 **kima_payload,
