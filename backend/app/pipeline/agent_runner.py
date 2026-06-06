@@ -128,6 +128,7 @@ async def spawn_eval_agent_run(
     tier_model: str | None = None,
     override_cache: bool = False,
     rpm: int = 60,
+    threshold: float | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """Run ``eval-agent run`` and yield each parsed event.
 
@@ -166,6 +167,15 @@ async def spawn_eval_agent_run(
         # --no-cache skips cache READS but still writes fresh verdicts
         # so the next session warm-hits whichever ones overlap.
         cmd += ["--no-cache"]
+    if threshold is not None:
+        # NER evaluators drop predictions below this confidence
+        # (default 0.85). When a curator hand-picks entities they want
+        # ALL of them judged regardless of confidence, so callers pass a
+        # negative sentinel. NB eval-agent computes the threshold as
+        # ``float(args.threshold or default)`` — 0.0 is falsy and would
+        # silently fall back to the 0.85 default, so the "judge all"
+        # value must be negative (truthy + below every real confidence).
+        cmd += ["--threshold", str(threshold)]
 
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")

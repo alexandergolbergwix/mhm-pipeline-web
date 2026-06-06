@@ -330,6 +330,12 @@ async def _session_event_stream(
                 tier_model=tier_model,
                 override_cache=override_cache,
                 rpm=action.rate_limit_rpm,
+                # The curator hand-selected these entities for review, so
+                # judge every one regardless of model confidence. Without
+                # this the eval-agent's default 0.85 NER threshold silently
+                # drops all low/medium-confidence selections → 0 verdicts.
+                # Negative (not 0.0) to survive eval-agent's truthy-or guard.
+                threshold=-1.0,
             ):
                 persist_session_event(base, ev)
                 yield ev
