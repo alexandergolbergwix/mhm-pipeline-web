@@ -694,6 +694,9 @@ export default function StageExtraction() {
           onClose={() => setDetailEntity(null)}
           onEntityChanged={() => { void refreshEntities(); }}
           onOpenEdit={(e) => setEditEntity(e)}
+          onVerifyEntity={(e) => {
+            setVerifyScope({scopeKind: "selection", entityIds: [e.id], label: e.text});
+          }}
         />
       )}
       {autoApproveOpen && runId && (
