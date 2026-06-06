@@ -201,6 +201,11 @@ async def _session_event_stream(
             # eval-agent not present (e.g. Heroku production dyno).
             # Cache hits are still emitted; uncached entities get a
             # warning event rather than crashing the whole session.
+            # WARNING-level so it actually reaches Heroku logs (module
+            # loggers fall back to the WARNING-only lastResort handler).
+            logger.warning(
+                "ai-verify: eval-agent NOT located (run=%s): %s", run_id, exc,
+            )
             eval_agent_error = str(exc)
             _tmp = Path(tempfile.mkdtemp(prefix=f"mhm-ner-{session_id}-"))
             base = _tmp
@@ -313,6 +318,10 @@ async def _session_event_stream(
             yield warn_ev
         elif uncached:
             assert pipeline_output is not None and state_dir is not None
+            logger.warning(
+                "ai-verify: spawning eval-agent for %d uncached entities (run=%s)",
+                len(uncached), run_id,
+            )
             async for ev in spawn_eval_agent_run(
                 pipeline_output=pipeline_output,
                 evaluators=action.evaluators,

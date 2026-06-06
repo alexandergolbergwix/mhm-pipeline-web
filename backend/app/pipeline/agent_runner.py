@@ -177,12 +177,45 @@ async def spawn_eval_agent_run(
         *cmd, cwd=str(root), env=env,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
-    assert proc.stdout is not None
+    assert proc.stdout is not None and proc.stderr is not None
 
+    # Drain stderr concurrently. Without this a chatty subprocess can fill
+    # the ~64 KB pipe buffer and deadlock, and — more importantly here — the
+    # subprocess's failure reason (e.g. an import error that kills it before
+    # any [STEP] line) was being silently discarded, surfacing to the UI as
+    # an unexplained "0 verdicts". We keep the tail and emit it as a
+    # runner.error on a non-zero exit.
+    stderr_chunks: list[str] = []
+
+    async def _drain_stderr() -> None:
+        assert proc.stderr is not None
+        while True:
+            chunk = await proc.stderr.readline()
+            if not chunk:
+                return
+            stderr_chunks.append(chunk.decode("utf-8", errors="replace"))
+
+    stderr_task = asyncio.create_task(_drain_stderr())
     try:
         async for ev in _read_subprocess_stream(proc.stdout):
             yield ev
         rc = await proc.wait()
+        await stderr_task
+        if rc != 0:
+            tail = "".join(stderr_chunks).strip()[-2000:]
+            logger.error(
+                "eval-agent exited rc=%s stderr_tail=%s", rc, tail or "<empty>",
+            )
+            yield AgentEvent(
+                type="runner.error",
+                payload={
+                    "message": (
+                        f"Verification subprocess failed (exit {rc}). "
+                        + (tail or "No error output was captured.")
+                    ),
+                    "return_code": rc,
+                },
+            )
         yield AgentEvent(type="runner.exit", payload={"return_code": rc})
     except asyncio.CancelledError:
         if proc.returncode is None:
@@ -194,6 +227,9 @@ async def spawn_eval_agent_run(
                     proc.kill()
                     await proc.wait()
         raise
+    finally:
+        if not stderr_task.done():
+            stderr_task.cancel()
 
 
 async def _read_subprocess_stream(

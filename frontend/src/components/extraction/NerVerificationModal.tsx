@@ -172,9 +172,23 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
             landed = true;
           }
         }
+        if (ev.type === "runner.warning") {
+          // e.g. uncached entities couldn't be verified because the
+          // eval-agent isn't available server-side. Surface it instead of
+          // swallowing it — the stream still ends via session.end so any
+          // cached verdicts already emitted remain visible.
+          setError((ev as {message?: string}).message
+            ?? "Some entities could not be verified.");
+        }
         if (ev.type === "runner.error") {
           setError((ev as {message?: string}).message ?? "Verification failed");
           break;
+        }
+        if (ev.type === "runner.exit") {
+          const rc = (ev as {return_code?: number}).return_code;
+          if (typeof rc === "number" && rc !== 0 && !landed) {
+            setError(`Verification process exited with code ${rc}.`);
+          }
         }
         if (ev.type === "session.end") break;
       }
@@ -186,6 +200,12 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
       cancelRef.current = null;
       setRunning(false);
       if (landed) onVerdictsLanded?.();
+      // Never leave the modal silently empty: if the stream ended without
+      // a single verdict and nothing else explained why, say so.
+      if (!landed) {
+        setError((prev) => prev
+          ?? "No verdicts were produced. The verification stream ended without results.");
+      }
     }
   }
 
