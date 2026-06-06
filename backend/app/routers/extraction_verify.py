@@ -187,16 +187,25 @@ async def _session_event_stream(
     session_dir: Path | None = None
     pipeline_output: Path | None = None
     base: Path | None = None
+    eval_agent_error: str | None = None  # set if locate_eval_agent() fails
+    import tempfile  # noqa: PLC0415
     if uncached:
-        eval_root = locate_eval_agent()
-        state_dir = eval_root / "state" / "extraction-verify-sessions" / run_id
-        session_dir = state_dir / "sessions" / session_id
-        pipeline_output = session_dir / "pipeline-output"
-        base = session_dir
-        session_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            eval_root = locate_eval_agent()
+            state_dir = eval_root / "state" / "extraction-verify-sessions" / run_id
+            session_dir = state_dir / "sessions" / session_id
+            pipeline_output = session_dir / "pipeline-output"
+            base = session_dir
+            session_dir.mkdir(parents=True, exist_ok=True)
+        except FileNotFoundError as exc:
+            # eval-agent not present (e.g. Heroku production dyno).
+            # Cache hits are still emitted; uncached entities get a
+            # warning event rather than crashing the whole session.
+            eval_agent_error = str(exc)
+            _tmp = Path(tempfile.mkdtemp(prefix=f"mhm-ner-{session_id}-"))
+            base = _tmp
     else:
         # Cache-only run: create a temp session dir for the audit log.
-        import tempfile  # noqa: PLC0415
         _tmp = Path(tempfile.mkdtemp(prefix=f"mhm-ner-{session_id}-"))
         base = _tmp
 
@@ -284,7 +293,25 @@ async def _session_event_stream(
 
     # ── Subprocess for uncached entities ──────────────────────────────
     try:
-        if uncached:
+        if uncached and eval_agent_error:
+            # eval-agent missing (Heroku). Emit a warning so the UI
+            # shows which entities couldn't be verified rather than
+            # silently dropping them.
+            warn_ev = AgentEvent(
+                type="runner.warning",
+                payload={
+                    "message": (
+                        f"{len(uncached)} entities are not in the verdict cache and "
+                        "cannot be verified here — the eval-agent is not available on "
+                        "this server. Run the verification locally to process them."
+                    ),
+                    "uncached_count": len(uncached),
+                    "eval_agent_error": eval_agent_error,
+                },
+            )
+            persist_session_event(base, warn_ev)
+            yield warn_ev
+        elif uncached:
             assert pipeline_output is not None and state_dir is not None
             async for ev in spawn_eval_agent_run(
                 pipeline_output=pipeline_output,
@@ -304,16 +331,45 @@ async def _session_event_stream(
             persist_session_event(base, ev)
             yield ev
 
-        if on_disk_verdicts:
+        # ── Persist verdicts to ExtractionApproval rows ────────────
+        # Two sources: freshly-produced on-disk verdicts AND verdicts
+        # served from the inference cache.  The latter are persisted
+        # here because an entity row may be newly-created (synthetic
+        # upsert in _fetch_entities) or somehow missing its ai_verdict
+        # column even though the cache has the result.
+        pre_cached_as_verdicts = [
+            {
+                "candidate": {
+                    "_entity_id": str(ext.id),
+                    "text":       ext.override_text or ext.text or "",
+                    "type":       ext.override_type or ext.type or "",
+                    "role":       ext.override_role or ext.role or "",
+                    "source":     ext.source or "",
+                },
+                "verdict":      cached_payload.get("verdict") or {},
+                "judge_id":     cached_payload.get("judge_id"),
+                "judged_at":    cached_payload.get("judged_at"),
+                "cache_key":    cached_payload.get("cache_key"),
+                "evaluator_id": cached_payload.get("evaluator"),
+                "confidence":   cached_payload.get("confidence"),
+                "record_id":    cached_payload.get("record_id") or ext.control_number or "",
+                "sub_type":     cached_payload.get("sub_type") or ext.type or "",
+                "from_inference_cache": True,
+            }
+            for ext, _rec, cached_payload in pre_cached
+        ]
+        all_verdicts_to_persist = pre_cached_as_verdicts + on_disk_verdicts
+        if all_verdicts_to_persist:
             try:
                 await _persist_ai_verdicts_to_entities(
                     run_id=run_id,
                     session_id=session_id,
-                    verdicts=on_disk_verdicts,
+                    verdicts=all_verdicts_to_persist,
                 )
             except Exception:
                 logger.exception("failed to persist ai verdicts to entities")
 
+        if on_disk_verdicts:
             # Write new verdicts to the shared inference cache.
             try:
                 await _write_ner_verdicts_to_cache(
@@ -326,9 +382,12 @@ async def _session_event_stream(
         end_ev = AgentEvent(
             type="session.end",
             payload={
-                "session_id": session_id,
-                "scope_size": len(entities),
-                "outcome":    "complete",
+                "session_id":    session_id,
+                "scope_size":    len(entities),
+                "cache_hits":    len(pre_cached),
+                "fresh_verdicts": len(on_disk_verdicts),
+                "uncached_skipped": len(uncached) if eval_agent_error else 0,
+                "outcome":       "partial" if eval_agent_error and uncached else "complete",
             },
         )
         persist_session_event(base, end_ev)
