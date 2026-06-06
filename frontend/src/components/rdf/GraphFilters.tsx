@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { GraphEdge, GraphNode } from "@/api/rdf";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
+import { useDebounce } from "@/hooks/useDebounce";
 
 import {
   emptyFilterState,
@@ -31,7 +32,6 @@ const NODE_TYPES = [
 ] as const;
 
 const PREDICATE_CHIP_LIMIT = 8;
-const SEARCH_DEBOUNCE_MS = 200;
 
 export interface GraphFiltersProps {
   nodes:        GraphNode[];
@@ -75,18 +75,18 @@ export function GraphFilters({
   visibleCount,
   totalCount,
 }: GraphFiltersProps) {
-  // Debounced local search input. Upstream state only updates after
-  // the user stops typing so the O(N+E) filter pass isn't fired
-  // every keystroke.
+  // Local draft keeps the input visually responsive on every keystroke.
+  // The debounced value feeds the upstream filter call so the O(N+E)
+  // pass only runs after the user pauses.
   const [searchDraft, setSearchDraft] = useState(state.query);
+  const debouncedSearch = useDebounce(searchDraft, 150);
+
   useEffect(() => {
-    if (searchDraft === state.query) return;
-    const h = window.setTimeout(() => {
-      onChange({ ...state, query: searchDraft });
-    }, SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(h);
+    onChange({ ...state, query: debouncedSearch });
+    // state intentionally omitted — react only to debounced value changes,
+    // not every render with a fresh state reference.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchDraft]);
+  }, [debouncedSearch]);
 
   // Keep the input synced if the parent resets ``state.query`` via
   // Clear-all.

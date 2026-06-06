@@ -6,8 +6,9 @@
  * Result: ``ActiveSets`` — two Sets of ids that the StageRdf canvas
  * uses to toggle a ``.dim`` class on cytoscape elements.
  *
- * Hot path is O(N + E). ``query`` is debounced upstream so this
- * memo only re-runs when filters change.
+ * Hot path is O(N + E). Stable edge/node-derived structures are
+ * memoized separately so filter-state changes do not trigger
+ * an adjacency or haystack rebuild.
  */
 
 import { useMemo } from "react";
@@ -85,9 +86,32 @@ interface UseGraphFiltersArgs {
 export function useGraphFilters({
   nodes, edges, state, shaclFocus, selectedId,
 }: UseGraphFiltersArgs): ActiveSets {
-  return useMemo(() => {
-    const adj = buildAdjacency(edges);
+  // Stable, edges-only derived structures — only rebuilt when the edge
+  // list itself changes, not on every filter-state update.
+  const adj = useMemo(() => buildAdjacency(edges), [edges]);
 
+  const edgeById = useMemo<Map<string, GraphEdge>>(() => {
+    const m = new Map<string, GraphEdge>();
+    for (const e of edges) m.set(e.id, e);
+    return m;
+  }, [edges]);
+
+  // Per-node haystack string for free-text search — built once per
+  // nodes change, not on every keypress.
+  const haystackById = useMemo<Map<string, string>>(() => {
+    const m = new Map<string, string>();
+    for (const n of nodes) {
+      m.set(
+        n.id,
+        [n.label, n.type, ...Object.values(n.properties ?? {}).flat()]
+          .join(" ")
+          .toLocaleLowerCase(),
+      );
+    }
+    return m;
+  }, [nodes]);
+
+  return useMemo(() => {
     // — 1. Search match — produces a set of nodeIds the query "touched".
     //
     // Search hits expand to edge endpoints too: typing "owner" matches
@@ -97,14 +121,8 @@ export function useGraphFilters({
     if (needle.length > 0) {
       searchNodeIds = new Set();
 
-      // Node label / type / property match
       for (const n of nodes) {
-        const hay = [
-          n.label,
-          n.type,
-          ...Object.values(n.properties ?? {}).flat(),
-        ].join(" ").toLocaleLowerCase();
-        if (hay.includes(needle)) searchNodeIds.add(n.id);
+        if (haystackById.get(n.id)?.includes(needle)) searchNodeIds.add(n.id);
       }
       // Edge predicate match expands to source/target
       for (const e of edges) {
@@ -155,9 +173,7 @@ export function useGraphFilters({
     const predicateActive = state.predicates.size > 0;
     const edgeIds = new Set<string>();
     for (const e of edges) {
-      // Edge must connect two surviving nodes.
       if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue;
-      // Predicate filter (OR within row)
       if (predicateActive) {
         const lbl = e.predicate_label || e.predicate || "";
         if (!state.predicates.has(lbl)) continue;
@@ -171,20 +187,17 @@ export function useGraphFilters({
     if (predicateActive) {
       const reached = new Set<string>();
       for (const id of edgeIds) {
-        const e = edges.find(x => x.id === id);
+        const e = edgeById.get(id);
         if (!e) continue;
         reached.add(e.source);
         reached.add(e.target);
       }
-      // But always keep the selected node.
       if (selectedId) reached.add(selectedId);
-      // Replace nodeIds with the orphan-filtered set.
       for (const id of [...nodeIds]) {
         if (!reached.has(id)) nodeIds.delete(id);
       }
     }
 
     return { nodeIds, edgeIds };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges, state, shaclFocus, selectedId]);
+  }, [nodes, edges, state, shaclFocus, selectedId, adj, edgeById, haystackById]);
 }

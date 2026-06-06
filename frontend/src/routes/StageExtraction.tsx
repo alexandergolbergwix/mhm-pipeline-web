@@ -15,7 +15,7 @@
  *   extraction.error         { message }
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
@@ -43,6 +43,30 @@ import { SectionImportButton } from "@/components/import/SectionImportButton";
 
 
 type Phase = "idle" | "running" | "complete" | "error";
+
+
+interface EntityTotals {
+  persons:  number;
+  prov:     number;
+  contents: number;
+  genres:   number;
+}
+
+const _ZERO_TOTALS: EntityTotals = { persons: 0, prov: 0, contents: 0, genres: 0 };
+
+function computeTotals(rows: ExtractionRecord[]): EntityTotals {
+  let persons = 0, prov = 0, contents = 0, genres = 0;
+  for (const r of rows) {
+    for (const e of r.entities ?? []) {
+      const src = String(e.source ?? "");
+      if      (src === "person_ner")     persons++;
+      else if (src === "provenance_ner") prov++;
+      else if (src === "contents_ner")   contents++;
+    }
+    genres += (r.ml_genres ?? []).length;
+  }
+  return { persons, prov, contents, genres };
+}
 
 
 type ModelRole   = "person" | "provenance" | "contents" | "genre";
@@ -112,6 +136,7 @@ export default function StageExtraction() {
   }, [statusStartedAt]);
   void statusTick; // dependency only — value isn't read directly
   const [records, setRecords] = useState<ExtractionRecord[]>([]);
+  const [entityTotals, setEntityTotals] = useState<EntityTotals>(_ZERO_TOTALS);
   const [total, setTotal] = useState(0);
   const [processed, setProcessed] = useState(0);
   const [log, setLog] = useState<string[]>([]);
@@ -202,6 +227,7 @@ export default function StageExtraction() {
             const rows = await Extraction.results(runId);
             if (cancelled) return;
             setRecords(rows);
+            setEntityTotals(computeTotals(rows));
             setProcessed(rows.length);
             setTotal(rows.length);
           } catch (e) {
@@ -242,6 +268,7 @@ export default function StageExtraction() {
     if (!runId || phase === "running") return;
     setError(null);
     setRecords([]);
+    setEntityTotals(_ZERO_TOTALS);
     setProcessed(0);
     setTotal(0);
     setLog([]);
@@ -266,6 +293,7 @@ export default function StageExtraction() {
       // Stream closed cleanly — pull persisted results to be safe.
       const rows = await Extraction.results(runId);
       setRecords(rows);
+      setEntityTotals(computeTotals(rows));
       setProcessed(rows.length);
       if (rows.length > 0 && total === 0) setTotal(rows.length);
       setPhase("complete");
@@ -362,19 +390,6 @@ export default function StageExtraction() {
 
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
-  const entityTotals = useMemo(() => {
-    let persons = 0, prov = 0, contents = 0, genres = 0;
-    for (const r of records) {
-      for (const e of r.entities ?? []) {
-        const src = String(e.source ?? "");
-        if (src === "person_ner")     persons++;
-        else if (src === "provenance_ner") prov++;
-        else if (src === "contents_ner")   contents++;
-      }
-      genres += (r.ml_genres ?? []).length;
-    }
-    return { persons, prov, contents, genres };
-  }, [records]);
 
   return (
     <Layout>
@@ -414,7 +429,10 @@ export default function StageExtraction() {
                     section="extraction"
                     runId={runId}
                     onComplete={() => {
-                      if (runId) Extraction.results(runId).then(setRecords).catch(() => null);
+                      if (runId) Extraction.results(runId).then((rows) => {
+                        setRecords(rows);
+                        setEntityTotals(computeTotals(rows));
+                      }).catch(() => null);
                     }}
                   />
                 </>
