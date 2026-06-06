@@ -15,7 +15,7 @@
  *   extraction.error         { message }
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
@@ -162,6 +162,36 @@ export default function StageExtraction() {
     active: verifyScope !== null,
   });
   const refreshEntities = approvalStore.refresh;
+
+  // Summary counts shown above the entity table. ``records`` (and its
+  // derived ``entityTotals``) come from ``ner_results.json`` on disk —
+  // which is wiped on every Heroku dyno restart (ephemeral filesystem).
+  // When that file is gone, ``records`` is empty but the entity table
+  // still loads from the durable ``extraction_approvals`` rows via
+  // ``approvalStore``. Derive the summary from that durable set in the
+  // fallback so the header doesn't read "0 records · 0 persons" while
+  // the table shows hundreds of rows. The live/fresh-complete path keeps
+  // using ``records`` so the counts track each SSE event immediately.
+  const displayTotals = useMemo<EntityTotals>(() => {
+    if (records.length > 0) return entityTotals;
+    const ents = approvalStore.entities;
+    if (ents.length === 0) return entityTotals;
+    let persons = 0, prov = 0, contents = 0, genres = 0;
+    for (const e of ents) {
+      if      (e.source === "person_ner")     persons++;
+      else if (e.source === "provenance_ner") prov++;
+      else if (e.source === "contents_ner")   contents++;
+      else if (e.source === "genre_ml")       genres++;
+    }
+    return { persons, prov, contents, genres };
+  }, [records.length, entityTotals, approvalStore.entities]);
+
+  const displayRecordCount = useMemo<number>(() => {
+    if (records.length > 0) return records.length;
+    const cns = new Set(approvalStore.entities.map((e) => e.control_number));
+    return cns.size;
+  }, [records.length, approvalStore.entities]);
+
   useEffect(() => { setSelectedIds(new Set()); }, [globalSearch]);
   // Mode is undefined → backend picks from its own EXTRACTION_MODE
   // env var (resolve_mode in extraction_backend.py). Used to be
@@ -466,11 +496,11 @@ export default function StageExtraction() {
               )}
               {phase === "complete" && (
                 <span className="muted text-sm">
-                  {records.length} record{records.length === 1 ? "" : "s"} ·{" "}
-                  {entityTotals.persons} persons ·{" "}
-                  {entityTotals.prov} provenance ·{" "}
-                  {entityTotals.contents} contents ·{" "}
-                  {entityTotals.genres} ML genre predictions
+                  {displayRecordCount} record{displayRecordCount === 1 ? "" : "s"} ·{" "}
+                  {displayTotals.persons} persons ·{" "}
+                  {displayTotals.prov} provenance ·{" "}
+                  {displayTotals.contents} contents ·{" "}
+                  {displayTotals.genres} ML genre predictions
                 </span>
               )}
             </div>
