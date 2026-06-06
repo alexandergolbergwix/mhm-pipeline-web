@@ -33,7 +33,6 @@ import {
 import { Runs } from "@/api/runs";
 import { useApprovalStore } from "@/hooks/useApprovalStore";
 import { EntityTable } from "@/components/extraction/EntityTable";
-import { EntityFilterChips } from "@/components/extraction/EntityFilterChips";
 import { EntityActionsBar } from "@/components/extraction/EntityActionsBar";
 import { EntityEditModal } from "@/components/extraction/EntityEditModal";
 import { AutoApproveRuleBuilder } from "@/components/extraction/AutoApproveRuleBuilder";
@@ -123,7 +122,9 @@ export default function StageExtraction() {
   // ─── AI Extraction review UI state (Rule W-16) ─────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [columnFilters, setColumnFilters] = useState<Record<string, Set<string>>>({});
-  const [filteredEntities, setFilteredEntities] = useState<Entity[]>([]);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [visibleEntities, setVisibleEntities] = useState<Entity[]>([]);
   const [editEntity, setEditEntity] = useState<Entity | null>(null);
   // The new EntityDetailDrawer takes the full Entity row; clicking a
   // table row, the 👁 button, OR the AI verdict pill opens it.
@@ -136,6 +137,7 @@ export default function StageExtraction() {
     active: verifyScope !== null,
   });
   const refreshEntities = approvalStore.refresh;
+  useEffect(() => { setSelectedIds(new Set()); }, [globalSearch]);
   // Mode is undefined → backend picks from its own EXTRACTION_MODE
   // env var (resolve_mode in extraction_backend.py). Used to be
   // hard-coded "hf-api" here, which overrode the backend's preference
@@ -567,12 +569,12 @@ export default function StageExtraction() {
 
             <EntityActionsBar
               totalCount={approvalStore.total || approvalStore.entities.length}
-              visibleCount={filteredEntities.length}
+              visibleCount={visibleCount}
               selectedIds={selectedIds}
-              visibleEntities={filteredEntities}
+              visibleEntities={visibleEntities}
               onSelectAllVisible={() => {
                 const next = new Set(selectedIds);
-                for (const e of filteredEntities) next.add(e.id);
+                for (const e of visibleEntities) next.add(e.id);
                 setSelectedIds(next);
               }}
               onApproveSelected={async () => {
@@ -598,15 +600,21 @@ export default function StageExtraction() {
               }}
             />
 
-            <EntityFilterChips
-              entities={approvalStore.entities}
-              onFilteredChange={setFilteredEntities}
-            />
+            <div className="glass px-3 py-2" data-testid="entity-search-bar">
+              <input
+                type="text"
+                placeholder="Search text or MS id…"
+                data-testid="entity-search"
+                value={globalSearch}
+                onChange={(e) => setGlobalSearch(e.target.value)}
+                className="input-glass h-8 w-full text-sm"
+              />
+            </div>
 
             <EntityTable
               runId={runId}
               projectId={projectId}
-              entities={filteredEntities}
+              entities={approvalStore.entities}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
               onEntityUpdated={() => { void refreshEntities(); }}
@@ -614,12 +622,16 @@ export default function StageExtraction() {
               onViewSource={setDetailEntity}
               onOpenVerdict={setDetailEntity}
               onOpenMarc={(cn) => {
-                // Open detail with the first entity from that record.
                 const first = approvalStore.entities.find((e) => e.control_number === cn);
                 if (first) setDetailEntity(first);
               }}
               columnFilters={columnFilters}
               onColumnFiltersChange={setColumnFilters}
+              globalSearch={globalSearch}
+              onVisibleCountChange={(count, ents) => {
+                setVisibleCount(count);
+                setVisibleEntities(ents);
+              }}
             />
           </section>
         )}

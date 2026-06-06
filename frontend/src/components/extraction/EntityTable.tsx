@@ -15,6 +15,7 @@ import {
   CSSProperties,
   MouseEvent as ReactMouseEvent,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -91,6 +92,8 @@ export interface EntityTableProps {
   onOpenVerdict?: (entity: Entity) => void;
   columnFilters: Record<string, Set<string>>;
   onColumnFiltersChange: (filters: Record<string, Set<string>>) => void;
+  onVisibleCountChange?: (count: number, entities: Entity[]) => void;
+  globalSearch?: string;
 }
 
 function confidenceBand(value: number | null): string {
@@ -161,7 +164,7 @@ export function EntityTable(props: EntityTableProps) {
   const {
     runId, projectId, entities, selectedIds, onSelectionChange,
     onEntityUpdated, onOpenEdit, onViewSource, onOpenMarc, onOpenVerdict,
-    columnFilters, onColumnFiltersChange,
+    columnFilters, onColumnFiltersChange, onVisibleCountChange, globalSearch,
   } = props;
 
   const [sort, setSort] = useState<SortState | null>(null);
@@ -178,17 +181,27 @@ export function EntityTable(props: EntityTableProps) {
 
   const filtered = useMemo(() => {
     let out = applyColumnFilters(entities, columnFilters);
-    for (const [col, needle] of Object.entries(textFilters)) {
-      const n = (needle ?? "").trim().toLocaleLowerCase();
-      if (!n) continue;
+    const needle = (globalSearch ?? "").trim().toLocaleLowerCase();
+    if (needle) {
       out = out.filter((e) =>
-        cellValueFor(e, col as ColumnKey).toLocaleLowerCase().includes(n),
+        e.text.toLocaleLowerCase().includes(needle) ||
+        e.control_number.toLocaleLowerCase().includes(needle),
+      );
+    }
+    for (const [col, n] of Object.entries(textFilters)) {
+      const needle2 = (n ?? "").trim().toLocaleLowerCase();
+      if (!needle2) continue;
+      out = out.filter((e) =>
+        cellValueFor(e, col as ColumnKey).toLocaleLowerCase().includes(needle2),
       );
     }
     return out;
-  }, [entities, columnFilters, textFilters]);
+  }, [entities, columnFilters, globalSearch, textFilters]);
   const display = useMemo(() => applySort(filtered, sort), [filtered, sort]);
 
+  useEffect(() => {
+    onVisibleCountChange?.(display.length, display);
+  }, [display, onVisibleCountChange]);
 
   const handleHeaderClick = useCallback((key: ColumnKey, sortable: boolean) => {
     if (!sortable) return;
@@ -393,29 +406,41 @@ export function EntityTable(props: EntityTableProps) {
             <div
               key={col.key}
               data-testid={`col-${col.key}`}
-              className={`cursor-${col.sortable ? "pointer" : "default"} select-none truncate ${filterActive ? "text-biu-sky" : ""}`}
-              onClick={() => handleHeaderClick(col.key, col.sortable)}
+              data-sort-direction={isSorted ? sort.direction : "none"}
+              className={`flex items-center justify-between gap-1 overflow-hidden ${filterActive ? "text-biu-sky" : ""}`}
               onContextMenu={(e) => handleHeaderContext(e, col.key, col.filterable)}
               title={col.filterable ? "Right-click to filter" : col.label}
             >
-              {col.label}{arrow}{filterActive ? " ▾" : ""}
+              <span
+                onClick={() => handleHeaderClick(col.key, col.sortable)}
+                className={`flex-1 ${col.sortable ? "cursor-pointer" : "cursor-default"} select-none truncate`}
+              >
+                {col.label}{arrow}
+              </span>
+              {col.filterable && (
+                <button
+                  type="button"
+                  data-testid={`filter-btn-${col.key}`}
+                  aria-label={`Filter ${col.label}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setPopup({column: col.key, x: rect.left, y: rect.bottom + 4});
+                  }}
+                  className={`shrink-0 h-5 w-5 rounded text-[11px] hover:bg-white/10 ${filterActive ? "text-biu-sky" : "muted"}`}
+                >▾</button>
+              )}
             </div>
           );
         })}
       </div>
-      {/* Inline per-column filter row. Free-text inputs for MS (the
-          control number) + Text (the entity surface form). Other
-          columns get a "▾" button that opens the same ColumnFilterPopup
-          the right-click would. Slim rounding (rounded-md = 6px) so
-          inputs don't look like pills overflowing their cells. */}
       <div
         className="sticky top-[42px] z-10 grid items-center gap-1 border-b border-white/10 bg-[rgba(16,24,36,0.85)] backdrop-blur px-2 py-1 text-xs"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         <span />
         {COLUMNS.map((col) => {
-          const isText = col.key === "control_number" || col.key === "text";
-          if (isText) {
+          if (col.key === "control_number" || col.key === "text") {
             return (
               <input
                 key={col.key}
@@ -423,29 +448,12 @@ export function EntityTable(props: EntityTableProps) {
                 placeholder={`filter ${col.label}…`}
                 value={textFilters[col.key] ?? ""}
                 onChange={(e) =>
-                  setTextFilters((prev) => ({ ...prev, [col.key]: e.target.value }))
+                  setTextFilters((prev) => ({...prev, [col.key]: e.target.value}))
                 }
                 aria-label={`filter ${col.label}`}
                 data-testid={`text-filter-${col.key}`}
                 className="h-6 w-full rounded-md border border-white/10 bg-black/30 px-2 text-[11px] text-ink outline-none focus:border-biu-sky"
               />
-            );
-          }
-          if (col.filterable) {
-            const active = (columnFilters[col.key]?.size ?? 0) > 0;
-            return (
-              <button
-                key={col.key}
-                type="button"
-                data-testid={`open-filter-${col.key}`}
-                title={`Filter ${col.label}`}
-                onClick={(e) =>
-                  setPopup({ column: col.key, x: e.clientX, y: e.clientY + 4 })
-                }
-                className={`h-6 truncate rounded-md border border-white/10 text-[10px] hover:border-biu-sky ${active ? "text-biu-sky border-biu-sky" : "muted"}`}
-              >
-                {active ? `${columnFilters[col.key]?.size}` : "▾"}
-              </button>
             );
           }
           return <span key={col.key} />;
