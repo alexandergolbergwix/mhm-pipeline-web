@@ -11,6 +11,11 @@
  *     after successful upload, error panel shows on failure.
  *
  * Sections covered: extraction (JSON + CSV), authority (JSON), rdf (TTL).
+ *
+ * Export downloads are now triggered via hidden-anchor navigation rather
+ * than fetch+blob.  Playwright intercepts these as download events, so
+ * assertions use page.waitForEvent('download') and check
+ * download.url() for the expected path + query params.
  */
 
 import {expect, test} from "@playwright/test";
@@ -18,14 +23,16 @@ import {TEST_RUN_ID, installExtractionMocks, makeMockState} from "./fixtures/ext
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/** Install a mock for a section export endpoint that captures requests. */
+/**
+ * Install a mock for a section export endpoint.
+ * Returns `Content-Disposition: attachment` so Playwright treats the
+ * anchor navigation as a download event.
+ */
 function mockExportEndpoint(
   page: import("@playwright/test").Page,
   section: string,
-  capturedRequests: string[],
 ) {
   return page.route(`**/api/runs/**/${section}/export*`, (route) => {
-    capturedRequests.push(route.request().url());
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -67,7 +74,6 @@ test.describe("SectionExportMenu", () => {
     await installExtractionMocks(page, state);
     await gotoExtraction(page);
     // The extraction page shows export/import after phase === "complete".
-    // Drive to complete by ensuring the status endpoint returns "complete".
     const trigger = page.getByTestId("section-export-menu-trigger");
     await expect(trigger).toBeVisible({timeout: 8000});
   });
@@ -95,16 +101,26 @@ test.describe("SectionExportMenu", () => {
   test("clicking JSON format fires the export endpoint", async ({page}) => {
     const state = makeMockState();
     await installExtractionMocks(page, state);
-    const captured: string[] = [];
-    await mockExportEndpoint(page, "extraction", captured);
+    await mockExportEndpoint(page, "extraction");
     await gotoExtraction(page);
 
     await page.getByTestId("section-export-menu-trigger").click();
-    await page.getByTestId("section-export-format-json").click();
-    // Dropdown should close after the request
+
+    // With anchor navigation the export triggers a browser download event.
+    // Capture it alongside the click so we don't miss it.
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByTestId("section-export-format-json").click(),
+    ]);
+
+    // Dropdown should close after the click
     await expect(page.getByTestId("section-export-menu-dropdown")).not.toBeVisible({timeout: 5000});
-    // Endpoint was called
-    expect(captured.some((u) => u.includes("/extraction/export"))).toBeTruthy();
+
+    // The download URL must point at the extraction export endpoint with
+    // JSON format.
+    const downloadUrl = download.url();
+    expect(downloadUrl).toContain("/extraction/export");
+    expect(downloadUrl).toContain("format=json");
   });
 
 });
@@ -126,11 +142,9 @@ test.describe("SectionImportButton", () => {
     await mockImportEndpoint(page, "extraction", {imported: 5, skipped: 1, errors: []});
     await gotoExtraction(page);
 
-    const trigger = page.getByTestId("section-import-trigger");
-    await expect(trigger).toBeVisible({timeout: 8000});
-
     // Simulate file upload by dispatching a change event on the hidden input.
     const fileInput = page.getByTestId("section-import-file-input");
+    await expect(fileInput).toBeAttached({timeout: 8000});
     await fileInput.setInputFiles({
       name: "data.json",
       mimeType: "application/json",
