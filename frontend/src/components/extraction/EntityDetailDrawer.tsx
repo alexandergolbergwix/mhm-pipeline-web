@@ -53,11 +53,13 @@ export interface EntityDetailDrawerProps {
   /** Optional callback to open the full edit modal (text/type/role
    *  side-by-side editor). */
   onOpenEdit?: (entity: Entity) => void;
+  /** Trigger AI verification scoped to this single entity. */
+  onVerifyEntity?: (entity: Entity) => void;
 }
 
 
 export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
-  const { runId, projectId, entity, onClose, onEntityChanged, onOpenEdit } = props;
+  const { runId, projectId, entity, onClose, onEntityChanged, onOpenEdit, onVerifyEntity } = props;
 
   const [marc, setMarc] = useState<MarcSource | null>(null);
   const [loading, setLoading] = useState(false);
@@ -204,6 +206,15 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
                     data-testid="detail-edit"
                     className="button-ghost h-7 px-3 text-xs">
               Edit text/type/role…
+            </button>
+          )}
+          {onVerifyEntity && (
+            <button type="button"
+                    disabled={busy}
+                    onClick={() => onVerifyEntity(entity)}
+                    data-testid="detail-verify-ai"
+                    className="button-ghost h-7 px-3 text-xs">
+              {entity.ai_verdict ? "Re-verify with AI" : "Verify with AI"}
             </button>
           )}
           <span className="muted text-[11px] ml-auto">
@@ -386,8 +397,7 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
       <section className="glass p-3" data-testid="card-ai-verdict">
         <div className="kicker">🤖 AI verification</div>
         <div className="muted text-[11px] mt-1">
-          Not yet judged. Open the AI verification modal to score this
-          entity (audit_ner_extraction action).
+          Not yet judged. Use the <strong className="text-ink">Verify with AI</strong> button above to score this entity.
         </div>
       </section>
     );
