@@ -9,6 +9,8 @@ export interface ResearchSummary {
   triples: number;
 }
 
+/** @deprecated Use CoOccurrenceGraph instead — the server now returns
+ *  a pre-aggregated graph rather than raw pairs. */
 export interface CoOccurrencePair {
   ms: string;
   work1: string;
@@ -17,11 +19,33 @@ export interface CoOccurrencePair {
   work2_label: string;
 }
 
+export interface CoOccurrenceNode {
+  id: string;
+  label: string;
+  degree: number;
+}
+
+export interface CoOccurrenceEdge {
+  work1: string;
+  work2: string;
+  shared_ms_count: number;
+  ms_list: string[];
+}
+
+export interface CoOccurrenceGraph {
+  nodes: CoOccurrenceNode[];
+  edges: CoOccurrenceEdge[];
+}
+
 export interface NetworkNode {
   id: string;
   label: string;
   role: "scribe" | "author" | "owner";
   ms_count: number;
+  /** Pre-computed spring-layout position (server-side networkx). */
+  x: number;
+  /** Pre-computed spring-layout position (server-side networkx). */
+  y: number;
 }
 
 export interface NetworkLink {
@@ -41,6 +65,7 @@ export interface OwnerChain {
   owners: {name: string; uri: string}[];
 }
 
+/** @deprecated The server now returns PlaceRow (grouped). */
 export interface GeoPoint {
   ms: string;
   ms_label: string;
@@ -51,12 +76,22 @@ export interface GeoPoint {
   type: "production" | "mentioned";
 }
 
+export interface PlaceRow {
+  place: string;
+  place_label: string;
+  lat: number | null;
+  lon: number | null;
+  type: "production" | "mentioned";
+  ms_count: number;
+  ms_labels: string[];
+}
+
 const base = (projectId: string) => `/projects/${projectId}/research`;
 
 export const researchApi = {
   summary:        (projectId: string) => api.get<ResearchSummary>(`${base(projectId)}/summary`),
-  coOccurrence:   (projectId: string) => api.get<CoOccurrencePair[]>(`${base(projectId)}/co-occurrence`),
+  coOccurrence:   (projectId: string) => api.get<CoOccurrenceGraph>(`${base(projectId)}/co-occurrence`),
   peopleNetwork:  (projectId: string) => api.get<PeopleNetwork>(`${base(projectId)}/people-network`),
   ownership:      (projectId: string) => api.get<OwnerChain[]>(`${base(projectId)}/ownership`),
-  geography:      (projectId: string) => api.get<GeoPoint[]>(`${base(projectId)}/geography`),
+  geography:      (projectId: string) => api.get<PlaceRow[]>(`${base(projectId)}/geography`),
 };

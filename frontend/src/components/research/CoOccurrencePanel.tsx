@@ -1,35 +1,13 @@
 /**
  * Co-occurrence panel: shows which works appear together in manuscripts.
  *
- * Builds an adjacency list from the pair list, then lets the user search
- * for a particular work and see all works that share a manuscript with it.
+ * The server returns a pre-aggregated graph {nodes, edges} so there is no
+ * client-side adjacency building or O(W×P) label scan.  The component only
+ * does O(nodes) search filtering (fast enough to stay on the browser).
  */
 import {useMemo, useState} from "react";
-import {researchApi, type CoOccurrencePair} from "@/api/research";
+import {researchApi, type CoOccurrenceGraph, type CoOccurrenceNode} from "@/api/research";
 import {PanelShell, useAsync} from "./_shared";
-
-interface AdjEntry {
-  work: string;
-  label: string;
-  mss: Set<string>;
-}
-
-function buildAdjacency(pairs: CoOccurrencePair[]): Map<string, Map<string, AdjEntry>> {
-  const adj = new Map<string, Map<string, AdjEntry>>();
-
-  const add = (from: string, _fromLabel: string, to: string, toLabel: string, ms: string) => {
-    if (!adj.has(from)) adj.set(from, new Map());
-    const nbrs = adj.get(from)!;
-    if (!nbrs.has(to)) nbrs.set(to, {work: to, label: toLabel, mss: new Set()});
-    nbrs.get(to)!.mss.add(ms);
-  };
-
-  for (const p of pairs) {
-    add(p.work1, p.work1_label, p.work2, p.work2_label, p.ms);
-    add(p.work2, p.work2_label, p.work1, p.work1_label, p.ms);
-  }
-  return adj;
-}
 
 function WorkBadge({label, count, onClick, selected}: {
   label: string;
@@ -53,53 +31,58 @@ function WorkBadge({label, count, onClick, selected}: {
 }
 
 export default function CoOccurrencePanel({projectId}: {projectId: string}) {
-  const {data, loading, error} = useAsync<CoOccurrencePair[]>(
+  const {data, loading, error} = useAsync<CoOccurrenceGraph>(
     () => researchApi.coOccurrence(projectId),
     [projectId],
   );
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
-  const adj = useMemo(() => (data ? buildAdjacency(data) : new Map()), [data]);
+  // Build a node-id → node lookup for neighbour resolution
+  const nodeById = useMemo(() => {
+    if (!data) return new Map<string, CoOccurrenceNode>();
+    return new Map(data.nodes.map((n) => [n.id, n]));
+  }, [data]);
 
-  // Build a sorted list of all unique works by their degree (distinct co-works)
-  const allWorks = useMemo(() => {
-    const entries: {id: string; label: string; degree: number}[] = [];
-    adj.forEach((nbrs, wid) => {
-      const label = data?.find((p) => p.work1 === wid)?.work1_label
-        ?? data?.find((p) => p.work2 === wid)?.work2_label
-        ?? wid;
-      entries.push({id: wid, label, degree: nbrs.size});
-    });
-    return entries.sort((a, b) => b.degree - a.degree);
-  }, [adj, data]);
-
+  // Client-side text search over the pre-sorted node list (O(nodes), fine)
   const filtered = useMemo(() => {
-    if (!query.trim()) return allWorks.slice(0, 80);
-    const q = query.toLowerCase();
-    return allWorks.filter((w) => w.label.toLowerCase().includes(q)).slice(0, 80);
-  }, [allWorks, query]);
+    if (!data) return [];
+    const q = query.toLowerCase().trim();
+    const nodes = q
+      ? data.nodes.filter((n) => n.label.toLowerCase().includes(q))
+      : data.nodes;
+    return nodes.slice(0, 80);
+  }, [data, query]);
 
+  // Edges adjacent to the selected work, sorted by shared_ms_count desc
   const neighbours = useMemo(() => {
-    if (!selected) return [];
-    const nbrs = adj.get(selected);
-    if (!nbrs) return [];
-    return [...nbrs.values()].sort((a, b) => b.mss.size - a.mss.size);
-  }, [selected, adj]);
+    if (!selected || !data) return [];
+    return data.edges
+      .filter((e) => e.work1 === selected || e.work2 === selected)
+      .map((e) => {
+        const otherId = e.work1 === selected ? e.work2 : e.work1;
+        const other = nodeById.get(otherId);
+        return {
+          work:            otherId,
+          label:           other?.label ?? otherId,
+          shared_ms_count: e.shared_ms_count,
+          ms_list:         e.ms_list,
+        };
+      })
+      .sort((a, b) => b.shared_ms_count - a.shared_ms_count);
+  }, [selected, data, nodeById]);
 
-  const selectedLabel = selected
-    ? (allWorks.find((w) => w.id === selected)?.label ?? selected)
-    : null;
+  const selectedLabel = selected ? (nodeById.get(selected)?.label ?? selected) : null;
 
   return (
     <PanelShell
       title="Textual Clusters"
       subtitle="Works that appear together in the same manuscripts"
       loading={loading}
-      empty={!loading && !data?.length}
+      empty={!loading && !data?.nodes.length}
     >
       {error && <p className="text-red-400 text-sm">{error}</p>}
-      {data && data.length > 0 && (
+      {data && data.nodes.length > 0 && (
         <div className="space-y-4">
           <input
             type="search"
@@ -144,7 +127,7 @@ export default function CoOccurrencePanel({projectId}: {projectId: string}) {
                         onClick={() => setSelected(n.work)}
                       >
                         <td className="py-1.5 pr-4 text-ink">{n.label}</td>
-                        <td className="py-1.5 tabular-nums text-biu-sky">{n.mss.size}</td>
+                        <td className="py-1.5 tabular-nums text-biu-sky">{n.shared_ms_count}</td>
                       </tr>
                     ))}
                   </tbody>

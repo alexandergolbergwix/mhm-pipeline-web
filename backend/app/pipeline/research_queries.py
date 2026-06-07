@@ -61,14 +61,21 @@ SELECT DISTINCT ?ms ?work WHERE {
 
 def query_co_occurrence(
     graph: rdflib.Graph,
-    max_pairs: int = 1000,
-) -> list[dict[str, Any]]:
-    """Pairs of works that appear together in the same manuscript.
+    max_edges: int = 1000,
+) -> dict[str, Any]:
+    """Works that appear together in the same manuscripts, pre-aggregated.
 
-    Returns list of {ms, work1, work1_label, work2, work2_label}.
+    Returns {
+        nodes: [{id, label, degree}],
+        edges: [{work1, work2, shared_ms_count, ms_list}],
+    }
+
+    ``degree`` is the number of distinct co-works for each work node.
+    ``shared_ms_count`` is the number of manuscripts both works appear in.
+    ``ms_list`` is the sorted list of those manuscript URIs (capped at 20).
     """
     if len(graph) == 0:
-        return []
+        return {"nodes": [], "edges": []}
     try:
         labels = _label_map(graph)
         ms_works: dict[str, list[str]] = {}
@@ -77,24 +84,51 @@ def query_co_occurrence(
             work = str(row.work)
             ms_works.setdefault(ms, []).append(work)
 
-        pairs: list[dict[str, Any]] = []
+        # Build adjacency: edge_key (frozenset) → set of manuscript URIs
+        edge_mss: dict[frozenset, set[str]] = {}
         for ms, works in ms_works.items():
-            works = list(dict.fromkeys(works))
-            for i in range(len(works)):
-                for j in range(i + 1, len(works)):
-                    pairs.append({
-                        "ms":          ms,
-                        "work1":       works[i],
-                        "work1_label": labels.get(works[i], works[i].rsplit("#", 1)[-1].rsplit("/", 1)[-1]),
-                        "work2":       works[j],
-                        "work2_label": labels.get(works[j], works[j].rsplit("#", 1)[-1].rsplit("/", 1)[-1]),
-                    })
-                    if len(pairs) >= max_pairs:
-                        return pairs
-        return pairs
+            deduped = list(dict.fromkeys(works))
+            for i in range(len(deduped)):
+                for j in range(i + 1, len(deduped)):
+                    key: frozenset = frozenset([deduped[i], deduped[j]])
+                    edge_mss.setdefault(key, set()).add(ms)
+
+        # Sort edges by descending shared_ms_count, then cap
+        sorted_edges = sorted(edge_mss.items(), key=lambda kv: len(kv[1]), reverse=True)[:max_edges]
+
+        # Compute per-node degree from the retained edges
+        degree: dict[str, int] = {}
+        for key, _ in sorted_edges:
+            w1, w2 = tuple(key)
+            degree[w1] = degree.get(w1, 0) + 1
+            degree[w2] = degree.get(w2, 0) + 1
+
+        def _short(uri: str) -> str:
+            return uri.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+
+        nodes = [
+            {
+                "id":     wid,
+                "label":  labels.get(wid, _short(wid)),
+                "degree": deg,
+            }
+            for wid, deg in sorted(degree.items(), key=lambda kv: -kv[1])
+        ]
+
+        edges = []
+        for key, mss in sorted_edges:
+            w1, w2 = tuple(key)
+            edges.append({
+                "work1":           w1,
+                "work2":           w2,
+                "shared_ms_count": len(mss),
+                "ms_list":         sorted(mss)[:20],
+            })
+
+        return {"nodes": nodes, "edges": edges}
     except Exception as exc:
         logger.warning("co_occurrence query failed: %s", exc)
-        return []
+        return {"nodes": [], "edges": []}
 
 
 # ── People network ─────────────────────────────────────────────────────
@@ -113,14 +147,26 @@ SELECT DISTINCT ?ms ?person ?role WHERE {
 def query_people_network(
     graph: rdflib.Graph,
     max_nodes: int = 400,
+    layout_scale: float = 800.0,
+    layout_seed: int = 42,
 ) -> dict[str, Any]:
     """Social network of persons linked to the same manuscripts.
 
-    Returns {nodes: [{id, label, role, ms_count}], links: [{source, target, ms}]}.
+    Returns {
+        nodes: [{id, label, role, ms_count, x, y}],
+        links: [{source, target, ms}],
+    }.
+
+    ``x`` / ``y`` are pre-computed spring-layout positions (networkx,
+    same approach as the RDF graph endpoint) so the browser can use them
+    as fixed initial coordinates instead of running a blocking D3
+    simulation on mount.  The frontend still owns drag/zoom interactivity.
     """
     if len(graph) == 0:
         return {"nodes": [], "links": []}
     try:
+        import networkx as nx  # noqa: PLC0415 — lazy import, mirrors rdf_build.py
+
         labels = _label_map(graph)
 
         # person → {role, set of manuscripts}
@@ -149,23 +195,13 @@ def query_people_network(
         )[:max_nodes]
         included = {pid for pid, _ in sorted_persons}
 
-        nodes = [
-            {
-                "id":       pid,
-                "label":    labels.get(pid, pid.rsplit("#", 1)[-1].rsplit("/", 1)[-1]),
-                "role":     info["role"],
-                "ms_count": len(info["mss"]),
-            }
-            for pid, info in sorted_persons
-        ]
-
         seen_edges: set[frozenset[str]] = set()
         links: list[dict[str, str]] = []
         for ms, persons in ms_persons.items():
             persons_in = [p for p in persons if p in included]
             for i in range(len(persons_in)):
                 for j in range(i + 1, len(persons_in)):
-                    key = frozenset([persons_in[i], persons_in[j]])
+                    key: frozenset = frozenset([persons_in[i], persons_in[j]])
                     if key not in seen_edges:
                         seen_edges.add(key)
                         links.append({
@@ -173,6 +209,34 @@ def query_people_network(
                             "target": persons_in[j],
                             "ms":     ms,
                         })
+
+        # Server-side spring layout — mirrors rdf_build.compute_layout
+        g_nx = nx.Graph()
+        for pid, _ in sorted_persons:
+            g_nx.add_node(pid)
+        for lnk in links:
+            g_nx.add_edge(lnk["source"], lnk["target"])
+
+        n = len(sorted_persons)
+        pos: dict[str, tuple[float, float]] = nx.spring_layout(
+            g_nx,
+            scale=layout_scale,
+            seed=layout_seed,
+            iterations=60,
+            k=1.2 / max(1.0, n ** 0.5),
+        ) if n > 0 else {}
+
+        nodes = [
+            {
+                "id":       pid,
+                "label":    labels.get(pid, pid.rsplit("#", 1)[-1].rsplit("/", 1)[-1]),
+                "role":     info["role"],
+                "ms_count": len(info["mss"]),
+                "x":        float(pos[pid][0]) if pid in pos else 0.0,
+                "y":        float(pos[pid][1]) if pid in pos else 0.0,
+            }
+            for pid, info in sorted_persons
+        ]
 
         return {"nodes": nodes, "links": links}
     except Exception as exc:
@@ -253,7 +317,13 @@ SELECT DISTINCT ?place ?lat ?lon WHERE {
 def query_geography(graph: rdflib.Graph) -> list[dict[str, Any]]:
     """Place associations for each manuscript with optional coordinates.
 
-    Returns [{ms, ms_label, place, place_label, lat, lon, type}].
+    Returns one row **per place** (not per ms×place pair):
+    [{place, place_label, lat, lon, type, ms_count, ms_labels}].
+
+    The frontend can filter by ``type`` and search on ``place_label``
+    without any aggregation work.  ``type`` is the most-common type
+    for the place when a place appears in both categories (rare); in
+    practice this is always consistent.
     """
     if len(graph) == 0:
         return []
@@ -271,26 +341,52 @@ def query_geography(graph: rdflib.Graph) -> list[dict[str, Any]]:
         except Exception:
             pass
 
-        result: list[dict[str, Any]] = []
-        seen: set[tuple[str, str, str]] = set()
+        # Aggregate: place → {place_label, lat, lon, type, ms URIs set, ms_labels list}
+        place_map: dict[str, dict[str, Any]] = {}
+        seen_ms_place: set[tuple[str, str, str]] = set()
+
+        def _short_place(uri: str) -> str:
+            return uri.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+
         for row in graph.query(_GEO_Q, initNs=_INIT_NS):
             ms    = str(row.ms)
             place = str(row.place)
             ptype = str(row.type)
-            key   = (ms, place, ptype)
-            if key in seen:
+            triple_key = (ms, place, ptype)
+            if triple_key in seen_ms_place:
                 continue
-            seen.add(key)
+            seen_ms_place.add(triple_key)
+
+            ms_label = labels.get(ms, ms.rsplit("/", 1)[-1])
             lat, lon = coords.get(place, (None, None))  # type: ignore[assignment]
+
+            if place not in place_map:
+                place_map[place] = {
+                    "place":       place,
+                    "place_label": labels.get(place, _short_place(place)),
+                    "lat":         lat,
+                    "lon":         lon,
+                    "type":        ptype,
+                    "_ms_set":     set(),
+                    "ms_labels":   [],
+                }
+            entry = place_map[place]
+            if ms not in entry["_ms_set"]:
+                entry["_ms_set"].add(ms)
+                entry["ms_labels"].append(ms_label)
+
+        result = []
+        for entry in place_map.values():
             result.append({
-                "ms":          ms,
-                "ms_label":    labels.get(ms, ms.rsplit("/", 1)[-1]),
-                "place":       place,
-                "place_label": labels.get(place, place.rsplit("#", 1)[-1].rsplit("/", 1)[-1]),
-                "lat":         lat,
-                "lon":         lon,
-                "type":        ptype,
+                "place":       entry["place"],
+                "place_label": entry["place_label"],
+                "lat":         entry["lat"],
+                "lon":         entry["lon"],
+                "type":        entry["type"],
+                "ms_count":    len(entry["_ms_set"]),
+                "ms_labels":   sorted(entry["ms_labels"]),
             })
+        result.sort(key=lambda r: -r["ms_count"])
         return result
     except Exception as exc:
         logger.warning("geography query failed: %s", exc)

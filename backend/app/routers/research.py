@@ -96,8 +96,13 @@ async def research_co_occurrence(
     project_id: uuid.UUID,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> list[dict[str, Any]]:
-    """Pairs of works that appear together in at least one manuscript."""
+) -> dict[str, Any]:
+    """Pre-aggregated work co-occurrence graph.
+
+    Returns {nodes: [{id, label, degree}], edges: [{work1, work2,
+    shared_ms_count, ms_list}]}.  The frontend renders this directly
+    without any further adjacency-building work.
+    """
     graph = await _load_or_404(project_id, auth, db)
     return await asyncio.to_thread(query_co_occurrence, graph)
 

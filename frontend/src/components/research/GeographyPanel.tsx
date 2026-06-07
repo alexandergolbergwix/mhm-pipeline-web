@@ -1,50 +1,23 @@
 /**
  * Geography Panel — shows manuscript production and mentioned places.
  *
+ * The server returns pre-grouped place rows {place, place_label, lat, lon,
+ * type, ms_count, ms_labels} so there is no client-side aggregation.
+ * Client-side type/text search is O(places) and stays on the browser.
+ *
  * Uses an <iframe> embedding an OpenStreetMap search for single-place
  * drill-down, and a sortable summary table for all places.  This
  * approach requires no additional npm packages (leaflet is not
  * installed in this project).
  */
 import {useMemo, useState} from "react";
-import {researchApi, type GeoPoint} from "@/api/research";
+import {researchApi, type PlaceRow} from "@/api/research";
 import {PanelShell, useAsync} from "./_shared";
 
 const TYPE_COLOR: Record<string, string> = {
   production: "#38bdf8",
   mentioned:  "#fb923c",
 };
-
-interface PlaceRow {
-  place: string;
-  place_label: string;
-  lat: number | null;
-  lon: number | null;
-  type: string;
-  ms_count: number;
-  ms_labels: string[];
-}
-
-function groupByPlace(data: GeoPoint[]): PlaceRow[] {
-  const map = new Map<string, PlaceRow>();
-  for (const p of data) {
-    if (!map.has(p.place)) {
-      map.set(p.place, {
-        place:       p.place,
-        place_label: p.place_label,
-        lat:         p.lat,
-        lon:         p.lon,
-        type:        p.type,
-        ms_count:    0,
-        ms_labels:   [],
-      });
-    }
-    const row = map.get(p.place)!;
-    row.ms_count++;
-    if (!row.ms_labels.includes(p.ms_label)) row.ms_labels.push(p.ms_label);
-  }
-  return [...map.values()].sort((a, b) => b.ms_count - a.ms_count);
-}
 
 function MiniMap({lat, lon, label}: {lat: number; lon: number; label: string}) {
   const src = `https://www.openstreetmap.org/export/embed.html?bbox=${lon - 1},${lat - 1},${lon + 1},${lat + 1}&layer=mapnik&marker=${lat},${lon}`;
@@ -65,7 +38,7 @@ function MiniMap({lat, lon, label}: {lat: number; lon: number; label: string}) {
 }
 
 export default function GeographyPanel({projectId}: {projectId: string}) {
-  const {data, loading, error} = useAsync<GeoPoint[]>(
+  const {data, loading, error} = useAsync<PlaceRow[]>(
     () => researchApi.geography(projectId),
     [projectId],
   );
@@ -74,15 +47,13 @@ export default function GeographyPanel({projectId}: {projectId: string}) {
   const [search, setSearch]         = useState("");
   const [selected, setSelected]     = useState<PlaceRow | null>(null);
 
+  // Client-side filter — O(places), fine since grouping already done server-side
   const places = useMemo(() => {
     if (!data) return [];
-    const filtered = data.filter(
-      (p) => typeFilter === "all" || p.type === typeFilter,
-    );
-    return groupByPlace(filtered).filter(
+    return data.filter(
       (p) =>
-        search === "" ||
-        p.place_label.toLowerCase().includes(search.toLowerCase()),
+        (typeFilter === "all" || p.type === typeFilter) &&
+        (search === "" || p.place_label.toLowerCase().includes(search.toLowerCase())),
     );
   }, [data, typeFilter, search]);
 

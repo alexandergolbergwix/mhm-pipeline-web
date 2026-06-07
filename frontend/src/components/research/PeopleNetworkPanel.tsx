@@ -4,9 +4,10 @@
  * Nodes are sized by ms_count (number of manuscripts they appear in).
  * Edges appear when two people share at least one manuscript.
  *
- * Uses D3 v7 simulation running inside a useEffect; the SVG is rendered
- * by React once and D3 updates node/link positions directly via refs to
- * avoid React re-render overhead during simulation ticks.
+ * The server returns pre-computed spring-layout {x, y} positions (networkx)
+ * so the blocking O(n²) simulation is skipped on mount.  Nodes are placed
+ * at the server positions and given a short low-alpha settle to remove any
+ * residual overlaps.  Drag and zoom remain fully client-side (D3).
  */
 import {useEffect, useRef, useMemo} from "react";
 import * as d3 from "d3";
@@ -34,10 +35,20 @@ function NetworkGraph({network}: {network: PeopleNetwork}) {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
+  // Initialise nodes from server positions; D3 will update x/y in place.
   const {nodes, links}: {nodes: SimNode[]; links: SimLink[]} = useMemo(() => {
     const nodeMap = new Map<string, SimNode>();
     for (const n of network.nodes) {
-      nodeMap.set(n.id, {...n, x: undefined, y: undefined, vx: 0, vy: 0});
+      nodeMap.set(n.id, {
+        ...n,
+        // Seed with server-side spring-layout coordinates.
+        // D3 uses x/y as mutable state; we do NOT set fx/fy (fixed)
+        // so the short settle pass can still resolve collisions.
+        x: n.x,
+        y: n.y,
+        vx: 0,
+        vy: 0,
+      });
     }
     const simLinks: SimLink[] = network.links
       .filter((l) => nodeMap.has(l.source) && nodeMap.has(l.target))
@@ -53,12 +64,21 @@ function NetworkGraph({network}: {network: PeopleNetwork}) {
 
     const radius = (n: SimNode) => 4 + Math.sqrt(n.ms_count) * 3;
 
+    // Scale server positions (range ~[-800,800]) to SVG viewport
+    const scaleX = d3.scaleLinear().domain([-800, 800]).range([40, W - 40]);
+    const scaleY = d3.scaleLinear().domain([-800, 800]).range([40, H - 40]);
+    for (const n of nodes) {
+      if (n.x != null) n.x = scaleX(n.x);
+      if (n.y != null) n.y = scaleY(n.y);
+    }
+
+    // Short settle: high alphaDecay so it stops fast; collision only so
+    // the global topology (from the server) is preserved.
     const simulation = d3.forceSimulation<SimNode>(nodes)
-      .force("link",    d3.forceLink<SimNode, SimLink>(links).id((d) => d.id).distance(80))
-      .force("charge",  d3.forceManyBody().strength(-120))
-      .force("center",  d3.forceCenter(W / 2, H / 2))
+      .force("link",    d3.forceLink<SimNode, SimLink>(links).id((d) => d.id).distance(80).strength(0.05))
       .force("collide", d3.forceCollide<SimNode>((d) => radius(d) + 4))
-      .alphaDecay(0.04);
+      .alphaDecay(0.15)   // converges in ~30 ticks instead of ~300
+      .alpha(0.2);        // start low so positions barely shift
 
     const svg = d3.select(el);
     svg.selectAll("*").remove();
