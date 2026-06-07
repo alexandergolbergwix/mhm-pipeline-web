@@ -40,18 +40,30 @@
  *       judged_at: ISO8601,
  *       error: null
  *     }
+ *
+ * Search is server-side when `runId` is provided (debounced 300ms).
+ * Filter-pill counts come from the server's `counts` field on the
+ * first (unfiltered) load, then stay consistent with the server page.
+ * Export triggers a server streaming download (no heap serialisation).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { AgentEvent } from "@/api/aiVerify";
+import { AiVerify, type AgentEvent } from "@/api/aiVerify";
+import { useDebounce } from "@/hooks/useDebounce";
+import { downloadFromUrl } from "@/utils/download";
 
 
 export interface VerdictsTableProps {
-  /** Map keyed by entity-id → the verdict event. */
+  /** Map keyed by entity-id → the verdict event (live SSE path). */
   verdicts: Record<string, AgentEvent>;
   /** Called when the user clicks the record_id (opens MARC popup). */
   onOpenMarc?: (controlNumber: string) => void;
+  /**
+   * When provided, search and export are server-side (debounced).
+   * When omitted, falls back to client-side filter over `verdicts`.
+   */
+  runId?: string;
 }
 
 
@@ -59,15 +71,57 @@ type Overall = "pass" | "full" | "partial" | "fail" | "abstain" | "unknown";
 
 
 export function VerdictsTable(props: VerdictsTableProps) {
-  const { verdicts, onOpenMarc } = props;
+  const { verdicts, onOpenMarc, runId } = props;
 
   const rows = useMemo(() => Object.values(verdicts), [verdicts]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [overallFilter, setOverallFilter] = useState<Overall | "all">("all");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Server-side verdict page (only used when `runId` is available).
+  const [serverRows, setServerRows] = useState<AgentEvent[] | null>(null);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverCounts, setServerCounts] = useState<Record<string, number> | null>(null);
+  const [serverLoading, setServerLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const useServer = runId !== undefined;
+
+  // Fetch from server whenever search/filter changes (server path).
+  useEffect(() => {
+    if (!useServer) return;
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setServerLoading(true);
+    const params: Parameters<typeof AiVerify.results>[1] = { limit: 200, offset: 0 };
+    if (debouncedSearch.trim()) params.q = debouncedSearch.trim();
+    if (overallFilter !== "all") params.overall = overallFilter as "pass" | "partial" | "fail" | "abstain";
+    AiVerify.results(runId, params)
+      .then((page) => {
+        if (ctrl.signal.aborted) return;
+        setServerRows(page.verdicts);
+        setServerTotal(page.total);
+        setServerCounts(page.counts);
+      })
+      .catch((err: unknown) => {
+        if (ctrl.signal.aborted) return;
+        console.warn("VerdictsTable: server fetch failed, falling back to client filter", err);
+        setServerRows(null);
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setServerLoading(false);
+      });
+    return () => ctrl.abort();
+  }, [useServer, runId, debouncedSearch, overallFilter]);
 
   // Compute counts for the filter pills.
+  // When server: use server counts (from unfiltered server response if available,
+  // or from the current page counts as a best-effort).
+  // When client: scan in-memory rows.
   const counts = useMemo(() => {
+    if (useServer && serverCounts) return serverCounts;
     const c: Record<string, number> = {
       pass: 0, partial: 0, fail: 0, abstain: 0, unknown: 0,
     };
@@ -76,10 +130,11 @@ export function VerdictsTable(props: VerdictsTableProps) {
       c[o === "full" ? "pass" : o] = (c[o === "full" ? "pass" : o] ?? 0) + 1;
     }
     return c;
-  }, [rows]);
+  }, [rows, useServer, serverCounts]);
 
-  // Apply filter + search.
-  const visible = useMemo(() => {
+  // Apply client-side filter only when NOT using server path.
+  const clientVisible = useMemo(() => {
+    if (useServer) return [];
     const q = search.trim().toLowerCase();
     return rows.filter((ev) => {
       if (overallFilter !== "all") {
@@ -97,7 +152,9 @@ export function VerdictsTable(props: VerdictsTableProps) {
       }
       return true;
     });
-  }, [rows, overallFilter, search]);
+  }, [rows, overallFilter, search, useServer]);
+
+  const visible = useServer ? (serverRows ?? rows) : clientVisible;
 
   function toggleRow(key: string) {
     setExpanded((prev) => {
@@ -107,22 +164,56 @@ export function VerdictsTable(props: VerdictsTableProps) {
     });
   }
 
+  function handleExportCsv() {
+    if (useServer && runId) {
+      const p: Record<string, string> = {};
+      if (debouncedSearch.trim()) p.q = debouncedSearch.trim();
+      if (overallFilter !== "all") p.overall = overallFilter;
+      downloadFromUrl(
+        AiVerify.exportUrl(runId, "csv", p as Parameters<typeof AiVerify.exportUrl>[2]),
+        `run-${runId}-verdicts.csv`,
+      );
+    } else {
+      copyAsCsv(visible);
+    }
+  }
+
+  function handleExportJson() {
+    if (useServer && runId) {
+      const p: Record<string, string> = {};
+      if (debouncedSearch.trim()) p.q = debouncedSearch.trim();
+      if (overallFilter !== "all") p.overall = overallFilter;
+      downloadFromUrl(
+        AiVerify.exportUrl(runId, "json", p as Parameters<typeof AiVerify.exportUrl>[2]),
+        `run-${runId}-verdicts.json`,
+      );
+    } else {
+      copyAsJson(visible);
+    }
+  }
+
+  const displayTotal = useServer ? serverTotal : rows.length;
+  const displayVisible = useServer ? serverTotal : visible.length;
+
   return (
     <section className="glass p-3 space-y-3">
       <div className="flex items-baseline justify-between flex-wrap gap-2">
         <div className="kicker">
-          Verdicts ({visible.length}{rows.length !== visible.length && ` of ${rows.length}`})
+          Verdicts ({displayVisible}{displayTotal !== displayVisible && ` of ${displayTotal}`})
+          {useServer && serverLoading && (
+            <span className="muted text-[10px] ml-2">searching…</span>
+          )}
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          <FilterChip label="all" count={rows.length}
+          <FilterChip label="all" count={displayTotal}
             active={overallFilter === "all"} onClick={() => setOverallFilter("all")} />
-          <FilterChip label="pass" count={counts.pass} tone="biu-sky"
+          <FilterChip label="pass" count={counts.pass ?? 0} tone="biu-sky"
             active={overallFilter === "pass"} onClick={() => setOverallFilter("pass")} />
-          <FilterChip label="partial" count={counts.partial} tone="yellow-300"
+          <FilterChip label="partial" count={counts.partial ?? 0} tone="yellow-300"
             active={overallFilter === "partial"} onClick={() => setOverallFilter("partial")} />
-          <FilterChip label="fail" count={counts.fail} tone="red-300"
+          <FilterChip label="fail" count={counts.fail ?? 0} tone="red-300"
             active={overallFilter === "fail"} onClick={() => setOverallFilter("fail")} />
-          <FilterChip label="abstain" count={counts.abstain} tone="muted"
+          <FilterChip label="abstain" count={counts.abstain ?? 0} tone="muted"
             active={overallFilter === "abstain"} onClick={() => setOverallFilter("abstain")} />
         </div>
       </div>
@@ -131,12 +222,12 @@ export function VerdictsTable(props: VerdictsTableProps) {
         <input value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Search entity / record / reasoning…"
           className="input-glass !py-1 text-xs flex-1" />
-        <button onClick={() => copyAsCsv(visible)}
-          className="button-ghost !py-1 text-xs" title="Copy filtered verdicts as CSV (research format)">
+        <button onClick={handleExportCsv}
+          className="button-ghost !py-1 text-xs" title={useServer ? "Download filtered verdicts as CSV" : "Copy filtered verdicts as CSV (research format)"}>
           ⎘ CSV
         </button>
-        <button onClick={() => copyAsJson(visible)}
-          className="button-ghost !py-1 text-xs" title="Copy filtered verdicts as JSON (full schema)">
+        <button onClick={handleExportJson}
+          className="button-ghost !py-1 text-xs" title={useServer ? "Download filtered verdicts as JSON" : "Copy filtered verdicts as JSON (full schema)"}>
           ⎘ JSON
         </button>
       </div>
@@ -161,7 +252,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
             {visible.length === 0 && (
               <tr>
                 <td colSpan={10} className="py-6 text-center muted italic">
-                  {rows.length === 0 ? "Waiting for verdicts…" : "No verdicts match the filter."}
+                  {rows.length === 0 && !serverLoading ? "Waiting for verdicts…" : serverLoading ? "Searching…" : "No verdicts match the filter."}
                 </td>
               </tr>
             )}
@@ -482,6 +573,8 @@ function fmtJudgedAt(at: unknown): string {
   }
 }
 
+
+// Client-side fallback serialisers (used when runId is not provided).
 
 function copyAsCsv(rows: AgentEvent[]) {
   const headers = [

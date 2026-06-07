@@ -561,6 +561,107 @@ class TestRevert:
         # cookie and assert 403 here.
 
 
+# ── /events (legacy project-event log) ────────────────────────────────
+
+
+class TestListEvents:
+    @pytest.mark.asyncio
+    async def test_events_ordered_newest_first(
+        self, db_session, project_ctx,
+    ) -> None:
+        """GET /projects/{id}/events returns newest-first (created_at DESC)."""
+        from app.models.event import ProjectEvent
+
+        project_id = project_ctx["project_id"]
+        user = project_ctx["user"]
+        client = project_ctx["client"]
+
+        t0 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        for i in range(3):
+            db_session.add(ProjectEvent(
+                project_id=project_id,
+                actor_id=user.id,
+                type="match.approved",
+                payload={"i": i},
+                created_at=t0 + timedelta(hours=i),
+            ))
+        await db_session.commit()
+
+        r = await client.get(f"/api/projects/{project_id}/events")
+        assert r.status_code == 200, r.text
+        rows = r.json()
+        assert len(rows) >= 3
+        # created_at should be non-ascending (newest first).
+        timestamps = [row["created_at"] for row in rows[:3]]
+        assert timestamps == sorted(timestamps, reverse=True), timestamps
+
+    @pytest.mark.asyncio
+    async def test_events_before_cursor_paginates(
+        self, db_session, project_ctx,
+    ) -> None:
+        """?before= returns only events created before that timestamp."""
+        from app.models.event import ProjectEvent
+
+        project_id = project_ctx["project_id"]
+        user = project_ctx["user"]
+        client = project_ctx["client"]
+
+        t0 = datetime(2026, 2, 1, 0, 0, 0, tzinfo=timezone.utc)
+        events = []
+        for i in range(5):
+            ev = ProjectEvent(
+                project_id=project_id,
+                actor_id=user.id,
+                type="match.approved",
+                payload={"i": i},
+                created_at=t0 + timedelta(hours=i),
+            )
+            db_session.add(ev)
+            events.append(ev)
+        await db_session.commit()
+
+        # Use the 3rd event (index 2, hour=2) as the cursor.
+        cursor = (t0 + timedelta(hours=2)).isoformat()
+        r = await client.get(
+            f"/api/projects/{project_id}/events",
+            params={"before": cursor, "limit": 50},
+        )
+        assert r.status_code == 200, r.text
+        rows = r.json()
+        # Should return only events at hour=0 and hour=1 (before hour=2).
+        returned_types = [row["created_at"] for row in rows]
+        assert all(ts < cursor for ts in returned_types), returned_types
+
+    @pytest.mark.asyncio
+    async def test_events_limit_respected(
+        self, db_session, project_ctx,
+    ) -> None:
+        from app.models.event import ProjectEvent
+
+        project_id = project_ctx["project_id"]
+        user = project_ctx["user"]
+        client = project_ctx["client"]
+
+        t0 = datetime(2026, 3, 1, 0, 0, 0, tzinfo=timezone.utc)
+        for i in range(10):
+            db_session.add(ProjectEvent(
+                project_id=project_id,
+                actor_id=user.id,
+                type="match.approved",
+                payload={"i": i},
+                created_at=t0 + timedelta(hours=i),
+            ))
+        await db_session.commit()
+
+        r = await client.get(
+            f"/api/projects/{project_id}/events",
+            params={"limit": 3},
+        )
+        assert r.status_code == 200, r.text
+        rows = r.json()
+        assert len(rows) == 3
+
+
 # ── /history/snapshots ─────────────────────────────────────────────────
 
 

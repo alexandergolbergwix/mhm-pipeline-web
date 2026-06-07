@@ -133,6 +133,27 @@ function parseFrame(frame: string): AgentEvent | null {
 }
 
 
+export interface VerdictsPage {
+  total: number;
+  offset: number;
+  limit: number;
+  verdicts: AgentEvent[];
+  counts: {
+    pass: number;
+    partial: number;
+    fail: number;
+    abstain: number;
+    unknown: number;
+  };
+}
+
+export interface VerdictsParams {
+  q?: string;
+  overall?: "pass" | "partial" | "fail" | "abstain";
+  limit?: number;
+  offset?: number;
+}
+
 export const AiVerify = {
   listActions: (runId: string, scopeKind: ScopeKind) =>
     api.get<AgentActionMeta[]>(
@@ -142,4 +163,25 @@ export const AiVerify = {
     api.get<VerifySessionListing[]>(`/runs/${runId}/ai-verify/sessions`),
   session: (runId: string, sessionId: string) =>
     api.get<VerifySession>(`/runs/${runId}/ai-verify/sessions/${sessionId}`),
+  /** Server-side filtered + paginated verdict results. */
+  results: (runId: string, params?: VerdictsParams): Promise<VerdictsPage> => {
+    const segments: string[] = [];
+    if (params?.q) segments.push(`q=${encodeURIComponent(params.q)}`);
+    if (params?.overall) segments.push(`overall=${params.overall}`);
+    if (params?.limit !== undefined) segments.push(`limit=${params.limit}`);
+    if (params?.offset !== undefined) segments.push(`offset=${params.offset}`);
+    const qs = segments.length > 0 ? `?${segments.join("&")}` : "";
+    return api.get<VerdictsPage>(`/runs/${runId}/ai-verify/results${qs}`);
+  },
+  /** Trigger a browser download of all filtered verdicts (CSV or JSON). */
+  exportUrl: (
+    runId: string,
+    format: "csv" | "json",
+    params?: Pick<VerdictsParams, "q" | "overall">,
+  ): string => {
+    const segments: string[] = [`format=${format}`];
+    if (params?.q) segments.push(`q=${encodeURIComponent(params.q)}`);
+    if (params?.overall) segments.push(`overall=${params.overall}`);
+    return `/api/runs/${runId}/ai-verify/export?${segments.join("&")}`;
+  },
 };

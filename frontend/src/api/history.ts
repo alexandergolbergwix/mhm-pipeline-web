@@ -43,9 +43,21 @@ export interface Snapshot {
   created_at: string;
 }
 
+/** Cursor params for `/events` pagination (newest-first). */
+export interface EventsParams {
+  limit?: number;
+  /** ISO-8601: only return events with created_at < before. */
+  before?: string;
+}
+
 export const History = {
-  events: (projectId: string): Promise<ProjectEvent[]> =>
-    api.get<ProjectEvent[]>(`/projects/${projectId}/events`),
+  events: (projectId: string, params?: EventsParams): Promise<ProjectEvent[]> => {
+    const segments: string[] = [];
+    if (params?.limit !== undefined) segments.push(`limit=${params.limit}`);
+    if (params?.before) segments.push(`before=${encodeURIComponent(params.before)}`);
+    const qs = segments.length > 0 ? `?${segments.join("&")}` : "";
+    return api.get<ProjectEvent[]>(`/projects/${projectId}/events${qs}`);
+  },
   snapshots: (projectId: string): Promise<Snapshot[]> =>
     api.get<Snapshot[]>(`/projects/${projectId}/snapshots`),
   tagSnapshot: (projectId: string, eventId: string, name: string): Promise<Snapshot> =>

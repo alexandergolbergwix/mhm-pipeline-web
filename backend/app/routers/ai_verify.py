@@ -16,6 +16,7 @@ registry in ``app.pipeline.agent_actions``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -466,6 +467,165 @@ async def list_run_sessions(
     return list_sessions(str(run_id))
 
 
+# ── GET /runs/{run_id}/ai-verify/results ─────────────────────────────
+
+
+@router.get("/runs/{run_id}/ai-verify/results")
+async def list_run_verdicts_endpoint(
+    run_id: uuid.UUID,
+    q: str | None = Query(
+        default=None,
+        max_length=256,
+        description=(
+            "Substring search over candidate name, record_id, evaluator_id, "
+            "sub_type, and reasoning (case-insensitive)."
+        ),
+    ),
+    overall: str | None = Query(
+        default=None,
+        pattern=r"^(pass|full|partial|fail|abstain)$",
+        description="Filter by verdict overall value.",
+    ),
+    limit: int = Query(default=200, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    """Return filtered + paginated verdicts for a run.
+
+    Reads the on-disk ``results.jsonl`` from the per-run state dir and
+    applies ``q`` (substring) and ``overall`` filters server-side so
+    the browser never receives megabytes of LLM reasoning prose for a
+    simple keyword search.
+
+    Returns:
+
+    .. code-block:: json
+
+        {
+          "total": <int>,          // total after filters
+          "offset": <int>,
+          "limit": <int>,
+          "verdicts": [<AgentEvent>, ...],  // page
+          "counts": {               // over the whole filtered set
+            "pass": 0, "partial": 0, "fail": 0, "abstain": 0, "unknown": 0
+          }
+        }
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+
+    all_verdicts = await asyncio.to_thread(_collect_run_verdicts, str(run_id))
+
+    # Server-side filter.
+    filtered = _filter_verdicts(all_verdicts, q=q, overall=overall)
+
+    counts = _count_by_overall(filtered)
+    page = filtered[offset : offset + limit]
+
+    return {
+        "total":    len(filtered),
+        "offset":   offset,
+        "limit":    limit,
+        "verdicts": page,
+        "counts":   counts,
+    }
+
+
+# ── GET /runs/{run_id}/ai-verify/export ───────────────────────────────
+
+
+@router.get("/runs/{run_id}/ai-verify/export")
+async def export_run_verdicts(
+    run_id: uuid.UUID,
+    format: str = Query(default="json", pattern="^(json|csv)$"),
+    q: str | None = Query(default=None, max_length=256),
+    overall: str | None = Query(
+        default=None, pattern=r"^(pass|full|partial|fail|abstain)$",
+    ),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Download all filtered verdicts as CSV or JSON.
+
+    Mirrors the section-export pattern: runs the same server-side
+    filter as ``/results`` and streams the output with a
+    ``Content-Disposition: attachment`` header so the browser saves
+    the file without loading it into the JS heap.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+
+    all_verdicts = await asyncio.to_thread(_collect_run_verdicts, str(run_id))
+    filtered = _filter_verdicts(all_verdicts, q=q, overall=overall)
+
+    suffix = f"run-{run_id}-ai-verify"
+    if format == "csv":
+        import io  # noqa: PLC0415
+        import csv as _csv  # noqa: PLC0415
+
+        def _csv_gen():
+            buf = io.StringIO()
+            writer = _csv.writer(buf)
+            headers = [
+                "record_id", "evaluator_id", "sub_type", "candidate",
+                "overall", "name_ok", "type_ok", "role_ok",
+                "judge_id", "judged_at", "cache_key", "reasoning",
+            ]
+            writer.writerow(headers)
+            yield buf.getvalue()
+            for ev in filtered:
+                buf = io.StringIO()
+                writer = _csv.writer(buf)
+                cand = (ev.get("candidate") or {}) if isinstance(ev, dict) else {}
+                v = (ev.get("verdict") or {}) if isinstance(ev, dict) else {}
+                writer.writerow([
+                    str(ev.get("record_id") or ""),
+                    str(ev.get("evaluator_id") or ""),
+                    str(ev.get("sub_type") or ""),
+                    str(
+                        cand.get("person") or cand.get("text") or
+                        cand.get("entity_text") or cand.get("name") or ""
+                        if isinstance(cand, dict) else ""
+                    ),
+                    str(v.get("overall") or "" if isinstance(v, dict) else ""),
+                    str(v.get("name_ok") or "" if isinstance(v, dict) else ""),
+                    str(v.get("type_ok") or "" if isinstance(v, dict) else ""),
+                    str(v.get("role_ok") or "" if isinstance(v, dict) else ""),
+                    str(ev.get("judge_id") or ""),
+                    str(ev.get("judged_at") or ""),
+                    str(ev.get("cache_key") or ""),
+                    str(v.get("reasoning") or "" if isinstance(v, dict) else ""),
+                ])
+                yield buf.getvalue()
+
+        return StreamingResponse(
+            _csv_gen(),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{suffix}.csv"',
+            },
+        )
+
+    import json as _json  # noqa: PLC0415
+
+    def _json_gen():
+        yield '{"run_id":' + _json.dumps(str(run_id)) + ',"verdicts":['
+        first = True
+        for ev in filtered:
+            if not first:
+                yield ","
+            first = False
+            yield _json.dumps(ev, ensure_ascii=False)
+        yield "]}"
+
+    return StreamingResponse(
+        _json_gen(),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{suffix}.json"',
+        },
+    )
+
+
 # ── GET /runs/{run_id}/ai-verify/sessions/{session_id} ────────────────
 
 
@@ -590,3 +750,83 @@ async def _resolve_gemini_key(
     except Exception as exc:  # noqa: BLE001
         logger.warning("could not unwrap stored Gemini key: %s", exc)
     return os.environ.get("GEMINI_API_KEY")
+
+
+# ── Verdict helpers (results + export) ────────────────────────────────
+
+
+def _collect_run_verdicts(run_id: str) -> list[dict[str, Any]]:
+    """Collect all verdicts on disk for a run (authority verify path).
+
+    Reads ``results.jsonl`` from the per-run state dir without
+    locking so it's safe to call concurrently with a live SSE stream
+    (the worst case is a partial last line which is silently skipped
+    by ``read_run_verdicts``'s JSON decoder).
+
+    Returns an empty list when the eval-agent root is not present
+    (Heroku dyno without local eval-agent) — no verdicts were produced
+    on disk in that case (they came from the inference cache and were
+    serialised as SSE events only, not written to disk by this path).
+    """
+    try:
+        eval_root = locate_eval_agent()
+    except FileNotFoundError:
+        return []
+    state_dir = eval_root / "state" / "ai-verify-sessions" / run_id
+    return read_run_verdicts(state_dir)
+
+
+def _filter_verdicts(
+    verdicts: list[dict[str, Any]],
+    *,
+    q: str | None,
+    overall: str | None,
+) -> list[dict[str, Any]]:
+    """Apply ``q`` (full-text substring) and ``overall`` filters."""
+    result = verdicts
+    if overall:
+        _norm = overall.lower()
+        def _matches_overall(ev: dict[str, Any]) -> bool:
+            v = (ev.get("verdict") or {}) if isinstance(ev, dict) else {}
+            raw = str(v.get("overall") or "").lower() if isinstance(v, dict) else ""
+            # treat "full" and "pass" as the same bucket (mirrors frontend)
+            if _norm == "pass":
+                return raw in ("pass", "full")
+            return raw == _norm
+        result = [ev for ev in result if _matches_overall(ev)]
+    if q:
+        needle = q.strip().lower()
+        def _matches_q(ev: dict[str, Any]) -> bool:
+            if not isinstance(ev, dict):
+                return False
+            cand = ev.get("candidate") or {}
+            v = ev.get("verdict") or {}
+            parts = [
+                str(cand.get("person") or cand.get("text") or
+                    cand.get("entity_text") or cand.get("name") or ""),
+                str(ev.get("record_id") or ""),
+                str(ev.get("evaluator_id") or ""),
+                str(ev.get("sub_type") or ""),
+                str(v.get("reasoning") or "" if isinstance(v, dict) else ""),
+            ]
+            return needle in " ".join(parts).lower()
+        result = [ev for ev in result if _matches_q(ev)]
+    return result
+
+
+def _count_by_overall(verdicts: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {
+        "pass": 0, "partial": 0, "fail": 0, "abstain": 0, "unknown": 0,
+    }
+    for ev in verdicts:
+        if not isinstance(ev, dict):
+            continue
+        v = ev.get("verdict") or {}
+        raw = str(v.get("overall") or "").lower() if isinstance(v, dict) else ""
+        if raw in ("pass", "full"):
+            counts["pass"] += 1
+        elif raw in ("partial", "fail", "abstain"):
+            counts[raw] += 1
+        else:
+            counts["unknown"] += 1
+    return counts

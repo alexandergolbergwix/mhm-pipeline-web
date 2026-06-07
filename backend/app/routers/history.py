@@ -102,15 +102,22 @@ class RestoreResponse(BaseModel):
 async def list_events(
     ctx: ProjectContext = Depends(require_viewer),
     db: AsyncSession = Depends(get_session),
-    limit: int = 200,
+    limit: int = Query(default=50, ge=1, le=1000),
+    before: datetime | None = Query(
+        default=None,
+        description="ISO-8601 cursor: return only events created before this timestamp (exclusive).",
+    ),
 ) -> list[EventResponse]:
+    stmt = (
+        select(ProjectEvent)
+        .where(ProjectEvent.project_id == ctx.project.id)
+        .order_by(desc(ProjectEvent.created_at))
+        .limit(min(max(limit, 1), 1000))
+    )
+    if before is not None:
+        stmt = stmt.where(ProjectEvent.created_at < before)
     rows = (
-        await db.execute(
-            select(ProjectEvent)
-            .where(ProjectEvent.project_id == ctx.project.id)
-            .order_by(desc(ProjectEvent.created_at))
-            .limit(min(max(limit, 1), 1000))
-        )
+        await db.execute(stmt)
     ).scalars().all()
     actor_ids = {e.actor_id for e in rows if e.actor_id is not None}
     names: dict[uuid.UUID, str] = {}

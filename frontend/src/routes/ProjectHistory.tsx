@@ -20,25 +20,62 @@ const FRIENDLY: Record<string, string> = {
   "snapshot.restored":    "Restored from snapshot",
 };
 
+const PAGE_SIZE = 50;
+
 export default function ProjectHistory() {
   const { projectId } = useParams<{ projectId: string }>();
   const [events, setEvents] = useState<ProjectEvent[] | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyEvent, setBusyEvent] = useState<string | null>(null);
+  // Cursor for "Load more" — the oldest event's created_at on the current page.
+  const [beforeCursor, setBeforeCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  async function fetchPage(before?: string, append = false) {
+    if (!projectId) return;
+    try {
+      const page = await History.events(projectId, { limit: PAGE_SIZE, before });
+      setHasMore(page.length === PAGE_SIZE);
+      if (append) {
+        setEvents((prev) => [...(prev ?? []), ...page]);
+      } else {
+        setEvents(page);
+      }
+      if (page.length > 0) {
+        setBeforeCursor(page[page.length - 1].created_at);
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+    }
+  }
 
   async function refresh() {
     if (!projectId) return;
     try {
-      setEvents(await History.events(projectId));
+      // Reset to first page on refresh.
+      setBeforeCursor(null);
+      await fetchPage(undefined, false);
       setSnapshots(await History.snapshots(projectId));
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     }
   }
+
   useEffect(() => { void refresh(); }, [projectId]);
 
   useProjectEvents(projectId, () => { void refresh(); });
+
+  async function loadMore() {
+    if (!beforeCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      await fetchPage(beforeCursor, true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   if (!projectId) return null;
 
@@ -144,6 +181,18 @@ export default function ProjectHistory() {
               </li>
             ))}
           </ol>
+          {hasMore && (
+            <div className="pt-2 text-center">
+              <button
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                className="button-ghost text-xs"
+                data-testid="load-more-events"
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
         </section>
       </div>
     </Layout>

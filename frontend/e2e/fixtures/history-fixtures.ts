@@ -91,23 +91,23 @@ export function makeEventRow(overrides: Partial<EventRow> = {}): EventRow {
 
 /**
  * Canonical 3-event timeline:
- *   rev 1 — create
+ *   rev 3 — patch (override_role="CENSOR")   ← newest first (server contract)
  *   rev 2 — patch (approved=true)
- *   rev 3 — patch (override_role="CENSOR")
+ *   rev 1 — create
  *
- * Newest-first ordering is the HistoryTimeline contract; we return
- * the rows in chronological order and let the component sort.
+ * The server guarantees ORDER BY rev_no DESC; HistoryTimeline no
+ * longer client-sorts, so the mock must mirror that contract.
  */
 export function makeEventSet(): EventRow[] {
   return [
     makeEventRow({
-      id: "event-rev-1",
-      rev_no: 1,
-      parent_event_id: null,
-      op: "create",
+      id: "event-rev-3",
+      rev_no: 3,
+      parent_event_id: "event-rev-2",
+      op: "patch",
       actor_email: "admin@example.org",
-      message: "created from MARC upload",
-      created_at: "2026-05-30T10:00:00Z",
+      message: "override role to CENSOR",
+      created_at: "2026-06-01T09:00:00Z",
     }),
     makeEventRow({
       id: "event-rev-2",
@@ -119,13 +119,13 @@ export function makeEventSet(): EventRow[] {
       created_at: "2026-05-31T14:00:00Z",
     }),
     makeEventRow({
-      id: "event-rev-3",
-      rev_no: 3,
-      parent_event_id: "event-rev-2",
-      op: "patch",
+      id: "event-rev-1",
+      rev_no: 1,
+      parent_event_id: null,
+      op: "create",
       actor_email: "admin@example.org",
-      message: "override role to CENSOR",
-      created_at: "2026-06-01T09:00:00Z",
+      message: "created from MARC upload",
+      created_at: "2026-05-30T10:00:00Z",
     }),
   ];
 }
@@ -286,9 +286,9 @@ export async function installHistoryMocks(
     );
     const newRevNo = maxRev + 1;
     const newEventId = `event-revert-${newRevNo}`;
-    // Append a synthetic revert event so a subsequent timeline
-    // GET reflects the new row.
-    state.events.push(
+    // Prepend a synthetic revert event so a subsequent timeline
+    // GET reflects the new row at the front (newest-first contract).
+    state.events.unshift(
       makeEventRow({
         id: newEventId,
         rev_no: newRevNo,

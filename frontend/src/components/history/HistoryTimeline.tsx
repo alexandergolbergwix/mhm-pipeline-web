@@ -19,7 +19,7 @@
  *   compilable even if that file lands a beat after this one.
  */
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 
 import { ApiError } from "@/api/client";
 import {
@@ -210,13 +210,11 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
     }
   }, [projectId, entityType, entityId]);
 
-  // Newest-first order. The API contract leaves ordering unspecified;
-  // we sort defensively so the UI is deterministic regardless of
-  // backend pagination quirks.
-  const orderedEvents = useMemo(
-    () => [...events].sort((a, b) => b.rev_no - a.rev_no),
-    [events],
-  );
+  // The /history endpoint guarantees ORDER BY rev_no DESC server-side
+  // (confirmed in history.py::list_history). Consume directly without
+  // a client-side sort; remove the defensive copy that scanned O(N)
+  // on every render.
+  const orderedEvents = events;
 
   const renderRow = (row: EntityEventRow) => {
     const badge = OP_BADGE[row.op];
