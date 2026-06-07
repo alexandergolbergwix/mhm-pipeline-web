@@ -36,9 +36,23 @@ export interface ApprovalStoreState {
   entities:       Entity[];
   total:          number;
   approvedCount:  number;
+  /** Distinct control numbers across the full run (server aggregate). */
+  recordCount:    number;
+  /** Per-source entity counts across the full run (server aggregate),
+   *  e.g. {person_ner: 40, provenance_ner: 12, ...}. */
+  sourceCounts:   Record<string, number>;
   loading:        boolean;
   error:          string | null;
   refresh:        () => Promise<void>;
+}
+
+
+interface EntitiesPayload {
+  entities:       Entity[];
+  total:          number;
+  approvedCount:  number;
+  recordCount:    number;
+  sourceCounts:   Record<string, number>;
 }
 
 
@@ -53,20 +67,42 @@ export interface UseApprovalStoreOptions {
 }
 
 
-/** Backend response shape — list of Entity rows. The endpoint will
- *  also start returning a `total` / `approved` count once the
- *  table-half agent ships, but until then we derive both from
- *  the array length and an in-place reduce. */
-async function listEntities(runId: string): Promise<Entity[]> {
-  // Defensive: the backend may either return a bare list or an
-  // object with `{entities: [...]}`. Accept both. The table-half
-  // agent will pin one shape; until then we tolerate both.
-  const raw = await api.get<Entity[] | { entities: Entity[] }>(
+interface RawEntitiesResponse {
+  entities?:       Entity[];
+  total?:          number;
+  approved_count?: number;
+  record_count?:   number;
+  source_counts?:  Record<string, number>;
+}
+
+/** Fetch the run's entities + run-level aggregates. The backend returns
+ *  `{entities, total, approved_count, record_count, source_counts}`; we
+ *  still tolerate a bare list (older mocks) and derive the aggregates
+ *  from the array in that case. */
+async function listEntities(runId: string): Promise<EntitiesPayload> {
+  const raw = await api.get<Entity[] | RawEntitiesResponse>(
     `/runs/${runId}/extraction/entities`,
   );
-  if (Array.isArray(raw)) return raw;
-  if (raw && Array.isArray(raw.entities)) return raw.entities;
-  return [];
+  const entities = Array.isArray(raw) ? raw : (raw.entities ?? []);
+  const obj = Array.isArray(raw) ? null : raw;
+  const approvedCount = obj?.approved_count
+    ?? entities.reduce((acc, e) => (e.approved ? acc + 1 : acc), 0);
+  const sourceCounts = obj?.source_counts ?? deriveSourceCounts(entities);
+  const recordCount = obj?.record_count
+    ?? new Set(entities.map((e) => e.control_number)).size;
+  return {
+    entities,
+    total: obj?.total ?? entities.length,
+    approvedCount,
+    recordCount,
+    sourceCounts,
+  };
+}
+
+function deriveSourceCounts(entities: Entity[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const e of entities) out[e.source] = (out[e.source] ?? 0) + 1;
+  return out;
 }
 
 
@@ -81,6 +117,9 @@ export function useApprovalStore(
   } = opts;
 
   const [entities, setEntities] = useState<Entity[]>([]);
+  const [meta, setMeta] = useState<Omit<EntitiesPayload, "entities">>({
+    total: 0, approvedCount: 0, recordCount: 0, sourceCounts: {},
+  });
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
 
@@ -97,8 +136,9 @@ export function useApprovalStore(
     inFlight.current = true;
     setLoading(true);
     try {
-      const list = await listEntities(runId);
-      setEntities(list);
+      const { entities: rows, ...rest } = await listEntities(runId);
+      setEntities(rows);
+      setMeta(rest);
       setError(null);
     } catch (e) {
       setError((e as Error).message || "Failed to load entities");
@@ -142,15 +182,12 @@ export function useApprovalStore(
     };
   }, [runId, active, pollIntervalMs, idleIntervalMs, fetchOnce]);
 
-  const approvedCount = entities.reduce(
-    (acc, e) => (e.approved ? acc + 1 : acc),
-    0,
-  );
-
   return {
     entities,
-    total:         entities.length,
-    approvedCount,
+    total:         meta.total,
+    approvedCount: meta.approvedCount,
+    recordCount:   meta.recordCount,
+    sourceCounts:  meta.sourceCounts,
     loading,
     error,
     refresh,

@@ -98,6 +98,14 @@ class ExtractionApproval(Base):
         DateTime(timezone=True), nullable=True,
     )
 
+    # ── MARC grounding classification (snapshot) ──────────────────────
+    # ``MarcStructuredIndex.classify(...)`` result: "grounded" |
+    # "wrong_field" | "novel" | "unknown". Computed once at stream-end in
+    # ``_bulk_persist_entities`` and read straight from the row by
+    # ``list_entities`` so the entities GET no longer rebuilds the full
+    # MARC index from every RunRecord on every poll (Rule W-16 §10).
+    exists_in:      Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
     )

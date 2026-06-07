@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from cryptography.exceptions import InvalidTag
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -345,6 +345,25 @@ async def _bulk_persist_entities(
     flat = _flatten_records(results)
     if not flat:
         return
+
+    # Build the MARC grounding index ONCE here (stream-end) and snapshot
+    # each entity's classification into the row, so list_entities never
+    # rebuilds it on every poll (Rule W-16 §10). Deterministic for a given
+    # (entity text, MARC record), so a snapshot is safe.
+    marc_rows = (
+        await db.execute(select(RunRecord).where(RunRecord.run_id == run_id))
+    ).scalars().all()
+    marc_index = MarcStructuredIndex.from_records(
+        dict(r.marc or {}) for r in marc_rows
+    )
+
+    def _exists_in(ent: dict) -> str:
+        candidate_type = ent.get("type") or ent.get("role") or ent.get("source")
+        return marc_index.classify(
+            ent["control_number"], ent["text"],
+            candidate_type=str(candidate_type) if candidate_type else None,
+        )
+
     rows = [
         {
             "run_id":           run_id,
@@ -358,6 +377,7 @@ async def _bulk_persist_entities(
             "confidence":       ent.get("confidence"),
             "model_confidence": ent.get("model_confidence"),
             "approved":         False,
+            "exists_in":        _exists_in(ent),
         }
         for ent in flat
     ]
@@ -371,6 +391,7 @@ async def _bulk_persist_entities(
             "role":             stmt.excluded.role,
             "confidence":       stmt.excluded.confidence,
             "model_confidence": stmt.excluded.model_confidence,
+            "exists_in":        stmt.excluded.exists_in,
         },
     )
     await db.execute(stmt)
@@ -612,15 +633,38 @@ def _flatten_records(records: list[dict]) -> list[dict]:
 @router.get("/runs/{run_id}/extraction/entities")
 async def list_entities(
     run_id: uuid.UUID,
+    source:      str | None  = Query(None),
+    type_filter: str | None  = Query(None, alias="type"),
+    role_filter: str | None  = Query(None, alias="role"),
+    approved:    bool | None  = Query(None),
+    search:      str | None  = Query(None),
+    sort_by:     str | None  = Query(None),
+    sort_dir:    str          = Query("asc"),
+    page:        int | None   = Query(None, ge=1),
+    page_size:   int | None   = Query(None, ge=1, le=2000),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> list[dict]:
-    """Return every extracted entity for this run, joined with the
-    curator's approval / override / AI-verdict state.
+) -> dict:
+    """Return extracted entities for this run, joined with curator
+    approval / override / AI-verdict state, plus run-level aggregates.
 
-    One row per (control_number, source, text, start, end). Fast enough
-    for typical run sizes (≤ a few thousand rows); the frontend filters
-    + sorts client-side.
+    Response shape::
+
+        {entities, total, approved_count, record_count, source_counts,
+         page, page_size}
+
+    ``total`` is the count AFTER the optional filters (for pagination);
+    ``approved_count`` / ``record_count`` / ``source_counts`` are over the
+    full unfiltered run so the header summary always shows run totals.
+
+    The ``source`` / ``type`` / ``role`` / ``approved`` / ``search``
+    filters, ``sort_by`` + ``sort_dir``, and ``page`` + ``page_size`` are
+    all OPTIONAL — with none supplied the endpoint returns every entity
+    (the historical behaviour the entity table relies on).
+
+    ``exists_in`` (MARC grounding) is read straight from the row — it was
+    snapshotted once at stream-end by ``_bulk_persist_entities`` — so this
+    GET no longer rebuilds the full ``MarcStructuredIndex`` on every poll.
     """
     await _lookup_run_with_access(db, run_id, auth, write=False)
 
@@ -637,7 +681,7 @@ async def list_entities(
 
     if not path.exists():
         if not db_rows:
-            return []
+            return _empty_entities_response(page, page_size)
         flat = [
             {
                 "id":               _entity_id(
@@ -673,27 +717,11 @@ async def list_entities(
         for r in db_rows
     }
 
-    # 3. Build a request-scoped MARC index so each entity gets a cheap
-    #    novelty/grounding classification (Rule W-16 / Wave 3 of the
-    #    AI Extraction review-UI plan).
-    marc_rows = (
-        await db.execute(
-            select(RunRecord).where(RunRecord.run_id == run_id)
-        )
-    ).scalars().all()
-    marc_index = MarcStructuredIndex.from_records(
-        dict(r.marc or {}) for r in marc_rows
-    )
-
-    # 4. Merge.
+    # 3. Merge. ``exists_in`` comes straight from the snapshotted row — no
+    #    per-poll MARC re-index (Rule W-16 §10).
     out: list[dict] = []
     for ent in flat:
         a = approvals.get(ent["id"])
-        candidate_type = ent.get("type") or ent.get("role") or ent.get("source")
-        exists_in = marc_index.classify(
-            ent["control_number"], ent["text"],
-            candidate_type=str(candidate_type) if candidate_type else None,
-        )
         eff_type = (a.override_type if a and a.override_type else ent["type"])
         eff_role = (a.override_role if a and a.override_role else ent["role"])
         eff_text = (a.override_text if a and a.override_text else ent["text"])
@@ -712,9 +740,84 @@ async def list_entities(
             "text":             eff_text,
             "ai_verdict":       (a.ai_verdict if a else None),
             "ai_verdict_at":    (a.ai_verdict_at.isoformat() if a and a.ai_verdict_at else None),
-            "exists_in":        exists_in,
+            "exists_in":        (a.exists_in if a and a.exists_in else "unknown"),
         })
+
+    # 4. Run-level aggregates (over the FULL set, before filtering) so the
+    #    header summary reflects the whole run regardless of any filter.
+    approved_count = sum(1 for e in out if e["approved"])
+    record_count = len({e["control_number"] for e in out})
+    source_counts: dict[str, int] = {}
+    for e in out:
+        src = str(e.get("source") or "")
+        source_counts[src] = source_counts.get(src, 0) + 1
+
+    # 5. Optional server-side filter / sort / paginate.
+    rows = _filter_entities(
+        out, source=source, type_filter=type_filter, role_filter=role_filter,
+        approved=approved, search=search,
+    )
+    rows = _sort_entities(rows, sort_by=sort_by, sort_dir=sort_dir)
+    total = len(rows)
+    if page is not None and page_size is not None:
+        start = (page - 1) * page_size
+        rows = rows[start:start + page_size]
+
+    return {
+        "entities":       rows,
+        "total":          total,
+        "approved_count": approved_count,
+        "record_count":   record_count,
+        "source_counts":  source_counts,
+        "page":           page,
+        "page_size":      page_size,
+    }
+
+
+def _empty_entities_response(page: int | None, page_size: int | None) -> dict:
+    return {
+        "entities": [], "total": 0, "approved_count": 0,
+        "record_count": 0, "source_counts": {},
+        "page": page, "page_size": page_size,
+    }
+
+
+def _filter_entities(
+    rows: list[dict], *, source: str | None, type_filter: str | None,
+    role_filter: str | None, approved: bool | None, search: str | None,
+) -> list[dict]:
+    out = rows
+    if source:
+        out = [e for e in out if e.get("source") == source]
+    if type_filter:
+        out = [e for e in out if (e.get("effective_type") or e.get("type")) == type_filter]
+    if role_filter:
+        out = [e for e in out if (e.get("effective_role") or e.get("role")) == role_filter]
+    if approved is not None:
+        out = [e for e in out if bool(e.get("approved")) == approved]
+    if search:
+        needle = search.strip().lower()
+        if needle:
+            out = [
+                e for e in out
+                if needle in str(e.get("text") or "").lower()
+                or needle in str(e.get("control_number") or "").lower()
+            ]
     return out
+
+
+def _sort_entities(rows: list[dict], *, sort_by: str | None, sort_dir: str) -> list[dict]:
+    if not sort_by:
+        return rows
+    reverse = sort_dir == "desc"
+    numeric = sort_by in ("confidence", "model_confidence")
+    if numeric:
+        return sorted(rows, key=lambda e: (e.get(sort_by) is None, e.get(sort_by) or 0.0), reverse=reverse)
+    return sorted(
+        rows,
+        key=lambda e: (e.get(sort_by) is None, str(e.get(sort_by) or "").lower()),
+        reverse=reverse,
+    )
 
 
 # ── GET /runs/{run_id}/extraction/marc-source/{control_number} ────────

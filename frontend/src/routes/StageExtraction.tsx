@@ -168,29 +168,26 @@ export default function StageExtraction() {
   // which is wiped on every Heroku dyno restart (ephemeral filesystem).
   // When that file is gone, ``records`` is empty but the entity table
   // still loads from the durable ``extraction_approvals`` rows via
-  // ``approvalStore``. Derive the summary from that durable set in the
-  // fallback so the header doesn't read "0 records · 0 persons" while
-  // the table shows hundreds of rows. The live/fresh-complete path keeps
-  // using ``records`` so the counts track each SSE event immediately.
+  // ``approvalStore``, which now carries server-computed run aggregates
+  // (``sourceCounts`` / ``recordCount``) covering the WHOLE run — so the
+  // header is correct even if the entity list is later paginated. The
+  // live/fresh-complete path keeps using ``records`` so the counts track
+  // each SSE event immediately.
+  const { sourceCounts, recordCount } = approvalStore;
   const displayTotals = useMemo<EntityTotals>(() => {
     if (records.length > 0) return entityTotals;
-    const ents = approvalStore.entities;
-    if (ents.length === 0) return entityTotals;
-    let persons = 0, prov = 0, contents = 0, genres = 0;
-    for (const e of ents) {
-      if      (e.source === "person_ner")     persons++;
-      else if (e.source === "provenance_ner") prov++;
-      else if (e.source === "contents_ner")   contents++;
-      else if (e.source === "genre_ml")       genres++;
-    }
-    return { persons, prov, contents, genres };
-  }, [records.length, entityTotals, approvalStore.entities]);
+    return {
+      persons:  sourceCounts["person_ner"]     ?? 0,
+      prov:     sourceCounts["provenance_ner"] ?? 0,
+      contents: sourceCounts["contents_ner"]   ?? 0,
+      genres:   sourceCounts["genre_ml"]       ?? 0,
+    };
+  }, [records.length, entityTotals, sourceCounts]);
 
   const displayRecordCount = useMemo<number>(() => {
     if (records.length > 0) return records.length;
-    const cns = new Set(approvalStore.entities.map((e) => e.control_number));
-    return cns.size;
-  }, [records.length, approvalStore.entities]);
+    return recordCount;
+  }, [records.length, recordCount]);
 
   useEffect(() => { setSelectedIds(new Set()); }, [globalSearch]);
   // Mode is undefined → backend picks from its own EXTRACTION_MODE

@@ -102,6 +102,11 @@ export interface EntityListResponse {
   entities: Entity[];
   total: number;
   approved_count?: number;
+  /** Distinct control numbers across the full run. */
+  record_count?: number;
+  /** Per-source entity counts across the full run, e.g.
+   *  {person_ner: 40, provenance_ner: 12, contents_ner: 30, genre_ml: 8}. */
+  source_counts?: Record<string, number>;
 }
 
 export interface AutoApproveRule {
