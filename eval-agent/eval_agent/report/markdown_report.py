@@ -28,8 +28,13 @@ def write_markdown(
         lambda: {"full": 0, "partial": 0, "fail": 0, "total": 0}
     )
     for v in ok:
-        ct[(v.evaluator_id, v.sub_type)]["total"] += 1
-        ct[(v.evaluator_id, v.sub_type)][v.overall] += 1
+        cell = ct[(v.evaluator_id, v.sub_type)]
+        cell["total"] += 1
+        # ``overall`` may carry a value outside the displayed full/partial/fail
+        # set — e.g. ``abstain`` (a tier-1 uncertain verdict) or
+        # ``verification_failed`` (tier-2 exhaustion). Count it without a
+        # KeyError; only full/partial/fail are rendered in the table below.
+        cell[v.overall] = cell.get(v.overall, 0) + 1
 
     lines = [
         f"# {title}",
