@@ -540,7 +540,38 @@ class Session:
         self._tally_tokens(response.input_tokens, response.output_tokens)
         v1 = evaluator.parse_verdict(response.verdict, candidate)
         if str(v1.overall).lower() in self.config.escalate_on and self._agent is not None:
-            return self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
+            v2 = self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
+            if not v2.error:
+                return v2
+            # Tier-2 (agentic) failed — a transport / parse / budget error,
+            # NOT a confident "fail" verdict. Rather than return the failed
+            # verdict, retry the cheap tier-1 judge with MORE context:
+            # pre-inject the evidence the agentic loop would have gathered
+            # through its tools (the full MARC record, beyond the narrow
+            # per-evaluator projection that build_prompt shows, plus the
+            # record's other NER entities). A better-informed linear judge
+            # often resolves the case without re-entering the tool loop.
+            log.warning(
+                "tier2 failed (%s); retrying tier-1 with expanded context for %s/%s",
+                v2.error, candidate.evaluator_id, candidate.record_id,
+            )
+            enriched = (
+                f"{prompt}\n\n{self._expanded_context_block(candidate)}"
+                "\n\nReturn only the JSON verdict."
+            )
+            retry = self._judge.judge(prompt=enriched, schema=self._schema)
+            self._tally_tokens(retry.input_tokens, retry.output_tokens)
+            if retry.error or retry.verdict is None:
+                # Both tiers failed — surface the tier-2 failure explicitly.
+                v2.overall = "verification_failed"
+                return v2
+            v_retry = evaluator.parse_verdict(retry.verdict, candidate)
+            v_retry.judge_id = self._judge.id
+            v_retry.cache_key = key
+            # Cache under the ORIGINAL prompt key so a later run warm-hits
+            # this resolved verdict instead of re-escalating.
+            self._cache.append(judge_id=cache_id, prompt=prompt, verdict=retry.verdict)
+            return v_retry
         if response.verdict is not None:
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
         v1.judge_id = self._judge.id
@@ -581,6 +612,48 @@ class Session:
         if not verdict.error:
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=verdict_dict)
         return verdict
+
+    def _expanded_context_block(self, candidate: Candidate) -> str:
+        """Extra-context block injected into a tier-1 retry after a tier-2
+        failure.
+
+        Mirrors the evidence the agentic loop would have gathered through its
+        tools — the full MARC record (every field, not just the narrow
+        per-evaluator projection that ``build_prompt`` renders) and the
+        record's other NER entities for joint reasoning — so the cheaper
+        linear judge can commit a confident verdict without the tool loop.
+        Each section is bounded so a pathological record cannot blow the
+        judge's context window.
+        """
+        rid = candidate.record_id
+        parts: list[str] = ["── EXPANDED CONTEXT (tier-2 retry — judge with the full record) ──"]
+
+        marc_rec = self._marc_index.get(rid)
+        if marc_rec:
+            rendered = json.dumps(marc_rec, ensure_ascii=False, indent=2)
+            if len(rendered) > 6000:
+                rendered = rendered[:6000].rstrip() + "\n… (truncated)"
+            parts.append(
+                "Full MARC record (every field, beyond the projection above):\n" + rendered
+            )
+
+        ner_rec = self._ner_index.get(rid)
+        lines: list[str] = []
+        for e in (ner_rec or {}).get("entities") or []:
+            if not isinstance(e, dict):
+                continue
+            text = e.get("person") or e.get("text") or e.get("value") or ""
+            kind = e.get("type") or e.get("role") or ""
+            source = e.get("source") or "?"
+            conf = e.get("confidence")
+            lines.append(f"  - {text} | {kind} | {source} | conf={conf}")
+        if lines:
+            parts.append(
+                "All NER entities on this record (for joint reasoning):\n"
+                + "\n".join(lines[:60])
+            )
+
+        return "\n\n".join(parts)
 
     def _tally_tokens(self, in_tok: int | None, out_tok: int | None) -> None:
         if in_tok:
