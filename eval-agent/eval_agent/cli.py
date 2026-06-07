@@ -485,7 +485,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p_run = sub.add_parser("run", help="evaluate a pipeline output")
     p_run.add_argument("--pipeline-output", required=True,
                        help="path to pipeline eval/work/ folder containing "
-                            "marc_extracted.json and ner_results.json")
+                            "marc_extracted.json plus an evaluator JSON file")
     # Defaults are None so the config file (config/default.yaml) wins when
     # the user doesn't explicitly pass a flag. SessionConfig.from_args
     # falls back to config values when the arg is None.

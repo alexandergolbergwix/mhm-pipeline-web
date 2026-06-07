@@ -10,6 +10,7 @@ from eval_agent.evaluators.contents_ner import ContentsNERevaluator
 from eval_agent.evaluators.genre_classifier import GenreClassifierEvaluator
 from eval_agent.evaluators.person_ner import PersonNERevaluator
 from eval_agent.evaluators.provenance_ner import ProvenanceNERevaluator
+from eval_agent.evaluators.wikidata_item import WikidataItemEvaluator
 
 # ``marc500_colophon`` was removed 2026-05-23 after the conf>=0.90
 # eval-agent run showed 76% of its high-confidence predictions failing
@@ -25,10 +26,15 @@ REGISTRY: dict[str, type[Evaluator]] = {
     # Stage-3 authority resolution (Mazal / VIAF / Wikidata / KIMA).
     # Reads authority_enriched.json, not ner_results.json.
     "authority": AuthorityEvaluator,
+    # Wikidata Studio item projection. Reads wikidata_items.json.
+    "wikidata_item": WikidataItemEvaluator,
 }
 
 # Evaluators that read authority_enriched.json instead of ner_results.json.
 AUTHORITY_EVALUATORS: frozenset[str] = frozenset({"authority"})
+
+# Evaluators that read wikidata_items.json instead of ner_results.json.
+WIKIDATA_ITEM_EVALUATORS: frozenset[str] = frozenset({"wikidata_item"})
 
 
 def build(evaluator_id: str) -> Evaluator:

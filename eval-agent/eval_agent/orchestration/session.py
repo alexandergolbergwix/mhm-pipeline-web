@@ -42,10 +42,11 @@ from eval_agent.client.rate_limiter import RateLimiter
 from eval_agent.evaluators import (
     AUTHORITY_EVALUATORS,
     REGISTRY,
+    WIKIDATA_ITEM_EVALUATORS,
     build as build_evaluator,
 )
 from eval_agent.evaluators._base import Candidate, Evaluator, Verdict
-from eval_agent.ingest import marc_extract, ner_results, pipeline_run
+from eval_agent.ingest import marc_extract, ner_results, pipeline_run, wikidata_items
 from eval_agent.logging_setup import get_logger
 from eval_agent.report.csv_writer import write_csv
 from eval_agent.report.jsonl_writer import write_jsonl
@@ -300,6 +301,11 @@ class Session:
             if run.authority_results is not None
             else []
         )
+        wikidata_records_list = (
+            wikidata_items.load(run.wikidata_items)
+            if run.wikidata_items is not None
+            else []
+        )
         # Stash indexes so the agentic tools (called inside _judge_one on the
         # thread pool) can read the full record on demand. Prefer the
         # authority record (a superset of MARC) when present.
@@ -315,20 +321,32 @@ class Session:
         ui.kv("NER records", len(ner_records_list))
         if authority_records_list:
             ui.kv("Authority records", len(authority_records_list))
+        if wikidata_records_list:
+            ui.kv("Wikidata items", len(wikidata_records_list))
 
         # Extract all candidates up-front so we can print a budget preview.
-        # Authority evaluators iterate authority_enriched.json; NER
+        # File-coupled evaluators iterate their own JSON files; NER
         # evaluators iterate ner_results.json.
         candidates: list[tuple[Evaluator, Candidate]] = []
         for ev in self._evaluators:
-            records = (
-                authority_records_list
-                if ev.id in AUTHORITY_EVALUATORS
-                else ner_records_list
-            )
+            if ev.id in AUTHORITY_EVALUATORS:
+                records = authority_records_list
+            elif ev.id in WIKIDATA_ITEM_EVALUATORS:
+                records = wikidata_records_list
+            else:
+                records = ner_records_list
             for rec in records:
-                rid = str(rec.get("_control_number", ""))
+                if ev.id in WIKIDATA_ITEM_EVALUATORS:
+                    rid = wikidata_items.control_number(rec)
+                else:
+                    rid = str(rec.get("_control_number", ""))
                 marc_rec = marc_index.get(rid, {})
+                if (
+                    ev.id in WIKIDATA_ITEM_EVALUATORS
+                    and not marc_rec
+                    and len(marc_records) == 1
+                ):
+                    marc_rec = marc_records[0]
                 for cand in ev.extract_candidates(
                     ner_record=rec,
                     marc_record=marc_rec,
