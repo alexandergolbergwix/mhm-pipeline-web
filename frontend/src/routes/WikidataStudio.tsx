@@ -7,6 +7,7 @@ import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {Runs} from "@/api/runs";
 import {useLabelStore} from "@/api/wikidataLabels";
+import {useDebounce} from "@/hooks/useDebounce";
 import {
   collectIds, FRIENDLY_S_PROP, PropertyPill, ValueRendering,
   type LabelStore,
@@ -18,6 +19,7 @@ import {ItemValidatorBadge} from "@/components/wikidata/ItemValidatorBadge";
 import {ItemApprovalBadge} from "@/components/wikidata/ItemApprovalBadge";
 import {
   Studio,
+  type PropertyInfo,
   type ReconcileOutcome,
   type Snak,
   type StudioBuild,
@@ -59,13 +61,16 @@ export default function WikidataStudio() {
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   const [editItem, setEditItem] = useState<StudioItem | null>(null);
 
-  // search + filter + sort state
+  // search + filter + sort state (drive the server query)
   const [query, setQuery]               = useState("");
+  const debouncedQuery                  = useDebounce(query, 300);
   const [entityFilter, setEntityFilter] = useState<EntityFilter>("all");
   const [existFilter, setExistFilter]   = useState<ExistFilter>("any");
   const [minStmts, setMinStmts]         = useState<number>(0);
   const [sortKey, setSortKey]           = useState<SortKey>("label");
   const [sortDesc, setSortDesc]         = useState(false);
+  const [page, setPage]                 = useState(1);
+  const PAGE_SIZE                       = 50;
 
   const [selectedIdx, setSelectedIdx] = useState(0);
 
@@ -91,16 +96,50 @@ export default function WikidataStudio() {
     (localStorage.getItem("mhm.studio.view") as View) || "item");
   useEffect(() => { localStorage.setItem("mhm.studio.view", view); }, [view]);
 
-  async function refresh(nextApprovedOnly?: boolean, nextForceRebuild?: boolean) {
+  async function refresh(opts?: {
+    nextApprovedOnly?: boolean;
+    nextForceRebuild?: boolean;
+    nextPage?: number;
+  }) {
     if (!runId) return;
-    const flag = nextApprovedOnly ?? approvedOnly;
-    const force = nextForceRebuild ?? forceRebuild;
+    const flag  = opts?.nextApprovedOnly ?? approvedOnly;
+    const force = opts?.nextForceRebuild ?? forceRebuild;
+    const pg    = opts?.nextPage ?? page;
     setLoading(true); setError(null);
-    try { setBuild(await Studio.build(runId, flag, force)); }
+    try {
+      const result = await Studio.build(runId, {
+        approvedOnly: flag,
+        forceRebuild: force,
+        entityType: entityFilter !== "all" ? entityFilter : null,
+        q: debouncedQuery || null,
+        sort: sortKey,
+        sortDir: sortDesc ? "desc" : "asc",
+        page: pg,
+        pageSize: PAGE_SIZE,
+      });
+      setBuild(result);
+      // Seed the label store from the precomputed property_labels map so
+      // the client never needs to fetch labels the server already computed.
+      if (result.property_labels) {
+        labelStore.seed(result.property_labels);
+      }
+    }
     catch (e) { setError(e instanceof ApiError ? e.detail : String(e)); }
     finally   { setLoading(false); }
   }
-  useEffect(() => { void refresh(); }, [runId]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initial load + re-query when server-side params change.
+  // debouncedQuery is the settled value after 300ms; the others are immediate.
+  useEffect(() => {
+    setPage(1);
+    void refresh({nextPage: 1});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, approvedOnly, entityFilter, debouncedQuery, sortKey, sortDesc]);
+
+  useEffect(() => {
+    void refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   async function reconcile() {
     if (!runId) return;
@@ -138,17 +177,20 @@ export default function WikidataStudio() {
   const toggleApproval = useCallback(async (item: StudioItem) => {
     if (!runId || !item.local_id) return;
     const id = item.local_id;
+    const nextApproved = !item.approved;
     setApprovalLoading((prev) => ({...prev, [id]: true}));
     try {
-      await Studio.patchItemOverride(runId, id, {approved: !item.approved});
-      // Optimistically update the build state
+      await Studio.patchItemOverride(runId, id, {approved: nextApproved});
+      // Optimistically update the page + approved_item_count
       setBuild((prev) => {
         if (!prev) return prev;
+        const delta = nextApproved ? 1 : -1;
         return {
           ...prev,
           items: prev.items.map((it) =>
-            it.local_id === id ? {...it, approved: !item.approved} : it,
+            it.local_id === id ? {...it, approved: nextApproved} : it,
           ),
+          approved_item_count: Math.max(0, prev.approved_item_count + delta),
         };
       });
     } catch (e) {
@@ -158,35 +200,20 @@ export default function WikidataStudio() {
     }
   }, [runId]);
 
-  // ── filtered + sorted items ───────────────────────────────────────────
+  // ── item rows — server already filtered + sorted + paginated ───────────
+  // Client applies only the local-only filters (existFilter, minStmts) that
+  // are cheap and don't warrant a round-trip.
   const itemRows = useMemo(() => {
     if (!build) return [] as Array<{ it: StudioItem; idx: number; key: string }>;
-    const raw = build.items.map((it, idx) => ({
-      it, idx, key: `${it.entity_type ?? "other"}:${idx}`,
-    }));
-    const q = query.trim().toLowerCase();
-    const filtered = raw.filter(({ it }) => {
-      if (entityFilter !== "all" && it.entity_type !== entityFilter) return false;
-      const hasQid = !!it.existing_qid;
-      if (existFilter === "existing" && !hasQid) return false;
-      if (existFilter === "new"      &&  hasQid) return false;
-      const stmts = (it.statements ?? []).length;
-      if (stmts < minStmts) return false;
-      if (q) {
-        const haystack = [
-          ...Object.values(it.labels ?? {}),
-          ...Object.values(it.descriptions ?? {}),
-          ...Object.values(it.aliases ?? {}).flat(),
-          it.existing_qid ?? "",
-          it.entity_type ?? "",
-        ].join(" ").toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    });
-    filtered.sort((a, b) => cmp(a.it, b.it, sortKey, sortDesc));
-    return filtered;
-  }, [build, query, entityFilter, existFilter, minStmts, sortKey, sortDesc]);
+    return build.items
+      .map((it, idx) => ({it, idx, key: `${it.entity_type ?? "other"}:${idx}`}))
+      .filter(({ it }) => {
+        if (existFilter === "existing" && !it.existing_qid) return false;
+        if (existFilter === "new" && it.existing_qid) return false;
+        if ((it.statements ?? []).length < minStmts) return false;
+        return true;
+      });
+  }, [build, existFilter, minStmts]);
 
   if (error) return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
   if (!build) return <Layout><p className="muted">{loading ? "Building items…" : "Loading…"}</p></Layout>;
@@ -226,17 +253,17 @@ export default function WikidataStudio() {
           <div className="flex flex-wrap gap-2 pt-2 items-center">
             <div className="glass-pill px-1 py-1 flex gap-1 text-xs">
               <button
-                onClick={() => { setApprovedOnly(false); void refresh(false); }}
+                onClick={() => { setApprovedOnly(false); }}
                 className={`px-3 py-1 rounded-full transition ${
                   !approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"
                 }`}>All matches</button>
               <button
-                onClick={() => { setApprovedOnly(true); void refresh(true); }}
+                onClick={() => { setApprovedOnly(true); }}
                 className={`px-3 py-1 rounded-full transition ${
                   approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"
                 }`}>Approved only</button>
             </div>
-            <button onClick={() => refresh(undefined, forceRebuild)} disabled={loading || !!busy} className="button-ghost text-sm">
+            <button onClick={() => refresh({nextForceRebuild: forceRebuild})} disabled={loading || !!busy} className="button-ghost text-sm">
               {loading ? "Rebuilding…" : "Rebuild"}
             </button>
             <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
@@ -261,13 +288,11 @@ export default function WikidataStudio() {
                 />
                 Approved items only
               </label>
-              {build && (() => {
-                const total = build.items.length;
-                const nApproved = build.items.filter((it) => it.approved === true).length;
-                return total > 0
-                  ? <span className="text-[11px] muted">{nApproved} of {total} approved</span>
-                  : null;
-              })()}
+              {build && build.summary.total_items > 0 && (
+                <span className="text-[11px] muted">
+                  {build.approved_item_count} of {build.summary.total_items} approved
+                </span>
+              )}
             </div>
             <button onClick={() => doUpload(true)} disabled={!!busy} className="button-primary text-sm">
               {busy === "dry" ? "Running…" : "Dry-run upload"}
@@ -290,9 +315,7 @@ export default function WikidataStudio() {
               <SectionImportButton
                 section="wikidata-studio"
                 runId={runId}
-                onComplete={() => {
-                  if (runId) Studio.build(runId, approvedOnly).then(setBuild).catch(() => null);
-                }}
+                onComplete={() => { void refresh(); }}
               />
             )}
 
@@ -334,7 +357,7 @@ export default function WikidataStudio() {
         ) : view === "table" ? (
           <StatementTableView
             items={itemRows.map(({ it, idx }) => ({ it, idx }))}
-            allItems={build.items}
+            properties={build.properties}
             labelStore={labelStore}
             onOpenItem={(idx) => {
               setView("item");
@@ -397,8 +420,11 @@ export default function WikidataStudio() {
                 </div>
               </div>
 
-              <div className="border-t border-white/5 pt-2 text-[10px] muted uppercase tracking-wider">
-                {itemRows.length} of {build.items.length}
+              <div className="border-t border-white/5 pt-2 text-[10px] muted uppercase tracking-wider flex items-center justify-between">
+                <span>{build.total} items</span>
+                {build.total > PAGE_SIZE && (
+                  <span>p.{page}/{Math.ceil(build.total / PAGE_SIZE)}</span>
+                )}
               </div>
 
               <ul>
@@ -450,10 +476,27 @@ export default function WikidataStudio() {
                     </li>
                   );
                 })}
-                {itemRows.length === 0 && (
+                {itemRows.length === 0 && !loading && (
                   <p className="muted text-sm italic px-2">Nothing matches your filter.</p>
                 )}
               </ul>
+              {build.total > PAGE_SIZE && (
+                <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
+                  <button
+                    onClick={() => { const p = Math.max(1, page - 1); setPage(p); }}
+                    disabled={page <= 1 || loading}
+                    className="button-ghost !py-0.5 !px-2 text-xs disabled:opacity-40"
+                  >← Prev</button>
+                  <span className="muted">
+                    {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, build.total)} of {build.total}
+                  </span>
+                  <button
+                    onClick={() => { const p = page + 1; setPage(p); }}
+                    disabled={page * PAGE_SIZE >= build.total || loading}
+                    className="button-ghost !py-0.5 !px-2 text-xs disabled:opacity-40"
+                  >Next →</button>
+                </div>
+              )}
             </aside>
 
             {/* Right: detail */}
@@ -476,7 +519,7 @@ export default function WikidataStudio() {
                   onSaveExcluded={async (indices: number[]) => {
                     if (!runId || !current.local_id) return;
                     await Studio.patchItemOverride(runId, current.local_id, {remove_statements: indices});
-                    void refresh();
+                    void refresh({nextForceRebuild: true});
                   }}
                   labelStore={labelStore} />
               )}
@@ -802,15 +845,12 @@ type FlatRow = {
 
 
 function StatementTableView({
-  items, allItems, labelStore, onOpenItem, onOpenMarc,
+  items, properties, labelStore, onOpenItem, onOpenMarc,
 }: {
-  /** Items SURVIVING the sidebar's current filter, so the table view
-   *  respects the "manuscript only" / "approved only" etc. choices the
-   *  curator already made. */
+  /** Items SURVIVING the sidebar's current filter (current page). */
   items: Array<{ it: StudioItem; idx: number }>;
-  /** Full items array — used only to compute the property-filter dropdown
-   *  options so they stay stable across filter changes. */
-  allItems: StudioItem[];
+  /** Distinct properties from the full build — server-precomputed. */
+  properties: PropertyInfo[];
   labelStore: LabelStore;
   onOpenItem: (idx: number) => void;
   onOpenMarc: (cn: string) => void;
@@ -852,22 +892,15 @@ function StatementTableView({
     labelStore.resolve(ids);
   }, [rows, labelStore]);
 
-  // Distinct property options for the property-filter dropdown.
-  const propOptions = useMemo(() => {
-    const seen = new Map<string, string>();   // p-id → label or ""
-    for (const it of allItems) {
-      for (const s of it.statements ?? []) {
-        const p = s.property ?? s.property_id;
-        if (!p) continue;
-        if (!seen.has(p) || (s.property_label && !seen.get(p))) {
-          seen.set(p, s.property_label ?? "");
-        }
-      }
-    }
-    return Array.from(seen.entries())
-      .map(([id, label]) => ({ id, label: label || labelStore.label(id) || "" }))
-      .sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
-  }, [allItems, labelStore]);
+  // Server-precomputed distinct properties — resolve any missing labels
+  // lazily from the label store (fallback for P-ids not in the static dict).
+  const propOptions = useMemo(
+    () => properties.map((p) => ({
+      id: p.id,
+      label: p.label || labelStore.label(p.id) || "",
+    })),
+    [properties, labelStore],
+  );
 
   // Filter + sort.
   const filtered = useMemo(() => {
@@ -1188,15 +1221,6 @@ function labelOf(it: StudioItem): string {
   return l.en || l.he || Object.values(l)[0] || "";
 }
 
-
-function cmp(a: StudioItem, b: StudioItem, key: SortKey, desc: boolean): number {
-  let r = 0;
-  if (key === "label") r = labelOf(a).localeCompare(labelOf(b), undefined, { sensitivity: "base" });
-  if (key === "statements") r = ((a.statements ?? []).length) - ((b.statements ?? []).length);
-  if (key === "entity_type") r = (a.entity_type ?? "").localeCompare(b.entity_type ?? "");
-  if (key === "wikidata") r = (a.existing_qid ? 0 : 1) - (b.existing_qid ? 0 : 1);
-  return desc ? -r : r;
-}
 
 
 function statusTone(status: string): string {

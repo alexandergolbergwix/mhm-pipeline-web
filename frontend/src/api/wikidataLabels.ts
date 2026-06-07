@@ -63,9 +63,24 @@ export function useLabelStore() {
     [labels],
   );
 
+  /** Bulk-seed known labels from a server-provided map, skipping any ids
+   *  already in the store (avoids overwriting fresher live-fetched data). */
+  const seed = useCallback((map: Record<string, string>) => {
+    setLabels((prev) => {
+      const additions: Record<string, string> = {};
+      for (const [id, lbl] of Object.entries(map)) {
+        if (lbl && prev[id] === undefined) {
+          additions[id] = lbl;
+        }
+      }
+      if (Object.keys(additions).length === 0) return prev;
+      return { ...prev, ...additions };
+    });
+  }, []);
+
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
-  return { labels, resolve, label };
+  return { labels, resolve, label, seed };
 }

@@ -40,6 +40,11 @@ export interface StudioItem {
   approved?: boolean | null;
 }
 
+export interface PropertyInfo {
+  id: string;
+  label: string;
+}
+
 export interface StudioBuild {
   items: StudioItem[];
   quickstatements: string;
@@ -49,6 +54,14 @@ export interface StudioBuild {
   used_match_count: number;
   approved_only: boolean;
   record_count: number;
+  // Server-side slicing
+  total: number;
+  page: number;
+  page_size: number;
+  // Precomputed aggregates
+  approved_item_count: number;
+  properties: PropertyInfo[];
+  property_labels: Record<string, string>;
 }
 
 export interface ReconcileOutcome {
@@ -104,11 +117,40 @@ export interface ItemOverrideResponse {
   statement_edits: Record<string, unknown>;
 }
 
+export interface StudioBuildParams {
+  approvedOnly?: boolean;
+  forceRebuild?: boolean;
+  entityType?: string | null;
+  q?: string | null;
+  sort?: string;
+  sortDir?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export const Studio = {
-  build: (runId: string, approvedOnly = true, forceRebuild = false) =>
-    api.get<StudioBuild>(
-      `/runs/${runId}/wikidata-studio?approved_only=${approvedOnly ? "true" : "false"}${forceRebuild ? "&force_rebuild=true" : ""}`,
-    ),
+  build: (runId: string, params: StudioBuildParams = {}) => {
+    const {
+      approvedOnly = true,
+      forceRebuild = false,
+      entityType,
+      q,
+      sort,
+      sortDir,
+      page,
+      pageSize,
+    } = params;
+    const qs = new URLSearchParams();
+    qs.set("approved_only", approvedOnly ? "true" : "false");
+    if (forceRebuild) qs.set("force_rebuild", "true");
+    if (entityType && entityType !== "all") qs.set("entity_type", entityType);
+    if (q) qs.set("q", q);
+    if (sort) qs.set("sort", sort);
+    if (sortDir) qs.set("sort_dir", sortDir);
+    if (page != null) qs.set("page", String(page));
+    if (pageSize != null) qs.set("page_size", String(pageSize));
+    return api.get<StudioBuild>(`/runs/${runId}/wikidata-studio?${qs.toString()}`);
+  },
 
   qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false) =>
     `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}${uploadApprovedOnly ? "&upload_approved_only=true" : ""}`,

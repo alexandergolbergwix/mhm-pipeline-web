@@ -56,7 +56,7 @@ export default function RunOverview() {
         (s) => !cancelled && setRdf({ status: "ok", data: s }),
         (e) => !cancelled && setRdf({ status: "error", error: errMessage(e) }),
       );
-      Studio.build(runId, /* approvedOnly */ false).then(
+      Studio.build(runId, {approvedOnly: false}).then(
         (s) => !cancelled && setStudio({ status: "ok", data: s }),
         (e) => !cancelled && setStudio({ status: "error", error: errMessage(e) }),
       );

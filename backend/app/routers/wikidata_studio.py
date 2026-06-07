@@ -51,6 +51,11 @@ class StudioSummary(BaseModel):
     statements: int
 
 
+class PropertyInfo(BaseModel):
+    id: str
+    label: str
+
+
 class StudioBuildResponse(BaseModel):
     items: list[dict[str, Any]]
     quickstatements: str
@@ -60,6 +65,14 @@ class StudioBuildResponse(BaseModel):
     used_match_count: int         # what we actually fed the builder
     approved_only: bool           # which mode was used
     record_count: int
+    # Server-side slicing metadata
+    total: int                    # total items matching current slice params
+    page: int
+    page_size: int
+    # Precomputed aggregates to replace client-side scans
+    approved_item_count: int      # items with approved==True in the full build
+    properties: list[PropertyInfo]        # distinct P-ids in the full build
+    property_labels: dict[str, str]       # P/Q id → label map for label-store seeding
 
 
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
@@ -78,6 +91,30 @@ async def build_studio(
                     "scratch. The result is still written to cache so the next "
                     "normal GET is fast. Does not affect the inference cache "
                     "(VIAF / authority calls).",
+    ),
+    # ── server-side slicing params (applied AFTER cache load) ──────────
+    entity_type: str | None = Query(
+        default=None,
+        description="Filter by entity_type (manuscript / person / work). "
+                    "Omit or pass null for all types.",
+    ),
+    q: str | None = Query(
+        default=None,
+        description="Substring search across labels, descriptions, aliases, "
+                    "existing_qid, and entity_type.",
+    ),
+    sort: str = Query(
+        default="label",
+        description="Sort key: label | statements | entity_type | wikidata.",
+    ),
+    sort_dir: str = Query(
+        default="asc",
+        description="Sort direction: asc | desc.",
+    ),
+    page: int = Query(default=1, ge=1, description="1-based page number."),
+    page_size: int = Query(
+        default=50, ge=1, le=500,
+        description="Items per page. Max 500.",
     ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
@@ -123,8 +160,12 @@ async def build_studio(
 
     if not force_rebuild and cached is not None and cached.input_fingerprint == fingerprint:
         logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
+        sliced, total, props, plabels, approved_item_count = _slice_items(
+            cached.result_items, entity_type=entity_type, q=q,
+            sort=sort, sort_dir=sort_dir, page=page, page_size=page_size,
+        )
         return StudioBuildResponse(
-            items=cached.result_items,
+            items=sliced,
             quickstatements=cached.quickstatements,
             summary=StudioSummary(**cached.summary),
             approved_match_count=cached.approved_match_count,
@@ -132,6 +173,12 @@ async def build_studio(
             used_match_count=cached.used_match_count,
             approved_only=approved_only,
             record_count=cached.record_count,
+            total=total,
+            page=page,
+            page_size=page_size,
+            approved_item_count=approved_item_count,
+            properties=props,
+            property_labels=plabels,
         )
 
     # Cache miss — run the full build.
@@ -202,8 +249,12 @@ async def build_studio(
         existing=cached,
     )
 
+    sliced, total, props, plabels, approved_item_count = _slice_items(
+        result["items"], entity_type=entity_type, q=q,
+        sort=sort, sort_dir=sort_dir, page=page, page_size=page_size,
+    )
     return StudioBuildResponse(
-        items=result["items"],
+        items=sliced,
         quickstatements=result["quickstatements"],
         summary=StudioSummary(**summary_dict),
         approved_match_count=approved_count,
@@ -211,6 +262,12 @@ async def build_studio(
         used_match_count=len(approved_matches),
         approved_only=approved_only,
         record_count=len(marc_records),
+        total=total,
+        page=page,
+        page_size=page_size,
+        approved_item_count=approved_item_count,
+        properties=props,
+        property_labels=plabels,
     )
 
 
@@ -594,6 +651,125 @@ async def clear_item_override(
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
+
+
+def _slice_items(
+    all_items: list[dict[str, Any]],
+    *,
+    entity_type: str | None,
+    q: str | None,
+    sort: str,
+    sort_dir: str,
+    page: int,
+    page_size: int,
+) -> tuple[list[dict[str, Any]], int, list[PropertyInfo], dict[str, str], int]:
+    """Filter, sort, and paginate a flat list of serialised StudioItem dicts.
+
+    Returns ``(page_items, total_matching, properties, property_labels, approved_item_count)``
+    where:
+    - ``page_items``          — the slice for the requested page
+    - ``total_matching``      — count AFTER filter, BEFORE pagination
+    - ``properties``          — distinct P-ids in the *full* build (unfiltered)
+    - ``property_labels``     — P/Q id → label map for the *full* build
+    - ``approved_item_count`` — items with approved==True in the *full* build
+
+    Slicing never re-builds — it operates purely on the in-memory dicts
+    returned from cache or from a fresh build. The cache invariant
+    (Rule W-26) is untouched.
+    """
+    from converter.wikidata.property_labels import PROPERTY_LABELS, QID_LABELS  # noqa: PLC0415
+
+    # ── precomputed aggregates (full unfiltered build) ──────────────────
+    approved_item_count = sum(1 for it in all_items if it.get("approved") is True)
+
+    prop_seen: dict[str, str] = {}   # p_id → label
+    for it in all_items:
+        for stmt in it.get("statements") or []:
+            p = stmt.get("property") or stmt.get("property_id")
+            if p and p not in prop_seen:
+                plabel = (
+                    stmt.get("property_label")
+                    or PROPERTY_LABELS.get(p, "")
+                )
+                prop_seen[p] = plabel
+
+    properties: list[PropertyInfo] = sorted(
+        [PropertyInfo(id=pid, label=lbl) for pid, lbl in prop_seen.items()],
+        key=lambda x: (x.label or x.id).lower(),
+    )
+
+    # Build property_labels: covers all P-ids + all Q-ids appearing as
+    # statement values so the frontend label store can be seeded in one shot.
+    property_labels: dict[str, str] = {}
+    for it in all_items:
+        for stmt in it.get("statements") or []:
+            p = stmt.get("property") or stmt.get("property_id")
+            if p:
+                lbl = stmt.get("property_label") or PROPERTY_LABELS.get(p)
+                if lbl:
+                    property_labels[p] = lbl
+            vid = stmt.get("value_id")
+            val = stmt.get("value")
+            qid = (
+                vid if isinstance(vid, str) and vid.startswith("Q")
+                else (val if isinstance(val, str) and val.startswith("Q") and val[1:].isdigit() else None)
+            )
+            if qid:
+                vlbl = stmt.get("value_label") or QID_LABELS.get(qid)
+                if vlbl:
+                    property_labels[qid] = vlbl
+
+    # ── filter ──────────────────────────────────────────────────────────
+    filtered = all_items
+    if entity_type and entity_type != "all":
+        filtered = [it for it in filtered if it.get("entity_type") == entity_type]
+    if q:
+        q_lower = q.strip().lower()
+        def _matches(it: dict[str, Any]) -> bool:
+            parts: list[str] = [
+                *it.get("labels", {}).values(),
+                *it.get("descriptions", {}).values(),
+                it.get("existing_qid") or "",
+                it.get("entity_type") or "",
+            ]
+            for alias_list in (it.get("aliases") or {}).values():
+                if isinstance(alias_list, list):
+                    parts.extend(alias_list)
+                elif isinstance(alias_list, str):
+                    parts.append(alias_list)
+            return q_lower in " ".join(parts).lower()
+        filtered = [it for it in filtered if _matches(it)]
+
+    # ── sort ─────────────────────────────────────────────────────────────
+    reverse = sort_dir == "desc"
+
+    def _label(it: dict[str, Any]) -> str:
+        lbs = it.get("labels") or {}
+        return (lbs.get("en") or lbs.get("he") or next(iter(lbs.values()), "")).lower()
+
+    if sort == "statements":
+        filtered.sort(key=lambda it: len(it.get("statements") or []), reverse=reverse)
+    elif sort == "entity_type":
+        filtered.sort(key=lambda it: it.get("entity_type") or "", reverse=reverse)
+    elif sort == "wikidata":
+        # items with a QID first (ascending), or last (descending)
+        filtered.sort(
+            key=lambda it: (0 if it.get("existing_qid") else 1),
+            reverse=reverse,
+        )
+    else:  # "label" default
+        try:
+            filtered.sort(key=_label, reverse=reverse)
+        except Exception:
+            filtered.sort(key=_label, reverse=reverse)
+
+    total = len(filtered)
+
+    # ── paginate ─────────────────────────────────────────────────────────
+    start = (page - 1) * page_size
+    page_items = filtered[start: start + page_size]
+
+    return page_items, total, properties, property_labels, approved_item_count
 
 
 async def _build_native_items(
