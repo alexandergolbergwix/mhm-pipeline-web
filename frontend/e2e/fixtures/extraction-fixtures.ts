@@ -260,16 +260,22 @@ export async function installExtractionMocks(page: Page, state: MockState) {
   // ── /runs/{id}/extraction/entities — the main GET ────────────────
   await page.route(`**/api/runs/${TEST_RUN_ID}/extraction/entities`, async (route) => {
     if (route.request().method() === "GET") {
-      const out = state.entities.map((e) => ({
-        ...e,
-        approved_count: state.entities.filter((x) => x.approved).length,
-      }));
-      // Backend currently returns a bare list; useApprovalStore handles
-      // both shapes.
+      // Mirror the real endpoint shape: {entities, total, approved_count,
+      // record_count, source_counts}. useApprovalStore reads these aggregates.
+      const sourceCounts: Record<string, number> = {};
+      for (const e of state.entities) {
+        sourceCounts[e.source] = (sourceCounts[e.source] ?? 0) + 1;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(out),
+        body: JSON.stringify({
+          entities:       state.entities,
+          total:          state.entities.length,
+          approved_count: state.entities.filter((x) => x.approved).length,
+          record_count:   new Set(state.entities.map((e) => e.control_number)).size,
+          source_counts:  sourceCounts,
+        }),
       });
     } else {
       await route.continue();
