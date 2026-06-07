@@ -48,8 +48,8 @@ def _cmd_doctor(_args: argparse.Namespace) -> int:
     # State directories
     checks.append(("state/", "ok" if STATE_DIR.is_dir() else "MISSING"))
     checks.append(("config/", "ok" if CONFIG_DIR.is_dir() else "MISSING"))
-    checks.append(("config/schemas/verdict.v1.json",
-                   "ok" if (SCHEMAS_DIR / "verdict.v1.json").is_file() else "MISSING"))
+    checks.append(("config/schemas/verdict.v2.json",
+                   "ok" if (SCHEMAS_DIR / "verdict.v2.json").is_file() else "MISSING"))
 
     # State files (informational — absent ones are bootstrapped lazily by init.sh)
     feat = STATE_DIR / "feature_list.json"
@@ -89,7 +89,7 @@ def _cmd_verify(_args: argparse.Namespace) -> int:
         schemas_dir=SCHEMAS_DIR,
     )
 
-    print(f"  schemas/verdict.v1.json   {'ok' if report.passed or not any('schema' in f and 'invalid' in f for f in report.failures) else 'FAIL'}")
+    print(f"  schemas/verdict.v2.json   {'ok' if report.passed or not any('schema' in f and 'invalid' in f for f in report.failures) else 'FAIL'}")
     print(f"  state/                    {'ok' if STATE_DIR.is_dir() else 'MISSING'}")
     print(f"  config/                   {'ok' if CONFIG_DIR.is_dir() else 'MISSING'}")
     print(f"  cache rows checked        {report.cache_rows_checked}")

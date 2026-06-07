@@ -79,7 +79,7 @@ RUNS_DIR = STATE_DIR / "runs"
 CACHE_PATH = STATE_DIR / "cache" / "verdict_cache.jsonl"
 PROGRESS_PATH = STATE_DIR / "progress.md"
 CONFIG_PATH = REPO_ROOT / "config" / "default.yaml"
-VERDICT_SCHEMA_PATH = REPO_ROOT / "config" / "schemas" / "verdict.v1.json"
+VERDICT_SCHEMA_PATH = REPO_ROOT / "config" / "schemas" / "verdict.v2.json"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -574,6 +574,9 @@ class Session:
             "name_ok": verdict.name_ok, "type_ok": verdict.type_ok,
             "role_ok": verdict.role_ok, "overall": verdict.overall,
             "reasoning": verdict.reasoning,
+            # v2 requires suggested_fix in every cached verdict object
+            # (null when the agentic loop proposed no text fix).
+            "suggested_fix": verdict.suggested_fix.to_dict() if verdict.suggested_fix else None,
         }
         if not verdict.error:
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=verdict_dict)
@@ -610,11 +613,12 @@ def _load_defaults() -> dict[str, Any]:
 def _load_schema() -> dict[str, Any]:
     """Return the inner ``verdict`` sub-schema for the judge to enforce.
 
-    ``verdict.v1.json`` describes the full ``results.jsonl`` row (envelope
+    ``verdict.v2.json`` describes the full ``results.jsonl`` row (envelope
     + verdict + metadata). The judge only emits the inner verdict object —
-    ``{name_ok, type_ok, role_ok, overall, reasoning}`` — so we hand it
-    just that slice. ``GeminiJudge`` further sanitizes the schema for the
-    Gemini ``responseSchema`` subset (no ``additionalProperties`` etc.).
+    ``{name_ok, type_ok, role_ok, overall, reasoning, suggested_fix}`` — so
+    we hand it just that slice. ``GeminiJudge`` further sanitizes the schema
+    for the Gemini ``responseSchema`` subset (strips ``additionalProperties``
+    etc. and rewrites the ``suggested_fix`` ``oneOf`` into ``nullable``).
     """
     full = json.loads(VERDICT_SCHEMA_PATH.read_text(encoding="utf-8"))
     return full.get("properties", {}).get("verdict", full)

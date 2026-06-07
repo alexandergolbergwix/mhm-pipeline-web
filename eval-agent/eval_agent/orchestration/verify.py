@@ -26,14 +26,15 @@ def run_verify(*, cache_path: Path, schemas_dir: Path) -> VerifyReport:
 
     The verdict cache stores one JSON object per line shaped
     ``{"key": ..., "judge_id": ..., "verdict": {...}}``. The verdict
-    sub-object must match ``schemas_dir/verdict.v1.json``'s
-    ``properties.verdict`` sub-schema.
+    sub-object must match ``schemas_dir/verdict.v2.json``'s
+    ``properties.verdict`` sub-schema (v2 adds the optional
+    ``suggested_fix`` field).
     """
     import jsonschema  # noqa: PLC0415 — optional dep, only needed here
 
     failures: list[str] = []
 
-    schema_path = schemas_dir / "verdict.v1.json"
+    schema_path = schemas_dir / "verdict.v2.json"
     if not schema_path.is_file():
         failures.append(f"schema missing at {schema_path}")
         return VerifyReport(passed=False, failures=failures, cache_rows_checked=0)

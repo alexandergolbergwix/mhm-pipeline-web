@@ -42,7 +42,7 @@ from eval_agent.evaluators import REGISTRY
 from eval_agent.evaluators._base import Candidate, Verdict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-VERDICT_SCHEMA_PATH = REPO_ROOT / "config" / "schemas" / "verdict.v1.json"
+VERDICT_SCHEMA_PATH = REPO_ROOT / "config" / "schemas" / "verdict.v2.json"
 
 
 @dataclass

@@ -312,12 +312,52 @@ _GEMINI_UNSUPPORTED_KEYS = frozenset({
 
 
 def _sanitize_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of ``schema`` with Gemini-incompatible keys removed."""
+    """Return a copy of ``schema`` rewritten into Gemini's ``responseSchema``
+    OpenAPI subset.
+
+    Two structural rewrites bridge JSON-Schema nullability — which Gemini
+    rejects — to Gemini's ``nullable: true`` convention (needed for the v2
+    ``suggested_fix`` field):
+
+    * A ``oneOf``/``anyOf`` of the shape ``[{"type": "null"}, <S>]`` collapses
+      to ``<S>`` with ``nullable: true`` (sibling keys like ``description``
+      are preserved).
+    * A ``"type": ["X", "null"]`` union collapses to ``"type": "X"`` plus
+      ``nullable: true``.
+
+    Draft-2020-12 keywords Gemini does not understand are then stripped.
+    """
     if not isinstance(schema, dict):
         return schema
+
+    # 1. Collapse a nullable oneOf/anyOf into its single non-null branch.
+    for combiner in ("oneOf", "anyOf"):
+        branches = schema.get(combiner)
+        if not isinstance(branches, list):
+            continue
+        non_null = [b for b in branches
+                    if not (isinstance(b, dict) and b.get("type") == "null")]
+        has_null = len(non_null) != len(branches)
+        if len(non_null) == 1 and isinstance(non_null[0], dict):
+            merged: dict[str, Any] = dict(non_null[0])
+            for sk, sv in schema.items():
+                if sk == combiner:
+                    continue
+                merged.setdefault(sk, sv)
+            if has_null:
+                merged["nullable"] = True
+            return _sanitize_schema_for_gemini(merged)
+
     out: dict[str, Any] = {}
     for k, v in schema.items():
         if k in _GEMINI_UNSUPPORTED_KEYS:
+            continue
+        # 2. Collapse a ["X", "null"] type union into type + nullable.
+        if k == "type" and isinstance(v, list):
+            non_null_types = [t for t in v if t != "null"]
+            out["type"] = non_null_types[0] if non_null_types else "string"
+            if "null" in v:
+                out["nullable"] = True
             continue
         if k == "properties" and isinstance(v, dict):
             out[k] = {pk: _sanitize_schema_for_gemini(pv) for pk, pv in v.items()}

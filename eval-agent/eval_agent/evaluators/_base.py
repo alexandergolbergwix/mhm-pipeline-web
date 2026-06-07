@@ -233,7 +233,13 @@ class Evaluator(ABC):
             return None
 
         # Drop if the suggested text equals the original (no-op fix).
-        original = str(candidate.payload.get("text") or "").strip()
+        # Person NER carries the surface form under "person"; other
+        # evaluators under "text" — compare against whichever is present.
+        original = str(
+            candidate.payload.get("text")
+            or candidate.payload.get("person")
+            or ""
+        ).strip()
         if text == original:
             return None
 

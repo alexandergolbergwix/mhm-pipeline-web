@@ -199,6 +199,19 @@ class TestParseVerdictSuggestedFix:
         verdict = ev.parse_verdict(raw, candidate)
         assert verdict.suggested_fix is None
 
+    def test_fix_equal_to_person_keyed_original_is_dropped(self):
+        """Person NER payloads carry the surface form under 'person', not
+        'text' — a no-op fix must still be dropped against that key."""
+        ev = self._evaluator()
+        candidate = Candidate(
+            record_id="r1", evaluator_id="person_ner", sub_type="AUTHOR",
+            payload={"person": "אברהם", "role": "AUTHOR"},  # no "text" key
+            confidence=0.9, marc_context={"authors": "אברהם"},
+        )
+        raw = self._raw({"text": "  אברהם  ", "confidence": "high"})  # same after strip
+        verdict = ev.parse_verdict(raw, candidate)
+        assert verdict.suggested_fix is None
+
 
 # ── 9-10. JSONL serialisation ────────────────────────────────────────
 
