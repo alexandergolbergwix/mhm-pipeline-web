@@ -62,3 +62,35 @@ Set `type_ok`:
 ## Output
 
 JSON only. Cite the field name and quote the exact substring used.
+
+The JSON object must include a `suggested_fix` key (null by default).
+
+If the prediction is wrong **only** because the extracted text span is too
+short, too long, mistranscribed, or includes boundary noise, you **may**
+propose `suggested_fix`.
+
+Return a non-null `suggested_fix` **only if ALL of the following hold**:
+1. The corrected value is directly visible in the provided MARC context
+   (specifically in `provenance`, `notes[]`, or `colophon_text`).
+2. The correction is unambiguous.
+3. Confidence is **high**.
+4. The issue is with the extracted **text** only — NOT wrong type alone.
+
+Otherwise return `"suggested_fix": null`.
+
+Example where fix is appropriate (truncated owner name):
+```json
+{
+  "name_ok": "partial",
+  "type_ok": "yes",
+  "role_ok": "n/a",
+  "overall": "partial",
+  "reasoning": "Owner name truncated; full name with patronymic in provenance.",
+  "suggested_fix": {
+    "text": "שמעון בר יהודה",
+    "reasoning": "provenance: \"ציון בעלים: שמעון בר יהודה\"",
+    "source_field": "provenance",
+    "confidence": "high"
+  }
+}
+```

@@ -74,3 +74,40 @@ Set `type_ok`:
 ## Output
 
 JSON only. Cite the field name and quote the exact substring used.
+
+The JSON object must include a `suggested_fix` key (null by default).
+
+If the prediction is wrong **only** because the extracted text span is too
+short, too long, mistranscribed, or includes boundary noise, you **may**
+propose `suggested_fix`.
+
+Return a non-null `suggested_fix` **only if ALL of the following hold**:
+1. The corrected value is directly visible in the provided MARC context
+   (specifically in `contents`, `notes[]`, `canonical_references[]`, or
+   `colophon_text`).
+2. The correction is unambiguous.
+3. Confidence is **high**.
+4. The issue is with the extracted **text** only — NOT wrong type alone.
+
+FOLIO spans in particular are common targets for text-only fixes (truncated
+ranges, over-extended ranges including parenthetical notes). Apply FOLIO
+leniency but still require the corrected range to be directly visible in MARC.
+
+Otherwise return `"suggested_fix": null`.
+
+Example where fix is appropriate (folio range over-extended):
+```json
+{
+  "name_ok": "partial",
+  "type_ok": "yes",
+  "role_ok": "n/a",
+  "overall": "partial",
+  "reasoning": "Folio span includes trailing noise; clean range visible in contents.",
+  "suggested_fix": {
+    "text": "דף 124א-133ב",
+    "reasoning": "contents: \"דף 124א-133ב (בשוליים)\"",
+    "source_field": "contents",
+    "confidence": "high"
+  }
+}
+```

@@ -418,12 +418,20 @@ def _ner_verdict_query_summary(
     Keyed by the entity's canonical text + type + role + judge model.
     Including the model ensures that a verdict cached under an older model
     is never served after an upgrade.
+
+    v2 additions: ai_extraction_verdict_schema and suggested_fix_policy
+    are included so that old cached verdicts (produced before the
+    suggested_fix feature) are never served as current-schema hits.
     """
     return {
         "text":        (ext.override_text or ext.text or "").strip(),
         "type":        (ext.override_type or ext.type or "").strip(),
         "role":        (ext.override_role or ext.role or "").strip(),
         "judge_model": judge_model,
+        # Version stamps — changing these busts all pre-existing cache entries
+        # so a new prompt/schema cannot silently re-use old results.
+        "ai_extraction_verdict_schema":  "v2",
+        "suggested_fix_policy":          "text_high_confidence_v1",
     }
 
 
@@ -432,7 +440,12 @@ async def _write_ner_verdicts_to_cache(
     entities_by_id: dict[str, ExtractionApproval],
     verdicts: list[dict[str, Any]],
 ) -> None:
-    """Persist newly-judged NER verdicts into the shared inference cache."""
+    """Persist newly-judged NER verdicts into the shared inference cache.
+
+    The ``verdict`` sub-dict is stored verbatim, including
+    ``suggested_fix`` (null or a fix object) so the frontend can
+    display the fix without re-running the eval-agent.
+    """
     from app.db import session_scope  # noqa: PLC0415
 
     async with session_scope() as db:
@@ -444,8 +457,10 @@ async def _write_ner_verdicts_to_cache(
                 continue
             _jm = v.get("judge_id") or v.get("model") or "gemini-3.5-flash"
             qs = _ner_verdict_query_summary(ext, _jm)
+            verdict_dict = v.get("verdict") or {}
             cached_result = {
-                "verdict":    v.get("verdict") or {},
+                # Store the full verdict dict verbatim so suggested_fix is preserved.
+                "verdict":    verdict_dict,
                 "judge_id":   v.get("judge_id") or v.get("model"),
                 "judged_at":  v.get("judged_at"),
                 "cache_key":  v.get("cache_key"),
@@ -479,16 +494,20 @@ async def _persist_ai_verdicts_to_entities(
             continue
         vd = (v.get("verdict") or {}) if isinstance(v, dict) else {}
         summary = {
-            "overall":     vd.get("overall"),
-            "name_ok":     vd.get("name_ok"),
-            "type_ok":     vd.get("type_ok"),
-            "role_ok":     vd.get("role_ok"),
-            "reasoning":   vd.get("reasoning"),
-            "model":       v.get("judge_id") or v.get("model"),
-            "judged_at":   v.get("judged_at"),
-            "cache_key":   v.get("cache_key"),
-            "session_id":  session_id,
-            "evaluator":   v.get("evaluator_id") or v.get("evaluator"),
+            "overall":       vd.get("overall"),
+            "name_ok":       vd.get("name_ok"),
+            "type_ok":       vd.get("type_ok"),
+            "role_ok":       vd.get("role_ok"),
+            "reasoning":     vd.get("reasoning"),
+            # v2: persist suggested_fix explicitly so null is stored (not absent).
+            # This lets the frontend distinguish "no fix proposed" from
+            # "entity not yet judged".
+            "suggested_fix": vd.get("suggested_fix"),
+            "model":         v.get("judge_id") or v.get("model"),
+            "judged_at":     v.get("judged_at"),
+            "cache_key":     v.get("cache_key"),
+            "session_id":    session_id,
+            "evaluator":     v.get("evaluator_id") or v.get("evaluator"),
         }
         summaries[eid] = summary
 
@@ -763,7 +782,25 @@ async def _fetch_entities(
 
 
 def _approval_to_ner_shape(ext: ExtractionApproval) -> dict[str, Any]:
-    return {
+    """Convert an ExtractionApproval row to the ner_results.json entity shape.
+
+    The ``grounded`` field is derived from the DB-snapshotted ``exists_in``
+    status so the eval-agent's grounding-signal prompt block is populated
+    rather than falling back to the “no grounding signal” placeholder.
+    This is the guardrail fix for the provenance/contents MARC-context bug:
+    without this, verifiers running on DB-loaded entities had no F8 signal
+    and could not substantiate suggested fixes.
+    """
+    # Map DB exists_in status to a boolean grounded hint for the eval-agent.
+    _exists_in = ext.exists_in or ""
+    if _exists_in == "grounded":
+        grounded_hint: bool | None = True
+    elif _exists_in in ("wrong_field", "novel"):
+        grounded_hint = False
+    else:
+        grounded_hint = None  # unknown / not computed
+
+    shape: dict[str, Any] = {
         "source":           ext.source,
         "text":             ext.text,
         "type":             ext.override_type or ext.type,
@@ -774,6 +811,9 @@ def _approval_to_ner_shape(ext: ExtractionApproval) -> dict[str, Any]:
         "model_confidence": ext.model_confidence,
         "_entity_id":       str(ext.id),
     }
+    if grounded_hint is not None:
+        shape["grounded"] = grounded_hint
+    return shape
 
 
 async def _resolve_gemini_key(

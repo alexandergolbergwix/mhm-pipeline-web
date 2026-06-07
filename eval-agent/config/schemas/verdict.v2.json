@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eval-agent.local/schemas/verdict.v2.json",
+  "title": "Eval-agent verdict (v2)",
+  "description": "Verdict v2 extends v1 with an optional suggested_fix field inside the verdict object. Only NER evaluators (person_ner, provenance_ner, contents_ner) may return a non-null fix; genre_classifier always returns null.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "judge_id",
+    "record_id",
+    "evaluator_id",
+    "candidate",
+    "verdict"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2
+    },
+    "judge_id": {
+      "type": "string",
+      "description": "Model id of the judge that produced this verdict (e.g. 'gemini-3.1-pro-preview')."
+    },
+    "record_id": {
+      "type": "string",
+      "description": "MARC _control_number of the source record."
+    },
+    "evaluator_id": {
+      "type": "string",
+      "enum": ["person_ner", "provenance_ner", "contents_ner", "genre_classifier"]
+    },
+    "sub_type": {
+      "type": ["string", "null"],
+      "description": "Free-form sub-category, e.g. 'AUTHOR', 'OWNER', 'WORK', 'Piyyutim'."
+    },
+    "candidate": {
+      "type": "object",
+      "description": "Raw payload of the prediction being judged, as emitted by the pipeline.",
+      "additionalProperties": true
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name_ok", "type_ok", "role_ok", "overall", "reasoning", "suggested_fix"],
+      "properties": {
+        "name_ok":   { "type": "string", "enum": ["yes", "partial", "no"] },
+        "type_ok":   { "type": "string", "enum": ["yes", "partial", "no"] },
+        "role_ok":   { "type": "string", "enum": ["yes", "partial", "no", "n/a"] },
+        "overall":   { "type": "string", "enum": ["full", "partial", "fail"] },
+        "reasoning": { "type": "string" },
+        "suggested_fix": {
+          "description": "Optional high-confidence corrected entity text. null by default. Only permitted when the correction is directly visible in the provided MARC context and confidence is high. Never for wrong role/type only.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text", "confidence"],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "The corrected entity text value."
+                },
+                "reasoning": {
+                  "type": ["string", "null"],
+                  "description": "Why this fix was proposed, citing the MARC evidence."
+                },
+                "source_field": {
+                  "type": ["string", "null"],
+                  "description": "The MARC field key from which the correction was derived."
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": ["high"],
+                  "description": "Only 'high' fixes are permitted. Medium/low are rejected."
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "judged_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cache_key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "error": {
+      "type": ["string", "null"],
+      "description": "If present, the verdict object is a placeholder and judging failed."
+    },
+    "agentic": {
+      "type": "boolean",
+      "description": "True when produced by the agentic tool-loop; false or absent for linear single-shot."
+    }
+  }
+}

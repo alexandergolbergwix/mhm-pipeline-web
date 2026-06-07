@@ -1,11 +1,9 @@
 /**
  * Playwright config — true-browser e2e for the MHM Pipeline web app.
  *
- * Single chromium project for now. The dev server is NOT started by
- * Playwright (no `webServer` config) — the operator runs the backend
- * + Vite dev server themselves so e2e tests can exercise a realistic
- * full-stack environment without flakiness from cold-starting two
- * services per run.
+ * Single chromium project for now. Vite dev server is started
+ * automatically via the `webServer` config so `yarn test:e2e` is
+ * self-contained (no need to pre-start the server manually).
  *
  * Run:
  *   yarn test:e2e        # headless
@@ -37,6 +35,14 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+  },
+  // Start the Vite dev server automatically unless an external server is
+  // already running (E2E_BASE_URL env var skips this).
+  webServer: process.env.E2E_BASE_URL ? undefined : {
+    command: "yarn dev",
+    url: "http://localhost:5173",
+    reuseExistingServer: true,
+    timeout: 60_000,
   },
   projects: [
     {

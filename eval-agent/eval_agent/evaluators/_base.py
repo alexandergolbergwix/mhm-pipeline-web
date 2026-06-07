@@ -69,8 +69,33 @@ class Candidate:
 
 
 @dataclass
+class SuggestedFix:
+    """Optional high-confidence corrected entity text proposed by the judge.
+
+    Only populated when:
+    * Gemini is high confidence.
+    * The corrected value is directly visible in the provided MARC context.
+    * The correction is unambiguous (not a role/type fix).
+    * The suggested text differs from the original after strip.
+    """
+
+    text: str
+    reasoning: str | None = None
+    source_field: str | None = None
+    confidence: str = "high"  # always "high" — other values are dropped
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "text":         self.text,
+            "reasoning":    self.reasoning,
+            "source_field": self.source_field,
+            "confidence":   self.confidence,
+        }
+
+
+@dataclass
 class Verdict:
-    """Structured verdict matching ``config/schemas/verdict.v1.json``."""
+    """Structured verdict matching ``config/schemas/verdict.v2.json``."""
 
     record_id: str
     evaluator_id: str
@@ -91,10 +116,13 @@ class Verdict:
     # verdict schema is unaffected; self-verify uses it to keep its gate on
     # the deterministic (linear) verdicts only.
     agentic: bool = False
+    # v2 extension: AI-suggested corrected entity text (text-only, high-confidence).
+    # None when no fix is proposed or when the evaluator does not support fixes.
+    suggested_fix: SuggestedFix | None = None
 
     def to_jsonl_record(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "judge_id": self.judge_id,
             "record_id": self.record_id,
             "evaluator_id": self.evaluator_id,
@@ -102,11 +130,12 @@ class Verdict:
             "candidate": self.candidate_payload,
             "confidence": self.confidence,
             "verdict": {
-                "name_ok": self.name_ok,
-                "type_ok": self.type_ok,
-                "role_ok": self.role_ok,
-                "overall": self.overall,
-                "reasoning": self.reasoning,
+                "name_ok":       self.name_ok,
+                "type_ok":       self.type_ok,
+                "role_ok":       self.role_ok,
+                "overall":       self.overall,
+                "reasoning":     self.reasoning,
+                "suggested_fix": self.suggested_fix.to_dict() if self.suggested_fix else None,
             },
             "agentic": self.agentic,
             "cache_key": self.cache_key,
@@ -139,6 +168,12 @@ class Evaluator(ABC):
     def build_prompt(self, candidate: Candidate) -> str:
         ...
 
+    # Evaluators that support suggested_fix. Genre classifier is excluded
+    # (genre is a categorical label, not extracted text — no span fixes).
+    _FIX_CAPABLE_EVALUATORS: frozenset[str] = frozenset(
+        {"person_ner", "provenance_ner", "contents_ner"}
+    )
+
     def parse_verdict(self, raw: dict[str, Any] | None, candidate: Candidate) -> Verdict:
         """Map a Gemini response (or None) into a structured Verdict."""
         v = Verdict(
@@ -156,7 +191,58 @@ class Evaluator(ABC):
         v.role_ok = str(raw.get("role_ok", "n/a"))
         v.overall = str(raw.get("overall", "fail"))
         v.reasoning = str(raw.get("reasoning", ""))
+        v.suggested_fix = self._parse_suggested_fix(raw.get("suggested_fix"), candidate)
         return v
+
+    def _parse_suggested_fix(
+        self,
+        raw_fix: Any,
+        candidate: Candidate,
+    ) -> SuggestedFix | None:
+        """Defensively parse and validate a suggested_fix from Gemini.
+
+        Drop the fix if any of:
+        * Evaluator is not in the fix-capable set (e.g. genre_classifier).
+        * raw_fix is not a dict.
+        * raw_fix.confidence != "high".
+        * raw_fix.text is empty or equals the original text (after strip).
+        * raw_fix.text is unreasonably long (> 512 chars).
+        * Candidate has no MARC context AND no grounding signal —
+          a verifier without context should not propose fixes
+          (guardrail for provenance/contents with missing context).
+        """
+        if candidate.evaluator_id not in self._FIX_CAPABLE_EVALUATORS:
+            return None
+        if not isinstance(raw_fix, dict):
+            return None
+        if raw_fix.get("confidence") != "high":
+            return None
+
+        # Guardrail: drop fix when neither MARC context nor grounding is present.
+        # This prevents provenance/contents verifiers running without proper
+        # context from proposing fixes they cannot substantiate.
+        has_marc_context = bool(candidate.marc_context)
+        has_grounding = (candidate.grounded is not None) or bool(candidate.exists_in)
+        if not has_marc_context and not has_grounding:
+            return None
+
+        text = str(raw_fix.get("text") or "").strip()
+        if not text:
+            return None
+        if len(text) > 512:
+            return None
+
+        # Drop if the suggested text equals the original (no-op fix).
+        original = str(candidate.payload.get("text") or "").strip()
+        if text == original:
+            return None
+
+        return SuggestedFix(
+            text=text,
+            reasoning=str(raw_fix.get("reasoning") or "") or None,
+            source_field=str(raw_fix.get("source_field") or "") or None,
+            confidence="high",
+        )
 
     # ── Shared helpers ────────────────────────────────────────────────
 

@@ -42,6 +42,13 @@ export interface MockEntity {
     cache_key?: string;
     session_id?: string;
     evaluator?: string;
+    /** v2 suggested_fix extension */
+    suggested_fix?: {
+      text: string;
+      reasoning?: string | null;
+      source_field?: string | null;
+      confidence: "high";
+    } | null;
   } | null;
 }
 

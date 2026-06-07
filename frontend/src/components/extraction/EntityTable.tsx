@@ -262,6 +262,18 @@ export function EntityTable(props: EntityTableProps) {
     }, [runId, onEntityUpdated],
   );
 
+  const applyAutoFix = useCallback(
+    async (entity: Entity, fixText: string) => {
+      try {
+        // Patch only the text override — deliberately does NOT touch approved.
+        const updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
+        onEntityUpdated(updated);
+      } catch (err) {
+        console.error("Failed to apply auto-fix", err);
+      }
+    }, [runId, onEntityUpdated],
+  );
+
   const gridTemplate = useMemo(
     () => ["40px", ...COLUMNS.map((c) => c.width)].join(" "),
     [],
@@ -270,6 +282,18 @@ export function EntityTable(props: EntityTableProps) {
   const renderRow = (entity: Entity, style?: CSSProperties) => {
     const selected = selectedIds.has(entity.id);
     const exists = _EXISTS_BADGE[entity.exists_in?.status ?? "unknown"] ?? _EXISTS_BADGE.unknown;
+
+    // Auto-fix: show button only when:
+    // 1. Entity has a suggested_fix with confidence="high"
+    // 2. Entity is a NER entity (not genre_ml)
+    // 3. The suggested text differs from the current effective text
+    const fix = entity.ai_verdict?.suggested_fix;
+    const effectiveText = (entity.effective_text ?? entity.text ?? "").trim();
+    const showAutoFix =
+      fix != null &&
+      fix.confidence === "high" &&
+      entity.source !== "genre_ml" &&
+      fix.text.trim() !== effectiveText;
     return (
       <div
         key={entity.id}
@@ -357,6 +381,17 @@ export function EntityTable(props: EntityTableProps) {
                   data-testid="entity-view-source"
                   title="View MARC source"
                   onClick={() => onViewSource(entity)}>👁</button>
+          {showAutoFix && (
+            <button
+              type="button"
+              data-testid="entity-autofix-btn"
+              title={fix!.reasoning ?? `Auto-fix: apply AI-suggested correction \u2192 ${fix!.text}`}
+              onClick={() => applyAutoFix(entity, fix!.text)}
+              className="button-ghost h-7 px-2 text-xs text-amber-300 hover:text-amber-200"
+            >
+              ✨ Fix
+            </button>
+          )}
           {projectId ? (
             <button
               type="button"

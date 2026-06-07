@@ -109,6 +109,21 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
     }
   }
 
+  async function applyAutoFix(fixText: string): Promise<void> {
+    if (!entity) return;
+    setBusy(true);
+    try {
+      // Patch only the text override — deliberately does NOT set approved.
+      // The curator sees the updated text and can then approve if they agree.
+      const updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
+      onEntityChanged?.(updated);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Other entities in the same record — used for secondary (blue)
   // highlights in the MARC field renderer.
   const siblingTexts = useMemo<string[]>(() => {
@@ -208,6 +223,30 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
               Edit text/type/role…
             </button>
           )}
+          {(() => {
+            const fix = entity.ai_verdict?.suggested_fix;
+            const effectiveText = (entity.effective_text ?? entity.text ?? "").trim();
+            if (
+              fix != null &&
+              fix.confidence === "high" &&
+              entity.source !== "genre_ml" &&
+              fix.text.trim() !== effectiveText
+            ) {
+              return (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => applyAutoFix(fix.text)}
+                  data-testid="detail-autofix-btn"
+                  title={fix.reasoning ?? `Apply AI-suggested correction \u2192 ${fix.text}`}
+                  className="button-ghost h-7 px-3 text-xs text-amber-300 hover:text-amber-200"
+                >
+                  ✨ Auto-fix
+                </button>
+              );
+            }
+            return null;
+          })()}
           {onVerifyEntity && (
             <button type="button"
                     disabled={busy}
@@ -419,6 +458,17 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
     const color = b === true ? "text-emerald-300" : b === false ? "text-red-300" : "muted";
     return <span className={color}>{glyph} {label}</span>;
   };
+
+  // v2 suggested_fix preview — show current vs proposed text so the
+  // curator can see exactly what will change before clicking Auto-fix.
+  const fix = v.suggested_fix;
+  const effectiveText = (entity.effective_text ?? entity.text ?? "").trim();
+  const showFix =
+    fix != null &&
+    fix.confidence === "high" &&
+    entity.source !== "genre_ml" &&
+    fix.text.trim() !== effectiveText;
+
   return (
     <section className="glass p-3 space-y-2" data-testid="card-ai-verdict">
       <div className="kicker">🤖 AI verification</div>
@@ -437,6 +487,23 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
         <blockquote className="border-l-2 border-biu-sky/40 pl-2 text-[11px] text-ink/90 leading-snug">
           {v.reasoning}
         </blockquote>
+      )}
+      {showFix && (
+        <div className="rounded-md border border-amber-300/30 bg-amber-300/5 p-2 space-y-1"
+             data-testid="autofix-preview">
+          <div className="text-[10px] uppercase tracking-wide text-amber-300/80">✨ AI suggests a text fix</div>
+          <div className="grid grid-cols-[60px_1fr] gap-x-2 text-[11px]">
+            <span className="muted text-right">Current:</span>
+            <span dir="auto" data-testid="autofix-current-text"
+                  className="text-ink/70 line-through">{effectiveText}</span>
+            <span className="muted text-right">Proposed:</span>
+            <span dir="auto" data-testid="autofix-proposed-text"
+                  className="text-amber-200 font-medium">{fix!.text}</span>
+          </div>
+          {fix!.reasoning && (
+            <p className="text-[10px] muted leading-snug">{fix!.reasoning}</p>
+          )}
+        </div>
       )}
       <div className="muted text-[10px]">
         {v.model && <span>model: {v.model}</span>}

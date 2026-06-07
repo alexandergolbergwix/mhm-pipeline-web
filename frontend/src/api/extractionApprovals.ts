@@ -58,6 +58,16 @@ export type AiVerdictOverall =
   | "abstain"
   | "unknown";
 
+/** v2 extension: AI-suggested corrected entity text.
+ *  Only present on NER entities (person_ner / provenance_ner / contents_ner).
+ *  Never on genre_ml entities. */
+export interface AiSuggestedFix {
+  text: string;
+  reasoning?: string | null;
+  source_field?: string | null;
+  confidence: "high";
+}
+
 export interface AiVerdict {
   overall: AiVerdictOverall;
   name_ok?: boolean | null;
@@ -70,6 +80,8 @@ export interface AiVerdict {
   session_id?: string | null;
   evaluator?: string | null;
   novel?: boolean;
+  /** v2: Gemini-proposed corrected entity text, or null when no fix applies. */
+  suggested_fix?: AiSuggestedFix | null;
 }
 
 export interface ExistsIn {

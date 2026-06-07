@@ -91,3 +91,48 @@ Set `role_ok`:
 ## Output
 
 JSON only. Cite the MARC field name and quote the exact substring.
+
+The JSON object must include a `suggested_fix` key (null by default).
+
+If the prediction is wrong **only** because the extracted text span is too
+short, too long, mistranscribed, or includes boundary noise, you **may**
+propose `suggested_fix`.
+
+Return a non-null `suggested_fix` **only if ALL of the following hold**:
+1. The corrected value is directly visible in the provided MARC context
+   (do NOT invent a value from general knowledge).
+2. The correction is unambiguous — the corrected span is the obvious fix.
+3. Confidence is **high**.
+4. The issue is with the extracted **text** only (span boundary, truncation,
+   transcription noise) — NOT wrong role or type alone.
+
+Otherwise return `"suggested_fix": null`.
+
+Example where fix is appropriate:
+```json
+{
+  "name_ok": "partial",
+  "type_ok": "yes",
+  "role_ok": "yes",
+  "overall": "partial",
+  "reasoning": "Name truncated; patronymic visible in colophon_text.",
+  "suggested_fix": {
+    "text": "יוסף בן יעקב",
+    "reasoning": "colophon_text: \"...אני יוסף בן יעקב מעתיק\"",
+    "source_field": "colophon_text",
+    "confidence": "high"
+  }
+}
+```
+
+Example where fix is NOT appropriate (wrong role, not a text issue):
+```json
+{
+  "name_ok": "yes",
+  "type_ok": "yes",
+  "role_ok": "no",
+  "overall": "fail",
+  "reasoning": "MARC lists this person as AUTHOR, not TRANSCRIBER.",
+  "suggested_fix": null
+}
+```
