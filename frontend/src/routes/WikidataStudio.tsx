@@ -17,6 +17,7 @@ import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {ItemValidatorBadge} from "@/components/wikidata/ItemValidatorBadge";
 import {ItemApprovalBadge} from "@/components/wikidata/ItemApprovalBadge";
+import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {
   Studio,
   type PropertyInfo,
@@ -60,6 +61,9 @@ export default function WikidataStudio() {
 
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   const [editItem, setEditItem] = useState<StudioItem | null>(null);
+  const [verifyScope, setVerifyScope] = useState<
+    null | { scopeKind: "single" | "all"; itemIds: string[]; label: string }
+  >(null);
 
   // search + filter + sort state (drive the server query)
   const [query, setQuery]               = useState("");
@@ -220,6 +224,7 @@ export default function WikidataStudio() {
 
   const current = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].it : null;
   const currentKey = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].key : "";
+  const visibleItemIds = itemRows.map(({ it }) => it.local_id).filter((id): id is string => Boolean(id));
 
   return (
     <Layout>
@@ -277,6 +282,31 @@ export default function WikidataStudio() {
             </label>
             <button onClick={reconcile} disabled={!!busy} className="button-ghost text-sm">
               {busy === "reconcile" ? "Reconciling…" : "Reconcile with Wikidata"}
+            </button>
+            <button
+              onClick={() => {
+                if (!current?.local_id) return;
+                setVerifyScope({
+                  scopeKind: "single",
+                  itemIds: [current.local_id],
+                  label: labelOf(current) || current.local_id,
+                });
+              }}
+              disabled={!current?.local_id}
+              className="button-ghost text-sm text-biu-sky"
+            >
+              ✨ Verify current with AI
+            </button>
+            <button
+              onClick={() => setVerifyScope({
+                scopeKind: "all",
+                itemIds: visibleItemIds,
+                label: `${visibleItemIds.length} visible`,
+              })}
+              disabled={visibleItemIds.length === 0}
+              className="button-ghost text-sm text-biu-sky"
+            >
+              ✨ Verify all visible with AI
             </button>
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
@@ -548,6 +578,16 @@ export default function WikidataStudio() {
           item={editItem}
           onClose={() => setEditItem(null)}
           onSaved={() => { setEditItem(null); void refresh(); }}
+        />
+      )}
+      {verifyScope && runId && (
+        <WikidataVerificationModal
+          runId={runId}
+          scopeKind={verifyScope.scopeKind}
+          itemIds={verifyScope.itemIds}
+          scopeLabel={verifyScope.label}
+          onClose={() => setVerifyScope(null)}
+          onVerdictsLanded={() => { void refresh({nextForceRebuild: true}); }}
         />
       )}
       {historyFor && projectId ? (

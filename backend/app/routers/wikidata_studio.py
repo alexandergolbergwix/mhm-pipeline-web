@@ -12,13 +12,15 @@ workflow's unit of truth (see Rule 54 in the desktop CLAUDE.md).
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import PlainTextResponse, StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +36,17 @@ from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.models.wikidata_studio_cache import WikidataStudioCache
-from app.pipeline import wikidata_studio, wikidata_upload
+from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
+from app.pipeline.agent_runner import (
+    AgentEvent,
+    locate_eval_agent,
+    new_session_id,
+    persist_session_event,
+    read_run_verdicts,
+    spawn_eval_agent_run,
+    sse_stream,
+)
+from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.routers.runs import _lookup_run_with_access  # noqa: PLF401 — module-internal
 from app.versioning import apply_event
 
@@ -73,6 +85,143 @@ class StudioBuildResponse(BaseModel):
     approved_item_count: int      # items with approved==True in the full build
     properties: list[PropertyInfo]        # distinct P-ids in the full build
     property_labels: dict[str, str]       # P/Q id → label map for label-store seeding
+
+
+class VerifyStartRequest(BaseModel):
+    action_id: str = Field(..., min_length=1, max_length=64)
+    item_ids: list[str] | None = None
+    approved_only: bool = True
+    override_cache: bool = False
+    tier_model: str | None = Field(default=None, max_length=64)
+
+
+@router.get("/{run_id}/wikidata-studio/ai-verify/actions")
+async def list_verify_actions(
+    run_id: uuid.UUID,
+    scope_kind: str = Query("selection", pattern=r"^(single|selection|all)$"),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    return [
+        wikidata_actions.to_dict(a)
+        for a in wikidata_actions.list_actions(scope_kind=scope_kind)  # type: ignore[arg-type]
+    ]
+
+
+@router.post("/{run_id}/wikidata-studio/ai-verify/start-stream")
+async def start_verify_stream(
+    run_id: uuid.UUID,
+    payload: VerifyStartRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+
+    action = wikidata_actions.get_action(payload.action_id)
+    if action is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"unknown action_id {payload.action_id!r}",
+        )
+
+    items, marc_records = await _fetch_wikidata_verify_items(
+        db, run_id, auth,
+        item_ids=payload.item_ids,
+        approved_only=payload.approved_only,
+    )
+    if not items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="no Wikidata Studio items in scope",
+        )
+    if len(items) < action.min_candidates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"action {action.id!r} requires at least "
+                f"{action.min_candidates} candidates; got {len(items)}"
+            ),
+        )
+
+    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+
+    judge_model = payload.tier_model or GEMINI_MODEL
+    pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    uncached: list[dict[str, Any]] = []
+    if not payload.override_cache:
+        for item in items:
+            hit = await read_from_inference_cache(
+                db,
+                kind="ai_verdict",
+                query_summary=_wikidata_verdict_query_summary(item, judge_model),
+            )
+            if hit is not None:
+                pre_cached.append((item, hit))
+            else:
+                uncached.append(item)
+    else:
+        uncached = list(items)
+
+    api_key = await _resolve_gemini_key(db, auth)
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "No Gemini API key configured. Open Settings -> "
+                "Credentials and add one from "
+                "https://aistudio.google.com/app/apikey."
+            ),
+        )
+
+    session_id = new_session_id()
+    return StreamingResponse(
+        sse_stream(_wikidata_verify_event_stream(
+            run_id=str(run_id),
+            session_id=session_id,
+            action=action,
+            items=items,
+            uncached_items=uncached,
+            pre_cached=pre_cached,
+            marc_records=marc_records,
+            api_key=api_key,
+            override_cache=payload.override_cache,
+            tier_model=payload.tier_model,
+        )),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Session-Id":      session_id,
+        },
+    )
+
+
+@router.get("/{run_id}/wikidata-studio/ai-verify/sessions")
+async def list_wikidata_verify_sessions(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    return _list_wikidata_sessions(str(run_id))
+
+
+@router.get("/{run_id}/wikidata-studio/ai-verify/sessions/{session_id}")
+async def get_wikidata_verify_session(
+    run_id: uuid.UUID,
+    session_id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    data = _read_wikidata_session(str(run_id), session_id)
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session not found",
+        )
+    return data
 
 
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
@@ -835,6 +984,379 @@ async def _build_native_items(
         return_native=True,
     )
     return result.get("native_items") or []
+
+
+async def _fetch_wikidata_verify_items(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    auth: AuthContext,
+    *,
+    item_ids: list[str] | None,
+    approved_only: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build Studio items and return the scoped serialised candidates."""
+    records = (
+        await db.execute(
+            select(RunRecord).where(RunRecord.run_id == run_id)
+            .order_by(RunRecord.control_number.asc())
+        )
+    ).scalars().all()
+    studio = await build_studio(
+        run_id=run_id,
+        approved_only=approved_only,
+        force_rebuild=False,
+        entity_type=None,
+        q=None,
+        sort="label",
+        sort_dir="asc",
+        page=1,
+        page_size=500,
+        auth=auth,
+        db=db,
+    )
+    wanted = set(item_ids or [])
+    items: list[dict[str, Any]] = []
+    for raw in studio.items:
+        item = dict(raw)
+        local_id = str(item.get("local_id") or "")
+        if wanted and local_id not in wanted:
+            continue
+        item["_local_id"] = local_id
+        item["record_ids"] = [str(r.control_number) for r in records]
+        items.append(item)
+    return items, [dict(r.marc or {"_control_number": r.control_number}) for r in records]
+
+
+async def _wikidata_verify_event_stream(
+    *,
+    run_id: str,
+    session_id: str,
+    action: agent_actions.AgentAction,
+    items: list[dict[str, Any]],
+    uncached_items: list[dict[str, Any]],
+    pre_cached: list[tuple[dict[str, Any], dict[str, Any]]],
+    marc_records: list[dict[str, Any]],
+    api_key: str,
+    override_cache: bool,
+    tier_model: str | None,
+):
+    eval_root: Path | None = None
+    state_dir: Path | None = None
+    session_dir: Path | None = None
+    pipeline_output: Path | None = None
+    eval_agent_error: str | None = None
+
+    if uncached_items:
+        try:
+            eval_root = locate_eval_agent()
+            state_dir = eval_root / "state" / "wikidata-verify-sessions" / run_id
+            session_dir = state_dir / "sessions" / session_id
+            pipeline_output = session_dir / "pipeline-output"
+            session_dir.mkdir(parents=True, exist_ok=True)
+        except FileNotFoundError as exc:
+            import tempfile  # noqa: PLC0415
+
+            eval_agent_error = str(exc)
+            session_dir = Path(tempfile.mkdtemp(prefix=f"mhm-wikidata-{session_id}-"))
+    else:
+        import tempfile  # noqa: PLC0415
+
+        session_dir = Path(tempfile.mkdtemp(prefix=f"mhm-wikidata-{session_id}-"))
+
+    assert session_dir is not None
+    start_ev = AgentEvent(
+        type="session.start",
+        payload={
+            "session_id": session_id,
+            "run_id": run_id,
+            "action_id": action.id,
+            "scope_size": len(items),
+            "scope_item_ids": sorted(str(i.get("_local_id") or "") for i in items),
+            "goal": agent_actions.render_goal(action, n_candidates=len(items)),
+            "cache_hits": len(pre_cached),
+        },
+    )
+    persist_session_event(session_dir, start_ev)
+    yield start_ev
+
+    for item, cached_payload in pre_cached:
+        ev = AgentEvent(
+            type="agent.verdict",
+            payload=_cached_wikidata_verdict_event(item, cached_payload),
+        )
+        persist_session_event(session_dir, ev)
+        yield ev
+
+    try:
+        if eval_agent_error:
+            warn_ev = AgentEvent(
+                type="runner.warning",
+                payload={
+                    "message": (
+                        f"{len(uncached_items)} Wikidata Studio items cannot be verified here "
+                        "because the eval-agent is not available on this server."
+                    ),
+                    "uncached_count": len(uncached_items),
+                    "eval_agent_error": eval_agent_error,
+                },
+            )
+            persist_session_event(session_dir, warn_ev)
+            yield warn_ev
+        else:
+            assert pipeline_output is not None and state_dir is not None
+            _write_wikidata_verify_fixture(
+                dest_dir=pipeline_output,
+                marc_records=marc_records,
+                items=uncached_items,
+            )
+            async for ev in spawn_eval_agent_run(
+                pipeline_output=pipeline_output,
+                evaluators=action.evaluators,
+                api_key=api_key,
+                state_dir=state_dir,
+                tier_model=tier_model,
+                override_cache=override_cache,
+                rpm=action.rate_limit_rpm,
+            ):
+                persist_session_event(session_dir, ev)
+                yield ev
+    finally:
+        on_disk_verdicts = read_run_verdicts(state_dir) if state_dir is not None else []
+        for v in on_disk_verdicts:
+            ev = AgentEvent(type="agent.verdict", payload=v)
+            persist_session_event(session_dir, ev)
+            yield ev
+
+        if on_disk_verdicts:
+            try:
+                await _write_wikidata_verdicts_to_cache(
+                    items_by_id={
+                        str(i.get("_local_id") or i.get("local_id") or ""): i
+                        for i in uncached_items
+                    },
+                    verdicts=on_disk_verdicts,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("failed to write Wikidata item verdicts to inference cache")
+
+        end_ev = AgentEvent(
+            type="session.end",
+            payload={
+                "session_id": session_id,
+                "scope_size": len(items),
+                "cache_hits": len(pre_cached),
+                "fresh_verdicts": len(on_disk_verdicts),
+                "uncached_skipped": len(uncached_items) if eval_agent_error else 0,
+                "outcome": "partial" if eval_agent_error else "complete",
+            },
+        )
+        persist_session_event(session_dir, end_ev)
+        yield end_ev
+
+
+def _write_wikidata_verify_fixture(
+    *,
+    dest_dir: Path,
+    marc_records: list[dict[str, Any]],
+    items: list[dict[str, Any]],
+) -> None:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    (dest_dir / "marc_extracted.json").write_text(
+        json.dumps(marc_records, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (dest_dir / "wikidata_items.json").write_text(
+        json.dumps(items, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _wikidata_verdict_query_summary(
+    item: dict[str, Any],
+    judge_model: str = "gemini-3.5-flash",
+) -> dict[str, Any]:
+    return {
+        "local_id": str(item.get("_local_id") or item.get("local_id") or ""),
+        "entity_type": str(item.get("entity_type") or ""),
+        "labels": item.get("labels") or {},
+        "descriptions": item.get("descriptions") or {},
+        "aliases": item.get("aliases") or {},
+        "statements": item.get("statements") or [],
+        "existing_qid": item.get("existing_qid"),
+        "validation_issues": item.get("validation_issues") or [],
+        "judge_model": judge_model,
+        "evaluator": "wikidata_item",
+    }
+
+
+def _cached_wikidata_verdict_event(
+    item: dict[str, Any],
+    cached_payload: dict[str, Any],
+) -> dict[str, Any]:
+    local_id = str(item.get("_local_id") or item.get("local_id") or "")
+    record_ids = item.get("record_ids") if isinstance(item.get("record_ids"), list) else []
+    return {
+        "candidate": {
+            **item,
+            "_local_id": local_id,
+            "_item_id": local_id,
+            "label": _item_label(item),
+        },
+        "verdict": cached_payload.get("verdict") or {},
+        "judge_id": cached_payload.get("judge_id"),
+        "judged_at": cached_payload.get("judged_at"),
+        "cache_key": cached_payload.get("cache_key"),
+        "evaluator_id": cached_payload.get("evaluator") or "wikidata_item",
+        "confidence": cached_payload.get("confidence"),
+        "record_id": cached_payload.get("record_id") or (str(record_ids[0]) if record_ids else local_id),
+        "sub_type": cached_payload.get("sub_type") or item.get("entity_type") or "item",
+        "from_inference_cache": True,
+    }
+
+
+async def _write_wikidata_verdicts_to_cache(
+    *,
+    items_by_id: dict[str, dict[str, Any]],
+    verdicts: list[dict[str, Any]],
+) -> None:
+    from app.db import session_scope  # noqa: PLC0415
+
+    async with session_scope() as db:
+        for v in verdicts:
+            cand = v.get("candidate") if isinstance(v, dict) else None
+            local_id = ""
+            if isinstance(cand, dict):
+                local_id = str(
+                    cand.get("_local_id") or cand.get("_item_id")
+                    or cand.get("local_id") or "",
+                )
+            item = items_by_id.get(local_id)
+            if item is None:
+                continue
+            judge_model = str(v.get("judge_id") or v.get("model") or "gemini-3.5-flash")
+            cached_result = {
+                "verdict": v.get("verdict") or {},
+                "judge_id": v.get("judge_id") or v.get("model"),
+                "judged_at": v.get("judged_at"),
+                "cache_key": v.get("cache_key"),
+                "evaluator": v.get("evaluator_id") or v.get("evaluator") or "wikidata_item",
+                "confidence": v.get("confidence"),
+                "sub_type": v.get("sub_type"),
+                "record_id": v.get("record_id"),
+            }
+            await write_to_inference_cache(
+                db,
+                kind="ai_verdict",
+                query_summary=_wikidata_verdict_query_summary(item, judge_model),
+                result=cached_result,
+            )
+
+
+def _item_label(item: dict[str, Any]) -> str:
+    labels = item.get("labels")
+    if isinstance(labels, dict):
+        for key in ("en", "he"):
+            value = labels.get(key)
+            if value:
+                return str(value)
+        for value in labels.values():
+            if value:
+                return str(value)
+    return str(item.get("_local_id") or item.get("local_id") or "")
+
+
+def _list_wikidata_sessions(run_id: str) -> list[dict[str, Any]]:
+    try:
+        root = locate_eval_agent()
+    except FileNotFoundError:
+        return []
+    run_root = root / "state" / "wikidata-verify-sessions" / run_id
+    sessions_root = run_root / "sessions"
+    if not sessions_root.exists():
+        return []
+    return [
+        {"session_id": child.name, **_wikidata_session_meta(child)}
+        for child in sorted(
+            (p for p in sessions_root.iterdir() if p.is_dir()),
+            key=lambda p: p.name,
+            reverse=True,
+        )
+    ]
+
+
+def _read_wikidata_session(run_id: str, session_id: str) -> dict[str, Any] | None:
+    try:
+        root = locate_eval_agent()
+    except FileNotFoundError:
+        return None
+    base = root / "state" / "wikidata-verify-sessions" / run_id / "sessions" / session_id
+    if not base.exists():
+        return None
+    events: list[dict[str, Any]] = []
+    trace = base / "trace.jsonl"
+    if trace.exists():
+        with trace.open(encoding="utf-8") as fp:
+            for line in fp:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    state_dir = base.parent.parent
+    return {
+        "session_id": session_id,
+        "run_id": run_id,
+        "events": events,
+        "verdicts": read_run_verdicts(state_dir) or read_run_verdicts(base),
+    }
+
+
+def _wikidata_session_meta(session_dir: Path) -> dict[str, Any]:
+    trace = session_dir / "trace.jsonl"
+    if not trace.exists():
+        return {"started_at": None, "ended_at": None,
+                "action_id": None, "scope_size": 0, "outcome": None}
+    start: dict[str, Any] = {}
+    end: dict[str, Any] = {}
+    try:
+        for line in trace.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            ev = json.loads(line)
+            if ev.get("type") == "session.start":
+                start = ev
+            elif ev.get("type") == "session.end":
+                end = ev
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {
+        "started_at": start.get("ts"),
+        "ended_at": end.get("ts"),
+        "action_id": start.get("action_id"),
+        "scope_size": start.get("scope_size", 0),
+        "outcome": end.get("outcome"),
+    }
+
+
+async def _resolve_gemini_key(
+    db: AsyncSession,
+    auth: AuthContext,
+) -> str | None:
+    import os  # noqa: PLC0415
+
+    try:
+        from app.pipeline.ai_verifier import unwrap_user_gemini_key  # noqa: PLC0415
+
+        key = await unwrap_user_gemini_key(
+            db, user_id=auth.user.id, kek=auth.kek,
+        )
+        if key:
+            return key
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not unwrap stored Gemini key: %s", exc)
+    return os.environ.get("GEMINI_API_KEY")
 
 
 # Hebrew common-noun strings that the NER sometimes extracts as person names.

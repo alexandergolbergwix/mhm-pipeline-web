@@ -39,10 +39,12 @@ test.describe("WikidataStudio page", () => {
     await installStudioMocks(page, build);
     await gotoStudio(page);
 
-    // Summary tile shows total items from summary.total_items
-    await expect(page.getByText("2")).toBeVisible({timeout: 8000});
-    // Record count
-    await expect(page.getByText("1")).toBeVisible();
+    await expect(
+      page.locator(".glass-pill", {hasText: "Items"}).getByText("2", {exact: true}),
+    ).toBeVisible({timeout: 8000});
+    await expect(
+      page.locator(".glass-pill", {hasText: "Records"}).getByText("1", {exact: true}),
+    ).toBeVisible();
   });
 
   test("renders item list with item labels", async ({page}) => {
@@ -50,8 +52,8 @@ test.describe("WikidataStudio page", () => {
     await installStudioMocks(page, build);
     await gotoStudio(page);
 
-    await expect(page.getByText("Hebrew Manuscript")).toBeVisible({timeout: 8000});
-    await expect(page.getByText("Moses Maimonides")).toBeVisible();
+    await expect(page.getByRole("button", {name: /Hebrew Manuscript/})).toBeVisible({timeout: 8000});
+    await expect(page.getByRole("button", {name: /Moses Maimonides/})).toBeVisible();
   });
 
   test("shows QID badge for items with existing_qid", async ({page}) => {
@@ -61,6 +63,114 @@ test.describe("WikidataStudio page", () => {
 
     // Maimonides has existing_qid Q127398
     await expect(page.getByText(/Q127398/)).toBeVisible({timeout: 8000});
+  });
+});
+
+// ── AI verification ─────────────────────────────────────────────────────
+
+test.describe("AI verification", () => {
+  test("verifies the current Wikidata item with item_ids in the SSE body", async ({page}) => {
+    const build = makeBuildResponse({
+      items: [
+        makeStudioItem({
+          entity_type: "person",
+          labels: {en: "Moses Maimonides"},
+          local_id: "person::Moses Maimonides",
+          existing_qid: "Q127398",
+        }),
+      ],
+      total: 1,
+    });
+    const posts: Array<{url: string; body: unknown}> = [];
+
+    await installStudioMocks(page, build);
+    await page.route(
+      `**/api/runs/${TEST_RUN_ID}/wikidata-studio/ai-verify/actions*`,
+      (route) => {
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([
+            {
+              id: "audit_wikidata_item",
+              label: "Audit Wikidata item",
+              description: "Judge the generated item against MARC evidence.",
+              scope_kinds: ["single", "selection", "all"],
+              evaluators: ["wikidata_item"],
+              min_candidates: 1,
+            },
+          ]),
+        });
+      },
+    );
+    await page.route(
+      `**/api/runs/${TEST_RUN_ID}/wikidata-studio/ai-verify/sessions`,
+      (route) => {
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+      },
+    );
+    await page.route(
+      `**/api/runs/${TEST_RUN_ID}/wikidata-studio/ai-verify/start-stream`,
+      (route) => {
+        posts.push({
+          url: route.request().url(),
+          body: route.request().postDataJSON(),
+        });
+        route.fulfill({
+          status: 200,
+          contentType: "text/event-stream",
+          body: [
+            "event: session.start",
+            `data: ${JSON.stringify({
+              session_id: "s1",
+              action_id: "audit_wikidata_item",
+              scope_size: 1,
+            })}`,
+            "",
+            "event: agent.verdict",
+            `data: ${JSON.stringify({
+              record_id: "990000000000000001",
+              evaluator_id: "wikidata_item",
+              sub_type: "person",
+              candidate: {
+                _local_id: "person::Moses Maimonides",
+                label: "Moses Maimonides",
+              },
+              verdict: {
+                overall: "pass",
+                name_ok: "yes",
+                type_ok: "yes",
+                role_ok: "n/a",
+                reasoning: "The item matches the supplied evidence.",
+              },
+            })}`,
+            "",
+            "event: session.end",
+            `data: ${JSON.stringify({session_id: "s1", outcome: "complete"})}`,
+            "",
+            "",
+          ].join("\n"),
+        });
+      },
+    );
+
+    await gotoStudio(page);
+    await page.getByRole("button", {name: /verify current with ai/i}).click();
+    await page.getByRole("button", {name: /start verification/i}).click();
+
+    await page.locator("tbody tr").filter({hasText: "Moses Maimonides"}).first().click();
+    await expect(page.locator("p").filter({hasText: "The item matches the supplied evidence."})).toBeVisible({
+      timeout: 8000,
+    });
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body).toMatchObject({
+      action_id: "audit_wikidata_item",
+      item_ids: ["person::Moses Maimonides"],
+    });
   });
 });
 
@@ -147,7 +257,7 @@ test.describe("sort controls", () => {
     });
 
     await gotoStudio(page);
-    await page.selectOption("select", "statements");
+    await page.locator("select").nth(1).selectOption("statements");
     await page.waitForLoadState("networkidle");
 
     const sortRequests = requests.filter((u) => u.includes("sort=statements"));
@@ -194,7 +304,7 @@ test.describe("ItemValidatorBadge", () => {
 
     // The red dot button has aria-label containing "validation issue"
     await expect(
-      page.getByRole("button", {name: /validation issue/i}),
+      page.getByRole("button", {name: "1 validation issue", exact: true}),
     ).toBeVisible({timeout: 8000});
   });
 });
@@ -283,6 +393,49 @@ test.describe("force-rebuild", () => {
 
     const forceRequests = requests.filter((u) => u.includes("force_rebuild=true"));
     expect(forceRequests.length).toBeGreaterThan(0);
+  });
+});
+
+// ── eval-agent verification ─────────────────────────────────────────────
+
+test.describe("eval-agent verification", () => {
+  test("current item verification sends local_id as item_ids", async ({page}) => {
+    const build = makeBuildResponse();
+    let startBody: unknown = null;
+    await installStudioMocks(page, build, {
+      onWikidataVerifyStart: (body) => { startBody = body; },
+    });
+    await gotoStudio(page);
+
+    await page.getByRole("button", {name: /verify current with ai/i}).click();
+    await expect(page.getByText(/AI verification.*Wikidata Studio/i)).toBeVisible({timeout: 8000});
+    await page.getByRole("button", {name: /start verification/i}).click();
+
+    await expect(
+      page.getByRole("table").getByText("Hebrew Manuscript", {exact: true}),
+    ).toBeVisible({timeout: 8000});
+    expect(startBody).toMatchObject({
+      action_id: "audit_wikidata_item",
+      item_ids: ["manuscript::Hebrew Manuscript"],
+    });
+  });
+
+  test("all visible verification sends visible local_ids", async ({page}) => {
+    const build = makeBuildResponse();
+    let startBody: unknown = null;
+    await installStudioMocks(page, build, {
+      onWikidataVerifyStart: (body) => { startBody = body; },
+    });
+    await gotoStudio(page);
+
+    await page.getByRole("button", {name: /verify all visible with ai/i}).click();
+    await expect(page.getByText(/2 visible/)).toBeVisible({timeout: 8000});
+    await page.getByRole("button", {name: /start verification/i}).click();
+
+    expect(startBody).toMatchObject({
+      action_id: "audit_wikidata_item",
+      item_ids: ["manuscript::Hebrew Manuscript", "person::Moses Maimonides"],
+    });
   });
 });
 

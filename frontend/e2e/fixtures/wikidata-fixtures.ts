@@ -115,7 +115,10 @@ export function makeBuildResponse(overrides: Partial<MockStudioBuild> = {}): Moc
 export async function installStudioMocks(
   page: Page,
   build: MockStudioBuild,
-  opts?: {overrideResponse?: Record<string, unknown>},
+  opts?: {
+    overrideResponse?: Record<string, unknown>;
+    onWikidataVerifyStart?: (body: unknown) => void;
+  },
 ): Promise<void> {
   // Auth — current user
   await page.route("**/api/auth/me", (route) => {
@@ -148,8 +151,101 @@ export async function installStudioMocks(
     });
   });
 
+  // Wikidata Studio eval-agent verification endpoints.
+  await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/ai-verify/**`, (route) => {
+    const url = route.request().url();
+    if (url.includes("/actions")) {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{
+          id: "audit_wikidata_item",
+          label: "Audit Wikidata item",
+          description: "Check whether this Wikidata item draft is coherent and well sourced.",
+          scope_kinds: ["single", "selection", "all"],
+          evaluators: ["wikidata_item"],
+          min_candidates: 1,
+        }]),
+      });
+      return;
+    }
+    if (url.includes("/sessions")) {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+    if (url.includes("/start-stream") && route.request().method() === "POST") {
+      opts?.onWikidataVerifyStart?.(route.request().postDataJSON());
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: [
+          "event: session.start",
+          "data: {\"action_id\":\"audit_wikidata_item\",\"scope_size\":1}",
+          "",
+          "event: agent.verdict",
+          "data: {\"candidate\":{\"_item_id\":\"manuscript::Hebrew Manuscript\",\"label\":\"Hebrew Manuscript\"},\"verdict\":{\"overall\":\"full\",\"reasoning\":\"Looks coherent.\"},\"evaluator_id\":\"wikidata_item\",\"judge_id\":\"mock\"}",
+          "",
+          "event: session.end",
+          "data: {\"outcome\":\"complete\",\"scope_size\":1}",
+          "",
+          "",
+        ].join("\n"),
+      });
+      return;
+    }
+    route.continue();
+  });
+
   // Studio build endpoint — responds to any query params
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio*`, (route) => {
+    const url = route.request().url();
+    if (url.includes("/ai-verify/actions")) {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{
+          id: "audit_wikidata_item",
+          label: "Audit Wikidata item",
+          description: "Check whether this Wikidata item draft is coherent and well sourced.",
+          scope_kinds: ["single", "selection", "all"],
+          evaluators: ["wikidata_item"],
+          min_candidates: 1,
+        }]),
+      });
+      return;
+    }
+    if (url.includes("/ai-verify/sessions")) {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+    if (url.includes("/ai-verify/start-stream") && route.request().method() === "POST") {
+      opts?.onWikidataVerifyStart?.(route.request().postDataJSON());
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: [
+          "event: session.start",
+          "data: {\"action_id\":\"audit_wikidata_item\",\"scope_size\":1}",
+          "",
+          "event: agent.verdict",
+          "data: {\"candidate\":{\"_item_id\":\"manuscript::Hebrew Manuscript\",\"label\":\"Hebrew Manuscript\"},\"verdict\":{\"overall\":\"full\",\"reasoning\":\"Looks coherent.\"},\"evaluator_id\":\"wikidata_item\",\"judge_id\":\"mock\"}",
+          "",
+          "event: session.end",
+          "data: {\"outcome\":\"complete\",\"scope_size\":1}",
+          "",
+          "",
+        ].join("\n"),
+      });
+      return;
+    }
     if (route.request().method() !== "GET") { route.continue(); return; }
     route.fulfill({
       status: 200,
