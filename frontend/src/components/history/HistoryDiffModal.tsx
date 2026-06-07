@@ -21,7 +21,7 @@
  *   - Focus is trapped inside the modal via ``useFocusTrap``.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   EntityHistory,
   type EntityDiffPayload,
@@ -168,7 +168,12 @@ export default function HistoryDiffModal(
   }, [onClose]);
 
   const headerId = "history-diff-modal-title";
-  const highlightPaths = diff ? collectHighlightPaths(diff.patch) : [];
+  // Memoised on `diff` so the O(patch) walk doesn't re-run on every
+  // unrelated re-render (keydown handlers, focus-trap churn, etc.).
+  const highlightPaths = useMemo(
+    () => (diff ? collectHighlightPaths(diff.patch) : []),
+    [diff],
+  );
 
   return (
     <div
@@ -250,6 +255,7 @@ export default function HistoryDiffModal(
                     value={diff.before}
                     rootLabel="before"
                     highlightPaths={highlightPaths}
+                    initiallyOpenDepth={1}
                   />
                 </div>
               </section>
@@ -261,6 +267,7 @@ export default function HistoryDiffModal(
                     value={diff.after}
                     rootLabel="after"
                     highlightPaths={highlightPaths}
+                    initiallyOpenDepth={1}
                   />
                 </div>
               </section>

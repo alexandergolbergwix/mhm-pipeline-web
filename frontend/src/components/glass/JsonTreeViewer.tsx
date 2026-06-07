@@ -9,13 +9,17 @@
  * CSS classes (.glass-pill, .muted, .kicker).
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 export interface JsonTreeViewerProps {
   value: unknown;
   rootLabel?: string;
   initiallyOpenDepth?: number;
   highlightPaths?: string[];
+  /** Above this many total nodes the interactive tree is replaced by a
+   *  compact raw-JSON fallback — rendering one stateful React node per
+   *  key explodes for large MARC / Wikibase snapshots. */
+  maxNodes?: number;
 }
 
 type JsonValue =
@@ -47,6 +51,19 @@ function isPlainObject(v: unknown): v is { [key: string]: JsonValue } {
 
 function isJsonArray(v: unknown): v is JsonValue[] {
   return Array.isArray(v);
+}
+
+/** Cheap recursive node count (object keys + array items at every level;
+ *  primitives count as 1). Used to decide whether the interactive tree is
+ *  too large to render. */
+function countNodes(v: unknown): number {
+  if (isPlainObject(v)) {
+    return 1 + Object.values(v).reduce((sum: number, child) => sum + countNodes(child), 0);
+  }
+  if (isJsonArray(v)) {
+    return 1 + v.reduce((sum: number, child) => sum + countNodes(child), 0);
+  }
+  return 1;
 }
 
 function truncate(s: string, max: number): { text: string; truncated: boolean } {
@@ -174,8 +191,29 @@ export function JsonTreeViewer({
   rootLabel,
   initiallyOpenDepth = 2,
   highlightPaths = [],
+  maxNodes = 500,
 }: JsonTreeViewerProps): JSX.Element {
-  const highlightSet = new Set<string>(highlightPaths);
+  const highlightSet = useMemo(
+    () => new Set<string>(highlightPaths),
+    [highlightPaths],
+  );
+  const nodeCount = useMemo(() => countNodes(value), [value]);
+
+  if (nodeCount > maxNodes) {
+    return (
+      <div
+        data-testid="json-tree-viewer"
+        className="glass-pill font-mono text-sm text-white/90 p-2 overflow-auto"
+      >
+        <div className="muted text-xs mb-2">
+          Object too large to render as a tree ({nodeCount} nodes). Showing raw JSON.
+        </div>
+        <pre className="whitespace-pre-wrap break-all text-emerald-200/90">
+          {JSON.stringify(value, null, 2)}
+        </pre>
+      </div>
+    );
+  }
 
   return (
     <div

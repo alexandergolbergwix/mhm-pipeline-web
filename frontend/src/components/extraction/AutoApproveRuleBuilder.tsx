@@ -5,6 +5,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useDebounce } from "@/hooks/useDebounce";
+
 import {
   AutoApproveRule, DEFAULT_AUTO_APPROVE_RULE,
   ENTITY_ROLES, ENTITY_SOURCES, ENTITY_TYPES,
@@ -37,10 +39,17 @@ export function AutoApproveRuleBuilder({
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Debounce the server-side preview: the controls (slider, checkboxes)
+  // stay bound to the live `rule` so they're instantly responsive, but the
+  // /auto-approve/preview POST only fires after the user pauses — otherwise
+  // dragging the confidence slider floods the backend with a request per
+  // frame (each re-reads ner_results.json from disk).
+  const debouncedRule = useDebounce(rule, 350);
+
   useEffect(() => {
     let cancelled = false;
     setPreviewing(true);
-    ExtractionApprovals.previewAutoApprove(runId, rule)
+    ExtractionApprovals.previewAutoApprove(runId, debouncedRule)
       .then((res) => { if (!cancelled) { setPreview(res.matched); setError(null); } })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -49,7 +58,7 @@ export function AutoApproveRuleBuilder({
       })
       .finally(() => { if (!cancelled) setPreviewing(false); });
     return () => { cancelled = true; };
-  }, [runId, rule]);
+  }, [runId, debouncedRule]);
 
   const toggle = useCallback(
     (key: "sources" | "types" | "not_roles", value: string) => {
