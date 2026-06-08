@@ -120,6 +120,41 @@ export function streamNerVerification(
 }
 
 
+/** Re-run AI verification for a single entity and resolve once the
+ *  eval-agent has finished (verdicts are persisted server-side per Rule
+ *  W-17, so the caller just needs to refetch entities afterwards).
+ *
+ *  Used by the Auto-fix flow: after the curator applies a suggested fix,
+ *  the entity's text just changed, so we force a fresh judge
+ *  (``override_cache: true``) over that one entity to re-score it. Returns
+ *  the landed verdict event for the entity when one was produced (so the
+ *  caller can react immediately), or null. Never throws — re-check is a
+ *  best-effort follow-up to a fix that already succeeded.
+ */
+export async function recheckEntity(
+  runId: string, entityId: string,
+  actionId = "audit_ner_extraction",
+): Promise<AgentEvent | null> {
+  let landed: AgentEvent | null = null;
+  try {
+    const { events } = streamNerVerification(runId, {
+      action_id:      actionId,
+      entity_ids:     [entityId],
+      override_cache: true,
+    });
+    for await (const ev of events) {
+      if (ev.type === "agent.verdict") {
+        const cand = (ev.candidate ?? {}) as { _entity_id?: string };
+        if (!cand._entity_id || cand._entity_id === entityId) landed = ev;
+      }
+    }
+  } catch (err) {
+    console.error("Single-entity re-check failed", err);
+  }
+  return landed;
+}
+
+
 function parseFrame(frame: string): AgentEvent | null {
   let type = "message";
   let data = "";

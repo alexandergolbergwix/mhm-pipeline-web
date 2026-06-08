@@ -791,10 +791,22 @@ def _approval_to_ner_shape(ext: ExtractionApproval) -> dict[str, Any]:
     without this, verifiers running on DB-loaded entities had no F8 signal
     and could not substantiate suggested fixes.
     """
+    # Judge the curator's effective text — the override when present (e.g.
+    # after an Auto-fix), else the original NER span. This is what makes a
+    # post-fix re-verification meaningful: the eval-agent scores the
+    # corrected value, not the stale original.
+    judged_text = ext.override_text or ext.text
+    text_overridden = bool(ext.override_text and ext.override_text != ext.text)
+
     # Map DB exists_in status to a boolean grounded hint for the eval-agent.
+    # ``exists_in`` was snapshotted for the ORIGINAL span; once the curator
+    # overrides the text it no longer describes the judged value, so drop the
+    # hint and let the judge search the MARC context fresh.
     _exists_in = ext.exists_in or ""
-    if _exists_in == "grounded":
-        grounded_hint: bool | None = True
+    if text_overridden:
+        grounded_hint: bool | None = None
+    elif _exists_in == "grounded":
+        grounded_hint = True
     elif _exists_in in ("wrong_field", "novel"):
         grounded_hint = False
     else:
@@ -802,7 +814,7 @@ def _approval_to_ner_shape(ext: ExtractionApproval) -> dict[str, Any]:
 
     shape: dict[str, Any] = {
         "source":           ext.source,
-        "text":             ext.text,
+        "text":             judged_text,
         "type":             ext.override_type or ext.type,
         "role":             ext.override_role or ext.role,
         "start":            int(ext.start or 0),

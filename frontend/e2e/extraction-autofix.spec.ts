@@ -293,4 +293,52 @@ test.describe("Auto-fix button", () => {
     // Genre entities must NEVER show an auto-fix button
     await expect(row.getByTestId("entity-autofix-btn")).not.toBeVisible();
   });
+
+  // ── 12. Auto-fix re-runs the AI check for the entity ──────────────
+
+  test("auto-fix re-runs AI verification for that entity (override_cache) and updates the verdict", async ({ page }) => {
+    const state = makeStateWithFix();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+
+    const row = page.getByTestId("entity-row").filter({ hasText: "יוסף" }).last();
+    await row.getByTestId("entity-autofix-btn").click();
+
+    // A single-entity re-check fires with override_cache=true.
+    await expect.poll(() => state.verifyStreamCalls.length).toBeGreaterThan(0);
+    const call = state.verifyStreamCalls.find((c) => {
+      const ids = (c as { entity_ids?: string[] }).entity_ids;
+      return Array.isArray(ids) && ids.includes("ent-fix");
+    }) as { entity_ids: string[]; override_cache?: boolean } | undefined;
+    expect(call).toBeDefined();
+    expect(call!.entity_ids).toEqual(["ent-fix"]);
+    expect(call!.override_cache).toBe(true);
+
+    // After the re-check resolves and the table refetches, the entity's
+    // verdict pill flips from "partly" to "pass".
+    const fixedRow = page.getByTestId("entity-row").filter({ hasText: "יוסף בן יעקב" });
+    await expect(fixedRow.locator('[data-verdict="pass"]')).toBeVisible({ timeout: 5000 });
+  });
+
+  test("drawer auto-fix also re-runs AI verification for the entity", async ({ page }) => {
+    const state = makeStateWithFix();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+
+    const row = page.getByTestId("entity-row").filter({ hasText: "יוסף" }).last();
+    await row.getByTestId("entity-view-source").click();
+    const drawer = page.getByTestId("entity-detail-drawer");
+    await expect(drawer).toBeVisible({ timeout: 3000 });
+    await drawer.getByTestId("detail-autofix-btn").click();
+
+    await expect.poll(() => state.verifyStreamCalls.length).toBeGreaterThan(0);
+    const call = state.verifyStreamCalls.find((c) => {
+      const ids = (c as { entity_ids?: string[] }).entity_ids;
+      return Array.isArray(ids) && ids.includes("ent-fix");
+    }) as { entity_ids: string[]; override_cache?: boolean } | undefined;
+    expect(call).toBeDefined();
+    expect(call!.override_cache).toBe(true);
+  });
 });

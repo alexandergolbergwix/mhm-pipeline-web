@@ -459,13 +459,36 @@ export async function installExtractionMocks(page: Page, state: MockState) {
   await page.route(
     `**/api/runs/${TEST_RUN_ID}/extraction/ai-verify/start-stream`,
     async (route) => {
-      const body = route.request().postDataJSON();
+      const body = route.request().postDataJSON() as { entity_ids?: string[] };
       state.verifyStreamCalls.push(body);
+
+      // Simulate the eval-agent resolving each scoped entity: flip its
+      // verdict to a passing result and clear any suggested_fix. This lets
+      // the Auto-fix → single-entity re-check flow observe an updated
+      // verdict (and a vanished Fix button) once the table refetches.
+      const ids =
+        Array.isArray(body.entity_ids) && body.entity_ids.length
+          ? body.entity_ids
+          : ["ent-1"];
+      for (const id of ids) {
+        const e = state.entities.find((x) => x.id === id);
+        if (e) {
+          e.ai_verdict = {
+            overall: "pass",
+            name_ok: true,
+            reasoning: "Re-checked after fix — entity now matches MARC.",
+            model: "gemini-3.5-flash",
+            evaluator: "person_ner",
+            suggested_fix: null,
+          };
+        }
+      }
+      const verdictId = ids[0];
       const sseEvents = [
-        `event: session.start\ndata: ${JSON.stringify({ session_id: "test-session-1", run_id: TEST_RUN_ID, action_id: "audit_ner_extraction", scope_size: 2, scope_cn: [], goal: "audit" })}\n\n`,
-        `event: agent.stats\ndata: ${JSON.stringify({ total: 2, hits: 0, judged: 1, in_tok: 100, out_tok: 50 })}\n\n`,
-        `event: agent.verdict\ndata: ${JSON.stringify({ candidate: { _entity_id: "ent-1", name: "Maimonides" }, verdict: { overall: "pass", name_ok: true, reasoning: "Correctly identified Maimonides as author" }, evaluator_id: "person_ner", judge_id: "gemini-3.5-flash", judged_at: "2026-06-01T08:00:00Z" })}\n\n`,
-        `event: session.end\ndata: ${JSON.stringify({ session_id: "test-session-1", scope_size: 2, outcome: "complete" })}\n\n`,
+        `event: session.start\ndata: ${JSON.stringify({ session_id: "test-session-1", run_id: TEST_RUN_ID, action_id: "audit_ner_extraction", scope_size: ids.length, scope_cn: [], goal: "audit" })}\n\n`,
+        `event: agent.stats\ndata: ${JSON.stringify({ total: ids.length, hits: 0, judged: ids.length, in_tok: 100, out_tok: 50 })}\n\n`,
+        `event: agent.verdict\ndata: ${JSON.stringify({ candidate: { _entity_id: verdictId, name: "Maimonides" }, verdict: { overall: "pass", name_ok: true, reasoning: "Re-checked after fix — entity now matches MARC.", suggested_fix: null }, evaluator_id: "person_ner", judge_id: "gemini-3.5-flash", judged_at: "2026-06-01T08:00:00Z" })}\n\n`,
+        `event: session.end\ndata: ${JSON.stringify({ session_id: "test-session-1", scope_size: ids.length, outcome: "complete" })}\n\n`,
       ].join("");
       await route.fulfill({
         status: 200,

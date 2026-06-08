@@ -379,3 +379,56 @@ class TestApprovalToNerShapeGrounding:
         )
         shape = _approval_to_ner_shape(ext)
         assert shape.get("grounded") is None
+
+    def test_override_text_is_the_judged_text(self):
+        """After an Auto-fix, the eval-agent must judge the corrected
+        (override) text, not the stale original — otherwise the re-check
+        is meaningless."""
+        from app.routers.extraction_verify import _approval_to_ner_shape
+        from app.models.extraction_approval import ExtractionApproval
+
+        ext = ExtractionApproval(
+            id=uuid.uuid4(),
+            run_id=uuid.uuid4(),
+            control_number="001",
+            source="person_ner",
+            text="יוסף",
+            override_text="יוסף בן יעקב",
+            start=0,
+            end=4,
+            type="PERSON",
+            role="TRANSCRIBER",
+            confidence=0.82,
+            approved=False,
+            exists_in="grounded",
+        )
+        shape = _approval_to_ner_shape(ext)
+        assert shape["text"] == "יוסף בן יעקב"
+        # The snapshotted exists_in describes the ORIGINAL span, so once the
+        # text is overridden the grounding hint is dropped (judge searches fresh).
+        assert "grounded" not in shape
+
+    def test_override_equal_to_text_keeps_grounding(self):
+        """A no-op override (== original) is not a real edit, so the
+        grounding hint is preserved."""
+        from app.routers.extraction_verify import _approval_to_ner_shape
+        from app.models.extraction_approval import ExtractionApproval
+
+        ext = ExtractionApproval(
+            id=uuid.uuid4(),
+            run_id=uuid.uuid4(),
+            control_number="001",
+            source="person_ner",
+            text="יוסף",
+            override_text="יוסף",
+            start=0,
+            end=4,
+            type="PERSON",
+            role="AUTHOR",
+            confidence=0.9,
+            approved=False,
+            exists_in="grounded",
+        )
+        shape = _approval_to_ner_shape(ext)
+        assert shape["text"] == "יוסף"
+        assert shape["grounded"] is True

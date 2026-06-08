@@ -31,6 +31,7 @@ import {
   EntityType,
   ExtractionApprovals,
 } from "@/api/extractionApprovals";
+import { recheckEntity } from "@/api/nerVerify";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import { langOf } from "@/utils/hebrew";
 
@@ -177,6 +178,9 @@ export function EntityTable(props: EntityTableProps) {
   // to match. AND-combines with the popup-based columnFilters.
   const [textFilters, setTextFilters] = useState<Partial<Record<ColumnKey, string>>>({});
 
+  // Entities currently being re-verified after an Auto-fix (Set of ids).
+  const [recheckingIds, setRecheckingIds] = useState<ReadonlySet<string>>(new Set());
+
   const parentRef = useRef<HTMLDivElement | null>(null);
 
   const filtered = useMemo(() => {
@@ -264,12 +268,28 @@ export function EntityTable(props: EntityTableProps) {
 
   const applyAutoFix = useCallback(
     async (entity: Entity, fixText: string) => {
+      // Mark re-checking up front so the Fix button gives way to the
+      // "re-checking…" indicator while we patch + re-judge.
+      setRecheckingIds((prev) => new Set(prev).add(entity.id));
+      let updated: Entity = entity;
       try {
-        // Patch only the text override — deliberately does NOT touch approved.
-        const updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
-        onEntityUpdated(updated);
+        // 1. Patch only the text override — deliberately does NOT touch approved.
+        updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
+        // 2. Re-run the AI check for this one entity against the corrected
+        //    text. The fix already succeeded; a failed re-check is non-fatal.
+        await recheckEntity(runId, entity.id);
       } catch (err) {
         console.error("Failed to apply auto-fix", err);
+      } finally {
+        // 3. A SINGLE refetch after both steps — the store coalesces
+        //    overlapping fetches, so one refresh here reliably picks up the
+        //    new text AND the updated verdict (two would race + drop one).
+        onEntityUpdated(updated);
+        setRecheckingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(entity.id);
+          return next;
+        });
       }
     }, [runId, onEntityUpdated],
   );
@@ -289,7 +309,9 @@ export function EntityTable(props: EntityTableProps) {
     // 3. The suggested text differs from the current effective text
     const fix = entity.ai_verdict?.suggested_fix;
     const effectiveText = (entity.effective_text ?? entity.text ?? "").trim();
+    const isRechecking = recheckingIds.has(entity.id);
     const showAutoFix =
+      !isRechecking &&
       fix != null &&
       fix.confidence === "high" &&
       entity.source !== "genre_ml" &&
@@ -391,6 +413,15 @@ export function EntityTable(props: EntityTableProps) {
             >
               ✨ Fix
             </button>
+          )}
+          {isRechecking && (
+            <span
+              data-testid="entity-rechecking"
+              title="Applied fix — re-running AI verification…"
+              className="inline-flex items-center h-7 px-2 text-xs text-amber-300/80 animate-pulse"
+            >
+              ⏳ re-checking…
+            </span>
           )}
           {projectId ? (
             <button

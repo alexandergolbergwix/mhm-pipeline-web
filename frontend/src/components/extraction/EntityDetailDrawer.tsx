@@ -32,6 +32,7 @@ import {
   ExtractionApprovals,
   type Entity,
 } from "@/api/extractionApprovals";
+import { recheckEntity } from "@/api/nerVerify";
 import {
   ENTITY_EXPECTED_FIELDS, MARC_FIELD_LABELS,
   orderedMarcKeys, stringifyMarcValue,
@@ -66,6 +67,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
   const [error, setError] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
 
@@ -112,14 +114,22 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
   async function applyAutoFix(fixText: string): Promise<void> {
     if (!entity) return;
     setBusy(true);
+    setRechecking(true);
+    let updated: Entity = entity;
     try {
       // Patch only the text override — deliberately does NOT set approved.
       // The curator sees the updated text and can then approve if they agree.
-      const updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
-      onEntityChanged?.(updated);
+      updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
+      // Re-run the AI check for this one entity against the corrected text so
+      // the verdict reflects the fix. A failed re-check is non-fatal.
+      await recheckEntity(runId, entity.id);
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      // Single refetch after both steps so the store doesn't drop one of two
+      // racing refreshes — picks up the new text AND the updated verdict.
+      onEntityChanged?.(updated);
+      setRechecking(false);
       setBusy(false);
     }
   }
@@ -247,6 +257,14 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
             }
             return null;
           })()}
+          {rechecking && (
+            <span
+              data-testid="detail-rechecking"
+              className="inline-flex items-center h-7 px-2 text-xs text-amber-300/80 animate-pulse"
+            >
+              ⏳ re-checking…
+            </span>
+          )}
           {onVerifyEntity && (
             <button type="button"
                     disabled={busy}
