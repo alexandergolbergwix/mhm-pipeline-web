@@ -743,6 +743,38 @@ async def list_entities(
             "exists_in":        (a.exists_in if a and a.exists_in else None),
         })
 
+    # 3b. Lazy backfill: compute exists_in for rows that were snapshotted
+    #     before the JSONB migration (old rows have exists_in = NULL).
+    #     Build the MARC index once, update all null rows in memory + DB.
+    null_entities = [e for e in out if e.get("exists_in") is None]
+    if null_entities:
+        marc_rows_for_backfill = (
+            await db.execute(
+                select(RunRecord).where(RunRecord.run_id == run_id)
+            )
+        ).scalars().all()
+        marc_index_backfill = MarcStructuredIndex.from_records(
+            dict(r.marc or {}) for r in marc_rows_for_backfill
+        )
+        updated_ids: list[uuid.UUID] = []
+        for ent in null_entities:
+            candidate_type = ent.get("type") or ent.get("role") or ent.get("source")
+            ei = marc_index_backfill.classify(
+                ent["control_number"], ent["text"],
+                candidate_type=str(candidate_type) if candidate_type else None,
+            )
+            ent["exists_in"] = ei
+            a = approvals.get(ent["id"])
+            if a:
+                a.exists_in = ei
+                updated_ids.append(a.id)
+        if updated_ids:
+            await db.commit()
+            logger.info(
+                "Backfilled exists_in for %d entities on run %s",
+                len(updated_ids), run_id,
+            )
+
     # 4. Run-level aggregates (over the FULL set, before filtering) so the
     #    header summary reflects the whole run regardless of any filter.
     approved_count = sum(1 for e in out if e["approved"])
