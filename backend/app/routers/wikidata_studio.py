@@ -490,10 +490,16 @@ async def reconcile_against_wikidata(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> ReconcileResponse:
-    """For every built item, SPARQL-query Wikidata to find an existing
-    QID via VIAF / NLI / cluster IDs. Updates the in-memory items so the
-    next download / upload knows to UPDATE instead of CREATE. **Never**
-    writes to Wikidata."""
+    """PREVIEW ONLY. For every built item, SPARQL-query Wikidata to find an
+    existing QID (manuscripts by P3959, persons by the conflict-checked
+    identifier path). **Never** writes to Wikidata.
+
+    This is a curator-facing preview: it does NOT change what a subsequent
+    upload does. The authoritative reconcile runs again *inside*
+    ``POST /upload`` (see ``wikidata_upload.upload_items``) so the upload
+    decision can never drift from a stale preview, and so a lookup that fails
+    here cannot leave a half-reconciled item eligible for accidental
+    creation."""
     native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
     outcomes = await wikidata_upload.reconcile_items(native)
     return ReconcileResponse(
@@ -544,7 +550,13 @@ async def upload_to_wikidata(
 ) -> UploadResponse:
     """Live uploads ALWAYS use the user's own Wikidata token (stored
     encrypted via the Settings page) and route through the real
-    ``WikidataUploader`` with all four modification guards intact."""
+    ``WikidataUploader`` with all four modification guards intact.
+
+    Before any write, ``upload_items`` reconciles each item against live
+    Wikidata (fail-closed: a lookup that cannot be completed BLOCKS creation,
+    never mints a duplicate) and runs ``item_validator.validate_item`` as a
+    hard gate (any ERROR-severity issue blocks the write). Dry-run reports the
+    same create/update/BLOCKED decision the live run would take."""
     import os  # noqa: PLC0415
 
     # Build the items first (with the latest approval state).

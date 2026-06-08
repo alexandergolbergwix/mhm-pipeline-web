@@ -32,6 +32,17 @@ _USER_AGENT = (
 )
 
 
+class ReconciliationUnavailableError(Exception):
+    """A SPARQL lookup could not be completed (network error, timeout, 429/5xx).
+
+    This is DISTINCT from "no match found" (an empty result set). Callers in the
+    upload path MUST treat it as a fail-closed signal: when we cannot confirm
+    whether an item already exists, we refuse to CREATE it — a transient WDQS
+    outage during a batch must never be mistaken for "absent" and mint
+    duplicates (the 2026-04 mass-duplicate failure mode).
+    """
+
+
 @dataclass
 class ReconciliationResult:
     """Result of reconciling a single entity."""
@@ -127,8 +138,13 @@ class WikidataReconciler:
             data = resp.json()
             return data.get("results", {}).get("bindings", [])
         except requests.RequestException as exc:
+            # FAIL CLOSED: do NOT return [] here. An empty list means "confirmed
+            # absent" to every caller and would let a transient WDQS outage be
+            # read as "no existing item → safe to CREATE", which is exactly how
+            # the 2026-04 import minted thousands of duplicates. Raise instead so
+            # the upload path blocks creation on uncertainty.
             logger.warning("SPARQL query failed: %s", exc)
-            return []
+            raise ReconciliationUnavailableError(str(exc)) from exc
 
     def reconcile_manuscript_by_nli_id(self, control_number: str) -> str | None:
         """Check if a manuscript item exists via P8189 (NLI J9U ID).
@@ -196,6 +212,65 @@ class WikidataReconciler:
 
         self._cache[cache_key] = qid
         return qid
+
+    def reconcile_manuscript_by_nnl_id(self, nnl_id: str) -> str | None:
+        """Check if a manuscript exists via P3959 (NNL / NLI catalog item ID).
+
+        P3959 is the identifier the pipeline actually emits on EVERY manuscript
+        item (the MARC 001 bibliographic control number, prefix 990…).
+        ``reconcile_manuscript_by_nli_id`` queries P8189, which holds J9U
+        AUTHORITY ids (prefix 9870…) that manuscripts never carry — so manuscript
+        deduplication MUST go through P3959. Querying the wrong property was a
+        silent duplicate vector in the 2026-04 import (manuscript lookups could
+        never match, so every manuscript was created new).
+
+        Returns:
+            QID if found, None if confirmed absent.
+
+        Raises:
+            ReconciliationUnavailableError: the SPARQL lookup could not be completed.
+        """
+        cache_key = f"ms:nnl:{nnl_id}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        safe_id = str(nnl_id).replace("\\", "\\\\").replace('"', '\\"')
+        sparql = f"""
+        SELECT ?item WHERE {{
+          ?item wdt:P3959 "{safe_id}" .
+        }} LIMIT 1
+        """
+        results = self._query(sparql)
+        qid = None
+        if results:
+            uri = results[0].get("item", {}).get("value", "")
+            qid = extract_wikidata_qid(uri)
+
+        self._cache[cache_key] = qid
+        return qid
+
+    def reconcile_manuscript_by_identifiers(
+        self,
+        nnl_id: str | None,
+        shelfmark: str | None,
+    ) -> str | None:
+        """Reconcile a manuscript by P3959 (NNL id) first, then shelfmark.
+
+        This is the manuscript entry point the upload path uses. Unlike
+        ``reconcile_manuscript`` (which queries the wrong property, P8189), it
+        checks P3959 — the identifier our manuscript items actually carry.
+
+        Raises:
+            ReconciliationUnavailableError: a SPARQL lookup could not be completed,
+            so the caller must fail closed and refuse to CREATE.
+        """
+        if nnl_id:
+            qid = self.reconcile_manuscript_by_nnl_id(nnl_id)
+            if qid:
+                return qid
+        if shelfmark:
+            return self.reconcile_manuscript_by_shelfmark(shelfmark)
+        return None
 
     def reconcile_person_by_viaf(self, viaf_id: str) -> str | None:
         """Check if a person item exists via P214 (VIAF ID).
@@ -483,6 +558,38 @@ class WikidataReconciler:
         Returns QID on first verified match; None otherwise.
         """
         viaf_id = extract_viaf_id(viaf_uri) if viaf_uri else None
+        return self.reconcile_person_by_identifiers(
+            viaf_id, nli_id, lc_id=lc_id, gnd_id=gnd_id, isni=isni,
+        )
+
+    def reconcile_person_by_identifiers(
+        self,
+        viaf_id: str | None,
+        nli_id: str | None,
+        lc_id: str | None = None,
+        gnd_id: str | None = None,
+        isni: str | None = None,
+    ) -> str | None:
+        """Reconcile a person by bare identifier values, with cross-identifier
+        conflict verification.
+
+        This is the conflict-checked entry point the upload path uses (it holds
+        bare P214/P8189/… statement values, not VIAF URIs). ``reconcile_person``
+        delegates here after extracting the VIAF id from a URI.
+
+        SAFETY (2026-04-13): when an identifier matches a candidate item, we
+        cross-verify against ALL the other identifiers we hold. If the candidate
+        already has a DIFFERENT value on any of them, REJECT the match — two
+        different real-world entities sharing one identifier must never be
+        merged (the wrong-merge disaster, 902+ items). Checks in order:
+        VIAF → NLI → LCCN → GND → ISNI.
+
+        Returns:
+            QID on the first verified match, None if no safe match.
+
+        Raises:
+            ReconciliationUnavailableError: a SPARQL lookup could not be completed.
+        """
         proposed: dict[str, str] = {}
         if viaf_id:
             proposed["P214"] = viaf_id

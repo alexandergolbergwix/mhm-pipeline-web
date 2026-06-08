@@ -691,6 +691,50 @@ Wikidata P214 fills `viaf_id` when the VIAF SRU matcher returned no hit.
   via `GET /runs/{id}/records` picker; requires RDF + manifest
   rebuild to apply downstream.
 
+### Rule W-30 — Wikidata upload is fail-closed: reconcile-before-create + validator gate IN the write path (added 2026-06-08)
+
+Context: the 2026-06-07 bulk-deletion request (Epìdosis, ~5,948 items)
+targets the OTHER April failure mode — mass *duplicate* creation and
+non-notable items — distinct from the mass-*merge* that Rule W-4's
+four-stage guard prevents. The 2026-06-08 audit found the create path
+unguarded: the `/reconcile` endpoint was decorative (it mutated
+in-memory items that `/upload` discarded by rebuilding fresh), manuscripts
+reconciled by P8189 (which they never carry — they use **P3959**) so they
+could never dedup, `reconciler._query` swallowed SPARQL errors as "absent"
+→ CREATE, and `validate_item` ran only at build time as a UI badge.
+
+Invariants now enforced in `backend/app/pipeline/wikidata_upload.py`
+(NOT in the byte-identical `uploader.py` — Rule W-4):
+
+- **Reconcile happens INSIDE `upload_items` / `_upload_sync`**, not just in
+  the `/reconcile` preview. `_prepare_for_upload(items, reconciler)` is the
+  single gate every item passes before any write (dry-run and live alike, so
+  the dry-run preview is truthful). The `/reconcile` endpoint is PREVIEW
+  ONLY and must never be relied on to change upload behaviour.
+- **Each creatable entity type has a dedup path.** Manuscripts reconcile by
+  P3959 (`reconcile_manuscript_by_identifiers` → P3959 then shelfmark);
+  persons go through the conflict-checked `reconcile_person_by_identifiers`
+  (cross-identifier verification — the anti-conflation guard from
+  2026-04-13); works go through `reconcile_work_by_label_and_author` (rejects
+  a candidate whose P50 author differs). The raw first-match path is gone.
+- **Fail closed on lookup error.** `reconciler._query` raises
+  `ReconciliationUnavailableError` (NOT `[]`) on any network/429/5xx. An item
+  whose lookup can't complete is BLOCKED (`status="blocked"`), never created —
+  a transient WDQS outage must never be read as "no existing item".
+- **`validate_item` is a HARD GATE before write**, not advisory. Any
+  ERROR-severity issue (NO_IDENTIFIER, KOVETZ_PLACEHOLDER, P50_ON_MANUSCRIPT,
+  P31_WRONG_QID, …) blocks the write regardless of create-vs-update and
+  regardless of UI approval state.
+
+Tests pinning the contract: `backend/tests/unit/test_wikidata_upload_guards.py`
+(15 cases). Any new external-write path or reconcile change MUST extend it.
+
+**Residual gap (NOT yet closed):** the QuickStatements download
+(`/quickstatements.txt`) emits raw CREATE lines with no reconcile/validate
+gate — a curator pasting it into the QuickStatements tool bypasses these
+guards. The `item_approved_only` filter is the only control there. Close
+this (or document the manual-review requirement) before any bulk QS import.
+
 ---
 
 ## Project structure
