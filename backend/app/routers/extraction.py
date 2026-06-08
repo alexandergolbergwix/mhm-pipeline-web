@@ -357,7 +357,7 @@ async def _bulk_persist_entities(
         dict(r.marc or {}) for r in marc_rows
     )
 
-    def _exists_in(ent: dict) -> str:
+    def _exists_in(ent: dict) -> dict:
         candidate_type = ent.get("type") or ent.get("role") or ent.get("source")
         return marc_index.classify(
             ent["control_number"], ent["text"],
@@ -740,7 +740,7 @@ async def list_entities(
             "text":             eff_text,
             "ai_verdict":       (a.ai_verdict if a else None),
             "ai_verdict_at":    (a.ai_verdict_at.isoformat() if a and a.ai_verdict_at else None),
-            "exists_in":        (a.exists_in if a and a.exists_in else "unknown"),
+            "exists_in":        (a.exists_in if a and a.exists_in else None),
         })
 
     # 4. Run-level aggregates (over the FULL set, before filtering) so the

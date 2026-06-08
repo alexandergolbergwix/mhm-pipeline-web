@@ -99,12 +99,12 @@ class ExtractionApproval(Base):
     )
 
     # ── MARC grounding classification (snapshot) ──────────────────────
-    # ``MarcStructuredIndex.classify(...)`` result: "grounded" |
-    # "wrong_field" | "novel" | "unknown". Computed once at stream-end in
-    # ``_bulk_persist_entities`` and read straight from the row by
-    # ``list_entities`` so the entities GET no longer rebuilds the full
-    # MARC index from every RunRecord on every poll (Rule W-16 §10).
-    exists_in:      Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Full ``MarcStructuredIndex.classify(...)`` result dict:
+    #   {"status": "grounded"|"wrong_field"|"novel"|"unknown",
+    #    "fields": [...], "note": "..."}
+    # Computed once at stream-end in ``_bulk_persist_entities`` and read
+    # straight from the row by ``list_entities`` (Rule W-16 §10).
+    exists_in:      Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,

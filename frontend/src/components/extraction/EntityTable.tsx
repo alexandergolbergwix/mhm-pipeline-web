@@ -52,6 +52,7 @@ export type ColumnKey =
   | "model_confidence"
   | "exists_in"
   | "ai_verdict"
+  | "fix"
   | "approved"
   | "edit";
 
@@ -76,8 +77,9 @@ const COLUMNS: ColumnDef[] = [
   { key: "model_confidence", label: "Model", width: "70px", sortable: true, filterable: false },
   { key: "exists_in", label: "MARC", width: "100px", sortable: true, filterable: true },
   { key: "ai_verdict", label: "AI Check", width: "110px", sortable: true, filterable: true },
+  { key: "fix", label: "Fix", width: "80px", sortable: false, filterable: false },
   { key: "approved", label: "✓", width: "44px", sortable: true, filterable: true },
-  { key: "edit", label: "", width: "108px", sortable: false, filterable: false },
+  { key: "edit", label: "", width: "96px", sortable: false, filterable: false },
 ];
 
 export interface EntityTableProps {
@@ -123,6 +125,7 @@ function cellValueFor(entity: Entity, column: ColumnKey): string {
       return entity.model_confidence !== null ? entity.model_confidence.toFixed(2) : "—";
     case "exists_in":      return entity.exists_in?.status ?? "unknown";
     case "ai_verdict":     return String(entity.ai_verdict?.overall ?? "unknown");
+    case "fix":            return "";
     case "approved":       return entity.approved ? "yes" : "no";
     default:               return "";
   }
@@ -386,6 +389,27 @@ export function EntityTable(props: EntityTableProps) {
             size="sm"
           />
         </div>
+        <div data-testid="entity-fix-cell">
+          {showAutoFix ? (
+            <button
+              type="button"
+              data-testid="entity-autofix-btn"
+              title={fix!.reasoning ?? `Auto-fix: apply AI-suggested correction → ${fix!.text}`}
+              onClick={() => applyAutoFix(entity, fix!.text)}
+              className="button-ghost h-7 px-2 text-xs text-amber-300 hover:text-amber-200 whitespace-nowrap"
+            >
+              ✨ Fix
+            </button>
+          ) : isRechecking ? (
+            <span
+              data-testid="entity-rechecking"
+              title="Applied fix — re-running AI verification…"
+              className="inline-flex items-center h-7 px-1 text-xs text-amber-300/80 animate-pulse whitespace-nowrap"
+            >
+              ⏳…
+            </span>
+          ) : null}
+        </div>
         <input
           type="checkbox"
           aria-label={`Approve ${entity.text}`}
@@ -403,26 +427,6 @@ export function EntityTable(props: EntityTableProps) {
                   data-testid="entity-view-source"
                   title="View MARC source"
                   onClick={() => onViewSource(entity)}>👁</button>
-          {showAutoFix && (
-            <button
-              type="button"
-              data-testid="entity-autofix-btn"
-              title={fix!.reasoning ?? `Auto-fix: apply AI-suggested correction \u2192 ${fix!.text}`}
-              onClick={() => applyAutoFix(entity, fix!.text)}
-              className="button-ghost h-7 px-2 text-xs text-amber-300 hover:text-amber-200"
-            >
-              ✨ Fix
-            </button>
-          )}
-          {isRechecking && (
-            <span
-              data-testid="entity-rechecking"
-              title="Applied fix — re-running AI verification…"
-              className="inline-flex items-center h-7 px-2 text-xs text-amber-300/80 animate-pulse"
-            >
-              ⏳ re-checking…
-            </span>
-          )}
           {projectId ? (
             <button
               type="button"

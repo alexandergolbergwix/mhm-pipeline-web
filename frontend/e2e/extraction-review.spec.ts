@@ -29,6 +29,7 @@ import { expect, test } from "@playwright/test";
 import {
   TEST_RUN_ID,
   installExtractionMocks,
+  makeEntity,
   makeMockState,
   gotoExtraction,
 } from "./fixtures/extraction-fixtures";
@@ -46,7 +47,7 @@ test.describe("AI Extraction entity-review UI", () => {
     await expect(page.getByTestId("entity-review")).toBeVisible({ timeout: 8000 });
   });
 
-  test("the table renders all 10 logical columns", async ({ page }) => {
+  test("the table renders all 11 logical columns including the dedicated Fix column", async ({ page }) => {
     const state = makeMockState();
     await installExtractionMocks(page, state);
     await gotoExtraction(page);
@@ -54,7 +55,7 @@ test.describe("AI Extraction entity-review UI", () => {
     for (const col of [
       "col-control_number", "col-text", "col-type", "col-role",
       "col-source", "col-confidence", "col-model_confidence",
-      "col-exists_in", "col-ai_verdict", "col-approved",
+      "col-exists_in", "col-ai_verdict", "col-fix", "col-approved",
     ]) {
       await expect(page.getByTestId(col)).toBeVisible();
     }
@@ -485,6 +486,51 @@ test.describe("AI Extraction entity-review UI", () => {
     await page.getByTestId("detail-approve").click();
     await expect.poll(() => state.patchCalls.length).toBeGreaterThan(0);
     expect(state.patchCalls.some((c) => c.body.approved === true)).toBe(true);
+  });
+
+  // ── 13. FIX COLUMN + MARC BADGE REGRESSIONS ─────────────────────
+  //
+  // These tests pin the two bugs fixed on 2026-06-08:
+  //   Issue 1 — auto-fix button overflowed the actions cell, breaking the
+  //             grid. Fix: dedicated Fix column. The col-fix header must
+  //             exist and the fix button must appear there, not mixed into
+  //             the actions area.
+  //   Issue 2 — exists_in was stored as VARCHAR(16) but the backend wrote
+  //             a full dict; PostgreSQL rejected it silently so every entity
+  //             showed "--" in the MARC column. Fix: JSONB column. The badge
+  //             must reflect the full payload (note as tooltip) and must
+  //             tolerate a null value without crashing.
+
+  test("exists_in badge title attribute carries the note from the payload", async ({ page }) => {
+    const state = makeMockState();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+
+    // ent-1 (Maimonides) ships with exists_in grounded in "contributors";
+    // the note is "matched in contributors" — verify it surfaces as the tooltip.
+    const badge = page.locator('[data-testid="exists-in"][data-status="grounded"]').first();
+    await expect(badge).toBeVisible();
+    const title = await badge.getAttribute("title");
+    expect(title).toContain("contributors");
+  });
+
+  test("entity with null exists_in renders the unknown badge without crashing", async ({ page }) => {
+    const state = makeMockState();
+    // Simulate what the backend used to return when the VARCHAR(16) insert
+    // failed silently — exists_in was always NULL in the DB.
+    state.entities.push({
+      ...makeEntity({ id: "ent-null-grounding", text: "Ungrounded Entity", source: "person_ner" }),
+      exists_in: null,
+    });
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+
+    const row = page.getByTestId("entity-row").filter({ hasText: "Ungrounded Entity" });
+    await expect(row).toBeVisible();
+    // Must not crash and must fall back to the "unknown" badge (shows "--").
+    await expect(row.getByTestId("exists-in")).toHaveAttribute("data-status", "unknown");
   });
 
 });

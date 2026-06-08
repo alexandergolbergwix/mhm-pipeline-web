@@ -341,4 +341,62 @@ test.describe("Auto-fix button", () => {
     expect(call).toBeDefined();
     expect(call!.override_cache).toBe(true);
   });
+
+  // ── LAYOUT REGRESSIONS (2026-06-08) ─────────────────────────────
+  //
+  // Before the fix the auto-fix button shared the actions cell (edit / view /
+  // history) which had a fixed pixel width. Adding the button overflowed the
+  // cell and misaligned the entire row grid.
+  //
+  // These two tests pin the contract: fix button lives in entity-fix-cell
+  // (a dedicated grid column), NOT as a sibling of the edit button.
+
+  test("auto-fix button lives in entity-fix-cell, not in the actions div", async ({ page }) => {
+    const state = makeStateWithFix();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+
+    const row = page.getByTestId("entity-row").filter({ hasText: "יוסף" }).last();
+
+    // The button must be reachable through entity-fix-cell.
+    await expect(row.getByTestId("entity-fix-cell").getByTestId("entity-autofix-btn")).toBeVisible();
+
+    // The button must NOT share a parent element with entity-edit-btn
+    // (they used to both be children of the same "flex gap-1" actions div).
+    const hasSameParent = await page.evaluate(() => {
+      const fixBtn  = document.querySelector('[data-testid="entity-autofix-btn"]');
+      const editBtn = document.querySelector('[data-testid="entity-edit-btn"]');
+      if (!fixBtn || !editBtn) return null;
+      return fixBtn.parentElement === editBtn.parentElement;
+    });
+    expect(hasSameParent).toBe(false);
+  });
+
+  test("row gridTemplateColumns matches the header when the fix button is visible", async ({ page }) => {
+    const state = makeStateWithFix();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+
+    // Wait for the fixable row to actually render its fix button so we know
+    // it's the layout variant we care about.
+    await expect(page.getByTestId("entity-autofix-btn")).toBeVisible();
+
+    const sameGrid = await page.evaluate(() => {
+      // Walk up from a header cell to its grid container.
+      const headerCell = document.querySelector('[data-testid="col-fix"]') as HTMLElement | null;
+      const header = headerCell?.closest<HTMLElement>("[style]") ?? null;
+      // The fixable row is the one that contains the fix button.
+      const fixBtn = document.querySelector('[data-testid="entity-autofix-btn"]');
+      const dataRow = fixBtn?.closest<HTMLElement>('[data-testid="entity-row"]') ?? null;
+      if (!header || !dataRow) return null;
+      return (
+        getComputedStyle(header).gridTemplateColumns ===
+        getComputedStyle(dataRow).gridTemplateColumns
+      );
+    });
+
+    expect(sameGrid).toBe(true);
+  });
 });

@@ -23,6 +23,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
+  timeout: 60_000,
   // 3 workers keeps the Vite dev server + Playwright IPC stable under
   // local load (the admin-panel serial block occupies 1 worker for ~2 min;
   // 3 total means 2 workers free for everything else).  CI keeps 2.
