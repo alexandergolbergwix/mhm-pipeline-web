@@ -139,7 +139,28 @@ export const Runs = {
       `/runs/${runId}/records/${encodeURIComponent(controlNumber)}`,
       {marc},
     ),
+
+  previewAuthorityAutoApprove: (runId: string, rule: AuthorityAutoApproveRule) =>
+    api.post<{ matched: number }>(
+      `/runs/${runId}/matches/auto-approve/preview`,
+      rule,
+    ),
+
+  applyAuthorityAutoApprove: (runId: string, rule: AuthorityAutoApproveRule) =>
+    api.post<{ matched: number; approved: number }>(
+      `/runs/${runId}/matches/auto-approve`,
+      rule,
+    ),
 };
+
+export interface AuthorityAutoApproveRule {
+  confidence_levels: Array<"high" | "medium" | "low">;
+  sources:           string[];
+  entity_kinds:      string[];
+  min_source_count:  number;
+  require_ai_pass:   boolean;
+  respect_ai_fail:   boolean;
+}
 
 /** Stream authority re-enrichment SSE events.  Call cancel() to abort. */
 export function streamAuthorityEnrich(

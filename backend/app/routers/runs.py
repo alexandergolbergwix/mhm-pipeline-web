@@ -54,6 +54,7 @@ from app.schemas.runs import (
     AiVerdictResponse,
     ApprovalBatch,
     ApprovalUpdate,
+    AuthorityAutoApproveRule,
     AuthorityMatchEdit,
     AuthorityMatchResponse,
     RunDetail,
@@ -285,6 +286,89 @@ async def bulk_approve(
             )
     await db.commit()
     return [AuthorityMatchResponse(**serialise_match(m)) for m in rows]
+
+
+# ── Auto-approve by rule ───────────────────────────────────────────────
+
+
+@router.post("/runs/{run_id}/matches/auto-approve/preview")
+async def preview_authority_auto_approve(
+    run_id: uuid.UUID,
+    rule: AuthorityAutoApproveRule,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Return how many matches the rule would approve without changing data."""
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    rows = (
+        await db.execute(
+            select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
+        )
+    ).scalars().all()
+    matched = _apply_auto_approve_rule(rows, rule)
+    return {"matched": len(matched)}
+
+
+@router.post("/runs/{run_id}/matches/auto-approve")
+async def apply_authority_auto_approve(
+    run_id: uuid.UUID,
+    rule: AuthorityAutoApproveRule,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Approve all matches satisfying the rule. Returns count approved."""
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    rows = (
+        await db.execute(
+            select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
+        )
+    ).scalars().all()
+    matched = _apply_auto_approve_rule(rows, rule)
+    for m in matched:
+        _apply_approval(m, True, auth.user.id)
+        await _record_match_event(
+            db, project_id=run.project_id,
+            actor_id=auth.user.id, row=m,
+        )
+    if matched:
+        await db.commit()
+    return {"matched": len(matched), "approved": len(matched)}
+
+
+def _apply_auto_approve_rule(
+    rows: list[AuthorityMatch],
+    rule: AuthorityAutoApproveRule,
+) -> list[AuthorityMatch]:
+    """Filter matches to those satisfying every rule condition."""
+    out: list[AuthorityMatch] = []
+    for m in rows:
+        if m.approved:
+            continue
+        p = m.payload or {}
+        # Confidence level
+        if rule.confidence_levels and m.confidence not in rule.confidence_levels:
+            continue
+        # Source filter — match if ANY of the match's sources is in the rule
+        if rule.sources:
+            match_sources = set(p.get("sources") or [])
+            if not match_sources.intersection(rule.sources):
+                continue
+        # Entity kind
+        if rule.entity_kinds and m.entity_kind not in rule.entity_kinds:
+            continue
+        # Min source count
+        sc = int(p.get("source_count") or 0)
+        if sc < rule.min_source_count:
+            continue
+        # AI verdict gates
+        ai_verdict = p.get("ai_verdict") or {}
+        ai_overall = (ai_verdict.get("overall") or "") if isinstance(ai_verdict, dict) else ""
+        if rule.require_ai_pass and ai_overall not in ("full", "pass"):
+            continue
+        if rule.respect_ai_fail and ai_overall in ("fail", "partial"):
+            continue
+        out.append(m)
+    return out
 
 
 # ── Backfill: enrich existing matches with birth/death years ──────────

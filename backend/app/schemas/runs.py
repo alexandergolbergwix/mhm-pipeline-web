@@ -75,6 +75,18 @@ class RecordEdit(BaseModel):
     marc: dict[str, Any]
 
 
+class AuthorityAutoApproveRule(BaseModel):
+    """Rule for bulk-approving authority candidates by predicate."""
+    confidence_levels: list[Literal["high", "medium", "low"]] = Field(
+        default_factory=lambda: ["high", "medium", "low"],
+    )
+    sources: list[str] = Field(default_factory=list)     # empty = any source
+    entity_kinds: list[str] = Field(default_factory=list) # empty = any kind
+    min_source_count: int = Field(default=1, ge=1, le=4)
+    require_ai_pass: bool = False
+    respect_ai_fail: bool = True
+
+
 class AiVerdictResponse(BaseModel):
     """Returned by /runs/{id}/matches/{mid}/ai-verify and embedded in
     payload['ai_verdict'] on the match itself."""

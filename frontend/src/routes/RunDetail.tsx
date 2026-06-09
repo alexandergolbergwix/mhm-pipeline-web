@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
@@ -7,36 +7,16 @@ import { useProjectEvents } from "@/api/realtime";
 import {
   Runs, streamAuthorityEnrich, type AuthorityMatch, type RunDetail as Detail,
 } from "@/api/runs";
-import {
-  applyConditions, type FilterCondition, StructuredFilter,
-} from "@/components/StructuredFilter";
-import {
-  ConfidenceBadge, MatchDetailDialog, VerdictBadge,
-} from "@/components/MatchDetailDialog";
-import { MarcRecordPopup } from "@/components/MarcRecordPopup";
-import { SelectAllVisible } from "@/components/SelectAllVisible";
+import { AuthorityMatchEditDialog } from "@/components/AuthorityMatchEditDialog";
 import { AiVerificationModal } from "@/components/AiVerificationModal";
-import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import type { ScopeKind } from "@/api/aiVerify";
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
+import { AuthorityTable } from "@/components/authority/AuthorityTable";
+import { AuthorityDetailDrawer } from "@/components/authority/AuthorityDetailDrawer";
+import { AuthorityAutoApproveRuleBuilder } from "@/components/authority/AuthorityAutoApproveRuleBuilder";
 
 type EnrichPhase = "idle" | "running" | "done" | "error";
-
-const COLUMNS = [
-  { key: "control_number", label: "Record",     kind: "text" as const, sortable: true  },
-  { key: "entity_text",    label: "Entity",     kind: "text" as const, sortable: true  },
-  { key: "role",           label: "Role",       kind: "text" as const, sortable: true  },
-  { key: "matched_name",   label: "Matched",    kind: "text" as const, sortable: true  },
-  { key: "confidence",     label: "Confidence", kind: "text" as const, sortable: true  },
-  { key: "source",         label: "Sources",    kind: "text" as const, sortable: true  },
-  { key: "ai_verdict",     label: "AI verdict", kind: "text" as const, sortable: true  },
-  { key: "approved",       label: "Approved",   kind: "boolean" as const, sortable: true },
-];
-
-type SortDir = "asc" | "desc";
-const CONFIDENCE_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2 };
-const VERDICT_ORDER:    Record<string, number> = { fail: 0, partial: 1, abstain: 2, pass: 3 };
 
 function toNumberRecord(value: unknown): Record<string, number> {
   const out: Record<string, number> = {};
@@ -52,9 +32,11 @@ export default function RunDetail() {
   const { runId } = useParams<{ runId: string }>();
   const [run, setRun] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [conditions, setConditions] = useState<FilterCondition[]>([]);
-  const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
-  const [openMatch, setOpenMatch] = useState<AuthorityMatch | null>(null);
+  // openDrawerMatch: drives AuthorityDetailDrawer (replaces MatchDetailDialog)
+  const [openDrawerMatch, setOpenDrawerMatch] = useState<AuthorityMatch | null>(null);
+  // openEditMatch: drives AuthorityMatchEditDialog directly (from table ✎ button)
+  const [openEditMatch, setOpenEditMatch] = useState<AuthorityMatch | null>(null);
+  const [showAutoApprove, setShowAutoApprove] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [backfillBusy, setBackfillBusy] = useState(false);
   const [backfillResult, setBackfillResult] = useState<{
@@ -88,17 +70,7 @@ export default function RunDetail() {
   }, [enrichStartedAt]);
   void enrichTick;
   const [verifyScope, setVerifyScope] = useState<{ kind: ScopeKind; matchIds?: string[]; label: string } | null>(null);
-  const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
-  // Sort state — persisted across reloads so curators don't lose their place.
-  const [sortKey, setSortKey] = useState<string | null>(() =>
-    localStorage.getItem("mhm.runDetail.sortKey") || null);
-  const [sortDir, setSortDir] = useState<SortDir>(() =>
-    (localStorage.getItem("mhm.runDetail.sortDir") as SortDir) || "asc");
-  useEffect(() => {
-    if (sortKey) localStorage.setItem("mhm.runDetail.sortKey", sortKey);
-    else         localStorage.removeItem("mhm.runDetail.sortKey");
-    localStorage.setItem("mhm.runDetail.sortDir", sortDir);
-  }, [sortKey, sortDir]);
+  const [filteredMatchIds, setFilteredMatchIds] = useState<string[]>([]);
 
   async function refresh() {
     if (!runId) return;
@@ -225,51 +197,10 @@ export default function RunDetail() {
         ? { ...prev, matches: prev.matches.map((x) => (x.id === next.id ? next : x)) }
         : prev,
     );
-    if (openMatch && openMatch.id === next.id) setOpenMatch(next);
+    if (openDrawerMatch && openDrawerMatch.id === next.id) setOpenDrawerMatch(next);
+    if (openEditMatch && openEditMatch.id === next.id) setOpenEditMatch(next);
   }
 
-  function openRecord(cn: string) {
-    setMarcPopupCn(cn);
-  }
-
-  const distinct = useMemo<Record<string, string[]>>(() => {
-    if (!run) return {};
-    const acc: Record<string, Set<string>> = {};
-    for (const m of run.matches) {
-      for (const c of COLUMNS) {
-        acc[c.key] = acc[c.key] ?? new Set();
-        acc[c.key].add(cellString(m, c.key));
-      }
-    }
-    const out: Record<string, string[]> = {};
-    for (const k of Object.keys(acc)) out[k] = Array.from(acc[k]).filter(Boolean).sort();
-    return out;
-  }, [run]);
-
-  const filtered = useMemo(() => {
-    if (!run) return [];
-    const rows = applyConditions(run.matches, conditions, (m, col) => cellString(m, col));
-    if (!sortKey) return rows;
-    const cmp = sortComparator(sortKey, sortDir);
-    return [...rows].sort(cmp);
-  }, [run, conditions, sortKey, sortDir]);
-
-  // Cycle: not-sorted → asc → desc → not-sorted.
-  function toggleSort(col: string) {
-    if (sortKey !== col)     { setSortKey(col); setSortDir("asc"); return; }
-    if (sortDir === "asc")   { setSortDir("desc");                  return; }
-    setSortKey(null); setSortDir("asc");
-  }
-
-  function selectAllVisible() {
-    const next = new Set(selected);
-    filtered.forEach((m) => next.add(m.id));
-    setSelected(next);
-  }
-  function clearSelection() { setSelected(new Set()); }
-  // Count how many of the currently-selected rows are ALSO visible —
-  // used for the indeterminate state on the SelectAllVisible widget.
-  const selectedInVisible = filtered.reduce((n, m) => n + (selected.has(m.id) ? 1 : 0), 0);
   const enrichSourceSummary = enrichResult
     ? Object.entries(enrichResult.source_counts)
         .sort(([a], [b]) => a.localeCompare(b))
@@ -334,12 +265,16 @@ export default function RunDetail() {
             <div>
               <div className="kicker">Authority candidates</div>
               <h3 className="text-lg font-medium">
-                Review &amp; approve · <span className="muted">{filtered.length} of {run.matches.length}</span>
+                Review &amp; approve · <span className="muted">{filteredMatchIds.length} of {run.matches.length}</span>
               </h3>
             </div>
             <div className="flex gap-2 items-center flex-wrap">
               <button disabled={selected.size === 0} onClick={() => bulk(true)}  className="button-primary !py-1.5 text-sm">Approve selected</button>
               <button disabled={selected.size === 0} onClick={() => bulk(false)} className="button-ghost   !py-1.5 text-sm">Unapprove selected</button>
+              <button onClick={() => setShowAutoApprove(true)}
+                      className="button-ghost !py-1.5 text-sm">
+                Auto-approve…
+              </button>
               <button disabled={selected.size === 0}
                       onClick={() => setVerifyScope({
                         kind: "selection",
@@ -351,10 +286,10 @@ export default function RunDetail() {
               </button>
               <button onClick={() => setVerifyScope({
                         kind: "all",
-                        matchIds: filtered.map((m) => m.id),
-                        label: `${filtered.length} visible`,
+                        matchIds: filteredMatchIds,
+                        label: `${filteredMatchIds.length} visible`,
                       })}
-                      disabled={filtered.length === 0}
+                      disabled={filteredMatchIds.length === 0}
                       className="button-ghost !py-1.5 text-sm text-biu-sky">
                 ✨ Verify all visible with AI
               </button>
@@ -480,138 +415,52 @@ export default function RunDetail() {
             </div>
           )}
 
-          <StructuredFilter
-            columns={COLUMNS}
-            distinctValues={distinct}
-            conditions={conditions}
-            onChange={setConditions}
+          <AuthorityTable
+            matches={run.matches}
+            runId={runId!}
+            projectId={run.project_id}
+            selectedIds={selected}
+            onSelectToggle={(id) => {
+              setSelected((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id); else next.add(id);
+                return next;
+              });
+            }}
+            onApproveToggle={toggle}
+            onOpenDrawer={setOpenDrawerMatch}
+            onOpenEdit={setOpenEditMatch}
+            onMatchChanged={patchMatch}
+            onFilteredChange={setFilteredMatchIds}
           />
-
-          <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
-            <SelectAllVisible
-              visibleCount={filtered.length}
-              selectedCount={selectedInVisible}
-              onSelectAll={selectAllVisible}
-              onClear={clearSelection}
-              label="matches" />
-            {sortKey && (
-              <button onClick={() => setSortKey(null)}
-                      className="text-xs text-biu-sky hover:underline">
-                Clear sort
-              </button>
-            )}
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead className="muted text-left">
-                <tr className="border-b border-white/5">
-                  <th className="py-2 pr-2"></th>
-                  {COLUMNS.map((c) => (
-                    <th key={c.key} className="py-2 pr-3 select-none">
-                      {c.sortable
-                        ? <button onClick={() => toggleSort(c.key)}
-                                  className="inline-flex items-center gap-1 hover:text-ink transition">
-                            <span>{c.label}</span>
-                            <SortGlyph active={sortKey === c.key} dir={sortDir} />
-                          </button>
-                        : c.label}
-                    </th>
-                  ))}
-                  <th className="py-2 pr-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((m) => {
-                  const p = (m.payload ?? {}) as Record<string, unknown>;
-                  const ai = (p.ai_verdict ?? null) as null | { overall: string };
-                  const guards = (p.guard_flags as string[] | undefined) ?? [];
-                  const sourceCount = Number(p.source_count ?? 0);
-                  return (
-                    <tr key={m.id} className="border-b border-white/5 hover:bg-white/[0.03] transition">
-                      <td className="py-2 pr-2">
-                        <input type="checkbox"
-                               checked={selected.has(m.id)}
-                               onChange={(e) => {
-                                 const next = new Set(selected);
-                                 if (e.target.checked) next.add(m.id); else next.delete(m.id);
-                                 setSelected(next);
-                               }} />
-                      </td>
-                      <td className="py-2 pr-3">
-                        <button onClick={() => openRecord(m.control_number)}
-                                className="text-biu-sky hover:underline font-mono text-xs">
-                          {m.control_number}
-                        </button>
-                      </td>
-                      <td className="py-2 pr-3 max-w-xs truncate">{m.entity_text}</td>
-                      <td className="py-2 pr-3"><span className="kicker">{m.role || "—"}</span></td>
-                      <td className="py-2 pr-3 max-w-xs truncate">
-                        {m.matched_name || <span className="muted">—</span>}
-                        {guards.length > 0 && (
-                          <span className="text-red-300 ml-1" title={guards.join(", ")}>⚠</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3">
-                        <span title={confidenceTooltip(m)} className="cursor-help">
-                          <ConfidenceBadge confidence={m.confidence} />
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3">
-                        <SourcesCell match={m} sourceCount={sourceCount} />
-                      </td>
-                      <td className="py-2 pr-3">
-                        {ai
-                          ? <VerdictBadge overall={ai.overall} />
-                          : <span className="muted text-xs italic">—</span>}
-                      </td>
-                      <td className="py-2 pr-3">
-                        <input type="checkbox" checked={m.approved} onChange={() => toggle(m)} />
-                      </td>
-                      <td className="py-2 pr-1 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => setOpenMatch(m)}
-                                  className="button-ghost text-xs">Details</button>
-                          <button onClick={() => setOpenMatch(m)}
-                                  data-testid={`match-edit-${m.id}`}
-                                  className="button-ghost text-xs"
-                                  title="Open details to edit match fields">
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            data-testid={`history-button-${m.id}`}
-                            onClick={() => setHistoryFor({ id: String(m.id) })}
-                            aria-label="View edit history"
-                            title="View edit history"
-                            className="button-ghost h-7 px-2 text-xs"
-                          >📜</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={COLUMNS.length + 2} className="py-6 text-center muted">No rows match this filter.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         </section>
       </div>
 
-      {marcPopupCn && runId && (
-        <MarcRecordPopup runId={runId} controlNumber={marcPopupCn}
-                         onClose={() => setMarcPopupCn(null)} />
-      )}
-      {openMatch && (
-        <MatchDetailDialog
+      <AuthorityDetailDrawer
+        match={openDrawerMatch}
+        runId={runId!}
+        projectId={run.project_id}
+        onClose={() => setOpenDrawerMatch(null)}
+        onMatchChanged={patchMatch}
+      />
+
+      {openEditMatch && (
+        <AuthorityMatchEditDialog
           runId={runId!}
-          match={openMatch}
-          onClose={() => setOpenMatch(null)}
-          onPatched={patchMatch}
+          match={openEditMatch}
+          onClose={() => setOpenEditMatch(null)}
+          onSaved={patchMatch}
         />
       )}
+
+      {showAutoApprove && runId && (
+        <AuthorityAutoApproveRuleBuilder
+          runId={runId}
+          onClose={() => setShowAutoApprove(false)}
+          onComplete={() => { setShowAutoApprove(false); void refresh(); }}
+        />
+      )}
+
       {verifyScope && runId && (
         <AiVerificationModal
           runId={runId}
@@ -621,114 +470,12 @@ export default function RunDetail() {
           onClose={() => setVerifyScope(null)}
         />
       )}
-      {historyFor && run ? (
-        <aside
-          data-testid="authority-history-drawer"
-          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
-        >
-          <HistoryTimeline
-            projectId={run.project_id}
-            entityType="authority_match"
-            entityId={historyFor.id}
-            onClose={() => setHistoryFor(null)}
-          />
-        </aside>
-      ) : null}
     </Layout>
   );
 }
 
 
 // ── helpers ─────────────────────────────────────────────────────────────
-
-
-function cellString(m: AuthorityMatch, col: string): string {
-  if (col === "ai_verdict") {
-    const v = m.payload?.ai_verdict as { overall?: string } | undefined;
-    return v?.overall ?? "";
-  }
-  if (col === "source") {
-    const list = m.payload?.sources as string[] | undefined;
-    if (list?.length) return list.join(",");
-  }
-  return String((m as unknown as Record<string, unknown>)[col] ?? "");
-}
-
-
-/** Tiny up/down/idle indicator next to a sortable header. */
-function SortGlyph({ active, dir }: { active: boolean; dir: SortDir }) {
-  if (!active)        return <span className="muted text-[9px]">⇅</span>;
-  if (dir === "asc")  return <span className="text-biu-sky text-[10px]">↑</span>;
-  return                    <span className="text-biu-sky text-[10px]">↓</span>;
-}
-
-
-/** Returns a stable comparator for the given key + direction. Uses
- *  per-column orderings for confidence and ai_verdict (those aren't
- *  alphabetical) and source_count first for the Sources column. */
-function sortComparator(
-  key: string, dir: SortDir,
-): (a: AuthorityMatch, b: AuthorityMatch) => number {
-  const mul = dir === "asc" ? 1 : -1;
-  return (a, b) => {
-    let r = 0;
-    if (key === "confidence") {
-      r = (CONFIDENCE_ORDER[a.confidence] ?? -1) - (CONFIDENCE_ORDER[b.confidence] ?? -1);
-    } else if (key === "ai_verdict") {
-      const av = (a.payload?.ai_verdict as { overall?: string } | undefined)?.overall ?? "";
-      const bv = (b.payload?.ai_verdict as { overall?: string } | undefined)?.overall ?? "";
-      r = (VERDICT_ORDER[av] ?? -1) - (VERDICT_ORDER[bv] ?? -1);
-    } else if (key === "source") {
-      const ac = Number(a.payload?.source_count ?? 0);
-      const bc = Number(b.payload?.source_count ?? 0);
-      r = ac - bc;
-      if (r === 0) r = cellString(a, key).localeCompare(cellString(b, key));
-    } else if (key === "approved") {
-      r = (a.approved ? 1 : 0) - (b.approved ? 1 : 0);
-    } else {
-      r = cellString(a, key).localeCompare(cellString(b, key), undefined,
-                                           { sensitivity: "base", numeric: true });
-    }
-    return r * mul;
-  };
-}
-
-
-function confidenceTooltip(m: AuthorityMatch): string {
-  const p = (m.payload ?? {}) as Record<string, unknown>;
-  const sources = (p.sources as string[] | undefined) ?? [];
-  const guards  = (p.guard_flags as string[] | undefined) ?? [];
-  const lines: string[] = [
-    `Confidence: ${m.confidence}`,
-    `Sources (${sources.length}): ${sources.join(", ") || "none"}`,
-    guards.length ? `Guards fired: ${guards.join(", ")}` : "No guards fired",
-  ];
-  const reasoning = p.reasoning as string | undefined;
-  if (reasoning) lines.push("", reasoning);
-  return lines.join("\n");
-}
-
-
-function SourcesCell({ match, sourceCount }: { match: AuthorityMatch; sourceCount: number }) {
-  const sources = (match.payload?.sources as string[] | undefined) ?? [];
-  if (sources.length === 0) {
-    return <span className="muted text-xs italic">—</span>;
-  }
-  return (
-    <span className="inline-flex items-center gap-1 flex-wrap"
-          title={`Sources: ${sources.join(", ")}${sourceCount >= 2 ? ` · cross-source ×${sourceCount}` : ""}`}>
-      {sources.map((s) => (
-        <span key={s}
-              className="glass-pill px-2 py-[1px] text-[10px] uppercase tracking-wider whitespace-nowrap shrink-0">
-          {s}
-        </span>
-      ))}
-      {sourceCount >= 2 && (
-        <span className="text-biu-sky text-[10px] shrink-0" title="Cross-source agreement">✓×{sourceCount}</span>
-      )}
-    </span>
-  );
-}
 
 
 function StatusPill({ status }: { status: string }) {
