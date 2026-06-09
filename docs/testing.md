@@ -123,7 +123,7 @@ the layers where parity DOES matter:
 | Desktop layer | Desktop count | Web target | Status |
 |---|---:|---:|---|
 | Safety guards (`test_safety_guards.py`) | 495 | 495 | Scaffolded — `backend/tests/safety/` ready for the port. The Wikidata uploader + reconciler that the guards protect is byte-identical between web and desktop (see `docs/project-hierarchy-plan.md` reuse map). |
-| GUI / widget tests (pytest-qt) | 254 | Component tests (Vitest + RTL) | In progress — `AgentFlowDiagram` + `SelectAllVisible` covered. Curator workflows (extraction editor, authority editor, AI-verify dialog) land as the React components ship. |
+| GUI / widget tests (pytest-qt) | 254 | Component tests (Vitest + RTL) | In progress — `AgentFlowDiagram` + `SelectAllVisible` covered. **Authority editor components shipped 2026-06-09** (`AuthorityTable`, `AuthorityDetailDrawer`, `AuthorityAutoApproveRuleBuilder` — Rule W-31). Extraction editor + AI-verify dialog covered. Next: add Playwright specs for authority table filter/sort/drawer click paths. |
 | Unit (pure-Python — matchers, reducers, post-filters) | ~280 | Same count, ported | In progress. The agent-actions registry is covered; ports of `ner_post_filters.py`, `stage3_guards.py`, `hebrew_translit.py`, `property_mapping.py` follow. |
 | Integration (route + worker handshakes) | 130 | ~80 (route tests) | In progress — `ai_verify` endpoints covered; `runs`, `projects`, `auth`, `wikidata_studio` follow. |
 | End-to-end | 0 desktop / N e2e | ~25 | Smoke covered. Add one e2e per curator-facing user flow. |

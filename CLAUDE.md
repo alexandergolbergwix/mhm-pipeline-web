@@ -735,6 +735,43 @@ gate — a curator pasting it into the QuickStatements tool bypasses these
 guards. The `item_approved_only` filter is the only control there. Close
 this (or document the manual-review requirement) before any bulk QS import.
 
+### Rule W-31 — Authority Enrichment review surface parity with extraction (added 2026-06-09)
+
+The Authority candidates page surfaces a rich entity-review UI that mirrors
+the extraction EntityTable layout. Five independent capabilities owned by
+`frontend/src/components/authority/`:
+
+1. **9-column candidates table** (`AuthorityTable.tsx`): Record · Entity ·
+   Role · Source · Conf. · Guards · AI verdict · Approved · Edit. Sortable
+   headers with `CONF_ORDER` / `VERD_ORDER` custom orderings; per-column
+   `ColumnFilterPopup` (right-click or ▾ button); free-text search inputs
+   directly in the Record and Entity header cells; guard-flag chips rendered as
+   `⚠ flagname` with `title={guardExplain(g)}`.
+2. **Per-column distinct-value popup**: reuses `ColumnFilterPopup` from
+   `frontend/src/components/extraction/`. Active filter chips with
+   clear-per-column + "Clear all". OR within a column, AND across columns.
+3. **`AuthorityDetailDrawer`** (`AuthorityDetailDrawer.tsx`): right-side
+   fixed drawer (640 px), z-40, translateX animation. Pin + Esc-to-close.
+   4 scrollable cards: Match (IDs, preferred names, KIMA geo), Confidence &
+   Sources (badge + reasoning + source chips + guard chips), Dates (ms/birth/death
+   years), AI Verdict (verdict pill + reasoning + model). Owns its edit dialog
+   (`AuthorityMatchEditDialog`) and MARC popup internally. Replaces the old
+   5-tab `MatchDetailDialog` modal.
+4. **`AuthorityAutoApproveRuleBuilder`** (`AuthorityAutoApproveRuleBuilder.tsx`):
+   rule modal with confidence/source/entity-kind/min-source-count controls,
+   `require_ai_pass` + `respect_ai_fail` toggles, and debounced live preview
+   (350 ms) via `POST /runs/{id}/matches/auto-approve/preview`. Apply calls
+   `POST /runs/{id}/matches/auto-approve`. `AuthorityAutoApproveRule` Pydantic
+   schema lives in `backend/app/schemas/runs.py`.
+5. **`onFilteredChange` callback**: `AuthorityTable` reports its current
+   filtered match IDs to `RunDetail` via `onFilteredChange(ids)` on every
+   `display` change (via `useEffect`), keeping the toolbar count badge and
+   "Verify all visible" scope in sync with the table's internal filter state.
+
+Backend helper `_apply_auto_approve_rule()` in `backend/app/routers/runs.py`
+filters unapproved matches by confidence_levels, sources (intersection),
+entity_kind, min_source_count, and AI verdict gates.
+
 ---
 
 ## Project structure
@@ -749,7 +786,8 @@ this (or document the manual-review requirement) before any bulk QS import.
 | `backend/converter/` | Byte-identical mirror of desktop converter tree |
 | `backend/ontology/` | hebrew-manuscripts.ttl + shacl-shapes.ttl (HMO ontology) |
 | `frontend/src/routes/` | One page per route (RunDetail, StageExtraction, StageRdf, HmoStudio, WikidataStudio, …) |
-| `frontend/src/components/` | Shared widgets (AiVerificationModal, AgentFlowDiagram, MatchDetailDialog, SelectAllVisible, …) |
+| `frontend/src/components/` | Shared widgets (AiVerificationModal, AgentFlowDiagram, SelectAllVisible, …) |
+| `frontend/src/components/authority/` | Authority review components: `AuthorityTable`, `AuthorityDetailDrawer`, `AuthorityAutoApproveRuleBuilder` |
 | `frontend/src/components/wikidata/` | Studio-specific components: `ItemValidatorBadge`, `ItemApprovalBadge` |
 | `frontend/src/api/` | Per-resource API clients |
 | `frontend/tests/` | Vitest unit tests |

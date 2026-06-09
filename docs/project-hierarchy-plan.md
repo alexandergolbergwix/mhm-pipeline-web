@@ -37,6 +37,7 @@ research tool; not user-facing.
 | Authority Enrichment — Hardening (7 guards) | `controller/workers.py::AuthorityWorker` | ✓ shipped (`authority_hardening.py`) | none |
 | Authority Enrichment — Mazal + KIMA in Heroku Postgres | `app/pipeline/authority_backend.py::PostgresAuthorityBackend` | ✓ shipped (Rule W-28) — migration 0018, import scripts | **DONE** 2026-06-05 — Mazal 7.8 M rows, KIMA 177 K rows imported; AUTHORITY_MODE=postgres |
 | Authority Enrichment — Payload completeness | `app/pipeline/authority.py` | ✓ shipped (Rules W-23, W-29) | **DONE** 2026-06-05 — viaf_uri, wikidata_uri, mazal_aleph_id, wikidata_he_label, _wikidata_enrich_qid |
+| Authority Enrichment — Review UI (parity with ExtractionEditor) | n/a (desktop has a basic list widget) | ✓ shipped 2026-06-09 | **DONE** — `AuthorityTable` (9 cols, per-column filter popups, free-text search, guard chips) + `AuthorityDetailDrawer` (replaces MatchDetailDialog) + `AuthorityAutoApproveRuleBuilder` (Rule W-31) |
 | Curator field editing (all 4 surfaces) | desktop editors + web dialogs | ✓ shipped (Rule W-24) | none |
 | RDF Graph — RDF mapper | `converter/transformer/mapper.py` | ✓ already in web | wire endpoint |
 | RDF Graph — Ontology | `ontology/hebrew-manuscripts.ttl` | absent | **COPY** to `backend/ontology/` |
