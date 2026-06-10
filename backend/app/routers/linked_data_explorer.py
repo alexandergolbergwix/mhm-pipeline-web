@@ -30,7 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.project import Membership
+from app.models.rdf_artifact import RdfArtifact
 from app.models.run import Run
+from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.pipeline.research_graph import load_merged_graph
 from app.settings import get_settings
 
@@ -94,6 +96,18 @@ async def _run_ids_for_project(project_id: uuid.UUID, db: AsyncSession) -> list[
     return [str(r) for r in rows.scalars().all()]
 
 
+async def _restore_missing_ttls(run_ids: list[str], db: AsyncSession) -> None:
+    for run_id in run_ids:
+        ttl_path = rdf_output_path_for_run(run_id)
+        if ttl_path.exists():
+            continue
+        row = await db.get(RdfArtifact, uuid.UUID(run_id))
+        if row is None:
+            continue
+        ttl_path.parent.mkdir(parents=True, exist_ok=True)
+        ttl_path.write_text(row.ttl_content, encoding="utf-8")
+
+
 async def _load_graph_or_404(project_id: uuid.UUID, auth: AuthContext, db: AsyncSession):
     await _require_viewer(project_id, auth, db)
     run_ids = await _run_ids_for_project(project_id, db)
@@ -102,6 +116,7 @@ async def _load_graph_or_404(project_id: uuid.UUID, auth: AuthContext, db: Async
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No runs found for this project — build the RDF first.",
         )
+    await _restore_missing_ttls(run_ids, db)
     graph = await load_merged_graph(run_ids)
     if len(graph) == 0:
         raise HTTPException(
