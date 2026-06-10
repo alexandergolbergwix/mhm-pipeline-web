@@ -242,6 +242,10 @@ export default function RunDetail() {
             <Link to={`/runs/${run.id}/wikidata-studio`} className="hover:text-ink underline">
               Wikidata Studio
             </Link>
+            {" · "}
+            <Link to={`/runs/${run.id}/linked-data-explorer`} className="hover:text-ink underline">
+              Linked Data Explorer
+            </Link>
           </div>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <h2 className="text-2xl font-semibold">{run.name}</h2>
@@ -467,7 +471,7 @@ export default function RunDetail() {
           scopeKind={verifyScope.kind}
           matchIds={verifyScope.matchIds}
           scopeLabel={verifyScope.label}
-          onClose={() => setVerifyScope(null)}
+          onClose={() => { setVerifyScope(null); void refresh(); }}
         />
       )}
     </Layout>

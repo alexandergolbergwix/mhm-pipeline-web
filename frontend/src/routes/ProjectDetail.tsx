@@ -106,7 +106,6 @@ function ProjectHeader({
           </p>
           <div className="flex gap-2 pt-2 flex-wrap">
             <Link to={`/projects/${proj.id}/history`} className="button-ghost text-sm">History &amp; restore</Link>
-            <Link to={`/projects/${proj.id}/research`} className="button-ghost text-sm">🔭 Research Explorer</Link>
             <ExportButton projectId={proj.id} mode="project" />
             {canEdit && <button onClick={() => setEditing(true)} className="button-ghost text-sm">Edit</button>}
             {canDelete && (

@@ -486,9 +486,13 @@ function SortGlyph({ active, dir }: { active: boolean; dir: SortDir }) {
 
 
 const _GUARD_NOTES: Record<string, string> = {
-  date_conflict:      "Manuscript date is incompatible with the candidate's lifespan + role.",
-  name_drift:         "Preferred form drifts from the MARC heading.",
-  weaker_alternative: "Secondary candidate offered alongside a stronger primary.",
+  placeholder_name:       "Name is a generic placeholder (e.g. 'ben', 'bar') — resolved IDs were cleared.",
+  short_name_homonym:     "Short or highly ambiguous name — many persons share this form.",
+  cluster_collapse:       "Candidate collapses with a sibling that has stronger evidence.",
+  nli_strict_skip_viaf:   "NLI authority conflicts with the VIAF record — VIAF link was dropped.",
+  mazal_pair_collision:   "Mazal ID collides with a sibling candidate for a different person.",
+  corporate_viaf_drop:    "Corporate/institution name matched a VIAF person record — VIAF link was dropped.",
+  wikidata_crosscheck_fail: "Wikidata crosscheck found a conflicting identity for this candidate.",
 };
 function guardExplain(g: string): string {
   return _GUARD_NOTES[g] ?? "";

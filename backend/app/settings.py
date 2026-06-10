@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     master_key: str = Field(default="")
     email_hmac_key: str = Field(default="")
 
+    # ── Linked Data Explorer ──────────────────────────────────────────
+    # Optional: SPARQL endpoint for the project's local Wikibase instance.
+    # Leave empty to disable the Wikibase data source in the explorer UI.
+    wikibase_sparql_url: str = Field(default="")
+
     # ── Registration / spam protection ────────────────────────────────
     resend_api_key: str = Field(default="")
     resend_from_email: str = Field(default="MHM Pipeline <noreply@example.org>")

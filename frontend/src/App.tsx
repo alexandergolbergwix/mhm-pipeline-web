@@ -25,7 +25,7 @@ import Settings from "@/routes/Settings";
 import StageExtraction from "@/routes/StageExtraction";
 import StageRdf from "@/routes/StageRdf";
 import WikidataStudio from "@/routes/WikidataStudio";
-import Research from "@/routes/Research";
+import LinkedDataExplorer from "@/routes/LinkedDataExplorer";
 import { useAuth } from "@/stores/auth";
 
 export default function App() {
@@ -47,13 +47,13 @@ export default function App() {
       <Route path="/"                            element={<ProtectedRoute><ProjectsList /></ProtectedRoute>} />
       <Route path="/projects/:projectId"         element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
       <Route path="/projects/:projectId/history"  element={<ProtectedRoute><ProjectHistory /></ProtectedRoute>} />
-      <Route path="/projects/:projectId/research" element={<ProtectedRoute><Research /></ProtectedRoute>} />
       <Route path="/runs/:runId"                 element={<ProtectedRoute><RunDetail /></ProtectedRoute>} />
       <Route path="/runs/:runId/overview"        element={<ProtectedRoute><RunOverview /></ProtectedRoute>} />
       <Route path="/runs/:runId/extraction"      element={<ProtectedRoute><StageExtraction /></ProtectedRoute>} />
       <Route path="/runs/:runId/rdf"             element={<ProtectedRoute><StageRdf /></ProtectedRoute>} />
-      <Route path="/runs/:runId/wikidata-studio" element={<ProtectedRoute><WikidataStudio /></ProtectedRoute>} />
-      <Route path="/runs/:runId/hmo-studio"      element={<ProtectedRoute><HmoStudio /></ProtectedRoute>} />
+      <Route path="/runs/:runId/wikidata-studio"        element={<ProtectedRoute><WikidataStudio /></ProtectedRoute>} />
+      <Route path="/runs/:runId/hmo-studio"             element={<ProtectedRoute><HmoStudio /></ProtectedRoute>} />
+      <Route path="/runs/:runId/linked-data-explorer"   element={<ProtectedRoute><LinkedDataExplorer /></ProtectedRoute>} />
       <Route path="/settings"                    element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/admin"                       element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/users"                 element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
