@@ -27,6 +27,7 @@ from app.models.event import (
     ProjectSnapshot,
 )
 from app.models.extraction_approval import ExtractionApproval
+from app.models.rdf_artifact import RdfArtifact
 from app.models.inference_cache import InferenceCache
 from app.models.invitation import Invitation
 from app.models.item_override import WikidataItemOverride
@@ -91,6 +92,7 @@ __all__ = [
     "RUN_STATUS_RUNNING",
     "RUN_STATUS_SUCCEEDED",
     "Run",
+    "RdfArtifact",
     "RunRecord",
     "STATUS_APPROVED",
     "STATUS_DENIED",
