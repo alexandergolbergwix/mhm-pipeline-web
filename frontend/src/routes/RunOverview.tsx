@@ -154,6 +154,14 @@ export default function RunOverview() {
             statePill={studioPill(studio)}
             stats={studioStats(studio)}
           />
+          <StageTile
+            to={`/runs/${runId}/linked-data-explorer`}
+            kicker="LOD"
+            title="Linked Data Explorer"
+            description="SPARQL · HMO graph · Wikibase · Wikidata"
+            statePill={<Pill tone="muted">explore</Pill>}
+            stats="Query the project's linked open data graph."
+          />
         </div>
       </div>
     </Layout>

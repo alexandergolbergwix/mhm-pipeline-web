@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.extraction_approval import ExtractionApproval
+from app.models.rdf_artifact import RdfArtifact
 from app.models.run import AuthorityMatch, RdfTripleOverride, Run, RunRecord
 from app.pipeline.rdf_build import (
     LAYOUT_KINDS,
@@ -172,6 +173,26 @@ class TripleOverrideResponse(BaseModel):
     created_at: str
 
 
+# ── Helpers ────────────────────────────────────────────────────────────
+
+
+async def _ensure_ttl_on_disk(run_id: uuid.UUID, db: AsyncSession) -> None:
+    """Restore the TTL from the DB if the local cache file is missing.
+
+    The local dyno filesystem is ephemeral on Heroku — this re-seeds it
+    from the durable Postgres copy without requiring a full rebuild.
+    Only called by read endpoints; the build endpoint writes both.
+    """
+    ttl = rdf_output_path_for_run(str(run_id))
+    if ttl.exists():
+        return
+    row = await db.get(RdfArtifact, run_id)
+    if row is None:
+        return
+    ttl.parent.mkdir(parents=True, exist_ok=True)
+    ttl.write_text(row.ttl_content, encoding="utf-8")
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────
 
 
@@ -272,6 +293,22 @@ async def build(
             detail=f"RDF build failed: {exc}",
         ) from exc
 
+    # Persist TTL to Postgres so it survives dyno restarts / deploys.
+    ttl_text = out_path.read_text(encoding="utf-8")
+    existing = await db.get(RdfArtifact, run_id)
+    if existing:
+        existing.ttl_content = ttl_text
+        existing.triples_count = result.triples_count
+        existing.manuscripts_count = result.manuscripts_count
+    else:
+        db.add(RdfArtifact(
+            run_id=run_id,
+            ttl_content=ttl_text,
+            triples_count=result.triples_count,
+            manuscripts_count=result.manuscripts_count,
+        ))
+    await db.commit()
+
     # Bust every downstream cache so the fresh TTL is visible immediately:
     # 1. Cytoscape JSON files (graph_{layout}_{max_nodes}.json) — delete them
     #    so the next GET /graph re-derives from the new TTL.
@@ -312,6 +349,7 @@ async def graph(
             detail=f"unknown layout={layout!r}; valid: {list(LAYOUT_KINDS)}",
         )
 
+    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
     if not ttl.exists():
         raise HTTPException(
@@ -383,6 +421,7 @@ async def node(
     containing slashes don't need encoding gymnastics.
     """
     await _lookup_run_with_access(db, run_id, auth)
+    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
     if not ttl.exists():
         raise HTTPException(
@@ -412,6 +451,7 @@ async def download_ttl(
     """Stream the raw Turtle file as a download."""
     await _lookup_run_with_access(db, run_id, auth)
 
+    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
     if not ttl.exists():
         raise HTTPException(
@@ -434,6 +474,7 @@ async def validate(
     """Run SHACL validation over the latest built graph."""
     await _lookup_run_with_access(db, run_id, auth, write=True)
 
+    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
     if not ttl.exists():
         raise HTTPException(
