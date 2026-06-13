@@ -181,7 +181,7 @@ function TableView({projectId}: {projectId: string}) {
   if (error)   return <p className="text-sm text-red-400">{error}</p>;
   if (!data?.length) return (
     <p className="text-sm muted text-center py-8">
-      No geographic data — build the RDF graph first.
+      No production sites or mentioned places found in this run&rsquo;s graph.
     </p>
   );
 
@@ -304,7 +304,10 @@ function HeatmapView({projectId}: {projectId: string}) {
   if (error)   return <p className="text-sm text-red-400">{error}</p>;
   if (!data?.length) return (
     <p className="text-sm muted text-center py-8">
-      No geographic data with coordinates — build the RDF graph first.
+      No places have map coordinates in this run&rsquo;s graph. Coordinates come
+      from geo-enriched subject places (GeoNames/Wikidata); production and
+      mentioned places carry names only, so they appear in the Table view but
+      not on the map.
     </p>
   );
 

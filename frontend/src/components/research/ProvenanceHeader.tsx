@@ -20,7 +20,7 @@ export function ProvenanceHeader({
         <div className="flex items-center gap-2">
           <span className="text-biu-sky text-lg">🔗</span>
           <span className="text-sm font-semibold text-ink">Linked Data Explorer</span>
-          <span className="text-xs muted">· powered by human-reviewed entities</span>
+          <span className="text-xs muted">· built from this run&rsquo;s RDF graph</span>
         </div>
         <Link
           to={`/runs/${runId}/wikidata-studio`}
@@ -44,9 +44,6 @@ export function ProvenanceHeader({
           <Stat n={data.total_places} label="places" />
           <span className="muted text-xs self-center">
             · {data.triples.toLocaleString()} triples
-          </span>
-          <span className="ml-auto text-xs text-green-400/80 self-center">
-            ✓ all entities reviewed through Wikidata Studio
           </span>
         </div>
       ) : null}
