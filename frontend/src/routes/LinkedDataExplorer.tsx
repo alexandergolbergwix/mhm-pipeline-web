@@ -27,10 +27,11 @@ const PeopleNetworkPanel        = lazy(() => import("@/components/research/Peopl
 const OwnershipPanel            = lazy(() => import("@/components/research/OwnershipChainsPanel"));
 const GeographyPanel            = lazy(() => import("@/components/research/GeographyPanel"));
 const ProvenanceTimelinePanel   = lazy(() => import("@/components/research/ProvenanceTimelinePanel"));
+const ProvenanceMapPanel        = lazy(() => import("@/components/research/ProvenanceMapPanel"));
 const RelationshipDrillPanel    = lazy(() => import("@/components/research/RelationshipDrillPanel"));
 const SparqlConsolePanel        = lazy(() => import("@/components/research/SparqlConsolePanel"));
 
-type Tab = "summary" | "cooccurrence" | "network" | "ownership" | "geography" | "provenance" | "relationships" | "sparql";
+type Tab = "summary" | "cooccurrence" | "network" | "ownership" | "geography" | "provenance" | "movement" | "relationships" | "sparql";
 
 const TABS: {id: Tab; label: string; emoji: string}[] = [
   {id: "summary",       label: "Overview",        emoji: "📊"},
@@ -39,6 +40,7 @@ const TABS: {id: Tab; label: string; emoji: string}[] = [
   {id: "ownership",     label: "Ownership",        emoji: "📜"},
   {id: "geography",     label: "Geography",        emoji: "🗺"},
   {id: "provenance",    label: "Provenance",       emoji: "📅"},
+  {id: "movement",      label: "Movement",         emoji: "🧭"},
   {id: "relationships", label: "Relationships",    emoji: "🔗"},
   {id: "sparql",        label: "SPARQL Console",   emoji: "⚡"},
 ];
@@ -128,6 +130,7 @@ export default function LinkedDataExplorer() {
             {tab === "ownership"     && <OwnershipPanel          projectId={projectId} />}
             {tab === "geography"     && <GeographyPanel          projectId={projectId} />}
             {tab === "provenance"    && <ProvenanceTimelinePanel projectId={projectId} />}
+            {tab === "movement"      && <ProvenanceMapPanel      projectId={projectId} />}
             {tab === "relationships" && <RelationshipDrillPanel  projectId={projectId} />}
             {tab === "sparql"        && <SparqlConsolePanel      projectId={projectId} />}
           </Suspense>

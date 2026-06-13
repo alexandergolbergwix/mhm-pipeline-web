@@ -84,6 +84,10 @@ KIND_TTL: dict[str, timedelta | None] = {
     "authority.wikidata": timedelta(days=30),   # Wikidata is actively edited
     "authority.kima":     timedelta(days=180),  # geographic index rarely changes
     "ai_verdict":         timedelta(days=90),   # forces refresh when model changes
+    # Research / provenance-map feature (DB-sourced, fingerprint-keyed):
+    "wikidata.person_place": timedelta(days=180),  # biographical place rarely changes
+    "research.provenance_map": timedelta(days=30),  # backstop; key carries fingerprint
+    "research.manuscripts":    timedelta(days=30),  # backstop; key carries fingerprint
 }
 
 # Redis TTL in seconds — None = no expiry (SET without EX).
@@ -98,6 +102,9 @@ _REDIS_TTL_SECONDS: dict[str, int | None] = {
     "authority.wikidata": 86_400,
     "authority.kima":     86_400,
     "ai_verdict":         86_400 * 7,   # 7-day Redis hot window for verdicts
+    "wikidata.person_place":   86_400,
+    "research.provenance_map": 86_400,
+    "research.manuscripts":    86_400,
 }
 
 

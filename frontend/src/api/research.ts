@@ -113,6 +113,54 @@ export interface ProvenanceTimeline {
   events: ProvenanceEvent[];
 }
 
+export interface ManuscriptPick {
+  control_number: string;
+  label: string | null;
+  production_year: number | null;
+}
+
+export type MapStopKind =
+  | "production"
+  | "owner"
+  | "significant_place"
+  | "current_holder";
+
+export interface MapStop {
+  kind: MapStopKind;
+  label: string;
+  uri?: string | null;
+  lat: number | null;
+  lon: number | null;
+  year?: number | null;
+  year_earliest?: number | null;
+  year_latest?: number | null;
+  birth_year?: number | null;
+  death_year?: number | null;
+  certain: boolean;
+  inferred_geo: boolean;
+  geo_source?: string | null;
+  geo_source_label?: string | null;
+  approved?: boolean | null;
+  is_present?: boolean;
+  time: number | null;
+  has_point: boolean;
+}
+
+export interface MapEdge {
+  from: number;
+  to: number;
+  inferred: boolean;
+  directed: boolean;
+}
+
+export interface ProvenanceMap {
+  control_number: string;
+  ms_label: string | null;
+  stops: MapStop[];
+  edges: MapEdge[];
+  dropped: {label: string; reason: string}[];
+}
+
 export interface NeighborNode {
   uri: string;
   label: string | null;
@@ -149,6 +197,14 @@ export const researchApi = {
   provenanceTimeline: (projectId: string, msUri: string, overlay?: string) =>
     api.get<ProvenanceTimeline>(
       `${base(projectId)}/provenance?ms=${encodeURIComponent(msUri)}${overlay ? `&overlay=${overlay}` : ""}`,
+    ),
+  manuscripts: (projectId: string) =>
+    api.get<ManuscriptPick[]>(`${base(projectId)}/manuscripts`),
+  provenanceMap: (projectId: string, cn: string, includeUnapproved = false) =>
+    api.get<ProvenanceMap>(
+      `${base(projectId)}/provenance-map?cn=${encodeURIComponent(cn)}${
+        includeUnapproved ? "&include_unapproved=true" : ""
+      }`,
     ),
   neighbors: (projectId: string, uri: string) =>
     api.get<NeighborNode[]>(`${base(projectId)}/neighbors?uri=${encodeURIComponent(uri)}`),
