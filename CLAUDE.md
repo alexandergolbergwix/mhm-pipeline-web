@@ -1,223 +1,30 @@
-# MHM Pipeline Web — Operating manual
+<!--
+This file is intentionally kept as a bridge for repo-local, web-specific
+notes. The shared rules live upstream in /Users/alexandergo/Documents/Doctorat/pipeline.
+Read AGENTS.md first, then use the upstream CLAUDE.md for common policy.
+-->
 
-This file is the **agent-facing operating manual** for the web port of
-the MHM Pipeline. Read by Claude Code at the start of every session.
+# MHM Pipeline Web - Operating Manual
 
-The desktop pipeline lives at `/Users/alexandergo/Documents/Doctorat/pipeline`.
-The sibling eval-agent project lives at
-`/Users/alexandergo/Documents/Doctorat/eval-agent`. This web app at
-`/Users/alexandergo/Documents/Doctorat/mhm-pipeline-web` is the
-collaborative, browser-based curator interface for the same pipeline.
+This repo inherits the shared agent rules, command docs, and skills from the
+desktop pipeline repository at `/Users/alexandergo/Documents/Doctorat/pipeline`.
 
----
+Use that repository as the upstream source of truth for shared behavior. Keep
+this file for web-only notes and for any overrides that explicitly mention
+`mhm-pipeline-web`.
 
-## Session-startup procedure (MANDATORY)
+## Startup
 
-1. **Read recent commits** — `git log --oneline -10`. The git log is
-   the canonical "what changed".
-2. **Read `docs/project-hierarchy-plan.md`** — the authoritative
-   reference for the 5-section project sub-hierarchy. Anything that
-   contradicts the plan is the contradiction's fault.
-3. **Read this CLAUDE.md tail** for any rules added in prior sessions.
-4. **Confirm the trust boundary with the eval-agent** (Rule W-1 below).
+1. Read `/Users/alexandergo/Documents/Doctorat/pipeline/AGENTS.md`.
+2. Read `/Users/alexandergo/Documents/Doctorat/pipeline/CLAUDE.md`.
+3. Read the web-local docs in `docs/` and the repo history as needed.
 
-Do not skip step 2. The plan doc is the only thing that survives
-context resets and prevents architectural drift.
+## Web-specific inheritance note
 
----
-
-## Hierarchy
-
-```
-Project
-  ├─ AI Extraction           (NER + classifier; HF Hub delivery)
-  ├─ Authority Enrichment    (Mazal / VIAF / Wikidata / KIMA)
-  ├─ RDF Graph               (HMO ontology; Cytoscape viewer)
-  ├─ HMO Wikibase Studio     (IIIF + crosswalk → wikibase.cloud)
-  └─ Wikidata Studio         (reconcile · QuickStatements · upload)
-        └─ AI verification    (per-run verb; opens from any section)
-```
-
-The agent is a **verb on a run**, never a top-level destination.
-
----
-
-## Architectural invariants (CANNOT VIOLATE)
-
-### Rule W-1 — eval-agent trust boundary (matches desktop Rule 48)
-
-No Python imports across `mhm-pipeline-web/backend` ↔ `eval-agent/`.
-Communication is **subprocess argv + `GEMINI_API_KEY` env var + stdout
-[TRACE] / [STEP] / [STATS] lines + filesystem outputs only**. Same
-contract as the desktop. The eval-agent location is resolved by
-`backend/app/pipeline/agent_runner.py::locate_eval_agent` and respects
-`EVAL_AGENT_ROOT`.
-
-### Rule W-2 — no user-typed prompts in the AI verify UI
-
-Curators pick **actions** from the server-side registry in
-`backend/app/pipeline/agent_actions.py`. New actions are a Python dict
-entry; the UI never accepts free-text goals. Three actions ship today:
-`audit_match`, `find_duplicates`, `birth_death_check`.
-
-### Rule W-3 — no "Stage N" in user-facing strings
-
-Use the real section names: **AI Extraction · Authority · RDF Graph ·
-HMO Wikibase · Wikidata Studio**. Never `Stage 2 / Stage 3 / …`.
-Mirrors desktop Rule 53. Comments + internal docstrings may reference
-stage numbers for diagnostics; UI strings may not.
-
-### Rule W-4 — Wikidata safety (Rules 23 / 25 / 26 / 28 / 38 from desktop)
-
-`backend/converter/wikidata/uploader.py` is **byte-identical** to the
-desktop file. Never edit it in isolation; if a guard needs updating,
-make the change in the desktop tree and re-mirror. The four-stage
-modification guard (`_is_our_item`, `_assert_modifiable` x2,
-`_would_create_identity_conflict`) is the regression barrier — the
-2026-04-12 mass-merge incident is what these guards exist to prevent.
-
-The Rule-25 moratorium gate (`MORATORIUM_LIFTED=true`) applies only to
-wikidata.org. The Wikibase Cloud (mhm-hmo.wikibase.cloud) is a
-separate trust boundary; only `assert=bot` + idempotent SHA compare
-apply there (Rule W-5 below).
-
-### Rule W-5 — Wikibase Cloud writer must be idempotent + bot-asserted
-
-`backend/converter/wikibase/cloud_client.py::WikibaseCloudWriter` reads
-each page's current content and SHA-compares against the new payload
-before writing. Every edit POST carries `assert=bot` so an
-un-bot-flagged session refuses. Don't shortcut either check.
-
-### Rule W-6 — encrypted secrets per user, never on argv
-
-Every long-lived secret (Gemini key, Wikidata token, Wikibase bot
-password, HuggingFace token) is encrypted under the user's KEK in
-`backend/app/crypto/secrets.py`. Routers unwrap on demand and pass via
-env var to subprocesses. Never `--api-key=...` on argv. The
-`api_keys` router (`backend/app/routers/api_keys.py`) tracks the
-allowlist of valid `key_name` values.
-
-### Rule W-7 — no top-level torch / transformers / huggingface_hub imports
-
-Mirrors desktop Rule 2. Any module that uses these libs imports them
-inside the function body:
-
-```python
-def _load_model() -> Any:
-    import torch  # noqa: PLC0415
-    import transformers  # noqa: PLC0415
-    ...
-```
-
-`app/pipeline/extraction.py` follows this strictly. Adding a new ML
-module? Same rule.
-
-### Rule W-8 — async everywhere; sync work goes through threadpool
-
-All FastAPI route handlers are `async def`. Synchronous CPU-bound or
-I/O-bound libs (rdflib, pyshacl, sqlite, torch inference) are wrapped
-in `asyncio.to_thread` or `fastapi.concurrency.run_in_threadpool`.
-Never call a blocking lib directly inside a route — it pins the event
-loop and the SSE keepalive dies.
-
-### Rule W-9 — SSE streams cancel the subprocess on client disconnect
-
-For any long-running operation that spawns a subprocess (eval-agent,
-ML inference, RDF build, Wikidata upload), browser disconnect MUST
-SIGTERM the child so we never keep paying for orphaned API calls.
-Pattern: `asyncio.CancelledError` in the runner → `proc.terminate()` →
-short wait → `proc.kill()`. See `backend/app/pipeline/agent_runner.py`.
-
-### Rule W-10 — desktop reuse is BYTE-IDENTICAL where possible
-
-Files in `backend/converter/` are mirrored from desktop's `converter/`
-verbatim. Diffing the two trees should produce zero output for those
-paths. If desktop adds a Rule, the web inherits it the next time the
-files are re-mirrored. Never fork these files.
-
-### Rule W-11 — three extraction backends; one selector
-
-`backend/app/pipeline/extraction_backend.py` exposes one
-`InferenceBackend` Protocol with three implementations:
-
-| Backend | When | Notes |
-|---|---|---|
-| `LocalInferenceBackend` | `EXTRACTION_MODE=local` | torch + transformers inside the FastAPI dyno. Works offline but bloats the dyno (~3 GB RAM for all four warm) |
-| `HfApiInferenceBackend` | `EXTRACTION_MODE=hf-api` | Calls HF Inference Providers. **Dead end for our four models** on the free serverless tier — HF refuses to deploy custom-code repos (Provenance/Contents) and won't allocate hardware for low-traffic standard repos (Person/Genre). Kept for repos HF does deploy |
-| `ModalInferenceBackend` | `EXTRACTION_MODE=modal` | Calls the deployed `mhm-ner` Modal app at `MODAL_NER_URL`. All four models in one container, shared DictaBERT base, pay-per-second. The current production answer |
-
-`resolve_mode()` picks one from the env var; `build_backend()` lazy-imports
-the right module so a Modal-only deploy never imports torch and an
-hf-api-only deploy never reads weight files. New backends go through
-this Protocol — no direct calls from `extraction.py` to vendor SDKs.
-
-### Rule W-12 — shared cross-user inference cache
-
-`backend/app/models/inference_cache.py` is the team-wide content-addressed
-cache for every external inference call. Keyed by `(kind, query_hash)`
-where `query_hash` is SHA-256 of canonical JSON of the query summary.
-`cache_lookup_or_call(db, kind=..., query_summary=..., fetch=...)` in
-`backend/app/pipeline/inference_cache.py` is the only entry point;
-never write to the table directly.
-
-Three call sites use it today:
-1. **HF backend** — `extraction_backend_hf.py::_cached()` for every
-   NER + genre call.
-2. **Modal backend** — `extraction_backend_modal.py::_cached()` mirrors
-   the HF pattern.
-3. **Authority matchers** — `pipeline/authority.py::DesktopMatcher`
-   has six cached wrappers (`_kima_match_place`, `_mazal_match_person`,
-   `_mazal_get_details`, `_viaf_match_with_metadata`,
-   `_wikidata_match_person`, `_wikidata_dates`). `_match_one` routes
-   every external call through them so the first team member to
-   resolve a name populates the cache; everyone else warm-hits.
-
-TTL is per-kind via `KIND_TTL`:
-
-| Kind | Postgres TTL | Redis hot window |
-|---|---|---|
-| `ner.*`, `genre.classify` | never | never |
-| `ai_verdict` | 90 days | 7 days |
-| `authority.mazal` | 90 days | 24 h |
-| `authority.viaf` | 30 days | 24 h |
-| `authority.wikidata` | 30 days | 24 h |
-| `authority.kima` | 180 days | 24 h |
-
-Expired rows are hard-deleted daily at 02:05 UTC by
-`scripts.run_prune_inference_cache` (Heroku Scheduler). NER rows
-(NULL `expires_at`) are never touched by the prune job.
-
-`skip_cache=True` is the explicit "force fresh" escape hatch. UI
-exposes it as "Override cache (force fresh LLM call)" on the AI
-verification modal and "Skip cache" on the extraction panel. Never
-default to True — the user must opt in.
-
-### Rule W-13 — AI verdicts persist to AuthorityMatch.payload.ai_verdict
-
-When the AI verification SSE stream finishes,
-`backend/app/routers/ai_verify.py::_persist_ai_verdicts_to_matches`
-opens a fresh `session_scope` (the request-scoped DB session is
-closed by the time the finally fires) and writes the verdict
-summary back to each `AuthorityMatch.payload["ai_verdict"]` joined
-by `candidate._match_id`. Without this the matches table shows
-verdicts only for the row scoped to "single match" runs and
-forgets everything after the modal closes.
-
-The persisted summary carries: `overall`, `name_ok`, `type_ok`,
-`role_ok`, `reasoning`, `model`, `judged_at`, `cache_key`,
-`session_id`, `evaluator`. The matches-table column reads
-`payload.ai_verdict.overall`.
-
-### Rule W-14 — AI verify state_dir is per-RUN, not per-session
-
-`state/ai-verify-sessions/<run_id>/` is the shared per-run state
-dir. The eval-agent's verdict cache (`<state_dir>/cache/`) and
-accumulated `runs/<ts>/` artefacts live here so opening the modal
-again warm-hits prior Gemini judgements.
-
-Per-session isolation goes one level deeper:
-`<state_dir>/sessions/<session_id>/` holds the filtered fixture +
-SSE trace audit log. Two sessions of the same run share the cache;
+The local `.claude/` and `.codex/` directories are maintained as a thin web
+layer. When a shared task, workflow, or rule already exists in the pipeline
+repo, prefer the upstream version unless this repo adds an explicit web-only
+override.
 each session has its own audit trail.
 
 `agent_runner.py::_resolve_session_dir(run_id, session_id)` accepts

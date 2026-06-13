@@ -36,6 +36,7 @@ class AuthorityMatchResponse(BaseModel):
     confidence: str
     source: str
     payload: dict[str, Any] = Field(default_factory=dict)
+    exists_in: dict[str, Any] = Field(default_factory=dict)
     approved: bool
     approved_by: uuid.UUID | None
     approved_at: datetime | None

@@ -46,6 +46,28 @@ requires the module to be offline-only.
 
 from __future__ import annotations
 
+import os
+
+
+def _modal_translit_sync(text: str, modal_url: str) -> str | None:
+    """Synchronous HTTP call to the Modal /transliterate endpoint.
+
+    Used when ``MODAL_NER_URL`` is configured (web backend).
+    Falls back gracefully on any error.
+    """
+    try:
+        import httpx  # noqa: PLC0415
+        with httpx.Client(timeout=20.0) as client:
+            resp = client.post(f"{modal_url}/transliterate", json={"text": text})
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+            latin = body.get("latin")
+            return str(latin) if latin else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # ── Tier 1: curated override dict ────────────────────────────────────
 #
 # Canonical Latin names of authors and works that recur often in the NLI
@@ -402,20 +424,29 @@ def english_label_for_hebrew(
     # canonical example: "תקנות רבנו גרשם מאור הגולה" →
     # "Takanut rivno gereshem meor hagola". The ``allow_nakdan`` flag
     # name is kept for backwards compatibility — it now gates TaatikNet.
+    #
+    # Web backend: when ``MODAL_NER_URL`` is configured, call the Modal
+    # /transliterate endpoint synchronously (avoids shipping the 1.1 GB
+    # model locally). Falls back to the local TaatikNet import when the
+    # env var is absent (desktop pipeline path).
     if allow_nakdan:
-        try:
-            from converter.wikidata.taatiknet_translit import (  # noqa: PLC0415
-                best_effort_vocalized_transliterate,
-            )
-            ml_label = best_effort_vocalized_transliterate(raw)
-            # Defensive Latin-only guard: TaatikNet already enforces this,
-            # but if a future engine swap regresses, this stops Hebrew
-            # residue from reaching public Wikidata labels. The caller
-            # then falls back to NLI-only.
-            if ml_label and not _has_hebrew(ml_label):
-                return ml_label
-        except Exception:  # pragma: no cover - defensive only  # noqa: BLE001
-            pass
+        modal_url = os.environ.get("MODAL_NER_URL", "").rstrip("/")
+        if modal_url:
+            ml_label = _modal_translit_sync(raw, modal_url)
+        else:
+            try:
+                from converter.wikidata.taatiknet_translit import (  # noqa: PLC0415
+                    best_effort_vocalized_transliterate,
+                )
+                ml_label = best_effort_vocalized_transliterate(raw)
+            except Exception:  # pragma: no cover - defensive only  # noqa: BLE001
+                ml_label = None
+        # Defensive Latin-only guard: TaatikNet already enforces this,
+        # but if a future engine swap regresses, this stops Hebrew
+        # residue from reaching public Wikidata labels. The caller
+        # then falls back to NLI-only.
+        if ml_label and not _has_hebrew(ml_label):
+            return ml_label
 
     # ── Tier 5: deterministic consonantal ALA-LC fallback ──────────────
     # Skipped when the caller explicitly opts out (work labels + person

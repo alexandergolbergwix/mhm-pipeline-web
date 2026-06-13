@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import type { AuthorityMatch } from "@/api/runs";
+import type { AuthorityMatch, ExistsIn } from "@/api/runs";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
 import { ConfidenceBadge, VerdictBadge } from "@/components/MatchDetailDialog";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
@@ -25,6 +25,7 @@ type ColumnKey =
   | "role"
   | "source"
   | "confidence"
+  | "exists_in"
   | "guard_flags"
   | "ai_verdict"
   | "approved"
@@ -45,6 +46,7 @@ const COLS: ColDef[] = [
   { key: "role",           label: "Role",       width: "120px",   sortable: true,  filterable: true,  textHeader: false },
   { key: "source",         label: "Source",     width: "170px",   sortable: true,  filterable: true,  textHeader: false },
   { key: "confidence",     label: "Conf.",      width: "90px",    sortable: true,  filterable: true,  textHeader: false },
+  { key: "exists_in",      label: "MARC",       width: "90px",    sortable: true,  filterable: true,  textHeader: false },
   { key: "guard_flags",    label: "Guards",     width: "160px",   sortable: false, filterable: true,  textHeader: false },
   { key: "ai_verdict",     label: "AI verdict", width: "120px",   sortable: true,  filterable: true,  textHeader: false },
   { key: "approved",       label: "Approved",   width: "80px",    sortable: true,  filterable: true,  textHeader: false },
@@ -73,6 +75,10 @@ function cellValues(m: AuthorityMatch, col: ColumnKey): string[] {
   if (col === "approved") {
     return [m.approved ? "approved" : "not approved"];
   }
+  if (col === "exists_in") {
+    const label = existsInLabel(m.exists_in?.status);
+    return label ? [label] : ["—"];
+  }
   const val = String((m as unknown as Record<string, unknown>)[col] ?? "");
   return val ? [val] : [];
 }
@@ -85,6 +91,11 @@ function cellSortKey(m: AuthorityMatch, col: ColumnKey): string {
   }
   if (col === "guard_flags") {
     return String((m.payload?.guard_flags as string[] | undefined)?.length ?? 0);
+  }
+  if (col === "exists_in") {
+    // Sort order: grounded (0) < wrong_field (1) < unknown (2) < novel (3) < absent (4)
+    const ORDER: Record<string, number> = { grounded: 0, wrong_field: 1, unknown: 2, novel: 3 };
+    return String(ORDER[m.exists_in?.status ?? ""] ?? 4);
   }
   return cellValues(m, col)[0] ?? "";
 }
@@ -374,6 +385,11 @@ export function AuthorityTable({
                     <ConfidenceBadge confidence={m.confidence} />
                   </td>
 
+                  {/* MARC novelty */}
+                  <td className="py-2 pr-3">
+                    <ExistsInBadge ei={m.exists_in} />
+                  </td>
+
                   {/* Guards */}
                   <td className="py-2 pr-3">
                     {guards.length > 0 ? (
@@ -476,6 +492,32 @@ export function AuthorityTable({
 
 
 // ── Helpers ─────────────────────────────────────────────────────────────
+
+const _EXISTS_IN_CFG: Record<string, { label: string; cls: string }> = {
+  grounded:    { label: "in MARC",  cls: "text-green-400 bg-green-400/10 border-green-400/30" },
+  novel:       { label: "novel",    cls: "text-sky-400 bg-sky-400/10 border-sky-400/30" },
+  wrong_field: { label: "mismatch", cls: "text-amber-400 bg-amber-400/10 border-amber-400/30" },
+  unknown:     { label: "?",        cls: "text-slate-500 bg-slate-500/10 border-slate-500/30" },
+};
+
+function existsInLabel(status?: string | null): string | null {
+  if (!status) return null;
+  return _EXISTS_IN_CFG[status]?.label ?? "?";
+}
+
+function ExistsInBadge({ ei }: { ei?: ExistsIn | null }) {
+  if (!ei?.status) return <span className="muted text-xs">—</span>;
+  const cfg = _EXISTS_IN_CFG[ei.status] ?? _EXISTS_IN_CFG.unknown;
+  const title = [ei.note, ei.fields?.join(", ")].filter(Boolean).join(" · ");
+  return (
+    <span
+      title={title || undefined}
+      className={`inline-block text-xs px-1.5 py-0.5 rounded-md border font-medium ${cfg.cls}`}
+    >
+      {cfg.label}
+    </span>
+  );
+}
 
 
 function SortGlyph({ active, dir }: { active: boolean; dir: SortDir }) {

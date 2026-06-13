@@ -858,6 +858,42 @@ def _split_work_title_author(text: str) -> tuple[str, str | None]:
     return text, None
 
 
+# ── Work-title noise detector + cleaner ──────────────────────────────
+
+_FOLIO_RANGE_RE = re.compile(
+    r"^(?:דף|folio)\s+\d+[א-ת]?(?:[,\s\-–]+\d+[א-ת]?)*[.,]?\s*$",
+    re.IGNORECASE | re.UNICODE,
+)
+
+_NOISE_DESCRIPTION_RE = re.compile(
+    r"\b(?:ניקוד|טעמים|מסורה|כתובים|פרשיות|פסוקים|הגהות)\b",
+    re.UNICODE,
+)
+
+_FOLIO_PREFIX_RE = re.compile(
+    r"^(?:דף|folio)\s+\d+[א-ת]?(?:[,\s\-–]+\d+[א-ת]?)*\s*[,;:.]?\s*",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def _is_noise_work_title(title: str) -> bool:
+    if not title:
+        return True
+    stripped = title.strip()
+    if _FOLIO_RANGE_RE.match(stripped):
+        return True
+    heb_count = sum(1 for c in stripped if "א" <= c <= "ת")
+    if heb_count < 2:
+        return True
+    if _NOISE_DESCRIPTION_RE.search(stripped):
+        return True
+    return False
+
+
+def _clean_work_title(title: str) -> str:
+    return _FOLIO_PREFIX_RE.sub("", title.strip()).strip()
+
+
 # ── Builder ──────────────────────────────────────────────────────────
 
 
@@ -1914,6 +1950,9 @@ class WikidataItemBuilder:
             work_title_raw = str(work.get("text", "")).strip().strip(_QUOTE_CHARS + ".")
             work_title, embedded_author = _split_work_title_author(work_title_raw)
             if not work_title or work_title in seen_works:
+                continue
+            work_title = _clean_work_title(work_title)
+            if _is_noise_work_title(work_title):
                 continue
             seen_works.add(work_title)
 

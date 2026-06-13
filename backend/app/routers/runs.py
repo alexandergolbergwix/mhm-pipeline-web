@@ -14,11 +14,12 @@ Endpoints (RBAC notes):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -49,6 +50,7 @@ from app.models.project import (
 )
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.pipeline import ai_verifier
+from app.pipeline.marc_structured_index import MarcStructuredIndex
 from app.pipeline.run import execute_run, serialise_match
 from app.schemas.runs import (
     AiVerdictResponse,
@@ -174,14 +176,30 @@ async def list_matches(
     db: AsyncSession = Depends(get_session),
 ) -> list[AuthorityMatchResponse]:
     await _lookup_run_with_access(db, run_id, auth)
-    matches = (
-        await db.execute(
+    matches_result, marc_result = await asyncio.gather(
+        db.execute(
             select(AuthorityMatch)
             .where(AuthorityMatch.run_id == run_id)
             .order_by(AuthorityMatch.control_number.asc(), AuthorityMatch.entity_text.asc())
+        ),
+        db.execute(
+            select(RunRecord).where(RunRecord.run_id == run_id)
+        ),
+    )
+    matches = matches_result.scalars().all()
+    marc_index = MarcStructuredIndex.from_records(
+        dict(r.marc or {}) for r in marc_result.scalars().all()
+    )
+    result: list[AuthorityMatchResponse] = []
+    for m in matches:
+        candidate_type = m.entity_kind or m.role or None
+        ei = marc_index.classify(
+            m.control_number,
+            m.entity_text or "",
+            candidate_type=str(candidate_type) if candidate_type else None,
         )
-    ).scalars().all()
-    return [AuthorityMatchResponse(**serialise_match(m)) for m in matches]
+        result.append(AuthorityMatchResponse(**serialise_match(m, exists_in=ei)))
+    return result
 
 
 @router.get("/runs/{run_id}/records", response_model=list[str])

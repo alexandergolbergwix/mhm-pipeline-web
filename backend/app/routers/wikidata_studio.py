@@ -90,7 +90,7 @@ class StudioBuildResponse(BaseModel):
 class VerifyStartRequest(BaseModel):
     action_id: str = Field(..., min_length=1, max_length=64)
     item_ids: list[str] | None = None
-    approved_only: bool = True
+    approved_only: bool = False  # AI verification audits all items, not just approved-match ones
     override_cache: bool = False
     tier_model: str | None = Field(default=None, max_length=64)
 
@@ -1026,6 +1026,11 @@ async def _fetch_wikidata_verify_items(
         auth=auth,
         db=db,
     )
+    # Build a lookup so each item gets only its own manuscript's control number.
+    cn_by_local_id: dict[str, str] = {}
+    for r in records:
+        cn_by_local_id[str(r.control_number)] = str(r.control_number)
+
     wanted = set(item_ids or [])
     items: list[dict[str, Any]] = []
     for raw in studio.items:
@@ -1034,7 +1039,12 @@ async def _fetch_wikidata_verify_items(
         if wanted and local_id not in wanted:
             continue
         item["_local_id"] = local_id
-        item["record_ids"] = [str(r.control_number) for r in records]
+        # Use the item's own record(s); "records" is a list of CNs on every studio item.
+        own_records: list[str] = [str(cn) for cn in (item.get("records") or []) if cn]
+        if not own_records:
+            own_cn = str(item.get("control_number") or item.get("_control_number") or "")
+            own_records = [own_cn] if own_cn else []
+        item["record_ids"] = own_records or [str(r.control_number) for r in records[:1]]
         items.append(item)
     return items, [dict(r.marc or {"_control_number": r.control_number}) for r in records]
 

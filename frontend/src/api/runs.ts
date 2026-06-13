@@ -19,6 +19,12 @@ export interface RunListItem {
   completed_at: string | null;
 }
 
+export interface ExistsIn {
+  status: "grounded" | "novel" | "wrong_field" | "unknown" | string;
+  fields?: string[];
+  note?: string;
+}
+
 export interface AuthorityMatch {
   id: string;
   control_number: string;
@@ -35,6 +41,7 @@ export interface AuthorityMatch {
   approved: boolean;
   approved_by: string | null;
   approved_at: string | null;
+  exists_in?: ExistsIn | null;
 }
 
 export interface RunDetail extends RunListItem {

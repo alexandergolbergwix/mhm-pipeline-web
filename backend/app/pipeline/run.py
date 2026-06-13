@@ -108,7 +108,7 @@ async def get_run_or_404(db: AsyncSession, run_id: uuid.UUID) -> Run:
     return r
 
 
-def serialise_match(m: AuthorityMatch) -> dict[str, Any]:
+def serialise_match(m: AuthorityMatch, *, exists_in: dict | None = None) -> dict[str, Any]:
     return {
         "id": str(m.id),
         "control_number": m.control_number,
@@ -125,4 +125,5 @@ def serialise_match(m: AuthorityMatch) -> dict[str, Any]:
         "approved": m.approved,
         "approved_by": str(m.approved_by) if m.approved_by else None,
         "approved_at": m.approved_at.isoformat() if m.approved_at else None,
+        "exists_in": exists_in or {},
     }

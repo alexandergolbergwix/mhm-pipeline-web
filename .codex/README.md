@@ -1,7 +1,8 @@
 # Codex commands & skills for MHM Pipeline Web
 
-This directory holds Codex-CLI slash commands + skills for the
-collaborative, browser-based curator interface to the MHM Pipeline.
+This directory holds the web-local Codex layer. Shared command and skill
+behavior is inherited from the desktop pipeline repository at
+`/Users/alexandergo/Documents/Doctorat/pipeline`.
 
 ## Layout
 
@@ -22,8 +23,10 @@ collaborative, browser-based curator interface to the MHM Pipeline.
 
 ## Authoritative refs
 
-- `CLAUDE.md` — operating manual + architectural invariants (Rules W-1
-  through W-10).
+- `/Users/alexandergo/Documents/Doctorat/pipeline/AGENTS.md` — upstream
+  shared rules.
+- `/Users/alexandergo/Documents/Doctorat/pipeline/CLAUDE.md` — upstream
+  shared operating manual.
 - `docs/project-hierarchy-plan.md` — the canonical 5-section layout
   (AI Extraction · Authority · RDF Graph · HMO Wikibase · Wikidata
   Studio).

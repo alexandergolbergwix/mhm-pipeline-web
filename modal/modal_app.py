@@ -62,6 +62,12 @@ WEIGHTS_TO_BAKE: list[tuple[str, list[str]]] = [
     ("dicta-il/dictabert",
         ["config.json", "tokenizer.json", "tokenizer_config.json",
          "special_tokens_map.json", "vocab.txt", "model.safetensors"]),
+    # TaatikNet — Morris Alper's ByT5-small Hebrew↔Latin transliterator
+    # (~1.1 GB). Powers Tier 4 of the work-label waterfall (Rule 46).
+    ("malper/taatiknet",
+        ["config.json", "generation_config.json", "tokenizer.json",
+         "tokenizer_config.json", "special_tokens_map.json",
+         "model.safetensors"]),
 ]
 
 
@@ -139,6 +145,12 @@ image = (
         ignore=["*.pyc", "__pycache__", "*.db"],
         copy=True,
     )
+    .add_local_dir(
+        local_path=str(PIPELINE_ROOT / "converter" / "wikidata"),
+        remote_path="/root/converter/wikidata",
+        ignore=["*.pyc", "__pycache__"],
+        copy=True,
+    )
     # /root/converter/__init__.py + /root/ner/__init__.py — the
     # desktop layout has converter/__init__.py at the converter/ root
     # level (not under authority/), and ner/ has no __init__.py at
@@ -153,6 +165,9 @@ image = (
         # Tell the GenreClassifier to use the bundled DictaBERT path
         # rather than re-downloading at runtime.
         "MHM_BUNDLED_DICTABERT": "/weights/dicta-il__dictabert",
+        # Tell TaatikNet to load from the pre-baked weights rather than
+        # downloading from HF Hub at runtime.
+        "MHM_BUNDLED_TAATIKNET": "/weights/malper__taatiknet",
     })
 )
 
@@ -215,6 +230,22 @@ class MhmNer:
             ),
             device="cpu",
         )
+        # TaatikNet — optional; graceful when weights are absent.
+        try:
+            from converter.wikidata.taatiknet_translit import (  # noqa: PLC0415
+                TaatikNetTransliterator,
+            )
+            taatiknet_path = os.environ.get(
+                "MHM_BUNDLED_TAATIKNET",
+                f"{WEIGHTS}/malper__taatiknet",
+            )
+            self.taatiknet: Any = TaatikNetTransliterator(
+                model_path=taatiknet_path, device="cpu"
+            )
+            print("MhmNer: TaatikNet loaded")
+        except Exception as exc:  # noqa: BLE001
+            self.taatiknet = None
+            print(f"MhmNer: TaatikNet unavailable ({exc})")
         print("MhmNer: all four models loaded")
 
     def _extract_sync(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -276,6 +307,20 @@ class MhmNer:
         def extract(payload: dict[str, Any]):
             return self._extract_sync(payload)
 
+        @api.post("/transliterate")
+        def transliterate(payload: dict[str, Any]):
+            text = str(payload.get("text") or "")
+            if not text.strip():
+                return {"latin": None}
+            try:
+                from converter.wikidata.taatiknet_translit import (  # noqa: PLC0415
+                    best_effort_vocalized_transliterate,
+                )
+                latin = best_effort_vocalized_transliterate(text)
+            except Exception:  # noqa: BLE001
+                latin = None
+            return {"latin": latin}
+
         @api.get("/health")
         def health():
             return {
@@ -284,6 +329,7 @@ class MhmNer:
                 "provenance": self.provenance is not None,
                 "contents":   self.contents   is not None,
                 "genre":      self.genre      is not None,
+                "taatiknet":  self.taatiknet  is not None,
             }
 
         return api

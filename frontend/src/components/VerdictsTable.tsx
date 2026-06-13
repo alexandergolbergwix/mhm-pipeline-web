@@ -50,6 +50,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AiVerify, type AgentEvent } from "@/api/aiVerify";
+import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
 import { useDebounce } from "@/hooks/useDebounce";
 import { downloadFromUrl } from "@/utils/download";
 
@@ -64,20 +65,93 @@ export interface VerdictsTableProps {
    * When omitted, falls back to client-side filter over `verdicts`.
    */
   runId?: string;
+  /**
+   * Called when the user clicks the Fix button on a verdict row.
+   * `localId` is the item/candidate local id, `target` is the field
+   * to patch (e.g. "label.en"), `value` is the proposed replacement.
+   */
+  onApplyFix?: (localId: string, target: string, value: string) => Promise<void>;
 }
 
 
 type Overall = "pass" | "full" | "partial" | "fail" | "abstain" | "unknown";
 
+type SortKey = "record" | "evaluator" | "entity" | "verdict" | "confidence";
+
+interface ColumnFilterPopupState {
+  column: SortKey;
+  x: number;
+  y: number;
+}
+
 
 export function VerdictsTable(props: VerdictsTableProps) {
-  const { verdicts, onOpenMarc, runId } = props;
+  const { verdicts, onOpenMarc, runId, onApplyFix } = props;
 
   const rows = useMemo(() => Object.values(verdicts), [verdicts]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [overallFilter, setOverallFilter] = useState<Overall | "all">("all");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
+
+  // Sorting
+  const [sortBy, setSortBy] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // Per-column filters (right-click popup)
+  const [columnFilters, setColumnFilters] = useState<Partial<Record<SortKey, Set<string>>>>({});
+  const [popup, setPopup] = useState<ColumnFilterPopupState | null>(null);
+
+  // Fix button loading state
+  const [fixingId, setFixingId] = useState<string | null>(null);
+
+  function handleSortClick(key: SortKey) {
+    setSortBy((prev) => {
+      if (prev === key) {
+        setSortDir((d) => d === "asc" ? "desc" : "asc");
+        return key;
+      }
+      setSortDir("asc");
+      return key;
+    });
+  }
+
+  function handleHeaderRightClick(e: React.MouseEvent, col: SortKey) {
+    e.preventDefault();
+    setPopup({ column: col, x: e.clientX, y: e.clientY });
+  }
+
+  function handlePopupApply(col: SortKey, selected: Set<string>) {
+    setColumnFilters((prev) => {
+      if (selected.size === 0) {
+        const next = { ...prev };
+        delete next[col];
+        return next;
+      }
+      return { ...prev, [col]: selected };
+    });
+    setPopup(null);
+  }
+
+  async function handleApplyFix(ev: AgentEvent) {
+    const cand = (ev.candidate ?? {}) as Record<string, unknown>;
+    const sf = (cand.suggested_fix ?? null) as Record<string, unknown> | null;
+    if (!sf || !onApplyFix) return;
+    const localId = String(
+      cand._item_id ?? cand._local_id ?? cand.local_id ?? ev.record_id ?? ""
+    );
+    if (!localId) return;
+    setFixingId(localId);
+    try {
+      await onApplyFix(
+        localId,
+        String(sf.target ?? ""),
+        String(sf.value ?? ""),
+      );
+    } finally {
+      setFixingId(null);
+    }
+  }
 
   // Server-side verdict page (only used when `runId` is available).
   const [serverRows, setServerRows] = useState<AgentEvent[] | null>(null);
@@ -154,7 +228,45 @@ export function VerdictsTable(props: VerdictsTableProps) {
     });
   }, [rows, overallFilter, search, useServer]);
 
-  const visible = useServer ? (serverRows ?? rows) : clientVisible;
+  // Apply column filters and sorting to whichever row set is active.
+  const visible = useMemo(() => {
+    let base = useServer ? (serverRows ?? rows) : clientVisible;
+
+    // Per-column filters (AND logic)
+    for (const [colKey, allowed] of Object.entries(columnFilters) as [SortKey, Set<string>][]) {
+      if (!allowed || allowed.size === 0) continue;
+      base = base.filter((ev) => allowed.has(colValueForFilter(ev, colKey)));
+    }
+
+    // Sorting
+    if (sortBy) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      base = [...base].sort((a, b) => {
+        const av = sortValue(a, sortBy);
+        const bv = sortValue(b, sortBy);
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    }
+    return base;
+  }, [useServer, serverRows, rows, clientVisible, columnFilters, sortBy, sortDir]);
+
+  // Distinct values for the column-filter popup.
+  const popupDistinctValues = useMemo(() => {
+    if (!popup) return [];
+    const base = useServer ? (serverRows ?? rows) : clientVisible;
+    const seen = new Map<string, number>();
+    for (const ev of base) {
+      const v = colValueForFilter(ev, popup.column);
+      seen.set(v, (seen.get(v) ?? 0) + 1);
+    }
+    return Array.from(seen.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([v]) => v);
+  }, [popup, useServer, serverRows, rows, clientVisible]);
+
+  const hasActiveColFilters = Object.keys(columnFilters).length > 0;
 
   function toggleRow(key: string) {
     setExpanded((prev) => {
@@ -194,6 +306,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
 
   const displayTotal = useServer ? serverTotal : rows.length;
   const displayVisible = useServer ? serverTotal : visible.length;
+  const hasFixColumn = onApplyFix !== undefined;
 
   return (
     <section className="glass p-3 space-y-3">
@@ -237,21 +350,32 @@ export function VerdictsTable(props: VerdictsTableProps) {
           <thead className="muted text-left">
             <tr className="border-b border-white/5">
               <th className="py-2 pl-3 pr-2 w-6"></th>
-              <th className="py-2 pr-3">Entity</th>
-              <th className="py-2 pr-3">Evaluator</th>
-              <th className="py-2 pr-3">Sub-type</th>
-              <th className="py-2 pr-3">Record</th>
-              <th className="py-2 pr-3">Overall</th>
-              <th className="py-2 pr-3">Sub-judgements</th>
-              <th className="py-2 pr-3">Conf.</th>
-              <th className="py-2 pr-3 hidden md:table-cell">Judge</th>
-              <th className="py-2 pr-3 hidden md:table-cell">Judged at</th>
+              <SortableHeader label="Entity" sortKey="entity"
+                currentSort={sortBy} currentDir={sortDir} onSort={handleSortClick}
+                columnFilter={columnFilters["entity"]} onRightClick={handleHeaderRightClick} />
+              <SortableHeader label="Evaluator" sortKey="evaluator"
+                currentSort={sortBy} currentDir={sortDir} onSort={handleSortClick}
+                columnFilter={columnFilters["evaluator"]} onRightClick={handleHeaderRightClick} />
+              <th className="py-2 pr-3 text-left text-xs font-medium muted">Sub-type</th>
+              <SortableHeader label="Record" sortKey="record"
+                currentSort={sortBy} currentDir={sortDir} onSort={handleSortClick}
+                columnFilter={columnFilters["record"]} onRightClick={handleHeaderRightClick} />
+              <SortableHeader label="Overall" sortKey="verdict"
+                currentSort={sortBy} currentDir={sortDir} onSort={handleSortClick}
+                columnFilter={columnFilters["verdict"]} onRightClick={handleHeaderRightClick} />
+              <th className="py-2 pr-3 text-left text-xs font-medium muted">Sub-judgements</th>
+              <SortableHeader label="Conf." sortKey="confidence"
+                currentSort={sortBy} currentDir={sortDir} onSort={handleSortClick}
+                columnFilter={columnFilters["confidence"]} onRightClick={handleHeaderRightClick} />
+              <th className="py-2 pr-3 hidden md:table-cell text-left text-xs font-medium muted">Judge</th>
+              <th className="py-2 pr-3 hidden md:table-cell text-left text-xs font-medium muted">Judged at</th>
+              {hasFixColumn && <th className="py-2 pr-3 text-left text-xs font-medium muted">Fix</th>}
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-6 text-center muted italic">
+                <td colSpan={hasFixColumn ? 11 : 10} className="py-6 text-center muted italic">
                   {rows.length === 0 && !serverLoading ? "Waiting for verdicts…" : serverLoading ? "Searching…" : "No verdicts match the filter."}
                 </td>
               </tr>
@@ -260,16 +384,65 @@ export function VerdictsTable(props: VerdictsTableProps) {
               const key = String(ev._match_id ?? recordId(ev) + "/" + i);
               const open = expanded.has(key);
               const o = overall(ev);
+              const cand = (ev.candidate ?? {}) as Record<string, unknown>;
+              const sf = (cand.suggested_fix ?? null) as Record<string, unknown> | null;
+              const localId = String(
+                cand._item_id ?? cand._local_id ?? cand.local_id ?? ev.record_id ?? ""
+              );
+              const isFixing = fixingId === localId;
+              const showFix = hasFixColumn
+                && sf != null
+                && String(sf.confidence ?? "") === "high"
+                && localId !== "";
               return (
                 <Row key={key}
                   ev={ev} open={open} overall={o}
                   onToggle={() => toggleRow(key)}
-                  onOpenMarc={onOpenMarc} />
+                  onOpenMarc={onOpenMarc}
+                  hasFixColumn={hasFixColumn}
+                  showFix={showFix}
+                  isFixing={isFixing}
+                  onFix={() => { void handleApplyFix(ev); }}
+                  fixReasoning={sf ? String(sf.reasoning ?? "") : ""} />
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {hasActiveColFilters && (
+        <div className="flex items-center gap-2 text-[10px] muted flex-wrap">
+          <span>Column filters active:</span>
+          {(Object.entries(columnFilters) as [SortKey, Set<string>][]).map(([col, vals]) => (
+            <span key={col}
+              className="px-2 py-0.5 rounded-full bg-white/10 border border-white/20 flex items-center gap-1">
+              {col}: {[...vals].join(", ")}
+              <button
+                onClick={() => setColumnFilters((p) => { const n = { ...p }; delete n[col]; return n; })}
+                className="ml-1 hover:text-ink"
+                title={`Clear filter on ${col}`}
+              >×</button>
+            </span>
+          ))}
+          <button
+            onClick={() => setColumnFilters({})}
+            className="px-2 py-0.5 rounded-full hover:bg-white/5 transition"
+            title="Clear all column filters"
+          >🗑 Clear all</button>
+        </div>
+      )}
+
+      {popup && (
+        <ColumnFilterPopup
+          columnLabel={popup.column}
+          values={popupDistinctValues}
+          selected={columnFilters[popup.column] ?? new Set<string>()}
+          x={popup.x}
+          y={popup.y}
+          onApply={(sel) => handlePopupApply(popup.column, sel)}
+          onCancel={() => setPopup(null)}
+        />
+      )}
     </section>
   );
 }
@@ -280,15 +453,22 @@ export function VerdictsTable(props: VerdictsTableProps) {
 
 function Row({
   ev, open, overall: o, onToggle, onOpenMarc,
+  hasFixColumn, showFix, isFixing, onFix, fixReasoning,
 }: {
   ev: AgentEvent;
   open: boolean;
   overall: Overall;
   onToggle: () => void;
   onOpenMarc?: (controlNumber: string) => void;
+  hasFixColumn: boolean;
+  showFix: boolean;
+  isFixing: boolean;
+  onFix: () => void;
+  fixReasoning: string;
 }) {
   const cand = (ev.candidate ?? {}) as Record<string, unknown>;
   const v = (ev.verdict ?? {}) as Record<string, unknown>;
+  const expandedColspan = hasFixColumn ? 10 : 9;
   return (
     <>
       <tr className={`border-b border-white/5 hover:bg-white/[0.03] transition cursor-pointer`}
@@ -337,11 +517,25 @@ function Row({
             title={String(ev.judged_at ?? "")}>
           {fmtJudgedAt(ev.judged_at)}
         </td>
+        {hasFixColumn && (
+          <td className="py-2 pr-3" onClick={(e) => e.stopPropagation()}>
+            {showFix && (
+              <button
+                title={fixReasoning || "Apply AI-suggested fix"}
+                onClick={onFix}
+                disabled={isFixing}
+                className="text-xs px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+              >
+                {isFixing ? "…" : "✨ Fix"}
+              </button>
+            )}
+          </td>
+        )}
       </tr>
       {open && (
         <tr className="bg-white/[0.02] border-b border-white/5">
           <td></td>
-          <td colSpan={9} className="py-3 pr-3 space-y-3">
+          <td colSpan={expandedColspan} className="py-3 pr-3 space-y-3">
             <ReasoningBlock ev={ev} />
             <ExistsInBlock ev={ev} />
             <AuthorityIdsBlock ev={ev} />
@@ -456,6 +650,36 @@ function CandidateRawBlock({ ev }: { ev: AgentEvent }) {
 }
 
 
+function SortableHeader({
+  label, sortKey, currentSort, currentDir, onSort, columnFilter, onRightClick,
+}: {
+  label: string;
+  sortKey: SortKey;
+  currentSort: SortKey | null;
+  currentDir: "asc" | "desc";
+  onSort: (k: SortKey) => void;
+  columnFilter?: Set<string>;
+  onRightClick: (e: React.MouseEvent, k: SortKey) => void;
+}) {
+  const active = currentSort === sortKey;
+  const hasFilter = columnFilter && columnFilter.size > 0;
+  return (
+    <th
+      className="py-2 pr-3 text-left text-xs font-medium muted cursor-pointer select-none hover:text-ink transition-colors"
+      onClick={() => onSort(sortKey)}
+      onContextMenu={(e) => onRightClick(e, sortKey)}
+      title={`Sort by ${label} (left-click) · Filter (right-click)`}
+    >
+      {label}
+      {hasFilter && <span className="ml-1 text-biu-sky text-[9px]">▾</span>}
+      <span className="ml-1 opacity-50">
+        {active ? (currentDir === "asc" ? "↑" : "↓") : "↕"}
+      </span>
+    </th>
+  );
+}
+
+
 function FilterChip({
   label, count, active, onClick, tone,
 }: {
@@ -553,6 +777,32 @@ function subType(ev: AgentEvent): string {
 function reasoning(ev: AgentEvent): string {
   const v = (ev.verdict ?? {}) as Record<string, unknown>;
   return String(v.reasoning ?? "");
+}
+
+
+function sortValue(ev: AgentEvent, key: SortKey): string {
+  switch (key) {
+    case "entity": return candidateName(ev).toLowerCase();
+    case "evaluator": return evaluatorId(ev).toLowerCase();
+    case "record": return recordId(ev).toLowerCase();
+    case "verdict": return overall(ev);
+    case "confidence": {
+      const n = typeof ev.confidence === "number" ? ev.confidence : parseFloat(String(ev.confidence ?? ""));
+      // Sort descending by numeric value when using "asc" label (high conf first)
+      return isFinite(n) ? String(1 - n) : "1";
+    }
+  }
+}
+
+
+function colValueForFilter(ev: AgentEvent, key: SortKey): string {
+  switch (key) {
+    case "entity": return candidateName(ev);
+    case "evaluator": return evaluatorId(ev);
+    case "record": return recordId(ev);
+    case "verdict": return overall(ev);
+    case "confidence": return fmtConf(ev.confidence);
+  }
 }
 
 

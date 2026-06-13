@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { api } from "@/api/client";
 import {
   WikidataVerify,
   streamWikidataVerification,
@@ -176,6 +177,36 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
     [actions, actionId],
   );
 
+  async function handleApplyFix(localId: string, target: string, value: string): Promise<void> {
+    const overridePayload: Record<string, unknown> = {};
+    if (target === "label.en") {
+      overridePayload.labels = { en: value };
+    } else if (target === "label.he") {
+      overridePayload.labels = { he: value };
+    } else if (target === "description.en") {
+      overridePayload.descriptions = { en: value };
+    } else {
+      // Unknown target — skip silently
+      return;
+    }
+    await api.patch(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}`,
+      overridePayload,
+    );
+    // Optimistically mark the verdict as fix-applied in the UI
+    setVerdicts((prev) => {
+      const updated: Record<string, AgentEvent> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        const cand = (v.candidate ?? {}) as Record<string, unknown>;
+        const isTarget =
+          String(cand._item_id ?? cand._local_id ?? cand.local_id ?? v.record_id ?? "") === localId
+          || k === localId;
+        updated[k] = isTarget ? { ...v, _fix_applied: true } : v;
+      }
+      return updated;
+    });
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 backdrop-blur-md p-4 md:p-6"
@@ -277,7 +308,11 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
         </section>
 
-        <VerdictsTable verdicts={verdicts} />
+        <VerdictsTable
+          verdicts={verdicts}
+          runId={runId}
+          onApplyFix={(localId, target, value) => handleApplyFix(localId, target, value)}
+        />
 
         <details className="glass p-3">
           <summary className="kicker cursor-pointer hover:text-ink">
