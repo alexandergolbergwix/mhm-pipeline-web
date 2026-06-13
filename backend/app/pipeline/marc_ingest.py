@@ -447,6 +447,17 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
         elif kind in ("place", "geographic"):
             out.append({"text": name, "kind": "place", "role": "place", "field": "651"})
 
+    # MARC 260/264 production place — the primary geographic field on most
+    # manuscript records (e.g. "ירושלים", "Italy, northern").
+    production_place = str(record.get("place") or "").strip()
+    if production_place:
+        out.append({
+            "text": production_place,
+            "kind": "place",
+            "role": "production_place",
+            "field": "260",
+        })
+
     # MARC 651 / 752 / related_places — yield place entities so KIMA fires.
     for slot in ("related_places", "places"):
         for entry in record.get(slot) or []:

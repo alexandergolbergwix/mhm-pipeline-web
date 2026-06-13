@@ -452,7 +452,7 @@ class DesktopMatcher(AuthorityMatcher):
         normalized_role = role.lower().strip()
         is_place = (
             normalized_kind in ("place", "location", "geographic")
-            or normalized_role in ("place", "location", "geographic")
+            or normalized_role in ("place", "location", "geographic", "production_place")
             or (normalized_role == "subject" and _looks_like_place(text, marc_record))
         )
         if is_place and (self._kima is not None or _mode in ("modal", "postgres")):
