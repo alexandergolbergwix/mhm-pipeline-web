@@ -26,6 +26,7 @@ from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.pipeline.research_queries import (
     query_co_occurrence,
     query_geography,
+    query_geography_heatmap,
     query_ownership_chains,
     query_people_network,
     query_summary,
@@ -153,9 +154,16 @@ async def research_ownership(
 @router.get("/projects/{project_id}/research/geography")
 async def research_geography(
     project_id: uuid.UUID,
+    mode: str | None = None,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    """Place associations with lat/lon for map rendering."""
+    """Place associations with lat/lon for map rendering.
+
+    ?mode=heatmap  → weighted points [{lat,lon,weight,type,place,place_label}]
+    (default)      → per-place aggregated [{place,place_label,lat,lon,type,ms_count,ms_labels}]
+    """
     graph = await _load_or_404(project_id, auth, db)
+    if mode == "heatmap":
+        return await asyncio.to_thread(query_geography_heatmap, graph)
     return await asyncio.to_thread(query_geography, graph)

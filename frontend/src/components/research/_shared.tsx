@@ -70,12 +70,17 @@ export function StatPill({label, value}: {label: string; value: number | string}
 export function useAsync<T>(
   fn: () => Promise<T>,
   deps: React.DependencyList,
+  skip?: boolean,
 ): {data: T | null; loading: boolean; error: string | null} {
   const [data, setData] = React.useState<T | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(!skip);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    if (skip) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -84,7 +89,7 @@ export function useAsync<T>(
       .catch((e) => { if (!cancelled) { setError(String(e?.message ?? e)); setLoading(false); } });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, skip]);
 
   return {data, loading, error};
 }

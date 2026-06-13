@@ -21,22 +21,26 @@ import {Layout} from "@/components/Layout";
 import {Runs, type RunDetail} from "@/api/runs";
 import {ProvenanceHeader} from "@/components/research/ProvenanceHeader";
 
-const SummaryPanel       = lazy(() => import("@/components/research/SummaryPanel"));
-const CoOccurrencePanel  = lazy(() => import("@/components/research/CoOccurrencePanel"));
-const PeopleNetworkPanel = lazy(() => import("@/components/research/PeopleNetworkPanel"));
-const OwnershipPanel     = lazy(() => import("@/components/research/OwnershipChainsPanel"));
-const GeographyPanel     = lazy(() => import("@/components/research/GeographyPanel"));
-const SparqlConsolePanel = lazy(() => import("@/components/research/SparqlConsolePanel"));
+const SummaryPanel              = lazy(() => import("@/components/research/SummaryPanel"));
+const CoOccurrencePanel         = lazy(() => import("@/components/research/CoOccurrencePanel"));
+const PeopleNetworkPanel        = lazy(() => import("@/components/research/PeopleNetworkPanel"));
+const OwnershipPanel            = lazy(() => import("@/components/research/OwnershipChainsPanel"));
+const GeographyPanel            = lazy(() => import("@/components/research/GeographyPanel"));
+const ProvenanceTimelinePanel   = lazy(() => import("@/components/research/ProvenanceTimelinePanel"));
+const RelationshipDrillPanel    = lazy(() => import("@/components/research/RelationshipDrillPanel"));
+const SparqlConsolePanel        = lazy(() => import("@/components/research/SparqlConsolePanel"));
 
-type Tab = "summary" | "cooccurrence" | "network" | "ownership" | "geography" | "sparql";
+type Tab = "summary" | "cooccurrence" | "network" | "ownership" | "geography" | "provenance" | "relationships" | "sparql";
 
 const TABS: {id: Tab; label: string; emoji: string}[] = [
-  {id: "summary",      label: "Overview",       emoji: "📊"},
-  {id: "cooccurrence", label: "Clusters",        emoji: "📚"},
-  {id: "network",      label: "Network",         emoji: "🕸"},
-  {id: "ownership",    label: "Ownership",       emoji: "📜"},
-  {id: "geography",    label: "Geography",       emoji: "🗺"},
-  {id: "sparql",       label: "SPARQL Console",  emoji: "⚡"},
+  {id: "summary",       label: "Overview",        emoji: "📊"},
+  {id: "cooccurrence",  label: "Clusters",         emoji: "📚"},
+  {id: "network",       label: "Network",          emoji: "🕸"},
+  {id: "ownership",     label: "Ownership",        emoji: "📜"},
+  {id: "geography",     label: "Geography",        emoji: "🗺"},
+  {id: "provenance",    label: "Provenance",       emoji: "📅"},
+  {id: "relationships", label: "Relationships",    emoji: "🔗"},
+  {id: "sparql",        label: "SPARQL Console",   emoji: "⚡"},
 ];
 
 function TabBar({active, onChange}: {active: Tab; onChange: (t: Tab) => void}) {
@@ -118,12 +122,14 @@ export default function LinkedDataExplorer() {
           <Loading />
         ) : (
           <Suspense fallback={<Loading />}>
-            {tab === "summary"      && <SummaryPanel       projectId={projectId} />}
-            {tab === "cooccurrence" && <CoOccurrencePanel  projectId={projectId} />}
-            {tab === "network"      && <PeopleNetworkPanel projectId={projectId} />}
-            {tab === "ownership"    && <OwnershipPanel     projectId={projectId} />}
-            {tab === "geography"    && <GeographyPanel     projectId={projectId} />}
-            {tab === "sparql"       && <SparqlConsolePanel projectId={projectId} />}
+            {tab === "summary"        && <SummaryPanel            projectId={projectId} />}
+            {tab === "cooccurrence"  && <CoOccurrencePanel       projectId={projectId} />}
+            {tab === "network"       && <PeopleNetworkPanel      projectId={projectId} />}
+            {tab === "ownership"     && <OwnershipPanel          projectId={projectId} />}
+            {tab === "geography"     && <GeographyPanel          projectId={projectId} />}
+            {tab === "provenance"    && <ProvenanceTimelinePanel projectId={projectId} />}
+            {tab === "relationships" && <RelationshipDrillPanel  projectId={projectId} />}
+            {tab === "sparql"        && <SparqlConsolePanel      projectId={projectId} />}
           </Suspense>
         )}
       </div>

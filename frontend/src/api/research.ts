@@ -86,6 +86,57 @@ export interface PlaceRow {
   ms_labels: string[];
 }
 
+export interface HeatmapPoint {
+  place: string;
+  place_label: string;
+  lat: number;
+  lon: number;
+  weight: number;
+  type: "production" | "mentioned" | "both";
+}
+
+export interface ProvenanceEvent {
+  type: "production" | "ownership" | "current_holder";
+  label: string;
+  uri: string | null;
+  year: number | null;
+  year_earliest: number | null;
+  year_latest: number | null;
+  place: string | null;
+  owner_birth?: number | null;
+  owner_death?: number | null;
+}
+
+export interface ProvenanceTimeline {
+  ms: string;
+  ms_label: string | null;
+  events: ProvenanceEvent[];
+}
+
+export interface NeighborNode {
+  uri: string;
+  label: string | null;
+  type: string;
+  edge_type: string;
+}
+
+export interface PathNode {
+  uri: string;
+  label: string | null;
+  type: string;
+}
+
+export interface PathEdge {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface PathResult {
+  path: PathNode[];
+  edges: PathEdge[];
+}
+
 const base = (projectId: string) => `/projects/${projectId}/research`;
 
 export const researchApi = {
@@ -94,4 +145,15 @@ export const researchApi = {
   peopleNetwork:  (projectId: string) => api.get<PeopleNetwork>(`${base(projectId)}/people-network`),
   ownership:      (projectId: string) => api.get<OwnerChain[]>(`${base(projectId)}/ownership`),
   geography:      (projectId: string) => api.get<PlaceRow[]>(`${base(projectId)}/geography`),
+  geographyHeatmap: (projectId: string) => api.get<HeatmapPoint[]>(`${base(projectId)}/geography?mode=heatmap`),
+  provenanceTimeline: (projectId: string, msUri: string, overlay?: string) =>
+    api.get<ProvenanceTimeline>(
+      `${base(projectId)}/provenance?ms=${encodeURIComponent(msUri)}${overlay ? `&overlay=${overlay}` : ""}`,
+    ),
+  neighbors: (projectId: string, uri: string) =>
+    api.get<NeighborNode[]>(`${base(projectId)}/neighbors?uri=${encodeURIComponent(uri)}`),
+  shortestPath: (projectId: string, fromUri: string, toUri: string) =>
+    api.get<PathResult>(
+      `${base(projectId)}/path?from=${encodeURIComponent(fromUri)}&to=${encodeURIComponent(toUri)}`,
+    ),
 };

@@ -300,6 +300,10 @@ SELECT DISTINCT ?ms ?place ?type WHERE {
     BIND("production" AS ?type)
   }
   UNION {
+    ?ms hm:has_production_place ?place .
+    BIND("production" AS ?type)
+  }
+  UNION {
     ?ms hm:mentions_place ?place .
     BIND("mentioned" AS ?type)
   }
@@ -393,6 +397,78 @@ def query_geography(graph: rdflib.Graph) -> list[dict[str, Any]]:
         return []
 
 
+def query_geography_heatmap(graph: rdflib.Graph) -> list[dict[str, Any]]:
+    """Weighted geographic points for heatmap rendering.
+
+    Returns one entry **per place** (not per ms×place pair):
+    [{place, place_label, lat, lon, weight, type}]
+
+    ``weight`` is the number of manuscripts associated with the place.
+    ``type`` is "production", "mentioned", or "both" when the place
+    appears in both categories.
+
+    Places without wgs84 coordinates are excluded.
+    """
+    if len(graph) == 0:
+        return []
+    try:
+        labels = _label_map(graph)
+
+        # Build coords map
+        coords: dict[str, tuple[float, float]] = {}
+        try:
+            for row in graph.query(_COORDS_Q, initNs=_INIT_NS):
+                try:
+                    coords[str(row.place)] = (float(str(row.lat)), float(str(row.lon)))
+                except (ValueError, TypeError):
+                    pass
+        except Exception:
+            pass
+
+        # Aggregate place → {ms_set, types_set}
+        place_map: dict[str, dict[str, Any]] = {}
+        seen: set[tuple[str, str]] = set()
+
+        for row in graph.query(_GEO_Q, initNs=_INIT_NS):
+            ms    = str(row.ms)
+            place = str(row.place)
+            ptype = str(row.type)
+            key   = (ms, place)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if place not in place_map:
+                place_map[place] = {"ms_set": set(), "types": set()}
+            place_map[place]["ms_set"].add(ms)
+            place_map[place]["types"].add(ptype)
+
+        result: list[dict[str, Any]] = []
+        for place, data in place_map.items():
+            if place not in coords:
+                continue
+            lat, lon = coords[place]
+            types = data["types"]
+            if len(types) > 1:
+                ptype = "both"
+            else:
+                ptype = next(iter(types))
+            result.append({
+                "place":       place,
+                "place_label": labels.get(place, place.rsplit("/", 1)[-1]),
+                "lat":         lat,
+                "lon":         lon,
+                "weight":      len(data["ms_set"]),
+                "type":        ptype,
+            })
+
+        result.sort(key=lambda r: r["weight"], reverse=True)
+        return result
+    except Exception as exc:
+        logger.warning("geography heatmap query failed: %s", exc)
+        return []
+
+
 # ── Summary ────────────────────────────────────────────────────────────
 
 _MS_COUNT_Q     = "SELECT (COUNT(DISTINCT ?ms) AS ?n) WHERE { ?ms rdf:type hm:Manuscript_Object . }"
@@ -411,6 +487,101 @@ def _count(graph: rdflib.Graph, sparql: str) -> int:
     except Exception:
         pass
     return 0
+
+
+# ── Provenance timeline ────────────────────────────────────────────────
+
+_PROV_DATE_Q = """
+SELECT ?certDate ?earliest ?latest ?prodPlace WHERE {
+  OPTIONAL { <{ms}> hm:has_production_date_certain ?certDate . }
+  OPTIONAL { <{ms}> hm:earliest_possible_date      ?earliest . }
+  OPTIONAL { <{ms}> hm:latest_possible_date        ?latest   . }
+  OPTIONAL { <{ms}> hm:has_production_place        ?prodPlace . }
+}
+LIMIT 1
+"""
+
+_PROV_OWNERS_Q = """
+SELECT DISTINCT ?owner WHERE {
+  <{ms}> hm:has_owner ?owner .
+}
+"""
+
+
+def query_provenance(
+    graph: rdflib.Graph,
+    ms_uri: str,
+) -> list[dict[str, Any]]:
+    """Return ordered provenance events for a single manuscript.
+
+    Events:
+      - type="production"  — production date + optional place
+      - type="ownership"   — each hm:has_owner person
+
+    Each event has: {type, label, uri|None, year|None,
+    year_earliest|None, year_latest|None, place|None}
+
+    Returns an empty list if the manuscript has no provenance data (no
+    dates, no owners) — callers should still return 200 in that case.
+    """
+    if len(graph) == 0:
+        return []
+
+    labels = _label_map(graph)
+
+    def _short(uri: str) -> str:
+        return uri.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+
+    def _label(uri: str) -> str:
+        return labels.get(uri, _short(uri))
+
+    def _year(val: Any) -> int | None:
+        try:
+            return int(str(val).split("-")[0].split("T")[0])
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    events: list[dict[str, Any]] = []
+
+    # Production event
+    try:
+        date_q = _PROV_DATE_Q.replace("{ms}", ms_uri)
+        for row in graph.query(date_q, initNs=_INIT_NS):
+            cert   = _year(row.certDate)  if row.certDate  else None
+            early  = _year(row.earliest)  if row.earliest  else None
+            late   = _year(row.latest)    if row.latest    else None
+            place_uri = str(row.prodPlace) if row.prodPlace else None
+            if cert is not None or early is not None or late is not None:
+                events.append({
+                    "type":          "production",
+                    "label":         _label(place_uri) if place_uri else "Production",
+                    "uri":           place_uri,
+                    "year":          cert,
+                    "year_earliest": early,
+                    "year_latest":   late,
+                    "place":         place_uri,
+                })
+    except Exception as exc:
+        logger.warning("provenance date query failed for %s: %s", ms_uri, exc)
+
+    # Ownership events
+    try:
+        owners_q = _PROV_OWNERS_Q.replace("{ms}", ms_uri)
+        for row in graph.query(owners_q, initNs=_INIT_NS):
+            owner_uri = str(row.owner)
+            events.append({
+                "type":          "ownership",
+                "label":         _label(owner_uri),
+                "uri":           owner_uri,
+                "year":          None,
+                "year_earliest": None,
+                "year_latest":   None,
+                "place":         None,
+            })
+    except Exception as exc:
+        logger.warning("provenance owners query failed for %s: %s", ms_uri, exc)
+
+    return events
 
 
 def query_summary(graph: rdflib.Graph) -> dict[str, Any]:

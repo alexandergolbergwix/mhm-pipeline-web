@@ -26,6 +26,7 @@ import StageExtraction from "@/routes/StageExtraction";
 import StageRdf from "@/routes/StageRdf";
 import WikidataStudio from "@/routes/WikidataStudio";
 import LinkedDataExplorer from "@/routes/LinkedDataExplorer";
+import EntityPage from "@/routes/EntityPage";
 import { useAuth } from "@/stores/auth";
 
 export default function App() {
@@ -54,6 +55,7 @@ export default function App() {
       <Route path="/runs/:runId/wikidata-studio"        element={<ProtectedRoute><WikidataStudio /></ProtectedRoute>} />
       <Route path="/runs/:runId/hmo-studio"             element={<ProtectedRoute><HmoStudio /></ProtectedRoute>} />
       <Route path="/runs/:runId/linked-data-explorer"   element={<ProtectedRoute><LinkedDataExplorer /></ProtectedRoute>} />
+      <Route path="/projects/:projectId/entity"         element={<ProtectedRoute><EntityPage /></ProtectedRoute>} />
       <Route path="/settings"                    element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/admin"                       element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/users"                 element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />

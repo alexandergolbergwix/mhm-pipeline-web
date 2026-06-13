@@ -1,6 +1,10 @@
-import {useState} from "react";
-import {linkedDataExplorerApi, type SparqlDataSource, type SparqlResponse} from "@/api/linkedDataExplorer";
+import {useCallback, useEffect, useRef, useState} from "react";
+import {Link} from "react-router-dom";
+import {exportResults, linkedDataExplorerApi, type ExportFormat, type SparqlDataSource, type SparqlResponse} from "@/api/linkedDataExplorer";
+import {savedQueriesApi, extractParams, substituteParams, type SavedQuery} from "@/api/savedQueries";
 import {ApiError} from "@/api/client";
+import {encodePermalink, decodePermalink} from "./permalink";
+import {EvidenceDrawer} from "./EvidenceDrawer";
 import {PanelShell} from "./_shared";
 
 // ── Query templates ──────────────────────────────────────────────────────────
@@ -136,6 +140,7 @@ const SOURCE_LABELS: Record<SparqlDataSource, {label: string; emoji: string; not
   hmo:      {label: "HMO Graph",  emoji: "📄", note: "Project RDF — full HMO/CIDOC-CRM triples"},
   wikibase: {label: "Wikibase",   emoji: "🏛", note: "Uploaded items in the project Wikibase"},
   wikidata: {label: "Wikidata",   emoji: "🌐", note: "Public Wikidata — authority links"},
+  corpus:   {label: "My corpus",  emoji: "🗄", note: "All projects you are a member of"},
 };
 
 function SourceToggle({
@@ -149,7 +154,7 @@ function SourceToggle({
 }) {
   return (
     <div className="flex gap-1 flex-wrap">
-      {(["hmo", "wikibase", "wikidata"] as SparqlDataSource[]).map((src) => {
+      {(["hmo", "wikibase", "wikidata", "corpus"] as SparqlDataSource[]).map((src) => {
         const {label, emoji, note} = SOURCE_LABELS[src];
         const disabled = src === "wikibase" && !wikibaseConfigured;
         return (
@@ -176,7 +181,12 @@ function SourceToggle({
 
 // ── Results table ────────────────────────────────────────────────────────────
 
-function ResultsTable({result}: {result: SparqlResponse}) {
+function _isUri(value: string | null): boolean {
+  if (!value) return false;
+  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("urn:");
+}
+
+function ResultsTable({result, projectId, onUriClick}: {result: SparqlResponse; projectId: string; onUriClick: (uri: string) => void}) {
   if (result.columns.length === 0) {
     return <p className="muted text-sm">Query returned no columns.</p>;
   }
@@ -207,7 +217,28 @@ function ResultsTable({result}: {result: SparqlResponse}) {
               <tr key={i} className={`border-b border-white/5 ${i % 2 === 0 ? "" : "bg-white/[0.02]"}`}>
                 {row.map((cell, j) => (
                   <td key={j} className="px-3 py-1.5 text-ink/80 max-w-xs truncate" title={cell ?? ""}>
-                    {cell ?? <span className="muted italic">—</span>}
+                    {cell === null ? (
+                      <span className="muted italic">—</span>
+                    ) : _isUri(cell) ? (
+                      <span className="flex items-center gap-1.5 max-w-xs">
+                        <Link
+                          to={`/projects/${projectId}/entity?uri=${encodeURIComponent(cell)}`}
+                          className="text-biu-sky hover:underline truncate block"
+                          title={`Open entity page: ${cell}`}
+                        >
+                          {cell}
+                        </Link>
+                        <button
+                          onClick={() => onUriClick(cell)}
+                          className="shrink-0 text-[10px] px-1 py-0.5 rounded bg-white/10 text-ink/60 hover:bg-white/20 hover:text-ink"
+                          title="Quick evidence peek"
+                        >
+                          ⓘ
+                        </button>
+                      </span>
+                    ) : (
+                      cell
+                    )}
                   </td>
                 ))}
               </tr>
@@ -222,16 +253,72 @@ function ResultsTable({result}: {result: SparqlResponse}) {
 
 // ── Main panel ───────────────────────────────────────────────────────────────
 
+const EXPORT_FORMATS: {format: ExportFormat; label: string}[] = [
+  {format: "csv",    label: "CSV"},
+  {format: "json",   label: "JSON"},
+  {format: "bibtex", label: "BibTeX"},
+  {format: "ris",    label: "RIS"},
+];
+
 export default function SparqlConsolePanel({projectId}: {projectId: string}) {
   const [source, setSource] = useState<SparqlDataSource>("hmo");
   const [query, setQuery] = useState(TEMPLATES[0].query);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<SparqlResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  // Evidence drawer
+  const [evidenceUri, setEvidenceUri] = useState<string | null>(null);
+
+  // Saved queries
+  const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
+  const [saveName, setSaveName] = useState("");
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [paramValues, setParamValues] = useState<Record<string, string>>({});
+
+  const reloadSaved = useCallback(async () => {
+    try { setSavedQueries(await savedQueriesApi.list(projectId)); } catch { /* viewer may not be editor */ }
+  }, [projectId]);
+
+  useEffect(() => { reloadSaved(); }, [reloadSaved]);
 
   // Wikibase is assumed unconfigured until proven otherwise at runtime.
-  // We detect this from the 503 response — no extra endpoint needed.
   const [wikibaseConfigured, setWikibaseConfigured] = useState(true);
+
+  // On mount: read ?q= from the URL, decode, pre-fill + auto-run.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get("q");
+    if (encoded) {
+      const decoded = decodePermalink(encoded);
+      if (decoded) {
+        setQuery(decoded);
+        setSource("hmo");
+        // Auto-run after state settles
+        setTimeout(() => {
+          linkedDataExplorerApi.executeSparql(projectId, decoded, "hmo")
+            .then(setResult)
+            .catch((e) => setError(e instanceof ApiError ? e.detail : String(e)));
+        }, 0);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Close export dropdown when clicking outside.
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   function loadTemplate(t: Template) {
     setQuery(t.query);
@@ -240,13 +327,50 @@ export default function SparqlConsolePanel({projectId}: {projectId: string}) {
     setError(null);
   }
 
+  async function handleExport(format: ExportFormat) {
+    setExportOpen(false);
+    setExportError(null);
+    try {
+      await exportResults(projectId, query, format);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function copyPermalink() {
+    const encoded = encodePermalink(query);
+    const url = new URL(window.location.href);
+    url.searchParams.set("q", encoded);
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const params = extractParams(query);
+
+  async function saveQuery() {
+    if (!saveName.trim()) return;
+    await savedQueriesApi.create(projectId, {name: saveName.trim(), query});
+    setSaveName("");
+    setSaveOpen(false);
+    reloadSaved();
+  }
+
+  async function deleteQuery(id: string) {
+    await savedQueriesApi.delete(projectId, id);
+    reloadSaved();
+  }
+
   async function run() {
     if (!query.trim()) return;
     setRunning(true);
     setError(null);
     setResult(null);
+    // Substitute {{param}} placeholders before sending
+    const finalQuery = params.length > 0 ? substituteParams(query, paramValues) : query;
     try {
-      const data = await linkedDataExplorerApi.executeSparql(projectId, query, source);
+      const data = await linkedDataExplorerApi.executeSparql(projectId, finalQuery, source);
       setResult(data);
     } catch (e) {
       const msg = e instanceof ApiError ? e.detail : String(e);
@@ -285,6 +409,28 @@ export default function SparqlConsolePanel({projectId}: {projectId: string}) {
           </select>
         </div>
 
+        {/* Saved queries section */}
+        {savedQueries.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 items-center">
+            <span className="text-xs muted">Saved:</span>
+            {savedQueries.map((sq) => (
+              <span key={sq.id} className="flex items-center gap-1">
+                <button
+                  onClick={() => { setQuery(sq.query); setResult(null); setError(null); setParamValues({}); }}
+                  className="text-xs px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-ink border border-white/10"
+                >
+                  {sq.name}
+                </button>
+                <button
+                  onClick={() => deleteQuery(sq.id)}
+                  className="text-xs text-muted hover:text-red-400 px-1"
+                  title="Delete saved query"
+                >✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Source note */}
         <p className="text-xs muted">
           {SOURCE_LABELS[source].note}
@@ -307,8 +453,27 @@ export default function SparqlConsolePanel({projectId}: {projectId: string}) {
           />
         </div>
 
-        {/* Run button */}
-        <div className="flex items-center gap-3">
+        {/* Param inputs — rendered when {{placeholders}} are present */}
+        {params.length > 0 && (
+          <div className="flex flex-wrap gap-3 items-center p-3 rounded-lg bg-white/[0.03] border border-white/10">
+            <span className="text-xs muted">Parameters:</span>
+            {params.map((p) => (
+              <label key={p} className="flex items-center gap-1.5 text-xs">
+                <span className="text-biu-sky font-mono">{`{{${p}}}`}</span>
+                <input
+                  type="text"
+                  className="bg-black/30 border border-white/10 rounded px-2 py-1 text-ink text-xs focus:outline-none focus:border-biu-sky/40 w-40"
+                  placeholder={p}
+                  value={paramValues[p] ?? ""}
+                  onChange={(e) => setParamValues((v) => ({...v, [p]: e.target.value}))}
+                />
+              </label>
+            ))}
+          </div>
+        )}
+
+        {/* Run button + Export + Copy link */}
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={run}
             disabled={running || !query.trim()}
@@ -324,8 +489,70 @@ export default function SparqlConsolePanel({projectId}: {projectId: string}) {
               Clear
             </button>
           )}
+          {/* Export dropdown — only when there are results */}
+          {result && (
+            <div className="relative" ref={exportRef}>
+              <button
+                onClick={() => setExportOpen((o) => !o)}
+                className="button-ghost text-sm !py-1.5"
+              >
+                Export ▾
+              </button>
+              {exportOpen && (
+                <div className="absolute left-0 top-full mt-1 z-20 bg-surface border border-white/10 rounded-lg shadow-lg py-1 min-w-[120px]">
+                  {EXPORT_FORMATS.map(({format, label}) => (
+                    <button
+                      key={format}
+                      onClick={() => handleExport(format)}
+                      className="w-full text-left px-4 py-1.5 text-sm hover:bg-white/5 text-ink"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {/* Copy permalink */}
+          {query.trim() && (
+            <button
+              onClick={copyPermalink}
+              className="button-ghost text-sm !py-1.5"
+              title="Copy a shareable link to this query"
+            >
+              {copied ? "✓ Copied!" : "🔗 Copy link"}
+            </button>
+          )}
+          {/* Save query */}
+          {query.trim() && !saveOpen && (
+            <button
+              onClick={() => setSaveOpen(true)}
+              className="button-ghost text-sm !py-1.5"
+              title="Save this query"
+            >
+              💾 Save
+            </button>
+          )}
+          {saveOpen && (
+            <span className="flex items-center gap-1.5">
+              <input
+                autoFocus
+                type="text"
+                placeholder="Query name…"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveQuery(); if (e.key === "Escape") setSaveOpen(false); }}
+                className="bg-black/30 border border-white/10 rounded px-2 py-1 text-ink text-xs focus:outline-none focus:border-biu-sky/40 w-40"
+              />
+              <button onClick={saveQuery} disabled={!saveName.trim()} className="button-primary text-xs !py-1">Save</button>
+              <button onClick={() => setSaveOpen(false)} className="button-ghost text-xs !py-1">Cancel</button>
+            </span>
+          )}
           {running && <span className="animate-spin text-biu-sky text-lg">⟳</span>}
         </div>
+        {exportError && (
+          <p className="text-xs text-red-400">{exportError}</p>
+        )}
 
         {/* Error */}
         {error && (
@@ -335,8 +562,21 @@ export default function SparqlConsolePanel({projectId}: {projectId: string}) {
         )}
 
         {/* Results */}
-        {result && <ResultsTable result={result} />}
+        {result && (
+          <ResultsTable
+            result={result}
+            projectId={projectId}
+            onUriClick={(uri) => setEvidenceUri(uri)}
+          />
+        )}
       </div>
+
+      {/* Evidence drawer — shown when a URI cell is clicked */}
+      <EvidenceDrawer
+        projectId={projectId}
+        uri={evidenceUri}
+        onClose={() => setEvidenceUri(null)}
+      />
     </PanelShell>
   );
 }

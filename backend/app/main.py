@@ -23,10 +23,11 @@ from app.middleware.csrf import CsrfMiddleware
 from app.middleware.rate_limit import limiter
 from app.realtime import start_listener, stop_listener
 from app.routers import (
-    access_request, admin, ai_verify, api_keys, auth, export, extraction,
+    access_request, admin, ai_verify, api_keys, auth, corpus, export, extraction,
     extraction_verify, health, history, hmo_studio, invites, linked_data_explorer,
-    onboarding, projects, rdf, research, runs, section_export, section_import,
-    wikidata_labels, wikidata_studio, ws,
+    onboarding, projects, rdf, research, research_evidence, research_entity,
+    research_export, research_pathfinding, research_provenance, runs, saved_queries,
+    section_export, section_import, wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
 
@@ -110,6 +111,13 @@ def create_app() -> FastAPI:
     app.include_router(section_import.router, prefix="/api")
     app.include_router(research.router, prefix="/api")
     app.include_router(linked_data_explorer.router, prefix="/api")
+    app.include_router(research_export.router, prefix="/api")
+    app.include_router(saved_queries.router, prefix="/api")
+    app.include_router(research_evidence.router, prefix="/api")
+    app.include_router(research_entity.router, prefix="/api")
+    app.include_router(research_provenance.router, prefix="/api")
+    app.include_router(research_pathfinding.router, prefix="/api")
+    app.include_router(corpus.router, prefix="/api")
     app.include_router(ws.router, prefix="/api")
 
     # Frontend static assets (production). Mounted last so any /api

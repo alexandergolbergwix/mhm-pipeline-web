@@ -28,6 +28,7 @@ from app.models.event import (
 )
 from app.models.extraction_approval import ExtractionApproval
 from app.models.rdf_artifact import RdfArtifact
+from app.models.saved_query import SavedQuery
 from app.models.inference_cache import InferenceCache
 from app.models.invitation import Invitation
 from app.models.item_override import WikidataItemOverride
@@ -94,6 +95,7 @@ __all__ = [
     "Run",
     "RdfArtifact",
     "RunRecord",
+    "SavedQuery",
     "STATUS_APPROVED",
     "STATUS_DENIED",
     "STATUS_PENDING_ADMIN",
