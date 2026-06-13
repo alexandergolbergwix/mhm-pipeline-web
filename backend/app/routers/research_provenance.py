@@ -26,6 +26,11 @@ from app.models.run import AuthorityMatch, Run, RunRecord
 from app.pipeline.inference_cache import cache_lookup_or_call
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.research_geo_enrich import owner_place
+from app.pipeline.corpus_movement import (
+    _extract_corpus_item,
+    build_corpus_facets,
+    build_corpus_movement,
+)
 from app.pipeline.research_provenance_map import (
     build_provenance_map,
     data_fingerprint,
@@ -371,4 +376,106 @@ async def get_provenance_map(
     return ProvenanceMapOut(
         control_number=cn, ms_label=result["ms_label"],
         stops=stops, edges=edges, dropped=result["dropped"],
+    )
+
+
+# ── Corpus Movement map (all manuscripts, filterable) ─────────────────
+
+
+async def _build_corpus_items(
+    project_id: uuid.UUID, db: AsyncSession,
+) -> tuple[list[dict[str, Any]], str]:
+    """Return (full corpus items list, project fingerprint) — uncached fetch."""
+    records, by_cn = await _project_records_and_matches(project_id, db)
+    fp = _project_fingerprint(records, by_cn)
+    items: list[dict[str, Any]] = []
+    for rec in records:
+        prepared = prepare_record_for_pipeline(dict(rec.marc or {}))
+        match_dicts = [
+            {
+                "entity_text": m.entity_text,
+                "entity_kind": m.entity_kind,
+                "role": m.role,
+                "matched_name": m.matched_name,
+                "wikidata_qid": m.wikidata_qid,
+                "confidence": m.confidence,
+                "approved": bool(m.approved),
+                "payload": m.payload or {},
+            }
+            for m in by_cn.get(rec.control_number, [])
+        ]
+        items.append(_extract_corpus_item(prepared, match_dicts, rec.control_number))
+    return items, fp
+
+
+@router.get("/projects/{project_id}/research/movement/facets")
+async def get_corpus_movement_facets(
+    project_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Distinct filter-control values for the corpus movement map.
+
+    Returns year_min, year_max, places[], genres[], owners[].
+    Cached per project fingerprint.
+    """
+    await _require_viewer(project_id, auth, db)
+
+    async def _fetch() -> dict[str, Any]:
+        items, _ = await _build_corpus_items(project_id, db)
+        return build_corpus_facets(items)
+
+    records, by_cn = await _project_records_and_matches(project_id, db)
+    fp = _project_fingerprint(records, by_cn)
+    result = await cache_lookup_or_call(
+        db,
+        kind="research.movement_facets",
+        query_summary={"project": str(project_id), "fp": fp},
+        fetch=_fetch,
+        user_id=auth.user.id,
+    )
+    return result or {}
+
+
+@router.get("/projects/{project_id}/research/movement")
+async def get_corpus_movement(
+    project_id: uuid.UUID,
+    from_year: int | None = None,
+    to_year: int | None = None,
+    place: str | None = None,
+    genre: str | None = None,
+    owner: str | None = None,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """All-manuscripts movement map with optional filters.
+
+    Returns {manuscripts: [...], year_counts: [{year, count}]}.
+    The full unfiltered corpus is cached; filters are applied in Python so the
+    cache stays valid across different filter combinations.
+    """
+    await _require_viewer(project_id, auth, db)
+
+    records, by_cn = await _project_records_and_matches(project_id, db)
+    fp = _project_fingerprint(records, by_cn)
+
+    async def _fetch_all() -> list[dict[str, Any]]:
+        items, _ = await _build_corpus_items(project_id, db)
+        return items
+
+    all_items: list[dict[str, Any]] = await cache_lookup_or_call(
+        db,
+        kind="research.movement",
+        query_summary={"project": str(project_id), "fp": fp},
+        fetch=_fetch_all,
+        user_id=auth.user.id,
+    ) or []
+
+    return build_corpus_movement(
+        all_items,
+        from_year=from_year,
+        to_year=to_year,
+        place=place,
+        genre=genre,
+        owner=owner,
     )

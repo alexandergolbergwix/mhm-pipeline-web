@@ -89,6 +89,8 @@ KIND_TTL: dict[str, timedelta | None] = {
     "research.provenance_map": timedelta(days=30),  # backstop; key carries fingerprint
     "research.manuscripts":    timedelta(days=30),  # backstop; key carries fingerprint
     "research.summary":        timedelta(days=7),   # invalidated by run-set fingerprint change
+    "research.movement":       timedelta(days=30),  # full corpus; fingerprint-invalidated
+    "research.movement_facets": timedelta(days=30), # facets; fingerprint-invalidated
 }
 
 # Redis TTL in seconds — None = no expiry (SET without EX).
@@ -107,6 +109,8 @@ _REDIS_TTL_SECONDS: dict[str, int | None] = {
     "research.provenance_map": 86_400,
     "research.manuscripts":    86_400,
     "research.summary":        86_400 * 3,  # 3-day Redis window; invalidated by fingerprint
+    "research.movement":       86_400,      # 1-day Redis window; invalidated by fingerprint
+    "research.movement_facets": 86_400,     # 1-day Redis window; invalidated by fingerprint
 }
 
 

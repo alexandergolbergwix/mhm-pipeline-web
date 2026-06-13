@@ -161,6 +161,52 @@ export interface ProvenanceMap {
   dropped: {label: string; reason: string}[];
 }
 
+// ── Corpus Movement (Phase 2) ────────────────────────────────────────────
+
+export interface CorpusManuscript {
+  control_number: string;
+  label: string;
+  production_lat: number | null;
+  production_lon: number | null;
+  production_year: number | null;
+  production_year_earliest: number | null;
+  production_year_latest: number | null;
+  production_place: string | null;
+  has_production_point: boolean;
+  holder_lat: number;
+  holder_lon: number;
+  holder_label: string;
+  genres: string[];
+  owners: string[];
+  places: string[];
+}
+
+export interface YearCount {
+  year: number;
+  count: number;
+}
+
+export interface CorpusMovement {
+  manuscripts: CorpusManuscript[];
+  year_counts: YearCount[];
+}
+
+export interface CorpusMovementFacets {
+  year_min: number | null;
+  year_max: number | null;
+  places: string[];
+  genres: string[];
+  owners: string[];
+}
+
+export interface CorpusMovementFilters {
+  from_year?: number;
+  to_year?: number;
+  place?: string;
+  genre?: string;
+  owner?: string;
+}
+
 export interface NeighborNode {
   uri: string;
   label: string | null;
@@ -206,6 +252,18 @@ export const researchApi = {
         includeUnapproved ? "&include_unapproved=true" : ""
       }`,
     ),
+  movementFacets: (projectId: string) =>
+    api.get<CorpusMovementFacets>(`${base(projectId)}/movement/facets`),
+  movement: (projectId: string, filters: CorpusMovementFilters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.from_year != null) params.set("from_year", String(filters.from_year));
+    if (filters.to_year != null)   params.set("to_year",   String(filters.to_year));
+    if (filters.place)             params.set("place",     filters.place);
+    if (filters.genre)             params.set("genre",     filters.genre);
+    if (filters.owner)             params.set("owner",     filters.owner);
+    const qs = params.toString();
+    return api.get<CorpusMovement>(`${base(projectId)}/movement${qs ? `?${qs}` : ""}`);
+  },
   neighbors: (projectId: string, uri: string) =>
     api.get<NeighborNode[]>(`${base(projectId)}/neighbors?uri=${encodeURIComponent(uri)}`),
   shortestPath: (projectId: string, fromUri: string, toUri: string) =>
