@@ -245,20 +245,61 @@ def _merge_authority_ids(rec: dict[str, Any], matches: list[dict[str, Any]]) -> 
         entity_kind = (m.get("entity_kind") or "person").lower()
 
         if is_kima or entity_kind == "place":
+            kima_lat  = payload.get("kima_lat")
+            kima_lon  = payload.get("kima_lon")
+            kima_geo  = payload.get("kima_geonames")
+            wikidata_qid = m.get("wikidata_qid")
+
             for subj in rec.get("subjects") or []:
                 term = (subj.get("term") or "").strip().lower()
                 if not term:
                     continue
                 if term == entity_text or entity_text in term or term in entity_text:
-                    if payload.get("kima_geonames") and "geonames_id" not in subj:
-                        subj["geonames_id"] = str(payload["kima_geonames"])
-                    if payload.get("kima_lat") is not None and "lat" not in subj:
-                        subj["lat"] = payload["kima_lat"]
-                    if payload.get("kima_lon") is not None and "lon" not in subj:
-                        subj["lon"] = payload["kima_lon"]
-                    if m.get("wikidata_qid") and "wikidata_id" not in subj:
-                        subj["wikidata_id"] = m["wikidata_qid"]
+                    if kima_geo and "geonames_id" not in subj:
+                        subj["geonames_id"] = str(kima_geo)
+                    if kima_lat is not None and "lat" not in subj:
+                        subj["lat"] = kima_lat
+                    if kima_lon is not None and "lon" not in subj:
+                        subj["lon"] = kima_lon
+                    if wikidata_qid and "wikidata_id" not in subj:
+                        subj["wikidata_id"] = wikidata_qid
                     break
+
+            # Also propagate coords to the production place (rec["place"]).
+            if kima_lat is not None and kima_lon is not None:
+                prod_place = str(rec.get("place") or "").strip().lower()
+                if prod_place and (
+                    prod_place == entity_text
+                    or entity_text in prod_place
+                    or prod_place in entity_text
+                ):
+                    if "production_place_lat" not in rec:
+                        rec["production_place_lat"] = kima_lat
+                    if "production_place_lon" not in rec:
+                        rec["production_place_lon"] = kima_lon
+                    if wikidata_qid and "production_place_wikidata_id" not in rec:
+                        rec["production_place_wikidata_id"] = wikidata_qid
+
+                # Also propagate to rec["related_places"] entries.
+                for rp_name in rec.get("related_places") or []:
+                    rp_lower = str(rp_name).strip().lower()
+                    if not rp_lower:
+                        continue
+                    if (
+                        rp_lower == entity_text
+                        or entity_text in rp_lower
+                        or rp_lower in entity_text
+                    ):
+                        if "related_place_coords" not in rec:
+                            rec["related_place_coords"] = {}
+                        existing = rec["related_place_coords"].setdefault(str(rp_name).strip(), {})
+                        if "lat" not in existing:
+                            existing["lat"] = kima_lat
+                        if "lon" not in existing:
+                            existing["lon"] = kima_lon
+                        if wikidata_qid and "wikidata_id" not in existing:
+                            existing["wikidata_id"] = wikidata_qid
+                        break
         else:
             for target_key in ("authors", "contributors"):
                 for person in rec.get(target_key) or []:

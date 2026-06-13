@@ -103,6 +103,12 @@ class ExtractedData:
     acquisition_source: str | None = None
     related_works: list[dict[str, Any]] = None
     related_places: list[str] = None
+    # KIMA-resolved geo coords for the production place (from authority match).
+    production_place_lat: float | None = None
+    production_place_lon: float | None = None
+    production_place_wikidata_id: str | None = None
+    # KIMA coords per related-place name: {name: {lat, lon, wikidata_id}}.
+    related_place_coords: dict[str, dict] | None = None
     holding_institution: str | None = None
     shelfmark: str | None = None
     iiif_manifest_url: str | None = None

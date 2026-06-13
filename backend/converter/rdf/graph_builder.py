@@ -318,7 +318,10 @@ class GraphBuilder:
         if data.related_works:
             self._add_related_works(graph, ms_uri, data.related_works, work_uri)
         if data.related_places:
-            self._add_related_places(graph, ms_uri, data.related_places, prod_uri)
+            self._add_related_places(
+                graph, ms_uri, data.related_places, prod_uri,
+                getattr(data, "related_place_coords", None),
+            )
         if data.condition_notes:
             self._add_condition_notes(graph, ms_uri, data.condition_notes, control_number)
         self._add_codicological_hierarchy_from_data(graph, ms_uri, data, control_number)
@@ -496,6 +499,17 @@ class GraphBuilder:
             graph.add((prod_uri, HM.has_production_place, place_uri))
             graph.add((place_uri, RDF.type, CIDOC.E53_Place))
             graph.add((place_uri, RDFS.label, Literal(data.place, lang="he")))
+            prod_lat = getattr(data, "production_place_lat", None)
+            prod_lon = getattr(data, "production_place_lon", None)
+            if prod_lat is not None and prod_lon is not None:
+                graph.add((place_uri, _WGS84_LAT,  Literal(str(prod_lat))))
+                graph.add((place_uri, _WGS84_LONG, Literal(str(prod_lon))))
+            prod_wd = getattr(data, "production_place_wikidata_id", None)
+            if prod_wd:
+                graph.add((
+                    place_uri, OWL.sameAs,
+                    URIRef(f"https://www.wikidata.org/entity/{prod_wd}"),
+                ))
 
         if data.dates:
             time_label = self._format_time_label(data.dates)
@@ -1245,14 +1259,29 @@ class GraphBuilder:
             graph.add((target, HM.has_linked_work, rw_uri))
 
     def _add_related_places(
-        self, graph: Graph, ms_uri: URIRef, related_places: list[str], prod_uri: URIRef | None
+        self,
+        graph: Graph,
+        ms_uri: URIRef,
+        related_places: list[str],
+        prod_uri: URIRef | None,
+        coords: dict | None = None,
     ) -> None:
         """Emit additional place associations from 751 geographic added entries."""
+        coords = coords or {}
         for place_name in related_places:
             place_uri = self.uri_gen.place_uri(place_name)
             graph.add((place_uri, RDF.type, CIDOC.E53_Place))
             graph.add((place_uri, RDFS.label, Literal(place_name, lang="he")))
             graph.add((ms_uri, HM.mentions_place, place_uri))
+            c = coords.get(place_name) or {}
+            if c.get("lat") is not None and c.get("lon") is not None:
+                graph.add((place_uri, _WGS84_LAT,  Literal(str(c["lat"]))))
+                graph.add((place_uri, _WGS84_LONG, Literal(str(c["lon"]))))
+            if c.get("wikidata_id"):
+                graph.add((
+                    place_uri, OWL.sameAs,
+                    URIRef(f"https://www.wikidata.org/entity/{c['wikidata_id']}"),
+                ))
 
     def _add_condition_notes(
         self, graph: Graph, ms_uri: URIRef, condition_notes: list[str], control_number: str
