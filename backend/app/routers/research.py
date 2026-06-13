@@ -21,6 +21,7 @@ from app.db import get_session
 from app.models.project import Membership
 from app.models.rdf_artifact import RdfArtifact
 from app.models.run import Run
+from app.pipeline.inference_cache import cache_lookup_or_call
 from app.pipeline.research_graph import load_merged_graph
 from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.pipeline.research_queries import (
@@ -108,9 +109,35 @@ async def research_summary(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Aggregate statistics: total manuscripts, works, persons, places."""
-    graph = await _load_or_404(project_id, auth, db)
-    return await asyncio.to_thread(query_summary, graph)
+    """Aggregate statistics: total manuscripts, works, persons, places.
+
+    The result is cached in Redis (kind=research.summary) keyed by the
+    run-set fingerprint so a good result survives dyno restarts.  The cache
+    is invalidated automatically when runs are added or rebuilt (fingerprint
+    changes on run-id set change).
+    """
+    run_ids = await _run_ids_for_project(project_id, db)
+    fingerprint = ",".join(sorted(run_ids))
+
+    async def _compute() -> dict[str, Any]:
+        graph = await _load_or_404(project_id, auth, db)
+        return await asyncio.to_thread(query_summary, graph)
+
+    result = await cache_lookup_or_call(
+        db,
+        kind="research.summary",
+        query_summary={"project": str(project_id), "fp": fingerprint},
+        fetch=_compute,
+        user_id=auth.user.id,
+    )
+    # _load_or_404 raises 404 when there are no runs; _compute handles that.
+    # If cache returns None (no runs or empty graph), propagate the 404.
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No RDF data found — build the graph for each run first.",
+        )
+    return result
 
 
 @router.get("/projects/{project_id}/research/co-occurrence")
