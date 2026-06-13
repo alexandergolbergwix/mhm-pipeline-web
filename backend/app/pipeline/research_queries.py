@@ -471,7 +471,14 @@ def query_geography_heatmap(graph: rdflib.Graph) -> list[dict[str, Any]]:
 
 # ── Summary ────────────────────────────────────────────────────────────
 
-_MS_COUNT_Q     = "SELECT (COUNT(DISTINCT ?ms) AS ?n) WHERE { ?ms rdf:type hm:Manuscript_Object . }"
+# The mapper types a manuscript as lrmoo:F4_Manifestation_Singleton (the physical
+# item) and hm:Bibliographic_Unit on the same URI — it never emits hm:Manuscript_Object.
+# Count the distinct URI carrying either class so the total survives vocab drift.
+_MS_COUNT_Q     = (
+    "SELECT (COUNT(DISTINCT ?ms) AS ?n) WHERE { "
+    "{ ?ms rdf:type lrmoo:F4_Manifestation_Singleton . } "
+    "UNION { ?ms rdf:type hm:Bibliographic_Unit . } }"
+)
 _WORK_COUNT_Q   = "SELECT (COUNT(DISTINCT ?w)  AS ?n) WHERE { ?ms hm:has_work ?w . }"
 _PERSON_COUNT_Q = "SELECT (COUNT(DISTINCT ?p)  AS ?n) WHERE { ?p rdf:type cidoc:E21_Person . }"
 _PLACE_COUNT_Q  = "SELECT (COUNT(DISTINCT ?pl) AS ?n) WHERE { ?pl rdf:type cidoc:E53_Place . }"
