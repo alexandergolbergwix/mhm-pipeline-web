@@ -181,6 +181,11 @@ async def spawn_eval_agent_run(
     env.setdefault("PYTHONUNBUFFERED", "1")
     if api_key:
         env["GEMINI_API_KEY"] = api_key
+    # Defense-in-depth for Rule 52: inject state_dir via env var AS WELL AS
+    # --state-dir argv so older bundled eval-agent versions that only honour
+    # the env var still write results to the right location.
+    if state_dir is not None:
+        env["EVAL_AGENT_STATE_DIR"] = str(state_dir)
 
     logger.info("eval-agent spawn cmd=%s cwd=%s", cmd[:6] + ["…"], root)
     proc = await asyncio.create_subprocess_exec(
@@ -299,32 +304,65 @@ def read_run_verdicts(run_state_dir: Path) -> list[dict[str, Any]]:
     eval-agent writes one verdict per candidate; this helper returns
     them as a flat list of dicts so the AI verification API can ship
     them straight to the UI's verdict table.
+
+    Robust fallback: if ``run_state_dir/runs/`` is empty, also checks
+    ``run_state_dir/`` directly and the eval-agent's default in-tree
+    ``state/runs/`` so older bundled versions that ignore ``--state-dir``
+    are still handled gracefully.
     """
-    runs_root = run_state_dir / "runs"
-    if not runs_root.exists():
-        return []
-    # Pick the newest run-dir under state/runs/<ts>/.
-    latest = max(
-        (p for p in runs_root.iterdir() if p.is_dir()),
-        key=lambda p: p.name,
-        default=None,
+    def _read_from_dir(candidate: Path) -> list[dict[str, Any]] | None:
+        runs_root = candidate / "runs"
+        if not runs_root.exists():
+            return None
+        dirs = [p for p in runs_root.iterdir() if p.is_dir()]
+        if not dirs:
+            return None
+        latest = max(dirs, key=lambda p: p.name)
+        results = latest / "results.jsonl"
+        if not results.exists():
+            logger.debug("read_run_verdicts: run-dir %s has no results.jsonl", latest)
+            return None
+        out: list[dict[str, Any]] = []
+        with results.open(encoding="utf-8") as fp:
+            for line in fp:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        if out:
+            logger.info("read_run_verdicts: loaded %d verdicts from %s", len(out), results)
+        return out
+
+    # Primary: caller-supplied state_dir
+    verdicts = _read_from_dir(run_state_dir)
+    if verdicts is not None:
+        return verdicts
+
+    # Fallback 1: eval-agent in-tree default (handles older bundles that
+    # ignored --state-dir/EVAL_AGENT_STATE_DIR).
+    try:
+        eval_root = locate_eval_agent()
+        fallback = eval_root / "state"
+        if fallback != run_state_dir:
+            verdicts = _read_from_dir(fallback)
+            if verdicts is not None:
+                logger.warning(
+                    "read_run_verdicts: primary state_dir %s had no verdicts; "
+                    "found %d in eval-agent default %s — state_dir fix not active",
+                    run_state_dir, len(verdicts), fallback,
+                )
+                return verdicts
+    except FileNotFoundError:
+        pass
+
+    logger.warning(
+        "read_run_verdicts: no results.jsonl found under %s (or fallback paths)",
+        run_state_dir,
     )
-    if latest is None:
-        return []
-    results = latest / "results.jsonl"
-    if not results.exists():
-        return []
-    out: list[dict[str, Any]] = []
-    with results.open(encoding="utf-8") as fp:
-        for line in fp:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return out
+    return []
 
 
 # ── Session sandbox ────────────────────────────────────────────────────
