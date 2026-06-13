@@ -59,8 +59,13 @@ export function LiquidGlassCanvas() {
     <div
       aria-hidden
       style={{
+        // zIndex -1 keeps the canvas BEHIND the app content's stacking layer.
+        // As a positioned element it would otherwise paint above the
+        // non-positioned page content; combined with R3F resetting its own
+        // container to pointer-events:auto, it swallowed every click in the
+        // viewport (incl. the nav bar) even though this wrapper sets `none`.
         position: "fixed", inset: 0, pointerEvents: "none",
-        zIndex: 0, mixBlendMode: "screen",
+        zIndex: -1, mixBlendMode: "screen",
       }}
     >
       <Canvas
@@ -68,6 +73,9 @@ export function LiquidGlassCanvas() {
         camera={{ position: [0, 0, 6], fov: 50 }}
         gl={{ antialias: false, alpha: true }}
         frameloop="always"
+        /* R3F's container div defaults to pointer-events:auto, overriding the
+           parent's `none`; force it back off so the canvas never eats clicks. */
+        style={{ pointerEvents: "none" }}
       >
         <ambientLight intensity={0.4} />
         <directionalLight position={[3, 4, 5]} intensity={0.7} />
