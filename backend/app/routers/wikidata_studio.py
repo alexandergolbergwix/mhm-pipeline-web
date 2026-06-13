@@ -224,6 +224,111 @@ async def get_wikidata_verify_session(
     return data
 
 
+def _collect_hebrew_label_candidates(
+    marc_records: list[dict[str, Any]],
+) -> list[str]:
+    """Collect every Hebrew string the synchronous item builder will hand to
+    ``english_label_for_hebrew`` (work titles + person P2093 names).
+
+    Over-collecting is harmless: the pre-warm cache is keyed by the same
+    normalised Hebrew key the waterfall uses, so extra entries only add cache
+    warmth. We mirror the builder's title cleaning so the keys match.
+    """
+    from app.pipeline.marc_ingest import prepare_record_for_pipeline  # noqa: PLC0415
+    from converter.wikidata.hebrew_translit import _has_hebrew  # noqa: PLC0415
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _clean_work_title,
+        _is_noise_work_title,
+    )
+
+    out: set[str] = set()
+
+    def _add(value: Any) -> None:
+        s = str(value or "").strip()
+        if s and _has_hebrew(s):
+            out.add(s)
+
+    for rec in marc_records:
+        prepared = prepare_record_for_pipeline(dict(rec))
+        _add(prepared.get("title"))
+        for slot in ("authors", "contributors", "subjects"):
+            for entry in prepared.get(slot) or []:
+                if isinstance(entry, dict):
+                    _add(entry.get("name"))
+                elif isinstance(entry, str):
+                    _add(entry)
+        for entry in prepared.get("contents") or []:
+            raw_title = ""
+            if isinstance(entry, dict):
+                raw_title = str(entry.get("title") or "").strip()
+            elif isinstance(entry, str):
+                raw_title = entry.strip()
+            if not raw_title:
+                continue
+            _add(raw_title)
+            cleaned = _clean_work_title(raw_title)
+            if cleaned and not _is_noise_work_title(cleaned):
+                _add(cleaned)
+        for ent in prepared.get("entities") or []:
+            if isinstance(ent, dict):
+                _add(ent.get("text"))
+
+    return [s for s in out if s]
+
+
+async def _prewarm_transliterations(
+    db: AsyncSession,
+    *,
+    marc_records: list[dict[str, Any]],
+    user_id: Any,
+    concurrency: int = 12,
+) -> dict[str, str | None]:
+    """Concurrently compute every Hebrew→Latin label the build needs.
+
+    Each computation runs the full waterfall in a worker thread (so the
+    blocking SPARQL/Modal HTTP calls run in parallel) and is wrapped in the
+    inference cache (kind=``translit.label``) so the work is incremental
+    across retries: a build that times out still persists the labels it
+    finished, and the next attempt resumes from the cache.
+
+    Returns a ``{raw_hebrew: latin_or_None}`` mapping.
+    """
+    import asyncio  # noqa: PLC0415
+
+    from app.pipeline.inference_cache import cache_lookup_or_call  # noqa: PLC0415
+    from converter.wikidata.hebrew_translit import (  # noqa: PLC0415
+        english_label_for_hebrew,
+    )
+
+    candidates = _collect_hebrew_label_candidates(marc_records)
+    if not candidates:
+        return {}
+
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _one(raw: str) -> tuple[str, str | None]:
+        async def _fetch() -> str | None:
+            return await asyncio.to_thread(
+                english_label_for_hebrew, raw, None, allow_algorithmic=False,
+            )
+
+        async with sem:
+            try:
+                label = await cache_lookup_or_call(
+                    db,
+                    kind="translit.label",
+                    query_summary={"backend": "waterfall", "text": raw},
+                    fetch=_fetch,
+                    user_id=user_id,
+                )
+            except Exception:  # noqa: BLE001 — never let one string break the build
+                label = None
+        return raw, label
+
+    results = await asyncio.gather(*(_one(c) for c in candidates))
+    return dict(results)
+
+
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
 async def build_studio(
     run_id: uuid.UUID,
@@ -268,7 +373,7 @@ async def build_studio(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StudioBuildResponse:
-    await _lookup_run_with_access(db, run_id, auth)
+    run = await _lookup_run_with_access(db, run_id, auth)
 
     # Load all raw rows needed for fingerprinting + building.
     records = (
@@ -367,11 +472,28 @@ async def build_studio(
         for r in override_rows
     }
     entities_by_cn = _group_entity_rows(entity_rows, approved_only)
-    result = await wikidata_studio.build_items_for_run(
-        marc_records=marc_records, approved_matches=approved_matches,
-        entities_by_cn=entities_by_cn,
-        overrides=overrides, return_native=True,
+
+    # Pre-warm Hebrew→Latin labels concurrently (cached in Postgres), then run
+    # the synchronous build with the Tier 3/4 network kill-switch on so the
+    # build itself never blocks on HTTP. Without this the build makes ~200
+    # sequential SPARQL/Modal calls and cannot finish inside Heroku's 30 s
+    # request window (H12 timeout + R14 memory pile-up on retries).
+    from converter.wikidata import hebrew_translit  # noqa: PLC0415
+
+    prewarmed = await _prewarm_transliterations(
+        db, marc_records=marc_records, user_id=getattr(run, "created_by", None),
     )
+    hebrew_translit.set_prewarmed_labels(prewarmed)
+    hebrew_translit.set_sync_network_disabled(True)
+    try:
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=marc_records, approved_matches=approved_matches,
+            entities_by_cn=entities_by_cn,
+            overrides=overrides, return_native=True,
+        )
+    finally:
+        hebrew_translit.set_sync_network_disabled(False)
+        hebrew_translit.clear_prewarmed_labels()
     # Stamp local_id + curator approved flag onto each serialised item.
     overrides_approved = {r.local_id: r.approved for r in override_rows}
     if result.get("native_items"):

@@ -47,6 +47,56 @@ requires the module to be offline-only.
 from __future__ import annotations
 
 import os
+import threading
+
+# ── Pre-warm registry + sync-network kill-switch (web backend) ───────────
+#
+# The synchronous waterfall (Tier 3 SPARQL + Tier 4 Modal) makes one blocking
+# HTTP round-trip per Hebrew string. In the desktop pipeline that is fine —
+# it runs once, off the request path. In the web backend, ``build_studio``
+# builds ~200 items inside a single 30 s Heroku request; 200 sequential HTTP
+# calls cannot fit and the build never completes (H12 + R14).
+#
+# The fix: the async router pre-computes every label concurrently (cached in
+# Postgres so it is incremental across retries), stores the answers here via
+# ``set_prewarmed_labels``, then flips ``set_sync_network_disabled(True)`` for
+# the duration of the synchronous build. With the kill-switch on, Tiers 3 & 4
+# never touch the network — they read the pre-warm dict only, so the build is
+# always fast and bounded. Misses fall through to the caller's NLI fallback
+# and are filled in on the next (now cache-warm) retry.
+_PREWARM: dict[str, str | None] = {}
+_PREWARM_LOCK = threading.Lock()
+_SYNC_NETWORK_DISABLED = False
+
+
+def set_prewarmed_labels(mapping: dict[str, str | None]) -> None:
+    """Register precomputed Hebrew→Latin labels keyed by raw Hebrew string."""
+    with _PREWARM_LOCK:
+        for raw, label in mapping.items():
+            key = _norm_hebrew_key(raw)
+            if key:
+                _PREWARM[key] = label
+
+
+def clear_prewarmed_labels() -> None:
+    with _PREWARM_LOCK:
+        _PREWARM.clear()
+
+
+def set_sync_network_disabled(disabled: bool) -> None:
+    """Toggle the Tier 3/4 network kill-switch (set around the studio build)."""
+    global _SYNC_NETWORK_DISABLED
+    _SYNC_NETWORK_DISABLED = disabled
+
+
+def _prewarm_lookup(raw: str) -> tuple[bool, str | None]:
+    key = _norm_hebrew_key(raw)
+    if not key:
+        return False, None
+    with _PREWARM_LOCK:
+        if key in _PREWARM:
+            return True, _PREWARM[key]
+    return False, None
 
 
 def _modal_translit_sync(text: str, modal_url: str) -> str | None:
@@ -394,6 +444,24 @@ def english_label_for_hebrew(
         romanized = _read_romanization(source_record, keyset)
         if romanized:
             return romanized
+
+    # ── Pre-warm short-circuit (web backend) ──────────────────────────
+    # If the async router already computed this label concurrently, return
+    # it without any network call. See the registry block at module top.
+    hit, prewarmed = _prewarm_lookup(raw)
+    if hit:
+        if prewarmed and not _has_hebrew(prewarmed):
+            return prewarmed
+        # Pre-warm computed "no good Latin label" → honour the caller's
+        # opt-out chain (work labels / P2093) instead of re-hitting network.
+        if _SYNC_NETWORK_DISABLED:
+            return _algorithmic_transliterate(raw) if allow_algorithmic else None
+
+    # When the sync-network kill-switch is on (inside the studio build) and
+    # the string was NOT pre-warmed, skip Tiers 3 & 4 entirely — never block
+    # the request on HTTP. The caller falls back to its NLI identifier label.
+    if _SYNC_NETWORK_DISABLED:
+        return _algorithmic_transliterate(raw) if allow_algorithmic else None
 
     # ── Tier 3: Wikidata SPARQL reverse-lookup (cached) ───────────────
     # If Wikidata already has an English label for this exact Hebrew
