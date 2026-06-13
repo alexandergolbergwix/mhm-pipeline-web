@@ -659,7 +659,7 @@ async def re_enrich_authority(
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     from app.pipeline import authority as auth_pipeline  # noqa: PLC0415
-    from app.pipeline.marc_ingest import extract_named_entities  # noqa: PLC0415
+    from app.pipeline.marc_ingest import extract_named_entities, prepare_record_for_pipeline  # noqa: PLC0415
 
     matcher = auth_pipeline.get_default_matcher()
 
@@ -687,7 +687,7 @@ async def re_enrich_authority(
     newly_matched = 0
 
     for rec in records:
-        marc = dict(rec.marc or {})
+        marc = prepare_record_for_pipeline(dict(rec.marc or {}))
         entities = extract_named_entities(marc)
         for entity in entities:
             checked += 1
@@ -771,7 +771,7 @@ async def re_enrich_authority_stream(
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     from app.pipeline import authority as auth_pipeline  # noqa: PLC0415
-    from app.pipeline.marc_ingest import extract_named_entities  # noqa: PLC0415
+    from app.pipeline.marc_ingest import extract_named_entities, prepare_record_for_pipeline  # noqa: PLC0415
 
     matcher = auth_pipeline.get_default_matcher()
 
@@ -791,7 +791,7 @@ async def re_enrich_authority_stream(
     # Pre-count total entities so the frontend can show X of N.
     all_entities: list[tuple[RunRecord, dict]] = []
     for rec in records:
-        marc = dict(rec.marc or {})
+        marc = prepare_record_for_pipeline(dict(rec.marc or {}))
         for entity in extract_named_entities(marc):
             all_entities.append((rec, entity))
 
@@ -822,9 +822,14 @@ async def re_enrich_authority_stream(
                 "entity_kind": entity.get("kind", "person"),
             })
             candidates = []
+            # Re-use the already-prepared marc from all_entities (the entity
+            # was extracted from it, so the same prepared dict is the right
+            # context for _looks_like_place and other marc-reading helpers).
+            # We stored only (rec, entity) so prepare again here; it's cheap.
+            prepared_marc = prepare_record_for_pipeline(dict(rec.marc or {}))
             try:
                 candidates = await matcher.match(
-                    entity, dict(rec.marc or {}),
+                    entity, prepared_marc,
                     db_session=db,
                     user_id=run.created_by,
                     skip_cache=skip_cache,
