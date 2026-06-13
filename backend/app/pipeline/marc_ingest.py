@@ -298,6 +298,29 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     if subjects:
         record["subjects"] = subjects
 
+    # ── Production / related places (MARC 751 Added Entry—Geographic Name) ─
+    # NLI uses 751 $a (place name) + $e (relationship, e.g. "place of writing")
+    # for manuscript production places.  Pipe-separated when repeated.
+    _PRODUCTION_ROLES = frozenset(
+        ("place of writing", "place of origin", "production place",
+         "place of creation", "origin", "written")
+    )
+    related_places: list[str] = list(record.get("related_places") or [])
+    for place_name, role_text in zip(
+        _split_multi(_str(record.get("751$a"))),
+        _split_multi(_str(record.get("751$e"))) + [""] * 999,
+    ):
+        place_name = place_name.strip().strip('"')
+        if not place_name:
+            continue
+        if place_name not in related_places:
+            related_places.append(place_name)
+        if role_text.strip().strip('"').lower() in _PRODUCTION_ROLES:
+            if not record.get("place"):
+                record["place"] = place_name
+    if related_places:
+        record["related_places"] = related_places
+
     # ── Dates (008 positions 7-10 are the production year) ──────────
     f008 = _str(record.get("008"))
     if f008 and len(f008) >= 11 and not record.get("dates"):
@@ -366,7 +389,14 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
 
 
 def _str(v: Any) -> str:
-    return v.strip() if isinstance(v, str) else ""
+    if not isinstance(v, str):
+        return ""
+    v = v.strip()
+    # Strip CSV-style double-quote wrapping that NLI export files add around
+    # subfield values (e.g. '"ʻAmrān (Yemen)"' → 'ʻAmrān (Yemen)').
+    if len(v) >= 2 and v[0] == '"' and v[-1] == '"':
+        v = v[1:-1]
+    return v
 
 
 def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
