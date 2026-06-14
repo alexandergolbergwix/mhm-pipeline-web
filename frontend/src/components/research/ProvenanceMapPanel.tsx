@@ -37,6 +37,9 @@ const KIND_COLOR: Record<string, string> = {
   production:        "#8b5cf6",
   owner:             "#38bdf8",
   significant_place: "#f59e0b",
+  acquisition:       "#ec4899",
+  conservation:      "#14b8a6",
+  exhibition:        "#a855f7",
   current_holder:    "#22c55e",
 };
 
@@ -44,6 +47,9 @@ const KIND_LABEL: Record<string, string> = {
   production:        "Production",
   owner:             "Owner (inferred location)",
   significant_place: "Significant place",
+  acquisition:       "Acquisition (MARC 541)",
+  conservation:      "Conservation (MARC 583)",
+  exhibition:        "Exhibition (MARC 583)",
   current_holder:    "Current holder",
 };
 
@@ -884,7 +890,7 @@ function Legend() {
   return (
     <div className="rounded-xl border border-white/10 p-3 text-xs space-y-1.5">
       <div className="kicker mb-1">Legend</div>
-      {(["production", "significant_place", "owner", "current_holder"] as const).map((k) => (
+      {(["production", "acquisition", "conservation", "exhibition", "significant_place", "owner", "current_holder"] as const).map((k) => (
         <div key={k} className="flex items-center gap-2">
           <span
             className="inline-block w-2.5 h-2.5 rounded-full"

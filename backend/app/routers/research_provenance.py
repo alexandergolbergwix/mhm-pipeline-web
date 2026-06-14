@@ -25,7 +25,7 @@ from app.db import get_session
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.pipeline.inference_cache import cache_lookup_or_call
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
-from app.pipeline.research_geo_enrich import owner_place
+from app.pipeline.research_geo_enrich import institution_place, owner_place
 from app.pipeline.corpus_movement import (
     _extract_corpus_item,
     build_corpus_facets,
@@ -330,9 +330,11 @@ async def get_provenance_map(
     ms_label = str(prepared.get("title") or "").strip() or cn
 
     # Resolve owner coordinates (cached) for owners that pass the cheap gates.
+    # Persons AND organizations/collections are eligible (a named collection
+    # like Braginsky is a corporate former-owner).
     owner_qids: set[str] = set()
     for m in matches:
-        if m.entity_kind == "person" and is_owner_role(m.role or ""):
+        if m.entity_kind in ("person", "organization") and is_owner_role(m.role or ""):
             if not include_unapproved and not m.approved:
                 continue
             if (m.confidence or "").lower() not in ("high", "medium"):
@@ -341,9 +343,15 @@ async def get_provenance_map(
             if qid:
                 owner_qids.add(qid)
 
+    # owner_place is gated to humans; institution_place resolves a collection/
+    # library seat (P159 → P276 → P131). Chain them — institution_place is
+    # self-guarding (abstains on humans), so the fallback is safe (Rule 60).
     owner_places: dict[str, dict[str, Any] | None] = {}
     for qid in owner_qids:
-        owner_places[qid] = await owner_place(qid, db_session=db, user_id=auth.user.id)
+        place = await owner_place(qid, db_session=db, user_id=auth.user.id)
+        if place is None:
+            place = await institution_place(qid, db_session=db, user_id=auth.user.id)
+        owner_places[qid] = place
 
     match_dicts = [
         {

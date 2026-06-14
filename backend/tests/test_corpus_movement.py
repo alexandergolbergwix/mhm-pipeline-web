@@ -123,6 +123,22 @@ class TestExtractCorpusItem:
         item = _extract_corpus_item(prepared, [match], "CN009")
         assert item["production_lat"] == 34.03
 
+    def test_event_places_collected_and_filterable(self) -> None:
+        prepared = _prepared(place="Fez")
+        prepared["provenance_events"] = [
+            {"type": "acquisition", "place_text": "Zurich", "year": 1985},
+        ]
+        zurich = {
+            "entity_text": "Zurich", "entity_kind": "place",
+            "role": "acquisition_place", "wikidata_qid": "Q72",
+            "confidence": "high", "approved": True,
+            "payload": {"kima_lat": 47.37, "kima_lon": 8.54},
+        }
+        item = _extract_corpus_item(prepared, [_kima_match("Fez", 34.0, -5.0), zurich], "CN010")
+        assert any(ep["place"] == "Zurich" and ep["lat"] == 47.37
+                   for ep in item["event_places"])
+        assert "Zurich" in item["places"]  # filterable on the corpus place facet
+
 
 # ── build_corpus_movement filters ─────────────────────────────────────────
 

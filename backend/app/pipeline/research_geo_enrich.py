@@ -41,6 +41,16 @@ _PLACE_PROPS: tuple[tuple[str, str], ...] = (
     ("P19", "place of birth"),
 )
 
+# Institution / collection place-property precedence (Rule 60):
+# headquarters location > location > located in administrative entity.
+# Used for named collections/libraries (Braginsky→Zurich, Sassoon→London,
+# Kaufmann→Budapest) — the seat of the holding body, NOT a biography.
+_INSTITUTION_PLACE_PROPS: tuple[tuple[str, str], ...] = (
+    ("P159", "headquarters location"),
+    ("P276", "location"),
+    ("P131", "located in administrative territorial entity"),
+)
+
 _QID_RE = re.compile(r"^Q[1-9][0-9]*$")
 # WKT point as returned by WDQS for a P625 coordinate: "Point(lon lat)".
 _POINT_RE = re.compile(
@@ -117,6 +127,58 @@ def _parse_place_binding(bindings: list[dict[str, Any]]) -> dict[str, Any] | Non
     return None
 
 
+def _parse_institution_binding(bindings: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Pure parser → ``{lat, lon, geo_source}`` for an institution QID, or None.
+
+    Mirrors :func:`_parse_place_binding` but over the institution place
+    properties and WITHOUT the human (Q5) gate — a collection/library is not a
+    human. Guard A3 here is the inverse: if the entity IS a human (Q5) we
+    abstain, because that is the ``owner_place`` path, not this one. Guards A6
+    (coord sanity) and A8 (abstain on conflicting coords per property) still
+    apply.
+    """
+    if not bindings:
+        return None
+
+    types: set[str] = set()
+    coords_by_prop: dict[str, set[tuple[float, float]]] = {
+        pid: set() for pid, _ in _INSTITUTION_PLACE_PROPS
+    }
+    for b in bindings:
+        tval = (b.get("type") or {}).get("value", "")
+        if tval:
+            types.add(tval.rsplit("/", 1)[-1])
+        for pid, _label in _INSTITUTION_PLACE_PROPS:
+            cell = b.get(pid)
+            if not cell:
+                continue
+            parsed = _parse_point(cell.get("value", ""))
+            if parsed is not None:
+                coords_by_prop[pid].add(parsed)
+
+    # A human entity is handled by owner_place — don't double-count it here.
+    if _Q_HUMAN in types:
+        return None
+
+    for pid, label in _INSTITUTION_PLACE_PROPS:
+        candidates = coords_by_prop[pid]
+        if len(candidates) == 1:
+            lat, lon = next(iter(candidates))
+            return {"lat": lat, "lon": lon, "geo_source": pid, "geo_source_label": label}
+    return None
+
+
+def _build_institution_sparql(qid: str) -> str:
+    return (
+        "SELECT ?type ?P159 ?P276 ?P131 WHERE { "
+        f"OPTIONAL {{ wd:{qid} wdt:P31 ?type . }} "
+        f"OPTIONAL {{ wd:{qid} wdt:P159 ?h . ?h wdt:P625 ?P159 . }} "
+        f"OPTIONAL {{ wd:{qid} wdt:P276 ?l . ?l wdt:P625 ?P276 . }} "
+        f"OPTIONAL {{ wd:{qid} wdt:P131 ?a . ?a wdt:P625 ?P131 . }} "
+        "} LIMIT 50"
+    )
+
+
 def _build_sparql(qid: str) -> str:
     return (
         "SELECT ?type ?P551 ?P937 ?P20 ?P19 WHERE { "
@@ -183,6 +245,69 @@ async def owner_place(
         db_session,
         kind="wikidata.person_place",
         query_summary={"op": "owner_place", "qid": qid},
+        fetch=_fetch,
+        user_id=user_id,
+        skip_cache=skip_cache,
+    )
+
+
+async def institution_place(
+    qid: str,
+    *,
+    db_session: Any | None = None,
+    user_id: Any | None = None,
+    skip_cache: bool = False,
+) -> dict[str, Any] | None:
+    """Return ``{lat, lon, geo_source, geo_source_label}`` for an institution/
+    collection QID, or None (Rule 60).
+
+    Resolves the *seat* of a holding body via headquarters location (P159) →
+    location (P276) → located-in (P131) → P625 coords. Use this when the owner
+    entity is a collection/library/organisation (``owner_place`` returns None
+    because it is gated to humans). Same cache + integrity guards; abstains
+    when the entity is actually a human (handled by ``owner_place``).
+    """
+    qid = (qid or "").strip()
+    if not _QID_RE.match(qid):
+        return None
+    if os.environ.get("MHM_NO_NETWORK", "").lower() in ("1", "true", "yes"):
+        return None
+
+    import asyncio  # noqa: PLC0415
+
+    async def _fetch() -> dict[str, Any] | None:
+        import httpx  # noqa: PLC0415
+
+        def _call() -> list[dict[str, Any]]:
+            with httpx.Client(timeout=15.0) as client:
+                resp = client.get(
+                    _WDQS,
+                    params={"query": _build_institution_sparql(qid), "format": "json"},
+                    headers={
+                        "Accept": "application/sparql-results+json",
+                        "User-Agent": "mhm-pipeline-web/1.0 (provenance-map)",
+                    },
+                )
+                if resp.status_code != 200:
+                    return []
+                return resp.json().get("results", {}).get("bindings", [])
+
+        try:
+            bindings = await asyncio.to_thread(_call)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("institution_place WDQS failed for %s: %s", qid, exc)
+            return None
+        return _parse_institution_binding(bindings)
+
+    if db_session is None:
+        return await _fetch()
+
+    from app.pipeline.inference_cache import cache_lookup_or_call  # noqa: PLC0415
+
+    return await cache_lookup_or_call(
+        db_session,
+        kind="wikidata.person_place",
+        query_summary={"op": "institution_place", "qid": qid},
         fetch=_fetch,
         user_id=user_id,
         skip_cache=skip_cache,

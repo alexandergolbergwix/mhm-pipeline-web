@@ -123,6 +123,9 @@ export type MapStopKind =
   | "production"
   | "owner"
   | "significant_place"
+  | "acquisition"
+  | "conservation"
+  | "exhibition"
   | "current_holder";
 
 export interface MapStop {
@@ -179,6 +182,15 @@ export interface CorpusManuscript {
   genres: string[];
   owners: string[];
   places: string[];
+  event_places?: CorpusEventPlace[];
+}
+
+export interface CorpusEventPlace {
+  type: string;
+  place: string;
+  lat: number | null;
+  lon: number | null;
+  year: number | null;
 }
 
 export interface YearCount {

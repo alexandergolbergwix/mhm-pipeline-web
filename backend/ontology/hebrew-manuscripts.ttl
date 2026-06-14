@@ -3398,6 +3398,13 @@ hm:has_transfer_of_custody rdf:type owl:ObjectProperty ;
     rdfs:label "has transfer of custody"@en ,
                "יש אירוע העברת משמורת"@he .
 
+hm:has_provenance_event rdf:type owl:ObjectProperty ;
+    rdfs:domain lrmoo:F4_Manifestation_Singleton ;
+    rdfs:range cidoc-crm:E7_Activity ;
+    rdfs:label "has provenance event"@en ,
+               "יש אירוע פרובננס"@he ;
+    rdfs:comment "A typed, dated, place-bearing custody event beyond production (acquisition place from MARC 541 $b, conservation/exhibition site from MARC 583 $j)."@en .
+
 hm:is_documented_in rdf:type owl:ObjectProperty ;
     rdfs:subPropertyOf cidoc-crm:P70i_is_documented_in ;
     rdfs:domain lrmoo:F4_Manifestation_Singleton ;

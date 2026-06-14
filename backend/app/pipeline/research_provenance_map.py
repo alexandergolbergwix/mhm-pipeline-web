@@ -91,6 +91,31 @@ def _year_band(dates: dict[str, Any] | None) -> tuple[int | None, int | None, in
     return year, early, late
 
 
+def _event_coords(
+    ev: dict[str, Any], ev_place: str, matches: list[dict[str, Any]],
+) -> tuple[float, float] | None:
+    """Coords for a provenance event: matched authority place first, then the
+    event's own merged lat/lon. Returns None when neither is geolocated."""
+    ev_lc = ev_place.strip().lower()
+    for m in matches:
+        if m.get("entity_kind") != "place":
+            continue
+        mtext = str(m.get("entity_text") or "").strip().lower()
+        if mtext and (mtext == ev_lc or mtext in ev_lc or ev_lc in mtext):
+            c = _coords_from_payload(m.get("payload") or {})
+            if c is not None:
+                return c
+    lat, lon = ev.get("lat"), ev.get("lon")
+    if lat is not None and lon is not None:
+        try:
+            lat_f, lon_f = float(lat), float(lon)
+        except (TypeError, ValueError):
+            return None
+        if _valid_coords(lat_f, lon_f):
+            return lat_f, lon_f
+    return None
+
+
 def build_provenance_map(
     *,
     control_number: str,
@@ -139,8 +164,43 @@ def build_provenance_map(
 
     latest_for_anachronism = prod_late if prod_late is not None else prod_year
 
-    # ── Significant / related places (undated waypoints) ───────────────
+    # ── Provenance-event stops (acquisition / conservation / exhibition) ─
+    # Typed + dated waypoints from record["provenance_events"] (Rule 60).
+    # Coordinates come from the matching authority place (KIMA / gazetteer);
+    # the event itself carries the date. Listed before generic significant
+    # places so the same place text is not also emitted as an untyped stop.
     seen_place_text = {prod_place_text} if prod_place_text else set()
+    _TYPED_EVENT_KINDS = {"acquisition", "conservation", "exhibition"}
+    for ev in record.get("provenance_events") or []:
+        if not isinstance(ev, dict):
+            continue
+        ev_place = str(ev.get("place_text") or "").strip()
+        etype = str(ev.get("type") or "").lower()
+        if not ev_place or etype not in _TYPED_EVENT_KINDS or ev_place in seen_place_text:
+            continue
+        coords = _event_coords(ev, ev_place, matches)
+        if coords is None:
+            continue  # no point → no map stop (never fabricate)
+        seen_place_text.add(ev_place)
+        ev_year = ev.get("year")
+        try:
+            ev_year = int(ev_year) if ev_year is not None else None
+        except (TypeError, ValueError):
+            ev_year = None
+        stops.append({
+            "kind": etype,
+            "label": ev_place,
+            "lat": coords[0], "lon": coords[1],
+            "year": ev_year,
+            "year_earliest": ev.get("year_earliest"),
+            "year_latest": ev.get("year_latest"),
+            "certain": ev_year is not None,
+            "inferred_geo": False,
+            "time": float(ev_year) if ev_year is not None else None,
+            "has_point": True,
+        })
+
+    # ── Significant / related places (undated waypoints) ───────────────
     for m in matches:
         if m.get("entity_kind") != "place":
             continue
@@ -168,7 +228,11 @@ def build_provenance_map(
     owners_undated: list[dict[str, Any]] = []
     seen_owner: set[str] = set()
     for m in matches:
-        if m.get("entity_kind") != "person" or not is_owner_role(m.get("role", "")):
+        # Persons AND organizations/collections may be owners (a named
+        # collection like Braginsky is a corporate former-owner).
+        if m.get("entity_kind") not in ("person", "organization") or not is_owner_role(
+            m.get("role", "")
+        ):
             continue
         name = str(m.get("entity_text") or m.get("matched_name") or "").strip()
         if not name or name in seen_owner:

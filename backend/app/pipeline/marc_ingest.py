@@ -387,6 +387,65 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     if contents:
         record["contents"] = contents
 
+    # ── Provenance events (movement map) — 541 $b acquisition, 583 $j action ─
+    _extract_provenance_events(record)
+
+
+def _first(v: Any) -> str | None:
+    """First non-empty value from a (possibly pipe-separated) subfield."""
+    parts = _split_multi(_str(v))
+    return parts[0] if parts and parts[0] else None
+
+
+def _extract_provenance_events(record: dict[str, Any]) -> None:
+    """Build ``record["provenance_events"]`` from collapsed 541/583 keys.
+
+    Reuses the desktop ``FieldHandlers`` helpers so the TSV/JSON
+    collapsed-key path and the ``.mrc`` path (which runs desktop
+    ``extract_all_data``) emit byte-identical event dicts. Idempotent:
+    skips when ``provenance_events`` is already populated (the ``.mrc``
+    path fills it upstream).
+    """
+    if record.get("provenance_events"):
+        return
+    from converter.transformer.field_handlers import FieldHandlers  # noqa: PLC0415
+
+    events: list[dict[str, Any]] = []
+
+    # MARC 541 — acquisition (place from $b address, date from $d, agent $a).
+    place_text = FieldHandlers._city_from_address(_first(record.get("541$b")))
+    ev = FieldHandlers.build_provenance_event(
+        event_type="acquisition",
+        place_text=place_text,
+        agent_name=_first(record.get("541$a")),
+        date_str=_first(record.get("541$d")),
+        source_field="541",
+    )
+    if ev:
+        events.append(ev)
+
+    # MARC 583 — conservation / exhibition (site $j; may repeat, pipe-joined).
+    sites = _split_multi(_str(record.get("583$j")))
+    actions = _split_multi(_str(record.get("583$a"))) + [""] * 999
+    juris = _split_multi(_str(record.get("583$h"))) + [""] * 999
+    dates = _split_multi(_str(record.get("583$c"))) + [""] * 999
+    for site, action, jur, dt in zip(sites, actions, juris, dates):
+        if not site.strip():
+            continue
+        event_type = "exhibition" if "exhib" in action.lower() else "conservation"
+        ev = FieldHandlers.build_provenance_event(
+            event_type=event_type,
+            place_text=site,
+            agent_name=jur or None,
+            date_str=dt or None,
+            source_field="583",
+        )
+        if ev:
+            events.append(ev)
+
+    if events:
+        record["provenance_events"] = events
+
 
 def _str(v: Any) -> str:
     if not isinstance(v, str):
@@ -499,6 +558,23 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
                 text = ""
             if text:
                 out.append({"text": text, "kind": "place", "role": "place", "field": "752"})
+
+    # Provenance-event places (acquisition 541 $b, conservation/exhibition
+    # 583 $j) — one place entity per event so KIMA resolves coords. The
+    # ``<type>_place`` role lets the authority matcher fire KIMA and lets the
+    # movement map type the stop. Coords flow back onto the event later.
+    for ev in record.get("provenance_events") or []:
+        if not isinstance(ev, dict):
+            continue
+        text = str(ev.get("place_text") or "").strip()
+        if not text:
+            continue
+        out.append({
+            "text": text,
+            "kind": "place",
+            "role": f"{ev.get('type') or 'provenance'}_place",
+            "field": str(ev.get("source_field") or ""),
+        })
 
     seen: set[tuple[str, str]] = set()
     deduped: list[dict[str, str]] = []

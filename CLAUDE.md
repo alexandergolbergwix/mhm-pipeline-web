@@ -579,6 +579,49 @@ Backend helper `_apply_auto_approve_rule()` in `backend/app/routers/runs.py`
 filters unapproved matches by confidence_levels, sources (intersection),
 entity_kind, min_source_count, and AI verdict gates.
 
+### Rule W-32 — Non-production provenance-event places on the maps (added 2026-06-14)
+
+Web counterpart of desktop **Rule 60**. The corpus-movement + single-MS
+provenance maps now plot custody events beyond production: acquisition
+(MARC 541 $b), conservation/exhibition (MARC 583 $j), and institutional
+ownership (named collections → seat). One additive record channel,
+`record["provenance_events"]` (`{type, place_text, agent_name, year,
+year_earliest, year_latest, source_field, lat, lon, wikidata_id,
+certain}`), flows ingest → KIMA → RDF → maps. Production stays in
+`record["place"]` — never regressed.
+
+- **Ingest** (`app/pipeline/marc_ingest.py`): `_extract_provenance_events`
+  reuses the vendored desktop `FieldHandlers` helpers so the `.mrc` path
+  (desktop `extract_all_data`) and the TSV/JSON collapsed-key path emit
+  byte-identical events. `extract_named_entities` yields a `*_place`-role
+  place entity per event.
+- **Authority** (`app/pipeline/authority.py`): `is_place` accepts any
+  `*_place` role → KIMA fires. After a KIMA miss, the Ashkenazi gazetteer
+  (`app/pipeline/ashkenazi_gazetteer.py` + `data/ashkenazi_communities.json`)
+  fills the diaspora gap; a coord-bearing place survives the no-id drop.
+  `research_geo_enrich.institution_place` resolves collection/library seats
+  (P159→P276→P131→P625; abstains on humans). The router chains
+  `owner_place` → `institution_place`; owner loops accept `organization`.
+- **RDF** (`app/pipeline/rdf_build._merge_authority_ids` +
+  `converter/rdf/graph_builder._add_provenance_events`): KIMA coords are
+  written back onto the matching event; a CIDOC `E8/E10/E7` node +
+  `P7_took_place_at` → `E53_Place` with `wgs84:lat/long` (+ `owl:sameAs`)
+  + `P4_has_time-span` is emitted, gated on coords (**never fabricated**).
+  `hm:mentions_place` makes `query_geography` surface it.
+- **Maps**: `research_provenance_map.build_provenance_map` emits typed +
+  dated `acquisition`/`conservation`/`exhibition` stops; `corpus_movement`
+  adds `event_places` and folds them into the corpus place facet. Frontend
+  `ProvenanceMapPanel.tsx` (`KIND_COLOR`/`KIND_LABEL`/`Legend`) +
+  `api/research.ts` (`MapStopKind`, `CorpusEventPlace`) gained the kinds.
+
+Existing runs must **rebuild RDF** for the Geography tab to pick up the
+new places; the DB-sourced movement maps benefit immediately. 561
+free-text NER is deferred (no ML). Tests:
+`tests/test_provenance_events_ingest.py` (10),
+`test_provenance_events_rdf.py` (5), `test_institution_place.py` (9),
+`test_ashkenazi_gazetteer.py` (9), + Rule-60 cases in
+`test_provenance_map_guards.py` and `test_corpus_movement.py`.
+
 ---
 
 ## Project structure

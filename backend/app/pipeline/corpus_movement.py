@@ -66,7 +66,9 @@ def _extract_corpus_item(
     # Owners: entity_text of approved+medium/high-confidence owner matches.
     owners: list[str] = []
     for m in matches:
-        if m.get("entity_kind") != "person" or not is_owner_role(m.get("role", "")):
+        if m.get("entity_kind") not in ("person", "organization") or not is_owner_role(
+            m.get("role", "")
+        ):
             continue
         if (m.get("confidence") or "").lower() not in ("high", "medium"):
             continue
@@ -74,13 +76,46 @@ def _extract_corpus_item(
         if name and name not in owners:
             owners.append(name)
 
-    # All production + related place names for the place filter.
+    # Provenance-event places (acquisition / conservation / exhibition) —
+    # typed + dated waypoints with coords from the matching authority place
+    # (Rule 60). Powers the place filter and optional extra arcs.
+    event_places: list[dict[str, Any]] = []
+    for ev in prepared.get("provenance_events") or []:
+        if not isinstance(ev, dict):
+            continue
+        ev_place = str(ev.get("place_text") or "").strip()
+        if not ev_place:
+            continue
+        ev_lc = ev_place.lower()
+        ev_lat: float | None = None
+        ev_lon: float | None = None
+        for m in matches:
+            if m.get("entity_kind") != "place":
+                continue
+            mtext = str(m.get("entity_text") or "").strip().lower()
+            if mtext and (mtext == ev_lc or mtext in ev_lc or ev_lc in mtext):
+                c = _coords_from_payload(m.get("payload") or {})
+                if c is not None:
+                    ev_lat, ev_lon = c
+                    break
+        event_places.append({
+            "type": str(ev.get("type") or "provenance"),
+            "place": ev_place,
+            "lat": ev_lat,
+            "lon": ev_lon,
+            "year": ev.get("year"),
+        })
+
+    # All production + related + event place names for the place filter.
     places: list[str] = []
     if prod_place_text:
         places.append(prod_place_text)
     for rp in prepared.get("related_places") or []:
         if isinstance(rp, str) and rp.strip() and rp.strip() not in places:
             places.append(rp.strip())
+    for ep in event_places:
+        if ep["place"] not in places:
+            places.append(ep["place"])
 
     return {
         "control_number": control_number,
@@ -98,6 +133,7 @@ def _extract_corpus_item(
         "genres": genres,
         "owners": owners,
         "places": places,
+        "event_places": event_places,
     }
 
 

@@ -229,3 +229,49 @@ def test_owner_role_english_and_hebrew():
     assert not is_owner_role("author")
     assert not is_owner_role("scribe")
     assert not is_owner_role("")
+
+
+# ── Rule 60: typed, dated provenance-event stops ─────────────────────────
+
+def test_acquisition_event_emits_typed_dated_stop():
+    res = _build(
+        {
+            "dates": {"year": 1500},
+            "provenance_events": [
+                {"type": "acquisition", "place_text": "Zurich", "year": 1985,
+                 "lat": None, "lon": None, "source_field": "541"},
+            ],
+        },
+        [_place_match("Zurich", role="acquisition_place", lat=47.37, lon=8.54)],
+        {},
+    )
+    acq = next(s for s in res["stops"] if s["kind"] == "acquisition")
+    assert acq["lat"] == 47.37 and acq["lon"] == 8.54
+    assert acq["year"] == 1985 and acq["certain"] is True
+    assert _kinds(res).count("acquisition") == 1
+    assert all(not (s["kind"] == "significant_place" and s["label"] == "Zurich")
+               for s in res["stops"])
+
+
+def test_event_without_coords_is_dropped():
+    res = _build(
+        {"dates": {"year": 1500},
+         "provenance_events": [
+             {"type": "conservation", "place_text": "Nowhere", "year": 2010,
+              "lat": None, "lon": None, "source_field": "583"}]},
+        [],
+        {},
+    )
+    assert "conservation" not in _kinds(res)
+
+
+def test_event_coords_from_merged_latlon_when_no_match():
+    res = _build(
+        {"provenance_events": [
+            {"type": "exhibition", "place_text": "Oxford", "year": 1999,
+             "lat": 51.75, "lon": -1.26, "source_field": "583"}]},
+        [],
+        {},
+    )
+    exh = next(s for s in res["stops"] if s["kind"] == "exhibition")
+    assert exh["lat"] == 51.75 and exh["lon"] == -1.26

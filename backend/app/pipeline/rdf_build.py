@@ -300,6 +300,26 @@ def _merge_authority_ids(rec: dict[str, Any], matches: list[dict[str, Any]]) -> 
                         if wikidata_qid and "wikidata_id" not in existing:
                             existing["wikidata_id"] = wikidata_qid
                         break
+
+            # Propagate coords onto matching provenance_events (Rule 60):
+            # acquisition / conservation / exhibition places resolved by KIMA.
+            # Fill-only-if-absent, never fabricate.
+            if kima_lat is not None and kima_lon is not None:
+                for ev in rec.get("provenance_events") or []:
+                    if not isinstance(ev, dict):
+                        continue
+                    pt = str(ev.get("place_text") or "").strip().lower()
+                    if not pt:
+                        continue
+                    if pt == entity_text or entity_text in pt or pt in entity_text:
+                        if ev.get("lat") is None:
+                            ev["lat"] = kima_lat
+                        if ev.get("lon") is None:
+                            ev["lon"] = kima_lon
+                        if wikidata_qid and not ev.get("wikidata_id"):
+                            ev["wikidata_id"] = wikidata_qid
+                        if kima_geo and not ev.get("geonames_id"):
+                            ev["geonames_id"] = str(kima_geo)
         else:
             for target_key in ("authors", "contributors"):
                 for person in rec.get(target_key) or []:

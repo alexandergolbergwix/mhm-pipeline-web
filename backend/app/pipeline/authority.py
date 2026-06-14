@@ -453,6 +453,9 @@ class DesktopMatcher(AuthorityMatcher):
         is_place = (
             normalized_kind in ("place", "location", "geographic")
             or normalized_role in ("place", "location", "geographic", "production_place")
+            # Provenance-event places (541 $b acquisition, 583 $j conservation/
+            # exhibition, and future ownership_place) must also fire KIMA.
+            or normalized_role.endswith("_place")
             or (normalized_role == "subject" and _looks_like_place(text, marc_record))
         )
         if is_place and (self._kima is not None or _mode in ("modal", "postgres")):
@@ -489,6 +492,32 @@ class DesktopMatcher(AuthorityMatcher):
                             )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("KIMA matcher raised for %r: %s", text, exc)
+
+        # Ashkenazi-community fallback (Rule 60) — consulted ONLY after KIMA
+        # misses, so a KIMA result is never overridden. Fills the diaspora
+        # gap (Prague, Worms, Kraków …) KIMA is thin on. Produces the same
+        # kima_lat/kima_lon payload slice the RDF + map code reads.
+        gazetteer_hit = False
+        if is_place and not kima_hit:
+            try:
+                from app.pipeline.ashkenazi_gazetteer import lookup as _ashk_lookup  # noqa: PLC0415
+
+                gaz = _ashk_lookup(text)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Ashkenazi gazetteer raised for %r: %s", text, exc)
+                gaz = None
+            if gaz is not None:
+                gazetteer_hit = True
+                sources.append("ashkenazi")
+                gaz_qid = str(gaz.get("wikidata_id") or "").strip()
+                if gaz_qid.startswith("Q"):
+                    wikidata_qid = gaz_qid
+                kima_payload = {
+                    "kima_lat": gaz["lat"],
+                    "kima_lon": gaz["lon"],
+                    "_source": "ashkenazi_gazetteer",
+                }
+                reasoning_parts.append("Ashkenazi gazetteer fallback hit.")
 
         # Each matcher also surfaces birth/death years when the source
         # carries them. The web app used to drop these on the floor,
@@ -716,8 +745,14 @@ class DesktopMatcher(AuthorityMatcher):
             reasoning_parts.append(hard_reasoning)
 
         # If the placeholder guard cleared every id, drop the candidate
-        # so the Review UI doesn't get an empty row.
-        if not (mazal_id or viaf_id or wikidata_qid):
+        # so the Review UI doesn't get an empty row. A coord-bearing place
+        # (KIMA / Ashkenazi-gazetteer hit) is a valid match even without an
+        # external id — its coordinates are the payload (Rule 60).
+        has_place_coords = (
+            kima_payload.get("kima_lat") is not None
+            and kima_payload.get("kima_lon") is not None
+        )
+        if not (mazal_id or viaf_id or wikidata_qid or has_place_coords):
             return []
 
         # Re-derive the source label after guards may have stripped ids.
@@ -730,6 +765,8 @@ class DesktopMatcher(AuthorityMatcher):
             sources_after.append("viaf")
         if kima_hit:
             sources_after.append("kima")
+        if gazetteer_hit:
+            sources_after.append("ashkenazi")
         if wikidata_qid and "wikidata" in sources:
             sources_after.append("wikidata")
         if len(sources_after) >= 2:
