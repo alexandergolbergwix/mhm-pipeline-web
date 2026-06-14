@@ -21,7 +21,10 @@ from app.db import get_session
 from app.models.project import Membership
 from app.models.rdf_artifact import RdfArtifact
 from app.models.run import Run
-from app.pipeline.inference_cache import cache_lookup_or_call
+from app.pipeline.inference_cache import (
+    read_from_inference_cache,
+    write_to_inference_cache,
+)
 from app.pipeline.research_graph import load_merged_graph
 from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.pipeline.research_queries import (
@@ -61,7 +64,45 @@ async def _run_ids_for_project(project_id: uuid.UUID, db: AsyncSession) -> list[
     return [str(r) for r in rows.scalars().all()]
 
 
-async def _restore_missing_ttls(run_ids: list[str], db: AsyncSession) -> None:
+async def _summary_fingerprint(run_ids: list[str], db: AsyncSession) -> str:
+    """Cache key that changes whenever the graph CONTENT changes.
+
+    Keying on the run-id set alone (the old behaviour) meant an RDF
+    *rebuild* — which changes content but not the run-id set — never
+    invalidated the cached summary, so a zero computed in a bad window
+    stayed pinned. Folding each run's ``RdfArtifact.built_at`` (and
+    triple count) into the key makes every rebuild a fresh key.
+    """
+    parts: list[str] = []
+    for run_id in sorted(run_ids):
+        row = await db.get(RdfArtifact, uuid.UUID(run_id))
+        if row is None:
+            parts.append(f"{run_id}:none")
+        else:
+            built = row.built_at.isoformat() if row.built_at else "?"
+            parts.append(f"{run_id}:{built}:{row.triples_count or 0}")
+    return "|".join(parts)
+
+
+def _is_coherent_summary(summary: dict[str, Any]) -> bool:
+    """A summary with triples but zero entities is incoherent (a bad-window
+    read) — never serve or cache it. An empty graph (0 triples) is handled
+    upstream by the 404 path, so it never reaches here."""
+    if not isinstance(summary, dict):
+        return False
+    triples = summary.get("triples") or 0
+    entities = (
+        (summary.get("total_manuscripts") or 0)
+        + (summary.get("total_works") or 0)
+        + (summary.get("total_persons") or 0)
+        + (summary.get("total_places") or 0)
+    )
+    return not (triples > 0 and entities == 0)
+
+
+async def _restore_missing_ttls(
+    run_ids: list[str], db: AsyncSession, *, force: bool = False,
+) -> None:
     """Restore any TTL files missing from the local cache by reading rdf_artifacts.
 
     Heroku dynos have an ephemeral filesystem — after a deploy or restart the
@@ -70,12 +111,14 @@ async def _restore_missing_ttls(run_ids: list[str], db: AsyncSession) -> None:
     """
     for run_id in run_ids:
         ttl_path = rdf_output_path_for_run(run_id)
-        if ttl_path.exists():
+        if ttl_path.exists() and not force:
             continue
         row = await db.get(RdfArtifact, uuid.UUID(run_id))
         if row is None:
             continue
         ttl_path.parent.mkdir(parents=True, exist_ok=True)
+        # rdf_artifacts (Postgres) is authoritative; on force we overwrite a
+        # possibly-truncated local file seeded during an earlier bad window.
         ttl_path.write_text(row.ttl_content, encoding="utf-8")
 
 
@@ -111,33 +154,57 @@ async def research_summary(
 ) -> dict[str, Any]:
     """Aggregate statistics: total manuscripts, works, persons, places.
 
-    The result is cached in Redis (kind=research.summary) keyed by the
-    run-set fingerprint so a good result survives dyno restarts.  The cache
-    is invalidated automatically when runs are added or rebuilt (fingerprint
-    changes on run-id set change).
+    Cached in Redis/Postgres (kind=research.summary) so a good result
+    survives dyno restarts. Two safeguards (added 2026-06-14) stop the
+    recurring 0/0/0/0-with-N-triples bug:
+
+    * the cache key folds in each run's ``RdfArtifact.built_at`` + triple
+      count, so an RDF *rebuild* invalidates it (run-id set alone did not);
+    * an incoherent summary (triples > 0 but every entity count 0 — the
+      signature of a bad-window read) is never served from cache nor
+      written to it. On a stale-incoherent hit we recompute from the live
+      graph (which the other research tabs read directly and prove healthy)
+      and overwrite the cache with the good value.
     """
+    await _require_viewer(project_id, auth, db)
     run_ids = await _run_ids_for_project(project_id, db)
-    fingerprint = ",".join(sorted(run_ids))
-
-    async def _compute() -> dict[str, Any]:
-        graph = await _load_or_404(project_id, auth, db)
-        return await asyncio.to_thread(query_summary, graph)
-
-    result = await cache_lookup_or_call(
-        db,
-        kind="research.summary",
-        query_summary={"project": str(project_id), "fp": fingerprint},
-        fetch=_compute,
-        user_id=auth.user.id,
-    )
-    # _load_or_404 raises 404 when there are no runs; _compute handles that.
-    # If cache returns None (no runs or empty graph), propagate the 404.
-    if result is None:
+    if not run_ids:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No RDF data found — build the graph for each run first.",
+            detail="No runs found for this project — build the RDF first.",
         )
-    return result
+    fingerprint = await _summary_fingerprint(run_ids, db)
+    cache_key = {"project": str(project_id), "fp": fingerprint}
+
+    cached = await read_from_inference_cache(
+        db, kind="research.summary", query_summary=cache_key,
+    )
+    if cached is not None and _is_coherent_summary(cached):
+        return cached
+
+    # Miss, or a stale incoherent cached zero → recompute from the live graph.
+    graph = await _load_or_404(project_id, auth, db)
+    fresh = await asyncio.to_thread(query_summary, graph)
+
+    # If the live graph itself is incoherent (triples but no entities), the
+    # local TTL was likely seeded truncated during a bad window — re-seed it
+    # from the authoritative rdf_artifacts copy and recompute once.
+    if not _is_coherent_summary(fresh):
+        await _restore_missing_ttls(run_ids, db, force=True)
+        graph = await load_merged_graph(run_ids)
+        fresh = await asyncio.to_thread(query_summary, graph)
+
+    if _is_coherent_summary(fresh):
+        await write_to_inference_cache(
+            db, kind="research.summary", query_summary=cache_key,
+            result=fresh, user_id=auth.user.id,
+        )
+    else:
+        logger.warning(
+            "research summary incoherent for project %s (triples=%s, entities=0); "
+            "not caching", project_id, fresh.get("triples"),
+        )
+    return fresh
 
 
 @router.get("/projects/{project_id}/research/co-occurrence")
