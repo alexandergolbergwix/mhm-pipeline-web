@@ -1,11 +1,58 @@
-import {researchApi, type ResearchSummary} from "@/api/research";
-import {PanelShell, StatPill, useAsync} from "./_shared";
+import {researchApi, type EntityKind, type ResearchSummary} from "@/api/research";
+import {PanelShell, useAsync} from "./_shared";
 
 const ROLE_COLORS: Record<string, string> = {
   scribe: "#38bdf8",
   author: "#a78bfa",
   owner:  "#34d399",
 };
+
+const SOURCE_LABELS: Record<"rdf" | "wikibase" | "wikidata", string> = {
+  rdf: "RDF",
+  wikibase: "Wikibase",
+  wikidata: "Wikidata",
+};
+
+/** A stat pill showing the merged total plus a per-source breakdown. Falls
+ *  back to the legacy single number when ``by_type`` is absent. */
+function SourceStatPill({
+  label,
+  kind,
+  data,
+}: {
+  label: string;
+  kind: EntityKind;
+  data: ResearchSummary;
+}) {
+  const agg = data.by_type?.[kind];
+  const legacy: Record<EntityKind, number> = {
+    manuscript: data.total_manuscripts,
+    work: data.total_works,
+    person: data.total_persons,
+    place: data.total_places,
+  };
+  const total = agg?.total ?? legacy[kind];
+  const available = data.sources_available;
+
+  return (
+    <div className="flex flex-col items-center gap-1.5 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+      <span className="text-2xl font-bold text-biu-sky tabular-nums">{total.toLocaleString()}</span>
+      <span className="text-xs muted">{label}</span>
+      {agg && (
+        <div className="flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-[10px] tabular-nums">
+          {(["rdf", "wikidata", "wikibase"] as const).map((s) => {
+            const off = available ? !available[s] : false;
+            return (
+              <span key={s} className={off ? "opacity-30" : "muted"}>
+                {SOURCE_LABELS[s]} {off ? "—" : agg.by_source[s].toLocaleString()}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SummaryPanel({projectId}: {projectId: string}) {
   const {data, loading, error} = useAsync<ResearchSummary>(
@@ -26,7 +73,7 @@ export default function SummaryPanel({projectId}: {projectId: string}) {
   return (
     <PanelShell
       title="Project Overview"
-      subtitle="Aggregate statistics across all runs"
+      subtitle="Merged across RDF graph, Wikibase, and Wikidata"
       loading={loading}
       empty={!loading && !data && !error}
     >
@@ -34,10 +81,10 @@ export default function SummaryPanel({projectId}: {projectId: string}) {
       {data && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatPill label="Manuscripts" value={data.total_manuscripts} />
-            <StatPill label="Works"       value={data.total_works} />
-            <StatPill label="Persons"     value={data.total_persons} />
-            <StatPill label="Places"      value={data.total_places} />
+            <SourceStatPill label="Manuscripts" kind="manuscript" data={data} />
+            <SourceStatPill label="Works"       kind="work"       data={data} />
+            <SourceStatPill label="Persons"     kind="person"     data={data} />
+            <SourceStatPill label="Places"      kind="place"      data={data} />
           </div>
 
           {/* CSS bar chart for persons by role */}

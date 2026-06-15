@@ -20,7 +20,7 @@ export function ProvenanceHeader({
         <div className="flex items-center gap-2">
           <span className="text-biu-sky text-lg">🔗</span>
           <span className="text-sm font-semibold text-ink">Linked Data Explorer</span>
-          <span className="text-xs muted">· built from this run&rsquo;s RDF graph</span>
+          <span className="text-xs muted">· merged across RDF, Wikibase &amp; Wikidata</span>
         </div>
         <Link
           to={`/runs/${runId}/wikidata-studio`}

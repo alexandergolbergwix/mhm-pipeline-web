@@ -91,13 +91,19 @@ async def project_with_real_rdf(sample_run):
 async def test_stale_incoherent_cache_is_not_served(project_with_real_rdf, db_session):
     from app.pipeline.inference_cache import write_to_inference_cache
     from app.routers.research import _run_ids_for_project, _summary_fingerprint
+    from app.routers.wikidata_studio import studio_fingerprints_for_project
+    from app.settings import get_settings
 
     project_id = project_with_real_rdf["project_id"]
     _, client = project_with_real_rdf["user_id"], project_with_real_rdf["client"]
 
     # Poison the cache under the EXACT key the endpoint will read.
     run_ids = await _run_ids_for_project(project_id, db_session)
-    fp = await _summary_fingerprint(run_ids, db_session)
+    wikibase_url = getattr(get_settings(), "wikibase_sparql_url", "") or ""
+    studio_fps = await studio_fingerprints_for_project(run_ids, db_session)
+    fp = await _summary_fingerprint(
+        run_ids, db_session, studio_fps=studio_fps, wikibase_url=wikibase_url,
+    )
     cache_key = {"project": str(project_id), "fp": fp}
     await write_to_inference_cache(
         db_session, kind="research.summary", query_summary=cache_key,

@@ -1,5 +1,19 @@
 import {api} from "./client";
 
+export type EntitySource = "rdf" | "wikibase" | "wikidata";
+export type EntityKind = "manuscript" | "work" | "person" | "place";
+
+export interface SourceCounts {
+  rdf: number;
+  wikibase: number;
+  wikidata: number;
+}
+
+export interface TypeAggregate {
+  total: number;
+  by_source: SourceCounts;
+}
+
 export interface ResearchSummary {
   total_manuscripts: number;
   total_works: number;
@@ -7,6 +21,10 @@ export interface ResearchSummary {
   total_places: number;
   persons_by_role: {scribe: number; owner: number; author: number};
   triples: number;
+  // Added when the summary aggregates RDF + Wikibase + Wikidata. Optional so
+  // the type stays compatible during rollout.
+  by_type?: Record<EntityKind, TypeAggregate>;
+  sources_available?: Record<EntitySource, boolean>;
 }
 
 /** @deprecated Use CoOccurrenceGraph instead — the server now returns

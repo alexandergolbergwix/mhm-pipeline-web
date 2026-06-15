@@ -8,6 +8,7 @@ All endpoints require project viewer access.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import uuid
 from typing import Any
@@ -25,6 +26,7 @@ from app.pipeline.inference_cache import (
     read_from_inference_cache,
     write_to_inference_cache,
 )
+from app.pipeline.research_aggregate import compute_aggregated_summary, wikibase_provider
 from app.pipeline.research_graph import load_merged_graph
 from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.pipeline.research_queries import (
@@ -33,8 +35,13 @@ from app.pipeline.research_queries import (
     query_geography_heatmap,
     query_ownership_chains,
     query_people_network,
-    query_summary,
 )
+from app.routers.linked_data_explorer import run_wikibase_sparql
+from app.routers.wikidata_studio import (
+    studio_fingerprints_for_project,
+    studio_items_for_project,
+)
+from app.settings import get_settings
 
 router = APIRouter(tags=["research"])
 logger = logging.getLogger(__name__)
@@ -64,14 +71,22 @@ async def _run_ids_for_project(project_id: uuid.UUID, db: AsyncSession) -> list[
     return [str(r) for r in rows.scalars().all()]
 
 
-async def _summary_fingerprint(run_ids: list[str], db: AsyncSession) -> str:
-    """Cache key that changes whenever the graph CONTENT changes.
+async def _summary_fingerprint(
+    run_ids: list[str],
+    db: AsyncSession,
+    *,
+    studio_fps: dict[str, str],
+    wikibase_url: str,
+) -> str:
+    """Cache key that changes whenever any source's CONTENT changes.
 
     Keying on the run-id set alone (the old behaviour) meant an RDF
     *rebuild* — which changes content but not the run-id set — never
     invalidated the cached summary, so a zero computed in a bad window
-    stayed pinned. Folding each run's ``RdfArtifact.built_at`` (and
-    triple count) into the key makes every rebuild a fresh key.
+    stayed pinned. The key now folds in, per run, the RDF artifact's
+    ``built_at`` + triple count AND the Wikidata Studio cache fingerprint
+    (so approving a match invalidates), plus a Wikibase-endpoint marker (so
+    configuring Wikibase invalidates).
     """
     parts: list[str] = []
     for run_id in sorted(run_ids):
@@ -81,13 +96,18 @@ async def _summary_fingerprint(run_ids: list[str], db: AsyncSession) -> str:
         else:
             built = row.built_at.isoformat() if row.built_at else "?"
             parts.append(f"{run_id}:{built}:{row.triples_count or 0}")
+        parts.append(f"studio:{run_id}:{studio_fps.get(run_id, 'none')}")
+    parts.append(f"wb:{hashlib.sha256(wikibase_url.encode()).hexdigest()[:12]}")
     return "|".join(parts)
 
 
 def _is_coherent_summary(summary: dict[str, Any]) -> bool:
     """A summary with triples but zero entities is incoherent (a bad-window
     read) — never serve or cache it. An empty graph (0 triples) is handled
-    upstream by the 404 path, so it never reaches here."""
+    upstream by the 404 path, so it never reaches here.
+
+    For the aggregated shape, also require ``max(by_source) <= total <=
+    sum(by_source)`` per type — a malformed merge violates that."""
     if not isinstance(summary, dict):
         return False
     triples = summary.get("triples") or 0
@@ -97,7 +117,18 @@ def _is_coherent_summary(summary: dict[str, Any]) -> bool:
         + (summary.get("total_persons") or 0)
         + (summary.get("total_places") or 0)
     )
-    return not (triples > 0 and entities == 0)
+    if triples > 0 and entities == 0:
+        return False
+    by_type = summary.get("by_type")
+    if isinstance(by_type, dict):
+        for agg in by_type.values():
+            if not isinstance(agg, dict):
+                continue
+            total = agg.get("total") or 0
+            vals = [v or 0 for v in (agg.get("by_source") or {}).values()]
+            if vals and not (max(vals) <= total <= sum(vals)):
+                return False
+    return True
 
 
 async def _restore_missing_ttls(
@@ -173,7 +204,12 @@ async def research_summary(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No runs found for this project — build the RDF first.",
         )
-    fingerprint = await _summary_fingerprint(run_ids, db)
+
+    wikibase_url: str = getattr(get_settings(), "wikibase_sparql_url", "") or ""
+    studio_fps = await studio_fingerprints_for_project(run_ids, db)
+    fingerprint = await _summary_fingerprint(
+        run_ids, db, studio_fps=studio_fps, wikibase_url=wikibase_url,
+    )
     cache_key = {"project": str(project_id), "fp": fingerprint}
 
     cached = await read_from_inference_cache(
@@ -182,9 +218,29 @@ async def research_summary(
     if cached is not None and _is_coherent_summary(cached):
         return cached
 
-    # Miss, or a stale incoherent cached zero → recompute from the live graph.
+    # Miss, or a stale incoherent cached zero → recompute from all sources.
     graph = await _load_or_404(project_id, auth, db)
-    fresh = await asyncio.to_thread(query_summary, graph)
+
+    # Wikidata source: the run's already-built Studio items (no rebuild).
+    # Wikibase source: live SPARQL, only when configured. Either failing
+    # never aborts the request — that source just contributes nothing.
+    try:
+        studio_items = await studio_items_for_project(run_ids, db)
+    except Exception as exc:
+        logger.warning("studio items unavailable for project %s: %s", project_id, exc)
+        studio_items = []
+
+    wikibase_entities = []
+    if wikibase_url:
+        try:
+            wikibase_entities = await wikibase_provider(wikibase_url, run_wikibase_sparql)
+        except Exception as exc:
+            logger.warning("wikibase source unavailable for project %s: %s", project_id, exc)
+
+    fresh = await asyncio.to_thread(
+        compute_aggregated_summary, graph, studio_items, wikibase_entities,
+        wikibase_configured=bool(wikibase_url),
+    )
 
     # If the live graph itself is incoherent (triples but no entities), the
     # local TTL was likely seeded truncated during a bad window — re-seed it
@@ -192,7 +248,10 @@ async def research_summary(
     if not _is_coherent_summary(fresh):
         await _restore_missing_ttls(run_ids, db, force=True)
         graph = await load_merged_graph(run_ids)
-        fresh = await asyncio.to_thread(query_summary, graph)
+        fresh = await asyncio.to_thread(
+            compute_aggregated_summary, graph, studio_items, wikibase_entities,
+            wikibase_configured=bool(wikibase_url),
+        )
 
     if _is_coherent_summary(fresh):
         await write_to_inference_cache(
@@ -201,7 +260,7 @@ async def research_summary(
         )
     else:
         logger.warning(
-            "research summary incoherent for project %s (triples=%s, entities=0); "
+            "research summary incoherent for project %s (triples=%s); "
             "not caching", project_id, fresh.get("triples"),
         )
     return fresh

@@ -201,6 +201,20 @@ def _sparql_json_to_response(data: dict[str, Any]) -> SparqlResponse:
     return SparqlResponse(columns=vars_list, rows=rows, truncated=truncated)
 
 
+async def run_wikibase_sparql(wikibase_url: str, query: str) -> dict[str, Any]:
+    """Execute a SPARQL query against a Wikibase endpoint, returning the raw
+    SPARQL 1.1 JSON result. Raises on timeout / HTTP / transport errors so
+    callers can decide whether to surface a 5xx or degrade gracefully."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+        resp = await client.get(
+            wikibase_url,
+            params={"query": query, "format": "json"},
+            headers={"Accept": "application/sparql-results+json"},
+        )
+        resp.raise_for_status()
+    return resp.json()
+
+
 @router.post("/projects/{project_id}/research/sparql/wikibase")
 async def sparql_wikibase(
     project_id: uuid.UUID,
@@ -221,14 +235,7 @@ async def sparql_wikibase(
         )
 
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
-            resp = await client.get(
-                wikibase_url,
-                params={"query": body.query, "format": "json"},
-                headers={"Accept": "application/sparql-results+json"},
-            )
-            resp.raise_for_status()
-        return _sparql_json_to_response(resp.json())
+        return _sparql_json_to_response(await run_wikibase_sparql(wikibase_url, body.query))
     except httpx.TimeoutException:
         raise HTTPException(status_code=status.HTTP_408_REQUEST_TIMEOUT, detail="Wikibase query timed out.")
     except httpx.HTTPStatusError as exc:

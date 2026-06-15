@@ -55,6 +55,53 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 
 
+async def studio_items_for_project(
+    run_ids: list[str], db: AsyncSession, *, approved_only: bool = True,
+) -> list[dict[str, Any]]:
+    """All built Wikidata Studio item dicts cached across a project's runs.
+
+    Reads the ``WikidataStudioCache`` rows only — it never triggers a
+    (slow, network-bound) rebuild. Runs without a cached build contribute
+    nothing. Each item dict already carries ``local_id`` + ``existing_qid``
+    (stamped in ``build_studio`` before the cache upsert).
+    """
+    if not run_ids:
+        return []
+    rows = (
+        await db.execute(
+            select(WikidataStudioCache).where(
+                WikidataStudioCache.run_id.in_([uuid.UUID(r) for r in run_ids]),
+                WikidataStudioCache.approved_only == approved_only,
+            )
+        )
+    ).scalars().all()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        items.extend(row.result_items or [])
+    return items
+
+
+async def studio_fingerprints_for_project(
+    run_ids: list[str], db: AsyncSession, *, approved_only: bool = True,
+) -> dict[str, str]:
+    """Per-run Wikidata Studio cache fingerprint, for summary cache-keying.
+
+    Folding this into the research-summary cache key makes approving a match
+    (which changes the Studio fingerprint) invalidate the aggregated summary.
+    """
+    if not run_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(WikidataStudioCache).where(
+                WikidataStudioCache.run_id.in_([uuid.UUID(r) for r in run_ids]),
+                WikidataStudioCache.approved_only == approved_only,
+            )
+        )
+    ).scalars().all()
+    return {str(row.run_id): row.input_fingerprint for row in rows}
+
+
 class StudioSummary(BaseModel):
     total_items: int
     manuscripts: int
