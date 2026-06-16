@@ -36,6 +36,18 @@ def _person(source, *, qid=None, viaf=None, nli=None, label="P", uri=None):
     )
 
 
+def _authority_match(role: str, text: str, *, qid: str | None = None) -> dict[str, object]:
+    return {
+        "entity_kind": "person",
+        "entity_text": text,
+        "matched_name": text,
+        "role": role,
+        "wikidata_qid": qid or "",
+        "viaf_id": "",
+        "mazal_id": "",
+    }
+
+
 class TestMergeEntities:
     def test_rdf_cn_merges_with_wikidata_qid_plus_cn(self):
         """An RDF manuscript known only by control number and a Wikidata
@@ -178,3 +190,25 @@ class TestComputeAggregatedSummaryOverRdf:
         assert ms["total"] == 1                       # merged, not double-counted
         assert ms["by_source"] == {"rdf": 1, "wikibase": 0, "wikidata": 1}
         assert s["sources_available"]["wikidata"] is True
+
+    def test_authority_matches_fill_person_roles_when_rdf_is_sparse(self):
+        graph = self._graph()
+        # Remove the role triples from the graph so the fallback path matters.
+        graph.remove((None, None, None))
+        graph.parse(data=f"""
+        @prefix hm: <{HM}> .
+        @prefix lrmoo: <{LRMOO}> .
+        @prefix cidoc: <{CIDOC}> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        <{HM}MS_990001> a lrmoo:F4_Manifestation_Singleton ; rdfs:label "כתב יד" ;
+            hm:has_work <{HM}W1> .
+        <{HM}W1> rdfs:label "ספר" .
+        <{HM}Person_x> a cidoc:E21_Person ; rdfs:label "אדם" .
+        """, format="turtle")
+        authority_matches = [
+            _authority_match("סופר", "אדם", qid="Q1"),
+            _authority_match("מחבר", "מחבר ב", qid="Q2"),
+            _authority_match("בעלים קודם", "בעלים ג", qid="Q3"),
+        ]
+        s = compute_aggregated_summary(graph, [], [], authority_matches, wikibase_configured=False)
+        assert s["persons_by_role"] == {"scribe": 1, "owner": 1, "author": 1}

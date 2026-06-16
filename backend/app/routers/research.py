@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
+from app.models.run import AuthorityMatch
 from app.models.project import Membership
 from app.models.rdf_artifact import RdfArtifact
 from app.models.run import Run
@@ -242,8 +243,27 @@ async def research_summary(
         except Exception as exc:
             logger.warning("wikibase source unavailable for project %s: %s", project_id, exc)
 
+    authority_match_rows = await db.execute(
+        select(AuthorityMatch).where(
+            AuthorityMatch.run_id.in_([uuid.UUID(run_id) for run_id in run_ids]),
+            AuthorityMatch.approved.is_(True),
+        )
+    )
+    authority_matches = [
+        {
+            "entity_kind": row.entity_kind,
+            "entity_text": row.entity_text,
+            "matched_name": row.matched_name,
+            "role": row.role,
+            "wikidata_qid": row.wikidata_qid,
+            "viaf_id": row.viaf_id,
+            "mazal_id": row.mazal_id,
+        }
+        for row in authority_match_rows.scalars().all()
+    ]
+
     fresh = await asyncio.to_thread(
-        compute_aggregated_summary, graph, studio_items, wikibase_entities,
+        compute_aggregated_summary, graph, studio_items, wikibase_entities, authority_matches,
         wikibase_configured=bool(wikibase_url),
     )
 
@@ -254,7 +274,7 @@ async def research_summary(
         await _restore_missing_ttls(run_ids, db, force=True)
         graph = await load_merged_graph(run_ids)
         fresh = await asyncio.to_thread(
-            compute_aggregated_summary, graph, studio_items, wikibase_entities,
+            compute_aggregated_summary, graph, studio_items, wikibase_entities, authority_matches,
             wikibase_configured=bool(wikibase_url),
         )
 

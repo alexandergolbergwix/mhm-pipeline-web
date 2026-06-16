@@ -26,6 +26,8 @@ from typing import Any
 
 import rdflib
 
+from converter.config.vocabularies import ROLE_MAPPINGS
+
 from app.pipeline.research_queries import (
     _AUTHOR_Q,
     _INIT_NS,
@@ -296,7 +298,108 @@ def rdf_persons_by_role(graph: rdflib.Graph) -> dict[str, int]:
     }
 
 
+_SCRIBE_PERSON_Q = """
+SELECT DISTINCT ?p WHERE {
+  ?ms hm:has_scribe ?p .
+  ?p rdf:type cidoc:E21_Person .
+}
+"""
+
+_OWNER_PERSON_Q = """
+SELECT DISTINCT ?p WHERE {
+  ?ms hm:has_owner ?p .
+  ?p rdf:type cidoc:E21_Person .
+}
+"""
+
+_AUTHOR_PERSON_Q = """
+SELECT DISTINCT ?p WHERE {
+  ?work hm:has_author ?p .
+  ?ms hm:has_work ?work .
+  ?p rdf:type cidoc:E21_Person .
+}
+"""
+
+
+def _rdf_role_entities(graph: rdflib.Graph, query: str) -> list[ProviderEntity]:
+    if len(graph) == 0:
+        return []
+    labels = _label_map(graph)
+    try:
+        rows = list(graph.query(query, initNs=_INIT_NS))
+    except Exception as exc:
+        logger.warning("rdf role query failed: %s", exc)
+        return []
+    out: list[ProviderEntity] = []
+    for row in rows:
+        uri = str(row.p)
+        out.append(_rdf_entity("person", uri, labels.get(uri, "")))
+    return out
+
+
+def _authority_role_entities(matches: list[dict[str, Any]] | None, role: str) -> list[ProviderEntity]:
+    out: list[ProviderEntity] = []
+    for match in matches or []:
+        if not isinstance(match, dict):
+            continue
+        if _role_bucket(match.get("role")) != role:
+            continue
+        if match.get("entity_kind") not in ("person", "organization"):
+            continue
+        label = str(match.get("entity_text") or match.get("matched_name") or "").strip()
+        if not label:
+            continue
+        out.append(ProviderEntity(
+            entity_type="person",
+            label=label,
+            source=SOURCE_WIKIDATA,
+            qid=match.get("wikidata_qid") or None,
+            viaf_id=match.get("viaf_id") or None,
+            nli_authority_id=match.get("mazal_id") or None,
+            raw_uri=label,
+        ))
+    return out
+
+
+def aggregated_persons_by_role(
+    graph: rdflib.Graph,
+    authority_matches: list[dict[str, Any]] | None,
+) -> dict[str, int]:
+    """Distinct people by role across RDF plus approved authority matches."""
+    role_entities = {
+        "scribe": _rdf_role_entities(graph, _SCRIBE_PERSON_Q),
+        "owner": _rdf_role_entities(graph, _OWNER_PERSON_Q),
+        "author": _rdf_role_entities(graph, _AUTHOR_PERSON_Q),
+    }
+    for role in ("scribe", "owner", "author"):
+        role_entities[role].extend(_authority_role_entities(authority_matches, role))
+    return {role: len(merge_entities(entities)) for role, entities in role_entities.items()}
+
+
 _STUDIO_TO_ENTITY_TYPE = {"manuscript": "manuscript", "person": "person", "work": "work"}
+
+_ROLE_SCRIBE = {"scribe", "transcriber", "copyist", "editor"}
+_ROLE_AUTHOR = {"author", "translator", "commentator"}
+
+
+def _normalize_role(role: str | None) -> str:
+    raw = (role or "").strip().lower().rstrip(".")
+    return ROLE_MAPPINGS.get(raw, raw)
+
+
+def _role_bucket(role: str | None) -> str | None:
+    normalized = _normalize_role(role)
+    if not normalized:
+        return None
+    if normalized in _ROLE_SCRIBE:
+        return "scribe"
+    if normalized in _ROLE_AUTHOR:
+        return "author"
+    if normalized.startswith("former_owner") or normalized.startswith("current_owner"):
+        return "owner"
+    if normalized in {"owner", "possessor", "provenance"}:
+        return "owner"
+    return None
 
 
 def wikidata_provider(items: list[dict[str, Any]] | None) -> list[ProviderEntity]:
@@ -431,6 +534,7 @@ def compute_aggregated_summary(
     graph: rdflib.Graph,
     studio_items: list[dict[str, Any]] | None,
     wikibase_entities: list[ProviderEntity] | None,
+    authority_matches: list[dict[str, Any]] | None = None,
     *,
     wikibase_configured: bool,
 ) -> dict[str, Any]:
@@ -449,5 +553,5 @@ def compute_aggregated_summary(
         SOURCE_WIKIBASE: wikibase_configured,
     }
     return build_aggregated_summary(
-        merged, rdf_persons_by_role(graph), len(graph), sources_available,
+        merged, aggregated_persons_by_role(graph, authority_matches), len(graph), sources_available,
     )
