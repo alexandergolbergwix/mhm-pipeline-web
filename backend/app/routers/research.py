@@ -46,6 +46,8 @@ from app.settings import get_settings
 router = APIRouter(tags=["research"])
 logger = logging.getLogger(__name__)
 
+_SUMMARY_ALGORITHM_VERSION = "linked-data-overview-v2"
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -98,6 +100,7 @@ async def _summary_fingerprint(
             parts.append(f"{run_id}:{built}:{row.triples_count or 0}")
         parts.append(f"studio:{run_id}:{studio_fps.get(run_id, 'none')}")
     parts.append(f"wb:{hashlib.sha256(wikibase_url.encode()).hexdigest()[:12]}")
+    parts.append(f"summary:{_SUMMARY_ALGORITHM_VERSION}")
     return "|".join(parts)
 
 
@@ -118,6 +121,8 @@ def _is_coherent_summary(summary: dict[str, Any]) -> bool:
         + (summary.get("total_places") or 0)
     )
     if triples > 0 and entities == 0:
+        return False
+    if triples > 0 and (summary.get("total_manuscripts") or 0) == 0:
         return False
     by_type = summary.get("by_type")
     if isinstance(by_type, dict):

@@ -1,10 +1,10 @@
-"""Regression: Linked Data Explorer Overview must never serve a stale
-0/0/0/0 summary when the live graph has entities (the recurring bug fixed
-2026-06-14).
+"""Regression: Linked Data Explorer Overview must never serve a stale zero
+summary when the live graph has entities (the recurring bug fixed 2026-06-14).
 
 Two root causes, both covered here:
-  1. coherence — a summary with triples>0 but every entity count 0 is a
-     bad-window read; it must not be served from cache nor written to it.
+  1. coherence — a summary with triples>0 but every entity count 0, or no
+     manuscripts, is a bad-window read; it must not be served from cache nor
+     written to it.
   2. fingerprint — the cache key folds in RdfArtifact.built_at + triple
      count, so an RDF rebuild (content changes, run-id set does not)
      invalidates it.
@@ -12,11 +12,12 @@ Two root causes, both covered here:
 from __future__ import annotations
 
 import shutil
+import uuid
 
 import pytest
 import pytest_asyncio
 
-from app.routers.research import _is_coherent_summary
+from app.routers.research import _is_coherent_summary, _summary_fingerprint
 
 _HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
 _LRMOO = "http://iflastandards.info/ns/lrm/lrmoo/"
@@ -37,12 +38,21 @@ _INCOHERENT = {
     "triples": 9999,  # bad-window: triples but no entities
 }
 
+_PARTIAL_INCOHERENT = {
+    "total_manuscripts": 0, "total_works": 210, "total_persons": 0,
+    "total_places": 0, "persons_by_role": {"scribe": 0, "owner": 0, "author": 0},
+    "triples": 7826,
+}
+
 
 # ── unit: coherence predicate ────────────────────────────────────────────
 
 class TestIsCoherentSummary:
     def test_triples_but_zero_entities_is_incoherent(self) -> None:
         assert _is_coherent_summary(_INCOHERENT) is False
+
+    def test_triples_but_zero_manuscripts_is_incoherent(self) -> None:
+        assert _is_coherent_summary(_PARTIAL_INCOHERENT) is False
 
     def test_real_counts_are_coherent(self) -> None:
         assert _is_coherent_summary(
@@ -57,15 +67,23 @@ class TestIsCoherentSummary:
              "total_places": 0, "triples": 0}
         ) is True
 
-    def test_partial_entities_coherent(self) -> None:
-        # 0 manuscripts but some persons → still coherent (only all-zero is bad).
+    def test_partial_entities_with_manuscripts_coherent(self) -> None:
+        # Places/persons can legitimately be absent in a tiny corpus; manuscripts cannot.
         assert _is_coherent_summary(
-            {"total_manuscripts": 0, "total_works": 0, "total_persons": 3,
+            {"total_manuscripts": 1, "total_works": 0, "total_persons": 0,
              "total_places": 0, "triples": 100}
         ) is True
 
     def test_non_dict_is_incoherent(self) -> None:
         assert _is_coherent_summary(None) is False  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_summary_fingerprint_includes_algorithm_version(db_session) -> None:
+    fp = await _summary_fingerprint(
+        [str(uuid.uuid4())], db_session, studio_fps={}, wikibase_url="",
+    )
+    assert "summary:linked-data-overview-v2" in fp
 
 
 # ── integration: poisoned cache is rejected, recomputed, overwritten ──────
