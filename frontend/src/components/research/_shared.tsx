@@ -1,4 +1,5 @@
 import React from "react";
+import {Glass} from "@/components/glass";
 
 export function Spinner() {
   return (
@@ -11,17 +12,17 @@ export function Spinner() {
 
 export function ErrorBox({msg}: {msg: string}) {
   return (
-    <div className="glass p-4 text-red-400 text-sm rounded-lg border border-red-500/30">
+    <Glass className="p-4 text-red-400 text-sm rounded-lg border border-red-500/30">
       {msg}
-    </div>
+    </Glass>
   );
 }
 
 export function EmptyBox({msg}: {msg: string}) {
   return (
-    <div className="glass p-6 text-center muted text-sm rounded-lg">
+    <Glass className="p-6 text-center muted text-sm rounded-lg">
       {msg}
-    </div>
+    </Glass>
   );
 }
 
@@ -39,7 +40,7 @@ export function PanelShell({
   empty?: boolean;
 }) {
   return (
-    <section className="glass p-6 space-y-4">
+    <Glass as="section" className="p-6 space-y-4">
       <div className="space-y-0.5">
         <h2 className="text-lg font-semibold text-ink">{title}</h2>
         {subtitle && <p className="muted text-sm">{subtitle}</p>}
@@ -54,7 +55,7 @@ export function PanelShell({
           No data yet — build the RDF graph for your runs first.
         </p>
       ) : children}
-    </section>
+    </Glass>
   );
 }
 

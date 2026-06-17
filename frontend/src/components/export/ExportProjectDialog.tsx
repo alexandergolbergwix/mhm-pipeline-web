@@ -22,6 +22,7 @@ import {
   Export,
   type ExportEntityType,
 } from "@/api/export";
+import {Glass} from "@/components/glass";
 
 export interface ExportProjectDialogProps {
   projectId: string;
@@ -121,7 +122,7 @@ export function ExportProjectDialog({
       aria-modal="true"
       aria-labelledby="export-project-dialog-title"
     >
-      <div className="glass flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden">
+      <Glass className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Export project</div>
@@ -260,7 +261,7 @@ export function ExportProjectDialog({
             {busy ? "Preparing export…" : "Export"}
           </button>
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

@@ -29,6 +29,7 @@ import {
   type EntitySnapshotRow,
   type EntityType,
 } from "@/api/history";
+import {Glass} from "@/components/glass";
 
 
 const HistoryDiffModal = lazy(() =>
@@ -319,12 +320,9 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
   };
 
   return (
-    <section
-      data-testid="history-timeline"
+    <Glass as="section" className="flex max-h-[88vh] w-full flex-col overflow-hidden" data-testid="history-timeline"
       data-entity-type={entityType}
-      data-entity-id={entityId}
-      className="glass flex max-h-[88vh] w-full flex-col overflow-hidden"
-    >
+      data-entity-id={entityId}>
       <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
         <div className="min-w-0">
           <div className="kicker">History</div>
@@ -452,7 +450,7 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
           data-testid="revert-confirm-dialog"
           data-target-rev={revertDialog.targetRev}
         >
-          <div className="glass flex w-full max-w-md flex-col overflow-hidden">
+          <Glass className="flex w-full max-w-md flex-col overflow-hidden">
             <div className="border-b border-white/10 px-4 py-3">
               <div className="kicker">Revert</div>
               <div className="text-sm text-ink">
@@ -506,7 +504,7 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
                 </button>
               </div>
             </div>
-          </div>
+          </Glass>
         </div>
       ) : null}
 
@@ -518,7 +516,7 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
               data-testid="diff-modal-loading"
               role="status"
             >
-              <div className="glass px-4 py-3 text-sm muted">Loading diff…</div>
+              <Glass className="px-4 py-3 text-sm muted">Loading diff…</Glass>
             </div>
           }
         >
@@ -532,7 +530,7 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
           />
         </Suspense>
       ) : null}
-    </section>
+    </Glass>
   );
 }
 

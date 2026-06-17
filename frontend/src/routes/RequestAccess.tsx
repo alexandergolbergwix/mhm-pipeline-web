@@ -2,6 +2,7 @@ import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { AccessRequests } from "@/api/accessRequests";
+import {Glass} from "@/components/glass";
 
 declare global {
   interface Window {
@@ -98,10 +99,7 @@ export default function RequestAccess() {
   if (success) {
     return (
       <div className="grid place-items-center min-h-screen px-4">
-        <div
-          className="glass p-8 w-full max-w-md space-y-4"
-          data-testid="success-message"
-        >
+        <Glass className="p-8 w-full max-w-md space-y-4" data-testid="success-message">
           <header className="space-y-1">
             <div className="kicker">Bar-Ilan University · MHM</div>
             <h1 className="text-2xl font-semibold tracking-tight">
@@ -112,18 +110,16 @@ export default function RequestAccess() {
             If your email is eligible, you&apos;ll receive next steps shortly.
             Please check your inbox.
           </p>
-        </div>
+        </Glass>
       </div>
     );
   }
 
   return (
     <div className="grid place-items-center min-h-screen px-4 py-8">
-      <form
-        onSubmit={onSubmit}
-        className="glass p-8 w-full max-w-lg space-y-5"
-        data-testid="request-access-form"
-      >
+      <Glass as="form" className="p-8 w-full max-w-lg space-y-5" onSubmit={onSubmit}
+        
+        data-testid="request-access-form">
         <header className="space-y-1">
           <div className="kicker">Bar-Ilan University · MHM</div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -266,7 +262,7 @@ export default function RequestAccess() {
             Sign in
           </a>
         </div>
-      </form>
+      </Glass>
     </div>
   );
 }

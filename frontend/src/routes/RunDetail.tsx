@@ -16,6 +16,7 @@ import { AuthorityTable } from "@/components/authority/AuthorityTable";
 import { AuthorityMatchingHelp } from "@/components/authority/AuthorityMatchingHelp";
 import { AuthorityDetailDrawer } from "@/components/authority/AuthorityDetailDrawer";
 import { AuthorityAutoApproveRuleBuilder } from "@/components/authority/AuthorityAutoApproveRuleBuilder";
+import {Glass, GlassPill} from "@/components/glass";
 
 type EnrichPhase = "idle" | "running" | "done" | "error";
 
@@ -216,14 +217,14 @@ export default function RunDetail() {
     : "";
 
   if (error)
-    return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
+    return <Layout><Glass className="p-6 text-red-300">{error}</Glass></Layout>;
   if (!run)
     return <Layout><p className="muted">Loading run…</p></Layout>;
 
   return (
     <Layout>
       <div className="space-y-6">
-        <section className="glass p-6 space-y-2">
+        <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">
             Run ·{" "}
             <Link to={`/projects/${run.project_id}`} className="hover:text-ink underline">
@@ -269,9 +270,9 @@ export default function RunDetail() {
             {new Date(run.created_at).toLocaleString()}
           </p>
           {run.error && <p className="text-red-300 text-sm">{run.error}</p>}
-        </section>
+        </Glass>
 
-        <section className="glass p-6 space-y-4">
+        <Glass as="section" className="p-6 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="kicker">Authority candidates</div>
@@ -374,7 +375,7 @@ export default function RunDetail() {
 
           {/* Live re-enrichment progress panel */}
           {enrichPhase === "running" && (
-            <div className="glass rounded-lg p-4 space-y-3 border border-biu-sky/20">
+            <Glass className="rounded-lg p-4 space-y-3 border border-biu-sky/20">
               <div className="flex items-center justify-between gap-3">
                 <div className="kicker text-biu-sky flex items-center gap-2">
                   <span className="animate-pulse">●</span> Re-enriching authority candidates…
@@ -399,9 +400,9 @@ export default function RunDetail() {
                       <span className="muted shrink-0">Entity:</span>
                       <span className="text-ink truncate max-w-xs">{enrichCurrentEntity}</span>
                       {enrichCurrentMatched && enrichCurrentSource && (
-                        <span className="glass-pill px-2 py-[1px] text-[10px] uppercase tracking-wider text-biu-sky shrink-0">
+                        <GlassPill className="px-2 py-[1px] text-[10px] uppercase tracking-wider text-biu-sky shrink-0">
                           {enrichCurrentSource}
-                        </span>
+                        </GlassPill>
                       )}
                       {enrichCurrentMatched === false && (
                         <span className="muted text-[10px] shrink-0">no match</span>
@@ -416,14 +417,14 @@ export default function RunDetail() {
                   )}
                 </span>
               </div>
-            </div>
+            </Glass>
           )}
 
           {/* Error banner */}
           {enrichPhase === "error" && enrichError && (
-            <div className="glass rounded-lg p-3 border border-red-400/30 text-red-300 text-sm">
+            <Glass variant="compact" className="rounded-lg p-3 border border-red-400/30 text-red-300 text-sm">
               ✕ Re-enrichment failed: {enrichError}
-            </div>
+            </Glass>
           )}
 
           <AuthorityMatchingHelp />
@@ -447,7 +448,7 @@ export default function RunDetail() {
             onMatchChanged={patchMatch}
             onFilteredChange={setFilteredMatchIds}
           />
-        </section>
+        </Glass>
       </div>
 
       <AuthorityDetailDrawer
@@ -498,5 +499,5 @@ function StatusPill({ status }: { status: string }) {
     : status === "running" ? "text-yellow-300"
     : status === "failed"  ? "text-red-300"
     : "muted";
-  return <span className={`glass-pill px-3 py-1 text-[10px] kicker ${tone}`}>{status}</span>;
+  return <GlassPill className={`px-3 py-1 text-[10px] kicker ${tone}`}>{status}</GlassPill>;
 }

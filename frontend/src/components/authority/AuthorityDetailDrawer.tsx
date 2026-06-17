@@ -22,6 +22,7 @@ import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import { ConfidenceBadge, VerdictBadge } from "@/components/MatchDetailDialog";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import {Glass, GlassPill} from "@/components/glass";
 
 export interface AuthorityDetailDrawerProps {
   match:          AuthorityMatch | null;   // null = drawer closed
@@ -100,8 +101,7 @@ export function AuthorityDetailDrawer({
 
   return (
     <>
-      <aside
-        ref={drawerRef}
+      <Glass as="aside" className="flex flex-col p-0" ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="authority-detail-drawer-title"
@@ -116,9 +116,7 @@ export function AuthorityDetailDrawer({
           transform:     open ? "translateX(0)" : "translateX(110%)",
           transition:    "transform 220ms ease-out",
           pointerEvents: open ? "auto" : "none",
-        }}
-        className="glass flex flex-col p-0"
-      >
+        }}>
         {/* Header */}
         <header className="flex items-start justify-between gap-3 px-4 pt-4 pb-2 border-b border-white/5">
           <div className="min-w-0">
@@ -208,7 +206,7 @@ export function AuthorityDetailDrawer({
             </>
           )}
         </div>
-      </aside>
+      </Glass>
 
       {/* Edit dialog — z-[60] so it floats above the drawer */}
       {editing && match && (
@@ -228,17 +226,14 @@ export function AuthorityDetailDrawer({
 
       {/* Nested history drawer */}
       {historyFor && (
-        <aside
-          data-testid="authority-detail-history-drawer"
-          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
-        >
+        <Glass as="aside" variant="drawer" className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="authority-detail-history-drawer">
           <HistoryTimeline
             projectId={projectId}
             entityType="authority_match"
             entityId={historyFor.id}
             onClose={() => setHistoryFor(null)}
           />
-        </aside>
+        </Glass>
       )}
     </>
   );
@@ -259,7 +254,7 @@ function MatchCard({
   const prefHeb = strOr(payload.preferred_name_heb, "");
 
   return (
-    <section className="glass p-3 space-y-2" data-testid="drawer-card-match">
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="drawer-card-match">
       <div className="kicker">🔍 Match</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <LabeledValue label="Matched authority" value={match.matched_name || "—"} />
@@ -283,7 +278,7 @@ function MatchCard({
               className="text-biu-sky text-[11px] hover:underline">
         View MARC record ↗
       </button>
-    </section>
+    </Glass>
   );
 }
 
@@ -300,7 +295,7 @@ function ConfidenceCard({
   const reasoning = strOr(payload.reasoning, "");
 
   return (
-    <section className="glass p-3 space-y-2" data-testid="drawer-card-confidence">
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="drawer-card-confidence">
       <div className="kicker">📊 Confidence &amp; sources</div>
       <div className="flex items-center gap-3">
         <ConfidenceBadge confidence={match.confidence} />
@@ -317,10 +312,9 @@ function ConfidenceCard({
       {sources.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {sources.map((s) => (
-            <span key={s}
-                  className="glass-pill px-2 py-0.5 text-[10px] uppercase tracking-wider text-biu-sky">
+            <GlassPill className="px-2 py-0.5 text-[10px] uppercase tracking-wider text-biu-sky" key={s}>
               {s}
-            </span>
+            </GlassPill>
           ))}
         </div>
       )}
@@ -338,7 +332,7 @@ function ConfidenceCard({
           </ul>
         </div>
       )}
-    </section>
+    </Glass>
   );
 }
 
@@ -360,21 +354,21 @@ function DatesCard({
   if (!msYear && !birth && !death) return null;
 
   return (
-    <section className="glass p-3 space-y-2" data-testid="drawer-card-dates">
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="drawer-card-dates">
       <div className="kicker">📅 Dates</div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="glass-pill py-2">
+        <GlassPill as="div" className="py-2">
           <div className="muted text-[10px] uppercase">Manuscript</div>
           <div className="text-sm text-ink">{msYear ?? "—"}</div>
-        </div>
-        <div className="glass-pill py-2">
+        </GlassPill>
+        <GlassPill as="div" className="py-2">
           <div className="muted text-[10px] uppercase">Born</div>
           <div className="text-sm text-ink">{birth ?? "—"}</div>
-        </div>
-        <div className="glass-pill py-2">
+        </GlassPill>
+        <GlassPill as="div" className="py-2">
           <div className="muted text-[10px] uppercase">Died</div>
           <div className="text-sm text-ink">{death ?? "—"}</div>
-        </div>
+        </GlassPill>
       </div>
       <p className="text-[11px]">
         Role kind: <b className="text-ink">{role}</b>.{" "}
@@ -394,7 +388,7 @@ function DatesCard({
                 </span>
               : <span className="muted">— Date guard skipped: no birth/death years available.</span>}
       </p>
-    </section>
+    </Glass>
   );
 }
 
@@ -410,17 +404,17 @@ function AiVerdictCard({ payload }: { payload: Record<string, unknown> }) {
 
   if (!verdict) {
     return (
-      <section className="glass p-3" data-testid="drawer-card-ai-verdict">
+      <Glass as="section" variant="compact" className="p-3" data-testid="drawer-card-ai-verdict">
         <div className="kicker">🤖 AI verification</div>
         <div className="muted text-[11px] mt-1">
           Not yet judged. Use the <strong className="text-ink">Verify with AI</strong> button above.
         </div>
-      </section>
+      </Glass>
     );
   }
 
   return (
-    <section className="glass p-3 space-y-2" data-testid="drawer-card-ai-verdict">
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="drawer-card-ai-verdict">
       <div className="kicker">🤖 AI verification</div>
       <div className="flex items-center gap-3 flex-wrap">
         <VerdictBadge overall={verdict.overall} />
@@ -437,7 +431,7 @@ function AiVerdictCard({ payload }: { payload: Record<string, unknown> }) {
       <div className="muted text-[10px]">
         Judged: {new Date(verdict.judged_at).toLocaleString()}
       </div>
-    </section>
+    </Glass>
   );
 }
 
@@ -458,7 +452,7 @@ function KimaGeoInline({ payload }: { payload: Record<string, unknown> }) {
     ? `https://www.openstreetmap.org/?mlat=${latN}&mlon=${lonN}#map=12/${latN}/${lonN}`
     : undefined;
   return (
-    <div className="glass-pill p-2 space-y-0.5 text-[11px]">
+    <GlassPill as="div" className="p-2 space-y-0.5 text-[11px]">
       <div className="muted text-[10px] uppercase">KIMA location</div>
       {heb && <div><span className="muted">He: </span>{heb}</div>}
       {rom && <div><span className="muted">Rom: </span>{rom}</div>}
@@ -472,7 +466,7 @@ function KimaGeoInline({ payload }: { payload: Record<string, unknown> }) {
         </div>
       )}
       {geonames && <div className="muted">GeoNames: {geonames}</div>}
-    </div>
+    </GlassPill>
   );
 }
 

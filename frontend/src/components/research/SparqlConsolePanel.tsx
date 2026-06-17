@@ -6,6 +6,7 @@ import {ApiError} from "@/api/client";
 import {encodePermalink, decodePermalink} from "./permalink";
 import {EvidenceDrawer} from "./EvidenceDrawer";
 import {PanelShell} from "./_shared";
+import {Glass} from "@/components/glass";
 
 // ── Query templates ──────────────────────────────────────────────────────────
 
@@ -556,9 +557,9 @@ export default function SparqlConsolePanel({projectId}: {projectId: string}) {
 
         {/* Error */}
         {error && (
-          <div className="glass p-3 text-red-400 text-sm rounded-lg border border-red-500/30">
+          <Glass variant="compact" className="p-3 text-red-400 text-sm rounded-lg border border-red-500/30">
             {error}
-          </div>
+          </Glass>
         )}
 
         {/* Results */}

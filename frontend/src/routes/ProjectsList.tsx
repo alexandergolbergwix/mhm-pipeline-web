@@ -5,6 +5,7 @@ import { Layout } from "@/components/Layout";
 import { Projects, type ProjectListItem } from "@/api/projects";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/stores/auth";
+import {Glass, GlassPill} from "@/components/glass";
 
 export default function ProjectsList() {
   const { user } = useAuth();
@@ -38,7 +39,7 @@ export default function ProjectsList() {
   return (
     <Layout>
       <div className="space-y-6">
-        <section className="glass p-8 space-y-2">
+        <Glass as="section" className="p-8 space-y-2">
           <div className="kicker">Welcome back</div>
           <div className="flex items-baseline justify-between flex-wrap gap-3">
             <h2 className="text-2xl font-semibold">Your projects</h2>
@@ -54,10 +55,10 @@ export default function ProjectsList() {
             matches, approvals, history, and the people you've invited to
             collaborate on it.
           </p>
-        </section>
+        </Glass>
 
         {creating && (
-          <section className="glass p-6 space-y-3">
+          <Glass as="section" className="p-6 space-y-3">
             <div className="kicker">New project</div>
             <form onSubmit={onCreate} className="space-y-3">
               <input className="input-glass" placeholder="Project name (e.g. NLI 100 richest)"
@@ -72,7 +73,7 @@ export default function ProjectsList() {
                 </button>
               </div>
             </form>
-          </section>
+          </Glass>
         )}
 
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -80,21 +81,18 @@ export default function ProjectsList() {
             <p className="muted">Loading…</p>
           )}
           {items?.length === 0 && (
-            <article className="glass p-6 col-span-full">
+            <Glass as="article" className="p-6 col-span-full">
               <div className="kicker">Empty</div>
               <p className="muted">No projects yet — click <b className="text-ink">New project</b> above to create your first one.</p>
-            </article>
+            </Glass>
           )}
           {items?.map((p) => (
-            <Link
-              key={p.id} to={`/projects/${p.id}`}
-              className="glass p-6 space-y-2 hover:scale-[1.01] transition"
-            >
+            <Glass as={Link} className="p-6 space-y-2 hover:scale-[1.01] transition" key={p.id} to={`/projects/${p.id}`}>
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-medium truncate">{p.name}</h3>
-                <span className="glass-pill px-2.5 py-0.5 text-[10px] kicker">
+                <GlassPill className="px-2.5 py-0.5 text-[10px] kicker">
                   {p.role}
-                </span>
+                </GlassPill>
               </div>
               <p className="text-sm muted line-clamp-2 min-h-[2.5em]">
                 {p.description || "No description yet."}
@@ -103,7 +101,7 @@ export default function ProjectsList() {
                 <span>{p.member_count} member{p.member_count === 1 ? "" : "s"}</span>
                 <span>{new Date(p.created_at).toLocaleDateString()}</span>
               </div>
-            </Link>
+            </Glass>
           ))}
         </section>
 

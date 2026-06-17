@@ -1,6 +1,7 @@
 import {Link} from "react-router-dom";
 import {researchApi, type ResearchSummary} from "@/api/research";
 import {useAsync} from "./_shared";
+import {Glass} from "@/components/glass";
 
 export function ProvenanceHeader({
   projectId,
@@ -15,7 +16,7 @@ export function ProvenanceHeader({
   );
 
   return (
-    <div className="glass p-4 rounded-xl border border-biu-sky/20 bg-biu-sky/5 space-y-2">
+    <Glass className="p-4 rounded-xl border border-biu-sky/20 bg-biu-sky/5 space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-biu-sky text-lg">🔗</span>
@@ -47,7 +48,7 @@ export function ProvenanceHeader({
           </span>
         </div>
       ) : null}
-    </div>
+    </Glass>
   );
 }
 

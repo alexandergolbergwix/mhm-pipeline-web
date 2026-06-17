@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { AccessRequests } from "@/api/accessRequests";
 import { ApiError } from "@/api/client";
+import {Glass} from "@/components/glass";
 
 type ConfirmStatus = "confirmed" | "expired" | "already_used";
 
@@ -69,7 +70,7 @@ export default function ConfirmRequest() {
       data-testid="confirm-page"
       className="grid place-items-center min-h-screen px-4"
     >
-      <div className="glass p-8 w-full max-w-sm space-y-5">
+      <Glass className="p-8 w-full max-w-sm space-y-5">
         <header className="space-y-1">
           <div className="kicker">Access request</div>
           <h1 className="text-2xl font-semibold">
@@ -103,7 +104,7 @@ export default function ConfirmRequest() {
             {error}
           </p>
         )}
-      </div>
+      </Glass>
     </div>
   );
 }

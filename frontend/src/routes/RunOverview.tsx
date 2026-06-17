@@ -22,6 +22,7 @@ import { Extraction, type ExtractionStatus } from "@/api/extraction";
 import { Rdf, type RdfStatus } from "@/api/rdf";
 import { Runs, type RunDetail } from "@/api/runs";
 import { Studio, type StudioBuild } from "@/api/wikidataStudio";
+import {Glass, GlassPill} from "@/components/glass";
 
 
 export default function RunOverview() {
@@ -76,7 +77,7 @@ export default function RunOverview() {
   if (runError) {
     return (
       <Layout>
-        <div className="glass p-6 text-red-300">{runError}</div>
+        <Glass className="p-6 text-red-300">{runError}</Glass>
       </Layout>
     );
   }
@@ -87,7 +88,7 @@ export default function RunOverview() {
   return (
     <Layout>
       <div className="space-y-6">
-        <section className="glass p-6 space-y-2">
+        <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">
             Run · <Link to={`/projects/${run.project_id}`} className="hover:text-ink underline">
               back to project
@@ -103,7 +104,7 @@ export default function RunOverview() {
             {new Date(run.created_at).toLocaleString()}
           </p>
           {run.error && <p className="text-red-300 text-sm">{run.error}</p>}
-        </section>
+        </Glass>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <StageTile
@@ -185,7 +186,7 @@ interface StageTileProps {
 
 function StageTile(props: StageTileProps) {
   const inner = (
-    <div className={`glass p-5 space-y-3 h-full transition ${
+    <Glass className={`p-5 space-y-3 h-full transition ${
       props.disabled ? "opacity-60" : "hover:bg-white/[0.04]"
     }`}>
       <div className="flex items-center justify-between gap-2">
@@ -195,7 +196,7 @@ function StageTile(props: StageTileProps) {
       <h3 className="text-lg font-medium">{props.title}</h3>
       <p className="muted text-sm">{props.description}</p>
       <p className="text-sm">{props.stats}</p>
-    </div>
+    </Glass>
   );
   if (props.disabled) {
     return <div className="block">{inner}</div>;
@@ -285,9 +286,9 @@ function Pill({
     : tone === "err"  ? "text-red-300"
     : "muted";
   return (
-    <span className={`glass-pill px-3 py-1 text-[10px] kicker ${className}`}>
+    <GlassPill className={`px-3 py-1 text-[10px] kicker ${className}`}>
       {children}
-    </span>
+    </GlassPill>
   );
 }
 

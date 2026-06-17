@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import { api, ApiError } from "@/api/client";
 import { useAuth } from "@/stores/auth";
+import {Glass} from "@/components/glass";
 
 type Role = "admin" | "editor";
 
@@ -45,10 +46,10 @@ export default function AdminInvites() {
   if (user?.role !== "admin") {
     return (
       <AdminLayout>
-        <div className="glass p-8">
+        <Glass className="p-8">
           <h2 className="text-xl font-semibold">Admin only</h2>
           <p className="muted mt-2">Your role doesn't permit invitation management.</p>
-        </div>
+        </Glass>
       </AdminLayout>
     );
   }
@@ -82,7 +83,7 @@ export default function AdminInvites() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <section className="glass p-6">
+        <Glass as="section" className="p-6">
           <div className="kicker mb-1">Admin · invitations</div>
           <h2 className="text-xl font-semibold">Invite a teammate</h2>
           <form onSubmit={createInvite} className="grid md:grid-cols-4 gap-3 mt-4">
@@ -108,10 +109,10 @@ export default function AdminInvites() {
             </button>
           </form>
           {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
-        </section>
+        </Glass>
 
         {lastCreated && (
-          <section className="glass p-6 space-y-2">
+          <Glass as="section" className="p-6 space-y-2">
             <div className="kicker">Just created</div>
             <p className="text-sm">
               Send this one-time link to <b>{lastCreated.email}</b>. We never
@@ -128,10 +129,10 @@ export default function AdminInvites() {
             >
               Copy link
             </button>
-          </section>
+          </Glass>
         )}
 
-        <section className="glass p-6 space-y-3">
+        <Glass as="section" className="p-6 space-y-3">
           <h3 className="text-lg font-medium">All invitations</h3>
           <table className="w-full text-sm">
             <thead className="muted text-left">
@@ -170,7 +171,7 @@ export default function AdminInvites() {
               )}
             </tbody>
           </table>
-        </section>
+        </Glass>
       </div>
     </AdminLayout>
   );

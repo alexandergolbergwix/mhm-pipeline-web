@@ -1,4 +1,5 @@
 import {createPortal} from "react-dom";
+import {Glass} from "@/components/glass";
 
 interface Props {
   open: boolean;
@@ -28,7 +29,7 @@ export function ConfirmDestructiveDialog({
       role="dialog"
       aria-modal="true"
     >
-      <div className="glass p-6 w-full max-w-md space-y-4">
+      <Glass className="p-6 w-full max-w-md space-y-4">
         <div>
           <div className="kicker mb-1">Confirm action</div>
           <h3 className="text-lg font-semibold">{title}</h3>
@@ -57,7 +58,7 @@ export function ConfirmDestructiveDialog({
             {submitting ? "…" : confirmLabel}
           </button>
         </div>
-      </div>
+      </Glass>
     </div>
   );
 

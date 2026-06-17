@@ -34,3 +34,16 @@ def test_minimal_record_runs_shacl_without_ontology_prefix_errors() -> None:
         messages = [v.message for v in violations]
         assert not any("Unknown namespace prefix" in m for m in messages), messages
         assert isinstance(conforms, bool)
+
+
+@pytest.mark.skipif(not SHAPES_PATH.exists(), reason="SHACL shapes file missing")
+def test_large_corpus_ttl_does_not_crash_shacl_engine() -> None:
+    corpus = Path(
+        "/Users/alexandergo/Downloads/"
+        "run-48ba6c13-115c-4763-bff1-c08b9031b518-manuscripts (2).ttl"
+    )
+    if not corpus.exists():
+        pytest.skip("local corpus TTL fixture not present")
+    conforms, violations = _run_shacl_sync(corpus, SHAPES_PATH)
+    assert not any("Unknown namespace prefix" in v.message for v in violations)
+    assert isinstance(conforms, bool)

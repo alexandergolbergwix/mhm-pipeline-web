@@ -14,6 +14,7 @@ import {
 } from "@/api/hmoStudio";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
+import {Glass, GlassPill} from "@/components/glass";
 
 
 type Busy = null | "build" | "upload" | "coverage";
@@ -122,7 +123,7 @@ export default function HmoStudioRoute() {
     <Layout>
       <div className="space-y-6">
         {/* Breadcrumb + state pill */}
-        <section className="glass p-5 flex flex-wrap items-center gap-3 justify-between">
+        <Glass as="section" className="p-5 flex flex-wrap items-center gap-3 justify-between">
           <div className="flex flex-wrap items-baseline gap-2">
             <Link to="/" className="muted hover:text-ink text-sm">Projects</Link>
             <span className="muted">/</span>
@@ -134,17 +135,17 @@ export default function HmoStudioRoute() {
             <span className="muted">/</span>
             <h1 className="text-lg font-semibold">HMO Wikibase Studio</h1>
           </div>
-          <span className={`glass-pill px-3 py-0.5 text-[10px] kicker ${statePill.tone}`}>
+          <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${statePill.tone}`}>
             {statePill.label}
-          </span>
-        </section>
+          </GlassPill>
+        </Glass>
 
         {error && (
-          <p className="glass p-3 text-sm text-red-300">{error}</p>
+          <Glass as="p" variant="compact" className="p-3 text-sm text-red-300">{error}</Glass>
         )}
 
         {/* Coverage */}
-        <section className="glass p-6 space-y-3">
+        <Glass as="section" className="p-6 space-y-3">
           <div className="flex justify-between items-baseline gap-3">
             <div>
               <div className="kicker">HMO → Wikidata projection coverage</div>
@@ -174,10 +175,10 @@ export default function HmoStudioRoute() {
           {coverage && (
             <CoverageTable report={coverage} />
           )}
-        </section>
+        </Glass>
 
         {/* Manifests */}
-        <section className="glass p-6 space-y-3">
+        <Glass as="section" className="p-6 space-y-3">
           <div>
             <div className="kicker">IIIF manifests</div>
             <h3 className="text-lg font-medium">
@@ -253,10 +254,10 @@ export default function HmoStudioRoute() {
               cachedAt={status.last_upload_at}
             />
           )}
-        </section>
+        </Glass>
 
         {/* MARC record editor */}
-        <section className="glass p-6 space-y-3">
+        <Glass as="section" className="p-6 space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
               <div className="kicker">MARC records</div>
@@ -293,10 +294,10 @@ export default function HmoStudioRoute() {
               </ul>
             </div>
           )}
-        </section>
+        </Glass>
 
         {/* Bot creds */}
-        <section className="glass p-6 space-y-2">
+        <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">Wikibase Cloud bot credentials</div>
           <h3 className="text-lg font-medium">Live-upload prerequisite</h3>
           <p className="muted text-sm leading-relaxed">
@@ -315,7 +316,7 @@ export default function HmoStudioRoute() {
               Open Settings → Credentials
             </Link>
           </div>
-        </section>
+        </Glass>
       </div>
 
       {editCn && runId && (
@@ -438,20 +439,20 @@ function ProjectionPill({ status }: { status: string }) {
     status === "hmo_or_wikibase_only"   ? "HMO-only" :
                                           "unknown";
   return (
-    <span className={`glass-pill px-2 py-0.5 text-[10px] kicker ${tone}`}>
+    <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}`}>
       {label}
-    </span>
+    </GlassPill>
   );
 }
 
 
 function CredBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span className={`glass-pill px-2 py-0.5 text-[10px] kicker ${
-      ok ? "text-biu-sky" : "text-red-300"
-    }`}>
+    <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${
+ ok ? "text-biu-sky" : "text-red-300"
+ }`}>
       {ok ? "✓" : "⚠"} {label}
-    </span>
+    </GlassPill>
   );
 }
 
@@ -533,8 +534,8 @@ function UploadStatusPill({ status }: { status: string }) {
     status === "unchanged"                        ? "muted" :
                                                     "text-red-300";
   return (
-    <span className={`glass-pill px-2 py-0.5 text-[10px] kicker ${tone}`}>
+    <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}`}>
       {status}
-    </span>
+    </GlassPill>
   );
 }

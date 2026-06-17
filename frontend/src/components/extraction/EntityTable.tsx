@@ -34,6 +34,7 @@ import {
 import { recheckEntity } from "@/api/nerVerify";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import { langOf } from "@/utils/hebrew";
+import {Glass} from "@/components/glass";
 
 export type SortDirection = "asc" | "desc";
 
@@ -453,7 +454,7 @@ export function EntityTable(props: EntityTableProps) {
   // intrinsic width, triggering horizontal scroll when the viewport
   // is narrower than the column total.
   return (
-    <div className="glass overflow-hidden" data-testid="entity-table">
+    <Glass className="overflow-hidden" data-testid="entity-table">
       <div className="max-h-[640px] overflow-auto" ref={parentRef}>
        <div className="min-w-max">
       <div
@@ -549,18 +550,15 @@ export function EntityTable(props: EntityTableProps) {
         />
       ) : null}
       {historyFor ? (
-        <aside
-          data-testid="entity-history-drawer"
-          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
-        >
+        <Glass as="aside" variant="drawer" className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="entity-history-drawer">
           <HistoryTimeline
             projectId={projectId}
             entityType="extraction_entity"
             entityId={historyFor.id}
             onClose={() => setHistoryFor(null)}
           />
-        </aside>
+        </Glass>
       ) : null}
-    </div>
+    </Glass>
   );
 }

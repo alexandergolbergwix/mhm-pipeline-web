@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import {GlassPill} from "@/components/glass";
 
 
 export function SelectAllVisible({
@@ -55,8 +56,8 @@ export function SelectAllVisible({
   }
 
   return (
-    <label className="inline-flex items-center gap-2 cursor-pointer select-none
-                      glass-pill px-3 py-1 text-xs hover:bg-white/5 transition">
+    <GlassPill as="label" className="inline-flex items-center gap-2 cursor-pointer select-none
+ px-3 py-1 text-xs hover:bg-white/5 transition">
       <input ref={ref} type="checkbox" checked={all} onChange={handle}
              className="cursor-pointer" />
       <span className="muted">
@@ -74,6 +75,6 @@ export function SelectAllVisible({
           clear
         </button>
       )}
-    </label>
+    </GlassPill>
   );
 }

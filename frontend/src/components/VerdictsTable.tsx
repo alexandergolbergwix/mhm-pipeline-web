@@ -54,6 +54,7 @@ import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
 import { useDebounce } from "@/hooks/useDebounce";
 import {downloadFromUrl} from "@/utils/download";
 import {verdictStorageKey} from "@/utils/verdictKey";
+import {Glass} from "@/components/glass";
 
 
 export interface VerdictsTableProps {
@@ -310,7 +311,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
   const hasFixColumn = onApplyFix !== undefined;
 
   return (
-    <section className="glass p-3 space-y-3">
+    <Glass as="section" variant="compact" className="p-3 space-y-3">
       <div className="flex items-baseline justify-between flex-wrap gap-2">
         <div className="kicker">
           Verdicts ({displayVisible}{displayTotal !== displayVisible && ` of ${displayTotal}`})
@@ -444,7 +445,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
           onCancel={() => setPopup(null)}
         />
       )}
-    </section>
+    </Glass>
   );
 }
 

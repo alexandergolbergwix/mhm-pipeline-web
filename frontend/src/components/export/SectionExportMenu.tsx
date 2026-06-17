@@ -33,6 +33,7 @@ import {
   type WikibaseExportFormat,
   type WikidataExportFormat,
 } from "@/api/sectionExport";
+import {Glass} from "@/components/glass";
 
 export type ExportSection =
   | "extraction"
@@ -134,11 +135,8 @@ export function SectionExportMenu({
       </button>
 
       {open && (
-        <div
-          className="absolute right-0 z-30 mt-1 min-w-[140px] glass rounded-md shadow-lg py-1"
-          role="menu"
-          data-testid="section-export-menu-dropdown"
-        >
+        <Glass className="absolute right-0 z-30 mt-1 min-w-[140px] rounded-md shadow-lg py-1" role="menu"
+          data-testid="section-export-menu-dropdown">
           {availableFormats.map((fmt) => (
             <button
               key={fmt}
@@ -152,16 +150,13 @@ export function SectionExportMenu({
               {FORMAT_LABELS[fmt] ?? fmt.toUpperCase()}
             </button>
           ))}
-        </div>
+        </Glass>
       )}
 
       {error && (
-        <div
-          className="absolute right-0 z-30 mt-1 min-w-[200px] glass rounded-md shadow-lg px-3 py-2 text-xs text-red-300"
-          data-testid="section-export-error"
-        >
+        <Glass className="absolute right-0 z-30 mt-1 min-w-[200px] rounded-md shadow-lg px-3 py-2 text-xs text-red-300" data-testid="section-export-error">
           {error}
-        </div>
+        </Glass>
       )}
     </div>
   );

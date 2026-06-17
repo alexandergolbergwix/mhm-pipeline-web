@@ -31,6 +31,7 @@ import {
 import { JsonTreeViewer } from "@/components/glass/JsonTreeViewer";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { ApiError } from "@/api/client";
+import {Glass} from "@/components/glass";
 
 export interface HistoryDiffModalProps {
   projectId: string;
@@ -184,9 +185,8 @@ export default function HistoryDiffModal(
       aria-labelledby={headerId}
       onClick={onClose}
     >
-      <div
-        ref={modalRef}
-        className="glass flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden"
+      <Glass className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden" ref={modalRef}
+        
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
@@ -274,7 +274,7 @@ export default function HistoryDiffModal(
             </div>
           )}
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

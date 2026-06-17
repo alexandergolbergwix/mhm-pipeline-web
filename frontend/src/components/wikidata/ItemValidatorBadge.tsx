@@ -1,5 +1,6 @@
 import {useState} from "react";
 import type {ValidationIssue} from "@/api/wikidataStudio";
+import {Glass} from "@/components/glass";
 
 interface ItemValidatorBadgeProps {
   issues: ValidationIssue[];
@@ -50,9 +51,7 @@ export function ItemValidatorBadge({issues, expanded = false}: ItemValidatorBadg
         aria-label={`${issues.length} validation issue${issues.length === 1 ? "" : "s"}`}
       />
       {open && (
-        <div
-          className="absolute left-3 top-0 z-50 w-64 glass shadow-xl rounded-lg p-2 space-y-1 text-xs"
-          onClick={(e) => e.stopPropagation()}
+        <Glass className="absolute left-3 top-0 z-50 w-64 shadow-xl rounded-lg p-2 space-y-1 text-xs" onClick={(e) => e.stopPropagation()}
         >
           {issues.map((issue, idx) => (
             <div
@@ -75,7 +74,7 @@ export function ItemValidatorBadge({issues, expanded = false}: ItemValidatorBadg
           >
             close
           </button>
-        </div>
+        </Glass>
       )}
     </span>
   );

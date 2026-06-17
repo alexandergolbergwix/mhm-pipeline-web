@@ -10,6 +10,7 @@ import {Runs, type AuthorityMatch} from "@/api/runs";
 import {ApiError} from "@/api/client";
 import {AuthorityMatchEditDialog} from "@/components/AuthorityMatchEditDialog";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
+import {Glass, GlassPill} from "@/components/glass";
 
 interface Props {
   runId: string;
@@ -30,8 +31,7 @@ export function MatchDetailDialog({ runId, match, onClose, onPatched }: Props) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60"
          onClick={onClose}>
-      <div className="glass w-full max-w-4xl max-h-[88vh] overflow-hidden flex flex-col"
-           onClick={(e) => e.stopPropagation()}>
+      <Glass className="w-full max-w-4xl max-h-[88vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
 
         <header className="px-6 py-4 flex items-start justify-between gap-4 border-b border-white/10">
           <div className="min-w-0">
@@ -84,7 +84,7 @@ export function MatchDetailDialog({ runId, match, onClose, onPatched }: Props) {
           {tab === "ai"       && <AiTab runId={runId} match={match} onPatched={onPatched} />}
           {tab === "sources"  && <Sources match={match} payload={p} />}
         </div>
-      </div>
+      </Glass>
 
       {marcCn && (
         <MarcRecordPopup runId={runId} controlNumber={marcCn}
@@ -134,10 +134,10 @@ function Why({ match, payload }: { match: AuthorityMatch; payload: Record<string
 
   return (
     <div className="space-y-4">
-      <section className="glass-pill p-4 space-y-2">
+      <GlassPill as="section" className="p-4 space-y-2">
         <div className="kicker">Pipeline reasoning</div>
         <p className="text-sm leading-relaxed">{reasoning || "—"}</p>
-      </section>
+      </GlassPill>
 
       <div className="grid grid-cols-3 gap-3 text-center">
         <Stat label="Confidence"   value={match.confidence} tone={toneFor(match.confidence)} />
@@ -151,7 +151,7 @@ function Why({ match, payload }: { match: AuthorityMatch; payload: Record<string
           ? <p className="muted text-sm italic">No authority source matched this heading.</p>
           : <ul className="flex flex-wrap gap-2">
               {sources.map((s) => (
-                <li key={s} className="glass-pill px-3 py-0.5 text-xs uppercase tracking-wider text-biu-sky">{s}</li>
+                <GlassPill as="li" className="px-3 py-0.5 text-xs uppercase tracking-wider text-biu-sky" key={s}>{s}</GlassPill>
               ))}
             </ul>}
       </section>
@@ -192,7 +192,7 @@ function Dates({match, payload}: {match: AuthorityMatch; payload: Record<string,
         <Stat label="Died" value={death ? String(death) : "—"} tone="muted" />
       </div>
 
-      <section className="glass-pill p-4 space-y-2">
+      <GlassPill as="section" className="p-4 space-y-2">
         <div className="kicker">Role-aware compatibility</div>
         <p className="text-sm">
           Role kind: <b className="text-ink">{role}</b>.
@@ -219,7 +219,7 @@ function Dates({match, payload}: {match: AuthorityMatch; payload: Record<string,
                 : <span className="muted">— Date guard skipped: no candidate birth / death years
                     available from Mazal, VIAF, or Wikidata for this match.</span>}
         </p>
-      </section>
+      </GlassPill>
     </div>
   );
 }
@@ -260,7 +260,7 @@ function AiTab({
 
   return (
     <div className="space-y-4">
-      <section className="glass-pill p-4 space-y-2">
+      <GlassPill as="section" className="p-4 space-y-2">
         <div className="kicker">AI verification</div>
         <p className="text-sm muted">
           Asks Gemini whether the candidate authority is the right person
@@ -272,10 +272,10 @@ function AiTab({
           {busy ? "Asking…" : verdict ? "Re-verify" : "Verify with AI"}
         </button>
         {error && <p className="text-red-300 text-sm">{error}</p>}
-      </section>
+      </GlassPill>
 
       {verdict && (
-        <section className="glass p-4 space-y-2">
+        <Glass as="section" className="p-4 space-y-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <VerdictBadge overall={verdict.overall} />
             <span className="kicker">
@@ -285,7 +285,7 @@ function AiTab({
           </div>
           <p className="text-sm leading-relaxed">{verdict.reasoning}</p>
           <p className="text-xs muted">Judged at {new Date(verdict.judged_at).toLocaleString()}</p>
-        </section>
+        </Glass>
       )}
     </div>
   );
@@ -340,13 +340,13 @@ function Sources({ match, payload }: { match: AuthorityMatch; payload: Record<st
         </p>
         <ul className="space-y-1.5">
           {evidenceRows.map((e, i) => (
-            <li key={i} className="glass-pill px-3 py-1.5 text-sm flex items-baseline justify-between gap-3">
+            <GlassPill as="li" className="px-3 py-1.5 text-sm flex items-baseline justify-between gap-3" key={i}>
               <span><b className="text-ink">{e.src}</b> · {e.what}</span>
               {e.href && (
                 <a href={e.href} target="_blank" rel="noreferrer"
                    className="text-biu-sky text-xs hover:underline shrink-0">open ↗</a>
               )}
-            </li>
+            </GlassPill>
           ))}
         </ul>
       </section>
@@ -359,12 +359,12 @@ function Sources({ match, payload }: { match: AuthorityMatch; payload: Record<st
           {["mazal", "viaf", "kima", "wikidata"].map((s) => {
             const on = sources.includes(s);
             return (
-              <li key={s} className="glass px-3 py-2 flex items-center justify-between">
+              <Glass as="li" className="px-3 py-2 flex items-center justify-between" key={s}>
                 <span className={`${on ? "text-ink" : "muted"} uppercase text-xs tracking-wider`}>{s}</span>
                 {on
                   ? <span className="text-biu-sky text-xs">✓ matched</span>
                   : <span className="muted text-xs">—</span>}
-              </li>
+              </Glass>
             );
           })}
         </ul>
@@ -381,22 +381,22 @@ function Sources({ match, payload }: { match: AuthorityMatch; payload: Record<st
           : (
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
               {Object.entries(cluster).map(([k, v]) => (
-                <li key={k} className="glass-pill px-3 py-1 flex justify-between">
+                <GlassPill as="li" className="px-3 py-1 flex justify-between" key={k}>
                   <span className="kicker">{k}</span>
                   <span className="font-mono text-xs">{v}</span>
-                </li>
+                </GlassPill>
               ))}
             </ul>
           )}
       </section>
 
-      <section className="glass-pill p-3">
+      <GlassPill as="section" className="p-3">
         <div className="kicker mb-1">Raw payload</div>
         <pre className="text-[11px] font-mono whitespace-pre-wrap leading-snug"
              style={{ background: "rgba(0,0,0,0.36)", padding: 10, borderRadius: 10, border: "1px solid var(--line)" }}>
           {JSON.stringify(match.payload, null, 2)}
         </pre>
-      </section>
+      </GlassPill>
     </div>
   );
 }
@@ -415,7 +415,7 @@ function KimaGeoSection({payload}: {payload: Record<string, unknown>}) {
     ? `https://www.openstreetmap.org/?mlat=${latN}&mlon=${lonN}#map=12/${latN}/${lonN}`
     : undefined;
   return (
-    <section className="glass-pill p-4 space-y-2">
+    <GlassPill as="section" className="p-4 space-y-2">
       <div className="kicker">KIMA location</div>
       {heb ? <p className="text-sm"><span className="muted">Hebrew:</span> {heb}</p> : null}
       {rom ? <p className="text-sm"><span className="muted">Romanized:</span> {rom}</p> : null}
@@ -431,7 +431,7 @@ function KimaGeoSection({payload}: {payload: Record<string, unknown>}) {
       {geonames ? (
         <p className="text-xs muted">GeoNames: {geonames}</p>
       ) : null}
-    </section>
+    </GlassPill>
   );
 }
 
@@ -474,10 +474,10 @@ function Stat({ label, value, tone }: { label: string; value: string; tone: stri
     : tone === "yellow"? "text-yellow-300"
     : "text-ink";
   return (
-    <div className="glass-pill px-3 py-2">
+    <GlassPill as="div" className="px-3 py-2">
       <div className="kicker">{label}</div>
       <div className={`text-xl font-semibold ${cls}`}>{value}</div>
-    </div>
+    </GlassPill>
   );
 }
 
@@ -488,14 +488,14 @@ export function ConfidenceBadge({ confidence }: { confidence: string }) {
     : confidence === "medium" ? "text-yellow-300"
     : "muted";
   return (
-    <span className={`glass-pill px-3 py-1 text-[10px] kicker shrink-0 ${cls}`}>
+    <GlassPill className={`px-3 py-1 text-[10px] kicker shrink-0 ${cls}`}>
       {confidence}
-    </span>
+    </GlassPill>
   );
 }
 
 
-export function VerdictBadge({ overall }: { overall: string }) {
+export function VerdictBadge({overall}: {overall: string}) {
   const palette: Record<string, string> = {
     full:    "text-biu-sky",
     partial: "text-yellow-300",
@@ -509,9 +509,9 @@ export function VerdictBadge({ overall }: { overall: string }) {
     abstain: "Unsure",
   };
   return (
-    <span className={`glass-pill px-3 py-1 text-xs kicker ${palette[overall] ?? "muted"}`}>
+    <GlassPill className={`px-3 py-1 text-xs kicker ${palette[overall] ?? "muted"}`}>
       {label[overall] ?? overall}
-    </span>
+    </GlassPill>
   );
 }
 

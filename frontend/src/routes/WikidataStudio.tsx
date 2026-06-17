@@ -27,6 +27,7 @@ import {
   type StudioItem,
   type UploadOutcome,
 } from "@/api/wikidataStudio";
+import {Glass, GlassPill} from "@/components/glass";
 
 type EntityFilter = "all" | "manuscript" | "person" | "work";
 type ExistFilter  = "any" | "existing" | "new";
@@ -219,7 +220,7 @@ export default function WikidataStudio() {
       });
   }, [build, existFilter, minStmts]);
 
-  if (error) return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
+  if (error) return <Layout><Glass className="p-6 text-red-300">{error}</Glass></Layout>;
   if (!build) return <Layout><p className="muted">{loading ? "Building items…" : "Loading…"}</p></Layout>;
 
   const current = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].it : null;
@@ -229,7 +230,7 @@ export default function WikidataStudio() {
   return (
     <Layout>
       <div className="space-y-6">
-        <section className="glass p-6 space-y-2">
+        <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">
             Wikidata Studio · <Link to={`/runs/${runId}`} className="hover:text-ink underline">back to run</Link>
           </div>
@@ -256,7 +257,7 @@ export default function WikidataStudio() {
 
           {/* Action row */}
           <div className="flex flex-wrap gap-2 pt-2 items-center">
-            <div className="glass-pill px-1 py-1 flex gap-1 text-xs">
+            <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
               <button
                 onClick={() => { setApprovedOnly(false); }}
                 className={`px-3 py-1 rounded-full transition ${
@@ -267,7 +268,7 @@ export default function WikidataStudio() {
                 className={`px-3 py-1 rounded-full transition ${
                   approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"
                 }`}>Approved only</button>
-            </div>
+            </GlassPill>
             <button onClick={() => refresh({nextForceRebuild: forceRebuild})} disabled={loading || !!busy} className="button-ghost text-sm">
               {loading ? "Rebuilding…" : "Rebuild"}
             </button>
@@ -351,7 +352,7 @@ export default function WikidataStudio() {
 
             {/* View-mode toggle — Item (focus on one item's statements)
                 vs. Table (every statement across every item, flat). */}
-            <div className="glass-pill px-1 py-1 flex gap-1 text-xs ml-auto">
+            <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs ml-auto">
               <button
                 onClick={() => setView("item")}
                 className={`px-3 py-1 rounded-full transition ${
@@ -362,7 +363,7 @@ export default function WikidataStudio() {
                 className={`px-3 py-1 rounded-full transition ${
                   view === "table" ? "bg-white/12 text-ink" : "muted hover:text-ink"
                 }`}>Table view</button>
-            </div>
+            </GlassPill>
           </div>
 
           {lastUpload && (
@@ -374,16 +375,16 @@ export default function WikidataStudio() {
               )}
             </p>
           )}
-        </section>
+        </Glass>
 
         {build.summary.total_items === 0 ? (
-          <section className="glass p-6 text-center muted">
+          <Glass as="section" className="p-6 text-center muted">
             {build.used_match_count === 0 && approvedOnly
               ? <>No approved matches yet. Either click <b className="text-ink">All matches</b> above
                   to preview, or approve rows on the{" "}
                   <Link to={`/runs/${runId}`} className="text-biu-sky hover:underline">Review</Link> page.</>
               : <>No items yet. Upload a MARC file via the project page first.</>}
-          </section>
+          </Glass>
         ) : view === "table" ? (
           <StatementTableView
             items={itemRows.map(({ it, idx }) => ({ it, idx }))}
@@ -401,7 +402,7 @@ export default function WikidataStudio() {
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
 
             {/* Left: advanced search + filter + sort + list */}
-            <aside className="glass p-3 max-h-[78vh] overflow-auto space-y-3">
+            <Glass as="aside" className="p-3 max-h-[78vh] overflow-auto space-y-3">
               <input
                 value={query} onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search…"
@@ -527,7 +528,7 @@ export default function WikidataStudio() {
                   >Next →</button>
                 </div>
               )}
-            </aside>
+            </Glass>
 
             {/* Right: detail */}
             <main>
@@ -557,7 +558,7 @@ export default function WikidataStudio() {
           </div>
         )}
 
-        <details className="glass p-6">
+        <Glass as="details" className="p-6">
           <summary className="cursor-pointer kicker">
             QuickStatements output ({build.quickstatements.length.toLocaleString()} chars)
           </summary>
@@ -565,7 +566,7 @@ export default function WikidataStudio() {
                style={{ background: "rgba(0,0,0,0.36)", border: "1px solid var(--line)", borderRadius: 10, padding: 10, maxHeight: "60vh", overflow: "auto" }}>
             {build.quickstatements || "(empty)"}
           </pre>
-        </details>
+        </Glass>
       </div>
 
       {marcPopupCn && runId && (
@@ -591,17 +592,14 @@ export default function WikidataStudio() {
         />
       )}
       {historyFor && projectId ? (
-        <aside
-          data-testid="wikidata-history-drawer"
-          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
-        >
+        <Glass as="aside" variant="drawer" className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="wikidata-history-drawer">
           <HistoryTimeline
             projectId={projectId}
             entityType="wikidata_override"
             entityId={historyFor.id}
             onClose={() => setHistoryFor(null)}
           />
-        </aside>
+        </Glass>
       ) : null}
     </Layout>
   );
@@ -658,7 +656,7 @@ function ItemPanel({
   }, [item, statements, labelStore]);
 
   return (
-    <div className="glass p-6 space-y-5 max-h-[78vh] overflow-auto">
+    <Glass className="p-6 space-y-5 max-h-[78vh] overflow-auto">
       <header className="space-y-1">
         <div className="kicker">{item.entity_type ?? "item"}</div>
         <div className="flex items-baseline justify-between gap-3">
@@ -700,17 +698,17 @@ function ItemPanel({
             </a>
           )}
           {reconcile && (
-            <span className="glass-pill px-2 py-0.5 text-xs">
+            <GlassPill className="px-2 py-0.5 text-xs">
               reconcile: {reconcile.existing_qid
                 ? <>found <span className="font-mono text-biu-sky">{reconcile.existing_qid}</span> via {reconcile.method}</>
                 : <span className="muted">no Wikidata match</span>}
-            </span>
+            </GlassPill>
           )}
           {upload && (
-            <span className={`glass-pill px-2 py-0.5 text-xs ${statusTone(upload.status)}`} title={upload.message}>
+            <GlassPill className={`px-2 py-0.5 text-xs ${statusTone(upload.status)}`} title={upload.message}>
               upload: {upload.status}
               {upload.qid && <span className="font-mono ml-1">{upload.qid}</span>}
-            </span>
+            </GlassPill>
           )}
         </div>
         {issues.length > 0 && (
@@ -748,7 +746,7 @@ function ItemPanel({
             const prop  = s.property ?? s.property_id;
             const isExcluded = excluded.has(i);
             return (
-              <li key={i} className={`glass-pill px-3 py-2 text-sm transition ${
+              <GlassPill as="li" key={i} className={`px-3 py-2 text-sm transition ${
                 isExcluded ? "opacity-50" : ""
               }`}>
                 <div className={`flex items-baseline gap-2 flex-wrap ${
@@ -808,12 +806,12 @@ function ItemPanel({
                     ⚠ Unsourced — this claim has no reference. Curate before upload.
                   </p>
                 )}
-              </li>
+              </GlassPill>
             );
           })}
         </ul>
       </Section>
-    </div>
+    </Glass>
   );
 }
 
@@ -1005,7 +1003,7 @@ function StatementTableView({
   }
 
   return (
-    <section className="glass p-4 space-y-3">
+    <Glass as="section" className="p-4 space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <input
           value={tQuery} onChange={(e) => setTQuery(e.target.value)}
@@ -1076,7 +1074,7 @@ function StatementTableView({
           </tbody>
         </table>
       </div>
-    </section>
+    </Glass>
   );
 }
 
@@ -1244,11 +1242,11 @@ function Stat({
   label, value, highlight, sub,
 }: { label: string; value: number | string; highlight?: boolean; sub?: string }) {
   return (
-    <div className="glass-pill px-3 py-2">
+    <GlassPill as="div" className="px-3 py-2">
       <div className="kicker">{label}</div>
       <div className={`text-xl font-semibold ${highlight ? "text-biu-sky" : ""}`}>{value}</div>
       {sub && <div className="muted text-[10px] leading-tight mt-0.5">{sub}</div>}
-    </div>
+    </GlassPill>
   );
 }
 

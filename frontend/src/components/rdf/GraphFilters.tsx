@@ -23,6 +23,7 @@ import {
   emptyFilterState,
   type GraphFilterState,
 } from "./useGraphFilters";
+import {Glass, GlassPill} from "@/components/glass";
 
 // Fixed node-type chips. Matches the LEGEND constant on StageRdf so
 // the legend swatches and the type chips can't drift.
@@ -54,14 +55,12 @@ interface ChipProps {
 
 function Chip({ label, active, count, onToggle, testId }: ChipProps) {
   return (
-    <button type="button" onClick={onToggle}
+    <GlassPill as="button" type="button" onClick={onToggle}
       data-testid={testId}
-      data-active={active}
-      className={`glass-pill text-xs ${active ? "border-biu-sky text-biu-sky" : "muted"}`}
-      aria-pressed={active}>
+      data-active={active} className={`text-xs ${active ? "border-biu-sky text-biu-sky" : "muted"}`} aria-pressed={active}>
       {label}
       {count !== undefined && <span className="ml-1 opacity-70">({count})</span>}
-    </button>
+    </GlassPill>
   );
 }
 
@@ -153,7 +152,7 @@ export function GraphFilters({
     state.radius > 0;
 
   return (
-    <div className="glass space-y-3 p-3" data-testid="graph-filters">
+    <Glass variant="compact" className="space-y-3 p-3" data-testid="graph-filters">
       {/* Search + visible-count + clear */}
       <div className="flex items-center gap-2">
         <input type="text"
@@ -200,14 +199,17 @@ export function GraphFilters({
                   onToggle={() => togglePredicate(p.label)} />
           ))}
           {predicateInfo.tail.length > 0 && (
-            <button type="button"
+            <GlassPill
+              as="button"
+              type="button"
               data-testid="graph-pred-overflow"
+              className="text-xs muted"
               onClick={(ev) => setPredOverflow({
                 x: ev.clientX, y: ev.clientY + 4,
               })}
-              className="glass-pill text-xs muted">
+            >
               +{predicateInfo.tail.length} more…
-            </button>
+            </GlassPill>
           )}
         </div>
       )}
@@ -267,7 +269,7 @@ export function GraphFilters({
           onCancel={() => setPredOverflow(null)}
         />
       )}
-    </div>
+    </Glass>
   );
 }
 

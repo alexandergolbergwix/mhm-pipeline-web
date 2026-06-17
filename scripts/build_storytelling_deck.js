@@ -1,5 +1,27 @@
+const fs = require('node:fs');
 const path = require('node:path');
-const PptxGenJS = require('/private/tmp/node_modules/pptxgenjs');
+
+function requireModule(...candidates) {
+  for (const mod of candidates) {
+    try {
+      return require(mod);
+    } catch (_) {
+      // try next candidate
+    }
+  }
+  throw new Error(`Missing dependency. Install with: yarn add -D ${candidates[0]}`);
+}
+
+const PptxGenJS = requireModule(
+  'pptxgenjs',
+  path.join(__dirname, '../node_modules/pptxgenjs'),
+  '/tmp/pptx-test/node_modules/pptxgenjs',
+);
+const JSZip = requireModule(
+  'jszip',
+  path.join(__dirname, '../node_modules/jszip'),
+  '/tmp/pptx-test/node_modules/jszip',
+);
 
 const pptx = new PptxGenJS();
 
@@ -248,6 +270,60 @@ function addMiniLine(slide, x1, y1, x2, y2, color, width = 2) {
 
 function notes(text) {
   return text.trim();
+}
+
+const HEBREW_NOTES_FONT = 'Arial';
+const HEBREW_NOTES_LANG = 'he-IL';
+
+function hebrewNotesParagraphXml(text) {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return [
+    '<a:p>',
+    '<a:pPr rtl="1" algn="r"/>',
+    '<a:r>',
+    `<a:rPr lang="${HEBREW_NOTES_LANG}" dirty="0">`,
+    `<a:cs typeface="${HEBREW_NOTES_FONT}"/>`,
+    `<a:ea typeface="${HEBREW_NOTES_FONT}"/>`,
+    '</a:rPr>',
+    `<a:t>${escaped}</a:t>`,
+    '</a:r>',
+    `<a:endParaRPr lang="${HEBREW_NOTES_LANG}" dirty="0"/>`,
+    '</a:p>',
+  ].join('');
+}
+
+function fixHebrewNotesSlideXml(xml) {
+  return xml.replace(
+    /(<p:sp>[\s\S]*?Notes Placeholder 2[\s\S]*?<p:txBody><a:bodyPr\/><a:lstStyle\/>)([\s\S]*?)(<\/p:txBody>)/,
+    (match, prefix, body, suffix) => {
+      const textMatch = body.match(/<a:t>([\s\S]*?)<\/a:t>/);
+      if (!textMatch) return match;
+      const paragraphs = textMatch[1]
+        .split(/\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (paragraphs.length === 0) return match;
+      return `${prefix}${paragraphs.map(hebrewNotesParagraphXml).join('')}${suffix}`;
+    },
+  );
+}
+
+async function fixHebrewSpeakerNotes(pptxPath) {
+  const zip = await JSZip.loadAsync(fs.readFileSync(pptxPath));
+  const noteFiles = Object.keys(zip.files).filter((name) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name));
+  await Promise.all(noteFiles.map(async (name) => {
+    const xml = await zip.file(name).async('string');
+    zip.file(name, fixHebrewNotesSlideXml(xml));
+  }));
+  const output = await zip.generateAsync({
+    type: 'nodebuffer',
+    compression: 'DEFLATE',
+    compressionOptions: {level: 9},
+  });
+  fs.writeFileSync(pptxPath, output);
 }
 
 // Slide 1: cover
@@ -741,7 +817,8 @@ function notes(text) {
 
 async function main() {
   const out = path.resolve(process.cwd(), 'storytelling_presentation_10min.pptx');
-  await pptx.writeFile({ fileName: out, compression: true });
+  await pptx.writeFile({fileName: out, compression: true});
+  await fixHebrewSpeakerNotes(out);
   console.log(out);
 }
 

@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
 import type { AuthUser } from "@/stores/auth";
 import { useAuth } from "@/stores/auth";
+import {Glass} from "@/components/glass";
 
 interface Preview {
   email: string;
@@ -59,7 +60,7 @@ export default function AcceptInvite() {
 
   return (
     <div className="grid place-items-center min-h-screen px-4">
-      <div className="glass p-8 w-full max-w-sm space-y-5">
+      <Glass className="p-8 w-full max-w-sm space-y-5">
         <header className="space-y-1">
           <div className="kicker">Accept invitation</div>
           <h1 className="text-2xl font-semibold">Welcome to MHM Pipeline</h1>
@@ -92,7 +93,7 @@ export default function AcceptInvite() {
             {submitting ? "Creating account…" : "Create account"}
           </button>
         </form>
-      </div>
+      </Glass>
     </div>
   );
 }

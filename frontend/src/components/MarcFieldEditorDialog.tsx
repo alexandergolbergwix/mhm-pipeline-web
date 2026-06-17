@@ -7,6 +7,7 @@ import {useCallback, useEffect, useState} from "react";
 
 import {ApiError} from "@/api/client";
 import {Runs} from "@/api/runs";
+import {Glass} from "@/components/glass";
 
 const MARC_FIELDS = [
   "title", "authors", "contributors", "dates", "notes", "provenance",
@@ -76,7 +77,7 @@ export function MarcFieldEditorDialog({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
          data-testid="marc-field-editor-modal" role="dialog" aria-modal="true">
-      <div className="glass flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden">
+      <Glass className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Edit MARC record</div>
@@ -136,7 +137,7 @@ export function MarcFieldEditorDialog({
             {saving ? "Saving…" : "Save MARC"}
           </button>
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

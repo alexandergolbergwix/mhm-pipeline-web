@@ -1,6 +1,6 @@
 /**
- * NodeDetailPanel — side panel that surfaces everything about a clicked
- * RDF graph node:
+ * NodeDetailPanel — floating overlay that surfaces everything about a
+ * clicked RDF graph node:
  *
  *   • all rdf:type values (classes)
  *   • every datatype property (literal values: labels, dates, IDs, …)
@@ -11,10 +11,17 @@
  * so the parent re-fetches that node and refocuses the graph on it.
  */
 
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
-import { ApiError } from "@/api/client";
-import { Rdf, type NodeDetail } from "@/api/rdf";
+import {ApiError} from "@/api/client";
+import {Rdf, type NodeDetail} from "@/api/rdf";
+import {Glass} from "@/components/glass";
 
 
 export interface NodeDetailPanelProps {
@@ -26,14 +33,23 @@ export interface NodeDetailPanelProps {
 
 
 export function NodeDetailPanel(props: NodeDetailPanelProps) {
-  const { runId, nodeId, onClose, onNavigate } = props;
+  const {runId, nodeId, onClose, onNavigate} = props;
   const [detail, setDetail] = useState<NodeDetail | null>(null);
-  const [error,  setError]  = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [offset, setOffset] = useState({x: 0, y: 0});
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setError(null); setDetail(null);
+    setLoading(true);
+    setError(null);
+    setDetail(null);
     Rdf.node(runId, nodeId)
       .then((d) => { if (!cancelled) setDetail(d); })
       .catch((e) => {
@@ -43,9 +59,46 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
     return () => { cancelled = true; };
   }, [runId, nodeId]);
 
+  const onDragStart = useCallback((e: ReactMouseEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: offset.x,
+      origY: offset.y,
+    };
+    e.preventDefault();
+  }, [offset]);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!dragRef.current) return;
+      const {startX, startY, origX, origY} = dragRef.current;
+      setOffset({
+        x: origX + e.clientX - startX,
+        y: origY + e.clientY - startY,
+      });
+    }
+    function onUp() {
+      dragRef.current = null;
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
   return (
-    <aside className="glass max-h-[78vh] overflow-auto p-4 space-y-4 w-full">
-      <header className="space-y-1">
+    <Glass
+      variant="drawer"
+      as="aside"
+      data-testid="node-detail-panel"
+      className="absolute z-20 top-4 right-4 w-[min(360px,calc(100%-2rem))] max-h-[calc(100%-2rem)] overflow-auto p-4 space-y-4 shadow-2xl"
+      style={{transform: `translate(${offset.x}px, ${offset.y}px)`}}
+    >
+      <header className="space-y-1 cursor-move select-none" onMouseDown={onDragStart}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="kicker">Node detail</div>
@@ -59,7 +112,7 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
             <p className="muted text-[10px] font-mono break-all">{nodeId}</p>
           </div>
           <button onClick={onClose}
-                  className="button-ghost !py-1 !px-2 text-xs shrink-0"
+                  className="button-ghost !py-1 !px-2 text-xs shrink-0 cursor-pointer"
                   title="Close">
             ✕
           </button>
@@ -67,7 +120,7 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
         {detail && (
           <div className="flex items-center gap-2">
             <span className="inline-block w-3 h-3 rounded-full"
-                  style={{ background: detail.color }} />
+                  style={{background: detail.color}} />
             <span className="kicker">{detail.type}</span>
           </div>
         )}
@@ -77,7 +130,6 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
 
       {detail && (
         <>
-          {/* rdf:type values */}
           {detail.types.length > 0 && (
             <Section title={`Classes (${detail.types.length})`}>
               <ul className="space-y-1 text-xs">
@@ -94,7 +146,6 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
             </Section>
           )}
 
-          {/* Datatype properties */}
           {detail.properties.length > 0 && (
             <Section title={`Properties (${detail.properties.length})`}>
               <dl className="text-xs space-y-1.5">
@@ -115,7 +166,6 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
             </Section>
           )}
 
-          {/* Outgoing edges */}
           {detail.outgoing.length > 0 && (
             <Section title={`Outgoing (${detail.outgoing.length})`}>
               <ul className="space-y-1 text-xs">
@@ -126,7 +176,6 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
             </Section>
           )}
 
-          {/* Incoming edges */}
           {detail.incoming.length > 0 && (
             <Section title={`Incoming (${detail.incoming.length})`}>
               <ul className="space-y-1 text-xs">
@@ -137,7 +186,6 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
             </Section>
           )}
 
-          {/* Empty state */}
           {detail.types.length === 0 && detail.properties.length === 0 &&
             detail.outgoing.length === 0 && detail.incoming.length === 0 && (
             <p className="muted text-sm italic">
@@ -146,15 +194,12 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
           )}
         </>
       )}
-    </aside>
+    </Glass>
   );
 }
 
 
-// ── Internals ──────────────────────────────────────────────────────────
-
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({title, children}: {title: string; children: React.ReactNode}) {
   return (
     <section>
       <div className="kicker mb-1.5">{title}</div>
@@ -183,7 +228,7 @@ function EdgeRow({
       <span className="muted shrink-0">{arrow}</span>
       {color && (
         <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ background: color }} />
+              style={{background: color}} />
       )}
       {id && onNavigate
         ? <button onClick={() => onNavigate(id)}

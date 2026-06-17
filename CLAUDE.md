@@ -791,6 +791,41 @@ The web RDF build path must wire approved authority + NER enrichment into
 Canonical ontology: ``pipeline/ontology/hebrew-manuscripts.ttl`` (copied to
 ``backend/ontology/`` at sync time).
 
+### Rule W-35 — Reusable glass components, never raw `.glass` classes (added 2026-06-17)
+
+Every frosted / liquid-glass surface in the React UI must use the shared
+components under ``frontend/src/components/glass/``:
+
+| Need | Component | Variants |
+|---|---|---|
+| Panels, cards, modals, drawers | ``<Glass>`` | ``panel`` (default), ``drawer``, ``modal``, ``compact`` |
+| Chips, badges, stat pills | ``<GlassPill>`` | (always ``variant="pill"``) |
+| Full-page ambient background | ``<LiquidGlassCanvas>`` | mounted once in ``main.tsx`` |
+
+**Do not**:
+
+- Add ``className="glass"`` or ``className="glass-pill"`` on new UI — those
+  CSS classes are deprecated legacy aliases.
+- Create per-feature glass wrappers or DOM enhancers that upgrade elements at
+  runtime.
+- Duplicate ``LiquidGlassSurface`` / displacement-map logic outside the glass
+  module.
+
+**Do**:
+
+```tsx
+import {Glass, GlassPill} from "@/components/glass";
+
+<Glass as="section" className="p-6 space-y-4">…</Glass>
+<Glass variant="drawer" className="fixed right-0 …">…</Glass>
+<GlassPill className="px-3 py-1 text-xs">…</GlassPill>
+<GlassPill as="label" className="…">…</GlassPill>
+```
+
+Form fields keep ``input-glass`` (plain CSS, not liquid refraction).
+Layout/tint tokens live in ``.glass-shell*``; refraction is applied inside
+``LiquidGlassSurface``.
+
 ---
 
 ## When to update the plan / this file

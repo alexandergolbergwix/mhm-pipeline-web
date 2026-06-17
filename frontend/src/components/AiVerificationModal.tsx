@@ -28,6 +28,7 @@ import {
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {verdictStorageKey} from "@/utils/verdictKey";
+import {Glass} from "@/components/glass";
 
 
 export interface AiVerificationModalProps {
@@ -164,7 +165,7 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 backdrop-blur-md p-4 md:p-6"
          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="glass max-w-7xl w-full max-h-full overflow-auto p-6 space-y-4">
+      <Glass variant="modal" className="max-w-7xl w-full max-h-full overflow-auto p-6 space-y-4">
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -229,10 +230,10 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
         )}
 
         {/* Live diagram */}
-        <section className="glass p-3">
+        <Glass as="section" variant="compact" className="p-3">
           <div className="kicker mb-2">Agent flow</div>
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
-        </section>
+        </Glass>
 
         {/* Verdicts — full-width research table. Replaces the
             previous tiny truncated list. Each control-number cell
@@ -253,7 +254,7 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
 
         {/* Step log — collapsed by default so it doesn't compete
             with the verdict table for attention. */}
-        <details className="glass p-3">
+        <Glass as="details" variant="compact" className="p-3">
           <summary className="kicker cursor-pointer hover:text-ink">
             Step log ({events.length})
           </summary>
@@ -266,8 +267,8 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
               </li>
             ))}
           </ul>
-        </details>
-      </div>
+        </Glass>
+      </Glass>
     </div>
   );
 }

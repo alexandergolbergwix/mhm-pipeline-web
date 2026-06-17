@@ -1,14 +1,12 @@
 import { Link } from "react-router-dom";
+import {Glass} from "@/components/glass";
 
 const LAST_UPDATED = "2026-06-01";
 
 export default function Privacy() {
   return (
     <div className="grid place-items-center min-h-screen px-4 py-8">
-      <article
-        className="glass p-8 w-full max-w-2xl space-y-6"
-        data-testid="privacy-notice"
-      >
+      <Glass as="article" className="p-8 w-full max-w-2xl space-y-6" data-testid="privacy-notice">
         <header className="space-y-1">
           <div className="kicker">Bar-Ilan University · MHM</div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -177,7 +175,7 @@ export default function Privacy() {
             ← Back to access request
           </Link>
         </div>
-      </article>
+      </Glass>
     </div>
   );
 }

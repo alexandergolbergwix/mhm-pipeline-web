@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, ApiError } from "@/api/client";
+import {Glass} from "@/components/glass";
 
 interface Resp {
   ok: boolean;
@@ -29,7 +30,7 @@ export default function ForgotPassword() {
 
   return (
     <div className="grid place-items-center min-h-screen px-4">
-      <div className="glass p-8 w-full max-w-sm space-y-5">
+      <Glass className="p-8 w-full max-w-sm space-y-5">
         <header className="space-y-1">
           <div className="kicker">Password reset</div>
           <h1 className="text-2xl font-semibold">Forgot your password?</h1>
@@ -70,7 +71,7 @@ export default function ForgotPassword() {
             </Link>
           </form>
         )}
-      </div>
+      </Glass>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Admin, type ProjectListItem, type UserListItem} from "@/api/admin";
 import {ApiError} from "@/api/client";
 import {useAuth} from "@/stores/auth";
+import {Glass} from "@/components/glass";
 
 export default function AdminProjects() {
   const {user} = useAuth();
@@ -80,7 +81,7 @@ export default function AdminProjects() {
   return (
     <AdminLayout>
       <div data-testid="admin-projects-page" className="space-y-6">
-        <section className="glass p-6">
+        <Glass as="section" className="p-6">
           <div className="kicker mb-1">Admin · projects</div>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <h2 className="text-xl font-semibold">
@@ -100,9 +101,9 @@ export default function AdminProjects() {
           </div>
           {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
           {notice && <p className="text-green-300 text-sm mt-3">{notice}</p>}
-        </section>
+        </Glass>
 
-        <section className="glass p-6">
+        <Glass as="section" className="p-6">
           <table className="w-full text-sm">
             <thead className="muted text-left">
               <tr>
@@ -192,7 +193,7 @@ export default function AdminProjects() {
               )}
             </tbody>
           </table>
-        </section>
+        </Glass>
       </div>
     </AdminLayout>
   );

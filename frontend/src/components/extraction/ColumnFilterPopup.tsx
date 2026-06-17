@@ -9,6 +9,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import type {CSSProperties} from "react";
 import {createPortal} from "react-dom";
+import {Glass} from "@/components/glass";
 
 export interface ColumnFilterPopupProps {
   columnLabel: string;
@@ -114,7 +115,7 @@ export function ColumnFilterPopup({
   }, [x, y]);
 
   const popup = (
-    <div ref={ref} style={style} className="glass shadow-2xl" role="dialog">
+    <Glass className="shadow-2xl" ref={ref} style={style}  role="dialog">
       <div className="border-b border-white/10 px-3 py-2">
         <div className="kicker">Filter</div>
         <div className="text-sm text-ink">{columnLabel}</div>
@@ -178,7 +179,7 @@ export function ColumnFilterPopup({
         <button type="button" onClick={onCancel} className="button-ghost h-7 px-3 text-xs">Cancel</button>
         <button type="button" onClick={() => onApply(draft)} className="button-primary h-7 px-3 text-xs">Apply</button>
       </div>
-    </div>
+    </Glass>
   );
 
   if (typeof document === "undefined") return popup;

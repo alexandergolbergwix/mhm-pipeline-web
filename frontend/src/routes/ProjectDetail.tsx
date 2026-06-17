@@ -7,6 +7,7 @@ import { Projects, type Member, type ProjectDetail as Detail, type ProjectRole }
 import { useProjectEvents } from "@/api/realtime";
 import { Runs, type RunListItem } from "@/api/runs";
 import { ExportButton } from "@/components/export/ExportButton";
+import {Glass, GlassPill} from "@/components/glass";
 
 export default function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -33,7 +34,7 @@ export default function ProjectDetail() {
   });
 
   if (error)
-    return <Layout><div className="glass p-6 text-red-300">{error}</div></Layout>;
+    return <Layout><Glass className="p-6 text-red-300">{error}</Glass></Layout>;
   if (!proj)
     return <Layout><p className="muted">Loading…</p></Layout>;
 
@@ -84,7 +85,7 @@ function ProjectHeader({
   }
 
   return (
-    <section className="glass p-8 space-y-3">
+    <Glass as="section" className="p-8 space-y-3">
       <div className="kicker">Project · your role: {proj.role}</div>
       {editing ? (
         <form onSubmit={save} className="space-y-3">
@@ -117,7 +118,7 @@ function ProjectHeader({
           </div>
         </>
       )}
-    </section>
+    </Glass>
   );
 }
 
@@ -160,7 +161,7 @@ function MembersPanel({
   }
 
   return (
-    <section className="glass p-6 space-y-3">
+    <Glass as="section" className="p-6 space-y-3">
       <div>
         <div className="kicker">Collaboration</div>
         <h3 className="text-lg font-medium">Members ({proj.members.length})</h3>
@@ -209,7 +210,7 @@ function MembersPanel({
           </li>
         ))}
       </ul>
-    </section>
+    </Glass>
   );
 }
 
@@ -249,7 +250,7 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
   }
 
   return (
-    <section className="glass p-6 space-y-3">
+    <Glass as="section" className="p-6 space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <div className="kicker">Pipeline runs</div>
@@ -298,7 +299,7 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
                     {new Date(r.created_at).toLocaleString()}
                   </p>
                 </div>
-                <span className="glass-pill px-3 py-1 text-[10px] kicker">{r.status}</span>
+                <GlassPill className="px-3 py-1 text-[10px] kicker">{r.status}</GlassPill>
               </div>
               {/* Quick access to each sub-section of the run */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -313,17 +314,16 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
           ))}
         </ul>
       )}
-    </section>
+    </Glass>
   );
 }
 
 
 function StageTile({ to, label, hint }: { to: string; label: string; hint: string }) {
   return (
-    <Link to={to}
-          className="glass-pill px-3 py-2 hover:bg-white/[0.06] transition block">
+    <GlassPill as={Link} className="px-3 py-2 hover:bg-white/[0.06] transition block" to={to}>
       <div className="text-xs font-medium text-ink">{label}</div>
       <div className="muted text-[10px] leading-tight mt-0.5">{hint}</div>
-    </Link>
+    </GlassPill>
   );
 }

@@ -12,6 +12,7 @@ import {
   ENTITY_ROLES, ENTITY_SOURCES, ENTITY_TYPES,
   ExtractionApprovals,
 } from "@/api/extractionApprovals";
+import {Glass, GlassPill} from "@/components/glass";
 
 export interface AutoApproveRuleBuilderProps {
   runId: string;
@@ -97,7 +98,7 @@ export function AutoApproveRuleBuilder({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          data-testid="auto-approve-modal"
          role="dialog" aria-modal="true">
-      <div className="glass flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden">
+      <Glass className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Auto-approve rule</div>
@@ -122,14 +123,14 @@ export function AutoApproveRuleBuilder({
             <div className="kicker mb-1">Sources</div>
             <div className="flex flex-wrap gap-2">
               {ENTITY_SOURCES.map((s) => (
-                <label key={s} className="glass-pill flex cursor-pointer items-center gap-1 text-xs">
+                <GlassPill as="label" className="flex cursor-pointer items-center gap-1 text-xs" key={s}>
                   <input type="checkbox"
                          data-testid={`rule-source-${s}`}
                          checked={rule.sources.includes(s)}
                          onChange={() => toggle("sources", s)}
                          className="h-3 w-3 accent-biu-sky" />
                   <span>{s}</span>
-                </label>
+                </GlassPill>
               ))}
             </div>
           </div>
@@ -137,14 +138,14 @@ export function AutoApproveRuleBuilder({
             <div className="kicker mb-1">Types</div>
             <div className="flex flex-wrap gap-2">
               {ENTITY_TYPES.map((t) => (
-                <label key={t} className="glass-pill flex cursor-pointer items-center gap-1 text-xs">
+                <GlassPill as="label" className="flex cursor-pointer items-center gap-1 text-xs" key={t}>
                   <input type="checkbox"
                          data-testid={`rule-type-${t}`}
                          checked={rule.types.includes(t)}
                          onChange={() => toggle("types", t)}
                          className="h-3 w-3 accent-biu-sky" />
                   <span>{t}</span>
-                </label>
+                </GlassPill>
               ))}
             </div>
           </div>
@@ -152,14 +153,14 @@ export function AutoApproveRuleBuilder({
             <div className="kicker mb-1">Exclude roles</div>
             <div className="flex flex-wrap gap-2">
               {ENTITY_ROLES.map((r) => (
-                <label key={r || "_blank"} className="glass-pill flex cursor-pointer items-center gap-1 text-xs">
+                <GlassPill as="label" className="flex cursor-pointer items-center gap-1 text-xs" key={r || "_blank"}>
                   <input type="checkbox"
                          data-testid={`rule-not-role-${r || "blank"}`}
                          checked={rule.not_roles.includes(r)}
                          onChange={() => toggle("not_roles", r)}
                          className="h-3 w-3 accent-biu-sky" />
                   <span>{r || "(none)"}</span>
-                </label>
+                </GlassPill>
               ))}
             </div>
           </div>
@@ -200,7 +201,7 @@ export function AutoApproveRuleBuilder({
             </button>
           </div>
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

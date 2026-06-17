@@ -5,11 +5,12 @@
  * Highlights specific JSON Pointer paths (RFC 6902) with a yellow background
  * so a curator can see at a glance which fields changed.
  *
- * No external dependencies — pure React + Tailwind + the existing glass
- * CSS classes (.glass-pill, .muted, .kicker).
+ * No external dependencies — pure React + Tailwind + <GlassPill>.
  */
 
 import { useState, useCallback, useMemo } from "react";
+
+import {GlassPill} from "@/components/glass";
 
 export interface JsonTreeViewerProps {
   value: unknown;
@@ -201,9 +202,9 @@ export function JsonTreeViewer({
 
   if (nodeCount > maxNodes) {
     return (
-      <div
+      <GlassPill
         data-testid="json-tree-viewer"
-        className="glass-pill font-mono text-sm text-white/90 p-2 overflow-auto"
+        className="font-mono text-sm text-white/90 p-2 overflow-auto block w-full"
       >
         <div className="muted text-xs mb-2">
           Object too large to render as a tree ({nodeCount} nodes). Showing raw JSON.
@@ -211,14 +212,14 @@ export function JsonTreeViewer({
         <pre className="whitespace-pre-wrap break-all text-emerald-200/90">
           {JSON.stringify(value, null, 2)}
         </pre>
-      </div>
+      </GlassPill>
     );
   }
 
   return (
-    <div
+    <GlassPill
       data-testid="json-tree-viewer"
-      className="glass-pill font-mono text-sm text-white/90 p-2 overflow-auto"
+      className="font-mono text-sm text-white/90 p-2 overflow-auto block w-full"
     >
       <TreeNode
         value={value}
@@ -228,7 +229,7 @@ export function JsonTreeViewer({
         highlightPaths={highlightSet}
         label={rootLabel}
       />
-    </div>
+    </GlassPill>
   );
 }
 

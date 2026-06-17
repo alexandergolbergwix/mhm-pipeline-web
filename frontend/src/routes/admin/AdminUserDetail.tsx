@@ -6,6 +6,7 @@ import {ConfirmDestructiveDialog} from "@/components/admin/ConfirmDestructiveDia
 import {Admin, type UserDetail} from "@/api/admin";
 import {ApiError} from "@/api/client";
 import {useAuth} from "@/stores/auth";
+import {Glass, GlassPill} from "@/components/glass";
 
 export default function AdminUserDetail() {
   const {user: currentUser} = useAuth();
@@ -112,29 +113,27 @@ export default function AdminUserDetail() {
         </div>
 
         {loading && (
-          <section className="glass p-6">
+          <Glass as="section" className="p-6">
             <p className="muted text-sm">Loading…</p>
-          </section>
+          </Glass>
         )}
 
         {!loading && detail && (
           <div data-testid="admin-user-detail">
-            <section className="glass p-6 space-y-4">
+            <Glass as="section" className="p-6 space-y-4">
               <div className="kicker mb-1">Admin · users</div>
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="text-xl font-semibold">{detail.name}</h2>
                   <p className="muted text-sm mt-0.5">{detail.email}</p>
                   <div className="flex items-center gap-2 mt-2">
-                    <span
-                      className={`glass-pill text-xs ${
-                        detail.role === "admin"
-                          ? "border-biu-sky text-biu-sky bg-sky-500/10"
-                          : "muted"
-                      }`}
-                    >
+                    <GlassPill className={`text-xs ${
+ detail.role === "admin"
+ ? "border-biu-sky text-biu-sky bg-sky-500/10"
+ : "muted"
+ }`}>
                       {detail.role}
-                    </span>
+                    </GlassPill>
                     <span className="muted text-xs">
                       Joined {new Date(detail.created_at).toLocaleDateString()}
                     </span>
@@ -163,9 +162,9 @@ export default function AdminUserDetail() {
 
               {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
               {notice && <p className="text-green-300 text-sm mt-3">{notice}</p>}
-            </section>
+            </Glass>
 
-            <section className="glass p-6 space-y-3">
+            <Glass as="section" className="p-6 space-y-3">
               <h3 className="text-lg font-medium">Project memberships</h3>
               {detail.memberships.length === 0 ? (
                 <p className="muted text-sm">No project memberships.</p>
@@ -189,9 +188,9 @@ export default function AdminUserDetail() {
                   </tbody>
                 </table>
               )}
-            </section>
+            </Glass>
 
-            <section className="glass p-6 space-y-3">
+            <Glass as="section" className="p-6 space-y-3">
               <h3 className="text-lg font-medium">Actions</h3>
               <div className="flex flex-wrap gap-3">
                 <button
@@ -213,7 +212,7 @@ export default function AdminUserDetail() {
                   Delete user
                 </button>
               </div>
-            </section>
+            </Glass>
           </div>
         )}
       </div>

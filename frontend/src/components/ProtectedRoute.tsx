@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { useAuth } from "@/stores/auth";
+import {Glass} from "@/components/glass";
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -9,9 +10,9 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (loading) {
     return (
-      <div className="grid place-items-center min-h-screen text-glass-inkSub">
+      <Glass className="grid place-items-center min-h-screen text--inkSub">
         Loading…
-      </div>
+      </Glass>
     );
   }
   if (!user) {

@@ -4,6 +4,7 @@ import { Layout } from "@/components/Layout";
 import { api, ApiError } from "@/api/client";
 import { ApiKeys, type ApiKeyName, type ApiKeyStatus } from "@/api/apiKeys";
 import { useAuth } from "@/stores/auth";
+import {Glass, GlassPill} from "@/components/glass";
 
 const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
   gemini: {
@@ -50,17 +51,17 @@ export default function Settings() {
   return (
     <Layout>
       <div className="space-y-6 max-w-3xl">
-        <section className="glass p-6 space-y-2">
+        <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">Profile</div>
           <h2 className="text-xl font-semibold">{user?.name}</h2>
           <p className="muted text-sm">
             {user?.email} · <span className="kicker inline-block">{user?.role}</span>
           </p>
-        </section>
+        </Glass>
 
         <PasswordChangeSection />
 
-        <section className="glass p-6 space-y-4">
+        <Glass as="section" className="p-6 space-y-4">
           <div>
             <div className="kicker">Encrypted API keys · zero-knowledge</div>
             <h3 className="text-lg font-medium">Gemini · Wikidata · Wikibase Cloud</h3>
@@ -80,7 +81,7 @@ export default function Settings() {
           {keys?.map((k) => (
             <ApiKeyRow key={k.name} status={k} onChanged={refresh} setError={setError} />
           ))}
-        </section>
+        </Glass>
       </div>
     </Layout>
   );
@@ -112,7 +113,7 @@ function PasswordChangeSection() {
   }
 
   return (
-    <section className="glass p-6 space-y-3">
+    <Glass as="section" className="p-6 space-y-3">
       <div className="kicker">Security</div>
       <h3 className="text-lg font-medium">Change password</h3>
       <p className="muted text-sm leading-relaxed">
@@ -136,7 +137,7 @@ function PasswordChangeSection() {
           {submitting ? "Saving…" : "Change password"}
         </button>
       </form>
-    </section>
+    </Glass>
   );
 }
 
@@ -184,9 +185,9 @@ function ApiKeyRow({
           <p className="font-medium">{meta.label}</p>
           <p className="muted text-xs">{meta.hint}</p>
         </div>
-        <span className={`glass-pill px-3 py-0.5 text-[10px] kicker ${status.set ? "text-biu-sky" : "muted"}`}>
+        <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${status.set ? "text-biu-sky" : "muted"}`}>
           {status.set ? "stored" : "not set"}
-        </span>
+        </GlassPill>
       </div>
 
       {!editing ? (

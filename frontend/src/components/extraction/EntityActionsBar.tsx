@@ -10,6 +10,7 @@
 import { useState } from "react";
 
 import { Entity } from "@/api/extractionApprovals";
+import {Glass} from "@/components/glass";
 
 export interface EntityActionsBarProps {
   totalCount: number;
@@ -42,8 +43,7 @@ export function EntityActionsBar(props: EntityActionsBarProps) {
   };
 
   return (
-    <div className="glass sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-3 py-2"
-         data-testid="entity-actions-bar">
+    <Glass className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-3 py-2" data-testid="entity-actions-bar">
       <div className="text-xs muted" data-testid="entity-counts">
         <span className="text-ink" data-testid="count-selected">{selectionCount}</span> selected ·{" "}
         <span className="text-ink" data-testid="count-visible">{visibleCount}</span> visible ·{" "}
@@ -75,6 +75,6 @@ export function EntityActionsBar(props: EntityActionsBarProps) {
           {verifying === "all" ? "Queueing…" : "Verify all visible with AI"}
         </button>
       </div>
-    </div>
+    </Glass>
   );
 }

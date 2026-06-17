@@ -15,6 +15,7 @@ import {
   ENTITY_ROLES, ENTITY_TYPES,
   Entity, EntityRole, EntityType, ExtractionApprovals,
 } from "@/api/extractionApprovals";
+import {Glass} from "@/components/glass";
 
 export interface EntityEditModalProps {
   runId: string;
@@ -102,7 +103,7 @@ export function EntityEditModal({ runId, entity, onClose, onSaved }: EntityEditM
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          data-testid="entity-edit-modal"
          role="dialog" aria-modal="true">
-      <div className="glass flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden">
+      <Glass className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Edit entity</div>
@@ -154,8 +155,7 @@ export function EntityEditModal({ runId, entity, onClose, onSaved }: EntityEditM
           </div>
           <div className="flex flex-col overflow-hidden">
             <div className="kicker mb-1">MARC source</div>
-            <div className="glass flex-1 overflow-auto whitespace-pre-wrap p-3 font-mono text-xs leading-relaxed"
-                 data-testid="entity-edit-marc">
+            <Glass variant="compact" className="flex-1 overflow-auto whitespace-pre-wrap p-3 font-mono text-xs leading-relaxed" data-testid="entity-edit-marc">
               {loading ? (
                 <span className="muted">Loading MARC record…</span>
               ) : marcText ? (
@@ -167,10 +167,10 @@ export function EntityEditModal({ runId, entity, onClose, onSaved }: EntityEditM
               ) : (
                 <span className="muted">No MARC source available.</span>
               )}
-            </div>
+            </Glass>
           </div>
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

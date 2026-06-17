@@ -40,6 +40,7 @@ import { EntityDetailDrawer } from "@/components/extraction/EntityDetailDrawer";
 import { NerVerificationModal } from "@/components/extraction/NerVerificationModal";
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
+import {Glass, GlassPill} from "@/components/glass";
 
 
 type Phase = "idle" | "running" | "complete" | "error";
@@ -421,7 +422,7 @@ export default function StageExtraction() {
   return (
     <Layout>
       <div className="space-y-6">
-        <section className="glass p-6 space-y-2">
+        <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">
             <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">
               ← back to run
@@ -435,9 +436,9 @@ export default function StageExtraction() {
           <p className="muted text-sm">
             Hebrew Person NER · Provenance NER · Contents NER · Genre classifier
           </p>
-        </section>
+        </Glass>
 
-        <section className="glass p-6 space-y-4">
+        <Glass as="section" className="p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 flex-wrap">
               {phase !== "running" && (
@@ -583,9 +584,9 @@ export default function StageExtraction() {
           </div>
 
           {error && (
-            <div className="glass-pill px-3 py-2 text-sm text-red-300">
+            <GlassPill as="div" className="px-3 py-2 text-sm text-red-300">
               {error}
-            </div>
+            </GlassPill>
           )}
 
           {(phase === "running" || log.length > 0) && (
@@ -598,13 +599,13 @@ export default function StageExtraction() {
               </pre>
             </details>
           )}
-        </section>
+        </Glass>
 
         {/* Rich AI Extraction review UI (Rule W-16). Replaces the legacy
             per-record collapsible list with an entity-level table +
             filters + bulk actions + AI verification entry points. */}
         {runId && approvalStore.entities.length > 0 && (
-          <section className="glass p-6 space-y-4" data-testid="entity-review">
+          <Glass as="section" className="p-6 space-y-4" data-testid="entity-review">
             <div>
               <div className="kicker">Entity review</div>
               <h3 className="text-lg font-medium">
@@ -645,7 +646,7 @@ export default function StageExtraction() {
               }}
             />
 
-            <div className="glass px-3 py-2" data-testid="entity-search-bar">
+            <Glass className="px-3 py-2" data-testid="entity-search-bar">
               <input
                 type="text"
                 placeholder="Search text or MS id…"
@@ -654,7 +655,7 @@ export default function StageExtraction() {
                 onChange={(e) => setGlobalSearch(e.target.value)}
                 className="input-glass h-8 w-full text-sm"
               />
-            </div>
+            </Glass>
 
             <EntityTable
               runId={runId}
@@ -678,14 +679,14 @@ export default function StageExtraction() {
                 setVisibleEntities(ents);
               }}
             />
-          </section>
+          </Glass>
         )}
 
         {/* Legacy per-record results table — kept as a secondary view
             for users who prefer the by-MS grouping while the new
             entity-level table is the primary review surface. */}
         {records.length > 0 && (
-          <details className="glass p-6 space-y-4">
+          <Glass as="details" className="p-6 space-y-4">
             <summary className="kicker cursor-pointer">
               Per-record overview ({records.length} records)
             </summary>
@@ -718,7 +719,7 @@ export default function StageExtraction() {
                 </tbody>
               </table>
             </div>
-          </details>
+          </Glass>
         )}
       </div>
 
@@ -853,9 +854,9 @@ function RecordDetail({ record }: { record: ExtractionRecord }) {
             {genres.map((g) => (
               <li key={g.label} className="flex items-center justify-between gap-3">
                 <span>{g.label}</span>
-                <span className="glass-pill px-2 py-[1px] text-[10px] font-mono">
+                <GlassPill className="px-2 py-[1px] text-[10px] font-mono">
                   {g.confidence.toFixed(2)}
-                </span>
+                </GlassPill>
               </li>
             ))}
           </ul>
@@ -889,10 +890,10 @@ function EntityList({
               <span className="truncate">{e.text}</span>
               <span className="flex items-center gap-1 shrink-0">
                 {showRole && e.role && (
-                  <span className="glass-pill px-2 py-[1px] text-[10px] kicker">{e.role}</span>
+                  <GlassPill className="px-2 py-[1px] text-[10px] kicker">{e.role}</GlassPill>
                 )}
                 {showType && (
-                  <span className="glass-pill px-2 py-[1px] text-[10px] kicker">{e.type}</span>
+                  <GlassPill className="px-2 py-[1px] text-[10px] kicker">{e.type}</GlassPill>
                 )}
                 {typeof e.model_confidence === "number" && (
                   <span className="muted text-[10px] font-mono">
@@ -916,9 +917,9 @@ function PhasePill({ phase }: { phase: Phase }) {
     : phase === "error"    ? "text-red-300"
     : "muted";
   return (
-    <span className={`glass-pill px-3 py-1 text-[10px] kicker ${tone}`}>
+    <GlassPill className={`px-3 py-1 text-[10px] kicker ${tone}`}>
       {phase}
-    </span>
+    </GlassPill>
   );
 }
 
@@ -959,8 +960,9 @@ function ModelPill({
     : state.status === "error"       ? "⚠"
     : "—";
   return (
-    <label
-      className={`glass-pill px-3 py-2 flex items-start gap-2 transition cursor-pointer
+    <GlassPill
+      as="label"
+      className={`px-3 py-2 flex items-start gap-2 transition cursor-pointer
                   ${enabled ? "" : "opacity-50"} ${disabled ? "cursor-not-allowed" : "hover:bg-white/[0.06]"}`}
       title={state.note || `Toggle ${label}`}>
       <input type="checkbox"
@@ -984,6 +986,6 @@ function ModelPill({
       {/* Hidden var so TS doesn't strip ``role`` as unused —
           surfaces in DOM as a data attribute for e2e tests. */}
       <span hidden data-role={role} />
-    </label>
+    </GlassPill>
   );
 }

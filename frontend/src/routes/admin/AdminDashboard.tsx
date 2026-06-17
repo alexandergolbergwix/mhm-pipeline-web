@@ -7,6 +7,7 @@ import {Admin, type AdminStats} from "@/api/admin";
 import {AccessRequests, type AccessRequestListItem} from "@/api/accessRequests";
 import {ApiError} from "@/api/client";
 import {useAuth} from "@/stores/auth";
+import {Glass} from "@/components/glass";
 
 export default function AdminDashboard() {
   const {user} = useAuth();
@@ -69,12 +70,12 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <div data-testid="admin-dashboard" className="space-y-6">
-        <section className="glass p-6">
+        <Glass as="section" className="p-6">
           <div className="kicker mb-1">Admin</div>
           <h2 className="text-xl font-semibold">Dashboard</h2>
           {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
           {notice && <p className="text-green-300 text-sm mt-3">{notice}</p>}
-        </section>
+        </Glass>
 
         <div className="grid grid-cols-2 gap-4">
           <AdminStatCard
@@ -100,7 +101,7 @@ export default function AdminDashboard() {
           />
         </div>
 
-        <section className="glass p-6 space-y-4">
+        <Glass as="section" className="p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <h3 className="text-lg font-medium">Pending approvals</h3>
             <Link to="/admin/access-requests" className="button-ghost text-xs">View all</Link>
@@ -134,7 +135,7 @@ export default function AdminDashboard() {
               ))}
             </ul>
           )}
-        </section>
+        </Glass>
       </div>
     </AdminLayout>
   );

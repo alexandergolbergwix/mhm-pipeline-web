@@ -25,6 +25,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { MarcSourceApi, type MarcSource, type MarcSourceEntity } from "@/api/marcSource";
+import {Glass} from "@/components/glass";
 
 
 export interface MarcSourceDrawerHighlight {
@@ -97,8 +98,7 @@ export function MarcSourceDrawer(props: MarcSourceDrawerProps) {
   }, [data, highlightEntity]);
 
   return (
-    <aside
-      aria-hidden={!open}
+    <Glass as="aside" className="p-0 flex flex-col" aria-hidden={!open}
       style={{
         position:       "fixed",
         top:            0,
@@ -109,9 +109,7 @@ export function MarcSourceDrawer(props: MarcSourceDrawerProps) {
         transform:      open ? "translateX(0)" : "translateX(110%)",
         transition:     "transform 220ms ease-out",
         pointerEvents:  open ? "auto" : "none",
-      }}
-      className="glass p-0 flex flex-col"
-    >
+      }}>
       {/* Header */}
       <header className="flex items-start justify-between gap-3 px-4 pt-4 pb-2 border-b border-white/5">
         <div className="min-w-0">
@@ -159,7 +157,7 @@ export function MarcSourceDrawer(props: MarcSourceDrawerProps) {
           </>
         )}
       </div>
-    </aside>
+    </Glass>
   );
 }
 

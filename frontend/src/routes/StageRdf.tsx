@@ -45,6 +45,7 @@ import {
 } from "@/api/rdf";
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
+import {Glass, GlassPill} from "@/components/glass";
 
 
 // All layouts are computed SERVER-SIDE (networkx) — Cytoscape just uses
@@ -430,7 +431,7 @@ export default function StageRdf() {
   return (
     <Layout>
       <div className="space-y-6">
-        <section className="glass p-6 space-y-2">
+        <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">
             <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">
               ← back to run
@@ -479,10 +480,10 @@ export default function StageRdf() {
               Philological overlay
             </label>
           </div>
-        </section>
+        </Glass>
 
         {coverage && (
-          <section className="glass p-6 space-y-3" data-testid="rdf-coverage-panel">
+          <Glass as="section" className="p-6 space-y-3" data-testid="rdf-coverage-panel">
             <h3 className="text-lg font-semibold">Ontology coverage</h3>
             <p className="muted text-sm">
               {coverage.rdf_class_count} HMO classes in graph
@@ -513,10 +514,10 @@ export default function StageRdf() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </Glass>
         )}
 
-        <section className="glass p-6 space-y-4">
+        <Glass as="section" className="p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={build} disabled={busy !== null} className="button-primary text-sm">
@@ -595,7 +596,7 @@ export default function StageRdf() {
           </div>
 
           {error && (
-            <div className="glass-pill px-3 py-2 text-sm text-red-300">{error}</div>
+            <GlassPill as="div" className="px-3 py-2 text-sm text-red-300">{error}</GlassPill>
           )}
 
           {mappingErrors.length > 0 && (
@@ -650,12 +651,6 @@ export default function StageRdf() {
             {selectedNodeLabel ? `Selected: ${selectedNodeLabel}` : ""}
           </div>
 
-          {/* Two-column body when a node is selected; full-width canvas otherwise. */}
-          <div className={
-            selectedNodeId && runId
-              ? "grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4"
-              : "block"
-          }>
           {/* CANVAS VIEW — Cytoscape. Hidden (display: none) when the
               list view is active, but stays mounted so the cy instance
               and its layout/state survive toggling. */}
@@ -684,9 +679,9 @@ export default function StageRdf() {
             />
             <Legend />
             {graph?.truncated && (
-              <div className="absolute top-3 left-3 glass-pill px-3 py-1 text-[10px] kicker text-yellow-300">
+              <GlassPill as="div" className="absolute top-3 left-3 px-3 py-1 text-[10px] kicker text-yellow-300">
                 Showing {graph.nodes.length} of {graph.total_nodes} nodes (top by degree)
-              </div>
+              </GlassPill>
             )}
             {!graph && busy !== "build" && busy !== "graph" && (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -703,7 +698,7 @@ export default function StageRdf() {
             {(busy === "graph" || busy === "build") && (
               <div className="absolute inset-0 flex items-center justify-center
                               bg-black/40 backdrop-blur-sm rounded-2xl">
-                <div className="glass-pill px-4 py-3 text-center space-y-1.5">
+                <GlassPill as="div" className="px-4 py-3 text-center space-y-1.5">
                   <div className="text-sm text-ink">
                     {busy === "build" ? "Building RDF graph…" : "Computing layout on server…"}
                   </div>
@@ -715,8 +710,16 @@ export default function StageRdf() {
                   <div className="mt-2 mx-auto w-32 h-1 rounded-full overflow-hidden bg-white/10">
                     <div className="h-full w-1/3 bg-biu-sky animate-pulse" />
                   </div>
-                </div>
+                </GlassPill>
               </div>
+            )}
+            {selectedNodeId && runId && (
+              <NodeDetailPanel
+                runId={runId}
+                nodeId={selectedNodeId}
+                onClose={() => setSelectedNodeId(null)}
+                onNavigate={(id) => setSelectedNodeId(id)}
+              />
             )}
           </div>
 
@@ -736,18 +739,9 @@ export default function StageRdf() {
             />
           )}
 
-          {selectedNodeId && runId && (
-            <NodeDetailPanel
-              runId={runId}
-              nodeId={selectedNodeId}
-              onClose={() => setSelectedNodeId(null)}
-              onNavigate={(id) => setSelectedNodeId(id)}
-            />
-          )}
-          </div>
-        </section>
+        </Glass>
 
-        <section className="glass p-6 space-y-4">
+        <Glass as="section" className="p-6 space-y-4">
           <button
             onClick={() => setShaclOpen((v) => !v)}
             aria-expanded={shaclOpen}
@@ -810,7 +804,7 @@ export default function StageRdf() {
               )}
             </div>
           )}
-        </section>
+        </Glass>
       </div>
     </Layout>
   );
@@ -1128,10 +1122,7 @@ function ListView({
 
 function Legend() {
   return (
-    <ul
-      aria-label="Node type legend"
-      className="absolute top-3 right-3 glass-pill px-3 py-2 text-[10px] space-y-1 list-none m-0"
-    >
+    <GlassPill as="ul" className="absolute top-3 right-3 px-3 py-2 text-[10px] space-y-1 list-none m-0" aria-label="Node type legend">
       <li className="kicker">Legend</li>
       {LEGEND.map((l) => (
         <li key={l.type} className="flex items-center gap-2">
@@ -1143,7 +1134,7 @@ function Legend() {
           <span>{l.type}</span>
         </li>
       ))}
-    </ul>
+    </GlassPill>
   );
 }
 
@@ -1154,7 +1145,7 @@ function StatusPill({ status }: { status: string }) {
     : status === "built" ? "text-yellow-300"
     : status === "error" ? "text-red-300"
     : "muted";
-  return <span className={`glass-pill px-3 py-1 text-[10px] kicker ${tone}`}>{status}</span>;
+  return <GlassPill className={`px-3 py-1 text-[10px] kicker ${tone}`}>{status}</GlassPill>;
 }
 
 

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api, ApiError } from "@/api/client";
 import type { RunMarcRecord } from "@/api/runs";
+import {Glass} from "@/components/glass";
 
 interface Props {
   runId: string;
@@ -49,8 +50,7 @@ export function MarcRecordPopup({ runId, controlNumber, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60"
          onClick={onClose}>
-      <div className="glass max-w-3xl w-full max-h-[85vh] flex flex-col"
-           onClick={(e) => e.stopPropagation()}>
+      <Glass className="max-w-3xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <header className="p-5 pb-3 border-b border-white/10 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="kicker">MARC record</div>
@@ -94,7 +94,7 @@ export function MarcRecordPopup({ runId, controlNumber, onClose }: Props) {
             <p className="muted text-sm italic text-center py-6">No matches.</p>
           )}
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

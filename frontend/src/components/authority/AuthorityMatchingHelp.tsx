@@ -1,7 +1,8 @@
 /** How authority matching works — curator-facing help (Rule W-33). */
+import {Glass} from "@/components/glass";
 export function AuthorityMatchingHelp() {
   return (
-    <details className="glass rounded-lg p-4 text-sm space-y-2">
+    <Glass as="details" className="rounded-lg p-4 text-sm space-y-2">
       <summary className="cursor-pointer font-medium text-ink select-none">
         How matching works (Mazal · VIAF · KIMA · Wikidata)
       </summary>
@@ -28,6 +29,6 @@ export function AuthorityMatchingHelp() {
           whose manuscript has colophon / הערות text even when the entity itself came from a heading field.
         </p>
       </div>
-    </details>
+    </Glass>
   );
 }

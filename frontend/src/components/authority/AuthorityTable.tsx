@@ -18,6 +18,7 @@ import type { AuthorityMatch, ExistsIn } from "@/api/runs";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
 import { ConfidenceBadge, VerdictBadge } from "@/components/MatchDetailDialog";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
+import {Glass, GlassPill} from "@/components/glass";
 
 type ColumnKey =
   | "control_number"
@@ -341,26 +342,24 @@ export function AuthorityTable({
             if (!val?.trim()) return null;
             const colDef = COLS.find((c) => c.key === col);
             return (
-              <span key={col}
-                    className="glass-pill flex items-center gap-1.5 px-2 py-0.5 text-xs text-biu-sky">
+              <GlassPill className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-biu-sky" key={col}>
                 {colDef?.label || col}: &ldquo;{val}&rdquo;
                 <button type="button"
                         onClick={() => setTextFilters((p) => ({ ...p, [col]: "" }))}
                         className="ml-0.5 text-muted hover:text-ink">✕</button>
-              </span>
+              </GlassPill>
             );
           })}
           {activeFilterCols.map((col) => {
             const colDef = COLS.find((c) => c.key === col);
             const selected = columnFilters[col]!;
             return (
-              <span key={col}
-                    className="glass-pill flex items-center gap-1.5 px-2 py-0.5 text-xs text-biu-sky">
+              <GlassPill className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-biu-sky" key={col}>
                 {colDef?.label || col}: {Array.from(selected).join(", ")}
                 <button type="button"
                         onClick={() => setColumnFilters((p) => { const n = { ...p }; delete n[col]; return n; })}
                         className="ml-0.5 text-muted hover:text-ink">✕</button>
-              </span>
+              </GlassPill>
             );
           })}
           <button type="button"
@@ -524,10 +523,10 @@ export function AuthorityTable({
                       {hasAlts && groupDuplicates && !isExpanded && (
                         <span className="ml-1 inline-flex flex-wrap gap-0.5">
                           {alts.map((a) => (
-                            <span key={a.id} className="glass-pill px-1 py-[1px] text-[10px] text-muted"
+                            <GlassPill className="px-1 py-[1px] text-[10px] text-muted" key={a.id} 
                                   title={a.entity_text}>
                               {formatRole(a.role)}
-                            </span>
+                            </GlassPill>
                           ))}
                         </span>
                       )}
@@ -538,10 +537,9 @@ export function AuthorityTable({
                       <span className="inline-flex items-center gap-1 flex-wrap">
                         {sources.length > 0
                           ? sources.map((s) => (
-                              <span key={s}
-                                    className="glass-pill px-1.5 py-[1px] text-[10px] uppercase tracking-wider whitespace-nowrap">
+                              <GlassPill className="px-1.5 py-[1px] text-[10px] uppercase tracking-wider whitespace-nowrap" key={s}>
                                 {s}
-                              </span>
+                              </GlassPill>
                             ))
                           : <span className="muted text-xs italic">—</span>}
                         {sourceCount >= 2 && (
@@ -567,11 +565,11 @@ export function AuthorityTable({
                       {guards.length > 0 ? (
                         <span className="inline-flex flex-wrap gap-1">
                           {guards.map((g) => (
-                            <span key={g}
-                                  className="glass-pill px-1.5 py-[1px] text-[10px] text-red-300 whitespace-nowrap"
+                            <GlassPill className="px-1.5 py-[1px] text-[10px] text-red-300 whitespace-nowrap" key={g}
+                                  
                                   title={guardExplain(g)}>
                               ⚠ {g}
-                            </span>
+                            </GlassPill>
                           ))}
                         </span>
                       ) : (
@@ -695,17 +693,14 @@ export function AuthorityTable({
 
       {/* Inline history drawer */}
       {historyFor && (
-        <aside
-          data-testid="authority-table-history-drawer"
-          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
-        >
+        <Glass as="aside" variant="drawer" className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="authority-table-history-drawer">
           <HistoryTimeline
             projectId={projectId}
             entityType="authority_match"
             entityId={historyFor.id}
             onClose={() => setHistoryFor(null)}
           />
-        </aside>
+        </Glass>
       )}
     </>
   );

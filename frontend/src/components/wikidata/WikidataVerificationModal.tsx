@@ -21,6 +21,7 @@ import {
   type FlowState,
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
+import {Glass} from "@/components/glass";
 
 
 export interface WikidataVerificationModalProps {
@@ -212,7 +213,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
       className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 backdrop-blur-md p-4 md:p-6"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="glass max-w-7xl w-full max-h-full overflow-auto p-6 space-y-4">
+      <Glass variant="modal" className="max-w-7xl w-full max-h-full overflow-auto p-6 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="kicker">AI verification · Wikidata Studio · {scopeLabel}</div>
@@ -303,10 +304,10 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
           </div>
         )}
 
-        <section className="glass p-3">
+        <Glass as="section" variant="compact" className="p-3">
           <div className="kicker mb-2">Agent flow</div>
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
-        </section>
+        </Glass>
 
         <VerdictsTable
           verdicts={verdicts}
@@ -314,7 +315,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
           onApplyFix={(localId, target, value) => handleApplyFix(localId, target, value)}
         />
 
-        <details className="glass p-3">
+        <Glass as="details" variant="compact" className="p-3">
           <summary className="kicker cursor-pointer hover:text-ink">
             Step log ({events.length})
           </summary>
@@ -327,8 +328,8 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
               </li>
             ))}
           </ul>
-        </details>
-      </div>
+        </Glass>
+      </Glass>
     </div>
   );
 }

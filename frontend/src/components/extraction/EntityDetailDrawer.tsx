@@ -40,6 +40,7 @@ import {
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { langOf } from "@/utils/hebrew";
+import {Glass} from "@/components/glass";
 
 
 export interface EntityDetailDrawerProps {
@@ -148,8 +149,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
   }, [marc, entity]);
 
   return (
-    <aside
-      ref={drawerRef}
+    <Glass as="aside" className="flex flex-col p-0" ref={drawerRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="entity-detail-drawer-title"
@@ -164,9 +164,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
         transform:     open ? "translateX(0)" : "translateX(110%)",
         transition:    "transform 220ms ease-out",
         pointerEvents: open ? "auto" : "none",
-      }}
-      className="glass flex flex-col p-0"
-    >
+      }}>
       {/* Header — entity identity + pin/close */}
       <header className="flex items-start justify-between gap-3 px-4 pt-4 pb-2 border-b border-white/5">
         <div className="min-w-0">
@@ -295,19 +293,16 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
         )}
       </div>
       {historyFor ? (
-        <aside
-          data-testid="entity-detail-history-drawer"
-          className="fixed right-0 top-0 h-full w-[460px] glass shadow-2xl z-50 overflow-auto"
-        >
+        <Glass as="aside" variant="drawer" className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="entity-detail-history-drawer">
           <HistoryTimeline
             projectId={projectId}
             entityType="extraction_entity"
             entityId={historyFor.id}
             onClose={() => setHistoryFor(null)}
           />
-        </aside>
+        </Glass>
       ) : null}
-    </aside>
+    </Glass>
   );
 }
 
@@ -325,7 +320,7 @@ function ConfidenceCard({ entity }: { entity: Entity }) {
     return "low";
   };
   return (
-    <section className="glass p-3 space-y-2" data-testid="card-confidence">
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="card-confidence">
       <div className="kicker">📊 Confidence</div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -351,7 +346,7 @@ function ConfidenceCard({ entity }: { entity: Entity }) {
           </p>
         </div>
       </div>
-    </section>
+    </Glass>
   );
 }
 
@@ -381,7 +376,7 @@ function GroundingCard({
   const status = statusLabel[ex?.status ?? "unknown"] ?? statusLabel.unknown;
 
   return (
-    <section className="glass p-3 space-y-2" data-testid="card-grounding">
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="card-grounding">
       <div className="kicker">🔍 MARC grounding</div>
       <div className="flex items-center gap-2">
         <span className="inline-flex items-center rounded-full text-[10px] py-0.5 px-2"
@@ -439,7 +434,7 @@ function GroundingCard({
       {ex?.note && (
         <p className="muted text-[11px] mt-1 leading-snug">{ex.note}</p>
       )}
-    </section>
+    </Glass>
   );
 }
 
@@ -451,12 +446,12 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
   const v = entity.ai_verdict;
   if (!v) {
     return (
-      <section className="glass p-3" data-testid="card-ai-verdict">
+      <Glass as="section" variant="compact" className="p-3" data-testid="card-ai-verdict">
         <div className="kicker">🤖 AI verification</div>
         <div className="muted text-[11px] mt-1">
           Not yet judged. Use the <strong className="text-ink">Verify with AI</strong> button above to score this entity.
         </div>
-      </section>
+      </Glass>
     );
   }
   const overall = String(v.overall ?? "").toLowerCase();
@@ -488,7 +483,7 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
     fix.text.trim() !== effectiveText;
 
   return (
-    <section className="glass p-3 space-y-2" data-testid="card-ai-verdict">
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="card-ai-verdict">
       <div className="kicker">🤖 AI verification</div>
       <div className="flex items-center gap-3">
         <span className="inline-flex items-center rounded-full text-[10px] py-0.5 px-2"
@@ -528,7 +523,7 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
         {v.judged_at && <span className="ml-2">judged: {new Date(v.judged_at).toLocaleString()}</span>}
         {v.evaluator && <span className="ml-2">evaluator: {v.evaluator}</span>}
       </div>
-    </section>
+    </Glass>
   );
 }
 
@@ -545,13 +540,13 @@ function MarcRecordCard({
   primaryHighlight:    string;
   secondaryHighlights: string[];
 }) {
-  if (loading) return <section className="glass p-3 muted text-[11px] italic">Loading MARC record…</section>;
-  if (error) return <section className="glass p-3 text-red-300 text-[11px]">MARC source failed: {error}</section>;
+  if (loading) return <Glass as="section" variant="compact" className="p-3 muted text-[11px] italic">Loading MARC record…</Glass>;
+  if (error) return <Glass as="section" variant="compact" className="p-3 text-red-300 text-[11px]">MARC source failed: {error}</Glass>;
   if (!marc) return null;
   const keys = orderedMarcKeys(marc.marc);
-  if (keys.length === 0) return <section className="glass p-3 muted text-[11px] italic">No MARC fields available.</section>;
+  if (keys.length === 0) return <Glass as="section" variant="compact" className="p-3 muted text-[11px] italic">No MARC fields available.</Glass>;
   return (
-    <section className="glass p-3 space-y-2" data-testid="card-marc-record">
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="card-marc-record">
       <div className="kicker">📜 MARC record ({keys.length} fields)</div>
       <div className="space-y-2">
         {keys.map((k) => {
@@ -574,7 +569,7 @@ function MarcRecordCard({
           );
         })}
       </div>
-    </section>
+    </Glass>
   );
 }
 

@@ -5,6 +5,7 @@ import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Admin, type UserListItem} from "@/api/admin";
 import {ApiError} from "@/api/client";
 import {useAuth} from "@/stores/auth";
+import {Glass, GlassPill} from "@/components/glass";
 
 type RoleFilter = "all" | "admin" | "editor";
 
@@ -52,7 +53,7 @@ export default function AdminUsers() {
   return (
     <AdminLayout>
       <div data-testid="admin-users-page" className="space-y-6">
-        <section className="glass p-6">
+        <Glass as="section" className="p-6">
           <div className="kicker mb-1">Admin · users</div>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <h2 className="text-xl font-semibold">
@@ -75,25 +76,26 @@ export default function AdminUsers() {
               {ROLE_FILTERS.map((f) => {
                 const active = roleFilter === f.value;
                 return (
-                  <button
+                  <GlassPill
+                    as="button"
                     key={f.value}
                     type="button"
                     data-testid={`role-filter-${f.value}`}
                     onClick={() => setRoleFilter(f.value)}
                     aria-pressed={active}
-                    className={`glass-pill text-xs ${active ? "border-biu-sky text-biu-sky" : "muted"}`}
+                    className={`text-xs ${active ? "border-biu-sky text-biu-sky" : "muted"}`}
                   >
                     {f.label}
-                  </button>
+                  </GlassPill>
                 );
               })}
             </div>
           </div>
 
           {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
-        </section>
+        </Glass>
 
-        <section className="glass p-6">
+        <Glass as="section" className="p-6">
           <table className="w-full text-sm">
             <thead className="muted text-left">
               <tr>
@@ -111,15 +113,13 @@ export default function AdminUsers() {
                   <td className="py-2 font-medium">{u.name}</td>
                   <td className="py-2 muted">{u.email}</td>
                   <td className="py-2">
-                    <span
-                      className={`glass-pill text-xs ${
-                        u.role === "admin"
-                          ? "border-biu-sky text-biu-sky bg-sky-500/10"
-                          : "muted"
-                      }`}
-                    >
+                    <GlassPill className={`text-xs ${
+ u.role === "admin"
+ ? "border-biu-sky text-biu-sky bg-sky-500/10"
+ : "muted"
+ }`}>
                       {u.role}
-                    </span>
+                    </GlassPill>
                   </td>
                   <td className="py-2 muted">{u.project_count}</td>
                   <td className="py-2 muted">{new Date(u.created_at).toLocaleDateString()}</td>
@@ -139,7 +139,7 @@ export default function AdminUsers() {
               )}
             </tbody>
           </table>
-        </section>
+        </Glass>
       </div>
     </AdminLayout>
   );

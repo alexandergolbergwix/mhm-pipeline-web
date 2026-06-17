@@ -28,6 +28,7 @@
 import {useRef, useState} from "react";
 
 import {SectionImport, type ImportResult} from "@/api/sectionImport";
+import {Glass} from "@/components/glass";
 
 export type ImportSection =
   | "extraction"
@@ -118,11 +119,8 @@ export function SectionImportButton({
       />
 
       {result !== null && (
-        <div
-          className="glass rounded-md px-3 py-2 text-xs space-y-0.5 min-w-[180px]"
-          data-testid="section-import-result"
-          role="status"
-        >
+        <Glass className="rounded-md px-3 py-2 text-xs space-y-0.5 min-w-[180px]" data-testid="section-import-result"
+          role="status">
           <div className="text-green-300">
             {result.imported} imported
           </div>
@@ -143,17 +141,14 @@ export function SectionImportButton({
               </ul>
             </details>
           )}
-        </div>
+        </Glass>
       )}
 
       {error && (
-        <div
-          className="glass rounded-md px-3 py-2 text-xs text-red-300 min-w-[180px]"
-          data-testid="section-import-error"
-          role="alert"
-        >
+        <Glass className="rounded-md px-3 py-2 text-xs text-red-300 min-w-[180px]" data-testid="section-import-error"
+          role="alert">
           {error}
-        </div>
+        </Glass>
       )}
     </span>
   );

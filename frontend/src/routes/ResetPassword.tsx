@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api, ApiError } from "@/api/client";
+import {Glass} from "@/components/glass";
 
 interface Resp { ok: boolean; api_keys_wiped: number; }
 
@@ -38,7 +39,7 @@ export default function ResetPassword() {
   if (!confirmed) {
     return (
       <div className="grid place-items-center min-h-screen px-4">
-        <div className="glass p-8 w-full max-w-md space-y-5">
+        <Glass className="p-8 w-full max-w-md space-y-5">
           <div className="kicker">Heads up</div>
           <h1 className="text-2xl font-semibold">Resetting your password</h1>
           <p className="muted text-sm leading-relaxed">
@@ -55,14 +56,14 @@ export default function ResetPassword() {
             </button>
             <Link to="/login" className="button-ghost">Cancel</Link>
           </div>
-        </div>
+        </Glass>
       </div>
     );
   }
 
   return (
     <div className="grid place-items-center min-h-screen px-4">
-      <form onSubmit={onSubmit} className="glass p-8 w-full max-w-sm space-y-4">
+      <Glass as="form" className="p-8 w-full max-w-sm space-y-4" onSubmit={onSubmit}>
         <div className="kicker">Password reset</div>
         <h1 className="text-2xl font-semibold">Set a new password</h1>
         <input type="password" required placeholder="New password"
@@ -75,7 +76,7 @@ export default function ResetPassword() {
         <button type="submit" disabled={submitting} className="button-primary w-full">
           {submitting ? "Resetting…" : "Reset password"}
         </button>
-      </form>
+      </Glass>
     </div>
   );
 }

@@ -15,6 +15,7 @@
 import {useMemo, useState} from "react";
 import {researchApi, type HeatmapPoint, type PlaceRow} from "@/api/research";
 import {PanelShell, useAsync} from "./_shared";
+import {Glass} from "@/components/glass";
 
 // ── colour helpers ─────────────────────────────────────────────────────────
 
@@ -129,16 +130,16 @@ function SvgHeatmap({
 
       {/* tooltip */}
       {hovered && (
-        <div className="absolute bottom-3 left-3 glass rounded-lg px-3 py-2 text-xs pointer-events-none">
+        <Glass className="absolute bottom-3 left-3 rounded-lg px-3 py-2 text-xs pointer-events-none">
           <p className="font-medium text-ink">{hovered.place_label}</p>
           <p className="muted">
             {hovered.weight} ms · {hovered.type}
           </p>
-        </div>
+        </Glass>
       )}
 
       {/* legend */}
-      <div className="absolute top-3 right-3 glass rounded-lg px-3 py-2 text-xs flex flex-col gap-1.5">
+      <Glass className="absolute top-3 right-3 rounded-lg px-3 py-2 text-xs flex flex-col gap-1.5">
         {(["production", "mentioned", "both"] as const).map((t) => (
           <span key={t} className="flex items-center gap-1.5">
             <span
@@ -148,7 +149,7 @@ function SvgHeatmap({
             <span className="text-white/60">{t}</span>
           </span>
         ))}
-      </div>
+      </Glass>
     </div>
   );
 }

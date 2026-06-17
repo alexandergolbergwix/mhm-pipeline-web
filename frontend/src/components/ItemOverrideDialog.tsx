@@ -11,6 +11,7 @@ import {
   type ItemOverridePayload,
   type StudioItem,
 } from "@/api/wikidataStudio";
+import {Glass} from "@/components/glass";
 
 export interface ItemOverrideDialogProps {
   runId: string;
@@ -90,7 +91,7 @@ export function ItemOverrideDialog({runId, item, onClose, onSaved}: ItemOverride
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
          data-testid="item-override-modal" role="dialog" aria-modal="true">
-      <div className="glass flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden">
+      <Glass className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Edit Wikidata item</div>
@@ -143,7 +144,7 @@ export function ItemOverrideDialog({runId, item, onClose, onSaved}: ItemOverride
             {saving ? "Saving…" : "Save & rebuild"}
           </button>
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

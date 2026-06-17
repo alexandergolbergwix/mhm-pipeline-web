@@ -5,6 +5,7 @@ import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { History, type ProjectEvent, type Snapshot } from "@/api/history";
 import { useProjectEvents } from "@/api/realtime";
+import {Glass} from "@/components/glass";
 
 const FRIENDLY: Record<string, string> = {
   "project.created":      "Created project",
@@ -106,7 +107,7 @@ export default function ProjectHistory() {
   return (
     <Layout>
       <div className="space-y-6">
-        <section className="glass p-6">
+        <Glass as="section" className="p-6">
           <div className="kicker">
             History · <Link to={`/projects/${projectId}`} className="hover:text-ink underline">back to project</Link>
           </div>
@@ -116,12 +117,12 @@ export default function ProjectHistory() {
             row in an append-only event log. <b className="text-ink">Restore to here</b>{" "}
             rewinds your approvals to the state at any earlier event.
           </p>
-        </section>
+        </Glass>
 
-        {error && <div className="glass p-4 text-red-300 text-sm">{error}</div>}
+        {error && <Glass className="p-4 text-red-300 text-sm">{error}</Glass>}
 
         {snapshots.length > 0 && (
-          <section className="glass p-6 space-y-2">
+          <Glass as="section" className="p-6 space-y-2">
             <div className="kicker">Named snapshots</div>
             <ul className="space-y-2">
               {snapshots.map((s) => (
@@ -143,10 +144,10 @@ export default function ProjectHistory() {
                 </li>
               ))}
             </ul>
-          </section>
+          </Glass>
         )}
 
-        <section className="glass p-6 space-y-3">
+        <Glass as="section" className="p-6 space-y-3">
           <h3 className="text-lg font-medium">Timeline</h3>
           {events === null && <p className="muted">Loading…</p>}
           {events && events.length === 0 && <p className="muted italic">No events yet.</p>}
@@ -193,7 +194,7 @@ export default function ProjectHistory() {
               </button>
             </div>
           )}
-        </section>
+        </Glass>
       </div>
     </Layout>
   );

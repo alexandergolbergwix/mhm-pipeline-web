@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/stores/auth";
+import {Glass} from "@/components/glass";
 
 export default function Login() {
   const { user, login, error } = useAuth();
@@ -29,7 +30,7 @@ export default function Login() {
 
   return (
     <div className="grid place-items-center min-h-screen px-4">
-      <form onSubmit={onSubmit} className="glass p-8 w-full max-w-sm space-y-5">
+      <Glass as="form" className="p-8 w-full max-w-sm space-y-5" onSubmit={onSubmit}>
         <header className="space-y-1">
           <div className="kicker">Bar-Ilan University · MHM</div>
           <h1 className="text-2xl font-semibold tracking-tight">MHM Pipeline</h1>
@@ -79,7 +80,7 @@ export default function Login() {
             </Link>
           </span>
         </div>
-      </form>
+      </Glass>
     </div>
   );
 }

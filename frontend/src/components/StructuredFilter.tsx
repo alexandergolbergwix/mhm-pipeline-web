@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import {GlassPill} from "@/components/glass";
 
 export type FilterColumn = {
   key: string;
@@ -130,10 +131,10 @@ export function StructuredFilter({ columns, distinctValues, conditions, onChange
             const opLabel = ops2.find((o) => o.id === c.operator)?.label ?? c.operator;
             const valueless = VALUELESS_OPS.has(c.operator);
             return (
-              <div key={i} className="glass-pill px-3 py-1 text-xs flex items-center gap-2">
+              <GlassPill as="div" className="px-3 py-1 text-xs flex items-center gap-2" key={i}>
                 <span><b>{cSpec?.label ?? c.column}</b> {opLabel}{!valueless && <> <i>{c.value}</i></>}</span>
                 <button onClick={() => removeAt(i)} className="opacity-70 hover:opacity-100" aria-label="remove">×</button>
-              </div>
+              </GlassPill>
             );
           })}
         </div>

@@ -1,4 +1,5 @@
 import {Link} from "react-router-dom";
+import {Glass, GlassPill} from "@/components/glass";
 
 interface Props {
   label: string;
@@ -9,17 +10,17 @@ interface Props {
 
 export function AdminStatCard({label, value, badge, href}: Props) {
   const inner = (
-    <div className="glass p-5 rounded-2xl flex flex-col gap-1 hover:bg-white/5 transition">
+    <Glass className="p-5 rounded-2xl flex flex-col gap-1 hover:bg-white/5 transition">
       <div className="flex items-start justify-between gap-2">
         <span className="text-3xl font-bold text-ink">{value}</span>
         {badge !== undefined && badge > 0 && (
-          <span className="glass-pill text-xs border-yellow-400/60 text-yellow-300 bg-yellow-500/10 px-2 py-0.5">
+          <GlassPill className="text-xs border-yellow-400/60 text-yellow-300 bg-yellow-500/10 px-2 py-0.5">
             {badge} pending
-          </span>
+          </GlassPill>
         )}
       </div>
       <span className="kicker">{label}</span>
-    </div>
+    </Glass>
   );
 
   if (href) {

@@ -421,43 +421,34 @@ ONTOLOGY_PATH = _ONTOLOGY_DIR / "hebrew-manuscripts.ttl"
 def _run_shacl_sync(
     graph_path: Path, shapes_path: Path,
 ) -> tuple[bool, list[ShaclViolation]]:
-    import pyshacl  # noqa: PLC0415
+    from converter.config.namespaces import bind_namespaces  # noqa: PLC0415
+    from converter.validation.shacl_validator import ShaclValidator  # noqa: PLC0415
 
+    validator = ShaclValidator(shapes_path=shapes_path)
     data_graph = Graph().parse(str(graph_path), format="turtle")
-    shapes_graph = Graph().parse(str(shapes_path), format="turtle")
-    ont_graph = Graph()
-    if ONTOLOGY_PATH.exists():
-        ont_graph.parse(str(ONTOLOGY_PATH), format="turtle")
-
-    conforms, results_graph, _ = pyshacl.validate(
+    result = validator.validate(
         data_graph,
-        shacl_graph=shapes_graph,
-        ont_graph=ont_graph,
         inference="rdfs",
-        abort_on_first=False,
-        meta_shacl=False,
-        advanced=True,
+        ontology_path=ONTOLOGY_PATH,
     )
+    if not result.conforms and result.violations:
+        first = result.violations[0]
+        if first.severity == "Error" and first.message.startswith("Validation error:"):
+            raise RuntimeError(first.message.removeprefix("Validation error: ").strip())
 
     violations: list[ShaclViolation] = []
-    if not conforms:
-        SH = rdflib.Namespace("http://www.w3.org/ns/shacl#")
-        for vr in results_graph.subjects(RDF.type, SH.ValidationResult):
-            focus = results_graph.value(vr, SH.focusNode)
-            shape = results_graph.value(vr, SH.sourceShape)
-            severity = results_graph.value(vr, SH.resultSeverity)
-            msg = results_graph.value(vr, SH.resultMessage)
-            value = results_graph.value(vr, SH.value)
+    if not result.conforms:
+        for v in result.violations:
             violations.append(
                 ShaclViolation(
-                    focus_node=str(focus) if focus else "",
-                    source_shape=str(shape) if shape else "",
-                    severity=_local_name(str(severity)) if severity else "Violation",
-                    message=str(msg) if msg else "",
-                    value=str(value) if value is not None else None,
+                    focus_node=v.focus_node,
+                    source_shape="",
+                    severity=v.severity,
+                    message=v.message,
+                    value=v.value,
                 )
             )
-    return bool(conforms), violations
+    return result.conforms, violations
 
 
 async def validate_with_shacl(graph_path: Path) -> ShaclReport:

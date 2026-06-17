@@ -9,6 +9,7 @@ import {
   type AccessRequestStatus,
 } from "@/api/accessRequests";
 import { useAuth } from "@/stores/auth";
+import {Glass, GlassPill} from "@/components/glass";
 
 type FilterValue = "all" | AccessRequestStatus;
 
@@ -78,7 +79,7 @@ function DenyModal({ open, submitting, onCancel, onConfirm }: DenyModalProps) {
       role="dialog"
       aria-modal="true"
     >
-      <form onSubmit={handleSubmit} className="glass p-6 w-full max-w-md space-y-4">
+      <Glass as="form" className="p-6 w-full max-w-md space-y-4" onSubmit={handleSubmit}>
         <div>
           <div className="kicker mb-1">Deny request</div>
           <h3 className="text-lg font-semibold">Reason for denial</h3>
@@ -115,7 +116,7 @@ function DenyModal({ open, submitting, onCancel, onConfirm }: DenyModalProps) {
             {submitting ? "Denying…" : "Confirm deny"}
           </button>
         </div>
-      </form>
+      </Glass>
     </div>
   );
 }
@@ -207,7 +208,7 @@ export default function AccessRequestsQueue() {
   return (
     <AdminLayout>
       <div data-testid="access-requests-page" className="space-y-6">
-        <section className="glass p-6">
+        <Glass as="section" className="p-6">
           <div className="kicker mb-1">Admin · access</div>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <h2 className="text-xl font-semibold">
@@ -223,27 +224,28 @@ export default function AccessRequestsQueue() {
             {FILTERS.map((f) => {
               const active = filter === f.value;
               return (
-                <button
+                <GlassPill
+                  as="button"
                   type="button"
                   key={f.value}
                   data-testid={`filter-chip-${f.value}`}
                   data-active={active}
                   onClick={() => setFilter(f.value)}
                   aria-pressed={active}
-                  className={`glass-pill text-xs ${active ? "border-biu-sky text-biu-sky" : "muted"}`}
+                  className={`text-xs ${active ? "border-biu-sky text-biu-sky" : "muted"}`}
                 >
                   {f.label}
                   <span className="ml-1 opacity-70">({counts[f.value] ?? 0})</span>
-                </button>
+                </GlassPill>
               );
             })}
           </div>
 
           {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
           {notice && <p className="text-green-300 text-sm mt-3">{notice}</p>}
-        </section>
+        </Glass>
 
-        <section className="glass p-6 space-y-3">
+        <Glass as="section" className="p-6 space-y-3">
           <table className="w-full text-sm">
             <thead className="muted text-left">
               <tr>
@@ -277,11 +279,9 @@ export default function AccessRequestsQueue() {
                       <td className="py-2">{req.email}</td>
                       <td className="py-2 muted">{req.affiliation}</td>
                       <td className="py-2">
-                        <span
-                          className={`glass-pill text-xs ${statusPillClasses(req.status)}`}
-                        >
+                        <GlassPill className={`text-xs ${statusPillClasses(req.status)}`}>
                           {statusLabel(req.status)}
-                        </span>
+                        </GlassPill>
                       </td>
                       <td className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
                         {canActOnRequest ? (
@@ -332,7 +332,7 @@ export default function AccessRequestsQueue() {
               )}
             </tbody>
           </table>
-        </section>
+        </Glass>
       </div>
 
       <DenyModal

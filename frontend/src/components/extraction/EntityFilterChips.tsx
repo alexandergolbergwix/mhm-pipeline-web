@@ -14,6 +14,7 @@ import {
   EntitySource,
   EntityType,
 } from "@/api/extractionApprovals";
+import {Glass, GlassPill} from "@/components/glass";
 
 export interface EntityFilterChipsProps {
   entities: Entity[];
@@ -54,13 +55,11 @@ interface ChipProps {
 }
 function Chip({ label, active, count, onToggle, testId }: ChipProps) {
   return (
-    <button type="button" onClick={onToggle}
+    <GlassPill as="button" type="button" onClick={onToggle}
       data-testid={testId}
-      data-active={active}
-      className={`glass-pill text-xs ${active ? "border-biu-sky text-biu-sky" : "muted"}`}
-      aria-pressed={active}>
+      data-active={active} className={`text-xs ${active ? "border-biu-sky text-biu-sky" : "muted"}`} aria-pressed={active}>
       {label}<span className="ml-1 opacity-70">({count})</span>
-    </button>
+    </GlassPill>
   );
 }
 
@@ -97,7 +96,7 @@ export function EntityFilterChips({ entities, onFilteredChange }: EntityFilterCh
                     state.roles.size > 0 || state.search.length > 0;
 
   return (
-    <div className="glass space-y-3 p-3" data-testid="entity-filter-chips">
+    <Glass variant="compact" className="space-y-3 p-3" data-testid="entity-filter-chips">
       <div className="flex items-center gap-2">
         <input type="text"
           placeholder="Search text or MS id…"
@@ -140,6 +139,6 @@ export function EntityFilterChips({ entities, onFilteredChange }: EntityFilterCh
           ))}
         </div>
       </div>
-    </div>
+    </Glass>
   );
 }

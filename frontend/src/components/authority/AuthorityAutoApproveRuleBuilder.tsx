@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/api/client";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Runs, type AuthorityAutoApproveRule } from "@/api/runs";
+import {Glass, GlassPill} from "@/components/glass";
 
 export type { AuthorityAutoApproveRule };
 
@@ -116,7 +117,7 @@ export function AuthorityAutoApproveRuleBuilder({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          data-testid="authority-auto-approve-modal"
          role="dialog" aria-modal="true">
-      <div className="glass flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden">
+      <Glass className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden">
 
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
@@ -135,14 +136,14 @@ export function AuthorityAutoApproveRuleBuilder({
             <div className="kicker mb-1">Confidence</div>
             <div className="flex flex-wrap gap-2">
               {ALL_CONFS.map((c) => (
-                <label key={c} className="glass-pill flex cursor-pointer items-center gap-1 text-xs">
+                <GlassPill as="label" className="flex cursor-pointer items-center gap-1 text-xs" key={c}>
                   <input type="checkbox"
                          data-testid={`rule-conf-${c}`}
                          checked={rule.confidence_levels.includes(c)}
                          onChange={() => toggleConf(c)}
                          className="h-3 w-3 accent-biu-sky" />
                   <span>{c}</span>
-                </label>
+                </GlassPill>
               ))}
             </div>
           </div>
@@ -155,14 +156,14 @@ export function AuthorityAutoApproveRuleBuilder({
             </div>
             <div className="flex flex-wrap gap-2">
               {ALL_SOURCES.map((s) => (
-                <label key={s} className="glass-pill flex cursor-pointer items-center gap-1 text-xs">
+                <GlassPill as="label" className="flex cursor-pointer items-center gap-1 text-xs" key={s}>
                   <input type="checkbox"
                          data-testid={`rule-source-${s}`}
                          checked={rule.sources.includes(s)}
                          onChange={() => toggleSource(s)}
                          className="h-3 w-3 accent-biu-sky" />
                   <span>{s}</span>
-                </label>
+                </GlassPill>
               ))}
             </div>
           </div>
@@ -175,14 +176,14 @@ export function AuthorityAutoApproveRuleBuilder({
             </div>
             <div className="flex flex-wrap gap-2">
               {ALL_KINDS.map((k) => (
-                <label key={k} className="glass-pill flex cursor-pointer items-center gap-1 text-xs">
+                <GlassPill as="label" className="flex cursor-pointer items-center gap-1 text-xs" key={k}>
                   <input type="checkbox"
                          data-testid={`rule-kind-${k}`}
                          checked={rule.entity_kinds.includes(k)}
                          onChange={() => toggleKind(k)}
                          className="h-3 w-3 accent-biu-sky" />
                   <span>{k}</span>
-                </label>
+                </GlassPill>
               ))}
             </div>
           </div>
@@ -259,7 +260,7 @@ export function AuthorityAutoApproveRuleBuilder({
             </button>
           </div>
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

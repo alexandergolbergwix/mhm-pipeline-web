@@ -45,6 +45,26 @@ body::before {
 
 #root { position: relative; z-index: 1; }
 
+/* Layout/tint tokens for <Glass> / <GlassPill> — refraction lives in LiquidGlassSurface. */
+.glass-shell {
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.glass-shell-drawer {
+  border-left: 1px solid var(--line);
+}
+
+.glass-shell-compact {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.glass-shell-pill {
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+/* Deprecated — use <Glass> / <GlassPill> instead of these classes directly. */
 .glass {
   background: linear-gradient(180deg, var(--panel-strong), rgba(255, 255, 255, 0.04));
   border: 1px solid var(--line);

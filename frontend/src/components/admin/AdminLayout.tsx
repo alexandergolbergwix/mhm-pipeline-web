@@ -3,6 +3,7 @@ import {NavLink} from "react-router-dom";
 
 import {Layout} from "@/components/Layout";
 import {Admin} from "@/api/admin";
+import {Glass, GlassPill} from "@/components/glass";
 
 interface Props {
   children: ReactNode;
@@ -34,26 +35,23 @@ export function AdminLayout({children}: Props) {
   return (
     <Layout>
       <div className="flex gap-6 min-h-[60vh]">
-        <aside className="glass p-4 rounded-2xl flex-shrink-0 w-44 space-y-1 self-start">
+        <Glass as="aside" className="p-4 rounded-2xl flex-shrink-0 w-44 space-y-1 self-start">
           <div className="kicker px-2 pb-2">Admin</div>
           <SideNavLink to="/admin" end>Dashboard</SideNavLink>
           <SideNavLink to="/admin/access-requests">
             <span className="flex items-center justify-between gap-2 w-full">
               <span>Access Requests</span>
               {pendingCount > 0 && (
-                <span
-                  data-testid="admin-pending-badge"
-                  className="glass-pill text-xs border-yellow-400/60 text-yellow-300 bg-yellow-500/10 px-1.5 py-0.5 min-w-[1.4rem] text-center"
-                >
+                <GlassPill className="text-xs border-yellow-400/60 text-yellow-300 bg-yellow-500/10 px-1.5 py-0.5 min-w-[1.4rem] text-center" data-testid="admin-pending-badge">
                   {pendingCount}
-                </span>
+                </GlassPill>
               )}
             </span>
           </SideNavLink>
           <SideNavLink to="/admin/users">Users</SideNavLink>
           <SideNavLink to="/admin/projects">Projects</SideNavLink>
           <SideNavLink to="/admin/invites">Invites</SideNavLink>
-        </aside>
+        </Glass>
         <main className="flex-1 min-w-0">{children}</main>
       </div>
     </Layout>

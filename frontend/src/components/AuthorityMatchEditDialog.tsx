@@ -7,6 +7,7 @@ import { useCallback, useState } from "react";
 
 import {ApiError} from "@/api/client";
 import {Runs, type AuthorityMatch} from "@/api/runs";
+import {Glass} from "@/components/glass";
 
 export interface AuthorityMatchEditDialogProps {
   runId: string;
@@ -65,7 +66,7 @@ export function AuthorityMatchEditDialog({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
          data-testid="authority-match-edit-modal"
          role="dialog" aria-modal="true">
-      <div className="glass flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden">
+      <Glass className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Edit authority match</div>
@@ -113,7 +114,7 @@ export function AuthorityMatchEditDialog({
             {saving ? "Saving…" : "Save changes"}
           </button>
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }

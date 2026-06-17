@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/stores/auth";
+import {Glass} from "@/components/glass";
 
 export default function Home() {
   const { user } = useAuth();
@@ -10,7 +11,7 @@ export default function Home() {
   return (
     <Layout>
       <div className="space-y-6">
-        <section className="glass p-8 space-y-3">
+        <Glass as="section" className="p-8 space-y-3">
           <div className="kicker">Phase 1+2 — authentication, invites, password flows</div>
           <h2 className="text-2xl font-semibold">
             Hello {user?.name?.split(" ")[0] ?? "there"}.
@@ -32,7 +33,7 @@ export default function Home() {
               Account settings
             </Link>
           </div>
-        </section>
+        </Glass>
 
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <RoadmapCard
@@ -73,10 +74,10 @@ export default function Home() {
 
 function RoadmapCard({ tag, title, body }: { tag: string; title: string; body: string }) {
   return (
-    <article className="glass p-6 space-y-2">
+    <Glass as="article" className="p-6 space-y-2">
       <div className="kicker">{tag}</div>
       <h3 className="text-lg font-medium">{title}</h3>
       <p className="text-sm muted leading-relaxed">{body}</p>
-    </article>
+    </Glass>
   );
 }
