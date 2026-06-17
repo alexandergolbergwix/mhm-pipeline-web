@@ -73,6 +73,29 @@ from .wikidata_crosscheck import (
 logger = logging.getLogger(__name__)
 
 
+def _is_valid_viaf_cluster_id(viaf: str) -> bool:
+    return bool(viaf) and viaf.isdigit() and 8 <= len(viaf) <= 15
+
+
+def _choose_viaf_cluster_from_p214(viafs: list[str], *, qid: str) -> str | None:
+    """Pick the sole valid VIAF cluster among Wikidata P214 values."""
+    valid = [v for v in viafs if _is_valid_viaf_cluster_id(v)]
+    if len(valid) == 1:
+        return valid[0]
+    if len(valid) > 1:
+        logger.debug(
+            "VIAF P214 lookup for %s: %d valid cluster IDs %r — abstaining",
+            qid, len(valid), valid,
+        )
+        return None
+    if viafs:
+        logger.debug(
+            "VIAF P214 lookup for %s: no valid cluster IDs among %r",
+            qid, viafs,
+        )
+    return None
+
+
 # ── Type-class catalogues (for P31/P279* filter) ──────────────────────
 
 # Person-shaped classes: human, fictional human, group of humans,
@@ -439,10 +462,10 @@ class WikidataMatcher:
         Useful when an NLI-strict resolution gives us a QID but no
         VIAF: the QID's own P214 statement is more reliable than a
         fresh VIAF SRU query. Returns the value when exactly one
-        ``P214`` row exists; returns ``None`` on zero or multiple
-        rows (conflicting IDs on one item is itself a data-quality
-        flag, so we abstain). Cached on disk like the other identifier
-        lookups.
+        **valid** cluster ID survives filtering; returns ``None`` when
+        zero or two-or-more valid cluster IDs remain (conflicting IDs
+        on one item is itself a data-quality flag, so we abstain).
+        Cached on disk like the other identifier lookups.
 
         Cluster-ID length guard: real VIAF cluster identifiers are
         digits-only and 8–15 characters long (per the OCLC VIAF API
@@ -450,10 +473,9 @@ class WikidataMatcher:
         P214 has no length constraint of its own, so community-edited
         items occasionally carry SRU ``recordIdentifier`` strings or
         composite ephemeral IDs (16–22 digits) that do NOT dereference
-        to a single cluster. Such values are rejected at source so the
-        downstream cluster-fetch (``get_cluster_identifiers``) and the
-        P214 upload path never see a malformed ID. The rejected lookup
-        is cached as ``None`` to avoid repeating the SPARQL hop.
+        to a single cluster. Such junk values are filtered out; when
+        one valid cluster ID remains it is returned (e.g. Allony
+        Q59530677: ``49353935`` + a 22-digit SRU artefact).
         """
         if not is_enabled() or not qid:
             return None
@@ -464,17 +486,11 @@ class WikidataMatcher:
             return value if isinstance(value, str) else None
 
         query = (
-            f"SELECT ?viaf WHERE {{ wd:{qid} wdt:P214 ?viaf . }} LIMIT 2"
+            f"SELECT ?viaf WHERE {{ wd:{qid} wdt:P214 ?viaf . }} LIMIT 10"
         )
         payload = _http_sparql(query)
         viafs = _extract_literal_values(payload, "viaf")
-        chosen = viafs[0] if len(viafs) == 1 else None
-        if chosen is not None and (not chosen.isdigit() or not (8 <= len(chosen) <= 15)):
-            logger.debug(
-                "VIAF P214 lookup for %s returned non-cluster ID %r (len=%d, must be 8-15 digits); rejecting",
-                qid, chosen, len(chosen),
-            )
-            chosen = None
+        chosen = _choose_viaf_cluster_from_p214(viafs, qid=qid)
         self._cache_put(cache_key, {"viaf_id": chosen})
         return chosen
 

@@ -445,6 +445,21 @@ class DesktopMatcher(AuthorityMatcher):
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
 
+    async def _wikidata_match_by_mazal(
+        self, mazal_id: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> str | None:
+        """Resolve a Mazal/J9U authority id to a Wikidata QID via P8189."""
+        if self._wikidata is None or not mazal_id:
+            return None
+        async def _f() -> str | None:
+            r = await asyncio.to_thread(self._wikidata.find_qid_by_mazal, mazal_id)
+            return str(r) if r else None
+        return await self._cached(
+            kind="authority.wikidata",
+            query_summary={"op": "find_qid_by_mazal", "mazal_id": mazal_id},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
     async def _wikidata_dates(
         self, qid: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> dict[str, int | None] | None:
@@ -782,15 +797,32 @@ class DesktopMatcher(AuthorityMatcher):
         # — Wikidata (persons only) —
         # Wikidata person-name search must not fire on place/work entities;
         # place QIDs are already resolved by KIMA / Ashkenazi gazetteer.
+        # When Mazal already matched, triangulate via P8189 before label
+        # search — avoids wrong high-QID label hits (e.g. Allony, Nehemia).
         if _is_person_entity and self._wikidata is not None:
             try:
-                qid = await self._wikidata_match_person(
-                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
-                )
-                if qid:
-                    wikidata_qid = str(qid)
-                    sources.append("wikidata")
-                    reasoning_parts.append(f"Wikidata hit ({qid}).")
+                if mazal_id and not wikidata_qid:
+                    qid_from_mazal = await self._wikidata_match_by_mazal(
+                        mazal_id,
+                        db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                    )
+                    if qid_from_mazal:
+                        wikidata_qid = str(qid_from_mazal)
+                        sources.append("wikidata")
+                        reasoning_parts.append(
+                            f"Wikidata hit via Mazal P8189 ({qid_from_mazal}).",
+                        )
+
+                if not wikidata_qid:
+                    qid = await self._wikidata_match_person(
+                        text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                    )
+                    if qid:
+                        wikidata_qid = str(qid)
+                        sources.append("wikidata")
+                        reasoning_parts.append(f"Wikidata hit ({qid}).")
+
+                if wikidata_qid:
                     # Backfill via SPARQL — Rule 49 §B "Wikidata date
                     # backfill". Cheap with the on-disk cache.
                     try:
@@ -822,7 +854,7 @@ class DesktopMatcher(AuthorityMatcher):
                                 if "viaf" not in sources:
                                     sources.append("viaf")
                                 reasoning_parts.append(
-                                    f"VIAF cross-enriched from Wikidata P214 ({wd_viaf})."
+                                    f"VIAF cross-enriched from Wikidata P214 ({wd_viaf}).",
                                 )
                     except Exception as exc:  # noqa: BLE001
                         logger.debug("Wikidata enrich_qid failed for %s: %s", wikidata_qid, exc)
