@@ -104,6 +104,7 @@ export interface AuthorityTableProps {
   matches:          AuthorityMatch[];
   runId:            string;
   projectId:        string;
+  noteIndex?:       Record<string, string>;
   selectedIds:      Set<string>;
   onSelectToggle:   (id: string) => void;
   onApproveToggle:  (m: AuthorityMatch) => void;
@@ -165,6 +166,7 @@ export function AuthorityTable({
   matches,
   runId: _runId,
   projectId,
+  noteIndex,
   selectedIds,
   onSelectToggle,
   onApproveToggle,
@@ -179,6 +181,7 @@ export function AuthorityTable({
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   const [groupDuplicates, setGroupDuplicates] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [notesSearch, setNotesSearch] = useState("");
 
   // Collect distinct values per filterable column for the popup.
   const distinctValues = useMemo<Record<string, string[]>>(() => {
@@ -215,6 +218,14 @@ export function AuthorityTable({
     const etFilter = textFilters.entity_text?.trim().toLowerCase();
     if (etFilter) out = out.filter((m) => m.entity_text.toLowerCase().includes(etFilter));
 
+    const notesFilter = notesSearch.trim().toLowerCase();
+    if (notesFilter && noteIndex) {
+      out = out.filter((m) => {
+        const blob = noteIndex[m.control_number] ?? "";
+        return blob.includes(notesFilter);
+      });
+    }
+
     // Sort.
     if (sort) {
       const { key, dir } = sort;
@@ -243,7 +254,7 @@ export function AuthorityTable({
     }
 
     return out;
-  }, [matches, columnFilters, textFilters, sort]);
+  }, [matches, columnFilters, textFilters, sort, notesSearch, noteIndex]);
 
   // Grouped view: collapse rows with same (control_number, normalized entity_text)
   // into a single representative row (primary = highest-priority role), with alt
@@ -343,7 +354,7 @@ export function AuthorityTable({
       )}
 
       {/* Group-duplicates toggle */}
-      <div className="flex items-center gap-2 py-1 text-xs text-muted">
+      <div className="flex flex-wrap items-center gap-3 py-1 text-xs text-muted">
         <label className="flex items-center gap-1.5 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -357,6 +368,18 @@ export function AuthorityTable({
           <span className="text-muted">
             ({grouped.length} groups · {display.length} rows)
           </span>
+        )}
+        {noteIndex && (
+          <label className="flex items-center gap-1.5 ml-auto">
+            <span>Search notes</span>
+            <input
+              type="search"
+              value={notesSearch}
+              onChange={(e) => setNotesSearch(e.target.value)}
+              placeholder="colophon, כולל:, הערות…"
+              className="input !py-1 !text-xs w-48"
+            />
+          </label>
         )}
       </div>
 

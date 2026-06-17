@@ -659,13 +659,7 @@ async def re_enrich_authority(
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     from app.pipeline import authority as auth_pipeline  # noqa: PLC0415
-    from app.pipeline.marc_ingest import extract_named_entities, prepare_record_for_pipeline  # noqa: PLC0415
-    from app.pipeline.entity_normalize import (  # noqa: PLC0415
-        normalize_entity_key,
-        normalize_entity_text,
-        normalize_role,
-    )
-    from collections import defaultdict
+    from app.pipeline.authority_re_enrich import re_enrich_run  # noqa: PLC0415
 
     matcher = auth_pipeline.get_default_matcher()
 
@@ -681,99 +675,35 @@ async def re_enrich_authority(
         )
     ).scalars().all()
 
-    def _match_key(
-        cn: str, text: str, kind: str, role: str,
-    ) -> tuple[str, str, str, str]:
-        return (
-            cn,
-            normalize_entity_key(normalize_entity_text(text)),
-            kind,
-            normalize_role(role),
-        )
+    stats = await re_enrich_run(
+        db, run, matcher,
+        skip_cache=skip_cache,
+        records=list(records),
+        existing_rows=list(existing_rows),
+    )
+    return {**stats, "skip_cache": skip_cache}
 
-    # Index existing rows by normalised key; multiple legacy rows may share one key.
-    existing_idx: dict[tuple[str, str, str, str], list[AuthorityMatch]] = defaultdict(list)
-    for m in existing_rows:
-        existing_idx[_match_key(
-            m.control_number, m.entity_text, m.entity_kind, m.role or "",
-        )].append(m)
 
-    checked = 0
-    updated = 0
-    newly_matched = 0
+@router.get("/runs/{run_id}/authority/note-index")
+async def authority_note_index(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Per-record searchable note text for the Authority table notes filter."""
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    from app.pipeline.marc_ingest import build_record_note_blob, prepare_record_for_pipeline  # noqa: PLC0415
 
+    records = (
+        await db.execute(select(RunRecord).where(RunRecord.run_id == run_id))
+    ).scalars().all()
+    out: dict[str, str] = {}
     for rec in records:
         marc = prepare_record_for_pipeline(dict(rec.marc or {}))
-        entities = extract_named_entities(marc)
-        for entity in entities:
-            checked += 1
-            try:
-                candidates = await matcher.match(
-                    entity, marc,
-                    db_session=db,
-                    user_id=run.created_by,
-                    skip_cache=skip_cache,
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception(
-                    "re-enrich: authority match failed for %r", entity.get("text"),
-                )
-                candidates = []
-
-            if not candidates:
-                continue
-
-            c = candidates[0]
-            clean_text = normalize_entity_text(entity.get("text", ""))
-            clean_role = normalize_role(entity.get("role", ""))
-            key = _match_key(
-                rec.control_number,
-                clean_text,
-                entity.get("kind", "person"),
-                clean_role,
-            )
-            if key in existing_idx:
-                matches = existing_idx[key]
-                m = matches[0]
-                # Collapse legacy duplicate rows (quote/role variants).
-                for dup in matches[1:]:
-                    await db.delete(dup)
-                existing_idx[key] = [m]
-                m.entity_text = clean_text
-                m.role = clean_role
-                m.matched_name  = c.matched_name
-                m.mazal_id      = c.mazal_id
-                m.viaf_id       = c.viaf_id
-                m.wikidata_qid  = c.wikidata_qid
-                m.confidence    = c.confidence
-                m.source        = c.source
-                m.payload       = c.payload
-                updated += 1
-            else:
-                db.add(AuthorityMatch(
-                    run_id=run_id,
-                    control_number=rec.control_number,
-                    entity_text=clean_text,
-                    entity_kind=entity.get("kind", "person"),
-                    role=clean_role,
-                    matched_name=c.matched_name,
-                    mazal_id=c.mazal_id,
-                    viaf_id=c.viaf_id,
-                    wikidata_qid=c.wikidata_qid,
-                    confidence=c.confidence,
-                    source=c.source,
-                    payload=c.payload,
-                ))
-                newly_matched += 1
-
-    run.match_count = len(existing_rows) + newly_matched
-    await db.commit()
-    return {
-        "checked": checked,
-        "updated": updated,
-        "newly_matched": newly_matched,
-        "skip_cache": skip_cache,
-    }
+        blob = build_record_note_blob(marc)
+        if blob:
+            out[rec.control_number] = blob
+    return out
 
 
 @router.post("/runs/{run_id}/authority/re-enrich/stream")
@@ -809,10 +739,18 @@ async def re_enrich_authority_stream(
         await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))
     ).scalars().all()
 
-    existing_idx: dict[tuple[str, str, str], AuthorityMatch] = {
-        (m.control_number, m.entity_text.strip().lower(), m.entity_kind): m
-        for m in existing_rows
-    }
+    from app.pipeline.authority_re_enrich import match_key  # noqa: PLC0415
+    from app.pipeline.entity_normalize import (  # noqa: PLC0415
+        normalize_entity_text,
+        normalize_role,
+    )
+    from collections import defaultdict
+
+    existing_idx: dict[tuple[str, str, str, str], list[AuthorityMatch]] = defaultdict(list)
+    for m in existing_rows:
+        existing_idx[match_key(
+            m.control_number, m.entity_text, m.entity_kind, m.role or "",
+        )].append(m)
 
     # Pre-count total entities so the frontend can show X of N.
     all_entities: list[tuple[RunRecord, dict]] = []
@@ -838,8 +776,15 @@ async def re_enrich_authority_stream(
         matched_count = 0
         source_counts: dict[str, int] = {}
 
+        orphans_removed = 0
+        produced_keys: set[tuple[str, str, str, str]] = set()
+
         for idx, (rec, entity) in enumerate(all_entities):
             checked += 1
+            clean_text = normalize_entity_text(entity.get("text", ""))
+            clean_role = normalize_role(entity.get("role", ""))
+            kind = entity.get("kind", "person")
+            produced_keys.add(match_key(rec.control_number, clean_text, kind, clean_role))
             yield _sse("authority.entity_start", {
                 "index": idx,
                 "total": total_entities,
@@ -880,13 +825,17 @@ async def re_enrich_authority_stream(
                         source_counts[source_key] = source_counts.get(source_key, 0) + 1
 
             if c:
-                key = (
-                    rec.control_number,
-                    (entity.get("text") or "").strip().lower(),
-                    entity.get("kind", "person"),
-                )
+                key = match_key(rec.control_number, clean_text, kind, clean_role)
                 if key in existing_idx:
-                    m = existing_idx[key]
+                    matches = existing_idx[key]
+                    m = matches[0]
+                    for dup in matches[1:]:
+                        await db.delete(dup)
+                        orphans_removed += 1
+                    existing_idx[key] = [m]
+                    m.entity_text = clean_text
+                    m.role = clean_role
+                    m.entity_kind = kind
                     m.matched_name = c.matched_name
                     m.mazal_id     = c.mazal_id
                     m.viaf_id      = c.viaf_id
@@ -896,12 +845,12 @@ async def re_enrich_authority_stream(
                     m.payload      = c.payload
                     updated += 1
                 else:
-                    db.add(AuthorityMatch(
+                    row = AuthorityMatch(
                         run_id=run_id,
                         control_number=rec.control_number,
-                        entity_text=entity.get("text", ""),
-                        entity_kind=entity.get("kind", "person"),
-                        role=entity.get("role", ""),
+                        entity_text=clean_text,
+                        entity_kind=kind,
+                        role=clean_role,
                         matched_name=c.matched_name,
                         mazal_id=c.mazal_id,
                         viaf_id=c.viaf_id,
@@ -909,7 +858,10 @@ async def re_enrich_authority_stream(
                         confidence=c.confidence,
                         source=c.source,
                         payload=c.payload,
-                    ))
+                    )
+                    db.add(row)
+                    await db.flush()
+                    existing_idx[key] = [row]
                     newly_matched += 1
                     is_new = True
 
@@ -926,7 +878,20 @@ async def re_enrich_authority_stream(
                 "is_new": is_new,
             })
 
-        run.match_count = len(existing_rows) + newly_matched
+        for m in existing_rows:
+            k = match_key(m.control_number, m.entity_text, m.entity_kind, m.role or "")
+            if k not in produced_keys:
+                await db.delete(m)
+                orphans_removed += 1
+
+        from sqlalchemy import func  # noqa: PLC0415
+
+        remaining_count = await db.scalar(
+            select(func.count())
+            .select_from(AuthorityMatch)
+            .where(AuthorityMatch.run_id == run_id)
+        )
+        run.match_count = int(remaining_count or 0)
         await db.commit()
 
         yield _sse("authority.done", {
@@ -934,6 +899,7 @@ async def re_enrich_authority_stream(
             "matched": matched_count,
             "updated": updated,
             "newly_matched": newly_matched,
+            "orphans_removed": orphans_removed,
             "source_counts": source_counts,
             "skip_cache": skip_cache,
         })

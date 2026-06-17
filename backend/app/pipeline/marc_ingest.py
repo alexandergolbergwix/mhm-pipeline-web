@@ -654,6 +654,29 @@ from app.pipeline.entity_normalize import (
 )
 
 
+def build_record_note_blob(record: dict[str, Any]) -> str:
+    """Concatenate searchable note/colophon/work text for a MARC record."""
+    parts: list[str] = []
+    for note in record.get("notes") or []:
+        if isinstance(note, str) and note.strip():
+            parts.append(note.strip())
+    colophon = record.get("colophon_text")
+    if isinstance(colophon, str) and colophon.strip():
+        parts.append(colophon.strip())
+    scribe = record.get("colophon_scribe")
+    if isinstance(scribe, str) and scribe.strip():
+        parts.append(scribe.strip())
+    for wm in record.get("work_mentions") or []:
+        if isinstance(wm, dict):
+            title = wm.get("title")
+            if isinstance(title, str) and title.strip():
+                parts.append(title.strip())
+    prov = record.get("provenance")
+    if isinstance(prov, str) and prov.strip():
+        parts.append(prov.strip())
+    return " ".join(parts).lower()
+
+
 def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
     """Pull person-name candidates out of a parsed MARC record."""
     out: list[dict[str, str]] = []
@@ -666,7 +689,7 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
             continue
         ent: dict[str, str] = {
             "text": normalize_entity_text(str(name)),
-            "kind": "person",
+            "kind": "corporate" if str(c.get("field") or "") in ("710", "711") else "person",
             "role": normalize_role(str(c.get("role") or "")),
             "field": str(c.get("field") or ""),
         }
@@ -683,11 +706,14 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
                 "field": "100",
             })
         elif isinstance(a, dict) and (a.get("name") or "").strip():
+            field_tag = str(a.get("field") or "100")
+            kind = "corporate" if field_tag in ("110", "710") else "person"
+            default_role = "institution" if kind == "corporate" else "author"
             ent = {
                 "text": normalize_entity_text(str(a["name"])),
-                "kind": "person",
-                "role": normalize_role(str(a.get("role") or "author")),
-                "field": str(a.get("field") or "100"),
+                "kind": kind,
+                "role": normalize_role(str(a.get("role") or default_role)),
+                "field": field_tag,
             }
             if a.get("dates"):
                 ent["dates"] = str(a["dates"]).strip()
@@ -706,6 +732,20 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
             if sub.get("dates"):
                 ent["dates"] = str(sub["dates"]).strip()
             out.append(ent)
+        elif kind in ("organization", "corporate"):
+            out.append({
+                "text": name,
+                "kind": "corporate",
+                "role": "institution",
+                "field": str(sub.get("field") or "610"),
+            })
+        elif kind == "topic":
+            out.append({
+                "text": name,
+                "kind": "topic",
+                "role": "subject",
+                "field": str(sub.get("field") or "650"),
+            })
         elif kind in ("place", "geographic"):
             out.append({"text": name, "kind": "place", "role": "place", "field": "651"})
 
@@ -781,10 +821,12 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
         "former_owner": 2,
         "subject": 2,
         "contributor": 3,
+        "institution": 3,
         "author": 4,
         "scribe": 4,
         "translator": 4,
         "editor": 4,
+        "contained_work": 1,
     }
 
     def _role_rank(r: str) -> int:

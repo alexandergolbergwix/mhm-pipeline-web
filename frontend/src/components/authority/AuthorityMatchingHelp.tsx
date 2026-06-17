@@ -1,0 +1,33 @@
+/** How authority matching works — curator-facing help (Rule W-33). */
+export function AuthorityMatchingHelp() {
+  return (
+    <details className="glass rounded-lg p-4 text-sm space-y-2">
+      <summary className="cursor-pointer font-medium text-ink select-none">
+        How matching works (Mazal · VIAF · KIMA · Wikidata)
+      </summary>
+      <div className="muted space-y-2 pt-2 leading-relaxed">
+        <p>
+          Each row is one entity extracted from the MARC record (author, place, former owner,
+          work title from notes, institution, etc.). The system routes by <strong className="text-ink">entity kind</strong>:
+        </p>
+        <ul className="list-disc ps-5 space-y-1">
+          <li><strong className="text-ink">Places</strong> — KIMA first (coordinates + Wikidata QID), then Mazal place ID, Ashkenazi gazetteer fallback.</li>
+          <li><strong className="text-ink">Persons</strong> — Mazal (prefers אישיות tag 100 over נושא 150), then VIAF, then Wikidata. MARC birth/death dates ($d) narrow homonyms.</li>
+          <li><strong className="text-ink">Works</strong> — Mazal work headings (from contents / כולל: notes).</li>
+          <li><strong className="text-ink">Institutions</strong> — Mazal corporate bodies (MARC 110/610).</li>
+          <li><strong className="text-ink">Topics</strong> — Mazal subject headings (MARC 650).</li>
+        </ul>
+        <p>
+          <strong className="text-ink">Confidence</strong> reflects how many sources agree and name quality
+          (length, patronymic, catalog heading form). Guards flag issues — e.g.{" "}
+          <code className="text-xs">mazal_subject_not_personality</code> when an author matched a נושא record instead of אישיות.
+        </p>
+        <p>
+          After a system update, run <strong className="text-ink">Re-enrich</strong> to refresh matches
+          while keeping your approvals. Use <strong className="text-ink">Search notes</strong> to find entities
+          whose manuscript has colophon / הערות text even when the entity itself came from a heading field.
+        </p>
+      </div>
+    </details>
+  );
+}

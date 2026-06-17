@@ -1,0 +1,61 @@
+"""Re-enrich authority matches for every run (or one project).
+
+Usage:
+  cd backend && .venv/bin/python -m scripts.re_enrich_all_runs
+  cd backend && .venv/bin/python -m scripts.re_enrich_all_runs --project-id <uuid>
+  cd backend && .venv/bin/python -m scripts.re_enrich_all_runs --skip-cache
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+import uuid
+
+from sqlalchemy import select
+
+from app.db import session_scope
+from app.models.run import AuthorityMatch, Run, RunRecord
+from app.pipeline import authority as auth_pipeline
+from app.pipeline.authority_re_enrich import re_enrich_run
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+async def _run(project_id: uuid.UUID | None, skip_cache: bool) -> None:
+    matcher = auth_pipeline.get_default_matcher()
+    async with session_scope() as db:
+        q = select(Run).order_by(Run.created_at.desc())
+        if project_id is not None:
+            q = q.where(Run.project_id == project_id)
+        runs = (await db.execute(q)).scalars().all()
+        logger.info("Re-enriching %d run(s)", len(runs))
+        for run in runs:
+            records = (
+                await db.execute(select(RunRecord).where(RunRecord.run_id == run.id))
+            ).scalars().all()
+            existing = (
+                await db.execute(
+                    select(AuthorityMatch).where(AuthorityMatch.run_id == run.id),
+                )
+            ).scalars().all()
+            stats = await re_enrich_run(
+                db, run, matcher,
+                skip_cache=skip_cache,
+                records=list(records),
+                existing_rows=list(existing),
+            )
+            logger.info("run %s: %s", run.id, stats)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Bulk authority re-enrich")
+    parser.add_argument("--project-id", type=uuid.UUID, default=None)
+    parser.add_argument("--skip-cache", action="store_true")
+    args = parser.parse_args()
+    asyncio.run(_run(args.project_id, args.skip_cache))
+
+
+if __name__ == "__main__":
+    main()

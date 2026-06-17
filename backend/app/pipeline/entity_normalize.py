@@ -37,6 +37,7 @@ _ROLE_DISPLAY: dict[str, str] = {
     "subject": "subject",
     "place": "place",
     "production_place": "production place",
+    "institution": "institution",
     "contained_work": "contained work",
 }
 

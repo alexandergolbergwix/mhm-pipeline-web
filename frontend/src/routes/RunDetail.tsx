@@ -13,6 +13,7 @@ import type { ScopeKind } from "@/api/aiVerify";
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
 import { AuthorityTable } from "@/components/authority/AuthorityTable";
+import { AuthorityMatchingHelp } from "@/components/authority/AuthorityMatchingHelp";
 import { AuthorityDetailDrawer } from "@/components/authority/AuthorityDetailDrawer";
 import { AuthorityAutoApproveRuleBuilder } from "@/components/authority/AuthorityAutoApproveRuleBuilder";
 
@@ -71,11 +72,17 @@ export default function RunDetail() {
   void enrichTick;
   const [verifyScope, setVerifyScope] = useState<{ kind: ScopeKind; matchIds?: string[]; label: string } | null>(null);
   const [filteredMatchIds, setFilteredMatchIds] = useState<string[]>([]);
+  const [noteIndex, setNoteIndex] = useState<Record<string, string>>({});
 
   async function refresh() {
     if (!runId) return;
     try {
-      setRun(await Runs.get(runId));
+      const [detail, notes] = await Promise.all([
+        Runs.get(runId),
+        Runs.noteIndex(runId).catch(() => ({})),
+      ]);
+      setRun(detail);
+      setNoteIndex(notes);
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     }
@@ -419,10 +426,13 @@ export default function RunDetail() {
             </div>
           )}
 
+          <AuthorityMatchingHelp />
+
           <AuthorityTable
             matches={run.matches}
             runId={runId!}
             projectId={run.project_id}
+            noteIndex={noteIndex}
             selectedIds={selected}
             onSelectToggle={(id) => {
               setSelected((prev) => {

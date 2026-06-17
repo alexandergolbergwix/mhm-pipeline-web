@@ -260,16 +260,18 @@ class DesktopMatcher(AuthorityMatcher):
     async def _mazal_match_work(
         self, title: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
-        """Match a work title against the Mazal authority index.
-
-        Calls the underlying SQLite/Postgres `lookup_work` path.
-        Returns an NLI ID string, or None on no hit.
-        """
+        """Match a work title against the Mazal authority index."""
         _mode = os.getenv("AUTHORITY_MODE", "local").lower()
         if self._mazal is None and _mode not in ("postgres",):
             return None
 
         async def _f() -> str | None:
+            if _mode == "postgres":
+                row = await self._authority_backend.match_work(title)
+                if row and row.get("mazal_id"):
+                    self._mazal_detail_cache[str(row["mazal_id"])] = row
+                    return str(row["mazal_id"])
+                return None
             if self._mazal is None:
                 return None
             nli_id = await asyncio.to_thread(self._mazal.match_work, title)
@@ -278,6 +280,58 @@ class DesktopMatcher(AuthorityMatcher):
         return await self._cached(
             kind="authority.mazal",
             query_summary={"op": "match_work", "text": title},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _mazal_match_corporate(
+        self, name: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> str | None:
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
+        if self._mazal is None and _mode not in ("postgres",):
+            return None
+
+        async def _f() -> str | None:
+            if _mode == "postgres":
+                row = await self._authority_backend.match_corporate(name)
+                if row and row.get("mazal_id"):
+                    self._mazal_detail_cache[str(row["mazal_id"])] = row
+                    return str(row["mazal_id"])
+                return None
+            if self._mazal is None:
+                return None
+            nli_id = await asyncio.to_thread(self._mazal.match_corporate, name)
+            return str(nli_id) if nli_id else None
+
+        return await self._cached(
+            kind="authority.mazal",
+            query_summary={"op": "match_corporate", "text": name},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _mazal_match_subject(
+        self, name: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> str | None:
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
+        if self._mazal is None and _mode not in ("postgres",):
+            return None
+
+        async def _f() -> str | None:
+            if _mode == "postgres":
+                row = await self._authority_backend.match_subject(name)
+                if row and row.get("mazal_id"):
+                    self._mazal_detail_cache[str(row["mazal_id"])] = row
+                    return str(row["mazal_id"])
+                return None
+            if self._mazal is None or self._mazal.index is None:
+                return None
+            nli_id = await asyncio.to_thread(
+                self._mazal.index.lookup, name, "subject",
+            )
+            return str(nli_id) if nli_id else None
+
+        return await self._cached(
+            kind="authority.mazal",
+            query_summary={"op": "match_subject", "text": name},
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
 
@@ -514,6 +568,10 @@ class DesktopMatcher(AuthorityMatcher):
             or role_key.endswith("_place")
             or (role_key == "subject" and _looks_like_place(text, marc_record))
         )
+        _non_person_kinds = frozenset(("work", "corporate", "organization", "topic"))
+        _is_person_entity = (
+            not is_place and normalized_kind not in _non_person_kinds
+        )
         if is_place and (self._kima is not None or _mode in ("modal", "postgres")):
             try:
                 uri = await self._kima_match_place(
@@ -580,8 +638,6 @@ class DesktopMatcher(AuthorityMatcher):
                 reasoning_parts.append("Ashkenazi gazetteer fallback hit.")
 
         # — Mazal work (works only) —
-        # Match work titles extracted from notes / contents / colophon against
-        # the Mazal authority index (tag 130/430 "work" entity_type).
         if normalized_kind == "work" and (self._mazal is not None or _mode == "postgres"):
             try:
                 work_mid = await self._mazal_match_work(
@@ -593,6 +649,34 @@ class DesktopMatcher(AuthorityMatcher):
                     reasoning_parts.append(f"Mazal work hit ({work_mid}).")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal work matcher raised for %r: %s", text, exc)
+
+        # — Mazal corporate (institutions / collections) —
+        if normalized_kind in ("corporate", "organization") and (
+            self._mazal is not None or _mode == "postgres"
+        ):
+            try:
+                corp_mid = await self._mazal_match_corporate(
+                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                )
+                if corp_mid:
+                    mazal_id = str(corp_mid)
+                    sources.append("mazal")
+                    reasoning_parts.append(f"Mazal corporate hit ({corp_mid}).")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Mazal corporate matcher raised for %r: %s", text, exc)
+
+        # — Mazal topical subject (650 / subject headings) —
+        if normalized_kind == "topic" and (self._mazal is not None or _mode == "postgres"):
+            try:
+                sub_mid = await self._mazal_match_subject(
+                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                )
+                if sub_mid:
+                    mazal_id = str(sub_mid)
+                    sources.append("mazal")
+                    reasoning_parts.append(f"Mazal subject hit ({sub_mid}).")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Mazal subject matcher raised for %r: %s", text, exc)
 
         # — Mazal place (places only) —
         # When the entity is a place, look it up in the Mazal authority index to
@@ -632,10 +716,7 @@ class DesktopMatcher(AuthorityMatcher):
         # → Wikidata (most authoritative for medieval Hebrew → least).
 
         # — Mazal (persons only) —
-        # Guard: skip Mazal person matcher for place/work entities to prevent a
-        # place name or work title that coincidentally matches a person heading
-        # from receiving a wrong NLI person ID.
-        if not is_place and normalized_kind != "work" and (
+        if _is_person_entity and (
             self._mazal is not None or _mode in ("modal", "postgres")
         ):
             try:
@@ -677,7 +758,7 @@ class DesktopMatcher(AuthorityMatcher):
 
         # — VIAF (persons only) —
         # VIAF SRU's personal-name index should not be queried for places or works.
-        if not is_place and normalized_kind != "work" and self._viaf is not None:
+        if _is_person_entity and self._viaf is not None:
             try:
                 # match_person_with_metadata wraps match_person + the
                 # cluster fetch in one call, so we get the years (and
@@ -702,7 +783,7 @@ class DesktopMatcher(AuthorityMatcher):
         # — Wikidata (persons only) —
         # Wikidata person-name search must not fire on place/work entities;
         # place QIDs are already resolved by KIMA / Ashkenazi gazetteer.
-        if not is_place and self._wikidata is not None:
+        if _is_person_entity and self._wikidata is not None:
             try:
                 qid = await self._wikidata_match_person(
                     text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,

@@ -289,10 +289,11 @@ def test_reenrich_upsert_key_includes_role() -> None:
     """The re-enrich index key must be a 4-tuple including role so author and
     subject rows for the same entity text are not collapsed into each other."""
     import inspect
-    from app.routers import runs as runs_mod
+    from app.pipeline import authority_re_enrich as re_mod
 
-    src = inspect.getsource(runs_mod.re_enrich_authority)
+    src = inspect.getsource(re_mod.re_enrich_run)
     assert "m.role" in src, "re-enrich must include m.role in the existing_idx key"
     assert "entity.get(\"role\"" in src or "entity.get('role'" in src, (
         "re-enrich must include entity role in the lookup key"
     )
+    assert inspect.getsource(re_mod.match_key).count("normalize_role") >= 1

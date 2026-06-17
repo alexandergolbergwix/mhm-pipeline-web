@@ -120,8 +120,11 @@ export const Runs = {
   reEnrichAuthority: (runId: string, skipCache: boolean) =>
     api.post<{
       checked: number; updated: number;
-      newly_matched: number; skip_cache: boolean;
+      newly_matched: number; orphans_removed?: number; skip_cache: boolean;
     }>(`/runs/${runId}/authority/re-enrich?skip_cache=${skipCache}`, {}),
+
+  noteIndex: (runId: string) =>
+    api.get<Record<string, string>>(`/runs/${runId}/authority/note-index`),
 
   editMatch: (
     runId: string,

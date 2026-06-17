@@ -50,6 +50,18 @@ class AuthorityBackend(Protocol):
         """
         ...
 
+    async def match_work(self, title: str) -> dict[str, Any] | None:
+        """Return a Mazal authority row for a work title (entity_type=work)."""
+        ...
+
+    async def match_corporate(self, name: str) -> dict[str, Any] | None:
+        """Return a Mazal authority row for a corporate body."""
+        ...
+
+    async def match_subject(self, name: str) -> dict[str, Any] | None:
+        """Return a Mazal authority row for a topical subject heading."""
+        ...
+
 
 class LocalAuthorityBackend:
     """Calls the local SQLite matchers directly (existing behaviour).
@@ -136,6 +148,47 @@ class LocalAuthorityBackend:
 
         return await asyncio.to_thread(_sync)
 
+    async def match_work(self, title: str) -> dict[str, Any] | None:
+        return await self._match_mazal_typed(title, "work")
+
+    async def match_corporate(self, name: str) -> dict[str, Any] | None:
+        return await self._match_mazal_typed(name, "corporate")
+
+    async def match_subject(self, name: str) -> dict[str, Any] | None:
+        return await self._match_mazal_typed(name, "subject")
+
+    async def _match_mazal_typed(
+        self, text: str, entity_type: str,
+    ) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        if self._mazal is None:
+            return None
+
+        def _sync() -> dict[str, Any] | None:
+            if self._mazal.index is None:
+                return None
+            lookup = {
+                "work": self._mazal.match_work,
+                "corporate": self._mazal.match_corporate,
+                "subject": lambda n: self._mazal.index.lookup(n, "subject"),
+            }.get(entity_type)
+            if lookup is None:
+                return None
+            nli_id = lookup(text)
+            if not nli_id:
+                return None
+            record = self._mazal.get_record(nli_id) or {}
+            return {
+                "mazal_id": nli_id,
+                "entity_type": entity_type,
+                "preferred_name_heb": record.get("preferred_name_heb", ""),
+                "preferred_name_lat": record.get("preferred_name_lat", ""),
+                "main_marc_tag": record.get("main_marc_tag"),
+            }
+
+        return await asyncio.to_thread(_sync)
+
     async def match_place(self, text: str) -> dict[str, Any] | None:
         import asyncio  # noqa: PLC0415
 
@@ -178,28 +231,6 @@ class LocalAuthorityBackend:
             if fuzzy:
                 row["_fuzzy"] = True
             return {"wikidata_uri": f"https://www.wikidata.org/entity/{wd}", **row}
-
-        return await asyncio.to_thread(_sync)
-
-    async def match_mazal_place(self, text: str) -> dict[str, Any] | None:
-        import asyncio  # noqa: PLC0415
-
-        if self._mazal is None:
-            return None
-
-        def _sync() -> dict[str, Any] | None:
-            if self._mazal.index is None:
-                return None
-            nli_id = self._mazal.match_place(text)
-            if not nli_id:
-                return None
-            record = self._mazal.get_record(nli_id) or {}
-            return {
-                "mazal_id": nli_id,
-                "entity_type": "place",
-                "preferred_name_heb": record.get("preferred_name_heb", ""),
-                "preferred_name_lat": record.get("preferred_name_lat", ""),
-            }
 
         return await asyncio.to_thread(_sync)
 
@@ -252,6 +283,15 @@ class ModalAuthorityBackend:
 
     async def match_mazal_place(self, text: str) -> dict[str, Any] | None:
         # Modal legacy backend does not expose a dedicated Mazal place endpoint.
+        return None
+
+    async def match_work(self, title: str) -> dict[str, Any] | None:
+        return None
+
+    async def match_corporate(self, name: str) -> dict[str, Any] | None:
+        return None
+
+    async def match_subject(self, name: str) -> dict[str, Any] | None:
         return None
 
 
@@ -594,6 +634,80 @@ class PostgresAuthorityBackend:
             logger.warning("Postgres KIMA lookup failed for %r: %s", text, exc)
             if self._fallback is not None:
                 return await self._fallback.match_place(text)
+            return None
+
+    async def match_work(self, title: str) -> dict[str, Any] | None:
+        return await self._match_mazal_entity_type(title, "work")
+
+    async def match_corporate(self, name: str) -> dict[str, Any] | None:
+        return await self._match_mazal_entity_type(name, "corporate")
+
+    async def match_subject(self, name: str) -> dict[str, Any] | None:
+        return await self._match_mazal_entity_type(
+            name, "subject",
+            order_sql=(
+                "CASE a.main_marc_tag WHEN '150' THEN 1 WHEN '450' THEN 2 ELSE 3 END, "
+                "a.nli_id ASC"
+            ),
+        )
+
+    async def _match_mazal_entity_type(
+        self,
+        text: str,
+        entity_type: str,
+        *,
+        order_sql: str = "a.nli_id ASC",
+    ) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        def _sync() -> dict[str, Any] | None:
+            norm = self._normalize_mazal(text)
+            if not norm:
+                return None
+            conn = self._get_conn()
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    f"""
+                    SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
+                    FROM mazal_name_index n
+                    JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name = %s AND n.entity_type = %s
+                    ORDER BY {order_sql}
+                    LIMIT 1
+                    """,
+                    (norm, entity_type),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {
+                    "mazal_id": row[0],
+                    "entity_type": row[1],
+                    "preferred_name_heb": row[2],
+                    "preferred_name_lat": row[3],
+                    "dates": row[4],
+                    "aleph_id": row[5],
+                    "main_marc_tag": row[6],
+                }
+            finally:
+                cur.close()
+
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Postgres Mazal %s lookup failed for %r: %s", entity_type, text, exc,
+            )
+            if self._fallback is not None:
+                fb = {
+                    "work": self._fallback.match_work,
+                    "corporate": self._fallback.match_corporate,
+                    "subject": self._fallback.match_subject,
+                }.get(entity_type)
+                return await fb(text) if fb else None
             return None
 
 
