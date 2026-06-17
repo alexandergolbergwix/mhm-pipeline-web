@@ -133,6 +133,10 @@ class RdfBuildResult:
     mapping_errors: list[str] = field(default_factory=list)
     coverage_path: Path | None = None
     unknown_class_count: int | None = None
+    ontology_coverage_path: Path | None = None
+    ontology_class_count: int | None = None
+    ontology_property_count: int | None = None
+    ontology_missing_terms: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -141,6 +145,8 @@ class RdfBuildResult:
         d["finished_at"] = self.finished_at.isoformat()
         if self.coverage_path is not None:
             d["coverage_path"] = str(self.coverage_path)
+        if self.ontology_coverage_path is not None:
+            d["ontology_coverage_path"] = str(self.ontology_coverage_path)
         return d
 
 
@@ -232,7 +238,17 @@ def _run_mapper_sync(
     overrides: list[dict] | None = None,
     kima_places_by_cn: dict[str, dict[str, str]] | None = None,
     build_options: RdfBuildOptions | None = None,
-) -> tuple[int, int, list[str], Path | None, int | None]:
+) -> tuple[
+    int,
+    int,
+    list[str],
+    Path | None,
+    int | None,
+    Path | None,
+    int | None,
+    int | None,
+    list[str],
+]:
     """Synchronous core — runs in a thread."""
     from app.pipeline.rdf_enrichment import (  # noqa: PLC0415
         merge_approved_authority,
@@ -340,6 +356,10 @@ def _run_mapper_sync(
 
     coverage_path: Path | None = None
     unknown_count: int | None = None
+    ontology_coverage_path: Path | None = None
+    ontology_class_count: int | None = None
+    ontology_property_count: int | None = None
+    ontology_missing_terms: list[str] = []
     try:
         from converter.wikidata.projection_coverage import (  # noqa: PLC0415
             write_projection_coverage_report,
@@ -356,7 +376,35 @@ def _run_mapper_sync(
     except Exception as exc:  # noqa: BLE001
         logger.warning("RDF projection coverage report failed: %s", exc)
 
-    return len(combined), manuscripts, errors, coverage_path, unknown_count
+    try:
+        from converter.rdf.ontology_coverage import (  # noqa: PLC0415
+            build_coverage_report,
+            write_coverage_report,
+        )
+
+        ontology_path = Path(__file__).resolve().parents[2] / "ontology" / "hebrew-manuscripts.ttl"
+        ontology_report = build_coverage_report(output_path, ontology_path)
+        ontology_coverage_path = output_path.parent / "ontology_coverage.json"
+        write_coverage_report(ontology_report, ontology_coverage_path)
+        ontology_class_count = ontology_report.classes_covered
+        ontology_property_count = ontology_report.properties_covered
+        ontology_missing_terms = (
+            ontology_report.missing_classes + ontology_report.missing_properties
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("HMO ontology coverage report failed: %s", exc)
+
+    return (
+        len(combined),
+        manuscripts,
+        errors,
+        coverage_path,
+        unknown_count,
+        ontology_coverage_path,
+        ontology_class_count,
+        ontology_property_count,
+        ontology_missing_terms,
+    )
 
 
 async def build_rdf_graph(
@@ -381,7 +429,7 @@ async def build_rdf_graph(
     timestamps without re-parsing the TTL.
     """
     started = datetime.now(timezone.utc)
-    triples_count, manuscripts_count, errors, coverage_path, unknown_count = await asyncio.to_thread(
+    triples_count, manuscripts_count, errors, coverage_path, unknown_count, ontology_coverage_path, ontology_class_count, ontology_property_count, ontology_missing_terms = await asyncio.to_thread(
         _run_mapper_sync,
         marc_records,
         authority_matches,
@@ -407,6 +455,10 @@ async def build_rdf_graph(
         mapping_errors=errors,
         coverage_path=coverage_path,
         unknown_class_count=unknown_count,
+        ontology_coverage_path=ontology_coverage_path,
+        ontology_class_count=ontology_class_count,
+        ontology_property_count=ontology_property_count,
+        ontology_missing_terms=ontology_missing_terms,
     )
 
 

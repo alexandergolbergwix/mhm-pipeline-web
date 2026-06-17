@@ -140,6 +140,18 @@ export interface RdfCoverageClass {
 }
 
 
+export interface RdfOntologyCoverageResponse {
+  classes_covered: number;
+  classes_total: number;
+  properties_covered: number;
+  properties_total: number;
+  missing_classes: string[];
+  missing_properties: string[];
+  class_percent: number;
+  property_percent: number;
+}
+
+
 export interface RdfCoverageResponse {
   rdf_class_count: number;
   unknown_class_count: number;
@@ -201,6 +213,9 @@ export const Rdf = {
 
   coverage: (runId: string) =>
     api.get<RdfCoverageResponse>(`/runs/${runId}/rdf/coverage`),
+
+  ontologyCoverage: (runId: string) =>
+    api.get<RdfOntologyCoverageResponse>(`/runs/${runId}/rdf/ontology-coverage`),
 
   graph: (runId: string, maxNodes = 500, layout: ServerLayout = "spring") =>
     api.get<GraphResponse>(

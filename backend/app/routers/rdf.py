@@ -65,6 +65,10 @@ class RdfBuildResponse(BaseModel):
     mapping_errors: list[str]
     coverage_path: str | None = None
     unknown_class_count: int | None = None
+    ontology_coverage_path: str | None = None
+    ontology_class_count: int | None = None
+    ontology_property_count: int | None = None
+    ontology_missing_terms: list[str] = []
 
 
 class RdfBuildRequest(BaseModel):
@@ -77,6 +81,17 @@ class RdfCoverageResponse(BaseModel):
     rdf_class_count: int
     unknown_class_count: int
     classes: list[dict[str, Any]]
+
+
+class RdfOntologyCoverageResponse(BaseModel):
+    classes_covered: int
+    classes_total: int
+    properties_covered: int
+    properties_total: int
+    missing_classes: list[str]
+    missing_properties: list[str]
+    class_percent: float
+    property_percent: float
 
 
 class CytoscapeNodePosition(BaseModel):
@@ -383,6 +398,37 @@ async def coverage(
         rdf_class_count=int(report.get("rdf_class_count") or len(classes)),
         unknown_class_count=unknown_count,
         classes=classes,
+    )
+
+
+@router.get("/{run_id}/rdf/ontology-coverage", response_model=RdfOntologyCoverageResponse)
+async def ontology_coverage(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> RdfOntologyCoverageResponse:
+    """Return HMO ontology class/property coverage from the latest RDF build."""
+    await _lookup_run_with_access(db, run_id, auth)
+    coverage_path = rdf_output_path_for_run(str(run_id)).parent / "ontology_coverage.json"
+    if not coverage_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ontology coverage report not found — build RDF first.",
+        )
+    report = json.loads(coverage_path.read_text(encoding="utf-8"))
+    classes_total = int(report.get("classes_total") or 0)
+    properties_total = int(report.get("properties_total") or 0)
+    classes_covered = int(report.get("classes_covered") or 0)
+    properties_covered = int(report.get("properties_covered") or 0)
+    return RdfOntologyCoverageResponse(
+        classes_covered=classes_covered,
+        classes_total=classes_total,
+        properties_covered=properties_covered,
+        properties_total=properties_total,
+        missing_classes=list(report.get("missing_classes") or []),
+        missing_properties=list(report.get("missing_properties") or []),
+        class_percent=100.0 * classes_covered / classes_total if classes_total else 0.0,
+        property_percent=100.0 * properties_covered / properties_total if properties_total else 0.0,
     )
 
 

@@ -39,6 +39,7 @@ import {
   type NodeDetail,
   type RdfBuildResponse,
   type RdfCoverageResponse,
+  type RdfOntologyCoverageResponse,
   type RdfStatus,
   type ServerLayout,
   type ShaclReport,
@@ -106,6 +107,7 @@ export default function StageRdf() {
   const [busy, setBusy] = useState<"build" | "validate" | "graph" | null>(null);
   const [mappingErrors, setMappingErrors] = useState<string[]>([]);
   const [coverage, setCoverage] = useState<RdfCoverageResponse | null>(null);
+  const [ontologyCoverage, setOntologyCoverage] = useState<RdfOntologyCoverageResponse | null>(null);
   const [buildOptions, setBuildOptions] = useState({
     add_epistemological_status: true,
     add_cataloging_view: true,
@@ -179,14 +181,16 @@ export default function StageRdf() {
     try {
       const buildResult: RdfBuildResponse = await Rdf.build(runId, buildOptions);
       setMappingErrors(buildResult.mapping_errors ?? []);
-      const [st, g, cov] = await Promise.all([
+      const [st, g, cov, ontoCov] = await Promise.all([
         Rdf.status(runId),
         Rdf.graph(runId, 500, layout),
         Rdf.coverage(runId).catch(() => null),
+        Rdf.ontologyCoverage(runId).catch(() => null),
       ]);
       setStatus(st);
       setGraph(g);
       setCoverage(cov);
+      setOntologyCoverage(ontoCov);
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
@@ -482,38 +486,73 @@ export default function StageRdf() {
           </div>
         </Glass>
 
-        {coverage && (
-          <Glass as="section" className="p-6 space-y-3" data-testid="rdf-coverage-panel">
-            <h3 className="text-lg font-semibold">Ontology coverage</h3>
-            <p className="muted text-sm">
-              {coverage.rdf_class_count} HMO classes in graph
-              {coverage.unknown_class_count > 0
-                ? ` · ${coverage.unknown_class_count} unmapped`
-                : " · all classes mapped"}
-            </p>
-            <div className="overflow-x-auto max-h-48">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left muted border-b border-white/10">
-                    <th className="py-1 pr-3">Class</th>
-                    <th className="py-1 pr-3">Nodes</th>
-                    <th className="py-1">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {coverage.classes
-                    .filter((c) => c.hmo_node_count > 0)
-                    .slice(0, 20)
-                    .map((c) => (
-                      <tr key={c.class_uri} className="border-b border-white/5">
-                        <td className="py-1 pr-3">{c.class_local_name}</td>
-                        <td className="py-1 pr-3">{c.hmo_node_count}</td>
-                        <td className="py-1">{c.projection_status}</td>
+        {(ontologyCoverage || coverage) && (
+          <Glass as="section" className="p-6 space-y-4" data-testid="rdf-coverage-panel">
+            {ontologyCoverage && (
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold">HMO ontology coverage</h3>
+                <p className="muted text-sm">
+                  {ontologyCoverage.classes_covered}/{ontologyCoverage.classes_total} classes
+                  ({ontologyCoverage.class_percent.toFixed(1)}%)
+                  {" · "}
+                  {ontologyCoverage.properties_covered}/{ontologyCoverage.properties_total} properties
+                  ({ontologyCoverage.property_percent.toFixed(1)}%)
+                </p>
+                {(ontologyCoverage.missing_classes.length > 0
+                  || ontologyCoverage.missing_properties.length > 0) && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer muted">
+                      Missing terms (
+                      {ontologyCoverage.missing_classes.length
+                        + ontologyCoverage.missing_properties.length}
+                      )
+                    </summary>
+                    <ul className="mt-2 list-disc pl-5 space-y-1 max-h-32 overflow-y-auto">
+                      {ontologyCoverage.missing_classes.map((name) => (
+                        <li key={`c-${name}`}>class: {name}</li>
+                      ))}
+                      {ontologyCoverage.missing_properties.map((name) => (
+                        <li key={`p-${name}`}>property: {name}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+            {coverage && (
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold">Wikidata projection</h3>
+                <p className="muted text-sm">
+                  {coverage.rdf_class_count} HMO classes in graph
+                  {coverage.unknown_class_count > 0
+                    ? ` · ${coverage.unknown_class_count} unmapped`
+                    : " · all classes mapped"}
+                </p>
+                <div className="overflow-x-auto max-h-48">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left muted border-b border-white/10">
+                        <th className="py-1 pr-3">Class</th>
+                        <th className="py-1 pr-3">Nodes</th>
+                        <th className="py-1">Status</th>
                       </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {coverage.classes
+                        .filter((c) => c.hmo_node_count > 0)
+                        .slice(0, 20)
+                        .map((c) => (
+                          <tr key={c.class_uri} className="border-b border-white/5">
+                            <td className="py-1 pr-3">{c.class_local_name}</td>
+                            <td className="py-1 pr-3">{c.hmo_node_count}</td>
+                            <td className="py-1">{c.projection_status}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </Glass>
         )}
 
