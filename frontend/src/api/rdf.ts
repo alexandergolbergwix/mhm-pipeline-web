@@ -118,6 +118,32 @@ export interface RdfBuildResponse {
   started_at: string;
   finished_at: string;
   mapping_errors: string[];
+  coverage_path?: string | null;
+  unknown_class_count?: number | null;
+}
+
+
+export interface RdfBuildOptions {
+  add_epistemological_status?: boolean;
+  add_cataloging_view?: boolean;
+  add_philological_overlay?: boolean;
+}
+
+
+export interface RdfCoverageClass {
+  class_uri: string;
+  class_local_name: string;
+  hmo_node_count: number;
+  projection_status: string;
+  wikidata_representation?: string;
+  notes?: string;
+}
+
+
+export interface RdfCoverageResponse {
+  rdf_class_count: number;
+  unknown_class_count: number;
+  classes: RdfCoverageClass[];
 }
 
 
@@ -170,8 +196,11 @@ export async function listTripleOverrides(runId: string): Promise<TripleOverride
 
 
 export const Rdf = {
-  build: (runId: string) =>
-    api.post<RdfBuildResponse>(`/runs/${runId}/rdf/build`, {}),
+  build: (runId: string, options?: RdfBuildOptions) =>
+    api.post<RdfBuildResponse>(`/runs/${runId}/rdf/build`, options ?? {}),
+
+  coverage: (runId: string) =>
+    api.get<RdfCoverageResponse>(`/runs/${runId}/rdf/coverage`),
 
   graph: (runId: string, maxNodes = 500, layout: ServerLayout = "spring") =>
     api.get<GraphResponse>(

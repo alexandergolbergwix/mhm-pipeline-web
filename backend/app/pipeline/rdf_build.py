@@ -18,6 +18,7 @@ differences from the desktop version:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from collections.abc import Iterable
@@ -76,7 +77,50 @@ _TYPE_TO_CATEGORY: dict[str, str] = {
     "CreativeEvent": "Event",
     # Organisations
     "E74_Group": "Organization",
+    # HMO scholarly overlay
+    "Colophon": "Codicological",
+    "ScribalIntervention": "Codicological",
+    "TextCorrection": "Codicological",
+    "MarginalAddition": "Codicological",
+    "Marginalia": "Codicological",
+    "HandChange": "Codicological",
+    "Decoration": "Codicological",
+    "CodicologicalHierarchy": "Codicological",
+    "AnthologyStructure": "Codicological",
+    "DigitalAccess": "Manuscript",
+    "CanonicalReference": "Work",
+    "BiblicalReference": "Work",
+    "TalmudicReference": "Work",
+    "MishnaicReference": "Work",
+    "HalachicReference": "Work",
+    "TextTradition": "Work",
+    "TransmissionWitness": "Work",
+    "ParadigmBridge": "Work",
+    "PhilologicalView": "Work",
+    "CatalogingView": "Other",
+    "EpistemologicalStatus": "Other",
+    "CertaintyLevel": "Other",
+    "SubjectType": "Other",
+    "ParticipationRole": "Other",
+    "E52_Time-Span": "Event",
+    "E56_Language": "Other",
+    "E57_Material": "Other",
+    "ConditionType": "Other",
+    "HebrewScriptType": "Other",
+    "ModeScriptType": "Other",
+    "TypeScriptType": "Other",
+    "CanonicalHierarchyType": "Other",
+    "AnthologyPosition": "Codicological",
 }
+
+
+@dataclass
+class RdfBuildOptions:
+    """Scholarly metadata toggles for GraphBuilder."""
+
+    add_epistemological_status: bool = True
+    add_cataloging_view: bool = True
+    add_philological_overlay: bool = True
 
 
 @dataclass
@@ -87,12 +131,16 @@ class RdfBuildResult:
     started_at: datetime
     finished_at: datetime
     mapping_errors: list[str] = field(default_factory=list)
+    coverage_path: Path | None = None
+    unknown_class_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["output_path"] = str(self.output_path)
         d["started_at"] = self.started_at.isoformat()
         d["finished_at"] = self.finished_at.isoformat()
+        if self.coverage_path is not None:
+            d["coverage_path"] = str(self.coverage_path)
         return d
 
 
@@ -176,197 +224,26 @@ def _prepare_record_for_rdf(rec: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def _merge_ner_entities(rec: dict[str, Any], entities: list[dict[str, Any]]) -> None:
-    """Merge approved NER entities into the flat MARC record dict.
-
-    Called once per record before ``ExtractedData`` is built, so the
-    approved entities flow into the RDF graph like any other MARC-derived
-    field.  Three channels are supported:
-
-    * ``person_ner``    → ``rec["authors"]`` (role=AUTHOR) or
-                          ``rec["contributors"]`` (all other roles)
-    * ``genre_ml``      → ``rec["genres"]``
-    * ``contents_ner``  → ``rec["contents"]`` (WORK entities only)
-
-    Deduplicates by lowercased name / title so a person already captured
-    from a structured MARC field is not added a second time.
-    """
-    for ent in entities:
-        src  = ent.get("source", "")
-        text = (ent.get("text") or "").strip()
-        if not text:
-            continue
-        ent_type = (ent.get("type") or "").upper()
-        role     = (ent.get("role") or "").upper()
-
-        if src == "person_ner":
-            target_key = "authors" if role == "AUTHOR" else "contributors"
-            existing: list[dict] = rec.setdefault(target_key, []) or []
-            existing_names = {(a.get("name") or "").lower() for a in existing}
-            if text.lower() not in existing_names:
-                existing.append({"name": text, "role": role.lower() or "related"})
-            rec[target_key] = existing
-
-        elif src == "genre_ml":
-            genres: list[str] = rec.setdefault("genres", []) or []
-            if text not in genres:
-                genres.append(text)
-            rec["genres"] = genres
-
-        elif src == "contents_ner" and ent_type == "WORK":
-            contents: list[dict] = rec.setdefault("contents", []) or []
-            existing_titles = {(c.get("title") or "").lower() for c in contents}
-            if text.lower() not in existing_titles:
-                contents.append({"title": text})
-            rec["contents"] = contents
-
-
-def _merge_authority_ids(rec: dict[str, Any], matches: list[dict[str, Any]]) -> None:
-    """Merge approved authority identifiers from *matches* into *rec*.
-
-    Person matches: viaf_id, birth_year, death_year, wikidata_id (and
-    authority_id when mazal_id carries an NLI number) are written into
-    the matching entry in rec["authors"] or rec["contributors"] by
-    case-insensitive name comparison.  Only absent fields are filled so
-    the curator's MARC-embedded values are never clobbered.
-
-    KIMA place matches (payload.kima_id is set): geonames_id, lat, lon,
-    wikidata_id are written into the matching entry in rec["subjects"]
-    by case-insensitive term comparison.  The graph builder then uses
-    these to emit OWL.sameAs + WGS84 triples for the place node.
-    """
-    for m in matches:
-        payload = m.get("payload") or {}
-        entity_text = (m.get("entity_text") or "").strip().lower()
-        if not entity_text:
-            continue
-
-        is_kima = bool(payload.get("kima_id"))
-        entity_kind = (m.get("entity_kind") or "person").lower()
-
-        if is_kima or entity_kind == "place":
-            kima_lat  = payload.get("kima_lat")
-            kima_lon  = payload.get("kima_lon")
-            kima_geo  = payload.get("kima_geonames")
-            wikidata_qid = m.get("wikidata_qid")
-
-            for subj in rec.get("subjects") or []:
-                term = (subj.get("term") or "").strip().lower()
-                if not term:
-                    continue
-                if term == entity_text or entity_text in term or term in entity_text:
-                    if kima_geo and "geonames_id" not in subj:
-                        subj["geonames_id"] = str(kima_geo)
-                    if kima_lat is not None and "lat" not in subj:
-                        subj["lat"] = kima_lat
-                    if kima_lon is not None and "lon" not in subj:
-                        subj["lon"] = kima_lon
-                    if wikidata_qid and "wikidata_id" not in subj:
-                        subj["wikidata_id"] = wikidata_qid
-                    break
-
-            # Also propagate coords to the production place (rec["place"]).
-            if kima_lat is not None and kima_lon is not None:
-                prod_place = str(rec.get("place") or "").strip().lower()
-                if prod_place and (
-                    prod_place == entity_text
-                    or entity_text in prod_place
-                    or prod_place in entity_text
-                ):
-                    if "production_place_lat" not in rec:
-                        rec["production_place_lat"] = kima_lat
-                    if "production_place_lon" not in rec:
-                        rec["production_place_lon"] = kima_lon
-                    if wikidata_qid and "production_place_wikidata_id" not in rec:
-                        rec["production_place_wikidata_id"] = wikidata_qid
-
-                # Also propagate to rec["related_places"] entries.
-                for rp_name in rec.get("related_places") or []:
-                    rp_lower = str(rp_name).strip().lower()
-                    if not rp_lower:
-                        continue
-                    if (
-                        rp_lower == entity_text
-                        or entity_text in rp_lower
-                        or rp_lower in entity_text
-                    ):
-                        if "related_place_coords" not in rec:
-                            rec["related_place_coords"] = {}
-                        existing = rec["related_place_coords"].setdefault(str(rp_name).strip(), {})
-                        if "lat" not in existing:
-                            existing["lat"] = kima_lat
-                        if "lon" not in existing:
-                            existing["lon"] = kima_lon
-                        if wikidata_qid and "wikidata_id" not in existing:
-                            existing["wikidata_id"] = wikidata_qid
-                        break
-
-            # Propagate coords onto matching provenance_events (Rule 60):
-            # acquisition / conservation / exhibition places resolved by KIMA.
-            # Fill-only-if-absent, never fabricate.
-            if kima_lat is not None and kima_lon is not None:
-                for ev in rec.get("provenance_events") or []:
-                    if not isinstance(ev, dict):
-                        continue
-                    pt = str(ev.get("place_text") or "").strip().lower()
-                    if not pt:
-                        continue
-                    if pt == entity_text or entity_text in pt or pt in entity_text:
-                        if ev.get("lat") is None:
-                            ev["lat"] = kima_lat
-                        if ev.get("lon") is None:
-                            ev["lon"] = kima_lon
-                        if wikidata_qid and not ev.get("wikidata_id"):
-                            ev["wikidata_id"] = wikidata_qid
-                        if kima_geo and not ev.get("geonames_id"):
-                            ev["geonames_id"] = str(kima_geo)
-        else:
-            for target_key in ("authors", "contributors"):
-                for person in rec.get(target_key) or []:
-                    name = (person.get("name") or "").strip().lower()
-                    if not name:
-                        continue
-                    if name == entity_text or entity_text in name or name in entity_text:
-                        if m.get("viaf_id") and "viaf_id" not in person:
-                            person["viaf_id"] = str(m["viaf_id"])
-                        if payload.get("birth_year") is not None and "birth_year" not in person:
-                            person["birth_year"] = payload["birth_year"]
-                        if payload.get("death_year") is not None and "death_year" not in person:
-                            person["death_year"] = payload["death_year"]
-                        if m.get("wikidata_qid") and "wikidata_id" not in person:
-                            person["wikidata_id"] = m["wikidata_qid"]
-                        if m.get("mazal_id") and "authority_id" not in person:
-                            person["authority_id"] = str(m["mazal_id"])
-                        # Preferred names for RDF label triples
-                        if payload.get("preferred_name_lat") and "preferred_name_lat" not in person:
-                            person["preferred_name_lat"] = payload["preferred_name_lat"]
-                        if payload.get("preferred_name_heb") and "preferred_name_heb" not in person:
-                            person["preferred_name_heb"] = payload["preferred_name_heb"]
-                        # Canonical URIs for owl:sameAs
-                        if payload.get("viaf_uri") and "viaf_uri" not in person:
-                            person["viaf_uri"] = payload["viaf_uri"]
-                        # GND, LCCN, ISNI from VIAF cluster (Rule W-23)
-                        cluster = payload.get("cluster_ids") or {}
-                        for id_key in ("gnd", "lc", "isni", "bnf", "j9u"):
-                            if cluster.get(id_key) and id_key not in person:
-                                person[id_key] = cluster[id_key]
-                        break
-
-
 def _run_mapper_sync(
     marc_records: list[dict],
     authority_matches: list[dict],
     output_path: Path,
     entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
     overrides: list[dict] | None = None,
-) -> tuple[int, int, list[str]]:
-    """Synchronous core — runs in a thread. Returns
-    (triples_count, manuscripts_count, mapping_errors)."""
+    kima_places_by_cn: dict[str, dict[str, str]] | None = None,
+    build_options: RdfBuildOptions | None = None,
+) -> tuple[int, int, list[str], Path | None, int | None]:
+    """Synchronous core — runs in a thread."""
+    from app.pipeline.rdf_enrichment import (  # noqa: PLC0415
+        merge_approved_authority,
+        merge_approved_ner,
+        merge_kima_places_dict,
+    )
+    from converter.rdf.graph_builder import GraphBuilder
     from converter.transformer.field_handlers import ExtractedData
     from converter.transformer.mapper import MarcToRdfMapper
 
-    # Authority matches are keyed off control_number — fold them into
-    # each MARC record under a stable key the field-handlers can pick up.
+    opts = build_options or RdfBuildOptions()
     matches_by_cn: dict[str, list[dict]] = {}
     for m in authority_matches:
         cn = str(m.get("control_number", ""))
@@ -375,8 +252,15 @@ def _run_mapper_sync(
         matches_by_cn.setdefault(cn, []).append(m)
 
     ents_by_cn: dict[str, list[dict[str, Any]]] = entities_by_cn or {}
+    kima_by_cn = kima_places_by_cn or {}
 
     mapper = MarcToRdfMapper()
+    mapper.graph_builder = GraphBuilder(
+        mapper.uri_generator,
+        add_epistemological_status=opts.add_epistemological_status,
+        add_cataloging_view=opts.add_cataloging_view,
+        add_philological_overlay=opts.add_philological_overlay,
+    )
     combined = Graph()
 
     from converter.config.namespaces import bind_namespaces  # noqa: PLC0415
@@ -405,11 +289,15 @@ def _run_mapper_sync(
         cn_stripped = cn.strip("\"'")
         ner_ents = ents_by_cn.get(cn) or ents_by_cn.get(cn_stripped) or []
         if ner_ents:
-            _merge_ner_entities(rec, ner_ents)
+            merge_approved_ner(rec, ner_ents)
 
         rec_matches = matches_by_cn.get(cn) or matches_by_cn.get(cn_stripped) or []
         if rec_matches:
-            _merge_authority_ids(rec, rec_matches)
+            merge_approved_authority(rec, rec_matches)
+
+        kima_places = kima_by_cn.get(cn) or kima_by_cn.get(cn_stripped) or {}
+        if kima_places:
+            merge_kima_places_dict(rec, kima_places)
 
         try:
             # Build ExtractedData from the dict — same pattern as
@@ -421,13 +309,8 @@ def _run_mapper_sync(
                 if field_name in rec:
                     setattr(extracted, field_name, rec[field_name])
             extracted.control_number = cn_uri
-            # Fold approved authority matches into the extracted bag the
-            # mapper consumes (best-effort — schema mirrors the desktop
-            # pipeline's authority_enriched payload).
-            if cn in matches_by_cn and not getattr(
-                extracted, "marc_authority_matches", None,
-            ):
-                extracted.marc_authority_matches = matches_by_cn[cn]  # type: ignore[attr-defined]
+            if rec.get("marc_authority_matches"):
+                extracted.marc_authority_matches = rec["marc_authority_matches"]
 
             graph = mapper.graph_builder.build_graph(extracted, cn_uri)
             for triple in graph:
@@ -454,7 +337,26 @@ def _run_mapper_sync(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.serialize(destination=str(output_path), format="turtle")
-    return len(combined), manuscripts, errors
+
+    coverage_path: Path | None = None
+    unknown_count: int | None = None
+    try:
+        from converter.wikidata.projection_coverage import (  # noqa: PLC0415
+            write_projection_coverage_report,
+        )
+
+        coverage_path = output_path.parent / "rdf_projection_coverage.json"
+        write_projection_coverage_report(output_path, [], coverage_path)
+
+        report = json.loads(coverage_path.read_text(encoding="utf-8"))
+        unknown_count = sum(
+            1 for cls in report.get("classes", [])
+            if cls.get("projection_status") == "unknown"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("RDF projection coverage report failed: %s", exc)
+
+    return len(combined), manuscripts, errors, coverage_path, unknown_count
 
 
 async def build_rdf_graph(
@@ -464,6 +366,8 @@ async def build_rdf_graph(
     output_path: Path,
     entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
     overrides: list[dict] | None = None,
+    kima_places_by_cn: dict[str, dict[str, str]] | None = None,
+    build_options: RdfBuildOptions | None = None,
 ) -> RdfBuildResult:
     """Run ``MarcToRdfMapper`` over MARC + authority data, write Turtle.
 
@@ -477,9 +381,15 @@ async def build_rdf_graph(
     timestamps without re-parsing the TTL.
     """
     started = datetime.now(timezone.utc)
-    triples_count, manuscripts_count, errors = await asyncio.to_thread(
-        _run_mapper_sync, marc_records, authority_matches, output_path,
-        entities_by_cn or {}, overrides,
+    triples_count, manuscripts_count, errors, coverage_path, unknown_count = await asyncio.to_thread(
+        _run_mapper_sync,
+        marc_records,
+        authority_matches,
+        output_path,
+        entities_by_cn or {},
+        overrides,
+        kima_places_by_cn or {},
+        build_options,
     )
     if errors:
         logger.warning(
@@ -495,6 +405,8 @@ async def build_rdf_graph(
         started_at=started,
         finished_at=finished,
         mapping_errors=errors,
+        coverage_path=coverage_path,
+        unknown_class_count=unknown_count,
     )
 
 
@@ -503,6 +415,7 @@ async def build_rdf_graph(
 
 _ONTOLOGY_DIR = Path(__file__).resolve().parents[2] / "ontology"
 SHAPES_PATH = _ONTOLOGY_DIR / "shacl-shapes.ttl"
+ONTOLOGY_PATH = _ONTOLOGY_DIR / "hebrew-manuscripts.ttl"
 
 
 def _run_shacl_sync(
@@ -512,10 +425,14 @@ def _run_shacl_sync(
 
     data_graph = Graph().parse(str(graph_path), format="turtle")
     shapes_graph = Graph().parse(str(shapes_path), format="turtle")
+    ont_graph = Graph()
+    if ONTOLOGY_PATH.exists():
+        ont_graph.parse(str(ONTOLOGY_PATH), format="turtle")
 
     conforms, results_graph, _ = pyshacl.validate(
         data_graph,
         shacl_graph=shapes_graph,
+        ont_graph=ont_graph,
         inference="rdfs",
         abort_on_first=False,
         meta_shacl=False,

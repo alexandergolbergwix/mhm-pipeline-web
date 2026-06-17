@@ -775,6 +775,24 @@ cd backend && DATABASE_URL=... MAZAL_DB_PATH=.../mazal_index.db \
 
 ---
 
+### Rule W-34 — Full HMO RDF projection (added 2026-06-17)
+
+The web RDF build path must wire approved authority + NER enrichment into
+``GraphBuilder`` before ``ExtractedData`` is materialised:
+
+- ``backend/app/pipeline/rdf_enrichment.py`` merges approved Stage-2/3 rows.
+- ``backend/app/pipeline/rdf_build.py`` passes ``RdfBuildOptions`` toggles
+  (epistemology, cataloging view, philological overlay — all default on).
+- Each build writes ``rdf_projection_coverage.json`` beside the TTL; the
+  router exposes ``GET /runs/{id}/rdf/coverage``.
+- Vendored converter code lives under ``backend/converter/``; sync from the
+  desktop pipeline with ``pipeline/scripts/sync_converter_to_web.sh``.
+
+Canonical ontology: ``pipeline/ontology/hebrew-manuscripts.ttl`` (copied to
+``backend/ontology/`` at sync time).
+
+---
+
 ## When to update the plan / this file
 
 Update `docs/project-hierarchy-plan.md` whenever:

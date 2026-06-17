@@ -35,7 +35,7 @@ class TestRdfBuildCollapsedMarc:
         _collapse_marc_subfields(rec)
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "manuscripts.ttl"
-            triples, manuscripts, errors = _run_mapper_sync([rec], [], out)
+            triples, manuscripts, errors, _cov, _unk = _run_mapper_sync([rec], [], out)
             assert errors == []
             assert manuscripts == 1
             assert triples > 0
@@ -50,7 +50,7 @@ class TestRdfBuildCollapsedMarc:
         }
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "out.ttl"
-            triples, manuscripts, errors = _run_mapper_sync([rec], [], out)
+            triples, manuscripts, errors, _cov, _unk = _run_mapper_sync([rec], [], out)
             assert errors == [], errors
             assert manuscripts == 1
             assert triples > 0
@@ -69,7 +69,7 @@ class TestRdfBuildCollapsedMarc:
         assert prepared["genres"] == ["manuscript"]
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "out.ttl"
-            triples, manuscripts, errors = _run_mapper_sync([rec], [], out)
+            triples, manuscripts, errors, _cov, _unk = _run_mapper_sync([rec], [], out)
         assert errors == []
         assert triples > 0
         assert manuscripts == 1

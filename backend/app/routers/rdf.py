@@ -16,6 +16,7 @@ from ``AuthorityMatch`` rows.
 from __future__ import annotations
 
 import logging
+import json
 import uuid
 from typing import Any
 
@@ -32,6 +33,7 @@ from app.models.rdf_artifact import RdfArtifact
 from app.models.run import AuthorityMatch, RdfTripleOverride, Run, RunRecord
 from app.pipeline.rdf_build import (
     LAYOUT_KINDS,
+    RdfBuildOptions,
     RdfBuildResult,
     ShaclReport,
     build_rdf_graph,
@@ -61,6 +63,20 @@ class RdfBuildResponse(BaseModel):
     started_at: str
     finished_at: str
     mapping_errors: list[str]
+    coverage_path: str | None = None
+    unknown_class_count: int | None = None
+
+
+class RdfBuildRequest(BaseModel):
+    add_epistemological_status: bool = True
+    add_cataloging_view: bool = True
+    add_philological_overlay: bool = True
+
+
+class RdfCoverageResponse(BaseModel):
+    rdf_class_count: int
+    unknown_class_count: int
+    classes: list[dict[str, Any]]
 
 
 class CytoscapeNodePosition(BaseModel):
@@ -199,6 +215,7 @@ async def _ensure_ttl_on_disk(run_id: uuid.UUID, db: AsyncSession) -> None:
 @router.post("/{run_id}/rdf/build", response_model=RdfBuildResponse)
 async def build(
     run_id: uuid.UUID,
+    body: RdfBuildRequest | None = None,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> RdfBuildResponse:
@@ -260,6 +277,18 @@ async def build(
 
     marc_records = [dict(r.marc) for r in records]
     authority_matches = normalise_matches(matches)
+    kima_places_by_cn: dict[str, dict[str, str]] = {}
+    for rec in marc_records:
+        cn = str(rec.get("_control_number") or rec.get("control_number") or "")
+        kp = rec.get("kima_places")
+        if cn and isinstance(kp, dict) and kp:
+            kima_places_by_cn[cn.strip("\"'")] = kp
+
+    opts = RdfBuildOptions(
+        add_epistemological_status=(body or RdfBuildRequest()).add_epistemological_status,
+        add_cataloging_view=(body or RdfBuildRequest()).add_cataloging_view,
+        add_philological_overlay=(body or RdfBuildRequest()).add_philological_overlay,
+    )
 
     overrides_rows = (
         await db.execute(
@@ -285,6 +314,8 @@ async def build(
             entities_by_cn=entities_by_cn,
             output_path=out_path,
             overrides=overrides,
+            kima_places_by_cn=kima_places_by_cn,
+            build_options=opts,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("RDF build failed for run %s", run_id)
@@ -327,6 +358,32 @@ async def build(
         pass
 
     return RdfBuildResponse(**result.to_dict())
+
+
+@router.get("/{run_id}/rdf/coverage", response_model=RdfCoverageResponse)
+async def coverage(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> RdfCoverageResponse:
+    """Return the HMO projection-coverage report from the latest RDF build."""
+    await _lookup_run_with_access(db, run_id, auth)
+    coverage_path = rdf_output_path_for_run(str(run_id)).parent / "rdf_projection_coverage.json"
+    if not coverage_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Coverage report not found — build RDF first.",
+        )
+    report = json.loads(coverage_path.read_text(encoding="utf-8"))
+    classes = report.get("classes") or []
+    unknown_count = sum(
+        1 for cls in classes if cls.get("projection_status") == "unknown"
+    )
+    return RdfCoverageResponse(
+        rdf_class_count=int(report.get("rdf_class_count") or len(classes)),
+        unknown_class_count=unknown_count,
+        classes=classes,
+    )
 
 
 @router.get("/{run_id}/rdf/graph", response_model=CytoscapeGraphResponse)

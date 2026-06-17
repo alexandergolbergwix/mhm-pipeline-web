@@ -38,6 +38,7 @@ import {
   type GraphResponse,
   type NodeDetail,
   type RdfBuildResponse,
+  type RdfCoverageResponse,
   type RdfStatus,
   type ServerLayout,
   type ShaclReport,
@@ -103,6 +104,12 @@ export default function StageRdf() {
 
   const [busy, setBusy] = useState<"build" | "validate" | "graph" | null>(null);
   const [mappingErrors, setMappingErrors] = useState<string[]>([]);
+  const [coverage, setCoverage] = useState<RdfCoverageResponse | null>(null);
+  const [buildOptions, setBuildOptions] = useState({
+    add_epistemological_status: true,
+    add_cataloging_view: true,
+    add_philological_overlay: true,
+  });
   // Layout is computed SERVER-SIDE (networkx) — the browser just renders
   // pre-positioned nodes. Default = spring (force-directed, plain).
   const [layout, setLayout] = useState<ServerLayout>("spring");
@@ -169,13 +176,16 @@ export default function StageRdf() {
     if (!runId) return;
     setBusy("build"); setError(null);
     try {
-      const buildResult: RdfBuildResponse = await Rdf.build(runId);
+      const buildResult: RdfBuildResponse = await Rdf.build(runId, buildOptions);
       setMappingErrors(buildResult.mapping_errors ?? []);
-      const [st, g] = await Promise.all([
-        Rdf.status(runId), Rdf.graph(runId, 500, layout),
+      const [st, g, cov] = await Promise.all([
+        Rdf.status(runId),
+        Rdf.graph(runId, 500, layout),
+        Rdf.coverage(runId).catch(() => null),
       ]);
       setStatus(st);
       setGraph(g);
+      setCoverage(cov);
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
@@ -434,7 +444,77 @@ export default function StageRdf() {
           <p className="muted text-sm">
             HMO ontology · Build the per-run TTL, visualise it, then run SHACL.
           </p>
+          <div className="flex flex-wrap gap-4 text-sm pt-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={buildOptions.add_epistemological_status}
+                onChange={(e) => setBuildOptions((o) => ({
+                  ...o,
+                  add_epistemological_status: e.target.checked,
+                }))}
+              />
+              Epistemological metadata
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={buildOptions.add_cataloging_view}
+                onChange={(e) => setBuildOptions((o) => ({
+                  ...o,
+                  add_cataloging_view: e.target.checked,
+                }))}
+              />
+              Cataloging view
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={buildOptions.add_philological_overlay}
+                onChange={(e) => setBuildOptions((o) => ({
+                  ...o,
+                  add_philological_overlay: e.target.checked,
+                }))}
+              />
+              Philological overlay
+            </label>
+          </div>
         </section>
+
+        {coverage && (
+          <section className="glass p-6 space-y-3" data-testid="rdf-coverage-panel">
+            <h3 className="text-lg font-semibold">Ontology coverage</h3>
+            <p className="muted text-sm">
+              {coverage.rdf_class_count} HMO classes in graph
+              {coverage.unknown_class_count > 0
+                ? ` · ${coverage.unknown_class_count} unmapped`
+                : " · all classes mapped"}
+            </p>
+            <div className="overflow-x-auto max-h-48">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left muted border-b border-white/10">
+                    <th className="py-1 pr-3">Class</th>
+                    <th className="py-1 pr-3">Nodes</th>
+                    <th className="py-1">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coverage.classes
+                    .filter((c) => c.hmo_node_count > 0)
+                    .slice(0, 20)
+                    .map((c) => (
+                      <tr key={c.class_uri} className="border-b border-white/5">
+                        <td className="py-1 pr-3">{c.class_local_name}</td>
+                        <td className="py-1 pr-3">{c.hmo_node_count}</td>
+                        <td className="py-1">{c.projection_status}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         <section className="glass p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
