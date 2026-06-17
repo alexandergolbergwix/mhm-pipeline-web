@@ -602,12 +602,9 @@ def _extract_provenance_events(record: dict[str, Any]) -> None:
 def _str(v: Any) -> str:
     if not isinstance(v, str):
         return ""
-    v = v.strip()
-    # Strip CSV-style double-quote wrapping that NLI export files add around
-    # subfield values (e.g. '"ʻAmrān (Yemen)"' → 'ʻAmrān (Yemen)').
-    if len(v) >= 2 and v[0] == '"' and v[-1] == '"':
-        v = v[1:-1]
-    return v
+    from app.pipeline.entity_normalize import normalize_entity_text  # noqa: PLC0415
+
+    return normalize_entity_text(v)
 
 
 def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
@@ -644,6 +641,10 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
             row["genres"] = flat
         elif isinstance(raw_genres, list) and raw_genres and isinstance(raw_genres[0], dict):
             row["genres"] = []
+    if row.get("contributors"):
+        row["contributors"] = _expand_pipe_delimited_entries(list(row["contributors"]))
+    if row.get("authors"):
+        row["authors"] = _expand_pipe_delimited_entries(list(row["authors"]))
     return row
 
 
@@ -652,6 +653,40 @@ from app.pipeline.entity_normalize import (
     normalize_entity_text,
     normalize_role,
 )
+
+
+def _expand_pipe_delimited_entries(entries: list[Any]) -> list[dict[str, Any]]:
+    """Split ``name|name`` contributor/author dicts (desktop .mrc path)."""
+    out: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        raw_name = str(entry.get("name") or "")
+        if not any(d in raw_name for d in _MULTI_DELIMS):
+            out.append(dict(entry))
+            continue
+        names = _split_multi(raw_name)
+        roles = _split_multi(str(entry.get("role") or ""))
+        dates = _split_multi(str(entry.get("dates") or ""))
+        field = str(entry.get("field") or "")
+        fallback_role = str(entry.get("role") or "contributor")
+        for i, seg in enumerate(names):
+            seg = normalize_entity_text(seg)
+            if not seg:
+                continue
+            role_raw = roles[i] if i < len(roles) else fallback_role
+            new_entry: dict[str, Any] = {
+                "name": seg,
+                "role": normalize_role(role_raw),
+                "field": field,
+            }
+            if i < len(dates) and dates[i].strip():
+                new_entry["dates"] = normalize_entity_text(dates[i])
+            out.append(new_entry)
+    return out
+
+
+from app.pipeline.entity_kind_infer import infer_entity_kind
 
 
 def build_record_note_blob(record: dict[str, Any]) -> str:
@@ -687,11 +722,12 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
         name = c.get("name")
         if not name:
             continue
+        field_tag = str(c.get("field") or "")
         ent: dict[str, str] = {
             "text": normalize_entity_text(str(name)),
-            "kind": "corporate" if str(c.get("field") or "") in ("710", "711") else "person",
+            "kind": infer_entity_kind(str(name), field_tag),
             "role": normalize_role(str(c.get("role") or "")),
-            "field": str(c.get("field") or ""),
+            "field": field_tag,
         }
         if c.get("dates"):
             ent["dates"] = str(c["dates"]).strip()
@@ -707,8 +743,8 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
             })
         elif isinstance(a, dict) and (a.get("name") or "").strip():
             field_tag = str(a.get("field") or "100")
-            kind = "corporate" if field_tag in ("110", "710") else "person"
-            default_role = "institution" if kind == "corporate" else "author"
+            kind = infer_entity_kind(str(a["name"]), field_tag)
+            default_role = "institution" if kind in ("corporate", "meeting") else "author"
             ent = {
                 "text": normalize_entity_text(str(a["name"])),
                 "kind": kind,

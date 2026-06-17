@@ -285,6 +285,14 @@ def test_kima_payload_includes_mazal_nli_id(monkeypatch: pytest.MonkeyPatch) -> 
 # ── Re-enrich upsert key includes role ─────────────────────────────────────
 
 
+def test_infer_entity_kind_allony_fixture() -> None:
+    """Regression: 710 second segment must route as person for matchers."""
+    from app.pipeline.entity_kind_infer import infer_entity_kind
+
+    assert infer_entity_kind("Allony, Nehemia", "710") == "person"
+    assert infer_entity_kind("The National Library of Israel", "710") == "corporate"
+
+
 def test_reenrich_upsert_key_includes_role() -> None:
     """The re-enrich index key must be a 4-tuple including role so author and
     subject rows for the same entity text are not collapsed into each other."""

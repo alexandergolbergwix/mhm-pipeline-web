@@ -568,7 +568,7 @@ class DesktopMatcher(AuthorityMatcher):
             or role_key.endswith("_place")
             or (role_key == "subject" and _looks_like_place(text, marc_record))
         )
-        _non_person_kinds = frozenset(("work", "corporate", "organization", "topic"))
+        _non_person_kinds = frozenset(("work", "corporate", "organization", "topic", "meeting"))
         _is_person_entity = (
             not is_place and normalized_kind not in _non_person_kinds
         )
@@ -650,8 +650,8 @@ class DesktopMatcher(AuthorityMatcher):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal work matcher raised for %r: %s", text, exc)
 
-        # — Mazal corporate (institutions / collections) —
-        if normalized_kind in ("corporate", "organization") and (
+        # — Mazal corporate (institutions / collections / meetings) —
+        if normalized_kind in ("corporate", "organization", "meeting") and (
             self._mazal is not None or _mode == "postgres"
         ):
             try:

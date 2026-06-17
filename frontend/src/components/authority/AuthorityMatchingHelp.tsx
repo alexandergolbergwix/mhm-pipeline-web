@@ -14,7 +14,7 @@ export function AuthorityMatchingHelp() {
           <li><strong className="text-ink">Places</strong> — KIMA first (coordinates + Wikidata QID), then Mazal place ID, Ashkenazi gazetteer fallback.</li>
           <li><strong className="text-ink">Persons</strong> — Mazal (prefers אישיות tag 100 over נושא 150), then VIAF, then Wikidata. MARC birth/death dates ($d) narrow homonyms.</li>
           <li><strong className="text-ink">Works</strong> — Mazal work headings (from contents / כולל: notes).</li>
-          <li><strong className="text-ink">Institutions</strong> — Mazal corporate bodies (MARC 110/610).</li>
+          <li><strong className="text-ink">Institutions</strong> — Mazal corporate bodies (MARC 110/610/710). Pipe-separated 710 values (e.g. library|former owner name) are split; personal names like <em>Allony, Nehemia</em> route as persons even on tag 710.</li>
           <li><strong className="text-ink">Topics</strong> — Mazal subject headings (MARC 650).</li>
         </ul>
         <p>
