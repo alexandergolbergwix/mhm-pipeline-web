@@ -890,29 +890,8 @@ class DesktopMatcher(AuthorityMatcher):
                 f"{' — short or generic surface form, confirm manually' if confidence == 'low' else ''}.",
             )
 
-        # Authority Enrichment date guard via desktop's stage3_guards.
+        # Authority Enrichment hardening guards (date + homonym + placeholder).
         ms_year = _record_year(marc_record)
-        try:
-            from converter.authority import stage3_guards  # noqa: PLC0415
-
-            if ms_year is not None and (birth_year or death_year):
-                verdict = stage3_guards.evaluate_date_conflict(
-                    role=role,
-                    candidate_birth=birth_year,
-                    candidate_death=death_year,
-                    ms_year=ms_year,
-                )
-                if getattr(verdict, "fired", False):
-                    guards.append("date_conflict")
-                    if confidence == "high":
-                        confidence = "medium"
-                    if "date_conflict" in guards:
-                        confidence = "low"
-                    reasoning_parts.append(
-                        f"⚠ Authority Enrichment date guard fired: {getattr(verdict, 'reason', '')}",
-                    )
-        except Exception:  # noqa: BLE001 — desktop guards evolve; never let one kill ingest
-            logger.debug("stage3_guards unavailable for this candidate", exc_info=True)
 
         if not sources:
             # No candidate row at all — keep returning nothing so the
@@ -963,6 +942,9 @@ class DesktopMatcher(AuthorityMatcher):
                 biographical_dates_in_marc=bool(birth_year or death_year),
                 entity_kind=prelim["entity_kind"],
                 role=role,
+                ms_year=ms_year,
+                birth_year=birth_year,
+                death_year=death_year,
                 enable_wikidata_crosscheck=False,
             ),
         )
@@ -971,6 +953,11 @@ class DesktopMatcher(AuthorityMatcher):
         viaf_id = hardened["viaf_id"] or ""
         wikidata_qid = hardened["wikidata_qid"] or ""
         guards = list(hardened["payload"].get("guard_flags") or [])
+        from converter.authority.stage3_guards import authority_payload_blocked  # noqa: PLC0415
+
+        if authority_payload_blocked({"guard_flags": guards}):
+            birth_year = None
+            death_year = None
         hard_reasoning = (hardened["payload"].get("reasoning") or "").strip()
         if hard_reasoning:
             reasoning_parts.append(hard_reasoning)
@@ -1149,7 +1136,10 @@ def _looks_like_place(text: str, record: dict[str, Any]) -> bool:
             name = sub.get("name") or sub.get("term") or ""
             if kind in ("place", "geographic") and isinstance(name, str) and s in name:
                 return True
-    # MARC 651 / 752 / related_places slots.
+    # MARC 651 / 752 / related_places / production place slots.
+    prod = record.get("place")
+    if isinstance(prod, str) and prod.strip() and s in prod.strip():
+        return True
     for slot in ("related_places", "places"):
         for entry in record.get(slot) or []:
             if isinstance(entry, str) and s in entry:

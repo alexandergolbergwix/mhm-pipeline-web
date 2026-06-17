@@ -141,6 +141,109 @@ def guard_short_name_homonym(
     )
 
 
+# ── Guard 1b — non-person / classical reference headings ───────────────
+
+
+def guard_non_person_heading(*, name: str) -> GuardVerdict:
+    try:
+        from converter.authority.stage3_guards import (  # noqa: PLC0415
+            is_non_person_marc_heading,
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("stage3_guards.is_non_person_marc_heading unavailable", exc_info=True)
+        return GuardVerdict(fired=False)
+    if not is_non_person_marc_heading(name):
+        return GuardVerdict(fired=False)
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason="Classical reference heading (not a manuscript contributor person).",
+        flag="non_person_heading",
+    )
+
+
+def guard_biographical_inconsistency(
+    *,
+    birth_year: int | None,
+    death_year: int | None,
+) -> GuardVerdict:
+    try:
+        from converter.authority.stage3_guards import (  # noqa: PLC0415
+            evaluate_biographical_inconsistency,
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug(
+            "stage3_guards.evaluate_biographical_inconsistency unavailable",
+            exc_info=True,
+        )
+        return GuardVerdict(fired=False)
+    reason = evaluate_biographical_inconsistency(birth_year, death_year)
+    if not reason:
+        return GuardVerdict(fired=False)
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason=reason,
+        flag="biographical_inconsistency",
+    )
+
+
+def guard_modern_person(
+    *,
+    ms_year: int | None,
+    birth_year: int | None,
+) -> GuardVerdict:
+    try:
+        from converter.authority.stage3_guards import (  # noqa: PLC0415
+            evaluate_modern_person_conflict,
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug(
+            "stage3_guards.evaluate_modern_person_conflict unavailable",
+            exc_info=True,
+        )
+        return GuardVerdict(fired=False)
+    reason = evaluate_modern_person_conflict(ms_year, birth_year)
+    if not reason:
+        return GuardVerdict(fired=False)
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason=reason,
+        flag="modern_person",
+    )
+
+
+def guard_date_conflict(
+    *,
+    role: str,
+    ms_year: int | None,
+    birth_year: int | None,
+    death_year: int | None,
+) -> GuardVerdict:
+    try:
+        from converter.authority.stage3_guards import (  # noqa: PLC0415
+            evaluate_date_conflict,
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("stage3_guards.evaluate_date_conflict unavailable", exc_info=True)
+        return GuardVerdict(fired=False)
+    reason = evaluate_date_conflict(
+        role=role,
+        ms_year=ms_year,
+        person_birth_year=birth_year,
+        person_death_year=death_year,
+    )
+    if not reason:
+        return GuardVerdict(fired=False)
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason=reason,
+        flag="date_conflict",
+    )
+
+
 # ── Guard 2 — placeholder name ──────────────────────────────────────────
 
 
@@ -514,6 +617,9 @@ class HardeningContext:
     biographical_dates_in_marc: bool = False
     entity_kind: str = "person"
     role: str = ""
+    ms_year: int | None = None
+    birth_year: int | None = None
+    death_year: int | None = None
     over_merge_table: Any | None = None
     enable_wikidata_crosscheck: bool = False
 
@@ -549,7 +655,22 @@ def apply_hardening_guards(
     )
 
     verdicts: list[GuardVerdict] = [
+        guard_non_person_heading(name=str(matched_name)),
         guard_placeholder_name(name=str(matched_name)),
+        guard_biographical_inconsistency(
+            birth_year=ctx.birth_year,
+            death_year=ctx.death_year,
+        ),
+        guard_modern_person(
+            ms_year=ctx.ms_year,
+            birth_year=ctx.birth_year,
+        ),
+        guard_date_conflict(
+            role=ctx.role,
+            ms_year=ctx.ms_year,
+            birth_year=ctx.birth_year,
+            death_year=ctx.death_year,
+        ),
         guard_short_name_homonym(
             marc_name=str(matched_name),
             preferred_name_lat=ctx.preferred_name_lat,
@@ -586,17 +707,32 @@ def apply_hardening_guards(
         if v.reason:
             reasons.append(f"⚠ {v.reason}")
 
-    # Placeholder hard-rejects: clear the resolved IDs too. Matches the
-    # desktop ``evaluate_match`` path which returns mazal_id=None /
-    # viaf_uri=None when ``is_placeholder_name`` fires.
-    if any(v.flag == "placeholder_name" for v in fired):
+    # Hard-rejects: clear resolved IDs and biographical enrichment.
+    hard_reject_flags = {
+        "placeholder_name",
+        "non_person_heading",
+        "date_conflict",
+        "biographical_inconsistency",
+        "modern_person",
+    }
+    if any(v.flag in hard_reject_flags for v in fired):
         out["mazal_id"] = ""
         out["viaf_id"] = ""
         out["wikidata_qid"] = ""
         payload.pop("mazal_id", None)
         payload.pop("viaf_id", None)
         payload.pop("wikidata_qid", None)
-        for stale in ("gnd_id", "lc_id", "isni", "bnf_id"):
+        for stale in (
+            "gnd_id",
+            "lc_id",
+            "isni",
+            "bnf_id",
+            "birth_year",
+            "death_year",
+            "preferred_name_lat",
+            "preferred_name_heb",
+            "dates",
+        ):
             payload.pop(stale, None)
 
     # Corporate routing: drop the person-style VIAF id when the guard

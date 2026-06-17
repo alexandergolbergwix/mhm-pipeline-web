@@ -21,7 +21,7 @@ authority resolution / RDF construction and producing a wrong Wikidata claim:
 * :func:`filter_person_hallucinations` — drops person spans whose
   text is a known topic keyword (Hebrew or Latin), an ALL-CAPS ASCII
   fragment, an MARC uncertainty marker, or too short to disambiguate;
-  prevents RDF Graph from creating person items for non-persons.
+  prevents Stage 4 from creating person items for non-persons.
 
 All four are pure functions over the entity list (plus a shared
 ``surrounding_text`` for B2). ``NerWorker`` chains them after every
@@ -267,6 +267,7 @@ _HEBREW_TOPIC_DENYLIST: frozenset[str] = frozenset({
     "קבלה", "גמרא", "תלמוד", "תורה", "משנה", "הלכה",
     "אוטוגרף", "קולופון", "כריכה", "קלף", "כתב יד",
     "משיח", "גאולה",
+    "אונקלוס", "עונקלוס",
 })
 
 # Hebrew place names and rite designators that surface in MARC subject
@@ -378,7 +379,7 @@ def filter_person_hallucinations(
         else:
             ent["rejected_reason"] = reason
             # Drop — do not emit. (We don't keep rejected entities in
-            # the live list because the Authority Enrichment reconciler doesn't
+            # the live list because the Stage 3 reconciler doesn't
             # check ``rejected_reason``; if we kept them, they'd flow
             # through and create wrong items.)
     return kept
@@ -446,7 +447,7 @@ def filter_person_role_dedup(
     same record gets a fresh role classification each time. The
     surrounding context can drift (one segment says "the scribe Eleazar
     wrote", another says "Eleazar's commentary on") and the same person
-    ends up with three different roles. Authority Enrichment would then create three
+    ends up with three different roles. Stage 3 would then create three
     separate authority candidates.
 
     Group ``person_ner`` entities by their normalised ``person`` text
@@ -927,7 +928,7 @@ def filter_with_marc_grounding(
     the human reviewer who wants to know "where else does this name
     appear in MARC?".
 
-    The MARC record dict is the MARC Parsing ``marc_extracted.json`` entry
+    The MARC record dict is the Stage-1 ``marc_extracted.json`` entry
     for the same control number.
     """
     if not marc_record:
