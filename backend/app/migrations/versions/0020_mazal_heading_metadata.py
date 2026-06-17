@@ -13,7 +13,7 @@ This migration only changes the schema; a re-import with the updated script
 is required before the new column has data (see Rule W-33 curator playbook).
 
 Revision ID: 0020_mazal_heading_metadata
-Revises: 0019_trgm_for_fuzzy_authority
+Revises: 0023_saved_queries
 Create Date: 2026-06-17
 """
 
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0020_mazal_heading_metadata"
-down_revision = "0019_trgm_for_fuzzy_authority"
+down_revision = "0023_saved_queries"
 branch_labels = None
 depends_on = None
 
