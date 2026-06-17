@@ -43,7 +43,7 @@ export default function WikidataStudio() {
   const { runId } = useParams<{ runId: string }>();
   const [build, setBuild] = useState<StudioBuild | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [approvedOnly, setApprovedOnly] = useState(true);
 
   // Project id is needed for the per-item-card "📜 View edit history"
@@ -221,7 +221,18 @@ export default function WikidataStudio() {
   }, [build, existFilter, minStmts]);
 
   if (error) return <Layout><Glass className="p-6 text-red-300">{error}</Glass></Layout>;
-  if (!build) return <Layout><p className="muted">{loading ? "Building items…" : "Loading…"}</p></Layout>;
+  if (!build) return (
+    <Layout>
+      <Glass className="p-6 space-y-2">
+        <p className="muted">{loading ? "Building Wikidata items…" : "Loading Wikidata Studio…"}</p>
+        {loading && (
+          <p className="text-xs muted">
+            Large runs can take a minute on first load while items are built and cached.
+          </p>
+        )}
+      </Glass>
+    </Layout>
+  );
 
   const current = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].it : null;
   const currentKey = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].key : "";

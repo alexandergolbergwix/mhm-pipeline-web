@@ -520,6 +520,12 @@ async def build_studio(
     }
     entities_by_cn = _group_entity_rows(entity_rows, approved_only)
 
+    # Materialise ORM scalars before the long threadpool build — the async
+    # session's connection can expire during _build_sync, and lazy refresh
+    # then raises sqlalchemy.exc.MissingGreenlet (seen on Heroku 2026-06-17).
+    overrides_approved = {r.local_id: r.approved for r in override_rows}
+    run_user_id = getattr(run, "created_by", None)
+
     # Pre-warm Hebrew→Latin labels concurrently (cached in Postgres), then run
     # the synchronous build with the Tier 3/4 network kill-switch on so the
     # build itself never blocks on HTTP. Without this the build makes ~200
@@ -528,7 +534,7 @@ async def build_studio(
     from converter.wikidata import hebrew_translit  # noqa: PLC0415
 
     prewarmed = await _prewarm_transliterations(
-        db, marc_records=marc_records, user_id=getattr(run, "created_by", None),
+        db, marc_records=marc_records, user_id=run_user_id,
     )
     hebrew_translit.set_prewarmed_labels(prewarmed)
     hebrew_translit.set_sync_network_disabled(True)
@@ -542,7 +548,6 @@ async def build_studio(
         hebrew_translit.set_sync_network_disabled(False)
         hebrew_translit.clear_prewarmed_labels()
     # Stamp local_id + curator approved flag onto each serialised item.
-    overrides_approved = {r.local_id: r.approved for r in override_rows}
     if result.get("native_items"):
         for it_dict, it_native in zip(
             result["items"], result["native_items"], strict=True,
