@@ -25,8 +25,9 @@ import {
 import {
   AgentFlowDiagram, makeInitialFlowState, reduceFlow, type FlowState,
 } from "@/components/AgentFlowDiagram";
-import { VerdictsTable } from "@/components/VerdictsTable";
-import { MarcRecordPopup } from "@/components/MarcRecordPopup";
+import {VerdictsTable} from "@/components/VerdictsTable";
+import {MarcRecordPopup} from "@/components/MarcRecordPopup";
+import {verdictStorageKey} from "@/utils/verdictKey";
 
 
 export interface AiVerificationModalProps {
@@ -99,9 +100,8 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
             if (cancelled) return;
             const seeded: Record<string, AgentEvent> = {};
             for (const v of full.verdicts ?? []) {
-              const cand = (v.candidate ?? {}) as Record<string, unknown>;
-              const matchId = String(cand._match_id ?? cand.record_id ?? "");
-              if (matchId) seeded[matchId] = { type: "agent.verdict", ...v };
+              const ev: AgentEvent = {type: "agent.verdict", ...v};
+              seeded[verdictStorageKey(ev)] = ev;
             }
             if (Object.keys(seeded).length > 0) {
               setVerdicts(seeded);
@@ -136,9 +136,7 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
         setEvents((p) => [...p, ev]);
         setFlow((p) => reduceFlow(p, ev));
         if (ev.type === "agent.verdict") {
-          const candidate = (ev.candidate ?? {}) as Record<string, unknown>;
-          const matchId = String(candidate._match_id ?? candidate.record_id ?? "");
-          if (matchId) setVerdicts((p) => ({ ...p, [matchId]: ev }));
+          setVerdicts((p) => ({...p, [verdictStorageKey(ev)]: ev}));
         }
         if (ev.type === "runner.error") {
           setError((ev as {message?: string}).message ?? "Verification failed");

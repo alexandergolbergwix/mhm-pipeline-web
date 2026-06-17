@@ -522,6 +522,43 @@ def list_sessions(run_id: str) -> list[dict[str, Any]]:
     return out
 
 
+def _verdict_storage_key(v: dict[str, Any]) -> str:
+    """Stable dedupe key for one verdict row (mirrors frontend verdictStorageKey)."""
+    cand = v.get("candidate") if isinstance(v.get("candidate"), dict) else {}
+    match_id = cand.get("_match_id")
+    if match_id:
+        return str(match_id)
+    entity_id = cand.get("_entity_id")
+    if entity_id:
+        return str(entity_id)
+    record_id = str(v.get("record_id") or cand.get("record_id") or "")
+    name = str(cand.get("name") or cand.get("person") or cand.get("text") or "").strip()
+    role = str(cand.get("role") or "").strip()
+    sub_type = str(v.get("sub_type") or cand.get("sub_type") or "").strip()
+    evaluator = str(v.get("evaluator_id") or cand.get("evaluator_id") or "").strip()
+    idx = cand.get("_match_index")
+    if record_id and name:
+        return f"{record_id}|{name}|{role}|{sub_type}|{evaluator}|{idx if idx is not None else ''}"
+    if record_id:
+        return f"{record_id}|{idx if idx is not None else name}"
+    return f"anon|{evaluator}|{sub_type}|{name}"
+
+
+def _verdicts_from_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collect agent.verdict payloads from a session trace, last-write-wins per key."""
+    by_key: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for ev in events:
+        if ev.get("type") != "agent.verdict":
+            continue
+        payload = {k: val for k, val in ev.items() if k not in ("ts", "type")}
+        key = _verdict_storage_key(payload)
+        if key not in by_key:
+            order.append(key)
+        by_key[key] = payload
+    return [by_key[k] for k in order]
+
+
 def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
     base = _resolve_session_dir(run_id, session_id)
     if base is None:
@@ -538,12 +575,13 @@ def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
                     events.append(json.loads(line))
                 except json.JSONDecodeError:
                     continue
-    # Verdicts live next to the per-run state_dir's runs/ folder. For
-    # new-layout sessions that means base.parent.parent (state_dir);
-    # legacy sessions wrote runs/ under the session_dir, so fall back
-    # to the session_dir itself.
-    state_dir = base.parent.parent if base.parent.name == "sessions" else base
-    verdicts = read_run_verdicts(state_dir) or read_run_verdicts(base)
+    # Prefer verdicts replayed from this session's trace — the per-run
+    # results.jsonl under state_dir/runs/ is shared across sessions and
+    # may belong to a different scope (stale count vs scope_size).
+    verdicts = _verdicts_from_trace(events)
+    if not verdicts:
+        state_dir = base.parent.parent if base.parent.name == "sessions" else base
+        verdicts = read_run_verdicts(state_dir) or read_run_verdicts(base)
     return {
         "session_id": session_id,
         "run_id":     run_id,

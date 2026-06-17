@@ -52,7 +52,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AiVerify, type AgentEvent } from "@/api/aiVerify";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
 import { useDebounce } from "@/hooks/useDebounce";
-import { downloadFromUrl } from "@/utils/download";
+import {downloadFromUrl} from "@/utils/download";
+import {verdictStorageKey} from "@/utils/verdictKey";
 
 
 export interface VerdictsTableProps {
@@ -380,8 +381,8 @@ export function VerdictsTable(props: VerdictsTableProps) {
                 </td>
               </tr>
             )}
-            {visible.map((ev, i) => {
-              const key = String(ev._match_id ?? recordId(ev) + "/" + i);
+            {visible.map((ev) => {
+              const key = verdictStorageKey(ev);
               const open = expanded.has(key);
               const o = overall(ev);
               const cand = (ev.candidate ?? {}) as Record<string, unknown>;

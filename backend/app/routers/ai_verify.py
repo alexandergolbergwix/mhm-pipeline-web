@@ -306,6 +306,8 @@ async def _session_event_stream(
                 yield ev
     finally:
         on_disk_verdicts = read_run_verdicts(state_dir) if (uncached and state_dir) else []
+        if on_disk_verdicts:
+            _enrich_verdict_match_ids(on_disk_verdicts, matches)
         for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)
@@ -647,6 +649,37 @@ async def get_run_session(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
+
+
+def _enrich_verdict_match_ids(
+    verdicts: list[dict[str, Any]],
+    matches: list[tuple[AuthorityMatch, RunRecord]],
+) -> None:
+    """Attach ``candidate._match_id`` when eval-agent omitted it from results.jsonl."""
+    lookup: dict[tuple[str, str, str], str] = {}
+    for m, _ in matches:
+        lookup[
+            (
+                m.control_number,
+                (m.entity_text or "").strip(),
+                (m.role or "").strip(),
+            )
+        ] = str(m.id)
+
+    for v in verdicts:
+        cand = v.get("candidate")
+        if not isinstance(cand, dict):
+            v["candidate"] = cand = {}
+        if cand.get("_match_id"):
+            continue
+        rid = str(v.get("record_id") or "")
+        name = str(
+            cand.get("name") or cand.get("person") or cand.get("text") or ""
+        ).strip()
+        role = str(cand.get("role") or "").strip()
+        mid = lookup.get((rid, name, role))
+        if mid:
+            cand["_match_id"] = mid
 
 
 async def _fetch_matches(

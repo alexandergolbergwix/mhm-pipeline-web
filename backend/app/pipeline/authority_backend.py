@@ -718,7 +718,7 @@ def _pg_dsn_for_psycopg2(raw: str) -> str:
     RDS-backed instances require ``sslmode=require`` for ALL connections
     (even from the same dyno).  This helper normalises both.
     """
-    dsn = raw.strip()
+    dsn = raw.strip().replace("postgresql+asyncpg://", "postgresql://", 1)
     if dsn.startswith("postgres://"):
         dsn = dsn.replace("postgres://", "postgresql://", 1)
     if dsn and "localhost" not in dsn and "127.0.0.1" not in dsn:
@@ -742,10 +742,12 @@ def build_authority_backend(
     mode = os.getenv("AUTHORITY_MODE", "local").lower()
 
     if mode == "postgres":
-        dsn = _pg_dsn_for_psycopg2(os.getenv("DATABASE_URL", ""))
-        if not dsn:
+        from app.settings import get_settings  # noqa: PLC0415
+
+        dsn = _pg_dsn_for_psycopg2(get_settings().database_url)
+        if not dsn or "localhost" in dsn or "127.0.0.1" in dsn:
             logger.warning(
-                "AUTHORITY_MODE=postgres but DATABASE_URL not set — "
+                "AUTHORITY_MODE=postgres but database_url is missing or local — "
                 "falling back to local SQLite"
             )
         else:
