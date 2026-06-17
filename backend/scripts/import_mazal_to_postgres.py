@@ -87,10 +87,29 @@ def import_authorities(pg_cur: object, sq_conn: sqlite3.Connection) -> int:
     total = sq_conn.execute("SELECT COUNT(*) FROM authorities").fetchone()[0]
     logger.info("Importing %d authority rows …", total)
 
+    # Detect whether the SQLite authorities table has the new main_marc_tag column
+    # (added in Phase 2 of the authority-enrichment fixes). Older SQLite DBs built
+    # before that change lack the column; we fall back to NULL for those rows.
+    sq_cols = {
+        row[1]
+        for row in sq_conn.execute("PRAGMA table_info(authorities)")
+    }
+    has_main_marc_tag = "main_marc_tag" in sq_cols
+
     imported = 0
     chunk: list[tuple] = []
-    cols = ["nli_id", "entity_type", "preferred_name_heb", "preferred_name_lat", "dates", "aleph_id"]
-    for row in sq_conn.execute("SELECT nli_id, entity_type, preferred_name_heb, preferred_name_lat, dates, aleph_id FROM authorities"):
+    if has_main_marc_tag:
+        cols = ["nli_id", "entity_type", "preferred_name_heb", "preferred_name_lat",
+                "dates", "aleph_id", "main_marc_tag"]
+        sql = ("SELECT nli_id, entity_type, preferred_name_heb, preferred_name_lat, "
+               "dates, aleph_id, main_marc_tag FROM authorities")
+    else:
+        cols = ["nli_id", "entity_type", "preferred_name_heb", "preferred_name_lat",
+                "dates", "aleph_id"]
+        sql = ("SELECT nli_id, entity_type, preferred_name_heb, preferred_name_lat, "
+               "dates, aleph_id FROM authorities")
+
+    for row in sq_conn.execute(sql):
         chunk.append(row)
         if len(chunk) >= CHUNK:
             _copy_rows(pg_cur, "mazal_authorities", cols, chunk)

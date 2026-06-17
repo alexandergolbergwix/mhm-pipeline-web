@@ -675,10 +675,12 @@ async def re_enrich_authority(
         )
     ).scalars().all()
 
-    # Index existing rows by (control_number, entity_text, entity_kind) so
+    # Index existing rows by (control_number, entity_text, entity_kind, role) so
     # we can upsert: update payload/IDs while preserving approval state.
-    existing_idx: dict[tuple[str, str, str], AuthorityMatch] = {
-        (m.control_number, m.entity_text.strip().lower(), m.entity_kind): m
+    # Role is included so an author row and a subject row for the same name
+    # are updated independently (they carry different authority context).
+    existing_idx: dict[tuple[str, str, str, str], AuthorityMatch] = {
+        (m.control_number, m.entity_text.strip().lower(), m.entity_kind, m.role or ""): m
         for m in existing_rows
     }
 
@@ -712,6 +714,7 @@ async def re_enrich_authority(
                 rec.control_number,
                 (entity.get("text") or "").strip().lower(),
                 entity.get("kind", "person"),
+                entity.get("role", ""),
             )
             if key in existing_idx:
                 m = existing_idx[key]

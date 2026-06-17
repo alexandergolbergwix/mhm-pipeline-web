@@ -29,12 +29,25 @@ logger = logging.getLogger(__name__)
 class AuthorityBackend(Protocol):
     """Minimal interface for Mazal + KIMA lookups."""
 
-    async def match_person(self, name: str) -> dict[str, Any] | None:
-        """Return a dict with mazal_id + details, or None on no hit."""
+    async def match_person(self, name: str, dates: str | None = None) -> dict[str, Any] | None:
+        """Return a dict with mazal_id + details, or None on no hit.
+
+        When *dates* is supplied (e.g. "1138-1204" from MARC $d), the backend
+        tries an exact-match + dates before falling back to name-only so
+        homonyms with different life-dates are correctly separated.
+        """
         ...
 
     async def match_place(self, text: str) -> dict[str, Any] | None:
         """Return a dict with wikidata_uri + enrichment row, or None on no hit."""
+        ...
+
+    async def match_mazal_place(self, text: str) -> dict[str, Any] | None:
+        """Return a Mazal authority row for a place name, or None on no hit.
+
+        Separate from match_place (KIMA) so place entities can obtain an NLI
+        ID even when KIMA has no coordinates for them.
+        """
         ...
 
 
@@ -54,14 +67,15 @@ class LocalAuthorityBackend:
         self._mazal = mazal_matcher
         self._kima = kima_matcher
 
-    async def match_person(self, name: str) -> dict[str, Any] | None:
+    async def match_person(self, name: str, dates: str | None = None) -> dict[str, Any] | None:
         import asyncio  # noqa: PLC0415
 
         if self._mazal is None:
             return None
 
         def _sync() -> dict[str, Any] | None:
-            mid = self._mazal.match_person(name)
+            # Try date-anchored exact match first when MARC $d is available.
+            mid = self._mazal.match_person(name, dates=dates)
             fuzzy = False
             if mid is None:
                 idx = self._mazal.index
@@ -74,13 +88,17 @@ class LocalAuthorityBackend:
                     """
                     SELECT n.nli_id
                     FROM name_index n
+                    JOIN authorities a ON n.nli_id = a.nli_id
                     WHERE n.entity_type = 'person'
                       AND (
                         n.normalized_name LIKE ?
                         OR ? LIKE '%' || n.normalized_name || '%'
                       )
-                    ORDER BY abs(length(n.normalized_name) - length(?)),
-                             length(n.normalized_name)
+                    ORDER BY
+                      (a.dates IS NOT NULL AND a.dates != '') DESC,
+                      abs(length(n.normalized_name) - length(?)),
+                      length(n.normalized_name),
+                      n.nli_id
                     LIMIT 1
                     """,
                     (f"%{norm}%", norm, norm),
@@ -93,6 +111,28 @@ class LocalAuthorityBackend:
             if fuzzy:
                 details["_fuzzy"] = True
             return {"mazal_id": str(mid), **details}
+
+        return await asyncio.to_thread(_sync)
+
+    async def match_mazal_place(self, text: str) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        if self._mazal is None:
+            return None
+
+        def _sync() -> dict[str, Any] | None:
+            if self._mazal.index is None:
+                return None
+            nli_id = self._mazal.match_place(text)
+            if not nli_id:
+                return None
+            record = self._mazal.get_record(nli_id) or {}
+            return {
+                "mazal_id": nli_id,
+                "entity_type": "place",
+                "preferred_name_heb": record.get("preferred_name_heb", ""),
+                "preferred_name_lat": record.get("preferred_name_lat", ""),
+            }
 
         return await asyncio.to_thread(_sync)
 
@@ -138,6 +178,28 @@ class LocalAuthorityBackend:
             if fuzzy:
                 row["_fuzzy"] = True
             return {"wikidata_uri": f"https://www.wikidata.org/entity/{wd}", **row}
+
+        return await asyncio.to_thread(_sync)
+
+    async def match_mazal_place(self, text: str) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        if self._mazal is None:
+            return None
+
+        def _sync() -> dict[str, Any] | None:
+            if self._mazal.index is None:
+                return None
+            nli_id = self._mazal.match_place(text)
+            if not nli_id:
+                return None
+            record = self._mazal.get_record(nli_id) or {}
+            return {
+                "mazal_id": nli_id,
+                "entity_type": "place",
+                "preferred_name_heb": record.get("preferred_name_heb", ""),
+                "preferred_name_lat": record.get("preferred_name_lat", ""),
+            }
 
         return await asyncio.to_thread(_sync)
 
@@ -187,6 +249,10 @@ class ModalAuthorityBackend:
                 "ModalAuthorityBackend.match_place failed for %r: %s", text, exc,
             )
             return None
+
+    async def match_mazal_place(self, text: str) -> dict[str, Any] | None:
+        # Modal legacy backend does not expose a dedicated Mazal place endpoint.
+        return None
 
 
 class PostgresAuthorityBackend:
@@ -265,7 +331,7 @@ class PostgresAuthorityBackend:
 
     # ── Public API (AuthorityBackend protocol) ─────────────────────────
 
-    async def match_person(self, name: str) -> dict[str, Any] | None:
+    async def match_person(self, name: str, dates: str | None = None) -> dict[str, Any] | None:
         import asyncio  # noqa: PLC0415
 
         FUZZY_MIN_SIM = 0.45
@@ -277,14 +343,53 @@ class PostgresAuthorityBackend:
             conn = self._get_conn()
             cur = conn.cursor()
             try:
-                # 1. Exact (fast path, uses the hash index)
+                # 1a. Exact match WITH dates — picks the right homonym when MARC $d
+                #     provides birth/death years (e.g. 600$d "1138-1204").
+                if dates:
+                    norm_dates = dates.strip()
+                    cur.execute(
+                        """
+                        SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                               a.preferred_name_lat, a.dates, a.aleph_id
+                        FROM mazal_name_index n
+                        JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                        WHERE n.normalized_name = %s
+                          AND n.entity_type = 'person'
+                          AND a.dates = %s
+                        LIMIT 1
+                        """,
+                        (norm, norm_dates),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        return {
+                            "mazal_id": row[0],
+                            "entity_type": row[1],
+                            "preferred_name_heb": row[2],
+                            "preferred_name_lat": row[3],
+                            "dates": row[4],
+                            "aleph_id": row[5],
+                        }
+
+                # 1b. Exact match (name only), prefer אישיות (main_marc_tag='100') over
+                #     נושא/subject (main_marc_tag='150') and other homonyms, then
+                #     prefer dated records for further disambiguation.
                 cur.execute(
                     """
                     SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
-                           a.preferred_name_lat, a.dates, a.aleph_id
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
                     FROM mazal_name_index n
                     JOIN mazal_authorities a ON n.nli_id = a.nli_id
                     WHERE n.normalized_name = %s AND n.entity_type = 'person'
+                    ORDER BY
+                      CASE a.main_marc_tag
+                        WHEN '100' THEN 1
+                        WHEN '400' THEN 2
+                        ELSE 3
+                      END,
+                      (a.dates IS NOT NULL AND a.dates <> '') DESC,
+                      a.nli_id ASC
                     LIMIT 1
                     """,
                     (norm,),
@@ -298,6 +403,7 @@ class PostgresAuthorityBackend:
                         "preferred_name_lat": row[3],
                         "dates": row[4],
                         "aleph_id": row[5],
+                        "main_marc_tag": row[6],
                     }
 
                 # 2. Fuzzy trigram fallback (for spelling variants / orthographic differences
@@ -308,18 +414,28 @@ class PostgresAuthorityBackend:
                         """
                         SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
                                a.preferred_name_lat, a.dates, a.aleph_id,
+                               a.main_marc_tag,
                                similarity(n.normalized_name, %s) AS sim
                         FROM mazal_name_index n
                         JOIN mazal_authorities a ON n.nli_id = a.nli_id
                         WHERE n.normalized_name %% %s
                           AND n.entity_type = 'person'
-                        ORDER BY sim DESC
+                        ORDER BY sim DESC,
+                          CASE a.main_marc_tag
+                            WHEN '100' THEN 1
+                            WHEN '400' THEN 2
+                            ELSE 3
+                          END,
+                          (a.dates IS NOT NULL AND a.dates <> '') DESC,
+                          a.nli_id ASC
                         LIMIT 1
                         """,
                         (norm, norm),
                     )
                     row = cur.fetchone()
-                    if row and row[6] is not None and float(row[6]) >= FUZZY_MIN_SIM:
+                    # row layout: nli_id, entity_type, pref_heb, pref_lat, dates,
+                    #             aleph_id, main_marc_tag, sim
+                    if row and row[7] is not None and float(row[7]) >= FUZZY_MIN_SIM:
                         return {
                             "mazal_id": row[0],
                             "entity_type": row[1],
@@ -327,10 +443,9 @@ class PostgresAuthorityBackend:
                             "preferred_name_lat": row[3],
                             "dates": row[4],
                             "aleph_id": row[5],
-                            # Mark that this was a fuzzy hit so downstream (date guard,
-                            # UI) can surface lower confidence or reasoning if desired.
+                            "main_marc_tag": row[6],
                             "_fuzzy": True,
-                            "_fuzzy_sim": float(row[6]),
+                            "_fuzzy_sim": float(row[7]),
                         }
                 except Exception:  # noqa: BLE001 — no pg_trgm, no index, or syntax
                     pass
@@ -343,7 +458,49 @@ class PostgresAuthorityBackend:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Postgres Mazal lookup failed for %r: %s", name, exc)
             if self._fallback is not None:
-                return await self._fallback.match_person(name)
+                return await self._fallback.match_person(name, dates=dates)
+            return None
+
+    async def match_mazal_place(self, text: str) -> dict[str, Any] | None:
+        """Look up a place in the Mazal authority index by name."""
+        import asyncio  # noqa: PLC0415
+
+        def _sync() -> dict[str, Any] | None:
+            norm = self._normalize_mazal(text)
+            if not norm:
+                return None
+            conn = self._get_conn()
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    SELECT n.nli_id, a.preferred_name_heb, a.preferred_name_lat
+                    FROM mazal_name_index n
+                    JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name = %s AND n.entity_type = 'place'
+                    ORDER BY a.nli_id ASC
+                    LIMIT 1
+                    """,
+                    (norm,),
+                )
+                row = cur.fetchone()
+                if row:
+                    return {
+                        "mazal_id": row[0],
+                        "entity_type": "place",
+                        "preferred_name_heb": row[1] or "",
+                        "preferred_name_lat": row[2] or "",
+                    }
+                return None
+            finally:
+                cur.close()
+
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres Mazal place lookup failed for %r: %s", text, exc)
+            if self._fallback is not None:
+                return await self._fallback.match_mazal_place(text)
             return None
 
     async def match_place(self, text: str) -> dict[str, Any] | None:

@@ -261,12 +261,17 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     for tag in ("100", "110", "111"):
         a = _split_multi(_str(record.get(f"{tag}$a")))
         e = _split_multi(_str(record.get(f"{tag}$e")))
+        # MARC $d carries birth/death dates — used by Mazal homonym resolution.
+        d = _split_multi(_str(record.get(f"{tag}$d")))
         for i, name in enumerate(a):
             name = name.strip()
             if not name:
                 continue
             role = e[i] if i < len(e) else "author"
-            authors.append({"name": name, "role": role, "field": tag})
+            entry: dict[str, Any] = {"name": name, "role": role, "field": tag}
+            if i < len(d) and d[i].strip():
+                entry["dates"] = d[i].strip()
+            authors.append(entry)
     if authors:
         record["authors"] = authors
 
@@ -275,12 +280,16 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     for tag in ("700", "710", "711", "800", "810", "811"):
         a = _split_multi(_str(record.get(f"{tag}$a")))
         e = _split_multi(_str(record.get(f"{tag}$e")))
+        d = _split_multi(_str(record.get(f"{tag}$d")))
         for i, name in enumerate(a):
             name = name.strip()
             if not name:
                 continue
             role = e[i] if i < len(e) else "contributor"
-            contributors.append({"name": name, "role": role, "field": tag})
+            entry = {"name": name, "role": role, "field": tag}
+            if i < len(d) and d[i].strip():
+                entry["dates"] = d[i].strip()
+            contributors.append(entry)
     if contributors:
         record["contributors"] = contributors
 
@@ -288,8 +297,13 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     subjects = list(record.get("subjects") or [])
     # 600 = personal-name subject; 610 = corporate; 611 = meeting
     for tag, kind in (("600", "person"), ("610", "organization"), ("611", "meeting")):
-        for name in _split_multi(_str(record.get(f"{tag}$a"))):
-            subjects.append({"name": name, "type": kind, "field": tag})
+        a_vals = _split_multi(_str(record.get(f"{tag}$a")))
+        d_vals = _split_multi(_str(record.get(f"{tag}$d")))
+        for i, name in enumerate(a_vals):
+            entry = {"name": name, "type": kind, "field": tag}
+            if i < len(d_vals) and d_vals[i].strip():
+                entry["dates"] = d_vals[i].strip()
+            subjects.append(entry)
     # 650 topical, 651 geographic
     for name in _split_multi(_str(record.get("650$a"))):
         subjects.append({"name": name, "type": "topic", "field": "650"})
@@ -355,18 +369,41 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     if notes:
         record["notes"] = notes
 
-    # ── Colophon text (590$a — desktop's convention) ────────────────
-    # Some catalogues file the colophon as a 590$a local note. Without
-    # this, the desktop's Hebrew-Person-NER never sees the colophon at
-    # all. Safe to also include 500$a fragments — the model is robust
-    # to non-colophon prose; the cost is one extra Modal call's worth
-    # of tokens per record.
+    # ── Colophon text (590$a + keyword-detected 500$a) ──────────────
+    # Some catalogues file the colophon as a 590$a local note. Others
+    # use a plain 500$a with a keyword marker (קולופון / colophon / כתב
+    # יד סופר). Detect both so the Hebrew-Person-NER sees the scribe's
+    # name and the structured extractor below can pull year + scribe.
+    _COLOPHON_KEYWORDS = ("קולופון", "colophon", "כתב יד סופר", "כתב-יד")
     colophon_pieces: list[str] = []
     for piece in _split_multi(_str(record.get("590$a"))):
         if piece:
             colophon_pieces.append(piece)
+    # 500$a keyword detection
+    for piece in _split_multi(_str(record.get("500$a"))):
+        if not piece:
+            continue
+        lower = piece.lower()
+        if any(kw in lower for kw in _COLOPHON_KEYWORDS):
+            if piece not in colophon_pieces:
+                colophon_pieces.append(piece)
     if colophon_pieces and not record.get("colophon_text"):
         record["colophon_text"] = " | ".join(colophon_pieces)
+
+    # ── Structured colophon extraction ───────────────────────────────
+    # Best-effort: extract a year and a scribe name from colophon text.
+    # These land on optional keys (colophon_year, colophon_scribe) in the
+    # record's MARC JSONB. No migration needed — they're stored alongside
+    # existing free-form MARC fields.
+    if record.get("colophon_text") and not record.get("colophon_year"):
+        _extract_colophon_fields(record)
+
+    # ── Work mentions from 500$a notes (כולל: pattern) ──────────────
+    # NLI cataloguers often list contained works after the keyword כולל
+    # (e.g. "כולל: עת שערי רצון; שיר השירים"). Extract these as work
+    # entity candidates so they can flow to match_work.
+    if not record.get("work_mentions"):
+        _extract_work_mentions(record)
 
     # ── Provenance (561$a — Provenance-NER input) ──────────────────
     provenance_pieces = _split_multi(_str(record.get("561$a")))
@@ -395,6 +432,113 @@ def _first(v: Any) -> str | None:
     """First non-empty value from a (possibly pipe-separated) subfield."""
     parts = _split_multi(_str(v))
     return parts[0] if parts and parts[0] else None
+
+
+import re as _re
+
+# ── Structured colophon extraction ─────────────────────────────────────────
+
+# Hebrew year in square brackets: [ה'תר"ל] or [תרל"ה] or [ה'תרל"ה]
+_HEBREW_YEAR_RE = _re.compile(
+    r"\[(?:ה['\u05F3])?(?P<year>[א-ת]{2,6}[\"'״\u05F4][א-ת])\]"
+)
+# Gregorian year: 4 digits in the range 1000–2100
+_GREGORIAN_YEAR_RE = _re.compile(r"\b(?P<year>1[0-9]{3}|20[0-9]{2})\b")
+# Patronymic scribe pattern: "בן" or "ב"ר" / "ב\"ר" followed by a name
+_SCRIBE_BEN_RE = _re.compile(r"(?:ב\"ר|ב'ר|בן)\s+(?P<name>[\u05D0-\u05EA]+(?:\s+[\u05D0-\u05EA]+)?)")
+
+# Hebrew letter→decimal for simple gematria (used for year conversion)
+_HEB_VAL: dict[str, int] = {
+    "א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9,
+    "י": 10, "כ": 20, "ל": 30, "מ": 40, "נ": 50, "ס": 60, "ע": 70, "פ": 80,
+    "צ": 90, "ק": 100, "ר": 200, "ש": 300, "ת": 400,
+}
+
+
+def _gematria_to_gregorian(heb: str) -> int | None:
+    """Convert a Hebrew year gematria string (without thousands prefix) to CE year.
+
+    Adds 1240 for the 5th millennium (5001–5999 → 1240–2239 CE).
+    Returns None on failure.
+    """
+    total = 0
+    for ch in heb:
+        if ch in ('"', "'", "\u05F4", "\u05F3"):
+            continue
+        val = _HEB_VAL.get(ch)
+        if val is None:
+            return None
+        total += val
+    if 1 <= total <= 999:
+        return total + 1240
+    return None
+
+
+def _extract_colophon_fields(record: dict[str, Any]) -> None:
+    """Best-effort extract colophon_year and colophon_scribe from colophon_text."""
+    text = str(record.get("colophon_text") or "")
+    if not text:
+        return
+
+    # Try Hebrew bracket year first.
+    m = _HEBREW_YEAR_RE.search(text)
+    if m:
+        year = _gematria_to_gregorian(m.group("year"))
+        if year:
+            record["colophon_year"] = year
+
+    # Fallback: Gregorian year.
+    if not record.get("colophon_year"):
+        m2 = _GREGORIAN_YEAR_RE.search(text)
+        if m2:
+            record["colophon_year"] = int(m2.group("year"))
+
+    # Scribe: patronymic "בן / ב"ר" pattern
+    ms = _SCRIBE_BEN_RE.search(text)
+    if ms:
+        record["colophon_scribe"] = ms.group("name").strip()
+
+
+# ── Work mentions extraction ────────────────────────────────────────────────
+
+_WORK_MENTION_TRIGGERS = _re.compile(
+    r"(?:כולל|ובו|מכיל|תפסיל|ובתוכו)[:\s]+(?P<titles>[^.]+?)(?=\.|$)",
+    _re.UNICODE,
+)
+# Works separated by ; or , or "ו" conjunction
+_WORK_SEP_RE = _re.compile(r"[;,]\s*|(?:^|\s+)ו(?=[א-ת])")
+
+
+def _extract_work_mentions(record: dict[str, Any]) -> None:
+    """Scan 500$a notes for work-listing keywords and emit work_mentions list.
+
+    We scan both the already-split ``record["notes"]`` AND the raw ``500$a``
+    subfield value (before ``_split_multi`` breaks it on semicolons) so that
+    a note like "כולל: עת שערי רצון; שיר השירים" produces both titles even
+    though the notes list has already been fragmented on the semicolon.
+    """
+    # Collect candidates: processed notes list + raw 500$a before split.
+    candidates: list[str] = list(record.get("notes") or [])
+    raw_500a = _str(record.get("500$a"))
+    if raw_500a and raw_500a not in candidates:
+        candidates.append(raw_500a)
+
+    work_mentions: list[dict[str, str]] = []
+    seen_titles: set[str] = set()
+    for note in candidates:
+        for match in _WORK_MENTION_TRIGGERS.finditer(note):
+            raw_titles = match.group("titles").strip()
+            for raw in _WORK_SEP_RE.split(raw_titles):
+                title = raw.strip().strip(".,;:")
+                if len(title) < 3:
+                    continue
+                key = title.lower()
+                if key in seen_titles:
+                    continue
+                seen_titles.add(key)
+                work_mentions.append({"title": title, "source_field": "500"})
+    if work_mentions:
+        record["work_mentions"] = work_mentions
 
 
 def _extract_provenance_events(record: dict[str, Any]) -> None:
@@ -503,25 +647,34 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
 
     for c in record.get("contributors", []):
-        name = (c or {}).get("name") if isinstance(c, dict) else None
-        if name:
-            out.append({
-                "text": str(name).strip(),
-                "kind": "person",
-                "role": str((c or {}).get("role") or ""),
-                "field": str((c or {}).get("field") or ""),
-            })
+        if not isinstance(c, dict):
+            continue
+        name = c.get("name")
+        if not name:
+            continue
+        ent: dict[str, str] = {
+            "text": str(name).strip(),
+            "kind": "person",
+            "role": str(c.get("role") or ""),
+            "field": str(c.get("field") or ""),
+        }
+        if c.get("dates"):
+            ent["dates"] = str(c["dates"]).strip()
+        out.append(ent)
 
     for a in record.get("authors", []):
         if isinstance(a, str) and a.strip():
             out.append({"text": a.strip(), "kind": "person", "role": "author", "field": "100"})
         elif isinstance(a, dict) and (a.get("name") or "").strip():
-            out.append({
+            ent = {
                 "text": str(a["name"]).strip(),
                 "kind": "person",
                 "role": str(a.get("role") or "author"),
                 "field": str(a.get("field") or "100"),
-            })
+            }
+            if a.get("dates"):
+                ent["dates"] = str(a["dates"]).strip()
+            out.append(ent)
 
     for sub in record.get("subjects", []):
         if not isinstance(sub, dict):
@@ -532,7 +685,10 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
             continue
         name = str(name).strip()
         if kind == "person":
-            out.append({"text": name, "kind": "person", "role": "subject", "field": "600"})
+            ent = {"text": name, "kind": "person", "role": "subject", "field": "600"}
+            if sub.get("dates"):
+                ent["dates"] = str(sub["dates"]).strip()
+            out.append(ent)
         elif kind in ("place", "geographic"):
             out.append({"text": name, "kind": "place", "role": "place", "field": "651"})
 
@@ -576,12 +732,84 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
             "field": str(ev.get("source_field") or ""),
         })
 
-    seen: set[tuple[str, str]] = set()
-    deduped: list[dict[str, str]] = []
-    for ent in out:
-        key = (ent["text"], ent["role"])
-        if key in seen:
+    # Work mentions extracted from notes (כולל: / כולל …)
+    for wm in record.get("work_mentions") or []:
+        if not isinstance(wm, dict):
             continue
-        seen.add(key)
-        deduped.append(ent)
+        title = str(wm.get("title") or "").strip()
+        if title:
+            out.append({
+                "text": title,
+                "kind": "work",
+                "role": "contained_work",
+                "field": str(wm.get("source_field") or "500"),
+            })
+
+    # Dedup pass: key = (normalize(text), kind).
+    # When the same entity appears multiple times with different roles (e.g.
+    # a person named both as author in 100 and subject in 600), keep the
+    # highest-priority role and record alt_roles for audit. When the same
+    # entity appears twice with the SAME role (duplicate MARC tags), keep
+    # the first occurrence (preserves dates if present on the 1st entry).
+    #
+    # Role priority (higher index = higher priority):
+    _ROLE_PRIORITY = {
+        "place": 0,
+        "production_place": 1,
+        "subject": 2,
+        "contributor": 3,
+        "author": 4,
+        "scribe": 4,
+        "translator": 4,
+        "editor": 4,
+    }
+
+    def _role_rank(r: str) -> int:
+        return _ROLE_PRIORITY.get((r or "").lower(), 2)
+
+    def _normalize_text(t: str) -> str:
+        import unicodedata as _ud
+        import re as _re
+        t = t.strip().lower()
+        # Strip niqqud / vowel marks
+        t = "".join(c for c in t if not (0x0591 <= ord(c) <= 0x05C7))
+        t = _ud.normalize("NFKD", t)
+        t = "".join(c for c in t if not _ud.combining(c))
+        t = _re.sub(r"[^\w\s\u0590-\u05FF]", "", t)
+        return _re.sub(r"\s+", " ", t).strip()
+
+    # (normalized_text, kind) → index in deduped list
+    canon: dict[tuple[str, str], int] = {}
+    deduped: list[dict[str, str]] = []
+
+    for ent in out:
+        nk = (_normalize_text(ent["text"]), ent.get("kind", ""))
+        if nk not in canon:
+            canon[nk] = len(deduped)
+            entry = dict(ent)
+            deduped.append(entry)
+        else:
+            existing = deduped[canon[nk]]
+            existing_rank = _role_rank(existing.get("role", ""))
+            new_rank = _role_rank(ent.get("role", ""))
+            alt_roles: list[str] = list(existing.get("alt_roles") or [])  # type: ignore[arg-type]
+            incoming_role = ent.get("role", "")
+            # Promote to higher-priority role.
+            if new_rank > existing_rank:
+                # The old role becomes an alt_role before we overwrite it.
+                old_role = existing.get("role", "")
+                if old_role and old_role not in alt_roles:
+                    alt_roles.append(old_role)
+                existing["role"] = incoming_role
+                existing["field"] = ent.get("field", "")
+                # Carry dates from the promoted entry if not already set.
+                if ent.get("dates") and not existing.get("dates"):
+                    existing["dates"] = ent["dates"]
+            else:
+                # Lower/equal priority — record the incoming role as an alt_role.
+                if incoming_role and incoming_role not in ([existing.get("role")] + alt_roles):
+                    alt_roles.append(incoming_role)
+            if alt_roles:
+                existing["alt_roles"] = alt_roles
+
     return deduped

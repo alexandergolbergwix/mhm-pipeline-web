@@ -113,6 +113,22 @@ export interface AuthorityTableProps {
   onFilteredChange?: (ids: string[]) => void;
 }
 
+// Normalise entity text for grouping (strip niqqud, lowercase).
+function normalizeEntityText(t: string): string {
+  return t
+    .replace(/[\u0591-\u05C7]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+// A grouped row: primary match + zero or more secondary matches sharing
+// (control_number, normalizedText).
+export interface GroupedMatch {
+  primary: AuthorityMatch;
+  alts:    AuthorityMatch[];
+}
+
 export function AuthorityTable({
   matches,
   runId: _runId,
@@ -129,6 +145,8 @@ export function AuthorityTable({
   const [textFilters, setTextFilters] = useState<Partial<Record<"control_number" | "entity_text", string>>>({});
   const [popup, setPopup] = useState<{ col: ColumnKey; x: number; y: number } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
+  const [groupDuplicates, setGroupDuplicates] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // Collect distinct values per filterable column for the popup.
   const distinctValues = useMemo<Record<string, string[]>>(() => {
@@ -195,9 +213,42 @@ export function AuthorityTable({
     return out;
   }, [matches, columnFilters, textFilters, sort]);
 
+  // Grouped view: collapse rows with same (control_number, normalized entity_text)
+  // into a single representative row (primary = highest-priority role), with alt
+  // rows accessible via expansion.
+  const grouped = useMemo<GroupedMatch[]>(() => {
+    if (!groupDuplicates) {
+      return display.map((m) => ({primary: m, alts: []}));
+    }
+    const groups = new Map<string, GroupedMatch>();
+    const _ROLE_RANK: Record<string, number> = {
+      author: 4, scribe: 4, translator: 4, editor: 4,
+      contributor: 3, subject: 2, production_place: 1, place: 0,
+    };
+    for (const m of display) {
+      const gKey = `${m.control_number}__${normalizeEntityText(m.entity_text)}`;
+      const existing = groups.get(gKey);
+      if (!existing) {
+        groups.set(gKey, {primary: m, alts: []});
+      } else {
+        const existRank = _ROLE_RANK[existing.primary.role?.toLowerCase() ?? ""] ?? 2;
+        const newRank = _ROLE_RANK[m.role?.toLowerCase() ?? ""] ?? 2;
+        if (newRank > existRank) {
+          existing.alts.unshift(existing.primary);
+          existing.primary = m;
+        } else {
+          existing.alts.push(m);
+        }
+      }
+    }
+    return Array.from(groups.values());
+  }, [display, groupDuplicates]);
+
   useEffect(() => {
-    onFilteredChange?.(display.map((m) => m.id));
-  }, [display, onFilteredChange]);
+    // Report filtered IDs as all primary + all alt IDs so bulk actions work.
+    const allIds = grouped.flatMap((g) => [g.primary.id, ...g.alts.map((a) => a.id)]);
+    onFilteredChange?.(allIds);
+  }, [grouped, onFilteredChange]);
 
   function toggleSort(col: ColumnKey) {
     setSort((prev) => {
@@ -263,6 +314,24 @@ export function AuthorityTable({
         </div>
       )}
 
+      {/* Group-duplicates toggle */}
+      <div className="flex items-center gap-2 py-1 text-xs text-muted">
+        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={groupDuplicates}
+            onChange={(e) => setGroupDuplicates(e.target.checked)}
+            className="accent-biu-sky"
+          />
+          Group duplicates
+        </label>
+        {groupDuplicates && (
+          <span className="text-muted">
+            ({grouped.length} groups · {display.length} rows)
+          </span>
+        )}
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead className="muted text-left">
@@ -326,129 +395,212 @@ export function AuthorityTable({
             </tr>
           </thead>
           <tbody>
-            {display.map((m) => {
+            {grouped.map(({primary: m, alts}) => {
               const p = (m.payload ?? {}) as Record<string, unknown>;
               const ai = (p.ai_verdict ?? null) as null | { overall: string };
               const guards = (p.guard_flags as string[] | undefined) ?? [];
               const sourceCount = Number(p.source_count ?? 0);
               const sources = (p.sources as string[] | undefined) ?? [];
+              const gKey = `${m.control_number}__${normalizeEntityText(m.entity_text)}`;
+              const isExpanded = expandedGroups.has(gKey);
+              const hasAlts = alts.length > 0;
               return (
-                <tr
-                  key={m.id}
-                  className="border-b border-white/5 hover:bg-white/[0.03] transition cursor-pointer"
-                  onClick={() => onOpenDrawer(m)}
-                >
-                  {/* Select checkbox */}
-                  <td className="py-2 pr-2" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(m.id)}
-                      onChange={() => onSelectToggle(m.id)}
-                    />
-                  </td>
+                <>
+                  <tr
+                    key={m.id}
+                    data-testid={`authority-row-${m.id}`}
+                    className="border-b border-white/5 hover:bg-white/[0.03] transition cursor-pointer"
+                    onClick={() => onOpenDrawer(m)}
+                  >
+                    {/* Select checkbox */}
+                    <td className="py-2 pr-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(m.id)}
+                        onChange={() => onSelectToggle(m.id)}
+                      />
+                    </td>
 
-                  {/* Record */}
-                  <td className="py-2 pr-3 font-mono text-xs text-biu-sky whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}>
-                    {m.control_number}
-                  </td>
+                    {/* Record */}
+                    <td className="py-2 pr-3 font-mono text-xs text-biu-sky whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}>
+                      {m.control_number}
+                    </td>
 
-                  {/* Entity */}
-                  <td className="py-2 pr-3 max-w-[260px] truncate">{m.entity_text}</td>
+                    {/* Entity */}
+                    <td className="py-2 pr-3 max-w-[260px]">
+                      <span className="truncate block">{m.entity_text}</span>
+                      {hasAlts && groupDuplicates && (
+                        <button
+                          type="button"
+                          data-testid={`expand-group-${gKey}`}
+                          className="text-[10px] text-biu-sky hover:underline mt-0.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedGroups((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(gKey)) n.delete(gKey); else n.add(gKey);
+                              return n;
+                            });
+                          }}
+                        >
+                          {isExpanded ? "▲ hide" : `▼ +${alts.length} role${alts.length > 1 ? "s" : ""}`}
+                        </button>
+                      )}
+                    </td>
 
-                  {/* Role */}
-                  <td className="py-2 pr-3">
-                    <span className="kicker">{m.role || "—"}</span>
-                  </td>
-
-                  {/* Source */}
-                  <td className="py-2 pr-3">
-                    <span className="inline-flex items-center gap-1 flex-wrap">
-                      {sources.length > 0
-                        ? sources.map((s) => (
-                            <span key={s}
-                                  className="glass-pill px-1.5 py-[1px] text-[10px] uppercase tracking-wider whitespace-nowrap">
-                              {s}
+                    {/* Role — show role chips when grouped */}
+                    <td className="py-2 pr-3">
+                      <span className="kicker">{m.role || "—"}</span>
+                      {hasAlts && groupDuplicates && !isExpanded && (
+                        <span className="ml-1 inline-flex flex-wrap gap-0.5">
+                          {alts.map((a) => (
+                            <span key={a.id} className="glass-pill px-1 py-[1px] text-[10px] text-muted"
+                                  title={a.entity_text}>
+                              {a.role || "—"}
                             </span>
-                          ))
-                        : <span className="muted text-xs italic">—</span>}
-                      {sourceCount >= 2 && (
-                        <span className="text-biu-sky text-[10px]" title="Cross-source agreement">
-                          ✓×{sourceCount}
+                          ))}
                         </span>
                       )}
-                    </span>
-                  </td>
+                    </td>
 
-                  {/* Confidence */}
-                  <td className="py-2 pr-3">
-                    <ConfidenceBadge confidence={m.confidence} />
-                  </td>
-
-                  {/* MARC novelty */}
-                  <td className="py-2 pr-3">
-                    <ExistsInBadge ei={m.exists_in} />
-                  </td>
-
-                  {/* Guards */}
-                  <td className="py-2 pr-3">
-                    {guards.length > 0 ? (
-                      <span className="inline-flex flex-wrap gap-1">
-                        {guards.map((g) => (
-                          <span key={g}
-                                className="glass-pill px-1.5 py-[1px] text-[10px] text-red-300 whitespace-nowrap"
-                                title={guardExplain(g)}>
-                            ⚠ {g}
+                    {/* Source */}
+                    <td className="py-2 pr-3">
+                      <span className="inline-flex items-center gap-1 flex-wrap">
+                        {sources.length > 0
+                          ? sources.map((s) => (
+                              <span key={s}
+                                    className="glass-pill px-1.5 py-[1px] text-[10px] uppercase tracking-wider whitespace-nowrap">
+                                {s}
+                              </span>
+                            ))
+                          : <span className="muted text-xs italic">—</span>}
+                        {sourceCount >= 2 && (
+                          <span className="text-biu-sky text-[10px]" title="Cross-source agreement">
+                            ✓×{sourceCount}
                           </span>
-                        ))}
+                        )}
                       </span>
-                    ) : (
-                      <span className="muted text-xs">—</span>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* AI verdict */}
-                  <td className="py-2 pr-3">
-                    {ai
-                      ? <VerdictBadge overall={ai.overall} />
-                      : <span className="muted text-xs italic">—</span>}
-                  </td>
+                    {/* Confidence */}
+                    <td className="py-2 pr-3">
+                      <ConfidenceBadge confidence={m.confidence} />
+                    </td>
 
-                  {/* Approved */}
-                  <td className="py-2 pr-3" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" checked={m.approved} onChange={() => onApproveToggle(m)} />
-                  </td>
+                    {/* MARC novelty */}
+                    <td className="py-2 pr-3">
+                      <ExistsInBadge ei={m.exists_in} />
+                    </td>
 
-                  {/* Edit actions */}
-                  <td className="py-2 pr-1 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => onOpenDrawer(m)}
-                        title="View details"
-                        className="button-ghost h-7 px-2 text-xs"
-                      >👁</button>
-                      <button
-                        type="button"
-                        onClick={() => onOpenEdit(m)}
-                        data-testid={`match-edit-${m.id}`}
-                        title="Edit match fields"
-                        className="button-ghost h-7 px-2 text-xs"
-                      >✎</button>
-                      <button
-                        type="button"
-                        data-testid={`history-button-${m.id}`}
-                        onClick={() => setHistoryFor({ id: String(m.id) })}
-                        aria-label="View edit history"
-                        title="View edit history"
-                        className="button-ghost h-7 px-2 text-xs"
-                      >📜</button>
-                    </div>
-                  </td>
-                </tr>
+                    {/* Guards */}
+                    <td className="py-2 pr-3">
+                      {guards.length > 0 ? (
+                        <span className="inline-flex flex-wrap gap-1">
+                          {guards.map((g) => (
+                            <span key={g}
+                                  className="glass-pill px-1.5 py-[1px] text-[10px] text-red-300 whitespace-nowrap"
+                                  title={guardExplain(g)}>
+                              ⚠ {g}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="muted text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* AI verdict */}
+                    <td className="py-2 pr-3">
+                      {ai
+                        ? <VerdictBadge overall={ai.overall} />
+                        : <span className="muted text-xs italic">—</span>}
+                    </td>
+
+                    {/* Approved */}
+                    <td className="py-2 pr-3" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={m.approved} onChange={() => onApproveToggle(m)} />
+                    </td>
+
+                    {/* Edit actions */}
+                    <td className="py-2 pr-1 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onOpenDrawer(m)}
+                          title="View details"
+                          className="button-ghost h-7 px-2 text-xs"
+                        >👁</button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenEdit(m)}
+                          data-testid={`match-edit-${m.id}`}
+                          title="Edit match fields"
+                          className="button-ghost h-7 px-2 text-xs"
+                        >✎</button>
+                        <button
+                          type="button"
+                          data-testid={`history-button-${m.id}`}
+                          onClick={() => setHistoryFor({ id: String(m.id) })}
+                          aria-label="View edit history"
+                          title="View edit history"
+                          className="button-ghost h-7 px-2 text-xs"
+                        >📜</button>
+                      </div>
+                    </td>
+                  </tr>
+                  {/* Expanded alt rows */}
+                  {isExpanded && alts.map((alt) => {
+                    const ap = (alt.payload ?? {}) as Record<string, unknown>;
+                    const aai = (ap.ai_verdict ?? null) as null | { overall: string };
+                    return (
+                      <tr
+                        key={alt.id}
+                        data-testid={`authority-alt-row-${alt.id}`}
+                        className="border-b border-white/5 bg-white/[0.015] text-muted cursor-pointer"
+                        onClick={() => onOpenDrawer(alt)}
+                      >
+                        <td className="py-1.5 pr-2 pl-4" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selectedIds.has(alt.id)}
+                                 onChange={() => onSelectToggle(alt.id)} />
+                        </td>
+                        <td className="py-1.5 pr-3 font-mono text-[11px] text-biu-sky/60">{alt.control_number}</td>
+                        <td className="py-1.5 pr-3 text-xs text-muted/70 max-w-[260px] truncate pl-4">
+                          ↳ {alt.entity_text}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <span className="kicker text-muted">{alt.role || "—"}</span>
+                        </td>
+                        <td className="py-1.5 pr-3 text-xs text-muted">
+                          {((ap.sources as string[] | undefined) ?? []).join(", ") || alt.source}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <ConfidenceBadge confidence={alt.confidence} />
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <ExistsInBadge ei={alt.exists_in} />
+                        </td>
+                        <td className="py-1.5 pr-3 text-xs text-muted">
+                          {((ap.guard_flags as string[] | undefined) ?? []).join(", ") || "—"}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          {aai ? <VerdictBadge overall={aai.overall} /> : <span className="muted text-xs italic">—</span>}
+                        </td>
+                        <td className="py-1.5 pr-3" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={alt.approved} onChange={() => onApproveToggle(alt)} />
+                        </td>
+                        <td className="py-1.5 pr-1 text-right" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" onClick={() => onOpenEdit(alt)}
+                                  data-testid={`match-edit-${alt.id}`}
+                                  title="Edit" className="button-ghost h-7 px-2 text-xs">✎</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </>
               );
             })}
-            {display.length === 0 && (
+            {grouped.length === 0 && (
               <tr>
                 <td colSpan={COLS.length + 1} className="py-6 text-center muted">
                   No rows match this filter.

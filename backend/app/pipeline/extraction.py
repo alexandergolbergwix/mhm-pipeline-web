@@ -424,6 +424,8 @@ async def _process_one_record(
         filter_collection_citations,
         filter_owner_length,
         filter_person_hallucinations,
+        filter_person_role_dedup,
+        filter_with_marc_grounding,
         filter_work_author_folio,
     )
 
@@ -491,6 +493,10 @@ async def _process_one_record(
     all_entities = filter_person_hallucinations(
         all_entities, surrounding_text=full_text,
     )
+    # Collapse same-name person_ner entities across segments to one canonical role.
+    all_entities = filter_person_role_dedup(all_entities)
+    # Stamp grounded/exists_in against the MARC record for the Review UI badge.
+    all_entities = filter_with_marc_grounding(all_entities, marc_record=record)
 
     # ── 6. Genre classifier (P136 fallback) ───────────────────────────
     ml_genres: list[dict[str, Any]] = []

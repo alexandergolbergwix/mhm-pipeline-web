@@ -59,8 +59,17 @@ async def execute_run(
     await db.flush()
 
     # Resolve authority candidates per record.
+    # Canonical upsert key: (control_number, normalize(entity_text), entity_kind, role).
+    # Checked within the current run insert so that if extract_named_entities
+    # returns the same entity text + kind + role twice (e.g. from two different
+    # MARC fields that both mention the same scribe), we don't create two rows.
     matcher = authority.get_default_matcher()
     match_count = 0
+    _inserted_keys: set[tuple[str, str, str, str]] = set()
+
+    def _norm(t: str) -> str:
+        return (t or "").strip().lower()
+
     for rec in records:
         entities = marc_ingest.extract_named_entities(rec)
         for entity in entities:
@@ -73,10 +82,20 @@ async def execute_run(
                 logger.exception("authority match failed for %s", entity.get("text"))
                 candidates = []
             for c in candidates:
+                cn = rec["_control_number"]
+                ek = (
+                    cn,
+                    _norm(entity["text"]),
+                    entity.get("kind", "person"),
+                    entity.get("role", ""),
+                )
+                if ek in _inserted_keys:
+                    continue
+                _inserted_keys.add(ek)
                 db.add(
                     AuthorityMatch(
                         run_id=run.id,
-                        control_number=rec["_control_number"],
+                        control_number=cn,
                         entity_text=entity["text"],
                         entity_kind=entity.get("kind", "person"),
                         role=entity.get("role", ""),

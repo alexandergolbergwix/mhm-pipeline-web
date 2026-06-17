@@ -87,25 +87,33 @@ _STRUCTURED_KEYS: tuple[str, ...] = (
     "works",
     "places",
     "related_places",
+    # Note-sourced keys (Phase 4 — notes / colophon / work titles searchable)
+    "notes",
+    "colophon_text",
+    "colophon_year",
+    "colophon_scribe",
+    "work_mentions",
 )
 
 
 _TYPE_TO_FIELDS: dict[str, tuple[str, ...]] = {
-    "person":          ("contributors", "authors"),
-    "person_ner":      ("contributors", "authors"),
+    "person":          ("contributors", "authors", "colophon_text", "colophon_scribe"),
+    "person_ner":      ("contributors", "authors", "colophon_text", "colophon_scribe"),
     "owner":           ("former_owners", "ownership_history", "acquisition_source"),
     "provenance":      ("former_owners", "ownership_history", "acquisition_source"),
     "provenance_ner":  ("former_owners", "ownership_history", "acquisition_source"),
     "work":            ("title", "title_variants", "uniform_title",
-                        "alternate_titles", "contents", "works"),
+                        "alternate_titles", "contents", "works", "work_mentions",
+                        "notes"),
     "work_author":     ("contributors", "authors"),
     "contents_ner":    ("title", "title_variants", "uniform_title",
-                        "alternate_titles", "contents", "works"),
+                        "alternate_titles", "contents", "works", "work_mentions",
+                        "notes"),
     "genre":           ("genre_form", "genres"),
     "genre_classifier": ("genre_form", "genres"),
     "place":           ("places", "related_places", "subjects"),
     "collection":      ("former_owners", "ownership_history", "acquisition_source"),
-    "date":            (),
+    "date":            ("colophon_year",),
 }
 
 

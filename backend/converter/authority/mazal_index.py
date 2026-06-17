@@ -24,6 +24,8 @@ class MazalIndex:
     PLACE_TAGS = ("151", "451")
     CORPORATE_TAGS = ("110", "410")
     WORK_TAGS = ("130", "430")
+    # Topical-subject headings (נושא) — previously silently dropped.
+    SUBJECT_TAGS = ("150", "450")
 
     def __init__(self, db_path: str):
         """Initialize the index.
@@ -97,7 +99,10 @@ class MazalIndex:
         """Create database tables."""
         cursor = self.conn.cursor()
 
-        # Main authority records table
+        # Main authority records table.
+        # main_marc_tag: the primary MARC field tag (e.g. "100" for person,
+        # "150" for topical subject) — used by the matcher to prefer the
+        # אישיות (100) entry over the נושא (150) entry for the same person name.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS authorities (
                 nli_id TEXT PRIMARY KEY,
@@ -105,7 +110,8 @@ class MazalIndex:
                 preferred_name_heb TEXT,
                 preferred_name_lat TEXT,
                 dates TEXT,
-                aleph_id TEXT
+                aleph_id TEXT,
+                main_marc_tag TEXT
             )
         """)
 
@@ -141,16 +147,19 @@ class MazalIndex:
         preferred_name_lat: str = None,
         dates: str = None,
         aleph_id: str = None,
+        main_marc_tag: str = None,
     ):
         """Insert an authority record."""
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            INSERT OR REPLACE INTO authorities 
-            (nli_id, entity_type, preferred_name_heb, preferred_name_lat, dates, aleph_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO authorities
+            (nli_id, entity_type, preferred_name_heb, preferred_name_lat, dates, aleph_id,
+             main_marc_tag)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-            (nli_id, entity_type, preferred_name_heb, preferred_name_lat, dates, aleph_id),
+            (nli_id, entity_type, preferred_name_heb, preferred_name_lat, dates, aleph_id,
+             main_marc_tag),
         )
 
     def insert_name_variant(
@@ -329,6 +338,7 @@ def parse_record(record_elem: ET.Element) -> dict | None:
     result = {
         "nli_id": None,
         "entity_type": None,
+        "main_marc_tag": None,
         "names_heb": [],
         "names_lat": [],
         "dates": None,
@@ -344,13 +354,34 @@ def parse_record(record_elem: ET.Element) -> dict | None:
     if not result["nli_id"]:
         return None
 
-    # Process data fields
+    # Map of main-entry tag → entity_type (variant 4xx tags resolve to the
+    # same type but are NOT used to set main_marc_tag).
+    _MAIN_TAG_MAP = {
+        "100": "person",
+        "110": "corporate",
+        "130": "work",
+        "150": "subject",
+        "151": "place",
+    }
+    _VARIANT_TAG_MAP = {
+        "400": "person",
+        "410": "corporate",
+        "430": "work",
+        "450": "subject",
+        "451": "place",
+    }
+
+    # Process data fields.  Main entry (1xx) sets entity_type and main_marc_tag;
+    # variant entries (4xx) only contribute name variants.
     for df in record_elem.findall("datafield"):
         tag = df.get("tag")
 
-        # Determine entity type and extract names
-        if tag in ("100", "400"):
-            result["entity_type"] = "person"
+        if tag in _MAIN_TAG_MAP:
+            entity_type = _MAIN_TAG_MAP[tag]
+            # Only the first main-entry tag wins (authority records have one).
+            if result["entity_type"] is None:
+                result["entity_type"] = entity_type
+                result["main_marc_tag"] = tag
             name, dates, script = extract_name_from_field(df)
             if name:
                 if script == "heb":
@@ -360,26 +391,7 @@ def parse_record(record_elem: ET.Element) -> dict | None:
             if dates and not result["dates"]:
                 result["dates"] = dates
 
-        elif tag in ("110", "410"):
-            result["entity_type"] = "corporate"
-            name, _, script = extract_name_from_field(df)
-            if name:
-                if script == "heb":
-                    result["names_heb"].append(name)
-                else:
-                    result["names_lat"].append(name)
-
-        elif tag in ("130", "430"):
-            result["entity_type"] = "work"
-            name, _, script = extract_name_from_field(df, subfield="a")
-            if name:
-                if script == "heb":
-                    result["names_heb"].append(name)
-                else:
-                    result["names_lat"].append(name)
-
-        elif tag in ("151", "451"):
-            result["entity_type"] = "place"
+        elif tag in _VARIANT_TAG_MAP:
             name, _, script = extract_name_from_field(df)
             if name:
                 if script == "heb":
@@ -470,6 +482,7 @@ def build_index(input_dir: str, output_db: str, verbose: bool = True) -> MazalIn
                 preferred_name_lat=record["names_lat"][0] if record["names_lat"] else None,
                 dates=record["dates"],
                 aleph_id=record["aleph_id"],
+                main_marc_tag=record.get("main_marc_tag"),
             )
 
             # Index all name variants

@@ -500,6 +500,8 @@ class HardeningContext:
         biographical_dates_in_marc: True iff MARC 100$d / 700$d carried
             a dates subfield. Short-name homonym suppresses when True.
         entity_kind: ``"person"`` / ``"organization"`` / ``"meeting"``.
+        role: MARC role of the entity (``"author"``, ``"subject"``, …).
+            Used by guard_mazal_subject_heading.
         over_merge_table: Optional caller-owned cache for repeated
             VIAF→Wikidata SPARQL hits. Web pipeline doesn't keep one
             per run; passing ``None`` causes a direct ``lookup_viaf``.
@@ -511,6 +513,7 @@ class HardeningContext:
     preferred_name_lat: str | None = None
     biographical_dates_in_marc: bool = False
     entity_kind: str = "person"
+    role: str = ""
     over_merge_table: Any | None = None
     enable_wikidata_crosscheck: bool = False
 
@@ -557,6 +560,11 @@ def apply_hardening_guards(
         guard_nli_strict_skip_viaf(candidate=out),
         guard_mazal_pair_collision(candidate=out, siblings=ctx.siblings),
         guard_corporate_meeting(candidate=out, entity_kind=ctx.entity_kind),
+        guard_mazal_subject_heading(
+            main_marc_tag=(out.get("payload") or {}).get("main_marc_tag"),
+            entity_kind=ctx.entity_kind,
+            role=ctx.role,
+        ),
     ]
     if ctx.enable_wikidata_crosscheck:
         verdicts.append(
@@ -608,6 +616,61 @@ def apply_hardening_guards(
     return out
 
 
+def guard_mazal_subject_heading(
+    *,
+    main_marc_tag: str | None,
+    entity_kind: str,
+    role: str,
+) -> GuardVerdict:
+    """Fire when a Mazal match resolves to a subject/work heading but the
+    entity is a person author or contributor.
+
+    Root cause: authority records with entity_type='person' exist for both the
+    אישיות heading (main_marc_tag='100') and the נושא heading (main_marc_tag='150')
+    of the same real-world person.  Before migration 0020 the bare LIMIT 1
+    query returned an arbitrary row.  After migration the ORDER BY prefers tag
+    '100', but this guard acts as an auditable safety net: if a non-'100' tag
+    still won (e.g. the SQLite SQLite re-import hasn't run yet), the guard
+    downgrades confidence and stamps a flag so the curator sees it.
+
+    The guard only fires for author / contributor roles — subject-role entities
+    may legitimately resolve to a subject heading.
+    """
+    if not main_marc_tag:
+        return GuardVerdict(fired=False)
+
+    _PERSON_AUTHOR_ROLES = frozenset(
+        {"author", "contributor", "scribe", "translator", "editor", "commentator"}
+    )
+    normalized_role = (role or "").lower().strip()
+    is_person_author = (
+        entity_kind.lower().strip() == "person"
+        and (
+            normalized_role in _PERSON_AUTHOR_ROLES
+            or (normalized_role == "" and main_marc_tag != "100")
+        )
+    )
+    if not is_person_author:
+        return GuardVerdict(fired=False)
+
+    # tag '100' is the correct personality heading — no problem.
+    if main_marc_tag == "100":
+        return GuardVerdict(fired=False)
+
+    return GuardVerdict(
+        fired=True,
+        new_confidence="medium",
+        reason=(
+            f"Mazal resolved via heading tag {main_marc_tag!r} instead of '100' "
+            f"(אישיות). The match may be a subject (נושא) or work (כותר) entry for "
+            f"the same person rather than the preferred personality record. "
+            f"Re-import Mazal with the updated schema to ensure tag-100 records are "
+            f"ranked first."
+        ),
+        flag="mazal_subject_not_personality",
+    )
+
+
 __all__ = [
     "GuardVerdict",
     "HardeningContext",
@@ -615,6 +678,7 @@ __all__ = [
     "guard_cluster_collapse",
     "guard_corporate_meeting",
     "guard_mazal_pair_collision",
+    "guard_mazal_subject_heading",
     "guard_nli_strict_skip_viaf",
     "guard_placeholder_name",
     "guard_short_name_homonym",

@@ -114,9 +114,12 @@ class DesktopMatcher(AuthorityMatcher):
             return []
         role = entity.get("role", "")
         entity_kind = entity.get("kind", "")
+        # MARC $d dates (e.g. "1138-1204") narrow Mazal homonym resolution.
+        marc_dates = (entity.get("dates") or "").strip() or None
         return await self._match_one(
             text=text, role=role, entity_kind=entity_kind, marc_record=marc_record,
             db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+            marc_dates=marc_dates,
         )
 
     # ── Cached per-matcher wrappers ────────────────────────────────────
@@ -205,6 +208,7 @@ class DesktopMatcher(AuthorityMatcher):
 
     async def _mazal_match_person(
         self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+        marc_dates: str | None = None,
     ) -> str | None:
         _mode = os.getenv("AUTHORITY_MODE", "local").lower()
         # Guard: skip when no Mazal source is available at all.
@@ -212,7 +216,7 @@ class DesktopMatcher(AuthorityMatcher):
             return None
 
         async def _f() -> str | None:
-            result = await self._authority_backend.match_person(text)
+            result = await self._authority_backend.match_person(text, dates=marc_dates)
             if result is None:
                 return None
             mid = result.get("mazal_id")
@@ -221,9 +225,59 @@ class DesktopMatcher(AuthorityMatcher):
                 self._mazal_detail_cache[str(mid)] = result
             return str(mid) if mid else None
 
+        # Include dates in the cache key so different date inputs resolve separately.
+        query_summary: dict[str, Any] = {"op": "match_person", "text": text}
+        if marc_dates:
+            query_summary["dates"] = marc_dates
         return await self._cached(
             kind="authority.mazal",
-            query_summary={"op": "match_person", "text": text},
+            query_summary=query_summary,
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _mazal_match_place_authority(
+        self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> dict[str, Any] | None:
+        """Look up *text* as a place in the Mazal authority index.
+
+        Distinct from KIMA (_kima_match_place): Mazal covers the NLI authority
+        file and provides an NLI ID, while KIMA provides coordinates + Wikidata
+        QID.  Both can fire for the same place string — they complement each other.
+        """
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
+        if self._mazal is None and _mode not in ("modal", "postgres"):
+            return None
+
+        async def _f() -> dict[str, Any] | None:
+            return await self._authority_backend.match_mazal_place(text)
+
+        return await self._cached(
+            kind="authority.mazal",
+            query_summary={"op": "match_place", "text": text},
+            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+        )
+
+    async def _mazal_match_work(
+        self, title: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> str | None:
+        """Match a work title against the Mazal authority index.
+
+        Calls the underlying SQLite/Postgres `lookup_work` path.
+        Returns an NLI ID string, or None on no hit.
+        """
+        _mode = os.getenv("AUTHORITY_MODE", "local").lower()
+        if self._mazal is None and _mode not in ("postgres",):
+            return None
+
+        async def _f() -> str | None:
+            if self._mazal is None:
+                return None
+            nli_id = await asyncio.to_thread(self._mazal.match_work, title)
+            return str(nli_id) if nli_id else None
+
+        return await self._cached(
+            kind="authority.mazal",
+            query_summary={"op": "match_work", "text": title},
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
 
@@ -427,6 +481,7 @@ class DesktopMatcher(AuthorityMatcher):
         self, *,
         text: str, role: str, entity_kind: str, marc_record: dict[str, Any],
         db_session: Any, user_id: Any, skip_cache: bool,
+        marc_dates: str | None = None,
     ) -> list[Candidate]:
         sources: list[str] = []
         mazal_id = ""
@@ -483,6 +538,10 @@ class DesktopMatcher(AuthorityMatcher):
                             "kima_lon":      kima_row.get("lon"),
                             "kima_geonames": kima_row.get("geonames_id"),
                             "kima_viaf_id":  kima_row.get("viaf_id") or "",
+                            # mazal_nli_id links this KIMA place to the Mazal authority
+                            # record (Rule W-29). Used below to backfill mazal_id when
+                            # the Mazal place lookup misses.
+                            "mazal_nli_id":  kima_row.get("mazal_nli_id") or "",
                             "_fuzzy":        kima_row.get("_fuzzy"),
                             "_fuzzy_sim":    kima_row.get("_fuzzy_sim"),
                         }
@@ -519,6 +578,49 @@ class DesktopMatcher(AuthorityMatcher):
                 }
                 reasoning_parts.append("Ashkenazi gazetteer fallback hit.")
 
+        # — Mazal work (works only) —
+        # Match work titles extracted from notes / contents / colophon against
+        # the Mazal authority index (tag 130/430 "work" entity_type).
+        if normalized_kind == "work" and (self._mazal is not None or _mode == "postgres"):
+            try:
+                work_mid = await self._mazal_match_work(
+                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                )
+                if work_mid:
+                    mazal_id = str(work_mid)
+                    sources.append("mazal")
+                    reasoning_parts.append(f"Mazal work hit ({work_mid}).")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Mazal work matcher raised for %r: %s", text, exc)
+
+        # — Mazal place (places only) —
+        # When the entity is a place, look it up in the Mazal authority index to
+        # obtain an NLI ID.  KIMA already provided coordinates + Wikidata QID;
+        # this gives the NLI identifier for RDF owl:sameAs and Wikibase P8189.
+        # We run this BEFORE the person matchers so the person guard below can
+        # see that mazal_id is already filled for a place and skip cleanly.
+        if is_place and (self._mazal is not None or _mode in ("modal", "postgres")):
+            try:
+                mazal_place_row = await self._mazal_match_place_authority(
+                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                )
+                if mazal_place_row and mazal_place_row.get("mazal_id"):
+                    mazal_id = str(mazal_place_row["mazal_id"])
+                    if "mazal" not in sources:
+                        sources.append("mazal")
+                    reasoning_parts.append(f"Mazal place hit ({mazal_id}).")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Mazal place matcher raised for %r: %s", text, exc)
+
+        # If KIMA returned a mazal_nli_id (the row already links to the NLI
+        # authority), and we don't have a Mazal ID from the lookup above, use it
+        # as a free backfill (Rule W-29 completeness + Rule W-32 KIMA→Mazal).
+        if not mazal_id and kima_payload.get("mazal_nli_id"):
+            mazal_id = str(kima_payload["mazal_nli_id"])
+            if "mazal" not in sources:
+                sources.append("mazal")
+            reasoning_parts.append(f"Mazal ID from KIMA link ({mazal_id}).")
+
         # Each matcher also surfaces birth/death years when the source
         # carries them. The web app used to drop these on the floor,
         # which made the MatchDetailDialog show "—" even on HIGH-
@@ -528,11 +630,18 @@ class DesktopMatcher(AuthorityMatcher):
         # first source that knows the dates wins, ordered Mazal → VIAF
         # → Wikidata (most authoritative for medieval Hebrew → least).
 
-        # — Mazal —
-        if self._mazal is not None or _mode in ("modal", "postgres"):
+        # — Mazal (persons only) —
+        # Guard: skip Mazal person matcher for place/work entities to prevent a
+        # place name or work title that coincidentally matches a person heading
+        # from receiving a wrong NLI person ID.
+        if not is_place and normalized_kind != "work" and (
+            self._mazal is not None or _mode in ("modal", "postgres")
+        ):
             try:
                 mid = await self._mazal_match_person(
-                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                    text,
+                    db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                    marc_dates=marc_dates,
                 )
                 if mid:
                     mazal_id = str(mid)
@@ -565,8 +674,9 @@ class DesktopMatcher(AuthorityMatcher):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal matcher raised for %r: %s", text, exc)
 
-        # — VIAF —
-        if self._viaf is not None:
+        # — VIAF (persons only) —
+        # VIAF SRU's personal-name index should not be queried for places or works.
+        if not is_place and normalized_kind != "work" and self._viaf is not None:
             try:
                 # match_person_with_metadata wraps match_person + the
                 # cluster fetch in one call, so we get the years (and
@@ -588,8 +698,10 @@ class DesktopMatcher(AuthorityMatcher):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("VIAF matcher raised for %r: %s", text, exc)
 
-        # — Wikidata —
-        if self._wikidata is not None:
+        # — Wikidata (persons only) —
+        # Wikidata person-name search must not fire on place/work entities;
+        # place QIDs are already resolved by KIMA / Ashkenazi gazetteer.
+        if not is_place and self._wikidata is not None:
             try:
                 qid = await self._wikidata_match_person(
                     text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
@@ -712,6 +824,10 @@ class DesktopMatcher(AuthorityMatcher):
         # at which point sibling context is complete.
         from app.pipeline import authority_hardening  # noqa: PLC0415
 
+        # Carry main_marc_tag from the Mazal result so guard_mazal_subject_heading
+        # can distinguish אישיות (tag 100) from נושא (tag 150) matches.
+        _mazal_main_tag = (mazal_details or {}).get("main_marc_tag") if mazal_details else None
+
         prelim = {
             "matched_name": text,
             "entity_text": text,
@@ -723,6 +839,7 @@ class DesktopMatcher(AuthorityMatcher):
             "payload": {
                 "guard_flags": guards,
                 "viaf_uri": f"https://viaf.org/viaf/{viaf_id}" if viaf_id else "",
+                "main_marc_tag": _mazal_main_tag,
             },
         }
         hardened = authority_hardening.apply_hardening_guards(
@@ -732,6 +849,7 @@ class DesktopMatcher(AuthorityMatcher):
                 preferred_name_lat=text,
                 biographical_dates_in_marc=bool(birth_year or death_year),
                 entity_kind=prelim["entity_kind"],
+                role=role,
                 enable_wikidata_crosscheck=False,
             ),
         )

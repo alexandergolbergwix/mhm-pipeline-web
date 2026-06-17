@@ -622,6 +622,85 @@ free-text NER is deferred (no ML). Tests:
 `test_ashkenazi_gazetteer.py` (9), + Rule-60 cases in
 `test_provenance_map_guards.py` and `test_corpus_movement.py`.
 
+### Rule W-33 — Authority matcher routing, deduplication, and notes grounding (added 2026-06-17)
+
+Five invariants established during the authority-enrichment fix session
+(supervisor review, Gilla's 2026-06 feedback):
+
+**Matcher routing by entity kind:**
+- Person matchers (`_mazal_match_person`, VIAF, Wikidata person-name SPARQL) must
+  NOT fire for place or work entities. The guard is in `_match_one` via `is_place`
+  and `normalized_kind != "work"` checks.
+- Place entities first run KIMA (`_kima_match_place`), then Mazal place
+  (`_mazal_match_place_authority`). Person matchers are bypassed.
+- Work entities (kind="work") call `_mazal_match_work` only; VIAF and Wikidata
+  person matchers are not invoked.
+- `kima_payload.mazal_nli_id` is backfilled into `mazal_id` when the Mazal place
+  lookup misses but KIMA has a linked NLI ID.
+
+**MARC $d dates for homonym resolution:**
+- `_collapse_marc_subfields` captures `$d` from MARC 100/600/700 fields and
+  propagates them as `dates` on author/contributor/subject entity dicts.
+- `PostgresAuthorityBackend.match_person(dates=...)` tries an exact name + dates
+  match first, then falls back to the main_marc_tag-ordered query.
+- Postgres ORDER BY: `CASE a.main_marc_tag WHEN '100' THEN 1 … END` so the
+  אישיות record (tag 100) is always preferred over the נושא record (tag 150)
+  when both share the same normalized name. Requires migration 0020 + re-import.
+
+**Mazal personality guard (`guard_mazal_subject_heading`):**
+- Fires when `main_marc_tag != '100'` for a person author/contributor entity.
+  Downgrades confidence to "medium" and stamps flag `mazal_subject_not_personality`.
+  Does NOT fire for subject-role entities (600), which may legitimately hit tag 150.
+- `HardeningContext` now carries a `role` field; `apply_hardening_guards` passes it
+  to the guard. The `prelim["payload"]["main_marc_tag"]` slot is populated from
+  `mazal_details` so the guard reads the actual Mazal match metadata.
+
+**Deduplication (ingest + run):**
+- `extract_named_entities` dedupes by `(normalize(text), kind)` with role-priority
+  merge (author > contributor > subject > place). The replaced role is recorded in
+  `alt_roles` on the winning entity for audit. Different kinds (place vs person)
+  with the same name text are kept as separate entities — they are not collapsed.
+- `run.py execute_run` uses a `(control_number, normalize(text), kind, role)` key to
+  prevent inserting duplicate `AuthorityMatch` rows within a single ingest run.
+- Re-enrich upsert key in `runs.py` includes `role` so author and subject rows for
+  the same entity text are updated independently.
+
+**Notes / colophon / work-title grounding:**
+- `_collapse_marc_subfields` detects colophon keywords (קולופון, colophon, …) in
+  `500$a` and sets `colophon_text`. `_extract_colophon_fields` then extracts
+  `colophon_year` (Hebrew gematria or Gregorian) and `colophon_scribe` (patronymic).
+- `_extract_work_mentions` scans `500$a` raw text for `כולל:` / `ובו:` / `מכיל:`
+  patterns and emits `work_mentions` list. These flow into `extract_named_entities`
+  as `{kind: "work", role: "contained_work"}` entities.
+- `MarcStructuredIndex` keys now include `notes`, `colophon_text`, `colophon_year`,
+  `colophon_scribe`, `work_mentions` so the Exists-in badge reflects note-sourced hits.
+- `extraction.py` now wires `filter_person_role_dedup` (collapse same-name NER
+  multi-segment duplicates) and `filter_with_marc_grounding` (stamps grounded /
+  exists_in fields) after the existing post-filters.
+
+**Mazal Postgres schema:**
+- Migration 0020 adds `main_marc_tag TEXT` to `mazal_authorities`.
+- `mazal_index.py` parse_record now ingests 150/450 (subject) tags as
+  `entity_type='subject'` and records the primary heading tag in `main_marc_tag`.
+- `import_mazal_to_postgres.py` detects whether the source SQLite has the new column
+  (idempotent: old SQLite files still import cleanly with `main_marc_tag=NULL`).
+- Re-import command after migration:
+  `cd backend && DATABASE_URL=... MAZAL_DB_PATH=... .venv/bin/python -m scripts.import_mazal_to_postgres`
+
+**Curator re-enrich playbook:**
+After deploying this change, run Authority re-enrich on reviewed runs to refresh
+matches without re-uploading MARC files:
+`POST /api/runs/{run_id}/authority/re-enrich?skip_cache=true`
+(Available via the run detail page → Authority tab → "Re-enrich" button.)
+
+Tests pinning the contract:
+`backend/tests/unit/test_authority_routing.py` (11),
+`backend/tests/unit/test_authority_supervisor_examples.py` (13),
+`backend/tests/unit/test_colophon_structured.py` (6),
+`backend/tests/unit/test_notes_work_extraction.py` (5).
+Any new matcher route, dedup policy change, or note-extraction pattern MUST extend
+at least one of these suites.
+
 ---
 
 ## Project structure
