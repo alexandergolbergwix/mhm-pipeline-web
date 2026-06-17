@@ -268,7 +268,11 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             if not name:
                 continue
             role = e[i] if i < len(e) else "author"
-            entry: dict[str, Any] = {"name": name, "role": role, "field": tag}
+            entry: dict[str, Any] = {
+                "name": normalize_entity_text(name),
+                "role": normalize_role(role),
+                "field": tag,
+            }
             if i < len(d) and d[i].strip():
                 entry["dates"] = d[i].strip()
             authors.append(entry)
@@ -286,7 +290,11 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             if not name:
                 continue
             role = e[i] if i < len(e) else "contributor"
-            entry = {"name": name, "role": role, "field": tag}
+            entry = {
+                "name": normalize_entity_text(name),
+                "role": normalize_role(role),
+                "field": tag,
+            }
             if i < len(d) and d[i].strip():
                 entry["dates"] = d[i].strip()
             contributors.append(entry)
@@ -639,7 +647,11 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-# ── Entity extraction ───────────────────────────────────────────────────
+from app.pipeline.entity_normalize import (
+    normalize_entity_key,
+    normalize_entity_text,
+    normalize_role,
+)
 
 
 def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
@@ -653,9 +665,9 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
         if not name:
             continue
         ent: dict[str, str] = {
-            "text": str(name).strip(),
+            "text": normalize_entity_text(str(name)),
             "kind": "person",
-            "role": str(c.get("role") or ""),
+            "role": normalize_role(str(c.get("role") or "")),
             "field": str(c.get("field") or ""),
         }
         if c.get("dates"):
@@ -664,12 +676,17 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
 
     for a in record.get("authors", []):
         if isinstance(a, str) and a.strip():
-            out.append({"text": a.strip(), "kind": "person", "role": "author", "field": "100"})
+            out.append({
+                "text": normalize_entity_text(a),
+                "kind": "person",
+                "role": "author",
+                "field": "100",
+            })
         elif isinstance(a, dict) and (a.get("name") or "").strip():
             ent = {
-                "text": str(a["name"]).strip(),
+                "text": normalize_entity_text(str(a["name"])),
                 "kind": "person",
-                "role": str(a.get("role") or "author"),
+                "role": normalize_role(str(a.get("role") or "author")),
                 "field": str(a.get("field") or "100"),
             }
             if a.get("dates"):
@@ -683,7 +700,7 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
         name = sub.get("name") or sub.get("term") or ""
         if not name:
             continue
-        name = str(name).strip()
+        name = normalize_entity_text(str(name))
         if kind == "person":
             ent = {"text": name, "kind": "person", "role": "subject", "field": "600"}
             if sub.get("dates"):
@@ -694,12 +711,12 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
 
     # MARC 260/264 production place — the primary geographic field on most
     # manuscript records (e.g. "ירושלים", "Italy, northern").
-    production_place = str(record.get("place") or "").strip()
+    production_place = normalize_entity_text(str(record.get("place") or ""))
     if production_place:
         out.append({
             "text": production_place,
             "kind": "place",
-            "role": "production_place",
+            "role": "production place",
             "field": "260",
         })
 
@@ -713,7 +730,12 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
             else:
                 text = ""
             if text:
-                out.append({"text": text, "kind": "place", "role": "place", "field": "752"})
+                out.append({
+                    "text": normalize_entity_text(text),
+                    "kind": "place",
+                    "role": "place",
+                    "field": "752",
+                })
 
     # Provenance-event places (acquisition 541 $b, conservation/exhibition
     # 583 $j) — one place entity per event so KIMA resolves coords. The
@@ -726,9 +748,9 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
         if not text:
             continue
         out.append({
-            "text": text,
+            "text": normalize_entity_text(text),
             "kind": "place",
-            "role": f"{ev.get('type') or 'provenance'}_place",
+            "role": f"{ev.get('type') or 'provenance'} place",
             "field": str(ev.get("source_field") or ""),
         })
 
@@ -756,6 +778,7 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
     _ROLE_PRIORITY = {
         "place": 0,
         "production_place": 1,
+        "former_owner": 2,
         "subject": 2,
         "contributor": 3,
         "author": 4,
@@ -765,25 +788,15 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
     }
 
     def _role_rank(r: str) -> int:
-        return _ROLE_PRIORITY.get((r or "").lower(), 2)
-
-    def _normalize_text(t: str) -> str:
-        import unicodedata as _ud
-        import re as _re
-        t = t.strip().lower()
-        # Strip niqqud / vowel marks
-        t = "".join(c for c in t if not (0x0591 <= ord(c) <= 0x05C7))
-        t = _ud.normalize("NFKD", t)
-        t = "".join(c for c in t if not _ud.combining(c))
-        t = _re.sub(r"[^\w\s\u0590-\u05FF]", "", t)
-        return _re.sub(r"\s+", " ", t).strip()
+        from app.pipeline.entity_normalize import normalize_role_key
+        return _ROLE_PRIORITY.get(normalize_role_key(r), 2)
 
     # (normalized_text, kind) → index in deduped list
     canon: dict[tuple[str, str], int] = {}
     deduped: list[dict[str, str]] = []
 
     for ent in out:
-        nk = (_normalize_text(ent["text"]), ent.get("kind", ""))
+        nk = (normalize_entity_key(ent["text"]), ent.get("kind", ""))
         if nk not in canon:
             canon[nk] = len(deduped)
             entry = dict(ent)

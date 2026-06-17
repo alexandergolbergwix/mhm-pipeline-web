@@ -504,14 +504,15 @@ class DesktopMatcher(AuthorityMatcher):
         # source=kima).
         _mode = os.getenv("AUTHORITY_MODE", "local").lower()
         normalized_kind = entity_kind.lower().strip()
-        normalized_role = role.lower().strip()
+        from app.pipeline.entity_normalize import normalize_role_key  # noqa: PLC0415
+        role_key = normalize_role_key(role)
         is_place = (
             normalized_kind in ("place", "location", "geographic")
-            or normalized_role in ("place", "location", "geographic", "production_place")
+            or role_key in ("place", "location", "geographic", "production_place")
             # Provenance-event places (541 $b acquisition, 583 $j conservation/
             # exhibition, and future ownership_place) must also fire KIMA.
-            or normalized_role.endswith("_place")
-            or (normalized_role == "subject" and _looks_like_place(text, marc_record))
+            or role_key.endswith("_place")
+            or (role_key == "subject" and _looks_like_place(text, marc_record))
         )
         if is_place and (self._kima is not None or _mode in ("modal", "postgres")):
             try:

@@ -113,13 +113,45 @@ export interface AuthorityTableProps {
   onFilteredChange?: (ids: string[]) => void;
 }
 
-// Normalise entity text for grouping (strip niqqud, lowercase).
+// Normalise entity text for grouping (strip quotes, niqqud, lowercase).
 function normalizeEntityText(t: string): string {
-  return t
+  let s = t.trim();
+  while (s.startsWith("\"") || s.startsWith("'")) s = s.slice(1).trim();
+  while (s.endsWith("\"") || s.endsWith("'")) s = s.slice(0, -1).trim();
+  return s
     .replace(/[\u0591-\u05C7]/g, "")
+    .replace(/[^\w\s\u0590-\u05FF]/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+const _HEBREW_ROLE_DISPLAY: Record<string, string> = {
+  "בעלים קודמים": "former owner",
+  "בעלים קודם": "former owner",
+  "בעלים נוכחיים": "current owner",
+};
+
+/** Canonical English role label for the Authority table. */
+function formatRole(role: string | null | undefined): string {
+  let raw = (role ?? "").trim();
+  while (raw.startsWith("\"") || raw.startsWith("'")) raw = raw.slice(1).trim();
+  while (raw.endsWith("\"") || raw.endsWith("'")) raw = raw.slice(0, -1).trim();
+  if (!raw) return "—";
+  if (_HEBREW_ROLE_DISPLAY[raw]) return _HEBREW_ROLE_DISPLAY[raw];
+  const lower = raw.toLowerCase();
+  if (_HEBREW_ROLE_DISPLAY[lower]) return _HEBREW_ROLE_DISPLAY[lower];
+  return lower.replace(/_/g, " ");
+}
+
+function roleRank(role: string | null | undefined): number {
+  const key = formatRole(role).replace(/ /g, "_");
+  const RANK: Record<string, number> = {
+    author: 4, scribe: 4, translator: 4, editor: 4,
+    contributor: 3, former_owner: 3, subject: 2,
+    production_place: 1, place: 0,
+  };
+  return RANK[key] ?? 2;
 }
 
 // A grouped row: primary match + zero or more secondary matches sharing
@@ -221,18 +253,14 @@ export function AuthorityTable({
       return display.map((m) => ({primary: m, alts: []}));
     }
     const groups = new Map<string, GroupedMatch>();
-    const _ROLE_RANK: Record<string, number> = {
-      author: 4, scribe: 4, translator: 4, editor: 4,
-      contributor: 3, subject: 2, production_place: 1, place: 0,
-    };
     for (const m of display) {
       const gKey = `${m.control_number}__${normalizeEntityText(m.entity_text)}`;
       const existing = groups.get(gKey);
       if (!existing) {
         groups.set(gKey, {primary: m, alts: []});
       } else {
-        const existRank = _ROLE_RANK[existing.primary.role?.toLowerCase() ?? ""] ?? 2;
-        const newRank = _ROLE_RANK[m.role?.toLowerCase() ?? ""] ?? 2;
+        const existRank = roleRank(existing.primary.role);
+        const newRank = roleRank(m.role);
         if (newRank > existRank) {
           existing.alts.unshift(existing.primary);
           existing.primary = m;
@@ -451,13 +479,13 @@ export function AuthorityTable({
 
                     {/* Role — show role chips when grouped */}
                     <td className="py-2 pr-3">
-                      <span className="kicker">{m.role || "—"}</span>
+                      <span className="kicker">{formatRole(m.role)}</span>
                       {hasAlts && groupDuplicates && !isExpanded && (
                         <span className="ml-1 inline-flex flex-wrap gap-0.5">
                           {alts.map((a) => (
                             <span key={a.id} className="glass-pill px-1 py-[1px] text-[10px] text-muted"
                                   title={a.entity_text}>
-                              {a.role || "—"}
+                              {formatRole(a.role)}
                             </span>
                           ))}
                         </span>

@@ -660,6 +660,12 @@ async def re_enrich_authority(
 
     from app.pipeline import authority as auth_pipeline  # noqa: PLC0415
     from app.pipeline.marc_ingest import extract_named_entities, prepare_record_for_pipeline  # noqa: PLC0415
+    from app.pipeline.entity_normalize import (  # noqa: PLC0415
+        normalize_entity_key,
+        normalize_entity_text,
+        normalize_role,
+    )
+    from collections import defaultdict
 
     matcher = auth_pipeline.get_default_matcher()
 
@@ -675,14 +681,22 @@ async def re_enrich_authority(
         )
     ).scalars().all()
 
-    # Index existing rows by (control_number, entity_text, entity_kind, role) so
-    # we can upsert: update payload/IDs while preserving approval state.
-    # Role is included so an author row and a subject row for the same name
-    # are updated independently (they carry different authority context).
-    existing_idx: dict[tuple[str, str, str, str], AuthorityMatch] = {
-        (m.control_number, m.entity_text.strip().lower(), m.entity_kind, m.role or ""): m
-        for m in existing_rows
-    }
+    def _match_key(
+        cn: str, text: str, kind: str, role: str,
+    ) -> tuple[str, str, str, str]:
+        return (
+            cn,
+            normalize_entity_key(normalize_entity_text(text)),
+            kind,
+            normalize_role(role),
+        )
+
+    # Index existing rows by normalised key; multiple legacy rows may share one key.
+    existing_idx: dict[tuple[str, str, str, str], list[AuthorityMatch]] = defaultdict(list)
+    for m in existing_rows:
+        existing_idx[_match_key(
+            m.control_number, m.entity_text, m.entity_kind, m.role or "",
+        )].append(m)
 
     checked = 0
     updated = 0
@@ -710,14 +724,23 @@ async def re_enrich_authority(
                 continue
 
             c = candidates[0]
-            key = (
+            clean_text = normalize_entity_text(entity.get("text", ""))
+            clean_role = normalize_role(entity.get("role", ""))
+            key = _match_key(
                 rec.control_number,
-                (entity.get("text") or "").strip().lower(),
+                clean_text,
                 entity.get("kind", "person"),
-                entity.get("role", ""),
+                clean_role,
             )
             if key in existing_idx:
-                m = existing_idx[key]
+                matches = existing_idx[key]
+                m = matches[0]
+                # Collapse legacy duplicate rows (quote/role variants).
+                for dup in matches[1:]:
+                    await db.delete(dup)
+                existing_idx[key] = [m]
+                m.entity_text = clean_text
+                m.role = clean_role
                 m.matched_name  = c.matched_name
                 m.mazal_id      = c.mazal_id
                 m.viaf_id       = c.viaf_id
@@ -730,9 +753,9 @@ async def re_enrich_authority(
                 db.add(AuthorityMatch(
                     run_id=run_id,
                     control_number=rec.control_number,
-                    entity_text=entity.get("text", ""),
+                    entity_text=clean_text,
                     entity_kind=entity.get("kind", "person"),
-                    role=entity.get("role", ""),
+                    role=clean_role,
                     matched_name=c.matched_name,
                     mazal_id=c.mazal_id,
                     viaf_id=c.viaf_id,

@@ -67,8 +67,11 @@ async def execute_run(
     match_count = 0
     _inserted_keys: set[tuple[str, str, str, str]] = set()
 
-    def _norm(t: str) -> str:
-        return (t or "").strip().lower()
+    from app.pipeline.entity_normalize import (  # noqa: PLC0415
+        normalize_entity_key,
+        normalize_entity_text,
+        normalize_role,
+    )
 
     for rec in records:
         entities = marc_ingest.extract_named_entities(rec)
@@ -83,11 +86,13 @@ async def execute_run(
                 candidates = []
             for c in candidates:
                 cn = rec["_control_number"]
+                clean_text = normalize_entity_text(entity["text"])
+                clean_role = normalize_role(entity.get("role", ""))
                 ek = (
                     cn,
-                    _norm(entity["text"]),
+                    normalize_entity_key(clean_text),
                     entity.get("kind", "person"),
-                    entity.get("role", ""),
+                    clean_role,
                 )
                 if ek in _inserted_keys:
                     continue
@@ -96,9 +101,9 @@ async def execute_run(
                     AuthorityMatch(
                         run_id=run.id,
                         control_number=cn,
-                        entity_text=entity["text"],
+                        entity_text=clean_text,
                         entity_kind=entity.get("kind", "person"),
-                        role=entity.get("role", ""),
+                        role=clean_role,
                         matched_name=c.matched_name,
                         mazal_id=c.mazal_id,
                         viaf_id=c.viaf_id,
