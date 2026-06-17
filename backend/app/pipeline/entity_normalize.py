@@ -20,10 +20,25 @@ _EXTRA_ROLE_MAPPINGS: dict[str, str] = {
     "מחבר": "author",
     "סופר": "scribe",
     "מעתיק": "scribe",
+    "מעיר": "commentator",
+    "מוזכר": "mentioned",
+    "ממנו": "copied_from",
+    "חותם": "signatory",
+    "אליו": "addressee",
+    "מיוחס לו": "attributed_author",
+    "מתרגם": "translator",
+    "מחבר משוער": "presumed_author",
+    "פרשן": "commentator",
+    "מפרש": "commentator",
+    "מאייר": "illuminator",
+    "עורך": "editor",
+    "מלקט": "compiler",
 }
 
 _ROLE_DISPLAY: dict[str, str] = {
     "author": "author",
+    "presumed_author": "presumed author",
+    "attributed_author": "attributed author",
     "scribe": "scribe",
     "illuminator": "illuminator",
     "commentator": "commentator",
@@ -39,6 +54,10 @@ _ROLE_DISPLAY: dict[str, str] = {
     "production_place": "production place",
     "institution": "institution",
     "contained_work": "contained work",
+    "mentioned": "mentioned",
+    "copied_from": "copied from",
+    "signatory": "signatory",
+    "addressee": "addressee",
 }
 
 
@@ -63,7 +82,10 @@ def normalize_entity_key(text: str) -> str:
 
 
 def _role_raw(role: str) -> str:
-    return normalize_entity_text(role).lower().rstrip(".")
+    t = normalize_entity_text(role)
+    while t.startswith("(") and t.endswith(")"):
+        t = t[1:-1].strip()
+    return t.lower().rstrip(".")
 
 
 def normalize_role(role: str) -> str:

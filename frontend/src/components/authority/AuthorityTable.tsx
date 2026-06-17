@@ -131,6 +131,23 @@ const _HEBREW_ROLE_DISPLAY: Record<string, string> = {
   "בעלים קודמים": "former owner",
   "בעלים קודם": "former owner",
   "בעלים נוכחיים": "current owner",
+  "(מעתיק)": "scribe",
+  "מעתיק": "scribe",
+  "(מוזכר)": "mentioned",
+  "מוזכר": "mentioned",
+  "מעיר": "commentator",
+  "(חותם)": "signatory",
+  "חותם": "signatory",
+  "(ממנו)": "copied from",
+  "ממנו": "copied from",
+  "(אליו)": "addressee",
+  "אליו": "addressee",
+  "(מיוחס לו)": "attributed author",
+  "מיוחס לו": "attributed author",
+  "(מתרגם)": "translator",
+  "מתרגם": "translator",
+  "(מחבר משוער)": "presumed author",
+  "מחבר משוער": "presumed author",
 };
 
 /** Canonical English role label for the Authority table. */
@@ -138,6 +155,7 @@ function formatRole(role: string | null | undefined): string {
   let raw = (role ?? "").trim();
   while (raw.startsWith("\"") || raw.startsWith("'")) raw = raw.slice(1).trim();
   while (raw.endsWith("\"") || raw.endsWith("'")) raw = raw.slice(0, -1).trim();
+  while (raw.startsWith("(") && raw.endsWith(")")) raw = raw.slice(1, -1).trim();
   if (!raw) return "—";
   if (_HEBREW_ROLE_DISPLAY[raw]) return _HEBREW_ROLE_DISPLAY[raw];
   const lower = raw.toLowerCase();

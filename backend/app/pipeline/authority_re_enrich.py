@@ -43,11 +43,29 @@ async def re_enrich_run(
     existing_rows: list[AuthorityMatch],
 ) -> dict[str, int]:
     """Re-match every entity; upsert by normalised key; purge orphan rows."""
+    run_id = run.id
+    user_id = run.created_by
+
     existing_idx: dict[tuple[str, str, str, str], list[AuthorityMatch]] = defaultdict(list)
+    orphan_pairs: list[tuple[AuthorityMatch, tuple[str, str, str, str]]] = []
     for m in existing_rows:
-        existing_idx[match_key(
-            m.control_number, m.entity_text, m.entity_kind, m.role or "",
-        )].append(m)
+        key = match_key(
+            str(m.control_number or ""),
+            str(m.entity_text or ""),
+            str(m.entity_kind or ""),
+            str(m.role or ""),
+        )
+        existing_idx[key].append(m)
+        orphan_pairs.append((m, key))
+
+    # Materialise records before any await — async ORM cannot lazy-load after
+    # matcher threads / flush expire attributes on the shared session.
+    record_rows: list[tuple[str, dict[str, Any]]] = []
+    for rec in records:
+        record_rows.append((
+            str(rec.control_number or ""),
+            prepare_record_for_pipeline(dict(rec.marc or {})),
+        ))
 
     produced_keys: set[tuple[str, str, str, str]] = set()
     checked = 0
@@ -55,21 +73,20 @@ async def re_enrich_run(
     newly_matched = 0
     orphans_removed = 0
 
-    for rec in records:
-        marc = prepare_record_for_pipeline(dict(rec.marc or {}))
+    for control_number, marc in record_rows:
         for entity in extract_named_entities(marc):
             checked += 1
             clean_text = normalize_entity_text(entity.get("text", ""))
             clean_role = normalize_role(entity.get("role", ""))
             kind = entity.get("kind", "person")
-            key = match_key(rec.control_number, clean_text, kind, clean_role)
+            key = match_key(control_number, clean_text, kind, clean_role)
             produced_keys.add(key)
 
             try:
                 candidates = await matcher.match(
                     entity, marc,
                     db_session=db,
-                    user_id=run.created_by,
+                    user_id=user_id,
                     skip_cache=skip_cache,
                 )
             except Exception:  # noqa: BLE001
@@ -103,8 +120,8 @@ async def re_enrich_run(
                 updated += 1
             else:
                 row = AuthorityMatch(
-                    run_id=run.id,
-                    control_number=rec.control_number,
+                    run_id=run_id,
+                    control_number=control_number,
                     entity_text=clean_text,
                     entity_kind=kind,
                     role=clean_role,
@@ -121,8 +138,7 @@ async def re_enrich_run(
                 existing_idx[key] = [row]
                 newly_matched += 1
 
-    for m in existing_rows:
-        key = match_key(m.control_number, m.entity_text, m.entity_kind, m.role or "")
+    for m, key in orphan_pairs:
         if key not in produced_keys:
             await db.delete(m)
             orphans_removed += 1
@@ -131,7 +147,7 @@ async def re_enrich_run(
     remaining_count = await db.scalar(
         select(func.count())
         .select_from(AuthorityMatch)
-        .where(AuthorityMatch.run_id == run.id)
+        .where(AuthorityMatch.run_id == run_id)
     )
     run.match_count = int(remaining_count or 0)
     await db.commit()

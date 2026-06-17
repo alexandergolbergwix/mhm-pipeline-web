@@ -18,6 +18,18 @@ def test_normalize_entity_text_strips_stray_trailing_quote() -> None:
     assert normalize_entity_text('Allony, Nehemia"') == "Allony, Nehemia"
 
 
+def test_normalize_role_parenthesized_hebrew() -> None:
+    assert normalize_role("(מעתיק)") == "scribe"
+    assert normalize_role('"(מוזכר)"') == "mentioned"
+    assert normalize_role("מעיר") == "commentator"
+    assert normalize_role("(חותם)") == "signatory"
+    assert normalize_role("(ממנו)") == "copied from"
+    assert normalize_role("(אליו)") == "addressee"
+    assert normalize_role("(מיוחס לו)") == "attributed author"
+    assert normalize_role("(מתרגם)") == "translator"
+    assert normalize_role("(מחבר משוער)") == "presumed author"
+
+
 def test_normalize_role_hebrew_former_owners_plural() -> None:
     assert normalize_role("בעלים קודמים") == "former owner"
 

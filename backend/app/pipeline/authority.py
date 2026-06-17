@@ -626,7 +626,6 @@ class DesktopMatcher(AuthorityMatcher):
                 gaz = None
             if gaz is not None:
                 gazetteer_hit = True
-                sources.append("ashkenazi")
                 gaz_qid = str(gaz.get("wikidata_id") or "").strip()
                 if gaz_qid.startswith("Q"):
                     wikidata_qid = gaz_qid
@@ -965,9 +964,11 @@ class DesktopMatcher(AuthorityMatcher):
             sources_after.append("viaf")
         if kima_hit:
             sources_after.append("kima")
-        if gazetteer_hit:
-            sources_after.append("ashkenazi")
-        if wikidata_qid and "wikidata" in sources:
+        # Wikidata QID from SPARQL matcher, or from the Ashkenazi gazetteer JSON
+        # (coords-only gazetteer hits stay heuristic — no fifth public source).
+        if wikidata_qid and (
+            "wikidata" in sources or (gazetteer_hit and not kima_hit)
+        ):
             sources_after.append("wikidata")
         if len(sources_after) >= 2:
             source_label = "cross_source"

@@ -214,6 +214,14 @@ ROLE_MAPPINGS = {
     "עורך": "editor",
     "compiler": "compiler",
     "מלקט": "compiler",
+    "מעיר": "commentator",
+    "מוזכר": "mentioned",
+    "ממנו": "copied_from",
+    "חותם": "signatory",
+    "אליו": "addressee",
+    "מיוחס לו": "attributed_author",
+    "מתרגם": "translator",
+    "מחבר משוער": "presumed_author",
 }
 
 DATE_TYPE_CODES = {
