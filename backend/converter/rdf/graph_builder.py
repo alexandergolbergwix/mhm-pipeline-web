@@ -527,6 +527,14 @@ class GraphBuilder:
             graph.add((work_uri, HM.has_genre, genre_uri))
             graph.add((genre_uri, RDF.type, HM.SubjectType))
             graph.add((genre_uri, RDFS.label, Literal(genre, lang="he")))
+            genre_key = f"genre_{genre}"
+            attr_src = (data.attribution_sources or {}).get(genre_key)
+            if attr_src:
+                self._add_attribution_source(graph, genre_uri, attr_src)
+            certainty = (data.certainty_levels or {}).get(genre_key)
+            if certainty:
+                note = (data.certainty_levels or {}).get(f"{genre_key}_note")
+                self._add_certainty(graph, genre_uri, certainty, note)
 
         return work_uri
 
