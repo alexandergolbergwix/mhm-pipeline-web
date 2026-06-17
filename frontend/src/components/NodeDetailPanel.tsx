@@ -95,10 +95,14 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
       variant="panel"
       as="aside"
       data-testid="node-detail-panel"
-      className="absolute z-50 top-4 right-4 w-[min(360px,calc(100%-2rem))] max-h-[calc(100%-2rem)] overflow-auto p-4 space-y-4 shadow-2xl pointer-events-auto"
+      className="absolute z-50 top-4 right-4 bottom-4 w-[min(360px,calc(100%-2rem))] flex flex-col overflow-hidden shadow-2xl pointer-events-auto select-text"
+      onWheel={(e) => e.stopPropagation()}
       style={{transform: `translate(${offset.x}px, ${offset.y}px)`}}
     >
-      <header className="space-y-1 cursor-move select-none" onMouseDown={onDragStart}>
+      <header
+        className="shrink-0 cursor-move select-none border-b border-[var(--line)] p-4 pb-3"
+        onMouseDown={onDragStart}
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="kicker">Node detail</div>
@@ -109,7 +113,7 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
               : <h3 className="text-lg font-semibold muted">
                   {loading ? "Loading…" : "(no detail)"}
                 </h3>}
-            <p className="muted text-[10px] font-mono break-all">{nodeId}</p>
+            <p className="muted text-[10px] font-mono break-all select-text">{nodeId}</p>
           </div>
           <button onClick={onClose}
                   className="button-ghost !py-1 !px-2 text-xs shrink-0 cursor-pointer"
@@ -118,7 +122,7 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
           </button>
         </div>
         {detail && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-1">
             <span className="inline-block w-3 h-3 rounded-full"
                   style={{background: detail.color}} />
             <span className="kicker">{detail.type}</span>
@@ -126,74 +130,80 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
         )}
       </header>
 
-      {error && <p className="text-red-300 text-sm">{error}</p>}
+      <div
+        data-testid="node-detail-panel-body"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 select-text"
+        onWheel={(e) => e.stopPropagation()}
+      >
+        {error && <p className="text-red-300 text-sm">{error}</p>}
 
-      {detail && (
-        <>
-          {detail.types.length > 0 && (
-            <Section title={`Classes (${detail.types.length})`}>
-              <ul className="space-y-1 text-xs">
-                {detail.types.map((t, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="muted shrink-0">rdf:type</span>
-                    <span className="font-mono break-all">
-                      <span className="text-ink">{t.label}</span>
-                      <span className="muted ml-1">({t.uri})</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          )}
+        {detail && (
+          <>
+            {detail.types.length > 0 && (
+              <Section title={`Classes (${detail.types.length})`}>
+                <ul className="space-y-1 text-xs">
+                  {detail.types.map((t, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="muted shrink-0">rdf:type</span>
+                      <span className="font-mono break-all select-text">
+                        <span className="text-ink">{t.label}</span>
+                        <span className="muted ml-1">({t.uri})</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
 
-          {detail.properties.length > 0 && (
-            <Section title={`Properties (${detail.properties.length})`}>
-              <dl className="text-xs space-y-1.5">
-                {detail.properties.map((p, i) => (
-                  <div key={i} className="grid grid-cols-[140px_1fr] gap-x-3 items-baseline">
-                    <dt className="muted truncate" title={p.predicate}>
-                      {p.predicate_label}
-                    </dt>
-                    <dd className="break-words">
-                      <span className="text-ink">{p.value}</span>
-                      {p.datatype && (
-                        <span className="muted text-[10px] ml-2">({_shortenDatatype(p.datatype)})</span>
-                      )}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </Section>
-          )}
+            {detail.properties.length > 0 && (
+              <Section title={`Properties (${detail.properties.length})`}>
+                <dl className="text-xs space-y-1.5">
+                  {detail.properties.map((p, i) => (
+                    <div key={i} className="grid grid-cols-[140px_1fr] gap-x-3 items-baseline">
+                      <dt className="muted truncate" title={p.predicate}>
+                        {p.predicate_label}
+                      </dt>
+                      <dd className="break-words select-text">
+                        <span className="text-ink">{p.value}</span>
+                        {p.datatype && (
+                          <span className="muted text-[10px] ml-2">({_shortenDatatype(p.datatype)})</span>
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </Section>
+            )}
 
-          {detail.outgoing.length > 0 && (
-            <Section title={`Outgoing (${detail.outgoing.length})`}>
-              <ul className="space-y-1 text-xs">
-                {detail.outgoing.map((e, i) => (
-                  <EdgeRow key={i} edge={e} dir="out" onNavigate={onNavigate} />
-                ))}
-              </ul>
-            </Section>
-          )}
+            {detail.outgoing.length > 0 && (
+              <Section title={`Outgoing (${detail.outgoing.length})`}>
+                <ul className="space-y-1 text-xs">
+                  {detail.outgoing.map((e, i) => (
+                    <EdgeRow key={i} edge={e} dir="out" onNavigate={onNavigate} />
+                  ))}
+                </ul>
+              </Section>
+            )}
 
-          {detail.incoming.length > 0 && (
-            <Section title={`Incoming (${detail.incoming.length})`}>
-              <ul className="space-y-1 text-xs">
-                {detail.incoming.map((e, i) => (
-                  <EdgeRow key={i} edge={e} dir="in" onNavigate={onNavigate} />
-                ))}
-              </ul>
-            </Section>
-          )}
+            {detail.incoming.length > 0 && (
+              <Section title={`Incoming (${detail.incoming.length})`}>
+                <ul className="space-y-1 text-xs">
+                  {detail.incoming.map((e, i) => (
+                    <EdgeRow key={i} edge={e} dir="in" onNavigate={onNavigate} />
+                  ))}
+                </ul>
+              </Section>
+            )}
 
-          {detail.types.length === 0 && detail.properties.length === 0 &&
-            detail.outgoing.length === 0 && detail.incoming.length === 0 && (
-            <p className="muted text-sm italic">
-              No metadata attached to this node.
-            </p>
-          )}
-        </>
-      )}
+            {detail.types.length === 0 && detail.properties.length === 0 &&
+              detail.outgoing.length === 0 && detail.incoming.length === 0 && (
+              <p className="muted text-sm italic">
+                No metadata attached to this node.
+              </p>
+            )}
+          </>
+        )}
+      </div>
     </Glass>
   );
 }
@@ -221,7 +231,7 @@ function EdgeRow({
   const color = dir === "out" ? edge.target_color : edge.source_color;
   const arrow = dir === "out" ? "→" : "←";
   return (
-    <li className="flex items-center gap-2 flex-wrap">
+    <li className="flex items-center gap-2 flex-wrap select-text">
       <span className="muted shrink-0 font-mono" title={edge.predicate}>
         {edge.predicate_label}
       </span>
@@ -232,11 +242,11 @@ function EdgeRow({
       )}
       {id && onNavigate
         ? <button onClick={() => onNavigate(id)}
-                  className="text-biu-sky hover:underline text-left flex-1 truncate"
+                  className="text-biu-sky hover:underline text-left flex-1 truncate select-text"
                   title={id}>
             {label || id}
           </button>
-        : <span className="text-ink flex-1 truncate" title={id || ""}>
+        : <span className="text-ink flex-1 truncate select-text" title={id || ""}>
             {label || id || "(unknown)"}
           </span>}
     </li>

@@ -42,6 +42,12 @@ def merge_approved_ner(rec: dict[str, Any], entities: list[dict[str, Any]]) -> N
             if text not in genres:
                 genres.append(text)
             rec["genres"] = genres
+            key = f"genre_{text}"
+            rec.setdefault("attribution_sources", {})[key] = "AIAttribution"
+            rec.setdefault("certainty_levels", {})[key] = "Probable"
+            rec.setdefault("certainty_levels", {})[f"{key}_note"] = (
+                "Inferred by genre classifier"
+            )
 
         elif src == "contents_ner":
             if ent_type == "WORK":
@@ -142,6 +148,46 @@ def merge_approved_authority(rec: dict[str, Any], matches: list[dict[str, Any]])
             rec[target_key] = people
 
     rec["marc_authority_matches"] = marc_matches
+
+
+def merge_ml_genres(rec: dict[str, Any], ml_genres: list[dict[str, Any]]) -> None:
+    """Fold Stage-2 ``ml_genres`` predictions into *rec* when MARC 655 is empty."""
+    if rec.get("genres"):
+        return
+    genres: list[str] = rec.setdefault("genres", []) or []
+    attr = rec.setdefault("attribution_sources", {})
+    certainty = rec.setdefault("certainty_levels", {})
+    for item in ml_genres:
+        label = str(item.get("label") or "").strip()
+        if not label or label == "other":
+            continue
+        if label not in genres:
+            genres.append(label)
+        key = f"genre_{label}"
+        attr[key] = "AIAttribution"
+        certainty[key] = "Probable"
+        certainty[f"{key}_note"] = "Inferred by genre classifier"
+    if genres:
+        rec["genres"] = genres
+
+
+def apply_genre_classifier_fallback(rec: dict[str, Any]) -> None:
+    """Run the genre classifier when ``genres`` is still empty (RDF / Wikidata parity)."""
+    if rec.get("genres"):
+        return
+    from converter.wikidata.item_builder import _get_genre_classifier  # noqa: PLC0415
+
+    clf = _get_genre_classifier()
+    if clf is None:
+        return
+    title = str(rec.get("title") or "").strip()
+    notes_list = [str(n) for n in (rec.get("notes") or []) if n]
+    try:
+        inferred = clf.predict(title, notes_list)
+    except Exception:  # noqa: BLE001
+        return
+    ml_items = [{"label": label, "confidence": conf} for label, conf in inferred]
+    merge_ml_genres(rec, ml_items)
 
 
 def merge_kima_places_dict(rec: dict[str, Any], kima_places: dict[str, str]) -> None:

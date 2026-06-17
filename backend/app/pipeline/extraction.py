@@ -448,22 +448,19 @@ async def _process_one_record(
                 ent["source"] = "person_ner"
             all_entities.extend(segment_entities)
 
-    # ── 2. Provenance NER on MARC 561 ─────────────────────────────────
+    # ── 2. Provenance NER on MARC 561 (or note-mined ownership text) ──
     if "provenance" in en:
-        provenance_text = record.get("provenance") or ""
-        if isinstance(provenance_text, str) and provenance_text.strip():
-            clean = provenance_text.replace('""', '"')
-            for segment in _split_pipe(clean):
-                if len(segment) < 3:
-                    continue
-                try:
-                    prov_entities = await backend.provenance_ner(segment)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Provenance NER failed on %s: %s", cn, exc)
-                    continue
-                for ent in prov_entities:
-                    ent["source"] = "provenance_ner"
-                all_entities.extend(prov_entities)
+        for segment in _provenance_segments_for_record(record):
+            if len(segment) < 3:
+                continue
+            try:
+                prov_entities = await backend.provenance_ner(segment)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Provenance NER failed on %s: %s", cn, exc)
+                continue
+            for ent in prov_entities:
+                ent["source"] = "provenance_ner"
+            all_entities.extend(prov_entities)
 
     # ── 3. Contents NER on MARC 505 ───────────────────────────────────
     if "contents" in en:
@@ -561,6 +558,43 @@ def _shift_offsets(ent: dict[str, Any], offset: int) -> None:
 
 def _split_pipe(text: str) -> list[str]:
     return [seg.strip() for seg in text.split("|") if seg.strip()]
+
+
+_OWNERSHIP_KEYWORDS = (
+    "נרכש",
+    "בבעלות",
+    "הועבר",
+    "נמסר",
+    "נתרם",
+    "רכש",
+    "שייך ל",
+    "בידי",
+)
+
+
+def _provenance_segments_for_record(record: dict[str, Any]) -> list[str]:
+    """MARC 561 when present; otherwise ownership-keyword windows from notes."""
+    provenance_text = record.get("provenance") or ""
+    if isinstance(provenance_text, str) and provenance_text.strip():
+        clean = provenance_text.replace('""', '"')
+        return [seg for seg in _split_pipe(clean) if len(seg) >= 3]
+
+    segments: list[str] = []
+    for field in ("notes", "colophon_text"):
+        raw = record.get(field)
+        if isinstance(raw, str):
+            pieces = _split_pipe(raw) if "|" in raw else [raw]
+        elif isinstance(raw, list):
+            pieces = [str(p) for p in raw if p]
+        else:
+            continue
+        for piece in pieces:
+            text = piece.strip()
+            if len(text) < 8:
+                continue
+            if any(kw in text for kw in _OWNERSHIP_KEYWORDS):
+                segments.append(text)
+    return segments
 
 
 def _flatten_content(content: Any) -> str:

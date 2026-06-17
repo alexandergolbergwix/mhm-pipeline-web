@@ -320,12 +320,27 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     if subjects:
         record["subjects"] = subjects
 
+    # ── Production place from 260/264 (desktop handle_260_264 parity) ───
+    if not record.get("place"):
+        for tag in ("260", "264"):
+            place_a = _str(record.get(f"{tag}$a")).strip().strip('"')
+            if place_a:
+                record["place"] = place_a.rstrip(" :;,")
+                break
+
     # ── Production / related places (MARC 751 Added Entry—Geographic Name) ─
-    # NLI uses 751 $a (place name) + $e (relationship, e.g. "place of writing")
-    # for manuscript production places.  Pipe-separated when repeated.
+    # NLI uses 751 $a (place name) + $e (relationship, e.g. "place of writing"
+    # or "related place") for manuscript geography.  Pipe-separated when repeated.
     _PRODUCTION_ROLES = frozenset(
-        ("place of writing", "place of origin", "production place",
-         "place of creation", "origin", "written")
+        (
+            "place of writing",
+            "place of origin",
+            "production place",
+            "place of creation",
+            "related place",
+            "origin",
+            "written",
+        )
     )
     related_places: list[str] = list(record.get("related_places") or [])
     for place_name, role_text in zip(
@@ -342,6 +357,10 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
                 record["place"] = place_name
     if related_places:
         record["related_places"] = related_places
+    # When NLI omits $e or uses an unlisted role, still promote the first 751$a
+    # to production place if nothing else filled the slot.
+    if not record.get("place") and related_places:
+        record["place"] = related_places[0]
 
     # ── Dates (008 positions 7-10 are the production year) ──────────
     f008 = _str(record.get("008"))
@@ -645,7 +664,39 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
         row["contributors"] = _expand_pipe_delimited_entries(list(row["contributors"]))
     if row.get("authors"):
         row["authors"] = _expand_pipe_delimited_entries(list(row["authors"]))
+    _merge_work_mentions_into_contents(row)
     return row
+
+
+def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
+    """Promote ``work_mentions`` (500 כולל: parsing) into ``contents`` for RDF."""
+    from converter.rdf.rdf_helpers import clean_marc_label  # noqa: PLC0415
+
+    mentions = record.get("work_mentions") or []
+    if not mentions:
+        return
+    contents: list[dict[str, Any]] = list(record.get("contents") or [])
+    existing = {
+        clean_marc_label(str(c.get("title") or "")).casefold()
+        for c in contents
+        if isinstance(c, dict) and c.get("title")
+    }
+    for wm in mentions:
+        if not isinstance(wm, dict):
+            continue
+        title = str(wm.get("title") or "").strip()
+        if not title:
+            continue
+        key = clean_marc_label(title).casefold()
+        if key in existing:
+            continue
+        contents.append({
+            "title": title,
+            "source_field": str(wm.get("source_field") or "500"),
+        })
+        existing.add(key)
+    if contents:
+        record["contents"] = contents
 
 
 from app.pipeline.entity_normalize import (

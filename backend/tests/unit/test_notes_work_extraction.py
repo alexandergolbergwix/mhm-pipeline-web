@@ -53,3 +53,32 @@ def test_work_entities_kind() -> None:
     work_ents = [e for e in entities if e.get("kind") == "work"]
     assert len(work_ents) == 1
     assert work_ents[0]["role"] == "contained_work"
+
+
+def test_prepare_merges_work_mentions_into_contents() -> None:
+    from app.pipeline.marc_ingest import prepare_record_for_pipeline
+
+    record = {"500$a": "כולל: עת שערי רצון; שיר השירים"}
+    prepared = prepare_record_for_pipeline(record)
+    titles = [c.get("title") for c in prepared.get("contents") or []]
+    assert any("עת שערי רצון" in str(t) for t in titles)
+    assert any("שיר השירים" in str(t) for t in titles)
+
+
+def test_place_from_related_751_role() -> None:
+    from app.pipeline.marc_ingest import _collapse_marc_subfields
+
+    record = {
+        "751$a": "Prague",
+        "751$e": "related place",
+    }
+    _collapse_marc_subfields(record)
+    assert record.get("place") == "Prague"
+
+
+def test_place_from_260_a() -> None:
+    from app.pipeline.marc_ingest import _collapse_marc_subfields
+
+    record = {"260$a": "Jerusalem"}
+    _collapse_marc_subfields(record)
+    assert record.get("place") == "Jerusalem"

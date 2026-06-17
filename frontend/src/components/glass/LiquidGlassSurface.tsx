@@ -107,13 +107,19 @@ function LiquidGlassSurface({
         WebkitBackdropFilter: "blur(22px) saturate(180%)",
       };
 
-  const innerClass = contentClassName
-    ? `relative z-10 ${contentClassName}`
+  const isFlexColumn = /\bflex-col\b/.test(className);
+  const innerBase = isFlexColumn
+    ? "absolute inset-0 z-10 flex flex-col min-h-0 overflow-hidden"
     : "relative z-10";
+  const innerClass = contentClassName
+    ? `${innerBase} ${contentClassName}`.trim()
+    : innerBase;
 
   const isPositioned = /\b(absolute|fixed|sticky)\b/.test(className);
   const rootPosition = isPositioned ? "" : "relative";
-  const rootClass = `${rootPosition} overflow-hidden ${className}`.trim();
+  const hasOverflow = /\boverflow-/.test(className);
+  const rootOverflow = hasOverflow ? "" : "overflow-hidden";
+  const rootClass = `${rootPosition} ${rootOverflow} ${className}`.trim();
 
   return (
     <Component

@@ -251,9 +251,11 @@ def _run_mapper_sync(
 ]:
     """Synchronous core — runs in a thread."""
     from app.pipeline.rdf_enrichment import (  # noqa: PLC0415
+        apply_genre_classifier_fallback,
         merge_approved_authority,
         merge_approved_ner,
         merge_kima_places_dict,
+        merge_ml_genres,
     )
     from converter.rdf.graph_builder import GraphBuilder
     from converter.transformer.field_handlers import ExtractedData
@@ -306,6 +308,11 @@ def _run_mapper_sync(
         ner_ents = ents_by_cn.get(cn) or ents_by_cn.get(cn_stripped) or []
         if ner_ents:
             merge_approved_ner(rec, ner_ents)
+
+        ml_genres = rec.get("ml_genres") or []
+        if isinstance(ml_genres, list) and ml_genres:
+            merge_ml_genres(rec, ml_genres)
+        apply_genre_classifier_fallback(rec)
 
         rec_matches = matches_by_cn.get(cn) or matches_by_cn.get(cn_stripped) or []
         if rec_matches:
