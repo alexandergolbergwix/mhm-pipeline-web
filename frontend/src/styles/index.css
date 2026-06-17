@@ -2,9 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Bar-Ilan palette — matches the presentation deck. */
+/* Bar-Ilan palette — dark (default) and light themes via data-theme on <html>. */
 
-:root {
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
   --biu-navy: #00190d;
   --biu-black: #000000;
   --biu-green: #004027;
@@ -15,28 +17,75 @@
   --panel-strong: rgba(255, 255, 255, 0.12);
   --line: rgba(119, 204, 229, 0.24);
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  --nav-active-bg: rgba(255, 255, 255, 0.1);
+  --input-bg: rgba(0, 0, 0, 0.28);
+  --ghost-bg: rgba(0, 0, 0, 0.24);
+  --ghost-hover: rgba(255, 255, 255, 0.06);
+  --pill-border: rgba(255, 255, 255, 0.08);
+  --glass-rim: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    transparent 42%,
+    transparent 68%,
+    rgba(119, 204, 229, 0.12) 100%
+  );
+  --body-bg:
+    radial-gradient(circle at 12% 18%, rgba(119, 204, 229, 0.16), transparent 20%),
+    radial-gradient(circle at 85% 16%, rgba(0, 64, 39, 0.35), transparent 22%),
+    radial-gradient(circle at 50% 120%, rgba(119, 204, 229, 0.12), transparent 30%),
+    linear-gradient(145deg, #00190d 0%, #002217 36%, #001008 70%, #000000 100%);
+  --grid-line: rgba(119, 204, 229, 0.05);
+  --canvas-ambient-opacity: 1;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --biu-navy: #00190d;
+  --biu-black: #000000;
+  --biu-green: #004027;
+  --biu-sky: #1a7a96;
+  --ink: #00190d;
+  --muted: #3d5c52;
+  --panel: rgba(255, 255, 255, 0.72);
+  --panel-strong: rgba(255, 255, 255, 0.9);
+  --line: rgba(0, 64, 39, 0.16);
+  --shadow: 0 20px 48px rgba(0, 25, 13, 0.1);
+  --nav-active-bg: rgba(0, 64, 39, 0.1);
+  --input-bg: rgba(255, 255, 255, 0.92);
+  --ghost-bg: rgba(255, 255, 255, 0.72);
+  --ghost-hover: rgba(0, 64, 39, 0.06);
+  --pill-border: rgba(0, 64, 39, 0.12);
+  --glass-rim: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    transparent 42%,
+    transparent 68%,
+    rgba(119, 204, 229, 0.28) 100%
+  );
+  --body-bg:
+    radial-gradient(circle at 12% 18%, rgba(119, 204, 229, 0.28), transparent 22%),
+    radial-gradient(circle at 88% 12%, rgba(0, 64, 39, 0.08), transparent 24%),
+    radial-gradient(circle at 50% 110%, rgba(119, 204, 229, 0.14), transparent 32%),
+    linear-gradient(160deg, #f4faf7 0%, #eef6f2 42%, #e8f2ec 72%, #e2ede8 100%);
+  --grid-line: rgba(0, 64, 39, 0.06);
+  --canvas-ambient-opacity: 0.42;
 }
 
 html, body, #root { height: 100%; }
 
 body {
-  background:
-    radial-gradient(circle at 12% 18%, rgba(119, 204, 229, 0.16), transparent 20%),
-    radial-gradient(circle at 85% 16%, rgba(0, 64, 39, 0.35),  transparent 22%),
-    radial-gradient(circle at 50% 120%, rgba(119, 204, 229, 0.12), transparent 30%),
-    linear-gradient(145deg, #00190d 0%, #002217 36%, #001008 70%, #000000 100%);
+  background: var(--body-bg);
   background-attachment: fixed;
   color: var(--ink);
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Subtle grid overlay — same one the deck uses behind hero content. */
 body::before {
   content: "";
   position: fixed; inset: 0;
   background-image:
-    linear-gradient(rgba(119, 204, 229, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(119, 204, 229, 0.05) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 56px 56px;
   pointer-events: none;
   mask-image: radial-gradient(circle at center, black 38%, transparent 92%);
@@ -45,7 +94,6 @@ body::before {
 
 #root { position: relative; z-index: 1; }
 
-/* Layout/tint tokens for <Glass> / <GlassPill> — refraction lives in LiquidGlassSurface. */
 .glass-shell {
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
@@ -56,15 +104,18 @@ body::before {
 }
 
 .glass-shell-compact {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
 }
 
 .glass-shell-pill {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--pill-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .glass-shell-pill {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
 }
 
-/* Deprecated — use <Glass> / <GlassPill> instead of these classes directly. */
 .glass {
   background: linear-gradient(180deg, var(--panel-strong), rgba(255, 255, 255, 0.04));
   border: 1px solid var(--line);
@@ -75,8 +126,8 @@ body::before {
 }
 
 .glass-pill {
-  background: rgba(0, 0, 0, 0.24);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ghost-bg);
+  border: 1px solid var(--pill-border);
   backdrop-filter: blur(12px);
   box-shadow: var(--shadow);
   border-radius: 999px;
@@ -84,7 +135,7 @@ body::before {
 
 .input-glass {
   @apply px-3 py-2 outline-none transition w-full;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--input-bg);
   border: 1px solid var(--line);
   border-radius: 14px;
   color: var(--ink);
@@ -101,15 +152,23 @@ body::before {
 }
 .button-primary:hover { background: linear-gradient(180deg, rgba(119, 204, 229, 0.32), rgba(119, 204, 229, 0.14)); }
 
+[data-theme="light"] .button-primary {
+  background: linear-gradient(180deg, rgba(26, 122, 150, 0.14), rgba(26, 122, 150, 0.06));
+  box-shadow: 0 6px 18px rgba(26, 122, 150, 0.12);
+}
+[data-theme="light"] .button-primary:hover {
+  background: linear-gradient(180deg, rgba(26, 122, 150, 0.22), rgba(26, 122, 150, 0.1));
+}
+
 .button-ghost {
   @apply px-4 py-2 cursor-pointer transition active:scale-[0.98] disabled:opacity-50;
-  background: rgba(0, 0, 0, 0.24);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ghost-bg);
+  border: 1px solid var(--pill-border);
   border-radius: 14px;
   color: var(--ink);
   backdrop-filter: blur(12px);
 }
-.button-ghost:hover { background: rgba(255, 255, 255, 0.06); }
+.button-ghost:hover { background: var(--ghost-hover); }
 
 .kicker {
   font-size: 11px;
@@ -119,6 +178,38 @@ body::before {
 }
 
 .muted { color: var(--muted); }
+
+/* Light-mode remaps for legacy Tailwind white/black opacity utilities. */
+[data-theme="light"] .text-white\/90 { color: rgb(0 25 13 / 0.9); }
+[data-theme="light"] .text-white\/70 { color: rgb(0 25 13 / 0.7); }
+[data-theme="light"] .text-white\/40 { color: rgb(0 25 13 / 0.4); }
+[data-theme="light"] .text-white\/30 { color: rgb(0 25 13 / 0.3); }
+
+[data-theme="light"] .border-white\/5 { border-color: rgb(0 64 39 / 0.08); }
+[data-theme="light"] .border-white\/10 { border-color: rgb(0 64 39 / 0.12); }
+[data-theme="light"] .border-white\/15 { border-color: rgb(0 64 39 / 0.16); }
+[data-theme="light"] .border-white\/20 { border-color: rgb(0 64 39 / 0.2); }
+
+[data-theme="light"] .bg-white\/5 { background-color: rgb(0 64 39 / 0.04); }
+[data-theme="light"] .bg-white\/8 { background-color: rgb(0 64 39 / 0.06); }
+[data-theme="light"] .bg-white\/10 { background-color: rgb(0 64 39 / 0.08); }
+[data-theme="light"] .bg-white\/12 { background-color: rgb(0 64 39 / 0.1); }
+[data-theme="light"] .bg-white\/\[0\.02\] { background-color: rgb(0 64 39 / 0.02); }
+[data-theme="light"] .bg-white\/\[0\.03\] { background-color: rgb(0 64 39 / 0.03); }
+[data-theme="light"] .bg-white\/\[0\.04\] { background-color: rgb(0 64 39 / 0.04); }
+[data-theme="light"] .bg-white\/\[0\.06\] { background-color: rgb(0 64 39 / 0.06); }
+
+[data-theme="light"] .hover\:bg-white\/5:hover { background-color: rgb(0 64 39 / 0.04); }
+[data-theme="light"] .hover\:bg-white\/\[0\.03\]:hover { background-color: rgb(0 64 39 / 0.03); }
+[data-theme="light"] .hover\:bg-white\/\[0\.04\]:hover { background-color: rgb(0 64 39 / 0.04); }
+[data-theme="light"] .hover\:bg-white\/\[0\.06\]:hover { background-color: rgb(0 64 39 / 0.06); }
+
+[data-theme="light"] .bg-black\/15 { background-color: rgb(255 255 255 / 0.55); }
+[data-theme="light"] .bg-black\/30 { background-color: rgb(255 255 255 / 0.72); }
+[data-theme="light"] .bg-black\/40 { background-color: rgb(255 255 255 / 0.78); }
+[data-theme="light"] .bg-black\/60 { background-color: rgb(0 25 13 / 0.35); }
+
+[data-theme="light"] .hover\:text-white\/70:hover { color: rgb(0 25 13 / 0.7); }
 
 @media (prefers-reduced-motion: reduce) {
   body { background-attachment: scroll; }

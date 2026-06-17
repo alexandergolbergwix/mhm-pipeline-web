@@ -19,8 +19,10 @@
 
 import { Canvas, useFrame } from "@react-three/fiber";
 import { MeshTransmissionMaterial } from "@react-three/drei";
-import { Suspense, useMemo, useRef } from "react";
+import {Suspense, useMemo, useRef} from "react";
 import * as THREE from "three";
+
+import {useTheme} from "@/stores/theme";
 
 interface OrbSpec {
   color: string;
@@ -47,6 +49,8 @@ const ORBS: OrbSpec[] = [
 
 
 export function LiquidGlassCanvas() {
+  const colorScheme = useTheme((s) => s.colorScheme);
+
   // Respect reduced-motion + a manual opt-out (?glass=off) so demo
   // captures can use the plain CSS path on weak machines.
   if (typeof window !== "undefined") {
@@ -65,7 +69,9 @@ export function LiquidGlassCanvas() {
         // container to pointer-events:auto, it swallowed every click in the
         // viewport (incl. the nav bar) even though this wrapper sets `none`.
         position: "fixed", inset: 0, pointerEvents: "none",
-        zIndex: -1, mixBlendMode: "screen",
+        zIndex: -1,
+        mixBlendMode: colorScheme === "light" ? "multiply" : "screen",
+        opacity: colorScheme === "light" ? "var(--canvas-ambient-opacity)" : 1,
       }}
     >
       <Canvas

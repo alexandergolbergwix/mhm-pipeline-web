@@ -15,15 +15,15 @@ export default {
           sky:   "#77cce5",
         },
         ink: {
-          DEFAULT: "#eaf6fb",
-          muted:   "#b7d8e3",
+          DEFAULT: "var(--ink)",
+          muted:   "var(--muted)",
         },
         glass: {
-          base:     "rgba(255,255,255,0.08)",
-          strong:   "rgba(255,255,255,0.12)",
-          line:     "rgba(119,204,229,0.24)",
-          inkSub:   "#b7d8e3",
-          ink:      "#eaf6fb",
+          base:     "var(--panel)",
+          strong:   "var(--panel-strong)",
+          line:     "var(--line)",
+          inkSub:   "var(--muted)",
+          ink:      "var(--ink)",
         },
       },
       backdropBlur: {

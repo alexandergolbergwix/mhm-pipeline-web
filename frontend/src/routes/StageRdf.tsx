@@ -658,9 +658,10 @@ export default function StageRdf() {
             data-testid="canvas-view"
             role="img"
             aria-label={canvasAriaLabel}
-            className="relative w-full"
+            className="relative w-full overflow-visible"
             style={{ height: "600px", display: viewMode === "canvas" ? "block" : "none" }}
           >
+            <div className="absolute inset-0 z-0">
             <CytoscapeComponent
               elements={elements}
               cy={attachCy}
@@ -677,14 +678,15 @@ export default function StageRdf() {
               maxZoom={3}
               wheelSensitivity={0.2}
             />
+            </div>
             <Legend />
             {graph?.truncated && (
-              <GlassPill as="div" className="absolute top-3 left-3 px-3 py-1 text-[10px] kicker text-yellow-300">
+              <GlassPill as="div" className="absolute z-10 top-3 left-3 px-3 py-1 text-[10px] kicker text-yellow-300">
                 Showing {graph.nodes.length} of {graph.total_nodes} nodes (top by degree)
               </GlassPill>
             )}
             {!graph && busy !== "build" && busy !== "graph" && (
-              <div className="absolute inset-0 flex items-center justify-center">
+              <div className="absolute z-10 inset-0 flex items-center justify-center">
                 <p className="muted">
                   {statusLabel === "idle"
                     ? "No graph yet — click Build RDF."
@@ -1122,7 +1124,7 @@ function ListView({
 
 function Legend() {
   return (
-    <GlassPill as="ul" className="absolute top-3 right-3 px-3 py-2 text-[10px] space-y-1 list-none m-0" aria-label="Node type legend">
+    <GlassPill as="ul" className="absolute z-10 top-3 right-3 px-3 py-2 text-[10px] space-y-1 list-none m-0" aria-label="Node type legend">
       <li className="kicker">Legend</li>
       {LEGEND.map((l) => (
         <li key={l.type} className="flex items-center gap-2">

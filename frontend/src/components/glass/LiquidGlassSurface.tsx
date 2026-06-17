@@ -111,10 +111,14 @@ function LiquidGlassSurface({
     ? `relative z-10 ${contentClassName}`
     : "relative z-10";
 
+  const isPositioned = /\b(absolute|fixed|sticky)\b/.test(className);
+  const rootPosition = isPositioned ? "" : "relative";
+  const rootClass = `${rootPosition} overflow-hidden ${className}`.trim();
+
   return (
     <Component
       ref={setRefs}
-      className={`relative overflow-hidden ${className}`}
+      className={rootClass}
       style={{borderRadius, ...style}}
       {...rest}
     >
@@ -183,8 +187,7 @@ function LiquidGlassSurface({
         className="pointer-events-none absolute inset-0 liquid-glass-rim"
         style={{
           borderRadius,
-          background:
-            "linear-gradient(135deg, rgba(255,255,255,0.22) 0%, transparent 42%, transparent 68%, rgba(119,204,229,0.12) 100%)",
+          background: "var(--glass-rim)",
         }}
       />
 

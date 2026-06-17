@@ -3,8 +3,9 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { api, ApiError } from "@/api/client";
 import { ApiKeys, type ApiKeyName, type ApiKeyStatus } from "@/api/apiKeys";
-import { useAuth } from "@/stores/auth";
 import {Glass, GlassPill} from "@/components/glass";
+import {ThemeToggle} from "@/components/ThemeToggle";
+import {useAuth} from "@/stores/auth";
 
 const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
   gemini: {
@@ -57,6 +58,16 @@ export default function Settings() {
           <p className="muted text-sm">
             {user?.email} · <span className="kicker inline-block">{user?.role}</span>
           </p>
+        </Glass>
+
+        <Glass as="section" className="p-6 space-y-3">
+          <div className="kicker">Appearance</div>
+          <h3 className="text-lg font-medium">Color scheme</h3>
+          <p className="muted text-sm leading-relaxed">
+            Switch between light and dark mode. Your choice is saved in this
+            browser and applies across the app, including liquid-glass panels.
+          </p>
+          <ThemeToggle />
         </Glass>
 
         <PasswordChangeSection />

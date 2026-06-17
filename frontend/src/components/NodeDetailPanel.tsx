@@ -92,10 +92,10 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
 
   return (
     <Glass
-      variant="drawer"
+      variant="panel"
       as="aside"
       data-testid="node-detail-panel"
-      className="absolute z-20 top-4 right-4 w-[min(360px,calc(100%-2rem))] max-h-[calc(100%-2rem)] overflow-auto p-4 space-y-4 shadow-2xl"
+      className="absolute z-50 top-4 right-4 w-[min(360px,calc(100%-2rem))] max-h-[calc(100%-2rem)] overflow-auto p-4 space-y-4 shadow-2xl pointer-events-auto"
       style={{transform: `translate(${offset.x}px, ${offset.y}px)`}}
     >
       <header className="space-y-1 cursor-move select-none" onMouseDown={onDragStart}>
