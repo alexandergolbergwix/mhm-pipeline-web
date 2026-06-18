@@ -31,7 +31,7 @@ _INIT_NS = {
 _LABEL_QUERY = """
 SELECT ?s ?label WHERE {
   ?s rdfs:label ?label .
-  FILTER(LANG(?label) = "he" || LANG(?label) = "")
+  FILTER(LANG(?label) IN ("he", "en", ""))
 }
 """
 
@@ -135,11 +135,29 @@ def query_co_occurrence(
 
 _PERSON_MS_Q = """
 SELECT DISTINCT ?ms ?person ?role WHERE {
-  { ?ms hm:has_scribe ?person . BIND("scribe" AS ?role) }
-  UNION { ?ms hm:has_owner  ?person . BIND("owner"  AS ?role) }
-  UNION { ?work hm:has_author ?person .
-          ?ms   hm:has_work   ?work .   BIND("author" AS ?role) }
   ?person rdf:type cidoc:E21_Person .
+  {
+    { ?ms hm:has_scribe ?person . BIND("scribe" AS ?role) }
+    UNION { ?ms hm:mentions_scribe ?person . BIND("scribe" AS ?role) }
+    UNION {
+      ?ms hm:has_production_event ?prod .
+      ?prod hm:has_scribe ?person .
+      BIND("scribe" AS ?role)
+    }
+    UNION {
+      ?ms hm:is_composed_of+ ?unit .
+      ?unit hm:has_scribe ?person .
+      BIND("scribe" AS ?role)
+    }
+    UNION { ?ms hm:has_owner ?person . BIND("owner" AS ?role) }
+    UNION { ?ms hm:former_owner ?person . BIND("owner" AS ?role) }
+    UNION {
+      ?work hm:has_author ?person .
+      { ?ms hm:has_work ?work }
+      UNION { ?ms hm:is_composed_of+ ?cu . ?cu hm:has_work ?work }
+      BIND("author" AS ?role)
+    }
+  }
 }
 """
 

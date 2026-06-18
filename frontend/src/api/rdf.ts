@@ -44,6 +44,29 @@ export interface GraphResponse {
   total_nodes: number;
   total_edges: number;
   layout?: string;
+  manuscript_count?: number | null;
+  manuscripts_in_view?: number | null;
+}
+
+
+export interface GraphCatalogResponse {
+  total_nodes: number;
+  total_edges: number;
+  node_types: Record<string, number>;
+  edge_predicates: Record<string, number>;
+  manuscript_count: number;
+}
+
+
+export interface ViewportParams {
+  types?: string[];
+  predicates?: string[];
+  q?: string;
+  seed?: string;
+  radius?: number;
+  maxNodes?: number;
+  layout?: ServerLayout;
+  manuscriptsOnly?: boolean;
 }
 
 
@@ -221,6 +244,33 @@ export const Rdf = {
     api.get<GraphResponse>(
       `/runs/${runId}/rdf/graph?max_nodes=${maxNodes}&layout=${layout}`,
     ),
+
+  catalog: (runId: string) =>
+    api.get<GraphCatalogResponse>(`/runs/${runId}/rdf/catalog`),
+
+  viewport: (runId: string, params: ViewportParams = {}) => {
+    const sp = new URLSearchParams();
+    const maxNodes = params.maxNodes ?? 500;
+    const layout = params.layout ?? "spring";
+    sp.set("max_nodes", String(maxNodes));
+    sp.set("layout", layout);
+    if (params.q) sp.set("q", params.q);
+    if (params.seed) sp.set("seed", params.seed);
+    if (params.radius) sp.set("radius", String(params.radius));
+    if (params.manuscriptsOnly) sp.set("manuscripts_only", "true");
+    for (const t of params.types ?? []) sp.append("types", t);
+    for (const p of params.predicates ?? []) sp.append("predicates", p);
+    return api.get<GraphResponse>(`/runs/${runId}/rdf/viewport?${sp.toString()}`);
+  },
+
+  ego: (runId: string, center: string, params: Omit<ViewportParams, "seed"> = {}) => {
+    const sp = new URLSearchParams();
+    sp.set("center", center);
+    sp.set("max_nodes", String(params.maxNodes ?? 500));
+    sp.set("layout", params.layout ?? "spring");
+    sp.set("radius", String(params.radius ?? 2));
+    return api.get<GraphResponse>(`/runs/${runId}/rdf/ego?${sp.toString()}`);
+  },
 
   /** Fetch full detail for one node (clicked in the graph view).
    *  ``nodeId`` is passed as a query param so URIs with slashes work

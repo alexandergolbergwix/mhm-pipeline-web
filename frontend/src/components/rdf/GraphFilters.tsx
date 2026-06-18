@@ -13,9 +13,9 @@
  * forwards state changes.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { GraphEdge, GraphNode } from "@/api/rdf";
+import type {GraphCatalogResponse, GraphEdge, GraphNode} from "@/api/rdf";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
 import { useDebounce } from "@/hooks/useDebounce";
 
@@ -37,12 +37,15 @@ const PREDICATE_CHIP_LIMIT = 8;
 export interface GraphFiltersProps {
   nodes:        GraphNode[];
   edges:        GraphEdge[];
-  shaclFocus:   Set<string>;          // empty ⇒ SHACL chip hidden
-  selectedId:   string | null;        // null ⇒ neighbourhood row hidden
+  catalog:      GraphCatalogResponse | null;
+  shaclFocus:   Set<string>;
+  selectedId:   string | null;
   state:        GraphFilterState;
   onChange:     (state: GraphFilterState) => void;
+  onSearchChange?: (query: string) => void;
   visibleCount: number;
   totalCount:   number;
+  corpusTotal:  number;
 }
 
 interface ChipProps {
@@ -67,49 +70,61 @@ function Chip({ label, active, count, onToggle, testId }: ChipProps) {
 export function GraphFilters({
   nodes,
   edges,
+  catalog,
   shaclFocus,
   selectedId,
   state,
   onChange,
+  onSearchChange,
   visibleCount,
   totalCount,
+  corpusTotal,
 }: GraphFiltersProps) {
   // Local draft keeps the input visually responsive on every keystroke.
   // The debounced value feeds the upstream filter call so the O(N+E)
   // pass only runs after the user pauses.
   const [searchDraft, setSearchDraft] = useState(state.query);
   const debouncedSearch = useDebounce(searchDraft, 150);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const prevParentQueryRef = useRef(state.query);
 
   useEffect(() => {
-    onChange({ ...state, query: debouncedSearch });
-    // state intentionally omitted — react only to debounced value changes,
-    // not every render with a fresh state reference.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]);
+    if (debouncedSearch === stateRef.current.query) return;
+    if (onSearchChange) {
+      onSearchChange(debouncedSearch);
+      return;
+    }
+    onChange({ ...stateRef.current, query: debouncedSearch });
+  }, [debouncedSearch, onChange, onSearchChange]);
 
-  // Keep the input synced if the parent resets ``state.query`` via
-  // Clear-all.
+  // Reset the draft only when the parent cleared search (Clear all),
+  // not on every render while the user is still typing.
   useEffect(() => {
-    if (state.query === "" && searchDraft !== "") setSearchDraft("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (state.query === "" && prevParentQueryRef.current !== "") {
+      setSearchDraft("");
+    }
+    prevParentQueryRef.current = state.query;
   }, [state.query]);
 
   // Per-type counts for the chip badges.
   const typeCounts = useMemo(() => {
+    if (catalog) return catalog.node_types;
     const c: Record<string, number> = {};
     for (const n of nodes) c[n.type] = (c[n.type] ?? 0) + 1;
     return c;
-  }, [nodes]);
+  }, [catalog, nodes]);
 
-  // Distinct predicate labels found on the loaded edges, sorted by
-  // descending count. The first PREDICATE_CHIP_LIMIT render inline;
-  // the rest are reachable via a "More…" popup.
   const predicateInfo = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const e of edges) {
-      const lbl = e.predicate_label || e.predicate || "";
-      if (!lbl) continue;
-      c[lbl] = (c[lbl] ?? 0) + 1;
+    const c: Record<string, number> = catalog
+      ? {...catalog.edge_predicates}
+      : {};
+    if (!catalog) {
+      for (const e of edges) {
+        const lbl = e.predicate_label || e.predicate || "";
+        if (!lbl) continue;
+        c[lbl] = (c[lbl] ?? 0) + 1;
+      }
     }
     const ordered = Object.entries(c)
       .sort((a, b) => b[1] - a[1])
@@ -119,7 +134,7 @@ export function GraphFilters({
       head: ordered.slice(0, PREDICATE_CHIP_LIMIT),
       tail: ordered.slice(PREDICATE_CHIP_LIMIT),
     };
-  }, [edges]);
+  }, [catalog, edges]);
 
   const [predOverflow, setPredOverflow] = useState<{ x: number; y: number } | null>(null);
 
@@ -163,7 +178,10 @@ export function GraphFilters({
           className="input-glass h-8 flex-1 text-sm" />
         <span className="muted text-xs whitespace-nowrap"
               data-testid="graph-visible-count">
-          {visibleCount} / {totalCount} visible
+          {visibleCount} / {totalCount} in view
+          {corpusTotal > totalCount && (
+            <span className="opacity-70"> · {corpusTotal.toLocaleString()} corpus</span>
+          )}
         </span>
         {anyActive && (
           <button type="button" onClick={clearAll}

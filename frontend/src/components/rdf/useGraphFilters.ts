@@ -81,10 +81,12 @@ interface UseGraphFiltersArgs {
   state:      GraphFilterState;
   shaclFocus: Set<string>;
   selectedId: string | null;
+  /** When true, types/predicates/search were applied server-side — only SHACL + radius run here. */
+  serverFiltered?: boolean;
 }
 
 export function useGraphFilters({
-  nodes, edges, state, shaclFocus, selectedId,
+  nodes, edges, state, shaclFocus, selectedId, serverFiltered = false,
 }: UseGraphFiltersArgs): ActiveSets {
   // Stable, edges-only derived structures — only rebuilt when the edge
   // list itself changes, not on every filter-state update.
@@ -112,19 +114,14 @@ export function useGraphFilters({
   }, [nodes]);
 
   return useMemo(() => {
-    // — 1. Search match — produces a set of nodeIds the query "touched".
-    //
-    // Search hits expand to edge endpoints too: typing "owner" matches
-    // every "owned by" edge's predicate, and we light up the endpoints.
     const needle = state.query.trim().toLocaleLowerCase();
     let searchNodeIds: Set<string> | null = null;
-    if (needle.length > 0) {
+    if (!serverFiltered && needle.length > 0) {
       searchNodeIds = new Set();
 
       for (const n of nodes) {
         if (haystackById.get(n.id)?.includes(needle)) searchNodeIds.add(n.id);
       }
-      // Edge predicate match expands to source/target
       for (const e of edges) {
         const label = (e.predicate_label || e.predicate || "").toLocaleLowerCase();
         if (label.includes(needle)) {
@@ -134,9 +131,8 @@ export function useGraphFilters({
       }
     }
 
-    // — 2. Type filter — OR within the chip row
     const typeOk = (n: GraphNode): boolean =>
-      state.types.size === 0 || state.types.has(n.type);
+      serverFiltered || state.types.size === 0 || state.types.has(n.type);
 
     // — 3. SHACL-only — restrict to focus_nodes + 1-hop context
     let shaclScope: Set<string> | null = null;
@@ -170,7 +166,7 @@ export function useGraphFilters({
     if (selectedId) nodeIds.add(selectedId);
 
     // — 6. Compute final edge set
-    const predicateActive = state.predicates.size > 0;
+    const predicateActive = !serverFiltered && state.predicates.size > 0;
     const edgeIds = new Set<string>();
     for (const e of edges) {
       if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue;
@@ -199,5 +195,5 @@ export function useGraphFilters({
     }
 
     return { nodeIds, edgeIds };
-  }, [nodes, edges, state, shaclFocus, selectedId, adj, edgeById, haystackById]);
+  }, [nodes, edges, state, shaclFocus, selectedId, adj, edgeById, haystackById, serverFiltered]);
 }

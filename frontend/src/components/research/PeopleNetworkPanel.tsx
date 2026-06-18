@@ -50,9 +50,12 @@ function NetworkGraph({network}: {network: PeopleNetwork}) {
         vy: 0,
       });
     }
-    const simLinks: SimLink[] = network.links
-      .filter((l) => nodeMap.has(l.source) && nodeMap.has(l.target))
-      .map((l) => ({source: l.source, target: l.target, ms: l.ms}));
+    const simLinks: SimLink[] = network.links.flatMap((l) => {
+      const source = nodeMap.get(l.source);
+      const target = nodeMap.get(l.target);
+      if (!source || !target) return [];
+      return [{source, target, ms: l.ms}];
+    });
     return {nodes: [...nodeMap.values()], links: simLinks};
   }, [network]);
 

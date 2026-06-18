@@ -16,7 +16,7 @@
  * disclosure uses aria-expanded/aria-controls.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { type Core, type LayoutOptions, type StylesheetJsonBlock } from "cytoscape";
@@ -36,6 +36,7 @@ import {
   type GraphEdge,
   type GraphNode,
   type GraphResponse,
+  type GraphCatalogResponse,
   type NodeDetail,
   type RdfBuildResponse,
   type RdfCoverageResponse,
@@ -47,6 +48,7 @@ import {
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
+import {useAuth} from "@/stores/auth";
 
 
 // All layouts are computed SERVER-SIDE (networkx) — Cytoscape just uses
@@ -98,6 +100,8 @@ const NODE_TYPE_GROUPS: Array<{ key: string; label: string; color: string }> = [
 
 export default function StageRdf() {
   const { runId } = useParams<{ runId: string }>();
+  const {user} = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const [status, setStatus] = useState<RdfStatus | null>(null);
   const [graph, setGraph]   = useState<GraphResponse | null>(null);
@@ -107,6 +111,7 @@ export default function StageRdf() {
   const [busy, setBusy] = useState<"build" | "validate" | "graph" | null>(null);
   const [mappingErrors, setMappingErrors] = useState<string[]>([]);
   const [coverage, setCoverage] = useState<RdfCoverageResponse | null>(null);
+  const [catalog, setCatalog] = useState<GraphCatalogResponse | null>(null);
   const [ontologyCoverage, setOntologyCoverage] = useState<RdfOntologyCoverageResponse | null>(null);
   const [buildOptions, setBuildOptions] = useState({
     add_epistemological_status: true,
@@ -131,9 +136,52 @@ export default function StageRdf() {
   const [filterState, setFilterState] = useState<GraphFilterState>(() => emptyFilterState());
 
   const cyRef = useRef<Core | null>(null);
+  const viewportRequestRef = useRef(0);
 
-  // On mount: pull status. If ``built`` (or ``validated``), also pull
-  // the graph so the canvas isn't empty.
+  const filterKey = useMemo(
+    () => JSON.stringify({
+      types: [...filterState.types].sort(),
+      predicates: [...filterState.predicates].sort(),
+      q: filterState.query,
+    }),
+    [filterState],
+  );
+
+  const handleSearchChange = useCallback((query: string) => {
+    setFilterState((prev) => ({ ...prev, query }));
+  }, []);
+
+  async function loadCatalog() {
+    if (!runId) return;
+    try {
+      setCatalog(await Rdf.catalog(runId));
+    } catch {
+      setCatalog(null);
+    }
+  }
+
+  async function loadViewport(layoutOverride?: ServerLayout) {
+    if (!runId) return;
+    const requestId = ++viewportRequestRef.current;
+    setBusy("graph"); setError(null);
+    try {
+      const payload = await Rdf.viewport(runId, {
+        types: [...filterState.types],
+        predicates: [...filterState.predicates],
+        q: filterState.query,
+        maxNodes: 500,
+        layout: layoutOverride ?? layout,
+      });
+      if (requestId !== viewportRequestRef.current) return;
+      setGraph(payload);
+    } catch (e) {
+      if (requestId !== viewportRequestRef.current) return;
+      setError(e instanceof ApiError ? e.detail : String(e));
+    } finally {
+      if (requestId === viewportRequestRef.current) setBusy(null);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
@@ -142,9 +190,6 @@ export default function StageRdf() {
         const st = await Rdf.status(runId);
         if (cancelled) return;
         setStatus(st);
-        if (st.status === "built" || st.status === "validated") {
-          await loadGraph();
-        }
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof ApiError ? e.detail : String(e));
@@ -152,28 +197,40 @@ export default function StageRdf() {
     }
     void bootstrap();
     return () => { cancelled = true; };
-  }, [runId]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [runId]);
 
-  async function loadGraph(layoutOverride?: ServerLayout) {
-    if (!runId) return;
-    setBusy("graph"); setError(null);
-    try {
-      setGraph(await Rdf.graph(runId, 500, layoutOverride ?? layout));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.detail : String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  // Re-fetch graph when the user picks a different server layout.
-  // First call triggers a server-side networkx layout pass; subsequent
-  // calls hit the on-disk cache and return in milliseconds.
   useEffect(() => {
-    if (!graph) return;            // don't fetch before initial mount loaded data
-    void loadGraph(layout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout]);
+    if (!runId) return;
+    if (status?.status !== "built" && status?.status !== "validated") return;
+    void loadCatalog();
+  }, [runId, status?.status]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!runId) return;
+    if (status?.status !== "built" && status?.status !== "validated") return;
+    const requestId = ++viewportRequestRef.current;
+    const params = {
+      types: [...filterState.types],
+      predicates: [...filterState.predicates],
+      q: filterState.query,
+      maxNodes: 500,
+      layout,
+    };
+    setBusy("graph");
+    setError(null);
+    void (async () => {
+      try {
+        const payload = await Rdf.viewport(runId, params);
+        if (requestId !== viewportRequestRef.current) return;
+        setGraph(payload);
+      } catch (e) {
+        if (requestId !== viewportRequestRef.current) return;
+        setError(e instanceof ApiError ? e.detail : String(e));
+      } finally {
+        if (requestId === viewportRequestRef.current) setBusy(null);
+      }
+    })();
+  }, [runId, status?.status, layout, filterKey, filterState]);
 
   async function build() {
     if (!runId) return;
@@ -181,16 +238,18 @@ export default function StageRdf() {
     try {
       const buildResult: RdfBuildResponse = await Rdf.build(runId, buildOptions);
       setMappingErrors(buildResult.mapping_errors ?? []);
-      const [st, g, cov, ontoCov] = await Promise.all([
+      const [st, g, cov, cat, ontoCov] = await Promise.all([
         Rdf.status(runId),
-        Rdf.graph(runId, 500, layout),
+        Rdf.viewport(runId, {maxNodes: 500, layout}),
         Rdf.coverage(runId).catch(() => null),
-        Rdf.ontologyCoverage(runId).catch(() => null),
+        Rdf.catalog(runId).catch(() => null),
+        isAdmin ? Rdf.ontologyCoverage(runId).catch(() => null) : Promise.resolve(null),
       ]);
       setStatus(st);
       setGraph(g);
       setCoverage(cov);
-      setOntologyCoverage(ontoCov);
+      setCatalog(cat);
+      setOntologyCoverage(isAdmin ? ontoCov : null);
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
@@ -391,6 +450,7 @@ export default function StageRdf() {
     state:      filterState,
     shaclFocus,
     selectedId: selectedNodeId,
+    serverFiltered: true,
   });
 
   // Apply ``.dim`` to elements that the filter set rejected. Uses
@@ -486,9 +546,9 @@ export default function StageRdf() {
           </div>
         </Glass>
 
-        {(ontologyCoverage || coverage) && (
+        {((isAdmin && ontologyCoverage) || coverage) && (
           <Glass as="section" className="p-6 space-y-4" data-testid="rdf-coverage-panel">
-            {ontologyCoverage && (
+            {isAdmin && ontologyCoverage && (
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold">HMO ontology coverage</h3>
                 <p className="muted text-sm">
@@ -662,12 +722,15 @@ export default function StageRdf() {
             <GraphFilters
               nodes={graph.nodes}
               edges={graph.edges}
+              catalog={catalog}
               shaclFocus={shaclFocus}
               selectedId={selectedNodeId}
               state={filterState}
               onChange={setFilterState}
+              onSearchChange={handleSearchChange}
               visibleCount={activeSets.nodeIds.size}
               totalCount={graph.nodes.length}
+              corpusTotal={catalog?.total_nodes ?? graph.total_nodes}
             />
           )}
 
@@ -721,7 +784,10 @@ export default function StageRdf() {
             <Legend />
             {graph?.truncated && (
               <GlassPill as="div" className="absolute z-10 top-3 left-3 px-3 py-1 text-[10px] kicker text-yellow-300">
-                Showing {graph.nodes.length} of {graph.total_nodes} nodes (top by degree)
+                Canvas: {graph.nodes.length.toLocaleString()} / {graph.total_nodes.toLocaleString()} nodes
+                {graph.manuscript_count != null && graph.manuscripts_in_view != null && (
+                  <> · {graph.manuscripts_in_view}/{graph.manuscript_count} manuscripts</>
+                )}
               </GlassPill>
             )}
             {!graph && busy !== "build" && busy !== "graph" && (

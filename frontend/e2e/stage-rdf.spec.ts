@@ -28,10 +28,10 @@ test.describe("RDF graph view — filter bar + smart search", () => {
     await installRdfMocks(page, state);
     await gotoRdf(page);
 
-    await expect(page.getByTestId("graph-filters")).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId("graph-filters")).toBeVisible({timeout: 15000});
     await expect(page.getByTestId("graph-search")).toBeVisible();
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText(`${state.graph.nodes.length} / ${state.graph.nodes.length} visible`);
+      .toContainText(`${state.graph.nodes.length} / ${state.graph.nodes.length} in view`);
   });
 
   test("type chips render the 8 ontology classes with counts", async ({ page }) => {
@@ -64,7 +64,7 @@ test.describe("RDF graph view — filter bar + smart search", () => {
       .toHaveAttribute("data-active", "true");
     // 8 persons of 30 nodes survive (selectedId is null at this point)
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText("8 / 30 visible");
+      .toContainText("8 / 8 in view");
   });
 
   test("predicate chips render top predicates by frequency", async ({ page }) => {
@@ -90,7 +90,7 @@ test.describe("RDF graph view — filter bar + smart search", () => {
     // 12 owned-by edges connect 5 MSes + 8 persons = 13 surviving nodes
     // (every other type becomes an orphan).
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText("13 / 30 visible");
+      .toContainText("13 / 13 in view");
   });
 
   test("free-text search matches node labels (Maimonides) + edge predicates (owner)", async ({ page }) => {
@@ -102,14 +102,14 @@ test.describe("RDF graph view — filter bar + smart search", () => {
     // Maimonides matches exactly one node
     await page.getByTestId("graph-search").fill("Maimonides");
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText("1 / 30 visible", { timeout: 1500 });
+      .toContainText("1 / 1 in view", {timeout: 8000});
 
     // Clear and search edge predicate — "owned" hits "owned by"
     // edges, expanding to their 13 endpoint nodes.
     await page.getByTestId("graph-search").fill("");
     await page.getByTestId("graph-search").fill("owned");
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText("13 / 30 visible", { timeout: 1500 });
+      .toContainText("13 / 13 in view", {timeout: 8000});
   });
 
   test("SHACL chip appears only after Validate runs", async ({ page }) => {
@@ -165,7 +165,7 @@ test.describe("RDF graph view — filter bar + smart search", () => {
     await expect(page.getByTestId("graph-chip-type-Person"))
       .toHaveAttribute("data-active", "false");
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText("30 / 30 visible");
+      .toContainText("30 / 30 in view");
   });
 
   test("type filter + free-text search AND-combine", async ({ page }) => {
@@ -177,11 +177,11 @@ test.describe("RDF graph view — filter bar + smart search", () => {
     // Person chip → 8. Adding the search "Maimonides" → 1.
     await page.getByTestId("graph-chip-type-Person").click();
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText("8 / 30 visible");
+      .toContainText("8 / 8 in view");
 
     await page.getByTestId("graph-search").fill("Maimonides");
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText("1 / 30 visible", { timeout: 1500 });
+      .toContainText("1 / 1 in view", {timeout: 8000});
   });
 
   test("multiple type chips OR-combine within the row", async ({ page }) => {
@@ -194,6 +194,6 @@ test.describe("RDF graph view — filter bar + smart search", () => {
     await page.getByTestId("graph-chip-type-Person").click();
     await page.getByTestId("graph-chip-type-Work").click();
     await expect(page.getByTestId("graph-visible-count"))
-      .toContainText("13 / 30 visible");
+      .toContainText("13 / 13 in view");
   });
 });

@@ -361,6 +361,13 @@ def _run_mapper_sync(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.serialize(destination=str(output_path), format="turtle")
 
+    try:
+        from app.pipeline.graph_index import build_and_persist_index  # noqa: PLC0415
+
+        build_and_persist_index(combined, output_path.parent)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Graph index/catalog build failed: %s", exc)
+
     coverage_path: Path | None = None
     unknown_count: int | None = None
     ontology_coverage_path: Path | None = None
@@ -532,98 +539,43 @@ def graph_to_cytoscape_json(
     *,
     max_nodes: int = 500,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Convert an rdflib graph to Cytoscape.js JSON.
+    """Convert an rdflib graph to Cytoscape.js JSON (legacy path).
 
-    Returns ``{"nodes": [...], "edges": [...]}``. Each node carries
-    ``{id, label, type, color}``; each edge carries
-    ``{id, source, target, predicate, predicate_label}``.
-
-    Literals are folded onto their subject node as ``properties`` (so the
-    UI can render them on click) rather than turning into nodes
-    themselves — same as the desktop viewer.
-
-    The result is truncated to ``max_nodes`` highest-degree nodes; edges
-    whose endpoints both survive truncation are kept.
+    Prefer ``graph_index.build_viewport_payload`` when an index exists.
+    Manuscript nodes are always retained before degree-based truncation.
     """
-    node_categories: dict[str, str] = {}
-    node_labels: dict[str, str] = {}
-    node_props: dict[str, dict[str, list[str]]] = {}
-    degree: dict[str, int] = {}
+    from app.pipeline.graph_index import (  # noqa: PLC0415
+        ViewportParams,
+        _select_viewport_nodes,
+        scan_graph,
+    )
 
-    for s, p, o in graph:
-        s_id = str(s)
-        degree[s_id] = degree.get(s_id, 0) + 1
+    nodes, edges = scan_graph(graph)
+    kept_ids = _select_viewport_nodes(
+        nodes,
+        edges,
+        ViewportParams(max_nodes=max_nodes),
+    )
 
-        if isinstance(o, Literal):
-            node_props.setdefault(s_id, {}).setdefault(
-                _shorten_uri(str(p)), []
-            ).append(str(o))
-            if p == RDFS.label:
-                node_labels[s_id] = str(o)
+    out_nodes: list[dict[str, Any]] = []
+    for n in nodes:
+        if n["id"] not in kept_ids:
             continue
+        out_nodes.append({
+            "id": n["id"],
+            "label": n["label"],
+            "type": n["type"],
+            "color": n["color"],
+            "properties": n.get("properties") or {},
+        })
 
-        o_id = str(o)
-        degree[o_id] = degree.get(o_id, 0) + 1
-
-        if p == RDF.type:
-            local = _local_name(str(o))
-            category = _category_for_type(local)
-            if category != "Other" or s_id not in node_categories:
-                node_categories[s_id] = category
-
-    # Collect candidate node IDs from (s, p, o) triples — only URI/BNode
-    # endpoints, never literal objects.
-    candidate_ids: set[str] = set()
-    raw_edges: list[tuple[str, str, str]] = []  # (s_id, p_uri, o_id)
-    for s, p, o in graph:
-        if isinstance(o, Literal):
+    out_edges: list[dict[str, Any]] = []
+    for e in edges:
+        if e["source"] not in kept_ids or e["target"] not in kept_ids:
             continue
-        if p == RDF.type:
-            # rdf:type triples drive the colour but aren't shown as edges.
-            candidate_ids.add(str(s))
-            candidate_ids.add(str(o))
-            continue
-        s_id, o_id = str(s), str(o)
-        candidate_ids.add(s_id)
-        candidate_ids.add(o_id)
-        raw_edges.append((s_id, str(p), o_id))
+        out_edges.append(e)
 
-    # Truncate to top-N nodes by degree.
-    if len(candidate_ids) > max_nodes:
-        ranked = sorted(candidate_ids, key=lambda nid: -degree.get(nid, 0))
-        kept_ids = set(ranked[:max_nodes])
-    else:
-        kept_ids = candidate_ids
-
-    nodes: list[dict[str, Any]] = []
-    for nid in kept_ids:
-        category = node_categories.get(nid) or _infer_category_from_uri(nid)
-        label = node_labels.get(nid) or _local_name(nid)
-        nodes.append(
-            {
-                "id": nid,
-                "label": label[:60],
-                "type": category,
-                "color": PALETTE.get(category, PALETTE["Other"]),
-                "properties": node_props.get(nid, {}),
-            }
-        )
-
-    edges: list[dict[str, Any]] = []
-    for s_id, p_uri, o_id in raw_edges:
-        if s_id not in kept_ids or o_id not in kept_ids:
-            continue
-        edges.append(
-            {
-                "id": f"e_{len(edges)}",
-                "source": s_id,
-                "target": o_id,
-                "predicate": p_uri,
-                "predicate_label": _shorten_uri(p_uri),
-            }
-        )
-
-    return {"nodes": nodes, "edges": edges}
+    return {"nodes": out_nodes, "edges": out_edges}
 
 
 # ── Server-side layout ────────────────────────────────────────────────

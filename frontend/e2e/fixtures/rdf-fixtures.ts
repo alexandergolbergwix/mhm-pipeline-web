@@ -181,6 +181,26 @@ export function makeMockGraph(): MockGraphResponse {
     truncated: false,
     total_nodes: nodes.length,
     total_edges: edges.length,
+    manuscript_count: 5,
+    manuscripts_in_view: 5,
+  };
+}
+
+export function makeMockCatalog(graph: MockGraphResponse) {
+  const node_types: Record<string, number> = {};
+  for (const n of graph.nodes) {
+    node_types[n.type] = (node_types[n.type] ?? 0) + 1;
+  }
+  const edge_predicates: Record<string, number> = {};
+  for (const e of graph.edges) {
+    edge_predicates[e.predicate_label] = (edge_predicates[e.predicate_label] ?? 0) + 1;
+  }
+  return {
+    total_nodes: graph.total_nodes,
+    total_edges: graph.total_edges,
+    node_types,
+    edge_predicates,
+    manuscript_count: node_types.Manuscript ?? 0,
   };
 }
 
@@ -247,11 +267,67 @@ export async function installRdfMocks(page: Page, state: RdfMockState) {
     });
   });
 
-  await page.route(/\/api\/runs\/[^/]+\/rdf\/graph(\?.*)?$/, async (route) => {
+  await page.route(/\/api\/runs\/[^/]+\/rdf\/(graph|viewport)(\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    const types = url.searchParams.getAll("types");
+    const predicates = url.searchParams.getAll("predicates");
+    const q = (url.searchParams.get("q") || "").toLowerCase();
+
+    let nodes = state.graph.nodes;
+    let edges = state.graph.edges;
+
+    if (types.length > 0) {
+      nodes = nodes.filter((n) => types.includes(n.type));
+    }
+    if (q) {
+      const searchNodeIds = new Set<string>();
+      for (const n of nodes) {
+        const hay = [
+          n.label,
+          n.type,
+          ...Object.values(n.properties ?? {}).flat(),
+        ].join(" ").toLowerCase();
+        if (hay.includes(q)) searchNodeIds.add(n.id);
+      }
+      for (const e of edges) {
+        const lbl = (e.predicate_label || e.predicate || "").toLowerCase();
+        if (lbl.includes(q)) {
+          searchNodeIds.add(e.source);
+          searchNodeIds.add(e.target);
+        }
+      }
+      nodes = nodes.filter((n) => searchNodeIds.has(n.id));
+    }
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    edges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    if (predicates.length > 0) {
+      edges = edges.filter((e) => predicates.includes(e.predicate_label));
+      const edgeIds = new Set<string>();
+      for (const e of edges) {
+        edgeIds.add(e.source);
+        edgeIds.add(e.target);
+      }
+      nodes = nodes.filter((n) => edgeIds.has(n.id));
+    }
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(state.graph),
+      body: JSON.stringify({
+        ...state.graph,
+        nodes,
+        edges,
+        truncated: nodes.length < state.graph.total_nodes,
+        manuscripts_in_view: nodes.filter((n) => n.type === "Manuscript").length,
+      }),
+    });
+  });
+
+  await page.route(`**/api/runs/${TEST_RUN_ID}/rdf/catalog`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(makeMockCatalog(state.graph)),
     });
   });
 

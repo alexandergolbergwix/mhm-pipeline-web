@@ -20,12 +20,13 @@ import json
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.admin import require_admin
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.extraction_approval import ExtractionApproval
@@ -126,6 +127,16 @@ class CytoscapeGraphResponse(BaseModel):
     total_nodes: int
     total_edges: int
     layout: str | None = None
+    manuscript_count: int | None = None
+    manuscripts_in_view: int | None = None
+
+
+class GraphCatalogResponse(BaseModel):
+    total_nodes: int
+    total_edges: int
+    node_types: dict[str, int]
+    edge_predicates: dict[str, int]
+    manuscript_count: int
 
 
 class NodeTypeRef(BaseModel):
@@ -363,6 +374,11 @@ async def build(
             cache_file.unlink(missing_ok=True)
         except OSError:
             pass
+    for cache_file in out_path.parent.glob("graph_viewport_*.json"):
+        try:
+            cache_file.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     # 2. Research merged-graph LRU (in-process) — drop all entries that
     #    include this run so the Research Explorer re-loads the new graph.
@@ -404,10 +420,10 @@ async def coverage(
 @router.get("/{run_id}/rdf/ontology-coverage", response_model=RdfOntologyCoverageResponse)
 async def ontology_coverage(
     run_id: uuid.UUID,
-    auth: AuthContext = Depends(current_auth),
+    auth: AuthContext = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ) -> RdfOntologyCoverageResponse:
-    """Return HMO ontology class/property coverage from the latest RDF build."""
+    """Return HMO ontology class/property coverage (admin-only dev metric)."""
     await _lookup_run_with_access(db, run_id, auth)
     coverage_path = rdf_output_path_for_run(str(run_id)).parent / "ontology_coverage.json"
     if not coverage_path.exists():
@@ -432,20 +448,48 @@ async def ontology_coverage(
     )
 
 
-@router.get("/{run_id}/rdf/graph", response_model=CytoscapeGraphResponse)
-async def graph(
+@router.get("/{run_id}/rdf/catalog", response_model=GraphCatalogResponse)
+async def graph_catalog(
     run_id: uuid.UUID,
-    max_nodes: int = 500,
-    # Server-side layout — browser used to freeze running cose-bilkent
-    # on 500 nodes. Layouts are cheap to recompute (~1s for spring on
-    # 500 nodes) and cached to disk per (run, layout, max_nodes).
-    layout: str = "spring",
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> CytoscapeGraphResponse:
-    """Return Cytoscape.js JSON for the latest build, with positions."""
+) -> GraphCatalogResponse:
+    """Full-corpus node/edge counts for filter chips (not capped by viewport)."""
     await _lookup_run_with_access(db, run_id, auth)
+    await _ensure_ttl_on_disk(run_id, db)
+    ttl = rdf_output_path_for_run(str(run_id))
+    if not ttl.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No RDF graph yet for this run — POST /rdf/build first.",
+        )
 
+    import asyncio  # noqa: PLC0415
+    from app.pipeline.graph_index import ensure_index  # noqa: PLC0415
+
+    catalog = await asyncio.to_thread(ensure_index, ttl, ttl.parent)
+    return GraphCatalogResponse(
+        total_nodes=catalog.total_nodes,
+        total_edges=catalog.total_edges,
+        node_types=catalog.node_types,
+        edge_predicates=catalog.edge_predicates,
+        manuscript_count=catalog.manuscript_count,
+    )
+
+
+async def _viewport_response(
+    run_id: uuid.UUID,
+    db: AsyncSession,
+    *,
+    types: list[str],
+    predicates: list[str],
+    q: str,
+    seed: str,
+    radius: int,
+    max_nodes: int,
+    layout: str,
+    manuscripts_only: bool,
+) -> CytoscapeGraphResponse:
     if layout not in LAYOUT_KINDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -462,49 +506,130 @@ async def graph(
 
     import asyncio  # noqa: PLC0415
     import json  # noqa: PLC0415
+    from app.pipeline.graph_index import (  # noqa: PLC0415
+        ViewportParams,
+        build_viewport_payload,
+        ensure_index,
+        viewport_cache_path,
+    )
 
-    # Per-(layout, max_nodes) cache. Invalidated implicitly when the
-    # underlying .ttl is rebuilt (mtime check).
-    cache_path = ttl.parent / f"graph_{layout}_{max_nodes}.json"
+    run_dir = ttl.parent
+    await asyncio.to_thread(ensure_index, ttl, run_dir)
+
+    params = ViewportParams(
+        types=types,
+        predicates=predicates,
+        q=q,
+        seed=seed,
+        radius=radius,
+        max_nodes=max_nodes,
+        layout=layout,
+        manuscripts_only=manuscripts_only,
+    )
+    cache_path = viewport_cache_path(run_dir, params)
     if cache_path.exists() and cache_path.stat().st_mtime >= ttl.stat().st_mtime:
         try:
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             return CytoscapeGraphResponse(**cached)
-        except (json.JSONDecodeError, ValueError):
-            # Cache corrupt — fall through and rebuild.
+        except (json.JSONDecodeError, ValueError, TypeError):
             pass
 
-    g = await asyncio.to_thread(load_graph, ttl)
-    total_nodes_pre = {str(s) for s, _, _ in g} | {
-        str(o) for _, _, o in g if not _is_literal_value(o)
-    }
-    raw_total_edges = sum(
-        1 for _s, p, o in g
-        if not _is_literal_value(o)
-        and str(p) != "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-    )
-
-    payload = await asyncio.to_thread(
-        graph_to_cytoscape_json, g, max_nodes=max_nodes,
-    )
-    payload = await asyncio.to_thread(
-        compute_layout, payload, kind=layout,
-    )
-    truncated = len(payload["nodes"]) < len(total_nodes_pre)
-
+    payload = await asyncio.to_thread(build_viewport_payload, run_dir, params)
     response = CytoscapeGraphResponse(
         nodes=[CytoscapeNode(**n) for n in payload["nodes"]],
         edges=[CytoscapeEdge(**e) for e in payload["edges"]],
-        truncated=truncated,
-        total_nodes=len(total_nodes_pre),
-        total_edges=raw_total_edges,
-        layout=layout,
+        truncated=bool(payload["truncated"]),
+        total_nodes=int(payload["total_nodes"]),
+        total_edges=int(payload["total_edges"]),
+        layout=payload.get("layout"),
+        manuscript_count=payload.get("manuscript_count"),
+        manuscripts_in_view=payload.get("manuscripts_in_view"),
     )
     try:
         cache_path.write_text(response.model_dump_json(), encoding="utf-8")
     except OSError:
-        pass  # caching is best-effort
+        pass
     return response
+
+
+@router.get("/{run_id}/rdf/viewport", response_model=CytoscapeGraphResponse)
+async def graph_viewport(
+    run_id: uuid.UUID,
+    types: list[str] = Query(default=[]),
+    predicates: list[str] = Query(default=[]),
+    q: str = "",
+    seed: str = "",
+    radius: int = 0,
+    max_nodes: int = 500,
+    layout: str = "spring",
+    manuscripts_only: bool = False,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> CytoscapeGraphResponse:
+    """Filtered, budget-capped Cytoscape payload. Manuscripts always included in default view."""
+    await _lookup_run_with_access(db, run_id, auth)
+    return await _viewport_response(
+        run_id,
+        db,
+        types=types,
+        predicates=predicates,
+        q=q,
+        seed=seed,
+        radius=max(0, min(radius, 5)),
+        max_nodes=max(50, min(max_nodes, 2000)),
+        layout=layout,
+        manuscripts_only=manuscripts_only,
+    )
+
+
+@router.get("/{run_id}/rdf/ego", response_model=CytoscapeGraphResponse)
+async def graph_ego(
+    run_id: uuid.UUID,
+    center: str = Query(..., description="Node URI at the centre of the ego network"),
+    radius: int = 2,
+    max_nodes: int = 500,
+    layout: str = "spring",
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> CytoscapeGraphResponse:
+    """Ego network around one node (e.g. click-through from list view)."""
+    await _lookup_run_with_access(db, run_id, auth)
+    return await _viewport_response(
+        run_id,
+        db,
+        types=[],
+        predicates=[],
+        q="",
+        seed=center,
+        radius=max(1, min(radius, 5)),
+        max_nodes=max(50, min(max_nodes, 2000)),
+        layout=layout,
+        manuscripts_only=False,
+    )
+
+
+@router.get("/{run_id}/rdf/graph", response_model=CytoscapeGraphResponse)
+async def graph(
+    run_id: uuid.UUID,
+    max_nodes: int = 500,
+    layout: str = "spring",
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> CytoscapeGraphResponse:
+    """Return default viewport (all manuscripts + top neighbours). Back-compat alias."""
+    await _lookup_run_with_access(db, run_id, auth)
+    return await _viewport_response(
+        run_id,
+        db,
+        types=[],
+        predicates=[],
+        q="",
+        seed="",
+        radius=0,
+        max_nodes=max(50, min(max_nodes, 2000)),
+        layout=layout,
+        manuscripts_only=False,
+    )
 
 
 @router.get("/{run_id}/rdf/node", response_model=NodeDetailResponse)
