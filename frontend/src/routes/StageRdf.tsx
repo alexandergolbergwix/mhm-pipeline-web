@@ -43,6 +43,7 @@ import {
   type RdfOntologyCoverageResponse,
   type RdfStatus,
   type ServerLayout,
+  type CanvasBudget,
   type ShaclReport,
 } from "@/api/rdf";
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
@@ -65,6 +66,12 @@ const LAYOUT_NAMES: Array<{ value: ServerLayout; label: string }> = [
   { value: "kamada_kawai", label: "Force (kamada-kawai)" },
   { value: "shell",        label: "Concentric (by class)" },
   { value: "circular",     label: "Circular" },
+];
+
+const CANVAS_BUDGETS: Array<{ value: CanvasBudget; label: string }> = [
+  { value: 500,  label: "500 nodes" },
+  { value: 1000, label: "1,000 nodes" },
+  { value: 2000, label: "2,000 nodes" },
 ];
 
 
@@ -121,6 +128,7 @@ export default function StageRdf() {
   // Layout is computed SERVER-SIDE (networkx) — the browser just renders
   // pre-positioned nodes. Default = spring (force-directed, plain).
   const [layout, setLayout] = useState<ServerLayout>("spring");
+  const [canvasBudget, setCanvasBudget] = useState<CanvasBudget>(500);
   const [shaclOpen, setShaclOpen] = useState(false);
   // ID of the node the user clicked on the graph. When set, the side
   // panel mounts and fetches the full RDF detail (types + properties +
@@ -143,8 +151,14 @@ export default function StageRdf() {
       types: [...filterState.types].sort(),
       predicates: [...filterState.predicates].sort(),
       q: filterState.query,
+      canvasBudget,
     }),
-    [filterState],
+    [filterState, canvasBudget],
+  );
+
+  const manuscriptsOnly = useMemo(
+    () => filterState.types.size === 1 && filterState.types.has("Manuscript"),
+    [filterState.types],
   );
 
   const handleSearchChange = useCallback((query: string) => {
@@ -188,11 +202,12 @@ export default function StageRdf() {
     if (status?.status !== "built" && status?.status !== "validated") return;
     const requestId = ++viewportRequestRef.current;
     const params = {
-      types: [...filterState.types],
+      types: manuscriptsOnly ? [] : [...filterState.types],
       predicates: [...filterState.predicates],
       q: filterState.query,
-      maxNodes: 500,
+      maxNodes: canvasBudget,
       layout,
+      manuscriptsOnly,
     };
     setBusy("graph");
     setError(null);
@@ -208,7 +223,7 @@ export default function StageRdf() {
         if (requestId === viewportRequestRef.current) setBusy(null);
       }
     })();
-  }, [runId, status?.status, layout, filterKey, filterState]);
+  }, [runId, status?.status, layout, filterKey, filterState, canvasBudget, manuscriptsOnly]);
 
   async function build() {
     if (!runId) return;
@@ -218,7 +233,7 @@ export default function StageRdf() {
       setMappingErrors(buildResult.mapping_errors ?? []);
       const [st, g, cov, cat, ontoCov] = await Promise.all([
         Rdf.status(runId),
-        Rdf.viewport(runId, {maxNodes: 500, layout}),
+        Rdf.viewport(runId, {maxNodes: canvasBudget, layout, manuscriptsOnly}),
         Rdf.coverage(runId).catch(() => null),
         Rdf.catalog(runId).catch(() => null),
         isAdmin ? Rdf.ontologyCoverage(runId).catch(() => null) : Promise.resolve(null),
@@ -629,6 +644,17 @@ export default function StageRdf() {
                   }}
                 />
               )}
+              <span className="muted text-sm ml-2">
+                Canvas:&nbsp;
+                <select value={canvasBudget}
+                        onChange={(e) => setCanvasBudget(Number(e.target.value) as CanvasBudget)}
+                        data-testid="graph-canvas-budget"
+                        className="input-glass !py-1 !w-auto text-xs inline">
+                  {CANVAS_BUDGETS.map((b) => (
+                    <option key={b.value} value={b.value}>{b.label}</option>
+                  ))}
+                </select>
+              </span>
               <span className="muted text-sm ml-2">
                 Layout:&nbsp;
                 <select value={layout}

@@ -59,7 +59,14 @@ class TestBuildCatalog:
         assert catalog.node_types["Manuscript"] == 2
         assert catalog.node_types["Person"] == 2
         assert catalog.manuscript_count == 2
+        assert catalog.f4_singleton_count == 2
         assert len(catalog.manuscript_ids) == 2
+
+    def test_corpus_manuscript_count_overrides_display_count(self) -> None:
+        nodes, edges = _sample_nodes_edges()
+        catalog = build_catalog(nodes, edges, corpus_manuscript_count=68)
+        assert catalog.manuscript_count == 68
+        assert catalog.f4_singleton_count == 2
 
 
 class TestSelectViewportNodes:
@@ -96,6 +103,19 @@ class TestSelectViewportNodes:
         )
         assert kept == {"urn:ms:1", "urn:w:1"}
 
+    def test_manuscripts_only_uses_is_manuscript_not_display_type(self) -> None:
+        nodes = [
+            {"id": "urn:ms:f4", "type": "Manuscript", "degree": 5, "is_manuscript": True,
+             "haystack": "f4 singleton", "label": "F4 MS", "color": "#000"},
+            {"id": "urn:da:1", "type": "Manuscript", "degree": 3, "is_manuscript": False,
+             "haystack": "digital access", "label": "IIIF", "color": "#000"},
+        ]
+        kept = _select_viewport_nodes(
+            nodes, [],
+            ViewportParams(manuscripts_only=True, max_nodes=500),
+        )
+        assert kept == {"urn:ms:f4"}
+
 
 class TestPersistAndViewport:
     def _tiny_graph(self) -> Graph:
@@ -114,12 +134,13 @@ class TestPersistAndViewport:
         graph = self._tiny_graph()
         with tempfile.TemporaryDirectory() as d:
             run_dir = Path(d)
-            catalog = build_and_persist_index(graph, run_dir)
+            catalog = build_and_persist_index(graph, run_dir, corpus_manuscript_count=1)
             assert (run_dir / "graph_catalog.json").exists()
             assert (run_dir / "graph_index.sqlite").exists()
             loaded = load_catalog(run_dir)
             assert loaded is not None
-            assert loaded.manuscript_count == catalog.manuscript_count
+            assert loaded.manuscript_count == 1
+            assert loaded.f4_singleton_count == catalog.f4_singleton_count
             assert loaded.total_nodes >= 2
 
     def test_viewport_payload_includes_manuscript_metadata(self) -> None:

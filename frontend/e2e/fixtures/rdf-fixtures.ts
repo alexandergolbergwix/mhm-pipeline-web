@@ -200,7 +200,8 @@ export function makeMockCatalog(graph: MockGraphResponse) {
     total_edges: graph.total_edges,
     node_types,
     edge_predicates,
-    manuscript_count: node_types.Manuscript ?? 0,
+    manuscript_count: graph.manuscript_count ?? node_types.Manuscript ?? 0,
+    f4_singleton_count: graph.manuscripts_in_view ?? node_types.Manuscript ?? 0,
   };
 }
 

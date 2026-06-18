@@ -199,7 +199,11 @@ export function GraphFilters({
           <Chip key={t} label={t}
                 testId={`graph-chip-type-${t}`}
                 active={state.types.has(t)}
-                count={typeCounts[t] ?? 0}
+                count={
+                  t === "Manuscript" && catalog
+                    ? catalog.manuscript_count
+                    : (typeCounts[t] ?? 0)
+                }
                 onToggle={() => toggleType(t)} />
         ))}
       </div>

@@ -364,7 +364,9 @@ def _run_mapper_sync(
     try:
         from app.pipeline.graph_index import build_and_persist_index  # noqa: PLC0415
 
-        build_and_persist_index(combined, output_path.parent)
+        build_and_persist_index(
+            combined, output_path.parent, corpus_manuscript_count=manuscripts,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Graph index/catalog build failed: %s", exc)
 

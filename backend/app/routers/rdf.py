@@ -137,6 +137,7 @@ class GraphCatalogResponse(BaseModel):
     node_types: dict[str, int]
     edge_predicates: dict[str, int]
     manuscript_count: int
+    f4_singleton_count: int | None = None
 
 
 class NodeTypeRef(BaseModel):
@@ -474,6 +475,7 @@ async def graph_catalog(
         node_types=catalog.node_types,
         edge_predicates=catalog.edge_predicates,
         manuscript_count=catalog.manuscript_count,
+        f4_singleton_count=catalog.f4_singleton_count,
     )
 
 

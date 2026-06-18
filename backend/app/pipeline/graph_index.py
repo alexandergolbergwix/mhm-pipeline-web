@@ -11,7 +11,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import sqlite3
 import threading
 from collections import deque
@@ -60,12 +59,8 @@ def _index_is_fresh(ttl_path: Path, run_dir: Path) -> bool:
     )
 
 _MANUSCRIPT_TYPE_LOCALS = frozenset({
-    "Manuscript",
     "F4_Manifestation_Singleton",
-    "F3_Manifestation",
 })
-
-_MS_URI_RE = re.compile(r"(^|/)MS[_/]", re.IGNORECASE)
 
 
 @dataclass
@@ -103,6 +98,7 @@ class GraphCatalog:
     edge_predicates: dict[str, int]
     manuscript_ids: list[str]
     manuscript_count: int
+    f4_singleton_count: int
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -112,15 +108,13 @@ class GraphCatalog:
             "edge_predicates": self.edge_predicates,
             "manuscript_ids": self.manuscript_ids,
             "manuscript_count": self.manuscript_count,
+            "f4_singleton_count": self.f4_singleton_count,
         }
 
 
-def _is_manuscript(category: str, node_id: str, type_locals: set[str]) -> bool:
-    if category == "Manuscript":
-        return True
-    if type_locals & _MANUSCRIPT_TYPE_LOCALS:
-        return True
-    return bool(_MS_URI_RE.search(node_id))
+def _is_manuscript(_category: str, _node_id: str, type_locals: set[str]) -> bool:
+    """True only for F4 manifestation singleton nodes (one per catalog MS)."""
+    return bool(type_locals & _MANUSCRIPT_TYPE_LOCALS)
 
 
 def scan_graph(graph: Graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -202,7 +196,12 @@ def scan_graph(graph: Graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
     return nodes, edges
 
 
-def build_catalog(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> GraphCatalog:
+def build_catalog(
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    *,
+    corpus_manuscript_count: int | None = None,
+) -> GraphCatalog:
     node_types: dict[str, int] = {}
     for n in nodes:
         t = str(n["type"])
@@ -216,6 +215,12 @@ def build_catalog(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> G
         edge_predicates[lbl] = edge_predicates.get(lbl, 0) + 1
 
     manuscript_ids = [str(n["id"]) for n in nodes if n.get("is_manuscript")]
+    f4_singleton_count = len(manuscript_ids)
+    manuscript_count = (
+        corpus_manuscript_count
+        if corpus_manuscript_count is not None
+        else f4_singleton_count
+    )
 
     return GraphCatalog(
         total_nodes=len(nodes),
@@ -223,14 +228,20 @@ def build_catalog(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> G
         node_types=node_types,
         edge_predicates=edge_predicates,
         manuscript_ids=manuscript_ids,
-        manuscript_count=len(manuscript_ids),
+        manuscript_count=manuscript_count,
+        f4_singleton_count=f4_singleton_count,
     )
 
 
-def build_and_persist_index(graph: Graph, run_dir: Path) -> GraphCatalog:
+def build_and_persist_index(
+    graph: Graph,
+    run_dir: Path,
+    *,
+    corpus_manuscript_count: int | None = None,
+) -> GraphCatalog:
     """Scan graph, write SQLite index + catalog JSON. Returns catalog."""
     nodes, edges = scan_graph(graph)
-    catalog = build_catalog(nodes, edges)
+    catalog = build_catalog(nodes, edges, corpus_manuscript_count=corpus_manuscript_count)
 
     run_dir.mkdir(parents=True, exist_ok=True)
     catalog_path = run_dir / "graph_catalog.json"
@@ -321,6 +332,9 @@ def load_catalog(run_dir: Path) -> GraphCatalog | None:
         edge_predicates=dict(data.get("edge_predicates") or {}),
         manuscript_ids=list(data.get("manuscript_ids") or []),
         manuscript_count=int(data.get("manuscript_count") or 0),
+        f4_singleton_count=int(
+            data.get("f4_singleton_count") or data.get("manuscript_count") or 0
+        ),
     )
 
 
@@ -418,12 +432,11 @@ def _select_viewport_nodes(
     pred_filter = set(params.predicates)
     needle = params.q.strip().lower()
 
-    if params.manuscripts_only:
-        type_filter = {"Manuscript"}
-
     candidate: set[str] = set(by_id)
 
-    if type_filter:
+    if params.manuscripts_only:
+        candidate = {nid for nid in candidate if by_id[nid].get("is_manuscript")}
+    elif type_filter:
         candidate = {nid for nid in candidate if by_id[nid]["type"] in type_filter}
 
     if needle:
@@ -452,7 +465,13 @@ def _select_viewport_nodes(
             set(by_id.keys()), by_id, manuscript_ids, max_nodes, fill_all_ms=True,
         )
 
-    return _trim_to_budget(candidate, by_id, manuscript_ids, max_nodes, fill_all_ms=bool(type_filter == {"Manuscript"}))
+    return _trim_to_budget(
+        candidate,
+        by_id,
+        manuscript_ids,
+        max_nodes,
+        fill_all_ms=params.manuscripts_only,
+    )
 
 
 def _trim_to_budget(

@@ -55,7 +55,10 @@ export interface GraphCatalogResponse {
   node_types: Record<string, number>;
   edge_predicates: Record<string, number>;
   manuscript_count: number;
+  f4_singleton_count?: number | null;
 }
+
+export type CanvasBudget = 500 | 1000 | 2000;
 
 
 export interface ViewportParams {
@@ -68,7 +71,6 @@ export interface ViewportParams {
   layout?: ServerLayout;
   manuscriptsOnly?: boolean;
 }
-
 
 // Layouts the BACKEND can compute. The browser no longer runs layouts.
 export type ServerLayout =
