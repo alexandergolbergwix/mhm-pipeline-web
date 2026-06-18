@@ -160,28 +160,6 @@ export default function StageRdf() {
     }
   }
 
-  async function loadViewport(layoutOverride?: ServerLayout) {
-    if (!runId) return;
-    const requestId = ++viewportRequestRef.current;
-    setBusy("graph"); setError(null);
-    try {
-      const payload = await Rdf.viewport(runId, {
-        types: [...filterState.types],
-        predicates: [...filterState.predicates],
-        q: filterState.query,
-        maxNodes: 500,
-        layout: layoutOverride ?? layout,
-      });
-      if (requestId !== viewportRequestRef.current) return;
-      setGraph(payload);
-    } catch (e) {
-      if (requestId !== viewportRequestRef.current) return;
-      setError(e instanceof ApiError ? e.detail : String(e));
-    } finally {
-      if (requestId === viewportRequestRef.current) setBusy(null);
-    }
-  }
-
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
