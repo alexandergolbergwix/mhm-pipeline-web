@@ -203,10 +203,10 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
                       className="button-primary text-sm">
                 {showingHistorical ? "Re-run verification" : "Start verification"}
               </button>
-            : <button onClick={stop} className="button-ghost text-sm text-yellow-300">
+            : <button onClick={stop} className="button-ghost text-sm text-warn">
                 Stop
               </button>}
-          {error && <span className="text-red-300 text-xs">{error}</span>}
+          {error && <span className="text-danger text-xs">{error}</span>}
         </div>
 
         {/* Historical-session banner — visible when we auto-loaded

@@ -194,7 +194,7 @@ export function AuthorityDetailDrawer({
           {match && (
             <>
               {verifyError && (
-                <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-danger">
                   {verifyError}
                 </div>
               )}
@@ -324,7 +324,7 @@ function ConfidenceCard({
           <ul className="space-y-0.5">
             {guards.map((g) => (
               <li key={g} className="text-[11px]">
-                <span className="text-red-300 mr-1">⚠</span>
+                <span className="text-danger mr-1">⚠</span>
                 <span className="font-mono">{g}</span>
                 {guardExplain(g) && <span className="muted ml-2">{guardExplain(g)}</span>}
               </li>
@@ -379,7 +379,7 @@ function DatesCard({
       </p>
       <p className="text-[11px]">
         {conflict
-          ? <span className="text-red-300">⚠ Date guard fired — confidence may have been downgraded.</span>
+          ? <span className="text-danger">⚠ Date guard fired — confidence may have been downgraded.</span>
           : dateGuardRan
             ? <span className="text-biu-sky">✓ Dates compatible with the role.</span>
             : hasIds
@@ -420,7 +420,7 @@ function AiVerdictCard({ payload }: { payload: Record<string, unknown> }) {
         <VerdictBadge overall={verdict.overall} />
         <span className="kicker text-[10px]">
           {verdict.model}
-          {verdict.fallback && <span className="ml-2 text-yellow-300">heuristic fallback</span>}
+          {verdict.fallback && <span className="ml-2 text-warn">heuristic fallback</span>}
         </span>
       </div>
       {verdict.reasoning && (

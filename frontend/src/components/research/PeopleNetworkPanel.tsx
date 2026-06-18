@@ -175,7 +175,7 @@ function NetworkGraph({network}: {network: PeopleNetwork}) {
       <svg ref={svgRef} width="100%" height="100%" />
       <div
         ref={tooltipRef}
-        className="absolute hidden z-10 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-xs pointer-events-none shadow-xl"
+        className="absolute hidden z-10 code-surface px-3 py-2 text-xs text-ink pointer-events-none shadow-xl"
       />
       <div className="absolute bottom-3 right-3 flex gap-3 text-xs muted">
         {Object.entries(ROLE_COLOR).map(([role, color]) => (
@@ -202,7 +202,7 @@ export default function PeopleNetworkPanel({projectId}: {projectId: string}) {
       loading={loading}
       empty={!loading && data?.nodes.length === 0}
     >
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
       {data && data.nodes.length > 0 && <NetworkGraph network={data} />}
     </PanelShell>
   );

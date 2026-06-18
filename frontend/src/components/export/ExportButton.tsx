@@ -103,7 +103,7 @@ export function ExportButton(props: ExportButtonProps): JSX.Element {
         {busy ? "Preparing…" : "Export history"}
       </button>
       {error ? (
-        <span className="text-red-300 text-xs" data-testid="export-button-error">
+        <span className="text-danger text-xs" data-testid="export-button-error">
           {error}
         </span>
       ) : null}

@@ -108,7 +108,7 @@ export default function AdminInvites() {
               {submitting ? "Creating…" : "Create invitation"}
             </button>
           </form>
-          {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
+          {error && <p className="text-danger text-sm mt-3">{error}</p>}
         </Glass>
 
         {lastCreated && (
@@ -119,8 +119,7 @@ export default function AdminInvites() {
               store it plaintext — once you close this page it can't be
               recovered, only a fresh invitation can be issued.
             </p>
-            <div className="rounded-xl px-4 py-3 break-all text-sm font-mono"
-                 style={{ background: "rgba(0,0,0,0.36)", border: "1px solid var(--line)" }}>
+            <div className="rounded-xl px-4 py-3 break-all text-sm font-mono code-surface">
               {lastCreated.accept_url}
             </div>
             <button

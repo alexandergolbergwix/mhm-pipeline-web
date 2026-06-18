@@ -163,7 +163,7 @@ function Why({ match, payload }: { match: AuthorityMatch; payload: Record<string
           : <ul className="space-y-1">
               {guards.map((g) => (
                 <li key={g} className="text-sm">
-                  <span className="text-red-300 mr-2">⚠</span>
+                  <span className="text-danger mr-2">⚠</span>
                   <span className="font-mono">{g}</span>
                   <span className="muted ml-2">{guardExplain(g)}</span>
                 </li>
@@ -203,7 +203,7 @@ function Dates({match, payload}: {match: AuthorityMatch; payload: Record<string,
         </p>
         <p className="text-sm">
           {conflict
-            ? <span className="text-red-300">⚠ Authority Enrichment date guard fired — see the Why tab.</span>
+            ? <span className="text-danger">⚠ Authority Enrichment date guard fired — see the Why tab.</span>
             : dateGuardRan
               ? <span className="text-biu-sky">✓ Dates compatible with the role.</span>
               : hasIds
@@ -271,7 +271,7 @@ function AiTab({
         <button onClick={run} disabled={busy} className="button-primary text-sm">
           {busy ? "Asking…" : verdict ? "Re-verify" : "Verify with AI"}
         </button>
-        {error && <p className="text-red-300 text-sm">{error}</p>}
+        {error && <p className="text-danger text-sm">{error}</p>}
       </GlassPill>
 
       {verdict && (
@@ -280,7 +280,7 @@ function AiTab({
             <VerdictBadge overall={verdict.overall} />
             <span className="kicker">
               {verdict.model}
-              {usedFallback && <span className="ml-2 text-yellow-300">heuristic fallback</span>}
+              {usedFallback && <span className="ml-2 text-warn">heuristic fallback</span>}
             </span>
           </div>
           <p className="text-sm leading-relaxed">{verdict.reasoning}</p>
@@ -392,8 +392,7 @@ function Sources({ match, payload }: { match: AuthorityMatch; payload: Record<st
 
       <GlassPill as="section" className="p-3">
         <div className="kicker mb-1">Raw payload</div>
-        <pre className="text-[11px] font-mono whitespace-pre-wrap leading-snug"
-             style={{ background: "rgba(0,0,0,0.36)", padding: 10, borderRadius: 10, border: "1px solid var(--line)" }}>
+        <pre className="text-[11px] font-mono whitespace-pre-wrap leading-snug code-surface p-2.5">
           {JSON.stringify(match.payload, null, 2)}
         </pre>
       </GlassPill>
@@ -470,8 +469,8 @@ function IdRow({
 function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
   const cls =
     tone === "biu-sky" ? "text-biu-sky"
-    : tone === "red"   ? "text-red-300"
-    : tone === "yellow"? "text-yellow-300"
+    : tone === "red"   ? "text-danger"
+    : tone === "yellow"? "text-warn"
     : "text-ink";
   return (
     <GlassPill as="div" className="px-3 py-2">
@@ -485,7 +484,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone: stri
 export function ConfidenceBadge({ confidence }: { confidence: string }) {
   const cls =
     confidence === "high"   ? "text-biu-sky"
-    : confidence === "medium" ? "text-yellow-300"
+    : confidence === "medium" ? "text-warn"
     : "muted";
   return (
     <GlassPill className={`px-3 py-1 text-[10px] kicker shrink-0 ${cls}`}>
@@ -498,8 +497,8 @@ export function ConfidenceBadge({ confidence }: { confidence: string }) {
 export function VerdictBadge({overall}: {overall: string}) {
   const palette: Record<string, string> = {
     full:    "text-biu-sky",
-    partial: "text-yellow-300",
-    fail:    "text-red-300",
+    partial: "text-warn",
+    fail:    "text-danger",
     abstain: "muted",
   };
   const label: Record<string, string> = {

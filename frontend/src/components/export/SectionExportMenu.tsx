@@ -154,7 +154,7 @@ export function SectionExportMenu({
       )}
 
       {error && (
-        <Glass className="absolute right-0 z-30 mt-1 min-w-[200px] rounded-md shadow-lg px-3 py-2 text-xs text-red-300" data-testid="section-export-error">
+        <Glass className="absolute right-0 z-30 mt-1 min-w-[200px] rounded-md shadow-lg px-3 py-2 text-xs text-danger" data-testid="section-export-error">
           {error}
         </Glass>
       )}

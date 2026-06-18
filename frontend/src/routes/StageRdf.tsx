@@ -699,7 +699,7 @@ export default function StageRdf() {
           </div>
 
           {error && (
-            <GlassPill as="div" className="px-3 py-2 text-sm text-red-300">{error}</GlassPill>
+            <GlassPill as="div" className="px-3 py-2 text-sm text-danger">{error}</GlassPill>
           )}
 
           {mappingErrors.length > 0 && (
@@ -787,7 +787,7 @@ export default function StageRdf() {
             </div>
             <Legend />
             {graph?.truncated && (
-              <GlassPill as="div" className="absolute z-10 top-3 left-3 px-3 py-1 text-[10px] kicker text-yellow-300">
+              <GlassPill as="div" className="absolute z-10 top-3 left-3 px-3 py-1 text-[10px] kicker text-warn">
                 Canvas: {graph.nodes.length.toLocaleString()} / {graph.total_nodes.toLocaleString()} nodes
                 {graph.manuscript_count != null && graph.manuscripts_in_view != null && (
                   <> · {graph.manuscripts_in_view}/{graph.manuscript_count} manuscripts</>
@@ -1111,7 +1111,7 @@ function ListView({
                       onClick={() => { void toggleNode(n.id); onSelect(n.id); }}
                       className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-white/5 rounded"
                     >
-                      <span className="text-xs text-white/40 select-none">{isExpanded ? "▼" : "▶"}</span>
+                      <span className="text-xs text-disabled select-none">{isExpanded ? "▼" : "▶"}</span>
                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{background: g.color}} />
                       <span className="text-sm text-ink font-medium truncate">{n.label}</span>
                       {isLoading && <span className="text-xs muted ml-auto">Loading…</span>}
@@ -1161,13 +1161,13 @@ function ListView({
                                             type="button"
                                             onClick={() => void commitEdit()}
                                             disabled={savingTriple}
-                                            className="text-emerald-400 hover:text-emerald-300 px-1 disabled:opacity-50"
+                                            className="text-success hover:text-success px-1 disabled:opacity-50"
                                             title="Save"
                                           >✓</button>
                                           <button
                                             type="button"
                                             onClick={cancelEdit}
-                                            className="text-red-400 hover:text-red-300 px-1"
+                                            className="text-danger hover:text-danger px-1"
                                             title="Cancel"
                                           >✕</button>
                                         </div>
@@ -1178,7 +1178,7 @@ function ListView({
                                         </span>
                                       )}
                                       {result && (
-                                        <div className={`text-[10px] mt-0.5 ${result.ok ? "text-emerald-400" : "text-red-400"}`}>
+                                        <div className={`text-[10px] mt-0.5 ${result.ok ? "text-success" : "text-danger"}`}>
                                           {result.msg}
                                         </div>
                                       )}
@@ -1188,7 +1188,7 @@ function ListView({
                                         <button
                                           type="button"
                                           onClick={() => startEdit(n.id, prop.predicate, currentValue, prop.datatype, null)}
-                                          className="text-white/30 hover:text-white/70 text-[11px] px-1"
+                                          className="text-disabled hover:text-faint text-[11px] px-1"
                                           title="Edit this triple value"
                                         >✏</button>
                                       )}
@@ -1253,8 +1253,8 @@ function Legend() {
 function StatusPill({ status }: { status: string }) {
   const tone =
     status === "validated" ? "text-biu-sky"
-    : status === "built" ? "text-yellow-300"
-    : status === "error" ? "text-red-300"
+    : status === "built" ? "text-warn"
+    : status === "error" ? "text-danger"
     : "muted";
   return <GlassPill className={`px-3 py-1 text-[10px] kicker ${tone}`}>{status}</GlassPill>;
 }

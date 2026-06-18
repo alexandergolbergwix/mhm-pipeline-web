@@ -60,7 +60,7 @@ export default function OwnershipChainsPanel({projectId}: {projectId: string}) {
       loading={loading}
       empty={!loading && !data?.length}
     >
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
       {data && data.length > 0 && (
         <div className="space-y-4">
           <div className="flex gap-3 items-end">

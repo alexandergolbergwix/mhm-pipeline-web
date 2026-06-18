@@ -12,7 +12,7 @@ export function Spinner() {
 
 export function ErrorBox({msg}: {msg: string}) {
   return (
-    <Glass className="p-4 text-red-400 text-sm rounded-lg border border-red-500/30">
+    <Glass className="p-4 text-danger text-sm rounded-lg border border-red-500/30">
       {msg}
     </Glass>
   );

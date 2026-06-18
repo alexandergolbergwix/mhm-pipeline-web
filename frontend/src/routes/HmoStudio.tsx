@@ -110,8 +110,8 @@ export default function HmoStudioRoute() {
     if (!status) return { label: "loading…", tone: "muted" };
     switch (status.state) {
       case "uploaded": return { label: "uploaded", tone: "text-biu-sky" };
-      case "built":    return { label: "built",    tone: "text-yellow-300" };
-      case "error":    return { label: "error",    tone: "text-red-300" };
+      case "built":    return { label: "built",    tone: "text-warn" };
+      case "error":    return { label: "error",    tone: "text-danger" };
       case "idle":
       default:         return { label: "idle",     tone: "muted" };
     }
@@ -141,7 +141,7 @@ export default function HmoStudioRoute() {
         </Glass>
 
         {error && (
-          <Glass as="p" variant="compact" className="p-3 text-sm text-red-300">{error}</Glass>
+          <Glass as="p" variant="compact" className="p-3 text-sm text-danger">{error}</Glass>
         )}
 
         {/* Coverage */}
@@ -430,9 +430,9 @@ function CoverageTable({ report }: { report: HmoCoverageReport }) {
 function ProjectionPill({ status }: { status: string }) {
   const tone =
     status === "direct_wikidata_item"   ? "text-biu-sky" :
-    status === "summarized_in_wikidata" ? "text-yellow-300" :
+    status === "summarized_in_wikidata" ? "text-warn" :
     status === "hmo_or_wikibase_only"   ? "muted" :
-                                          "text-red-300";
+                                          "text-danger";
   const label =
     status === "direct_wikidata_item"   ? "direct" :
     status === "summarized_in_wikidata" ? "summarised" :
@@ -449,7 +449,7 @@ function ProjectionPill({ status }: { status: string }) {
 function CredBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
     <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${
- ok ? "text-biu-sky" : "text-red-300"
+ ok ? "text-biu-sky" : "text-danger"
  }`}>
       {ok ? "✓" : "⚠"} {label}
     </GlassPill>
@@ -478,7 +478,7 @@ function UploadReportPanel({
           </b>{" "}
           · <span className="text-biu-sky">{report.uploaded} uploaded</span>
           {report.unchanged > 0 && <> · {report.unchanged} unchanged</>}
-          {report.failed > 0 && <> · <span className="text-red-300">{report.failed} failed</span></>}
+          {report.failed > 0 && <> · <span className="text-danger">{report.failed} failed</span></>}
           {cachedAt && <> · <span className="muted">{cachedAt}</span></>}
         </p>
         <button onClick={() => setExpand((v) => !v)} className="button-ghost text-xs">
@@ -530,9 +530,9 @@ function UploadReportPanel({
 function UploadStatusPill({ status }: { status: string }) {
   const tone =
     status === "created" || status === "updated" ? "text-biu-sky" :
-    status === "dry_run"                          ? "text-yellow-300" :
+    status === "dry_run"                          ? "text-warn" :
     status === "unchanged"                        ? "muted" :
-                                                    "text-red-300";
+                                                    "text-danger";
   return (
     <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}`}>
       {status}

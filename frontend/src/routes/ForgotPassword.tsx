@@ -49,8 +49,7 @@ export default function ForgotPassword() {
             {done.dev_reset_url && (
               <div>
                 <div className="kicker mb-1">Dev mode</div>
-                <div className="rounded-xl px-3 py-2 font-mono text-xs break-all"
-                     style={{ background: "rgba(0,0,0,0.36)", border: "1px solid var(--line)" }}>
+                <div className="rounded-xl px-3 py-2 font-mono text-xs break-all code-surface">
                   {done.dev_reset_url}
                 </div>
               </div>
@@ -62,7 +61,7 @@ export default function ForgotPassword() {
             <input type="email" required placeholder="email@example.com"
                    value={email} onChange={(e) => setEmail(e.target.value)}
                    className="input-glass" />
-            {error && <p className="text-red-300 text-sm">{error}</p>}
+            {error && <p className="text-danger text-sm">{error}</p>}
             <button type="submit" disabled={submitting} className="button-primary w-full">
               {submitting ? "Sending…" : "Send reset link"}
             </button>

@@ -42,7 +42,7 @@ export function AdminLayout({children}: Props) {
             <span className="flex items-center justify-between gap-2 w-full">
               <span>Access Requests</span>
               {pendingCount > 0 && (
-                <GlassPill className="text-xs border-yellow-400/60 text-yellow-300 bg-yellow-500/10 px-1.5 py-0.5 min-w-[1.4rem] text-center" data-testid="admin-pending-badge">
+                <GlassPill className="text-xs badge-warn px-1.5 py-0.5 min-w-[1.4rem] text-center" data-testid="admin-pending-badge">
                   {pendingCount}
                 </GlassPill>
               )}

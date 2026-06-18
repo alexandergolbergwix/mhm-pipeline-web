@@ -95,7 +95,7 @@ function PrimitiveValue({ value }: { value: unknown }): JSX.Element {
     const { text, truncated } = truncate(value, STRING_TRUNCATE_AT);
     return (
       <span
-        className="text-emerald-200"
+        className="text-string"
         title={truncated ? value : undefined}
       >
         {`"${text}"`}
@@ -118,7 +118,7 @@ function TreeNode({
   const toggle = useCallback(() => setOpen((o) => !o), []);
 
   const isHighlighted = highlightPaths.has(path);
-  const rowBg = isHighlighted ? "bg-yellow-300/30" : "";
+  const rowBg = isHighlighted ? "highlight-row" : "";
 
   // Primitive leaf.
   if (!isPlainObject(value) && !isJsonArray(value)) {
@@ -204,12 +204,12 @@ export function JsonTreeViewer({
     return (
       <GlassPill
         data-testid="json-tree-viewer"
-        className="font-mono text-sm text-white/90 p-2 overflow-auto block w-full"
+        className="font-mono text-sm text-subtle p-2 overflow-auto block w-full"
       >
         <div className="muted text-xs mb-2">
           Object too large to render as a tree ({nodeCount} nodes). Showing raw JSON.
         </div>
-        <pre className="whitespace-pre-wrap break-all text-emerald-200/90">
+        <pre className="whitespace-pre-wrap break-all text-string/90">
           {JSON.stringify(value, null, 2)}
         </pre>
       </GlassPill>
@@ -219,7 +219,7 @@ export function JsonTreeViewer({
   return (
     <GlassPill
       data-testid="json-tree-viewer"
-      className="font-mono text-sm text-white/90 p-2 overflow-auto block w-full"
+      className="font-mono text-sm text-subtle p-2 overflow-auto block w-full"
     >
       <TreeNode
         value={value}

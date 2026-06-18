@@ -72,7 +72,7 @@ export default function ResetPassword() {
         <input type="password" required placeholder="Confirm"
                value={confirm} onChange={(e) => setConfirm(e.target.value)}
                className="input-glass" />
-        {error && <p className="text-red-300 text-sm">{error}</p>}
+        {error && <p className="text-danger text-sm">{error}</p>}
         <button type="submit" disabled={submitting} className="button-primary w-full">
           {submitting ? "Resetting…" : "Reset password"}
         </button>

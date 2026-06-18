@@ -58,13 +58,13 @@ function UriInput({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-xs text-white/50 shrink-0 w-12">{label}</label>
+      <label className="text-xs text-faint shrink-0 w-12">{label}</label>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? "urn:…"}
-        className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-biu-sky/50"
+        className="input-glass flex-1 !py-1.5 text-sm"
       />
     </div>
   );
@@ -88,14 +88,14 @@ function NeighborRow({
       </td>
       <td className="py-1.5 pr-4 text-ink font-medium truncate max-w-[12rem]">
         {node.label ?? (
-          <span className="text-white/30 text-xs">{node.uri.split(/[/#]/).pop()}</span>
+          <span className="text-disabled text-xs">{node.uri.split(/[/#]/).pop()}</span>
         )}
       </td>
       <td className="py-1.5 pr-4">
-        <span className="text-xs text-white/40">{node.edge_type}</span>
+        <span className="text-xs text-disabled">{node.edge_type}</span>
       </td>
       <td className="py-1.5 pr-2">
-        <span className="text-xs text-white/30 font-mono truncate max-w-[12rem] block">
+        <span className="text-xs text-disabled font-mono truncate max-w-[12rem] block">
           {node.uri}
         </span>
       </td>
@@ -104,13 +104,13 @@ function NeighborRow({
           <button
             onClick={() => onDrill(node.uri)}
             title="Explore neighbors"
-            className="text-xs text-white/40 hover:text-biu-sky transition-colors"
+            className="text-xs text-disabled hover:text-biu-sky transition-colors"
           >
             ⊕
           </button>
           <Link
             to={`/projects/${projectId}/entity?uri=${encodeURIComponent(node.uri)}`}
-            className="text-xs text-white/40 hover:text-biu-sky transition-colors"
+            className="text-xs text-disabled hover:text-biu-sky transition-colors"
             title="Open entity page"
           >
             ⓘ
@@ -150,7 +150,7 @@ function NeighborDrill({ projectId }: { projectId: string }) {
         {history.length > 0 && (
           <button
             onClick={goBack}
-            className="text-xs px-2 py-1 rounded border border-white/10 text-white/50 hover:text-biu-sky hover:border-biu-sky/50 transition-colors"
+            className="text-xs px-2 py-1 rounded border border-white/10 text-faint hover:text-biu-sky hover:border-biu-sky/50 transition-colors"
           >
             ← back
           </button>
@@ -161,21 +161,21 @@ function NeighborDrill({ projectId }: { projectId: string }) {
       </div>
 
       {!uri && (
-        <p className="text-sm text-white/40 italic">Enter a URI to explore its neighbors.</p>
+        <p className="text-sm text-disabled italic">Enter a URI to explore its neighbors.</p>
       )}
 
-      {loading && <p className="text-sm text-white/40">Loading neighbors…</p>}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {loading && <p className="text-sm text-disabled">Loading neighbors…</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {data && data.length === 0 && uri && (
-        <p className="text-sm text-white/40 italic">No neighbors found for this URI.</p>
+        <p className="text-sm text-disabled italic">No neighbors found for this URI.</p>
       )}
 
       {data && data.length > 0 && (
         <div className="overflow-auto max-h-[380px]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-slate-900/90 backdrop-blur-sm">
-              <tr className="text-left text-xs text-white/40 border-b border-white/10">
+            <thead className="sticky top-0 table-head backdrop-blur-sm">
+              <tr className="text-left text-xs text-disabled border-b border-white/10">
                 <th className="py-2 pr-4 font-medium">Type</th>
                 <th className="py-2 pr-4 font-medium">Name</th>
                 <th className="py-2 pr-4 font-medium">Relation</th>
@@ -211,7 +211,7 @@ function PathChain({
 }) {
   if (data.path.length === 0) {
     return (
-      <p className="text-sm text-white/40 italic">
+      <p className="text-sm text-disabled italic">
         No path found between these two entities (within 6 hops).
       </p>
     );
@@ -231,14 +231,14 @@ function PathChain({
                 style={{ background: `${color}14`, borderColor: `${color}40` }}
               >
                 <TypeBadge type={node.type} />
-                <p className="font-medium text-white/90 leading-snug truncate mt-1">
+                <p className="font-medium text-subtle leading-snug truncate mt-1">
                   {node.label ?? (
-                    <span className="text-white/30 text-xs">{node.uri.split(/[/#]/).pop()}</span>
+                    <span className="text-disabled text-xs">{node.uri.split(/[/#]/).pop()}</span>
                   )}
                 </p>
                 <Link
                   to={`/projects/${projectId}/entity?uri=${encodeURIComponent(node.uri)}`}
-                  className="text-[10px] text-white/30 hover:text-biu-sky truncate block mt-0.5"
+                  className="text-[10px] text-disabled hover:text-biu-sky truncate block mt-0.5"
                 >
                   ⓘ entity page
                 </Link>
@@ -247,8 +247,8 @@ function PathChain({
               {/* edge arrow */}
               {edge && (
                 <div className="flex flex-col items-center shrink-0">
-                  <span className="text-[10px] text-white/30 mb-0.5">{edge.label}</span>
-                  <span className="text-white/20">→</span>
+                  <span className="text-[10px] text-disabled mb-0.5">{edge.label}</span>
+                  <span className="text-disabled">→</span>
                 </div>
               )}
             </div>
@@ -289,12 +289,12 @@ function PathFinder({ projectId }: { projectId: string }) {
       </button>
 
       {!query && (
-        <p className="text-sm text-white/40 italic">
+        <p className="text-sm text-disabled italic">
           Enter two URIs to find the shortest relationship path between them.
         </p>
       )}
-      {loading && <p className="text-sm text-white/40">Finding path…</p>}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {loading && <p className="text-sm text-disabled">Finding path…</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       {data && <PathChain data={data} projectId={projectId} />}
     </div>
   );

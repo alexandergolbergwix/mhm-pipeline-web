@@ -34,7 +34,7 @@ export default function ProjectDetail() {
   });
 
   if (error)
-    return <Layout><Glass className="p-6 text-red-300">{error}</Glass></Layout>;
+    return <Layout><Glass className="p-6 text-danger">{error}</Glass></Layout>;
   if (!proj)
     return <Layout><p className="muted">Loading…</p></Layout>;
 
@@ -93,7 +93,7 @@ function ProjectHeader({
                  onChange={(e) => setName(e.target.value)} required />
           <textarea className="input-glass min-h-[80px]" value={desc}
                     onChange={(e) => setDesc(e.target.value)} />
-          {error && <p className="text-red-300 text-sm">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
           <div className="flex gap-2">
             <button type="submit" className="button-primary">Save</button>
             <button type="button" onClick={() => { setEditing(false); setError(null); }} className="button-ghost">Cancel</button>
@@ -112,7 +112,7 @@ function ProjectHeader({
             {canDelete && (
               <button
                 onClick={async () => { if (confirm("Delete this project?")) await onDeleted(); }}
-                className="button-ghost text-sm text-red-300 hover:text-red-200"
+                className="button-ghost text-sm text-danger hover:text-red-200"
               >Delete project</button>
             )}
           </div>
@@ -178,7 +178,7 @@ function MembersPanel({
           <button type="submit" className="button-primary">Add member</button>
         </form>
       )}
-      {error && <p className="text-red-300 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
 
       <ul className="divide-y divide-white/5">
         {proj.members.map((m) => (
@@ -201,7 +201,7 @@ function MembersPanel({
                     <option value="viewer">viewer</option>
                     <option value="editor">editor</option>
                   </select>
-                  <button onClick={() => remove(m)} className="button-ghost text-xs text-red-300">Remove</button>
+                  <button onClick={() => remove(m)} className="button-ghost text-xs text-danger">Remove</button>
                 </>
               ) : (
                 <span className="kicker">{m.role}</span>
@@ -278,7 +278,7 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
         <code>subjects</code> (multi-value separators: <code>|</code>{" "}
         or <code>;</code>).
       </p>
-      {error && <p className="text-red-300 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
 
       {items === null && <p className="muted text-sm">Loading runs…</p>}
       {items && items.length === 0 && (

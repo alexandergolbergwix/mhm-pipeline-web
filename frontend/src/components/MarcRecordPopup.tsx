@@ -77,7 +77,7 @@ export function MarcRecordPopup({ runId, controlNumber, onClose }: Props) {
         </div>
 
         <div className="flex-1 overflow-auto p-4 space-y-1">
-          {error && <p className="text-red-300 text-sm">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
           {!record && !error && <p className="muted text-sm">Loading…</p>}
           {filtered.map((r) => (
             <div key={r.key}

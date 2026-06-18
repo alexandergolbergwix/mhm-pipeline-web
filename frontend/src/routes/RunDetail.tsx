@@ -217,7 +217,7 @@ export default function RunDetail() {
     : "";
 
   if (error)
-    return <Layout><Glass className="p-6 text-red-300">{error}</Glass></Layout>;
+    return <Layout><Glass className="p-6 text-danger">{error}</Glass></Layout>;
   if (!run)
     return <Layout><p className="muted">Loading run…</p></Layout>;
 
@@ -269,7 +269,7 @@ export default function RunDetail() {
             {run.match_count} candidate match{run.match_count === 1 ? "" : "es"} ·{" "}
             {new Date(run.created_at).toLocaleString()}
           </p>
-          {run.error && <p className="text-red-300 text-sm">{run.error}</p>}
+          {run.error && <p className="text-danger text-sm">{run.error}</p>}
         </Glass>
 
         <Glass as="section" className="p-6 space-y-4">
@@ -325,7 +325,7 @@ export default function RunDetail() {
                 {enrichPhase === "running" ? (
                   <button
                     onClick={cancelEnrich}
-                    className="button-ghost !py-0.5 !px-2 text-xs text-red-400 whitespace-nowrap">
+                    className="button-ghost !py-0.5 !px-2 text-xs text-danger whitespace-nowrap">
                     ✕ Cancel
                   </button>
                 ) : (
@@ -422,7 +422,7 @@ export default function RunDetail() {
 
           {/* Error banner */}
           {enrichPhase === "error" && enrichError && (
-            <Glass variant="compact" className="rounded-lg p-3 border border-red-400/30 text-red-300 text-sm">
+            <Glass variant="compact" className="rounded-lg p-3 border border-red-400/30 text-danger text-sm">
               ✕ Re-enrichment failed: {enrichError}
             </Glass>
           )}
@@ -496,8 +496,8 @@ export default function RunDetail() {
 function StatusPill({ status }: { status: string }) {
   const tone =
     status === "succeeded" ? "text-biu-sky"
-    : status === "running" ? "text-yellow-300"
-    : status === "failed"  ? "text-red-300"
+    : status === "running" ? "text-warn"
+    : status === "failed"  ? "text-danger"
     : "muted";
   return <GlassPill className={`px-3 py-1 text-[10px] kicker ${tone}`}>{status}</GlassPill>;
 }

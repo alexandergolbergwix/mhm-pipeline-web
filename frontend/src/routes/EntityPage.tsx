@@ -12,18 +12,20 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { entityApi, type EntityDetailResponse } from "@/api/entities";
+import { Layout } from "@/components/Layout";
+import {Glass} from "@/components/glass";
 
 // ── type badge ─────────────────────────────────────────────────────────────
 
 const TYPE_COLOURS: Record<string, string> = {
-  person:     "bg-blue-100 text-blue-800",
-  place:      "bg-green-100 text-green-800",
-  work:       "bg-violet-100 text-violet-800",
-  manuscript: "bg-amber-100 text-amber-800",
+  person:     "badge-success",
+  place:      "badge-success",
+  work:       "badge-warn",
+  manuscript: "badge-warn",
 };
 
 function TypeBadge({ type }: { type: string }) {
-  const cls = TYPE_COLOURS[type] ?? "bg-slate-100 text-slate-600";
+  const cls = TYPE_COLOURS[type] ?? "surface-inset text-faint";
   return (
     <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
       {type}
@@ -51,17 +53,17 @@ function IdentifierLinks({ identifiers }: { identifiers: Record<string, string> 
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-blue-600 hover:bg-slate-100 hover:underline"
+            className="inline-flex items-center gap-1 rounded border border-[var(--line)] surface-inset px-2 py-0.5 text-xs link-accent hover:bg-[var(--ghost-hover)] hover:underline"
           >
-            <span className="font-medium uppercase text-slate-500">{key}</span>
+            <span className="font-medium uppercase muted">{key}</span>
             <span>{val}</span>
           </a>
         ) : (
           <span
             key={key}
-            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700"
+            className="inline-flex items-center gap-1 rounded border border-[var(--line)] surface-inset px-2 py-0.5 text-xs text-ink"
           >
-            <span className="font-medium uppercase text-slate-400">{key}</span>
+            <span className="font-medium uppercase text-faint">{key}</span>
             <span>{val}</span>
           </span>
         );
@@ -81,20 +83,20 @@ function ManuscriptRow({
 }) {
   const evidenceUrl = `/projects/${projectId}/entity?uri=${encodeURIComponent(ms.uri)}`;
   return (
-    <li className="flex items-center justify-between gap-4 py-2 border-b border-slate-100 last:border-0">
+    <li className="flex items-center justify-between gap-4 py-2 border-b border-[var(--line)] last:border-0">
       <div className="min-w-0">
-        <span className="block text-sm font-medium text-slate-800 truncate">
+        <span className="block text-sm font-medium text-ink truncate">
           {ms.label ?? ms.uri}
         </span>
-        <span className="text-xs text-slate-500 font-mono">{ms.uri}</span>
+        <span className="text-xs muted font-mono">{ms.uri}</span>
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+        <span className="rounded surface-inset px-2 py-0.5 text-xs muted">
           {ms.role}
         </span>
         <Link
           to={evidenceUrl}
-          className="text-xs text-blue-600 hover:underline"
+          className="text-xs link-accent hover:underline"
           title="View entity detail"
         >
           View →
@@ -130,25 +132,28 @@ export default function EntityPage() {
 
   if (!uri) {
     return (
-      <div className="p-8 text-slate-500 text-sm">No entity URI provided.</div>
+      <Layout>
+        <div className="p-8 muted text-sm">No entity URI provided.</div>
+      </Layout>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <Layout>
+    <Glass className="mx-auto max-w-3xl p-6 md:p-8">
       {/* back link */}
-      <nav className="mb-6 text-xs text-slate-400">
+      <nav className="mb-6 text-xs text-faint">
         <Link to={`/projects/${projectId}`} className="hover:underline">
           ← Project
         </Link>
       </nav>
 
       {loading && (
-        <p className="text-slate-400 text-sm">Loading entity…</p>
+        <p className="text-faint text-sm">Loading entity…</p>
       )}
 
       {error && (
-        <div className="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+        <div className="rounded-md badge-danger p-4 text-sm">
           {error}
         </div>
       )}
@@ -159,20 +164,20 @@ export default function EntityPage() {
           <div className="flex items-start gap-3">
             <TypeBadge type={data.type} />
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-slate-900 leading-tight">
+              <h1 className="text-2xl font-bold text-ink leading-tight">
                 {data.label ?? uri}
               </h1>
-              <p className="mt-1 font-mono text-xs text-slate-400 break-all">{uri}</p>
+              <p className="mt-1 font-mono text-xs text-faint break-all">{uri}</p>
             </div>
           </div>
 
           {/* dates (persons) */}
           {data.dates && (
             <section>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+              <h2 className="text-xs font-semibold uppercase tracking-wide muted mb-1">
                 Dates
               </h2>
-              <p className="text-sm text-slate-700">
+              <p className="text-sm text-ink">
                 {data.dates.birth && <>b. {data.dates.birth}</>}
                 {data.dates.birth && data.dates.death && " — "}
                 {data.dates.death && <>d. {data.dates.death}</>}
@@ -183,10 +188,10 @@ export default function EntityPage() {
           {/* geo (places) */}
           {data.geo && (
             <section>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+              <h2 className="text-xs font-semibold uppercase tracking-wide muted mb-1">
                 Coordinates
               </h2>
-              <p className="text-sm text-slate-700">
+              <p className="text-sm text-ink">
                 {data.geo.lat.toFixed(4)}, {data.geo.lon.toFixed(4)}
               </p>
             </section>
@@ -195,14 +200,14 @@ export default function EntityPage() {
           {/* roles */}
           {data.roles.length > 0 && (
             <section>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide muted mb-2">
                 Roles
               </h2>
               <div className="flex flex-wrap gap-2">
                 {data.roles.map((r) => (
                   <span
                     key={r}
-                    className="rounded bg-slate-100 px-2.5 py-0.5 text-sm text-slate-700"
+                    className="rounded surface-inset px-2.5 py-0.5 text-sm text-ink"
                   >
                     {r}
                   </span>
@@ -214,7 +219,7 @@ export default function EntityPage() {
           {/* external identifiers */}
           {Object.keys(data.identifiers).length > 0 && (
             <section>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide muted mb-2">
                 External identifiers
               </h2>
               <IdentifierLinks identifiers={data.identifiers} />
@@ -223,15 +228,15 @@ export default function EntityPage() {
 
           {/* manuscripts */}
           <section>
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide muted mb-2">
               Manuscripts ({data.manuscripts.length})
             </h2>
             {data.manuscripts.length === 0 ? (
-              <p className="text-sm text-slate-400 italic">
+              <p className="text-sm text-faint italic">
                 No manuscripts associated with this entity.
               </p>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-[var(--line)]">
                 {data.manuscripts.map((ms) => (
                   <ManuscriptRow key={`${ms.uri}:${ms.role}`} ms={ms} projectId={projectId} />
                 ))}
@@ -240,6 +245,7 @@ export default function EntityPage() {
           </section>
         </div>
       )}
-    </div>
+    </Glass>
+    </Layout>
   );
 }

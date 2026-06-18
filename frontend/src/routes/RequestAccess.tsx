@@ -225,7 +225,7 @@ export default function RequestAccess() {
         )}
 
         {error && (
-          <p className="text-sm text-red-300" role="alert">
+          <p className="text-sm text-danger" role="alert">
             {error}
           </p>
         )}

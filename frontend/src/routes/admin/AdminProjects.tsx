@@ -99,7 +99,7 @@ export default function AdminProjects() {
               className="input-glass w-72 text-sm"
             />
           </div>
-          {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
+          {error && <p className="text-danger text-sm mt-3">{error}</p>}
           {notice && <p className="text-green-300 text-sm mt-3">{notice}</p>}
         </Glass>
 

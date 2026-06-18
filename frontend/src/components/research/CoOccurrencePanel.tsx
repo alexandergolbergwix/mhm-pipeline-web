@@ -81,7 +81,7 @@ export default function CoOccurrencePanel({projectId}: {projectId: string}) {
       loading={loading}
       empty={!loading && !data?.nodes.length}
     >
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
       {data && data.nodes.length > 0 && (
         <div className="space-y-4">
           <input

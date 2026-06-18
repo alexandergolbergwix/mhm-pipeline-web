@@ -47,14 +47,14 @@ function EventChip({
 }) {
   const isProduction = ev.type === "production";
   const bgCls = isProduction
-    ? "bg-violet-900/50 border-violet-500/50"
+    ? "surface-inset border border-[var(--line)]"
     : "bg-sky-900/50 border-sky-500/50";
 
   return (
     <div
       className={`shrink-0 rounded-xl border px-4 py-3 text-sm min-w-[9rem] max-w-[14rem] ${bgCls}`}
     >
-      <p className="text-[10px] uppercase tracking-widest font-semibold text-white/40 mb-1">
+      <p className="text-[10px] uppercase tracking-widest font-semibold text-disabled mb-1">
         {isProduction ? "Production" : "Owner"}
       </p>
 
@@ -67,22 +67,22 @@ function EventChip({
           {ev.label}
         </Link>
       ) : (
-        <p className="font-medium text-white/90 leading-snug truncate">{ev.label}</p>
+        <p className="font-medium text-subtle leading-snug truncate">{ev.label}</p>
       )}
 
       {/* year */}
       {yearRange(ev) && (
-        <p className="text-xs text-white/50 mt-0.5">{yearRange(ev)}</p>
+        <p className="text-xs text-faint mt-0.5">{yearRange(ev)}</p>
       )}
 
       {/* place (production) */}
       {isProduction && ev.place && (
-        <p className="text-xs text-white/50 truncate mt-0.5">{ev.place}</p>
+        <p className="text-xs text-faint truncate mt-0.5">{ev.place}</p>
       )}
 
       {/* lifespan (owners) */}
       {showLifespan && !isProduction && (ev.owner_birth || ev.owner_death) && (
-        <p className="text-[11px] text-white/40 mt-1">
+        <p className="text-[11px] text-disabled mt-1">
           {ev.owner_birth && <>b.{ev.owner_birth} </>}
           {ev.owner_death && <>d.{ev.owner_death}</>}
         </p>
@@ -104,7 +104,7 @@ function Timeline({
 }) {
   if (data.events.length === 0) {
     return (
-      <p className="text-sm text-white/40 italic">
+      <p className="text-sm text-disabled italic">
         No provenance data available for this manuscript.
       </p>
     );
@@ -117,7 +117,7 @@ function Timeline({
           <div key={i} className="flex items-center gap-3">
             <EventChip ev={ev} projectId={projectId} showLifespan={showLifespan} />
             {i < data.events.length - 1 && (
-              <span className="text-white/20 text-lg">→</span>
+              <span className="text-disabled text-lg">→</span>
             )}
           </div>
         ))}
@@ -137,13 +137,13 @@ function MsPicker({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-xs text-white/50 shrink-0">Manuscript URI:</label>
+      <label className="text-xs text-faint shrink-0">Manuscript URI:</label>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="urn:hm:MS_…"
-        className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-biu-sky/50"
+        className="input-glass flex-1 !py-1.5 text-sm"
       />
     </div>
   );
@@ -182,7 +182,7 @@ export default function ProvenanceTimelinePanel({
           <div className="flex-1">
             <MsPicker value={msUri} onChange={setMsUri} />
           </div>
-          <label className="flex items-center gap-2 text-xs text-white/60 cursor-pointer shrink-0">
+          <label className="flex items-center gap-2 text-xs text-faint cursor-pointer shrink-0">
             <input
               type="checkbox"
               checked={showLifespan}
@@ -195,22 +195,22 @@ export default function ProvenanceTimelinePanel({
 
         {/* content */}
         {!msUri && (
-          <p className="text-sm text-white/40 italic">
+          <p className="text-sm text-disabled italic">
             Enter a manuscript URI to see its provenance chain.
           </p>
         )}
 
         {loading && (
-          <p className="text-sm text-white/40">Loading provenance…</p>
+          <p className="text-sm text-disabled">Loading provenance…</p>
         )}
 
         {error && (
-          <p className="text-sm text-red-400">{error}</p>
+          <p className="text-sm text-danger">{error}</p>
         )}
 
         {data && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-white/80">
+            <p className="text-sm font-medium text-subtle">
               {data.ms_label ?? data.ms}
             </p>
             <Timeline

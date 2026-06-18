@@ -565,7 +565,7 @@ export function AuthorityTable({
                       {guards.length > 0 ? (
                         <span className="inline-flex flex-wrap gap-1">
                           {guards.map((g) => (
-                            <GlassPill className="px-1.5 py-[1px] text-[10px] text-red-300 whitespace-nowrap" key={g}
+                            <GlassPill className="px-1.5 py-[1px] text-[10px] text-danger whitespace-nowrap" key={g}
                                   
                                   title={guardExplain(g)}>
                               ⚠ {g}
@@ -713,7 +713,7 @@ const _EXISTS_IN_CFG: Record<string, { label: string; cls: string }> = {
   grounded:    { label: "in MARC",  cls: "text-green-400 bg-green-400/10 border-green-400/30" },
   novel:       { label: "novel",    cls: "text-sky-400 bg-sky-400/10 border-sky-400/30" },
   wrong_field: { label: "mismatch", cls: "text-amber-400 bg-amber-400/10 border-amber-400/30" },
-  unknown:     { label: "?",        cls: "text-slate-500 bg-slate-500/10 border-slate-500/30" },
+  unknown:     { label: "?",        cls: "text-faint surface-inset border border-[var(--line)]" },
 };
 
 function existsInLabel(status?: string | null): string | null {

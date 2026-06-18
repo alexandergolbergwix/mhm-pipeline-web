@@ -129,12 +129,12 @@ export function SectionImportButton({
           )}
           {result.errors.length > 0 && (
             <details className="mt-1">
-              <summary className="cursor-pointer text-yellow-300">
+              <summary className="cursor-pointer text-warn">
                 {result.errors.length} error{result.errors.length > 1 ? "s" : ""}
               </summary>
               <ul className="mt-1 space-y-0.5 max-h-32 overflow-auto">
                 {result.errors.map((e, i) => (
-                  <li key={i} className="text-red-300">
+                  <li key={i} className="text-danger">
                     row {e.row}: {e.message}
                   </li>
                 ))}
@@ -145,7 +145,7 @@ export function SectionImportButton({
       )}
 
       {error && (
-        <Glass className="rounded-md px-3 py-2 text-xs text-red-300 min-w-[180px]" data-testid="section-import-error"
+        <Glass className="rounded-md px-3 py-2 text-xs text-danger min-w-[180px]" data-testid="section-import-error"
           role="alert">
           {error}
         </Glass>

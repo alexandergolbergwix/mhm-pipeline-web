@@ -86,7 +86,7 @@ export default function Settings() {
             </p>
           </div>
 
-          {error && <p className="text-red-300 text-sm">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
           {keys === null && <p className="muted">Loading…</p>}
 
           {keys?.map((k) => (
@@ -142,7 +142,7 @@ function PasswordChangeSection() {
         <input type="password" required placeholder="Confirm new password"
                value={confirm} onChange={(e) => setConfirm(e.target.value)}
                autoComplete="new-password" className="input-glass" />
-        {error && <p className="text-red-300 text-sm">{error}</p>}
+        {error && <p className="text-danger text-sm">{error}</p>}
         {ok && <p className="text-biu-sky text-sm">Password changed.</p>}
         <button type="submit" disabled={submitting} className="button-primary">
           {submitting ? "Saving…" : "Change password"}
@@ -208,7 +208,7 @@ function ApiKeyRow({
             {status.set ? "Replace" : "Add"}
           </button>
           {status.set && (
-            <button onClick={clear} disabled={busy} className="button-ghost text-xs text-red-300">Clear</button>
+            <button onClick={clear} disabled={busy} className="button-ghost text-xs text-danger">Clear</button>
           )}
         </div>
       ) : (

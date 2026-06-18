@@ -119,7 +119,7 @@ export default function ProjectHistory() {
           </p>
         </Glass>
 
-        {error && <Glass className="p-4 text-red-300 text-sm">{error}</Glass>}
+        {error && <Glass className="p-4 text-danger text-sm">{error}</Glass>}
 
         {snapshots.length > 0 && (
           <Glass as="section" className="p-6 space-y-2">
@@ -165,8 +165,7 @@ export default function ProjectHistory() {
                     {Object.keys(e.payload).length > 0 && (
                       <details className="text-xs muted mt-1">
                         <summary className="cursor-pointer hover:text-ink">payload</summary>
-                        <pre className="mt-1 p-2 rounded"
-                             style={{ background: "rgba(0,0,0,0.32)", border: "1px solid var(--line)" }}>
+                        <pre className="mt-1 p-2 rounded code-surface">
                           {JSON.stringify(e.payload, null, 2)}
                         </pre>
                       </details>

@@ -62,7 +62,7 @@ export default function Login() {
         </label>
 
         {error && (
-          <p className="text-sm text-red-300" role="alert">{error}</p>
+          <p className="text-sm text-danger" role="alert">{error}</p>
         )}
 
         <button type="submit" disabled={submitting} className="button-primary w-full">

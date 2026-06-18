@@ -160,7 +160,7 @@ export default function AdminUserDetail() {
                 </div>
               </div>
 
-              {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
+              {error && <p className="text-danger text-sm mt-3">{error}</p>}
               {notice && <p className="text-green-300 text-sm mt-3">{notice}</p>}
             </Glass>
 

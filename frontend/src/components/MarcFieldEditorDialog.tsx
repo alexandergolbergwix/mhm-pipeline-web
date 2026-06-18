@@ -125,7 +125,7 @@ export function MarcFieldEditorDialog({
             <p className="text-xs text-biu-sky">{banner}</p>
           ) : null}
           {error ? (
-            <p className="text-xs text-red-300">{error}</p>
+            <p className="text-xs text-danger">{error}</p>
           ) : null}
         </div>
         <div className="flex justify-end gap-2 border-t border-white/10 px-4 py-3">

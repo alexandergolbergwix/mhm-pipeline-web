@@ -77,15 +77,14 @@ function SvgHeatmap({
   const [hovered, setHovered] = useState<HeatmapPoint | null>(null);
 
   return (
-    <div className="relative rounded-xl overflow-hidden border border-white/10 bg-slate-900/60">
+    <div className="relative rounded-xl overflow-hidden border border-white/10 surface-inset">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         style={{display: "block"}}
         className="select-none"
       >
-        {/* simple ocean fill */}
-        <rect width={W} height={H} fill="#0f172a" />
+        <rect width={W} height={H} fill="var(--map-ocean)" />
 
         {/* equator and prime meridian guides */}
         <line
@@ -146,7 +145,7 @@ function SvgHeatmap({
               className="inline-block w-2.5 h-2.5 rounded-full"
               style={{background: TYPE_COLOR[t]}}
             />
-            <span className="text-white/60">{t}</span>
+            <span className="muted">{t}</span>
           </span>
         ))}
       </Glass>
@@ -179,7 +178,7 @@ function TableView({projectId}: {projectId: string}) {
   const withoutCoords = places.filter((p) => p.lat == null);
 
   if (loading) return <p className="text-sm muted">Loading places…</p>;
-  if (error)   return <p className="text-sm text-red-400">{error}</p>;
+  if (error)   return <p className="text-sm text-danger">{error}</p>;
   if (!data?.length) return (
     <p className="text-sm muted text-center py-8">
       No production sites or mentioned places found in this run&rsquo;s graph.
@@ -222,7 +221,7 @@ function TableView({projectId}: {projectId: string}) {
       <div className="flex gap-4">
         <div className="flex-1 overflow-auto max-h-[420px]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-slate-900/90 backdrop-blur-sm">
+            <thead className="sticky top-0 table-head">
               <tr className="text-left text-xs muted border-b border-white/10">
                 <th className="py-2 pr-4 font-medium">Place</th>
                 <th className="py-2 pr-4 font-medium">Type</th>
@@ -259,7 +258,7 @@ function TableView({projectId}: {projectId: string}) {
                   <td className="py-1.5 text-right">
                     {p.lat != null
                       ? <span className="text-green-400 text-xs">✓</span>
-                      : <span className="text-slate-600 text-xs">—</span>
+                      : <span className="muted text-xs">—</span>
                     }
                   </td>
                 </tr>
@@ -302,7 +301,7 @@ function HeatmapView({projectId}: {projectId: string}) {
   const [typeFilter, setTypeFilter] = useState<"all" | "production" | "mentioned" | "both">("all");
 
   if (loading) return <p className="text-sm muted">Loading heatmap…</p>;
-  if (error)   return <p className="text-sm text-red-400">{error}</p>;
+  if (error)   return <p className="text-sm text-danger">{error}</p>;
   if (!data?.length) return (
     <p className="text-sm muted text-center py-8">
       No places have map coordinates in this run&rsquo;s graph. Coordinates come

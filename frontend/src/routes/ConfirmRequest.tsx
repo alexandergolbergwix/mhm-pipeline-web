@@ -100,7 +100,7 @@ export default function ConfirmRequest() {
         )}
 
         {!loading && !status && error && (
-          <p className="text-red-300 text-sm" data-testid="confirm-error">
+          <p className="text-danger text-sm" data-testid="confirm-error">
             {error}
           </p>
         )}

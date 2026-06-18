@@ -92,7 +92,7 @@ export default function AdminUsers() {
             </div>
           </div>
 
-          {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
+          {error && <p className="text-danger text-sm mt-3">{error}</p>}
         </Glass>
 
         <Glass as="section" className="p-6">

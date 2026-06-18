@@ -26,11 +26,11 @@ function statusPillClasses(status: AccessRequestStatus): string {
     case "approved":
       return "border-green-400/60 text-green-300 bg-green-500/10";
     case "denied":
-      return "border-red-400/60 text-red-300 bg-red-500/10";
+      return "border-red-400/60 text-danger bg-red-500/10";
     case "pending_admin":
     case "pending_email_confirm":
     default:
-      return "border-yellow-400/60 text-yellow-300 bg-yellow-500/10";
+      return "border-yellow-400/60 text-warn bg-yellow-500/10";
   }
 }
 
@@ -241,7 +241,7 @@ export default function AccessRequestsQueue() {
             })}
           </div>
 
-          {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
+          {error && <p className="text-danger text-sm mt-3">{error}</p>}
           {notice && <p className="text-green-300 text-sm mt-3">{notice}</p>}
         </Glass>
 
@@ -386,7 +386,7 @@ function ExpandedDetail({ id, fallback }: ExpandedDetailProps) {
         {loading ? (
           <p className="muted">Loading…</p>
         ) : loadError ? (
-          <p className="text-red-300">{loadError}</p>
+          <p className="text-danger">{loadError}</p>
         ) : (
           <p className="whitespace-pre-wrap">{justification ?? "(none provided)"}</p>
         )}

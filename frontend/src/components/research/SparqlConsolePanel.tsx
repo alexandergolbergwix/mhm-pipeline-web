@@ -168,7 +168,7 @@ function SourceToggle({
               value === src
                 ? "bg-biu-sky/15 text-biu-sky border-biu-sky/30"
                 : disabled
-                  ? "text-white/20 border-white/5 cursor-not-allowed"
+                  ? "text-disabled border-white/5 cursor-not-allowed"
                   : "text-muted hover:text-ink hover:bg-white/5 border-transparent"
             }`}
           >
@@ -424,7 +424,7 @@ export default function SparqlConsolePanel({projectId}: {projectId: string}) {
                 </button>
                 <button
                   onClick={() => deleteQuery(sq.id)}
-                  className="text-xs text-muted hover:text-red-400 px-1"
+                  className="text-xs text-muted hover:text-danger px-1"
                   title="Delete saved query"
                 >✕</button>
               </span>
@@ -552,12 +552,12 @@ export default function SparqlConsolePanel({projectId}: {projectId: string}) {
           {running && <span className="animate-spin text-biu-sky text-lg">⟳</span>}
         </div>
         {exportError && (
-          <p className="text-xs text-red-400">{exportError}</p>
+          <p className="text-xs text-danger">{exportError}</p>
         )}
 
         {/* Error */}
         {error && (
-          <Glass variant="compact" className="p-3 text-red-400 text-sm rounded-lg border border-red-500/30">
+          <Glass variant="compact" className="p-3 text-danger text-sm rounded-lg border border-red-500/30">
             {error}
           </Glass>
         )}

@@ -135,7 +135,7 @@ export function NodeDetailPanel(props: NodeDetailPanelProps) {
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 select-text"
         onWheel={(e) => e.stopPropagation()}
       >
-        {error && <p className="text-red-300 text-sm">{error}</p>}
+        {error && <p className="text-danger text-sm">{error}</p>}
 
         {detail && (
           <>

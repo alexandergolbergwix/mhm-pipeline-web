@@ -12,11 +12,20 @@ export default {
           navy:  "#00190d",
           black: "#000000",
           green: "#004027",
-          sky:   "#77cce5",
+          sky:   "var(--biu-sky)",
         },
         ink: {
           DEFAULT: "var(--ink)",
           muted:   "var(--muted)",
+          subtle:  "var(--ink-subtle)",
+          faint:   "var(--ink-faint)",
+          disabled:"var(--ink-disabled)",
+        },
+        status: {
+          warn:    "var(--warn)",
+          success: "var(--success)",
+          danger:  "var(--danger)",
+          string:  "var(--string)",
         },
         glass: {
           base:     "var(--panel)",
@@ -30,7 +39,7 @@ export default {
         glass: "12px",
       },
       boxShadow: {
-        glass: "0 24px 60px rgba(0,0,0,0.35)",
+        glass: "var(--shadow)",
       },
       borderRadius: {
         glass: "26px",

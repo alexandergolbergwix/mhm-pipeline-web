@@ -47,12 +47,12 @@ type PatchOpName = EntityPatchOp["op"];
 const VALUE_TRUNCATE_AT = 120;
 
 const OP_PILL_STYLES: Record<PatchOpName, string> = {
-  add:     "bg-emerald-500/20 text-emerald-200 border border-emerald-400/40",
-  remove:  "bg-rose-500/20 text-rose-200 border border-rose-400/40",
-  replace: "bg-amber-500/20 text-amber-200 border border-amber-400/40",
-  move:    "bg-white/10 text-white/80 border border-white/20",
-  copy:    "bg-white/10 text-white/80 border border-white/20",
-  test:    "bg-white/10 text-white/80 border border-white/20",
+  add:     "badge-success px-1.5 py-0.5 rounded text-xs font-medium",
+  remove:  "badge-danger px-1.5 py-0.5 rounded text-xs font-medium",
+  replace: "badge-warn px-1.5 py-0.5 rounded text-xs font-medium",
+  move:    "surface-inset text-subtle border border-[var(--line)] px-1.5 py-0.5 rounded text-xs font-medium",
+  copy:    "surface-inset text-subtle border border-[var(--line)] px-1.5 py-0.5 rounded text-xs font-medium",
+  test:    "surface-inset text-subtle border border-[var(--line)] px-1.5 py-0.5 rounded text-xs font-medium",
 };
 
 function formatValue(value: unknown): { text: string; truncated: boolean } {
@@ -99,16 +99,16 @@ function PatchOpRow({ op, index }: PatchOpRowProps): JSX.Element {
       >
         {op.op}
       </span>
-      <span className="break-all font-mono text-white/90">{op.path || "/"}</span>
+      <span className="break-all font-mono text-subtle">{op.path || "/"}</span>
       {showFrom && (
-        <span className="break-all font-mono text-white/60">
+        <span className="break-all font-mono text-faint">
           <span className="kicker mr-1">from</span>
           {op.from}
         </span>
       )}
       {op.value !== undefined && (
         <span
-          className="break-all font-mono text-emerald-200"
+          className="break-all font-mono text-string"
           title={truncated ? JSON.stringify(op.value) : undefined}
         >
           {valueText}
@@ -220,7 +220,7 @@ export default function HistoryDiffModal(
 
           {!loading && error !== null && (
             <div
-              className="rounded border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-100"
+              className="rounded border border-[var(--danger-border)] badge-danger px-3 py-2 text-sm"
               role="alert"
               data-testid="diff-modal-error"
             >

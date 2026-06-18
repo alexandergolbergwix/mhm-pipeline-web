@@ -23,10 +23,10 @@ interface EvidenceDrawerProps {
 function ConfidencePill({ level }: { level: string | null }) {
   const colour =
     level === "high"
-      ? "bg-green-100 text-green-800"
+      ? "badge-success"
       : level === "medium"
-      ? "bg-amber-100 text-amber-800"
-      : "bg-slate-100 text-slate-600";
+      ? "badge-warn"
+      : "surface-inset text-faint";
   return (
     <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${colour}`}>
       {level ?? "—"}
@@ -39,13 +39,13 @@ function ApprovalRow({ approval }: { approval: EvidenceApproval }) {
     ? new Date(approval.approved_at).toLocaleDateString()
     : null;
   return (
-    <li className="flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0">
-      <span className="mt-0.5 shrink-0 text-green-600">✓</span>
+    <li className="flex items-start gap-2 py-1.5 border-b border-[var(--line)] last:border-0">
+      <span className="mt-0.5 shrink-0 text-success">✓</span>
       <div className="min-w-0">
-        <span className="block text-sm font-medium text-slate-800 truncate">
+        <span className="block text-sm font-medium text-ink truncate">
           {approval.entity_text}
         </span>
-        <span className="block text-xs text-slate-500">
+        <span className="block text-xs muted">
           {approval.source}
           {date && <> · {date}</>}
         </span>
@@ -56,23 +56,23 @@ function ApprovalRow({ approval }: { approval: EvidenceApproval }) {
 
 function AuthorityMatchRow({ match }: { match: EvidenceAuthorityMatch }) {
   return (
-    <li className="py-1.5 border-b border-slate-100 last:border-0 space-y-0.5">
+    <li className="py-1.5 border-b border-[var(--line)] last:border-0 space-y-0.5">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-slate-800 truncate">
+        <span className="text-sm font-medium text-ink truncate">
           {match.entity_text ?? "—"}
         </span>
         <ConfidencePill level={match.confidence} />
       </div>
       {match.matched_name && match.matched_name !== match.entity_text && (
-        <p className="text-xs text-slate-500">→ {match.matched_name}</p>
+        <p className="text-xs muted">→ {match.matched_name}</p>
       )}
-      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+      <div className="flex flex-wrap gap-2 text-xs muted">
         {match.wikidata_qid && (
           <a
             href={`https://www.wikidata.org/wiki/${match.wikidata_qid}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:underline"
+            className="link-accent hover:underline"
           >
             {match.wikidata_qid}
           </a>
@@ -82,7 +82,7 @@ function AuthorityMatchRow({ match }: { match: EvidenceAuthorityMatch }) {
             href={`https://viaf.org/viaf/${match.viaf_id}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:underline"
+            className="link-accent hover:underline"
           >
             VIAF {match.viaf_id}
           </a>
@@ -95,7 +95,7 @@ function AuthorityMatchRow({ match }: { match: EvidenceAuthorityMatch }) {
 
 function MarcSection({ marc }: { marc: Record<string, unknown> | null }) {
   const [expanded, setExpanded] = useState(false);
-  if (!marc) return <p className="text-sm text-slate-400 italic">No MARC record found.</p>;
+  if (!marc) return <p className="text-sm text-faint italic">No MARC record found.</p>;
 
   const fields = Object.entries(marc);
   const visible = expanded ? fields : fields.slice(0, 6);
@@ -104,8 +104,8 @@ function MarcSection({ marc }: { marc: Record<string, unknown> | null }) {
       <dl className="space-y-1">
         {visible.map(([key, val]) => (
           <div key={key} className="grid grid-cols-[5rem,1fr] gap-1 text-xs">
-            <dt className="font-mono text-slate-400 truncate">{key}</dt>
-            <dd className="text-slate-700 break-all">
+            <dt className="font-mono text-faint truncate">{key}</dt>
+            <dd className="text-ink break-all">
               {typeof val === "string" ? val : JSON.stringify(val)}
             </dd>
           </div>
@@ -114,7 +114,7 @@ function MarcSection({ marc }: { marc: Record<string, unknown> | null }) {
       {fields.length > 6 && (
         <button
           onClick={() => setExpanded((e) => !e)}
-          className="mt-2 text-xs text-blue-600 hover:underline"
+          className="mt-2 text-xs link-accent hover:underline"
         >
           {expanded ? "Show less" : `Show ${fields.length - 6} more fields`}
         </button>
@@ -172,7 +172,7 @@ export function EvidenceDrawer({ projectId, uri, onClose }: EvidenceDrawerProps)
     <>
       {/* backdrop */}
       <div
-        className="fixed inset-0 bg-black/20 z-40"
+        className="fixed inset-0 overlay-scrim z-40"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -182,16 +182,16 @@ export function EvidenceDrawer({ projectId, uri, onClose }: EvidenceDrawerProps)
         ref={drawerRef}
         role="dialog"
         aria-label="Evidence panel"
-        className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col overflow-hidden"
+        className="fixed right-0 top-0 h-full w-full max-w-md glass glass-shell-drawer z-50 flex flex-col overflow-hidden"
       >
         {/* header */}
-        <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50 shrink-0">
-          <h2 className="text-sm font-semibold text-slate-700 truncate" title={uri ?? ""}>
+        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)] surface-inset shrink-0">
+          <h2 className="text-sm font-semibold text-ink truncate" title={uri ?? ""}>
             Evidence
           </h2>
           <button
             onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200"
+            className="p-1 rounded text-faint hover:text-ink hover:bg-slate-200"
             aria-label="Close evidence panel"
           >
             ✕
@@ -201,14 +201,14 @@ export function EvidenceDrawer({ projectId, uri, onClose }: EvidenceDrawerProps)
         {/* body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-5 text-sm">
           {/* URI */}
-          <p className="font-mono text-xs text-slate-500 break-all">{uri}</p>
+          <p className="font-mono text-xs muted break-all">{uri}</p>
 
           {loading && (
-            <p className="text-slate-400 text-sm">Loading evidence…</p>
+            <p className="text-faint text-sm">Loading evidence…</p>
           )}
 
           {error && (
-            <p className="text-red-600 text-sm">{error}</p>
+            <p className="text-danger text-sm">{error}</p>
           )}
 
           {data && (
@@ -216,16 +216,16 @@ export function EvidenceDrawer({ projectId, uri, onClose }: EvidenceDrawerProps)
               {/* control number */}
               {data.control_number && (
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                  <p className="text-xs font-semibold muted uppercase tracking-wide mb-1">
                     Control number
                   </p>
-                  <p className="font-mono text-sm text-slate-800">{data.control_number}</p>
+                  <p className="font-mono text-sm text-ink">{data.control_number}</p>
                 </div>
               )}
 
               {/* MARC */}
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                <p className="text-xs font-semibold muted uppercase tracking-wide mb-2">
                   MARC source
                 </p>
                 <MarcSection marc={data.marc} />
@@ -233,13 +233,13 @@ export function EvidenceDrawer({ projectId, uri, onClose }: EvidenceDrawerProps)
 
               {/* approvals */}
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                <p className="text-xs font-semibold muted uppercase tracking-wide mb-2">
                   Approved entities ({data.approvals.length})
                 </p>
                 {data.approvals.length === 0 ? (
-                  <p className="text-slate-400 italic text-xs">No approved entities.</p>
+                  <p className="text-faint italic text-xs">No approved entities.</p>
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-[var(--line)]">
                     {data.approvals.map((a, i) => (
                       <ApprovalRow key={i} approval={a} />
                     ))}
@@ -249,13 +249,13 @@ export function EvidenceDrawer({ projectId, uri, onClose }: EvidenceDrawerProps)
 
               {/* authority matches */}
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                <p className="text-xs font-semibold muted uppercase tracking-wide mb-2">
                   Authority matches ({data.authority_matches.length})
                 </p>
                 {data.authority_matches.length === 0 ? (
-                  <p className="text-slate-400 italic text-xs">No authority matches.</p>
+                  <p className="text-faint italic text-xs">No authority matches.</p>
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-[var(--line)]">
                     {data.authority_matches.map((m, i) => (
                       <AuthorityMatchRow key={i} match={m} />
                     ))}

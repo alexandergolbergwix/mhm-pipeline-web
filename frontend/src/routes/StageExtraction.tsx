@@ -584,7 +584,7 @@ export default function StageExtraction() {
           </div>
 
           {error && (
-            <GlassPill as="div" className="px-3 py-2 text-sm text-red-300">
+            <GlassPill as="div" className="px-3 py-2 text-sm text-danger">
               {error}
             </GlassPill>
           )}
@@ -913,8 +913,8 @@ function EntityList({
 function PhasePill({ phase }: { phase: Phase }) {
   const tone =
     phase === "complete" ? "text-biu-sky"
-    : phase === "running"  ? "text-yellow-300"
-    : phase === "error"    ? "text-red-300"
+    : phase === "running"  ? "text-warn"
+    : phase === "error"    ? "text-danger"
     : "muted";
   return (
     <GlassPill className={`px-3 py-1 text-[10px] kicker ${tone}`}>
@@ -949,9 +949,9 @@ function ModelPill({
 }) {
   const tone =
     state.status === "ready"        ? "text-biu-sky"
-    : state.status === "warming"     ? "text-yellow-300"
-    : state.status === "unavailable" ? "text-red-300"
-    : state.status === "error"       ? "text-red-300"
+    : state.status === "warming"     ? "text-warn"
+    : state.status === "unavailable" ? "text-danger"
+    : state.status === "error"       ? "text-danger"
     : "muted";
   const glyph =
     state.status === "ready"        ? "✓"

@@ -263,12 +263,12 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
               </button>
             )
             : (
-              <button onClick={stop} className="button-ghost text-sm text-yellow-300">
+              <button onClick={stop} className="button-ghost text-sm text-warn">
                 Stop
               </button>
             )}
           {error && (
-            <span className="text-red-300 text-xs flex items-center gap-2">
+            <span className="text-danger text-xs flex items-center gap-2">
               {error}
               <button
                 type="button"

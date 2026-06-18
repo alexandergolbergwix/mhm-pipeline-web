@@ -23,8 +23,8 @@ export function ItemValidatorBadge({issues, expanded = false}: ItemValidatorBadg
             key={idx}
             className={`text-xs px-2 py-1 rounded flex items-start gap-1.5 ${
               issue.severity === "error"
-                ? "bg-red-500/15 text-red-300 border border-red-500/30"
-                : "bg-yellow-500/10 text-yellow-300 border border-yellow-500/25"
+                ? "badge-danger"
+                : "badge-warn"
             }`}
           >
             <span className="shrink-0">{issue.severity === "error" ? "✕" : "⚠"}</span>
@@ -58,8 +58,8 @@ export function ItemValidatorBadge({issues, expanded = false}: ItemValidatorBadg
               key={idx}
               className={`px-2 py-1 rounded ${
                 issue.severity === "error"
-                  ? "text-red-300"
-                  : "text-yellow-300"
+                  ? "text-danger"
+                  : "text-warn"
               }`}
             >
               <span className="font-mono font-semibold">{issue.code}</span>

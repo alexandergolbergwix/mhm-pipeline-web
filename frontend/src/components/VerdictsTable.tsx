@@ -526,7 +526,7 @@ function Row({
                 title={fixReasoning || "Apply AI-suggested fix"}
                 onClick={onFix}
                 disabled={isFixing}
-                className="text-xs px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                className="text-xs px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-success hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
               >
                 {isFixing ? "…" : "✨ Fix"}
               </button>
@@ -722,8 +722,8 @@ function SubPill({ label, value }: { label: string; value: string }) {
   const v = value.toLowerCase();
   const tone =
     v === "yes" ? "text-biu-sky"
-    : v === "partial" ? "text-yellow-300"
-    : v === "no"  ? "text-red-300"
+    : v === "partial" ? "text-warn"
+    : v === "no"  ? "text-danger"
     : "muted";
   const glyph = v === "yes" ? "✓" : v === "partial" ? "~" : v === "no" ? "✗" : "—";
   return (
@@ -748,8 +748,8 @@ function overall(ev: AgentEvent): Overall {
 
 function overallTone(o: Overall): string {
   return o === "pass" || o === "full" ? "text-biu-sky"
-       : o === "partial" ? "text-yellow-300"
-       : o === "fail"    ? "text-red-300"
+       : o === "partial" ? "text-warn"
+       : o === "fail"    ? "text-danger"
        : o === "abstain" ? "muted"
        : "muted";
 }

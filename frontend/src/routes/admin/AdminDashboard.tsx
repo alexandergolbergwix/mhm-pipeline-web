@@ -73,7 +73,7 @@ export default function AdminDashboard() {
         <Glass as="section" className="p-6">
           <div className="kicker mb-1">Admin</div>
           <h2 className="text-xl font-semibold">Dashboard</h2>
-          {error && <p className="text-red-300 text-sm mt-3">{error}</p>}
+          {error && <p className="text-danger text-sm mt-3">{error}</p>}
           {notice && <p className="text-green-300 text-sm mt-3">{notice}</p>}
         </Glass>
 

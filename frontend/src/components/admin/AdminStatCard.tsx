@@ -14,7 +14,7 @@ export function AdminStatCard({label, value, badge, href}: Props) {
       <div className="flex items-start justify-between gap-2">
         <span className="text-3xl font-bold text-ink">{value}</span>
         {badge !== undefined && badge > 0 && (
-          <GlassPill className="text-xs border-yellow-400/60 text-yellow-300 bg-yellow-500/10 px-2 py-0.5">
+          <GlassPill className="text-xs badge-warn px-2 py-0.5">
             {badge} pending
           </GlassPill>
         )}

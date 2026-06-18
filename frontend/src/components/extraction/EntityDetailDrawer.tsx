@@ -468,7 +468,7 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
   const sub = (label: string, val: unknown) => {
     const b = typeof val === "boolean" ? val : null;
     const glyph = b === true ? "✓" : b === false ? "✗" : "—";
-    const color = b === true ? "text-emerald-300" : b === false ? "text-red-300" : "muted";
+    const color = b === true ? "text-success" : b === false ? "text-danger" : "muted";
     return <span className={color}>{glyph} {label}</span>;
   };
 
@@ -541,7 +541,7 @@ function MarcRecordCard({
   secondaryHighlights: string[];
 }) {
   if (loading) return <Glass as="section" variant="compact" className="p-3 muted text-[11px] italic">Loading MARC record…</Glass>;
-  if (error) return <Glass as="section" variant="compact" className="p-3 text-red-300 text-[11px]">MARC source failed: {error}</Glass>;
+  if (error) return <Glass as="section" variant="compact" className="p-3 text-danger text-[11px]">MARC source failed: {error}</Glass>;
   if (!marc) return null;
   const keys = orderedMarcKeys(marc.marc);
   if (keys.length === 0) return <Glass as="section" variant="compact" className="p-3 muted text-[11px] italic">No MARC fields available.</Glass>;

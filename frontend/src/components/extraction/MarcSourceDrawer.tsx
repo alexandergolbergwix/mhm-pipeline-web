@@ -139,7 +139,7 @@ export function MarcSourceDrawer(props: MarcSourceDrawerProps) {
           <div className="muted italic">Loading MARC record…</div>
         )}
         {error && (
-          <div className="text-red-300 text-xs">
+          <div className="text-danger text-xs">
             Failed to load MARC source: {error}
           </div>
         )}

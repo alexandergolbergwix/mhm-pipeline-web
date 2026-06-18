@@ -77,7 +77,7 @@ export default function RunOverview() {
   if (runError) {
     return (
       <Layout>
-        <Glass className="p-6 text-red-300">{runError}</Glass>
+        <Glass className="p-6 text-danger">{runError}</Glass>
       </Layout>
     );
   }
@@ -103,7 +103,7 @@ export default function RunOverview() {
             {run.match_count} candidate match{run.match_count === 1 ? "" : "es"} ·{" "}
             {new Date(run.created_at).toLocaleString()}
           </p>
-          {run.error && <p className="text-red-300 text-sm">{run.error}</p>}
+          {run.error && <p className="text-danger text-sm">{run.error}</p>}
         </Glass>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -282,8 +282,8 @@ function Pill({
 }: { tone: "muted" | "ok" | "warn" | "err"; children: ReactNode }) {
   const className =
     tone === "ok"    ? "text-biu-sky"
-    : tone === "warn" ? "text-yellow-300"
-    : tone === "err"  ? "text-red-300"
+    : tone === "warn" ? "text-warn"
+    : tone === "err"  ? "text-danger"
     : "muted";
   return (
     <GlassPill className={`px-3 py-1 text-[10px] kicker ${className}`}>

@@ -87,7 +87,7 @@ export default function AcceptInvite() {
                    className="input-glass" />
           </label>
 
-          {error && <p className="text-red-300 text-sm">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
 
           <button type="submit" disabled={!preview || submitting} className="button-primary w-full">
             {submitting ? "Creating account…" : "Create account"}

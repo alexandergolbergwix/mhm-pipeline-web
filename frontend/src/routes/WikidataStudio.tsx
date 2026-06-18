@@ -220,7 +220,7 @@ export default function WikidataStudio() {
       });
   }, [build, existFilter, minStmts]);
 
-  if (error) return <Layout><Glass className="p-6 text-red-300">{error}</Glass></Layout>;
+  if (error) return <Layout><Glass className="p-6 text-danger">{error}</Glass></Layout>;
   if (!build) return (
     <Layout>
       <Glass className="p-6 space-y-2">
@@ -339,7 +339,7 @@ export default function WikidataStudio() {
             <button onClick={() => doUpload(true)} disabled={!!busy} className="button-primary text-sm">
               {busy === "dry" ? "Running…" : "Dry-run upload"}
             </button>
-            <button onClick={() => doUpload(false)} disabled={!!busy} className="button-ghost text-sm text-yellow-300">
+            <button onClick={() => doUpload(false)} disabled={!!busy} className="button-ghost text-sm text-warn">
               {busy === "live" ? "Uploading…" : "Live upload"}
             </button>
             <a href={Studio.qsUrl(runId!, approvedOnly, uploadApprovedOnly)} download className="button-ghost text-sm">
@@ -504,7 +504,7 @@ export default function WikidataStudio() {
                             <span className="text-biu-sky font-mono">↻{it.existing_qid}</span>
                           )}
                           {rec?.existing_qid && !it.existing_qid && (
-                            <span className="text-yellow-300 font-mono" title={rec.message}>
+                            <span className="text-warn font-mono" title={rec.message}>
                               found {rec.existing_qid}
                             </span>
                           )}
@@ -573,8 +573,8 @@ export default function WikidataStudio() {
           <summary className="cursor-pointer kicker">
             QuickStatements output ({build.quickstatements.length.toLocaleString()} chars)
           </summary>
-          <pre className="text-[11px] font-mono whitespace-pre-wrap mt-3"
-               style={{ background: "rgba(0,0,0,0.36)", border: "1px solid var(--line)", borderRadius: 10, padding: 10, maxHeight: "60vh", overflow: "auto" }}>
+          <pre className="text-[11px] font-mono whitespace-pre-wrap mt-3 code-surface p-2.5"
+               style={{maxHeight: "60vh", overflow: "auto"}}>
             {build.quickstatements || "(empty)"}
           </pre>
         </Glass>
@@ -782,7 +782,7 @@ function ItemPanel({
                       <button
                         type="button"
                         onClick={() => void toggleExclude(i)}
-                        className="text-[11px] muted hover:text-red-300 transition"
+                        className="text-[11px] muted hover:text-danger transition"
                         title="Exclude this statement from upload"
                       >
                         ✗ Exclude
@@ -813,7 +813,7 @@ function ItemPanel({
                     </ul>
                   </details>
                 ) : (
-                  <p className="text-red-300 text-xs mt-1">
+                  <p className="text-danger text-xs mt-1">
                     ⚠ Unsourced — this claim has no reference. Curate before upload.
                   </p>
                 )}
@@ -1162,7 +1162,7 @@ function FlatRowView({
         <td className="py-2 pr-3 text-xs">
           {refs.length > 0
             ? <span title={refSummary} className="text-ink">{refs.length} <span className="muted">·</span> {refSummary}</span>
-            : <span className="text-red-300" title="No reference attached">⚠ unsourced</span>}
+            : <span className="text-danger" title="No reference attached">⚠ unsourced</span>}
         </td>
       </tr>
       {open && (quals.length > 0 || refs.length > 0) && (
@@ -1275,6 +1275,6 @@ function labelOf(it: StudioItem): string {
 function statusTone(status: string): string {
   if (status === "success" || status === "updated" || status === "exists") return "text-biu-sky";
   if (status === "skipped" || status === "pending") return "muted";
-  if (status === "failed") return "text-red-300";
-  return "text-yellow-300";
+  if (status === "failed") return "text-danger";
+  return "text-warn";
 }

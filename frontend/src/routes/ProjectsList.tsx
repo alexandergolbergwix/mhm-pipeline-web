@@ -65,7 +65,7 @@ export default function ProjectsList() {
                      required value={name} onChange={(e) => setName(e.target.value)} />
               <textarea className="input-glass min-h-[80px]" placeholder="What's this project for?"
                         value={description} onChange={(e) => setDescription(e.target.value)} />
-              {error && <p className="text-red-300 text-sm">{error}</p>}
+              {error && <p className="text-danger text-sm">{error}</p>}
               <div className="flex gap-2">
                 <button type="submit" className="button-primary">Create</button>
                 <button type="button" onClick={() => { setCreating(false); setError(null); }} className="button-ghost">

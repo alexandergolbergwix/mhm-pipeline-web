@@ -77,7 +77,7 @@ export default function SummaryPanel({projectId}: {projectId: string}) {
       loading={loading}
       empty={!loading && !data && !error}
     >
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
       {data && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
