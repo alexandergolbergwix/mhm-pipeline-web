@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 from pathlib import Path
 
 import rdflib
@@ -15,6 +16,7 @@ from app.pipeline.graph_index import (
     build_and_persist_index,
     build_catalog,
     build_viewport_payload,
+    ensure_index,
     load_catalog,
     scan_graph,
 )
@@ -140,3 +142,41 @@ class TestPersistAndViewport:
         nodes, _edges = scan_graph(g)
         ms_nodes = [n for n in nodes if n.get("is_manuscript") and "MS_abc" in n["id"]]
         assert len(ms_nodes) == 1
+
+
+class TestEnsureIndexConcurrency:
+    def test_parallel_ensure_index_does_not_corrupt_sqlite(self) -> None:
+        g = Graph()
+        g.bind("hmo", HMO)
+        ms = HMO["MS_parallel"]
+        person = HMO["person_parallel"]
+        g.add((ms, RDF.type, HMO.F4_Manifestation_Singleton))
+        g.add((ms, RDFS.label, Literal("Parallel MS")))
+        g.add((person, RDF.type, HMO.E21_Person))
+        g.add((person, RDFS.label, Literal("Author")))
+        g.add((ms, HMO.mentions_scribe, person))
+
+        with tempfile.TemporaryDirectory() as d:
+            run_dir = Path(d)
+            ttl = run_dir / "output.ttl"
+            g.serialize(destination=str(ttl), format="turtle")
+            errors: list[Exception] = []
+
+            def worker() -> None:
+                try:
+                    ensure_index(ttl, run_dir)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=worker) for _ in range(6)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            assert errors == [], errors
+            assert (run_dir / "graph_index.sqlite").exists()
+            payload = build_viewport_payload(
+                run_dir, ViewportParams(max_nodes=500, layout="preset"),
+            )
+            assert len(payload["nodes"]) >= 2

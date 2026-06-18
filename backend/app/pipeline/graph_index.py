@@ -10,8 +10,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import sqlite3
+import threading
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,6 +33,31 @@ from app.pipeline.rdf_build import (
 )
 
 logger = logging.getLogger(__name__)
+
+_INDEX_BUILD_LOCKS: dict[str, threading.Lock] = {}
+_INDEX_LOCKS_GUARD = threading.Lock()
+
+
+def _index_build_lock(run_dir: Path) -> threading.Lock:
+    key = str(run_dir.resolve())
+    with _INDEX_LOCKS_GUARD:
+        lock = _INDEX_BUILD_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _INDEX_BUILD_LOCKS[key] = lock
+        return lock
+
+
+def _index_is_fresh(ttl_path: Path, run_dir: Path) -> bool:
+    catalog_path = run_dir / "graph_catalog.json"
+    index_path = run_dir / "graph_index.sqlite"
+    if not catalog_path.exists() or not index_path.exists():
+        return False
+    ttl_mtime = ttl_path.stat().st_mtime
+    return (
+        catalog_path.stat().st_mtime >= ttl_mtime
+        and index_path.stat().st_mtime >= ttl_mtime
+    )
 
 _MANUSCRIPT_TYPE_LOCALS = frozenset({
     "Manuscript",
@@ -218,9 +245,11 @@ def build_and_persist_index(graph: Graph, run_dir: Path) -> GraphCatalog:
 
 
 def _write_sqlite(path: Path, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> None:
-    if path.exists():
-        path.unlink()
-    conn = sqlite3.connect(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    conn = sqlite3.connect(str(tmp_path))
     try:
         conn.executescript("""
             CREATE TABLE nodes (
@@ -277,6 +306,7 @@ def _write_sqlite(path: Path, nodes: list[dict[str, Any]], edges: list[dict[str,
         conn.commit()
     finally:
         conn.close()
+    os.replace(tmp_path, path)
 
 
 def load_catalog(run_dir: Path) -> GraphCatalog | None:
@@ -296,21 +326,20 @@ def load_catalog(run_dir: Path) -> GraphCatalog | None:
 
 def ensure_index(ttl_path: Path, run_dir: Path) -> GraphCatalog:
     """Load catalog from disk or rebuild index from TTL if missing/stale."""
-    catalog_path = run_dir / "graph_catalog.json"
-    index_path = run_dir / "graph_index.sqlite"
-    if (
-        catalog_path.exists()
-        and index_path.exists()
-        and catalog_path.stat().st_mtime >= ttl_path.stat().st_mtime
-        and index_path.stat().st_mtime >= ttl_path.stat().st_mtime
-    ):
+    if _index_is_fresh(ttl_path, run_dir):
         loaded = load_catalog(run_dir)
         if loaded is not None:
             return loaded
 
-    graph = Graph()
-    graph.parse(str(ttl_path), format="turtle")
-    return build_and_persist_index(graph, run_dir)
+    with _index_build_lock(run_dir):
+        if _index_is_fresh(ttl_path, run_dir):
+            loaded = load_catalog(run_dir)
+            if loaded is not None:
+                return loaded
+
+        graph = Graph()
+        graph.parse(str(ttl_path), format="turtle")
+        return build_and_persist_index(graph, run_dir)
 
 
 class GraphIndexStore:
