@@ -224,6 +224,12 @@ def _fill_person_authority(
     for id_key in ("gnd", "lc", "isni", "bnf", "j9u"):
         if cluster.get(id_key) and id_key not in person:
             person[id_key] = cluster[id_key]
+    biodata = payload.get("biodata_authority")
+    if isinstance(biodata, dict) and biodata and "authority_biodata" not in person:
+        person["authority_biodata"] = biodata
+    occupations = payload.get("occupations")
+    if isinstance(occupations, list) and occupations and "occupations" not in person:
+        person["occupations"] = occupations
 
 
 def _merge_kima_place(

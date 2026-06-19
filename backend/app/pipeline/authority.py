@@ -1008,6 +1008,27 @@ class DesktopMatcher(AuthorityMatcher):
             or text
         )
 
+        biodata_payload_slice: dict[str, Any] = {}
+        if _is_person_entity and (mazal_details or viaf_id):
+            cluster_raw: dict[str, Any] | None = None
+            if viaf_id and self._viaf is not None:
+                try:
+                    cluster_raw = await asyncio.to_thread(
+                        self._viaf.get_cluster_biodata, viaf_id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("VIAF biodata cluster fetch failed for %s: %s", viaf_id, exc)
+            from converter.authority.biodata_enrich import build_biodata_payload_slice  # noqa: PLC0415
+
+            biodata_payload_slice = build_biodata_payload_slice(
+                mazal_entry=mazal_details,
+                viaf_cluster_raw=cluster_raw,
+            )
+        elif is_place and kima_payload:
+            from converter.authority.biodata_enrich import build_biodata_payload_slice  # noqa: PLC0415
+
+            biodata_payload_slice = build_biodata_payload_slice(kima_entry=kima_payload)
+
         primary = Candidate(
             matched_name=text,
             confidence=confidence,
@@ -1049,6 +1070,7 @@ class DesktopMatcher(AuthorityMatcher):
                 "reasoning": " ".join(reasoning_parts),
                 "ai_verdict": None,
                 "matcher": "desktop",
+                **biodata_payload_slice,
             },
         )
         return [primary]

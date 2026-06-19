@@ -202,6 +202,7 @@ export function AuthorityDetailDrawer({
                          onViewMarc={() => setMarcCn(match.control_number)} />
               <ConfidenceCard match={match} payload={p} />
               <DatesCard match={match} payload={p} />
+              <BiodataCard payload={p} />
               <AiVerdictCard payload={p} />
             </>
           )}
@@ -388,6 +389,85 @@ function DatesCard({
                 </span>
               : <span className="muted">— Date guard skipped: no birth/death years available.</span>}
       </p>
+    </Glass>
+  );
+}
+
+
+function BiodataCard({payload}: {payload: Record<string, unknown>}) {
+  const biodata = payload.biodata_authority as {
+    dates?: Record<string, string>;
+    places?: Record<string, string[]>;
+    names?: Record<string, string[]>;
+    occupations?: string[];
+  } | undefined;
+  const occupations = (
+    (Array.isArray(payload.occupations) ? payload.occupations : biodata?.occupations) ?? []
+  ) as string[];
+  const namesHe = (payload.name_variants_he as string[] | undefined) ?? biodata?.names?.he ?? [];
+  const namesLat = (payload.name_variants_lat as string[] | undefined) ?? biodata?.names?.lat ?? [];
+  const birthPlaces = (payload.birth_places as string[] | undefined) ?? biodata?.places?.birth_place ?? [];
+  const deathPlaces = (payload.death_places as string[] | undefined) ?? biodata?.places?.death_place ?? [];
+  const countries = biodata?.places?.country ?? [];
+  const sources = (payload.biodata_sources as string[] | undefined) ?? [];
+
+  const hasContent = (
+    occupations.length > 0
+    || namesHe.length > 0
+    || namesLat.length > 0
+    || birthPlaces.length > 0
+    || deathPlaces.length > 0
+    || countries.length > 0
+  );
+  if (!hasContent) return null;
+
+  return (
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="drawer-card-biodata">
+      <div className="kicker">🧬 Biography (authority)</div>
+      {sources.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {sources.map((s) => (
+            <GlassPill className="px-2 py-0.5 text-[10px] uppercase tracking-wider text-biu-sky" key={s}>
+              {s}
+            </GlassPill>
+          ))}
+        </div>
+      )}
+      {occupations.length > 0 && (
+        <div>
+          <div className="muted text-[10px] uppercase mb-1">Occupations</div>
+          <div className="flex flex-wrap gap-1">
+            {occupations.map((occ) => (
+              <GlassPill className="px-2 py-0.5 text-[11px]" key={occ}>{occ}</GlassPill>
+            ))}
+          </div>
+        </div>
+      )}
+      {namesHe.length > 0 && (
+        <div>
+          <div className="muted text-[10px] uppercase mb-1">Name variants (Hebrew)</div>
+          <p className="text-[11px]" dir="rtl">{namesHe.join(" · ")}</p>
+        </div>
+      )}
+      {namesLat.length > 0 && (
+        <div>
+          <div className="muted text-[10px] uppercase mb-1">Name variants (Latin)</div>
+          <p className="text-[11px]">{namesLat.join(" · ")}</p>
+        </div>
+      )}
+      {(birthPlaces.length > 0 || deathPlaces.length > 0 || countries.length > 0) && (
+        <div className="grid grid-cols-1 gap-1">
+          {birthPlaces.length > 0 && (
+            <p className="text-[11px]"><span className="muted">Birth place: </span>{birthPlaces.join(", ")}</p>
+          )}
+          {deathPlaces.length > 0 && (
+            <p className="text-[11px]"><span className="muted">Death place: </span>{deathPlaces.join(", ")}</p>
+          )}
+          {countries.length > 0 && (
+            <p className="text-[11px]"><span className="muted">Country: </span>{countries.join(", ")}</p>
+          )}
+        </div>
+      )}
     </Glass>
   );
 }
