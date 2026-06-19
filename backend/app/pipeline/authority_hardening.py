@@ -685,7 +685,9 @@ def apply_hardening_guards(
             main_marc_tag=(out.get("payload") or {}).get("main_marc_tag"),
             entity_kind=ctx.entity_kind,
             role=ctx.role,
+            payload=out.get("payload"),
         ),
+        guard_mazal_entity_type_mismatch(payload=out.get("payload")),
     ]
     if ctx.enable_wikidata_crosscheck:
         verdicts.append(
@@ -714,6 +716,7 @@ def apply_hardening_guards(
         "date_conflict",
         "biographical_inconsistency",
         "modern_person",
+        "mazal_entity_type_mismatch",
     }
     if any(v.flag in hard_reject_flags for v in fired):
         out["mazal_id"] = ""
@@ -743,6 +746,15 @@ def apply_hardening_guards(
         for stale in ("gnd_id", "lc_id", "isni", "bnf_id"):
             payload.pop(stale, None)
 
+    # Wikidata crosscheck failure: drop WD + VIAF cluster ids but keep Mazal.
+    if any(v.flag == "wikidata_crosscheck_fail" for v in fired):
+        out["wikidata_qid"] = ""
+        out["viaf_id"] = ""
+        payload.pop("wikidata_uri", None)
+        payload.pop("viaf_uri", None)
+        for stale in ("gnd_id", "lc_id", "isni", "bnf_id"):
+            payload.pop(stale, None)
+
     out["confidence"] = confidence
     payload["guard_flags"] = new_flags
     if reasons:
@@ -757,6 +769,7 @@ def guard_mazal_subject_heading(
     main_marc_tag: str | None,
     entity_kind: str,
     role: str,
+    payload: dict[str, Any] | None = None,
 ) -> GuardVerdict:
     """Fire when a Mazal match resolves to a subject/work heading but the
     entity is a person author or contributor.
@@ -773,6 +786,10 @@ def guard_mazal_subject_heading(
     may legitimately resolve to a subject heading.
     """
     if not main_marc_tag:
+        return GuardVerdict(fired=False)
+
+    pl = payload or {}
+    if pl.get("personality_rematch_from"):
         return GuardVerdict(fired=False)
 
     _PERSON_AUTHOR_ROLES = frozenset(
@@ -800,10 +817,30 @@ def guard_mazal_subject_heading(
             f"Mazal resolved via heading tag {main_marc_tag!r} instead of '100' "
             f"(אישיות). The match may be a subject (נושא) or work (כותר) entry for "
             f"the same person rather than the preferred personality record. "
-            f"Re-import Mazal with the updated schema to ensure tag-100 records are "
-            f"ranked first."
+            f"No tag-100 personality row was found for this name."
         ),
         flag="mazal_subject_not_personality",
+    )
+
+
+def guard_mazal_entity_type_mismatch(
+    *,
+    payload: dict[str, Any] | None,
+) -> GuardVerdict:
+    """Hard-reject when Mazal entity_type disagrees with the routed entity kind."""
+    pl = payload or {}
+    if not pl.get("mazal_entity_type_mismatch"):
+        return GuardVerdict(fired=False)
+    expected = pl.get("mazal_expected_entity_type") or "?"
+    got = pl.get("mazal_got_entity_type") or "?"
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason=(
+            f"Mazal returned entity_type={got!r} but this row is routed as "
+            f"{expected!r} — ID cleared."
+        ),
+        flag="mazal_entity_type_mismatch",
     )
 
 
@@ -815,6 +852,7 @@ __all__ = [
     "guard_corporate_meeting",
     "guard_mazal_pair_collision",
     "guard_mazal_subject_heading",
+    "guard_mazal_entity_type_mismatch",
     "guard_nli_strict_skip_viaf",
     "guard_placeholder_name",
     "guard_short_name_homonym",

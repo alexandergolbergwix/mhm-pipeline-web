@@ -116,10 +116,12 @@ class DesktopMatcher(AuthorityMatcher):
         entity_kind = entity.get("kind", "")
         # MARC $d dates (e.g. "1138-1204") narrow Mazal homonym resolution.
         marc_dates = (entity.get("dates") or "").strip() or None
+        marc_field = (entity.get("field") or "").strip() or None
         return await self._match_one(
             text=text, role=role, entity_kind=entity_kind, marc_record=marc_record,
             db_session=db_session, user_id=user_id, skip_cache=skip_cache,
             marc_dates=marc_dates,
+            marc_field=marc_field,
         )
 
     # ── Cached per-matcher wrappers ────────────────────────────────────
@@ -258,30 +260,42 @@ class DesktopMatcher(AuthorityMatcher):
         )
 
     async def _mazal_match_work(
-        self, title: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+        self, title: str, *, marc_record: dict[str, Any] | None,
+        db_session: Any, user_id: Any, skip_cache: bool,
     ) -> str | None:
         """Match a work title against the Mazal authority index."""
+        from app.pipeline.work_title_match import work_title_variants  # noqa: PLC0415
+
         _mode = os.getenv("AUTHORITY_MODE", "local").lower()
         if self._mazal is None and _mode not in ("postgres",):
             return None
 
-        async def _f() -> str | None:
-            if _mode == "postgres":
-                row = await self._authority_backend.match_work(title)
-                if row and row.get("mazal_id"):
-                    self._mazal_detail_cache[str(row["mazal_id"])] = row
-                    return str(row["mazal_id"])
-                return None
-            if self._mazal is None:
-                return None
-            nli_id = await asyncio.to_thread(self._mazal.match_work, title)
-            return str(nli_id) if nli_id else None
+        variants = work_title_variants(title, marc_record)
 
-        return await self._cached(
-            kind="authority.mazal",
-            query_summary={"op": "match_work", "text": title},
-            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
-        )
+        async def _try_one(variant: str) -> str | None:
+            async def _f() -> str | None:
+                if _mode == "postgres":
+                    row = await self._authority_backend.match_work(variant)
+                    if row and row.get("mazal_id"):
+                        self._mazal_detail_cache[str(row["mazal_id"])] = row
+                        return str(row["mazal_id"])
+                    return None
+                if self._mazal is None:
+                    return None
+                nli_id = await asyncio.to_thread(self._mazal.match_work, variant)
+                return str(nli_id) if nli_id else None
+
+            return await self._cached(
+                kind="authority.mazal",
+                query_summary={"op": "match_work", "text": variant},
+                fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+            )
+
+        for variant in variants:
+            hit = await _try_one(variant)
+            if hit:
+                return hit
+        return None
 
     async def _mazal_match_corporate(
         self, name: str, *, db_session: Any, user_id: Any, skip_cache: bool,
@@ -551,6 +565,7 @@ class DesktopMatcher(AuthorityMatcher):
         text: str, role: str, entity_kind: str, marc_record: dict[str, Any],
         db_session: Any, user_id: Any, skip_cache: bool,
         marc_dates: str | None = None,
+        marc_field: str | None = None,
     ) -> list[Candidate]:
         sources: list[str] = []
         mazal_id = ""
@@ -565,6 +580,8 @@ class DesktopMatcher(AuthorityMatcher):
         mazal_details: dict[str, Any] | None = None
         viaf_meta: dict[str, Any] | None = None
         _wd_enrich: dict[str, Any] | None = None
+        mazal_payload_extras: dict[str, Any] = {}
+        work_match_meta: dict[str, Any] = {}
 
         # — KIMA (places only) —
         # KIMA is the desktop's geographic-authority adapter. It returns
@@ -581,7 +598,7 @@ class DesktopMatcher(AuthorityMatcher):
             # Provenance-event places (541 $b acquisition, 583 $j conservation/
             # exhibition, and future ownership_place) must also fire KIMA.
             or role_key.endswith("_place")
-            or (role_key == "subject" and _looks_like_place(text, marc_record))
+            or (role_key == "subject" and _looks_like_place(text, marc_record, marc_field))
         )
         _non_person_kinds = frozenset(("work", "corporate", "organization", "topic", "meeting"))
         _is_person_entity = (
@@ -655,12 +672,24 @@ class DesktopMatcher(AuthorityMatcher):
         if normalized_kind == "work" and (self._mazal is not None or _mode == "postgres"):
             try:
                 work_mid = await self._mazal_match_work(
-                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+                    text,
+                    marc_record=marc_record,
+                    db_session=db_session, user_id=user_id, skip_cache=skip_cache,
                 )
                 if work_mid:
                     mazal_id = str(work_mid)
                     sources.append("mazal")
                     reasoning_parts.append(f"Mazal work hit ({work_mid}).")
+                    cached = self._mazal_detail_cache.get(work_mid) or {}
+                    work_match_meta = {
+                        k: cached[k]
+                        for k in (
+                            "work_match_input",
+                            "work_match_variant",
+                            "_fuzzy_sim",
+                        )
+                        if cached.get(k) is not None
+                    }
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal work matcher raised for %r: %s", text, exc)
 
@@ -674,8 +703,17 @@ class DesktopMatcher(AuthorityMatcher):
                 )
                 if corp_mid:
                     mazal_id = str(corp_mid)
+                    mazal_details = self._mazal_detail_cache.get(str(corp_mid)) or {}
                     sources.append("mazal")
                     reasoning_parts.append(f"Mazal corporate hit ({corp_mid}).")
+                    mazal_id, mazal_details, mazal_payload_extras = _apply_mazal_entity_type_gate(
+                        is_place=is_place,
+                        is_person_entity=_is_person_entity,
+                        entity_kind=normalized_kind,
+                        mazal_id=mazal_id,
+                        mazal_details=mazal_details or None,
+                        extras=mazal_payload_extras,
+                    )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal corporate matcher raised for %r: %s", text, exc)
 
@@ -705,9 +743,18 @@ class DesktopMatcher(AuthorityMatcher):
                 )
                 if mazal_place_row and mazal_place_row.get("mazal_id"):
                     mazal_id = str(mazal_place_row["mazal_id"])
+                    mazal_details = dict(mazal_place_row)
                     if "mazal" not in sources:
                         sources.append("mazal")
                     reasoning_parts.append(f"Mazal place hit ({mazal_id}).")
+                    mazal_id, mazal_details, mazal_payload_extras = _apply_mazal_entity_type_gate(
+                        is_place=is_place,
+                        is_person_entity=_is_person_entity,
+                        entity_kind=normalized_kind,
+                        mazal_id=mazal_id,
+                        mazal_details=mazal_details,
+                        extras=mazal_payload_extras,
+                    )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal place matcher raised for %r: %s", text, exc)
 
@@ -767,6 +814,51 @@ class DesktopMatcher(AuthorityMatcher):
                                 death_year = parsed["death_year"]
                     except Exception as exc:  # noqa: BLE001
                         logger.debug("Mazal date lookup failed for %s: %s", mid, exc)
+                    mazal_id, mazal_details, mazal_payload_extras = _apply_mazal_entity_type_gate(
+                        is_place=is_place,
+                        is_person_entity=_is_person_entity,
+                        entity_kind=normalized_kind,
+                        mazal_id=mazal_id,
+                        mazal_details=mazal_details,
+                        extras=mazal_payload_extras,
+                    )
+                    if (
+                        mazal_id
+                        and mazal_details
+                        and _should_personality_rematch(role_key)
+                    ):
+                        main_tag = str(mazal_details.get("main_marc_tag") or "")
+                        if main_tag and main_tag != "100":
+                            try:
+                                rematch = await self._authority_backend.resolve_personality_mazal_id(
+                                    text,
+                                    dates=marc_dates,
+                                    current_id=str(mazal_id),
+                                    main_marc_tag=main_tag,
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                logger.debug(
+                                    "Personality rematch failed for %r: %s", text, exc,
+                                )
+                                rematch = None
+                            if rematch and rematch.get("mazal_id"):
+                                old_id = mazal_id
+                                mazal_id = str(rematch["mazal_id"])
+                                mazal_details = dict(rematch)
+                                self._mazal_detail_cache[mazal_id] = mazal_details
+                                mazal_payload_extras["personality_rematch_from"] = (
+                                    rematch.get("personality_rematch_from") or old_id
+                                )
+                                reasoning_parts.append(
+                                    f"Personality rematch {old_id} → {mazal_id} (tag 100).",
+                                )
+                            else:
+                                from app.pipeline.entity_normalize import (  # noqa: PLC0415
+                                    normalize_entity_key,
+                                )
+                                mazal_payload_extras["suggested_personality_lookup"] = (
+                                    normalize_entity_key(text)
+                                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal matcher raised for %r: %s", text, exc)
 
@@ -799,6 +891,10 @@ class DesktopMatcher(AuthorityMatcher):
         # place QIDs are already resolved by KIMA / Ashkenazi gazetteer.
         # When Mazal already matched, triangulate via P8189 before label
         # search — avoids wrong high-QID label hits (e.g. Allony, Nehemia).
+        mazal_personality_confirmed = bool(
+            mazal_id
+            and str((mazal_details or {}).get("main_marc_tag") or "") == "100"
+        )
         if _is_person_entity and self._wikidata is not None:
             try:
                 if mazal_id and not wikidata_qid:
@@ -813,7 +909,7 @@ class DesktopMatcher(AuthorityMatcher):
                             f"Wikidata hit via Mazal P8189 ({qid_from_mazal}).",
                         )
 
-                if not wikidata_qid:
+                if not wikidata_qid and not mazal_personality_confirmed:
                     qid = await self._wikidata_match_person(
                         text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
                     )
@@ -932,6 +1028,7 @@ class DesktopMatcher(AuthorityMatcher):
                 "guard_flags": guards,
                 "viaf_uri": f"https://viaf.org/viaf/{viaf_id}" if viaf_id else "",
                 "main_marc_tag": _mazal_main_tag,
+                **mazal_payload_extras,
             },
         }
         hardened = authority_hardening.apply_hardening_guards(
@@ -1070,6 +1167,9 @@ class DesktopMatcher(AuthorityMatcher):
                 "reasoning": " ".join(reasoning_parts),
                 "ai_verdict": None,
                 "matcher": "desktop",
+                "main_marc_tag": _mazal_main_tag,
+                **work_match_meta,
+                **mazal_payload_extras,
                 **biodata_payload_slice,
             },
         )
@@ -1140,7 +1240,9 @@ def _load_kima_matcher():  # type: ignore[no-untyped-def]
         return None
 
 
-def _looks_like_place(text: str, record: dict[str, Any]) -> bool:
+def _looks_like_place(
+    text: str, record: dict[str, Any], marc_field: str | None = None,
+) -> bool:
     """Heuristic — was *text* a place entity in the source record?
 
     KIMA gets called for entities whose role is 'place'/'subject' AND
@@ -1148,6 +1250,9 @@ def _looks_like_place(text: str, record: dict[str, Any]) -> bool:
     (subjects[type=place], 651, 752, related_places). When in doubt
     we DO call KIMA — it's a cheap SQLite read.
     """
+    field = (marc_field or "").strip()
+    if field in ("651", "752", "260", "264"):
+        return True
     s = text.strip()
     if not s:
         return False
@@ -1180,6 +1285,61 @@ def get_default_matcher() -> AuthorityMatcher:
 
 _PROD_ROLES = {"scribe", "transcriber", "copyist", "editor"}
 _AUTHORSHIP_ROLES = {"author", "translator", "commentator"}
+_PERSON_AUTHOR_ROLES = frozenset({
+    "author", "contributor", "scribe", "translator", "editor", "commentator",
+})
+_PIPELINE_QID_THRESHOLD = 138_000_000
+
+
+def _should_personality_rematch(role_key: str) -> bool:
+    return role_key in _PERSON_AUTHOR_ROLES
+
+
+def _apply_mazal_entity_type_gate(
+    *,
+    is_place: bool,
+    is_person_entity: bool,
+    entity_kind: str,
+    mazal_id: str,
+    mazal_details: dict[str, Any] | None,
+    extras: dict[str, Any],
+) -> tuple[str, dict[str, Any] | None, dict[str, Any]]:
+    if not mazal_id or not mazal_details:
+        return mazal_id, mazal_details, extras
+    et = str(mazal_details.get("entity_type") or "").lower().strip()
+    kind = (entity_kind or "").lower().strip()
+    out_extras = dict(extras)
+    if is_place and et != "place":
+        out_extras.update({
+            "mazal_entity_type_mismatch": True,
+            "mazal_expected_entity_type": "place",
+            "mazal_got_entity_type": et or "unknown",
+        })
+        return "", None, out_extras
+    if is_person_entity and et in ("place", "work", "corporate", "subject"):
+        out_extras.update({
+            "mazal_entity_type_mismatch": True,
+            "mazal_expected_entity_type": "person",
+            "mazal_got_entity_type": et,
+        })
+        return "", None, out_extras
+    if kind in ("corporate", "organization", "meeting") and et not in (
+        "corporate", "organization", "meeting",
+    ):
+        out_extras.update({
+            "mazal_entity_type_mismatch": True,
+            "mazal_expected_entity_type": "corporate",
+            "mazal_got_entity_type": et or "unknown",
+        })
+        return "", None, out_extras
+    if kind == "work" and et != "work":
+        out_extras.update({
+            "mazal_entity_type_mismatch": True,
+            "mazal_expected_entity_type": "work",
+            "mazal_got_entity_type": et or "unknown",
+        })
+        return "", None, out_extras
+    return mazal_id, mazal_details, out_extras
 
 
 def _record_year(record: dict[str, Any]) -> int | None:

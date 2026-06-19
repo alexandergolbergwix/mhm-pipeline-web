@@ -21,6 +21,14 @@ _EXTRA_INSTITUTIONAL_KEYWORDS: tuple[str, ...] = (
     "russian state library",
     "jewish theological seminary",
     "ben zvi institute",
+    "goldschmidt",
+    "אוסף",
+    "ספרייה",
+    "מכון",
+    "ארכיון",
+    "museum",
+    "bibliothek",
+    "library",
 )
 
 _HEBREW_PERSON_MARKERS: tuple[str, ...] = (

@@ -129,6 +129,9 @@ export function AuthorityDetailDrawer({
               MS <span className="font-mono">{match?.control_number}</span>
               {match?.role && <> · <span className="kicker">{match.role}</span></>}
               {match?.entity_kind && <> · <span className="text-ink">{match.entity_kind}</span></>}
+              {match?.entity_kind === "corporate" && (
+                <GlassPill className="ml-1 px-1.5 py-0 text-[10px] uppercase text-biu-sky">Institution</GlassPill>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -272,6 +275,15 @@ function MatchCard({
         {match.wikidata_qid && (
           <LabeledValue label="Wikidata" value={match.wikidata_qid} mono
             href={`https://www.wikidata.org/wiki/${match.wikidata_qid}`} />
+        )}
+        {strOr(payload.linked_personality_mazal_id as string, "") && (
+          <LabeledValue label="Linked author personality"
+            value={strOr(payload.linked_personality_mazal_id as string, "")} mono
+            href={`https://www.nli.org.il/he/authorities/${encodeURIComponent(strOr(payload.linked_personality_mazal_id as string, ""))}`} />
+        )}
+        {strOr(payload.personality_rematch_from as string, "") && (
+          <LabeledValue label="Rematched from subject heading"
+            value={strOr(payload.personality_rematch_from as string, "")} mono />
         )}
       </div>
       <KimaGeoInline payload={payload} />
@@ -583,9 +595,15 @@ function strOr(v: unknown, fallback: string): string {
 
 
 const _GUARD_NOTES: Record<string, string> = {
-  date_conflict:      "Manuscript date is incompatible with the candidate's lifespan + role.",
-  name_drift:         "Preferred form drifts from the MARC heading.",
-  weaker_alternative: "Secondary candidate offered alongside a stronger primary.",
+  date_conflict:                 "Manuscript date is incompatible with the candidate's lifespan + role.",
+  name_drift:                    "Preferred form drifts from the MARC heading.",
+  weaker_alternative:            "Secondary candidate offered alongside a stronger primary.",
+  mazal_subject_not_personality: "Mazal hit a נושא/כותר record instead of אישיות (tag 100).",
+  mazal_entity_type_mismatch:    "Mazal entity type does not match this row's kind (person/place/work).",
+  wikidata_crosscheck_fail:      "Wikidata Hebrew label disagrees with the MARC heading or cluster is over-merged.",
+  short_name_homonym:            "Short single-token name without independent corroboration.",
+  cluster_collapse:              "Same VIAF cluster matched two distinct names in this manuscript.",
+  corporate_viaf_drop:           "Person-style VIAF id removed from an institution row.",
 };
 function guardExplain(g: string): string {
   return _GUARD_NOTES[g] ?? "";

@@ -192,7 +192,7 @@ export default function RequestAccess() {
           <div
             id="justification-char-count"
             className={`text-xs ${
-              justificationOk ? "muted" : "text-amber-300"
+              justificationOk ? "muted" : "text-warn"
             }`}
             data-testid="justification-char-count"
           >
@@ -219,7 +219,7 @@ export default function RequestAccess() {
         />
 
         {turnstileInvalid && (
-          <p className="text-sm text-amber-300" role="alert" data-testid="turnstile-error">
+          <p className="text-sm text-warn" role="alert" data-testid="turnstile-error">
             Please complete the security check above before submitting.
           </p>
         )}

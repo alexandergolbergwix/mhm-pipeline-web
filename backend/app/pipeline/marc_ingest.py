@@ -706,6 +706,46 @@ from app.pipeline.entity_normalize import (
 )
 
 
+def _provenance_institution_candidates(record: dict[str, Any]) -> list[dict[str, str]]:
+    """Emit corporate entities from provenance text when institutional."""
+    from app.pipeline.entity_kind_infer import infer_entity_kind  # noqa: PLC0415
+
+    candidates: list[tuple[str, str, str]] = []
+    prov = str(record.get("provenance") or "").strip()
+    if prov:
+        for piece in prov.split("|"):
+            piece = piece.strip()
+            if piece:
+                candidates.append((piece, "561", "former_owner"))
+    for piece in _split_multi(_str(record.get("541$a"))):
+        if piece:
+            candidates.append((piece, "541", "collection"))
+    for owner in record.get("former_owners") or []:
+        if isinstance(owner, str) and owner.strip():
+            candidates.append((owner.strip(), "561", "former_owner"))
+
+    out: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for name, field, role in candidates:
+        clean = normalize_entity_text(name)
+        if not clean:
+            continue
+        kind = infer_entity_kind(clean, field)
+        if kind not in ("corporate", "organization", "meeting"):
+            continue
+        key = (normalize_entity_key(clean), kind)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "text": clean,
+            "kind": "corporate",
+            "role": normalize_role(role),
+            "field": field,
+        })
+    return out
+
+
 def _expand_pipe_delimited_entries(entries: list[Any]) -> list[dict[str, Any]]:
     """Split ``name|name`` contributor/author dicts (desktop .mrc path)."""
     out: list[dict[str, Any]] = []
@@ -880,6 +920,10 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
             "role": f"{ev.get('type') or 'provenance'} place",
             "field": str(ev.get("source_field") or ""),
         })
+
+    # Institutions named in provenance / acquisition (561, 541, former owners)
+    for inst in _provenance_institution_candidates(record):
+        out.append(inst)
 
     # Work mentions extracted from notes (כולל: / כולל …)
     for wm in record.get("work_mentions") or []:

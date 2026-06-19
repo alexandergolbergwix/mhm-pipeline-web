@@ -28,6 +28,26 @@ export function AuthorityMatchingHelp() {
           while keeping your approvals. Use <strong className="text-ink">Search notes</strong> to find entities
           whose manuscript has colophon / הערות text even when the entity itself came from a heading field.
         </p>
+        <p>
+          <strong className="text-ink">Author + subject duplicates:</strong> the same person may appear once as
+          MARC 100 (author) and once as MARC 600 (subject). These stay as two rows because the roles differ;
+          enable <strong className="text-ink">Group duplicates</strong> to collapse the view, and check
+          <em> Linked author personality</em> on subject rows when the author row resolved to אישיות.
+        </p>
+        <details className="text-xs">
+          <summary className="cursor-pointer font-medium text-ink">איך נקבעת ההתאמה (עברית)</summary>
+          <div className="muted space-y-2 pt-2 leading-relaxed" dir="rtl">
+            <p>
+              לכל ישות במאגר MARC המערכת בוחרת מסלול לפי סוג הישות: מקומות — KIMA ואז מז״ל;
+              אנשים — מז״ל (מעדיף אישיות תג 100 על פני נושא 150), VIAF, ויקידאטה;
+              יצירות — כותר עבודה במז״ל; מוסדות — גוף תאגידי במז״ל.
+            </p>
+            <p>
+              לאחר עדכון מערכת יש להריץ <strong className="text-ink">Re-enrich</strong>.
+              חיפוש בהערות מאפשר למצוא קולופון ו«כולל:» גם כשהישות הגיעה משדה כותר.
+            </p>
+          </div>
+        </details>
       </div>
     </Glass>
   );

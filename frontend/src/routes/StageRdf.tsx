@@ -707,7 +707,7 @@ export default function StageRdf() {
               <summary className="cursor-pointer font-medium text-amber-400">
                 ⚠ {mappingErrors.length} record{mappingErrors.length !== 1 ? "s" : ""} failed to map to RDF — click to see errors
               </summary>
-              <ul className="mt-2 space-y-1 text-amber-300/80 font-mono text-xs max-h-48 overflow-y-auto">
+              <ul className="mt-2 space-y-1 text-warn opacity-80 font-mono text-xs max-h-48 overflow-y-auto">
                 {mappingErrors.map((e, i) => (
                   <li key={i}>{e}</li>
                 ))}
@@ -1172,7 +1172,7 @@ function ListView({
                                           >✕</button>
                                         </div>
                                       ) : (
-                                        <span className={isEdited ? "text-amber-300" : "text-ink/80"}>
+                                        <span className={isEdited ? "text-warn" : "text-ink/80"}>
                                           {currentValue}
                                           {isEdited && <span className="ml-1 text-amber-500/70 text-[10px]">✏ edited</span>}
                                         </span>

@@ -247,7 +247,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
                   onClick={() => applyAutoFix(fix.text)}
                   data-testid="detail-autofix-btn"
                   title={fix.reasoning ?? `Apply AI-suggested correction \u2192 ${fix.text}`}
-                  className="button-ghost h-7 px-3 text-xs text-amber-300 hover:text-amber-200"
+                  className="button-ghost h-7 px-3 text-xs text-warn hover:opacity-90"
                 >
                   ✨ Auto-fix
                 </button>
@@ -258,7 +258,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
           {rechecking && (
             <span
               data-testid="detail-rechecking"
-              className="inline-flex items-center h-7 px-2 text-xs text-amber-300/80 animate-pulse"
+              className="inline-flex items-center h-7 px-2 text-xs text-warn opacity-80 animate-pulse"
             >
               ⏳ re-checking…
             </span>
@@ -504,14 +504,14 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
       {showFix && (
         <div className="rounded-md border border-amber-300/30 bg-amber-300/5 p-2 space-y-1"
              data-testid="autofix-preview">
-          <div className="text-[10px] uppercase tracking-wide text-amber-300/80">✨ AI suggests a text fix</div>
+          <div className="text-[10px] uppercase tracking-wide text-warn opacity-80">✨ AI suggests a text fix</div>
           <div className="grid grid-cols-[60px_1fr] gap-x-2 text-[11px]">
             <span className="muted text-right">Current:</span>
             <span dir="auto" data-testid="autofix-current-text"
                   className="text-ink/70 line-through">{effectiveText}</span>
             <span className="muted text-right">Proposed:</span>
             <span dir="auto" data-testid="autofix-proposed-text"
-                  className="text-amber-200 font-medium">{fix!.text}</span>
+                  className="text-warn font-medium">{fix!.text}</span>
           </div>
           {fix!.reasoning && (
             <p className="text-[10px] muted leading-snug">{fix!.reasoning}</p>

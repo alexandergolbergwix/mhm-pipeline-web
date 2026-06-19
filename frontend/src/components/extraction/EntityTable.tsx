@@ -397,7 +397,7 @@ export function EntityTable(props: EntityTableProps) {
               data-testid="entity-autofix-btn"
               title={fix!.reasoning ?? `Auto-fix: apply AI-suggested correction → ${fix!.text}`}
               onClick={() => applyAutoFix(entity, fix!.text)}
-              className="button-ghost h-7 px-2 text-xs text-amber-300 hover:text-amber-200 whitespace-nowrap"
+              className="button-ghost h-7 px-2 text-xs text-warn hover:opacity-90 whitespace-nowrap"
             >
               ✨ Fix
             </button>
@@ -405,7 +405,7 @@ export function EntityTable(props: EntityTableProps) {
             <span
               data-testid="entity-rechecking"
               title="Applied fix — re-running AI verification…"
-              className="inline-flex items-center h-7 px-1 text-xs text-amber-300/80 animate-pulse whitespace-nowrap"
+              className="inline-flex items-center h-7 px-1 text-xs text-warn opacity-80 animate-pulse whitespace-nowrap"
             >
               ⏳…
             </span>

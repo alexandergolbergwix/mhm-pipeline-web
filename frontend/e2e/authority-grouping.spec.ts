@@ -45,4 +45,13 @@ test.describe("Authority review — grouping and notes search", () => {
     await expect(page.getByTestId("authority-row-m-author")).toBeVisible();
     await expect(page.getByTestId("authority-row-m-other")).not.toBeVisible();
   });
+
+  test("matching help includes Hebrew curator section", async ({page}) => {
+    const state = makeAuthorityState();
+    await installAuthorityMocks(page, state);
+    await gotoAuthority(page);
+
+    await page.getByText("איך נקבעת ההתאמה (עברית)").click();
+    await expect(page.getByText("מעדיף אישיות תג 100")).toBeVisible();
+  });
 });

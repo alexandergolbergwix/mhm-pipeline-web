@@ -143,6 +143,19 @@ async def re_enrich_run(
             await db.delete(m)
             orphans_removed += 1
 
+    remaining_rows = (
+        await db.execute(
+            select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
+        )
+    ).scalars().all()
+    from app.pipeline.authority_post_enrich import (  # noqa: PLC0415
+        apply_personality_cross_links,
+        apply_wikidata_crosscheck_pass,
+    )
+
+    cross_linked = apply_personality_cross_links(list(remaining_rows))
+    wd_crosschecked = apply_wikidata_crosscheck_pass(list(remaining_rows))
+
     await db.flush()
     remaining_count = await db.scalar(
         select(func.count())
@@ -156,4 +169,6 @@ async def re_enrich_run(
         "updated": updated,
         "newly_matched": newly_matched,
         "orphans_removed": orphans_removed,
+        "cross_linked": cross_linked,
+        "wikidata_crosschecked": wd_crosschecked,
     }

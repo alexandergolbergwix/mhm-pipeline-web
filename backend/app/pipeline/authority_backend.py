@@ -62,6 +62,17 @@ class AuthorityBackend(Protocol):
         """Return a Mazal authority row for a topical subject heading."""
         ...
 
+    async def resolve_personality_mazal_id(
+        self,
+        name: str,
+        *,
+        dates: str | None,
+        current_id: str,
+        main_marc_tag: str | None,
+    ) -> dict[str, Any] | None:
+        """Re-query for tag-100 אישיות when *current_id* is a subject/work heading."""
+        ...
+
 
 class LocalAuthorityBackend:
     """Calls the local SQLite matchers directly (existing behaviour).
@@ -123,6 +134,74 @@ class LocalAuthorityBackend:
             if fuzzy:
                 details["_fuzzy"] = True
             return {"mazal_id": str(mid), **details}
+
+        return await asyncio.to_thread(_sync)
+
+    async def resolve_personality_mazal_id(
+        self,
+        name: str,
+        *,
+        dates: str | None,
+        current_id: str,
+        main_marc_tag: str | None,
+    ) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        if not current_id or (main_marc_tag or "").strip() == "100":
+            return None
+
+        def _sync() -> dict[str, Any] | None:
+            if self._mazal is None or self._mazal.index is None:
+                return None
+            idx = self._mazal.index
+            norm = idx.normalize_name(name)
+            if not norm:
+                return None
+            cur = idx.conn.cursor()
+            try:
+                if dates:
+                    cur.execute(
+                        """
+                        SELECT a.nli_id, a.entity_type, a.preferred_name_heb,
+                               a.preferred_name_lat, a.dates, a.aleph_id,
+                               a.main_marc_tag
+                        FROM name_index n
+                        JOIN authorities a ON n.nli_id = a.nli_id
+                        WHERE n.normalized_name = ?
+                          AND n.entity_type = 'person'
+                          AND a.main_marc_tag = '100'
+                          AND a.dates = ?
+                        LIMIT 1
+                        """,
+                        (norm, dates.strip()),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        return _personality_row_from_sqlite(row, current_id)
+                cur.execute(
+                    """
+                    SELECT a.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
+                    FROM name_index n
+                    JOIN authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name = ?
+                      AND n.entity_type = 'person'
+                      AND a.main_marc_tag = '100'
+                    ORDER BY (a.dates IS NOT NULL AND a.dates != '') DESC,
+                             a.nli_id ASC
+                    LIMIT 1
+                    """,
+                    (norm,),
+                )
+                row = cur.fetchone()
+                if row:
+                    return _personality_row_from_sqlite(row, current_id)
+            except Exception:  # noqa: BLE001 — main_marc_tag column may be absent
+                return None
+            finally:
+                cur.close()
+            return None
 
         return await asyncio.to_thread(_sync)
 
@@ -293,6 +372,59 @@ class ModalAuthorityBackend:
 
     async def match_subject(self, name: str) -> dict[str, Any] | None:
         return None
+
+    async def resolve_personality_mazal_id(
+        self,
+        name: str,
+        *,
+        dates: str | None,
+        current_id: str,
+        main_marc_tag: str | None,
+    ) -> dict[str, Any] | None:
+        return None
+
+
+def _personality_row_from_sqlite(row: Any, previous_id: str) -> dict[str, Any] | None:
+    """Build personality rematch dict from a SQLite row; None if same id."""
+    nli_id = row["nli_id"] if hasattr(row, "keys") else row[0]
+    if not nli_id or str(nli_id) == str(previous_id):
+        return None
+    if hasattr(row, "keys"):
+        return {
+            "mazal_id": nli_id,
+            "entity_type": row["entity_type"],
+            "preferred_name_heb": row["preferred_name_heb"],
+            "preferred_name_lat": row["preferred_name_lat"],
+            "dates": row["dates"],
+            "aleph_id": row["aleph_id"],
+            "main_marc_tag": row["main_marc_tag"],
+            "personality_rematch_from": str(previous_id),
+        }
+    return {
+        "mazal_id": row[0],
+        "entity_type": row[1],
+        "preferred_name_heb": row[2],
+        "preferred_name_lat": row[3],
+        "dates": row[4],
+        "aleph_id": row[5],
+        "main_marc_tag": row[6],
+        "personality_rematch_from": str(previous_id),
+    }
+
+
+def _personality_row_from_pg(row: tuple[Any, ...], previous_id: str) -> dict[str, Any] | None:
+    if not row or not row[0] or str(row[0]) == str(previous_id):
+        return None
+    return {
+        "mazal_id": row[0],
+        "entity_type": row[1],
+        "preferred_name_heb": row[2],
+        "preferred_name_lat": row[3],
+        "dates": row[4],
+        "aleph_id": row[5],
+        "main_marc_tag": row[6],
+        "personality_rematch_from": str(previous_id),
+    }
 
 
 class PostgresAuthorityBackend:
@@ -501,6 +633,114 @@ class PostgresAuthorityBackend:
                 return await self._fallback.match_person(name, dates=dates)
             return None
 
+    async def resolve_personality_mazal_id(
+        self,
+        name: str,
+        *,
+        dates: str | None,
+        current_id: str,
+        main_marc_tag: str | None,
+    ) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        FUZZY_MIN_SIM = 0.45
+        if not current_id or (main_marc_tag or "").strip() == "100":
+            return None
+
+        def _sync() -> dict[str, Any] | None:
+            norm = self._normalize_mazal(name)
+            if not norm:
+                return None
+            conn = self._get_conn()
+            cur = conn.cursor()
+            try:
+                if dates:
+                    cur.execute(
+                        """
+                        SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                               a.preferred_name_lat, a.dates, a.aleph_id,
+                               a.main_marc_tag
+                        FROM mazal_name_index n
+                        JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                        WHERE n.normalized_name = %s
+                          AND n.entity_type = 'person'
+                          AND a.main_marc_tag = '100'
+                          AND a.dates = %s
+                        LIMIT 1
+                        """,
+                        (norm, dates.strip()),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        return _personality_row_from_pg(row, current_id)
+
+                cur.execute(
+                    """
+                    SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
+                    FROM mazal_name_index n
+                    JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name = %s
+                      AND n.entity_type = 'person'
+                      AND a.main_marc_tag = '100'
+                    ORDER BY (a.dates IS NOT NULL AND a.dates <> '') DESC,
+                             a.nli_id ASC
+                    LIMIT 1
+                    """,
+                    (norm,),
+                )
+                row = cur.fetchone()
+                if row:
+                    return _personality_row_from_pg(row, current_id)
+
+                try:
+                    cur.execute(
+                        """
+                        SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                               a.preferred_name_lat, a.dates, a.aleph_id,
+                               a.main_marc_tag,
+                               similarity(n.normalized_name, %s) AS sim
+                        FROM mazal_name_index n
+                        JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                        WHERE n.normalized_name %% %s
+                          AND n.entity_type = 'person'
+                          AND a.main_marc_tag = '100'
+                        ORDER BY sim DESC,
+                          (a.dates IS NOT NULL AND a.dates <> '') DESC,
+                          a.nli_id ASC
+                        LIMIT 1
+                        """,
+                        (norm, norm),
+                    )
+                    row = cur.fetchone()
+                    if row and row[7] is not None and float(row[7]) >= FUZZY_MIN_SIM:
+                        result = _personality_row_from_pg(row[:7], current_id)
+                        if result:
+                            result["_fuzzy"] = True
+                            result["_fuzzy_sim"] = float(row[7])
+                        return result
+                except Exception:  # noqa: BLE001
+                    pass
+                return None
+            finally:
+                cur.close()
+
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Postgres personality rematch failed for %r: %s", name, exc,
+            )
+            if self._fallback is not None:
+                return await self._fallback.resolve_personality_mazal_id(
+                    name,
+                    dates=dates,
+                    current_id=current_id,
+                    main_marc_tag=main_marc_tag,
+                )
+            return None
+
     async def match_mazal_place(self, text: str) -> dict[str, Any] | None:
         """Look up a place in the Mazal authority index by name."""
         import asyncio  # noqa: PLC0415
@@ -637,7 +877,127 @@ class PostgresAuthorityBackend:
             return None
 
     async def match_work(self, title: str) -> dict[str, Any] | None:
-        return await self._match_mazal_entity_type(title, "work")
+        return await self._match_work_tiered(title)
+
+    async def _match_work_tiered(self, title: str) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        from app.pipeline.work_title_match import (  # noqa: PLC0415
+            normalize_work_title_for_match,
+            work_title_variants,
+        )
+
+        FUZZY_MIN_SIM = 0.45
+
+        def _row_dict(row: tuple[Any, ...], *, fuzzy: bool = False, sim: float | None = None) -> dict[str, Any]:
+            out = {
+                "mazal_id": row[0],
+                "entity_type": row[1],
+                "preferred_name_heb": row[2],
+                "preferred_name_lat": row[3],
+                "dates": row[4],
+                "aleph_id": row[5],
+                "main_marc_tag": row[6],
+            }
+            if fuzzy and sim is not None:
+                out["_fuzzy"] = True
+                out["_fuzzy_sim"] = sim
+            return out
+
+        def _sync_for_variant(norm: str) -> dict[str, Any] | None:
+            if not norm:
+                return None
+            conn = self._get_conn()
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
+                    FROM mazal_name_index n
+                    JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name = %s AND n.entity_type = 'work'
+                    ORDER BY a.nli_id ASC
+                    LIMIT 1
+                    """,
+                    (norm,),
+                )
+                row = cur.fetchone()
+                if row:
+                    return _row_dict(row)
+
+                cur.execute(
+                    """
+                    SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
+                    FROM mazal_name_index n
+                    JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                    WHERE n.entity_type = 'work'
+                      AND (
+                        n.normalized_name LIKE %s
+                        OR %s LIKE '%%' || n.normalized_name || '%%'
+                      )
+                    ORDER BY length(n.normalized_name) ASC, a.nli_id ASC
+                    LIMIT 1
+                    """,
+                    (f"%{norm}%", norm),
+                )
+                row = cur.fetchone()
+                if row:
+                    result = _row_dict(row)
+                    result["work_match_variant"] = "containment"
+                    return result
+
+                try:
+                    cur.execute(
+                        """
+                        SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                               a.preferred_name_lat, a.dates, a.aleph_id,
+                               a.main_marc_tag,
+                               similarity(n.normalized_name, %s) AS sim
+                        FROM mazal_name_index n
+                        JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                        WHERE n.normalized_name %% %s
+                          AND n.entity_type = 'work'
+                        ORDER BY sim DESC, a.nli_id ASC
+                        LIMIT 1
+                        """,
+                        (norm, norm),
+                    )
+                    row = cur.fetchone()
+                    if row and row[7] is not None and float(row[7]) >= FUZZY_MIN_SIM:
+                        result = _row_dict(row[:7], fuzzy=True, sim=float(row[7]))
+                        result["work_match_variant"] = "fuzzy"
+                        return result
+                except Exception:  # noqa: BLE001
+                    pass
+                return None
+            finally:
+                cur.close()
+
+        def _sync() -> dict[str, Any] | None:
+            for variant in work_title_variants(title):
+                norm = self._normalize_mazal(variant)
+                hit = _sync_for_variant(norm)
+                if hit:
+                    hit["work_match_input"] = variant
+                    if variant != title:
+                        hit["work_match_variant"] = hit.get("work_match_variant") or "normalized"
+                    return hit
+            core = normalize_work_title_for_match(title)
+            if core:
+                return _sync_for_variant(self._normalize_mazal(core))
+            return None
+
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres Mazal work lookup failed for %r: %s", title, exc)
+            if self._fallback is not None:
+                return await self._fallback.match_work(title)
+            return None
 
     async def match_corporate(self, name: str) -> dict[str, Any] | None:
         return await self._match_mazal_entity_type(name, "corporate")

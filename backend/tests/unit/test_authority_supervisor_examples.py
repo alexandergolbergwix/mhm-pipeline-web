@@ -98,6 +98,66 @@ def test_apply_hardening_includes_subject_heading_guard() -> None:
     )
 
 
+def test_guard_mazal_subject_heading_does_not_fire_after_rematch() -> None:
+    from app.pipeline.authority_hardening import guard_mazal_subject_heading
+
+    verdict = guard_mazal_subject_heading(
+        main_marc_tag="150",
+        entity_kind="person",
+        role="author",
+        payload={"personality_rematch_from": "987001234567"},
+    )
+    assert not verdict.fired
+
+
+def test_guard_mazal_entity_type_mismatch_fires() -> None:
+    from app.pipeline.authority_hardening import guard_mazal_entity_type_mismatch
+
+    verdict = guard_mazal_entity_type_mismatch(
+        payload={
+            "mazal_entity_type_mismatch": True,
+            "mazal_expected_entity_type": "person",
+            "mazal_got_entity_type": "place",
+        },
+    )
+    assert verdict.fired
+    assert verdict.flag == "mazal_entity_type_mismatch"
+
+
+def test_apply_mazal_entity_type_gate_clears_person_place_mismatch() -> None:
+    from app.pipeline.authority import _apply_mazal_entity_type_gate
+
+    mid, details, extras = _apply_mazal_entity_type_gate(
+        is_place=False,
+        is_person_entity=True,
+        entity_kind="person",
+        mazal_id="9870",
+        mazal_details={"entity_type": "place"},
+        extras={},
+    )
+    assert mid == ""
+    assert details is None
+    assert extras.get("mazal_entity_type_mismatch") is True
+
+
+def test_personality_row_from_pg_skips_same_id() -> None:
+    from app.pipeline.authority_backend import _personality_row_from_pg
+
+    row = ("987001", "person", "he", "lat", None, None, "100")
+    assert _personality_row_from_pg(row, "987001") is None
+
+
+def test_provenance_institution_candidates_goldschmidt() -> None:
+    from app.pipeline.marc_ingest import _provenance_institution_candidates
+
+    record = {
+        "provenance": "From the Goldschmidt collection, Jerusalem",
+    }
+    ents = _provenance_institution_candidates(record)
+    assert ents, "expected corporate entity from provenance"
+    assert ents[0]["kind"] == "corporate"
+
+
 # ── 3. Colophon extraction (990025632890205171 example) ───────────────────
 
 
