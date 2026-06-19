@@ -37,6 +37,8 @@ type LiquidGlassOwnProps = {
   borderRadius?: number;
   bezelWidth?: number;
   thickness?: number;
+  /** When false, skip SVG displacement-map generation (CSS frosted glass only). */
+  refraction?: boolean;
 };
 
 export type LiquidGlassSurfaceProps = LiquidGlassOwnProps &
@@ -53,6 +55,7 @@ function LiquidGlassSurface({
   borderRadius = 20,
   bezelWidth = 28,
   thickness = 14,
+  refraction = true,
   ...rest
 }, ref) {
   const reactId = useId().replace(/:/g, "");
@@ -74,6 +77,10 @@ function LiquidGlassSurface({
   }, []);
 
   useEffect(() => {
+    if (!refraction) {
+      setMaps(null);
+      return;
+    }
     const el = rootEl;
     if (!el) return;
 
@@ -105,9 +112,9 @@ function LiquidGlassSurface({
       ro.disconnect();
       if (debounceTimer) clearTimeout(debounceTimer);
     };
-  }, [rootEl, borderRadius, bezelWidth, thickness]);
+  }, [rootEl, borderRadius, bezelWidth, thickness, refraction]);
 
-  const backdropStyle: CSSProperties = svgBackdrop && maps?.displacementUrl
+  const backdropStyle: CSSProperties = refraction && svgBackdrop && maps?.displacementUrl
     ? {
         backdropFilter: `blur(10px) saturate(165%) url(#${filterId})`,
         WebkitBackdropFilter: `blur(10px) saturate(165%) url(#${filterId})`,
@@ -138,7 +145,7 @@ function LiquidGlassSurface({
       style={{borderRadius, ...style}}
       {...rest}
     >
-      {svgBackdrop && maps?.displacementUrl && (
+      {refraction && svgBackdrop && maps?.displacementUrl && (
         <svg
           aria-hidden
           className="pointer-events-none absolute w-0 h-0"

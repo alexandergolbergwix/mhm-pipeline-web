@@ -343,10 +343,11 @@ export function EntityTable(props: EntityTableProps) {
                 title={entity.control_number}>
           {entity.control_number}
         </button>
-        <button type="button" onClick={() => onOpenEdit(entity)}
+        <button type="button" onClick={() => onViewSource(entity)}
                 className="truncate text-left hover:underline" dir="auto"
                 lang={langOf(entity.text)}
-                title={entity.text}>
+                title={entity.text}
+                data-testid="entity-text-link">
           {entity.text}
         </button>
         <select

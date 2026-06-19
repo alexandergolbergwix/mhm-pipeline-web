@@ -77,6 +77,17 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
 
   useFocusTrap(open, drawerRef);
 
+  // Pause the full-screen R3F canvas while the drawer is open — same
+  // throttle hook AuthorityTable uses during scroll. Without this, opening
+  // the drawer + mounting nested glass surfaces pegs the main thread.
+  useEffect(() => {
+    if (!open) return;
+    window.dispatchEvent(new CustomEvent("mhm-glass-throttle"));
+    return () => {
+      window.dispatchEvent(new CustomEvent("mhm-glass-resume"));
+    };
+  }, [open]);
+
   // Load the MARC record + sibling entities when entity changes.
   useEffect(() => {
     if (!cn) { setMarc(null); setError(null); return; }
@@ -149,7 +160,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
   }, [marc, entity]);
 
   return (
-    <Glass as="aside" className="flex flex-col p-0" ref={drawerRef}
+    <Glass as="aside" variant="drawer" refraction={false} className="flex flex-col p-0" ref={drawerRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="entity-detail-drawer-title"
@@ -293,7 +304,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
         )}
       </div>
       {historyFor ? (
-        <Glass as="aside" variant="drawer" className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="entity-detail-history-drawer">
+        <Glass as="aside" variant="drawer" refraction={false} className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="entity-detail-history-drawer">
           <HistoryTimeline
             projectId={projectId}
             entityType="extraction_entity"
@@ -320,7 +331,7 @@ function ConfidenceCard({ entity }: { entity: Entity }) {
     return "low";
   };
   return (
-    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="card-confidence">
+    <Glass as="section" variant="compact" refraction={false} className="p-3 space-y-2" data-testid="card-confidence">
       <div className="kicker">📊 Confidence</div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -376,7 +387,7 @@ function GroundingCard({
   const status = statusLabel[ex?.status ?? "unknown"] ?? statusLabel.unknown;
 
   return (
-    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="card-grounding">
+    <Glass as="section" variant="compact" refraction={false} className="p-3 space-y-2" data-testid="card-grounding">
       <div className="kicker">🔍 MARC grounding</div>
       <div className="flex items-center gap-2">
         <span className="inline-flex items-center rounded-full text-[10px] py-0.5 px-2"
@@ -446,7 +457,7 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
   const v = entity.ai_verdict;
   if (!v) {
     return (
-      <Glass as="section" variant="compact" className="p-3" data-testid="card-ai-verdict">
+      <Glass as="section" variant="compact" refraction={false} className="p-3" data-testid="card-ai-verdict">
         <div className="kicker">🤖 AI verification</div>
         <div className="muted text-[11px] mt-1">
           Not yet judged. Use the <strong className="text-ink">Verify with AI</strong> button above to score this entity.
@@ -483,7 +494,7 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
     fix.text.trim() !== effectiveText;
 
   return (
-    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="card-ai-verdict">
+    <Glass as="section" variant="compact" refraction={false} className="p-3 space-y-2" data-testid="card-ai-verdict">
       <div className="kicker">🤖 AI verification</div>
       <div className="flex items-center gap-3">
         <span className="inline-flex items-center rounded-full text-[10px] py-0.5 px-2"
@@ -540,13 +551,13 @@ function MarcRecordCard({
   primaryHighlight:    string;
   secondaryHighlights: string[];
 }) {
-  if (loading) return <Glass as="section" variant="compact" className="p-3 muted text-[11px] italic">Loading MARC record…</Glass>;
-  if (error) return <Glass as="section" variant="compact" className="p-3 text-danger text-[11px]">MARC source failed: {error}</Glass>;
+  if (loading) return <Glass as="section" variant="compact" refraction={false} className="p-3 muted text-[11px] italic">Loading MARC record…</Glass>;
+  if (error) return <Glass as="section" variant="compact" refraction={false} className="p-3 text-danger text-[11px]">MARC source failed: {error}</Glass>;
   if (!marc) return null;
   const keys = orderedMarcKeys(marc.marc);
-  if (keys.length === 0) return <Glass as="section" variant="compact" className="p-3 muted text-[11px] italic">No MARC fields available.</Glass>;
+  if (keys.length === 0) return <Glass as="section" variant="compact" refraction={false} className="p-3 muted text-[11px] italic">No MARC fields available.</Glass>;
   return (
-    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="card-marc-record">
+    <Glass as="section" variant="compact" refraction={false} className="p-3 space-y-2" data-testid="card-marc-record">
       <div className="kicker">📜 MARC record ({keys.length} fields)</div>
       <div className="space-y-2">
         {keys.map((k) => {

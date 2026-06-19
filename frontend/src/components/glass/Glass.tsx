@@ -30,6 +30,7 @@ type GlassOwnProps = {
   borderRadius?: number;
   bezelWidth?: number;
   thickness?: number;
+  refraction?: boolean;
 };
 
 export type GlassProps = GlassOwnProps &
@@ -103,6 +104,7 @@ export const Glass = forwardRef<HTMLElement, GlassProps>(function Glass(
     borderRadius,
     bezelWidth,
     thickness,
+    refraction,
     ...rest
   },
   ref,
@@ -120,6 +122,7 @@ export const Glass = forwardRef<HTMLElement, GlassProps>(function Glass(
       borderRadius={borderRadius ?? preset.borderRadius}
       bezelWidth={bezelWidth ?? preset.bezelWidth}
       thickness={thickness ?? preset.thickness}
+      refraction={refraction}
       contentClassName={innerClass}
       {...rest}
     >

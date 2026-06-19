@@ -290,6 +290,17 @@ test.describe("AI Extraction entity-review UI", () => {
     await expect(drawer).toBeVisible();
   });
 
+  test("clicking entity text opens the detail drawer", async ({page}) => {
+    const state = makeMockState();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+    await page.getByTestId("entity-text-link").first().click();
+    const drawer = page.getByTestId("entity-detail-drawer");
+    await expect(drawer).toBeVisible();
+    await expect(page.getByTestId("entity-edit-modal")).toHaveCount(0);
+  });
+
   test("the drawer shows the control number it was opened for", async ({ page }) => {
     const state = makeMockState();
     await installExtractionMocks(page, state);
