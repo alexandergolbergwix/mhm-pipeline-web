@@ -631,6 +631,26 @@ def _flatten_records(records: list[dict]) -> list[dict]:
     return flat
 
 
+def _entity_dict_from_approval_row(r: ExtractionApproval) -> dict:
+    """Build a flat entity dict from a durable ``extraction_approvals`` row."""
+    return {
+        "id":               _entity_id(
+            control_number=r.control_number, source=r.source,
+            text=r.text, start=int(r.start or 0), end=int(r.end or 0),
+        ),
+        "control_number":   r.control_number,
+        "source":           r.source,
+        "text":             r.text,
+        "start":            int(r.start or 0),
+        "end":              int(r.end or 0),
+        "type":             r.type or "",
+        "role":             r.role or "",
+        "confidence":       r.confidence,
+        "model_confidence": r.model_confidence,
+        "full_text":        "",
+    }
+
+
 @router.get("/runs/{run_id}/extraction/entities")
 async def list_entities(
     run_id: uuid.UUID,
@@ -683,31 +703,25 @@ async def list_entities(
     if not path.exists():
         if not db_rows:
             return _empty_entities_response(page, page_size)
-        flat = [
-            {
-                "id":               _entity_id(
-                    control_number=r.control_number, source=r.source,
-                    text=r.text, start=int(r.start or 0), end=int(r.end or 0),
-                ),
-                "control_number":   r.control_number,
-                "source":           r.source,
-                "text":             r.text,
-                "start":            int(r.start or 0),
-                "end":              int(r.end or 0),
-                "type":             r.type or "",
-                "role":             r.role or "",
-                "confidence":       r.confidence,
-                "model_confidence": r.model_confidence,
-                "full_text":        "",
-            }
-            for r in db_rows
-        ]
+        flat = [_entity_dict_from_approval_row(r) for r in db_rows]
     else:
         try:
             records = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             records = []
         flat = _flatten_records(records) if isinstance(records, list) else []
+        # Heroku may retain a truncated ner_results.json while Postgres
+        # holds the full stream-end snapshot from _bulk_persist_entities.
+        if db_rows and len(flat) < len(db_rows):
+            by_id = {e["id"]: e for e in flat}
+            for r in db_rows:
+                eid = _entity_id(
+                    control_number=r.control_number, source=r.source,
+                    text=r.text, start=int(r.start or 0), end=int(r.end or 0),
+                )
+                if eid not in by_id:
+                    by_id[eid] = _entity_dict_from_approval_row(r)
+            flat = list(by_id.values())
 
     # 2. Key approval rows by entity_id.
     approvals = {

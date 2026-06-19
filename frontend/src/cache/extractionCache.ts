@@ -126,6 +126,7 @@ export function setEntitiesCache(
 }
 
 export function invalidateRun(runId: string): void {
+  remove(storageKey("entities", runId));
   const prefix = `${STORAGE_PREFIX}`;
   for (const key of readIndex()) {
     if (key.startsWith(`${prefix}entities:${runId}`)

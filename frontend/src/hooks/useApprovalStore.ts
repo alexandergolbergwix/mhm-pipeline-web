@@ -12,9 +12,8 @@
  *    fresh AI verdicts within a single revolution after each
  *    ``agent.verdict`` SSE event lands on the server.
  *
- * A localStorage tier (``@/cache/extractionCache``) serves fresh
- * entity lists instantly on mount; network polls still run but skip
- * state updates when the payload fingerprint is unchanged.
+ * A localStorage tier (``@/cache/extractionCache``) invalidates AI
+ * verdict warm-reads after patch/verify via ``mhm.entities.refreshed``.
  */
 
 import {useCallback, useEffect, useRef, useState} from "react";
@@ -23,8 +22,6 @@ import {api} from "@/api/client";
 import type {Entity} from "@/api/extractionApprovals";
 import {
   EXTRACTION_ENTITIES_REFRESH_EVENT,
-  getEntitiesCache,
-  setEntitiesCache,
 } from "@/cache/extractionCache";
 
 export type {Entity};
@@ -74,7 +71,7 @@ interface RawEntitiesResponse {
 }
 
 function entitiesFingerprint(entities: Entity[]): string {
-  return entities.map((e) => [
+  return `${entities.length}:${entities.map((e) => [
     e.id,
     e.approved,
     e.override_text ?? "",
@@ -82,7 +79,7 @@ function entitiesFingerprint(entities: Entity[]): string {
     e.override_role ?? "",
     e.ai_verdict?.overall ?? "",
     e.ai_verdict?.cache_key ?? "",
-  ].join("|")).join("\n");
+  ].join("|")).join("\n")}`;
 }
 
 /** Fetch the run's entities + run-level aggregates. The backend returns
@@ -137,9 +134,16 @@ export function useApprovalStore(
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFingerprint = useRef<string>("");
 
-  const applyPayload = useCallback((payload: EntitiesPayload): void => {
+  const applyPayload = useCallback((payload: EntitiesPayload, force = false): void => {
     const fp = entitiesFingerprint(payload.entities);
-    if (fp === lastFingerprint.current && entities.length > 0) return;
+    if (
+      !force
+      && fp === lastFingerprint.current
+      && entities.length === payload.entities.length
+      && meta.total === payload.total
+    ) {
+      return;
+    }
     lastFingerprint.current = fp;
     setEntities(payload.entities);
     setMeta({
@@ -148,23 +152,16 @@ export function useApprovalStore(
       recordCount: payload.recordCount,
       sourceCounts: payload.sourceCounts,
     });
-  }, [entities.length]);
+  }, [entities.length, meta.total]);
 
   const fetchOnce = useCallback(async (force = false): Promise<void> => {
     if (!runId) return;
     if (inFlight.current) return;
     inFlight.current = true;
-    if (!force && entities.length === 0) {
-      const cached = getEntitiesCache(runId, active);
-      if (cached) {
-        applyPayload(cached);
-      }
-    }
     setLoading(true);
     try {
       const payload = await listEntities(runId);
-      setEntitiesCache(runId, payload);
-      applyPayload(payload);
+      applyPayload(payload, force);
       setError(null);
     } catch (e) {
       setError((e as Error).message || "Failed to load entities");
@@ -172,12 +169,18 @@ export function useApprovalStore(
       setLoading(false);
       inFlight.current = false;
     }
-  }, [runId, active, entities.length, applyPayload]);
+  }, [runId, applyPayload]);
 
   const refresh = useCallback(async (): Promise<void> => {
     lastFingerprint.current = "";
     await fetchOnce(true);
   }, [fetchOnce]);
+
+  useEffect(() => {
+    lastFingerprint.current = "";
+    setEntities([]);
+    setMeta({total: 0, approvedCount: 0, recordCount: 0, sourceCounts: {}});
+  }, [runId]);
 
   useEffect(() => {
     if (!runId) return;
