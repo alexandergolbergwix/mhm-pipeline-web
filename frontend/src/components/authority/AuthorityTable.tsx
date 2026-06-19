@@ -12,7 +12,7 @@
  *  - ConfidenceBadge / VerdictBadge reused from MatchDetailDialog
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AuthorityMatch, ExistsIn } from "@/api/runs";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
@@ -201,6 +201,27 @@ export function AuthorityTable({
   const [groupDuplicates, setGroupDuplicates] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [notesSearch, setNotesSearch] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    let resumeTimer = 0;
+    const onScroll = () => {
+      window.dispatchEvent(new CustomEvent("mhm-glass-throttle"));
+      window.clearTimeout(resumeTimer);
+      resumeTimer = window.setTimeout(
+        () => window.dispatchEvent(new CustomEvent("mhm-glass-resume")),
+        200,
+      );
+    };
+    root.addEventListener("scroll", onScroll, {passive: true});
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      window.clearTimeout(resumeTimer);
+      window.dispatchEvent(new CustomEvent("mhm-glass-resume"));
+    };
+  }, []);
 
   // Collect distinct values per filterable column for the popup.
   const distinctValues = useMemo<Record<string, string[]>>(() => {
@@ -400,9 +421,9 @@ export function AuthorityTable({
         )}
       </div>
 
-      <div className="overflow-x-auto">
+      <div ref={scrollRef} className="max-h-[min(70vh,720px)] overflow-auto authority-table-scroll">
         <table className="w-full text-sm border-collapse">
-          <thead className="muted text-left">
+          <thead className="muted text-left sticky top-0 z-10 table-head">
             <tr className="border-b border-white/5">
               <th className="py-2 pr-2 w-8"></th>
               {COLS.map((col) => {
@@ -473,9 +494,8 @@ export function AuthorityTable({
               const isExpanded = expandedGroups.has(gKey);
               const hasAlts = alts.length > 0;
               return (
-                <>
+                <Fragment key={m.id}>
                   <tr
-                    key={m.id}
                     data-testid={`authority-row-${m.id}`}
                     className="border-b border-white/5 hover:bg-white/[0.03] transition cursor-pointer"
                     onClick={() => onOpenDrawer(m)}
@@ -523,10 +543,10 @@ export function AuthorityTable({
                       {hasAlts && groupDuplicates && !isExpanded && (
                         <span className="ml-1 inline-flex flex-wrap gap-0.5">
                           {alts.map((a) => (
-                            <GlassPill className="px-1 py-[1px] text-[10px] text-muted" key={a.id} 
+                            <span className="chip px-1.5 py-[1px] text-[10px] text-faint ml-1" key={a.id}
                                   title={a.entity_text}>
                               {formatRole(a.role)}
-                            </GlassPill>
+                            </span>
                           ))}
                         </span>
                       )}
@@ -537,9 +557,9 @@ export function AuthorityTable({
                       <span className="inline-flex items-center gap-1 flex-wrap">
                         {sources.length > 0
                           ? sources.map((s) => (
-                              <GlassPill className="px-1.5 py-[1px] text-[10px] uppercase tracking-wider whitespace-nowrap" key={s}>
+                              <span className="chip px-1.5 py-[1px] text-[10px] uppercase tracking-wider" key={s}>
                                 {s}
-                              </GlassPill>
+                              </span>
                             ))
                           : <span className="muted text-xs italic">—</span>}
                         {sourceCount >= 2 && (
@@ -565,11 +585,10 @@ export function AuthorityTable({
                       {guards.length > 0 ? (
                         <span className="inline-flex flex-wrap gap-1">
                           {guards.map((g) => (
-                            <GlassPill className="px-1.5 py-[1px] text-[10px] text-danger whitespace-nowrap" key={g}
-                                  
+                            <span className="chip chip-danger px-1.5 py-[1px] text-[10px]" key={g}
                                   title={guardExplain(g)}>
                               ⚠ {g}
-                            </GlassPill>
+                            </span>
                           ))}
                         </span>
                       ) : (
@@ -664,7 +683,7 @@ export function AuthorityTable({
                       </tr>
                     );
                   })}
-                </>
+                </Fragment>
               );
             })}
             {grouped.length === 0 && (

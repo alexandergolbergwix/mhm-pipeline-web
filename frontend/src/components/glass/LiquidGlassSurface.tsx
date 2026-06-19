@@ -21,8 +21,8 @@ import {
   type ReactNode,
 } from "react";
 
+import {getGlassMaps} from "@/components/glass/glassMapCache";
 import {
-  buildGlassMaps,
   supportsSvgBackdropFilter,
   type GlassMaps,
 } from "@/components/glass/liquidGlassMath";
@@ -77,12 +77,14 @@ function LiquidGlassSurface({
     const el = rootEl;
     if (!el) return;
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const regen = () => {
       const rect = el.getBoundingClientRect();
       const w = Math.round(rect.width);
       const h = Math.round(rect.height);
       if (w < 8 || h < 8) return;
-      setMaps(buildGlassMaps({
+      setMaps(getGlassMaps({
         width: w,
         height: h,
         radius: borderRadius,
@@ -91,10 +93,18 @@ function LiquidGlassSurface({
       }));
     };
 
+    const scheduleRegen = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(regen, 80);
+    };
+
     regen();
-    const ro = new ResizeObserver(regen);
+    const ro = new ResizeObserver(scheduleRegen);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   }, [rootEl, borderRadius, bezelWidth, thickness]);
 
   const backdropStyle: CSSProperties = svgBackdrop && maps?.displacementUrl

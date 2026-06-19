@@ -483,23 +483,23 @@ function Stat({ label, value, tone }: { label: string; value: string; tone: stri
 
 export function ConfidenceBadge({ confidence }: { confidence: string }) {
   const cls =
-    confidence === "high"   ? "text-biu-sky"
-    : confidence === "medium" ? "text-warn"
-    : "muted";
+    confidence === "high"   ? "chip-sky"
+    : confidence === "medium" ? "chip-warn"
+    : "text-faint";
   return (
-    <GlassPill className={`px-3 py-1 text-[10px] kicker shrink-0 ${cls}`}>
+    <span className={`chip px-2 py-0.5 text-[10px] kicker uppercase tracking-wider shrink-0 ${cls}`}>
       {confidence}
-    </GlassPill>
+    </span>
   );
 }
 
 
 export function VerdictBadge({overall}: {overall: string}) {
   const palette: Record<string, string> = {
-    full:    "text-biu-sky",
-    partial: "text-warn",
-    fail:    "text-danger",
-    abstain: "muted",
+    full:    "chip-sky",
+    partial: "chip-warn",
+    fail:    "chip-danger",
+    abstain: "text-faint",
   };
   const label: Record<string, string> = {
     full:    "Looks right",
@@ -508,9 +508,9 @@ export function VerdictBadge({overall}: {overall: string}) {
     abstain: "Unsure",
   };
   return (
-    <GlassPill className={`px-3 py-1 text-xs kicker ${palette[overall] ?? "muted"}`}>
+    <span className={`chip px-2 py-0.5 text-[10px] kicker ${palette[overall] ?? "text-faint"}`}>
       {label[overall] ?? overall}
-    </GlassPill>
+    </span>
   );
 }
 

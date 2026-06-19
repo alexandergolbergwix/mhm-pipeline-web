@@ -281,6 +281,37 @@ body::before {
   text-decoration: underline;
 }
 
+.authority-table-scroll tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+
+/* Lightweight chips for dense tables — never use GlassPill inside scrollable lists. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--pill-border);
+  background: var(--ghost-bg);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.chip-danger {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.chip-warn {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.chip-sky {
+  border-color: rgba(119, 204, 229, 0.35);
+  background: rgba(119, 204, 229, 0.1);
+  color: var(--biu-sky);
+}
+
 /* Light-mode remaps for legacy Tailwind white/black opacity utilities. */
 [data-theme="light"] .text-white { color: var(--ink); }
 [data-theme="light"] .text-white\/90 { color: var(--ink-subtle); }

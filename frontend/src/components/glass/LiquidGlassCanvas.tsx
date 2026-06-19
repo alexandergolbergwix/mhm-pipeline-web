@@ -17,9 +17,9 @@
  * already in index.css.
  */
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import {Canvas, useFrame} from "@react-three/fiber";
 import { MeshTransmissionMaterial } from "@react-three/drei";
-import {Suspense, useMemo, useRef} from "react";
+import {Suspense, useEffect, useMemo, useRef, useState} from "react";
 import * as THREE from "three";
 
 import {useTheme} from "@/stores/theme";
@@ -50,6 +50,18 @@ const ORBS: OrbSpec[] = [
 
 export function LiquidGlassCanvas() {
   const colorScheme = useTheme((s) => s.colorScheme);
+  const [throttled, setThrottled] = useState(false);
+
+  useEffect(() => {
+    const onThrottle = () => setThrottled(true);
+    const onResume = () => setThrottled(false);
+    window.addEventListener("mhm-glass-throttle", onThrottle);
+    window.addEventListener("mhm-glass-resume", onResume);
+    return () => {
+      window.removeEventListener("mhm-glass-throttle", onThrottle);
+      window.removeEventListener("mhm-glass-resume", onResume);
+    };
+  }, []);
 
   // Respect reduced-motion + a manual opt-out (?glass=off) so demo
   // captures can use the plain CSS path on weak machines.
@@ -75,10 +87,10 @@ export function LiquidGlassCanvas() {
       }}
     >
       <Canvas
-        dpr={[1, 1.5]}                /* cap retina cost on integrated GPUs */
+        dpr={throttled ? 1 : [1, 1.5]}
         camera={{ position: [0, 0, 6], fov: 50 }}
         gl={{ antialias: false, alpha: true }}
-        frameloop="always"
+        frameloop={throttled ? "demand" : "always"}
         /* R3F's container div defaults to pointer-events:auto, overriding the
            parent's `none`; force it back off so the canvas never eats clicks. */
         style={{ pointerEvents: "none" }}
