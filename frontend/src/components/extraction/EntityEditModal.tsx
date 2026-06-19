@@ -8,32 +8,44 @@
  * via ExtractionApprovals.patch.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
-import { MarcSourceApi, MarcSource } from "@/api/marcSource";
+import {MarcSourceApi, type MarcSource} from "@/api/marcSource";
 import {
   ENTITY_ROLES, ENTITY_TYPES,
   Entity, EntityRole, EntityType, ExtractionApprovals,
 } from "@/api/extractionApprovals";
+import {
+  MARC_FIELD_LABELS, orderedMarcKeys, stringifyMarcValue,
+} from "@/components/extraction/marc-field-labels";
 import {Glass} from "@/components/glass";
+import {emitEntitiesRefreshed} from "@/cache/extractionCache";
+import {useFocusTrap} from "@/hooks/useFocusTrap";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {langOf} from "@/utils/hebrew";
+
+const MARC_HIGHLIGHT_CAP = 64_000;
 
 export interface EntityEditModalProps {
   runId: string;
   entity: Entity;
+  /** When opened from the detail drawer, reuse its already-loaded MARC. */
+  marcSource?: MarcSource | null;
   onClose: () => void;
   onSaved: (entity: Entity) => void;
 }
 
-interface EditState { text: string; type: EntityType; role: EntityRole; }
+interface EditState {text: string; type: EntityType; role: EntityRole;}
 
 function marcToString(marc: Record<string, unknown> | null): string {
   if (!marc) return "";
   const lines: string[] = [];
-  for (const [tag, payload] of Object.entries(marc)) {
+  for (const key of orderedMarcKeys(marc)) {
+    const payload = marc[key];
     if (Array.isArray(payload)) {
-      for (const sub of payload) lines.push(`${tag}\t${JSON.stringify(sub)}`);
+      for (const sub of payload) lines.push(`${key}\t${JSON.stringify(sub)}`);
     } else {
-      lines.push(`${tag}\t${JSON.stringify(payload)}`);
+      lines.push(`${key}\t${JSON.stringify(payload)}`);
     }
   }
   return lines.join("\n");
@@ -41,10 +53,10 @@ function marcToString(marc: Record<string, unknown> | null): string {
 
 function highlightSpan(
   source: string, needle: string, start: number | null, end: number | null,
-): { before: string; hit: string; after: string } {
-  if (!source) return { before: "", hit: "", after: "" };
+): {before: string; hit: string; after: string} {
+  if (!source) return {before: "", hit: "", after: ""};
   if (start !== null && end !== null && start >= 0 && end > start && end <= source.length) {
-    return { before: source.slice(0, start), hit: source.slice(start, end), after: source.slice(end) };
+    return {before: source.slice(0, start), hit: source.slice(start, end), after: source.slice(end)};
   }
   if (needle) {
     const idx = source.indexOf(needle);
@@ -56,21 +68,63 @@ function highlightSpan(
       };
     }
   }
-  return { before: source, hit: "", after: "" };
+  return {before: source, hit: "", after: ""};
 }
 
-export function EntityEditModal({ runId, entity, onClose, onSaved }: EntityEditModalProps) {
+function StructuredMarcPanel({
+  marc, highlightText,
+}: {
+  marc: Record<string, unknown>;
+  highlightText: string;
+}) {
+  const keys = orderedMarcKeys(marc);
+  const needle = highlightText.trim().toLowerCase();
+  return (
+    <div className="space-y-2 text-[11px]">
+      {keys.map((k) => {
+        const value = stringifyMarcValue(marc[k]);
+        if (!value) return null;
+        const lbl = MARC_FIELD_LABELS[k];
+        const hit = needle.length >= 2 && value.toLowerCase().includes(needle);
+        return (
+          <div key={k} className="grid grid-cols-[100px_1fr] gap-2 items-baseline">
+            <div className="text-right text-[10px] muted">{lbl?.label ?? k}</div>
+            <div
+              dir="auto"
+              lang={langOf(value)}
+              className={hit ? "rounded bg-yellow-300/30 text-ink px-1" : "text-ink/90"}
+            >
+              {value}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function EntityEditModal({runId, entity, marcSource, onClose, onSaved}: EntityEditModalProps) {
   const [state, setState] = useState<EditState>({
     text: entity.text, type: entity.type, role: entity.role,
   });
-  const [source, setSource] = useState<MarcSource | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [source, setSource] = useState<MarcSource | null>(marcSource ?? null);
+  const [loading, setLoading] = useState(marcSource == null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useGlassOverlayLifecycle(true);
+  useFocusTrap(true, modalRef);
 
   useEffect(() => {
+    if (marcSource != null) {
+      setSource(marcSource);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
-    setLoading(true); setError(null);
+    setLoading(true);
+    setError(null);
     MarcSourceApi.get(runId, entity.control_number)
       .then((src) => { if (!cancelled) setSource(src); })
       .catch((err: unknown) => {
@@ -79,31 +133,45 @@ export function EntityEditModal({ runId, entity, onClose, onSaved }: EntityEditM
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [runId, entity.control_number]);
+  }, [runId, entity.control_number, marcSource]);
 
   const marcText = useMemo(() => marcToString(source?.marc ?? null), [source]);
+  const useStructuredMarc = marcText.length > MARC_HIGHLIGHT_CAP;
   const highlight = useMemo(
-    () => highlightSpan(marcText, state.text, entity.start, entity.end),
-    [marcText, state.text, entity.start, entity.end],
+    () => (useStructuredMarc ? {before: "", hit: "", after: ""} : highlightSpan(marcText, state.text, entity.start, entity.end)),
+    [marcText, state.text, entity.start, entity.end, useStructuredMarc],
   );
 
   const handleSave = useCallback(async () => {
-    setSaving(true); setError(null);
+    setSaving(true);
+    setError(null);
     try {
       const updated = await ExtractionApprovals.patch(runId, entity.id, {
         text: state.text, type: state.type, role: state.role,
       });
-      onSaved(updated); onClose();
+      emitEntitiesRefreshed(runId);
+      onSaved(updated);
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save entity.");
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   }, [runId, entity.id, state, onSaved, onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-         data-testid="entity-edit-modal"
-         role="dialog" aria-modal="true">
-      <Glass className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden" refraction={false}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      data-testid="entity-edit-modal"
+      role="dialog"
+      aria-modal="true"
+    >
+      <Glass
+        ref={modalRef}
+        variant="modal"
+        refraction={false}
+        className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden"
+      >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Edit entity</div>
@@ -121,19 +189,19 @@ export function EntityEditModal({ runId, entity, onClose, onSaved }: EntityEditM
             <label className="block text-xs uppercase tracking-wide kicker">Text</label>
             <textarea value={state.text}
               data-testid="entity-edit-text"
-              onChange={(e) => setState((p) => ({ ...p, text: e.target.value }))}
+              onChange={(e) => setState((p) => ({...p, text: e.target.value}))}
               rows={3} className="input-glass w-full text-sm" />
             <label className="block text-xs uppercase tracking-wide kicker">Type</label>
             <select value={state.type}
               data-testid="entity-edit-type"
-              onChange={(e) => setState((p) => ({ ...p, type: e.target.value as EntityType }))}
+              onChange={(e) => setState((p) => ({...p, type: e.target.value as EntityType}))}
               className="input-glass h-8 text-sm">
               {ENTITY_TYPES.map((t) => (<option key={t} value={t}>{t}</option>))}
             </select>
             <label className="block text-xs uppercase tracking-wide kicker">Role</label>
             <select value={state.role}
               data-testid="entity-edit-role"
-              onChange={(e) => setState((p) => ({ ...p, role: e.target.value as EntityRole }))}
+              onChange={(e) => setState((p) => ({...p, role: e.target.value as EntityRole}))}
               className="input-glass h-8 text-sm">
               {ENTITY_ROLES.map((r) => (<option key={r || "_blank"} value={r}>{r || "—"}</option>))}
             </select>
@@ -158,6 +226,8 @@ export function EntityEditModal({ runId, entity, onClose, onSaved }: EntityEditM
             <Glass variant="compact" refraction={false} className="flex-1 overflow-auto whitespace-pre-wrap p-3 font-mono text-xs leading-relaxed" data-testid="entity-edit-marc">
               {loading ? (
                 <span className="muted">Loading MARC record…</span>
+              ) : source?.marc && useStructuredMarc ? (
+                <StructuredMarcPanel marc={source.marc} highlightText={state.text} />
               ) : marcText ? (
                 <>
                   <span>{highlight.before}</span>

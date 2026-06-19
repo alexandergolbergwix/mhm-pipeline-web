@@ -32,8 +32,10 @@ import {
   ExtractionApprovals,
 } from "@/api/extractionApprovals";
 import { recheckEntity } from "@/api/nerVerify";
-import { HistoryTimeline } from "@/components/history/HistoryTimeline";
-import { langOf } from "@/utils/hebrew";
+import {emitEntitiesRefreshed} from "@/cache/extractionCache";
+import {HistoryTimeline} from "@/components/history/HistoryTimeline";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {langOf} from "@/utils/hebrew";
 import {Glass} from "@/components/glass";
 
 export type SortDirection = "asc" | "desc";
@@ -174,7 +176,9 @@ export function EntityTable(props: EntityTableProps) {
 
   const [sort, setSort] = useState<SortState | null>(null);
   const [popup, setPopup] = useState<{ column: ColumnKey; x: number; y: number } | null>(null);
-  const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
+  const [historyFor, setHistoryFor] = useState<{id: string} | null>(null);
+
+  useGlassOverlayLifecycle(historyFor !== null);
 
   // Per-column free-text filter — the user wants header-row search
   // boxes on MS + Text alongside the right-click popup for enum
@@ -263,6 +267,7 @@ export function EntityTable(props: EntityTableProps) {
     async (entity: Entity, patch: { type?: EntityType; role?: EntityRole; approved?: boolean }) => {
       try {
         const updated = await ExtractionApprovals.patch(runId, entity.id, patch);
+        emitEntitiesRefreshed(runId);
         onEntityUpdated(updated);
       } catch (err) {
         console.error("Failed to patch entity", err);
@@ -279,6 +284,7 @@ export function EntityTable(props: EntityTableProps) {
       try {
         // 1. Patch only the text override — deliberately does NOT touch approved.
         updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
+        emitEntitiesRefreshed(runId);
         // 2. Re-run the AI check for this one entity against the corrected
         //    text. The fix already succeeded; a failed re-check is non-fatal.
         await recheckEntity(runId, entity.id);
@@ -433,7 +439,7 @@ export function EntityTable(props: EntityTableProps) {
             <button
               type="button"
               data-testid={`history-button-${entity.id}`}
-              onClick={() => setHistoryFor({ id: String(entity.id) })}
+              onClick={() => setHistoryFor({id: entity.approval_row_id ?? String(entity.id)})}
               aria-label="View edit history"
               title="View edit history"
               className="button-ghost h-7 px-2 text-xs"
@@ -551,7 +557,7 @@ export function EntityTable(props: EntityTableProps) {
         />
       ) : null}
       {historyFor ? (
-        <Glass as="aside" variant="drawer" className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="entity-history-drawer">
+        <Glass as="aside" variant="drawer" refraction={false} className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="entity-history-drawer">
           <HistoryTimeline
             projectId={projectId}
             entityType="extraction_entity"

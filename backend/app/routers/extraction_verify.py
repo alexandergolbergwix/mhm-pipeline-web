@@ -42,11 +42,26 @@ from app.pipeline.agent_runner import (
     spawn_eval_agent_run, sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.ner_verdict_cache import (
+    ner_verdict_input_fingerprint,
+    ner_verdict_query_summary,
+)
 from app.routers.runs import _lookup_run_with_access
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["extraction-verify"])
+
+
+def _ext_content_id(ext: ExtractionApproval) -> str:
+    from app.routers.extraction import _entity_id  # noqa: PLC0415
+    return _entity_id(
+        control_number=ext.control_number,
+        source=ext.source,
+        text=ext.text,
+        start=int(ext.start or 0),
+        end=int(ext.end or 0),
+    )
 
 
 class StartRequest(BaseModel):
@@ -170,7 +185,7 @@ async def _session_event_stream(
     if not override_cache:
         async with session_scope() as pre_db:
             for ext, record in entities:
-                qs = _ner_verdict_query_summary(ext, _judge_model)
+                qs = ner_verdict_query_summary(ext, _judge_model)
                 hit = await read_from_inference_cache(
                     pre_db, kind="ai_verdict", query_summary=qs,
                 )
@@ -276,7 +291,10 @@ async def _session_event_stream(
     for ext, _rec, cached_payload in pre_cached:
         synthetic = {
             "candidate": {
-                "_entity_id": str(ext.id),
+                "_entity_id": _ext_content_id(ext),
+                "control_number": ext.control_number or "",
+                "start":          int(ext.start or 0),
+                "end":            int(ext.end or 0),
                 "text":       ext.override_text or ext.text or "",
                 "type":       ext.override_type or ext.type or "",
                 "role":       ext.override_role or ext.role or "",
@@ -355,7 +373,10 @@ async def _session_event_stream(
         pre_cached_as_verdicts = [
             {
                 "candidate": {
-                    "_entity_id": str(ext.id),
+                    "_entity_id": _ext_content_id(ext),
+                    "control_number": ext.control_number or "",
+                    "start":          int(ext.start or 0),
+                    "end":            int(ext.end or 0),
                     "text":       ext.override_text or ext.text or "",
                     "type":       ext.override_type or ext.type or "",
                     "role":       ext.override_role or ext.role or "",
@@ -380,6 +401,7 @@ async def _session_event_stream(
                     run_id=run_id,
                     session_id=session_id,
                     verdicts=all_verdicts_to_persist,
+                    entities=[e for e, _ in entities],
                 )
             except Exception:
                 logger.exception("failed to persist ai verdicts to entities")
@@ -388,7 +410,7 @@ async def _session_event_stream(
             # Write new verdicts to the shared inference cache.
             try:
                 await _write_ner_verdicts_to_cache(
-                    entities_by_id={str(e.id): e for e, _ in uncached},
+                    entities=[e for e, _ in entities],
                     verdicts=on_disk_verdicts,
                 )
             except Exception:
@@ -409,35 +431,9 @@ async def _session_event_stream(
         yield end_ev
 
 
-def _ner_verdict_query_summary(
-    ext: ExtractionApproval,
-    judge_model: str = "gemini-3.5-flash",
-) -> dict[str, Any]:
-    """Stable content key for caching an NER verdict across users/runs.
-
-    Keyed by the entity's canonical text + type + role + judge model.
-    Including the model ensures that a verdict cached under an older model
-    is never served after an upgrade.
-
-    v2 additions: ai_extraction_verdict_schema and suggested_fix_policy
-    are included so that old cached verdicts (produced before the
-    suggested_fix feature) are never served as current-schema hits.
-    """
-    return {
-        "text":        (ext.override_text or ext.text or "").strip(),
-        "type":        (ext.override_type or ext.type or "").strip(),
-        "role":        (ext.override_role or ext.role or "").strip(),
-        "judge_model": judge_model,
-        # Version stamps — changing these busts all pre-existing cache entries
-        # so a new prompt/schema cannot silently re-use old results.
-        "ai_extraction_verdict_schema":  "v2",
-        "suggested_fix_policy":          "text_high_confidence_v1",
-    }
-
-
 async def _write_ner_verdicts_to_cache(
     *,
-    entities_by_id: dict[str, ExtractionApproval],
+    entities: list[ExtractionApproval],
     verdicts: list[dict[str, Any]],
 ) -> None:
     """Persist newly-judged NER verdicts into the shared inference cache.
@@ -448,22 +444,30 @@ async def _write_ner_verdicts_to_cache(
     """
     from app.db import session_scope  # noqa: PLC0415
 
+    by_uuid = {str(e.id): e for e in entities}
+    by_hash = {_ext_content_id(e): e for e in entities}
+
     async with session_scope() as db:
         for v in verdicts:
             cand = v.get("candidate") if isinstance(v, dict) else None
             entity_id = cand.get("_entity_id") if isinstance(cand, dict) else None
-            ext = entities_by_id.get(str(entity_id)) if entity_id else None
+            ext = (
+                by_uuid.get(str(entity_id))
+                or by_hash.get(str(entity_id))
+                if entity_id
+                else None
+            )
             if ext is None:
                 continue
             _jm = v.get("judge_id") or v.get("model") or "gemini-3.5-flash"
-            qs = _ner_verdict_query_summary(ext, _jm)
+            qs = ner_verdict_query_summary(ext, _jm)
+            fingerprint = ner_verdict_input_fingerprint(ext, _jm)
             verdict_dict = v.get("verdict") or {}
             cached_result = {
-                # Store the full verdict dict verbatim so suggested_fix is preserved.
                 "verdict":    verdict_dict,
                 "judge_id":   v.get("judge_id") or v.get("model"),
                 "judged_at":  v.get("judged_at"),
-                "cache_key":  v.get("cache_key"),
+                "cache_key":  fingerprint,
                 "evaluator":  v.get("evaluator_id") or v.get("evaluator"),
                 "confidence": v.get("confidence"),
                 "sub_type":   v.get("sub_type"),
@@ -479,8 +483,11 @@ async def _persist_ai_verdicts_to_entities(
     run_id: str,
     session_id: str,
     verdicts: list[dict[str, Any]],
+    entities: list[ExtractionApproval],
 ) -> None:
     from app.db import session_scope  # noqa: PLC0415
+
+    by_hash = {_ext_content_id(e): e for e in entities}
 
     summaries: dict[uuid.UUID, dict[str, Any]] = {}
     for v in verdicts:
@@ -491,21 +498,26 @@ async def _persist_ai_verdicts_to_entities(
         try:
             eid = uuid.UUID(str(raw))
         except (ValueError, TypeError):
-            continue
+            ext = by_hash.get(str(raw))
+            if ext is None:
+                continue
+            eid = ext.id
         vd = (v.get("verdict") or {}) if isinstance(v, dict) else {}
+        _jm = v.get("judge_id") or v.get("model") or "gemini-3.5-flash"
+        ext_row = next((e for e in entities if e.id == eid), None)
+        cache_key = v.get("cache_key")
+        if ext_row is not None and not cache_key:
+            cache_key = ner_verdict_input_fingerprint(ext_row, str(_jm))
         summary = {
             "overall":       vd.get("overall"),
             "name_ok":       vd.get("name_ok"),
             "type_ok":       vd.get("type_ok"),
             "role_ok":       vd.get("role_ok"),
             "reasoning":     vd.get("reasoning"),
-            # v2: persist suggested_fix explicitly so null is stored (not absent).
-            # This lets the frontend distinguish "no fix proposed" from
-            # "entity not yet judged".
             "suggested_fix": vd.get("suggested_fix"),
-            "model":         v.get("judge_id") or v.get("model"),
+            "model":         _jm,
             "judged_at":     v.get("judged_at"),
-            "cache_key":     v.get("cache_key"),
+            "cache_key":     cache_key,
             "session_id":    session_id,
             "evaluator":     v.get("evaluator_id") or v.get("evaluator"),
         }

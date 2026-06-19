@@ -15,7 +15,7 @@
  *   extraction.error         { message }
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
@@ -30,7 +30,8 @@ import {
   ExtractionApprovals,
   type Entity,
 } from "@/api/extractionApprovals";
-import { Runs } from "@/api/runs";
+import {type MarcSource} from "@/api/marcSource";
+import {Runs} from "@/api/runs";
 import { useApprovalStore } from "@/hooks/useApprovalStore";
 import { EntityTable } from "@/components/extraction/EntityTable";
 import { EntityActionsBar } from "@/components/extraction/EntityActionsBar";
@@ -152,6 +153,7 @@ export default function StageExtraction() {
   const [visibleCount, setVisibleCount] = useState(0);
   const [visibleEntities, setVisibleEntities] = useState<Entity[]>([]);
   const [editEntity, setEditEntity] = useState<Entity | null>(null);
+  const [editMarcSource, setEditMarcSource] = useState<MarcSource | null>(null);
   // The new EntityDetailDrawer takes the full Entity row; clicking a
   // table row, the 👁 button, OR the AI verdict pill opens it.
   const [detailEntity, setDetailEntity] = useState<Entity | null>(null);
@@ -163,6 +165,24 @@ export default function StageExtraction() {
     active: verifyScope !== null,
   });
   const refreshEntities = approvalStore.refresh;
+
+  const openEditFromTable = useCallback((entity: Entity) => {
+    setEditMarcSource(null);
+    setEditEntity(entity);
+  }, []);
+
+  const openEditFromDrawer = useCallback((entity: Entity, marcSource?: MarcSource | null) => {
+    setDetailEntity(null);
+    requestAnimationFrame(() => {
+      setEditMarcSource(marcSource ?? null);
+      setEditEntity(entity);
+    });
+  }, []);
+
+  const closeEditModal = useCallback(() => {
+    setEditEntity(null);
+    setEditMarcSource(null);
+  }, []);
 
   // Summary counts shown above the entity table. ``records`` (and its
   // derived ``entityTotals``) come from ``ner_results.json`` on disk —
@@ -664,7 +684,7 @@ export default function StageExtraction() {
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
               onEntityUpdated={() => { void refreshEntities(); }}
-              onOpenEdit={setEditEntity}
+              onOpenEdit={openEditFromTable}
               onViewSource={setDetailEntity}
               onOpenVerdict={setDetailEntity}
               onOpenMarc={(cn) => {
@@ -728,8 +748,9 @@ export default function StageExtraction() {
         <EntityEditModal
           runId={runId}
           entity={editEntity}
-          onClose={() => setEditEntity(null)}
-          onSaved={() => { void refreshEntities(); setEditEntity(null); }}
+          marcSource={editMarcSource}
+          onClose={closeEditModal}
+          onSaved={() => { void refreshEntities(); closeEditModal(); }}
         />
       )}
       {runId && (
@@ -739,7 +760,7 @@ export default function StageExtraction() {
           entity={detailEntity}
           onClose={() => setDetailEntity(null)}
           onEntityChanged={() => { void refreshEntities(); }}
-          onOpenEdit={(e) => setEditEntity(e)}
+          onOpenEdit={openEditFromDrawer}
           onVerifyEntity={(e) => {
             setVerifyScope({scopeKind: "selection", entityIds: [e.id], label: e.text});
           }}

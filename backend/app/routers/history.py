@@ -47,7 +47,7 @@ from app.models.event import (
 )
 from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
-from app.models.run import AuthorityMatch, RunRecord
+from app.models.run import AuthorityMatch, Run, RunRecord
 from app.models.user import User
 from app.schemas.history import (
     DiffPayload,
@@ -218,10 +218,13 @@ async def list_history(
     db: AsyncSession = Depends(get_session),
 ) -> list[EventRow]:
     """Paginated, newest-first event timeline for one entity."""
+    resolved_id = entity_id
+    if entity_type == ENTITY_TYPE_EXTRACTION_ENTITY:
+        resolved_id = await _resolve_extraction_entity_id(db, ctx.project.id, entity_id)
     events = await event_timeline(
         db,
         entity_type=entity_type,
-        entity_id=entity_id,
+        entity_id=resolved_id,
         limit=limit,
         before_rev=before_rev,
     )
@@ -385,6 +388,41 @@ async def list_entity_snapshots(
 # ── helpers ────────────────────────────────────────────────────────────
 
 
+async def _resolve_extraction_entity_id(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    entity_id: str,
+) -> str:
+    """Map content-hash entity ids to the UUID used in ``project_events``."""
+    try:
+        uuid.UUID(entity_id)
+        return entity_id
+    except ValueError:
+        pass
+    from app.routers.extraction import _parse_entity_id  # noqa: PLC0415
+
+    try:
+        cn, src, text, start, end = _parse_entity_id(entity_id)
+    except ValueError:
+        return entity_id
+    row_id = (
+        await db.execute(
+            select(ExtractionApproval.id)
+            .join(Run, Run.id == ExtractionApproval.run_id)
+            .where(
+                Run.project_id == project_id,
+                ExtractionApproval.control_number == cn,
+                ExtractionApproval.source == src,
+                ExtractionApproval.text == text,
+                ExtractionApproval.start == start,
+                ExtractionApproval.end == end,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return str(row_id) if row_id else entity_id
+
+
 async def _assert_entity_in_project(
     db: AsyncSession,
     project_id: uuid.UUID,
@@ -397,6 +435,8 @@ async def _assert_entity_in_project(
     project B simply by knowing a (type, id) pair — the versioning core
     is intentionally project-agnostic so we re-check here.
     """
+    if entity_type == ENTITY_TYPE_EXTRACTION_ENTITY:
+        entity_id = await _resolve_extraction_entity_id(db, project_id, entity_id)
     exists = (
         await db.execute(
             select(ProjectEvent.id)

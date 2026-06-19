@@ -92,6 +92,8 @@ export interface ExistsIn {
 
 export interface Entity {
   id: string;
+  /** Postgres ``ExtractionApproval.id`` — use for history API routes. */
+  approval_row_id?: string;
   control_number: string;
   text: string;
   effective_text?: string;
@@ -106,6 +108,9 @@ export interface Entity {
   end: number | null;
   approved: boolean;
   rejected: boolean;
+  override_type?: string | null;
+  override_role?: string | null;
+  override_text?: string | null;
   exists_in: ExistsIn | null;
   ai_verdict: AiVerdict | null;
 }

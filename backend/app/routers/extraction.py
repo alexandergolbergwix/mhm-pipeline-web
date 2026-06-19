@@ -53,6 +53,7 @@ from app.models.run import RunRecord
 from app.pipeline.agent_runner import AgentEvent, sse_stream
 from app.pipeline.extraction import ExtractionEvent, extract_entities_stream
 from app.pipeline.marc_structured_index import MarcStructuredIndex
+from app.pipeline.ner_verdict_cache import sanitise_stale_ai_verdict
 from app.routers.runs import _lookup_run_with_access
 from app.versioning import apply_event
 
@@ -727,6 +728,7 @@ async def list_entities(
         eff_text = (a.override_text if a and a.override_text else ent["text"])
         out.append({
             **ent,
+            "approval_row_id":  str(a.id) if a else None,
             "approved":         bool(a.approved) if a else False,
             "rejected":         False,
             "override_type":    (a.override_type if a else None),
@@ -738,7 +740,16 @@ async def list_entities(
             "type":             eff_type,
             "role":             eff_role,
             "text":             eff_text,
-            "ai_verdict":       (a.ai_verdict if a else None),
+            "ai_verdict":       sanitise_stale_ai_verdict({
+                **ent,
+                "override_type": a.override_type if a else None,
+                "override_role": a.override_role if a else None,
+                "override_text": a.override_text if a else None,
+                "type": eff_type,
+                "role": eff_role,
+                "text": eff_text,
+                "ai_verdict": a.ai_verdict if a else None,
+            }),
             "ai_verdict_at":    (a.ai_verdict_at.isoformat() if a and a.ai_verdict_at else None),
             "exists_in":        (a.exists_in if a and a.exists_in else None),
         })
@@ -1030,6 +1041,11 @@ async def patch_entity(
                 pred_mconf = ent.get("model_confidence")
                 break
 
+    input_changing = (
+        payload.override_text is not None
+        or payload.override_type is not None
+        or payload.override_role is not None
+    )
     now = datetime.now(timezone.utc)
     stmt = pg_insert(ExtractionApproval).values(
         run_id=run_id, control_number=cn, source=src, text=text,
@@ -1059,6 +1075,28 @@ async def patch_entity(
         set_=update_cols or {"updated_at": now},
     ).returning(ExtractionApproval)
     row = (await db.execute(stmt)).scalar_one()
+
+    if input_changing:
+        row.ai_verdict = None
+        row.ai_verdict_at = None
+        eff_text_now = row.override_text or row.text
+        eff_type_now = row.override_type or row.type or ""
+        rec = (
+            await db.execute(
+                select(RunRecord).where(
+                    RunRecord.run_id == run_id,
+                    RunRecord.control_number == cn,
+                )
+            )
+        ).scalar_one_or_none()
+        if rec is not None:
+            marc_index = MarcStructuredIndex.from_records([dict(rec.marc or {})])
+            candidate_type = eff_type_now or row.role or row.source
+            row.exists_in = marc_index.classify(
+                cn, eff_text_now,
+                candidate_type=str(candidate_type) if candidate_type else None,
+            )
+
     await _emit_extraction_event(
         db,
         project_id=run.project_id,
@@ -1073,6 +1111,7 @@ async def patch_entity(
     eff_text = row.override_text or row.text
     return {
         "id":             entity_id,
+        "approval_row_id": str(row.id),
         "control_number": cn,
         "text":           eff_text,
         "type":           eff_type,

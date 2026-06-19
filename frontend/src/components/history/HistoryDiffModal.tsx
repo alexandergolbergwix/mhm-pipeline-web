@@ -32,6 +32,7 @@ import { JsonTreeViewer } from "@/components/glass/JsonTreeViewer";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { ApiError } from "@/api/client";
 import {Glass} from "@/components/glass";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 
 export interface HistoryDiffModalProps {
   projectId: string;
@@ -128,6 +129,7 @@ export default function HistoryDiffModal(
   const [loading, setLoading] = useState<boolean>(true);
 
   useFocusTrap(true, modalRef);
+  useGlassOverlayLifecycle(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +187,7 @@ export default function HistoryDiffModal(
       aria-labelledby={headerId}
       onClick={onClose}
     >
-      <Glass className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden" ref={modalRef}
+      <Glass variant="modal" refraction={false} className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden" ref={modalRef}
         
         onClick={(event) => event.stopPropagation()}
       >

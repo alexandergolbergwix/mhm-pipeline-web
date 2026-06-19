@@ -12,13 +12,18 @@ import {
   type GlassMaps,
 } from "@/components/glass/liquidGlassMath";
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const STORAGE_PREFIX = "mhm-glass:";
 const INDEX_KEY = `${STORAGE_PREFIX}index`;
 const MAX_MEMORY_ENTRIES = 48;
 const MAX_STORAGE_BYTES = 3_500_000;
 const MAX_ENTRY_BYTES = 120_000;
 const QUANTIZE_STEP = 8;
+const STORAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+interface StoredGlassMaps extends GlassMaps {
+  expiresAt?: number;
+}
 
 const memory = new Map<string, GlassMaps>();
 const memoryOrder: string[] = [];
@@ -81,14 +86,19 @@ function readStorage(key: string): GlassMaps | null {
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
     if (!raw) return null;
-    const maps = JSON.parse(raw) as GlassMaps;
+    const stored = JSON.parse(raw) as StoredGlassMaps;
     if (
-      typeof maps?.displacementUrl !== "string"
-      || typeof maps?.specularUrl !== "string"
-      || typeof maps?.scale !== "number"
+      typeof stored?.displacementUrl !== "string"
+      || typeof stored?.specularUrl !== "string"
+      || typeof stored?.scale !== "number"
     ) {
       return null;
     }
+    if (typeof stored.expiresAt === "number" && Date.now() > stored.expiresAt) {
+      localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
+      return null;
+    }
+    const {expiresAt: _e, ...maps} = stored;
     return maps;
   } catch {
     return null;
@@ -100,7 +110,10 @@ function writeStorage(key: string, maps: GlassMaps): void {
   if (entryByteSize(maps) > MAX_ENTRY_BYTES) return;
 
   try {
-    const payload = JSON.stringify(maps);
+    const payload = JSON.stringify({
+      ...maps,
+      expiresAt: Date.now() + STORAGE_TTL_MS,
+    } satisfies StoredGlassMaps);
     let index = readIndex();
     let total = index.reduce((sum, k) => {
       const item = localStorage.getItem(`${STORAGE_PREFIX}${k}`);

@@ -30,6 +30,7 @@ import {
   type EntityType,
 } from "@/api/history";
 import {Glass} from "@/components/glass";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 
 
 const HistoryDiffModal = lazy(() =>
@@ -109,7 +110,9 @@ function describeError(err: unknown): string {
 
 
 export function HistoryTimeline(props: HistoryTimelineProps) {
-  const { projectId, entityType, entityId, onClose } = props;
+  const {projectId, entityType, entityId, onClose} = props;
+
+  useGlassOverlayLifecycle(true);
 
   const [events, setEvents] = useState<EntityEventRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -320,7 +323,7 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
   };
 
   return (
-    <Glass as="section" className="flex max-h-[88vh] w-full flex-col overflow-hidden" data-testid="history-timeline"
+    <Glass as="section" refraction={false} className="flex max-h-[88vh] w-full flex-col overflow-hidden" data-testid="history-timeline"
       data-entity-type={entityType}
       data-entity-id={entityId}>
       <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
@@ -450,7 +453,7 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
           data-testid="revert-confirm-dialog"
           data-target-rev={revertDialog.targetRev}
         >
-          <Glass className="flex w-full max-w-md flex-col overflow-hidden">
+          <Glass refraction={false} className="flex w-full max-w-md flex-col overflow-hidden">
             <div className="border-b border-white/10 px-4 py-3">
               <div className="kicker">Revert</div>
               <div className="text-sm text-ink">
@@ -516,7 +519,7 @@ export function HistoryTimeline(props: HistoryTimelineProps) {
               data-testid="diff-modal-loading"
               role="status"
             >
-              <Glass className="px-4 py-3 text-sm muted">Loading diff…</Glass>
+              <Glass refraction={false} className="px-4 py-3 text-sm muted">Loading diff…</Glass>
             </div>
           }
         >

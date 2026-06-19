@@ -33,12 +33,14 @@ import {
   type Entity,
 } from "@/api/extractionApprovals";
 import { recheckEntity } from "@/api/nerVerify";
+import {emitEntitiesRefreshed} from "@/cache/extractionCache";
 import {
   ENTITY_EXPECTED_FIELDS, MARC_FIELD_LABELS,
   orderedMarcKeys, stringifyMarcValue,
 } from "@/components/extraction/marc-field-labels";
-import { HistoryTimeline } from "@/components/history/HistoryTimeline";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
+import {HistoryTimeline} from "@/components/history/HistoryTimeline";
+import {useFocusTrap} from "@/hooks/useFocusTrap";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import { langOf } from "@/utils/hebrew";
 import {Glass} from "@/components/glass";
 
@@ -53,8 +55,8 @@ export interface EntityDetailDrawerProps {
    *  Parent should call ``useApprovalStore().refresh()`` to repaint. */
   onEntityChanged?: (updated: Entity) => void;
   /** Optional callback to open the full edit modal (text/type/role
-   *  side-by-side editor). */
-  onOpenEdit?: (entity: Entity) => void;
+   *  side-by-side editor). Passes loaded MARC when available. */
+  onOpenEdit?: (entity: Entity, marcSource?: MarcSource | null) => void;
   /** Trigger AI verification scoped to this single entity. */
   onVerifyEntity?: (entity: Entity) => void;
 }
@@ -76,17 +78,8 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
   const cn = entity?.control_number ?? null;
 
   useFocusTrap(open, drawerRef);
-
-  // Pause the full-screen R3F canvas while the drawer is open — same
-  // throttle hook AuthorityTable uses during scroll. Without this, opening
-  // the drawer + mounting nested glass surfaces pegs the main thread.
-  useEffect(() => {
-    if (!open) return;
-    window.dispatchEvent(new CustomEvent("mhm-glass-throttle"));
-    return () => {
-      window.dispatchEvent(new CustomEvent("mhm-glass-resume"));
-    };
-  }, [open]);
+  useGlassOverlayLifecycle(open);
+  useGlassOverlayLifecycle(historyFor !== null);
 
   // Load the MARC record + sibling entities when entity changes.
   useEffect(() => {
@@ -115,6 +108,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
     setBusy(true);
     try {
       const updated = await ExtractionApprovals.patch(runId, entity.id, patch);
+      emitEntitiesRefreshed(runId);
       onEntityChanged?.(updated);
     } catch (e) {
       setError((e as Error).message);
@@ -132,6 +126,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
       // Patch only the text override — deliberately does NOT set approved.
       // The curator sees the updated text and can then approve if they agree.
       updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
+      emitEntitiesRefreshed(runId);
       // Re-run the AI check for this one entity against the corrected text so
       // the verdict reflects the fix. A failed re-check is non-fatal.
       await recheckEntity(runId, entity.id);
@@ -198,7 +193,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
             <button
               type="button"
               data-testid={`history-button-${entity.id}`}
-              onClick={() => setHistoryFor({ id: String(entity.id) })}
+              onClick={() => setHistoryFor({id: entity.approval_row_id ?? String(entity.id)})}
               aria-label="View edit history"
               title="View edit history"
               className="button-ghost h-7 px-2 text-xs"
@@ -236,7 +231,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
           </button>
           {onOpenEdit && (
             <button type="button"
-                    onClick={() => { onOpenEdit(entity); onClose(); }}
+                    onClick={() => { onOpenEdit(entity, marc); onClose(); }}
                     data-testid="detail-edit"
                     className="button-ghost h-7 px-3 text-xs">
               Edit text/type/role…

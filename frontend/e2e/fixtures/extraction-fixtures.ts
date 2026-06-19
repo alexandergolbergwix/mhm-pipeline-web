@@ -11,6 +11,7 @@ export const TEST_PROJECT_ID = "22222222-2222-2222-2222-222222222222";
 
 export interface MockEntity {
   id: string;
+  approval_row_id?: string;
   control_number: string;
   text: string;
   type: string;

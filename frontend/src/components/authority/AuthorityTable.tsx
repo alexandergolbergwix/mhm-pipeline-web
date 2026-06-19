@@ -712,7 +712,7 @@ export function AuthorityTable({
 
       {/* Inline history drawer */}
       {historyFor && (
-        <Glass as="aside" variant="drawer" className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="authority-table-history-drawer">
+        <Glass as="aside" variant="drawer" refraction={false} className="fixed right-0 top-0 h-full w-[460px] shadow-2xl z-50 overflow-auto" data-testid="authority-table-history-drawer">
           <HistoryTimeline
             projectId={projectId}
             entityType="authority_match"

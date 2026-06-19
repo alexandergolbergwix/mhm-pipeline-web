@@ -27,12 +27,19 @@ import {
   type AgentEvent,
   type ScopeKind,
 } from "@/api/nerVerify";
+import type {Entity} from "@/api/extractionApprovals";
+import {
+  emitEntitiesRefreshed,
+  setAiVerdictCache,
+} from "@/cache/extractionCache";
+import {entityVerdictFingerprint} from "@/cache/verdictKey";
 import {
   AgentFlowDiagram, makeInitialFlowState, reduceFlow, type FlowState,
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import {Glass} from "@/components/glass";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 
 
 export interface NerVerificationModalProps {
@@ -50,7 +57,9 @@ export interface NerVerificationModalProps {
 
 
 export function NerVerificationModal(props: NerVerificationModalProps) {
-  const { runId, scopeKind, entityIds, scopeLabel, onClose, onVerdictsLanded } = props;
+  const {runId, scopeKind, entityIds, scopeLabel, onClose, onVerdictsLanded} = props;
+
+  useGlassOverlayLifecycle(true);
 
   // Control number whose full MARC record is being inspected in the
   // searchable popup. Opened from the control-number column of any
@@ -171,6 +180,23 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
           if (entityId) {
             setVerdicts((p) => ({ ...p, [entityId]: ev }));
             landed = true;
+            void (async () => {
+              try {
+                const fp = await entityVerdictFingerprint({
+                  control_number: String(candidate.control_number ?? ""),
+                  source:         String(candidate.source ?? "person_ner") as Entity["source"],
+                  start:          Number(candidate.start ?? 0),
+                  end:            Number(candidate.end ?? 0),
+                  text:           String(candidate.text ?? ""),
+                  type:           String(candidate.type ?? "OTHER") as Entity["type"],
+                  role:           String(candidate.role ?? "") as Entity["role"],
+                  ai_verdict:     {overall: "unknown", model: String(ev.judge_id ?? ev.model ?? "")},
+                });
+                setAiVerdictCache(runId, fp, ev);
+              } catch {
+                // non-fatal
+              }
+            })();
           }
         }
         if (ev.type === "runner.warning") {
@@ -200,7 +226,10 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
     } finally {
       cancelRef.current = null;
       setRunning(false);
-      if (landed) onVerdictsLanded?.();
+      if (landed) {
+        emitEntitiesRefreshed(runId);
+        onVerdictsLanded?.();
+      }
       // Never leave the modal silently empty: if the stream ended without
       // a single verdict and nothing else explained why, say so.
       if (!landed) {
@@ -222,7 +251,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
       className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 backdrop-blur-md p-4 md:p-6"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <Glass variant="modal" className="max-w-7xl w-full max-h-full overflow-auto p-6 space-y-4">
+      <Glass variant="modal" refraction={false} className="max-w-7xl w-full max-h-full overflow-auto p-6 space-y-4">
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -253,7 +282,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
           </div>
           <label
             className="muted text-xs flex items-center gap-2"
-            title="Verdicts are cached on disk. Repeated runs over the same candidates serve from cache for free. Tick to skip the cache and force a fresh Gemini judgement on every candidate."
+            title="Verdicts are cached in the shared team store (Redis/Postgres). Repeated runs over the same inputs are nearly free. Tick to skip the cache and force a fresh Gemini judgement on every candidate."
           >
             <input
               type="checkbox"
@@ -310,7 +339,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
         )}
 
         {/* Live diagram */}
-        <Glass as="section" variant="compact" className="p-3">
+        <Glass as="section" variant="compact" refraction={false} className="p-3">
           <div className="kicker mb-2">Agent flow</div>
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
         </Glass>
@@ -332,7 +361,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
         )}
 
         {/* Step log — collapsed by default. */}
-        <Glass as="details" variant="compact" className="p-3">
+        <Glass as="details" variant="compact" refraction={false} className="p-3">
           <summary className="kicker cursor-pointer hover:text-ink">
             Step log ({events.length})
           </summary>

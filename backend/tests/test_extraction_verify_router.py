@@ -112,9 +112,17 @@ class TestPersistAiVerdictsToEntities:
         from app.routers.extraction_verify import (
             _persist_ai_verdicts_to_entities,
         )
+        from sqlalchemy import select
 
         ext_id = sample_extraction_run["entity_id"]
         run_id = sample_extraction_run["run_id"]
+        ext = (
+            await db_session.execute(
+                select(ExtractionApproval).where(
+                    ExtractionApproval.id == ext_id,
+                )
+            )
+        ).scalar_one()
 
         verdicts = [
             {
@@ -137,6 +145,7 @@ class TestPersistAiVerdictsToEntities:
             run_id=str(run_id),
             session_id="20260601T000000Z",
             verdicts=verdicts,
+            entities=[ext],
         )
 
         ext = (
@@ -172,6 +181,7 @@ class TestPersistAiVerdictsToEntities:
                 {"candidate": {"_entity_id": "not-a-uuid"},
                  "verdict": {"overall": "fail"}},
             ],
+            entities=[],
         )
 
 
@@ -183,7 +193,7 @@ class TestNerVerdictQuerySummary:
         """_ner_verdict_query_summary must hash only entity content fields,
         so the same entity text+type+role always produces the same key."""
         from app.models.extraction_approval import ExtractionApproval
-        from app.routers.extraction_verify import _ner_verdict_query_summary
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
         from app.pipeline.inference_cache import canonical_hash
         from sqlalchemy import select
 
@@ -194,8 +204,8 @@ class TestNerVerdictQuerySummary:
             )
         ).scalar_one()
 
-        qs1 = _ner_verdict_query_summary(ext)
-        qs2 = _ner_verdict_query_summary(ext)
+        qs1 = ner_verdict_query_summary(ext)
+        qs2 = ner_verdict_query_summary(ext)
 
         assert canonical_hash(qs1) == canonical_hash(qs2)
         assert "text" in qs1
@@ -208,7 +218,7 @@ class TestNerVerdictQuerySummary:
         """Changing the role field must change the cache key."""
         import copy
         from app.models.extraction_approval import ExtractionApproval
-        from app.routers.extraction_verify import _ner_verdict_query_summary
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
         from app.pipeline.inference_cache import canonical_hash
         from sqlalchemy import select
 
@@ -219,11 +229,11 @@ class TestNerVerdictQuerySummary:
             )
         ).scalar_one()
 
-        qs_orig = _ner_verdict_query_summary(ext)
+        qs_orig = ner_verdict_query_summary(ext)
 
         ext_copy = copy.copy(ext)
         ext_copy.role = "scribe"
-        qs_scribe = _ner_verdict_query_summary(ext_copy)
+        qs_scribe = ner_verdict_query_summary(ext_copy)
 
         assert canonical_hash(qs_orig) != canonical_hash(qs_scribe)
 
@@ -236,7 +246,7 @@ class TestInferenceCachePreCheck:
         """write_to_inference_cache + read_from_inference_cache round-trips
         through the Postgres L2 tier (Redis absent in SQLite CI)."""
         from app.models.extraction_approval import ExtractionApproval
-        from app.routers.extraction_verify import _ner_verdict_query_summary
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
         from app.pipeline.inference_cache import (
             read_from_inference_cache,
             write_to_inference_cache,
@@ -250,7 +260,7 @@ class TestInferenceCachePreCheck:
             )
         ).scalar_one()
 
-        qs = _ner_verdict_query_summary(ext)
+        qs = ner_verdict_query_summary(ext)
         verdict_payload = {
             "overall": "pass",
             "name_ok": True,
@@ -280,7 +290,7 @@ class TestInferenceCachePreCheck:
     ) -> None:
         """Before any verdict is written, read must return None."""
         from app.models.extraction_approval import ExtractionApproval
-        from app.routers.extraction_verify import _ner_verdict_query_summary
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
         from app.pipeline.inference_cache import read_from_inference_cache
         from sqlalchemy import select
 
@@ -291,7 +301,7 @@ class TestInferenceCachePreCheck:
             )
         ).scalar_one()
 
-        qs = _ner_verdict_query_summary(ext)
+        qs = ner_verdict_query_summary(ext)
         hit = await read_from_inference_cache(
             db_session, kind="ai_verdict", query_summary=qs,
         )
@@ -358,7 +368,7 @@ class TestStartStreamSilentFailureRegression:
         """
         from app.models.extraction_approval import ExtractionApproval
         from app.pipeline.inference_cache import write_to_inference_cache
-        from app.routers.extraction_verify import _ner_verdict_query_summary
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
         from sqlalchemy import select
         import app.routers.extraction_verify as _ev
 
@@ -375,7 +385,7 @@ class TestStartStreamSilentFailureRegression:
                 select(ExtractionApproval).where(ExtractionApproval.id == ext_id)
             )
         ).scalar_one()
-        qs = _ner_verdict_query_summary(ext)
+        qs = ner_verdict_query_summary(ext)
         await write_to_inference_cache(
             db_session,
             kind="ai_verdict",

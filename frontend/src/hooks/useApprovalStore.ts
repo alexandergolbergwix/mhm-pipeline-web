@@ -12,24 +12,22 @@
  *    fresh AI verdicts within a single revolution after each
  *    ``agent.verdict`` SSE event lands on the server.
  *
- * Polling is cheap: one GET /runs/{id}/extraction/entities per
- * interval, served from the backend's DB-backed view of
- * ``ExtractionApproval``. When the component unmounts the interval
- * is cleared — zero idle cost.
- *
- * TODO(integration): when the table-half agent's
- * ``@/api/extractionApprovals`` lands, replace the local
- * ``Entity`` + ``ExtractionApprovals.list`` shadows here with
- * imports from that file. The runtime shape is the same — the
- * shadows just keep this file type-clean until the sibling lands.
+ * A localStorage tier (``@/cache/extractionCache``) serves fresh
+ * entity lists instantly on mount; network polls still run but skip
+ * state updates when the payload fingerprint is unchanged.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 
-import { api } from "@/api/client";
-import type { Entity } from "@/api/extractionApprovals";
+import {api} from "@/api/client";
+import type {Entity} from "@/api/extractionApprovals";
+import {
+  EXTRACTION_ENTITIES_REFRESH_EVENT,
+  getEntitiesCache,
+  setEntitiesCache,
+} from "@/cache/extractionCache";
 
-export type { Entity };
+export type {Entity};
 
 
 export interface ApprovalStoreState {
@@ -73,6 +71,18 @@ interface RawEntitiesResponse {
   approved_count?: number;
   record_count?:   number;
   source_counts?:  Record<string, number>;
+}
+
+function entitiesFingerprint(entities: Entity[]): string {
+  return entities.map((e) => [
+    e.id,
+    e.approved,
+    e.override_text ?? "",
+    e.override_type ?? "",
+    e.override_role ?? "",
+    e.ai_verdict?.overall ?? "",
+    e.ai_verdict?.cache_key ?? "",
+  ].join("|")).join("\n");
 }
 
 /** Fetch the run's entities + run-level aggregates. The backend returns
@@ -123,22 +133,38 @@ export function useApprovalStore(
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
 
-  // Suppress overlapping in-flight requests — if the previous poll
-  // is still resolving when the next tick fires, skip it.
   const inFlight = useRef(false);
-  // Single ref to the timer so a re-render mid-cycle does not
-  // accidentally double-start it.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFingerprint = useRef<string>("");
 
-  const fetchOnce = useCallback(async (): Promise<void> => {
+  const applyPayload = useCallback((payload: EntitiesPayload): void => {
+    const fp = entitiesFingerprint(payload.entities);
+    if (fp === lastFingerprint.current && entities.length > 0) return;
+    lastFingerprint.current = fp;
+    setEntities(payload.entities);
+    setMeta({
+      total: payload.total,
+      approvedCount: payload.approvedCount,
+      recordCount: payload.recordCount,
+      sourceCounts: payload.sourceCounts,
+    });
+  }, [entities.length]);
+
+  const fetchOnce = useCallback(async (force = false): Promise<void> => {
     if (!runId) return;
     if (inFlight.current) return;
     inFlight.current = true;
+    if (!force && entities.length === 0) {
+      const cached = getEntitiesCache(runId, active);
+      if (cached) {
+        applyPayload(cached);
+      }
+    }
     setLoading(true);
     try {
-      const { entities: rows, ...rest } = await listEntities(runId);
-      setEntities(rows);
-      setMeta(rest);
+      const payload = await listEntities(runId);
+      setEntitiesCache(runId, payload);
+      applyPayload(payload);
       setError(null);
     } catch (e) {
       setError((e as Error).message || "Failed to load entities");
@@ -146,17 +172,13 @@ export function useApprovalStore(
       setLoading(false);
       inFlight.current = false;
     }
-  }, [runId]);
+  }, [runId, active, entities.length, applyPayload]);
 
-  // Imperative refresh — exposed to callers who want to force an
-  // immediate refetch (e.g. straight after a bulk-approve POST).
   const refresh = useCallback(async (): Promise<void> => {
-    await fetchOnce();
+    lastFingerprint.current = "";
+    await fetchOnce(true);
   }, [fetchOnce]);
 
-  // Drive the polling loop. We use ``setTimeout`` chained from each
-  // resolved fetch rather than ``setInterval`` so a slow backend
-  // never piles requests on top of each other.
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
@@ -169,8 +191,6 @@ export function useApprovalStore(
       timerRef.current = setTimeout(tick, interval);
     }
 
-    // Kick off immediately so the consumer doesn't wait for the
-    // first interval before seeing data.
     void tick();
 
     return () => {
@@ -181,6 +201,20 @@ export function useApprovalStore(
       }
     };
   }, [runId, active, pollIntervalMs, idleIntervalMs, fetchOnce]);
+
+  useEffect(() => {
+    if (!runId || typeof window === "undefined") return;
+    function onRefreshed(ev: Event): void {
+      const detail = (ev as CustomEvent<{runId?: string}>).detail;
+      if (detail?.runId && detail.runId !== runId) return;
+      lastFingerprint.current = "";
+      void fetchOnce(true);
+    }
+    window.addEventListener(EXTRACTION_ENTITIES_REFRESH_EVENT, onRefreshed);
+    return () => {
+      window.removeEventListener(EXTRACTION_ENTITIES_REFRESH_EVENT, onRefreshed);
+    };
+  }, [runId, fetchOnce]);
 
   return {
     entities,

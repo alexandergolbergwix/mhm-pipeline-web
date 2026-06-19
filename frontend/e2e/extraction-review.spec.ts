@@ -28,6 +28,7 @@
 import { expect, test } from "@playwright/test";
 import {
   TEST_RUN_ID,
+  TEST_PROJECT_ID,
   installExtractionMocks,
   makeEntity,
   makeMockState,
@@ -542,6 +543,52 @@ test.describe("AI Extraction entity-review UI", () => {
     await expect(row).toBeVisible();
     // Must not crash and must fall back to the "unknown" badge (shows "--").
     await expect(row.getByTestId("exists-in")).toHaveAttribute("data-status", "unknown");
+  });
+
+  test("history button opens the history drawer without hanging", async ({page}) => {
+    const state = makeMockState();
+    state.entities[0] = {
+      ...state.entities[0],
+      approval_row_id: "550e8400-e29b-41d4-a716-446655440000",
+    };
+    await installExtractionMocks(page, state);
+    await page.route(`**/api/projects/${TEST_PROJECT_ID}/history*`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      const pathTail = new URL(route.request().url()).pathname;
+      if (
+        pathTail.includes("/diff")
+        || pathTail.includes("/revert")
+        || pathTail.includes("/snapshots")
+        || pathTail.includes("/at")
+      ) {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    });
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+    await page.getByTestId(`history-button-${state.entities[0].id}`).click();
+    await expect(page.getByTestId("entity-history-drawer")).toBeVisible({timeout: 8000});
+    await expect(page.getByTestId("history-timeline")).toBeVisible({timeout: 8000});
+  });
+
+  test("detail drawer Edit opens the edit modal without hanging", async ({page}) => {
+    const state = makeMockState();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+    await page.getByTestId("entity-view-source").first().click();
+    await expect(page.getByTestId("entity-detail-drawer")).toBeVisible();
+    await page.getByTestId("detail-edit").click();
+    await expect(page.getByTestId("entity-edit-modal")).toBeVisible({timeout: 8000});
   });
 
 });

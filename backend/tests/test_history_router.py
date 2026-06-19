@@ -720,3 +720,62 @@ class TestEntitySnapshots:
         assert rows[0]["slot"] == 2
         assert rows[1]["bucket"] == yesterday.isoformat()
         assert rows[1]["slot"] == 0
+
+
+class TestExtractionEntityContentHashResolution:
+    @pytest.mark.asyncio
+    async def test_history_accepts_content_hash_entity_id(
+        self, db_session, sample_run,
+    ) -> None:
+        """Frontend passes content-hash ids; history must resolve to UUID."""
+        from app.models.extraction_approval import ExtractionApproval
+        from app.routers.extraction import _entity_id
+
+        client = sample_run["client"]
+        project_id = sample_run["project_id"]
+        user_id = sample_run["user_id"]
+
+        ext = ExtractionApproval(
+            run_id=sample_run["run_id"],
+            control_number=sample_run["control_number"],
+            source="person_ner",
+            text="Maimonides",
+            start=0,
+            end=10,
+            type="PERSON",
+            role="AUTHOR",
+            approved=False,
+        )
+        db_session.add(ext)
+        await db_session.flush()
+
+        content_id = _entity_id(
+            control_number=ext.control_number,
+            source=ext.source,
+            text=ext.text,
+            start=int(ext.start or 0),
+            end=int(ext.end or 0),
+        )
+
+        db_session.add(_seed_event(
+            project_id=project_id,
+            actor_id=user_id,
+            entity_type="extraction_entity",
+            entity_id=str(ext.id),
+            rev_no=1,
+            op="create",
+            state={"approved": False},
+        ))
+        await db_session.commit()
+
+        r = await client.get(
+            f"/api/projects/{project_id}/history",
+            params={
+                "entity_type": "extraction_entity",
+                "entity_id": content_id,
+            },
+        )
+        assert r.status_code == 200, r.text
+        rows = r.json()
+        assert len(rows) == 1
+        assert rows[0]["rev_no"] == 1

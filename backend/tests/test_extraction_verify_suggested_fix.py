@@ -62,7 +62,7 @@ class TestNerVerdictQuerySummaryVersion:
         cached verdicts (without suggested_fix) cannot be served as
         current-schema hits."""
         from app.models.extraction_approval import ExtractionApproval
-        from app.routers.extraction_verify import _ner_verdict_query_summary
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
 
         ext_id = sample_ner_run["entity_id"]
         ext = (
@@ -71,7 +71,7 @@ class TestNerVerdictQuerySummaryVersion:
             )
         ).scalar_one()
 
-        qs = _ner_verdict_query_summary(ext)
+        qs = ner_verdict_query_summary(ext)
         assert "ai_extraction_verdict_schema" in qs
         assert qs["ai_extraction_verdict_schema"] == "v2"
         assert "suggested_fix_policy" in qs
@@ -82,7 +82,7 @@ class TestNerVerdictQuerySummaryVersion:
     ) -> None:
         """Same entity produces the same cache key twice."""
         from app.models.extraction_approval import ExtractionApproval
-        from app.routers.extraction_verify import _ner_verdict_query_summary
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
         from app.pipeline.inference_cache import canonical_hash
 
         ext_id = sample_ner_run["entity_id"]
@@ -92,8 +92,8 @@ class TestNerVerdictQuerySummaryVersion:
             )
         ).scalar_one()
 
-        assert canonical_hash(_ner_verdict_query_summary(ext)) == \
-               canonical_hash(_ner_verdict_query_summary(ext))
+        assert canonical_hash(ner_verdict_query_summary(ext)) == \
+               canonical_hash(ner_verdict_query_summary(ext))
 
 
 # ── 2. Persistence writes suggested_fix ──────────────────────────────────
@@ -108,6 +108,11 @@ class TestPersistSuggestedFix:
 
         ext_id = sample_ner_run["entity_id"]
         run_id = sample_ner_run["run_id"]
+        ext = (
+            await db_session.execute(
+                select(ExtractionApproval).where(ExtractionApproval.id == ext_id)
+            )
+        ).scalar_one()
 
         verdicts = [
             {
@@ -136,6 +141,7 @@ class TestPersistSuggestedFix:
             run_id=str(run_id),
             session_id="20260607T000000Z",
             verdicts=verdicts,
+            entities=[ext],
         )
 
         ext = (
@@ -165,6 +171,11 @@ class TestPersistSuggestedFix:
 
         ext_id = sample_ner_run["entity_id"]
         run_id = sample_ner_run["run_id"]
+        ext = (
+            await db_session.execute(
+                select(ExtractionApproval).where(ExtractionApproval.id == ext_id)
+            )
+        ).scalar_one()
 
         verdicts = [
             {
@@ -188,6 +199,7 @@ class TestPersistSuggestedFix:
             run_id=str(run_id),
             session_id="20260607T000001Z",
             verdicts=verdicts,
+            entities=[ext],
         )
 
         ext = (
@@ -211,10 +223,8 @@ class TestCacheRoundTripWithFix:
         self, db_session, sample_ner_run,
     ) -> None:
         from app.models.extraction_approval import ExtractionApproval
-        from app.routers.extraction_verify import (
-            _ner_verdict_query_summary,
-            _write_ner_verdicts_to_cache,
-        )
+        from app.routers.extraction_verify import _write_ner_verdicts_to_cache
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
         from app.pipeline.inference_cache import read_from_inference_cache
 
         ext_id = sample_ner_run["entity_id"]
@@ -249,11 +259,11 @@ class TestCacheRoundTripWithFix:
         ]
 
         await _write_ner_verdicts_to_cache(
-            entities_by_id={str(ext.id): ext},
+            entities=[ext],
             verdicts=verdicts,
         )
 
-        qs = _ner_verdict_query_summary(ext, "gemini-3.1-pro-preview")
+        qs = ner_verdict_query_summary(ext, "gemini-3.1-pro-preview")
         hit = await read_from_inference_cache(
             db_session, kind="ai_verdict", query_summary=qs,
         )
@@ -268,10 +278,8 @@ class TestCacheRoundTripWithFix:
     ) -> None:
         """null suggested_fix must survive the cache write/read cycle."""
         from app.models.extraction_approval import ExtractionApproval
-        from app.routers.extraction_verify import (
-            _ner_verdict_query_summary,
-            _write_ner_verdicts_to_cache,
-        )
+        from app.routers.extraction_verify import _write_ner_verdicts_to_cache
+        from app.pipeline.ner_verdict_cache import ner_verdict_query_summary
         from app.pipeline.inference_cache import read_from_inference_cache
 
         ext_id = sample_ner_run["entity_id"]
@@ -300,11 +308,11 @@ class TestCacheRoundTripWithFix:
         ]
 
         await _write_ner_verdicts_to_cache(
-            entities_by_id={str(ext.id): ext},
+            entities=[ext],
             verdicts=verdicts,
         )
 
-        qs = _ner_verdict_query_summary(ext, "gemini-3.1-pro-preview")
+        qs = ner_verdict_query_summary(ext, "gemini-3.1-pro-preview")
         hit = await read_from_inference_cache(
             db_session, kind="ai_verdict", query_summary=qs,
         )

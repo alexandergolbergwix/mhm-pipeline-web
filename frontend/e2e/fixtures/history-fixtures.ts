@@ -45,7 +45,9 @@ export const TEST_RUN_ID = EXTRACTION_TEST_RUN_ID;
 // The entity whose history we exercise. The extraction-page entity
 // row carries `data-testid="history-button-{id}"`; the history API
 // is hit with `entity_id={id}`. The row id MUST match across both.
+// Content-hash entity id (table row / SSE). History API uses approval_row_id.
 export const TEST_ENTITY_ID = "extraction-entity-abc";
+export const TEST_APPROVAL_ROW_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 // ---------------------------------------------------------------------------
 // EventRow + canonical timeline
@@ -169,6 +171,7 @@ export function makeHistoryMockState(): HistoryMockState {
     extraction.entities[0] = {
       ...extraction.entities[0],
       id: TEST_ENTITY_ID,
+      approval_row_id: TEST_APPROVAL_ROW_ID,
     };
   }
   return {
