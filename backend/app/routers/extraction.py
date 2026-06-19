@@ -33,8 +33,8 @@ from pathlib import Path
 from typing import Any
 
 from cryptography.exceptions import InvalidTag
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +54,14 @@ from app.pipeline.agent_runner import AgentEvent, sse_stream
 from app.pipeline.extraction import ExtractionEvent, extract_entities_stream
 from app.pipeline.marc_structured_index import MarcStructuredIndex
 from app.pipeline.ner_verdict_cache import sanitise_stale_ai_verdict
+from app.cache.scoped_cache import scoped_cache_get, scoped_cache_lookup_or_call
+from app.pipeline.extraction_entities_cache import (
+    ENTITIES_CACHE_KIND,
+    compute_entities_fingerprint,
+    entities_cacheable,
+    entities_etag,
+    invalidate_entities_cache,
+)
 from app.routers.runs import _lookup_run_with_access
 from app.versioning import apply_event
 
@@ -651,48 +659,11 @@ def _entity_dict_from_approval_row(r: ExtractionApproval) -> dict:
     }
 
 
-@router.get("/runs/{run_id}/extraction/entities")
-async def list_entities(
+async def _build_unfiltered_entities_bundle(
+    db: AsyncSession,
     run_id: uuid.UUID,
-    source:      str | None  = Query(None),
-    type_filter: str | None  = Query(None, alias="type"),
-    role_filter: str | None  = Query(None, alias="role"),
-    approved:    bool | None  = Query(None),
-    search:      str | None  = Query(None),
-    sort_by:     str | None  = Query(None),
-    sort_dir:    str          = Query("asc"),
-    page:        int | None   = Query(None, ge=1),
-    page_size:   int | None   = Query(None, ge=1, le=2000),
-    auth: AuthContext = Depends(current_auth),
-    db: AsyncSession = Depends(get_session),
-) -> dict:
-    """Return extracted entities for this run, joined with curator
-    approval / override / AI-verdict state, plus run-level aggregates.
-
-    Response shape::
-
-        {entities, total, approved_count, record_count, source_counts,
-         page, page_size}
-
-    ``total`` is the count AFTER the optional filters (for pagination);
-    ``approved_count`` / ``record_count`` / ``source_counts`` are over the
-    full unfiltered run so the header summary always shows run totals.
-
-    The ``source`` / ``type`` / ``role`` / ``approved`` / ``search``
-    filters, ``sort_by`` + ``sort_dir``, and ``page`` + ``page_size`` are
-    all OPTIONAL — with none supplied the endpoint returns every entity
-    (the historical behaviour the entity table relies on).
-
-    ``exists_in`` (MARC grounding) is read straight from the row — it was
-    snapshotted once at stream-end by ``_bulk_persist_entities`` — so this
-    GET no longer rebuilds the full ``MarcStructuredIndex`` on every poll.
-    """
-    await _lookup_run_with_access(db, run_id, auth, write=False)
-
-    # 1. Read ner_results.json off disk + flatten.
-    #    When absent (ephemeral filesystem wipe) fall back to the durable
-    #    extraction_approvals rows whose type/role/confidence were
-    #    snapshotted at stream-end by _bulk_persist_entities.
+) -> dict[str, Any]:
+    """Merge ner_results + approvals + exists_in backfill (unfiltered)."""
     path = _results_path(run_id)
     db_rows = (
         await db.execute(
@@ -702,7 +673,10 @@ async def list_entities(
 
     if not path.exists():
         if not db_rows:
-            return _empty_entities_response(page, page_size)
+            return {
+                "out": [], "approved_count": 0, "record_count": 0,
+                "source_counts": {},
+            }
         flat = [_entity_dict_from_approval_row(r) for r in db_rows]
     else:
         try:
@@ -710,8 +684,6 @@ async def list_entities(
         except json.JSONDecodeError:
             records = []
         flat = _flatten_records(records) if isinstance(records, list) else []
-        # Heroku may retain a truncated ner_results.json while Postgres
-        # holds the full stream-end snapshot from _bulk_persist_entities.
         if db_rows and len(flat) < len(db_rows):
             by_id = {e["id"]: e for e in flat}
             for r in db_rows:
@@ -723,7 +695,6 @@ async def list_entities(
                     by_id[eid] = _entity_dict_from_approval_row(r)
             flat = list(by_id.values())
 
-    # 2. Key approval rows by entity_id.
     approvals = {
         _entity_id(
             control_number=r.control_number, source=r.source,
@@ -732,8 +703,6 @@ async def list_entities(
         for r in db_rows
     }
 
-    # 3. Merge. ``exists_in`` comes straight from the snapshotted row — no
-    #    per-poll MARC re-index (Rule W-16 §10).
     out: list[dict] = []
     for ent in flat:
         a = approvals.get(ent["id"])
@@ -768,9 +737,6 @@ async def list_entities(
             "exists_in":        (a.exists_in if a and a.exists_in else None),
         })
 
-    # 3b. Lazy backfill: compute exists_in for rows that were snapshotted
-    #     before the JSONB migration (old rows have exists_in = NULL).
-    #     Build the MARC index once, update all null rows in memory + DB.
     null_entities = [e for e in out if e.get("exists_in") is None]
     if null_entities:
         marc_rows_for_backfill = (
@@ -800,8 +766,6 @@ async def list_entities(
                 len(updated_ids), run_id,
             )
 
-    # 4. Run-level aggregates (over the FULL set, before filtering) so the
-    #    header summary reflects the whole run regardless of any filter.
     approved_count = sum(1 for e in out if e["approved"])
     record_count = len({e["control_number"] for e in out})
     source_counts: dict[str, int] = {}
@@ -809,26 +773,116 @@ async def list_entities(
         src = str(e.get("source") or "")
         source_counts[src] = source_counts.get(src, 0) + 1
 
-    # 5. Optional server-side filter / sort / paginate.
-    rows = _filter_entities(
-        out, source=source, type_filter=type_filter, role_filter=role_filter,
-        approved=approved, search=search,
-    )
-    rows = _sort_entities(rows, sort_by=sort_by, sort_dir=sort_dir)
-    total = len(rows)
-    if page is not None and page_size is not None:
-        start = (page - 1) * page_size
-        rows = rows[start:start + page_size]
-
     return {
-        "entities":       rows,
-        "total":          total,
+        "out":            out,
         "approved_count": approved_count,
         "record_count":   record_count,
         "source_counts":  source_counts,
-        "page":           page,
-        "page_size":      page_size,
     }
+
+
+@router.get("/runs/{run_id}/extraction/entities")
+async def list_entities(
+    run_id: uuid.UUID,
+    source:      str | None  = Query(None),
+    type_filter: str | None  = Query(None, alias="type"),
+    role_filter: str | None  = Query(None, alias="role"),
+    approved:    bool | None  = Query(None),
+    search:      str | None  = Query(None),
+    sort_by:     str | None  = Query(None),
+    sort_dir:    str          = Query("asc"),
+    page:        int | None   = Query(None, ge=1),
+    page_size:   int | None   = Query(None, ge=1, le=2000),
+    no_cache:    bool         = Query(False),
+    if_none_match: str | None = Header(None, alias="If-None-Match"),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+):
+    """Return extracted entities for this run, joined with curator
+    approval / override / AI-verdict state, plus run-level aggregates.
+
+    Response shape::
+
+        {entities, total, approved_count, record_count, source_counts,
+         page, page_size}
+
+    ``total`` is the count AFTER the optional filters (for pagination);
+    ``approved_count`` / ``record_count`` / ``source_counts`` are over the
+    full unfiltered run so the header summary always shows run totals.
+
+    The ``source`` / ``type`` / ``role`` / ``approved`` / ``search``
+    filters, ``sort_by`` + ``sort_dir``, and ``page`` + ``page_size`` are
+    all OPTIONAL — with none supplied the endpoint returns every entity
+    (the historical behaviour the entity table relies on).
+
+    ``exists_in`` (MARC grounding) is read straight from the row — it was
+    snapshotted once at stream-end by ``_bulk_persist_entities`` — so this
+    GET no longer rebuilds the full ``MarcStructuredIndex`` on every poll.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+
+    path = _results_path(run_id)
+    fingerprint = await compute_entities_fingerprint(db, run_id, path)
+    etag = entities_etag(fingerprint)
+
+    if if_none_match and if_none_match.strip('"') == fingerprint:
+        return Response(status_code=304, headers={"ETag": etag})
+
+    can_cache = entities_cacheable(
+        source=source, type_filter=type_filter, role_filter=role_filter,
+        approved=approved, search=search, sort_by=sort_by,
+        page=page, page_size=page_size,
+    )
+    cache_summary = {"fingerprint": fingerprint}
+    cache_status = "BYPASS"
+
+    if can_cache and not no_cache:
+        cached = await scoped_cache_get(
+            scope="run", scope_id=str(run_id),
+            kind=ENTITIES_CACHE_KIND, query_summary=cache_summary,
+        )
+        if cached is not None:
+            bundle = cached
+            cache_status = "HIT"
+        else:
+            async def _fetch_bundle() -> dict[str, Any]:
+                return await _build_unfiltered_entities_bundle(db, run_id)
+
+            bundle = await scoped_cache_lookup_or_call(
+                scope="run", scope_id=str(run_id),
+                kind=ENTITIES_CACHE_KIND, query_summary=cache_summary,
+                fetch=_fetch_bundle,
+            )
+            cache_status = "MISS"
+    else:
+        bundle = await _build_unfiltered_entities_bundle(db, run_id)
+
+    if not bundle["out"]:
+        body = _empty_entities_response(page, page_size)
+    else:
+        rows = _filter_entities(
+            bundle["out"], source=source, type_filter=type_filter,
+            role_filter=role_filter, approved=approved, search=search,
+        )
+        rows = _sort_entities(rows, sort_by=sort_by, sort_dir=sort_dir)
+        total = len(rows)
+        if page is not None and page_size is not None:
+            start = (page - 1) * page_size
+            rows = rows[start:start + page_size]
+        body = {
+            "entities":       rows,
+            "total":          total,
+            "approved_count": bundle["approved_count"],
+            "record_count":   bundle["record_count"],
+            "source_counts":  bundle["source_counts"],
+            "page":           page,
+            "page_size":      page_size,
+        }
+
+    return JSONResponse(
+        content=body,
+        headers={"ETag": etag, "X-Cache": cache_status},
+    )
 
 
 def _empty_entities_response(page: int | None, page_size: int | None) -> dict:
@@ -1084,9 +1138,10 @@ async def patch_entity(
         update_cols["override_role"] = payload.override_role or None
     if payload.override_text is not None:
         update_cols["override_text"] = payload.override_text or None
+    update_cols["updated_at"] = now
     stmt = stmt.on_conflict_do_update(
         constraint="uq_extraction_approval_key",
-        set_=update_cols or {"updated_at": now},
+        set_=update_cols,
     ).returning(ExtractionApproval)
     row = (await db.execute(stmt)).scalar_one()
 
@@ -1119,6 +1174,7 @@ async def patch_entity(
         message="extraction edit",
     )
     await db.commit()
+    await invalidate_entities_cache(run_id)
 
     eff_type = row.override_type or row.type or ""
     eff_role = row.override_role or row.role or ""
@@ -1208,6 +1264,7 @@ async def bulk_approve_entities(
             message="extraction bulk approve",
         )
     await db.commit()
+    await invalidate_entities_cache(run_id)
     return {"updated": len(rows_to_upsert), "approved": payload.approved}
 
 

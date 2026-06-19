@@ -3,26 +3,20 @@
  * AI Extraction (web replacement for the desktop's QFileSystemWatcher
  * live sync).
  *
- * Two consumers cooperate:
- *  - The entity table mounts the hook with ``active=false`` so it
- *    polls slowly (default 30 s) — enough to pick up other curators'
- *    approvals without burning CPU.
- *  - The NerVerificationModal flips ``active=true`` while it's open
- *    so the hook polls fast (default 2 s) and the table picks up
- *    fresh AI verdicts within a single revolution after each
- *    ``agent.verdict`` SSE event lands on the server.
- *
- * A localStorage tier (``@/cache/extractionCache``) invalidates AI
- * verdict warm-reads after patch/verify via ``mhm.entities.refreshed``.
+ * Tier 3 browser cache: user-scoped SWR via ``@/cache/extractionCache``.
+ * Always revalidates against the API; never blocks on a partial list.
  */
 
 import {useCallback, useEffect, useRef, useState} from "react";
 
-import {api} from "@/api/client";
+import {ApiError} from "@/api/client";
 import type {Entity} from "@/api/extractionApprovals";
 import {
   EXTRACTION_ENTITIES_REFRESH_EVENT,
+  getEntitiesCache,
+  setEntitiesCache,
 } from "@/cache/extractionCache";
+import {useAuth} from "@/stores/auth";
 
 export type {Entity};
 
@@ -31,10 +25,7 @@ export interface ApprovalStoreState {
   entities:       Entity[];
   total:          number;
   approvedCount:  number;
-  /** Distinct control numbers across the full run (server aggregate). */
   recordCount:    number;
-  /** Per-source entity counts across the full run (server aggregate),
-   *  e.g. {person_ner: 40, provenance_ner: 12, ...}. */
   sourceCounts:   Record<string, number>;
   loading:        boolean;
   error:          string | null;
@@ -48,16 +39,13 @@ interface EntitiesPayload {
   approvedCount:  number;
   recordCount:    number;
   sourceCounts:   Record<string, number>;
+  etag?:          string | null;
 }
 
 
 export interface UseApprovalStoreOptions {
-  /** Fast-poll while true (2 s by default); slow-poll while false
-   *  (30 s by default). */
   active?:         boolean;
-  /** Active-mode poll interval in ms. */
   pollIntervalMs?: number;
-  /** Idle-mode poll interval in ms. */
   idleIntervalMs?: number;
 }
 
@@ -69,6 +57,7 @@ interface RawEntitiesResponse {
   record_count?:   number;
   source_counts?:  Record<string, number>;
 }
+
 
 function entitiesFingerprint(entities: Entity[]): string {
   return `${entities.length}:${entities.map((e) => [
@@ -82,14 +71,10 @@ function entitiesFingerprint(entities: Entity[]): string {
   ].join("|")).join("\n")}`;
 }
 
-/** Fetch the run's entities + run-level aggregates. The backend returns
- *  `{entities, total, approved_count, record_count, source_counts}`; we
- *  still tolerate a bare list (older mocks) and derive the aggregates
- *  from the array in that case. */
-async function listEntities(runId: string): Promise<EntitiesPayload> {
-  const raw = await api.get<Entity[] | RawEntitiesResponse>(
-    `/runs/${runId}/extraction/entities`,
-  );
+function normalizePayload(
+  raw: Entity[] | RawEntitiesResponse,
+  etag: string | null,
+): EntitiesPayload {
   const entities = Array.isArray(raw) ? raw : (raw.entities ?? []);
   const obj = Array.isArray(raw) ? null : raw;
   const approvedCount = obj?.approved_count
@@ -103,6 +88,7 @@ async function listEntities(runId: string): Promise<EntitiesPayload> {
     approvedCount,
     recordCount,
     sourceCounts,
+    etag,
   };
 }
 
@@ -110,6 +96,43 @@ function deriveSourceCounts(entities: Entity[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const e of entities) out[e.source] = (out[e.source] ?? 0) + 1;
   return out;
+}
+
+async function fetchEntitiesFromApi(
+  runId: string,
+  ifNoneMatch?: string | null,
+): Promise<{notModified: boolean; payload: EntitiesPayload | null}> {
+  const headers: Record<string, string> = {
+    "Cache-Control": "no-cache",
+    "Pragma":        "no-cache",
+  };
+  if (ifNoneMatch) headers["If-None-Match"] = ifNoneMatch;
+
+  const res = await fetch(`/api/runs/${runId}/extraction/entities`, {
+    method:      "GET",
+    credentials: "include",
+    cache:       "no-store",
+    headers,
+  });
+
+  if (res.status === 304) {
+    return {notModified: true, payload: null};
+  }
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const data = (await res.json()) as {detail?: unknown};
+      if (typeof data.detail === "string") detail = data.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(res.status, detail);
+  }
+
+  const raw = (await res.json()) as Entity[] | RawEntitiesResponse;
+  const etag = res.headers.get("etag");
+  return {notModified: false, payload: normalizePayload(raw, etag)};
 }
 
 
@@ -123,6 +146,8 @@ export function useApprovalStore(
     idleIntervalMs = 30000,
   } = opts;
 
+  const userId = useAuth((s) => s.user?.id);
+
   const [entities, setEntities] = useState<Entity[]>([]);
   const [meta, setMeta] = useState<Omit<EntitiesPayload, "entities">>({
     total: 0, approvedCount: 0, recordCount: 0, sourceCounts: {},
@@ -133,6 +158,7 @@ export function useApprovalStore(
   const inFlight = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFingerprint = useRef<string>("");
+  const etagRef = useRef<string | null>(null);
 
   const applyPayload = useCallback((payload: EntitiesPayload, force = false): void => {
     const fp = entitiesFingerprint(payload.entities);
@@ -145,6 +171,7 @@ export function useApprovalStore(
       return;
     }
     lastFingerprint.current = fp;
+    if (payload.etag) etagRef.current = payload.etag;
     setEntities(payload.entities);
     setMeta({
       total: payload.total,
@@ -160,8 +187,53 @@ export function useApprovalStore(
     inFlight.current = true;
     setLoading(true);
     try {
-      const payload = await listEntities(runId);
-      applyPayload(payload, force);
+      if (userId && !force) {
+        const warm = getEntitiesCache(userId, runId, active);
+        if (warm && warm.entities.length === warm.total) {
+          applyPayload({
+            entities:       warm.entities,
+            total:          warm.total,
+            approvedCount:  warm.approvedCount,
+            recordCount:    warm.recordCount,
+            sourceCounts:   warm.sourceCounts,
+            etag:           warm.etag ?? null,
+          }, false);
+        }
+      }
+
+      const {notModified, payload} = await fetchEntitiesFromApi(
+        runId, force ? null : etagRef.current,
+      );
+
+      if (notModified && userId) {
+        const warm = getEntitiesCache(userId, runId, active);
+        if (warm && warm.entities.length === warm.total) {
+          applyPayload({
+            entities:       warm.entities,
+            total:          warm.total,
+            approvedCount:  warm.approvedCount,
+            recordCount:    warm.recordCount,
+            sourceCounts:   warm.sourceCounts,
+            etag:           warm.etag ?? etagRef.current,
+          }, force);
+          setError(null);
+          return;
+        }
+      }
+
+      if (payload) {
+        applyPayload(payload, force);
+        if (userId && payload.entities.length === payload.total) {
+          setEntitiesCache(userId, runId, {
+            entities:       payload.entities,
+            total:          payload.total,
+            approvedCount:  payload.approvedCount,
+            recordCount:    payload.recordCount,
+            sourceCounts:   payload.sourceCounts,
+            etag:           payload.etag ?? null,
+          });
+        }
+      }
       setError(null);
     } catch (e) {
       setError((e as Error).message || "Failed to load entities");
@@ -169,18 +241,20 @@ export function useApprovalStore(
       setLoading(false);
       inFlight.current = false;
     }
-  }, [runId, applyPayload]);
+  }, [runId, userId, active, applyPayload]);
 
   const refresh = useCallback(async (): Promise<void> => {
     lastFingerprint.current = "";
+    etagRef.current = null;
     await fetchOnce(true);
   }, [fetchOnce]);
 
   useEffect(() => {
     lastFingerprint.current = "";
+    etagRef.current = null;
     setEntities([]);
     setMeta({total: 0, approvedCount: 0, recordCount: 0, sourceCounts: {}});
-  }, [runId]);
+  }, [runId, userId]);
 
   useEffect(() => {
     if (!runId) return;
@@ -208,16 +282,18 @@ export function useApprovalStore(
   useEffect(() => {
     if (!runId || typeof window === "undefined") return;
     function onRefreshed(ev: Event): void {
-      const detail = (ev as CustomEvent<{runId?: string}>).detail;
+      const detail = (ev as CustomEvent<{runId?: string; userId?: string}>).detail;
       if (detail?.runId && detail.runId !== runId) return;
+      if (detail?.userId && userId && detail.userId !== userId) return;
       lastFingerprint.current = "";
+      etagRef.current = null;
       void fetchOnce(true);
     }
     window.addEventListener(EXTRACTION_ENTITIES_REFRESH_EVENT, onRefreshed);
     return () => {
       window.removeEventListener(EXTRACTION_ENTITIES_REFRESH_EVENT, onRefreshed);
     };
-  }, [runId, fetchOnce]);
+  }, [runId, userId, fetchOnce]);
 
   return {
     entities,

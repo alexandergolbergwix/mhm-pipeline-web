@@ -40,6 +40,7 @@ import { VerdictsTable } from "@/components/VerdictsTable";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import {Glass} from "@/components/glass";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {useAuth} from "@/stores/auth";
 
 
 export interface NerVerificationModalProps {
@@ -58,6 +59,8 @@ export interface NerVerificationModalProps {
 
 export function NerVerificationModal(props: NerVerificationModalProps) {
   const {runId, scopeKind, entityIds, scopeLabel, onClose, onVerdictsLanded} = props;
+
+  const userId = useAuth((s) => s.user?.id) ?? "";
 
   useGlassOverlayLifecycle(true);
 
@@ -192,7 +195,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
                   role:           String(candidate.role ?? "") as Entity["role"],
                   ai_verdict:     {overall: "unknown", model: String(ev.judge_id ?? ev.model ?? "")},
                 });
-                setAiVerdictCache(runId, fp, ev);
+                setAiVerdictCache(userId, runId, fp, ev);
               } catch {
                 // non-fatal
               }
@@ -227,7 +230,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
       cancelRef.current = null;
       setRunning(false);
       if (landed) {
-        emitEntitiesRefreshed(runId);
+        emitEntitiesRefreshed(userId, runId);
         onVerdictsLanded?.();
       }
       // Never leave the modal silently empty: if the stream ended without

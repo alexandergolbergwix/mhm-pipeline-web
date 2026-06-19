@@ -35,6 +35,7 @@ import { recheckEntity } from "@/api/nerVerify";
 import {emitEntitiesRefreshed} from "@/cache/extractionCache";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {useAuth} from "@/stores/auth";
 import {langOf} from "@/utils/hebrew";
 import {Glass} from "@/components/glass";
 
@@ -174,6 +175,8 @@ export function EntityTable(props: EntityTableProps) {
     columnFilters, onColumnFiltersChange, onVisibleCountChange, globalSearch,
   } = props;
 
+  const userId = useAuth((s) => s.user?.id) ?? "";
+
   const [sort, setSort] = useState<SortState | null>(null);
   const [popup, setPopup] = useState<{ column: ColumnKey; x: number; y: number } | null>(null);
   const [historyFor, setHistoryFor] = useState<{id: string} | null>(null);
@@ -267,7 +270,7 @@ export function EntityTable(props: EntityTableProps) {
     async (entity: Entity, patch: { type?: EntityType; role?: EntityRole; approved?: boolean }) => {
       try {
         const updated = await ExtractionApprovals.patch(runId, entity.id, patch);
-        emitEntitiesRefreshed(runId);
+        emitEntitiesRefreshed(userId, runId);
         onEntityUpdated(updated);
       } catch (err) {
         console.error("Failed to patch entity", err);
@@ -284,7 +287,7 @@ export function EntityTable(props: EntityTableProps) {
       try {
         // 1. Patch only the text override — deliberately does NOT touch approved.
         updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
-        emitEntitiesRefreshed(runId);
+        emitEntitiesRefreshed(userId, runId);
         // 2. Re-run the AI check for this one entity against the corrected
         //    text. The fix already succeeded; a failed re-check is non-fatal.
         await recheckEntity(runId, entity.id);

@@ -1,6 +1,7 @@
-import { create } from "zustand";
+import {create} from "zustand";
 
-import { api, ApiError } from "@/api/client";
+import {api, ApiError} from "@/api/client";
+import {clearUserCache} from "@/cache/clientCache";
 
 export interface AuthUser {
   id: string;
@@ -48,10 +49,12 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   async logout() {
+    const userId = useAuth.getState().user?.id;
     try {
       await api.post("/auth/logout");
     } finally {
-      set({ user: null, error: null });
+      if (userId) clearUserCache(userId);
+      set({user: null, error: null});
     }
   },
 }));

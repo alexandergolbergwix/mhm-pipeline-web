@@ -21,6 +21,7 @@ import {
 import {emitEntitiesRefreshed} from "@/cache/extractionCache";
 import {useFocusTrap} from "@/hooks/useFocusTrap";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {useAuth} from "@/stores/auth";
 import {langOf} from "@/utils/hebrew";
 
 const FIELD_VALUE_CAP = 12_000;
@@ -72,6 +73,8 @@ function StructuredMarcPanel({
 }
 
 export function EntityEditModal({runId, entity, marcSource, onClose, onSaved}: EntityEditModalProps) {
+  const userId = useAuth((s) => s.user?.id) ?? "";
+
   const [state, setState] = useState<EditState>({
     text: entity.text, type: entity.type, role: entity.role,
   });
@@ -122,7 +125,7 @@ export function EntityEditModal({runId, entity, marcSource, onClose, onSaved}: E
       const updated = await ExtractionApprovals.patch(runId, entity.id, {
         text: state.text, type: state.type, role: state.role,
       });
-      emitEntitiesRefreshed(runId);
+      emitEntitiesRefreshed(userId, runId);
       onSaved(updated);
       onClose();
     } catch (err) {

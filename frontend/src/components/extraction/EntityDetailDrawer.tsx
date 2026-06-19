@@ -41,6 +41,7 @@ import {
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {useFocusTrap} from "@/hooks/useFocusTrap";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {useAuth} from "@/stores/auth";
 import { langOf } from "@/utils/hebrew";
 import {Glass} from "@/components/glass";
 
@@ -64,6 +65,8 @@ export interface EntityDetailDrawerProps {
 
 export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
   const { runId, projectId, entity, onClose, onEntityChanged, onOpenEdit, onVerifyEntity } = props;
+
+  const userId = useAuth((s) => s.user?.id) ?? "";
 
   const [marc, setMarc] = useState<MarcSource | null>(null);
   const [loading, setLoading] = useState(false);
@@ -108,7 +111,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
     setBusy(true);
     try {
       const updated = await ExtractionApprovals.patch(runId, entity.id, patch);
-      emitEntitiesRefreshed(runId);
+      emitEntitiesRefreshed(userId, runId);
       onEntityChanged?.(updated);
     } catch (e) {
       setError((e as Error).message);
@@ -126,7 +129,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
       // Patch only the text override — deliberately does NOT set approved.
       // The curator sees the updated text and can then approve if they agree.
       updated = await ExtractionApprovals.patch(runId, entity.id, { text: fixText });
-      emitEntitiesRefreshed(runId);
+      emitEntitiesRefreshed(userId, runId);
       // Re-run the AI check for this one entity against the corrected text so
       // the verdict reflects the fix. A failed re-check is non-fatal.
       await recheckEntity(runId, entity.id);
