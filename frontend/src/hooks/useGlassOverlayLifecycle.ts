@@ -1,19 +1,40 @@
 /**
  * useGlassOverlayLifecycle — pause the full-screen R3F LiquidGlassCanvas
- * while a modal/drawer overlay is open so nested glass surfaces and
- * backdrop work do not peg the main thread.
+ * while any modal/drawer overlay is open.
  *
- * Mirrors the throttle pattern in AuthorityTable scroll handling.
+ * Uses a refcount so closing one overlay does not resume R3F while another
+ * is still mounted (e.g. drawer → edit modal handoff).
  */
 
 import {useEffect} from "react";
 
+let overlayCount = 0;
+
+function throttleGlass(): void {
+  if (overlayCount === 1) {
+    window.dispatchEvent(new CustomEvent("mhm-glass-throttle"));
+  }
+}
+
+function resumeGlass(): void {
+  if (overlayCount === 0) {
+    window.dispatchEvent(new CustomEvent("mhm-glass-resume"));
+  }
+}
+
 export function useGlassOverlayLifecycle(active: boolean): void {
   useEffect(() => {
     if (!active) return;
-    window.dispatchEvent(new CustomEvent("mhm-glass-throttle"));
+    overlayCount += 1;
+    throttleGlass();
     return () => {
-      window.dispatchEvent(new CustomEvent("mhm-glass-resume"));
+      overlayCount = Math.max(0, overlayCount - 1);
+      resumeGlass();
     };
   }, [active]);
+}
+
+/** Test helper — reset overlay refcount between tests. */
+export function resetGlassOverlayCount(): void {
+  overlayCount = 0;
 }

@@ -8,7 +8,7 @@
  * via ExtractionApprovals.patch.
  */
 
-import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 
 import {MarcSourceApi, type MarcSource} from "@/api/marcSource";
 import {
@@ -18,13 +18,12 @@ import {
 import {
   MARC_FIELD_LABELS, orderedMarcKeys, stringifyMarcValue,
 } from "@/components/extraction/marc-field-labels";
-import {Glass} from "@/components/glass";
 import {emitEntitiesRefreshed} from "@/cache/extractionCache";
 import {useFocusTrap} from "@/hooks/useFocusTrap";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import {langOf} from "@/utils/hebrew";
 
-const MARC_HIGHLIGHT_CAP = 64_000;
+const FIELD_VALUE_CAP = 12_000;
 
 export interface EntityEditModalProps {
   runId: string;
@@ -37,40 +36,6 @@ export interface EntityEditModalProps {
 
 interface EditState {text: string; type: EntityType; role: EntityRole;}
 
-function marcToString(marc: Record<string, unknown> | null): string {
-  if (!marc) return "";
-  const lines: string[] = [];
-  for (const key of orderedMarcKeys(marc)) {
-    const payload = marc[key];
-    if (Array.isArray(payload)) {
-      for (const sub of payload) lines.push(`${key}\t${JSON.stringify(sub)}`);
-    } else {
-      lines.push(`${key}\t${JSON.stringify(payload)}`);
-    }
-  }
-  return lines.join("\n");
-}
-
-function highlightSpan(
-  source: string, needle: string, start: number | null, end: number | null,
-): {before: string; hit: string; after: string} {
-  if (!source) return {before: "", hit: "", after: ""};
-  if (start !== null && end !== null && start >= 0 && end > start && end <= source.length) {
-    return {before: source.slice(0, start), hit: source.slice(start, end), after: source.slice(end)};
-  }
-  if (needle) {
-    const idx = source.indexOf(needle);
-    if (idx >= 0) {
-      return {
-        before: source.slice(0, idx),
-        hit: source.slice(idx, idx + needle.length),
-        after: source.slice(idx + needle.length),
-      };
-    }
-  }
-  return {before: source, hit: "", after: ""};
-}
-
 function StructuredMarcPanel({
   marc, highlightText,
 }: {
@@ -82,8 +47,10 @@ function StructuredMarcPanel({
   return (
     <div className="space-y-2 text-[11px]">
       {keys.map((k) => {
-        const value = stringifyMarcValue(marc[k]);
-        if (!value) return null;
+        const raw = stringifyMarcValue(marc[k]);
+        if (!raw) return null;
+        const truncated = raw.length > FIELD_VALUE_CAP;
+        const value = truncated ? `${raw.slice(0, FIELD_VALUE_CAP)}…` : raw;
         const lbl = MARC_FIELD_LABELS[k];
         const hit = needle.length >= 2 && value.toLowerCase().includes(needle);
         return (
@@ -93,6 +60,7 @@ function StructuredMarcPanel({
               dir="auto"
               lang={langOf(value)}
               className={hit ? "rounded bg-yellow-300/30 text-ink px-1" : "text-ink/90"}
+              title={truncated ? `${raw.length.toLocaleString()} chars — truncated for display` : undefined}
             >
               {value}
             </div>
@@ -109,6 +77,7 @@ export function EntityEditModal({runId, entity, marcSource, onClose, onSaved}: E
   });
   const [source, setSource] = useState<MarcSource | null>(marcSource ?? null);
   const [loading, setLoading] = useState(marcSource == null);
+  const [marcVisible, setMarcVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -135,12 +104,16 @@ export function EntityEditModal({runId, entity, marcSource, onClose, onSaved}: E
     return () => { cancelled = true; };
   }, [runId, entity.control_number, marcSource]);
 
-  const marcText = useMemo(() => marcToString(source?.marc ?? null), [source]);
-  const useStructuredMarc = marcText.length > MARC_HIGHLIGHT_CAP;
-  const highlight = useMemo(
-    () => (useStructuredMarc ? {before: "", hit: "", after: ""} : highlightSpan(marcText, state.text, entity.start, entity.end)),
-    [marcText, state.text, entity.start, entity.end, useStructuredMarc],
-  );
+  // Paint the modal chrome first; render MARC fields on the next frame so
+  // opening edit never blocks on stringify/highlight of large 500$a notes.
+  useEffect(() => {
+    if (loading) {
+      setMarcVisible(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => setMarcVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, [loading, source]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -166,11 +139,10 @@ export function EntityEditModal({runId, entity, marcSource, onClose, onSaved}: E
       role="dialog"
       aria-modal="true"
     >
-      <Glass
+      <div
         ref={modalRef}
-        variant="modal"
-        refraction={false}
-        className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden"
+        className="glass-shell flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden"
+        style={{borderRadius: 24}}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
@@ -223,24 +195,21 @@ export function EntityEditModal({runId, entity, marcSource, onClose, onSaved}: E
           </div>
           <div className="flex flex-col overflow-hidden">
             <div className="kicker mb-1">MARC source</div>
-            <Glass variant="compact" refraction={false} className="flex-1 overflow-auto whitespace-pre-wrap p-3 font-mono text-xs leading-relaxed" data-testid="entity-edit-marc">
-              {loading ? (
+            <div
+              className="glass-shell glass-shell-compact flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed"
+              data-testid="entity-edit-marc"
+            >
+              {loading || !marcVisible ? (
                 <span className="muted">Loading MARC record…</span>
-              ) : source?.marc && useStructuredMarc ? (
+              ) : source?.marc ? (
                 <StructuredMarcPanel marc={source.marc} highlightText={state.text} />
-              ) : marcText ? (
-                <>
-                  <span>{highlight.before}</span>
-                  <span className="rounded bg-yellow-300/30 text-ink">{highlight.hit}</span>
-                  <span>{highlight.after}</span>
-                </>
               ) : (
                 <span className="muted">No MARC source available.</span>
               )}
-            </Glass>
+            </div>
           </div>
         </div>
-      </Glass>
+      </div>
     </div>
   );
 }

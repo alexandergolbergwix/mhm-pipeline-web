@@ -104,9 +104,12 @@ export function useFocusTrap(
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
-      if (previouslyFocused && document.body.contains(previouslyFocused)) {
-        previouslyFocused.focus();
-      }
+      const prev = previouslyFocused;
+      requestAnimationFrame(() => {
+        if (prev && document.body.contains(prev)) {
+          prev.focus();
+        }
+      });
     };
   }, [active, containerRef]);
 }

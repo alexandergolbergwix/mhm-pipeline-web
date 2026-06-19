@@ -168,13 +168,15 @@ export default function StageExtraction() {
 
   const openEditFromTable = useCallback((entity: Entity) => {
     setEditMarcSource(null);
-    setEditEntity(entity);
+    requestAnimationFrame(() => {
+      setEditEntity(entity);
+    });
   }, []);
 
   const openEditFromDrawer = useCallback((entity: Entity, marcSource?: MarcSource | null) => {
+    setEditMarcSource(marcSource ?? null);
     setDetailEntity(null);
     requestAnimationFrame(() => {
-      setEditMarcSource(marcSource ?? null);
       setEditEntity(entity);
     });
   }, []);
@@ -753,7 +755,7 @@ export default function StageExtraction() {
           onSaved={() => { void refreshEntities(); closeEditModal(); }}
         />
       )}
-      {runId && (
+      {runId && detailEntity && (
         <EntityDetailDrawer
           runId={runId}
           projectId={projectId}

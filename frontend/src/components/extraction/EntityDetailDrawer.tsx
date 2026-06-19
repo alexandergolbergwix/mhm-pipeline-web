@@ -231,7 +231,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
           </button>
           {onOpenEdit && (
             <button type="button"
-                    onClick={() => { onOpenEdit(entity, marc); onClose(); }}
+                    onClick={() => onOpenEdit(entity, marc)}
                     data-testid="detail-edit"
                     className="button-ghost h-7 px-3 text-xs">
               Edit text/type/role…
