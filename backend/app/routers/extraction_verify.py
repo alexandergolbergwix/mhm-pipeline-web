@@ -37,9 +37,10 @@ from app.models.extraction_approval import ExtractionApproval
 from app.models.run import RunRecord
 from app.pipeline import agent_actions, extraction_actions
 from app.pipeline.agent_runner import (
-    AgentEvent, build_filtered_fixture, ensure_verify_session_dir, list_sessions,
+    AgentEvent, build_filtered_fixture, list_sessions, list_verify_sessions,
     locate_eval_agent, new_session_id, persist_session_event, read_session,
-    read_run_verdicts, spawn_eval_agent_run, sse_stream,
+    read_run_verdicts, read_verify_session, resolve_verify_session_dir,
+    resolve_verify_state_dir, spawn_eval_agent_run, sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.pipeline.ner_verdict_cache import (
@@ -197,40 +198,22 @@ async def _session_event_stream(
         uncached = list(entities)
 
     # ── Resolve eval-agent root (only needed for uncached entities) ────
-    eval_root: Path | None = None
-    state_dir: Path | None = None
-    session_dir: Path | None = None
-    pipeline_output: Path | None = None
-    base: Path | None = None
-    eval_agent_error: str | None = None  # set if locate_eval_agent() fails
-    import tempfile  # noqa: PLC0415
     _ner_channel = "extraction-verify-sessions"
+    state_dir = resolve_verify_state_dir(_ner_channel, run_id)
+    session_dir = resolve_verify_session_dir(_ner_channel, run_id, session_id)
+    pipeline_output = session_dir / "pipeline-output"
+    base = session_dir
+    session_dir.mkdir(parents=True, exist_ok=True)
+    eval_agent_error: str | None = None
+
     if uncached:
         try:
-            eval_root = locate_eval_agent()
-            state_dir = eval_root / "state" / _ner_channel / run_id
-            session_dir = state_dir / "sessions" / session_id
-            pipeline_output = session_dir / "pipeline-output"
-            base = session_dir
-            session_dir.mkdir(parents=True, exist_ok=True)
-        except FileNotFoundError as exc:
+            locate_eval_agent()
+        except (FileNotFoundError, OSError, PermissionError) as exc:
             logger.warning(
                 "ai-verify: eval-agent NOT located (run=%s): %s", run_id, exc,
             )
             eval_agent_error = str(exc)
-            try:
-                base = ensure_verify_session_dir(
-                    run_id=run_id, session_id=session_id, channel=_ner_channel,
-                )
-            except FileNotFoundError:
-                base = Path(tempfile.mkdtemp(prefix=f"mhm-ner-{session_id}-"))
-    else:
-        try:
-            base = ensure_verify_session_dir(
-                run_id=run_id, session_id=session_id, channel=_ner_channel,
-            )
-        except FileNotFoundError:
-            base = Path(tempfile.mkdtemp(prefix=f"mhm-ner-{session_id}-"))
 
     # ── Build fixture (only uncached entities) ─────────────────────────
     by_cn_ents: dict[str, list[dict[str, Any]]] = {}
@@ -576,56 +559,13 @@ async def get_run_session(
 
 
 def _list_extraction_sessions(run_id: str) -> list[dict[str, Any]]:
-    try:
-        root = locate_eval_agent()
-    except FileNotFoundError:
-        return []
-    run_root = root / "state" / "extraction-verify-sessions" / run_id
-    if not run_root.exists():
-        return []
-    new_sessions = run_root / "sessions"
-    candidates = []
-    if new_sessions.exists():
-        candidates.extend(p for p in new_sessions.iterdir() if p.is_dir())
-    out: list[dict[str, Any]] = []
-    for child in sorted(candidates, key=lambda p: p.name, reverse=True):
-        out.append({"session_id": child.name})
-    out.extend(list_sessions(run_id))
-    return out
+    return list_verify_sessions("extraction-verify-sessions", run_id)
 
 
 def _read_extraction_session(
     run_id: str, session_id: str,
 ) -> dict[str, Any] | None:
-    try:
-        root = locate_eval_agent()
-    except FileNotFoundError:
-        return read_session(run_id, session_id)
-    base = root / "state" / "extraction-verify-sessions" / run_id / "sessions" / session_id
-    if not base.exists():
-        return read_session(run_id, session_id)
-    import json as _json
-
-    events: list[dict[str, Any]] = []
-    trace = base / "trace.jsonl"
-    if trace.exists():
-        with trace.open(encoding="utf-8") as fp:
-            for line in fp:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    events.append(_json.loads(line))
-                except _json.JSONDecodeError:
-                    continue
-    state_dir = base.parent.parent
-    verdicts = read_run_verdicts(state_dir) or read_run_verdicts(base)
-    return {
-        "session_id": session_id,
-        "run_id":     run_id,
-        "events":     events,
-        "verdicts":   verdicts,
-    }
+    return read_verify_session("extraction-verify-sessions", run_id, session_id)
 
 
 async def _fetch_entities(

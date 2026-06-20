@@ -776,7 +776,18 @@ function overallTone(o: Overall): string {
 
 function candidateName(ev: AgentEvent): string {
   const c = (ev.candidate ?? {}) as Record<string, unknown>;
-  return String(c.person ?? c.text ?? c.entity_text ?? c.name ?? c.label ?? "(unknown)");
+  const labels = c.labels;
+  if (labels && typeof labels === "object" && !Array.isArray(labels)) {
+    const l = labels as Record<string, unknown>;
+    const fromLabels = l.en ?? l.he ?? Object.values(l).find((v) => typeof v === "string" && v);
+    if (typeof fromLabels === "string" && fromLabels) {
+      return fromLabels;
+    }
+  }
+  return String(
+    c.person ?? c.text ?? c.entity_text ?? c.name ?? c.label
+    ?? c._local_id ?? c.local_id ?? "(unknown)",
+  );
 }
 
 

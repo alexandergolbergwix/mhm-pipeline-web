@@ -448,7 +448,7 @@ class TestStartStreamSilentFailureRegression:
             "is still called outside the generator (regression)"
         )
         events = _parse_sse_frames(r.text)
-        assert any(e["type"] == "runner.error" for e in events), (
-            "missing eval-agent must produce runner.error SSE event, "
+        assert any(e["type"] == "runner.warning" for e in events), (
+            "missing eval-agent must produce runner.warning SSE event, "
             "not a silent stream-end"
         )

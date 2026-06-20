@@ -1744,6 +1744,16 @@ class WikidataItemBuilder:
             if "he" not in item.labels and (is_placeholder or not title_has_hebrew):
                 item.labels["he"] = f"כתב יד עברי, ספרייה לאומית, {shelfmark}"
 
+        if "en" not in item.labels and "he" not in item.labels:
+            cn = str(
+                record.get("_control_number")
+                or record.get("control_number")
+                or ""
+            ).strip()
+            if cn:
+                item.labels["en"] = f"Jerusalem, NLI, {cn}"
+                item.labels["he"] = f"כתב יד עברי, ספרייה לאומית, {cn}"
+
         # Variant titles as aliases
         for vt in record.get("variant_titles") or []:
             vt_clean = _normalise_label(str(vt))

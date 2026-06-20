@@ -41,9 +41,13 @@ from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikid
 from app.pipeline.agent_runner import (
     AgentEvent,
     locate_eval_agent,
+    list_verify_sessions,
     new_session_id,
     persist_session_event,
     read_run_verdicts,
+    read_verify_session,
+    resolve_verify_session_dir,
+    resolve_verify_state_dir,
     spawn_eval_agent_run,
     sse_stream,
 )
@@ -1306,6 +1310,9 @@ async def _fetch_wikidata_verify_items(
     return items, [dict(r.marc or {"_control_number": r.control_number}) for r in records]
 
 
+_WIKIDATA_VERIFY_CHANNEL = "wikidata-verify-sessions"
+
+
 async def _wikidata_verify_event_stream(
     *,
     run_id: str,
@@ -1319,30 +1326,17 @@ async def _wikidata_verify_event_stream(
     override_cache: bool,
     tier_model: str | None,
 ):
-    eval_root: Path | None = None
-    state_dir: Path | None = None
-    session_dir: Path | None = None
-    pipeline_output: Path | None = None
+    state_dir = resolve_verify_state_dir(_WIKIDATA_VERIFY_CHANNEL, run_id)
+    session_dir = resolve_verify_session_dir(_WIKIDATA_VERIFY_CHANNEL, run_id, session_id)
+    pipeline_output = session_dir / "pipeline-output"
+    session_dir.mkdir(parents=True, exist_ok=True)
     eval_agent_error: str | None = None
 
     if uncached_items:
         try:
-            eval_root = locate_eval_agent()
-            state_dir = eval_root / "state" / "wikidata-verify-sessions" / run_id
-            session_dir = state_dir / "sessions" / session_id
-            pipeline_output = session_dir / "pipeline-output"
-            session_dir.mkdir(parents=True, exist_ok=True)
-        except FileNotFoundError as exc:
-            import tempfile  # noqa: PLC0415
-
+            locate_eval_agent()
+        except (FileNotFoundError, OSError, PermissionError) as exc:
             eval_agent_error = str(exc)
-            session_dir = Path(tempfile.mkdtemp(prefix=f"mhm-wikidata-{session_id}-"))
-    else:
-        import tempfile  # noqa: PLC0415
-
-        session_dir = Path(tempfile.mkdtemp(prefix=f"mhm-wikidata-{session_id}-"))
-
-    assert session_dir is not None
     start_ev = AgentEvent(
         type="session.start",
         payload={
@@ -1400,8 +1394,21 @@ async def _wikidata_verify_event_stream(
                 persist_session_event(session_dir, ev)
                 yield ev
     finally:
-        on_disk_verdicts = read_run_verdicts(state_dir) if state_dir is not None else []
+        on_disk_verdicts = read_run_verdicts(state_dir) if (uncached_items and not eval_agent_error) else []
+        items_by_id = {
+            str(i.get("_local_id") or i.get("local_id") or ""): i
+            for i in uncached_items
+        }
         for v in on_disk_verdicts:
+            cand = v.get("candidate") if isinstance(v.get("candidate"), dict) else None
+            if isinstance(cand, dict):
+                local_id = str(
+                    cand.get("_local_id") or cand.get("_item_id")
+                    or cand.get("local_id") or "",
+                )
+                item = items_by_id.get(local_id)
+                if item is not None and not cand.get("label"):
+                    cand["label"] = _item_label(item)
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(session_dir, ev)
             yield ev
@@ -1545,51 +1552,11 @@ def _item_label(item: dict[str, Any]) -> str:
 
 
 def _list_wikidata_sessions(run_id: str) -> list[dict[str, Any]]:
-    try:
-        root = locate_eval_agent()
-    except FileNotFoundError:
-        return []
-    run_root = root / "state" / "wikidata-verify-sessions" / run_id
-    sessions_root = run_root / "sessions"
-    if not sessions_root.exists():
-        return []
-    return [
-        {"session_id": child.name, **_wikidata_session_meta(child)}
-        for child in sorted(
-            (p for p in sessions_root.iterdir() if p.is_dir()),
-            key=lambda p: p.name,
-            reverse=True,
-        )
-    ]
+    return list_verify_sessions(_WIKIDATA_VERIFY_CHANNEL, run_id)
 
 
 def _read_wikidata_session(run_id: str, session_id: str) -> dict[str, Any] | None:
-    try:
-        root = locate_eval_agent()
-    except FileNotFoundError:
-        return None
-    base = root / "state" / "wikidata-verify-sessions" / run_id / "sessions" / session_id
-    if not base.exists():
-        return None
-    events: list[dict[str, Any]] = []
-    trace = base / "trace.jsonl"
-    if trace.exists():
-        with trace.open(encoding="utf-8") as fp:
-            for line in fp:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    events.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    state_dir = base.parent.parent
-    return {
-        "session_id": session_id,
-        "run_id": run_id,
-        "events": events,
-        "verdicts": read_run_verdicts(state_dir) or read_run_verdicts(base),
-    }
+    return read_verify_session(_WIKIDATA_VERIFY_CHANNEL, run_id, session_id)
 
 
 def _wikidata_session_meta(session_dir: Path) -> dict[str, Any]:

@@ -159,3 +159,54 @@ class TestWikidataVerifyStartStream:
         assert "event: agent.verdict" in text
         assert "cached verdict" in text
         assert "runner.warning" not in text
+
+    @pytest.mark.asyncio
+    async def test_uncached_missing_eval_agent_emits_runner_warning(
+        self, sample_run, monkeypatch,
+    ) -> None:
+        from app.routers import wikidata_studio as ws_router
+
+        client = sample_run["client"]
+        run_id = sample_run["run_id"]
+        item = {
+            "_local_id": "manuscript::990001801390205171",
+            "local_id": "manuscript::990001801390205171",
+            "entity_type": "manuscript",
+            "labels": {"en": "Jerusalem, NLI, 990001801390205171"},
+            "statements": [],
+            "record_ids": [sample_run["control_number"]],
+        }
+
+        async def _items(*_args, **_kwargs):
+            return [item], [{"_control_number": sample_run["control_number"]}]
+
+        async def _key(*_args, **_kwargs):
+            return "test-key"
+
+        async def _no_cache(*_args, **_kwargs):
+            return None
+
+        def _missing_eval_agent():
+            raise FileNotFoundError("eval-agent not present")
+
+        monkeypatch.setattr(ws_router, "_fetch_wikidata_verify_items", _items)
+        monkeypatch.setattr(ws_router, "_resolve_gemini_key", _key)
+        monkeypatch.setattr(ws_router, "read_from_inference_cache", _no_cache)
+        monkeypatch.setattr(ws_router, "locate_eval_agent", _missing_eval_agent)
+
+        async with client.stream(
+            "POST",
+            f"/api/runs/{run_id}/wikidata-studio/ai-verify/start-stream",
+            json={
+                "action_id": "audit_wikidata_item",
+                "item_ids": ["manuscript::990001801390205171"],
+            },
+        ) as r:
+            body = await r.aread()
+
+        text = body.decode("utf-8")
+        assert r.status_code == 200
+        assert "event: runner.warning" in text
+        assert "eval-agent is not available" in text
+        assert "event: session.end" in text
+        assert "uncached_skipped" in text

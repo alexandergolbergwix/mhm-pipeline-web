@@ -133,6 +133,23 @@ judgements. The per-session subdir holds only the filtered fixture
 Same trust boundary as Rule W-15: the eval-agent is a subprocess
 only; no Python imports across the FastAPI ↔ eval-agent boundary.
 
+### Rule W-33 — Verify state on Heroku is writable under `/tmp` (added 2026-06-17)
+
+On Heroku dynos the slug filesystem is read-only. All three verify
+channels (`ai-verify-sessions`, `extraction-verify-sessions`,
+`wikidata-verify-sessions`) MUST persist session traces + eval-agent
+`runs/` artefacts via `resolve_verify_state_dir()` in
+`agent_runner.py`, which defaults to `EVAL_AGENT_STATE_DIR` or
+`/tmp/mhm-eval-agent-state` when `DYNO` is set.
+
+`scripts/start.sh` exports both `EVAL_AGENT_ROOT` (bundled
+`eval-agent/`) and `EVAL_AGENT_STATE_DIR`. `scripts/release.sh`
+fails fast if `locate_eval_agent()` cannot find `eval_agent/cli.py`.
+
+Postgres `inference_cache` (kind `ai_verdict`) remains the durable
+cross-dyno verdict tier; `/tmp` state is ephemeral per dyno lifetime
+but sufficient for in-session replay and eval-agent subprocess I/O.
+
 ### Rule W-19 — User-flow e2e is the canonical test surface
 
 `frontend/e2e/` Playwright specs are the canonical regression layer

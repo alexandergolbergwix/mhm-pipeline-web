@@ -68,6 +68,12 @@ def locate_eval_agent() -> Path:
         raise FileNotFoundError(
             f"EVAL_AGENT_ROOT={env!r} but {p}/eval_agent/cli.py not found",
         )
+    # One-off ``heroku run`` dynos skip ``start.sh``; the bundled copy still
+    # lives at the slug root on Cedar.
+    if os.environ.get("DYNO"):
+        heroku_bundle = Path("/app/eval-agent")
+        if (heroku_bundle / "eval_agent" / "cli.py").exists():
+            return heroku_bundle
     sibling = (Path(__file__).resolve().parents[3] / "eval-agent").resolve()
     if (sibling / "eval_agent" / "cli.py").exists():
         return sibling
@@ -85,6 +91,32 @@ def _python_for(eval_agent_root: Path) -> str:
         return str(venv)
     import sys
     return sys.executable
+
+
+_VERIFY_STATE_TMP = Path("/tmp/mhm-eval-agent-state")
+
+
+def resolve_verify_state_base() -> Path:
+    """Writable root for all verify-session state (Heroku: ``/tmp``)."""
+    env = os.environ.get("EVAL_AGENT_STATE_DIR")
+    if env:
+        return Path(env).resolve()
+    if os.environ.get("DYNO"):
+        return _VERIFY_STATE_TMP
+    try:
+        return locate_eval_agent() / "state"
+    except FileNotFoundError:
+        return _VERIFY_STATE_TMP
+
+
+def resolve_verify_state_dir(channel: str, run_id: str) -> Path:
+    """Per-run state dir for one verify channel (cache + ``runs/`` live here)."""
+    return resolve_verify_state_base() / channel / run_id
+
+
+def resolve_verify_session_dir(channel: str, run_id: str, session_id: str) -> Path:
+    """Per-session audit dir (``trace.jsonl`` + ``pipeline-output/``)."""
+    return resolve_verify_state_dir(channel, run_id) / "sessions" / session_id
 
 
 # ── Filtered fixture builder ───────────────────────────────────────────
@@ -385,13 +417,7 @@ async def session_sandbox(
     "Replay" works after the modal closes. Garbage collection of old
     sessions is a separate concern, handled by an out-of-band CLI.
     """
-    root = locate_eval_agent()
-    state = root / "state"
-    # The verdict cache + the accumulated `runs/<ts>/` artefacts live at
-    # the per-run root so opening the modal again warm-hits prior
-    # Gemini judgements. The per-session subdir holds only the
-    # filtered fixture + SSE event log.
-    state_dir = state / "ai-verify-sessions" / run_id
+    state_dir = resolve_verify_state_dir("ai-verify-sessions", run_id)
     base = state_dir / "sessions" / session_id
     pipeline_output = base / "pipeline-output"
     yield pipeline_output, base
@@ -411,8 +437,7 @@ def ensure_verify_session_dir(
 
     ``channel`` is e.g. ``ai-verify-sessions`` or ``extraction-verify-sessions``.
     """
-    root = locate_eval_agent()
-    base = root / "state" / channel / run_id / "sessions" / session_id
+    base = resolve_verify_session_dir(channel, run_id, session_id)
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -483,7 +508,11 @@ def persist_session_event(session_dir: Path, ev: AgentEvent) -> None:
         fp.write(line + "\n")
 
 
-def _resolve_session_dir(run_id: str, session_id: str) -> Path | None:
+def _resolve_session_dir(
+    run_id: str,
+    session_id: str,
+    channel: str = "ai-verify-sessions",
+) -> Path | None:
     """Find the on-disk dir for one session, accepting both layouts.
 
     New layout (post-cache-fix): per-run ``state_dir`` with sessions
@@ -493,49 +522,58 @@ def _resolve_session_dir(run_id: str, session_id: str) -> Path | None:
     Legacy layout: session_id was a direct child of the run_id dir.
     Old sessions written before the fix still load via this fallback.
     """
+    new = resolve_verify_session_dir(channel, run_id, session_id)
+    if new.exists():
+        return new
     try:
         root = locate_eval_agent()
     except FileNotFoundError:
         return None
-    new = root / "state" / "ai-verify-sessions" / run_id / "sessions" / session_id
-    if new.exists():
-        return new
-    legacy = root / "state" / "ai-verify-sessions" / run_id / session_id
+    legacy_new = root / "state" / channel / run_id / "sessions" / session_id
+    if legacy_new.exists():
+        return legacy_new
+    legacy = root / "state" / channel / run_id / session_id
     if legacy.exists():
         return legacy
     return None
 
 
-def list_sessions(run_id: str) -> list[dict[str, Any]]:
-    """Return all past AI verification sessions for *run_id*, newest first.
-
-    Walks both the new ``sessions/<session_id>/`` subdir and the legacy
-    direct-child layout so sessions written before the cache-fix still
-    appear in the list.
-    """
+def list_verify_sessions(channel: str, run_id: str) -> list[dict[str, Any]]:
+    """Return all past verification sessions for *run_id*, newest first."""
+    candidates: list[Path] = []
+    run_roots: list[Path] = [resolve_verify_state_dir(channel, run_id)]
     try:
         root = locate_eval_agent()
+        legacy_root = root / "state" / channel / run_id
+        if legacy_root not in run_roots:
+            run_roots.append(legacy_root)
     except FileNotFoundError:
-        return []
-    run_root = root / "state" / "ai-verify-sessions" / run_id
-    if not run_root.exists():
-        return []
-    candidates: list[Path] = []
-    new_sessions = run_root / "sessions"
-    if new_sessions.exists():
-        candidates.extend(p for p in new_sessions.iterdir() if p.is_dir())
-    # Legacy layout: every direct child that has a trace.jsonl is a
-    # session. Skip the new "sessions" / "cache" / "runs" dirs.
-    for p in run_root.iterdir():
-        if not p.is_dir() or p.name in {"sessions", "cache", "runs"}:
+        pass
+    for run_root in run_roots:
+        if not run_root.exists():
             continue
-        if (p / "trace.jsonl").exists():
-            candidates.append(p)
+        new_sessions = run_root / "sessions"
+        if new_sessions.exists():
+            candidates.extend(p for p in new_sessions.iterdir() if p.is_dir())
+        for p in run_root.iterdir():
+            if not p.is_dir() or p.name in {"sessions", "cache", "runs"}:
+                continue
+            if (p / "trace.jsonl").exists():
+                candidates.append(p)
+    seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for child in sorted(candidates, key=lambda p: p.name, reverse=True):
+        if child.name in seen:
+            continue
+        seen.add(child.name)
         meta = _session_meta(child)
         out.append({"session_id": child.name, **meta})
     return out
+
+
+def list_sessions(run_id: str) -> list[dict[str, Any]]:
+    """Return all past authority AI verification sessions for *run_id*."""
+    return list_verify_sessions("ai-verify-sessions", run_id)
 
 
 def _verdict_storage_key(v: dict[str, Any]) -> str:
@@ -547,6 +585,9 @@ def _verdict_storage_key(v: dict[str, Any]) -> str:
     entity_id = cand.get("_entity_id")
     if entity_id:
         return str(entity_id)
+    local_id = cand.get("_local_id") or cand.get("_item_id") or cand.get("local_id")
+    if local_id:
+        return str(local_id)
     record_id = str(v.get("record_id") or cand.get("record_id") or "")
     name = str(cand.get("name") or cand.get("person") or cand.get("text") or "").strip()
     role = str(cand.get("role") or "").strip()
@@ -575,8 +616,12 @@ def _verdicts_from_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [by_key[k] for k in order]
 
 
-def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
-    base = _resolve_session_dir(run_id, session_id)
+def read_verify_session(
+    channel: str,
+    run_id: str,
+    session_id: str,
+) -> dict[str, Any] | None:
+    base = _resolve_session_dir(run_id, session_id, channel=channel)
     if base is None:
         return None
     events: list[dict[str, Any]] = []
@@ -591,9 +636,6 @@ def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
                     events.append(json.loads(line))
                 except json.JSONDecodeError:
                     continue
-    # Prefer verdicts replayed from this session's trace — the per-run
-    # results.jsonl under state_dir/runs/ is shared across sessions and
-    # may belong to a different scope (stale count vs scope_size).
     verdicts = _verdicts_from_trace(events)
     if not verdicts:
         state_dir = base.parent.parent if base.parent.name == "sessions" else base
@@ -604,6 +646,10 @@ def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
         "events":     events,
         "verdicts":   verdicts,
     }
+
+
+def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
+    return read_verify_session("ai-verify-sessions", run_id, session_id)
 
 
 def _session_meta(session_dir: Path) -> dict[str, Any]:
@@ -651,12 +697,16 @@ __all__ = [
     "build_filtered_fixture",
     "ensure_verify_session_dir",
     "list_sessions",
+    "list_verify_sessions",
     "locate_eval_agent",
     "new_session_id",
     "persist_session_event",
     "purge_session_dir",
     "read_run_verdicts",
     "read_session",
+    "read_verify_session",
+    "resolve_verify_session_dir",
+    "resolve_verify_state_dir",
     "session_sandbox",
     "spawn_eval_agent_run",
     "sse_stream",

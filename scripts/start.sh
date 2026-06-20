@@ -12,8 +12,9 @@
 # than `from backend.app.X`. main.py's frontend-dist lookup uses a
 # __file__-relative path (parents[2]) so it works regardless of cwd.
 set -euo pipefail
-ROOT="$(dirname "$0")/.."
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export EVAL_AGENT_ROOT="${EVAL_AGENT_ROOT:-$ROOT/eval-agent}"
+export EVAL_AGENT_STATE_DIR="${EVAL_AGENT_STATE_DIR:-/tmp/mhm-eval-agent-state}"
 cd "$ROOT/backend"
 
 PORT="${PORT:-8000}"

@@ -1289,7 +1289,7 @@ function Stat({
 
 function labelOf(it: StudioItem): string {
   const l = it.labels ?? {};
-  return l.en || l.he || Object.values(l)[0] || "";
+  return l.en || l.he || Object.values(l)[0] || it.local_id || "";
 }
 
 

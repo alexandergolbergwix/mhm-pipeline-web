@@ -97,3 +97,68 @@ def test_verdicts_from_trace_dedupes_last_write(tmp_path: Path):
   out = _verdicts_from_trace(events)
   assert len(out) == 1
   assert out[0]["verdict"]["overall"] == "pass"
+
+
+def test_verdict_storage_key_uses_local_id():
+  v = {
+    "record_id": "990001",
+    "candidate": {"_local_id": "manuscript::990001801390205171", "labels": {}},
+  }
+  assert _verdict_storage_key(v) == "manuscript::990001801390205171"
+
+
+def test_read_verify_session_prefers_trace_over_shared_results(
+  tmp_path: Path, monkeypatch,
+):
+  monkeypatch.setenv("EVAL_AGENT_STATE_DIR", str(tmp_path / "verify-state"))
+  channel = "wikidata-verify-sessions"
+  run_id = "run-wd"
+  session_id = "sess-wd"
+  session_dir = tmp_path / "verify-state" / channel / run_id / "sessions" / session_id
+  session_dir.mkdir(parents=True)
+
+  for local_id in ("manuscript::a", "manuscript::b"):
+    persist_session_event(
+      session_dir,
+      AgentEvent(
+        type="agent.verdict",
+        payload={
+          "record_id": "990001",
+          "evaluator_id": "wikidata_item",
+          "candidate": {"_local_id": local_id, "labels": {"en": local_id}},
+          "verdict": {"overall": "pass"},
+        },
+      ),
+    )
+
+  state_dir = tmp_path / "verify-state" / channel / run_id
+  runs = state_dir / "runs" / "20260101"
+  runs.mkdir(parents=True)
+  (runs / "results.jsonl").write_text(
+    json.dumps(
+      {
+        "record_id": "990001",
+        "candidate": {"_local_id": "manuscript::stale"},
+        "verdict": {"overall": "fail"},
+      }
+    )
+    + "\n",
+    encoding="utf-8",
+  )
+
+  from app.pipeline.agent_runner import read_verify_session
+
+  data = read_verify_session(channel, run_id, session_id)
+  assert data is not None
+  assert len(data["verdicts"]) == 2
+  ids = {v["candidate"]["_local_id"] for v in data["verdicts"]}
+  assert ids == {"manuscript::a", "manuscript::b"}
+
+
+def test_resolve_verify_state_dir_uses_tmp_on_dyno(monkeypatch, tmp_path: Path):
+  from app.pipeline.agent_runner import resolve_verify_state_dir
+
+  monkeypatch.setenv("DYNO", "web.1")
+  monkeypatch.delenv("EVAL_AGENT_STATE_DIR", raising=False)
+  p = resolve_verify_state_dir("wikidata-verify-sessions", "run-1")
+  assert str(p).startswith("/tmp/mhm-eval-agent-state")

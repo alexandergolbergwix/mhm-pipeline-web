@@ -34,9 +34,10 @@ from app.db import get_session
 from app.models.run import AuthorityMatch, RunRecord
 from app.pipeline import agent_actions, agent_runner
 from app.pipeline.agent_runner import (
-    AgentEvent, build_filtered_fixture, ensure_verify_session_dir, list_sessions,
+    AgentEvent, build_filtered_fixture, list_sessions,
     locate_eval_agent, new_session_id, persist_session_event, read_session,
-    read_run_verdicts, spawn_eval_agent_run, sse_stream,
+    read_run_verdicts, resolve_verify_session_dir, resolve_verify_state_dir,
+    spawn_eval_agent_run, sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.routers.runs import _lookup_run_with_access
@@ -220,26 +221,21 @@ async def _session_event_stream(
         uncached = list(matches)
 
     # ── Resolve eval-agent root (only needed for uncached matches) ─────
-    eval_root: Path | None = None
-    state_dir: Path | None = None
-    session_dir: Path | None = None
-    pipeline_output: Path | None = None
-    base: Path
+    eval_agent_error: str | None = None
+    state_dir = resolve_verify_state_dir("ai-verify-sessions", run_id)
+    session_dir = resolve_verify_session_dir("ai-verify-sessions", run_id, session_id)
+    pipeline_output = session_dir / "pipeline-output"
+    base = session_dir
+    session_dir.mkdir(parents=True, exist_ok=True)
+
     if uncached:
-        eval_root = locate_eval_agent()
-        state_dir = eval_root / "state" / "ai-verify-sessions" / run_id
-        session_dir = state_dir / "sessions" / session_id
-        pipeline_output = session_dir / "pipeline-output"
-        base = session_dir
-        session_dir.mkdir(parents=True, exist_ok=True)
-    else:
         try:
-            base = ensure_verify_session_dir(
-                run_id=run_id, session_id=session_id, channel="ai-verify-sessions",
+            locate_eval_agent()
+        except (FileNotFoundError, OSError, PermissionError) as exc:
+            logger.warning(
+                "ai-verify: eval-agent NOT located (run=%s): %s", run_id, exc,
             )
-        except FileNotFoundError:
-            import tempfile  # noqa: PLC0415
-            base = Path(tempfile.mkdtemp(prefix=f"mhm-auth-{session_id}-"))
+            eval_agent_error = str(exc)
 
     # ── Build fixture (only uncached matches need to go to eval-agent) ─
     by_cn: dict[str, list[dict[str, Any]]] = {}
@@ -298,7 +294,21 @@ async def _session_event_stream(
 
     # ── Subprocess for uncached matches ───────────────────────────────
     try:
-        if uncached:
+        if uncached and eval_agent_error:
+            warn_ev = AgentEvent(
+                type="runner.warning",
+                payload={
+                    "message": (
+                        f"{len(uncached)} authority matches cannot be verified here "
+                        "because the eval-agent is not available on this server."
+                    ),
+                    "uncached_count": len(uncached),
+                    "eval_agent_error": eval_agent_error,
+                },
+            )
+            persist_session_event(base, warn_ev)
+            yield warn_ev
+        elif uncached:
             assert pipeline_output is not None and state_dir is not None
             async for ev in spawn_eval_agent_run(
                 pipeline_output=pipeline_output,
@@ -362,7 +372,10 @@ async def _session_event_stream(
             payload={
                 "session_id": session_id,
                 "scope_size": len(matches),
-                "outcome":    "complete",
+                "cache_hits": len(pre_cached),
+                "fresh_verdicts": len(on_disk_verdicts),
+                "uncached_skipped": len(uncached) if eval_agent_error else 0,
+                "outcome": "partial" if eval_agent_error and uncached else "complete",
             },
         )
         persist_session_event(base, end_ev)
@@ -833,11 +846,7 @@ def _collect_run_verdicts(run_id: str) -> list[dict[str, Any]]:
     on disk in that case (they came from the inference cache and were
     serialised as SSE events only, not written to disk by this path).
     """
-    try:
-        eval_root = locate_eval_agent()
-    except FileNotFoundError:
-        return []
-    state_dir = eval_root / "state" / "ai-verify-sessions" / run_id
+    state_dir = resolve_verify_state_dir("ai-verify-sessions", run_id)
     return read_run_verdicts(state_dir)
 
 
