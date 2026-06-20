@@ -1291,33 +1291,16 @@ async def _auto_approve_eligible(
     """Return the list of entity dicts that pass the auto-approve predicate.
 
     Shared by the preview and apply endpoints so they can never diverge.
+    Uses the same ner_results + extraction_approvals merge as GET /entities
+    so preview counts match what the curator sees (Heroku has no durable
+    ner_results.json on every dyno).
     Does NOT write anything to the database.
     """
-    path = _results_path(run_id)
-    if not path.exists():
-        return []
-    try:
-        records = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return []
-
-    rows = (
-        await db.execute(
-            select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
-        )
-    ).scalars().all()
-
-    ai_verdict_map: dict[str, str] = {}
-    for r in rows:
-        if r.ai_verdict:
-            eid = _entity_id(
-                control_number=r.control_number, source=r.source,
-                text=r.text, start=r.start, end=r.end,
-            )
-            ai_verdict_map[eid] = str(r.ai_verdict.get("overall") or "").lower()
-
+    bundle = await _build_unfiltered_entities_bundle(db, run_id)
     eligible: list[dict] = []
-    for ent in _flatten_records(records):
+    for ent in bundle["out"]:
+        if ent.get("approved"):
+            continue
         if payload.sources and ent["source"] not in payload.sources:
             continue
         if payload.types and ent.get("type") not in payload.types:
@@ -1325,7 +1308,10 @@ async def _auto_approve_eligible(
         mconf = float(ent.get("model_confidence") or 0.0)
         if mconf < payload.min_confidence:
             continue
-        verdict = ai_verdict_map.get(ent["id"], "")
+        ai_v = ent.get("ai_verdict") if isinstance(ent.get("ai_verdict"), dict) else {}
+        verdict = str(ai_v.get("overall") or "").lower()
+        if verdict == "full":
+            verdict = "pass"
         if payload.require_ai_pass and verdict != "pass":
             continue
         if payload.respect_ai_fail and verdict == "fail":

@@ -54,6 +54,27 @@ export async function waitForRunJob(
   throw new Error("Background job timed out — try Cancel and start again.");
 }
 
+/** Parse ``job_id`` from a 409 ``studio_build_in_progress`` response body. */
+export function studioBuildJobIdFromConflict(detail: string): string | null {
+  try {
+    const parsed = JSON.parse(detail) as {code?: string; job_id?: string};
+    if (parsed.code === "studio_build_in_progress" && parsed.job_id) {
+      return parsed.job_id;
+    }
+  } catch {
+    /* detail was a plain string, not the structured conflict payload */
+  }
+  return null;
+}
+
+function studioBuildProgressMessage(job: RunJobSnapshot): string {
+  const msg = job.progress?.message;
+  if (typeof msg === "string" && msg.trim()) return msg;
+  if (job.status === "queued") return "Queued — waiting for a worker…";
+  if (job.status === "running") return "Building Wikidata items in the background…";
+  return "Finishing build…";
+}
+
 /** Wait for an in-flight job, or start one when the API returns 409. */
 export async function waitForStudioBuild(
   runId: string,
@@ -76,14 +97,20 @@ export async function waitForStudioBuild(
 export async function loadStudioBuild(
   runId: string,
   fetchBuild: () => Promise<unknown>,
+  opts?: {onProgress?: (message: string) => void},
 ): Promise<unknown> {
   try {
     return await fetchBuild();
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 409) throw e;
-    const active = await findActiveRunJob(runId, "wikidata_studio_build");
-    if (!active) throw e;
-    await waitForRunJob(runId, active.id);
+    const jobId =
+      studioBuildJobIdFromConflict(e.detail)
+      ?? (await findActiveRunJob(runId, "wikidata_studio_build"))?.id;
+    if (!jobId) throw e;
+    opts?.onProgress?.("Building Wikidata items in the background…");
+    await waitForRunJob(runId, jobId, {
+      onUpdate: (job) => { opts?.onProgress?.(studioBuildProgressMessage(job)); },
+    });
     return fetchBuild();
   }
 }

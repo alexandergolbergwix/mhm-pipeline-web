@@ -130,7 +130,9 @@ export default function WikidataStudio() {
         pageSize: PAGE_SIZE,
       });
       setBuildProgress(force ? "Loading items…" : "Checking cache…");
-      const result = await loadStudioBuild(runId, fetchPage) as StudioBuild;
+      const result = await loadStudioBuild(runId, fetchPage, {
+        onProgress: (message) => { setBuildProgress(message); },
+      }) as StudioBuild;
       setBuild(result);
       if (result.property_labels) {
         labelStore.seed(result.property_labels);
@@ -140,15 +142,16 @@ export default function WikidataStudio() {
     finally   { setLoading(false); setBuildProgress(null); }
   }
 
-  // Initial load + re-query when server-side params change.
-  // debouncedQuery is the settled value after 300ms; the others are immediate.
+  // Filter/sort changes reset pagination; page-1 loads happen here.
   useEffect(() => {
     setPage(1);
     void refresh({nextPage: 1});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, approvedOnly, entityFilter, debouncedQuery, sortKey, sortDesc]);
 
+  // Page > 1 only — page 1 is covered by the effect above (avoids double fetch on mount).
   useEffect(() => {
+    if (page === 1) return;
     void refresh();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
@@ -248,7 +251,10 @@ export default function WikidataStudio() {
         {loading && (
           <>
             <p className="text-xs muted">
-              {buildProgress ?? "Large runs can take a minute on first load while items are built and cached."}
+              {buildProgress ?? "Large runs can take a few minutes on first load while items are built and cached."}
+            </p>
+            <p className="text-xs muted">
+              A background job may be running — check the job tray (bottom-right) for progress.
             </p>
           </>
         )}
