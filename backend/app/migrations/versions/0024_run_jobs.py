@@ -1,7 +1,7 @@
 """Add run_jobs table for background long-running work.
 
 Revision ID: 0024_run_jobs
-Revises: 0023_saved_queries
+Revises: 0020_mazal_heading_metadata
 Create Date: 2026-06-19
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0024_run_jobs"
-down_revision = "0023_saved_queries"
+down_revision = "0020_mazal_heading_metadata"
 branch_labels = None
 depends_on = None
 
