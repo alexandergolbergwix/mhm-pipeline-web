@@ -11,10 +11,12 @@
  *  - Live preview count (debounced 350ms)
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
+import {createPortal} from "react-dom";
 
-import { ApiError } from "@/api/client";
-import { useDebounce } from "@/hooks/useDebounce";
+import {ApiError} from "@/api/client";
+import {useDebounce} from "@/hooks/useDebounce";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import { Runs, type AuthorityAutoApproveRule } from "@/api/runs";
 import {Glass, GlassPill} from "@/components/glass";
 
@@ -122,12 +124,16 @@ export function AuthorityAutoApproveRuleBuilder({
     return `${preview} ${preview === 1 ? "candidate" : "candidates"} will be approved`;
   }, [previewing, preview]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  useGlassOverlayLifecycle(true);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
          data-testid="authority-auto-approve-modal"
          role="dialog" aria-modal="true">
-      <Glass className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden">
+      <Glass variant="modal" refraction={false}
+             className="w-full max-w-2xl max-h-[88vh] overflow-hidden">
 
+        <div className="flex max-h-[88vh] min-h-[min(420px,50vh)] flex-col">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Auto-approve rule</div>
@@ -281,7 +287,9 @@ export function AuthorityAutoApproveRuleBuilder({
             </button>
           </div>
         </div>
+        </div>
       </Glass>
-    </div>
+    </div>,
+    document.body,
   );
 }

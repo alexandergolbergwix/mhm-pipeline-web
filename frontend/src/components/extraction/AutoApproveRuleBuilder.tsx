@@ -3,9 +3,11 @@
  * entities by predicate.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
+import {createPortal} from "react-dom";
 
-import { useDebounce } from "@/hooks/useDebounce";
+import {useDebounce} from "@/hooks/useDebounce";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 
 import {
   AutoApproveRule, DEFAULT_AUTO_APPROVE_RULE,
@@ -94,11 +96,15 @@ export function AutoApproveRuleBuilder({
     return `${preview} ${preview === 1 ? "entity" : "entities"} match`;
   }, [previewing, preview]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  useGlassOverlayLifecycle(true);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
          data-testid="auto-approve-modal"
          role="dialog" aria-modal="true">
-      <Glass className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden">
+      <Glass variant="modal" refraction={false}
+             className="w-full max-w-2xl max-h-[88vh] overflow-hidden">
+        <div className="flex max-h-[88vh] min-h-[min(420px,50vh)] flex-col">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <div className="kicker">Auto-approve rule</div>
@@ -201,7 +207,9 @@ export function AutoApproveRuleBuilder({
             </button>
           </div>
         </div>
+        </div>
       </Glass>
-    </div>
+    </div>,
+    document.body,
   );
 }
