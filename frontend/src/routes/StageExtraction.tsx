@@ -213,6 +213,11 @@ export default function StageExtraction() {
     setEditMarcSource(null);
   }, []);
 
+  const handleVisibleCountChange = useCallback((count: number, ents: Entity[]) => {
+    setVisibleCount(count);
+    setVisibleEntities(ents);
+  }, []);
+
   // Summary counts shown above the entity table. ``records`` (and its
   // derived ``entityTotals``) come from ``ner_results.json`` on disk —
   // which is wiped on every Heroku dyno restart (ephemeral filesystem).
@@ -713,10 +718,7 @@ export default function StageExtraction() {
               columnFilters={columnFilters}
               onColumnFiltersChange={setColumnFilters}
               globalSearch={globalSearch}
-              onVisibleCountChange={(count, ents) => {
-                setVisibleCount(count);
-                setVisibleEntities(ents);
-              }}
+              onVisibleCountChange={handleVisibleCountChange}
               onFixableChange={setFixableEntityIds}
             />
           </Glass>

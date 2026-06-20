@@ -36,7 +36,9 @@ import {emitEntitiesRefreshed} from "@/cache/extractionCache";
 import {canEntityAutoFix, entityFixTitle} from "@/utils/extractionAutofix";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
 import {useAuth} from "@/stores/auth";
+import {useLatestRef} from "@/utils/renderStable";
 import {langOf} from "@/utils/hebrew";
 import {Glass} from "@/components/glass";
 
@@ -215,11 +217,29 @@ export function EntityTable(props: EntityTableProps) {
     return out;
   }, [entities, columnFilters, globalSearch, textFilters]);
   const display = useMemo(() => applySort(filtered, sort), [filtered, sort]);
+  const fixableIds = useMemo(
+    () => display.filter(canEntityAutoFix).map((e) => e.id),
+    [display],
+  );
+  useReportDerivedIds(fixableIds, onFixableChange);
 
+  const onVisibleCountChangeRef = useLatestRef(onVisibleCountChange);
+  const prevVisibleRef = useRef<{count: number; display: Entity[] | null}>({
+    count: -1,
+    display: null,
+  });
   useEffect(() => {
-    onVisibleCountChange?.(display.length, display);
-    onFixableChange?.(display.filter(canEntityAutoFix).map((e) => e.id));
-  }, [display, onVisibleCountChange, onFixableChange]);
+    const cb = onVisibleCountChangeRef.current;
+    if (!cb) return;
+    if (
+      prevVisibleRef.current.count === display.length
+      && prevVisibleRef.current.display === display
+    ) {
+      return;
+    }
+    prevVisibleRef.current = {count: display.length, display};
+    cb(display.length, display);
+  }, [display, onVisibleCountChangeRef]);
 
   const handleHeaderClick = useCallback((key: ColumnKey, sortable: boolean) => {
     if (!sortable) return;

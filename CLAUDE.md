@@ -828,6 +828,35 @@ Layout/tint tokens live in ``.glass-shell*``; refraction is applied inside
 
 ---
 
+### Rule W-36 — Zustand selectors and parent callback effects (added 2026-06-20)
+
+Three production blank-UI incidents (React error #185) traced to the same
+failure mode. These invariants prevent recurrence:
+
+**Zustand selectors**
+- Select **primitives** from the store: ``useRunJobs((s) => s.jobs)``,
+  ``useAuth((s) => s.user?.id)``. Never ``useRunJobs((s) => s.jobForRun(...))``,
+  ``useRunJobs((s) => s.activeJobs())``, or ``useRunJobs((s) => Object.values(s.jobs))``
+  — each call allocates a new reference and can spin an infinite re-render loop.
+- Derive active jobs with ``selectActiveJob(jobsRecord, runId, kind)`` inside
+  ``useMemo``, keyed by a ``jobFingerprint`` when syncing progress.
+
+**Table → parent reporting**
+- Never ``useEffect`` + ``onFixableChange(newArray)`` without a content
+  fingerprint guard. Use ``useReportDerivedIds`` /
+  ``useReportFilteredEntities`` from ``frontend/src/hooks/useReportDerivedIds.ts``.
+- Parent callbacks passed into tables must be ``useCallback``-stable.
+
+**Long-running job UI**
+- Use ``useRunJobAttachment`` or ``useVerifyJob`` — never hand-rolled
+  ``jobForRun`` selectors plus overlapping poll effects.
+- Hook option callbacks (``onFailed``, ``onComplete``, ``sync``) must be refs
+  or ``useCallback``; never inline arrows in objects consumed by effect deps.
+
+Shared helpers: ``frontend/src/utils/renderStable.ts``.
+
+---
+
 ## When to update the plan / this file
 
 Update `docs/project-hierarchy-plan.md` whenever:

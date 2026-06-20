@@ -169,6 +169,7 @@ export interface MockState {
   bulkCalls: { entityIds: string[]; approved: boolean }[];
   autoApproveCalls: Record<string, unknown>[];
   verifyStreamCalls: Record<string, unknown>[];
+  verifyJobCalls: Record<string, unknown>[];
 }
 
 export function makeMockState(): MockState {
@@ -178,6 +179,7 @@ export function makeMockState(): MockState {
     bulkCalls: [],
     autoApproveCalls: [],
     verifyStreamCalls: [],
+    verifyJobCalls: [],
   };
 }
 
@@ -456,7 +458,108 @@ export async function installExtractionMocks(page: Page, state: MockState) {
     },
   );
 
-  // ── AI verify SSE stream — minimal happy path ───────────────────
+  const VERIFY_JOB_ID = "44444444-4444-4444-4444-444444444444";
+  const VERIFY_SESSION_ID = "test-session-1";
+  let verifyJobPolls = 0;
+
+  function makeVerifyJob(status: "queued" | "running" | "succeeded") {
+    return {
+      id: VERIFY_JOB_ID,
+      project_id: TEST_PROJECT_ID,
+      run_id: TEST_RUN_ID,
+      kind: "ner_verify",
+      status,
+      progress: {
+        session_id: VERIFY_SESSION_ID,
+        processed: status === "succeeded" ? 1 : 0,
+        total: 1,
+      },
+      params: {action_id: "audit_ner_extraction"},
+      result: status === "succeeded" ? {session_id: VERIFY_SESSION_ID} : null,
+      error: null,
+      created_by: "33333333-3333-3333-3333-333333333333",
+      started_at: "2026-06-01T08:00:00Z",
+      finished_at: status === "succeeded" ? "2026-06-01T08:01:00Z" : null,
+      cancel_requested_at: null,
+      created_at: "2026-06-01T08:00:00Z",
+      updated_at: "2026-06-01T08:01:00Z",
+    };
+  }
+
+  await page.route(`**/api/jobs/mine*`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({jobs: verifyJobPolls > 0 ? [makeVerifyJob("running")] : []}),
+    });
+  });
+
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs**`, async (route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+    const path = url.pathname;
+
+    if (method === "POST" && path === `/api/runs/${TEST_RUN_ID}/jobs`) {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      state.verifyJobCalls.push(body);
+      verifyJobPolls = 0;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(makeVerifyJob("running")),
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/api/runs/${TEST_RUN_ID}/jobs/${VERIFY_JOB_ID}`) {
+      verifyJobPolls += 1;
+      const status = verifyJobPolls >= 2 ? "succeeded" : "running";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(makeVerifyJob(status)),
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/api/runs/${TEST_RUN_ID}/jobs`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({jobs: []}),
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+
+  await page.route(
+    `**/api/runs/${TEST_RUN_ID}/extraction/ai-verify/sessions/${VERIFY_SESSION_ID}`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          session_id: VERIFY_SESSION_ID,
+          verdicts: [
+            {
+              candidate: {_entity_id: "ent-1", text: "Maimonides", control_number: "MS001"},
+              verdict: {overall: "pass", name_ok: true, reasoning: "Looks good."},
+              evaluator_id: "person_ner",
+              judge_id: "gemini-3.5-flash",
+            },
+          ],
+        }),
+      });
+    },
+  );
+
+  // ── AI verify SSE stream — legacy path kept for recheck flows ───
   await page.route(
     `**/api/runs/${TEST_RUN_ID}/extraction/ai-verify/start-stream`,
     async (route) => {

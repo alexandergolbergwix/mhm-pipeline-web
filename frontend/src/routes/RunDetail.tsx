@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
@@ -18,7 +18,7 @@ import { AuthorityMatchingHelp } from "@/components/authority/AuthorityMatchingH
 import { AuthorityDetailDrawer } from "@/components/authority/AuthorityDetailDrawer";
 import { AuthorityAutoApproveRuleBuilder } from "@/components/authority/AuthorityAutoApproveRuleBuilder";
 import {Glass, GlassPill} from "@/components/glass";
-import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {
   canAuthorityAutoFix,
   getAuthoritySuggestedFix,
@@ -68,12 +68,6 @@ export default function RunDetail() {
     skip_cache: boolean;
   } | null>(null);
   const [enrichError, setEnrichError] = useState<string | null>(null);
-  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
-  const ensureJobPolling = useRunJobs((s) => s.ensurePolling);
-  const cancelRunJob = useRunJobs((s) => s.cancelJob);
-  const enrichJob = useRunJobs((s) =>
-    runId ? s.jobForRun(runId, "authority_re_enrich") : null,
-  );
   // Live elapsed-time ticker
   const [enrichStartedAt, setEnrichStartedAt] = useState<number | null>(null);
   const [enrichTick, setEnrichTick] = useState(0);
@@ -89,7 +83,7 @@ export default function RunDetail() {
   const [bulkFixBusy, setBulkFixBusy] = useState(false);
   const [noteIndex, setNoteIndex] = useState<Record<string, string>>({});
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!runId) return;
     try {
       const [detail, notes] = await Promise.all([
@@ -101,10 +95,10 @@ export default function RunDetail() {
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     }
-  }
-  useEffect(() => { void refresh(); }, [runId]);
+  }, [runId]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
-  function syncEnrichFromJob(job: RunJobSnapshot) {
+  const syncEnrichFromJob = useCallback((job: RunJobSnapshot) => {
     const p = job.progress ?? {};
     if (job.status === "queued" || job.status === "running") {
       setEnrichPhase("running");
@@ -144,51 +138,15 @@ export default function RunDetail() {
       setEnrichError(job.error ?? "Re-enrich failed");
       setEnrichPhase("error");
     }
-  }
+  }, [refresh]);
 
-  useEffect(() => {
-    if (!runId) return;
-    let cancelled = false;
-    void RunJobs.listForRun(runId, true).then(({jobs}) => {
-      if (cancelled) return;
-      const active = jobs.find((j) => j.kind === "authority_re_enrich");
-      if (active) {
-        setTrackedJobId(active.id);
-        syncEnrichFromJob(active);
-        ensureJobPolling();
-      }
-    });
-    return () => { cancelled = true; };
-  }, [runId, ensureJobPolling]);
-
-  useEffect(() => {
-    if (enrichJob) syncEnrichFromJob(enrichJob);
-  }, [enrichJob]);
-
-  useEffect(() => {
-    if (!runId || !trackedJobId) return;
-    const rid = runId;
-    const jid = trackedJobId;
-    let cancelled = false;
-    async function pollJob() {
-      try {
-        const job = await RunJobs.get(rid, jid);
-        if (cancelled) return;
-        syncEnrichFromJob(job);
-        if (!isJobActive(job.status)) {
-          setTrackedJobId(null);
-        }
-      } catch {
-        // ignore transient poll errors
-      }
-    }
-    void pollJob();
-    const id = window.setInterval(() => { void pollJob(); }, 2000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [runId, trackedJobId]);
+  const {
+    activeJob: enrichJob,
+    trackedJobId,
+    setTrackedJobId,
+    ensureJobPolling,
+    cancelJob: cancelRunJob,
+  } = useRunJobAttachment(runId, "authority_re_enrich", syncEnrichFromJob);
 
   useProjectEvents(run?.project_id, (msg) => {
     if (msg.type.startsWith("match.") || msg.type === "snapshot.restored") {

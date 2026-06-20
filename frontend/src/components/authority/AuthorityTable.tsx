@@ -26,6 +26,7 @@ import {
   getAuthoritySuggestedFix,
   resolveAuthorityFixPatch,
 } from "@/utils/authorityAutofix";
+import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
 
 type ColumnKey =
   | "control_number"
@@ -366,15 +367,16 @@ export function AuthorityTable({
     return Array.from(groups.values());
   }, [display, groupDuplicates]);
 
-  useEffect(() => {
-    // Report filtered IDs as all primary + all alt IDs so bulk actions work.
-    const allIds = grouped.flatMap((g) => [g.primary.id, ...g.alts.map((a) => a.id)]);
-    onFilteredChange?.(allIds);
-    if (onFixableChange) {
-      const rows = grouped.flatMap((g) => [g.primary, ...g.alts]);
-      onFixableChange(rows.filter(canAuthorityAutoFix).map((m) => m.id));
-    }
-  }, [grouped, onFilteredChange, onFixableChange]);
+  const filteredIds = useMemo(
+    () => grouped.flatMap((g) => [g.primary.id, ...g.alts.map((a) => a.id)]),
+    [grouped],
+  );
+  const fixableIds = useMemo(() => {
+    const rows = grouped.flatMap((g) => [g.primary, ...g.alts]);
+    return rows.filter(canAuthorityAutoFix).map((m) => m.id);
+  }, [grouped]);
+  useReportDerivedIds(filteredIds, onFilteredChange);
+  useReportDerivedIds(fixableIds, onFixableChange);
 
   function renderFixCell(match: AuthorityMatch) {
     const isRechecking = recheckingIds.has(match.id);

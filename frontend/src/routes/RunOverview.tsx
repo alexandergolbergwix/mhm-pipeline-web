@@ -13,7 +13,7 @@
  *   5. Wikidata Studio              → /runs/:id/wikidata-studio
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
@@ -24,6 +24,7 @@ import { Rdf, type RdfStatus } from "@/api/rdf";
 import { Runs, type RunDetail } from "@/api/runs";
 import { Studio, type StudioBuild } from "@/api/wikidataStudio";
 import {Glass, GlassPill} from "@/components/glass";
+import {idsFingerprint} from "@/utils/renderStable";
 
 
 export default function RunOverview() {
@@ -36,19 +37,23 @@ export default function RunOverview() {
   const [rdf, setRdf]                     = useState<TileState<RdfStatus>>({ status: "loading" });
   const [studio, setStudio]               = useState<TileState<StudioBuild>>({ status: "loading" });
   const [activeJobs, setActiveJobs]       = useState<string[]>([]);
+  const activeJobsRef = useRef("");
 
   useEffect(() => {
     let cancelled = false;
+    function applyKinds(jobs: Awaited<ReturnType<typeof RunJobs.listMine>>["jobs"]) {
+      const kinds = jobs.filter((j) => j.run_id === runId).map((j) => j.kind);
+      const fp = idsFingerprint(kinds);
+      if (fp === activeJobsRef.current) return;
+      activeJobsRef.current = fp;
+      setActiveJobs(kinds);
+    }
     void RunJobs.listMine(true).then(({jobs}) => {
-      if (!cancelled) {
-        setActiveJobs(jobs.filter((j) => j.run_id === runId).map((j) => j.kind));
-      }
+      if (!cancelled) applyKinds(jobs);
     });
     const id = window.setInterval(() => {
       void RunJobs.listMine(true).then(({jobs}) => {
-        if (!cancelled) {
-          setActiveJobs(jobs.filter((j) => j.run_id === runId).map((j) => j.kind));
-        }
+        if (!cancelled) applyKinds(jobs);
       });
     }, 4000);
     return () => {

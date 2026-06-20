@@ -16,8 +16,24 @@ interface RunJobsState {
   ensurePolling: () => void;
   stopPolling: () => void;
   cancelJob: (runId: string, jobId: string) => Promise<void>;
+  /** Imperative getter only — do not use inside `useRunJobs(selector)`. */
   jobForRun: (runId: string, kind: string) => RunJobSnapshot | null;
+  /** Imperative getter only — do not use inside `useRunJobs(selector)`. */
   activeJobs: () => RunJobSnapshot[];
+}
+
+export function isJobActive(status: RunJobStatus): boolean {
+  return ACTIVE.includes(status);
+}
+
+export function selectActiveJob(
+  jobs: Record<string, RunJobSnapshot>,
+  runId: string,
+  kind: string,
+): RunJobSnapshot | null {
+  return Object.values(jobs).find(
+    (j) => j.run_id === runId && j.kind === kind && isJobActive(j.status),
+  ) ?? null;
 }
 
 export const useRunJobs = create<RunJobsState>((set, get) => ({
@@ -58,16 +74,10 @@ export const useRunJobs = create<RunJobsState>((set, get) => ({
   },
 
   jobForRun(runId, kind) {
-    return Object.values(get().jobs).find(
-      (j) => j.run_id === runId && j.kind === kind && ACTIVE.includes(j.status),
-    ) ?? null;
+    return selectActiveJob(get().jobs, runId, kind);
   },
 
   activeJobs() {
     return Object.values(get().jobs).filter((j) => ACTIVE.includes(j.status));
   },
 }));
-
-export function isJobActive(status: RunJobStatus): boolean {
-  return ACTIVE.includes(status);
-}

@@ -1,7 +1,8 @@
 import {useEffect, useMemo, useRef, useState} from "react";
 
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
-import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
+import {jobFingerprint, useLatestRef} from "@/utils/renderStable";
 
 interface UseRunJobAttachmentResult {
   activeJob: RunJobSnapshot | null;
@@ -9,10 +10,6 @@ interface UseRunJobAttachmentResult {
   setTrackedJobId: (id: string | null) => void;
   ensureJobPolling: () => void;
   cancelJob: (runId: string, jobId: string) => Promise<void>;
-}
-
-function jobFingerprint(job: RunJobSnapshot): string {
-  return `${job.id}:${job.status}:${JSON.stringify(job.progress ?? {})}`;
 }
 
 export function useRunJobAttachment(
@@ -24,16 +21,13 @@ export function useRunJobAttachment(
   const ensureJobPolling = useRunJobs((s) => s.ensurePolling);
   const cancelJob = useRunJobs((s) => s.cancelJob);
   const jobsRecord = useRunJobs((s) => s.jobs);
-  const syncRef = useRef(sync);
+  const syncRef = useLatestRef(sync);
   const lastFingerprintRef = useRef<string | null>(null);
-  syncRef.current = sync;
 
-  const storeJob = useMemo(() => {
-    if (!runId) return null;
-    return Object.values(jobsRecord).find(
-      (j) => j.run_id === runId && j.kind === kind && isJobActive(j.status),
-    ) ?? null;
-  }, [jobsRecord, runId, kind]);
+  const storeJob = useMemo(
+    () => (runId ? selectActiveJob(jobsRecord, runId, kind) : null),
+    [jobsRecord, runId, kind],
+  );
 
   const storeJobKey = storeJob ? jobFingerprint(storeJob) : null;
 

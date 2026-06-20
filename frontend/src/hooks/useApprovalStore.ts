@@ -162,12 +162,7 @@ export function useApprovalStore(
 
   const applyPayload = useCallback((payload: EntitiesPayload, force = false): void => {
     const fp = entitiesFingerprint(payload.entities);
-    if (
-      !force
-      && fp === lastFingerprint.current
-      && entities.length === payload.entities.length
-      && meta.total === payload.total
-    ) {
+    if (!force && fp === lastFingerprint.current) {
       return;
     }
     lastFingerprint.current = fp;
@@ -179,7 +174,7 @@ export function useApprovalStore(
       recordCount: payload.recordCount,
       sourceCounts: payload.sourceCounts,
     });
-  }, [entities.length, meta.total]);
+  }, []);
 
   const fetchOnce = useCallback(async (force = false): Promise<void> => {
     if (!runId) return;

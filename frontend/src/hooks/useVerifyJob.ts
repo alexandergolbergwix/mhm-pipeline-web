@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
-import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
+import {jobFingerprint, useLatestRef} from "@/utils/renderStable";
 
 interface UseVerifyJobOptions {
   runId: string;
@@ -9,10 +10,6 @@ interface UseVerifyJobOptions {
   loadSession: (sessionId: string) => Promise<void>;
   onFailed?: (message: string) => void;
   onComplete?: () => void;
-}
-
-function jobFingerprint(job: RunJobSnapshot): string {
-  return `${job.id}:${job.status}:${JSON.stringify(job.progress ?? {})}`;
 }
 
 export function useVerifyJob({
@@ -28,23 +25,18 @@ export function useVerifyJob({
   const cancelJob = useRunJobs((s) => s.cancelJob);
   const jobsRecord = useRunJobs((s) => s.jobs);
 
-  const storeJob = useMemo(() => {
-    if (!runId) return null;
-    return Object.values(jobsRecord).find(
-      (j) => j.run_id === runId && j.kind === kind && isJobActive(j.status),
-    ) ?? null;
-  }, [jobsRecord, runId, kind]);
+  const storeJob = useMemo(
+    () => (runId ? selectActiveJob(jobsRecord, runId, kind) : null),
+    [jobsRecord, runId, kind],
+  );
 
   const storeJobKey = storeJob ? jobFingerprint(storeJob) : null;
 
   const lastSessionRef = useRef<string | null>(null);
   const lastFingerprintRef = useRef<string | null>(null);
-  const loadSessionRef = useRef(loadSession);
-  const onCompleteRef = useRef(onComplete);
-  const onFailedRef = useRef(onFailed);
-  loadSessionRef.current = loadSession;
-  onCompleteRef.current = onComplete;
-  onFailedRef.current = onFailed;
+  const loadSessionRef = useLatestRef(loadSession);
+  const onCompleteRef = useLatestRef(onComplete);
+  const onFailedRef = useLatestRef(onFailed);
 
   const applyJob = useCallback(async (job: RunJobSnapshot, force = false) => {
     const fp = jobFingerprint(job);
@@ -74,7 +66,7 @@ export function useVerifyJob({
     if (job.status === "failed") {
       onFailedRef.current?.(job.error ?? "Verification failed");
     }
-  }, []);
+  }, [loadSessionRef, onCompleteRef, onFailedRef]);
 
   useEffect(() => {
     if (!runId) return;

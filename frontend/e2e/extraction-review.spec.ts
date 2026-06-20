@@ -367,27 +367,43 @@ test.describe("AI Extraction entity-review UI", () => {
 
   // ── 9. AI VERIFICATION ──────────────────────────────────────────
 
-  test("Verify selected fires the SSE stream and opens the modal", async ({ page }) => {
+  test("Verify selected starts a background job and opens the modal", async ({ page }) => {
     const state = makeMockState();
     await installExtractionMocks(page, state);
     await gotoExtraction(page);
     await page.getByTestId("entity-review").waitFor();
     await page.getByTestId("entity-select").first().check();
     await page.getByTestId("btn-verify-selected").click();
-    await page.getByRole("button", { name: /Start verification|Re-run verification/ }).click();
-    await expect.poll(() => state.verifyStreamCalls.length).toBeGreaterThan(0);
+    await page.getByRole("button", {name: /Start verification|Re-run verification/}).click();
+    await expect.poll(() => state.verifyJobCalls.length).toBeGreaterThan(0);
   });
 
-  test("Verify all visible enqueues a session with every visible entity", async ({ page }) => {
+  test("Verify all visible enqueues a job scoped to every visible entity", async ({ page }) => {
     const state = makeMockState();
     await installExtractionMocks(page, state);
     await gotoExtraction(page);
     await page.getByTestId("entity-review").waitFor();
     await page.getByTestId("btn-verify-all-visible").click();
-    await page.getByRole("button", { name: /Start verification|Re-run verification/ }).click();
-    await expect.poll(() => state.verifyStreamCalls.length).toBeGreaterThan(0);
-    const call = state.verifyStreamCalls[0] as { entity_ids: string[] };
-    expect(call.entity_ids).toHaveLength(state.entities.length);
+    await page.getByRole("button", {name: /Start verification|Re-run verification/}).click();
+    await expect.poll(() => state.verifyJobCalls.length).toBeGreaterThan(0);
+    const call = state.verifyJobCalls[0] as {params?: {entity_ids?: string[]}};
+    const ids = call.params?.entity_ids ?? [];
+    expect(ids).toHaveLength(state.entities.length);
+  });
+
+  test("page stays mounted after Start verification", async ({page}) => {
+    const state = makeMockState();
+    await installExtractionMocks(page, state);
+    await gotoExtraction(page);
+    await page.getByTestId("entity-review").waitFor();
+    await page.getByTestId("btn-verify-all-visible").click();
+    await page.getByRole("button", {name: /Start verification|Re-run verification/}).click();
+    await expect.poll(() => state.verifyJobCalls.length).toBeGreaterThan(0);
+    await page.waitForTimeout(1500);
+    await expect(page.getByTestId("entity-review")).toBeVisible();
+    await expect(page.getByRole("button", {name: /Start verification|Re-run verification|Stop/})).toBeVisible();
+    const bodyText = await page.locator("body").innerText();
+    expect(bodyText.trim().length).toBeGreaterThan(20);
   });
 
   // ── 10. EXISTS_IN BADGE + AI VERDICT PILL RENDERING ────────────

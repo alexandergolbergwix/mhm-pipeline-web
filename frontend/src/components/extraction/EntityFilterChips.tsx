@@ -3,7 +3,7 @@
  * + a free-text search box. AND across dimensions; OR within each.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   ENTITY_ROLES,
@@ -15,9 +15,11 @@ import {
   EntityType,
 } from "@/api/extractionApprovals";
 import {Glass, GlassPill} from "@/components/glass";
+import {useReportFilteredEntities} from "@/hooks/useReportDerivedIds";
 
 export interface EntityFilterChipsProps {
   entities: Entity[];
+  /** Must be stable (useCallback) or omitted — see Rule W-36. */
   onFilteredChange: (filtered: Entity[]) => void;
 }
 
@@ -80,7 +82,7 @@ export function EntityFilterChips({ entities, onFilteredChange }: EntityFilterCh
   }, [entities]);
 
   const filtered = useMemo(() => applyFilters(entities, state), [entities, state]);
-  useEffect(() => { onFilteredChange(filtered); }, [filtered, onFilteredChange]);
+  useReportFilteredEntities(filtered, onFilteredChange);
 
   const toggle = <T extends string>(key: "sources" | "types" | "roles", value: T) => {
     setState((prev) => {
