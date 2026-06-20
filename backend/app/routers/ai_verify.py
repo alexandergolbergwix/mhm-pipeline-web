@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.run import AuthorityMatch, RunRecord
+from app.models.run_job import JOB_KIND_AUTHORITY_VERIFY
 from app.pipeline import agent_actions, agent_runner
 from app.pipeline.agent_runner import (
     AgentEvent, build_filtered_fixture, list_sessions,
@@ -40,6 +41,7 @@ from app.pipeline.agent_runner import (
     spawn_eval_agent_run, sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.verify_session_store import load_verify_session
 from app.routers.runs import _lookup_run_with_access
 
 
@@ -681,7 +683,13 @@ async def get_run_session(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     await _lookup_run_with_access(db, run_id, auth, write=False)
-    data = read_session(str(run_id), session_id)
+    data = await load_verify_session(
+        db,
+        run_id=run_id,
+        session_id=session_id,
+        channel="ai-verify-sessions",
+        job_kind=JOB_KIND_AUTHORITY_VERIFY,
+    )
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

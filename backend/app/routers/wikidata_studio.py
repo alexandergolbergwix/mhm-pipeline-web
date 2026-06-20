@@ -36,7 +36,8 @@ from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.models.wikidata_studio_cache import WikidataStudioCache
-from app.models.run_job import JOB_KIND_WIKIDATA_STUDIO_BUILD
+from app.models.run_job import JOB_KIND_WIKIDATA_STUDIO_BUILD, JOB_KIND_WIKIDATA_VERIFY
+from app.pipeline.verify_session_store import load_verify_session
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.agent_runner import (
     AgentEvent,
@@ -267,7 +268,13 @@ async def get_wikidata_verify_session(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     await _lookup_run_with_access(db, run_id, auth, write=False)
-    data = _read_wikidata_session(str(run_id), session_id)
+    data = await load_verify_session(
+        db,
+        run_id=run_id,
+        session_id=session_id,
+        channel=_WIKIDATA_VERIFY_CHANNEL,
+        job_kind=JOB_KIND_WIKIDATA_VERIFY,
+    )
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

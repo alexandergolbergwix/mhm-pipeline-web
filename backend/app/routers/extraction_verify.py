@@ -35,6 +35,7 @@ from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.extraction_approval import ExtractionApproval
 from app.models.run import RunRecord
+from app.models.run_job import JOB_KIND_NER_VERIFY
 from app.pipeline import agent_actions, extraction_actions
 from app.pipeline.agent_runner import (
     AgentEvent, build_filtered_fixture, list_sessions, list_verify_sessions,
@@ -43,6 +44,7 @@ from app.pipeline.agent_runner import (
     resolve_verify_state_dir, spawn_eval_agent_run, sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.verify_session_store import load_verify_session
 from app.pipeline.ner_verdict_cache import (
     ner_verdict_input_fingerprint,
     ner_verdict_query_summary,
@@ -549,7 +551,13 @@ async def get_run_session(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     await _lookup_run_with_access(db, run_id, auth, write=False)
-    data = _read_extraction_session(str(run_id), session_id)
+    data = await load_verify_session(
+        db,
+        run_id=run_id,
+        session_id=session_id,
+        channel="extraction-verify-sessions",
+        job_kind=JOB_KIND_NER_VERIFY,
+    )
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

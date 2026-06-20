@@ -616,6 +616,20 @@ def _verdicts_from_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [by_key[k] for k in order]
 
 
+def build_verify_session_payload(
+    run_id: str,
+    session_id: str,
+    events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    verdicts = _verdicts_from_trace(events)
+    return {
+        "session_id": session_id,
+        "run_id":     run_id,
+        "events":     events,
+        "verdicts":   verdicts,
+    }
+
+
 def read_verify_session(
     channel: str,
     run_id: str,
@@ -640,12 +654,9 @@ def read_verify_session(
     if not verdicts:
         state_dir = base.parent.parent if base.parent.name == "sessions" else base
         verdicts = read_run_verdicts(state_dir) or read_run_verdicts(base)
-    return {
-        "session_id": session_id,
-        "run_id":     run_id,
-        "events":     events,
-        "verdicts":   verdicts,
-    }
+    out = build_verify_session_payload(run_id, session_id, events)
+    out["verdicts"] = verdicts
+    return out
 
 
 def read_session(run_id: str, session_id: str) -> dict[str, Any] | None:
@@ -695,6 +706,7 @@ def purge_session_dir(run_id: str, session_id: str) -> None:
 __all__ = [
     "AgentEvent",
     "build_filtered_fixture",
+    "build_verify_session_payload",
     "ensure_verify_session_dir",
     "list_sessions",
     "list_verify_sessions",

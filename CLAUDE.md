@@ -149,6 +149,8 @@ fails fast if `locate_eval_agent()` cannot find `eval_agent/cli.py`.
 Postgres `inference_cache` (kind `ai_verdict`) remains the durable
 cross-dyno verdict tier; `/tmp` state is ephemeral per dyno lifetime
 but sufficient for in-session replay and eval-agent subprocess I/O.
+Completed background verify jobs also embed ``session_snapshot`` in
+``run_jobs.result`` so session GET handlers survive multi-dyno routing.
 
 ### Rule W-19 — User-flow e2e is the canonical test surface
 

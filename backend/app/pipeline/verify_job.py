@@ -22,6 +22,7 @@ from app.pipeline.run_job_service import (
     is_cancel_requested,
     update_job_progress,
 )
+from app.pipeline.verify_session_store import snapshot_from_collected_events
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     total = 0
     error_message: str | None = None
     session_summary: dict[str, Any] = {}
+    collected_events: list[dict[str, Any]] = []
     stream = await _open_verify_stream(
         kind=kind,
         run_id=run_id,
@@ -91,6 +93,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
 
     try:
         async for ev in stream:
+            collected_events.append({"type": ev.type, **(ev.payload or {})})
             if await is_cancel_requested(job_id):
                 await stream.aclose()
                 await finish_job(
@@ -139,6 +142,12 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
         )
         return
 
+    session_snapshot = snapshot_from_collected_events(
+        run_id=str(run_id),
+        session_id=session_id,
+        events=collected_events,
+    )
+
     await finish_job(
         job_id,
         status=JOB_STATUS_SUCCEEDED,
@@ -150,6 +159,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             "cache_hits": session_summary.get("cache_hits"),
             "fresh_verdicts": session_summary.get("fresh_verdicts"),
             "uncached_skipped": session_summary.get("uncached_skipped"),
+            "session_snapshot": session_snapshot,
         },
         progress={
             "phase": "done",
