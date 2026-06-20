@@ -70,12 +70,15 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
     });
   }, [runId]);
 
+  const handleVerifyFailed = useCallback((msg: string) => setError(msg), []);
+  const handleVerifyComplete = useCallback(() => onVerdictsLanded?.(), [onVerdictsLanded]);
+
   const {running, start: startVerifyJob, stop} = useVerifyJob({
     runId,
     kind: "wikidata_verify",
     loadSession,
-    onFailed: (msg) => setError(msg),
-    onComplete: () => onVerdictsLanded?.(),
+    onFailed: handleVerifyFailed,
+    onComplete: handleVerifyComplete,
   });
 
   useEffect(() => {

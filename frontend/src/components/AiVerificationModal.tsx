@@ -86,11 +86,13 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
     });
   }, [runId]);
 
+  const handleVerifyFailed = useCallback((msg: string) => setError(msg), []);
+
   const {running, start: startVerifyJob, stop} = useVerifyJob({
     runId,
     kind: "authority_verify",
     loadSession,
-    onFailed: (msg) => setError(msg),
+    onFailed: handleVerifyFailed,
   });
 
   // Load actions for this scope kind AND auto-prefill verdicts from

@@ -160,7 +160,12 @@ def _mount_frontend(app: FastAPI) -> None:
         ) -> FileResponse:
             return FileResponse(_path, media_type=_mime)
 
-        app.get(f"/{filename}", include_in_schema=False)(_root_static)
+        app.add_api_route(
+            f"/{filename}",
+            _root_static,
+            methods=["GET", "HEAD"],
+            include_in_schema=False,
+        )
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str) -> FileResponse:  # noqa: ARG001

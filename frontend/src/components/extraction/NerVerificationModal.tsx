@@ -130,15 +130,18 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
     });
   }, [runId, userId]);
 
+  const handleVerifyFailed = useCallback((msg: string) => setError(msg), []);
+  const handleVerifyComplete = useCallback(() => {
+    emitEntitiesRefreshed(userId, runId);
+    onVerdictsLanded?.();
+  }, [userId, runId, onVerdictsLanded]);
+
   const {running, start: startVerifyJob, stop} = useVerifyJob({
     runId,
     kind: "ner_verify",
     loadSession,
-    onFailed: (msg) => setError(msg),
-    onComplete: () => {
-      emitEntitiesRefreshed(userId, runId);
-      onVerdictsLanded?.();
-    },
+    onFailed: handleVerifyFailed,
+    onComplete: handleVerifyComplete,
   });
 
   // Load actions for this scope kind AND auto-prefill verdicts from

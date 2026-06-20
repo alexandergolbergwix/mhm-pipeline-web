@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
@@ -11,6 +11,10 @@ interface UseRunJobAttachmentResult {
   cancelJob: (runId: string, jobId: string) => Promise<void>;
 }
 
+function jobFingerprint(job: RunJobSnapshot): string {
+  return `${job.id}:${job.status}:${JSON.stringify(job.progress ?? {})}`;
+}
+
 export function useRunJobAttachment(
   runId: string | undefined,
   kind: string,
@@ -19,9 +23,26 @@ export function useRunJobAttachment(
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const ensureJobPolling = useRunJobs((s) => s.ensurePolling);
   const cancelJob = useRunJobs((s) => s.cancelJob);
-  const storeJob = useRunJobs((s) =>
-    runId ? s.jobForRun(runId, kind) : null,
-  );
+  const jobsRecord = useRunJobs((s) => s.jobs);
+  const syncRef = useRef(sync);
+  const lastFingerprintRef = useRef<string | null>(null);
+  syncRef.current = sync;
+
+  const storeJob = useMemo(() => {
+    if (!runId) return null;
+    return Object.values(jobsRecord).find(
+      (j) => j.run_id === runId && j.kind === kind && isJobActive(j.status),
+    ) ?? null;
+  }, [jobsRecord, runId, kind]);
+
+  const storeJobKey = storeJob ? jobFingerprint(storeJob) : null;
+
+  const applySync = (job: RunJobSnapshot, force = false) => {
+    const fp = jobFingerprint(job);
+    if (!force && fp === lastFingerprintRef.current) return;
+    lastFingerprintRef.current = fp;
+    syncRef.current(job);
+  };
 
   useEffect(() => {
     if (!runId) return;
@@ -31,16 +52,17 @@ export function useRunJobAttachment(
       const active = jobs.find((j) => j.kind === kind);
       if (active) {
         setTrackedJobId(active.id);
-        sync(active);
+        applySync(active, true);
         ensureJobPolling();
       }
     });
     return () => { cancelled = true; };
-  }, [runId, kind, ensureJobPolling, sync]);
+  }, [runId, kind, ensureJobPolling]);
 
   useEffect(() => {
-    if (storeJob) sync(storeJob);
-  }, [storeJob, sync]);
+    if (!storeJob || !storeJobKey) return;
+    applySync(storeJob);
+  }, [storeJobKey, storeJob]);
 
   useEffect(() => {
     if (!runId || !trackedJobId) return;
@@ -51,7 +73,7 @@ export function useRunJobAttachment(
       try {
         const job = await RunJobs.get(rid, jid);
         if (cancelled) return;
-        sync(job);
+        applySync(job);
         if (!isJobActive(job.status)) {
           setTrackedJobId(null);
         }
@@ -65,7 +87,7 @@ export function useRunJobAttachment(
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [runId, trackedJobId, sync]);
+  }, [runId, trackedJobId]);
 
   const activeJob = storeJob ?? null;
   return {activeJob, trackedJobId, setTrackedJobId, ensureJobPolling, cancelJob};
