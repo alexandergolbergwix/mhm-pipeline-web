@@ -139,6 +139,29 @@ def _mount_frontend(app: FastAPI) -> None:
 
     index_file = frontend_dist / "index.html"
 
+    _ROOT_STATIC = (
+        ("site.webmanifest", "application/manifest+json"),
+        ("favicon.ico", "image/x-icon"),
+        ("favicon-16x16.png", "image/png"),
+        ("favicon-32x32.png", "image/png"),
+        ("apple-touch-icon.png", "image/png"),
+        ("icon-192.png", "image/png"),
+        ("icon-512.png", "image/png"),
+    )
+
+    for filename, media_type in _ROOT_STATIC:
+        path = frontend_dist / filename
+        if not path.exists():
+            continue
+
+        async def _root_static(
+            _path: Path = path,
+            _mime: str = media_type,
+        ) -> FileResponse:
+            return FileResponse(_path, media_type=_mime)
+
+        app.get(f"/{filename}", include_in_schema=False)(_root_static)
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str) -> FileResponse:  # noqa: ARG001
         """Catch-all so client-side React Router handles deep links."""

@@ -1,4 +1,4 @@
-import {useEffect} from "react";
+import {useEffect, useMemo} from "react";
 import {Link} from "react-router-dom";
 
 import {
@@ -34,7 +34,11 @@ function progressLabel(job: RunJobSnapshot): string {
 }
 
 export function JobTray() {
-  const jobs = useRunJobs((s) => s.activeJobs());
+  const jobsRecord = useRunJobs((s) => s.jobs);
+  const jobs = useMemo(
+    () => Object.values(jobsRecord).filter((j) => isJobActive(j.status)),
+    [jobsRecord],
+  );
   const cancelJob = useRunJobs((s) => s.cancelJob);
 
   if (jobs.length === 0) return null;
@@ -95,7 +99,8 @@ export function JobTrayBootstrap() {
   const ensurePolling = useRunJobs((s) => s.ensurePolling);
   const refresh = useRunJobs((s) => s.refresh);
   const stopPolling = useRunJobs((s) => s.stopPolling);
-  const jobs = useRunJobs((s) => Object.values(s.jobs));
+  const jobsRecord = useRunJobs((s) => s.jobs);
+  const jobs = useMemo(() => Object.values(jobsRecord), [jobsRecord]);
 
   useEffect(() => {
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
