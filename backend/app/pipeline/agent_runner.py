@@ -401,6 +401,22 @@ def new_session_id() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
 
+def ensure_verify_session_dir(
+    *,
+    run_id: str,
+    session_id: str,
+    channel: str,
+) -> Path:
+    """Persistent per-session dir for trace replay (modal + job consumers).
+
+    ``channel`` is e.g. ``ai-verify-sessions`` or ``extraction-verify-sessions``.
+    """
+    root = locate_eval_agent()
+    base = root / "state" / channel / run_id / "sessions" / session_id
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
 # ── SSE formatter ──────────────────────────────────────────────────────
 
 
@@ -633,6 +649,7 @@ def purge_session_dir(run_id: str, session_id: str) -> None:
 __all__ = [
     "AgentEvent",
     "build_filtered_fixture",
+    "ensure_verify_session_dir",
     "list_sessions",
     "locate_eval_agent",
     "new_session_id",

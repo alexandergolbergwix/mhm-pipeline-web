@@ -1,8 +1,10 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
+import {ApiError} from "@/api/client";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
 import {jobFingerprint, useLatestRef} from "@/utils/renderStable";
+import {shouldLoadVerifySession} from "@/utils/verifySession";
 
 interface UseVerifyJobOptions {
   runId: string;
@@ -32,7 +34,6 @@ export function useVerifyJob({
 
   const storeJobKey = storeJob ? jobFingerprint(storeJob) : null;
 
-  const lastSessionRef = useRef<string | null>(null);
   const lastFingerprintRef = useRef<string | null>(null);
   const loadSessionRef = useLatestRef(loadSession);
   const onCompleteRef = useLatestRef(onComplete);
@@ -46,11 +47,19 @@ export function useVerifyJob({
     const sessionId = String(
       job.progress?.session_id ?? job.params?.session_id ?? "",
     );
-    if (sessionId) {
-      if (sessionId !== lastSessionRef.current) {
-        lastSessionRef.current = sessionId;
+    if (sessionId && shouldLoadVerifySession(job)) {
+      try {
+        await loadSessionRef.current(sessionId);
+      } catch (e) {
+        const isActive = job.status === "queued" || job.status === "running";
+        if (e instanceof ApiError && e.status === 404 && isActive) {
+          // Worker has not written trace.jsonl yet — normal at job start.
+        } else if (!isActive) {
+          onFailedRef.current?.(
+            e instanceof Error ? e.message : "session not found",
+          );
+        }
       }
-      await loadSessionRef.current(sessionId);
     }
 
     if (job.status === "queued" || job.status === "running") {
@@ -130,7 +139,6 @@ export function useVerifyJob({
 
   async function start(params: Record<string, unknown>) {
     setRunning(true);
-    lastSessionRef.current = null;
     lastFingerprintRef.current = null;
     const job = await RunJobs.start(runId, kind, params);
     setJobId(job.id);

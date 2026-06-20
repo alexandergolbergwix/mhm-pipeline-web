@@ -34,9 +34,9 @@ from app.db import get_session
 from app.models.run import AuthorityMatch, RunRecord
 from app.pipeline import agent_actions, agent_runner
 from app.pipeline.agent_runner import (
-    AgentEvent, build_filtered_fixture, list_sessions, locate_eval_agent,
-    new_session_id, persist_session_event, read_session, read_run_verdicts,
-    spawn_eval_agent_run, sse_stream,
+    AgentEvent, build_filtered_fixture, ensure_verify_session_dir, list_sessions,
+    locate_eval_agent, new_session_id, persist_session_event, read_session,
+    read_run_verdicts, spawn_eval_agent_run, sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.routers.runs import _lookup_run_with_access
@@ -233,8 +233,13 @@ async def _session_event_stream(
         base = session_dir
         session_dir.mkdir(parents=True, exist_ok=True)
     else:
-        import tempfile  # noqa: PLC0415
-        base = Path(tempfile.mkdtemp(prefix=f"mhm-auth-{session_id}-"))
+        try:
+            base = ensure_verify_session_dir(
+                run_id=run_id, session_id=session_id, channel="ai-verify-sessions",
+            )
+        except FileNotFoundError:
+            import tempfile  # noqa: PLC0415
+            base = Path(tempfile.mkdtemp(prefix=f"mhm-auth-{session_id}-"))
 
     # ── Build fixture (only uncached matches need to go to eval-agent) ─
     by_cn: dict[str, list[dict[str, Any]]] = {}
@@ -315,16 +320,33 @@ async def _session_event_stream(
             persist_session_event(base, ev)
             yield ev
 
-        if on_disk_verdicts:
+        pre_cached_verdicts = [
+            {
+                "candidate":   {**_match_to_desktop_shape(match), "_match_id": str(match.id)},
+                "verdict":     cached_payload.get("verdict") or {},
+                "judge_id":    cached_payload.get("judge_id"),
+                "judged_at":   cached_payload.get("judged_at"),
+                "cache_key":   cached_payload.get("cache_key"),
+                "evaluator_id": cached_payload.get("evaluator"),
+                "confidence":  cached_payload.get("confidence"),
+                "record_id":   match.control_number,
+                "sub_type":    cached_payload.get("sub_type") or match.role or "",
+                "from_inference_cache": True,
+            }
+            for match, _rec, cached_payload in pre_cached
+        ]
+        all_verdicts_to_persist = pre_cached_verdicts + on_disk_verdicts
+        if all_verdicts_to_persist:
             try:
                 await _persist_ai_verdicts_to_matches(
                     run_id=run_id,
                     session_id=session_id,
-                    verdicts=on_disk_verdicts,
+                    verdicts=all_verdicts_to_persist,
                 )
             except Exception:  # noqa: BLE001
                 logger.exception("failed to persist ai verdicts to matches")
 
+        if on_disk_verdicts:
             # Write new verdicts to the shared inference cache so future
             # users verifying the same authority entity get a warm hit.
             try:
