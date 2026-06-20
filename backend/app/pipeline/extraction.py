@@ -94,6 +94,7 @@ async def extract_entities_stream(
     db_session: Any | None = None,
     user_id: Any | None = None,
     skip_cache: bool = False,
+    cancel_check: Any | None = None,
 ) -> AsyncIterator[ExtractionEvent]:
     """Stream NER + genre predictions for the given parsed MARC records.
 
@@ -236,6 +237,21 @@ async def extract_entities_stream(
     results: list[dict[str, Any]] = []
     entity_total = 0
     for idx, record in enumerate(marc_records):
+        if cancel_check is not None and await cancel_check():
+            partial_path: str | None = None
+            if results:
+                out = await asyncio.to_thread(_write_results, output_dir, results)
+                partial_path = str(out)
+            yield ExtractionEvent(
+                type="extraction.cancelled",
+                payload={
+                    "records_processed": len(results),
+                    "entity_total":      entity_total,
+                    "results_path":      partial_path,
+                },
+            )
+            return
+
         cn = str(record.get("_control_number") or record.get("control_number") or f"row{idx:04d}")
         yield ExtractionEvent(
             type="extraction.record.start",

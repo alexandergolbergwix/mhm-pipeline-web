@@ -4,12 +4,11 @@
  * `item_ids` and keys verdicts by item `local_id`.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
 
 import { api } from "@/api/client";
 import {
   WikidataVerify,
-  streamWikidataVerification,
   type AgentActionMeta,
   type AgentEvent,
   type ScopeKind,
@@ -22,6 +21,7 @@ import {
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
 import {Glass} from "@/components/glass";
+import {useVerifyJob} from "@/hooks/useVerifyJob";
 
 
 export interface WikidataVerificationModalProps {
@@ -40,7 +40,6 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
   const [actions, setActions] = useState<AgentActionMeta[]>([]);
   const [actionId, setActionId] = useState("audit_wikidata_item");
   const [overrideCache, setOverrideCache] = useState(false);
-  const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [verdicts, setVerdicts] = useState<Record<string, AgentEvent>>({});
   const [flow, setFlow] = useState<FlowState>(makeInitialFlowState());
@@ -51,7 +50,33 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
   const [showingHistorical, setShowingHistorical] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const cancelRef = useRef<(() => void) | null>(null);
+  const loadSession = useCallback(async (sessionId: string) => {
+    const full = await WikidataVerify.session(runId, sessionId);
+    const seeded: Record<string, AgentEvent> = {};
+    const evs: AgentEvent[] = [];
+    for (const v of full.verdicts ?? []) {
+      const itemId = itemIdFromVerdict(v);
+      if (!itemId) continue;
+      const ev: AgentEvent = {type: "agent.verdict", ...v};
+      evs.push(ev);
+      seeded[itemId] = ev;
+    }
+    setEvents(evs);
+    setVerdicts(seeded);
+    setFlow((prev) => {
+      let next = prev;
+      for (const ev of evs) next = reduceFlow(next, ev);
+      return next;
+    });
+  }, [runId]);
+
+  const {running, start: startVerifyJob, stop} = useVerifyJob({
+    runId,
+    kind: "wikidata_verify",
+    loadSession,
+    onFailed: (msg) => setError(msg),
+    onComplete: () => onVerdictsLanded?.(),
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -115,62 +140,20 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
 
   async function start(): Promise<void> {
     if (running) return;
-    setRunning(true);
     setError(null);
     setEvents([]);
     setVerdicts({});
     setFlow(makeInitialFlowState());
     setShowingHistorical(false);
-    const { events: stream, cancel } = streamWikidataVerification(runId, {
-      action_id: actionId,
-      item_ids: itemIds,
-      override_cache: overrideCache,
-    });
-    cancelRef.current = cancel;
-    let landed = false;
     try {
-      for await (const ev of stream) {
-        setEvents((p) => [...p, ev]);
-        setFlow((p) => reduceFlow(p, ev));
-        if (ev.type === "agent.verdict") {
-          const itemId = itemIdFromVerdict(ev);
-          if (itemId) {
-            setVerdicts((p) => ({ ...p, [itemId]: ev }));
-            landed = true;
-          }
-        }
-        if (ev.type === "runner.warning") {
-          setError(messageFromEvent(ev) ?? "Some Wikidata items could not be verified.");
-        }
-        if (ev.type === "runner.error") {
-          setError(messageFromEvent(ev) ?? "Verification failed");
-          break;
-        }
-        if (ev.type === "runner.exit") {
-          const rc = returnCodeFromEvent(ev);
-          if (typeof rc === "number" && rc !== 0 && !landed) {
-            setError(`Verification process exited with code ${rc}.`);
-          }
-        }
-        if (ev.type === "session.end") break;
-      }
+      await startVerifyJob({
+        action_id: actionId,
+        item_ids: itemIds,
+        override_cache: overrideCache,
+      });
     } catch (e) {
-      if (!(e instanceof Error) || e.name !== "AbortError") {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    } finally {
-      cancelRef.current = null;
-      setRunning(false);
-      if (landed) onVerdictsLanded?.();
-      if (!landed) {
-        setError((prev) => prev
-          ?? "No verdicts were produced. The verification stream ended without results.");
-      }
+      setError(e instanceof Error ? e.message : String(e));
     }
-  }
-
-  function stop(): void {
-    cancelRef.current?.();
   }
 
   const action = useMemo(
@@ -374,16 +357,6 @@ function stepLogLine(ev: AgentEvent): string {
     default:
       return JSON.stringify(ev).slice(0, 200);
   }
-}
-
-
-function messageFromEvent(ev: AgentEvent): string | null {
-  return stringValue(ev.message) || null;
-}
-
-
-function returnCodeFromEvent(ev: AgentEvent): number | null {
-  return typeof ev.return_code === "number" ? ev.return_code : null;
 }
 
 

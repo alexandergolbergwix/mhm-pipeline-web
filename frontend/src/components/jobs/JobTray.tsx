@@ -1,0 +1,116 @@
+import {useEffect} from "react";
+import {Link} from "react-router-dom";
+
+import {
+  JOB_KIND_LABELS,
+  jobRunHref,
+  type RunJobSnapshot,
+} from "@/api/runJobs";
+import {Glass, GlassPill} from "@/components/glass";
+import {isJobActive, useRunJobs} from "@/stores/runJobs";
+
+const notifiedRef = {current: new Set<string>()};
+
+function maybeNotify(job: RunJobSnapshot) {
+  if (typeof document === "undefined" || document.hidden !== true) return;
+  if (job.status !== "succeeded" && job.status !== "failed") return;
+  if (notifiedRef.current.has(job.id)) return;
+  notifiedRef.current.add(job.id);
+  const label = JOB_KIND_LABELS[job.kind] ?? job.kind;
+  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+    new Notification(label, {
+      body: job.status === "succeeded" ? "Completed" : (job.error ?? "Failed"),
+    });
+  }
+}
+
+function progressLabel(job: RunJobSnapshot): string {
+  const p = job.progress ?? {};
+  const total = Number(p.total ?? 0);
+  const processed = Number(p.processed ?? 0);
+  if (total > 0) return `${processed} / ${total}`;
+  const msg = typeof p.message === "string" ? p.message : "";
+  return msg || job.status;
+}
+
+export function JobTray() {
+  const jobs = useRunJobs((s) => s.activeJobs());
+  const cancelJob = useRunJobs((s) => s.cancelJob);
+
+  if (jobs.length === 0) return null;
+
+  return (
+    <div
+      className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-[min(100vw-2rem,22rem)]"
+      data-testid="job-tray"
+    >
+      {jobs.map((job) => {
+        const total = Number(job.progress?.total ?? 0);
+        const processed = Number(job.progress?.processed ?? 0);
+        const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+        const label = JOB_KIND_LABELS[job.kind] ?? job.kind;
+
+        return (
+          <Glass key={job.id} variant="compact" className="p-3 space-y-2 shadow-lg">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{label}</p>
+                <p className="text-xs muted truncate">{progressLabel(job)}</p>
+              </div>
+              <GlassPill className="px-2 py-0.5 text-[10px] uppercase tracking-wide shrink-0">
+                {job.status}
+              </GlassPill>
+            </div>
+            {total > 0 && (
+              <div className="h-1.5 rounded-full bg-black/10 overflow-hidden" aria-hidden>
+                <div
+                  className="h-full bg-[var(--accent)] transition-all duration-300"
+                  style={{width: `${pct}%`}}
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-2 justify-end">
+              <Link to={jobRunHref(job)} className="button-ghost text-xs !py-1">
+                View
+              </Link>
+              {isJobActive(job.status) && (
+                <button
+                  type="button"
+                  className="button-ghost text-xs !py-1 text-warn"
+                  data-testid={`job-cancel-${job.id}`}
+                  onClick={() => { void cancelJob(job.run_id, job.id); }}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </Glass>
+        );
+      })}
+    </div>
+  );
+}
+
+export function JobTrayBootstrap() {
+  const ensurePolling = useRunJobs((s) => s.ensurePolling);
+  const refresh = useRunJobs((s) => s.refresh);
+  const stopPolling = useRunJobs((s) => s.stopPolling);
+  const jobs = useRunJobs((s) => Object.values(s.jobs));
+
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      void Notification.requestPermission();
+    }
+  }, []);
+
+  useEffect(() => {
+    for (const job of jobs) maybeNotify(job);
+  }, [jobs]);
+
+  useEffect(() => {
+    void refresh().then(() => ensurePolling());
+    return () => stopPolling();
+  }, [ensurePolling, refresh, stopPolling]);
+
+  return <JobTray />;
+}

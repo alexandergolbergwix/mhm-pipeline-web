@@ -17,18 +17,21 @@ export interface EntityActionsBarProps {
   visibleCount: number;
   selectedIds: Set<string>;
   visibleEntities: Entity[];
+  fixableCount: number;
+  bulkFixBusy: boolean;
   onSelectAllVisible: () => void;
   onApproveSelected: () => void;
   onRejectSelected: () => void;
   onOpenAutoApprove: () => void;
+  onBulkAutoFix: () => void;
   onVerifyScope: (scopeKind: "selection" | "all", entityIds: string[]) => void;
 }
 
 export function EntityActionsBar(props: EntityActionsBarProps) {
   const {
-    totalCount, visibleCount, selectedIds, visibleEntities,
+    totalCount, visibleCount, selectedIds, visibleEntities, fixableCount, bulkFixBusy,
     onSelectAllVisible, onApproveSelected, onRejectSelected,
-    onOpenAutoApprove, onVerifyScope,
+    onOpenAutoApprove, onBulkAutoFix, onVerifyScope,
   } = props;
 
   const [verifying, setVerifying] = useState<"selection" | "all" | null>(null);
@@ -73,6 +76,15 @@ export function EntityActionsBar(props: EntityActionsBarProps) {
                 disabled={visibleCount === 0 || verifying === "all"}
                 onClick={() => handleVerify("all", visibleEntities.map((e) => e.id))}>
           {verifying === "all" ? "Queueing…" : "Verify all visible with AI"}
+        </button>
+        <button type="button" className="button-ghost h-8 px-3 text-xs text-warn"
+                data-testid="btn-bulk-autofix"
+                disabled={fixableCount === 0 || bulkFixBusy}
+                title="Apply every visible AI-suggested fix with high confidence"
+                onClick={onBulkAutoFix}>
+          {bulkFixBusy
+            ? "Applying fixes…"
+            : `Auto-fix ${fixableCount} high-confidence`}
         </button>
       </div>
     </Glass>

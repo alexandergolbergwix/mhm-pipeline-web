@@ -12,13 +12,20 @@
  *  - ConfidenceBadge / VerdictBadge reused from MatchDetailDialog
  */
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from "react";
 
-import type { AuthorityMatch, ExistsIn } from "@/api/runs";
+import type {AuthorityMatch, ExistsIn} from "@/api/runs";
+import {Runs} from "@/api/runs";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
 import { ConfidenceBadge, VerdictBadge } from "@/components/MatchDetailDialog";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import {Glass, GlassPill} from "@/components/glass";
+import {
+  authorityFixTitle,
+  canAuthorityAutoFix,
+  getAuthoritySuggestedFix,
+  resolveAuthorityFixPatch,
+} from "@/utils/authorityAutofix";
 
 type ColumnKey =
   | "control_number"
@@ -29,6 +36,7 @@ type ColumnKey =
   | "exists_in"
   | "guard_flags"
   | "ai_verdict"
+  | "fix"
   | "approved"
   | "edit";
 
@@ -50,6 +58,7 @@ const COLS: ColDef[] = [
   { key: "exists_in",      label: "MARC",       width: "90px",    sortable: true,  filterable: true,  textHeader: false },
   { key: "guard_flags",    label: "Guards",     width: "160px",   sortable: false, filterable: true,  textHeader: false },
   { key: "ai_verdict",     label: "AI verdict", width: "120px",   sortable: true,  filterable: true,  textHeader: false },
+  { key: "fix",            label: "Fix",        width: "80px",    sortable: false, filterable: false, textHeader: false },
   { key: "approved",       label: "Approved",   width: "80px",    sortable: true,  filterable: true,  textHeader: false },
   { key: "edit",           label: "",           width: "96px",    sortable: false, filterable: false, textHeader: false },
 ];
@@ -113,6 +122,7 @@ export interface AuthorityTableProps {
   onOpenEdit:       (m: AuthorityMatch) => void;
   onMatchChanged:   (updated: AuthorityMatch) => void;
   onFilteredChange?: (ids: string[]) => void;
+  onFixableChange?: (ids: string[]) => void;
 }
 
 // Normalise entity text for grouping (strip quotes, niqqud, lowercase).
@@ -183,7 +193,7 @@ export interface GroupedMatch {
 
 export function AuthorityTable({
   matches,
-  runId: _runId,
+  runId,
   projectId,
   noteIndex,
   selectedIds,
@@ -191,17 +201,50 @@ export function AuthorityTable({
   onApproveToggle,
   onOpenDrawer,
   onOpenEdit,
+  onMatchChanged,
   onFilteredChange,
+  onFixableChange,
 }: AuthorityTableProps) {
-  const [sort, setSort] = useState<{ key: ColumnKey; dir: SortDir } | null>(null);
+  const [sort, setSort] = useState<{key: ColumnKey; dir: SortDir} | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, Set<string>>>({});
   const [textFilters, setTextFilters] = useState<Partial<Record<"control_number" | "entity_text", string>>>({});
-  const [popup, setPopup] = useState<{ col: ColumnKey; x: number; y: number } | null>(null);
-  const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
+  const [popup, setPopup] = useState<{col: ColumnKey; x: number; y: number} | null>(null);
+  const [historyFor, setHistoryFor] = useState<{id: string} | null>(null);
   const [groupDuplicates, setGroupDuplicates] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [notesSearch, setNotesSearch] = useState("");
+  const [recheckingIds, setRecheckingIds] = useState<ReadonlySet<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const applyAutoFix = useCallback(
+    async (match: AuthorityMatch) => {
+      const fix = getAuthoritySuggestedFix(match);
+      const patch = fix ? resolveAuthorityFixPatch(match, fix) : null;
+      if (!patch) return;
+      setRecheckingIds((prev) => new Set(prev).add(match.id));
+      try {
+        const updated = await Runs.editMatch(runId, match.id, patch);
+        onMatchChanged(updated);
+        try {
+          await Runs.aiVerify(runId, match.id);
+        } catch (err) {
+          console.warn("Authority auto-fix re-verify failed", err);
+        }
+        const refreshed = await Runs.get(runId);
+        const row = refreshed.matches.find((m) => m.id === match.id);
+        if (row) onMatchChanged(row);
+      } catch (err) {
+        console.error("Failed to apply authority auto-fix", err);
+      } finally {
+        setRecheckingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(match.id);
+          return next;
+        });
+      }
+    },
+    [runId, onMatchChanged],
+  );
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -327,7 +370,38 @@ export function AuthorityTable({
     // Report filtered IDs as all primary + all alt IDs so bulk actions work.
     const allIds = grouped.flatMap((g) => [g.primary.id, ...g.alts.map((a) => a.id)]);
     onFilteredChange?.(allIds);
-  }, [grouped, onFilteredChange]);
+    if (onFixableChange) {
+      const rows = grouped.flatMap((g) => [g.primary, ...g.alts]);
+      onFixableChange(rows.filter(canAuthorityAutoFix).map((m) => m.id));
+    }
+  }, [grouped, onFilteredChange, onFixableChange]);
+
+  function renderFixCell(match: AuthorityMatch) {
+    const isRechecking = recheckingIds.has(match.id);
+    const showAutoFix = !isRechecking && canAuthorityAutoFix(match);
+    return (
+      <div data-testid="authority-fix-cell" onClick={(e) => e.stopPropagation()}>
+        {showAutoFix ? (
+          <button
+            type="button"
+            data-testid="authority-autofix-btn"
+            title={authorityFixTitle(match)}
+            onClick={() => { void applyAutoFix(match); }}
+            className="button-ghost h-7 px-2 text-xs text-warn hover:opacity-90 whitespace-nowrap"
+          >
+            ✨ Fix
+          </button>
+        ) : isRechecking ? (
+          <span
+            data-testid="authority-rechecking"
+            className="inline-flex items-center h-7 px-1 text-xs text-warn opacity-80 animate-pulse whitespace-nowrap"
+          >
+            ⏳…
+          </span>
+        ) : null}
+      </div>
+    );
+  }
 
   function toggleSort(col: ColumnKey) {
     setSort((prev) => {
@@ -603,6 +677,11 @@ export function AuthorityTable({
                         : <span className="muted text-xs italic">—</span>}
                     </td>
 
+                    {/* Auto-fix */}
+                    <td className="py-2 pr-3">
+                      {renderFixCell(m)}
+                    </td>
+
                     {/* Approved */}
                     <td className="py-2 pr-3" onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={m.approved} onChange={() => onApproveToggle(m)} />
@@ -671,6 +750,9 @@ export function AuthorityTable({
                         </td>
                         <td className="py-1.5 pr-3">
                           {aai ? <VerdictBadge overall={aai.overall} /> : <span className="muted text-xs italic">—</span>}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          {renderFixCell(alt)}
                         </td>
                         <td className="py-1.5 pr-3" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={alt.approved} onChange={() => onApproveToggle(alt)} />

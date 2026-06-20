@@ -2,6 +2,7 @@ import { Link, NavLink, type NavLinkProps } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import {Glass, GlassPill} from "@/components/glass";
+import {JobTrayBootstrap} from "@/components/jobs/JobTray";
 import {useAuth} from "@/stores/auth";
 
 
@@ -37,6 +38,7 @@ export function Layout({children}: Props) {
       </Glass>
 
       <main>{children}</main>
+      <JobTrayBootstrap />
     </div>
   );
 }

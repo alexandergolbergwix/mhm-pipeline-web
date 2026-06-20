@@ -503,6 +503,9 @@ async def _persist_ai_verdicts_to_entities(
                 continue
             eid = ext.id
         vd = (v.get("verdict") or {}) if isinstance(v, dict) else {}
+        suggested_fix = vd.get("suggested_fix")
+        if suggested_fix is None and isinstance(cand, dict):
+            suggested_fix = cand.get("suggested_fix")
         _jm = v.get("judge_id") or v.get("model") or "gemini-3.5-flash"
         ext_row = next((e for e in entities if e.id == eid), None)
         cache_key = v.get("cache_key")
@@ -514,7 +517,7 @@ async def _persist_ai_verdicts_to_entities(
             "type_ok":       vd.get("type_ok"),
             "role_ok":       vd.get("role_ok"),
             "reasoning":     vd.get("reasoning"),
-            "suggested_fix": vd.get("suggested_fix"),
+            "suggested_fix": suggested_fix,
             "model":         _jm,
             "judged_at":     v.get("judged_at"),
             "cache_key":     cache_key,

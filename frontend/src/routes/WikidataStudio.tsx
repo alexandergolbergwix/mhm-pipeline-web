@@ -6,6 +6,7 @@ import {ApiError} from "@/api/client";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {Runs} from "@/api/runs";
+import {RunJobs} from "@/api/runJobs";
 import {useLabelStore} from "@/api/wikidataLabels";
 import {useDebounce} from "@/hooks/useDebounce";
 import {
@@ -112,6 +113,24 @@ export default function WikidataStudio() {
     const pg    = opts?.nextPage ?? page;
     setLoading(true); setError(null);
     try {
+      if (force) {
+        const job = await RunJobs.start(runId, "wikidata_studio_build", {
+          approved_only: flag,
+          force_rebuild: true,
+        });
+        let done = false;
+        while (!done) {
+          const j = await RunJobs.get(runId, job.id);
+          if (j.status === "queued" || j.status === "running") {
+            await new Promise((r) => window.setTimeout(r, 2000));
+            continue;
+          }
+          done = true;
+          if (j.status === "failed") {
+            throw new Error(j.error ?? "Studio build failed");
+          }
+        }
+      }
       const result = await Studio.build(runId, {
         approvedOnly: flag,
         forceRebuild: force,
@@ -163,20 +182,37 @@ export default function WikidataStudio() {
     if (!runId) return;
     setBusy(dry ? "dry" : "live"); setError(null);
     try {
-      const r = await Studio.upload(runId, {
+      const job = await RunJobs.start(runId, "wikidata_upload", {
         dry_run: dry,
         approved_only: approvedOnly,
-        upload_approved_only: uploadApprovedOnly,
+        item_approved_only: uploadApprovedOnly,
       });
-      const map: Record<string, UploadOutcome> = {};
-      r.outcomes.forEach((o, i) => { map[`${o.entity_type}:${i}`] = o; });
-      setUploadMap(map);
-      setLastUpload({
-        dry_run: r.dry_run, moratorium_lifted: r.moratorium_lifted, test_mode: r.test_mode,
-      });
+      const poll = async () => {
+        const j = await RunJobs.get(runId, job.id);
+        if (j.status === "queued" || j.status === "running") {
+          window.setTimeout(() => { void poll(); }, 2000);
+          return;
+        }
+        setBusy(null);
+        if (j.status === "succeeded" && j.result) {
+          const outcomes = (j.result.outcomes as UploadOutcome[]) ?? [];
+          const map: Record<string, UploadOutcome> = {};
+          outcomes.forEach((o, i) => { map[`${o.entity_type}:${i}`] = o; });
+          setUploadMap(map);
+          setLastUpload({
+            dry_run: Boolean(j.result.dry_run),
+            moratorium_lifted: Boolean(j.result.moratorium_lifted),
+            test_mode: Boolean(j.result.test_mode),
+          });
+        } else if (j.status === "failed") {
+          setError(j.error ?? "Upload failed");
+        }
+      };
+      void poll();
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
-    } finally { setBusy(null); }
+      setBusy(null);
+    }
   }
 
   const toggleApproval = useCallback(async (item: StudioItem) => {

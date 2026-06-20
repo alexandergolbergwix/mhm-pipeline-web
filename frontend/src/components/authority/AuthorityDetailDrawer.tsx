@@ -23,6 +23,12 @@ import { ConfidenceBadge, VerdictBadge } from "@/components/MatchDetailDialog";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import {Glass, GlassPill} from "@/components/glass";
+import {
+  authorityFixTitle,
+  canAuthorityAutoFix,
+  getAuthoritySuggestedFix,
+  resolveAuthorityFixPatch,
+} from "@/utils/authorityAutofix";
 
 export interface AuthorityDetailDrawerProps {
   match:          AuthorityMatch | null;   // null = drawer closed
@@ -97,7 +103,27 @@ export function AuthorityDetailDrawer({
     }
   }
 
+  async function applyAutoFix() {
+    if (!match) return;
+    const fix = getAuthoritySuggestedFix(match);
+    const patch = fix ? resolveAuthorityFixPatch(match, fix) : null;
+    if (!patch) return;
+    setVerifyBusy(true);
+    setVerifyError(null);
+    try {
+      const updated = await Runs.editMatch(runId, match.id, patch);
+      onMatchChanged(updated);
+      const r = await Runs.aiVerify(runId, match.id);
+      onMatchChanged({ ...updated, payload: { ...updated.payload, ai_verdict: r } });
+    } catch (e) {
+      setVerifyError(e instanceof ApiError ? e.detail : String(e));
+    } finally {
+      setVerifyBusy(false);
+    }
+  }
+
   const p = (match?.payload ?? {}) as Record<string, unknown>;
+  const showAutoFix = match != null && canAuthorityAutoFix(match);
 
   return (
     <>
@@ -189,6 +215,18 @@ export function AuthorityDetailDrawer({
                     className="button-ghost h-7 px-3 text-xs ml-auto">
               {verifyBusy ? "Asking…" : (p.ai_verdict ? "Re-verify with AI" : "Verify with AI")}
             </button>
+            {showAutoFix && (
+              <button
+                type="button"
+                disabled={verifyBusy}
+                onClick={() => { void applyAutoFix(); }}
+                data-testid="authority-detail-autofix-btn"
+                title={authorityFixTitle(match)}
+                className="button-ghost h-7 px-3 text-xs text-warn"
+              >
+                ✨ Auto-fix
+              </button>
+            )}
           </div>
         )}
 
@@ -206,7 +244,7 @@ export function AuthorityDetailDrawer({
               <ConfidenceCard match={match} payload={p} />
               <DatesCard match={match} payload={p} />
               <BiodataCard payload={p} />
-              <AiVerdictCard payload={p} />
+              <AiVerdictCard payload={p} match={match} onAutoFix={showAutoFix ? applyAutoFix : undefined} />
             </>
           )}
         </div>
@@ -485,13 +523,29 @@ function BiodataCard({payload}: {payload: Record<string, unknown>}) {
 }
 
 
-function AiVerdictCard({ payload }: { payload: Record<string, unknown> }) {
+function AiVerdictCard({
+  payload,
+  match,
+  onAutoFix,
+}: {
+  payload: Record<string, unknown>;
+  match: AuthorityMatch;
+  onAutoFix?: () => void;
+}) {
   const verdict = payload.ai_verdict as null | {
     overall: "full" | "partial" | "fail" | "abstain";
     reasoning: string;
     model: string;
     judged_at: string;
     fallback?: boolean;
+    suggested_fix?: {
+      target?: string;
+      value?: string;
+      text?: string;
+      source_field?: string;
+      reasoning?: string | null;
+      confidence?: string;
+    } | null;
   };
 
   if (!verdict) {
@@ -519,6 +573,33 @@ function AiVerdictCard({ payload }: { payload: Record<string, unknown> }) {
         <blockquote className="border-l-2 border-biu-sky/40 pl-2 text-[11px] text-ink/90 leading-snug">
           {verdict.reasoning}
         </blockquote>
+      )}
+      {verdict.suggested_fix && canAuthorityAutoFix(match) && (
+        <div className="rounded border border-warn/30 bg-warn/5 p-2 space-y-1"
+             data-testid="authority-autofix-preview">
+          <div className="kicker text-warn">Suggested fix</div>
+          {(() => {
+            const patch = resolveAuthorityFixPatch(match, verdict.suggested_fix!);
+            const [target, value] = patch ? Object.entries(patch)[0] ?? [] : [];
+            return target ? (
+              <p className="text-[11px]">
+                <span className="muted">{target}: </span>
+                <span dir="auto">{value}</span>
+              </p>
+            ) : null;
+          })()}
+          {onAutoFix && (
+            <button
+              type="button"
+              data-testid="authority-drawer-autofix-btn"
+              title={authorityFixTitle(match)}
+              onClick={onAutoFix}
+              className="button-ghost h-7 px-2 text-xs text-warn"
+            >
+              ✨ Auto-fix
+            </button>
+          )}
+        </div>
       )}
       <div className="muted text-[10px]">
         Judged: {new Date(verdict.judged_at).toLocaleString()}

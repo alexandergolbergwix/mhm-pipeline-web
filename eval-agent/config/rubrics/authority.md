@@ -79,3 +79,49 @@ clearly resolves the flag in the match's favour.
 
 JSON only. Cite the MARC field name and quote the substring you used, and
 name the authority id you judged.
+
+The JSON object must include a `suggested_fix` key (null by default).
+
+Return a non-null `suggested_fix` **only if ALL of the following hold**:
+
+1. `overall` is `fail` or `partial` — the match is wrong or uncertain.
+2. You can cite a **specific corrected value** visible in the MARC context
+   (or from a successful `lookup_authority` tool result).
+3. You are **high confidence** the correction fixes the mismatch.
+4. The fix changes exactly one editable field (see below).
+
+Otherwise return `"suggested_fix": null`.
+
+Editable fields — set `source_field` to one of these and `text` to the
+corrected value:
+
+| `source_field`   | When to fix |
+|------------------|-------------|
+| `matched_name`   | Wrong authority preferred label; correct form is in MARC |
+| `entity_text`    | MARC heading text is wrong or mis-segmented |
+| `mazal_id`       | Wrong NLI/Mazal id; you found the right id |
+| `viaf_id`        | Wrong VIAF cluster id |
+| `wikidata_qid`   | Wrong Wikidata QID |
+| `role`           | Role is inconsistent with the MARC field (e.g. author vs owner) |
+
+Example (wrong matched name):
+
+```json
+{
+  "name_ok": "no",
+  "type_ok": "yes",
+  "role_ok": "yes",
+  "overall": "fail",
+  "reasoning": "authors lists 'קארו, יוסף' but Mazal matched a homonym",
+  "suggested_fix": {
+    "text": "קארו, יוסף בן אפרים",
+    "source_field": "matched_name",
+    "reasoning": "100$a spells the full patronymic — Mazal heading should match",
+    "confidence": "high"
+  }
+}
+```
+
+Do **NOT** emit a fix when the match is already correct (`overall=full`), when
+you would only downgrade confidence without a concrete replacement, or when the
+correct id/name is not substantiated by MARC or authority lookup evidence.

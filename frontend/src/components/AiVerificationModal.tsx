@@ -13,11 +13,11 @@
  * New actions are server-side dict entries, never UI input.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import {Runs} from "@/api/runs";
 import {
   AiVerify,
-  streamVerification,
   type AgentActionMeta,
   type AgentEvent,
   type ScopeKind,
@@ -29,6 +29,7 @@ import {VerdictsTable} from "@/components/VerdictsTable";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {verdictStorageKey} from "@/utils/verdictKey";
 import {Glass} from "@/components/glass";
+import {useVerifyJob} from "@/hooks/useVerifyJob";
 
 
 export interface AiVerificationModalProps {
@@ -55,7 +56,6 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
   // Gemini judgement on every candidate (the cache is still
   // refreshed by the new verdicts, so subsequent runs warm-hit).
   const [overrideCache, setOverrideCache] = useState(false);
-  const [running,       setRunning]       = useState(false);
   const [events,     setEvents]     = useState<AgentEvent[]>([]);
   const [verdicts,   setVerdicts]   = useState<Record<string, AgentEvent>>({});
   const [flow,       setFlow]       = useState<FlowState>(makeInitialFlowState());
@@ -68,7 +68,30 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
   >(null);
   const [showingHistorical, setShowingHistorical] = useState(false);
 
-  const cancelRef = useRef<(() => void) | null>(null);
+  const loadSession = useCallback(async (sessionId: string) => {
+    const full = await AiVerify.session(runId, sessionId);
+    const seeded: Record<string, AgentEvent> = {};
+    const evs: AgentEvent[] = [];
+    for (const v of full.verdicts ?? []) {
+      const ev: AgentEvent = {type: "agent.verdict", ...v};
+      evs.push(ev);
+      seeded[verdictStorageKey(ev)] = ev;
+    }
+    setEvents(evs);
+    setVerdicts(seeded);
+    setFlow((prev) => {
+      let next = prev;
+      for (const ev of evs) next = reduceFlow(next, ev);
+      return next;
+    });
+  }, [runId]);
+
+  const {running, start: startVerifyJob, stop} = useVerifyJob({
+    runId,
+    kind: "authority_verify",
+    loadSession,
+    onFailed: (msg) => setError(msg),
+  });
 
   // Load actions for this scope kind AND auto-prefill verdicts from
   // the most recent prior session if one exists. The curator gets to
@@ -123,39 +146,21 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
 
   async function start(): Promise<void> {
     if (running) return;
-    setRunning(true); setError(null);
-    setEvents([]); setVerdicts({}); setFlow(makeInitialFlowState());
+    setError(null);
+    setEvents([]);
+    setVerdicts({});
+    setFlow(makeInitialFlowState());
     setShowingHistorical(false);
-    const { events: stream, cancel } = streamVerification(runId, {
-      action_id:      actionId,
-      match_ids:      matchIds,
-      override_cache: overrideCache,
-    });
-    cancelRef.current = cancel;
     try {
-      for await (const ev of stream) {
-        setEvents((p) => [...p, ev]);
-        setFlow((p) => reduceFlow(p, ev));
-        if (ev.type === "agent.verdict") {
-          setVerdicts((p) => ({...p, [verdictStorageKey(ev)]: ev}));
-        }
-        if (ev.type === "runner.error") {
-          setError((ev as {message?: string}).message ?? "Verification failed");
-          break;
-        }
-        if (ev.type === "session.end") break;
-      }
+      await startVerifyJob({
+        action_id:      actionId,
+        match_ids:      matchIds,
+        override_cache: overrideCache,
+      });
     } catch (e) {
-      if ((e as Error).name !== "AbortError") {
-        setError((e as Error).message);
-      }
-    } finally {
-      cancelRef.current = null;
-      setRunning(false);
+      setError((e as Error).message);
     }
   }
-
-  function stop(): void { cancelRef.current?.(); }
 
   const action = useMemo(
     () => actions.find((a) => a.id === actionId) ?? null,
@@ -241,7 +246,11 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
             that manuscript. */}
         <VerdictsTable
           verdicts={verdicts}
+          runId={runId}
           onOpenMarc={(controlNumber) => setMarcPopup(controlNumber)}
+          onApplyFix={async (matchId, target, value) => {
+            await Runs.editMatch(runId, matchId, {[target]: value});
+          }}
         />
 
         {marcPopup && (

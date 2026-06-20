@@ -11,8 +11,12 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from eval_agent.evaluators._base import Candidate, Evaluator
+from eval_agent.evaluators._base import Candidate, Evaluator, SuggestedFix, Verdict
 from eval_agent.ingest import authority_results, marc_extract
+
+_EDITABLE_TARGETS = frozenset({
+    "matched_name", "entity_text", "mazal_id", "viaf_id", "wikidata_qid", "role",
+})
 
 
 class AuthorityEvaluator(Evaluator):
@@ -101,6 +105,66 @@ class AuthorityEvaluator(Evaluator):
             f"  confidence:  {candidate.confidence:.3f}\n"
         )
         return self.render_prompt(candidate, prediction_block=block)
+
+    def parse_verdict(self, raw: dict[str, Any] | None, candidate: Candidate) -> Verdict:
+        v = super().parse_verdict(raw, candidate)
+        if raw is None:
+            return v
+        fix = self._parse_authority_suggested_fix(raw.get("suggested_fix"), candidate)
+        if fix is None:
+            return v
+        v.suggested_fix = fix
+        payload_fix = {
+            "target":       fix.source_field,
+            "value":        fix.text,
+            "text":         fix.text,
+            "source_field": fix.source_field,
+            "reasoning":    fix.reasoning,
+            "confidence":   "high",
+        }
+        candidate.payload["suggested_fix"] = payload_fix
+        v.candidate_payload["suggested_fix"] = payload_fix
+        return v
+
+    def _parse_authority_suggested_fix(
+        self,
+        raw_fix: Any,
+        candidate: Candidate,
+    ) -> SuggestedFix | None:
+        if not isinstance(raw_fix, dict):
+            return None
+        if raw_fix.get("confidence") != "high":
+            return None
+        if not candidate.marc_context:
+            return None
+
+        target = str(raw_fix.get("source_field") or raw_fix.get("target") or "").strip()
+        value = str(raw_fix.get("text") or raw_fix.get("value") or "").strip()
+        if not target or target not in _EDITABLE_TARGETS or not value:
+            return None
+        if len(value) > 512:
+            return None
+
+        p = candidate.payload
+        if target == "entity_text":
+            current = str(p.get("entity_text") or p.get("name") or "").strip()
+        elif target == "matched_name":
+            current = str(p.get("matched_name") or "").strip()
+        elif target == "viaf_id":
+            current = str(p.get("viaf_id") or "").strip()
+            if not current and p.get("viaf_uri"):
+                current = str(p.get("viaf_uri")).rstrip("/").split("/")[-1].strip()
+        else:
+            current = str(p.get(target) or "").strip()
+        if value == current:
+            return None
+
+        return SuggestedFix(
+            text=value,
+            reasoning=str(raw_fix.get("reasoning") or "") or None,
+            source_field=target,
+            confidence="high",
+        )
 
 
 def _classify(match: dict[str, Any]) -> str:

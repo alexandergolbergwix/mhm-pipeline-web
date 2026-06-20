@@ -50,6 +50,7 @@ from app.models.run import (
     Run,
     RunRecord,
 )
+from app.models.run_job import RunJob
 from app.models.session import Session
 from app.models.user import ROLE_ADMIN, ROLE_EDITOR, User
 from app.models.wikidata_studio_cache import WikidataStudioCache
@@ -93,6 +94,7 @@ __all__ = [
     "RUN_STATUS_RUNNING",
     "RUN_STATUS_SUCCEEDED",
     "Run",
+    "RunJob",
     "RdfArtifact",
     "RunRecord",
     "SavedQuery",

@@ -18,16 +18,16 @@
  *    new data so the callback does NOT fire.)
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
 
 import {
   NerVerify,
-  streamNerVerification,
   type AgentActionMeta,
   type AgentEvent,
   type ScopeKind,
 } from "@/api/nerVerify";
-import type {Entity} from "@/api/extractionApprovals";
+import {ExtractionApprovals, type Entity} from "@/api/extractionApprovals";
+import {recheckEntity} from "@/api/nerVerify";
 import {
   emitEntitiesRefreshed,
   setAiVerdictCache,
@@ -40,6 +40,7 @@ import { VerdictsTable } from "@/components/VerdictsTable";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import {Glass} from "@/components/glass";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {useVerifyJob} from "@/hooks/useVerifyJob";
 import {useAuth} from "@/stores/auth";
 
 
@@ -76,7 +77,6 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
   // Gemini judgement on every candidate (the cache is still
   // refreshed by the new verdicts, so subsequent runs warm-hit).
   const [overrideCache, setOverrideCache] = useState(false);
-  const [running,       setRunning]       = useState(false);
   const [events,        setEvents]        = useState<AgentEvent[]>([]);
   const [verdicts,      setVerdicts]      = useState<Record<string, AgentEvent>>({});
   const [flow,          setFlow]          = useState<FlowState>(makeInitialFlowState());
@@ -92,7 +92,54 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
   // by the Retry button when the initial load failed mid-dev-reload.
   const [reloadKey, setReloadKey] = useState(0);
 
-  const cancelRef = useRef<(() => void) | null>(null);
+  const loadSession = useCallback(async (sessionId: string) => {
+    const full = await NerVerify.session(runId, sessionId);
+    const seeded: Record<string, AgentEvent> = {};
+    const evs: AgentEvent[] = [];
+    for (const v of full.verdicts ?? []) {
+      const cand = (v.candidate ?? {}) as Record<string, unknown>;
+      const entityId = String(cand._entity_id ?? cand.record_id ?? "");
+      if (!entityId) continue;
+      const ev: AgentEvent = {type: "agent.verdict", ...v};
+      evs.push(ev);
+      seeded[entityId] = ev;
+      void (async () => {
+        try {
+          const fp = await entityVerdictFingerprint({
+            control_number: String(cand.control_number ?? ""),
+            source:         String(cand.source ?? "person_ner") as Entity["source"],
+            start:          Number(cand.start ?? 0),
+            end:            Number(cand.end ?? 0),
+            text:           String(cand.text ?? ""),
+            type:           String(cand.type ?? "OTHER") as Entity["type"],
+            role:           String(cand.role ?? "") as Entity["role"],
+            ai_verdict:     {overall: "unknown", model: String(ev.judge_id ?? ev.model ?? "")},
+          });
+          setAiVerdictCache(userId, runId, fp, ev);
+        } catch {
+          // non-fatal
+        }
+      })();
+    }
+    setEvents(evs);
+    setVerdicts(seeded);
+    setFlow((prev) => {
+      let next = prev;
+      for (const ev of evs) next = reduceFlow(next, ev);
+      return next;
+    });
+  }, [runId, userId]);
+
+  const {running, start: startVerifyJob, stop} = useVerifyJob({
+    runId,
+    kind: "ner_verify",
+    loadSession,
+    onFailed: (msg) => setError(msg),
+    onComplete: () => {
+      emitEntitiesRefreshed(userId, runId);
+      onVerdictsLanded?.();
+    },
+  });
 
   // Load actions for this scope kind AND auto-prefill verdicts from
   // the most recent prior session if one exists. The curator gets to
@@ -163,86 +210,21 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
 
   async function start(): Promise<void> {
     if (running) return;
-    setRunning(true); setError(null);
-    setEvents([]); setVerdicts({}); setFlow(makeInitialFlowState());
+    setError(null);
+    setEvents([]);
+    setVerdicts({});
+    setFlow(makeInitialFlowState());
     setShowingHistorical(false);
-    const { events: stream, cancel } = streamNerVerification(runId, {
-      action_id:      actionId,
-      entity_ids:     entityIds,
-      override_cache: overrideCache,
-    });
-    cancelRef.current = cancel;
-    let landed = false;
     try {
-      for await (const ev of stream) {
-        setEvents((p) => [...p, ev]);
-        setFlow((p) => reduceFlow(p, ev));
-        if (ev.type === "agent.verdict") {
-          const candidate = (ev.candidate ?? {}) as Record<string, unknown>;
-          const entityId = String(candidate._entity_id ?? candidate.record_id ?? "");
-          if (entityId) {
-            setVerdicts((p) => ({ ...p, [entityId]: ev }));
-            landed = true;
-            void (async () => {
-              try {
-                const fp = await entityVerdictFingerprint({
-                  control_number: String(candidate.control_number ?? ""),
-                  source:         String(candidate.source ?? "person_ner") as Entity["source"],
-                  start:          Number(candidate.start ?? 0),
-                  end:            Number(candidate.end ?? 0),
-                  text:           String(candidate.text ?? ""),
-                  type:           String(candidate.type ?? "OTHER") as Entity["type"],
-                  role:           String(candidate.role ?? "") as Entity["role"],
-                  ai_verdict:     {overall: "unknown", model: String(ev.judge_id ?? ev.model ?? "")},
-                });
-                setAiVerdictCache(userId, runId, fp, ev);
-              } catch {
-                // non-fatal
-              }
-            })();
-          }
-        }
-        if (ev.type === "runner.warning") {
-          // e.g. uncached entities couldn't be verified because the
-          // eval-agent isn't available server-side. Surface it instead of
-          // swallowing it — the stream still ends via session.end so any
-          // cached verdicts already emitted remain visible.
-          setError((ev as {message?: string}).message
-            ?? "Some entities could not be verified.");
-        }
-        if (ev.type === "runner.error") {
-          setError((ev as {message?: string}).message ?? "Verification failed");
-          break;
-        }
-        if (ev.type === "runner.exit") {
-          const rc = (ev as {return_code?: number}).return_code;
-          if (typeof rc === "number" && rc !== 0 && !landed) {
-            setError(`Verification process exited with code ${rc}.`);
-          }
-        }
-        if (ev.type === "session.end") break;
-      }
+      await startVerifyJob({
+        action_id:      actionId,
+        entity_ids:     entityIds,
+        override_cache: overrideCache,
+      });
     } catch (e) {
-      if ((e as Error).name !== "AbortError") {
-        setError((e as Error).message);
-      }
-    } finally {
-      cancelRef.current = null;
-      setRunning(false);
-      if (landed) {
-        emitEntitiesRefreshed(userId, runId);
-        onVerdictsLanded?.();
-      }
-      // Never leave the modal silently empty: if the stream ended without
-      // a single verdict and nothing else explained why, say so.
-      if (!landed) {
-        setError((prev) => prev
-          ?? "No verdicts were produced. The verification stream ended without results.");
-      }
+      setError((e as Error).message);
     }
   }
-
-  function stop(): void { cancelRef.current?.(); }
 
   const action = useMemo(
     () => actions.find((a) => a.id === actionId) ?? null,
@@ -353,6 +335,16 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
         <VerdictsTable
           verdicts={verdicts}
           onOpenMarc={(controlNumber) => setMarcPopup(controlNumber)}
+          onApplyFix={async (entityId, target, value) => {
+            const patch = target ? {[target]: value} : {text: value};
+            await ExtractionApprovals.patch(runId, entityId, patch);
+            emitEntitiesRefreshed(userId, runId);
+            try {
+              await recheckEntity(runId, entityId);
+            } catch (err) {
+              console.warn("NER modal auto-fix re-verify failed", err);
+            }
+          }}
         />
 
         {marcPopup && (

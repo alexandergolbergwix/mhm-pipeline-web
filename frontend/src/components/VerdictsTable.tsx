@@ -137,19 +137,25 @@ export function VerdictsTable(props: VerdictsTableProps) {
 
   async function handleApplyFix(ev: AgentEvent) {
     const cand = (ev.candidate ?? {}) as Record<string, unknown>;
-    const sf = (cand.suggested_fix ?? null) as Record<string, unknown> | null;
+    const vd = (ev.verdict ?? {}) as Record<string, unknown>;
+    const sf = (cand.suggested_fix ?? vd.suggested_fix ?? null) as Record<string, unknown> | null;
     if (!sf || !onApplyFix) return;
     const localId = String(
-      cand._item_id ?? cand._local_id ?? cand.local_id ?? ev.record_id ?? ""
+      cand._entity_id
+      ?? cand._match_id
+      ?? cand._item_id
+      ?? cand._local_id
+      ?? cand.local_id
+      ?? ev.record_id
+      ?? ""
     );
     if (!localId) return;
+    const target = String(sf.target ?? sf.source_field ?? "");
+    const value = String(sf.value ?? sf.text ?? "");
+    if (!value) return;
     setFixingId(localId);
     try {
-      await onApplyFix(
-        localId,
-        String(sf.target ?? ""),
-        String(sf.value ?? ""),
-      );
+      await onApplyFix(localId, target, value);
     } finally {
       setFixingId(null);
     }
@@ -387,15 +393,26 @@ export function VerdictsTable(props: VerdictsTableProps) {
               const open = expanded.has(key);
               const o = overall(ev);
               const cand = (ev.candidate ?? {}) as Record<string, unknown>;
-              const sf = (cand.suggested_fix ?? null) as Record<string, unknown> | null;
+              const vd = (ev.verdict ?? {}) as Record<string, unknown>;
+              const sf = (cand.suggested_fix ?? vd.suggested_fix ?? null) as Record<string, unknown> | null;
               const localId = String(
-                cand._item_id ?? cand._local_id ?? cand.local_id ?? ev.record_id ?? ""
+                cand._entity_id
+                ?? cand._match_id
+                ?? cand._item_id
+                ?? cand._local_id
+                ?? cand.local_id
+                ?? ev.record_id
+                ?? ""
               );
               const isFixing = fixingId === localId;
+              const fixTarget = String(sf?.target ?? sf?.source_field ?? "");
+              const fixValue = String(sf?.value ?? sf?.text ?? "");
               const showFix = hasFixColumn
                 && sf != null
                 && String(sf.confidence ?? "") === "high"
-                && localId !== "";
+                && localId !== ""
+                && fixValue !== ""
+                && (fixTarget !== "" || Boolean(sf.text));
               return (
                 <Row key={key}
                   ev={ev} open={open} overall={o}

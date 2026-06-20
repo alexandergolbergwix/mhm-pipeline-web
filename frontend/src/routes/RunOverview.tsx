@@ -19,6 +19,7 @@ import { Link, useParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { Extraction, type ExtractionStatus } from "@/api/extraction";
+import { RunJobs } from "@/api/runJobs";
 import { Rdf, type RdfStatus } from "@/api/rdf";
 import { Runs, type RunDetail } from "@/api/runs";
 import { Studio, type StudioBuild } from "@/api/wikidataStudio";
@@ -34,6 +35,27 @@ export default function RunOverview() {
   const [extraction, setExtraction]       = useState<TileState<ExtractionStatus>>({ status: "loading" });
   const [rdf, setRdf]                     = useState<TileState<RdfStatus>>({ status: "loading" });
   const [studio, setStudio]               = useState<TileState<StudioBuild>>({ status: "loading" });
+  const [activeJobs, setActiveJobs]       = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void RunJobs.listMine(true).then(({jobs}) => {
+      if (!cancelled) {
+        setActiveJobs(jobs.filter((j) => j.run_id === runId).map((j) => j.kind));
+      }
+    });
+    const id = window.setInterval(() => {
+      void RunJobs.listMine(true).then(({jobs}) => {
+        if (!cancelled) {
+          setActiveJobs(jobs.filter((j) => j.run_id === runId).map((j) => j.kind));
+        }
+      });
+    }, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [runId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,7 +135,14 @@ export default function RunOverview() {
             title="AI Extraction"
             description="Hebrew Person NER · Provenance · Contents · Genre classifier"
             statePill={extractionPill(extraction)}
-            stats={extractionStats(extraction)}
+            stats={
+              <>
+                {extractionStats(extraction)}
+                {activeJobs.includes("extraction") && (
+                  <span className="text-warn ml-2">· job running</span>
+                )}
+              </>
+            }
           />
           <StageTile
             to={`/runs/${runId}`}
@@ -126,9 +155,14 @@ export default function RunOverview() {
               </Pill>
             }
             stats={
-              authorityCounts.total > 0
-                ? `${authorityCounts.approved} approved of ${authorityCounts.total}`
-                : "Run authority matching from AI Extraction output"
+              <>
+                {authorityCounts.total > 0
+                  ? `${authorityCounts.approved} approved of ${authorityCounts.total}`
+                  : "Run authority matching from AI Extraction output"}
+                {activeJobs.includes("authority_re_enrich") && (
+                  <span className="text-warn ml-2">· re-enrich running</span>
+                )}
+              </>
             }
           />
           <StageTile
@@ -137,7 +171,14 @@ export default function RunOverview() {
             title="RDF Graph"
             description="HMO ontology · Cytoscape viewer · SHACL validation"
             statePill={rdfPill(rdf)}
-            stats={rdfStats(rdf)}
+            stats={
+              <>
+                {rdfStats(rdf)}
+                {activeJobs.includes("rdf_build") && (
+                  <span className="text-warn ml-2">· build running</span>
+                )}
+              </>
+            }
           />
           <StageTile
             to={`/runs/${runId}/hmo-studio`}
@@ -153,7 +194,15 @@ export default function RunOverview() {
             title="Wikidata Studio"
             description="Reconcile · QuickStatements · live upload"
             statePill={studioPill(studio)}
-            stats={studioStats(studio)}
+            stats={
+              <>
+                {studioStats(studio)}
+                {(activeJobs.includes("wikidata_studio_build")
+                  || activeJobs.includes("wikidata_upload")) && (
+                  <span className="text-warn ml-2">· job running</span>
+                )}
+              </>
+            }
           />
           <StageTile
             to={`/runs/${runId}/linked-data-explorer`}

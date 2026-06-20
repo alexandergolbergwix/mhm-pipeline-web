@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import {useEffect, useState} from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { useProjectEvents } from "@/api/realtime";
 import {
-  Runs, streamAuthorityEnrich, type AuthorityMatch, type RunDetail as Detail,
+  Runs, type AuthorityMatch, type RunDetail as Detail,
 } from "@/api/runs";
+import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import { AuthorityMatchEditDialog } from "@/components/AuthorityMatchEditDialog";
 import { AiVerificationModal } from "@/components/AiVerificationModal";
 import type { ScopeKind } from "@/api/aiVerify";
@@ -17,6 +18,12 @@ import { AuthorityMatchingHelp } from "@/components/authority/AuthorityMatchingH
 import { AuthorityDetailDrawer } from "@/components/authority/AuthorityDetailDrawer";
 import { AuthorityAutoApproveRuleBuilder } from "@/components/authority/AuthorityAutoApproveRuleBuilder";
 import {Glass, GlassPill} from "@/components/glass";
+import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {
+  canAuthorityAutoFix,
+  getAuthoritySuggestedFix,
+  resolveAuthorityFixPatch,
+} from "@/utils/authorityAutofix";
 
 type EnrichPhase = "idle" | "running" | "done" | "error";
 
@@ -61,7 +68,12 @@ export default function RunDetail() {
     skip_cache: boolean;
   } | null>(null);
   const [enrichError, setEnrichError] = useState<string | null>(null);
-  const enrichCancelRef = useRef<(() => void) | null>(null);
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+  const ensureJobPolling = useRunJobs((s) => s.ensurePolling);
+  const cancelRunJob = useRunJobs((s) => s.cancelJob);
+  const enrichJob = useRunJobs((s) =>
+    runId ? s.jobForRun(runId, "authority_re_enrich") : null,
+  );
   // Live elapsed-time ticker
   const [enrichStartedAt, setEnrichStartedAt] = useState<number | null>(null);
   const [enrichTick, setEnrichTick] = useState(0);
@@ -73,6 +85,8 @@ export default function RunDetail() {
   void enrichTick;
   const [verifyScope, setVerifyScope] = useState<{ kind: ScopeKind; matchIds?: string[]; label: string } | null>(null);
   const [filteredMatchIds, setFilteredMatchIds] = useState<string[]>([]);
+  const [fixableMatchIds, setFixableMatchIds] = useState<string[]>([]);
+  const [bulkFixBusy, setBulkFixBusy] = useState(false);
   const [noteIndex, setNoteIndex] = useState<Record<string, string>>({});
 
   async function refresh() {
@@ -89,6 +103,92 @@ export default function RunDetail() {
     }
   }
   useEffect(() => { void refresh(); }, [runId]);
+
+  function syncEnrichFromJob(job: RunJobSnapshot) {
+    const p = job.progress ?? {};
+    if (job.status === "queued" || job.status === "running") {
+      setEnrichPhase("running");
+      setEnrichError(null);
+      setEnrichResult(null);
+      setEnrichTotal(Number(p.total ?? 0));
+      setEnrichProcessed(Number(p.processed ?? 0));
+      setEnrichCurrentEntity(String(p.current_entity ?? p.message ?? ""));
+      setEnrichCurrentSource(
+        p.current_source != null ? String(p.current_source) : null,
+      );
+      setEnrichCurrentMatched(
+        typeof p.matched === "boolean" ? p.matched : null,
+      );
+      setEnrichStartedAt((prev) => prev ?? Date.now());
+      return;
+    }
+    setEnrichStartedAt(null);
+    if (job.status === "succeeded" && job.result) {
+      setEnrichResult({
+        checked: Number(job.result.checked ?? 0),
+        matched: Number(job.result.matched ?? 0),
+        updated: Number(job.result.updated ?? 0),
+        newly_matched: Number(job.result.newly_matched ?? 0),
+        source_counts: toNumberRecord(job.result.source_counts),
+        skip_cache: Boolean(job.result.skip_cache),
+      });
+      setEnrichPhase("done");
+      void refresh();
+      return;
+    }
+    if (job.status === "cancelled") {
+      setEnrichPhase("idle");
+      return;
+    }
+    if (job.status === "failed") {
+      setEnrichError(job.error ?? "Re-enrich failed");
+      setEnrichPhase("error");
+    }
+  }
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    void RunJobs.listForRun(runId, true).then(({jobs}) => {
+      if (cancelled) return;
+      const active = jobs.find((j) => j.kind === "authority_re_enrich");
+      if (active) {
+        setTrackedJobId(active.id);
+        syncEnrichFromJob(active);
+        ensureJobPolling();
+      }
+    });
+    return () => { cancelled = true; };
+  }, [runId, ensureJobPolling]);
+
+  useEffect(() => {
+    if (enrichJob) syncEnrichFromJob(enrichJob);
+  }, [enrichJob]);
+
+  useEffect(() => {
+    if (!runId || !trackedJobId) return;
+    const rid = runId;
+    const jid = trackedJobId;
+    let cancelled = false;
+    async function pollJob() {
+      try {
+        const job = await RunJobs.get(rid, jid);
+        if (cancelled) return;
+        syncEnrichFromJob(job);
+        if (!isJobActive(job.status)) {
+          setTrackedJobId(null);
+        }
+      } catch {
+        // ignore transient poll errors
+      }
+    }
+    void pollJob();
+    const id = window.setInterval(() => { void pollJob(); }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [runId, trackedJobId]);
 
   useProjectEvents(run?.project_id, (msg) => {
     if (msg.type.startsWith("match.") || msg.type === "snapshot.restored") {
@@ -138,7 +238,6 @@ export default function RunDetail() {
 
   async function reEnrich() {
     if (!runId) return;
-    setEnrichPhase("running");
     setEnrichError(null);
     setEnrichResult(null);
     setBackfillResult(null);
@@ -147,54 +246,37 @@ export default function RunDetail() {
     setEnrichCurrentEntity("");
     setEnrichCurrentSource(null);
     setEnrichCurrentMatched(null);
+    setEnrichPhase("running");
     setEnrichStartedAt(Date.now());
 
-    const {events, cancel} = streamAuthorityEnrich(runId, reEnrichSkipCache);
-    enrichCancelRef.current = cancel;
-
     try {
-      for await (const ev of events) {
-        if (ev.type === "authority.start") {
-          setEnrichTotal(Number(ev.total_entities ?? 0));
-        } else if (ev.type === "authority.entity_start") {
-          setEnrichProcessed(Number(ev.index ?? 0));
-          setEnrichCurrentEntity(String(ev.entity_text ?? ""));
-          setEnrichCurrentSource(null);
-          setEnrichCurrentMatched(null);
-        } else if (ev.type === "authority.entity") {
-          setEnrichProcessed(Number(ev.index ?? 0) + 1);
-          setEnrichCurrentEntity(String(ev.entity_text ?? ""));
-          setEnrichCurrentSource(ev.source != null ? String(ev.source) : null);
-          setEnrichCurrentMatched(Boolean(ev.matched));
-        } else if (ev.type === "authority.done") {
-          setEnrichResult({
-            checked: Number(ev.checked ?? 0),
-            matched: Number(ev.matched ?? 0),
-            updated: Number(ev.updated ?? 0),
-            newly_matched: Number(ev.newly_matched ?? 0),
-            source_counts: toNumberRecord(ev.source_counts),
-            skip_cache: Boolean(ev.skip_cache),
-          });
-          setEnrichPhase("done");
-          await refresh();
-        } else if (ev.type === "authority.error") {
-          setEnrichError(String(ev.message ?? "Unknown error"));
-          setEnrichPhase("error");
+      const job = await RunJobs.start(runId, "authority_re_enrich", {
+        skip_cache: reEnrichSkipCache,
+      });
+      setTrackedJobId(job.id);
+      syncEnrichFromJob(job);
+      ensureJobPolling();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && runId) {
+        const {jobs} = await RunJobs.listForRun(runId, true);
+        const active = jobs.find((j) => j.kind === "authority_re_enrich");
+        if (active) {
+          setTrackedJobId(active.id);
+          syncEnrichFromJob(active);
+          ensureJobPolling();
+          return;
         }
       }
-    } catch (e) {
-      if ((e as Error).name !== "AbortError") {
-        setEnrichError(e instanceof ApiError ? e.detail : String(e));
-        setEnrichPhase("error");
-      }
-    } finally {
-      enrichCancelRef.current = null;
+      setEnrichError(e instanceof ApiError ? e.detail : String(e));
+      setEnrichPhase("error");
       setEnrichStartedAt(null);
     }
   }
 
   function cancelEnrich() {
-    enrichCancelRef.current?.();
+    if (!runId) return;
+    const id = trackedJobId ?? enrichJob?.id;
+    if (id) void cancelRunJob(runId, id);
     setEnrichPhase("idle");
     setEnrichStartedAt(null);
   }
@@ -207,6 +289,31 @@ export default function RunDetail() {
     );
     if (openDrawerMatch && openDrawerMatch.id === next.id) setOpenDrawerMatch(next);
     if (openEditMatch && openEditMatch.id === next.id) setOpenEditMatch(next);
+  }
+
+  async function bulkAutoFix() {
+    if (!runId || !run) return;
+    setBulkFixBusy(true);
+    try {
+      const byId = new Map(run.matches.map((m) => [m.id, m]));
+      for (const id of fixableMatchIds) {
+        const m = byId.get(id);
+        if (!m || !canAuthorityAutoFix(m)) continue;
+        const fix = getAuthoritySuggestedFix(m);
+        const patch = fix ? resolveAuthorityFixPatch(m, fix) : null;
+        if (!patch) continue;
+        const updated = await Runs.editMatch(runId, id, patch);
+        patchMatch(updated);
+        try {
+          await Runs.aiVerify(runId, id);
+        } catch (err) {
+          console.warn("Authority bulk auto-fix re-verify failed", err);
+        }
+      }
+      await refresh();
+    } finally {
+      setBulkFixBusy(false);
+    }
   }
 
   const enrichSourceSummary = enrichResult
@@ -304,6 +411,17 @@ export default function RunDetail() {
                       disabled={filteredMatchIds.length === 0}
                       className="button-ghost !py-1.5 text-sm text-biu-sky">
                 ✨ Verify all visible with AI
+              </button>
+              <button
+                type="button"
+                disabled={fixableMatchIds.length === 0 || bulkFixBusy}
+                onClick={() => { void bulkAutoFix(); }}
+                title="Apply every visible AI-suggested fix with high confidence"
+                className="button-ghost !py-1.5 text-sm text-warn"
+              >
+                {bulkFixBusy
+                  ? "⏳ Applying fixes…"
+                  : `✨ Auto-fix ${fixableMatchIds.length} high-confidence`}
               </button>
               <button onClick={backfillDates} disabled={!!backfillBusy}
                       title="Pull birth / death years from the IDs already stored (Mazal · VIAF · Wikidata) without re-running enrichment. Fixes matches that show '—' in the Dates tab."
@@ -447,6 +565,7 @@ export default function RunDetail() {
             onOpenEdit={setOpenEditMatch}
             onMatchChanged={patchMatch}
             onFilteredChange={setFilteredMatchIds}
+            onFixableChange={setFixableMatchIds}
           />
         </Glass>
       </div>

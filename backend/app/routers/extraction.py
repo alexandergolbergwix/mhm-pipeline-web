@@ -242,6 +242,21 @@ async def get_extraction_status(
     the run is in flight by virtue of holding the SSE stream open.
     """
     await _lookup_run_with_access(db, run_id, auth, write=False)
+    from app.models.run_job import JOB_KIND_EXTRACTION  # noqa: PLC0415
+    from app.pipeline.run_job_service import find_active_job  # noqa: PLC0415
+
+    active_job = await find_active_job(db, run_id=run_id, kind=JOB_KIND_EXTRACTION)
+    if active_job is not None:
+        progress = active_job.progress or {}
+        return {
+            "state":           "running",
+            "extraction_mode": None,
+            "job_id":          str(active_job.id),
+            "processed":       progress.get("processed"),
+            "total":           progress.get("total"),
+            "message":         progress.get("message"),
+        }
+
     # Probe the resolved inference backend so the frontend can render
     # "Inference: Modal" / "Inference: HuggingFace" / etc. before the
     # first run streams an `extraction.start` event. Driven by the

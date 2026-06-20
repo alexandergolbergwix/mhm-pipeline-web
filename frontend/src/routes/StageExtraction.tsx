@@ -15,17 +15,16 @@
  *   extraction.error         { message }
  */
 
-import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import {
   Extraction,
-  streamExtraction,
-  type ExtractionEvent,
   type ExtractionRecord,
 } from "@/api/extraction";
+import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {
   ExtractionApprovals,
   type Entity,
@@ -42,6 +41,9 @@ import { NerVerificationModal } from "@/components/extraction/NerVerificationMod
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
+import {recheckEntity} from "@/api/nerVerify";
+import {canEntityAutoFix, getEntitySuggestedFix} from "@/utils/extractionAutofix";
+import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 
 
 type Phase = "idle" | "running" | "complete" | "error";
@@ -152,6 +154,8 @@ export default function StageExtraction() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(0);
   const [visibleEntities, setVisibleEntities] = useState<Entity[]>([]);
+  const [fixableEntityIds, setFixableEntityIds] = useState<string[]>([]);
+  const [bulkFixBusy, setBulkFixBusy] = useState(false);
   const [editEntity, setEditEntity] = useState<Entity | null>(null);
   const [editMarcSource, setEditMarcSource] = useState<MarcSource | null>(null);
   // The new EntityDetailDrawer takes the full Entity row; clicking a
@@ -180,6 +184,29 @@ export default function StageExtraction() {
       setEditEntity(entity);
     });
   }, []);
+
+  const bulkAutoFix = useCallback(async () => {
+    if (!runId) return;
+    setBulkFixBusy(true);
+    try {
+      const byId = new Map(approvalStore.entities.map((e) => [e.id, e]));
+      for (const id of fixableEntityIds) {
+        const entity = byId.get(id);
+        if (!entity || !canEntityAutoFix(entity)) continue;
+        const fix = getEntitySuggestedFix(entity);
+        if (!fix) continue;
+        await ExtractionApprovals.patch(runId, entity.id, {text: fix.text});
+        try {
+          await recheckEntity(runId, entity.id);
+        } catch (err) {
+          console.warn("Extraction bulk auto-fix re-verify failed", err);
+        }
+      }
+      await refreshEntities();
+    } finally {
+      setBulkFixBusy(false);
+    }
+  }, [runId, fixableEntityIds, approvalStore.entities, refreshEntities]);
 
   const closeEditModal = useCallback(() => {
     setEditEntity(null);
@@ -256,7 +283,57 @@ export default function StageExtraction() {
     setEnabledRoles((prev) => ({ ...prev, [role]: !prev[role] }));
   }
 
-  const cancelRef = useRef<(() => void) | null>(null);
+  const syncFromExtractionJob = useCallback((job: RunJobSnapshot) => {
+    const p = job.progress ?? {};
+    if (job.status === "queued" || job.status === "running") {
+      setPhase("running");
+      setError(null);
+      setTotal(Number(p.total ?? 0));
+      setProcessed(Number(p.processed ?? 0));
+      const msg = String(p.message ?? "");
+      if (msg) {
+        setStatusMessage(msg);
+        setStatusPhase((String(p.phase ?? "processing") || "processing") as typeof statusPhase);
+        setLog((prev) => {
+          const next = [...prev, msg];
+          return next.length > 40 ? next.slice(next.length - 40) : next;
+        });
+      }
+      if (p.mode) setResolvedMode(String(p.mode));
+      return;
+    }
+    if (job.status === "succeeded") {
+      setPhase("complete");
+      void (async () => {
+        if (!runId) return;
+        try {
+          const rows = await Extraction.results(runId);
+          setRecords(rows);
+          setEntityTotals(computeTotals(rows));
+          setProcessed(rows.length);
+          setTotal(rows.length);
+        } catch {
+          // entities table still loads from DB
+        }
+      })();
+      return;
+    }
+    if (job.status === "cancelled") {
+      setPhase("idle");
+      return;
+    }
+    if (job.status === "failed") {
+      setError(job.error ?? "Extraction failed");
+      setPhase("error");
+    }
+  }, [runId]);
+
+  const {
+    trackedJobId,
+    setTrackedJobId,
+    ensureJobPolling,
+    cancelJob,
+  } = useRunJobAttachment(runId, "extraction", syncFromExtractionJob);
 
   // On mount: pull status. If results exist, fetch them.
   useEffect(() => {
@@ -272,7 +349,14 @@ export default function StageExtraction() {
         if (st.extraction_mode) {
           setResolvedMode(st.extraction_mode);
         }
-        if (st.state === "complete") {
+        if (st.state === "running") {
+          setPhase("running");
+          setProcessed(Number(st.processed ?? 0));
+          setTotal(Number(st.total ?? 0));
+          if (st.message) setStatusMessage(String(st.message));
+          if (st.extraction_mode) setResolvedMode(st.extraction_mode);
+          ensureJobPolling();
+        } else if (st.state === "complete") {
           try {
             const rows = await Extraction.results(runId);
             if (cancelled) return;
@@ -307,13 +391,6 @@ export default function StageExtraction() {
     return () => { cancelled = true; };
   }, [runId]);
 
-  function pushLog(line: string) {
-    setLog((prev) => {
-      const next = [...prev, line];
-      return next.length > 40 ? next.slice(next.length - 40) : next;
-    });
-  }
-
   async function start() {
     if (!runId || phase === "running") return;
     setError(null);
@@ -334,100 +411,37 @@ export default function StageExtraction() {
       setPhase("idle");
       return;
     }
-    const { events, cancel } = streamExtraction(runId, mode, selectedRoles, skipCache);
-    cancelRef.current = cancel;
     try {
-      for await (const ev of events) {
-        handleEvent(ev);
-      }
-      // Stream closed cleanly — pull persisted results to be safe.
-      const rows = await Extraction.results(runId);
-      setRecords(rows);
-      setEntityTotals(computeTotals(rows));
-      setProcessed(rows.length);
-      if (rows.length > 0 && total === 0) setTotal(rows.length);
-      setPhase("complete");
+      const job = await RunJobs.start(runId, "extraction", {
+        mode,
+        models: selectedRoles,
+        skip_cache: skipCache,
+      });
+      setTrackedJobId(job.id);
+      syncFromExtractionJob(job);
+      ensureJobPolling();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // Cancellation from the user is not an error.
-      if (msg.includes("aborted")) {
-        setPhase("idle");
-        pushLog("Cancelled by user");
-        return;
+      if (e instanceof ApiError && e.status === 409 && runId) {
+        const {jobs} = await RunJobs.listForRun(runId, true);
+        const active = jobs.find((j) => j.kind === "extraction");
+        if (active) {
+          setTrackedJobId(active.id);
+          syncFromExtractionJob(active);
+          ensureJobPolling();
+          return;
+        }
       }
-      setError(msg);
+      setError(e instanceof ApiError ? e.detail : String(e));
       setPhase("error");
-    } finally {
-      cancelRef.current = null;
     }
-  }
-
-  function handleEvent(ev: ExtractionEvent) {
-    if (ev.type === "extraction.start") {
-      const t = Number(ev.total ?? 0);
-      setTotal(t);
-      const m = String(ev.mode ?? mode ?? "");
-      if (m) setResolvedMode(m);
-      pushLog(`Starting extraction over ${t} record${t === 1 ? "" : "s"} · mode=${m}`);
-      return;
-    }
-    if (ev.type === "extraction.model.ready" ||
-        ev.type === "extraction.model.unavailable") {
-      const role  = String(ev.model ?? "") as ModelRole;
-      const ready = ev.type === "extraction.model.ready";
-      const note  = String(ev.note ?? "");
-      setModels((prev) => ({
-        ...prev,
-        [role]: { status: ready ? "ready" : "unavailable", note },
-      }));
-      pushLog(`${role}: ${ready ? "ready" : "unavailable"}${note ? ` (${note})` : ""}`);
-      return;
-    }
-    if (ev.type === "extraction.model.warming") {
-      const role = String(ev.model ?? "") as ModelRole;
-      const est  = Number(ev.estimated_seconds ?? 0);
-      setModels((prev) => ({
-        ...prev,
-        [role]: { status: "warming", note: est ? `~${est}s cold start` : "warming" },
-      }));
-      pushLog(`${role}: warming (~${est}s)`);
-      return;
-    }
-    if (ev.type === "extraction.record.done") {
-      const idx = Number(ev.index ?? 0);
-      const cn = String(ev.control_number ?? "");
-      setProcessed(idx);
-      pushLog(`#${idx} — ${cn}`);
-      return;
-    }
-    if (ev.type === "extraction.step") {
-      const msg   = String(ev.message ?? "");
-      const phase = String(ev.phase ?? "") as typeof statusPhase;
-      if (msg) {
-        setStatusMessage(msg);
-        setStatusPhase(phase || "");
-        setStatusStartedAt(Date.now());
-        pushLog(msg);
-      }
-      return;
-    }
-    if (ev.type === "extraction.end") {
-      setStatusMessage("");
-      setStatusPhase("");
-      setStatusStartedAt(null);
-      pushLog("Extraction finished. Loading results…");
-      return;
-    }
-    if (ev.type === "extraction.error") {
-      pushLog(`ERROR — ${String(ev.message ?? "unknown")}`);
-      return;
-    }
-    // Anything else — log raw type only.
-    pushLog(ev.type);
   }
 
   function cancelStream() {
-    cancelRef.current?.();
+    if (!runId) return;
+    const id = trackedJobId;
+    if (id) void cancelJob(runId, id);
+    setPhase("idle");
+    setStatusStartedAt(null);
   }
 
   function toggleRow(cn: string) {
@@ -640,6 +654,8 @@ export default function StageExtraction() {
               visibleCount={visibleCount}
               selectedIds={selectedIds}
               visibleEntities={visibleEntities}
+              fixableCount={fixableEntityIds.length}
+              bulkFixBusy={bulkFixBusy}
               onSelectAllVisible={() => {
                 const next = new Set(selectedIds);
                 for (const e of visibleEntities) next.add(e.id);
@@ -660,6 +676,7 @@ export default function StageExtraction() {
                 await refreshEntities();
               }}
               onOpenAutoApprove={() => setAutoApproveOpen(true)}
+              onBulkAutoFix={() => { void bulkAutoFix(); }}
               onVerifyScope={(scopeKind, entityIds) => {
                 const label = scopeKind === "selection"
                   ? `${entityIds.length} selected`
@@ -700,6 +717,7 @@ export default function StageExtraction() {
                 setVisibleCount(count);
                 setVisibleEntities(ents);
               }}
+              onFixableChange={setFixableEntityIds}
             />
           </Glass>
         )}

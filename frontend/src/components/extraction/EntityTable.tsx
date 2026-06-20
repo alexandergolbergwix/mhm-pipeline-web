@@ -33,6 +33,7 @@ import {
 } from "@/api/extractionApprovals";
 import { recheckEntity } from "@/api/nerVerify";
 import {emitEntitiesRefreshed} from "@/cache/extractionCache";
+import {canEntityAutoFix, entityFixTitle} from "@/utils/extractionAutofix";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import {useAuth} from "@/stores/auth";
@@ -100,6 +101,7 @@ export interface EntityTableProps {
   columnFilters: Record<string, Set<string>>;
   onColumnFiltersChange: (filters: Record<string, Set<string>>) => void;
   onVisibleCountChange?: (count: number, entities: Entity[]) => void;
+  onFixableChange?: (ids: string[]) => void;
   globalSearch?: string;
 }
 
@@ -172,7 +174,7 @@ export function EntityTable(props: EntityTableProps) {
   const {
     runId, projectId, entities, selectedIds, onSelectionChange,
     onEntityUpdated, onOpenEdit, onViewSource, onOpenMarc, onOpenVerdict,
-    columnFilters, onColumnFiltersChange, onVisibleCountChange, globalSearch,
+    columnFilters, onColumnFiltersChange, onVisibleCountChange, onFixableChange, globalSearch,
   } = props;
 
   const userId = useAuth((s) => s.user?.id) ?? "";
@@ -216,7 +218,8 @@ export function EntityTable(props: EntityTableProps) {
 
   useEffect(() => {
     onVisibleCountChange?.(display.length, display);
-  }, [display, onVisibleCountChange]);
+    onFixableChange?.(display.filter(canEntityAutoFix).map((e) => e.id));
+  }, [display, onVisibleCountChange, onFixableChange]);
 
   const handleHeaderClick = useCallback((key: ColumnKey, sortable: boolean) => {
     if (!sortable) return;
@@ -321,14 +324,8 @@ export function EntityTable(props: EntityTableProps) {
     // 2. Entity is a NER entity (not genre_ml)
     // 3. The suggested text differs from the current effective text
     const fix = entity.ai_verdict?.suggested_fix;
-    const effectiveText = (entity.effective_text ?? entity.text ?? "").trim();
     const isRechecking = recheckingIds.has(entity.id);
-    const showAutoFix =
-      !isRechecking &&
-      fix != null &&
-      fix.confidence === "high" &&
-      entity.source !== "genre_ml" &&
-      fix.text.trim() !== effectiveText;
+    const showAutoFix = !isRechecking && canEntityAutoFix(entity);
     return (
       <div
         key={entity.id}
@@ -405,7 +402,7 @@ export function EntityTable(props: EntityTableProps) {
             <button
               type="button"
               data-testid="entity-autofix-btn"
-              title={fix!.reasoning ?? `Auto-fix: apply AI-suggested correction → ${fix!.text}`}
+              title={entityFixTitle(entity)}
               onClick={() => applyAutoFix(entity, fix!.text)}
               className="button-ghost h-7 px-2 text-xs text-warn hover:opacity-90 whitespace-nowrap"
             >

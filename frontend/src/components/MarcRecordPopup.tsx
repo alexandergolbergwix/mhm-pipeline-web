@@ -48,10 +48,16 @@ export function MarcRecordPopup({ runId, controlNumber, onClose }: Props) {
     : rows;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60"
+    <div className="fixed inset-0 z-[60] grid place-items-center p-4 bg-black/60"
          onClick={onClose}>
-      <Glass className="max-w-3xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <header className="p-5 pb-3 border-b border-white/10 flex items-start justify-between gap-3">
+      <Glass
+        variant="modal"
+        refraction={false}
+        className="max-w-3xl w-full max-h-[85vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex max-h-[85vh] min-h-[min(50vh,420px)] flex-col">
+        <header className="p-5 pb-3 border-b border-white/10 flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <div className="kicker">MARC record</div>
             <h3 className="font-mono break-all">{controlNumber}</h3>
@@ -65,7 +71,7 @@ export function MarcRecordPopup({ runId, controlNumber, onClose }: Props) {
           <button onClick={onClose} className="button-ghost text-sm shrink-0">Close (ESC)</button>
         </header>
 
-        <div className="px-5 pt-3 pb-2 border-b border-white/5">
+        <div className="px-5 pt-3 pb-2 border-b border-white/5 shrink-0">
           <input value={query} onChange={(e) => setQuery(e.target.value)}
                  placeholder="Find in record — try a name, a year, a MARC tag like 100$a…"
                  autoFocus
@@ -76,9 +82,14 @@ export function MarcRecordPopup({ runId, controlNumber, onClose }: Props) {
           </p>
         </div>
 
-        <div className="flex-1 overflow-auto p-4 space-y-1">
+        <div className="flex-1 min-h-0 overflow-auto p-4 space-y-1">
           {error && <p className="text-danger text-sm">{error}</p>}
           {!record && !error && <p className="muted text-sm">Loading…</p>}
+          {record && rows.length === 0 && !error && (
+            <p className="muted text-sm italic text-center py-6">
+              No MARC fields in this record.
+            </p>
+          )}
           {filtered.map((r) => (
             <div key={r.key}
                  className="grid grid-cols-[140px_1fr] gap-3 text-xs py-1 border-b border-white/5">
@@ -93,6 +104,7 @@ export function MarcRecordPopup({ runId, controlNumber, onClose }: Props) {
           {filtered.length === 0 && record && (
             <p className="muted text-sm italic text-center py-6">No matches.</p>
           )}
+        </div>
         </div>
       </Glass>
     </div>

@@ -98,8 +98,10 @@ async def start_stream(
     """Kick off one AI verification session and stream events via SSE.
 
     The body declares the action + scope; the API key is resolved
-    server-side from the encrypted store. The browser disconnect
-    cancels the subprocess so we never pay Gemini for an orphan.
+    server-side from the encrypted store. For background jobs started
+    via ``POST /runs/{id}/jobs`` (kind ``authority_verify``), closing
+    the browser does not cancel work — use ``POST …/jobs/{id}/cancel``.
+    The SSE path still cancels the subprocess when the connection drops.
     """
     await _lookup_run_with_access(db, run_id, auth, write=False)
 
@@ -423,17 +425,22 @@ async def _persist_ai_verdicts_to_matches(
         except (ValueError, TypeError):
             continue
         vd = (v.get("verdict") or {}) if isinstance(v, dict) else {}
+        cand = (v.get("candidate") or {}) if isinstance(v, dict) else {}
+        suggested_fix = vd.get("suggested_fix")
+        if suggested_fix is None and isinstance(cand, dict):
+            suggested_fix = cand.get("suggested_fix")
         summary = {
-            "overall":     vd.get("overall"),
-            "name_ok":     vd.get("name_ok"),
-            "type_ok":     vd.get("type_ok"),
-            "role_ok":     vd.get("role_ok"),
-            "reasoning":   vd.get("reasoning"),
-            "model":       v.get("judge_id") or v.get("model"),
-            "judged_at":   v.get("judged_at"),
-            "cache_key":   v.get("cache_key"),
-            "session_id":  session_id,
-            "evaluator":   v.get("evaluator_id") or v.get("evaluator"),
+            "overall":        vd.get("overall"),
+            "name_ok":        vd.get("name_ok"),
+            "type_ok":        vd.get("type_ok"),
+            "role_ok":        vd.get("role_ok"),
+            "reasoning":      vd.get("reasoning"),
+            "suggested_fix":  suggested_fix,
+            "model":          v.get("judge_id") or v.get("model"),
+            "judged_at":      v.get("judged_at"),
+            "cache_key":      v.get("cache_key"),
+            "session_id":     session_id,
+            "evaluator":      v.get("evaluator_id") or v.get("evaluator"),
         }
         summaries[mid] = summary
 
@@ -735,9 +742,12 @@ def _match_to_desktop_shape(m: AuthorityMatch) -> dict[str, Any]:
     cluster = payload.get("cluster_ids") or {}
     return {
         "name":         m.entity_text,
+        "entity_text":  m.entity_text,
+        "matched_name": m.matched_name or "",
         "role":         m.role or "",
         "field":        "700/710/711",
         "mazal_id":     m.mazal_id or "",
+        "viaf_id":      m.viaf_id or "",
         "viaf_uri":     f"https://viaf.org/viaf/{m.viaf_id}" if m.viaf_id else "",
         "wikidata_qid": m.wikidata_qid or "",
         "confidence":   m.confidence or "low",

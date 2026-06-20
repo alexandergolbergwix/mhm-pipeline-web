@@ -38,7 +38,6 @@ import {
   type GraphResponse,
   type GraphCatalogResponse,
   type NodeDetail,
-  type RdfBuildResponse,
   type RdfCoverageResponse,
   type RdfOntologyCoverageResponse,
   type RdfStatus,
@@ -50,6 +49,8 @@ import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
 import {useAuth} from "@/stores/auth";
+import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
+import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 
 
 // All layouts are computed SERVER-SIDE (networkx) — Cytoscape just uses
@@ -161,6 +162,46 @@ export default function StageRdf() {
     [filterState.types],
   );
 
+  const reloadGraph = useCallback(async () => {
+    if (!runId) return;
+    const [st, g, cov, cat, ontoCov] = await Promise.all([
+      Rdf.status(runId),
+      Rdf.viewport(runId, {maxNodes: canvasBudget, layout, manuscriptsOnly}),
+      Rdf.coverage(runId).catch(() => null),
+      Rdf.catalog(runId).catch(() => null),
+      isAdmin ? Rdf.ontologyCoverage(runId).catch(() => null) : Promise.resolve(null),
+    ]);
+    setStatus(st);
+    setGraph(g);
+    setCoverage(cov);
+    setCatalog(cat);
+    setOntologyCoverage(isAdmin ? ontoCov : null);
+  }, [runId, canvasBudget, layout, manuscriptsOnly, isAdmin]);
+
+  const syncBuildJob = useCallback((job: RunJobSnapshot) => {
+    if (job.status === "queued" || job.status === "running") {
+      setBusy("build");
+      return;
+    }
+    setBusy(null);
+    if (job.status === "succeeded") {
+      const errs = job.result?.mapping_errors;
+      if (Array.isArray(errs)) setMappingErrors(errs.map(String));
+      void reloadGraph();
+      return;
+    }
+    if (job.status === "failed") {
+      setError(job.error ?? "RDF build failed");
+    }
+  }, [reloadGraph]);
+
+  const {
+    trackedJobId,
+    setTrackedJobId,
+    ensureJobPolling,
+    cancelJob,
+  } = useRunJobAttachment(runId, "rdf_build", syncBuildJob);
+
   const handleSearchChange = useCallback((query: string) => {
     setFilterState((prev) => ({ ...prev, query }));
   }, []);
@@ -229,25 +270,30 @@ export default function StageRdf() {
     if (!runId) return;
     setBusy("build"); setError(null);
     try {
-      const buildResult: RdfBuildResponse = await Rdf.build(runId, buildOptions);
-      setMappingErrors(buildResult.mapping_errors ?? []);
-      const [st, g, cov, cat, ontoCov] = await Promise.all([
-        Rdf.status(runId),
-        Rdf.viewport(runId, {maxNodes: canvasBudget, layout, manuscriptsOnly}),
-        Rdf.coverage(runId).catch(() => null),
-        Rdf.catalog(runId).catch(() => null),
-        isAdmin ? Rdf.ontologyCoverage(runId).catch(() => null) : Promise.resolve(null),
-      ]);
-      setStatus(st);
-      setGraph(g);
-      setCoverage(cov);
-      setCatalog(cat);
-      setOntologyCoverage(isAdmin ? ontoCov : null);
+      const job = await RunJobs.start(runId, "rdf_build", buildOptions);
+      setTrackedJobId(job.id);
+      syncBuildJob(job);
+      ensureJobPolling();
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const {jobs} = await RunJobs.listForRun(runId, true);
+        const active = jobs.find((j) => j.kind === "rdf_build");
+        if (active) {
+          setTrackedJobId(active.id);
+          syncBuildJob(active);
+          ensureJobPolling();
+          return;
+        }
+      }
       setError(e instanceof ApiError ? e.detail : String(e));
-    } finally {
       setBusy(null);
     }
+  }
+
+  function cancelBuild() {
+    if (!runId) return;
+    if (trackedJobId) void cancelJob(runId, trackedJobId);
+    setBusy(null);
   }
 
   async function validate() {
@@ -617,6 +663,11 @@ export default function StageRdf() {
                   ? "Building…"
                   : statusLabel === "idle" ? "Build RDF" : "Re-build RDF"}
               </button>
+              {busy === "build" && (
+                <button type="button" onClick={cancelBuild} className="button-ghost text-sm text-warn">
+                  Cancel
+                </button>
+              )}
               <button onClick={validate}
                       disabled={busy !== null || statusLabel === "idle"}
                       className="button-ghost text-sm">

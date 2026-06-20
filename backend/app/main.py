@@ -26,8 +26,8 @@ from app.routers import (
     access_request, admin, ai_verify, api_keys, auth, corpus, export, extraction,
     extraction_verify, health, history, hmo_studio, invites, linked_data_explorer,
     onboarding, projects, rdf, research, research_evidence, research_entity,
-    research_export, research_pathfinding, research_provenance, runs, saved_queries,
-    section_export, section_import, wikidata_labels, wikidata_studio, ws,
+    research_export, research_pathfinding, research_provenance, run_jobs, runs,
+    saved_queries, section_export, section_import, wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
 
@@ -96,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(admin.router, prefix="/api")
     app.include_router(projects.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")
+    app.include_router(run_jobs.router, prefix="/api")
     app.include_router(extraction.router, prefix="/api")
     app.include_router(rdf.router, prefix="/api")
     app.include_router(history.router, prefix="/api")

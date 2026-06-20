@@ -61,6 +61,10 @@ export interface ExtractionStatus {
   records?: number;
   entity_total?: number;
   detail?: string;
+  job_id?: string;
+  processed?: number;
+  total?: number;
+  message?: string;
   /** Backend's resolved EXTRACTION_MODE — surfaced in the page header so
    *  the user sees which inference backend will run before the first
    *  stream fires. */
