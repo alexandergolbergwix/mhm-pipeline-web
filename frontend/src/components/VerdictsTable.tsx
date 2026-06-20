@@ -55,6 +55,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import {downloadFromUrl} from "@/utils/download";
 import {verdictStorageKey} from "@/utils/verdictKey";
 import {Glass} from "@/components/glass";
+import {EMPTY_STRING_SET} from "@/utils/renderStable";
 
 
 export interface VerdictsTableProps {
@@ -261,17 +262,16 @@ export function VerdictsTable(props: VerdictsTableProps) {
   }, [useServer, serverRows, rows, clientVisible, columnFilters, sortBy, sortDir]);
 
   // Distinct values for the column-filter popup.
-  const popupDistinctValues = useMemo(() => {
-    if (!popup) return [];
+  const {popupDistinctValues, popupValueCounts} = useMemo(() => {
+    if (!popup) return {popupDistinctValues: [] as string[], popupValueCounts: {} as Record<string, number>};
     const base = useServer ? (serverRows ?? rows) : clientVisible;
-    const seen = new Map<string, number>();
+    const counts: Record<string, number> = {};
     for (const ev of base) {
       const v = colValueForFilter(ev, popup.column);
-      seen.set(v, (seen.get(v) ?? 0) + 1);
+      counts[v] = (counts[v] ?? 0) + 1;
     }
-    return Array.from(seen.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([v]) => v);
+    const distinct = Object.keys(counts).sort((a, b) => a.localeCompare(b));
+    return {popupDistinctValues: distinct, popupValueCounts: counts};
   }, [popup, useServer, serverRows, rows, clientVisible]);
 
   const hasActiveColFilters = Object.keys(columnFilters).length > 0;
@@ -453,9 +453,11 @@ export function VerdictsTable(props: VerdictsTableProps) {
 
       {popup && (
         <ColumnFilterPopup
+          key={popup.column}
           columnLabel={popup.column}
           values={popupDistinctValues}
-          selected={columnFilters[popup.column] ?? new Set<string>()}
+          valueCounts={popupValueCounts}
+          selected={columnFilters[popup.column] ?? EMPTY_STRING_SET}
           x={popup.x}
           y={popup.y}
           onApply={(sel) => handlePopupApply(popup.column, sel)}

@@ -68,6 +68,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     judged = 0
     total = 0
     error_message: str | None = None
+    session_summary: dict[str, Any] = {}
     stream = await _open_verify_stream(
         kind=kind,
         run_id=run_id,
@@ -122,6 +123,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             )
 
             if ev.type == "session.end":
+                session_summary = dict(ev.payload or {})
                 break
     except Exception as exc:  # noqa: BLE001
         logger.exception("verify job %s failed", job_id)
@@ -140,7 +142,15 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     await finish_job(
         job_id,
         status=JOB_STATUS_SUCCEEDED,
-        result={"session_id": session_id, "judged": judged, "total": total},
+        result={
+            "session_id": session_id,
+            "judged": judged,
+            "total": total or judged,
+            "outcome": session_summary.get("outcome"),
+            "cache_hits": session_summary.get("cache_hits"),
+            "fresh_verdicts": session_summary.get("fresh_verdicts"),
+            "uncached_skipped": session_summary.get("uncached_skipped"),
+        },
         progress={
             "phase": "done",
             "processed": judged,

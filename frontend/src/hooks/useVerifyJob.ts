@@ -60,6 +60,21 @@ export function useVerifyJob({
     setRunning(false);
     setJobId((current) => (current === job.id ? null : current));
     if (job.status === "succeeded") {
+      const result = job.result ?? {};
+      const judged = Number(result.judged ?? job.progress?.processed ?? 0);
+      const scopeTotal = Number(result.total ?? job.progress?.total ?? 0);
+      const skipped = Number(result.uncached_skipped ?? 0);
+      const outcome = String(result.outcome ?? "");
+      if (
+        skipped > 0
+        || outcome === "partial"
+        || (scopeTotal > 0 && judged < scopeTotal)
+      ) {
+        const msg = skipped > 0
+          ? `Only ${judged} of ${scopeTotal || judged} entities were verified. ${skipped} were skipped because the eval-agent could not run on this server — run verification locally or retry after deploy.`
+          : `Verified ${judged} of ${scopeTotal} entities — some candidates may have been below the confidence threshold or errored.`;
+        onFailedRef.current?.(msg);
+      }
       onCompleteRef.current?.();
       return;
     }

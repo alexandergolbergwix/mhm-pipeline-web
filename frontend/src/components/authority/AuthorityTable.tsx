@@ -27,6 +27,7 @@ import {
   resolveAuthorityFixPatch,
 } from "@/utils/authorityAutofix";
 import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
+import {EMPTY_STRING_SET} from "@/utils/renderStable";
 
 type ColumnKey =
   | "control_number"
@@ -283,6 +284,18 @@ export function AuthorityTable({
     for (const k of Object.keys(acc)) out[k] = Array.from(acc[k]).sort();
     return out;
   }, [matches]);
+
+  const popupValueCounts = useMemo<Record<string, number>>(() => {
+    if (!popup) return {};
+    const counts: Record<string, number> = {};
+    for (const m of matches) {
+      for (const v of cellValues(m, popup.col)) {
+        if (!v) continue;
+        counts[v] = (counts[v] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [popup, matches]);
 
   // Filtering + sorting pipeline.
   const display = useMemo<AuthorityMatch[]>(() => {
@@ -784,9 +797,11 @@ export function AuthorityTable({
       {/* Column filter popup */}
       {popup && (
         <ColumnFilterPopup
+          key={popup.col}
           columnLabel={COLS.find((c) => c.key === popup.col)?.label ?? popup.col}
           values={distinctValues[popup.col] ?? []}
-          selected={columnFilters[popup.col] ?? new Set()}
+          valueCounts={popupValueCounts}
+          selected={columnFilters[popup.col] ?? EMPTY_STRING_SET}
           x={popup.x}
           y={popup.y}
           onApply={applyPopup}

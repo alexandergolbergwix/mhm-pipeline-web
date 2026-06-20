@@ -38,7 +38,7 @@ import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
 import {useAuth} from "@/stores/auth";
-import {useLatestRef} from "@/utils/renderStable";
+import {useLatestRef, EMPTY_STRING_SET} from "@/utils/renderStable";
 import {langOf} from "@/utils/hebrew";
 import {Glass} from "@/components/glass";
 
@@ -132,7 +132,11 @@ function cellValueFor(entity: Entity, column: ColumnKey): string {
     case "model_confidence":
       return entity.model_confidence !== null ? entity.model_confidence.toFixed(2) : "—";
     case "exists_in":      return entity.exists_in?.status ?? "unknown";
-    case "ai_verdict":     return String(entity.ai_verdict?.overall ?? "unknown");
+    case "ai_verdict": {
+      const overall = entity.ai_verdict?.overall;
+      if (!overall) return "(none)";
+      return String(overall);
+    }
     case "fix":            return "";
     case "approved":       return entity.approved ? "yes" : "no";
     default:               return "";
@@ -263,6 +267,16 @@ export function EntityTable(props: EntityTableProps) {
     const values = new Set<string>();
     for (const e of entities) values.add(cellValueFor(e, popup.column));
     return Array.from(values).sort();
+  }, [popup, entities]);
+
+  const popupValueCounts = useMemo<Record<string, number>>(() => {
+    if (!popup) return {};
+    const counts: Record<string, number> = {};
+    for (const e of entities) {
+      const v = cellValueFor(e, popup.column);
+      counts[v] = (counts[v] ?? 0) + 1;
+    }
+    return counts;
   }, [popup, entities]);
 
   const handlePopupApply = useCallback((selected: Set<string>) => {
@@ -567,9 +581,11 @@ export function EntityTable(props: EntityTableProps) {
       </div>{/* /scroll container */}
       {popup ? (
         <ColumnFilterPopup
+          key={popup.column}
           columnLabel={COLUMNS.find((c) => c.key === popup.column)?.label ?? ""}
           values={distinctValues}
-          selected={columnFilters[popup.column] ?? new Set<string>()}
+          valueCounts={popupValueCounts}
+          selected={columnFilters[popup.column] ?? EMPTY_STRING_SET}
           x={popup.x}
           y={popup.y}
           onApply={handlePopupApply}

@@ -14,6 +14,8 @@ import {Glass} from "@/components/glass";
 export interface ColumnFilterPopupProps {
   columnLabel: string;
   values: string[];
+  /** Per-value row counts across the full column (not just distinct values). */
+  valueCounts?: Record<string, number>;
   selected: Set<string>;
   x: number;
   y: number;
@@ -24,6 +26,7 @@ export interface ColumnFilterPopupProps {
 export function ColumnFilterPopup({
   columnLabel,
   values,
+  valueCounts: valueCountsProp,
   selected,
   x,
   y,
@@ -36,10 +39,6 @@ export function ColumnFilterPopup({
   const selectAllRef = useRef<HTMLInputElement | null>(null);
 
   const isSearchMode = values.length > 10;
-
-  useEffect(() => {
-    setDraft(new Set(selected));
-  }, [selected]);
 
   useEffect(() => {
     function onDocClick(event: MouseEvent) {
@@ -97,10 +96,11 @@ export function ColumnFilterPopup({
   }, [filteredValues]);
 
   const valueCounts = useMemo(() => {
+    if (valueCountsProp) return valueCountsProp;
     const counts: Record<string, number> = {};
     for (const v of values) counts[v] = (counts[v] ?? 0) + 1;
     return counts;
-  }, [values]);
+  }, [values, valueCountsProp]);
 
   const style = useMemo<CSSProperties>(() => {
     const maxX = typeof window !== "undefined" ? window.innerWidth - 340 : x;
