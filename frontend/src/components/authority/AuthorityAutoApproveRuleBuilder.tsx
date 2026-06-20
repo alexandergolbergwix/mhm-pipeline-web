@@ -30,26 +30,35 @@ const DEFAULT_RULE: AuthorityAutoApproveRule = {
 };
 
 const ALL_SOURCES = ["mazal", "viaf", "wikidata", "kima"] as const;
-const ALL_KINDS   = ["person", "place"] as const;
+const ALL_KINDS   = ["person", "place", "work"] as const;
 const ALL_CONFS   = ["high", "medium", "low"] as const;
 
 export interface AuthorityAutoApproveRuleBuilderProps {
-  runId:      string;
-  onClose:    () => void;
-  onComplete: (approvedCount: number) => void;
+  runId:            string;
+  visibleMatchIds?: string[];
+  onClose:          () => void;
+  onComplete:       (approvedCount: number) => void;
 }
 
 export function AuthorityAutoApproveRuleBuilder({
-  runId, onClose, onComplete,
+  runId, visibleMatchIds, onClose, onComplete,
 }: AuthorityAutoApproveRuleBuilderProps) {
   const [rule, setRule] = useState<AuthorityAutoApproveRule>(() => ({ ...DEFAULT_RULE }));
+  const [limitToVisible, setLimitToVisible] = useState(
+    () => (visibleMatchIds?.length ?? 0) > 0,
+  );
   const [preview, setPreview] = useState<number | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const apiRule = useMemo<AuthorityAutoApproveRule>(() => ({
+    ...rule,
+    match_ids: limitToVisible && visibleMatchIds?.length ? visibleMatchIds : [],
+  }), [rule, limitToVisible, visibleMatchIds]);
+
   // Debounce the preview POST so fast checkbox clicks don't flood the server.
-  const debouncedRule = useDebounce(rule, 350);
+  const debouncedRule = useDebounce(apiRule, 350);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +106,7 @@ export function AuthorityAutoApproveRuleBuilder({
   const handleApply = useCallback(async () => {
     setApplying(true); setError(null);
     try {
-      const res = await Runs.applyAuthorityAutoApprove(runId, rule);
+      const res = await Runs.applyAuthorityAutoApprove(runId, apiRule);
       onComplete(res.approved);
       onClose();
     } catch (err) {
@@ -105,7 +114,7 @@ export function AuthorityAutoApproveRuleBuilder({
     } finally {
       setApplying(false);
     }
-  }, [runId, rule, onClose, onComplete]);
+  }, [runId, apiRule, onClose, onComplete]);
 
   const previewLabel = useMemo(() => {
     if (previewing) return "Calculating…";
@@ -213,6 +222,18 @@ export function AuthorityAutoApproveRuleBuilder({
 
           {/* AI verdict toggles */}
           <div className="space-y-2">
+            {visibleMatchIds && visibleMatchIds.length > 0 && (
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-ink">
+                <input type="checkbox"
+                       data-testid="rule-limit-visible"
+                       checked={limitToVisible}
+                       onChange={(e) => setLimitToVisible(e.target.checked)}
+                       className="h-3 w-3 accent-biu-sky" />
+                <span>
+                  Only visible candidates ({visibleMatchIds.length})
+                </span>
+              </label>
+            )}
             <label className="flex cursor-pointer items-center gap-2 text-xs text-ink">
               <input type="checkbox"
                      data-testid="rule-require-ai-pass"
@@ -221,7 +242,7 @@ export function AuthorityAutoApproveRuleBuilder({
                        setRule((p) => ({ ...p, require_ai_pass: e.target.checked }))
                      }
                      className="h-3 w-3 accent-biu-sky" />
-              <span>Require AI verdict = pass</span>
+              <span>Require AI verdict = looks right</span>
             </label>
             <label className="flex cursor-pointer items-center gap-2 text-xs text-ink">
               <input type="checkbox"

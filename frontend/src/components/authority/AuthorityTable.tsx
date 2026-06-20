@@ -60,8 +60,8 @@ const COLS: ColDef[] = [
   { key: "exists_in",      label: "MARC",       width: "90px",    sortable: true,  filterable: true,  textHeader: false },
   { key: "guard_flags",    label: "Guards",     width: "160px",   sortable: false, filterable: true,  textHeader: false },
   { key: "ai_verdict",     label: "AI verdict", width: "120px",   sortable: true,  filterable: true,  textHeader: false },
+  { key: "approved",       label: "✓",          width: "44px",    sortable: true,  filterable: true,  textHeader: false },
   { key: "fix",            label: "Fix",        width: "80px",    sortable: false, filterable: false, textHeader: false },
-  { key: "approved",       label: "Approved",   width: "80px",    sortable: true,  filterable: true,  textHeader: false },
   { key: "edit",           label: "",           width: "96px",    sortable: false, filterable: false, textHeader: false },
 ];
 
@@ -692,14 +692,14 @@ export function AuthorityTable({
                         : <span className="muted text-xs italic">—</span>}
                     </td>
 
-                    {/* Auto-fix */}
-                    <td className="py-2 pr-3">
-                      {renderFixCell(m)}
-                    </td>
-
                     {/* Approved */}
                     <td className="py-2 pr-3" onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={m.approved} onChange={() => onApproveToggle(m)} />
+                    </td>
+
+                    {/* Auto-fix */}
+                    <td className="py-2 pr-3">
+                      {renderFixCell(m)}
                     </td>
 
                     {/* Edit actions */}
@@ -766,11 +766,11 @@ export function AuthorityTable({
                         <td className="py-1.5 pr-3">
                           {aai ? <VerdictBadge overall={aai.overall} /> : <span className="muted text-xs italic">—</span>}
                         </td>
-                        <td className="py-1.5 pr-3">
-                          {renderFixCell(alt)}
-                        </td>
                         <td className="py-1.5 pr-3" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={alt.approved} onChange={() => onApproveToggle(alt)} />
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          {renderFixCell(alt)}
                         </td>
                         <td className="py-1.5 pr-1 text-right" onClick={(e) => e.stopPropagation()}>
                           <button type="button" onClick={() => onOpenEdit(alt)}

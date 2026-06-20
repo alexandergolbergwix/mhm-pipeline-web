@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -90,6 +90,59 @@ class ActiveJobError(Exception):
     def __init__(self, job_id: uuid.UUID) -> None:
         self.job_id = job_id
         super().__init__(f"active job already exists: {job_id}")
+
+
+STALE_JOB_AFTER = timedelta(minutes=20)
+
+
+async def recover_interrupted_jobs() -> int:
+    """Re-spawn queued/running jobs after a dyno restart.
+
+    In-memory ``asyncio`` tasks are lost on process recycle but the Postgres
+    rows stay ``running`` — without this hook the UI polls a zombie forever.
+    """
+    async with session_scope() as db:
+        rows = (
+            await db.execute(
+                select(RunJob).where(
+                    RunJob.status.in_(tuple(ACTIVE_JOB_STATUSES)),
+                )
+            )
+        ).scalars().all()
+        job_ids = [row.id for row in rows]
+
+    for job_id in job_ids:
+        spawn_job(job_id)
+    if job_ids:
+        logger.info("re-spawned %d interrupted run job(s)", len(job_ids))
+    return len(job_ids)
+
+
+async def fail_stale_jobs() -> int:
+    """Mark long-running jobs with no recent heartbeat as failed."""
+    cutoff = _now() - STALE_JOB_AFTER
+    async with session_scope() as db:
+        rows = (
+            await db.execute(
+                select(RunJob).where(
+                    RunJob.status == JOB_STATUS_RUNNING,
+                    RunJob.updated_at < cutoff,
+                )
+            )
+        ).scalars().all()
+        if not rows:
+            return 0
+        for job in rows:
+            job.status = JOB_STATUS_FAILED
+            job.error = (
+                "Job interrupted — the server restarted or the worker stopped "
+                "responding. Cancel and start again."
+            )
+            job.finished_at = _now()
+        await db.commit()
+        count = len(rows)
+    logger.warning("marked %d stale run job(s) as failed", count)
+    return count
 
 
 def spawn_job(job_id: uuid.UUID) -> None:

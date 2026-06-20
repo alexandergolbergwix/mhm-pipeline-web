@@ -548,6 +548,11 @@ export default function RunDetail() {
       {showAutoApprove && runId && (
         <AuthorityAutoApproveRuleBuilder
           runId={runId}
+          visibleMatchIds={
+            run && filteredMatchIds.length < run.matches.length
+              ? filteredMatchIds
+              : undefined
+          }
           onClose={() => setShowAutoApprove(false)}
           onComplete={() => { setShowAutoApprove(false); void refresh(); }}
         />

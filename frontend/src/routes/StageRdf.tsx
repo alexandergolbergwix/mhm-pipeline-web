@@ -200,7 +200,18 @@ export default function StageRdf() {
     setTrackedJobId,
     ensureJobPolling,
     cancelJob,
+    activeJob,
   } = useRunJobAttachment(runId, "rdf_build", syncBuildJob);
+
+  const buildProgressLabel = useMemo(() => {
+    if (busy !== "build" || !activeJob) return null;
+    const p = activeJob.progress ?? {};
+    const total = Number(p.total ?? 0);
+    const processed = Number(p.processed ?? 0);
+    if (total > 0) return `${processed} / ${total} records`;
+    const msg = typeof p.message === "string" ? p.message : "";
+    return msg || null;
+  }, [busy, activeJob]);
 
   const handleSearchChange = useCallback((query: string) => {
     setFilterState((prev) => ({ ...prev, query }));
@@ -866,7 +877,8 @@ export default function StageRdf() {
                   </div>
                   <div className="muted text-[11px]">
                     {busy === "build"
-                      ? "Running MarcToRdfMapper across the run's records."
+                      ? (buildProgressLabel
+                        ?? "Running MarcToRdfMapper across the run's records.")
                       : "Networkx is positioning the nodes. First request takes ~1 s; cached layouts return instantly."}
                   </div>
                   <div className="mt-2 mx-auto w-32 h-1 rounded-full overflow-hidden bg-white/10">

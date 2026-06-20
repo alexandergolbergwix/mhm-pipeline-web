@@ -170,6 +170,7 @@ export interface AuthorityAutoApproveRule {
   min_source_count:  number;
   require_ai_pass:   boolean;
   respect_ai_fail:   boolean;
+  match_ids?:        string[];
 }
 
 /** Stream authority re-enrichment SSE events.  Call cancel() to abort. */

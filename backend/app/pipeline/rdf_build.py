@@ -21,7 +21,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -238,6 +238,7 @@ def _run_mapper_sync(
     overrides: list[dict] | None = None,
     kima_places_by_cn: dict[str, dict[str, str]] | None = None,
     build_options: RdfBuildOptions | None = None,
+    on_record_done: Callable[[int, int, str], None] | None = None,
 ) -> tuple[
     int,
     int,
@@ -287,7 +288,8 @@ def _run_mapper_sync(
 
     manuscripts = 0
     errors: list[str] = []
-    for raw_rec in marc_records:
+    total_records = len(marc_records)
+    for idx, raw_rec in enumerate(marc_records):
         rec = _prepare_record_for_rdf(raw_rec)
         cn = str(
             rec.get("_control_number")
@@ -342,6 +344,8 @@ def _run_mapper_sync(
         except Exception as exc:  # noqa: BLE001
             errors.append(f"record {cn}: {exc}")
             logger.warning("RDF mapping failed for %s: %s", cn, exc)
+        if on_record_done is not None:
+            on_record_done(idx + 1, total_records, cn)
 
     if overrides:
         for ov in overrides:
@@ -432,6 +436,7 @@ async def build_rdf_graph(
     overrides: list[dict] | None = None,
     kima_places_by_cn: dict[str, dict[str, str]] | None = None,
     build_options: RdfBuildOptions | None = None,
+    on_progress: Callable[[dict[str, Any]], Any] | None = None,
 ) -> RdfBuildResult:
     """Run ``MarcToRdfMapper`` over MARC + authority data, write Turtle.
 
@@ -445,6 +450,37 @@ async def build_rdf_graph(
     timestamps without re-parsing the TTL.
     """
     started = datetime.now(timezone.utc)
+    loop = asyncio.get_running_loop()
+
+    def _sync_progress(processed: int, total: int, cn: str) -> None:
+        if on_progress is None:
+            return
+        payload = {
+            "phase": "building",
+            "processed": processed,
+            "total": total,
+            "message": cn,
+            "current_control_number": cn,
+        }
+        fut = asyncio.run_coroutine_threadsafe(_emit_progress(on_progress, payload), loop)
+
+        def _log_progress_err(f: asyncio.Future[None]) -> None:
+            if f.cancelled():
+                return
+            exc = f.exception()
+            if exc is not None:
+                logger.warning("RDF build progress callback failed: %s", exc)
+
+        fut.add_done_callback(_log_progress_err)
+
+    async def _emit_progress(
+        cb: Callable[[dict[str, Any]], Any],
+        payload: dict[str, Any],
+    ) -> None:
+        result = cb(payload)
+        if asyncio.iscoroutine(result):
+            await result
+
     triples_count, manuscripts_count, errors, coverage_path, unknown_count, ontology_coverage_path, ontology_class_count, ontology_property_count, ontology_missing_terms = await asyncio.to_thread(
         _run_mapper_sync,
         marc_records,
@@ -454,6 +490,7 @@ async def build_rdf_graph(
         overrides,
         kima_places_by_cn or {},
         build_options,
+        _sync_progress if on_progress else None,
     )
     if errors:
         logger.warning(

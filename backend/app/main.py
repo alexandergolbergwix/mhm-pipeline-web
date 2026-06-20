@@ -36,6 +36,13 @@ from app.settings import get_settings
 async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
     """Boot/teardown — keep the Postgres LISTEN bridge running across
     the whole process lifetime."""
+    from app.pipeline.run_job_service import (  # noqa: PLC0415
+        fail_stale_jobs,
+        recover_interrupted_jobs,
+    )
+
+    await fail_stale_jobs()
+    await recover_interrupted_jobs()
     await start_listener()
     try:
         yield

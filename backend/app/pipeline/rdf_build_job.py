@@ -125,6 +125,9 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
 
     out_path = rdf_output_path_for_run(str(run_id))
     try:
+        async def _report_progress(payload: dict[str, Any]) -> None:
+            await update_job_progress(job_id, payload)
+
         result = await build_rdf_graph(
             marc_records=marc_records,
             authority_matches=authority_matches,
@@ -133,6 +136,7 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
             overrides=overrides,
             kima_places_by_cn=kima_places_by_cn,
             build_options=opts,
+            on_progress=_report_progress,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("RDF build job failed for run %s", run_id)

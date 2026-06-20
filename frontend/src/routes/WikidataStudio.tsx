@@ -7,6 +7,7 @@ import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {Runs} from "@/api/runs";
 import {RunJobs} from "@/api/runJobs";
+import {loadStudioBuild, waitForRunJob, waitForStudioBuild} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 import {useDebounce} from "@/hooks/useDebounce";
 import {
@@ -89,6 +90,7 @@ export default function WikidataStudio() {
   } | null>(null);
   const [forceRebuild, setForceRebuild] = useState(false);
   const [uploadApprovedOnly, setUploadApprovedOnly] = useState(false);
+  const [buildProgress, setBuildProgress] = useState<string | null>(null);
 
   // approval toggle loading — keyed by local_id
   const [approvalLoading, setApprovalLoading] = useState<Record<string, boolean>>({});
@@ -111,29 +113,15 @@ export default function WikidataStudio() {
     const flag  = opts?.nextApprovedOnly ?? approvedOnly;
     const force = opts?.nextForceRebuild ?? forceRebuild;
     const pg    = opts?.nextPage ?? page;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setBuildProgress(null);
     try {
       if (force) {
-        const job = await RunJobs.start(runId, "wikidata_studio_build", {
-          approved_only: flag,
-          force_rebuild: true,
-        });
-        let done = false;
-        while (!done) {
-          const j = await RunJobs.get(runId, job.id);
-          if (j.status === "queued" || j.status === "running") {
-            await new Promise((r) => window.setTimeout(r, 2000));
-            continue;
-          }
-          done = true;
-          if (j.status === "failed") {
-            throw new Error(j.error ?? "Studio build failed");
-          }
-        }
+        setBuildProgress("Starting fresh build…");
+        await waitForStudioBuild(runId, {approvedOnly: flag, forceRebuild: true});
       }
-      const result = await Studio.build(runId, {
+      const fetchPage = () => Studio.build(runId, {
         approvedOnly: flag,
-        forceRebuild: force,
+        forceRebuild: false,
         entityType: entityFilter !== "all" ? entityFilter : null,
         q: debouncedQuery || null,
         sort: sortKey,
@@ -141,15 +129,15 @@ export default function WikidataStudio() {
         page: pg,
         pageSize: PAGE_SIZE,
       });
+      setBuildProgress(force ? "Loading items…" : "Checking cache…");
+      const result = await loadStudioBuild(runId, fetchPage) as StudioBuild;
       setBuild(result);
-      // Seed the label store from the precomputed property_labels map so
-      // the client never needs to fetch labels the server already computed.
       if (result.property_labels) {
         labelStore.seed(result.property_labels);
       }
     }
     catch (e) { setError(e instanceof ApiError ? e.detail : String(e)); }
-    finally   { setLoading(false); }
+    finally   { setLoading(false); setBuildProgress(null); }
   }
 
   // Initial load + re-query when server-side params change.
@@ -186,33 +174,29 @@ export default function WikidataStudio() {
         dry_run: dry,
         approved_only: approvedOnly,
         item_approved_only: uploadApprovedOnly,
+      }).catch(async (e) => {
+        if (e instanceof ApiError && e.status === 409) {
+          const {jobs} = await RunJobs.listForRun(runId, true);
+          const active = jobs.find((j) => j.kind === "wikidata_upload");
+          if (active) return active;
+        }
+        throw e;
       });
-      const poll = async () => {
-        const j = await RunJobs.get(runId, job.id);
-        if (j.status === "queued" || j.status === "running") {
-          window.setTimeout(() => { void poll(); }, 2000);
-          return;
-        }
-        setBusy(null);
-        if (j.status === "succeeded" && j.result) {
-          const outcomes = (j.result.outcomes as UploadOutcome[]) ?? [];
-          const map: Record<string, UploadOutcome> = {};
-          outcomes.forEach((o, i) => { map[`${o.entity_type}:${i}`] = o; });
-          setUploadMap(map);
-          setLastUpload({
-            dry_run: Boolean(j.result.dry_run),
-            moratorium_lifted: Boolean(j.result.moratorium_lifted),
-            test_mode: Boolean(j.result.test_mode),
-          });
-        } else if (j.status === "failed") {
-          setError(j.error ?? "Upload failed");
-        }
-      };
-      void poll();
+      const finished = await waitForRunJob(runId, job.id);
+      if (finished.status === "succeeded" && finished.result) {
+        const outcomes = (finished.result.outcomes as UploadOutcome[]) ?? [];
+        const map: Record<string, UploadOutcome> = {};
+        outcomes.forEach((o, i) => { map[`${o.entity_type}:${i}`] = o; });
+        setUploadMap(map);
+        setLastUpload({
+          dry_run: Boolean(finished.result.dry_run),
+          moratorium_lifted: Boolean(finished.result.moratorium_lifted),
+          test_mode: Boolean(finished.result.test_mode),
+        });
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
-      setBusy(null);
-    }
+    } finally { setBusy(null); }
   }
 
   const toggleApproval = useCallback(async (item: StudioItem) => {
@@ -262,9 +246,11 @@ export default function WikidataStudio() {
       <Glass className="p-6 space-y-2">
         <p className="muted">{loading ? "Building Wikidata items…" : "Loading Wikidata Studio…"}</p>
         {loading && (
-          <p className="text-xs muted">
-            Large runs can take a minute on first load while items are built and cached.
-          </p>
+          <>
+            <p className="text-xs muted">
+              {buildProgress ?? "Large runs can take a minute on first load while items are built and cached."}
+            </p>
+          </>
         )}
       </Glass>
     </Layout>

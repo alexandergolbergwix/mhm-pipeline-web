@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from types import SimpleNamespace
 
 from app.db import session_scope
 from app.models.run_job import (
@@ -31,7 +30,7 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         params = job.params or {}
         approved_only = bool(params.get("approved_only", True))
         force_rebuild = bool(params.get("force_rebuild", False))
-        auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by))
+        run_user_id = job.created_by
 
     await update_job_progress(job_id, {
         "phase": "building",
@@ -45,21 +44,15 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         return
 
     try:
-        from app.routers.wikidata_studio import build_studio  # noqa: PLC0415
+        from app.routers.wikidata_studio import execute_studio_build  # noqa: PLC0415
 
         async with session_scope() as db:
-            result = await build_studio(
+            cached = await execute_studio_build(
+                db,
                 run_id=run_id,
                 approved_only=approved_only,
                 force_rebuild=force_rebuild,
-                entity_type=None,
-                q=None,
-                sort="label",
-                sort_dir="asc",
-                page=1,
-                page_size=500,
-                auth=auth,
-                db=db,
+                run_user_id=run_user_id,
             )
     except Exception as exc:  # noqa: BLE001
         logger.exception("wikidata studio build job failed for %s", run_id)
@@ -70,20 +63,21 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)
         return
 
-    summary = result.summary.model_dump() if hasattr(result.summary, "model_dump") else dict(result.summary)
+    total = len(cached.result_items or [])
+    summary = cached.summary or {}
     await finish_job(
         job_id,
         status=JOB_STATUS_SUCCEEDED,
         result={
-            "total": result.total,
-            "record_count": result.record_count,
-            "approved_match_count": result.approved_match_count,
+            "total": total,
+            "record_count": cached.record_count,
+            "approved_match_count": cached.approved_match_count,
             "summary": summary,
         },
         progress={
             "phase": "done",
-            "processed": result.total,
-            "total": result.total,
-            "message": f"Built {result.total} items",
+            "processed": total,
+            "total": max(total, 1),
+            "message": f"Built {total} items",
         },
     )

@@ -353,14 +353,31 @@ async def apply_authority_auto_approve(
     return {"matched": len(matched), "approved": len(matched)}
 
 
+def _match_source_count(m: AuthorityMatch, payload: dict) -> int:
+    """Derive cross-source count; older rows may lack payload.source_count."""
+    raw = payload.get("source_count")
+    if raw is not None:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    sources = payload.get("sources")
+    if isinstance(sources, list) and sources:
+        return len(sources)
+    return 1 if m.source else 0
+
+
 def _apply_auto_approve_rule(
     rows: list[AuthorityMatch],
     rule: AuthorityAutoApproveRule,
 ) -> list[AuthorityMatch]:
     """Filter matches to those satisfying every rule condition."""
+    scope_ids = {str(mid) for mid in rule.match_ids} if rule.match_ids else None
     out: list[AuthorityMatch] = []
     for m in rows:
         if m.approved:
+            continue
+        if scope_ids is not None and str(m.id) not in scope_ids:
             continue
         p = m.payload or {}
         # Confidence level
@@ -375,8 +392,7 @@ def _apply_auto_approve_rule(
         if rule.entity_kinds and m.entity_kind not in rule.entity_kinds:
             continue
         # Min source count
-        sc = int(p.get("source_count") or 0)
-        if sc < rule.min_source_count:
+        if _match_source_count(m, p) < rule.min_source_count:
             continue
         # AI verdict gates
         ai_verdict = p.get("ai_verdict") or {}

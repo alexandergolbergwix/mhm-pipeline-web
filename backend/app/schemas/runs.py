@@ -86,6 +86,10 @@ class AuthorityAutoApproveRule(BaseModel):
     min_source_count: int = Field(default=1, ge=1, le=4)
     require_ai_pass: bool = False
     respect_ai_fail: bool = True
+    match_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        description="When non-empty, only these match rows are eligible.",
+    )
 
 
 class AiVerdictResponse(BaseModel):
