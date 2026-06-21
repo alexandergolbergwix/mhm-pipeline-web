@@ -4,9 +4,9 @@ manuscript production year from a MARC record dict.
 Each test captures a real bug that reached production:
 
   Bug 1 (2026-06-04): the function checked "dates" (dict), "year", and
-  "production_year" but NOT "date" (singular).  The NLI MARC ingest
-  writes the 008 year into marc["date"], so ms_year was always None for
-  NLI records and the Dates & guards tab showed "—" for every manuscript.
+  "production_year" but NOT "date" (singular).  Some legacy ingest paths
+  wrote marc["date"] as a scalar, so ms_year was always None for those
+  records and the Dates & guards tab showed "—" for every manuscript.
 
   Bug 2 (latent): string values like '"1612"' (with embedded quotes from
   JSON round-trips) were not stripped before int() parsing, causing
@@ -24,7 +24,7 @@ from app.pipeline.authority import _record_year
 
 
 class TestDateSingularKey:
-    """marc['date'] is what NLI MARC ingest writes from the 008 field."""
+    """marc['date'] is a legacy scalar key on some stored records."""
 
     def test_date_as_int(self) -> None:
         assert _record_year({"date": 1612}) == 1612
@@ -79,9 +79,9 @@ class TestDatesDict:
     def test_dates_dict_publication_key(self) -> None:
         assert _record_year({"dates": {"publication": "1700"}}) == 1700
 
-    def test_dates_not_a_dict_falls_through(self) -> None:
-        """If marc['dates'] is a string/int, fall through to scalar keys."""
-        assert _record_year({"dates": "1800", "year": 1801}) == 1801
+    def test_dates_string_parsed_before_scalar_year(self) -> None:
+        """Canonical production year reads dates scalar before legacy year key."""
+        assert _record_year({"dates": "1800", "year": 1801}) == 1800
 
     def test_dates_dict_unknown_keys_ignored(self) -> None:
         assert _record_year({"dates": {"unknown_key": 1234}}) is None

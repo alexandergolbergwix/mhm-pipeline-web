@@ -14,13 +14,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..config.vocabularies import (
-    DATE_TYPE_CODES,
     MATERIAL_TYPES,
     ROLE_MAPPINGS,
     SCRIPT_MODES,
     SCRIPT_TYPES,
 )
 from ..parser.marc_reader import MarcField, MarcRecord
+from .hebrew_date_parse import enrich_parsed_hebrew_dates, normalize_marc_date_string, parse_hebrew_century
+from .hebrew_gregorian_calendar import enrich_dates_with_calendar_fields
 
 
 @dataclass
@@ -219,30 +220,23 @@ class FieldHandlers:
 
     @staticmethod
     def handle_008(field: MarcField) -> dict[str, Any]:
-        """Extract data from 008 fixed-length field.
+        """Extract non-date data from 008 fixed-length field.
+
+        Bytes 00-14 are catalog-entry metadata (date entered on file,
+        MARC date-type codes) — not manuscript production dates. Production
+        dating comes from 260/264 $c via :meth:`handle_260_264`.
 
         Args:
             field: MARC 008 field
 
         Returns:
-            Dictionary with extracted date and place info
+            Dictionary with place code and language (when present)
         """
         result = {}
         data = field.data or ""
 
         if len(data) < 40:
             return result
-
-        date_type = data[6] if len(data) > 6 else ""
-        result["date_type"] = DATE_TYPE_CODES.get(date_type, "unknown")
-
-        date1 = data[7:11].strip() if len(data) >= 11 else ""
-        if date1 and date1.isdigit():
-            result["date_start"] = int(date1)
-
-        date2 = data[11:15].strip() if len(data) >= 15 else ""
-        if date2 and date2.isdigit():
-            result["date_end"] = int(date2)
 
         place_code = data[15:18].strip() if len(data) >= 18 else ""
         if place_code and place_code not in ("xx", "vp", "|||"):
@@ -1368,6 +1362,14 @@ class FieldHandlers:
             "original_string": date_str,
             "date_format": "UnstructuredDate",  # Default
         }
+        date_str = normalize_marc_date_string(date_str)
+        result["original_string"] = date_str
+
+        # Hebrew century (מאה י"א / מאה ט"ז-י"ז / מאה שניה לפני הספירה)
+        century_parsed = parse_hebrew_century(date_str)
+        if century_parsed:
+            result.update(century_parsed)
+            return result
 
         # 1. Check for full date format (dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy)
         full_date_match = re.search(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})", date_str)
@@ -1436,7 +1438,8 @@ class FieldHandlers:
             if result["date_format"] == "UnstructuredDate":
                 result["date_format"] = "UnstructuredDate"  # Century notation is unstructured
 
-        return result
+        enrich_parsed_hebrew_dates(result, date_str)
+        return enrich_dates_with_calendar_fields(result)
 
     @staticmethod
     def _parse_extent(extent_str: str) -> int | None:

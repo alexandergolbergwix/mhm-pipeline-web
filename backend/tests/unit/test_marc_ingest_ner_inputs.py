@@ -129,8 +129,14 @@ class TestExistingFieldsPreserved:
     def test_authors_subjects_title_dates_still_work(self) -> None:
         """The new derivations don't break the existing collapse."""
         rec = _raw_record()
-        rec["008"] = "150101s1500    is hbrtxt c0"
+        rec["264$c"] = "1407"
         _collapse_marc_subfields(rec)
         assert rec.get("title", "").startswith("פירוש המשנה")
         assert any(a.get("name") == "משה בן מיימון" for a in (rec.get("authors") or []))
-        assert (rec.get("dates") or {}).get("year") == 1500
+        assert (rec.get("dates") or {}).get("year") == 1407
+
+    def test_008_does_not_populate_production_dates(self) -> None:
+        rec = _raw_record()
+        rec["008"] = "150101s1500    is hbrtxt c0"
+        _collapse_marc_subfields(rec)
+        assert rec.get("dates") is None

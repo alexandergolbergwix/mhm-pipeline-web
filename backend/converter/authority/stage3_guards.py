@@ -244,21 +244,12 @@ def _parse_year(value: object) -> int | None:
 def extract_manuscript_year(record: dict[str, Any]) -> int | None:
     """Return the catalogued manuscript year, or ``None``.
 
-    Reads ``record["dates"]["year"]`` first (MARC parsing already extracts
-    MARC 008 / 264$c / 260$c into this field). Falls back to the
-    raw ``original_string`` when the structured year is missing.
+    Uses :func:`app.pipeline.marc_date_sources.manuscript_production_year`
+    — 260/264 $c first, then colophon year from 590/500 $a. Never 008.
     """
-    dates = record.get("dates")
-    if isinstance(dates, dict):
-        year = dates.get("year")
-        if isinstance(year, int) and 100 < year < 2100:
-            return year
-        original = dates.get("original_string")
-        if original:
-            return _parse_year(original)
-    if isinstance(dates, str):
-        return _parse_year(dates)
-    return None
+    from app.pipeline.marc_date_sources import manuscript_production_year  # noqa: PLC0415
+
+    return manuscript_production_year(record)
 
 
 # ── Guard 4: placeholder name filter ─────────────────────────────────

@@ -1343,6 +1343,12 @@ def _apply_mazal_entity_type_gate(
 
 
 def _record_year(record: dict[str, Any]) -> int | None:
+    from app.pipeline.marc_date_sources import manuscript_production_year  # noqa: PLC0415
+
+    canonical = manuscript_production_year(record)
+    if canonical is not None:
+        return canonical
+
     dates = record.get("dates")
     if isinstance(dates, dict):
         for k in ("year", "production", "publication"):
@@ -1354,8 +1360,7 @@ def _record_year(record: dict[str, Any]) -> int | None:
                     return int(v[:4])
                 except ValueError:
                     pass
-    # "date" (singular) is the key the NLI MARC ingest populates from the 008 field.
-    # "year" and "production_year" are alternate names from other ingest paths.
+    # Legacy scalar keys on records ingested before canonical date wiring.
     for key in ("date", "year", "production_year"):
         v = record.get(key)
         if isinstance(v, int):

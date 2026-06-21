@@ -93,6 +93,8 @@ _STRUCTURED_KEYS: tuple[str, ...] = (
     "colophon_year",
     "colophon_scribe",
     "work_mentions",
+    "dates",
+    "provenance_events",
 )
 
 
@@ -113,7 +115,7 @@ _TYPE_TO_FIELDS: dict[str, tuple[str, ...]] = {
     "genre_classifier": ("genre_form", "genres"),
     "place":           ("places", "related_places", "subjects"),
     "collection":      ("former_owners", "ownership_history", "acquisition_source"),
-    "date":            ("colophon_year",),
+    "date":            ("dates", "colophon_year", "provenance_events"),
 }
 
 
@@ -131,6 +133,45 @@ def _record_key(record_id: str) -> str:
     if not raw:
         return ""
     return raw.split("/")[-1]
+
+
+def _add_indexed_string(
+    bag: set[str],
+    by_field: dict[str, set[str]],
+    field_key: str,
+    raw: str,
+) -> None:
+    norm = _normalise(raw)
+    if not norm:
+        return
+    bag.add(norm)
+    by_field.setdefault(field_key, set()).add(norm)
+
+
+def _ingest_date_fields(
+    record: dict[str, Any],
+    bag: set[str],
+    by_field: dict[str, set[str]],
+) -> None:
+    """Index canonical MARC date values for Exists-in / DATE NER grounding."""
+    dates = record.get("dates")
+    if isinstance(dates, dict):
+        for key in ("year", "original_string", "year_start", "year_end"):
+            val = dates.get(key)
+            if val is not None:
+                _add_indexed_string(bag, by_field, "dates", str(val))
+
+    colophon_year = record.get("colophon_year")
+    if colophon_year is not None:
+        _add_indexed_string(bag, by_field, "colophon_year", str(colophon_year))
+
+    for ev in record.get("provenance_events") or []:
+        if not isinstance(ev, dict):
+            continue
+        for key in ("year", "year_earliest", "year_latest"):
+            val = ev.get(key)
+            if val is not None:
+                _add_indexed_string(bag, by_field, "provenance_events", str(val))
 
 
 class MarcStructuredIndex:
@@ -193,6 +234,7 @@ class MarcStructuredIndex:
                                 field_bag.add(part_norm)
                 if field_bag:
                     by_field[field_key] = field_bag
+            _ingest_date_fields(record, bag, by_field)
             if bag:
                 self._by_id[key] = bag
                 self._by_id_field[key] = by_field

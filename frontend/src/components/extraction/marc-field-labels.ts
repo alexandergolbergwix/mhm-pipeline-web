@@ -71,9 +71,11 @@ export const MARC_FIELD_LABELS: Record<string, MarcFieldLabel> = {
   script_type:        { label: "Script type",        tag: "500",     weight: 75, category: "physical" },
   script_mode:        { label: "Script mode",        tag: "500",     weight: 76, category: "physical" },
 
-  // Dates
-  dates:              { label: "Dates",              tag: "260/008", weight: 80, category: "dates" },
-  date:               { label: "Date",               tag: "260 ‡c",  weight: 81, category: "dates" },
+  // Dates (canonical sources — see backend/app/pipeline/marc_date_sources.py)
+  dates:              { label: "Production date",    tag: "260/264 ‡c", weight: 80, category: "dates" },
+  date:               { label: "Production date",    tag: "260/264 ‡c", weight: 81, category: "dates" },
+  colophon_year:      { label: "Colophon year",      tag: "590/500",    weight: 82, category: "dates" },
+  provenance_events:  { label: "Custody dates",      tag: "541/583",    weight: 83, category: "dates" },
 
   // Languages
   languages:          { label: "Languages",          tag: "041",     weight: 90, category: "language" },
@@ -96,7 +98,7 @@ export const ENTITY_EXPECTED_FIELDS: Record<string, string[]> = {
   GENRE:         ["genre_form", "genres"],
   PLACE:         ["places", "related_places", "subjects"],
   COLLECTION:    ["former_owners", "ownership_history", "acquisition_source"],
-  DATE:          ["dates", "date"],
+  DATE:          ["dates", "colophon_year", "provenance_events"],
   FOLIO:         ["contents", "works"],
   ORG:           ["contributors", "former_owners"],
   OTHER:         [],

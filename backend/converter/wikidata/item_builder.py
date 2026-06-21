@@ -662,7 +662,7 @@ def _extract_inception_year(record: dict[str, object]) -> int | None:
     can be determined — caller should err on the side of NOT asserting
     public domain.
 
-    Looks at: record["dates"]["year"], MARC 008 date1, and a fallback
+    Looks at: record["dates"]["year"], 260/264 $c via original_string, and
     parse of the original Hebrew/English date string.
     """
     dates = record.get("dates")

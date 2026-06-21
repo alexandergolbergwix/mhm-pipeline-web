@@ -86,8 +86,16 @@ def _year_band(dates: dict[str, Any] | None) -> tuple[int | None, int | None, in
             return None
 
     year = _int(dates.get("year"))
-    early = _int(dates.get("date_start")) if dates.get("date_start") is not None else year
-    late = _int(dates.get("date_end")) if dates.get("date_end") is not None else year
+    early = _int(dates.get("date_start"))
+    if early is None:
+        early = _int(dates.get("year_start"))
+    if early is None:
+        early = year
+    late = _int(dates.get("date_end"))
+    if late is None:
+        late = _int(dates.get("year_end"))
+    if late is None:
+        late = year
     return year, early, late
 
 

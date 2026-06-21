@@ -630,6 +630,14 @@ class GraphBuilder:
                         Literal(data.dates["date_start"], datatype=XSD.integer),
                     )
                 )
+            elif "year_start" in data.dates:
+                graph.add(
+                    (
+                        time_uri,
+                        HM.earliest_possible_date,
+                        Literal(data.dates["year_start"], datatype=XSD.integer),
+                    )
+                )
             elif "year" in data.dates:
                 graph.add(
                     (
@@ -645,6 +653,14 @@ class GraphBuilder:
                         time_uri,
                         HM.latest_possible_date,
                         Literal(data.dates["date_end"], datatype=XSD.integer),
+                    )
+                )
+            elif "year_end" in data.dates:
+                graph.add(
+                    (
+                        time_uri,
+                        HM.latest_possible_date,
+                        Literal(data.dates["year_end"], datatype=XSD.integer),
                     )
                 )
             elif "year" in data.dates:
@@ -1659,6 +1675,11 @@ class GraphBuilder:
             if dates["date_start"] == dates["date_end"]:
                 return str(dates["date_start"])
             return f"{dates['date_start']}-{dates['date_end']}"
+
+        if "year_start" in dates and "year_end" in dates:
+            if dates["year_start"] == dates["year_end"]:
+                return str(dates["year_start"])
+            return f"{dates['year_start']}-{dates['year_end']}"
 
         if "date_start" in dates:
             return f"after {dates['date_start']}"

@@ -221,6 +221,23 @@ def _normalise_records(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _dates_from_260_264(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Return parsed production dates from MARC 260/264 $c, or ``None``."""
+    from converter.transformer.field_handlers import FieldHandlers  # noqa: PLC0415
+    from converter.transformer.hebrew_gregorian_calendar import enrich_dates_with_calendar_fields  # noqa: PLC0415
+
+    for tag in ("260", "264"):
+        for piece in _split_multi(_str(record.get(f"{tag}$c"))):
+            piece = piece.strip().strip("[].")
+            if piece:
+                parsed = enrich_dates_with_calendar_fields(
+                    FieldHandlers._parse_date_string(piece)
+                )
+                if parsed:
+                    return parsed
+    return None
+
+
 def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     """In-place normalisation: collapses raw ``<tag>$<sub>`` subfield
     columns (typical of NLI-style TSV / JSON exports) into the flat
@@ -229,10 +246,12 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     Derived keys:
 
     * ``title``       — ``245$a`` (+ optional ``$b``)
-    * ``authors``     — ``100/110/111$a`` with ``$e`` roles
-    * ``contributors``— ``700/710/711/800/810/811$a`` with ``$e`` roles
-    * ``subjects``    — ``600/610/611/650/651$a`` with type labels
-    * ``dates.year``  — ``008`` positions 7-10
+    * ``authors``     — ``100/110/111$a`` with ``$e`` roles and ``$d`` dates
+    * ``contributors``— ``700/710/711/800/810/811$a`` with ``$e`` / ``$d``
+    * ``subjects``    — ``600/610/611/650/651$a`` (``600$d`` biographical dates)
+    * ``dates``         — ``260/264$c`` production date (never 008)
+    * ``colophon_year`` — year parsed from ``590/500$a`` colophon text
+    * ``provenance_events`` — custody dates from ``541$d``, ``583$c``
     * ``genres``      — ``655$a``
     * ``notes``       — ``500/590/541$a`` (general/local/source notes —
                         the AI-Extraction Person-NER input)
@@ -240,6 +259,8 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     * ``contents``    — ``505$a`` split on ``--`` into title chunks
                         (the Contents-NER input + work-item driver)
     * ``colophon_text``— ``590$a`` (local notes — desktop convention)
+
+    Date-source contract: ``marc_date_sources.py``.
 
     Multi-value subfields are pipe-separated. Roles travel through
     ``$e`` parallel arrays where present.
@@ -362,13 +383,11 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     if not record.get("place") and related_places:
         record["place"] = related_places[0]
 
-    # ── Dates (008 positions 7-10 are the production year) ──────────
-    f008 = _str(record.get("008"))
-    if f008 and len(f008) >= 11 and not record.get("dates"):
-        # Be lenient: accept any 4-digit run starting at byte 7.
-        candidate = "".join(c for c in f008[7:11] if c.isdigit())
-        if candidate and len(candidate) == 4:
-            record["dates"] = {"year": int(candidate)}
+    # ── Dates (260/264 $c — never 008, which is catalog-entry metadata) ─
+    if not record.get("dates"):
+        parsed = _dates_from_260_264(record)
+        if parsed:
+            record["dates"] = parsed
 
     # ── Genre/form ──────────────────────────────────────────────────
     # Flat list[str] — mirrors extract_all_data() / GraphBuilder expectations.
@@ -503,6 +522,11 @@ def _gematria_to_gregorian(heb: str) -> int | None:
 
 def _extract_colophon_fields(record: dict[str, Any]) -> None:
     """Best-effort extract colophon_year and colophon_scribe from colophon_text."""
+    from converter.transformer.gematria import (  # noqa: PLC0415
+        letters_to_gregorian_year,
+        letters_to_hebrew_year,
+    )
+
     text = str(record.get("colophon_text") or "")
     if not text:
         return
@@ -510,15 +534,25 @@ def _extract_colophon_fields(record: dict[str, Any]) -> None:
     # Try Hebrew bracket year first.
     m = _HEBREW_YEAR_RE.search(text)
     if m:
-        year = _gematria_to_gregorian(m.group("year"))
-        if year:
-            record["colophon_year"] = year
+        token = m.group("year")
+        hy = letters_to_hebrew_year(token)
+        greg = letters_to_gregorian_year(token)
+        if hy is not None:
+            record["colophon_hebrew_year"] = hy
+        if greg is not None:
+            record["colophon_year"] = greg
 
     # Fallback: Gregorian year.
     if not record.get("colophon_year"):
         m2 = _GREGORIAN_YEAR_RE.search(text)
         if m2:
-            record["colophon_year"] = int(m2.group("year"))
+            ce = int(m2.group("year"))
+            record["colophon_year"] = ce
+            from converter.transformer.gematria import gregorian_to_hebrew_year  # noqa: PLC0415
+
+            hy = gregorian_to_hebrew_year(ce)
+            if hy is not None:
+                record["colophon_hebrew_year"] = hy
 
     # Scribe: patronymic "בן / ב"ר" pattern
     ms = _SCRIBE_BEN_RE.search(text)
