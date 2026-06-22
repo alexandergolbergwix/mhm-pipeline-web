@@ -126,6 +126,18 @@ def merge_approved_authority(rec: dict[str, Any], matches: list[dict[str, Any]])
             _merge_kima_place(rec, entity_text, m, payload)
             continue
 
+        if entity_kind == "topic":
+            _merge_topic_authority(rec, entity_text, m, payload)
+            continue
+
+        if entity_kind == "work":
+            _merge_work_authority(rec, entity_text, m, payload)
+            continue
+
+        if entity_kind in ("corporate", "organization", "meeting"):
+            _merge_corporate_authority(rec, entity_text, m, payload)
+            continue
+
         role = normalize_role(str(m.get("role") or "contributor"))
         target_key = "authors" if role == "author" else "contributors"
         people = rec.setdefault(target_key, []) or []
@@ -232,19 +244,126 @@ def _fill_person_authority(
         person["occupations"] = occupations
 
 
+def _merge_topic_authority(
+    rec: dict[str, Any],
+    entity_text: str,
+    match: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """Stamp approved authority IDs onto MARC 650 topical subject rows."""
+    from converter.transformer.subject_records import subject_term  # noqa: PLC0415
+
+    for subj in rec.get("subjects") or []:
+        if not isinstance(subj, dict):
+            continue
+        if str(subj.get("type") or "") != "topic":
+            continue
+        term = subject_term(subj)
+        if not term or not names_overlap(term, entity_text):
+            continue
+        if match.get("wikidata_qid") and "wikidata_id" not in subj:
+            subj["wikidata_id"] = match["wikidata_qid"]
+        if match.get("mazal_id") and "mazal_id" not in subj:
+            subj["mazal_id"] = str(match["mazal_id"])
+        if match.get("viaf_id") and "viaf_id" not in subj:
+            subj["viaf_id"] = str(match["viaf_id"])
+        auth = payload.get("mazal_aleph_id") or match.get("mazal_id")
+        if auth and "authority_id" not in subj:
+            subj["authority_id"] = str(auth)
+
+
+def _stamp_authority_ids(
+    target: dict[str, Any],
+    match: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    if match.get("wikidata_qid") and "wikidata_id" not in target:
+        target["wikidata_id"] = match["wikidata_qid"]
+    if match.get("mazal_id") and "mazal_id" not in target:
+        target["mazal_id"] = str(match["mazal_id"])
+    if match.get("viaf_id") and "viaf_id" not in target:
+        target["viaf_id"] = str(match["viaf_id"])
+    auth = payload.get("mazal_aleph_id") or match.get("mazal_id")
+    if auth and "authority_id" not in target:
+        target["authority_id"] = str(auth)
+
+
+def _merge_work_authority(
+    rec: dict[str, Any],
+    entity_text: str,
+    match: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """Stamp approved authority IDs onto work titles (505 / work_mentions)."""
+    for content in rec.get("contents") or []:
+        if not isinstance(content, dict):
+            continue
+        title = clean_marc_label(str(content.get("title") or ""))
+        if title and names_overlap(title, entity_text):
+            _stamp_authority_ids(content, match, payload)
+
+    for wm in rec.get("work_mentions") or []:
+        if not isinstance(wm, dict):
+            continue
+        title = clean_marc_label(str(wm.get("title") or ""))
+        if title and names_overlap(title, entity_text):
+            _stamp_authority_ids(wm, match, payload)
+
+
+def _merge_corporate_authority(
+    rec: dict[str, Any],
+    entity_text: str,
+    match: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """Stamp approved authority IDs onto corporate subjects and contributors."""
+    from converter.transformer.subject_records import subject_term  # noqa: PLC0415
+
+    for subj in rec.get("subjects") or []:
+        if not isinstance(subj, dict):
+            continue
+        if str(subj.get("type") or "") not in ("organization", "corporate", "meeting"):
+            continue
+        term = subject_term(subj)
+        if term and names_overlap(term, entity_text):
+            _stamp_authority_ids(subj, match, payload)
+
+    for person in (rec.get("contributors") or []) + (rec.get("authors") or []):
+        if not isinstance(person, dict):
+            continue
+        name = clean_marc_label(str(person.get("name") or ""))
+        if name and names_overlap(name, entity_text):
+            _stamp_authority_ids(person, match, payload)
+
+    refs = rec.get("catalog_references") or []
+    for i, ref in enumerate(refs):
+        ref_text = clean_marc_label(str(ref))
+        if ref_text and names_overlap(ref_text, entity_text):
+            if isinstance(ref, str):
+                entry = {"name": ref_text}
+                _stamp_authority_ids(entry, match, payload)
+                refs[i] = entry
+            elif isinstance(ref, dict):
+                _stamp_authority_ids(ref, match, payload)
+    if refs:
+        rec["catalog_references"] = refs
+
+
 def _merge_kima_place(
     rec: dict[str, Any],
     entity_text: str,
     match: dict[str, Any],
     payload: dict[str, Any],
 ) -> None:
+    from converter.transformer.subject_records import subject_term  # noqa: PLC0415
+
     kima_lat = payload.get("kima_lat")
     kima_lon = payload.get("kima_lon")
     kima_geo = payload.get("kima_geonames")
     wikidata_qid = match.get("wikidata_qid")
 
     for subj in rec.get("subjects") or []:
-        term = clean_marc_label(str(subj.get("term") or ""))
+        term = subject_term(subj) if isinstance(subj, dict) else ""
         if term and names_overlap(term, entity_text):
             if kima_geo and "geonames_id" not in subj:
                 subj["geonames_id"] = str(kima_geo)

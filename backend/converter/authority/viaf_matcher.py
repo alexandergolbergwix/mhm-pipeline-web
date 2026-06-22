@@ -158,6 +158,25 @@ class VIAFMatcher:
         """Return the VIAF cluster URI for a uniform title, or None."""
         return self._search(title, cql_field="local.uniformTitleWorks")
 
+    def match_corporate(self, name: str) -> str | None:
+        """Return the VIAF cluster URI for a corporate name, or None."""
+        return self._search(
+            name,
+            cql_field="local.corporateNames",
+            expected_name_type="Corporate",
+        )
+
+    def cluster_name_type(self, viaf_id: str) -> str:
+        """Return VIAF ``nameType`` for a cluster id, or ``\"\"`` when unknown."""
+        cluster = self.get_cluster_raw(viaf_id)
+        if not cluster:
+            return ""
+        return str(
+            cluster.get("ns2:nameType")
+            or cluster.get("nameType")
+            or ""
+        ).strip()
+
     def get_cluster_raw(self, viaf_id: str) -> dict | None:
         """Fetch + cache the raw VIAF cluster JSON (unwrapped from
         ``ns1:VIAFCluster``). Shared by :meth:`get_cluster_identifiers`

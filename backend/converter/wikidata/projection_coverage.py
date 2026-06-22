@@ -252,9 +252,13 @@ STRATEGY_BY_LOCAL_NAME: dict[str, ProjectionStrategy] = {
     ),
     "SubjectType": ProjectionStrategy(
         projection_status="summarized_in_wikidata",
-        wikidata_representation="Genre and main-subject statements on the manuscript item",
+        wikidata_representation="Genre (P136) and main-subject (P921) on the manuscript item",
         wikidata_properties=("P136", "P921"),
-        notes="HMO subject types map to Wikidata P136 (genre) and P921 (main subject) QIDs.",
+        notes=(
+            "MARC 655 → P136; MARC 650 topical → P921 when QID resolvable. "
+            "See https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model "
+            "(Content properties)."
+        ),
     ),
     "E52_Time-Span": ProjectionStrategy(
         projection_status="summarized_in_wikidata",

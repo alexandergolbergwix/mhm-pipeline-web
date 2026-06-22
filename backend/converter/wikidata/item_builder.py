@@ -781,7 +781,18 @@ def _build_manuscript_description(record: dict[str, object]) -> str:
             parts.append(mat_label)
 
     parts.append("National Library of Israel")
-    return _cap_description(", ".join(parts))
+    desc = _cap_description(", ".join(parts))
+    from converter.wikidata.marc_subject_resolve import unresolved_topic_labels  # noqa: PLC0415
+
+    topics = unresolved_topic_labels(list(record.get("subjects") or []))
+    if topics:
+        topic_note = "; ".join(topics[:3])
+        if len(topics) > 3:
+            topic_note += ", …"
+        extra = _cap_description(f"Subjects include {topic_note}")
+        if len(desc) + len(extra) + 2 <= 250:
+            desc = _cap_description(f"{desc}. {extra}")
+    return desc
 
 
 def _extract_century_for_work(source_record: dict[str, object]) -> str | None:
@@ -1240,90 +1251,9 @@ class WikidataItemBuilder:
             )
 
         # ── Genres (MARC 655) ────────────────────────────────────
-        marc_genres = record.get("genres") or []
-        seen_genre_qids: set[str] = set()
-        for genre in marc_genres:
-            qid = GENRE_TO_QID.get(str(genre))
-            if qid and qid not in seen_genre_qids:
-                seen_genre_qids.add(qid)
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_GENRE,
-                        value=qid,
-                        value_type="item",
-                        references=ref,
-                    )
-                )
+        self._add_marc_genres(item, record, ref, title)
 
-        # ── Genre fallback: classifier when MARC 655 absent ──────
-        if not marc_genres:
-            _clf = _get_genre_classifier()
-            if _clf is not None:
-                heuristic_ref = list(ref) + [
-                    {"property": P_BASED_ON_HEURISTIC, "value": "Q2539", "type": "item"},
-                ]
-                inferred = _clf.predict(
-                    title,
-                    record.get("notes") or [],
-                )
-                for genre_str, _conf in inferred:
-                    if genre_str == "other":
-                        continue  # NOTA predicted — no genre claim
-                    qid = GENRE_TO_QID.get(genre_str)
-                    if qid and qid not in seen_genre_qids:
-                        seen_genre_qids.add(qid)
-                        # Rule 42: classifier-inferred genres carry both
-                        # P1480 (presumably) and P5102 (hypothesis) to make
-                        # the epistemic status explicit. P887 stays in the
-                        # reference block (Rule 28 #3 regress guard).
-                        item.statements.append(
-                            WikidataStatement(
-                                property_id=P_GENRE,
-                                value=qid,
-                                value_type="item",
-                                qualifiers=[
-                                    {
-                                        "property": P_SOURCING_CIRCUMSTANCES,
-                                        "value": Q_PRESUMABLY,
-                                        "type": "item",
-                                    },
-                                    {
-                                        "property": P_NATURE_OF_STATEMENT,
-                                        "value": Q_HYPOTHESIS,
-                                        "type": "item",
-                                    },
-                                ],
-                                references=heuristic_ref,
-                            )
-                        )
-
-        # ── Genres from curator-approved NER extraction (genre_ml source) ──
-        ner_genre_ents = [
-            e for e in (record.get("entities") or [])
-            if e.get("type") == "GENRE" and e.get("approved", False)
-        ]
-        for ge in ner_genre_ents:
-            genre_text = str(ge.get("text", "")).strip()
-            qid = GENRE_TO_QID.get(genre_text)
-            if qid and qid not in seen_genre_qids:
-                seen_genre_qids.add(qid)
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_GENRE,
-                        value=qid,
-                        value_type="item",
-                        qualifiers=[
-                            {
-                                "property": P_SOURCING_CIRCUMSTANCES,
-                                "value": Q_PRESUMABLY,
-                                "type": "item",
-                            }
-                        ],
-                        references=ref,
-                    )
-                )
-
-        # ── Subjects from canonical_references → P921 ────────────
+        # ── Subjects (MARC 650 + canonical refs) → P921 ─────────
         self._add_canonical_subjects(item, record, ref)
 
         # ── Contents / works (P1574 exemplar of) ────────────────
@@ -1782,6 +1712,11 @@ class WikidataItemBuilder:
             qids.append(Q_COMPOSITE_MANUSCRIPT)
         if record.get("is_palimpsest"):
             qids.append(Q_PALIMPSEST)
+        from converter.wikidata.marc_subject_resolve import instance_qids_from_genre_labels  # noqa: PLC0415
+
+        for qid in instance_qids_from_genre_labels(list(record.get("genres") or [])):
+            if qid not in qids:
+                qids.append(qid)
         qids.append(Q_MANUSCRIPT)  # base type always last
         seen: set[str] = set()
         ordered: list[str] = []
@@ -2014,97 +1949,150 @@ class WikidataItemBuilder:
                     )
                 )
 
+    def _add_marc_genres(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+        title: str,
+    ) -> None:
+        """Emit P136 from MARC 655 (WikiProject Manuscripts content properties)."""
+        from converter.wikidata.marc_subject_resolve import resolve_genre_qid  # noqa: PLC0415
+
+        marc_genres = list(record.get("genres") or [])
+        genre_entries = list(record.get("genre_entries") or [])
+        entry_by_term = {
+            str(g.get("term") or g.get("name") or ""): g
+            for g in genre_entries
+            if isinstance(g, dict)
+        }
+        seen_genre_qids: set[str] = set()
+
+        def _append_genre(qid: str, *, qualifiers: list | None = None, references: list | None = None) -> None:
+            if not qid or qid in seen_genre_qids:
+                return
+            seen_genre_qids.add(qid)
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_GENRE,
+                    value=qid,
+                    value_type="item",
+                    qualifiers=qualifiers or [],
+                    references=references or ref,
+                )
+            )
+
+        for genre in marc_genres:
+            label = str(genre).strip()
+            if not label:
+                continue
+            qid = resolve_genre_qid(label, genre_entry=entry_by_term.get(label))
+            if qid:
+                _append_genre(qid)
+
+        if not marc_genres:
+            _clf = _get_genre_classifier()
+            if _clf is not None:
+                heuristic_ref = list(ref) + [
+                    {"property": P_BASED_ON_HEURISTIC, "value": "Q2539", "type": "item"},
+                ]
+                inferred = _clf.predict(title, record.get("notes") or [])
+                for genre_str, _conf in inferred:
+                    if genre_str == "other":
+                        continue
+                    qid = resolve_genre_qid(genre_str)
+                    if qid:
+                        _append_genre(
+                            qid,
+                            qualifiers=[
+                                {"property": P_SOURCING_CIRCUMSTANCES, "value": Q_PRESUMABLY, "type": "item"},
+                                {"property": P_NATURE_OF_STATEMENT, "value": Q_HYPOTHESIS, "type": "item"},
+                            ],
+                            references=heuristic_ref,
+                        )
+
+        ner_genre_ents = [
+            e for e in (record.get("entities") or [])
+            if e.get("type") == "GENRE" and e.get("approved", False)
+        ]
+        for ge in ner_genre_ents:
+            genre_text = str(ge.get("text", "")).strip()
+            qid = resolve_genre_qid(genre_text)
+            if qid:
+                _append_genre(
+                    qid,
+                    qualifiers=[
+                        {"property": P_SOURCING_CIRCUMSTANCES, "value": Q_PRESUMABLY, "type": "item"},
+                    ],
+                )
+
     def _add_canonical_subjects(
         self,
         item: WikidataItem,
         record: dict[str, object],
         ref: list[dict[str, str]],
     ) -> None:
-        """Add P921 (main subject) from canonical_references.
-
-        Maps Bible book names and Talmud Bavli tractate names to Wikidata QIDs.
-        """
+        """Add P921 (main subject) from canonical refs and MARC 650 topics."""
+        from converter.transformer.subject_records import subject_term  # noqa: PLC0415
+        from converter.wikidata.marc_subject_resolve import resolve_subject_qid  # noqa: PLC0415
         from converter.wikidata.property_mapping import (  # noqa: PLC0415
             BIBLE_BOOK_TO_QID,
-            SUBJECT_TO_QID,
             TALMUD_TRACTATE_TO_QID,
         )
 
         seen_qids: set[str] = set()
 
-        # From canonical references (Bible books, Talmud tractates)
+        def _append_p921(qid: str) -> None:
+            if not qid or qid in seen_qids:
+                return
+            seen_qids.add(qid)
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_MAIN_SUBJECT,
+                    value=qid,
+                    value_type="item",
+                    references=ref,
+                )
+            )
+
         for cr in record.get("canonical_references") or []:
             hierarchy = cr.get("hierarchy", "")
             qid = None
             if hierarchy == "Bible":
-                book = cr.get("book", "")
-                qid = BIBLE_BOOK_TO_QID.get(book)
+                qid = BIBLE_BOOK_TO_QID.get(str(cr.get("book", "")))
             elif hierarchy == "Talmud_Bavli":
-                tractate = cr.get("tractate", "")
-                qid = TALMUD_TRACTATE_TO_QID.get(tractate)
-            if qid and qid not in seen_qids:
-                seen_qids.add(qid)
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_MAIN_SUBJECT,
-                        value=qid,
-                        value_type="item",
-                        references=ref,
-                    )
-                )
+                qid = TALMUD_TRACTATE_TO_QID.get(str(cr.get("tractate", "")))
+            if qid:
+                _append_p921(qid)
 
-        # From LCSH subject headings
         for subj in record.get("subjects") or []:
-            term = subj.get("term", "") if isinstance(subj, dict) else str(subj)
+            if not isinstance(subj, dict):
+                continue
+            stype = str(subj.get("type") or "topic").lower()
+            if stype in ("place", "organization", "corporate", "meeting"):
+                continue
+            term = subject_term(subj)
             if not term:
                 continue
-            qid = SUBJECT_TO_QID.get(term)
-            if qid and qid not in seen_qids:
-                seen_qids.add(qid)
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_MAIN_SUBJECT,
-                        value=qid,
-                        value_type="item",
-                        references=ref,
-                    )
-                )
-            elif not qid and term.strip():
-                # Person names as subjects → try to create person item, link via P921
+            if stype == "topic":
+                qid = resolve_subject_qid(subj)
+                if qid:
+                    _append_p921(qid)
+                continue
+            if stype == "person":
                 person = self._get_or_create_person(
-                    term.strip(),
+                    term,
                     None,
                     None,
                     "subject",
                     record,
                 )
-                p_key = _person_key(term.strip(), None, None)
+                p_key = _person_key(term, None, None)
                 resolved = self._person_qids.get(p_key) or person.existing_qid
-                if resolved and resolved not in seen_qids:
-                    seen_qids.add(resolved)
-                    item.statements.append(
-                        WikidataStatement(
-                            property_id=P_MAIN_SUBJECT,
-                            value=resolved,
-                            value_type="item",
-                            references=ref,
-                        )
-                    )
-                elif not person.labels:
-                    # Notability gate skipped this person — no external IDs.
-                    # Skip P921 entirely for bare subject names with no authority
-                    # record; adding a string value to P921 is not valid.
-                    pass
-                elif person.local_id not in seen_qids:
-                    seen_qids.add(person.local_id)
-                    item.statements.append(
-                        WikidataStatement(
-                            property_id=P_MAIN_SUBJECT,
-                            value=f"__LOCAL:{person.local_id}",
-                            value_type="item",
-                            references=ref,
-                        )
-                    )
+                if resolved:
+                    _append_p921(resolved)
+                elif person.labels and person.local_id:
+                    _append_p921(f"__LOCAL:{person.local_id}")
 
     def _add_provenance_claims(
         self,

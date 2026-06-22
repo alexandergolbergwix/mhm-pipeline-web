@@ -203,6 +203,7 @@ def hmo_wikibase_page_url(control_number: str) -> str:
 Q_MANUSCRIPT = "Q87167"
 Q_CODEX = "Q213924"
 Q_ILLUMINATED_MANUSCRIPT = "Q48498"
+Q_MANUSCRIPT_FRAGMENT = "Q30103158"
 Q_COMPOSITE_MANUSCRIPT = "Q33308141"  # multi-text codex with distinct production strata
 Q_PALIMPSEST = "Q274076"              # manuscript reused after scraping (Q179808 = Palme d'Or — WRONG)
 Q_HUMAN = "Q5"
@@ -405,6 +406,17 @@ SUBJECT_TO_QID: dict[str, str] = {
     "Jewish converts": "Q814999",  # conversion to Christianity
     "Abbreviations, Hebrew": "Q102786",  # abbreviation
     "Sheluhe de-rabanan": "Q6867684",  # Shadarim (emissaries)
+    # Hebrew topical headings (MARC 650)
+    "מקרא": "Q1845",  # Bible
+    "תורה": "Q34990",  # Torah
+    "תלמוד": "Q43290",  # Talmud
+    "משנה": "Q191825",  # Mishnah
+    "הלכה": "Q107427",  # Halakha
+    "קבלה": "Q123006",  # Kabbalah
+    "פילוסופיה": "Q5891",  # philosophy
+    "שירה": "Q482",  # poetry
+    "ליטורגיה": "Q172331",  # liturgy
+    "תפילה": "Q40953",  # prayer
 }
 
 # ── Language code → QID mapping ──────────────────────────────────────

@@ -111,6 +111,18 @@ _CORPORATE_TYPES: tuple[str, ...] = ("Q43229", "Q4830453", "Q22687")
 # Work-shaped classes: literary work, work, written work.
 _WORK_TYPES: tuple[str, ...] = ("Q47461344", "Q571", "Q49848")
 
+# Topical-subject classes (MARC 650) — deliberately excludes Q5 (human).
+_TOPIC_TYPES: tuple[str, ...] = (
+    "Q151885",
+    "Q417841",
+    "Q7252",
+    "Q1792379",
+    "Q336",
+    "Q17376908",
+)
+
+_HUMAN_QIDS: frozenset[str] = frozenset({"Q5", "Q15632617"})
+
 
 # ── Module-level cache / session ──────────────────────────────────────
 
@@ -449,6 +461,13 @@ class WikidataMatcher:
     def match_work(self, title: str, author: str | None = None) -> str | None:
         del author  # author-based disambiguation is Agent F's concern.
         return self._match_label(title, _WORK_TYPES)
+
+    def match_subject(self, name: str) -> str | None:
+        """Match a MARC 650 topical heading — never returns a human QID."""
+        qid = self._match_label(name, _TOPIC_TYPES)
+        if qid and qid in _HUMAN_QIDS:
+            return None
+        return qid
 
     def find_qid_by_viaf(self, viaf_id: str) -> str | None:
         return self._match_identifier("P214", viaf_id)

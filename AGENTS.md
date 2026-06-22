@@ -18,6 +18,17 @@ When a pipeline rule and a local web rule conflict, follow the local web rule
 only if it explicitly applies to `mhm-pipeline-web`; otherwise inherit the
 pipeline rule unchanged.
 
+## Bar-Ilan presentation deck (upstream)
+
+PPTX speaker-note edits live in the **pipeline** repo. Before any deck work read:
+
+- `/Users/alexandergo/Documents/Doctorat/pipeline/.codex/skills/bar-ilan-pptx/SKILL.md`
+- `/Users/alexandergo/Documents/Doctorat/pipeline/.codex/skills/pptx-toolkit/SKILL.md`
+
+Hard rules: Hebrew notes = spoken teleprompter (read aloud); preserve **RTL +
+Arial** via `edit_pptx_deck.py` / `set_slide_notes` / `--fix-notes` — never raw
+`python-pptx` `notes_text_frame.text`.
+
 ## Linked Data Explorer
 
 The Linked Data Explorer Overview tab must aggregate linked-data entities

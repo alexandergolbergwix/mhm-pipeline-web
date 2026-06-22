@@ -497,6 +497,9 @@ def guard_mazal_pair_collision(
 
 
 _CORPORATE_KIND_VALUES = frozenset({"organization", "organisation", "corporate", "meeting"})
+_NON_PERSON_KIND_VALUES = frozenset(
+    {"place", "work", "topic", "organization", "organisation", "corporate", "meeting"}
+)
 
 
 def guard_corporate_meeting(
@@ -504,18 +507,14 @@ def guard_corporate_meeting(
     candidate: dict[str, Any],
     entity_kind: str | None = None,
 ) -> GuardVerdict:
-    """Corporate / meeting entities must not carry a person-VIAF id.
+    """Drop a *person*-typed VIAF id from corporate / meeting rows.
 
-    Desktop's :meth:`AuthorityWorker._match_against_authorities` returns
-    ``(None, None)`` for ``entity_type in ("organization", "meeting")``
-    so VIAF SRU never runs. Web matcher already routed those calls but
-    we still need to defensively drop a VIAF id that crept onto an
-    organisation row (e.g. an institution mis-classified as a person at
-    AI Extraction and corrected later).
+    Corporate VIAF clusters (``nameType=Corporate``) are allowed when
+    enrichment was anchored on a Mazal hit. Only ``Personal`` clusters
+    (or unverified SRU hits without a corporate name type) are stripped.
     """
     kind = (entity_kind or candidate.get("entity_kind") or "").lower()
     if kind not in _CORPORATE_KIND_VALUES:
-        # Optional fallback — keyword check on the name (defensive only).
         name = candidate.get("matched_name") or candidate.get("entity_text") or ""
         if name and _looks_institutional(str(name)):
             kind = "organization"
@@ -525,15 +524,179 @@ def guard_corporate_meeting(
     if not candidate.get("viaf_id"):
         return GuardVerdict(fired=False)
 
+    payload = candidate.get("payload") or {}
+    name_type = str(payload.get("viaf_name_type") or "").strip()
+    resolve_op = str(payload.get("viaf_resolve_op") or "").strip()
+
+    if name_type == "Corporate" or resolve_op == "sru_corporate":
+        return GuardVerdict(fired=False)
+    if name_type and name_type != "Personal":
+        return GuardVerdict(fired=False)
+
     return GuardVerdict(
         fired=True,
         new_confidence="low",
         reason=(
-            f"Entity kind {kind!r} but a person-style VIAF id "
-            f"{candidate.get('viaf_id')!r} is attached — VIAF SRU "
-            "matches the wrong name type for organisations / meetings."
+            f"Entity kind {kind!r} carries a person-style VIAF id "
+            f"{candidate.get('viaf_id')!r} — stripped to avoid cross-type "
+            "cluster contamination."
         ),
         flag="corporate_viaf_drop",
+    )
+
+
+def guard_viaf_name_type_mismatch(
+    *,
+    candidate: dict[str, Any],
+    entity_kind: str | None = None,
+) -> GuardVerdict:
+    """Reject VIAF clusters whose ``nameType`` conflicts with routed kind."""
+    viaf_id = _viaf_id_from(candidate)
+    if not viaf_id:
+        return GuardVerdict(fired=False)
+
+    kind = (entity_kind or candidate.get("entity_kind") or "person").lower()
+    payload = candidate.get("payload") or {}
+    name_type = str(payload.get("viaf_name_type") or "").strip()
+    resolve_op = str(payload.get("viaf_resolve_op") or "").strip()
+
+    if not name_type:
+        if kind in _NON_PERSON_KIND_VALUES and resolve_op.startswith("sru_"):
+            if not payload.get("mazal_id") and kind != "place":
+                return GuardVerdict(
+                    fired=True,
+                    new_confidence="low",
+                    reason=(
+                        f"VIAF SRU hit ({viaf_id}) lacks nameType verification "
+                        f"and has no Mazal anchor for kind {kind!r}."
+                    ),
+                    flag="viaf_untyped_no_anchor",
+                )
+        return GuardVerdict(fired=False)
+
+    if kind == "person":
+        if name_type != "Personal":
+            return GuardVerdict(
+                fired=True,
+                new_confidence="low",
+                reason=(
+                    f"Person entity carries VIAF {viaf_id} with "
+                    f"nameType={name_type!r}."
+                ),
+                flag="viaf_name_type_mismatch",
+            )
+        return GuardVerdict(fired=False)
+
+    if name_type == "Personal":
+        return GuardVerdict(
+            fired=True,
+            new_confidence="low",
+            reason=(
+                f"Non-person entity ({kind}) carries personal VIAF "
+                f"{viaf_id}."
+            ),
+            flag="viaf_person_on_non_person",
+        )
+
+    if kind == "place" and name_type not in ("Geographic",):
+        return GuardVerdict(
+            fired=True,
+            new_confidence="low",
+            reason=(
+                f"Place entity carries VIAF {viaf_id} with "
+                f"nameType={name_type!r}."
+            ),
+            flag="viaf_name_type_mismatch",
+        )
+
+    if kind == "work" and name_type not in ("UniformTitleWork", "Title", ""):
+        if name_type in ("Personal", "Corporate", "Geographic"):
+            return GuardVerdict(
+                fired=True,
+                new_confidence="low",
+                reason=(
+                    f"Work entity carries VIAF {viaf_id} with "
+                    f"nameType={name_type!r}."
+                ),
+                flag="viaf_name_type_mismatch",
+            )
+
+    return GuardVerdict(fired=False)
+
+
+def guard_wikidata_orphan_label(
+    *,
+    candidate: dict[str, Any],
+    entity_kind: str | None = None,
+) -> GuardVerdict:
+    """Label-search Wikidata hits without a Mazal/VIAF anchor are stripped."""
+    qid = (candidate.get("wikidata_qid") or "").strip()
+    if not qid:
+        return GuardVerdict(fired=False)
+
+    kind = (entity_kind or candidate.get("entity_kind") or "").lower()
+    if kind not in ("work", "corporate", "organization", "meeting", "topic"):
+        return GuardVerdict(fired=False)
+
+    payload = candidate.get("payload") or {}
+    if str(payload.get("wikidata_resolve_op") or "") != "label":
+        return GuardVerdict(fired=False)
+
+    if candidate.get("mazal_id") or candidate.get("viaf_id"):
+        return GuardVerdict(fired=False)
+
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason=(
+            f"Wikidata label hit {qid} on {kind!r} without Mazal/VIAF "
+            "anchor — abstaining."
+        ),
+        flag="wikidata_orphan_label",
+    )
+
+
+def guard_wikidata_label_on_place(
+    *,
+    candidate: dict[str, Any],
+    entity_kind: str | None = None,
+) -> GuardVerdict:
+    """Places must not accept Wikidata label overrides over KIMA coords."""
+    kind = (entity_kind or candidate.get("entity_kind") or "").lower()
+    if kind != "place":
+        return GuardVerdict(fired=False)
+
+    payload = candidate.get("payload") or {}
+    if str(payload.get("wikidata_resolve_op") or "") != "label":
+        return GuardVerdict(fired=False)
+
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason="Place Wikidata label search is disabled — KIMA/gazetteer only.",
+        flag="wikidata_label_on_place",
+    )
+
+
+def guard_wikidata_human_on_non_person(
+    *,
+    candidate: dict[str, Any],
+    entity_kind: str | None = None,
+) -> GuardVerdict:
+    """Strip Q5 (human) Wikidata hits from non-person entity rows."""
+    qid = (candidate.get("wikidata_qid") or "").strip()
+    if not qid:
+        return GuardVerdict(fired=False)
+    kind = (entity_kind or candidate.get("entity_kind") or "person").lower()
+    if kind == "person":
+        return GuardVerdict(fired=False)
+    if qid not in ("Q5", "Q15632617"):
+        return GuardVerdict(fired=False)
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason=f"Non-person entity carries human Wikidata QID {qid}.",
+        flag="wikidata_human_on_non_person",
     )
 
 
@@ -681,6 +844,10 @@ def apply_hardening_guards(
         guard_nli_strict_skip_viaf(candidate=out),
         guard_mazal_pair_collision(candidate=out, siblings=ctx.siblings),
         guard_corporate_meeting(candidate=out, entity_kind=ctx.entity_kind),
+        guard_viaf_name_type_mismatch(candidate=out, entity_kind=ctx.entity_kind),
+        guard_wikidata_orphan_label(candidate=out, entity_kind=ctx.entity_kind),
+        guard_wikidata_label_on_place(candidate=out, entity_kind=ctx.entity_kind),
+        guard_wikidata_human_on_non_person(candidate=out, entity_kind=ctx.entity_kind),
         guard_mazal_subject_heading(
             main_marc_tag=(out.get("payload") or {}).get("main_marc_tag"),
             entity_kind=ctx.entity_kind,
@@ -740,11 +907,31 @@ def apply_hardening_guards(
 
     # Corporate routing: drop the person-style VIAF id when the guard
     # fired, mirroring desktop's _match_against_authorities short-circuit.
-    if any(v.flag == "corporate_viaf_drop" for v in fired):
+    _viaf_strip_flags = {
+        "corporate_viaf_drop",
+        "viaf_name_type_mismatch",
+        "viaf_person_on_non_person",
+        "viaf_untyped_no_anchor",
+    }
+    if any(v.flag in _viaf_strip_flags for v in fired):
         out["viaf_id"] = ""
         payload.pop("viaf_uri", None)
+        payload.pop("viaf_name_type", None)
+        payload.pop("viaf_resolve_op", None)
         for stale in ("gnd_id", "lc_id", "isni", "bnf_id"):
             payload.pop(stale, None)
+
+    _wikidata_strip_flags = {
+        "wikidata_orphan_label",
+        "wikidata_label_on_place",
+        "wikidata_human_on_non_person",
+    }
+    if any(v.flag in _wikidata_strip_flags for v in fired):
+        out["wikidata_qid"] = ""
+        payload.pop("wikidata_uri", None)
+        payload.pop("wikidata_resolve_op", None)
+        payload.pop("wikidata_he_label", None)
+        payload.pop("wikidata_en_description", None)
 
     # Wikidata crosscheck failure: drop WD + VIAF cluster ids but keep Mazal.
     if any(v.flag == "wikidata_crosscheck_fail" for v in fired):
@@ -850,6 +1037,10 @@ __all__ = [
     "apply_hardening_guards",
     "guard_cluster_collapse",
     "guard_corporate_meeting",
+    "guard_viaf_name_type_mismatch",
+    "guard_wikidata_orphan_label",
+    "guard_wikidata_label_on_place",
+    "guard_wikidata_human_on_non_person",
     "guard_mazal_pair_collision",
     "guard_mazal_subject_heading",
     "guard_mazal_entity_type_mismatch",

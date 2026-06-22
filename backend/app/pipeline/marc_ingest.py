@@ -327,19 +327,52 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     # 600 = personal-name subject; 610 = corporate; 611 = meeting
     for tag, kind in (("600", "person"), ("610", "organization"), ("611", "meeting")):
         a_vals = _split_multi(_str(record.get(f"{tag}$a")))
+        if not a_vals:
+            continue
         d_vals = _split_multi(_str(record.get(f"{tag}$d")))
+        auth_vals = _split_multi(_str(record.get(f"{tag}$0")))
+        src_vals = _split_multi(_str(record.get(f"{tag}$2")))
         for i, name in enumerate(a_vals):
-            entry = {"name": name, "type": kind, "field": tag}
+            name = name.strip()
+            if not name:
+                continue
+            entry: dict[str, Any] = {"name": name, "type": kind, "field": tag}
             if i < len(d_vals) and d_vals[i].strip():
                 entry["dates"] = d_vals[i].strip()
+            if i < len(auth_vals) and auth_vals[i].strip():
+                entry["authority_id"] = auth_vals[i].strip()
+            if i < len(src_vals) and src_vals[i].strip():
+                entry["source"] = src_vals[i].strip()
             subjects.append(entry)
     # 650 topical, 651 geographic
-    for name in _split_multi(_str(record.get("650$a"))):
-        subjects.append({"name": name, "type": "topic", "field": "650"})
-    for name in _split_multi(_str(record.get("651$a"))):
-        subjects.append({"name": name, "type": "place", "field": "651"})
+    auth_650 = _split_multi(_str(record.get("650$0")))
+    src_650 = _split_multi(_str(record.get("650$2")))
+    for i, name in enumerate(_split_multi(_str(record.get("650$a")))):
+        name = name.strip()
+        if not name:
+            continue
+        entry = {"name": name, "type": "topic", "field": "650"}
+        if i < len(auth_650) and auth_650[i].strip():
+            entry["authority_id"] = auth_650[i].strip()
+        if i < len(src_650) and src_650[i].strip():
+            entry["source"] = src_650[i].strip()
+        subjects.append(entry)
+    auth_651 = _split_multi(_str(record.get("651$0")))
+    src_651 = _split_multi(_str(record.get("651$2")))
+    for i, name in enumerate(_split_multi(_str(record.get("651$a")))):
+        name = name.strip()
+        if not name:
+            continue
+        entry = {"name": name, "type": "place", "field": "651"}
+        if i < len(auth_651) and auth_651[i].strip():
+            entry["authority_id"] = auth_651[i].strip()
+        if i < len(src_651) and src_651[i].strip():
+            entry["source"] = src_651[i].strip()
+        subjects.append(entry)
     if subjects:
-        record["subjects"] = subjects
+        from converter.transformer.subject_records import normalize_subjects_list  # noqa: PLC0415
+
+        record["subjects"] = normalize_subjects_list(subjects)
 
     # ── Production place from 260/264 (desktop handle_260_264 parity) ───
     if not record.get("place"):
@@ -390,21 +423,32 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             record["dates"] = parsed
 
     # ── Genre/form ──────────────────────────────────────────────────
-    # Flat list[str] — mirrors extract_all_data() / GraphBuilder expectations.
-    genres: list[str] = []
+    genre_entries: list[dict[str, Any]] = []
+    for existing in record.get("genre_entries") or []:
+        if isinstance(existing, dict):
+            genre_entries.append(dict(existing))
     for existing in record.get("genres") or []:
-        if isinstance(existing, str) and existing.strip():
-            genres.append(existing.strip())
-        elif isinstance(existing, dict):
-            term = _str(existing.get("name") or existing.get("term"))
-            if term:
-                genres.append(term)
-    for name in _split_multi(_str(record.get("655$a"))):
+        if isinstance(existing, dict):
+            genre_entries.append(dict(existing))
+    auth_655 = _split_multi(_str(record.get("655$0")))
+    src_655 = _split_multi(_str(record.get("655$2")))
+    for i, name in enumerate(_split_multi(_str(record.get("655$a")))):
         name = name.strip()
-        if name and name not in genres:
-            genres.append(name)
-    if genres:
-        record["genres"] = genres
+        if not name:
+            continue
+        entry: dict[str, Any] = {"name": name, "type": "genre", "field": "655"}
+        if i < len(auth_655) and auth_655[i].strip():
+            entry["authority_id"] = auth_655[i].strip()
+        if i < len(src_655) and src_655[i].strip():
+            entry["source"] = src_655[i].strip()
+        genre_entries.append(entry)
+    if genre_entries:
+        from converter.transformer.subject_records import normalize_genre_entries  # noqa: PLC0415
+
+        flat, normalized = normalize_genre_entries([], genre_entries=genre_entries)
+        if flat:
+            record["genres"] = flat
+            record["genre_entries"] = normalized
 
     # ── Notes (500$a general note, 590$a local note, 541$a source) ─
     notes: list[str] = list(record.get("notes") or [])
@@ -680,24 +724,25 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
     row = dict(rec)
     if any("$" in k for k in row):
         _collapse_marc_subfields(row)
-    raw_genres = row.get("genres")
-    if raw_genres:
-        flat: list[str] = []
-        for g in raw_genres:
-            if isinstance(g, str) and g.strip():
-                flat.append(g.strip())
-            elif isinstance(g, dict):
-                term = _str(g.get("name") or g.get("term"))
-                if term:
-                    flat.append(term)
-        if flat:
-            row["genres"] = flat
-        elif isinstance(raw_genres, list) and raw_genres and isinstance(raw_genres[0], dict):
-            row["genres"] = []
     if row.get("contributors"):
         row["contributors"] = _expand_pipe_delimited_entries(list(row["contributors"]))
     if row.get("authors"):
         row["authors"] = _expand_pipe_delimited_entries(list(row["authors"]))
+    from converter.transformer.subject_records import (  # noqa: PLC0415
+        normalize_genre_entries,
+        normalize_subjects_list,
+    )
+
+    if row.get("subjects"):
+        row["subjects"] = normalize_subjects_list(list(row["subjects"]))
+    flat_genres, genre_entries = normalize_genre_entries(
+        list(row.get("genres") or []),
+        genre_entries=list(row.get("genre_entries") or []),
+    )
+    if flat_genres:
+        row["genres"] = flat_genres
+    if genre_entries:
+        row["genre_entries"] = genre_entries
     _merge_work_mentions_into_contents(row)
     return row
 

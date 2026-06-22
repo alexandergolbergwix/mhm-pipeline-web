@@ -272,6 +272,9 @@ class GraphBuilder:
         for subject in data.subjects:
             self._add_subject(graph, subject, ms_uri, work_uri)
 
+        for genre in data.genres:
+            self._add_genre_node(graph, data, ms_uri, genre)
+
         for ref in data.catalog_references:
             self._add_catalog_reference(graph, ref, ms_uri)
 
@@ -522,21 +525,31 @@ class GraphBuilder:
             graph.add((work_uri, HM.has_title, Literal(variant, lang="he")))
 
         for genre in data.genres:
-            genre_uri = self.uri_gen.subject_uri(genre)
-            graph.add((work_uri, CIDOC.P2_has_type, genre_uri))
-            graph.add((work_uri, HM.has_genre, genre_uri))
-            graph.add((genre_uri, RDF.type, HM.SubjectType))
-            graph.add((genre_uri, RDFS.label, Literal(genre, lang="he")))
-            genre_key = f"genre_{genre}"
-            attr_src = (data.attribution_sources or {}).get(genre_key)
-            if attr_src:
-                self._add_attribution_source(graph, genre_uri, attr_src)
-            certainty = (data.certainty_levels or {}).get(genre_key)
-            if certainty:
-                note = (data.certainty_levels or {}).get(f"{genre_key}_note")
-                self._add_certainty(graph, genre_uri, certainty, note)
+            self._add_genre_node(graph, data, work_uri, genre)
 
         return work_uri
+
+    def _add_genre_node(
+        self,
+        graph: Graph,
+        data: ExtractedData,
+        target_uri: URIRef,
+        genre: str,
+    ) -> None:
+        """Emit CIDOC P2_has_type + hm:has_genre for one MARC 655 label."""
+        genre_uri = self.uri_gen.subject_uri(genre)
+        graph.add((target_uri, CIDOC.P2_has_type, genre_uri))
+        graph.add((target_uri, HM.has_genre, genre_uri))
+        graph.add((genre_uri, RDF.type, HM.SubjectType))
+        graph.add((genre_uri, RDFS.label, Literal(genre, lang="he")))
+        genre_key = f"genre_{genre}"
+        attr_src = (data.attribution_sources or {}).get(genre_key)
+        if attr_src:
+            self._add_attribution_source(graph, genre_uri, attr_src)
+        certainty = (data.certainty_levels or {}).get(genre_key)
+        if certainty:
+            note = (data.certainty_levels or {}).get(f"{genre_key}_note")
+            self._add_certainty(graph, genre_uri, certainty, note)
 
     def _add_expression(
         self,
@@ -802,16 +815,65 @@ class GraphBuilder:
                         data.production_place_wikidata_id = str(qid)
                 continue
 
-            role = normalize_role(str(match.get("role") or "contributor"))
-            target_key = "authors" if role == "author" else "contributors"
-            people = getattr(data, target_key, None) or []
-            matched = False
             from converter.authority.stage3_guards import (  # noqa: PLC0415
                 authority_payload_blocked,
             )
 
             if authority_payload_blocked(match):
                 continue
+
+            if kind == "topic":
+                for subj in data.subjects:
+                    if str(subj.get("type") or "") != "topic":
+                        continue
+                    term = clean_marc_label(str(subj.get("term") or ""))
+                    if term and names_overlap(term, entity_text):
+                        if match.get("wikidata_qid") and "wikidata_id" not in subj:
+                            subj["wikidata_id"] = str(match["wikidata_qid"])
+                        if match.get("mazal_id") and "mazal_id" not in subj:
+                            subj["mazal_id"] = str(match["mazal_id"])
+                        if match.get("viaf_id") and "viaf_id" not in subj:
+                            subj["viaf_id"] = str(match["viaf_id"])
+                continue
+
+            if kind == "work":
+                for content in data.contents or []:
+                    title = clean_marc_label(str(content.get("title") or ""))
+                    if title and names_overlap(title, entity_text):
+                        if match.get("wikidata_qid") and "wikidata_id" not in content:
+                            content["wikidata_id"] = str(match["wikidata_qid"])
+                        if match.get("viaf_id") and "viaf_id" not in content:
+                            content["viaf_id"] = str(match["viaf_id"])
+                        if match.get("mazal_id") and "authority_id" not in content:
+                            content["authority_id"] = str(match["mazal_id"])
+                continue
+
+            if kind in ("corporate", "organization", "meeting"):
+                for subj in data.subjects:
+                    if str(subj.get("type") or "") not in ("organization", "corporate", "meeting"):
+                        continue
+                    term = clean_marc_label(str(subj.get("term") or ""))
+                    if term and names_overlap(term, entity_text):
+                        if match.get("wikidata_qid") and "wikidata_id" not in subj:
+                            subj["wikidata_id"] = str(match["wikidata_qid"])
+                        if match.get("mazal_id") and "mazal_id" not in subj:
+                            subj["mazal_id"] = str(match["mazal_id"])
+                        if match.get("viaf_id") and "viaf_id" not in subj:
+                            subj["viaf_id"] = str(match["viaf_id"])
+                for person in (data.contributors or []) + (data.authors or []):
+                    if names_overlap(str(person.get("name") or ""), entity_text):
+                        if match.get("wikidata_qid") and "wikidata_id" not in person:
+                            person["wikidata_id"] = str(match["wikidata_qid"])
+                        if match.get("viaf_id") and "viaf_id" not in person:
+                            person["viaf_id"] = str(match["viaf_id"])
+                        if match.get("mazal_id") and "authority_id" not in person:
+                            person["authority_id"] = str(match["mazal_id"])
+                continue
+
+            role = normalize_role(str(match.get("role") or "contributor"))
+            target_key = "authors" if role == "author" else "contributors"
+            people = getattr(data, target_key, None) or []
+            matched = False
             for person in people:
                 if names_overlap(str(person.get("name") or ""), entity_text):
                     if match.get("viaf_id") and "viaf_id" not in person:
@@ -1220,8 +1282,13 @@ class GraphBuilder:
             ms_uri: Manuscript URI
             work_uri: Optional Work URI
         """
-        if not subject.get("term"):
+        from converter.transformer.subject_records import subject_term  # noqa: PLC0415
+
+        term = subject_term(subject)
+        if not term:
             return
+        subject = dict(subject)
+        subject["term"] = term
 
         subject_type = subject.get("type", "topic")
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -474,6 +475,67 @@ class DesktopMatcher(AuthorityMatcher):
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
 
+    async def _wikidata_match_by_viaf(
+        self, viaf_id: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+    ) -> str | None:
+        """Resolve a VIAF cluster id to a Wikidata QID via P214."""
+        if self._wikidata is None or not viaf_id:
+            return None
+
+        async def _f() -> str | None:
+            r = await asyncio.to_thread(self._wikidata.find_qid_by_viaf, viaf_id)
+            return str(r) if r else None
+
+        return await self._cached(
+            kind="authority.wikidata",
+            query_summary={"op": "find_qid_by_viaf", "viaf_id": viaf_id},
+            fetch=_f,
+            db_session=db_session,
+            user_id=user_id,
+            skip_cache=skip_cache,
+        )
+
+    @staticmethod
+    def _viaf_name_type_allowed(op: str, name_type: str) -> bool:
+        """Fail-closed: SRU hits must carry a matching VIAF nameType."""
+        if not op.startswith("sru_"):
+            return True
+        if not name_type:
+            return False
+        expected: dict[str, frozenset[str]] = {
+            "sru_geographic": frozenset({"Geographic"}),
+            "sru_uniform_title": frozenset({"UniformTitleWork", "Title"}),
+            "sru_corporate": frozenset({"Corporate"}),
+        }
+        allowed = expected.get(op)
+        if allowed is None:
+            return True
+        return name_type in allowed
+
+    async def _viaf_cluster_payload(
+        self, viaf_id: str, *, resolve_op: str,
+    ) -> dict[str, Any]:
+        if not viaf_id or self._viaf is None:
+            return {}
+        try:
+            ids = await asyncio.to_thread(self._viaf.get_cluster_identifiers, viaf_id)
+            name_type = str(ids.get("name_type") or "").strip()
+            if not name_type:
+                name_type = await asyncio.to_thread(self._viaf.cluster_name_type, viaf_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("VIAF cluster payload failed for %s: %s", viaf_id, exc)
+            return {}
+        return {
+            "viaf_id": viaf_id,
+            "name_type": name_type,
+            "viaf_resolve_op": resolve_op,
+            "gnd": ids.get("gnd"),
+            "lc": ids.get("lc"),
+            "isni": ids.get("isni"),
+            "bnf": ids.get("bnf"),
+            "j9u": ids.get("j9u"),
+        }
+
     async def _wikidata_dates(
         self, qid: str, *, db_session: Any, user_id: Any, skip_cache: bool,
     ) -> dict[str, int | None] | None:
@@ -559,6 +621,350 @@ class DesktopMatcher(AuthorityMatcher):
             query_summary={"op": "enrich_qid", "qid": qid},
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
+
+    @staticmethod
+    def _viaf_id_from_uri(uri: str | None) -> str:
+        if not uri:
+            return ""
+        raw = str(uri).strip()
+        if raw.isdigit():
+            return raw
+        match = re.search(r"/viaf/(\d+)", raw)
+        return match.group(1) if match else ""
+
+    @staticmethod
+    def _primary_author_from_marc(marc_record: dict[str, Any]) -> str | None:
+        for author in marc_record.get("authors") or []:
+            if isinstance(author, dict):
+                name = str(author.get("name") or "").strip()
+                if name:
+                    return name
+        return None
+
+    @staticmethod
+    def _entity_kind_for_candidate(
+        *,
+        normalized_kind: str,
+        is_place: bool,
+        kima_hit: bool,
+    ) -> str:
+        if is_place or kima_hit:
+            return "place"
+        if normalized_kind in ("work", "corporate", "organization", "topic", "meeting"):
+            return normalized_kind
+        return "person"
+
+    @staticmethod
+    def _non_person_anchor_ready(
+        *,
+        normalized_kind: str,
+        is_place: bool,
+        mazal_id: str,
+        kima_hit: bool,
+        gazetteer_hit: bool,
+    ) -> bool:
+        if mazal_id:
+            return True
+        if is_place and (kima_hit or gazetteer_hit):
+            return True
+        return False
+
+    async def _viaf_match_typed(
+        self,
+        *,
+        op: str,
+        text: str,
+        matcher_name: str,
+        db_session: Any,
+        user_id: Any,
+        skip_cache: bool,
+    ) -> tuple[str, dict[str, Any]]:
+        if self._viaf is None:
+            return "", {}
+        matcher = getattr(self._viaf, matcher_name, None)
+        if matcher is None:
+            return "", {}
+
+        async def _f() -> str | None:
+            return await asyncio.to_thread(matcher, text)
+
+        uri = await self._cached(
+            kind="authority.viaf",
+            query_summary={"op": op, "text": text},
+            fetch=_f,
+            db_session=db_session,
+            user_id=user_id,
+            skip_cache=skip_cache,
+        )
+        viaf_id = self._viaf_id_from_uri(uri)
+        if not viaf_id:
+            return "", {}
+        meta = await self._viaf_cluster_payload(viaf_id, resolve_op=op)
+        return viaf_id, meta
+
+    @staticmethod
+    def _reject_human_qid(qid: str, *, normalized_kind: str) -> str:
+        if normalized_kind == "person" or not qid:
+            return qid
+        if qid in ("Q5", "Q15632617"):
+            return ""
+        return qid
+
+    async def _post_qid_enrich_viaf(
+        self,
+        *,
+        wikidata_qid: str,
+        viaf_id: str,
+        sources: list[str],
+        reasoning_parts: list[str],
+        enrichment_meta: dict[str, str],
+        db_session: Any,
+        user_id: Any,
+        skip_cache: bool,
+    ) -> tuple[str, dict[str, Any] | None, dict[str, Any] | None]:
+        wd_enrich: dict[str, Any] | None = None
+        viaf_meta: dict[str, Any] | None = None
+        if not wikidata_qid or self._wikidata is None:
+            return viaf_id, wd_enrich, viaf_meta
+        try:
+            wd_enrich = await self._wikidata_enrich_qid(
+                wikidata_qid,
+                db_session=db_session,
+                user_id=user_id,
+                skip_cache=skip_cache,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Wikidata enrich_qid failed for %s: %s", wikidata_qid, exc)
+            return viaf_id, wd_enrich, viaf_meta
+        if wd_enrich and not viaf_id:
+            wd_viaf = (wd_enrich.get("viaf_id") or "").strip()
+            if wd_viaf:
+                viaf_id = wd_viaf
+                enrichment_meta["viaf_resolve_op"] = "p214"
+                if "viaf" not in sources:
+                    sources.append("viaf")
+                reasoning_parts.append(
+                    f"VIAF cross-enriched from Wikidata P214 ({wd_viaf}).",
+                )
+                viaf_meta = await self._viaf_cluster_payload(viaf_id, resolve_op="p214")
+                enrichment_meta["viaf_name_type"] = str(viaf_meta.get("name_type") or "")
+        return viaf_id, wd_enrich, viaf_meta
+
+    async def _wikidata_match_typed(
+        self,
+        *,
+        op: str,
+        text: str,
+        matcher_name: str,
+        db_session: Any,
+        user_id: Any,
+        skip_cache: bool,
+        author: str | None = None,
+    ) -> str | None:
+        if self._wikidata is None:
+            return None
+        matcher = getattr(self._wikidata, matcher_name, None)
+        if matcher is None:
+            return None
+
+        async def _f() -> str | None:
+            if matcher_name == "match_work":
+                result = await asyncio.to_thread(matcher, text, author)
+            else:
+                result = await asyncio.to_thread(matcher, text)
+            return str(result) if result else None
+
+        query_summary: dict[str, Any] = {"op": op, "text": text}
+        if author:
+            query_summary["author"] = author
+        return await self._cached(
+            kind="authority.wikidata",
+            query_summary=query_summary,
+            fetch=_f,
+            db_session=db_session,
+            user_id=user_id,
+            skip_cache=skip_cache,
+        )
+
+    async def _apply_non_person_external_enrichment(
+        self,
+        *,
+        text: str,
+        normalized_kind: str,
+        is_place: bool,
+        mazal_id: str,
+        wikidata_qid: str,
+        viaf_id: str,
+        kima_hit: bool,
+        gazetteer_hit: bool,
+        marc_record: dict[str, Any],
+        sources: list[str],
+        reasoning_parts: list[str],
+        wd_enrich: dict[str, Any] | None,
+        viaf_meta: dict[str, Any] | None,
+        db_session: Any,
+        user_id: Any,
+        skip_cache: bool,
+    ) -> tuple[str, str, dict[str, Any] | None, dict[str, Any] | None, dict[str, str]]:
+        """Conservative VIAF/Wikidata enrichment for non-person entities."""
+        enrichment_meta: dict[str, str] = {}
+        anchored = self._non_person_anchor_ready(
+            normalized_kind=normalized_kind,
+            is_place=is_place,
+            mazal_id=mazal_id,
+            kima_hit=kima_hit,
+            gazetteer_hit=gazetteer_hit,
+        )
+
+        if self._wikidata is not None and mazal_id and not wikidata_qid:
+            qid_from_mazal = await self._wikidata_match_by_mazal(
+                mazal_id,
+                db_session=db_session,
+                user_id=user_id,
+                skip_cache=skip_cache,
+            )
+            if qid_from_mazal:
+                wikidata_qid = self._reject_human_qid(
+                    str(qid_from_mazal), normalized_kind=normalized_kind,
+                )
+                if wikidata_qid:
+                    enrichment_meta["wikidata_resolve_op"] = "p8189"
+                    if "wikidata" not in sources:
+                        sources.append("wikidata")
+                    reasoning_parts.append(
+                        f"Wikidata hit via Mazal P8189 ({wikidata_qid}).",
+                    )
+
+        if wikidata_qid and self._wikidata is not None:
+            viaf_id, wd_enrich, viaf_meta = await self._post_qid_enrich_viaf(
+                wikidata_qid=wikidata_qid,
+                viaf_id=viaf_id,
+                sources=sources,
+                reasoning_parts=reasoning_parts,
+                enrichment_meta=enrichment_meta,
+                db_session=db_session,
+                user_id=user_id,
+                skip_cache=skip_cache,
+            )
+
+        if self._viaf is not None and not viaf_id and anchored:
+            viaf_op = ""
+            matcher_name = ""
+            if is_place:
+                viaf_op = "sru_geographic"
+                matcher_name = "match_place"
+            elif normalized_kind == "work" and mazal_id:
+                viaf_op = "sru_uniform_title"
+                matcher_name = "match_work"
+            elif normalized_kind in ("corporate", "organization", "meeting") and mazal_id:
+                viaf_op = "sru_corporate"
+                matcher_name = "match_corporate"
+
+            if viaf_op and matcher_name:
+                vid, meta = await self._viaf_match_typed(
+                    op=viaf_op,
+                    text=text,
+                    matcher_name=matcher_name,
+                    db_session=db_session,
+                    user_id=user_id,
+                    skip_cache=skip_cache,
+                )
+                if vid:
+                    name_type = str(meta.get("name_type") or "")
+                    if not self._viaf_name_type_allowed(viaf_op, name_type):
+                        reasoning_parts.append(
+                            f"VIAF {vid} rejected (nameType={name_type!r}).",
+                        )
+                    else:
+                        viaf_id = vid
+                        viaf_meta = meta
+                        enrichment_meta["viaf_resolve_op"] = viaf_op
+                        enrichment_meta["viaf_name_type"] = name_type
+                        if "viaf" not in sources:
+                            sources.append("viaf")
+                        reasoning_parts.append(f"VIAF hit ({viaf_id}).")
+                        if self._wikidata is not None and not wikidata_qid:
+                            qid_from_viaf = await self._wikidata_match_by_viaf(
+                                viaf_id,
+                                db_session=db_session,
+                                user_id=user_id,
+                                skip_cache=skip_cache,
+                            )
+                            qid_from_viaf = self._reject_human_qid(
+                                str(qid_from_viaf or ""),
+                                normalized_kind=normalized_kind,
+                            )
+                            if qid_from_viaf:
+                                wikidata_qid = qid_from_viaf
+                                enrichment_meta["wikidata_resolve_op"] = "p214"
+                                if "wikidata" not in sources:
+                                    sources.append("wikidata")
+                                reasoning_parts.append(
+                                    f"Wikidata hit via VIAF P214 ({wikidata_qid}).",
+                                )
+                                viaf_id, wd_enrich, viaf_meta = await self._post_qid_enrich_viaf(
+                                    wikidata_qid=wikidata_qid,
+                                    viaf_id=viaf_id,
+                                    sources=sources,
+                                    reasoning_parts=reasoning_parts,
+                                    enrichment_meta=enrichment_meta,
+                                    db_session=db_session,
+                                    user_id=user_id,
+                                    skip_cache=skip_cache,
+                                )
+
+        if self._wikidata is not None and not wikidata_qid:
+            label_allowed = False
+            if normalized_kind == "work" and (mazal_id or viaf_id):
+                label_allowed = True
+            elif normalized_kind in ("corporate", "organization", "meeting") and mazal_id:
+                label_allowed = True
+
+            if label_allowed:
+                matcher_name = (
+                    "match_work"
+                    if normalized_kind == "work"
+                    else "match_corporate"
+                )
+                author = (
+                    self._primary_author_from_marc(marc_record)
+                    if normalized_kind == "work"
+                    else None
+                )
+                qid = await self._wikidata_match_typed(
+                    op=f"label_{matcher_name}",
+                    text=text,
+                    matcher_name=matcher_name,
+                    db_session=db_session,
+                    user_id=user_id,
+                    skip_cache=skip_cache,
+                    author=author,
+                )
+                if qid:
+                    wikidata_qid = self._reject_human_qid(
+                        str(qid), normalized_kind=normalized_kind,
+                    )
+                    if not wikidata_qid:
+                        reasoning_parts.append(
+                            f"Wikidata label hit {qid} rejected (human QID).",
+                        )
+                    else:
+                        enrichment_meta["wikidata_resolve_op"] = "label"
+                        if "wikidata" not in sources:
+                            sources.append("wikidata")
+                        reasoning_parts.append(f"Wikidata label hit ({wikidata_qid}).")
+                        viaf_id, wd_enrich, viaf_meta = await self._post_qid_enrich_viaf(
+                            wikidata_qid=wikidata_qid,
+                            viaf_id=viaf_id,
+                            sources=sources,
+                            reasoning_parts=reasoning_parts,
+                            enrichment_meta=enrichment_meta,
+                            db_session=db_session,
+                            user_id=user_id,
+                            skip_cache=skip_cache,
+                        )
+
+        return wikidata_qid, viaf_id, wd_enrich, viaf_meta, enrichment_meta
 
     async def _match_one(
         self, *,
@@ -680,6 +1086,7 @@ class DesktopMatcher(AuthorityMatcher):
                     mazal_id = str(work_mid)
                     sources.append("mazal")
                     reasoning_parts.append(f"Mazal work hit ({work_mid}).")
+                    mazal_details = self._mazal_detail_cache.get(str(work_mid)) or {}
                     cached = self._mazal_detail_cache.get(work_mid) or {}
                     work_match_meta = {
                         k: cached[k]
@@ -725,6 +1132,7 @@ class DesktopMatcher(AuthorityMatcher):
                 )
                 if sub_mid:
                     mazal_id = str(sub_mid)
+                    mazal_details = self._mazal_detail_cache.get(str(sub_mid)) or {}
                     sources.append("mazal")
                     reasoning_parts.append(f"Mazal subject hit ({sub_mid}).")
             except Exception as exc:  # noqa: BLE001
@@ -957,6 +1365,33 @@ class DesktopMatcher(AuthorityMatcher):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Wikidata matcher raised for %r: %s", text, exc)
 
+        enrichment_meta: dict[str, str] = {}
+        if not _is_person_entity:
+            (
+                wikidata_qid,
+                viaf_id,
+                _wd_enrich,
+                viaf_meta,
+                enrichment_meta,
+            ) = await self._apply_non_person_external_enrichment(
+                text=text,
+                normalized_kind=normalized_kind,
+                is_place=is_place,
+                mazal_id=mazal_id,
+                wikidata_qid=wikidata_qid,
+                viaf_id=viaf_id,
+                kima_hit=kima_hit,
+                gazetteer_hit=gazetteer_hit,
+                marc_record=marc_record,
+                sources=sources,
+                reasoning_parts=reasoning_parts,
+                wd_enrich=_wd_enrich,
+                viaf_meta=viaf_meta,
+                db_session=db_session,
+                user_id=user_id,
+                skip_cache=skip_cache,
+            )
+
         if not sources:
             reasoning_parts.append("No authority source matched this heading.")
             confidence = "low"
@@ -1015,11 +1450,16 @@ class DesktopMatcher(AuthorityMatcher):
         # Carry main_marc_tag from the Mazal result so guard_mazal_subject_heading
         # can distinguish אישיות (tag 100) from נושא (tag 150) matches.
         _mazal_main_tag = (mazal_details or {}).get("main_marc_tag") if mazal_details else None
+        resolved_entity_kind = self._entity_kind_for_candidate(
+            normalized_kind=normalized_kind,
+            is_place=is_place,
+            kima_hit=kima_hit,
+        )
 
         prelim = {
             "matched_name": text,
             "entity_text": text,
-            "entity_kind": "place" if kima_hit or is_place else "person",
+            "entity_kind": resolved_entity_kind,
             "confidence": confidence,
             "mazal_id": mazal_id,
             "viaf_id": viaf_id,
@@ -1028,6 +1468,13 @@ class DesktopMatcher(AuthorityMatcher):
                 "guard_flags": guards,
                 "viaf_uri": f"https://viaf.org/viaf/{viaf_id}" if viaf_id else "",
                 "main_marc_tag": _mazal_main_tag,
+                "viaf_name_type": (
+                    (viaf_meta or {}).get("name_type")
+                    or enrichment_meta.get("viaf_name_type")
+                    or None
+                ),
+                "viaf_resolve_op": enrichment_meta.get("viaf_resolve_op"),
+                "wikidata_resolve_op": enrichment_meta.get("wikidata_resolve_op"),
                 **mazal_payload_extras,
             },
         }
@@ -1037,7 +1484,7 @@ class DesktopMatcher(AuthorityMatcher):
                 siblings=[],
                 preferred_name_lat=text,
                 biographical_dates_in_marc=bool(birth_year or death_year),
-                entity_kind=prelim["entity_kind"],
+                entity_kind=resolved_entity_kind,
                 role=role,
                 ms_year=ms_year,
                 birth_year=birth_year,
@@ -1161,7 +1608,13 @@ class DesktopMatcher(AuthorityMatcher):
                 "wikidata_he_label": _wd_enrich.get("he_label") if _wd_enrich else None,
                 "wikidata_en_description": _wd_enrich.get("en_description") if _wd_enrich else None,
                 "cluster_ids": cluster_ids,
-                "viaf_name_type": viaf_name_type or None,
+                "viaf_name_type": (
+                    viaf_name_type
+                    or enrichment_meta.get("viaf_name_type")
+                    or None
+                ),
+                "viaf_resolve_op": enrichment_meta.get("viaf_resolve_op"),
+                "wikidata_resolve_op": enrichment_meta.get("wikidata_resolve_op"),
                 **kima_payload,
                 "role_kind": _role_kind(role),
                 "reasoning": " ".join(reasoning_parts),

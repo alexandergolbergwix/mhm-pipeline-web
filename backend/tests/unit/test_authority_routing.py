@@ -305,3 +305,150 @@ def test_reenrich_upsert_key_includes_role() -> None:
         "re-enrich must include entity role in the lookup key"
     )
     assert inspect.getsource(re_mod.match_key).count("normalize_role") >= 1
+
+
+# ── Non-person external enrichment (fail-closed) ──────────────────────────
+
+
+def test_work_without_mazal_skips_wikidata_label(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unanchored work headings must not get Wikidata label enrichment."""
+    import asyncio
+    from app.pipeline import authority as auth_mod
+
+    wd_calls: list[str] = []
+
+    async def fake_wd_label(self, *, op, text, matcher_name, db_session, user_id, skip_cache, author=None):
+        wd_calls.append(matcher_name)
+        return "Q999"
+
+    async def noop_viaf(*args, **kwargs):
+        return "", {}
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_mazal_match_work", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_match_typed", fake_wd_label)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_match_by_mazal", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_enrich_qid", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_viaf_match_typed", noop_viaf)
+
+    matcher = object.__new__(auth_mod.DesktopMatcher)
+    matcher._mazal = object()
+    matcher._viaf = object()
+    matcher._wikidata = object()
+    matcher._kima = None
+    matcher._mazal_detail_cache = {}
+    matcher._kima_detail_cache = {}
+    matcher._authority_backend = None
+
+    candidates = asyncio.run(
+        matcher._match_one(
+            text="תלמוד בבלי",
+            role="contained_work",
+            entity_kind="work",
+            marc_record={},
+            db_session=None,
+            user_id=None,
+            skip_cache=False,
+        )
+    )
+    assert candidates == []
+    assert wd_calls == []
+
+
+def test_work_with_mazal_allows_wikidata_label(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+    from app.pipeline import authority as auth_mod
+
+    wd_calls: list[str] = []
+
+    async def fake_mazal_work(self, text, *, marc_record, db_session, user_id, skip_cache):
+        return "MAZAL_WORK_1"
+
+    async def fake_wd_label(self, *, op, text, matcher_name, db_session, user_id, skip_cache, author=None):
+        wd_calls.append(matcher_name)
+        return "Q192043"
+
+    async def noop_viaf(*args, **kwargs):
+        return "", {}
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_mazal_match_work", fake_mazal_work)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_match_typed", fake_wd_label)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_match_by_mazal", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_enrich_qid", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_viaf_match_typed", noop_viaf)
+
+    matcher = object.__new__(auth_mod.DesktopMatcher)
+    matcher._mazal = object()
+    matcher._viaf = object()
+    matcher._wikidata = object()
+    matcher._kima = None
+    matcher._mazal_detail_cache = {}
+    matcher._kima_detail_cache = {}
+    matcher._authority_backend = None
+
+    candidates = asyncio.run(
+        matcher._match_one(
+            text="תלמוד בבלי",
+            role="contained_work",
+            entity_kind="work",
+            marc_record={"authors": [{"name": "אנונימי"}]},
+            db_session=None,
+            user_id=None,
+            skip_cache=False,
+        )
+    )
+    assert candidates
+    assert candidates[0].wikidata_qid == "Q192043"
+    assert wd_calls == ["match_work"]
+
+
+def test_topic_entity_kind_not_person(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+    from app.pipeline import authority as auth_mod
+
+    async def fake_mazal_subject(self, text, *, db_session, user_id, skip_cache):
+        return "MAZAL_SUBJ_1"
+
+    async def fake_p8189(self, mazal_id, *, db_session, user_id, skip_cache):
+        return "Q12345"
+
+    async def noop_viaf(*args, **kwargs):
+        return "", {}
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_mazal_match_subject", fake_mazal_subject)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_match_by_mazal", fake_p8189)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_match_typed", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_enrich_qid", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_viaf_match_typed", noop_viaf)
+
+    matcher = object.__new__(auth_mod.DesktopMatcher)
+    matcher._mazal = object()
+    matcher._viaf = None
+    matcher._wikidata = object()
+    matcher._kima = None
+    matcher._mazal_detail_cache = {}
+    matcher._kima_detail_cache = {}
+    matcher._authority_backend = None
+
+    candidates = asyncio.run(
+        matcher._match_one(
+            text="קבלה",
+            role="subject",
+            entity_kind="topic",
+            marc_record={},
+            db_session=None,
+            user_id=None,
+            skip_cache=False,
+        )
+    )
+    assert candidates
+    assert candidates[0].payload.get("wikidata_resolve_op") == "p8189"
+    assert candidates[0].wikidata_qid == "Q12345"

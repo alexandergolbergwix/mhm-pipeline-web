@@ -254,16 +254,27 @@ class TestMazalPairCollision:
 
 
 class TestCorporateMeeting:
-    def test_fires_when_org_carries_viaf(self) -> None:
+    def test_fires_when_org_carries_person_viaf(self) -> None:
         me = {
             "matched_name": "Bodleian Library",
             "viaf_id": "12345",
             "entity_kind": "organization",
+            "payload": {"viaf_name_type": "Personal"},
         }
         v = ah.guard_corporate_meeting(candidate=me, entity_kind="organization")
         assert v.fired is True
         assert v.flag == "corporate_viaf_drop"
         assert v.new_confidence == "low"
+
+    def test_silent_when_org_carries_corporate_viaf(self) -> None:
+        me = {
+            "matched_name": "Bodleian Library",
+            "viaf_id": "12345",
+            "entity_kind": "organization",
+            "payload": {"viaf_name_type": "Corporate", "viaf_resolve_op": "sru_corporate"},
+        }
+        v = ah.guard_corporate_meeting(candidate=me, entity_kind="organization")
+        assert v.fired is False
 
     def test_silent_for_person_with_viaf(self) -> None:
         me = {
@@ -281,6 +292,56 @@ class TestCorporateMeeting:
             "entity_kind": "meeting",
         }
         v = ah.guard_corporate_meeting(candidate=me, entity_kind="meeting")
+        assert v.fired is False
+
+
+class TestViafNameTypeMismatch:
+    def test_personal_viaf_on_place_stripped(self) -> None:
+        me = {
+            "matched_name": "ירושלים",
+            "viaf_id": "999",
+            "entity_kind": "place",
+            "payload": {"viaf_name_type": "Personal"},
+        }
+        v = ah.guard_viaf_name_type_mismatch(candidate=me, entity_kind="place")
+        assert v.fired is True
+        assert v.flag == "viaf_person_on_non_person"
+
+
+class TestWikidataHumanOnNonPerson:
+    def test_fires_on_q5_for_work(self) -> None:
+        me = {
+            "matched_name": "תלמוד בבלי",
+            "wikidata_qid": "Q5",
+            "entity_kind": "work",
+            "payload": {},
+        }
+        v = ah.guard_wikidata_human_on_non_person(candidate=me, entity_kind="work")
+        assert v.fired is True
+        assert v.flag == "wikidata_human_on_non_person"
+
+
+class TestWikidataOrphanLabel:
+    def test_label_without_anchor_fires(self) -> None:
+        me = {
+            "matched_name": "תלמוד בבלי",
+            "wikidata_qid": "Q192043",
+            "entity_kind": "work",
+            "payload": {"wikidata_resolve_op": "label"},
+        }
+        v = ah.guard_wikidata_orphan_label(candidate=me, entity_kind="work")
+        assert v.fired is True
+        assert v.flag == "wikidata_orphan_label"
+
+    def test_label_with_mazal_anchor_silent(self) -> None:
+        me = {
+            "matched_name": "תלמוד בבלי",
+            "mazal_id": "MAZAL_1",
+            "wikidata_qid": "Q192043",
+            "entity_kind": "work",
+            "payload": {"wikidata_resolve_op": "label"},
+        }
+        v = ah.guard_wikidata_orphan_label(candidate=me, entity_kind="work")
         assert v.fired is False
 
 
@@ -324,7 +385,7 @@ class TestApplyHardeningGuards:
         assert out["wikidata_qid"] == ""
         assert "gnd_id" not in out["payload"]
 
-    def test_corporate_drops_viaf(self) -> None:
+    def test_corporate_drops_person_viaf(self) -> None:
         me: dict[str, Any] = {
             "matched_name": "Bodleian Library",
             "entity_kind": "organization",
@@ -332,7 +393,11 @@ class TestApplyHardeningGuards:
             "mazal_id": "",
             "viaf_id": "12345",
             "wikidata_qid": "",
-            "payload": {"viaf_uri": "https://viaf.org/viaf/12345", "isni": "0001"},
+            "payload": {
+                "viaf_uri": "https://viaf.org/viaf/12345",
+                "viaf_name_type": "Personal",
+                "isni": "0001",
+            },
         }
         out = ah.apply_hardening_guards(
             me, context=ah.HardeningContext(entity_kind="organization"),
@@ -340,6 +405,25 @@ class TestApplyHardeningGuards:
         assert out["viaf_id"] == ""
         assert "corporate_viaf_drop" in out["payload"]["guard_flags"]
         assert out["confidence"] == "low"
+
+    def test_corporate_keeps_corporate_viaf(self) -> None:
+        me: dict[str, Any] = {
+            "matched_name": "Bodleian Library",
+            "entity_kind": "organization",
+            "confidence": "high",
+            "mazal_id": "MAZAL_X",
+            "viaf_id": "12345",
+            "wikidata_qid": "",
+            "payload": {
+                "viaf_name_type": "Corporate",
+                "viaf_resolve_op": "sru_corporate",
+            },
+        }
+        out = ah.apply_hardening_guards(
+            me, context=ah.HardeningContext(entity_kind="organization"),
+        )
+        assert out["viaf_id"] == "12345"
+        assert "corporate_viaf_drop" not in out["payload"]["guard_flags"]
 
     def test_cluster_collapse_via_siblings(self) -> None:
         me: dict[str, Any] = {
