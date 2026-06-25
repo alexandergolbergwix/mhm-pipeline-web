@@ -64,7 +64,11 @@ def normalize_control_number(value: str | None) -> str:
     return str(value or "").strip().strip("\"'")
 
 
-def parse_date_entity_text(text: str) -> ParsedDate:
+def parse_date_entity_text(
+    text: str,
+    *,
+    marc_record: dict[str, Any] | None = None,
+) -> ParsedDate:
     """Best-effort CE / Hebrew year from a provenance-NER DATE span."""
     raw = (text or "").strip()
     out = ParsedDate(text=raw)
@@ -72,7 +76,7 @@ def parse_date_entity_text(text: str) -> ParsedDate:
         out.warnings.append("empty_text")
         return out
 
-    year = normalize_date_entity_year(raw)
+    year = normalize_date_entity_year(raw, marc_record=marc_record)
     if year is not None:
         out.gregorian_year = year
         out.hebrew_year = year + 3760 if 100 < year < 2100 else None
@@ -177,11 +181,13 @@ def audit_extraction_dates(
     rows: list[DateRow] = []
     for (cn, text), group in sorted(grouped.items()):
         first = group[0]
-        parsed = parse_date_entity_text(text)
-        marc_ms_year = marc_catalog_year = marc_colophon_year = None
-        marc_ms_year_source = None
+        prepared = None
         if marc_by_cn and cn in marc_by_cn:
             prepared = prepare_record_for_pipeline(dict(marc_by_cn[cn]))
+        parsed = parse_date_entity_text(text, marc_record=prepared)
+        marc_ms_year = marc_catalog_year = marc_colophon_year = None
+        marc_ms_year_source = None
+        if prepared is not None:
             prov = manuscript_year_provenance(prepared)
             marc_ms_year = prov.get("ms_year")
             marc_catalog_year = prov.get("catalog_year")

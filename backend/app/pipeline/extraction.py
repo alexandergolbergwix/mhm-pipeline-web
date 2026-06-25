@@ -510,7 +510,7 @@ async def _process_one_record(
     from app.pipeline.date_entity_normalize import normalize_provenance_date_entities  # noqa: PLC0415
 
     all_entities = filter_date_shape(all_entities)
-    all_entities = normalize_provenance_date_entities(all_entities)
+    all_entities = normalize_provenance_date_entities(all_entities, marc_record=record)
     # Collapse same-name person_ner entities across segments to one canonical role.
     all_entities = filter_person_role_dedup(all_entities)
     # Stamp grounded/exists_in against the MARC record for the Review UI badge.
