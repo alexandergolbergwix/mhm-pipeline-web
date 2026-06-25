@@ -354,30 +354,45 @@ def evaluate_date_conflict(
 # ── Guard 2: short-name homonym guard ────────────────────────────────
 
 
+def _hebrew_letter_count(text: str) -> int:
+    return sum(1 for c in text if "\u0590" <= c <= "\u05FF")
+
+
+def _is_short_ambiguous_surface(marc_name: str) -> bool:
+    marc_tokens = _tokenise(marc_name)
+    if len(marc_tokens) <= 2:
+        if len(marc_tokens) == 1 or _hebrew_letter_count(marc_name) <= 12:
+            return True
+    return False
+
+
 def is_short_name_homonym(
     marc_name: str,
     preferred_name_lat: str | None,
     *,
     mazal_matched: bool,
     biographical_dates_present: bool,
+    main_marc_tag: str | None = None,
+    personality_count: int = 0,
+    marc_dates_overlap: bool = False,
 ) -> bool:
-    """True when a 1-token MARC name landed on a richly-named VIAF cluster.
+    """True when a short MARC name landed on a richly-named authority cluster.
 
-    Single-token Hebrew names (``יעקב``, ``Isaac``) routinely match
-    several historic figures. VIAF SRU returns the highest-ranked
-    cluster, which is usually the wrong one when the source has no
-    disambiguator. We accept the match only when an independent
-    signal (Mazal hit, MARC 100$d biographical dates) corroborates.
+  Single-token or very short Hebrew names (``שלמה``, ``יעקב``) routinely match
+  several historic figures. We accept the match only when Mazal אישיות (tag
+  100) corroborates with date overlap or a unique personality candidate.
     """
     if not preferred_name_lat:
         return False
-    marc_tokens = _tokenise(marc_name)
-    if len(marc_tokens) != 1:
+    if not _is_short_ambiguous_surface(marc_name):
         return False
     candidate_tokens = _tokenise(preferred_name_lat)
     if len(candidate_tokens) <= 2:
         return False
-    if mazal_matched or biographical_dates_present:
+    if mazal_matched and (main_marc_tag or "") == "100":
+        if marc_dates_overlap or personality_count <= 1:
+            return False
+    if biographical_dates_present and marc_dates_overlap:
         return False
     return True
 

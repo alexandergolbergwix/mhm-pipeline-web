@@ -290,3 +290,36 @@ def test_person_homonym_same_kind_deduped_by_priority() -> None:
     assert "contributor" in alt_roles, (
         "contributor must be recorded in alt_roles for audit"
     )
+
+
+def test_guard_homonym_unresolved_fires_on_abstain_payload() -> None:
+    from app.pipeline.authority_hardening import guard_homonym_unresolved
+
+    verdict = guard_homonym_unresolved(
+        payload={"homonym_abstain": True, "homonym_candidates": [{"mazal_id": "a"}]},
+        mazal_id="",
+    )
+    assert verdict.fired
+    assert verdict.flag == "homonym_unresolved"
+
+
+def test_pick_mazal_abstains_for_shlomo_style_homonym() -> None:
+    from app.pipeline.homonym_scoring import pick_mazal_candidate
+
+    candidates = [
+        {
+            "mazal_id": "987001",
+            "main_marc_tag": "100",
+            "dates": "1000-1050",
+            "entity_type": "person",
+        },
+        {
+            "mazal_id": "987002",
+            "main_marc_tag": "100",
+            "dates": "1100-1150",
+            "entity_type": "person",
+        },
+    ]
+    decision = pick_mazal_candidate(candidates, role="author")
+    assert decision.abstain
+    assert decision.winner is None

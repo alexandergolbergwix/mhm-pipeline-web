@@ -44,6 +44,16 @@ export interface AuthorityMatch {
   exists_in?: ExistsIn | null;
 }
 
+export interface HomonymCandidate {
+  mazal_id?: string;
+  dates?: string;
+  main_marc_tag?: string;
+  preferred_name_heb?: string;
+  preferred_name_lat?: string;
+  score?: number;
+  date_overlap?: boolean;
+}
+
 export interface RunDetail extends RunListItem {
   matches: AuthorityMatch[];
 }
@@ -142,6 +152,17 @@ export const Runs = {
     api.patch<AuthorityMatch>(
       `/runs/${runId}/matches/${matchId}/edit`,
       patch,
+    ),
+
+  listMatchCandidates: (runId: string, matchId: string) =>
+    api.get<{candidates: HomonymCandidate[]; source: string}>(
+      `/runs/${runId}/matches/${matchId}/candidates`,
+    ),
+
+  pickMatchCandidate: (runId: string, matchId: string, mazalId: string) =>
+    api.post<AuthorityMatch>(
+      `/runs/${runId}/matches/${matchId}/pick-candidate`,
+      {mazal_id: mazalId},
     ),
 
   editRecord: (runId: string, controlNumber: string, marc: Record<string, unknown>) =>

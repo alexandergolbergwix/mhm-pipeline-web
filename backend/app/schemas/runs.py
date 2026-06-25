@@ -71,6 +71,11 @@ class AuthorityMatchEdit(BaseModel):
     entity_text: str | None = None
 
 
+class MazalCandidatePick(BaseModel):
+    """Curator picks one Mazal personality from homonym candidates."""
+    mazal_id: str
+
+
 class RecordEdit(BaseModel):
     """MARC JSON replacement — UI sends the dict, server stores it."""
     marc: dict[str, Any]

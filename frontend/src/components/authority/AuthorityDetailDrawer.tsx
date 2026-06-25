@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/api/client";
-import { Runs, type AuthorityMatch } from "@/api/runs";
+import { Runs, type AuthorityMatch, type HomonymCandidate} from "@/api/runs";
 import { AuthorityMatchEditDialog } from "@/components/AuthorityMatchEditDialog";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
 import { ConfidenceBadge, VerdictBadge } from "@/components/MatchDetailDialog";
@@ -241,6 +241,13 @@ export function AuthorityDetailDrawer({
               )}
               <MatchCard match={match} payload={p}
                          onViewMarc={() => setMarcCn(match.control_number)} />
+              <HomonymPickerCard
+                match={match}
+                runId={runId}
+                payload={p}
+                onPicked={onMatchChanged}
+              />
+              <EditionMetadataCard payload={p} />
               <ConfidenceCard match={match} payload={p} />
               <DatesCard match={match} payload={p} />
               <BiodataCard payload={p} />
@@ -329,6 +336,113 @@ function MatchCard({
               className="text-biu-sky text-[11px] hover:underline">
         View MARC record ↗
       </button>
+    </Glass>
+  );
+}
+
+
+function HomonymPickerCard({
+  match,
+  runId,
+  payload,
+  onPicked,
+}: {
+  match:    AuthorityMatch;
+  runId:    string;
+  payload:  Record<string, unknown>;
+  onPicked: (m: AuthorityMatch) => void;
+}) {
+  const guards = (payload.guard_flags as string[] | undefined) ?? [];
+  const embedded = (payload.homonym_candidates as HomonymCandidate[] | undefined) ?? [];
+  const show = guards.includes("homonym_unresolved")
+    || guards.includes("short_name_homonym")
+    || embedded.length > 0;
+  const [candidates, setCandidates] = useState<HomonymCandidate[]>(embedded);
+  const [picking, setPicking] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!show || embedded.length > 0) return;
+    let cancelled = false;
+    Runs.listMatchCandidates(runId, match.id)
+      .then((res) => {
+        if (!cancelled) setCandidates(res.candidates ?? []);
+      })
+      .catch(() => { /* optional refresh */ });
+    return () => { cancelled = true; };
+  }, [show, embedded.length, runId, match.id]);
+
+  if (!show || candidates.length === 0 || match.mazal_id) return null;
+
+  async function pick(mazalId: string) {
+    setPicking(mazalId);
+    setError(null);
+    try {
+      const updated = await Runs.pickMatchCandidate(runId, match.id, mazalId);
+      onPicked(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pick failed");
+    } finally {
+      setPicking(null);
+    }
+  }
+
+  return (
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="drawer-card-homonym">
+      <div className="kicker">Unresolved homonym</div>
+      <p className="text-[11px] text-ink-muted">
+        Multiple Mazal personalities match this name. Pick the correct אישיות.
+      </p>
+      {error && <p className="text-[11px] text-danger">{error}</p>}
+      <ul className="space-y-1">
+        {candidates.map((c) => {
+          const id = strOr(c.mazal_id, "");
+          if (!id) return null;
+          return (
+            <li key={id} className="flex items-center justify-between gap-2 border border-white/10 rounded px-2 py-1">
+              <div className="min-w-0">
+                <div className="font-mono text-[11px]">{id}</div>
+                <div className="text-[10px] text-ink-muted truncate">
+                  {strOr(c.preferred_name_heb, c.preferred_name_lat ?? "")}
+                  {c.dates ? ` · ${c.dates}` : ""}
+                  {c.main_marc_tag ? ` · tag ${c.main_marc_tag}` : ""}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={picking !== null}
+                onClick={() => pick(id)}
+                className="shrink-0 text-[11px] text-biu-sky hover:underline disabled:opacity-50"
+              >
+                {picking === id ? "…" : "Pick"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Glass>
+  );
+}
+
+
+function EditionMetadataCard({payload}: {payload: Record<string, unknown>}) {
+  const meta = payload.editorial_metadata as Record<string, unknown> | undefined;
+  if (!meta || typeof meta !== "object") return null;
+  const editors = (meta.editor_names as string[] | undefined) ?? [];
+  const features = (meta.edition_features as string[] | undefined) ?? [];
+  const stmt = strOr(meta.edition_statement as string, "");
+  if (!editors.length && !features.length && !stmt) return null;
+
+  return (
+    <Glass as="section" variant="compact" className="p-3 space-y-2" data-testid="drawer-card-edition">
+      <div className="kicker">Edition metadata</div>
+      {editors.length > 0 && (
+        <LabeledValue label="Editor(s)" value={editors.join(" · ")} dir="rtl" />
+      )}
+      {stmt && <LabeledValue label="Edition" value={stmt} dir="rtl" />}
+      {features.length > 0 && (
+        <LabeledValue label="Features" value={features.join(", ")} />
+      )}
     </Glass>
   );
 }
@@ -683,6 +797,7 @@ const _GUARD_NOTES: Record<string, string> = {
   mazal_entity_type_mismatch:    "Mazal entity type does not match this row's kind (person/place/work).",
   wikidata_crosscheck_fail:      "Wikidata Hebrew label disagrees with the MARC heading or cluster is over-merged.",
   short_name_homonym:            "Short single-token name without independent corroboration.",
+  homonym_unresolved:            "Multiple Mazal personalities — curator must pick אישיות.",
   cluster_collapse:              "Same VIAF cluster matched two distinct names in this manuscript.",
   corporate_viaf_drop:           "Person-style VIAF id removed from an institution row.",
 };

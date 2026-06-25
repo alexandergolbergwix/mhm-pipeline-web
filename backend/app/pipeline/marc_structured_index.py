@@ -93,14 +93,15 @@ _STRUCTURED_KEYS: tuple[str, ...] = (
     "colophon_year",
     "colophon_scribe",
     "work_mentions",
+    "editorial_metadata",
     "dates",
     "provenance_events",
 )
 
 
 _TYPE_TO_FIELDS: dict[str, tuple[str, ...]] = {
-    "person":          ("contributors", "authors", "colophon_text", "colophon_scribe"),
-    "person_ner":      ("contributors", "authors", "colophon_text", "colophon_scribe"),
+    "person":          ("contributors", "authors", "colophon_text", "colophon_scribe", "notes", "editorial_metadata"),
+    "person_ner":      ("contributors", "authors", "colophon_text", "colophon_scribe", "notes", "editorial_metadata"),
     "owner":           ("former_owners", "ownership_history", "acquisition_source"),
     "provenance":      ("former_owners", "ownership_history", "acquisition_source"),
     "provenance_ner":  ("former_owners", "ownership_history", "acquisition_source"),
@@ -174,6 +175,21 @@ def _ingest_date_fields(
                 _add_indexed_string(bag, by_field, "provenance_events", str(val))
 
 
+def _ingest_editorial_fields(
+    record: dict[str, Any],
+    bag: set[str],
+    by_field: dict[str, set[str]],
+) -> None:
+    meta = record.get("editorial_metadata")
+    if not isinstance(meta, dict):
+        return
+    for name in meta.get("editor_names") or []:
+        _add_indexed_string(bag, by_field, "editorial_metadata", str(name))
+    stmt = meta.get("edition_statement")
+    if stmt:
+        _add_indexed_string(bag, by_field, "editorial_metadata", str(stmt))
+
+
 class MarcStructuredIndex:
     """Per-record bag of normalised structured-field strings."""
 
@@ -235,6 +251,7 @@ class MarcStructuredIndex:
                 if field_bag:
                     by_field[field_key] = field_bag
             _ingest_date_fields(record, bag, by_field)
+            _ingest_editorial_fields(record, bag, by_field)
             if bag:
                 self._by_id[key] = bag
                 self._by_id_field[key] = by_field

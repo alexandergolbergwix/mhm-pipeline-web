@@ -495,6 +495,9 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     if not record.get("work_mentions"):
         _extract_work_mentions(record)
 
+    if not record.get("editorial_metadata"):
+        _extract_editorial_metadata(record)
+
     # ── Provenance (561$a — Provenance-NER input) ──────────────────
     provenance_pieces = _split_multi(_str(record.get("561$a")))
     if provenance_pieces and not record.get("provenance"):
@@ -644,6 +647,62 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
                 work_mentions.append({"title": title, "source_field": "500"})
     if work_mentions:
         record["work_mentions"] = work_mentions
+
+
+_EDITOR_IN_RE = _re.compile(
+    r"בעריכת\s+([^.;|]+)",
+    _re.UNICODE,
+)
+_EDITOR_LABEL_RE = _re.compile(
+    r"עורך[:\s]+([^.;|]+)",
+    _re.UNICODE,
+)
+_EDITION_STMT_RE = _re.compile(
+    r"(?:מהדורת|במהדורה)\s+([^.;]+)",
+    _re.UNICODE,
+)
+
+
+def _extract_editorial_metadata(record: dict[str, Any]) -> None:
+    """Extract editor / edition signals from 500$a notes (Gila audit MS)."""
+    candidates: list[str] = list(record.get("notes") or [])
+    raw_500a = _str(record.get("500$a"))
+    if raw_500a and raw_500a not in candidates:
+        candidates.append(raw_500a)
+
+    editor_names: list[str] = []
+    edition_features: list[str] = []
+    edition_statement = ""
+    has_imprint = False
+
+    for note in candidates:
+        for match in _EDITOR_IN_RE.finditer(note):
+            name = match.group(1).strip().strip("., ")
+            if name and name not in editor_names:
+                editor_names.append(name)
+        for match in _EDITOR_LABEL_RE.finditer(note):
+            name = match.group(1).strip().strip("., ")
+            if name and name not in editor_names:
+                editor_names.append(name)
+        if "הערות והוספות בשוליים" in note and "marginal_notes" not in edition_features:
+            edition_features.append("marginal_notes")
+        if "בסופו השערים" in note:
+            has_imprint = True
+        ed_match = _EDITION_STMT_RE.search(note)
+        if ed_match and not edition_statement:
+            edition_statement = ed_match.group(1).strip()
+        if "הגהות" in note and "emendations" not in edition_features:
+            edition_features.append("emendations")
+
+    if not any([editor_names, edition_statement, edition_features, has_imprint]):
+        return
+
+    record["editorial_metadata"] = {
+        "editor_names": editor_names,
+        "edition_statement": edition_statement,
+        "edition_features": edition_features,
+        "has_imprint": has_imprint,
+    }
 
 
 def _extract_provenance_events(record: dict[str, Any]) -> None:
@@ -876,6 +935,14 @@ def build_record_note_blob(record: dict[str, Any]) -> str:
             title = wm.get("title")
             if isinstance(title, str) and title.strip():
                 parts.append(title.strip())
+    meta = record.get("editorial_metadata")
+    if isinstance(meta, dict):
+        for name in meta.get("editor_names") or []:
+            if str(name).strip():
+                parts.append(str(name).strip())
+        stmt = meta.get("edition_statement")
+        if isinstance(stmt, str) and stmt.strip():
+            parts.append(stmt.strip())
     prov = record.get("provenance")
     if isinstance(prov, str) and prov.strip():
         parts.append(prov.strip())
@@ -1016,6 +1083,18 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
                 "role": "contained_work",
                 "field": str(wm.get("source_field") or "500"),
             })
+
+    editorial = record.get("editorial_metadata") or {}
+    if isinstance(editorial, dict):
+        for editor_name in editorial.get("editor_names") or []:
+            name = str(editor_name).strip()
+            if name:
+                out.append({
+                    "text": normalize_entity_text(name),
+                    "kind": "person",
+                    "role": "editor",
+                    "field": "500",
+                })
 
     # Dedup pass: key = (normalize(text), kind).
     # When the same entity appears multiple times with different roles (e.g.

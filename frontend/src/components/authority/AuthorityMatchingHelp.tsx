@@ -21,7 +21,8 @@ export function AuthorityMatchingHelp() {
         <p>
           <strong className="text-ink">Confidence</strong> reflects how many sources agree and name quality
           (length, patronymic, catalog heading form). Guards flag issues — e.g.{" "}
-          <code className="text-xs">mazal_subject_not_personality</code> when an author matched a נושא record instead of אישיות.
+          <code className="text-xs">mazal_subject_not_personality</code> when an author matched a נושא record instead of אישיות, or{" "}
+          <code className="text-xs">homonym_unresolved</code> when several Mazal personalities tie without dates — use the drawer <strong className="text-ink">Pick</strong> control.
         </p>
         <p>
           After a system update, run <strong className="text-ink">Re-enrich</strong> to refresh matches
@@ -43,8 +44,12 @@ export function AuthorityMatchingHelp() {
               יצירות — כותר עבודה במז״ל; מוסדות — גוף תאגידי במז״ל.
             </p>
             <p>
+              הומונימים ללא תאריכי $d — המערכת נמנעת מניחוש ומסמנת{" "}
+              <code className="text-xs">homonym_unresolved</code>; בחרי אישיות במגירת הפרטים.
+            </p>
+            <p>
               לאחר עדכון מערכת יש להריץ <strong className="text-ink">Re-enrich</strong>.
-              חיפוש בהערות מאפשר למצוא קולופון ו«כולל:» גם כשהישות הגיעה משדה כותר.
+              חיפוש בהערות מאפשר למצוא קולופון, «כולל:», «בעריכת» ו«הגהות».
             </p>
           </div>
         </details>

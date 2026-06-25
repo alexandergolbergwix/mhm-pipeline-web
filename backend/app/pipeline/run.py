@@ -116,6 +116,15 @@ async def execute_run(
                 match_count += 1
     run.match_count = match_count
 
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.pipeline.authority_post_enrich import finalize_authority_matches  # noqa: PLC0415
+
+    remaining_rows = (
+        await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run.id))
+    ).scalars().all()
+    finalize_authority_matches(list(remaining_rows))
+
     run.status = RUN_STATUS_SUCCEEDED
     run.completed_at = datetime.now(timezone.utc)
     await db.commit()

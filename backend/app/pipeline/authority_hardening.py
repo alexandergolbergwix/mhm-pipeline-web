@@ -109,11 +109,9 @@ def guard_short_name_homonym(
     preferred_name_lat: str | None,
     mazal_matched: bool,
     biographical_dates_present: bool,
+    payload: dict[str, Any] | None = None,
 ) -> GuardVerdict:
-    """Single-token Hebrew name lands on a richly-disambiguated cluster.
-
-    Mirrors :func:`converter.authority.stage3_guards.is_short_name_homonym`.
-    """
+    """Short ambiguous MARC name lands on a richly-disambiguated cluster."""
     try:
         from converter.authority.stage3_guards import (  # noqa: PLC0415
             is_short_name_homonym,
@@ -122,11 +120,15 @@ def guard_short_name_homonym(
         logger.debug("stage3_guards.is_short_name_homonym unavailable", exc_info=True)
         return GuardVerdict(fired=False)
 
+    pl = payload or {}
     fired = is_short_name_homonym(
         marc_name=marc_name,
         preferred_name_lat=preferred_name_lat,
         mazal_matched=mazal_matched,
         biographical_dates_present=biographical_dates_present,
+        main_marc_tag=str(pl.get("main_marc_tag") or "") or None,
+        personality_count=int(pl.get("personality_count") or 0),
+        marc_dates_overlap=bool(pl.get("marc_dates_overlap")),
     )
     if not fired:
         return GuardVerdict(fired=False)
@@ -783,6 +785,7 @@ class HardeningContext:
     ms_year: int | None = None
     birth_year: int | None = None
     death_year: int | None = None
+    marc_dates: str | None = None
     over_merge_table: Any | None = None
     enable_wikidata_crosscheck: bool = False
 
@@ -839,12 +842,25 @@ def apply_hardening_guards(
             preferred_name_lat=ctx.preferred_name_lat,
             mazal_matched=bool(out.get("mazal_id")),
             biographical_dates_present=ctx.biographical_dates_in_marc,
+            payload=payload,
         ),
         guard_cluster_collapse(candidate=out, siblings=ctx.siblings),
         guard_nli_strict_skip_viaf(candidate=out),
         guard_mazal_pair_collision(candidate=out, siblings=ctx.siblings),
         guard_corporate_meeting(candidate=out, entity_kind=ctx.entity_kind),
         guard_viaf_name_type_mismatch(candidate=out, entity_kind=ctx.entity_kind),
+        guard_viaf_date_mismatch(
+            marc_dates=ctx.marc_dates,
+            birth_year=ctx.birth_year,
+            death_year=ctx.death_year,
+            viaf_id=str(out.get("viaf_id") or ""),
+        ),
+        guard_cross_source_conflict(
+            candidate=out,
+            marc_dates=ctx.marc_dates,
+            birth_year=ctx.birth_year,
+            death_year=ctx.death_year,
+        ),
         guard_wikidata_orphan_label(candidate=out, entity_kind=ctx.entity_kind),
         guard_wikidata_label_on_place(candidate=out, entity_kind=ctx.entity_kind),
         guard_wikidata_human_on_non_person(candidate=out, entity_kind=ctx.entity_kind),
@@ -855,6 +871,7 @@ def apply_hardening_guards(
             payload=out.get("payload"),
         ),
         guard_mazal_entity_type_mismatch(payload=out.get("payload")),
+        guard_homonym_unresolved(payload=payload, mazal_id=str(out.get("mazal_id") or "")),
     ]
     if ctx.enable_wikidata_crosscheck:
         verdicts.append(
@@ -912,6 +929,8 @@ def apply_hardening_guards(
         "viaf_name_type_mismatch",
         "viaf_person_on_non_person",
         "viaf_untyped_no_anchor",
+        "viaf_date_mismatch",
+        "cross_source_conflict",
     }
     if any(v.flag in _viaf_strip_flags for v in fired):
         out["viaf_id"] = ""
@@ -949,6 +968,92 @@ def apply_hardening_guards(
         payload["reasoning"] = (prior + " " + " ".join(reasons)).strip()
     out["payload"] = payload
     return out
+
+
+def guard_viaf_date_mismatch(
+    *,
+    marc_dates: str | None,
+    birth_year: int | None,
+    death_year: int | None,
+    viaf_id: str,
+) -> GuardVerdict:
+    """Strip VIAF when cluster years conflict with MARC $d."""
+    if not viaf_id or not marc_dates:
+        return GuardVerdict(fired=False)
+    from app.pipeline.homonym_scoring import parse_authority_dates  # noqa: PLC0415
+    from converter.transformer.date_resolver import DateRange, dates_overlap  # noqa: PLC0415
+
+    marc_range = parse_authority_dates(marc_dates)
+    if marc_range.year_start is None and marc_range.year_end is None:
+        return GuardVerdict(fired=False)
+    viaf_range = DateRange(birth_year, death_year, False, "viaf")
+    if dates_overlap(marc_range, viaf_range):
+        return GuardVerdict(fired=False)
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason=(
+            f"VIAF {viaf_id} biographical dates conflict with MARC $d {marc_dates!r}."
+        ),
+        flag="viaf_date_mismatch",
+    )
+
+
+def guard_cross_source_conflict(
+    *,
+    candidate: dict[str, Any],
+    marc_dates: str | None,
+    birth_year: int | None = None,
+    death_year: int | None = None,
+) -> GuardVerdict:
+    """Flag when Mazal personality and VIAF disagree on dates."""
+    mazal_id = str(candidate.get("mazal_id") or "")
+    viaf_id = str(candidate.get("viaf_id") or "")
+    if not mazal_id or not viaf_id:
+        return GuardVerdict(fired=False)
+    payload = candidate.get("payload") or {}
+    if str(payload.get("main_marc_tag") or "") != "100":
+        return GuardVerdict(fired=False)
+    mismatch = guard_viaf_date_mismatch(
+        marc_dates=marc_dates,
+        birth_year=birth_year,
+        death_year=death_year,
+        viaf_id=viaf_id,
+    )
+    if not mismatch.fired:
+        return GuardVerdict(fired=False)
+    return GuardVerdict(
+        fired=True,
+        new_confidence="low",
+        reason="Mazal and VIAF disagree — retaining Mazal anchor only.",
+        flag="cross_source_conflict",
+    )
+
+
+def guard_homonym_unresolved(
+    *,
+    payload: dict[str, Any],
+    mazal_id: str,
+) -> GuardVerdict:
+    """Fire when Mazal homonym scoring abstained — curator must pick a personality."""
+    if mazal_id:
+        return GuardVerdict(fired=False)
+    if payload.get("homonym_abstain") or payload.get("homonym_abstain_reason"):
+        return GuardVerdict(
+            fired=True,
+            new_confidence="low",
+            reason="Multiple Mazal personalities match; abstained pending curator pick.",
+            flag="homonym_unresolved",
+        )
+    candidates = payload.get("homonym_candidates")
+    if isinstance(candidates, list) and len(candidates) >= 2:
+        return GuardVerdict(
+            fired=True,
+            new_confidence="low",
+            reason="Ambiguous homonym — multiple Mazal candidates without a clear winner.",
+            flag="homonym_unresolved",
+        )
+    return GuardVerdict(fired=False)
 
 
 def guard_mazal_subject_heading(

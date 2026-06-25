@@ -29,13 +29,28 @@ logger = logging.getLogger(__name__)
 class AuthorityBackend(Protocol):
     """Minimal interface for Mazal + KIMA lookups."""
 
-    async def match_person(self, name: str, dates: str | None = None) -> dict[str, Any] | None:
-        """Return a dict with mazal_id + details, or None on no hit.
+    async def match_person(
+        self,
+        name: str,
+        dates: str | None = None,
+        *,
+        ms_year: int | None = None,
+        role: str = "",
+    ) -> dict[str, Any] | None:
+        """Return a dict with mazal_id + details, abstain metadata, or None.
 
-        When *dates* is supplied (e.g. "1138-1204" from MARC $d), the backend
-        tries an exact-match + dates before falling back to name-only so
-        homonyms with different life-dates are correctly separated.
+        When homonyms cannot be disambiguated the dict carries ``_abstain``
+        and ``homonym_candidates`` (no ``mazal_id``).
         """
+        ...
+
+    async def match_person_candidates(
+        self,
+        name: str,
+        *,
+        limit: int = 8,
+    ) -> list[dict[str, Any]]:
+        """Return Mazal person rows for *name* (exact normalized name match)."""
         ...
 
     async def match_place(self, text: str) -> dict[str, Any] | None:
@@ -90,26 +105,123 @@ class LocalAuthorityBackend:
         self._mazal = mazal_matcher
         self._kima = kima_matcher
 
-    async def match_person(self, name: str, dates: str | None = None) -> dict[str, Any] | None:
+    async def match_person_candidates(
+        self,
+        name: str,
+        *,
+        limit: int = 8,
+    ) -> list[dict[str, Any]]:
         import asyncio  # noqa: PLC0415
+
+        if self._mazal is None or self._mazal.index is None:
+            return []
+
+        def _sync() -> list[dict[str, Any]]:
+            idx = self._mazal.index
+            norm = idx.normalize_name(name)
+            if not norm:
+                return []
+            cur = idx.conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    SELECT a.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
+                    FROM name_index n
+                    JOIN authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name = ? AND n.entity_type = 'person'
+                    ORDER BY
+                      CASE a.main_marc_tag
+                        WHEN '100' THEN 1
+                        WHEN '400' THEN 2
+                        ELSE 3
+                      END,
+                      (a.dates IS NOT NULL AND a.dates != '') DESC,
+                      a.nli_id ASC
+                    LIMIT ?
+                    """,
+                    (norm, limit),
+                )
+                rows = cur.fetchall()
+                return [_person_row_to_dict(r) for r in rows]
+            except Exception:  # noqa: BLE001
+                return []
+            finally:
+                cur.close()
+
+        return await asyncio.to_thread(_sync)
+
+    async def match_person(
+        self,
+        name: str,
+        dates: str | None = None,
+        *,
+        ms_year: int | None = None,
+        role: str = "",
+    ) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        from app.pipeline.homonym_scoring import pick_mazal_candidate  # noqa: PLC0415
 
         if self._mazal is None:
             return None
 
         def _sync() -> dict[str, Any] | None:
-            # Try date-anchored exact match first when MARC $d is available.
-            mid = self._mazal.match_person(name, dates=dates)
-            fuzzy = False
-            if mid is None:
-                idx = self._mazal.index
-                if idx is None:
-                    return None
-                norm = idx.normalize_name(name)
-                if len(norm) < 6:
-                    return None
-                row = idx.conn.execute(
+            idx = self._mazal.index
+            if idx is None:
+                return None
+            norm = idx.normalize_name(name)
+            if not norm:
+                return None
+            cur = idx.conn.cursor()
+            try:
+                cur.execute(
                     """
-                    SELECT n.nli_id
+                    SELECT a.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
+                    FROM name_index n
+                    JOIN authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name = ? AND n.entity_type = 'person'
+                    ORDER BY
+                      CASE a.main_marc_tag
+                        WHEN '100' THEN 1
+                        WHEN '400' THEN 2
+                        ELSE 3
+                      END,
+                      (a.dates IS NOT NULL AND a.dates != '') DESC,
+                      a.nli_id ASC
+                    LIMIT 8
+                    """,
+                    (norm,),
+                )
+                rows = cur.fetchall()
+                candidates = [_person_row_to_dict(r) for r in rows]
+            finally:
+                cur.close()
+
+            if candidates:
+                decision = pick_mazal_candidate(
+                    candidates,
+                    marc_dates=dates,
+                    ms_year=ms_year,
+                    role=role,
+                )
+                result = _match_person_from_decision(decision)
+                if result is not None:
+                    return result
+
+            # Fuzzy substring fallback (legacy behaviour when no exact name hit).
+            if len(norm) < 6:
+                return None
+            cur = idx.conn.cursor()
+            try:
+                row = cur.execute(
+                    """
+                    SELECT a.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
                     FROM name_index n
                     JOIN authorities a ON n.nli_id = a.nli_id
                     WHERE n.entity_type = 'person'
@@ -128,12 +240,9 @@ class LocalAuthorityBackend:
                 ).fetchone()
                 if row is None:
                     return None
-                mid = row["nli_id"]
-                fuzzy = True
-            details: dict = self._mazal.get_person_details(str(mid)) or {}
-            if fuzzy:
-                details["_fuzzy"] = True
-            return {"mazal_id": str(mid), **details}
+                return _person_row_to_dict(row, fuzzy=True)
+            finally:
+                cur.close()
 
         return await asyncio.to_thread(_sync)
 
@@ -326,11 +435,18 @@ class ModalAuthorityBackend:
         self._base = base_url.rstrip("/")
         self._client = httpx.AsyncClient(timeout=30.0)
 
-    async def match_person(self, name: str) -> dict[str, Any] | None:
+    async def match_person(
+        self,
+        name: str,
+        dates: str | None = None,
+        *,
+        ms_year: int | None = None,
+        role: str = "",
+    ) -> dict[str, Any] | None:
         try:
             r = await self._client.post(
                 f"{self._base}/match_person",
-                json={"name": name},
+                json={"name": name, "dates": dates},
             )
             r.raise_for_status()
             data: dict = r.json()
@@ -342,6 +458,14 @@ class ModalAuthorityBackend:
                 "ModalAuthorityBackend.match_person failed for %r: %s", name, exc,
             )
             return None
+
+    async def match_person_candidates(
+        self,
+        name: str,
+        *,
+        limit: int = 8,
+    ) -> list[dict[str, Any]]:
+        return []
 
     async def match_place(self, text: str) -> dict[str, Any] | None:
         try:
@@ -382,6 +506,60 @@ class ModalAuthorityBackend:
         main_marc_tag: str | None,
     ) -> dict[str, Any] | None:
         return None
+
+
+def _person_row_to_dict(
+    row: tuple[Any, ...] | Any,
+    *,
+    fuzzy: bool = False,
+    fuzzy_sim: float | None = None,
+) -> dict[str, Any]:
+    if hasattr(row, "keys"):
+        keys = row.keys()
+        main_tag = row["main_marc_tag"] if "main_marc_tag" in keys else None
+        out = {
+            "mazal_id": row["nli_id"],
+            "entity_type": row["entity_type"],
+            "preferred_name_heb": row["preferred_name_heb"],
+            "preferred_name_lat": row["preferred_name_lat"],
+            "dates": row["dates"],
+            "aleph_id": row["aleph_id"],
+            "main_marc_tag": main_tag,
+        }
+    else:
+        out = {
+            "mazal_id": row[0],
+            "entity_type": row[1],
+            "preferred_name_heb": row[2],
+            "preferred_name_lat": row[3],
+            "dates": row[4],
+            "aleph_id": row[5],
+            "main_marc_tag": row[6] if len(row) > 6 else None,
+        }
+    if fuzzy:
+        out["_fuzzy"] = True
+        if fuzzy_sim is not None:
+            out["_fuzzy_sim"] = fuzzy_sim
+    return out
+
+
+def _match_person_from_decision(decision: Any) -> dict[str, Any] | None:
+    from app.pipeline.homonym_scoring import MazalMatchDecision  # noqa: PLC0415
+
+    if not isinstance(decision, MazalMatchDecision):
+        return None
+    meta = {
+        "homonym_candidates": decision.homonym_candidates,
+        "homonym_abstain_reason": decision.reason,
+        "personality_count": decision.personality_count,
+    }
+    if decision.abstain:
+        return {"_abstain": True, **meta}
+    if decision.winner:
+        out = dict(decision.winner)
+        out.update(meta)
+        return out
+    return None
 
 
 def _personality_row_from_sqlite(row: Any, previous_id: str) -> dict[str, Any] | None:
@@ -503,49 +681,21 @@ class PostgresAuthorityBackend:
 
     # ── Public API (AuthorityBackend protocol) ─────────────────────────
 
-    async def match_person(self, name: str, dates: str | None = None) -> dict[str, Any] | None:
+    async def match_person_candidates(
+        self,
+        name: str,
+        *,
+        limit: int = 8,
+    ) -> list[dict[str, Any]]:
         import asyncio  # noqa: PLC0415
 
-        FUZZY_MIN_SIM = 0.45
-
-        def _sync() -> dict[str, Any] | None:
+        def _sync() -> list[dict[str, Any]]:
             norm = self._normalize_mazal(name)
             if not norm:
-                return None
+                return []
             conn = self._get_conn()
             cur = conn.cursor()
             try:
-                # 1a. Exact match WITH dates — picks the right homonym when MARC $d
-                #     provides birth/death years (e.g. 600$d "1138-1204").
-                if dates:
-                    norm_dates = dates.strip()
-                    cur.execute(
-                        """
-                        SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
-                               a.preferred_name_lat, a.dates, a.aleph_id
-                        FROM mazal_name_index n
-                        JOIN mazal_authorities a ON n.nli_id = a.nli_id
-                        WHERE n.normalized_name = %s
-                          AND n.entity_type = 'person'
-                          AND a.dates = %s
-                        LIMIT 1
-                        """,
-                        (norm, norm_dates),
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        return {
-                            "mazal_id": row[0],
-                            "entity_type": row[1],
-                            "preferred_name_heb": row[2],
-                            "preferred_name_lat": row[3],
-                            "dates": row[4],
-                            "aleph_id": row[5],
-                        }
-
-                # 1b. Exact match (name only), prefer אישיות (main_marc_tag='100') over
-                #     נושא/subject (main_marc_tag='150') and other homonyms, then
-                #     prefer dated records for further disambiguation.
                 cur.execute(
                     """
                     SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
@@ -562,75 +712,120 @@ class PostgresAuthorityBackend:
                       END,
                       (a.dates IS NOT NULL AND a.dates <> '') DESC,
                       a.nli_id ASC
-                    LIMIT 1
+                    LIMIT %s
                     """,
-                    (norm,),
+                    (norm, limit),
                 )
-                row = cur.fetchone()
-                if row:
-                    return {
-                        "mazal_id": row[0],
-                        "entity_type": row[1],
-                        "preferred_name_heb": row[2],
-                        "preferred_name_lat": row[3],
-                        "dates": row[4],
-                        "aleph_id": row[5],
-                        "main_marc_tag": row[6],
-                    }
-
-                # 2. Fuzzy trigram fallback (for spelling variants / orthographic differences
-                # after our normalization). Requires pg_trgm + GIN index on the column.
-                # Graceful: if the extension/operator is unavailable we just return None.
-                try:
-                    cur.execute(
-                        """
-                        SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
-                               a.preferred_name_lat, a.dates, a.aleph_id,
-                               a.main_marc_tag,
-                               similarity(n.normalized_name, %s) AS sim
-                        FROM mazal_name_index n
-                        JOIN mazal_authorities a ON n.nli_id = a.nli_id
-                        WHERE n.normalized_name %% %s
-                          AND n.entity_type = 'person'
-                        ORDER BY sim DESC,
-                          CASE a.main_marc_tag
-                            WHEN '100' THEN 1
-                            WHEN '400' THEN 2
-                            ELSE 3
-                          END,
-                          (a.dates IS NOT NULL AND a.dates <> '') DESC,
-                          a.nli_id ASC
-                        LIMIT 1
-                        """,
-                        (norm, norm),
-                    )
-                    row = cur.fetchone()
-                    # row layout: nli_id, entity_type, pref_heb, pref_lat, dates,
-                    #             aleph_id, main_marc_tag, sim
-                    if row and row[7] is not None and float(row[7]) >= FUZZY_MIN_SIM:
-                        return {
-                            "mazal_id": row[0],
-                            "entity_type": row[1],
-                            "preferred_name_heb": row[2],
-                            "preferred_name_lat": row[3],
-                            "dates": row[4],
-                            "aleph_id": row[5],
-                            "main_marc_tag": row[6],
-                            "_fuzzy": True,
-                            "_fuzzy_sim": float(row[7]),
-                        }
-                except Exception:  # noqa: BLE001 — no pg_trgm, no index, or syntax
-                    pass
-                return None
+                return [_person_row_to_dict(r) for r in cur.fetchall()]
             finally:
                 cur.close()
 
         try:
             return await asyncio.to_thread(_sync)
         except Exception as exc:  # noqa: BLE001
+            logger.warning("Postgres Mazal candidates failed for %r: %s", name, exc)
+            if self._fallback is not None:
+                return await self._fallback.match_person_candidates(name, limit=limit)
+            return []
+
+    async def match_person(
+        self,
+        name: str,
+        dates: str | None = None,
+        *,
+        ms_year: int | None = None,
+        role: str = "",
+    ) -> dict[str, Any] | None:
+        import asyncio  # noqa: PLC0415
+
+        from app.pipeline.homonym_scoring import pick_mazal_candidate  # noqa: PLC0415
+
+        FUZZY_MIN_SIM = 0.45
+
+        def _sync() -> dict[str, Any] | None:
+            norm = self._normalize_mazal(name)
+            if not norm:
+                return None
+            conn = self._get_conn()
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag
+                    FROM mazal_name_index n
+                    JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name = %s AND n.entity_type = 'person'
+                    ORDER BY
+                      CASE a.main_marc_tag
+                        WHEN '100' THEN 1
+                        WHEN '400' THEN 2
+                        ELSE 3
+                      END,
+                      (a.dates IS NOT NULL AND a.dates <> '') DESC,
+                      a.nli_id ASC
+                    LIMIT 8
+                    """,
+                    (norm,),
+                )
+                candidates = [_person_row_to_dict(r) for r in cur.fetchall()]
+            finally:
+                cur.close()
+
+            if candidates:
+                decision = pick_mazal_candidate(
+                    candidates,
+                    marc_dates=dates,
+                    ms_year=ms_year,
+                    role=role,
+                )
+                result = _match_person_from_decision(decision)
+                if result is not None:
+                    return result
+
+            # Fuzzy trigram fallback when no exact normalized-name hit.
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    SELECT n.nli_id, a.entity_type, a.preferred_name_heb,
+                           a.preferred_name_lat, a.dates, a.aleph_id,
+                           a.main_marc_tag,
+                           similarity(n.normalized_name, %s) AS sim
+                    FROM mazal_name_index n
+                    JOIN mazal_authorities a ON n.nli_id = a.nli_id
+                    WHERE n.normalized_name %% %s
+                      AND n.entity_type = 'person'
+                    ORDER BY sim DESC,
+                      CASE a.main_marc_tag
+                        WHEN '100' THEN 1
+                        WHEN '400' THEN 2
+                        ELSE 3
+                      END,
+                      (a.dates IS NOT NULL AND a.dates <> '') DESC,
+                      a.nli_id ASC
+                    LIMIT 1
+                    """,
+                    (norm, norm),
+                )
+                row = cur.fetchone()
+                if row and row[7] is not None and float(row[7]) >= FUZZY_MIN_SIM:
+                    return _person_row_to_dict(row[:7], fuzzy=True, fuzzy_sim=float(row[7]))
+            except Exception:  # noqa: BLE001
+                pass
+            finally:
+                cur.close()
+            return None
+
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Postgres Mazal lookup failed for %r: %s", name, exc)
             if self._fallback is not None:
-                return await self._fallback.match_person(name, dates=dates)
+                return await self._fallback.match_person(
+                    name, dates=dates, ms_year=ms_year, role=role,
+                )
             return None
 
     async def resolve_personality_mazal_id(

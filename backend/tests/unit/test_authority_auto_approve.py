@@ -38,6 +38,17 @@ def test_source_count_falls_back_to_primary_source() -> None:
     assert _match_source_count(m, m.payload) == 1
 
 
+def test_auto_approve_blocks_guard_flags() -> None:
+    m = _match(
+        payload={
+            "sources": ["mazal"],
+            "guard_flags": ["homonym_unresolved"],
+        },
+    )
+    rule = AuthorityAutoApproveRule()
+    assert _apply_auto_approve_rule([m], rule) == []
+
+
 def test_auto_approve_without_payload_source_count_still_matches() -> None:
     m = _match(payload={"sources": ["mazal"], "ai_verdict": {"overall": "full"}})
     rule = AuthorityAutoApproveRule(require_ai_pass=True)

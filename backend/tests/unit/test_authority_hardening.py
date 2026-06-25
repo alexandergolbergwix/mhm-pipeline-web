@@ -29,14 +29,25 @@ class TestShortNameHomonym:
         assert v.new_confidence == "low"
         assert v.flag == "short_name_homonym"
 
-    def test_silent_when_mazal_anchors_the_match(self) -> None:
+    def test_silent_when_mazal_personality_anchors_the_match(self) -> None:
         v = ah.guard_short_name_homonym(
             marc_name="יעקב",
             preferred_name_lat="Jacob ben Asher of Toledo",
             mazal_matched=True,
             biographical_dates_present=False,
+            payload={"main_marc_tag": "100", "personality_count": 1},
         )
         assert v.fired is False
+
+    def test_fires_when_mazal_hit_is_subject_not_personality(self) -> None:
+        v = ah.guard_short_name_homonym(
+            marc_name="יעקב",
+            preferred_name_lat="Jacob ben Asher of Toledo",
+            mazal_matched=True,
+            biographical_dates_present=False,
+            payload={"main_marc_tag": "150", "personality_count": 3},
+        )
+        assert v.fired is True
 
     def test_silent_when_marc_already_multi_token(self) -> None:
         v = ah.guard_short_name_homonym(

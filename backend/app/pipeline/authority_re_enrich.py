@@ -148,13 +148,11 @@ async def re_enrich_run(
             select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
         )
     ).scalars().all()
-    from app.pipeline.authority_post_enrich import (  # noqa: PLC0415
-        apply_personality_cross_links,
-        apply_wikidata_crosscheck_pass,
-    )
+    from app.pipeline.authority_post_enrich import finalize_authority_matches  # noqa: PLC0415
 
-    cross_linked = apply_personality_cross_links(list(remaining_rows))
-    wd_crosschecked = apply_wikidata_crosscheck_pass(list(remaining_rows))
+    stats_extra = finalize_authority_matches(list(remaining_rows))
+    cross_linked = stats_extra["cross_linked"]
+    wd_crosschecked = stats_extra["wikidata_crosschecked"]
 
     await db.flush()
     remaining_count = await db.scalar(

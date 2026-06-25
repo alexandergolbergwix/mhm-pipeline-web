@@ -59,6 +59,7 @@ from app.schemas.runs import (
     AuthorityAutoApproveRule,
     AuthorityMatchEdit,
     AuthorityMatchResponse,
+    MazalCandidatePick,
     RunDetail,
     RunListItem,
     RecordEdit,
@@ -367,6 +368,17 @@ def _match_source_count(m: AuthorityMatch, payload: dict) -> int:
     return 1 if m.source else 0
 
 
+AUTO_APPROVE_BLOCKED_GUARDS = frozenset({
+    "homonym_unresolved",
+    "short_name_homonym",
+    "mazal_subject_not_personality",
+    "viaf_date_mismatch",
+    "cross_source_conflict",
+    "wikidata_disagrees",
+    "wikidata_crosscheck_fail",
+})
+
+
 def _apply_auto_approve_rule(
     rows: list[AuthorityMatch],
     rule: AuthorityAutoApproveRule,
@@ -380,6 +392,9 @@ def _apply_auto_approve_rule(
         if scope_ids is not None and str(m.id) not in scope_ids:
             continue
         p = m.payload or {}
+        guard_flags = set(p.get("guard_flags") or [])
+        if guard_flags.intersection(AUTO_APPROVE_BLOCKED_GUARDS):
+            continue
         # Confidence level
         if rule.confidence_levels and m.confidence not in rule.confidence_levels:
             continue
@@ -976,6 +991,113 @@ async def edit_match(
             type="match.edited",
             payload={"run_id": str(run_id), "match_id": str(m.id), "changes": changes},
         )
+    await db.commit()
+    return AuthorityMatchResponse(**serialise_match(m))
+
+
+@router.get("/runs/{run_id}/matches/{match_id}/candidates")
+async def list_match_candidates(
+    run_id: uuid.UUID,
+    match_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Return Mazal homonym candidates for curator resolution."""
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    m = (
+        await db.execute(
+            select(AuthorityMatch).where(
+                AuthorityMatch.id == match_id,
+                AuthorityMatch.run_id == run_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if m is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+
+    payload = dict(m.payload or {})
+    cached = payload.get("homonym_candidates")
+    if isinstance(cached, list) and cached:
+        return {"candidates": cached, "source": "payload"}
+
+    from app.pipeline.authority import get_default_matcher  # noqa: PLC0415
+
+    matcher = get_default_matcher()
+    backend = matcher._authority_backend  # type: ignore[attr-defined]
+    live = await backend.match_person_candidates(str(m.entity_text or ""))
+    return {"candidates": live, "source": "live"}
+
+
+@router.post(
+    "/runs/{run_id}/matches/{match_id}/pick-candidate",
+    response_model=AuthorityMatchResponse,
+)
+async def pick_match_candidate(
+    run_id: uuid.UUID,
+    match_id: uuid.UUID,
+    body: MazalCandidatePick,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> AuthorityMatchResponse:
+    """Apply curator homonym pick — sets mazal_id and clears abstain flags."""
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    m = (
+        await db.execute(
+            select(AuthorityMatch).where(
+                AuthorityMatch.id == match_id,
+                AuthorityMatch.run_id == run_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if m is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+
+    picked = body.mazal_id.strip()
+    if not picked:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mazal_id required")
+
+    payload = dict(m.payload or {})
+    allowed = {
+        str(c.get("mazal_id"))
+        for c in (payload.get("homonym_candidates") or [])
+        if isinstance(c, dict) and c.get("mazal_id")
+    }
+    if allowed and picked not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="mazal_id not in homonym_candidates",
+        )
+
+    old_mazal = m.mazal_id
+    m.mazal_id = picked
+    m.confidence = "medium"
+    flags = [f for f in (payload.get("guard_flags") or []) if f != "homonym_unresolved"]
+    payload["guard_flags"] = flags
+    payload.pop("homonym_abstain", None)
+    payload.pop("homonym_abstain_reason", None)
+    payload["main_marc_tag"] = "100"
+    payload["personality_picked_by_curator"] = True
+    m.payload = payload
+    if "mazal" not in (payload.get("sources") or []):
+        sources = list(payload.get("sources") or [])
+        sources.append("mazal")
+        payload["sources"] = sources
+        m.payload = payload
+    if not m.source or m.source == "unresolved":
+        m.source = "mazal"
+
+    run_for_pid = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one()
+    await append_event(
+        db,
+        project_id=run_for_pid.project_id,
+        actor_id=auth.user.id,
+        type="match.edited",
+        payload={
+            "run_id": str(run_id),
+            "match_id": str(m.id),
+            "changes": {"mazal_id": {"from": old_mazal, "to": picked}, "pick_candidate": True},
+        },
+    )
     await db.commit()
     return AuthorityMatchResponse(**serialise_match(m))
 

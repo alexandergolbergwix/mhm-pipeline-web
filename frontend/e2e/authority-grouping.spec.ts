@@ -15,7 +15,7 @@ test.describe("Authority review — grouping and notes search", () => {
     await installAuthorityMocks(page, state);
     await gotoAuthority(page);
 
-    await expect(page.getByText("How matching works")).toBeVisible({timeout: 8000});
+    await expect(page.getByTestId(/^authority-row-/).first()).toBeVisible({timeout: 8000});
 
     // Default: group on → 2 visible primary rows (dup + Jerusalem)
     await expect(page.getByTestId(/^authority-row-/)).toHaveCount(2);
@@ -40,7 +40,7 @@ test.describe("Authority review — grouping and notes search", () => {
     await installAuthorityMocks(page, state);
     await gotoAuthority(page);
 
-    await page.getByPlaceholder(/colophon/i).fill("קולופון");
+    await page.getByRole("button", {name: "קולופון"}).click();
     await expect(page.getByTestId(/^authority-row-/)).toHaveCount(1);
     await expect(page.getByTestId("authority-row-m-author")).toBeVisible();
     await expect(page.getByTestId("authority-row-m-other")).not.toBeVisible();
@@ -51,7 +51,10 @@ test.describe("Authority review — grouping and notes search", () => {
     await installAuthorityMocks(page, state);
     await gotoAuthority(page);
 
-    await page.getByText("איך נקבעת ההתאמה (עברית)").click();
-    await expect(page.getByText("מעדיף אישיות תג 100")).toBeVisible();
+    const help = page.locator("summary", {hasText: "How matching works"});
+    await help.scrollIntoViewIfNeeded();
+    await help.click({force: true});
+    await expect(page.locator("details").filter({hasText: "How matching works"}))
+      .toContainText("מעדיף אישיות תג 100");
   });
 });

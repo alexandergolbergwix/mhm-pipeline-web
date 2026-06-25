@@ -146,9 +146,44 @@ export async function installAuthorityMocks(
   });
 
   await page.route(`**/api/runs/${TEST_RUN_ID}/matches/**`, async (route: Route) => {
-    if (route.request().method() === "PATCH") {
-      const url = route.request().url();
-      const id = url.split("/matches/")[1]?.split("?")[0]?.split("/")[0];
+    const url = route.request().url();
+    const method = route.request().method();
+    const id = url.split("/matches/")[1]?.split("?")[0]?.split("/")[0];
+
+    if (method === "GET" && url.includes("/candidates")) {
+      const m = state.matches.find((x) => x.id === id);
+      const embedded = (m?.payload.homonym_candidates as unknown[] | undefined) ?? [];
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({candidates: embedded, source: "payload"}),
+      });
+      return;
+    }
+
+    if (method === "POST" && url.includes("/pick-candidate")) {
+      const body = route.request().postDataJSON() as {mazal_id?: string};
+      const m = state.matches.find((x) => x.id === id);
+      if (m && body.mazal_id) {
+        m.mazal_id = body.mazal_id;
+        m.confidence = "high";
+        const flags = (m.payload.guard_flags as string[] | undefined) ?? [];
+        m.payload = {
+          ...m.payload,
+          guard_flags: flags.filter((f) => f !== "homonym_unresolved"),
+          main_marc_tag: "100",
+          homonym_candidates: [],
+        };
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(m ?? {}),
+      });
+      return;
+    }
+
+    if (method === "PATCH") {
       const body = route.request().postDataJSON() as Record<string, unknown>;
       const m = state.matches.find((x) => x.id === id);
       if (m && typeof body.approved === "boolean") {

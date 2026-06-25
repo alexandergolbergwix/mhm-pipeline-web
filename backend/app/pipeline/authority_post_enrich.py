@@ -106,3 +106,11 @@ def apply_wikidata_crosscheck_pass(rows: list[Any]) -> int:
                 m.payload = hardened["payload"]
                 downgraded += 1
     return downgraded
+
+
+def finalize_authority_matches(rows: list[Any]) -> dict[str, int]:
+    """Post-enrich passes shared by initial run and re-enrich."""
+    return {
+        "cross_linked": apply_personality_cross_links(rows),
+        "wikidata_crosschecked": apply_wikidata_crosscheck_pass(rows),
+    }

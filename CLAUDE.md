@@ -720,6 +720,33 @@ Tests pinning the contract:
 Any new matcher route, dedup policy change, or note-extraction pattern MUST extend
 at least one of these suites.
 
+### Rule W-37 — Homonym abstain, scoring, and curator picker (added 2026-06-25)
+
+When multiple Mazal **personality** rows share a normalized name and MARC `$d`
+does not disambiguate, the matcher **abstains** rather than guessing:
+
+- `homonym_scoring.pick_mazal_candidate` scores candidates (+100 tag 100,
+  +50 date overlap, +20 ms_year plausibility, penalties for fuzzy / tag 150).
+  **Abstain** when top two scores are within 15 points and neither has date overlap.
+- On abstain: empty `mazal_id`, no VIAF SRU / Wikidata label search for persons,
+  flag `homonym_unresolved`, `payload.homonym_candidates` (top 5).
+- Curator resolution: `GET/POST …/matches/{id}/candidates` + `pick-candidate`;
+  Authority detail drawer **Pick** control.
+- `is_short_name_homonym` (stage3_guards): ≤2 tokens or ≤12 Hebrew letters;
+  Mazal corroboration only when tag 100 + (date overlap OR single personality).
+- Auto-approve blocks: `homonym_unresolved`, `short_name_homonym`,
+  `mazal_subject_not_personality`, `viaf_date_mismatch`, `cross_source_conflict`,
+  `wikidata_disagrees`.
+- VIAF: skip SRU when Mazal personality confirmed; `guard_viaf_date_mismatch` strips
+  `viaf_id`; crosscheck enabled in match path unless `MHM_DISABLE_WIKIDATA_CROSSCHECK=1`.
+- Editorial notes: `_extract_editorial_metadata` → `editor_names`, edition fields,
+  `role=editor` entities, searchable via note-index.
+
+Tests: `test_homonym_scoring.py`, `test_viaf_mazal_guards.py`,
+`test_editorial_extraction.py`, extended supervisor examples,
+`frontend/e2e/authority-homonym-picker.spec.ts`.
+Sync `stage3_guards.py` edits to desktop `converter/authority/` when changed.
+
 ---
 
 ## Project structure

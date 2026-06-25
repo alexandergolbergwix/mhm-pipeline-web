@@ -210,32 +210,48 @@ class DesktopMatcher(AuthorityMatcher):
         )
 
     async def _mazal_match_person(
-        self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+        self,
+        text: str,
+        *,
+        db_session: Any,
+        user_id: Any,
+        skip_cache: bool,
         marc_dates: str | None = None,
-    ) -> str | None:
+        ms_year: int | None = None,
+        role: str = "",
+    ) -> dict[str, Any] | None:
         _mode = os.getenv("AUTHORITY_MODE", "local").lower()
-        # Guard: skip when no Mazal source is available at all.
         if self._mazal is None and _mode not in ("modal", "postgres"):
             return None
 
-        async def _f() -> str | None:
-            result = await self._authority_backend.match_person(text, dates=marc_dates)
+        async def _f() -> dict[str, Any] | None:
+            result = await self._authority_backend.match_person(
+                text,
+                dates=marc_dates,
+                ms_year=ms_year,
+                role=role,
+            )
             if result is None:
                 return None
             mid = result.get("mazal_id")
             if mid:
-                # Side-load details so _mazal_get_details avoids a second call.
                 self._mazal_detail_cache[str(mid)] = result
-            return str(mid) if mid else None
+            return result
 
-        # Include dates in the cache key so different date inputs resolve separately.
         query_summary: dict[str, Any] = {"op": "match_person", "text": text}
         if marc_dates:
             query_summary["dates"] = marc_dates
+        if ms_year is not None:
+            query_summary["ms_year"] = ms_year
+        if role:
+            query_summary["role"] = role
         return await self._cached(
             kind="authority.mazal",
             query_summary=query_summary,
-            fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
+            fetch=_f,
+            db_session=db_session,
+            user_id=user_id,
+            skip_cache=skip_cache,
         )
 
     async def _mazal_match_place_authority(
@@ -421,15 +437,26 @@ class DesktopMatcher(AuthorityMatcher):
         )
 
     async def _viaf_match_with_metadata(
-        self, text: str, *, db_session: Any, user_id: Any, skip_cache: bool,
+        self,
+        text: str,
+        *,
+        marc_dates: str | None = None,
+        db_session: Any,
+        user_id: Any,
+        skip_cache: bool,
     ) -> dict[str, Any] | None:
         if self._viaf is None:
             return None
         async def _f() -> dict[str, Any] | None:
-            return await asyncio.to_thread(self._viaf.match_person_with_metadata, text)
+            return await asyncio.to_thread(
+                self._viaf.match_person_with_metadata, text, marc_dates,
+            )
+        query_summary: dict[str, Any] = {"op": "match_person_with_metadata", "text": text}
+        if marc_dates:
+            query_summary["dates"] = marc_dates
         result = await self._cached(
             kind="authority.viaf",
-            query_summary={"op": "match_person_with_metadata", "text": text},
+            query_summary=query_summary,
             fetch=_f, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
         )
         # Schema-migration guard: cache entries written before birth_year /
@@ -441,7 +468,7 @@ class DesktopMatcher(AuthorityMatcher):
         if result is not None and "birth_year" not in result:
             result = await self._cached(
                 kind="authority.viaf",
-                query_summary={"op": "match_person_with_metadata", "text": text},
+                query_summary=query_summary,
                 fetch=_f, db_session=db_session, user_id=user_id, skip_cache=True,
             )
         return result
@@ -988,6 +1015,8 @@ class DesktopMatcher(AuthorityMatcher):
         _wd_enrich: dict[str, Any] | None = None
         mazal_payload_extras: dict[str, Any] = {}
         work_match_meta: dict[str, Any] = {}
+        ms_year = _record_year(marc_record)
+        mazal_homonym_abstain = False
 
         # — KIMA (places only) —
         # KIMA is the desktop's geographic-authority adapter. It returns
@@ -1189,26 +1218,37 @@ class DesktopMatcher(AuthorityMatcher):
             self._mazal is not None or _mode in ("modal", "postgres")
         ):
             try:
-                mid = await self._mazal_match_person(
+                mazal_result = await self._mazal_match_person(
                     text,
                     db_session=db_session, user_id=user_id, skip_cache=skip_cache,
                     marc_dates=marc_dates,
+                    ms_year=ms_year,
+                    role=role_key,
                 )
-                if mid:
-                    mazal_id = str(mid)
-                    sources.append("mazal")
-                    reasoning_parts.append(f"Mazal hit ({mid}).")
-                    # Pull the free-text "dates" column off the Mazal
-                    # authority row and resolve it (handles Hebrew
-                    # century, "נפטר 1628", "1542-1620", …).
-                    try:
-                        mazal_details = await self._mazal_get_details(
-                            mid, db_session=db_session, user_id=user_id,
-                            skip_cache=skip_cache,
-                        ) or {}
+                if mazal_result:
+                    if mazal_result.get("homonym_candidates"):
+                        mazal_payload_extras["homonym_candidates"] = (
+                            mazal_result["homonym_candidates"]
+                        )
+                    if mazal_result.get("homonym_abstain_reason"):
+                        mazal_payload_extras["homonym_abstain_reason"] = (
+                            mazal_result["homonym_abstain_reason"]
+                        )
+                    if mazal_result.get("_abstain"):
+                        mazal_homonym_abstain = True
+                        mazal_payload_extras["homonym_abstain"] = True
+                        reasoning_parts.append(
+                            "Mazal homonym abstain — manual resolution required.",
+                        )
+                    elif mazal_result.get("mazal_id"):
+                        mid = str(mazal_result["mazal_id"])
+                        mazal_id = mid
+                        mazal_details = dict(mazal_result)
+                        sources.append("mazal")
+                        reasoning_parts.append(f"Mazal hit ({mid}).")
                         if mazal_details.get("_fuzzy"):
                             reasoning_parts.append(
-                                f"Fuzzy Mazal match (sim≈{mazal_details.get('_fuzzy_sim', 0):.2f})."
+                                f"Fuzzy Mazal match (sim≈{mazal_details.get('_fuzzy_sim', 0):.2f}).",
                             )
                         dates_str = (mazal_details.get("dates") or "").strip()
                         if dates_str:
@@ -1220,90 +1260,89 @@ class DesktopMatcher(AuthorityMatcher):
                                 birth_year = parsed["birth_year"]
                             if death_year is None and parsed.get("death_year"):
                                 death_year = parsed["death_year"]
-                    except Exception as exc:  # noqa: BLE001
-                        logger.debug("Mazal date lookup failed for %s: %s", mid, exc)
-                    mazal_id, mazal_details, mazal_payload_extras = _apply_mazal_entity_type_gate(
-                        is_place=is_place,
-                        is_person_entity=_is_person_entity,
-                        entity_kind=normalized_kind,
-                        mazal_id=mazal_id,
-                        mazal_details=mazal_details,
-                        extras=mazal_payload_extras,
-                    )
-                    if (
-                        mazal_id
-                        and mazal_details
-                        and _should_personality_rematch(role_key)
-                    ):
-                        main_tag = str(mazal_details.get("main_marc_tag") or "")
-                        if main_tag and main_tag != "100":
-                            try:
-                                rematch = await self._authority_backend.resolve_personality_mazal_id(
-                                    text,
-                                    dates=marc_dates,
-                                    current_id=str(mazal_id),
-                                    main_marc_tag=main_tag,
-                                )
-                            except Exception as exc:  # noqa: BLE001
-                                logger.debug(
-                                    "Personality rematch failed for %r: %s", text, exc,
-                                )
-                                rematch = None
-                            if rematch and rematch.get("mazal_id"):
-                                old_id = mazal_id
-                                mazal_id = str(rematch["mazal_id"])
-                                mazal_details = dict(rematch)
-                                self._mazal_detail_cache[mazal_id] = mazal_details
-                                mazal_payload_extras["personality_rematch_from"] = (
-                                    rematch.get("personality_rematch_from") or old_id
-                                )
-                                reasoning_parts.append(
-                                    f"Personality rematch {old_id} → {mazal_id} (tag 100).",
-                                )
-                            else:
-                                from app.pipeline.entity_normalize import (  # noqa: PLC0415
-                                    normalize_entity_key,
-                                )
-                                mazal_payload_extras["suggested_personality_lookup"] = (
-                                    normalize_entity_key(text)
-                                )
+                        mazal_id, mazal_details, mazal_payload_extras = _apply_mazal_entity_type_gate(
+                            is_place=is_place,
+                            is_person_entity=_is_person_entity,
+                            entity_kind=normalized_kind,
+                            mazal_id=mazal_id,
+                            mazal_details=mazal_details,
+                            extras=mazal_payload_extras,
+                        )
+                        if (
+                            mazal_id
+                            and mazal_details
+                            and _should_personality_rematch(role_key)
+                        ):
+                            main_tag = str(mazal_details.get("main_marc_tag") or "")
+                            if main_tag and main_tag != "100":
+                                try:
+                                    rematch = await self._authority_backend.resolve_personality_mazal_id(
+                                        text,
+                                        dates=marc_dates,
+                                        current_id=str(mazal_id),
+                                        main_marc_tag=main_tag,
+                                    )
+                                except Exception as exc:  # noqa: BLE001
+                                    logger.debug(
+                                        "Personality rematch failed for %r: %s", text, exc,
+                                    )
+                                    rematch = None
+                                if rematch and rematch.get("mazal_id"):
+                                    old_id = mazal_id
+                                    mazal_id = str(rematch["mazal_id"])
+                                    mazal_details = dict(rematch)
+                                    self._mazal_detail_cache[mazal_id] = mazal_details
+                                    mazal_payload_extras["personality_rematch_from"] = (
+                                        rematch.get("personality_rematch_from") or old_id
+                                    )
+                                    reasoning_parts.append(
+                                        f"Personality rematch {old_id} → {mazal_id} (tag 100).",
+                                    )
+                                else:
+                                    from app.pipeline.entity_normalize import (  # noqa: PLC0415
+                                        normalize_entity_key,
+                                    )
+                                    mazal_payload_extras["suggested_personality_lookup"] = (
+                                        normalize_entity_key(text)
+                                    )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Mazal matcher raised for %r: %s", text, exc)
 
+        mazal_personality_confirmed = bool(
+            mazal_id
+            and str((mazal_details or {}).get("main_marc_tag") or "") == "100"
+        )
+
         # — VIAF (persons only) —
-        # VIAF SRU's personal-name index should not be queried for places or works.
-        if _is_person_entity and self._viaf is not None:
-            try:
-                # match_person_with_metadata wraps match_person + the
-                # cluster fetch in one call, so we get the years (and
-                # the GND/LCCN/ISNI/BnF cluster IDs the desktop pipeline
-                # threads into person Wikidata items) without a second
-                # round-trip per candidate.
-                viaf_meta = await self._viaf_match_with_metadata(
-                    text, db_session=db_session, user_id=user_id, skip_cache=skip_cache,
-                )
-                if viaf_meta:
-                    viaf_id = str(viaf_meta.get("viaf_id") or "")
-                    if viaf_id:
-                        sources.append("viaf")
-                        reasoning_parts.append(f"VIAF hit ({viaf_id}).")
-                        if birth_year is None and viaf_meta.get("birth_year"):
-                            birth_year = int(viaf_meta["birth_year"])
-                        if death_year is None and viaf_meta.get("death_year"):
-                            death_year = int(viaf_meta["death_year"])
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("VIAF matcher raised for %r: %s", text, exc)
+        # Skip SRU when Mazal אישיות is confirmed — VIAF may arrive via P214 later.
+        if _is_person_entity and self._viaf is not None and not mazal_homonym_abstain:
+            if not mazal_personality_confirmed:
+                try:
+                    viaf_meta = await self._viaf_match_with_metadata(
+                        text,
+                        marc_dates=marc_dates,
+                        db_session=db_session,
+                        user_id=user_id,
+                        skip_cache=skip_cache,
+                    )
+                    if viaf_meta:
+                        viaf_id = str(viaf_meta.get("viaf_id") or "")
+                        if viaf_id:
+                            sources.append("viaf")
+                            reasoning_parts.append(f"VIAF hit ({viaf_id}).")
+                            if birth_year is None and viaf_meta.get("birth_year"):
+                                birth_year = int(viaf_meta["birth_year"])
+                            if death_year is None and viaf_meta.get("death_year"):
+                                death_year = int(viaf_meta["death_year"])
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("VIAF matcher raised for %r: %s", text, exc)
 
         # — Wikidata (persons only) —
         # Wikidata person-name search must not fire on place/work entities;
         # place QIDs are already resolved by KIMA / Ashkenazi gazetteer.
         # When Mazal already matched, triangulate via P8189 before label
         # search — avoids wrong high-QID label hits (e.g. Allony, Nehemia).
-        mazal_personality_confirmed = bool(
-            mazal_id
-            and str((mazal_details or {}).get("main_marc_tag") or "") == "100"
-        )
-        if _is_person_entity and self._wikidata is not None:
+        if _is_person_entity and self._wikidata is not None and not mazal_homonym_abstain:
             try:
                 if mazal_id and not wikidata_qid:
                     qid_from_mazal = await self._wikidata_match_by_mazal(
@@ -1392,10 +1431,16 @@ class DesktopMatcher(AuthorityMatcher):
                 skip_cache=skip_cache,
             )
 
+        if mazal_homonym_abstain and not sources:
+            sources.append("unresolved")
+
         if not sources:
             reasoning_parts.append("No authority source matched this heading.")
             confidence = "low"
             source_label = ""
+        elif mazal_homonym_abstain:
+            confidence = "low"
+            source_label = sources[0] if sources else "unresolved"
         elif len(sources) >= 3:
             confidence = "high"
             source_label = "cross_source"
@@ -1421,10 +1466,12 @@ class DesktopMatcher(AuthorityMatcher):
                 f"{' — short or generic surface form, confirm manually' if confidence == 'low' else ''}.",
             )
 
-        # Authority Enrichment hardening guards (date + homonym + placeholder).
-        ms_year = _record_year(marc_record)
+        if mazal_id and not mazal_personality_confirmed and viaf_id and confidence == "high":
+            confidence = "medium"
 
-        if not sources:
+        # Authority Enrichment hardening guards (date + homonym + placeholder).
+
+        if not sources and not mazal_homonym_abstain:
             # No candidate row at all — keep returning nothing so the
             # Review UI's per-entity counter still tracks "matched vs
             # unmatched" honestly.
@@ -1450,6 +1497,15 @@ class DesktopMatcher(AuthorityMatcher):
         # Carry main_marc_tag from the Mazal result so guard_mazal_subject_heading
         # can distinguish אישיות (tag 100) from נושא (tag 150) matches.
         _mazal_main_tag = (mazal_details or {}).get("main_marc_tag") if mazal_details else None
+        marc_dates_overlap = False
+        if marc_dates and (mazal_details or {}).get("dates"):
+            from app.pipeline.homonym_scoring import parse_authority_dates  # noqa: PLC0415
+            from converter.transformer.date_resolver import dates_overlap  # noqa: PLC0415
+
+            marc_dates_overlap = dates_overlap(
+                parse_authority_dates(marc_dates),
+                parse_authority_dates(str(mazal_details.get("dates") or "")),
+            )
         resolved_entity_kind = self._entity_kind_for_candidate(
             normalized_kind=normalized_kind,
             is_place=is_place,
@@ -1468,6 +1524,9 @@ class DesktopMatcher(AuthorityMatcher):
                 "guard_flags": guards,
                 "viaf_uri": f"https://viaf.org/viaf/{viaf_id}" if viaf_id else "",
                 "main_marc_tag": _mazal_main_tag,
+                "personality_count": int(mazal_payload_extras.get("personality_count") or 0),
+                "marc_dates_overlap": marc_dates_overlap,
+                "marc_dates": marc_dates or "",
                 "viaf_name_type": (
                     (viaf_meta or {}).get("name_type")
                     or enrichment_meta.get("viaf_name_type")
@@ -1478,18 +1537,22 @@ class DesktopMatcher(AuthorityMatcher):
                 **mazal_payload_extras,
             },
         }
+        editorial_meta = marc_record.get("editorial_metadata")
+        if isinstance(editorial_meta, dict) and editorial_meta:
+            prelim["payload"]["editorial_metadata"] = editorial_meta
         hardened = authority_hardening.apply_hardening_guards(
             prelim,
             context=authority_hardening.HardeningContext(
                 siblings=[],
                 preferred_name_lat=text,
-                biographical_dates_in_marc=bool(birth_year or death_year),
+                biographical_dates_in_marc=bool(marc_dates),
                 entity_kind=resolved_entity_kind,
                 role=role,
                 ms_year=ms_year,
                 birth_year=birth_year,
                 death_year=death_year,
-                enable_wikidata_crosscheck=False,
+                marc_dates=marc_dates,
+                enable_wikidata_crosscheck=_wikidata_crosscheck_enabled(),
             ),
         )
         confidence = str(hardened["confidence"])
@@ -1515,7 +1578,10 @@ class DesktopMatcher(AuthorityMatcher):
             and kima_payload.get("kima_lon") is not None
         )
         if not (mazal_id or viaf_id or wikidata_qid or has_place_coords):
-            return []
+            if mazal_homonym_abstain or mazal_payload_extras.get("homonym_candidates"):
+                pass
+            else:
+                return []
 
         # Re-derive the source label after guards may have stripped ids.
         # KIMA resolves via wikidata_qid but must stay attributed to kima,
@@ -1793,6 +1859,16 @@ def _apply_mazal_entity_type_gate(
         })
         return "", None, out_extras
     return mazal_id, mazal_details, out_extras
+
+
+def _wikidata_crosscheck_enabled() -> bool:
+    import os  # noqa: PLC0415
+
+    return os.getenv("MHM_DISABLE_WIKIDATA_CROSSCHECK", "0").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 def _record_year(record: dict[str, Any]) -> int | None:

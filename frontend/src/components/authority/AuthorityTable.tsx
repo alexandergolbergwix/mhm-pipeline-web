@@ -497,16 +497,30 @@ export function AuthorityTable({
           </span>
         )}
         {noteIndex && (
-          <label className="flex items-center gap-1.5 ml-auto">
-            <span>Search notes</span>
-            <input
-              type="search"
-              value={notesSearch}
-              onChange={(e) => setNotesSearch(e.target.value)}
-              placeholder="colophon, כולל:, הערות…"
-              className="input !py-1 !text-xs w-48"
-            />
-          </label>
+          <div className="flex flex-col items-end gap-1 ml-auto">
+            <label className="flex items-center gap-1.5">
+              <span>Search notes</span>
+              <input
+                type="search"
+                value={notesSearch}
+                onChange={(e) => setNotesSearch(e.target.value)}
+                placeholder="קולופון, כולל, בעריכת, הגהות…"
+                className="input !py-1 !text-xs w-48"
+              />
+            </label>
+            <div className="flex flex-wrap gap-1 justify-end">
+              {["קולופון", "כולל", "בעריכת", "הגהות", "מהדורה"].map((hint) => (
+                <button
+                  key={hint}
+                  type="button"
+                  onClick={() => setNotesSearch(hint)}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-muted hover:text-ink"
+                >
+                  {hint}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -864,6 +878,7 @@ function SortGlyph({ active, dir }: { active: boolean; dir: SortDir }) {
 const _GUARD_NOTES: Record<string, string> = {
   placeholder_name:       "Name is a generic placeholder (e.g. 'ben', 'bar') — resolved IDs were cleared.",
   short_name_homonym:     "Short or highly ambiguous name — many persons share this form.",
+  homonym_unresolved:     "Multiple Mazal personalities match — pick the correct אישיות manually.",
   cluster_collapse:       "Candidate collapses with a sibling that has stronger evidence.",
   nli_strict_skip_viaf:   "NLI authority conflicts with the VIAF record — VIAF link was dropped.",
   mazal_pair_collision:   "Mazal ID collides with a sibling candidate for a different person.",
