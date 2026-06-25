@@ -1016,6 +1016,7 @@ class DesktopMatcher(AuthorityMatcher):
         mazal_payload_extras: dict[str, Any] = {}
         work_match_meta: dict[str, Any] = {}
         ms_year = _record_year(marc_record)
+        year_prov = _manuscript_year_provenance(marc_record)
         mazal_homonym_abstain = False
 
         # — KIMA (places only) —
@@ -1653,6 +1654,10 @@ class DesktopMatcher(AuthorityMatcher):
                 "birth_year": birth_year,
                 "death_year": death_year,
                 "ms_year": ms_year,
+                "catalog_year": year_prov.get("catalog_year"),
+                "colophon_year": year_prov.get("colophon_year"),
+                "colophon_hebrew_year": year_prov.get("colophon_hebrew_year"),
+                "ms_year_source": year_prov.get("ms_year_source"),
                 "preferred_name_lat": preferred_name_lat,
                 "preferred_name_heb": (
                     (mazal_details.get("preferred_name_heb") if mazal_details else None)
@@ -1869,6 +1874,12 @@ def _wikidata_crosscheck_enabled() -> bool:
         "true",
         "yes",
     )
+
+
+def _manuscript_year_provenance(record: dict[str, Any]) -> dict[str, Any]:
+    from app.pipeline.marc_date_sources import manuscript_year_provenance  # noqa: PLC0415
+
+    return manuscript_year_provenance(record)
 
 
 def _record_year(record: dict[str, Any]) -> int | None:

@@ -59,15 +59,15 @@ def _parse_year_scalar(value: Any) -> int | None:
     return None
 
 
-def manuscript_production_year(record: dict[str, Any] | None) -> int | None:
-    """Return the manuscript production year from canonical MARC sources only.
+_CENTURY_DATE_FORMATS = frozenset({
+    "HebrewCentury",
+    "Century",
+    "HebrewGematriaCentury",
+})
 
-    Priority: 260/264 $c (``record["dates"]``) → colophon year (590/500 $a).
-    Never reads 008, 541 $d, 583 $c, or biographical $d subfields.
-    """
-    if not record:
-        return None
 
+def _catalog_production_year(record: dict[str, Any]) -> int | None:
+    """Production year from 260/264 $c only — never colophon."""
     dates = record.get("dates")
     if isinstance(dates, dict):
         year = _parse_year_scalar(dates.get("year"))
@@ -83,5 +83,90 @@ def manuscript_production_year(record: dict[str, Any] | None) -> int | None:
         year = _parse_year_scalar(dates)
         if year is not None:
             return year
+    return None
 
-    return _parse_year_scalar(record.get("colophon_year"))
+
+def _year_within_catalog_range(year: int, dates: dict[str, Any]) -> bool:
+    start = _parse_year_scalar(dates.get("year_start"))
+    end = _parse_year_scalar(dates.get("year_end"))
+    if start is not None and end is not None:
+        return start <= year <= end
+    catalog = _parse_year_scalar(dates.get("year"))
+    if catalog is not None:
+        return abs(catalog - year) <= 100
+    return True
+
+
+def _catalog_date_is_imprecise(dates: dict[str, Any]) -> bool:
+    fmt = str(dates.get("date_format") or "")
+    if fmt in _CENTURY_DATE_FORMATS:
+        return True
+    start = _parse_year_scalar(dates.get("year_start"))
+    end = _parse_year_scalar(dates.get("year_end"))
+    if start is not None and end is not None and (end - start) >= 99:
+        return True
+    return False
+
+
+def manuscript_production_year(record: dict[str, Any] | None) -> int | None:
+    """Return the manuscript production year from canonical MARC sources only.
+
+  Priority:
+    1. 260/264 $c when it carries an exact production year.
+    2. Colophon year (590/500 $a) when the catalog date is century-level or
+       range-only but the colophon year falls inside that range — e.g. catalog
+       ``מאה י"ט`` (1801–1900) + colophon ``תרל"א`` (1871).
+    3. Colophon year when no catalog production year is available.
+
+    Never reads 008, 541 $d, 583 $c, or biographical $d subfields.
+    """
+    if not record:
+        return None
+
+    catalog_year = _catalog_production_year(record)
+    colophon_year = _parse_year_scalar(record.get("colophon_year"))
+    dates = record.get("dates")
+
+    if (
+        colophon_year is not None
+        and isinstance(dates, dict)
+        and _catalog_date_is_imprecise(dates)
+        and _year_within_catalog_range(colophon_year, dates)
+    ):
+        return colophon_year
+
+    if catalog_year is not None:
+        return catalog_year
+
+    return colophon_year
+
+
+def manuscript_year_provenance(record: dict[str, Any] | None) -> dict[str, Any]:
+    """Return ms year plus catalog/colophon breakdown for authority payloads."""
+    if not record:
+        return {
+            "ms_year": None,
+            "catalog_year": None,
+            "colophon_year": None,
+            "colophon_hebrew_year": None,
+            "ms_year_source": None,
+        }
+    catalog_year = _catalog_production_year(record)
+    colophon_year = _parse_year_scalar(record.get("colophon_year"))
+    colophon_hebrew = record.get("colophon_hebrew_year")
+    if isinstance(colophon_hebrew, str):
+        colophon_hebrew = _parse_year_scalar(colophon_hebrew)
+    ms_year = manuscript_production_year(record)
+    source: str | None = None
+    if ms_year is not None:
+        if colophon_year is not None and ms_year == colophon_year and ms_year != catalog_year:
+            source = "colophon"
+        else:
+            source = "catalog"
+    return {
+        "ms_year": ms_year,
+        "catalog_year": catalog_year,
+        "colophon_year": colophon_year,
+        "colophon_hebrew_year": colophon_hebrew if isinstance(colophon_hebrew, int) else None,
+        "ms_year_source": source,
+    }

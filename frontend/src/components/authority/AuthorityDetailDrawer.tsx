@@ -509,6 +509,10 @@ function DatesCard({
   payload: Record<string, unknown>;
 }) {
   const msYear   = payload.ms_year as number | null | undefined;
+  const catalogYear = payload.catalog_year as number | null | undefined;
+  const colophonYear = payload.colophon_year as number | null | undefined;
+  const colophonHebrewYear = payload.colophon_hebrew_year as number | null | undefined;
+  const msYearSource = payload.ms_year_source as string | null | undefined;
   const birth    = payload.birth_year as number | null | undefined;
   const death    = payload.death_year as number | null | undefined;
   const role     = (payload.role_kind as string | undefined) || "other";
@@ -525,6 +529,9 @@ function DatesCard({
         <GlassPill as="div" className="py-2">
           <div className="muted text-[10px] uppercase">Manuscript</div>
           <div className="text-sm text-ink">{msYear ?? "—"}</div>
+          {msYearSource === "colophon" && colophonYear != null && (
+            <div className="text-[10px] text-biu-sky mt-0.5">from colophon</div>
+          )}
         </GlassPill>
         <GlassPill as="div" className="py-2">
           <div className="muted text-[10px] uppercase">Born</div>
@@ -535,6 +542,15 @@ function DatesCard({
           <div className="text-sm text-ink">{death ?? "—"}</div>
         </GlassPill>
       </div>
+      {colophonYear != null && catalogYear != null && colophonYear !== catalogYear && (
+        <p className="text-[11px] text-muted">
+          Catalog date: {catalogYear}
+          {colophonHebrewYear != null ? ` (ע״ח ${colophonHebrewYear})` : ""}
+          {" · "}
+          Colophon: <b className="text-ink">{colophonYear}</b>
+          {colophonHebrewYear != null ? ` (ע״ח ${colophonHebrewYear})` : ""}
+        </p>
+      )}
       <p className="text-[11px]">
         Role kind: <b className="text-ink">{role}</b>.{" "}
         {role === "production" && "Death year checked — scribe can't post-date their death."}

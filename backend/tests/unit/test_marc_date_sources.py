@@ -33,7 +33,40 @@ class TestManuscriptProductionYear:
         assert _record_year(record) == 1612
         assert extract_manuscript_year(record) == 1612
 
+    def test_century_catalog_uses_colophon_via_record_year(self) -> None:
+        from app.pipeline.marc_ingest import _collapse_marc_subfields, prepare_record_for_pipeline
+
+        record = {
+            "264$c": 'מאה י"ט (סוף המאה)',
+            "500$a": 'קולופון: תרל"א [4/9/1871]',
+        }
+        _collapse_marc_subfields(record)
+        prepared = prepare_record_for_pipeline(record)
+        assert prepared.get("colophon_year") == 1871
+        assert _record_year(prepared) == 1871
+
     def test_colophon_only_record(self) -> None:
         record = {"colophon_year": 1723}
         assert manuscript_production_year(record) == 1723
         assert _record_year(record) == 1723
+
+    def test_colophon_wins_over_century_catalog(self) -> None:
+        """Gila MS 990025632890205171: מאה י\"ט + colophon תרל\"א → 1871."""
+        record = {
+            "dates": {
+                "original_string": 'מאה י"ט (סוף המאה)',
+                "date_format": "HebrewCentury",
+                "year_start": 1801,
+                "year_end": 1900,
+                "year": 1801,
+            },
+            "colophon_year": 1871,
+            "colophon_hebrew_year": 5631,
+        }
+        assert manuscript_production_year(record) == 1871
+        assert _record_year(record) == 1871
+
+    def test_exact_catalog_year_beats_colophon(self) -> None:
+        record = {"dates": {"year": 1612}, "colophon_year": 1871}
+        assert manuscript_production_year(record) == 1612
+        assert _record_year(record) == 1612
