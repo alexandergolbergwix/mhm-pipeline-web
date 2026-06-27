@@ -44,6 +44,7 @@ from app.pipeline.agent_runner import (
     resolve_verify_state_dir, spawn_eval_agent_run, sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.extraction_entities_cache import invalidate_entities_cache
 from app.pipeline.verify_session_store import load_verify_session
 from app.pipeline.ner_verdict_cache import (
     ner_verdict_input_fingerprint,
@@ -496,9 +497,12 @@ async def _persist_ai_verdicts_to_entities(
             suggested_fix = cand.get("suggested_fix")
         _jm = v.get("judge_id") or v.get("model") or "gemini-3.5-flash"
         ext_row = next((e for e in entities if e.id == eid), None)
-        cache_key = v.get("cache_key")
-        if ext_row is not None and not cache_key:
+        # Always normalise to our content fingerprint — eval-agent's
+        # prompt-hash cache_key would fail sanitise_stale_ai_verdict on GET.
+        if ext_row is not None:
             cache_key = ner_verdict_input_fingerprint(ext_row, str(_jm))
+        else:
+            cache_key = v.get("cache_key")
         summary = {
             "overall":       vd.get("overall"),
             "name_ok":       vd.get("name_ok"),
@@ -531,6 +535,7 @@ async def _persist_ai_verdicts_to_entities(
             ext.ai_verdict = summaries[ext.id]
             ext.ai_verdict_at = now
         await db.commit()
+    await invalidate_entities_cache(uuid.UUID(run_id))
 
 
 @router.get("/runs/{run_id}/extraction/ai-verify/sessions")

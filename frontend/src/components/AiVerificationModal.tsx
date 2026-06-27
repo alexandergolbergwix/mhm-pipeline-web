@@ -38,11 +38,13 @@ export interface AiVerificationModalProps {
   matchIds?: string[];              // omitted ⇒ all matches in run
   scopeLabel: string;               // for the header ("12 selected" / "all 84 visible" / "1 match")
   onClose:   () => void;
+  /** Called when a background verify job finishes — parent should reload matches. */
+  onComplete?: () => void;
 }
 
 
 export function AiVerificationModal(props: AiVerificationModalProps) {
-  const { runId, scopeKind, matchIds, scopeLabel, onClose } = props;
+  const {runId, scopeKind, matchIds, scopeLabel, onClose, onComplete} = props;
 
   // Control number whose full MARC record is being inspected in the
   // searchable popup. Opened from the control-number column of any
@@ -87,12 +89,14 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
   }, [runId]);
 
   const handleVerifyFailed = useCallback((msg: string) => setError(msg), []);
+  const handleVerifyComplete = useCallback(() => { onComplete?.(); }, [onComplete]);
 
   const {running, start: startVerifyJob, stop} = useVerifyJob({
     runId,
     kind: "authority_verify",
     loadSession,
     onFailed: handleVerifyFailed,
+    onComplete: handleVerifyComplete,
   });
 
   // Load actions for this scope kind AND auto-prefill verdicts from

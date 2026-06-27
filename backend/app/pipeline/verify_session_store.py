@@ -65,12 +65,17 @@ async def load_verify_session(
     channel: str,
     job_kind: str,
 ) -> dict[str, Any] | None:
-    data = read_verify_session(channel, str(run_id), session_id)
-    if data is not None and (data.get("events") or data.get("verdicts")):
-        return data
-    return await fetch_verify_session_from_job(
+    disk = read_verify_session(channel, str(run_id), session_id)
+    job_snap = await fetch_verify_session_from_job(
         db, run_id=run_id, session_id=session_id, job_kind=job_kind,
     )
+    disk_verdicts = len((disk or {}).get("verdicts") or [])
+    job_verdicts = len((job_snap or {}).get("verdicts") or [])
+    if job_snap and job_verdicts > disk_verdicts:
+        return job_snap
+    if disk is not None and (disk.get("events") or disk.get("verdicts")):
+        return disk
+    return job_snap
 
 
 def snapshot_from_collected_events(

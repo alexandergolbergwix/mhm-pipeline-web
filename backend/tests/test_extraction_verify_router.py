@@ -164,6 +164,60 @@ class TestPersistAiVerdictsToEntities:
         assert ext.ai_verdict_at is not None
 
     @pytest.mark.asyncio
+    async def test_eval_agent_cache_key_is_normalised_on_persist(
+        self, db_session, sample_extraction_run,
+    ) -> None:
+        """eval-agent prompt-hash cache_key must not survive into the row."""
+        from app.models.extraction_approval import ExtractionApproval
+        from app.pipeline.ner_verdict_cache import (
+            ner_verdict_input_fingerprint,
+            sanitise_stale_ai_verdict,
+        )
+        from app.routers.extraction_verify import _persist_ai_verdicts_to_entities
+        from sqlalchemy import select
+
+        ext_id = sample_extraction_run["entity_id"]
+        run_id = sample_extraction_run["run_id"]
+        ext = (
+            await db_session.execute(
+                select(ExtractionApproval).where(ExtractionApproval.id == ext_id)
+            )
+        ).scalar_one()
+
+        await _persist_ai_verdicts_to_entities(
+            run_id=str(run_id),
+            session_id="20260627T120000Z",
+            verdicts=[{
+                "candidate": {"_entity_id": str(ext_id)},
+                "verdict": {"overall": "pass", "reasoning": "ok"},
+                "judge_id": "gemini-3.5-flash",
+                "cache_key": "eval-agent-prompt-hash-not-our-fingerprint",
+            }],
+            entities=[ext],
+        )
+
+        ext = (
+            await db_session.execute(
+                select(ExtractionApproval).where(ExtractionApproval.id == ext_id)
+            )
+        ).scalar_one()
+        await db_session.refresh(ext)
+        expected = ner_verdict_input_fingerprint(ext, "gemini-3.5-flash")
+        assert ext.ai_verdict is not None
+        assert ext.ai_verdict["cache_key"] == expected
+        ent = {
+            "control_number": ext.control_number,
+            "source": ext.source,
+            "start": ext.start,
+            "end": ext.end,
+            "text": ext.text,
+            "type": ext.type,
+            "role": ext.role,
+            "ai_verdict": ext.ai_verdict,
+        }
+        assert sanitise_stale_ai_verdict(ent) is not None
+
+    @pytest.mark.asyncio
     async def test_verdict_missing_entity_id_is_silently_skipped(
         self, db_session, sample_extraction_run,
     ) -> None:

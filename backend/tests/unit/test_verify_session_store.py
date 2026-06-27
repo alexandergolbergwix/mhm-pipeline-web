@@ -94,3 +94,56 @@ async def test_load_verify_session_falls_back_to_job_when_disk_missing(
     )
     assert loaded is not None
     assert loaded["session_id"] == session_id
+
+
+@pytest.mark.asyncio
+async def test_load_verify_session_prefers_job_snapshot_with_more_verdicts(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    run_id = sample_run["run_id"]
+    session_id = "20260627T140000000000Z"
+
+    def _sparse_disk(*_args, **_kwargs):
+        return {
+            "session_id": session_id,
+            "run_id": str(run_id),
+            "events": [{"type": "session.start", "scope_size": 1}],
+            "verdicts": [],
+        }
+
+    monkeypatch.setattr(
+        "app.pipeline.verify_session_store.read_verify_session",
+        _sparse_disk,
+    )
+
+    snap = snapshot_from_collected_events(
+        run_id=str(run_id),
+        session_id=session_id,
+        events=[{
+            "type": "agent.verdict",
+            "record_id": "990001",
+            "candidate": {"_match_id": "abc", "name": "Test"},
+            "verdict": {"overall": "pass"},
+        }],
+    )
+    job = RunJob(
+        project_id=sample_run["project_id"],
+        run_id=run_id,
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_SUCCEEDED,
+        params={"session_id": session_id},
+        result={"session_snapshot": snap},
+        created_by=sample_run["user_id"],
+    )
+    db_session.add(job)
+    await db_session.commit()
+
+    loaded = await load_verify_session(
+        db_session,
+        run_id=run_id,
+        session_id=session_id,
+        channel="wikidata-verify-sessions",
+        job_kind=JOB_KIND_WIKIDATA_VERIFY,
+    )
+    assert loaded is not None
+    assert len(loaded["verdicts"]) == 1

@@ -564,6 +564,7 @@ export default function RunDetail() {
           scopeKind={verifyScope.kind}
           matchIds={verifyScope.matchIds}
           scopeLabel={verifyScope.label}
+          onComplete={() => { void refresh(); }}
           onClose={() => { setVerifyScope(null); void refresh(); }}
         />
       )}
