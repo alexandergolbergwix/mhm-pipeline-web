@@ -323,3 +323,82 @@ class TestPropertiesPrecomputation:
         assert props == []
         assert plabels == {}
         assert approved_count == 0
+
+
+# ── cache_stale response flag ────────────────────────────────────────────
+
+
+class TestCacheStaleResponse:
+    def test_studio_response_sets_cache_stale_flag(self) -> None:
+        from app.models.wikidata_studio_cache import WikidataStudioCache
+        from app.routers.wikidata_studio import (
+            StudioSummary,
+            _studio_response_from_cache,
+        )
+
+        cached = WikidataStudioCache(
+            run_id=__import__("uuid").uuid4(),
+            approved_only=True,
+            input_fingerprint="a" * 64,
+            result_items=[_item(en_label="Cached MS")],
+            quickstatements="",
+            summary={
+                "total_items": 1,
+                "manuscripts": 1,
+                "persons": 0,
+                "works": 0,
+                "statements": 1,
+            },
+            approved_match_count=1,
+            pending_match_count=0,
+            used_match_count=1,
+            record_count=1,
+        )
+        resp = _studio_response_from_cache(
+            cached,
+            approved_only=True,
+            entity_type=None,
+            q=None,
+            sort="label",
+            sort_dir="asc",
+            page=1,
+            page_size=50,
+            cache_stale=True,
+        )
+        assert resp.cache_stale is True
+        assert resp.summary == StudioSummary(**cached.summary)
+        assert len(resp.items) == 1
+
+    def test_studio_response_defaults_cache_stale_false(self) -> None:
+        from app.models.wikidata_studio_cache import WikidataStudioCache
+        from app.routers.wikidata_studio import _studio_response_from_cache
+
+        cached = WikidataStudioCache(
+            run_id=__import__("uuid").uuid4(),
+            approved_only=True,
+            input_fingerprint="b" * 64,
+            result_items=[],
+            quickstatements="",
+            summary={
+                "total_items": 0,
+                "manuscripts": 0,
+                "persons": 0,
+                "works": 0,
+                "statements": 0,
+            },
+            approved_match_count=0,
+            pending_match_count=0,
+            used_match_count=0,
+            record_count=0,
+        )
+        resp = _studio_response_from_cache(
+            cached,
+            approved_only=True,
+            entity_type=None,
+            q=None,
+            sort="label",
+            sort_dir="asc",
+            page=1,
+            page_size=50,
+        )
+        assert resp.cache_stale is False

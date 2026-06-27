@@ -7,7 +7,7 @@ import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {Runs} from "@/api/runs";
 import {RunJobs} from "@/api/runJobs";
-import {findActiveRunJob, loadStudioBuild, waitForRunJob, waitForStudioBuild} from "@/utils/waitForRunJob";
+import {loadStudioBuild, waitForRunJob, waitForStudioBuild} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 import {useDebounce} from "@/hooks/useDebounce";
 import {
@@ -90,6 +90,7 @@ export default function WikidataStudio() {
     dry_run: boolean; moratorium_lifted: boolean; test_mode: boolean;
   } | null>(null);
   const [forceRebuild, setForceRebuild] = useState(false);
+  const [cacheStale, setCacheStale] = useState(false);
   const [uploadApprovedOnly, setUploadApprovedOnly] = useState(false);
   const [buildProgress, setBuildProgress] = useState<string | null>(null);
 
@@ -134,20 +135,8 @@ export default function WikidataStudio() {
       let result = await loadStudioBuild(runId, fetchPage, {
         onProgress: (message) => { setBuildProgress(message); },
       }) as StudioBuild;
-      if (result.rebuilding) {
-        setBuildProgress("Updating items after recent changes…");
-        const active = await findActiveRunJob(runId, "wikidata_studio_build");
-        if (active) {
-          await waitForRunJob(runId, active.id, {
-            onUpdate: (job) => {
-              const msg = job.progress?.message;
-              if (typeof msg === "string" && msg.trim()) setBuildProgress(msg);
-            },
-          });
-          result = await fetchPage() as StudioBuild;
-        }
-      }
       setBuild(result);
+      setCacheStale(Boolean(result.cache_stale));
       if (result.property_labels) {
         labelStore.seed(result.property_labels);
       }
@@ -305,6 +294,22 @@ export default function WikidataStudio() {
             <Stat label="MS / P / W"
                   value={`${build.summary.manuscripts} / ${build.summary.persons} / ${build.summary.works}`} />
           </div>
+
+          {cacheStale && !loading && (
+            <GlassPill className="px-3 py-2 text-xs flex flex-wrap items-center gap-2 text-warn">
+              <span>
+                Showing cached items that may not reflect your latest approval changes.
+              </span>
+              <button
+                type="button"
+                className="button-ghost !py-0.5 !px-2 text-xs"
+                disabled={!!busy}
+                onClick={() => { void refresh({nextForceRebuild: true}); }}
+              >
+                Rebuild now
+              </button>
+            </GlassPill>
+          )}
 
           {/* Action row */}
           <div className="flex flex-wrap gap-2 pt-2 items-center">

@@ -138,7 +138,7 @@ class StudioBuildResponse(BaseModel):
     approved_item_count: int      # items with approved==True in the full build
     properties: list[PropertyInfo]        # distinct P-ids in the full build
     property_labels: dict[str, str]       # P/Q id → label map for label-store seeding
-    rebuilding: bool = False      # true when serving stale cache while a job runs
+    cache_stale: bool = False     # true when cached items predate current inputs
 
 
 class VerifyStartRequest(BaseModel):
@@ -597,7 +597,7 @@ def _studio_response_from_cache(
     sort_dir: str,
     page: int,
     page_size: int,
-    rebuilding: bool = False,
+    cache_stale: bool = False,
 ) -> StudioBuildResponse:
     sliced, total, props, plabels, approved_item_count = _slice_items(
         cached.result_items or [],
@@ -623,7 +623,7 @@ def _studio_response_from_cache(
         approved_item_count=approved_item_count,
         properties=props,
         property_labels=plabels,
-        rebuilding=rebuilding,
+        cache_stale=cache_stale,
     )
 
 
@@ -696,21 +696,14 @@ async def build_studio(
                 page=page,
                 page_size=page_size,
             )
-        # Stale cache: show the last good build immediately and refresh in the
-        # background. Avoids a 409 round-trip whenever approvals change.
+        # Stale cache: serve the last good build immediately. Do not auto-start
+        # a background job — passive page loads should not surface a job-tray
+        # banner while the curator is already reviewing cached items.
         logger.debug(
             "wikidata-studio stale cache for run %s (cached=%s current=%s)",
             run_id,
             (cached.input_fingerprint or "")[:8],
             fingerprint[:8],
-        )
-        await _enqueue_studio_build_job(
-            db,
-            project_id=run.project_id,
-            run_id=run_id,
-            approved_only=approved_only,
-            force_rebuild=False,
-            user_id=auth.user.id,
         )
         return _studio_response_from_cache(
             cached,
@@ -721,7 +714,7 @@ async def build_studio(
             sort_dir=sort_dir,
             page=page,
             page_size=page_size,
-            rebuilding=True,
+            cache_stale=True,
         )
 
     logger.debug("wikidata-studio cache miss for run %s (fp=%s)", run_id, fingerprint[:8])

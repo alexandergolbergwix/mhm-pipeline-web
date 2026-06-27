@@ -4,7 +4,9 @@ One row per (run_id, approved_only).  The row is upserted after every
 rebuild and checked before starting one:
 
   fingerprint matches  →  return cached result immediately (no build)
-  fingerprint differs  →  rebuild, upsert new cache, return
+  fingerprint differs  →  return cached result with ``cache_stale``; curator
+                         must click Rebuild to refresh (no passive background job)
+  no cache row         →  409 + background build job
 
 The fingerprint is a SHA-256 over the serialised state of every input
 that affects the build: MARC control numbers, approved authority match
