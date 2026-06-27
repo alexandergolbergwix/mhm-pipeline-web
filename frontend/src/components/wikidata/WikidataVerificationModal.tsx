@@ -6,7 +6,7 @@
 
 import {useCallback, useEffect, useMemo, useState} from "react";
 
-import { api } from "@/api/client";
+import {applyWikidataFixes, type WikidataSuggestedFix} from "@/utils/wikidataAutofix";
 import {
   WikidataVerify,
   type AgentActionMeta,
@@ -164,23 +164,8 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
     [actions, actionId],
   );
 
-  async function handleApplyFix(localId: string, target: string, value: string): Promise<void> {
-    const overridePayload: Record<string, unknown> = {};
-    if (target === "label.en") {
-      overridePayload.labels = { en: value };
-    } else if (target === "label.he") {
-      overridePayload.labels = { he: value };
-    } else if (target === "description.en") {
-      overridePayload.descriptions = { en: value };
-    } else {
-      // Unknown target — skip silently
-      return;
-    }
-    await api.patch(
-      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}`,
-      overridePayload,
-    );
-    // Optimistically mark the verdict as fix-applied in the UI
+  async function handleApplyFixes(localId: string, fixes: WikidataSuggestedFix[]): Promise<void> {
+    await applyWikidataFixes(runId, localId, fixes);
     setVerdicts((prev) => {
       const updated: Record<string, AgentEvent> = {};
       for (const [k, v] of Object.entries(prev)) {
@@ -188,10 +173,11 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
         const isTarget =
           String(cand._item_id ?? cand._local_id ?? cand.local_id ?? v.record_id ?? "") === localId
           || k === localId;
-        updated[k] = isTarget ? { ...v, _fix_applied: true } : v;
+        updated[k] = isTarget ? {...v, _fix_applied: true} : v;
       }
       return updated;
     });
+    onVerdictsLanded?.();
   }
 
   return (
@@ -298,7 +284,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
         <VerdictsTable
           verdicts={verdicts}
           runId={runId}
-          onApplyFix={(localId, target, value) => handleApplyFix(localId, target, value)}
+          onApplyFixes={(localId, fixes) => handleApplyFixes(localId, fixes)}
         />
 
         <Glass as="details" variant="compact" className="p-3">

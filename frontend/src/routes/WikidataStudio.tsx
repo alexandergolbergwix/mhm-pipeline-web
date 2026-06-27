@@ -19,6 +19,7 @@ import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {ItemValidatorBadge} from "@/components/wikidata/ItemValidatorBadge";
 import {ItemApprovalBadge} from "@/components/wikidata/ItemApprovalBadge";
+import {WikidataComparePanel} from "@/components/wikidata/WikidataComparePanel";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {
   Studio,
@@ -65,6 +66,7 @@ export default function WikidataStudio() {
 
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   const [editItem, setEditItem] = useState<StudioItem | null>(null);
+  const [compareTarget, setCompareTarget] = useState<{item: StudioItem; qid: string} | null>(null);
   const [verifyScope, setVerifyScope] = useState<
     null | { scopeKind: "single" | "all"; itemIds: string[]; label: string }
   >(null);
@@ -605,6 +607,7 @@ export default function WikidataStudio() {
                   upload={uploadMap[currentKey]}
                   onOpenMarc={setMarcPopupCn}
                   onEdit={() => setEditItem(current)}
+                  onCompareWikidata={(qid) => { setCompareTarget({item: current, qid}); }}
                   onOpenHistory={
                     projectId
                       ? (id) => setHistoryFor({id})
@@ -648,6 +651,16 @@ export default function WikidataStudio() {
           onSaved={() => { setEditItem(null); void refresh(); }}
         />
       )}
+      {compareTarget && runId && (
+        <WikidataComparePanel
+          runId={runId}
+          item={compareTarget.item}
+          qid={compareTarget.qid}
+          approvedOnly={approvedOnly}
+          onClose={() => setCompareTarget(null)}
+          onApplied={() => { void refresh({nextForceRebuild: true}); }}
+        />
+      )}
       {verifyScope && runId && (
         <WikidataVerificationModal
           runId={runId}
@@ -677,7 +690,7 @@ export default function WikidataStudio() {
 
 
 function ItemPanel({
-  item, reconcile, upload, onOpenMarc, onEdit, onOpenHistory, labelStore,
+  item, reconcile, upload, onOpenMarc, onEdit, onCompareWikidata, onOpenHistory, labelStore,
   onToggleApproval, approvalLoading, onSaveExcluded,
 }: {
   item: StudioItem;
@@ -685,6 +698,7 @@ function ItemPanel({
   upload?: UploadOutcome;
   onOpenMarc: (cn: string) => void;
   onEdit?: () => void;
+  onCompareWikidata?: (qid: string) => void;
   onOpenHistory?: (entityId: string) => void;
   labelStore: LabelStore;
   onToggleApproval?: () => void;
@@ -697,6 +711,7 @@ function ItemPanel({
   const aliases = item.aliases ?? {};
   const statements = item.statements ?? [];
   const issues = item.validation_issues ?? [];
+  const wikidataQid = item.existing_qid || reconcile?.existing_qid || null;
 
   // Optimistic excluded-statement indices (resets when item changes via key= on caller)
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
@@ -763,6 +778,16 @@ function ItemPanel({
                target="_blank" rel="noreferrer">
               ↻ updates {item.existing_qid}
             </a>
+          )}
+          {wikidataQid && onCompareWikidata && (
+            <button
+              type="button"
+              className="button-ghost text-xs !py-0.5"
+              data-testid="studio-compare-wikidata"
+              onClick={() => { onCompareWikidata(wikidataQid); }}
+            >
+              Compare with Wikidata
+            </button>
           )}
           {reconcile && (
             <GlassPill className="px-2 py-0.5 text-xs">

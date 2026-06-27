@@ -10,6 +10,7 @@ from eval_agent.evaluators.contents_ner import ContentsNERevaluator
 from eval_agent.evaluators.genre_classifier import GenreClassifierEvaluator
 from eval_agent.evaluators.person_ner import PersonNERevaluator
 from eval_agent.evaluators.provenance_ner import ProvenanceNERevaluator
+from eval_agent.evaluators.wikidata_autofix import WikidataAutofixEvaluator
 from eval_agent.evaluators.wikidata_item import WikidataItemEvaluator
 
 # ``marc500_colophon`` was removed 2026-05-23 after the conf>=0.90
@@ -28,13 +29,14 @@ REGISTRY: dict[str, type[Evaluator]] = {
     "authority": AuthorityEvaluator,
     # Wikidata Studio item projection. Reads wikidata_items.json.
     "wikidata_item": WikidataItemEvaluator,
+    "wikidata_autofix": WikidataAutofixEvaluator,
 }
 
 # Evaluators that read authority_enriched.json instead of ner_results.json.
 AUTHORITY_EVALUATORS: frozenset[str] = frozenset({"authority"})
 
 # Evaluators that read wikidata_items.json instead of ner_results.json.
-WIKIDATA_ITEM_EVALUATORS: frozenset[str] = frozenset({"wikidata_item"})
+WIKIDATA_ITEM_EVALUATORS: frozenset[str] = frozenset({"wikidata_item", "wikidata_autofix"})
 
 
 def build(evaluator_id: str) -> Evaluator:

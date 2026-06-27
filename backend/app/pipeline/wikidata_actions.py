@@ -25,6 +25,25 @@ _REGISTRY: dict[str, AgentAction] = {
         min_candidates=1,
         rate_limit_rpm=60,
     ),
+    "autofix_from_wikidata": AgentAction(
+        id="autofix_from_wikidata",
+        label="Autofix from Wikidata",
+        description=(
+            "For items that already have a Wikidata QID, compare live Wikidata "
+            "against the Studio projection and propose high-confidence label, "
+            "description, and statement fixes the curator can apply in one click."
+        ),
+        scope_kinds=("single", "selection", "all"),
+        goal_template=(
+            "Propose autofixes for {n_candidates} Wikidata Studio item{plural} "
+            "that already map to an existing Wikidata entity. Use the embedded "
+            "live compare snapshot to align labels/descriptions/statements with "
+            "Wikidata when authoritative."
+        ),
+        evaluators=("wikidata_autofix",),
+        min_candidates=1,
+        rate_limit_rpm=30,
+    ),
 }
 
 

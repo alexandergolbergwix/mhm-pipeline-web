@@ -251,7 +251,13 @@ async def _open_verify_stream(
                 item_ids=params.get("item_ids"),
                 approved_only=bool(params.get("approved_only", True)),
             )
+            from app.routers.wikidata_studio import _prepare_wikidata_verify_scope  # noqa: PLC0415
+
+            items = await _prepare_wikidata_verify_scope(action, items)
+            if not items:
+                return None
             judge_model = tier_model or GEMINI_MODEL
+            evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
             pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
             uncached: list[dict[str, Any]] = []
             if not override_cache:
@@ -259,7 +265,9 @@ async def _open_verify_stream(
                     hit = await read_from_inference_cache(
                         db,
                         kind="ai_verdict",
-                        query_summary=_wikidata_verdict_query_summary(item, judge_model),
+                        query_summary=_wikidata_verdict_query_summary(
+                            item, judge_model, evaluator=evaluator_id,
+                        ),
                     )
                     if hit is not None:
                         pre_cached.append((item, hit))

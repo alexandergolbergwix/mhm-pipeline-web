@@ -118,6 +118,33 @@ export interface ItemOverrideResponse {
   statement_edits: Record<string, unknown>;
 }
 
+export type CompareStatus = "same" | "conflict" | "wikidata_only" | "studio_only";
+
+export interface CompareFieldRow {
+  kind: "label" | "description" | "statement";
+  key: string;
+  label: string;
+  wikidata_value: string | null;
+  studio_value: string | null;
+  status: CompareStatus;
+  studio_statement_index: number | null;
+}
+
+export interface WikidataCompareResult {
+  qid: string;
+  studio_local_id: string;
+  wikidata: {
+    qid: string;
+    labels: Record<string, string>;
+    descriptions: Record<string, string>;
+    statement_count: number;
+  };
+  studio_label: string;
+  rows: CompareFieldRow[];
+  has_conflicts: boolean;
+  conflict_count: number;
+}
+
 export interface StudioBuildParams {
   approvedOnly?: boolean;
   forceRebuild?: boolean;
@@ -172,5 +199,34 @@ export const Studio = {
     api.patch<ItemOverrideResponse>(
       `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}`,
       payload,
+    ),
+
+  compareWithWikidata: (
+    runId: string,
+    localId: string,
+    opts: {qid?: string; approvedOnly?: boolean},
+  ) => {
+    const qs = new URLSearchParams();
+    if (opts.qid) qs.set("qid", opts.qid);
+    qs.set("approved_only", opts.approvedOnly !== false ? "true" : "false");
+    const query = qs.toString();
+    return api.get<WikidataCompareResult>(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}/wikidata-compare${query ? `?${query}` : ""}`,
+    );
+  },
+
+  applyWikidataCompare: (
+    runId: string,
+    localId: string,
+    body: {
+      policy: "wikidata" | "studio" | "custom";
+      choices: Array<{kind: string; key: string; source: "wikidata" | "studio"}>;
+      qid?: string;
+      approvedOnly?: boolean;
+    },
+  ) =>
+    api.post<ItemOverrideResponse>(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}/wikidata-compare/apply`,
+      body,
     ),
 };

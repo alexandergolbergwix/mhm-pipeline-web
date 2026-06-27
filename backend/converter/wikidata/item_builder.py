@@ -2583,14 +2583,19 @@ class WikidataItemBuilder:
 
         pref_lat = str(match_info.get("preferred_name_lat") or "").strip()
         if pref_lat:
-            person.labels["en"] = _normalise_label(
+            normalized_lat = _normalise_label(
                 _strip_person_name_qualifiers(_to_natural_name_order(pref_lat))
             )
+            if _has_hebrew_script(normalized_lat) and not re.search(r"[A-Za-z]", normalized_lat):
+                if "he" not in person.labels:
+                    person.labels["he"] = normalized_lat
+            else:
+                person.labels["en"] = normalized_lat
 
         pref_heb = str(match_info.get("preferred_name_heb") or "").strip()
         if pref_heb:
             person.labels["he"] = _normalise_label(
-                _strip_person_name_qualifiers(pref_heb)
+                _strip_person_name_qualifiers(_to_natural_name_order(pref_heb))
             )
 
         # P31 = human (or organization) — uses the shared institutional
@@ -2792,15 +2797,24 @@ class WikidataItemBuilder:
                         )
                     )
 
-        # P1559 = name in native language — use language matching the script.
-        # Skip names with trailing commas/incomplete entries.
-        # Bug fix 2026-04-16 (deeper audit Fix #14): Latin-script names were
-        # being emitted with language "la" (Latin), which is wrong for modern
-        # European names like "Emanuel Sofino" (Italian). The label already
-        # carries the same value with a more accurate language tag (en),
-        # so omit P1559 entirely for Latin-script names.
+        # P1559 = name in native language — inverted MARC catalog form for
+        # searchability; labels stay in natural "Given Surname" order.
         cleaned_name = name.strip().rstrip(",;:")
-        if cleaned_name and not is_org and len(cleaned_name) >= 2:
+        if pref_heb and not is_org:
+            inverted_heb = _normalise_label(_strip_person_name_qualifiers(pref_heb))
+            person.statements = [
+                s for s in person.statements
+                if getattr(s, "property_id", "") != "P1559"
+            ]
+            person.statements.append(
+                WikidataStatement(
+                    property_id="P1559",
+                    value=inverted_heb,
+                    value_type="monolingualtext",
+                    language="he",
+                )
+            )
+        elif cleaned_name and not is_org and len(cleaned_name) >= 2:
             # Detect script: Hebrew, Cyrillic, Arabic. Latin is intentionally
             # excluded because we cannot reliably infer the true language.
             if any("\u0590" <= c <= "\u05ff" for c in cleaned_name):
@@ -2819,20 +2833,6 @@ class WikidataItemBuilder:
                         value=cleaned_name,
                         value_type="monolingualtext",
                         language=native_lang,
-                    )
-                )
-
-        if pref_heb and not is_org:
-            already_has_p1559 = any(
-                stmt.property_id == "P1559" for stmt in person.statements
-            )
-            if not already_has_p1559:
-                person.statements.append(
-                    WikidataStatement(
-                        property_id="P1559",
-                        value=pref_heb,
-                        value_type="monolingualtext",
-                        language="he",
                     )
                 )
 

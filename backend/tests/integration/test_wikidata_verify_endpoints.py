@@ -30,8 +30,11 @@ class TestWikidataVerifyActions:
         actions = r.json()
         ids = {a["id"] for a in actions}
         assert "audit_wikidata_item" in ids
+        assert "autofix_from_wikidata" in ids
         action = next(a for a in actions if a["id"] == "audit_wikidata_item")
         assert action["evaluators"] == ["wikidata_item"]
+        autofix = next(a for a in actions if a["id"] == "autofix_from_wikidata")
+        assert autofix["evaluators"] == ["wikidata_autofix"]
         assert set(action) == {
             "id", "label", "description", "scope_kinds",
             "evaluators", "min_candidates",

@@ -184,10 +184,15 @@ async def start_verify_stream(
         item_ids=payload.item_ids,
         approved_only=payload.approved_only,
     )
+    items = await _prepare_wikidata_verify_scope(action, items)
     if not items:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="no Wikidata Studio items in scope",
+            detail=(
+                "no Wikidata Studio items with an existing QID in scope"
+                if action.id == "autofix_from_wikidata"
+                else "no Wikidata Studio items in scope"
+            ),
         )
     if len(items) < action.min_candidates:
         raise HTTPException(
@@ -201,6 +206,7 @@ async def start_verify_stream(
     from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
 
     judge_model = payload.tier_model or GEMINI_MODEL
+    evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
     pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
     uncached: list[dict[str, Any]] = []
     if not payload.override_cache:
@@ -208,7 +214,9 @@ async def start_verify_stream(
             hit = await read_from_inference_cache(
                 db,
                 kind="ai_verdict",
-                query_summary=_wikidata_verdict_query_summary(item, judge_model),
+                query_summary=_wikidata_verdict_query_summary(
+                    item, judge_model, evaluator=evaluator_id,
+                ),
             )
             if hit is not None:
                 pre_cached.append((item, hit))
@@ -1065,6 +1073,291 @@ async def patch_item_override(
     )
 
 
+async def _studio_item_from_cache(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    local_id: str,
+    *,
+    approved_only: bool,
+) -> dict[str, Any] | None:
+    cached = await _get_studio_cache_row(db, run_id, approved_only)
+    if cached is None:
+        return None
+    for it in cached.result_items or []:
+        if str(it.get("local_id") or "") == local_id:
+            return it
+    return None
+
+
+@router.get(
+    "/{run_id}/wikidata-studio/items/{local_id:path}/wikidata-compare",
+)
+async def compare_studio_item_with_wikidata(
+    run_id: uuid.UUID,
+    local_id: str,
+    qid: str | None = Query(
+        default=None,
+        description="Wikidata QID to compare against. Defaults to the item's "
+                    "existing_qid or a reconcile hit supplied separately.",
+    ),
+    approved_only: bool = Query(default=True),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Side-by-side diff: live Wikidata entity vs the cached Studio item."""
+    from app.pipeline.wikidata_entity_compare import (  # noqa: PLC0415
+        build_compare,
+        fetch_wikidata_entity,
+    )
+
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    studio_item = await _studio_item_from_cache(
+        db, run_id, local_id, approved_only=approved_only,
+    )
+    if studio_item is None:
+        raise HTTPException(status_code=404, detail="Studio item not found in cache")
+
+    target_qid = (qid or studio_item.get("existing_qid") or "").strip()
+    if not target_qid:
+        raise HTTPException(
+            status_code=400,
+            detail="No Wikidata QID — reconcile first or pass ?qid=Q…",
+        )
+    try:
+        live = await fetch_wikidata_entity(target_qid)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    result = build_compare(studio_item, live, target_qid)
+    return result.model_dump()
+
+
+class WikidataCompareApplyRequest(BaseModel):
+    policy: str = Field(default="custom", pattern=r"^(wikidata|studio|custom)$")
+    choices: list[dict[str, Any]] = Field(default_factory=list)
+    qid: str | None = None
+    approved_only: bool = True
+
+
+@router.post(
+    "/{run_id}/wikidata-studio/items/{local_id:path}/wikidata-compare/apply",
+    response_model=ItemOverrideResponse,
+)
+async def apply_wikidata_compare(
+    run_id: uuid.UUID,
+    local_id: str,
+    body: WikidataCompareApplyRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> ItemOverrideResponse:
+    """Apply merge resolutions as curator overrides (labels / statements)."""
+    from app.pipeline.wikidata_entity_compare import (  # noqa: PLC0415
+        apply_compare_choices,
+        build_compare,
+        fetch_wikidata_entity,
+    )
+
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    studio_item = await _studio_item_from_cache(
+        db, run_id, local_id, approved_only=body.approved_only,
+    )
+    if studio_item is None:
+        raise HTTPException(status_code=404, detail="Studio item not found in cache")
+
+    target_qid = (body.qid or studio_item.get("existing_qid") or "").strip()
+    if not target_qid:
+        raise HTTPException(status_code=400, detail="No Wikidata QID to apply")
+
+    live = await fetch_wikidata_entity(target_qid)
+    compare = build_compare(studio_item, live, target_qid)
+    fragment = apply_compare_choices(
+        compare,
+        policy=body.policy,
+        choices=body.choices,
+        studio_statements=list(studio_item.get("statements") or []),
+    )
+
+    row = (
+        await db.execute(
+            select(WikidataItemOverride).where(
+                WikidataItemOverride.run_id == run_id,
+                WikidataItemOverride.local_id == local_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = WikidataItemOverride(
+            run_id=run_id, local_id=local_id, updated_by=auth.user.id,
+        )
+        db.add(row)
+        await db.flush()
+
+    if fragment.labels:
+        new = dict(row.labels or {})
+        for k, v in fragment.labels.items():
+            if v is None:
+                new.pop(k, None)
+            else:
+                new[k] = v
+        row.labels = new
+    if fragment.descriptions:
+        new = dict(row.descriptions or {})
+        for k, v in fragment.descriptions.items():
+            if v is None:
+                new.pop(k, None)
+            else:
+                new[k] = v
+        row.descriptions = new
+    if fragment.remove_statements:
+        merged_rm = set(row.remove_statements or [])
+        merged_rm.update(fragment.remove_statements)
+        row.remove_statements = sorted(merged_rm)
+    if fragment.add_statements:
+        row.add_statements = list(row.add_statements or []) + list(fragment.add_statements)
+    if fragment.statement_edits:
+        new_edits = dict(row.statement_edits or {})
+        new_edits.update(fragment.statement_edits)
+        row.statement_edits = new_edits
+
+    row.updated_by = auth.user.id
+    await db.commit()
+    await db.refresh(row)
+
+    return ItemOverrideResponse(
+        run_id=run_id,
+        local_id=local_id,
+        labels=row.labels or {},
+        descriptions=row.descriptions or {},
+        aliases=row.aliases or {},
+        add_statements=row.add_statements or [],
+        remove_statements=row.remove_statements or [],
+        statement_edits=row.statement_edits or {},
+        approved=row.approved,
+    )
+
+
+class WikidataAiFixApplyRequest(BaseModel):
+    fixes: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post(
+    "/{run_id}/wikidata-studio/items/{local_id:path}/ai-fixes/apply",
+    response_model=ItemOverrideResponse,
+)
+async def apply_wikidata_ai_fixes(
+    run_id: uuid.UUID,
+    local_id: str,
+    body: WikidataAiFixApplyRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> ItemOverrideResponse:
+    """Merge high-confidence AI autofixes into curator overrides."""
+    from app.pipeline.wikidata_autofix_apply import merge_ai_fixes  # noqa: PLC0415
+
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    if not body.fixes:
+        raise HTTPException(status_code=400, detail="no fixes to apply")
+
+    row = (
+        await db.execute(
+            select(WikidataItemOverride).where(
+                WikidataItemOverride.run_id == run_id,
+                WikidataItemOverride.local_id == local_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = WikidataItemOverride(
+            run_id=run_id, local_id=local_id, updated_by=auth.user.id,
+        )
+        db.add(row)
+        await db.flush()
+
+    fragment = merge_ai_fixes(
+        body.fixes,
+        labels=dict(row.labels or {}),
+        descriptions=dict(row.descriptions or {}),
+        add_statements=list(row.add_statements or []),
+        remove_statements=list(row.remove_statements or []),
+    )
+    if fragment.get("labels") is not None:
+        new = dict(row.labels or {})
+        for k, v in fragment["labels"].items():
+            if v is None:
+                new.pop(k, None)
+            else:
+                new[k] = v
+        row.labels = new
+    if fragment.get("descriptions") is not None:
+        new = dict(row.descriptions or {})
+        for k, v in fragment["descriptions"].items():
+            if v is None:
+                new.pop(k, None)
+            else:
+                new[k] = v
+        row.descriptions = new
+    if fragment.get("add_statements"):
+        row.add_statements = list(fragment["add_statements"])
+    if fragment.get("remove_statements"):
+        merged_rm = set(row.remove_statements or [])
+        merged_rm.update(fragment["remove_statements"])
+        row.remove_statements = sorted(merged_rm)
+
+    row.updated_by = auth.user.id
+
+    entity_id_str = str(row.id)
+    try:
+        has_history = (
+            await db.execute(
+                select(ProjectEvent.id)
+                .where(
+                    ProjectEvent.entity_type == ENTITY_TYPE_WIKIDATA_OVERRIDE,
+                    ProjectEvent.entity_id == entity_id_str,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
+        op_kind = OP_PATCH if has_history else OP_CREATE
+        new_state = {
+            "labels": dict(row.labels or {}),
+            "descriptions": dict(row.descriptions or {}),
+            "aliases": dict(row.aliases or {}),
+            "add_statements": list(row.add_statements or []),
+            "remove_statements": list(row.remove_statements or []),
+            "statement_edits": dict(row.statement_edits or {}),
+            "approved": row.approved,
+        }
+        await apply_event(
+            db,
+            project_id=run.project_id,
+            entity_type=ENTITY_TYPE_WIKIDATA_OVERRIDE,
+            entity_id=entity_id_str,
+            op=op_kind,
+            new_state=new_state,
+            actor_id=auth.user.id,
+            message=f"wikidata AI autofix ({local_id})",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "apply_event failed for wikidata AI autofix %s: %s", entity_id_str, exc,
+        )
+
+    await db.commit()
+    return ItemOverrideResponse(
+        run_id=run_id,
+        local_id=local_id,
+        labels=row.labels or {},
+        descriptions=row.descriptions or {},
+        aliases=row.aliases or {},
+        add_statements=row.add_statements or [],
+        remove_statements=row.remove_statements or [],
+        statement_edits=row.statement_edits or {},
+        approved=row.approved,
+    )
+
+
 @router.delete(
     "/{run_id}/wikidata-studio/items/{local_id:path}/overrides",
     status_code=204,
@@ -1519,8 +1812,10 @@ def _write_wikidata_verify_fixture(
 def _wikidata_verdict_query_summary(
     item: dict[str, Any],
     judge_model: str = "gemini-3.5-flash",
+    *,
+    evaluator: str = "wikidata_item",
 ) -> dict[str, Any]:
-    return {
+    summary: dict[str, Any] = {
         "local_id": str(item.get("_local_id") or item.get("local_id") or ""),
         "entity_type": str(item.get("entity_type") or ""),
         "labels": item.get("labels") or {},
@@ -1530,8 +1825,32 @@ def _wikidata_verdict_query_summary(
         "existing_qid": item.get("existing_qid"),
         "validation_issues": item.get("validation_issues") or [],
         "judge_model": judge_model,
-        "evaluator": "wikidata_item",
+        "evaluator": evaluator,
     }
+    if evaluator == "wikidata_autofix":
+        live = item.get("wikidata_live")
+        if isinstance(live, dict):
+            summary["wikidata_live_fingerprint"] = {
+                "conflict_count": live.get("conflict_count"),
+                "row_count": len(live.get("rows") or []),
+                "qid": live.get("qid"),
+            }
+    return summary
+
+
+async def _prepare_wikidata_verify_scope(
+    action: agent_actions.AgentAction,
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Filter/enrich verify scope for action-specific evaluators."""
+    if action.id != "autofix_from_wikidata":
+        return items
+    scoped = [i for i in items if str(i.get("existing_qid") or "").strip()]
+    if not scoped:
+        return scoped
+    from app.pipeline.wikidata_live_enrich import enrich_items_with_wikidata_live  # noqa: PLC0415
+
+    return await enrich_items_with_wikidata_live(scoped)
 
 
 def _cached_wikidata_verdict_event(
@@ -1579,6 +1898,9 @@ async def _write_wikidata_verdicts_to_cache(
             if item is None:
                 continue
             judge_model = str(v.get("judge_id") or v.get("model") or "gemini-3.5-flash")
+            evaluator_id = str(
+                v.get("evaluator_id") or v.get("evaluator") or "wikidata_item",
+            )
             cached_result = {
                 "verdict": v.get("verdict") or {},
                 "judge_id": v.get("judge_id") or v.get("model"),
@@ -1592,7 +1914,9 @@ async def _write_wikidata_verdicts_to_cache(
             await write_to_inference_cache(
                 db,
                 kind="ai_verdict",
-                query_summary=_wikidata_verdict_query_summary(item, judge_model),
+                query_summary=_wikidata_verdict_query_summary(
+                    item, judge_model, evaluator=evaluator_id,
+                ),
                 result=cached_result,
             )
 

@@ -53,6 +53,7 @@ import { AiVerify, type AgentEvent } from "@/api/aiVerify";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
 import { useDebounce } from "@/hooks/useDebounce";
 import {downloadFromUrl} from "@/utils/download";
+import {collectWikidataFixes, type WikidataSuggestedFix} from "@/utils/wikidataAutofix";
 import {verdictStorageKey} from "@/utils/verdictKey";
 import {Glass} from "@/components/glass";
 import {EMPTY_STRING_SET} from "@/utils/renderStable";
@@ -74,6 +75,8 @@ export interface VerdictsTableProps {
    * to patch (e.g. "label.en"), `value` is the proposed replacement.
    */
   onApplyFix?: (localId: string, target: string, value: string) => Promise<void>;
+  /** Batch apply for Wikidata autofix verdicts (labels + statements). */
+  onApplyFixes?: (localId: string, fixes: WikidataSuggestedFix[]) => Promise<void>;
 }
 
 
@@ -89,7 +92,7 @@ interface ColumnFilterPopupState {
 
 
 export function VerdictsTable(props: VerdictsTableProps) {
-  const { verdicts, onOpenMarc, runId, onApplyFix } = props;
+  const { verdicts, onOpenMarc, runId, onApplyFix, onApplyFixes } = props;
 
   const rows = useMemo(() => Object.values(verdicts), [verdicts]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -139,8 +142,6 @@ export function VerdictsTable(props: VerdictsTableProps) {
   async function handleApplyFix(ev: AgentEvent) {
     const cand = (ev.candidate ?? {}) as Record<string, unknown>;
     const vd = (ev.verdict ?? {}) as Record<string, unknown>;
-    const sf = (cand.suggested_fix ?? vd.suggested_fix ?? null) as Record<string, unknown> | null;
-    if (!sf || !onApplyFix) return;
     const localId = String(
       cand._entity_id
       ?? cand._match_id
@@ -151,6 +152,21 @@ export function VerdictsTable(props: VerdictsTableProps) {
       ?? ""
     );
     if (!localId) return;
+
+    if (onApplyFixes) {
+      const fixes = collectWikidataFixes(cand, vd);
+      if (fixes.length === 0) return;
+      setFixingId(localId);
+      try {
+        await onApplyFixes(localId, fixes);
+      } finally {
+        setFixingId(null);
+      }
+      return;
+    }
+
+    const sf = (cand.suggested_fix ?? vd.suggested_fix ?? null) as Record<string, unknown> | null;
+    if (!sf || !onApplyFix) return;
     const target = String(sf.target ?? sf.source_field ?? "");
     const value = String(sf.value ?? sf.text ?? "");
     if (!value) return;
@@ -314,7 +330,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
 
   const displayTotal = useServer ? serverTotal : rows.length;
   const displayVisible = useServer ? serverTotal : visible.length;
-  const hasFixColumn = onApplyFix !== undefined;
+  const hasFixColumn = onApplyFix !== undefined || onApplyFixes !== undefined;
 
   return (
     <Glass as="section" variant="compact" className="p-3 space-y-3">
@@ -394,6 +410,9 @@ export function VerdictsTable(props: VerdictsTableProps) {
               const o = overall(ev);
               const cand = (ev.candidate ?? {}) as Record<string, unknown>;
               const vd = (ev.verdict ?? {}) as Record<string, unknown>;
+              const wikidataFixes = onApplyFixes
+                ? collectWikidataFixes(cand, vd)
+                : [];
               const sf = (cand.suggested_fix ?? vd.suggested_fix ?? null) as Record<string, unknown> | null;
               const localId = String(
                 cand._entity_id
@@ -407,12 +426,23 @@ export function VerdictsTable(props: VerdictsTableProps) {
               const isFixing = fixingId === localId;
               const fixTarget = String(sf?.target ?? sf?.source_field ?? "");
               const fixValue = String(sf?.value ?? sf?.text ?? "");
-              const showFix = hasFixColumn
+              const showWikidataFix = onApplyFixes !== undefined
+                && wikidataFixes.length > 0
+                && localId !== "";
+              const showSingleFix = onApplyFix !== undefined
+                && !onApplyFixes
                 && sf != null
                 && String(sf.confidence ?? "") === "high"
                 && localId !== ""
                 && fixValue !== ""
                 && (fixTarget !== "" || Boolean(sf.text));
+              const showFix = showWikidataFix || showSingleFix;
+              const fixLabel = wikidataFixes.length > 1
+                ? `✨ ${wikidataFixes.length} fixes`
+                : "✨ Fix";
+              const fixReasoning = wikidataFixes.length > 0
+                ? wikidataFixes.map((f) => f.reasoning).filter(Boolean).join(" · ")
+                : (sf ? String(sf.reasoning ?? "") : "");
               return (
                 <Row key={key}
                   ev={ev} open={open} overall={o}
@@ -422,7 +452,8 @@ export function VerdictsTable(props: VerdictsTableProps) {
                   showFix={showFix}
                   isFixing={isFixing}
                   onFix={() => { void handleApplyFix(ev); }}
-                  fixReasoning={sf ? String(sf.reasoning ?? "") : ""} />
+                  fixReasoning={fixReasoning}
+                  fixLabel={fixLabel} />
               );
             })}
           </tbody>
@@ -474,7 +505,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
 
 function Row({
   ev, open, overall: o, onToggle, onOpenMarc,
-  hasFixColumn, showFix, isFixing, onFix, fixReasoning,
+  hasFixColumn, showFix, isFixing, onFix, fixReasoning, fixLabel = "✨ Fix",
 }: {
   ev: AgentEvent;
   open: boolean;
@@ -486,6 +517,7 @@ function Row({
   isFixing: boolean;
   onFix: () => void;
   fixReasoning: string;
+  fixLabel?: string;
 }) {
   const cand = (ev.candidate ?? {}) as Record<string, unknown>;
   const v = (ev.verdict ?? {}) as Record<string, unknown>;
@@ -547,7 +579,7 @@ function Row({
                 disabled={isFixing}
                 className="text-xs px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-success hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
               >
-                {isFixing ? "…" : "✨ Fix"}
+                {isFixing ? "…" : fixLabel}
               </button>
             )}
           </td>

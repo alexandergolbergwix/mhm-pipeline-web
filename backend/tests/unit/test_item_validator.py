@@ -492,6 +492,27 @@ class TestPersonNameQualifierStripping:
             f"Unexpected errors for clean label 'Moses Gaster': {fired}"
         )
 
+    def test_pref_heb_natural_order_for_he_label(self) -> None:
+        from converter.wikidata.item_builder import (
+            _normalise_label,
+            _strip_person_name_qualifiers,
+            _to_natural_name_order,
+        )
+        from converter.wikidata.item_validator import validate_item
+
+        pref_heb = "דובנוב, שמעון"
+        natural_he = _normalise_label(
+            _strip_person_name_qualifiers(_to_natural_name_order(pref_heb))
+        )
+        assert natural_he == "שמעון דובנוב"
+        item = _Item(
+            entity_type="person",
+            labels={"en": "Simon Dubnov", "he": natural_he},
+            statements=[_Stmt("P31", "Q5"), _Stmt("P214", "123")],
+        )
+        codes = [i.code for i in validate_item(item)]
+        assert "INVERTED_NAME_LABEL" not in codes
+
 
 class TestP3959MarcControlNumber:
     """Regression tests for P3959 (NNL item ID / MARC 001) placement rules.
