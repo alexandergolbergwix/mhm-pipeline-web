@@ -152,5 +152,5 @@ export function useVerifyJob({
     setRunning(false);
   }
 
-  return {running, start, stop, jobId};
+  return {running, start, stop, jobId, progress: storeJob?.progress ?? null};
 }

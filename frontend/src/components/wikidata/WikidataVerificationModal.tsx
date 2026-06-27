@@ -8,6 +8,12 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 
 import {applyWikidataFixes, type WikidataSuggestedFix} from "@/utils/wikidataAutofix";
 import {
+  hydrateVerifySession,
+  mergeFlowWithJobProgress,
+} from "@/utils/verifySessionHydrate";
+import {jobFingerprint} from "@/utils/renderStable";
+import {selectActiveJob, useRunJobs} from "@/stores/runJobs";
+import {
   WikidataVerify,
   type AgentActionMeta,
   type AgentEvent,
@@ -16,7 +22,6 @@ import {
 import {
   AgentFlowDiagram,
   makeInitialFlowState,
-  reduceFlow,
   type FlowState,
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
@@ -52,34 +57,34 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
 
   const loadSession = useCallback(async (sessionId: string) => {
     const full = await WikidataVerify.session(runId, sessionId);
-    const seeded: Record<string, AgentEvent> = {};
-    const evs: AgentEvent[] = [];
-    for (const v of full.verdicts ?? []) {
-      const itemId = itemIdFromVerdict(v);
-      if (!itemId) continue;
-      const ev: AgentEvent = {type: "agent.verdict", ...v};
-      evs.push(ev);
-      seeded[itemId] = ev;
-    }
-    setEvents(evs);
-    setVerdicts(seeded);
-    setFlow((prev) => {
-      let next = prev;
-      for (const ev of evs) next = reduceFlow(next, ev);
-      return next;
-    });
+    const hydrated = hydrateVerifySession(full, itemIdFromVerdict);
+    setEvents(hydrated.events);
+    setVerdicts(hydrated.verdicts);
+    setFlow(hydrated.flow);
   }, [runId]);
 
   const handleVerifyFailed = useCallback((msg: string) => setError(msg), []);
   const handleVerifyComplete = useCallback(() => onVerdictsLanded?.(), [onVerdictsLanded]);
 
-  const {running, start: startVerifyJob, stop} = useVerifyJob({
+  const jobsRecord = useRunJobs((s) => s.jobs);
+  const verifyJob = useMemo(
+    () => selectActiveJob(jobsRecord, runId, "wikidata_verify"),
+    [jobsRecord, runId],
+  );
+  const verifyJobKey = verifyJob ? jobFingerprint(verifyJob) : null;
+
+  const {running, start: startVerifyJob, stop, progress} = useVerifyJob({
     runId,
     kind: "wikidata_verify",
     loadSession,
     onFailed: handleVerifyFailed,
     onComplete: handleVerifyComplete,
   });
+
+  useEffect(() => {
+    if (!running || !progress) return;
+    setFlow((prev) => mergeFlowWithJobProgress(prev, progress));
+  }, [running, progress, verifyJobKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,8 +282,15 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
         )}
 
         <Glass as="section" variant="compact" className="p-3">
-          <div className="kicker mb-2">Agent flow</div>
-          <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div className="kicker">Agent flow</div>
+            {running && progress && Number(progress.total ?? 0) > 0 && (
+              <span className="text-xs muted">
+                {Number(progress.processed ?? 0)} / {Number(progress.total ?? 0)} judged
+              </span>
+            )}
+          </div>
+          <AgentFlowDiagram lastEvent={lastEvent} flow={flow} variant="wikidata" />
         </Glass>
 
         <VerdictsTable

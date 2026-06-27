@@ -45,6 +45,18 @@ interface NodeDef {
 
 // 9 nodes — every one corresponds to an event we actually receive from
 // the eval-agent `run` subprocess.
+export type AgentFlowVariant = "default" | "wikidata";
+
+const VARIANT_HINTS: Record<AgentFlowVariant, Partial<Record<string, string>>> = {
+  default: {},
+  wikidata: {
+    inputs:     "marc + studio items",
+    rubric:     "wikidata_item.md",
+    candidates: "per studio item",
+    cache:      "inference_cache",
+    verdict:    "labels + statements",
+  },
+};
 const NODES: NodeDef[] = [
   { id: "inputs",     label: "Inputs",     hint: "marc + authority",    x:  70, y:  60 },
   { id: "rubric",     label: "Rubric",     hint: "config/rubrics/*.md", x:  70, y: 260 },
@@ -181,10 +193,11 @@ export function reduceFlow(prev: FlowState, ev: AgentEvent): FlowState {
 
 
 export function AgentFlowDiagram({
-  lastEvent, flow,
+  lastEvent, flow, variant = "default",
 }: {
   lastEvent: AgentEvent | null;
   flow:      FlowState;
+  variant?:  AgentFlowVariant;
 }) {
   // Animate a particle along the most recently lit edge.
   const [pulseFrom, setPulseFrom] = useState<string | null>(null);
@@ -209,6 +222,7 @@ export function AgentFlowDiagram({
   // decorative — these come straight from `agent.stats`.
   const cacheLabel = flow.cacheHits > 0 ? `${flow.cacheHits} hit` : "";
   const judgeLabel = flow.judged    > 0 ? `${flow.judged} judged`  : "";
+  const hints = VARIANT_HINTS[variant];
 
   return (
     <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -288,7 +302,7 @@ export function AgentFlowDiagram({
                   fontSize="9.5" fontFamily="ui-sans-serif"
                   textAnchor="middle"
                   fill="rgba(255,255,255,0.55)">
-              {n.hint}
+              {hints[n.id] ?? n.hint}
             </text>
             {badge && (
               <text x={n.x} y={n.y + 36}
