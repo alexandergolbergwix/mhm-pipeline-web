@@ -145,3 +145,37 @@ class TestEntitiesByCnDrivesWorkCreation:
             return_native=False,
         )
         assert result["summary"]["works"] == 0
+
+
+class TestMarcDictEntriesDoNotCrashBuild:
+    """Regression: dict-shaped related_places / related_works must not
+    call ``.strip()`` on a dict during WikidataItemBuilder."""
+
+    @pytest.mark.asyncio
+    async def test_dict_related_places_with_kima_places(self) -> None:
+        rec = {
+            **_fake_marc_record(),
+            "related_places": [{"place": "Prague", "hierarchy": ["Czech"]}],
+            "kima_places": {"Prague": "https://www.wikidata.org/entity/Q1085"},
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[],
+            entities_by_cn=None,
+            return_native=False,
+        )
+        assert result["summary"]["manuscripts"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_dict_related_works_title(self) -> None:
+        rec = {
+            **_fake_marc_record(),
+            "related_works": [{"title": "עת שערי רצון", "relationship": "related"}],
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[],
+            entities_by_cn=None,
+            return_native=False,
+        )
+        assert result["summary"]["manuscripts"] >= 1

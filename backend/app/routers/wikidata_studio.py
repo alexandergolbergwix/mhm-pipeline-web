@@ -1641,7 +1641,7 @@ def _group_entity_rows(
         if approved_only and not r.approved:
             continue
         ent_dict = {
-            "text":             r.override_text or r.text,
+            "text":             str(r.override_text or r.text or ""),
             "type":             (r.override_type or r.type or "").upper(),
             "role":             (r.override_role or r.role or "").upper(),
             "source":           r.source,

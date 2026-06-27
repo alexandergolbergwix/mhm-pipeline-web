@@ -257,6 +257,25 @@ def _person_key(name: str, viaf_uri: str | None, mazal_id: str | None) -> str:
     return f"name:{normalized}"
 
 
+def _marc_entry_label(
+    entry: object,
+    *,
+    keys: tuple[str, ...] = ("place", "name", "term", "title", "text"),
+) -> str:
+    """Coerce a MARC list entry (str or dict) to a plain label string."""
+    if entry is None:
+        return ""
+    if isinstance(entry, str):
+        return entry.strip()
+    if isinstance(entry, dict):
+        for key in keys:
+            raw = entry.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+        return ""
+    return str(entry).strip()
+
+
 _INSTITUTIONAL_KEYWORDS: tuple[str, ...] = (
     "library",
     "museum",
@@ -1509,9 +1528,12 @@ class WikidataItemBuilder:
                     )
 
         # ── Related places → P7153 (significant place) ──────────
-        for place_name in record.get("related_places") or []:
+        for place_entry in record.get("related_places") or []:
+            place_name = _marc_entry_label(place_entry, keys=("place", "name", "term"))
+            if not place_name:
+                continue
             for _name, uri in (record.get("kima_places") or {}).items():
-                if place_name.strip() in _name or _name in place_name.strip():
+                if place_name in _name or _name in place_name:
                     qid = extract_wikidata_qid(str(uri))
                     if qid:
                         item.statements.append(
@@ -1588,7 +1610,9 @@ class WikidataItemBuilder:
 
         # ── Related works → P1574 via work items ────────────────
         for rw in record.get("related_works") or []:
-            rw_title = rw.get("title", "") if isinstance(rw, dict) else str(rw)
+            rw_title = (
+                str(rw.get("title", "")) if isinstance(rw, dict) else str(rw)
+            )
             rw_title = rw_title.strip().strip(_QUOTE_CHARS + ".")
             if not rw_title:
                 continue
@@ -2551,13 +2575,13 @@ class WikidataItemBuilder:
             )
         )
 
-        pref_lat = (match_info.get("preferred_name_lat") or "").strip()
+        pref_lat = str(match_info.get("preferred_name_lat") or "").strip()
         if pref_lat:
             person.labels["en"] = _normalise_label(
                 _strip_person_name_qualifiers(_to_natural_name_order(pref_lat))
             )
 
-        pref_heb = (match_info.get("preferred_name_heb") or "").strip()
+        pref_heb = str(match_info.get("preferred_name_heb") or "").strip()
         if pref_heb:
             person.labels["he"] = _normalise_label(
                 _strip_person_name_qualifiers(pref_heb)
@@ -2707,7 +2731,7 @@ class WikidataItemBuilder:
             # Could be logged for offline review.
             pass
 
-        j9u_from_viaf = (match_info.get("j9u_id") or "").strip()
+        j9u_from_viaf = str(match_info.get("j9u_id") or "").strip()
         if j9u_from_viaf and j9u_from_viaf.startswith("987") and not is_org:
             if not (mazal_str and mazal_str.startswith("9870")):
                 person.statements.append(

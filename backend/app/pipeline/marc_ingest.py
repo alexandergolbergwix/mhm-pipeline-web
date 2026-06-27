@@ -763,6 +763,64 @@ def _str(v: Any) -> str:
     return normalize_entity_text(v)
 
 
+def _label_from_marc_entry(
+    entry: Any,
+    *,
+    keys: tuple[str, ...] = ("place", "name", "term", "title", "text"),
+) -> str:
+    """Coerce a MARC list entry (str or dict) to a plain label string.
+
+    Older ingest rows and desktop ``752`` hierarchies sometimes store
+    ``related_places`` as ``{"place": "…", "hierarchy": […]}`` dicts.
+    WikidataItemBuilder calls ``.strip()`` on these — normalise here.
+    """
+    if entry is None:
+        return ""
+    if isinstance(entry, str):
+        return entry.strip()
+    if isinstance(entry, dict):
+        for key in keys:
+            raw = entry.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+        return ""
+    return str(entry).strip()
+
+
+def _normalize_related_places(places: list[Any] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in places or []:
+        label = _label_from_marc_entry(entry, keys=("place", "name", "term"))
+        if not label:
+            continue
+        key = label.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(label)
+    return out
+
+
+def _normalize_related_works(entries: list[Any] | None) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for entry in entries or []:
+        if isinstance(entry, str):
+            title = entry.strip()
+            if title:
+                out.append({"title": title})
+            continue
+        if not isinstance(entry, dict):
+            continue
+        title = _label_from_marc_entry(entry, keys=("title", "name", "term"))
+        if not title:
+            continue
+        norm = dict(entry)
+        norm["title"] = title
+        out.append(norm)
+    return out
+
+
 def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
     """Normalise a ``run_records.marc`` JSONB row before any pipeline stage.
 
@@ -802,6 +860,10 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
         row["genres"] = flat_genres
     if genre_entries:
         row["genre_entries"] = genre_entries
+    if row.get("related_places"):
+        row["related_places"] = _normalize_related_places(list(row["related_places"]))
+    if row.get("related_works"):
+        row["related_works"] = _normalize_related_works(list(row["related_works"]))
     _merge_work_mentions_into_contents(row)
     return row
 
