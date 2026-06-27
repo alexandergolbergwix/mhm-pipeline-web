@@ -35,6 +35,33 @@ _EXTRA_ROLE_MAPPINGS: dict[str, str] = {
     "מלקט": "compiler",
 }
 
+# Person MARC roles that should resolve to Mazal אישיות (tag 100), not נושא/כותר.
+MAZAL_PERSONALITY_PREFER_ROLE_KEYS = frozenset({
+    "author",
+    "contributor",
+    "scribe",
+    "translator",
+    "editor",
+    "commentator",
+    "former_owner",
+    "current_owner",
+    "owner",
+    "signatory",
+    "addressee",
+    "copied_from",
+    "mentioned",
+    "attributed_author",
+    "presumed_author",
+    "illuminator",
+    "compiler",
+})
+
+
+def prefers_mazal_personality(role: str) -> bool:
+    """True when a person entity should prefer Mazal tag-100 over subject/work headings."""
+    return normalize_role_key(role) in MAZAL_PERSONALITY_PREFER_ROLE_KEYS
+
+
 _ROLE_DISPLAY: dict[str, str] = {
     "author": "author",
     "presumed_author": "presumed author",

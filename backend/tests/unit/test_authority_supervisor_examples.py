@@ -16,6 +16,29 @@ import pytest
 # ── 1 + 2. Nehemya Allony — personality vs subject ────────────────────────
 
 
+def test_guard_mazal_subject_heading_fires_for_tag_150_former_owner() -> None:
+    """former owner (710/561 provenance) must prefer אישיות, not נושא."""
+    from app.pipeline.authority_hardening import guard_mazal_subject_heading
+
+    verdict = guard_mazal_subject_heading(
+        main_marc_tag="150",
+        entity_kind="person",
+        role="former owner",
+    )
+    assert verdict.fired
+    assert verdict.flag == "mazal_subject_not_personality"
+
+
+def test_should_personality_rematch_includes_former_owner() -> None:
+    from app.pipeline.authority import _should_personality_rematch
+    from app.pipeline.entity_normalize import prefers_mazal_personality
+
+    assert prefers_mazal_personality("former owner")
+    assert prefers_mazal_personality("בעלים קודמים")
+    assert _should_personality_rematch("former_owner")
+    assert not prefers_mazal_personality("subject")
+
+
 def test_guard_mazal_subject_heading_fires_for_tag_150_author() -> None:
     """guard_mazal_subject_heading must fire when main_marc_tag='150' and role='author'."""
     from app.pipeline.authority_hardening import guard_mazal_subject_heading
@@ -323,3 +346,89 @@ def test_pick_mazal_abstains_for_shlomo_style_homonym() -> None:
     decision = pick_mazal_candidate(candidates, role="author")
     assert decision.abstain
     assert decision.winner is None
+
+
+def test_match_one_rematches_allony_former_owner_to_personality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gila audit: Allony as former owner must not stay on a נושא Mazal row."""
+    import asyncio
+
+    from app.pipeline import authority as auth_mod
+
+    SUBJECT_ID = "987007257676505171"
+    PERSONALITY_ID = "987007413396205171"
+
+    class FakeBackend:
+        async def match_person(self, text, dates=None, *, ms_year=None, role=""):
+            return {
+                "mazal_id": SUBJECT_ID,
+                "entity_type": "person",
+                "preferred_name_heb": "אלוני, נחמיה",
+                "preferred_name_lat": "Allony, Nehemya",
+                "dates": "1906-1983",
+                "aleph_id": "Aleph(NNL10)-000008890",
+                "main_marc_tag": "150",
+            }
+
+        async def resolve_personality_mazal_id(
+            self, name, *, dates, current_id, main_marc_tag,
+        ):
+            assert current_id == SUBJECT_ID
+            assert main_marc_tag == "150"
+            return {
+                "mazal_id": PERSONALITY_ID,
+                "entity_type": "person",
+                "preferred_name_heb": "אלוני, נחמיה",
+                "preferred_name_lat": "Allony, Nehemya",
+                "dates": "1906-1983",
+                "aleph_id": "Aleph(NNL10)-000008890",
+                "main_marc_tag": "100",
+                "personality_rematch_from": SUBJECT_ID,
+            }
+
+    async def noop(*args, **kwargs):
+        return None
+
+    async def cached(self, *, kind, query_summary, fetch, db_session, user_id, skip_cache):
+        return await fetch()
+
+    def passthrough_hardening(candidate, *, context):
+        return candidate
+
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_cached", cached)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_viaf_match_with_metadata", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_wikidata_match_person", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_kima_match_place", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_kima_enrich_place", noop)
+    monkeypatch.setattr(auth_mod.DesktopMatcher, "_mazal_match_place_authority", noop)
+    monkeypatch.setattr(
+        "app.pipeline.authority_hardening.apply_hardening_guards",
+        passthrough_hardening,
+    )
+
+    matcher = object.__new__(auth_mod.DesktopMatcher)
+    matcher._mazal = object()
+    matcher._viaf = None
+    matcher._wikidata = None
+    matcher._kima = None
+    matcher._mazal_detail_cache = {}
+    matcher._kima_detail_cache = {}
+    matcher._authority_backend = FakeBackend()
+
+    candidates = asyncio.run(
+        matcher._match_one(
+            text="Allony, Nehemia",
+            role="former owner",
+            entity_kind="person",
+            marc_record={},
+            db_session=None,
+            user_id=None,
+            skip_cache=True,
+        )
+    )
+    assert candidates
+    c = candidates[0]
+    assert c.mazal_id == PERSONALITY_ID
+    assert c.payload.get("personality_rematch_from") == SUBJECT_ID
+    assert c.payload.get("main_marc_tag") == "100"

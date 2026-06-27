@@ -123,7 +123,7 @@ def test_match_one_gates_person_matchers_for_places(monkeypatch: pytest.MonkeyPa
     called_person: list[str] = []
     called_place: list[str] = []
 
-    async def fake_mazal_person(self, text, *, db_session, user_id, skip_cache, marc_dates=None):
+    async def fake_mazal_person(self, text, *, db_session, user_id, skip_cache, marc_dates=None, ms_year=None, role=""):
         called_person.append(text)
         return None
 
@@ -179,7 +179,7 @@ def test_match_one_calls_person_matchers_for_persons(monkeypatch: pytest.MonkeyP
 
     called_person: list[str] = []
 
-    async def fake_mazal_person(self, text, *, db_session, user_id, skip_cache, marc_dates=None):
+    async def fake_mazal_person(self, text, *, db_session, user_id, skip_cache, marc_dates=None, ms_year=None, role=""):
         called_person.append(text)
         return None
 

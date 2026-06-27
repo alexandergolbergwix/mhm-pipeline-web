@@ -1074,8 +1074,8 @@ def guard_mazal_subject_heading(
     still won (e.g. the SQLite SQLite re-import hasn't run yet), the guard
     downgrades confidence and stamps a flag so the curator sees it.
 
-    The guard only fires for author / contributor roles — subject-role entities
-    may legitimately resolve to a subject heading.
+    The guard only fires for person roles that expect אישיות — subject-role
+    entities may legitimately resolve to a subject heading.
     """
     if not main_marc_tag:
         return GuardVerdict(fired=False)
@@ -1084,15 +1084,13 @@ def guard_mazal_subject_heading(
     if pl.get("personality_rematch_from"):
         return GuardVerdict(fired=False)
 
-    _PERSON_AUTHOR_ROLES = frozenset(
-        {"author", "contributor", "scribe", "translator", "editor", "commentator"}
-    )
-    normalized_role = (role or "").lower().strip()
+    from app.pipeline.entity_normalize import normalize_role_key, prefers_mazal_personality  # noqa: PLC0415
+
     is_person_author = (
         entity_kind.lower().strip() == "person"
         and (
-            normalized_role in _PERSON_AUTHOR_ROLES
-            or (normalized_role == "" and main_marc_tag != "100")
+            prefers_mazal_personality(role)
+            or (not normalize_role_key(role) and main_marc_tag != "100")
         )
     )
     if not is_person_author:

@@ -1809,14 +1809,13 @@ def get_default_matcher() -> AuthorityMatcher:
 
 _PROD_ROLES = {"scribe", "transcriber", "copyist", "editor"}
 _AUTHORSHIP_ROLES = {"author", "translator", "commentator"}
-_PERSON_AUTHOR_ROLES = frozenset({
-    "author", "contributor", "scribe", "translator", "editor", "commentator",
-})
 _PIPELINE_QID_THRESHOLD = 138_000_000
 
 
 def _should_personality_rematch(role_key: str) -> bool:
-    return role_key in _PERSON_AUTHOR_ROLES
+    from app.pipeline.entity_normalize import MAZAL_PERSONALITY_PREFER_ROLE_KEYS  # noqa: PLC0415
+
+    return role_key in MAZAL_PERSONALITY_PREFER_ROLE_KEYS
 
 
 def _apply_mazal_entity_type_gate(
