@@ -95,6 +95,10 @@ export function VerdictsTable(props: VerdictsTableProps) {
   const { verdicts, onOpenMarc, runId, onApplyFix, onApplyFixes } = props;
 
   const rows = useMemo(() => Object.values(verdicts), [verdicts]);
+  // Live verify modals seed in-memory verdicts from the session GET.
+  // Server-side /ai-verify/results reads per-dyno disk and is often empty
+  // on Heroku — never let it shadow a non-empty live session.
+  const useServer = runId !== undefined && rows.length === 0;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [overallFilter, setOverallFilter] = useState<Overall | "all">("all");
   const [search, setSearch] = useState("");
@@ -184,8 +188,6 @@ export function VerdictsTable(props: VerdictsTableProps) {
   const [serverCounts, setServerCounts] = useState<Record<string, number> | null>(null);
   const [serverLoading, setServerLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-
-  const useServer = runId !== undefined;
 
   // Fetch from server whenever search/filter changes (server path).
   useEffect(() => {

@@ -23,11 +23,12 @@ import {
   type ScopeKind,
 } from "@/api/aiVerify";
 import {
-  AgentFlowDiagram, makeInitialFlowState, reduceFlow, type FlowState,
+  AgentFlowDiagram, makeInitialFlowState, type FlowState,
 } from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {verdictStorageKey} from "@/utils/verdictKey";
+import {hydrateVerifySession} from "@/utils/verifySessionHydrate";
 import {Glass} from "@/components/glass";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
 
@@ -72,20 +73,12 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
 
   const loadSession = useCallback(async (sessionId: string) => {
     const full = await AiVerify.session(runId, sessionId);
-    const seeded: Record<string, AgentEvent> = {};
-    const evs: AgentEvent[] = [];
-    for (const v of full.verdicts ?? []) {
-      const ev: AgentEvent = {type: "agent.verdict", ...v};
-      evs.push(ev);
-      seeded[verdictStorageKey(ev)] = ev;
-    }
-    setEvents(evs);
-    setVerdicts(seeded);
-    setFlow((prev) => {
-      let next = prev;
-      for (const ev of evs) next = reduceFlow(next, ev);
-      return next;
-    });
+    const hydrated = hydrateVerifySession(full, (row) =>
+      verdictStorageKey({type: "agent.verdict", ...row}),
+    );
+    setEvents(hydrated.events);
+    setVerdicts(hydrated.verdicts);
+    setFlow(hydrated.flow);
   }, [runId]);
 
   const handleVerifyFailed = useCallback((msg: string) => setError(msg), []);

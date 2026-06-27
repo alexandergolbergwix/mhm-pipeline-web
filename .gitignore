@@ -171,3 +171,6 @@ coverage/
 /private/
 /personal/
 
+# Local production snapshots (see snapshots/README.md)
+snapshots/*.json
+
