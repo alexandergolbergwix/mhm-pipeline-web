@@ -62,6 +62,7 @@ export interface StudioBuild {
   approved_item_count: number;
   properties: PropertyInfo[];
   property_labels: Record<string, string>;
+  rebuilding?: boolean;
 }
 
 export interface ReconcileOutcome {

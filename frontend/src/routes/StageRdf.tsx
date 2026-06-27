@@ -48,6 +48,7 @@ import {
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
+import {LoadingOverlay} from "@/components/LoadingOverlay";
 import {useAuth} from "@/stores/auth";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
@@ -183,13 +184,16 @@ export default function StageRdf() {
       setBusy("build");
       return;
     }
-    setBusy(null);
     if (job.status === "succeeded") {
       const errs = job.result?.mapping_errors;
       if (Array.isArray(errs)) setMappingErrors(errs.map(String));
-      void reloadGraph();
+      setBusy("graph");
+      void reloadGraph().finally(() => {
+        setBusy((current) => (current === "graph" ? null : current));
+      });
       return;
     }
+    setBusy(null);
     if (job.status === "failed") {
       setError(job.error ?? "RDF build failed");
     }
@@ -483,6 +487,22 @@ export default function StageRdf() {
   }, [selectedNodeId]);
 
   const statusLabel = status?.status ?? "idle";
+  const graphIsBuilt = statusLabel === "built" || statusLabel === "validated";
+  const showGraphLoader =
+    busy === "build"
+    || busy === "graph"
+    || (graphIsBuilt && graph === null);
+
+  const graphLoaderMessage =
+    busy === "build"
+      ? "Building RDF graph…"
+      : "Loading graph…";
+
+  const graphLoaderDetail =
+    busy === "build"
+      ? (buildProgressLabel
+        ?? "Running MarcToRdfMapper across the run's records.")
+      : "Fetching nodes and computing layout on the server…";
   const violations  = shacl?.violations ?? [];
   const grouped     = useMemo(() => groupBySeverity(violations), [violations]);
 
@@ -672,7 +692,9 @@ export default function StageRdf() {
               <button onClick={build} disabled={busy !== null} className="button-primary text-sm">
                 {busy === "build"
                   ? "Building…"
-                  : statusLabel === "idle" ? "Build RDF" : "Re-build RDF"}
+                  : busy === "graph"
+                    ? "Loading graph…"
+                    : statusLabel === "idle" ? "Build RDF" : "Re-build RDF"}
               </button>
               {busy === "build" && (
                 <button type="button" onClick={cancelBuild} className="button-ghost text-sm text-warn">
@@ -856,7 +878,7 @@ export default function StageRdf() {
                 )}
               </GlassPill>
             )}
-            {!graph && busy !== "build" && busy !== "graph" && (
+            {!graph && !showGraphLoader && (
               <div className="absolute z-10 inset-0 flex items-center justify-center">
                 <p className="muted">
                   {statusLabel === "idle"
@@ -865,27 +887,11 @@ export default function StageRdf() {
                 </p>
               </div>
             )}
-            {/* Loading overlay — covers the canvas while the server
-                computes layout. Networkx for 500 nodes is ~1 s on
-                first request; cached calls return in ~50ms. */}
-            {(busy === "graph" || busy === "build") && (
-              <div className="absolute inset-0 flex items-center justify-center
-                              bg-black/40 backdrop-blur-sm rounded-2xl">
-                <GlassPill as="div" className="px-4 py-3 text-center space-y-1.5">
-                  <div className="text-sm text-ink">
-                    {busy === "build" ? "Building RDF graph…" : "Computing layout on server…"}
-                  </div>
-                  <div className="muted text-[11px]">
-                    {busy === "build"
-                      ? (buildProgressLabel
-                        ?? "Running MarcToRdfMapper across the run's records.")
-                      : "Networkx is positioning the nodes. First request takes ~1 s; cached layouts return instantly."}
-                  </div>
-                  <div className="mt-2 mx-auto w-32 h-1 rounded-full overflow-hidden bg-white/10">
-                    <div className="h-full w-1/3 bg-biu-sky animate-pulse" />
-                  </div>
-                </GlassPill>
-              </div>
+            {showGraphLoader && (
+              <LoadingOverlay
+                message={graphLoaderMessage}
+                detail={graphLoaderDetail}
+              />
             )}
             {selectedNodeId && runId && (
               <NodeDetailPanel

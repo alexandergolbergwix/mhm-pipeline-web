@@ -138,6 +138,7 @@ class StudioBuildResponse(BaseModel):
     approved_item_count: int      # items with approved==True in the full build
     properties: list[PropertyInfo]        # distinct P-ids in the full build
     property_labels: dict[str, str]       # P/Q id → label map for label-store seeding
+    rebuilding: bool = False      # true when serving stale cache while a job runs
 
 
 class VerifyStartRequest(BaseModel):
@@ -586,6 +587,46 @@ def _studio_build_in_progress_detail(job_id: uuid.UUID) -> dict[str, str]:
     }
 
 
+def _studio_response_from_cache(
+    cached: WikidataStudioCache,
+    *,
+    approved_only: bool,
+    entity_type: str | None,
+    q: str | None,
+    sort: str,
+    sort_dir: str,
+    page: int,
+    page_size: int,
+    rebuilding: bool = False,
+) -> StudioBuildResponse:
+    sliced, total, props, plabels, approved_item_count = _slice_items(
+        cached.result_items or [],
+        entity_type=entity_type,
+        q=q,
+        sort=sort,
+        sort_dir=sort_dir,
+        page=page,
+        page_size=page_size,
+    )
+    return StudioBuildResponse(
+        items=sliced,
+        quickstatements=cached.quickstatements,
+        summary=StudioSummary(**cached.summary),
+        approved_match_count=cached.approved_match_count,
+        pending_match_count=cached.pending_match_count,
+        used_match_count=cached.used_match_count,
+        approved_only=approved_only,
+        record_count=cached.record_count,
+        total=total,
+        page=page,
+        page_size=page_size,
+        approved_item_count=approved_item_count,
+        properties=props,
+        property_labels=plabels,
+        rebuilding=rebuilding,
+    )
+
+
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
 async def build_studio(
     run_id: uuid.UUID,
@@ -642,27 +683,45 @@ async def build_studio(
 
     cached = await _get_studio_cache_row(db, run_id, approved_only)
 
-    if not force_rebuild and cached is not None and cached.input_fingerprint == fingerprint:
-        logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
-        sliced, total, props, plabels, approved_item_count = _slice_items(
-            cached.result_items, entity_type=entity_type, q=q,
-            sort=sort, sort_dir=sort_dir, page=page, page_size=page_size,
+    if not force_rebuild and cached is not None:
+        if cached.input_fingerprint == fingerprint:
+            logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
+            return _studio_response_from_cache(
+                cached,
+                approved_only=approved_only,
+                entity_type=entity_type,
+                q=q,
+                sort=sort,
+                sort_dir=sort_dir,
+                page=page,
+                page_size=page_size,
+            )
+        # Stale cache: show the last good build immediately and refresh in the
+        # background. Avoids a 409 round-trip whenever approvals change.
+        logger.debug(
+            "wikidata-studio stale cache for run %s (cached=%s current=%s)",
+            run_id,
+            (cached.input_fingerprint or "")[:8],
+            fingerprint[:8],
         )
-        return StudioBuildResponse(
-            items=sliced,
-            quickstatements=cached.quickstatements,
-            summary=StudioSummary(**cached.summary),
-            approved_match_count=cached.approved_match_count,
-            pending_match_count=cached.pending_match_count,
-            used_match_count=cached.used_match_count,
+        await _enqueue_studio_build_job(
+            db,
+            project_id=run.project_id,
+            run_id=run_id,
             approved_only=approved_only,
-            record_count=cached.record_count,
-            total=total,
+            force_rebuild=False,
+            user_id=auth.user.id,
+        )
+        return _studio_response_from_cache(
+            cached,
+            approved_only=approved_only,
+            entity_type=entity_type,
+            q=q,
+            sort=sort,
+            sort_dir=sort_dir,
             page=page,
             page_size=page_size,
-            approved_item_count=approved_item_count,
-            properties=props,
-            property_labels=plabels,
+            rebuilding=True,
         )
 
     logger.debug("wikidata-studio cache miss for run %s (fp=%s)", run_id, fingerprint[:8])

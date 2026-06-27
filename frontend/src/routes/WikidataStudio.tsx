@@ -7,7 +7,7 @@ import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {Runs} from "@/api/runs";
 import {RunJobs} from "@/api/runJobs";
-import {loadStudioBuild, waitForRunJob, waitForStudioBuild} from "@/utils/waitForRunJob";
+import {findActiveRunJob, loadStudioBuild, waitForRunJob, waitForStudioBuild} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 import {useDebounce} from "@/hooks/useDebounce";
 import {
@@ -30,6 +30,7 @@ import {
   type UploadOutcome,
 } from "@/api/wikidataStudio";
 import {Glass, GlassPill} from "@/components/glass";
+import {LoadingOverlay, LoadingPanel} from "@/components/LoadingOverlay";
 
 type EntityFilter = "all" | "manuscript" | "person" | "work";
 type ExistFilter  = "any" | "existing" | "new";
@@ -130,9 +131,22 @@ export default function WikidataStudio() {
         pageSize: PAGE_SIZE,
       });
       setBuildProgress(force ? "Loading items…" : "Checking cache…");
-      const result = await loadStudioBuild(runId, fetchPage, {
+      let result = await loadStudioBuild(runId, fetchPage, {
         onProgress: (message) => { setBuildProgress(message); },
       }) as StudioBuild;
+      if (result.rebuilding) {
+        setBuildProgress("Updating items after recent changes…");
+        const active = await findActiveRunJob(runId, "wikidata_studio_build");
+        if (active) {
+          await waitForRunJob(runId, active.id, {
+            onUpdate: (job) => {
+              const msg = job.progress?.message;
+              if (typeof msg === "string" && msg.trim()) setBuildProgress(msg);
+            },
+          });
+          result = await fetchPage() as StudioBuild;
+        }
+      }
       setBuild(result);
       if (result.property_labels) {
         labelStore.seed(result.property_labels);
@@ -246,18 +260,16 @@ export default function WikidataStudio() {
   if (error) return <Layout><Glass className="p-6 text-danger">{error}</Glass></Layout>;
   if (!build) return (
     <Layout>
-      <Glass className="p-6 space-y-2">
-        <p className="muted">{loading ? "Building Wikidata items…" : "Loading Wikidata Studio…"}</p>
-        {loading && (
-          <>
-            <p className="text-xs muted">
-              {buildProgress ?? "Large runs can take a few minutes on first load while items are built and cached."}
-            </p>
-            <p className="text-xs muted">
-              A background job may be running — check the job tray (bottom-right) for progress.
-            </p>
-          </>
-        )}
+      <Glass className="p-6">
+        <LoadingPanel
+          title={loading ? "Building Wikidata items…" : "Loading Wikidata Studio…"}
+          detail={
+            buildProgress
+            ?? (loading
+              ? "Large runs can take a few minutes on first load while items are built and cached. Check the job tray (bottom-right) for progress."
+              : null)
+          }
+        />
       </Glass>
     </Layout>
   );
@@ -424,7 +436,16 @@ export default function WikidataStudio() {
                   <Link to={`/runs/${runId}`} className="text-biu-sky hover:underline">Review</Link> page.</>
               : <>No items yet. Upload a MARC file via the project page first.</>}
           </Glass>
-        ) : view === "table" ? (
+        ) : (
+          <div className="relative">
+            {loading && (
+              <LoadingOverlay
+                message="Updating Wikidata items…"
+                detail={buildProgress}
+                className="rounded-xl z-30"
+              />
+            )}
+        {view === "table" ? (
           <StatementTableView
             items={itemRows.map(({ it, idx }) => ({ it, idx }))}
             properties={build.properties}
@@ -594,6 +615,8 @@ export default function WikidataStudio() {
                   labelStore={labelStore} />
               )}
             </main>
+          </div>
+        )}
           </div>
         )}
 
