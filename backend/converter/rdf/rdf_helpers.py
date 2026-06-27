@@ -35,6 +35,8 @@ def clean_marc_label(text: str) -> str:
     """Strip MARC ISBD quote artifacts and surrounding whitespace."""
     if not text:
         return ""
+    if not isinstance(text, str):
+        text = str(text)
     cleaned = text.strip().strip("\"'").strip()
     cleaned = cleaned.replace('""', '"')
     while cleaned.startswith('"') and cleaned.endswith('"') and len(cleaned) > 1:

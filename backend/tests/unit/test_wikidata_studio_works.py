@@ -179,3 +179,18 @@ class TestMarcDictEntriesDoNotCrashBuild:
             return_native=False,
         )
         assert result["summary"]["manuscripts"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_empty_genre_dict_shells_do_not_crash_build(self) -> None:
+        """Legacy rows store ``[{"name": "", "field": "655"}]`` — must not crash."""
+        rec = {
+            **_fake_marc_record(),
+            "genres": [{"name": "", "field": "655"}],
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[],
+            entities_by_cn=None,
+            return_native=False,
+        )
+        assert result["summary"]["manuscripts"] >= 1

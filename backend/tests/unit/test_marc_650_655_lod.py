@@ -44,6 +44,15 @@ class TestMarc650655Rdf:
 
 
 class TestMarc650655Wikidata:
+    def test_prepare_strips_empty_genre_dict_shells(self) -> None:
+        rec = {
+            "_control_number": "EMPTY655",
+            "title": "כתב יד",
+            "genres": [{"name": "", "field": "655"}],
+        }
+        prepared = prepare_record_for_pipeline(rec)
+        assert prepared.get("genres") == []
+
     def test_p921_and_p136_from_marc(self) -> None:
         rec = prepare_record_for_pipeline(_sample_record())
         item = WikidataItemBuilder(reconciler=None).build_manuscript_item(rec)

@@ -2007,7 +2007,13 @@ class WikidataItemBuilder:
             )
 
         for genre in marc_genres:
-            label = str(genre).strip()
+            if isinstance(genre, dict):
+                from converter.transformer.subject_records import normalize_genre_entry  # noqa: PLC0415
+
+                norm = normalize_genre_entry(genre)
+                label = norm["term"] if norm else ""
+            else:
+                label = str(genre).strip()
             if not label:
                 continue
             qid = resolve_genre_qid(label, genre_entry=entry_by_term.get(label))

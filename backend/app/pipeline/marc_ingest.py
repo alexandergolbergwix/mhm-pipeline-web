@@ -446,8 +446,8 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
         from converter.transformer.subject_records import normalize_genre_entries  # noqa: PLC0415
 
         flat, normalized = normalize_genre_entries([], genre_entries=genre_entries)
-        if flat:
-            record["genres"] = flat
+        record["genres"] = flat
+        if normalized:
             record["genre_entries"] = normalized
 
     # ── Notes (500$a general note, 590$a local note, 541$a source) ─
@@ -852,13 +852,14 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
 
     if row.get("subjects"):
         row["subjects"] = normalize_subjects_list(list(row["subjects"]))
-    flat_genres, genre_entries = normalize_genre_entries(
-        list(row.get("genres") or []),
-        genre_entries=list(row.get("genre_entries") or []),
-    )
-    if flat_genres:
+    if row.get("genres") or row.get("genre_entries"):
+        flat_genres, genre_entries = normalize_genre_entries(
+            list(row.get("genres") or []),
+            genre_entries=list(row.get("genre_entries") or []),
+        )
+        # Always replace — legacy rows store empty 655 dict shells
+        # ``[{"name": "", "field": "655"}]`` that must not reach item_builder.
         row["genres"] = flat_genres
-    if genre_entries:
         row["genre_entries"] = genre_entries
     if row.get("related_places"):
         row["related_places"] = _normalize_related_places(list(row["related_places"]))

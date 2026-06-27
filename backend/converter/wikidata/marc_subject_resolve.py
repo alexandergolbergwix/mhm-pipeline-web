@@ -82,12 +82,27 @@ def _static_genre_qid(term: str) -> str | None:
     return GENRE_TO_QID.get(cleaned)
 
 
+def _genre_label_text(label: object) -> str:
+    """Coerce a MARC 655 label (str or legacy dict row) to plain text."""
+    if isinstance(label, str):
+        return clean_marc_label(label)
+    if isinstance(label, dict):
+        from converter.transformer.subject_records import normalize_genre_entry  # noqa: PLC0415
+
+        norm = normalize_genre_entry(label)
+        return norm["term"] if norm else ""
+    return clean_marc_label(str(label or ""))
+
+
 def instance_qids_from_genre_labels(labels: list[str]) -> list[str]:
     """Extra P31 QIDs implied by MARC 655 genre/form headings."""
     out: list[str] = []
     seen: set[str] = set()
     for label in labels:
-        qid = GENRE_LABEL_TO_INSTANCE_QID.get(clean_marc_label(label))
+        term = _genre_label_text(label)
+        if not term:
+            continue
+        qid = GENRE_LABEL_TO_INSTANCE_QID.get(term)
         if qid and qid not in seen:
             seen.add(qid)
             out.append(qid)
