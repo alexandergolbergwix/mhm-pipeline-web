@@ -206,11 +206,20 @@ async def _session_event_stream(
     # requires the eval-agent subprocess to be present (e.g. Heroku).
     # override_cache bypasses this check so every match goes through
     # Gemini fresh — but we still write the new verdicts back afterwards.
+    #
+    # Matches with no authority id are peeled off first: eval-agent's
+    # authority evaluator skips them (nothing to verify), but the
+    # curator still scoped them — emit a synthetic abstain so judged
+    # count matches scope_size.
     pre_cached: list[tuple[AuthorityMatch, RunRecord, dict[str, Any]]] = []
     uncached: list[tuple[AuthorityMatch, RunRecord]] = []
+    unverifiable: list[tuple[AuthorityMatch, RunRecord]] = []
     if not override_cache:
         async with session_scope() as pre_db:
             for match, record in matches:
+                if not _match_has_authority_id(match):
+                    unverifiable.append((match, record))
+                    continue
                 qs = _authority_verdict_query_summary(match, _judge_model)
                 hit = await read_from_inference_cache(
                     pre_db, kind="ai_verdict", query_summary=qs,
@@ -220,7 +229,11 @@ async def _session_event_stream(
                 else:
                     uncached.append((match, record))
     else:
-        uncached = list(matches)
+        for match, record in matches:
+            if not _match_has_authority_id(match):
+                unverifiable.append((match, record))
+            else:
+                uncached.append((match, record))
 
     # ── Resolve eval-agent root (only needed for uncached matches) ─────
     eval_agent_error: str | None = None
@@ -271,6 +284,7 @@ async def _session_event_stream(
             "scope_cn":    sorted({m.control_number for m, _ in matches}),
             "goal":        agent_actions.render_goal(action, n_candidates=len(matches)),
             "cache_hits":  len(pre_cached),
+            "unverifiable_no_id": len(unverifiable),
         },
     )
     persist_session_event(base, start_ev)
@@ -291,6 +305,15 @@ async def _session_event_stream(
             "from_inference_cache": True,
         }
         ev = AgentEvent(type="agent.verdict", payload=synthetic)
+        persist_session_event(base, ev)
+        yield ev
+
+    # ── Synthetic abstain for matches with no authority id ────────────
+    for match, _rec in unverifiable:
+        ev = AgentEvent(
+            type="agent.verdict",
+            payload=_synthetic_no_authority_verdict(match),
+        )
         persist_session_event(base, ev)
         yield ev
 
@@ -320,6 +343,7 @@ async def _session_event_stream(
                 tier_model=tier_model,
                 override_cache=override_cache,
                 rpm=action.rate_limit_rpm,
+                threshold=-1.0,
             ):
                 persist_session_event(base, ev)
                 yield ev
@@ -347,7 +371,12 @@ async def _session_event_stream(
             }
             for match, _rec, cached_payload in pre_cached
         ]
-        all_verdicts_to_persist = pre_cached_verdicts + on_disk_verdicts
+        unverifiable_verdicts = [
+            _synthetic_no_authority_verdict(match) for match, _rec in unverifiable
+        ]
+        all_verdicts_to_persist = (
+            pre_cached_verdicts + unverifiable_verdicts + on_disk_verdicts
+        )
         if all_verdicts_to_persist:
             try:
                 await _persist_ai_verdicts_to_matches(
@@ -376,6 +405,7 @@ async def _session_event_stream(
                 "scope_size": len(matches),
                 "cache_hits": len(pre_cached),
                 "fresh_verdicts": len(on_disk_verdicts),
+                "unverifiable_no_id": len(unverifiable),
                 "uncached_skipped": len(uncached) if eval_agent_error else 0,
                 "outcome": "partial" if eval_agent_error and uncached else "complete",
             },
@@ -772,6 +802,39 @@ async def _fetch_matches(
             )
         out.append((m, rec))
     return out
+
+
+def _match_has_authority_id(m: AuthorityMatch) -> bool:
+    """True when the match resolved to an id eval-agent can verify."""
+    payload = dict(m.payload or {})
+    return bool(
+        m.mazal_id
+        or m.viaf_id
+        or m.wikidata_qid
+        or payload.get("kima_id")
+    )
+
+
+def _synthetic_no_authority_verdict(match: AuthorityMatch) -> dict[str, Any]:
+    """Abstain verdict for scoped rows with no authority identifier."""
+    return {
+        "candidate": {**_match_to_desktop_shape(match), "_match_id": str(match.id)},
+        "verdict": {
+            "overall": "abstain",
+            "name_ok": None,
+            "type_ok": None,
+            "role_ok": None,
+            "reasoning": (
+                "No Mazal, VIAF, or Wikidata identifier is attached to this "
+                "match — there is no authority record for the judge to verify."
+            ),
+        },
+        "judge_id": "system:no_authority_id",
+        "evaluator_id": "authority",
+        "record_id": match.control_number,
+        "sub_type": match.role or "",
+        "synthetic_reason": "no_authority_id",
+    }
 
 
 def _match_to_desktop_shape(m: AuthorityMatch) -> dict[str, Any]:

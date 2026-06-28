@@ -159,6 +159,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             "cache_hits": session_summary.get("cache_hits"),
             "fresh_verdicts": session_summary.get("fresh_verdicts"),
             "uncached_skipped": session_summary.get("uncached_skipped"),
+            "unverifiable_no_id": session_summary.get("unverifiable_no_id"),
             "session_snapshot": session_snapshot,
         },
         progress={

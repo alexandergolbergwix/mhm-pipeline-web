@@ -84,9 +84,12 @@ export function useVerifyJob({
         || outcome === "partial"
         || (scopeTotal > 0 && judged < scopeTotal)
       ) {
+        const partialHint = kind === "ner_verify"
+          ? "some entities may have been below the confidence threshold or errored"
+          : "some candidates could not be judged (eval-agent error)";
         const msg = skipped > 0
           ? `Verified ${judged} of ${scopeTotal || judged}. ${skipped} were skipped because the eval-agent could not run on this server.`
-          : `Verified ${judged} of ${scopeTotal} — some candidates may have been below the confidence threshold or errored.`;
+          : `Verified ${judged} of ${scopeTotal} — ${partialHint}.`;
         onFailedRef.current?.(msg);
       }
       onCompleteRef.current?.();
