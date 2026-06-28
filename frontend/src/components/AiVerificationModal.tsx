@@ -28,6 +28,7 @@ import {
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {verdictStorageKey} from "@/utils/verdictKey";
+import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
 import {hydrateVerifySession} from "@/utils/verifySessionHydrate";
 import {Glass} from "@/components/glass";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
@@ -72,7 +73,12 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
   const [showingHistorical, setShowingHistorical] = useState(false);
 
   const loadSession = useCallback(async (sessionId: string) => {
-    const full = await AiVerify.session(runId, sessionId);
+    const full = await fetchVerifySessionWithJobFallback(
+      runId,
+      sessionId,
+      "authority_verify",
+      AiVerify.session,
+    );
     const hydrated = hydrateVerifySession(full, (row) =>
       verdictStorageKey({type: "agent.verdict", ...row}),
     );
@@ -119,15 +125,18 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
             action_id:  newest.action_id,
           });
           try {
-            const full = await AiVerify.session(runId, newest.session_id);
+            const full = await fetchVerifySessionWithJobFallback(
+              runId,
+              newest.session_id,
+              "authority_verify",
+              AiVerify.session,
+            );
             if (cancelled) return;
-            const seeded: Record<string, AgentEvent> = {};
-            for (const v of full.verdicts ?? []) {
-              const ev: AgentEvent = {type: "agent.verdict", ...v};
-              seeded[verdictStorageKey(ev)] = ev;
-            }
-            if (Object.keys(seeded).length > 0) {
-              setVerdicts(seeded);
+            const hydrated = hydrateVerifySession(full, (row) =>
+              verdictStorageKey({type: "agent.verdict", ...row}),
+            );
+            if (Object.keys(hydrated.verdicts).length > 0) {
+              setVerdicts(hydrated.verdicts);
               setShowingHistorical(true);
             }
           } catch {
@@ -245,7 +254,6 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
             that manuscript. */}
         <VerdictsTable
           verdicts={verdicts}
-          runId={runId}
           onOpenMarc={(controlNumber) => setMarcPopup(controlNumber)}
           onApplyFix={async (matchId, target, value) => {
             await Runs.editMatch(runId, matchId, {[target]: value});

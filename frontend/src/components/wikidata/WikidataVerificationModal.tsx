@@ -7,6 +7,7 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 
 import {applyWikidataFixes, type WikidataSuggestedFix} from "@/utils/wikidataAutofix";
+import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
 import {
   hydrateVerifySession,
   mergeFlowWithJobProgress,
@@ -56,7 +57,12 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
   const [reloadKey, setReloadKey] = useState(0);
 
   const loadSession = useCallback(async (sessionId: string) => {
-    const full = await WikidataVerify.session(runId, sessionId);
+    const full = await fetchVerifySessionWithJobFallback(
+      runId,
+      sessionId,
+      "wikidata_verify",
+      WikidataVerify.session,
+    );
     const hydrated = hydrateVerifySession(full, itemIdFromVerdict);
     setEvents(hydrated.events);
     setVerdicts(hydrated.verdicts);
@@ -295,7 +301,6 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
 
         <VerdictsTable
           verdicts={verdicts}
-          runId={runId}
           onApplyFixes={(localId, fixes) => handleApplyFixes(localId, fixes)}
         />
 

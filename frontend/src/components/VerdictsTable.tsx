@@ -65,10 +65,16 @@ export interface VerdictsTableProps {
   /** Called when the user clicks the record_id (opens MARC popup). */
   onOpenMarc?: (controlNumber: string) => void;
   /**
-   * When provided, search and export are server-side (debounced).
-   * When omitted, falls back to client-side filter over `verdicts`.
+   * Run id for server-side export URLs only. Does NOT switch the table
+   * to /ai-verify/results — live verify modals always render `verdicts`.
    */
   runId?: string;
+  /**
+   * When true (and runId set, and no in-memory verdicts), search hits
+   * GET /ai-verify/results. Off by default — verify modals pass only
+   * the live session map.
+   */
+  serverSearch?: boolean;
   /**
    * Called when the user clicks the Fix button on a verdict row.
    * `localId` is the item/candidate local id, `target` is the field
@@ -92,13 +98,10 @@ interface ColumnFilterPopupState {
 
 
 export function VerdictsTable(props: VerdictsTableProps) {
-  const { verdicts, onOpenMarc, runId, onApplyFix, onApplyFixes } = props;
+  const {verdicts, onOpenMarc, runId, serverSearch = false, onApplyFix, onApplyFixes} = props;
 
   const rows = useMemo(() => Object.values(verdicts), [verdicts]);
-  // Live verify modals seed in-memory verdicts from the session GET.
-  // Server-side /ai-verify/results reads per-dyno disk and is often empty
-  // on Heroku — never let it shadow a non-empty live session.
-  const useServer = runId !== undefined && rows.length === 0;
+  const useServer = Boolean(runId && serverSearch && rows.length === 0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [overallFilter, setOverallFilter] = useState<Overall | "all">("all");
   const [search, setSearch] = useState("");
@@ -191,7 +194,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
 
   // Fetch from server whenever search/filter changes (server path).
   useEffect(() => {
-    if (!useServer) return;
+    if (!useServer || !runId) return;
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -257,7 +260,8 @@ export function VerdictsTable(props: VerdictsTableProps) {
 
   // Apply column filters and sorting to whichever row set is active.
   const visible = useMemo(() => {
-    let base = useServer ? (serverRows ?? rows) : clientVisible;
+    const serverBase = serverRows && serverRows.length > 0 ? serverRows : rows;
+    let base = useServer ? serverBase : clientVisible;
 
     // Per-column filters (AND logic)
     for (const [colKey, allowed] of Object.entries(columnFilters) as [SortKey, Set<string>][]) {

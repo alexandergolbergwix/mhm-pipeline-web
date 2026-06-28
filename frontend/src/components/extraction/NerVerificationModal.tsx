@@ -33,8 +33,11 @@ import {
   setAiVerdictCache,
 } from "@/cache/extractionCache";
 import {entityVerdictFingerprint} from "@/cache/verdictKey";
+import {verdictStorageKey} from "@/utils/verdictKey";
+import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
+import {hydrateVerifySession} from "@/utils/verifySessionHydrate";
 import {
-  AgentFlowDiagram, makeInitialFlowState, reduceFlow, type FlowState,
+  AgentFlowDiagram, makeInitialFlowState, type FlowState,
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
@@ -93,16 +96,20 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
   const [reloadKey, setReloadKey] = useState(0);
 
   const loadSession = useCallback(async (sessionId: string) => {
-    const full = await NerVerify.session(runId, sessionId);
-    const seeded: Record<string, AgentEvent> = {};
-    const evs: AgentEvent[] = [];
-    for (const v of full.verdicts ?? []) {
-      const cand = (v.candidate ?? {}) as Record<string, unknown>;
+    const full = await fetchVerifySessionWithJobFallback(
+      runId,
+      sessionId,
+      "ner_verify",
+      NerVerify.session,
+    );
+    const hydrated = hydrateVerifySession(full, (row) => {
+      const cand = (row.candidate ?? {}) as Record<string, unknown>;
       const entityId = String(cand._entity_id ?? cand.record_id ?? "");
-      if (!entityId) continue;
-      const ev: AgentEvent = {type: "agent.verdict", ...v};
-      evs.push(ev);
-      seeded[entityId] = ev;
+      if (entityId) return entityId;
+      return verdictStorageKey({type: "agent.verdict", ...row});
+    });
+    for (const ev of Object.values(hydrated.verdicts)) {
+      const cand = (ev.candidate ?? {}) as Record<string, unknown>;
       void (async () => {
         try {
           const fp = await entityVerdictFingerprint({
@@ -121,13 +128,9 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
         }
       })();
     }
-    setEvents(evs);
-    setVerdicts(seeded);
-    setFlow((prev) => {
-      let next = prev;
-      for (const ev of evs) next = reduceFlow(next, ev);
-      return next;
-    });
+    setEvents(hydrated.events);
+    setVerdicts(hydrated.verdicts);
+    setFlow(hydrated.flow);
   }, [runId, userId]);
 
   const handleVerifyFailed = useCallback((msg: string) => setError(msg), []);
@@ -175,16 +178,21 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
             action_id:  newest.action_id,
           });
           try {
-            const full = await NerVerify.session(runId, newest.session_id);
+            const full = await fetchVerifySessionWithJobFallback(
+              runId,
+              newest.session_id,
+              "ner_verify",
+              NerVerify.session,
+            );
             if (cancelled) return true;
-            const seeded: Record<string, AgentEvent> = {};
-            for (const v of full.verdicts ?? []) {
-              const cand = (v.candidate ?? {}) as Record<string, unknown>;
+            const hydrated = hydrateVerifySession(full, (row) => {
+              const cand = (row.candidate ?? {}) as Record<string, unknown>;
               const entityId = String(cand._entity_id ?? cand.record_id ?? "");
-              if (entityId) seeded[entityId] = { type: "agent.verdict", ...v };
-            }
-            if (Object.keys(seeded).length > 0) {
-              setVerdicts(seeded);
+              if (entityId) return entityId;
+              return verdictStorageKey({type: "agent.verdict", ...row});
+            });
+            if (Object.keys(hydrated.verdicts).length > 0) {
+              setVerdicts(hydrated.verdicts);
               setShowingHistorical(true);
             }
           } catch {
