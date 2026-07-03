@@ -16,25 +16,25 @@ project-scoped operations — this endpoint has no project to scope to.
 from __future__ import annotations
 
 import logging
+import uuid
+from typing import Any
 
-from cryptography.exceptions import InvalidTag
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
-from app.crypto import secrets as secrets_mod
 from app.db import get_session
 from app.models.api_key import ApiKey
+from app.models.run_job import JOB_KIND_HMO_SCHEMA_BOOTSTRAP
 from app.pipeline import hmo_schema_bootstrap as pipeline
+from app.pipeline.run_job_params import prepare_job_params
+from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
+from app.routers.runs import _lookup_run_with_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/hmo-wikibase-schema", tags=["hmo-wikibase-schema"])
-
-# Mirrors hmo_studio.py's default bot name — operators create the bot
-# password at https://mhm-hmo.wikibase.cloud/wiki/Special:BotPasswords.
-_DEFAULT_BOT_NAME = "mhm-pipeline"
 
 
 class SchemaStatusResponse(BaseModel):
@@ -73,6 +73,13 @@ class SchemaBootstrapRequest(BaseModel):
                     "user to have both wikibase_cloud_bot_username and "
                     "wikibase_cloud_bot_password stored in Settings.",
     )
+    run_id: uuid.UUID | None = Field(
+        default=None,
+        description="Required when dry_run=False. The schema is global, "
+                    "not tied to any run — this only anchors the background "
+                    "job (which needs a run_id for its progress-polling row) "
+                    "to whichever run's page the curator was on.",
+    )
 
 
 @router.get("/status", response_model=SchemaStatusResponse)
@@ -93,64 +100,68 @@ async def get_schema_status(
     )
 
 
-@router.post("/bootstrap", response_model=SchemaBootstrapResponse)
+@router.post("/bootstrap")
 async def bootstrap_schema(
     payload: SchemaBootstrapRequest,
+    response: Response,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> SchemaBootstrapResponse:
+) -> SchemaBootstrapResponse | dict[str, Any]:
     """Create every missing HMO ontology class/property on the Wikibase Cloud.
 
-    Dry-run (the default) requires no credentials. A live run requires
-    both bot username + password in the user's encrypted-secret store.
+    Dry-run (the default) is a fast, read-only pass with no network calls —
+    it stays synchronous and returns the full result immediately.
+
+    A live run makes one sequential write per missing class/property
+    (~380 today), comfortably over Heroku's 30s HTTP timeout — it spawns a
+    ``run_jobs`` background job and returns ``{job_id, ...}`` right away;
+    poll ``GET /runs/{run_id}/jobs/{job_id}`` (or subscribe to the
+    project's WebSocket room) for progress. Requires both bot username +
+    password in the user's encrypted-secret store, and a ``run_id`` to
+    anchor the job row to (the schema itself is global).
     """
-    writer = None
-    if not payload.dry_run:
-        bot_username = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_username")
-        bot_password = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_password")
-        missing = [
-            name for name, val in (
-                ("wikibase_cloud_bot_username", bot_username),
-                ("wikibase_cloud_bot_password", bot_password),
-            )
-            if not val
-        ]
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Add Wikibase bot credentials in Settings → "
-                    "Credentials, then retry. Missing: " + ", ".join(missing)
-                ),
-            )
-        from converter.wikibase.cloud_client import (  # noqa: PLC0415
-            WikibaseBotCredentials,
-            WikibaseCloudClient,
-            WikibaseCloudWriter,
+    if payload.dry_run:
+        result = await pipeline.bootstrap_schema(db, writer=None, dry_run=True)
+        pipeline.cache_schema_bootstrap_report(result)
+        return SchemaBootstrapResponse(
+            dry_run=result.dry_run,
+            created=result.created,
+            skipped=result.skipped,
+            failed=result.failed,
+            would_create=result.would_create,
+            entries=[SchemaBootstrapEntryDto(**entry.__dict__) for entry in result.entries],
         )
 
-        writer = WikibaseCloudWriter(
-            WikibaseCloudClient.config_for_mhm_hmo_cloud(),
-            WikibaseBotCredentials(
-                username=bot_username or "",
-                bot_name=_DEFAULT_BOT_NAME,
-                password=bot_password or "",
-            ),
+    if payload.run_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="run_id is required for a live bootstrap (anchors the background job).",
         )
+    run = await _lookup_run_with_access(db, payload.run_id, auth, write=True)
 
-    result = await pipeline.bootstrap_schema(db, writer=writer, dry_run=payload.dry_run)
-    # Snapshot to disk so the eval-agent's hmo_wikibase_schema evaluator
-    # can judge this pass (`eval-agent run --pipeline-output
-    # backend/state/hmo_wikibase_schema --evaluators hmo_wikibase_schema`).
-    pipeline.cache_schema_bootstrap_report(result)
-    return SchemaBootstrapResponse(
-        dry_run=result.dry_run,
-        created=result.created,
-        skipped=result.skipped,
-        failed=result.failed,
-        would_create=result.would_create,
-        entries=[SchemaBootstrapEntryDto(**entry.__dict__) for entry in result.entries],
+    params = await prepare_job_params(
+        db, auth, run_id=payload.run_id, kind=JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
+        params={"dry_run": False},
     )
+    try:
+        job = await create_job(
+            db,
+            project_id=run.project_id,
+            run_id=payload.run_id,
+            kind=JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
+            params=params,
+            created_by=auth.user.id,
+        )
+    except ActiveJobError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "a schema bootstrap job is already running",
+                "job_id": str(exc.job_id),
+            },
+        ) from exc
+    response.status_code = status.HTTP_201_CREATED
+    return serialise_job(job)
 
 
 # ── Helpers (mirrors hmo_studio.py's credential-unwrap pattern) ─────────
@@ -165,30 +176,3 @@ async def _has_user_secret(db: AsyncSession, auth: AuthContext, key_name: str) -
         )
     ).scalar_one_or_none()
     return row is not None
-
-
-async def _unwrap_user_secret(
-    db: AsyncSession, auth: AuthContext, key_name: str,
-) -> str | None:
-    row = (
-        await db.execute(
-            select(ApiKey).where(
-                ApiKey.user_id == auth.user.id, ApiKey.key_name == key_name,
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        return None
-    try:
-        return secrets_mod.unwrap_secret(
-            secrets_mod.WrappedSecret(
-                ciphertext=row.ciphertext,
-                ciphertext_nonce=row.ciphertext_nonce,
-                dek_wrapped=row.dek_wrapped,
-                dek_wrap_nonce=row.dek_wrap_nonce,
-            ),
-            kek=auth.kek,
-        )
-    except InvalidTag:
-        logger.warning("Failed to unwrap %s for user %s", key_name, auth.user.id)
-        return None

@@ -16,6 +16,10 @@ interface RunJobsState {
   ensurePolling: () => void;
   stopPolling: () => void;
   cancelJob: (runId: string, jobId: string) => Promise<void>;
+  /** Merge one job snapshot in immediately (e.g. from a WebSocket push),
+   *  without waiting for the next 2s poll tick. The next `refresh()` still
+   *  wins — this is a latency improvement, not a new source of truth. */
+  upsertJob: (job: RunJobSnapshot) => void;
   /** Imperative getter only — do not use inside `useRunJobs(selector)`. */
   jobForRun: (runId: string, kind: string) => RunJobSnapshot | null;
   /** Imperative getter only — do not use inside `useRunJobs(selector)`. */
@@ -71,6 +75,10 @@ export const useRunJobs = create<RunJobsState>((set, get) => ({
   async cancelJob(runId, jobId) {
     await RunJobs.cancel(runId, jobId);
     await get().refresh();
+  },
+
+  upsertJob(job) {
+    set((s) => ({jobs: {...s.jobs, [job.id]: job}}));
   },
 
   jobForRun(runId, kind) {

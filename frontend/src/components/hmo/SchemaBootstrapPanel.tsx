@@ -3,20 +3,34 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/api/client";
 import {
   HmoWikibaseSchema,
+  isSchemaBootstrapJob,
   type HmoSchemaBootstrapResult,
   type HmoSchemaStatus,
 } from "@/api/hmoWikibaseSchema";
+import type { RunJobSnapshot } from "@/api/runJobs";
 import { Glass, GlassPill } from "@/components/glass";
+import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
+
+interface SchemaBootstrapPanelProps {
+  /** Anchors the background job for a live bootstrap (dry-run doesn't need one). */
+  runId?: string;
+}
 
 /**
  * Global (not per-run) schema bootstrap panel: creates every missing
  * HMO ontology class/property on mhm-hmo.wikibase.cloud. Lives above
  * the per-run panels in HmoStudio.tsx since the schema is shared
  * across every run (Phase 3, dev-docs/hmo-wikibase-studio-plan.md).
+ *
+ * A live bootstrap makes ~380 sequential external calls — too slow for one
+ * HTTP request — so the backend runs it as a `run_jobs` background job and
+ * this panel tracks its progress via `useRunJobAttachment` (poll + live
+ * WebSocket push), rendering a progress bar that survives tab navigation.
  */
-export function SchemaBootstrapPanel() {
+export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
   const [status, setStatus] = useState<HmoSchemaStatus | null>(null);
   const [result, setResult] = useState<HmoSchemaBootstrapResult | null>(null);
+  const [job, setJob] = useState<RunJobSnapshot | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,13 +47,32 @@ export function SchemaBootstrapPanel() {
     void refresh();
   }, [refresh]);
 
+  const { activeJob, setTrackedJobId, ensureJobPolling } = useRunJobAttachment(
+    runId,
+    "hmo_schema_bootstrap",
+    (j) => {
+      setJob(j);
+      if (j.status === "succeeded" || j.status === "failed" || j.status === "cancelled") {
+        void refresh();
+      }
+    },
+  );
+
+  const liveJob = activeJob ?? job;
+
   async function doBootstrap() {
     setBusy(true);
     setError(null);
     try {
-      const r = await HmoWikibaseSchema.bootstrap(dryRun);
-      setResult(r);
-      await refresh();
+      const r = await HmoWikibaseSchema.bootstrap(dryRun, runId);
+      if (isSchemaBootstrapJob(r)) {
+        setJob(r);
+        setTrackedJobId(r.id);
+        ensureJobPolling();
+      } else {
+        setResult(r);
+        await refresh();
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
@@ -52,6 +85,7 @@ export function SchemaBootstrapPanel() {
     !!status &&
     status.mapped_classes === status.total_classes &&
     status.mapped_properties === status.total_properties;
+  const jobRunning = liveJob?.status === "queued" || liveJob?.status === "running";
 
   return (
     <Glass as="section" className="p-6 space-y-3">
@@ -69,7 +103,9 @@ export function SchemaBootstrapPanel() {
             Wikibase Item/Property on{" "}
             <code className="text-xs">mhm-hmo.wikibase.cloud</code>. One
             ontology, one Wikibase instance — shared by every run.
-            Idempotent: re-running only creates what&apos;s missing.
+            Idempotent: re-running only creates what&apos;s missing. A live
+            run happens in the background — you can navigate away and come
+            back without losing progress.
           </p>
         </div>
         {status && (
@@ -96,16 +132,16 @@ export function SchemaBootstrapPanel() {
             type="checkbox"
             checked={dryRun}
             onChange={(e) => setDryRun(e.target.checked)}
-            disabled={busy}
+            disabled={busy || jobRunning}
           />
           Dry run
         </label>
         <button
           onClick={doBootstrap}
-          disabled={busy || (!dryRun && !credsReady)}
+          disabled={busy || jobRunning || (!dryRun && (!credsReady || !runId))}
           className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}
         >
-          {busy
+          {busy || jobRunning
             ? dryRun
               ? "Previewing…"
               : "Bootstrapping…"
@@ -118,10 +154,61 @@ export function SchemaBootstrapPanel() {
             Add Wikibase bot credentials in Settings first.
           </span>
         )}
+        {!dryRun && credsReady && !runId && (
+          <span className="text-xs muted">
+            Open this panel from a run to start a live bootstrap.
+          </span>
+        )}
       </div>
+
+      {liveJob && <BootstrapJobProgress job={liveJob} />}
 
       {result && <BootstrapResultSummary result={result} />}
     </Glass>
+  );
+}
+
+function BootstrapJobProgress({ job }: { job: RunJobSnapshot }) {
+  const { processed, total, message } = job.progress;
+  const pct = total && total > 0 ? Math.round(((processed ?? 0) / total) * 100) : 0;
+  const done = job.status === "succeeded" || job.status === "failed" || job.status === "cancelled";
+
+  return (
+    <div className="border-t border-white/5 pt-3 space-y-2">
+      <div className="flex items-baseline justify-between flex-wrap gap-2 text-sm">
+        <p>
+          <span className="muted">
+            {job.status === "succeeded" ? "Bootstrap complete:" :
+             job.status === "failed" ? "Bootstrap failed:" :
+             job.status === "cancelled" ? "Bootstrap cancelled:" :
+             "Bootstrapping…"}
+          </span>{" "}
+          {message && <span className="text-ink">{message}</span>}
+        </p>
+        {!done && total ? (
+          <span className="muted text-xs">{processed ?? 0} / {total}</span>
+        ) : null}
+      </div>
+      {!done && (
+        <div className="h-1.5 w-full rounded-full bg-white/8 overflow-hidden">
+          <div
+            className="h-full bg-biu-sky transition-[width] duration-300"
+            style={{ width: `${Math.min(100, Math.max(pct, total ? 2 : 100))}%` }}
+          />
+        </div>
+      )}
+      {job.status === "failed" && job.error && (
+        <p className="text-xs text-danger">{job.error}</p>
+      )}
+      {job.status === "succeeded" && job.result && (
+        <p className="text-xs muted">
+          created {String(job.result.created ?? 0)} · skipped {String(job.result.skipped ?? 0)}
+          {Number(job.result.failed ?? 0) > 0 && (
+            <> · <span className="text-danger">failed {String(job.result.failed)}</span></>
+          )}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -8,13 +8,23 @@
 
 import { useEffect, useRef } from "react";
 
+import type { RunJobSnapshot } from "@/api/runJobs";
+
+/**
+ * The broker fans out two message shapes on the same channel, discriminated
+ * by `type`: versioning events (`event_id`/`actor_id`/`created_at`/`payload`)
+ * and `run_job_update` (`job`, a full RunJobSnapshot — see
+ * run_job_service.py::_notify_job_update). Fields from the shape that
+ * doesn't match `type` are simply absent, not wrong — check `type` first.
+ */
 export interface ProjectEventMessage {
   project_id: string;
-  event_id: string;
   type: string;
-  actor_id: string | null;
-  created_at: string;
-  payload: Record<string, unknown>;
+  event_id?: string;
+  actor_id?: string | null;
+  created_at?: string;
+  payload?: Record<string, unknown>;
+  job?: RunJobSnapshot;
 }
 
 export function useProjectEvents(

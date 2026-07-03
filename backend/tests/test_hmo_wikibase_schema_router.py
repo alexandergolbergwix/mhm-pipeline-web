@@ -69,11 +69,54 @@ async def test_dry_run_bootstrap_needs_no_credentials(auth_user) -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_bootstrap_without_credentials_is_rejected(auth_user) -> None:
+async def test_live_bootstrap_without_run_id_is_rejected(auth_user) -> None:
     _user, client = auth_user
     response = await client.post(
         "/api/hmo-wikibase-schema/bootstrap", json={"dry_run": False}
     )
     assert response.status_code == 400
+    assert "run_id" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_live_bootstrap_without_credentials_is_rejected(sample_run) -> None:
+    client = sample_run["client"]
+    response = await client.post(
+        "/api/hmo-wikibase-schema/bootstrap",
+        json={"dry_run": False, "run_id": str(sample_run["run_id"])},
+    )
+    assert response.status_code == 400
     assert "wikibase_cloud_bot_username" in response.json()["detail"]
     assert "wikibase_cloud_bot_password" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_live_bootstrap_with_credentials_spawns_a_job(
+    sample_run, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # This only checks the HTTP-response contract (job created, plaintext
+    # creds never echoed back) — never actually run the background task,
+    # which would make a real network call to mhm-hmo.wikibase.cloud.
+    from app.pipeline import run_job_service
+
+    monkeypatch.setattr(run_job_service, "spawn_job", lambda job_id: None)
+
+    client = sample_run["client"]
+    # Store via the real Settings endpoint so the wrapped secret's KEK
+    # matches what the session presents (prepare_job_params unwraps it).
+    for key_name, value in (
+        ("wikibase_cloud_bot_username", "bot@hmo"),
+        ("wikibase_cloud_bot_password", "s3cret"),
+    ):
+        resp = await client.put(f"/api/me/api-keys/{key_name}", json={"value": value})
+        assert resp.status_code == 200, resp.text
+
+    response = await client.post(
+        "/api/hmo-wikibase-schema/bootstrap",
+        json={"dry_run": False, "run_id": str(sample_run["run_id"])},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["kind"] == "hmo_schema_bootstrap"
+    assert body["status"] in ("queued", "running", "succeeded", "failed")
+    assert "wikibase_cloud_bot_username" not in (body.get("params") or {})

@@ -18,6 +18,8 @@ import {Glass, GlassPill} from "@/components/glass";
 import {SchemaBootstrapPanel} from "@/components/hmo/SchemaBootstrapPanel";
 import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
 import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
+import {useProjectEvents} from "@/api/realtime";
+import {useRunJobs} from "@/stores/runJobs";
 
 
 type Busy = null | "build" | "upload" | "coverage";
@@ -39,6 +41,7 @@ export default function HmoStudioRoute() {
   const [editCn, setEditCn] = useState<string | null>(null);
   const [showRecordPicker, setShowRecordPicker] = useState(false);
   const [itemBuildToken, setItemBuildToken] = useState(0);
+  const [projectId, setProjectId] = useState<string | undefined>(undefined);
 
   // ── refreshers ─────────────────────────────────────────────────────────
 
@@ -73,6 +76,25 @@ export default function HmoStudioRoute() {
       .catch(() => { /* non-fatal */ });
     return () => { cancelled = true; };
   }, [runId]);
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    Runs.get(runId)
+      .then((run) => { if (!cancelled) setProjectId(run.project_id); })
+      .catch(() => { /* non-fatal — WS push just stays disabled */ });
+    return () => { cancelled = true; };
+  }, [runId]);
+
+  // Live job progress: the schema-bootstrap background job pushes updates
+  // through the project's existing WebSocket room (see run_job_service.py
+  // ::_notify_job_update). Polling in useRunJobAttachment stays the source
+  // of truth; this just shaves off the up-to-2s poll latency.
+  useProjectEvents(projectId, (msg) => {
+    if (msg.type === "run_job_update" && msg.job) {
+      useRunJobs.getState().upsertJob(msg.job);
+    }
+  });
 
   // Auto-load coverage when the RDF is present and we haven't loaded it yet.
   useEffect(() => {
@@ -149,7 +171,7 @@ export default function HmoStudioRoute() {
         )}
 
         {/* Ontology schema bootstrap (global, shared across every run) */}
-        <SchemaBootstrapPanel />
+        <SchemaBootstrapPanel runId={runId} />
 
         {/* Coverage */}
         <Glass as="section" className="p-6 space-y-3">

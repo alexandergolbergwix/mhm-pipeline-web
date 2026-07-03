@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
@@ -17,6 +18,7 @@ from app.models.run_job import (
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_EXTRACTION,
+    JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
@@ -197,6 +199,11 @@ async def _execute_job(job_id: uuid.UUID) -> None:
         elif kind == JOB_KIND_WIKIDATA_UPLOAD:
             from app.pipeline.wikidata_upload_job import run_wikidata_upload_job  # noqa: PLC0415
             await run_wikidata_upload_job(job_id)
+        elif kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP:
+            from app.pipeline.hmo_schema_bootstrap_job import (  # noqa: PLC0415
+                run_hmo_schema_bootstrap_job,
+            )
+            await run_hmo_schema_bootstrap_job(job_id)
         else:
             await _fail_job(job_id, f"unknown job kind {kind!r}")
     except Exception as exc:  # noqa: BLE001
@@ -234,6 +241,7 @@ async def finish_job(
         if progress is not None:
             job.progress = progress
         await db.commit()
+        await _notify_job_update(db, job)
 
 
 async def update_job_progress(job_id: uuid.UUID, progress: dict[str, Any]) -> None:
@@ -243,6 +251,45 @@ async def update_job_progress(job_id: uuid.UUID, progress: dict[str, Any]) -> No
             return
         job.progress = progress
         await db.commit()
+        await _notify_job_update(db, job)
+
+
+async def _notify_job_update(db: AsyncSession, job: RunJob) -> None:
+    """Push a live update through the existing project WebSocket broker.
+
+    Reuses ``app.realtime``'s Postgres NOTIFY channel (no new
+    infrastructure) so any client with the project's WebSocket room open
+    sees job progress immediately instead of waiting for the next poll
+    tick. Polling (``GET /runs/{run_id}/jobs/{job_id}``) stays as the
+    source of truth and fallback — this is a latency improvement, not a
+    replacement.
+
+    ``pg_notify`` is Postgres-only — the test suite (and any future
+    non-Postgres dev setup) runs on SQLite, which has no such function.
+    Skip cleanly there rather than raising into a session shared by the
+    caller (an unhandled DBAPI error here would leave that connection's
+    transaction aborted for whatever runs next on it).
+    """
+    from app.db import engine  # noqa: PLC0415
+    from app.realtime import NOTIFY_CHANNEL  # noqa: PLC0415
+
+    if engine.dialect.name != "postgresql":
+        return
+
+    payload = {
+        "type": "run_job_update",
+        "project_id": str(job.project_id),
+        "job": serialise_job(job),
+    }
+    try:
+        await db.execute(
+            text("SELECT pg_notify(:channel, :payload)"),
+            {"channel": NOTIFY_CHANNEL, "payload": json.dumps(payload, default=str)},
+        )
+        await db.commit()
+    except Exception:  # noqa: BLE001 — a missed live-push must never fail the job
+        logger.debug("failed to publish run_job_update notify", exc_info=True)
+        await db.rollback()
 
 
 async def is_cancel_requested(job_id: uuid.UUID) -> bool:
