@@ -110,6 +110,7 @@ from converter.wikidata.property_mapping import (
     date_to_wikidata,
     extract_viaf_id,
     extract_wikidata_qid,
+    hmo_wikibase_entity_url,
     hmo_wikibase_page_url,
     nli_j9u_id,
     nli_reference,
@@ -940,7 +941,11 @@ class WikidataItemBuilder:
         items = builder.build_all(records)
     """
 
-    def __init__(self, reconciler: object | None = None) -> None:
+    def __init__(
+        self,
+        reconciler: object | None = None,
+        hmo_instance_qids: dict[str, str] | None = None,
+    ) -> None:
         """Initialize the builder.
 
         Args:
@@ -952,7 +957,16 @@ class WikidataItemBuilder:
                 on Wikidata. Bug fix 2026-04-15 (web audit Fix #2).
                 Pass None to disable SPARQL reconciliation (faster offline
                 builds; falls back to KNOWN_WORK_QIDS hardcoded mapping).
+            hmo_instance_qids: Optional ``control_number -> live HMO
+                Wikibase QID`` map (Phase 6 of the HMO Wikibase Studio
+                buildout). When a manuscript's control number is present,
+                P2888/P973 point at the real ``/wiki/Item:Q<n>`` page
+                instead of the static slug URL. Callers with database
+                access (``app.pipeline.wikidata_studio``) build this dict
+                once per build from ``wikibase_entity_mappings`` — this
+                class stays DB-agnostic.
         """
+        self._hmo_instance_qids = hmo_instance_qids or {}
         self._person_items: dict[str, WikidataItem] = {}
         self._person_qids: dict[str, str] = {}  # person_key -> resolved Wikidata QID
         # Persons that the notability gate or role-descriptor gate rejected.
@@ -1006,11 +1020,17 @@ class WikidataItemBuilder:
         # project-owned page in mhm-hmo.wikibase.cloud. We deliberately do
         # NOT emit the synthetic HMO graph IRI (record["hmo_iri"]) here —
         # that namespace is for internal TTL traversal and is not hosted
-        # on any web server (audit response 2026-05-17). The wikibase.cloud
-        # slug URL is project-owned and becomes resolvable once Phase 3
-        # uploads the HMO entities and creates the corresponding redirect
-        # pages. We emit only when a control number is available.
-        wikibase_url = hmo_wikibase_page_url(control_number)
+        # on any web server (audit response 2026-05-17). We emit only
+        # when a control number is available.
+        #
+        # Phase 6 (HMO Wikibase Studio, dev-docs/hmo-wikibase-studio-plan.md):
+        # once this manuscript has a real Phase 5 upload, point at its
+        # actual `/wiki/Item:Q<n>` page instead of the static slug URL —
+        # the slug is a pre-upload placeholder, not a permanent redirect
+        # target (no such redirect mechanism is implemented).
+        wikibase_url = hmo_wikibase_entity_url(
+            control_number, self._hmo_instance_qids
+        ) or hmo_wikibase_page_url(control_number)
         if wikibase_url:
             item.statements.append(
                 WikidataStatement(

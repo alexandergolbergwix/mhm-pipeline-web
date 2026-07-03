@@ -6,16 +6,25 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.namespace import OWL, RDF, RDFS
 from rdflib.term import Node
 
 from converter.config.namespaces import CIDOC, HM, LRMOO
+from converter.wikibase._ids import local_name, safe_local_id
 from converter.wikibase.models import (
     StatementValue,
     WikibaseEntityDraft,
     WikibaseStatementDraft,
+)
+from converter.wikibase.resolved_models import (
+    DeferredItemLink,
+    ResolvedClaim,
+    ResolvedWikibaseEntity,
+    SchemaMappingEntry,
+    UnmappedOntologyUriError,
 )
 
 SKIPPED_SCHEMA_TYPES: frozenset[URIRef] = frozenset(
@@ -75,8 +84,8 @@ class HmoWikibaseExporter:
                 WikibaseEntityDraft(
                     local_id=local_ids[subject],
                     labels=_labels_for_node(graph, subject),
-                    descriptions={"en": f"Offline HMO Wikibase draft for {_local_name(class_uri)}"},
-                    entity_type=_local_name(class_uri),
+                    descriptions={"en": f"Offline HMO Wikibase draft for {local_name(class_uri)}"},
+                    entity_type=local_name(class_uri),
                     class_uri=str(class_uri),
                     source_uri=str(subject),
                     statements=statements,
@@ -119,7 +128,7 @@ def _local_ids_for_nodes(nodes: list[URIRef | BNode]) -> dict[URIRef | BNode, st
     seen: defaultdict[str, int] = defaultdict(int)
     local_ids: dict[URIRef | BNode, str] = {}
     for node in nodes:
-        base = _safe_local_id(_node_local_name(node))
+        base = safe_local_id(_node_local_name(node))
         seen[base] += 1
         suffix = "" if seen[base] == 1 else f"_{seen[base]}"
         local_ids[node] = f"QDraft_{base}{suffix}"
@@ -161,7 +170,7 @@ def _statement_from_triple(
 ) -> WikibaseStatementDraft:
     """Convert an RDF predicate/object pair into a local statement draft."""
     property_uri = str(predicate)
-    property_name = _local_name(predicate)
+    property_name = local_name(predicate)
     if isinstance(obj, Literal):
         value, datatype = _literal_value(obj)
         return WikibaseStatementDraft(
@@ -208,20 +217,143 @@ def _node_local_name(node: URIRef | BNode) -> str:
     """Return a readable local name for a URI or blank node."""
     if isinstance(node, BNode):
         return f"BlankNode_{node}"
-    return _local_name(node)
+    return local_name(node)
 
 
-def _local_name(node: Node) -> str:
-    """Extract the final local component of an RDF URI-like node."""
-    text = str(node)
-    if "#" in text:
-        return text.rsplit("#", maxsplit=1)[-1]
-    if "/" in text:
-        return text.rstrip("/").rsplit("/", maxsplit=1)[-1]
-    return text
+# ── Phase 4: resolve drafts against the live schema ─────────────────────
 
 
-def _safe_local_id(value: str) -> str:
-    """Normalise an RDF local name into a safe local draft identifier."""
-    cleaned = re.sub(r"[^0-9A-Za-z_]+", "_", value).strip("_")
-    return cleaned or "Entity"
+def resolve_against_mappings(
+    drafts: list[WikibaseEntityDraft],
+    schema_mappings: dict[str, SchemaMappingEntry],
+) -> list[ResolvedWikibaseEntity]:
+    """Resolve offline drafts into real-PID/QID-shaped entities.
+
+    Every ``class_uri``/statement ``property_uri`` MUST already have a
+    live schema mapping (Phase 3's bootstrap) — any that don't are
+    collected and raised as one :class:`UnmappedOntologyUriError` at the
+    end, rejecting the whole batch rather than silently dropping
+    statements (guards against a stale bootstrap after ontology growth).
+
+    Statements whose ``value_type == "entity"`` (pointing at another
+    draft in this same batch) are deferred: their target has no live QID
+    yet, so the claim is recorded as a :class:`DeferredItemLink` for the
+    upload path's second pass (Phase 5) instead of a direct claim.
+    """
+    missing_uris: set[str] = set()
+    resolved: list[ResolvedWikibaseEntity] = []
+
+    for draft in drafts:
+        class_entry = schema_mappings.get(draft.class_uri)
+        if class_entry is None:
+            missing_uris.add(draft.class_uri)
+            continue
+
+        claims: list[ResolvedClaim] = []
+        deferred: list[DeferredItemLink] = []
+        skipped: list[str] = []
+        for stmt in draft.statements:
+            prop_entry = schema_mappings.get(stmt.property_uri)
+            if prop_entry is None:
+                missing_uris.add(stmt.property_uri)
+                continue
+
+            if stmt.value_type == "entity":
+                # By construction (hmo_exporter._statement_from_triple),
+                # value_type == "entity" only when the target is another
+                # draft in this same batch — always a same-run instance.
+                deferred.append(
+                    DeferredItemLink(
+                        source_local_id=draft.local_id,
+                        property_id=prop_entry.wikibase_id,
+                        target_local_id=stmt.value_entity_id or "",
+                    )
+                )
+                continue
+
+            claim = _build_claim_spec(prop_entry, stmt)
+            if claim is None:
+                skipped.append(
+                    f"{stmt.property_name}: could not shape value "
+                    f"{stmt.value!r} for datatype {prop_entry.datatype!r}"
+                )
+                continue
+            claims.append(claim)
+
+        resolved.append(
+            ResolvedWikibaseEntity(
+                local_id=draft.local_id,
+                labels=draft.labels,
+                descriptions=draft.descriptions,
+                class_qid=class_entry.wikibase_id,
+                source_uri=draft.source_uri,
+                claims=claims,
+                deferred_links=deferred,
+                skipped_statements=skipped,
+            )
+        )
+
+    if missing_uris:
+        raise UnmappedOntologyUriError(sorted(missing_uris))
+
+    return resolved
+
+
+def _build_claim_spec(
+    prop_entry: SchemaMappingEntry, stmt: WikibaseStatementDraft
+) -> ResolvedClaim | None:
+    """Shape one non-entity statement value for its property's datatype.
+
+    Returns ``None`` when the value can't be shaped for the datatype
+    (e.g. an object property whose value is an external URI, not an
+    in-batch instance) — the caller records this as a skipped statement
+    rather than failing the whole entity.
+    """
+    datatype = prop_entry.datatype or "string"
+    if datatype == "wikibase-item":
+        return None
+    if datatype == "time":
+        time_value = _parse_time_value(stmt.value)
+        if time_value is None:
+            return None
+        return ResolvedClaim(prop_entry.wikibase_id, "time", time_value)
+    if datatype == "monolingualtext":
+        return ResolvedClaim(
+            prop_entry.wikibase_id,
+            "monolingualtext",
+            {"text": str(stmt.value), "language": stmt.language or "en"},
+        )
+    if datatype in ("string", "url", "external-id"):
+        return ResolvedClaim(prop_entry.wikibase_id, datatype, str(stmt.value))
+    if datatype == "quantity":
+        try:
+            amount = float(stmt.value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+        return ResolvedClaim(prop_entry.wikibase_id, "quantity", {"amount": amount})
+    return None
+
+
+_FULL_DATE_RE = re.compile(r"^(-?\d{3,4})-(\d{2})-(\d{2})")
+_YEAR_RE = re.compile(r"(-?\d{3,4})")
+
+
+def _parse_time_value(value: Any) -> dict[str, Any] | None:
+    """Best-effort parse of a literal into a Wikibase ``time`` value.
+
+    Handles full ``YYYY-MM-DD`` dates (day precision) and bare years
+    (year precision) — the two shapes ``_literal_value`` actually
+    produces for HMO's date-bearing literals. Returns ``None`` when
+    neither pattern matches rather than guessing.
+    """
+    text = str(value)
+    full = _FULL_DATE_RE.match(text)
+    if full:
+        year, month, day = full.groups()
+        return {"time": f"+{int(year):04d}-{month}-{day}T00:00:00Z", "precision": 11}
+    year_only = _YEAR_RE.search(text)
+    if year_only:
+        year = int(year_only.group(1))
+        sign = "-" if year < 0 else "+"
+        return {"time": f"{sign}{abs(year):04d}-00-00T00:00:00Z", "precision": 9}
+    return None

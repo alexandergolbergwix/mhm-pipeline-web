@@ -82,6 +82,74 @@ export interface HmoStudioStatus {
   bot_password_set: boolean;
 }
 
+// ── Phase 4/5: full item export + upload ──────────────────────────────
+
+export interface HmoResolvedClaim {
+  property_id: string;
+  datatype: string;
+  value: unknown;
+}
+
+export interface HmoDeferredLink {
+  source_local_id: string;
+  property_id: string;
+  target_local_id: string;
+}
+
+export interface HmoResolvedEntity {
+  local_id: string;
+  labels: Record<string, string>;
+  descriptions: Record<string, string>;
+  class_qid: string;
+  source_uri: string;
+  claims: HmoResolvedClaim[];
+  deferred_links: HmoDeferredLink[];
+  skipped_statements: string[];
+}
+
+export interface HmoItemBuildResult {
+  from_cache: boolean;
+  entity_count: number;
+  deferred_link_count: number;
+  skipped_statement_count: number;
+  entities: HmoResolvedEntity[];
+}
+
+export interface HmoItemUploadOutcome {
+  local_id: string;
+  source_uri: string;
+  status: "created" | "skipped" | "would_create" | "failed" | string;
+  wikibase_id: string | null;
+  message: string;
+}
+
+export interface HmoDeferredLinkOutcome {
+  source_local_id: string;
+  property_id: string;
+  target_local_id: string;
+  status: "linked" | "would_link" | "unresolved" | "failed" | string;
+  message: string;
+}
+
+export interface HmoItemUploadResult {
+  dry_run: boolean;
+  created: number;
+  skipped: number;
+  failed: number;
+  linked: number;
+  unresolved_links: number;
+  outcomes: HmoItemUploadOutcome[];
+  link_outcomes: HmoDeferredLinkOutcome[];
+}
+
+export interface HmoItemStatus {
+  build_present: boolean;
+  entity_count: number;
+  deferred_link_count: number;
+  uploaded_count: number;
+  built_at: string | null;
+}
+
 export const HmoStudio = {
   buildManifests: (runId: string) =>
     api.post<HmoBuildResult>(
@@ -99,4 +167,19 @@ export const HmoStudio = {
 
   status: (runId: string) =>
     api.get<HmoStudioStatus>(`/runs/${runId}/hmo-studio/status`),
+
+  buildItems: (runId: string, forceRebuild = false) =>
+    api.post<HmoItemBuildResult>(
+      `/runs/${runId}/hmo-studio/build-items${forceRebuild ? "?force_rebuild=true" : ""}`,
+      {},
+    ),
+
+  uploadItems: (runId: string, dryRun: boolean) =>
+    api.post<HmoItemUploadResult>(
+      `/runs/${runId}/hmo-studio/upload-items`,
+      { dry_run: dryRun },
+    ),
+
+  itemStatus: (runId: string) =>
+    api.get<HmoItemStatus>(`/runs/${runId}/hmo-studio/item-status`),
 };

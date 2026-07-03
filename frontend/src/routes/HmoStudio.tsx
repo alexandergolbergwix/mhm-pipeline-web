@@ -15,6 +15,9 @@ import {
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
+import {SchemaBootstrapPanel} from "@/components/hmo/SchemaBootstrapPanel";
+import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
+import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
 
 
 type Busy = null | "build" | "upload" | "coverage";
@@ -35,6 +38,7 @@ export default function HmoStudioRoute() {
   const [recordQuery, setRecordQuery] = useState("");
   const [editCn, setEditCn] = useState<string | null>(null);
   const [showRecordPicker, setShowRecordPicker] = useState(false);
+  const [itemBuildToken, setItemBuildToken] = useState(0);
 
   // ── refreshers ─────────────────────────────────────────────────────────
 
@@ -143,6 +147,9 @@ export default function HmoStudioRoute() {
         {error && (
           <Glass as="p" variant="compact" className="p-3 text-sm text-danger">{error}</Glass>
         )}
+
+        {/* Ontology schema bootstrap (global, shared across every run) */}
+        <SchemaBootstrapPanel />
 
         {/* Coverage */}
         <Glass as="section" className="p-6 space-y-3">
@@ -255,6 +262,22 @@ export default function HmoStudioRoute() {
             />
           )}
         </Glass>
+
+        {/* Wikibase items (Phase 4/5: full ontology-based item export/upload) */}
+        {runId && (
+          <>
+            <ItemBuildPanel
+              runId={runId}
+              rdfPresent={!!status?.rdf_present}
+              onBuilt={() => setItemBuildToken((t) => t + 1)}
+            />
+            <ItemUploadPanel
+              runId={runId}
+              credsReady={credsReady}
+              refreshToken={itemBuildToken}
+            />
+          </>
+        )}
 
         {/* MARC record editor */}
         <Glass as="section" className="p-6 space-y-3">
