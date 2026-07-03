@@ -185,17 +185,40 @@ HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud"
 
 
 def hmo_wikibase_page_url(control_number: str) -> str:
-    """Build the project-owned Wikibase Cloud page URL for a manuscript.
+    """Build the project-owned Wikibase Cloud SLUG URL for a manuscript.
 
-    Used as the value of Wikidata P2888 (exact match). Stable and
-    resolvable once Phase 3 uploads the HMO entities and creates the
-    matching redirect pages. Empty / falsy input returns an empty
+    Fallback used when no real Wikibase item exists yet for this
+    manuscript (see :func:`hmo_wikibase_entity_url` for the real-item
+    upgrade added in Phase 6 of the HMO Wikibase Studio buildout —
+    dev-docs/hmo-wikibase-studio-plan.md). Used as the value of
+    Wikidata P2888 (exact match). Empty / falsy input returns an empty
     string, signalling "do not emit P2888".
     """
     cn = (control_number or "").strip()
     if not cn:
         return ""
     return f"{HMO_WIKIBASE_BASE_URL}/wiki/MS_{cn}"
+
+
+def hmo_wikibase_entity_url(
+    control_number: str, instance_qids: dict[str, str] | None
+) -> str | None:
+    """Build the real ``/wiki/Item:Q<n>`` URL once Phase 5 has uploaded
+    this manuscript to the HMO Wikibase Cloud.
+
+    ``instance_qids`` maps ``control_number -> live QID`` — callers with
+    database access (``app.pipeline.wikidata_studio``) build this dict
+    once per build from ``wikibase_entity_mappings``; this module stays
+    DB-agnostic. Returns ``None`` (never a broken link) when the
+    manuscript hasn't been uploaded yet, so the caller falls back to
+    :func:`hmo_wikibase_page_url`'s static slug.
+    """
+    if not instance_qids:
+        return None
+    qid = instance_qids.get((control_number or "").strip())
+    if not qid:
+        return None
+    return f"{HMO_WIKIBASE_BASE_URL}/wiki/Item:{qid}"
 
 # ── Wikidata QIDs ────────────────────────────────────────────────────
 

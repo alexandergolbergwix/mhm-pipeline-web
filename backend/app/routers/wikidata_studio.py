@@ -461,8 +461,12 @@ async def execute_studio_build(
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
         db, run_id,
     )
+    hmo_instance_qids = await wikidata_studio.hmo_instance_qids_for_run(
+        db, run_id, [r.control_number for r in records],
+    )
     fingerprint = wikidata_studio.compute_build_fingerprint(
         records, all_matches, entity_rows, override_rows, approved_only,
+        hmo_instance_qids,
     )
     cached = await _get_studio_cache_row(db, run_id, approved_only)
 
@@ -517,6 +521,7 @@ async def execute_studio_build(
             marc_records=marc_records, approved_matches=approved_matches,
             entities_by_cn=entities_by_cn,
             overrides=overrides, return_native=True,
+            hmo_instance_qids=hmo_instance_qids,
         )
     finally:
         hebrew_translit.set_sync_network_disabled(False)
@@ -684,9 +689,13 @@ async def build_studio(
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
         db, run_id,
     )
+    hmo_instance_qids = await wikidata_studio.hmo_instance_qids_for_run(
+        db, run_id, [r.control_number for r in records],
+    )
 
     fingerprint = wikidata_studio.compute_build_fingerprint(
         records, all_matches, entity_rows, override_rows, approved_only,
+        hmo_instance_qids,
     )
 
     cached = await _get_studio_cache_row(db, run_id, approved_only)

@@ -22,17 +22,63 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import uuid
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import select
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.models.extraction_approval import ExtractionApproval
     from app.models.item_override import WikidataItemOverride
     from app.models.run import AuthorityMatch, RunRecord
 
 logger = logging.getLogger(__name__)
+
+
+async def hmo_instance_qids_for_run(
+    db: "AsyncSession", run_id: uuid.UUID, control_numbers: list[str],
+) -> dict[str, str]:
+    """``control_number -> live HMO Wikibase QID`` for manuscripts this
+    run has already uploaded via HMO Wikibase Studio (Phase 5/6 —
+    dev-docs/hmo-wikibase-studio-plan.md).
+
+    Computes each manuscript's expected RDF subject URI the same way
+    ``converter.transformer.uri_generator.UriGenerator.manuscript_uri``
+    does at RDF-build time, then looks it up against this run's
+    ``wikibase_entity_mappings`` instance rows. Manuscripts with no
+    matching row (not yet built/uploaded) are simply absent from the
+    result — callers fall back to the static slug URL for those.
+    """
+    from converter.config.namespaces import HM  # noqa: PLC0415
+    from converter.transformer.uri_generator import UriGenerator  # noqa: PLC0415
+
+    from app.models.wikibase_entity_mapping import (  # noqa: PLC0415
+        ENTITY_KIND_INSTANCE,
+        WikibaseEntityMapping,
+    )
+
+    if not control_numbers:
+        return {}
+
+    uri_gen = UriGenerator(namespace=str(HM))
+    uri_to_cn = {str(uri_gen.manuscript_uri(cn)): cn for cn in control_numbers}
+
+    rows = (
+        await db.execute(
+            select(
+                WikibaseEntityMapping.ontology_uri, WikibaseEntityMapping.wikibase_id,
+            ).where(
+                WikibaseEntityMapping.run_id == run_id,
+                WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+                WikibaseEntityMapping.ontology_uri.in_(uri_to_cn.keys()),
+            )
+        )
+    ).all()
+    return {uri_to_cn[uri]: qid for uri, qid in rows if uri in uri_to_cn}
 
 
 def compute_build_fingerprint(
@@ -41,12 +87,17 @@ def compute_build_fingerprint(
     entity_rows: list["ExtractionApproval"],
     override_rows: list["WikidataItemOverride"],
     approved_only: bool,
+    hmo_instance_qids: dict[str, str] | None = None,
 ) -> str:
     """SHA-256 fingerprint of everything that feeds the Wikidata item builder.
 
     Changing any approval flag, override field, match payload, or NER
     text will produce a different fingerprint and trigger a rebuild on
-    the next request.
+    the next request. ``hmo_instance_qids`` (Phase 6) is included so a
+    manuscript getting uploaded to the HMO Wikibase after this run's
+    Wikidata Studio cache was built invalidates the cache — otherwise
+    P2888/P973 would keep pointing at the stale slug URL until some
+    unrelated field changed.
     """
     def _h(obj: Any) -> str:
         return hashlib.sha256(
@@ -56,6 +107,7 @@ def compute_build_fingerprint(
     parts = {
         "approved_only": approved_only,
         "records": sorted(r.control_number for r in records),
+        "hmo_instance_qids": sorted((hmo_instance_qids or {}).items()),
         "matches": sorted(
             (
                 str(m.id), m.approved, m.wikidata_qid or "", m.viaf_id or "",
@@ -95,6 +147,7 @@ async def build_items_for_run(
     entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
     return_native: bool = False,
     overrides: dict[str, dict[str, Any]] | None = None,
+    hmo_instance_qids: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build Wikidata items + QuickStatements for *marc_records* enriched
     with *approved_matches* and Stage-2 NER *entities*.
@@ -162,19 +215,24 @@ async def build_items_for_run(
         out["entities"] = list(existing) + ents_by_cn.get(cn, [])
         enriched.append(out)
 
-    return await run_in_threadpool(_build_sync, enriched, return_native, overrides or {})
+    return await run_in_threadpool(
+        _build_sync, enriched, return_native, overrides or {}, hmo_instance_qids or {},
+    )
 
 
 def _build_sync(
     records: list[dict[str, Any]],
     return_native: bool = False,
     overrides: dict[str, dict[str, Any]] | None = None,
+    hmo_instance_qids: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
     from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
     from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
 
-    builder = WikidataItemBuilder(reconciler=None)  # SPARQL-free for the web
+    builder = WikidataItemBuilder(  # SPARQL-free for the web
+        reconciler=None, hmo_instance_qids=hmo_instance_qids,
+    )
     items = builder.build_all(records)
 
     # Apply per-item curator overrides FIRST so validation reflects the

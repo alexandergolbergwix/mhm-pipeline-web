@@ -11,6 +11,7 @@ from app.models.api_key import ApiKey
 from app.models.base import Base
 from app.models.email_throttle import EmailThrottle
 from app.models.entity_snapshot import EntitySnapshot
+from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.event import (
     ALL_ENTITY_TYPES,
     ALL_OPS,
@@ -79,6 +80,7 @@ __all__ = [
     "ENTITY_TYPE_WIKIDATA_OVERRIDE",
     "EmailThrottle",
     "EntitySnapshot",
+    "HmoStudioItemCache",
     "ExtractionApproval",
     "InferenceCache",
     "Invitation",

@@ -1,24 +1,41 @@
 # HMO Wikibase Studio — Full Implementation Plan
 
-## Status (2026-07-03)
+## Status (2026-07-03, end of session)
 
-- **Phases 1-3: done.** `WikibaseCloudWriter` gained `create_item`/
-  `create_property`/`add_claim`/`get_entity`, built on
-  `wikibaseintegrator` (the same library `converter/wikidata/uploader.py`
-  already uses) rather than hand-rolled `wbeditentity` calls — this is a
-  deviation from the original plan text below, made after confirming the
-  dependency was already in `pyproject.toml` and in active use. The
-  ontology parser (`converter/wikibase/ontology_schema_reader.py`) reads
-  the real `hebrew-manuscripts.ttl` (103 classes / 277 properties today,
-  tolerant thresholds in tests). The Postgres `wikibase_entity_mappings`
-  table + `app/pipeline/hmo_schema_bootstrap.py` + the global
-  `/api/hmo-wikibase-schema/{status,bootstrap}` router are live and
-  idempotent. Not yet exercised against the real `mhm-hmo.wikibase.cloud`
-  instance (bot credentials are in the local, gitignored `.env` — see
-  `WIKIBASE_CLOUD_BOT_*`) — that manual live-verification pass from
-  Phase 3's plan section is still outstanding.
-- **Phases 4-8: not started.** Full item export/upload, Wikidata
-  cross-linking, and the frontend panels remain exactly as planned below.
+- **Phases 1-6: done and unit/integration-tested** (SQLite-backed test
+  suite; no live-Wikibase-cloud call has been made yet — see below).
+  `WikibaseCloudWriter` gained `create_item`/`create_property`/
+  `add_claim`/`get_entity`, built on `wikibaseintegrator` (the same
+  library `converter/wikidata/uploader.py` already uses) rather than
+  hand-rolled `wbeditentity` calls — a deviation from the plan text
+  below, made after confirming the dependency was already in
+  `pyproject.toml` and in active use. The ontology parser
+  (`converter/wikibase/ontology_schema_reader.py`) reads the real
+  `hebrew-manuscripts.ttl` (103 classes / 277 properties, tolerant test
+  thresholds). Phases 4-5 (item export + create-only two-pass upload)
+  and Phase 6 (Wikidata P2888/P973 cross-linking to real HMO items) are
+  fully implemented per the plan below, with one correctness fix beyond
+  the original design: `compute_build_fingerprint` now also hashes
+  `hmo_instance_qids` so a manuscript getting uploaded to HMO Wikibase
+  invalidates the Wikidata Studio build cache (otherwise P2888/P973
+  would keep pointing at the stale slug URL).
+- **Phase 7: backend-verified, UI never opened in a browser.** The three
+  panels (`frontend/src/components/hmo/{SchemaBootstrapPanel,
+  ItemBuildPanel,ItemUploadPanel}.tsx`) exist and pass `tsc --noEmit`,
+  but no e2e spec was written and the dev server was never started to
+  visually confirm them — `frontend/e2e/hmo-wikibase-studio.spec.ts`
+  from the plan below is still outstanding. Frontend unit test infra
+  (`yarn test:unit`) is separately broken repo-wide (missing
+  `@testing-library/dom` peer dep, pre-existing, unrelated to this work).
+- **Phase 8: automated sweep done, live pass NOT done.** Full pytest
+  (938 passed, 17 pre-existing unrelated failures, same before and after
+  this session's changes) and the eval-agent suite (40/40) are green.
+  The live-credential integration pass against the real
+  `mhm-hmo.wikibase.cloud` (dry-run → live bootstrap creating ~380 real
+  entities → idempotency re-run) was explicitly deferred pending user
+  go-ahead, since it's a real write to a shared external system. Bot
+  credentials are in the local, gitignored `.env`
+  (`WIKIBASE_CLOUD_BOT_*`) — **never commit these**.
 - **New, not in the original 8-phase plan:** an `eval-agent` extension —
   a `hmo_wikibase_schema` evaluator (rubric, ingest reader, evaluator
   class) that judges schema-bootstrap output against the HMO ontology and

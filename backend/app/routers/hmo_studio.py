@@ -12,6 +12,9 @@ Endpoints, all under ``/api/runs/{run_id}/hmo-studio/``::
     POST /upload-manifests  →  publish to wikibase.cloud (dry-run by default)
     GET  /coverage          →  HMO class → Wikidata projection report
     GET  /status            →  idle | built | uploaded | error + counts
+    POST /build-items       →  resolve RDF instances against the live
+                                schema (Phase 4) into real-PID/QID-shaped
+                                item drafts, cached per-run
 
 Bot credentials (username + password) are loaded from the calling
 user's encrypted-secret store; if either is missing the router responds
@@ -29,7 +32,7 @@ from typing import Any, Literal
 from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
@@ -42,10 +45,15 @@ from app.models.event import (
     OP_PATCH,
     ProjectEvent,
 )
+from app.models.hmo_studio_item_cache import HmoStudioItemCache
+from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+from app.pipeline import hmo_item_build
+from app.pipeline import hmo_item_upload
 from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.routers.runs import _lookup_run_with_access
 from app.versioning import apply_event
+from converter.wikibase.resolved_models import UnmappedOntologyUriError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["hmo-studio"])
@@ -110,6 +118,82 @@ class HmoUploadRequest(BaseModel):
                     "user to have both wikibase_cloud_bot_username and "
                     "wikibase_cloud_bot_password stored in Settings.",
     )
+
+
+class HmoResolvedClaimDto(BaseModel):
+    property_id: str
+    datatype: str
+    value: Any
+
+
+class HmoDeferredLinkDto(BaseModel):
+    source_local_id: str
+    property_id: str
+    target_local_id: str
+
+
+class HmoResolvedEntityDto(BaseModel):
+    local_id: str
+    labels: dict[str, str]
+    descriptions: dict[str, str]
+    class_qid: str
+    source_uri: str
+    claims: list[HmoResolvedClaimDto]
+    deferred_links: list[HmoDeferredLinkDto]
+    skipped_statements: list[str]
+
+
+class HmoItemBuildResponse(BaseModel):
+    from_cache: bool
+    entity_count: int
+    deferred_link_count: int
+    skipped_statement_count: int
+    entities: list[HmoResolvedEntityDto]
+
+
+class HmoItemUploadRequest(BaseModel):
+    dry_run: bool = Field(
+        default=True,
+        description="Default True — describes what would happen without "
+                    "writing. Set False for live; live also requires the "
+                    "user to have both wikibase_cloud_bot_username and "
+                    "wikibase_cloud_bot_password stored in Settings.",
+    )
+
+
+class HmoItemUploadOutcomeDto(BaseModel):
+    local_id: str
+    source_uri: str
+    status: str
+    wikibase_id: str | None = None
+    message: str = ""
+
+
+class HmoDeferredLinkOutcomeDto(BaseModel):
+    source_local_id: str
+    property_id: str
+    target_local_id: str
+    status: str
+    message: str = ""
+
+
+class HmoItemUploadResponse(BaseModel):
+    dry_run: bool
+    created: int
+    skipped: int
+    failed: int
+    linked: int
+    unresolved_links: int
+    outcomes: list[HmoItemUploadOutcomeDto]
+    link_outcomes: list[HmoDeferredLinkOutcomeDto]
+
+
+class HmoItemStatusResponse(BaseModel):
+    build_present: bool
+    entity_count: int
+    deferred_link_count: int
+    uploaded_count: int
+    built_at: str | None
 
 
 # ── Build ──────────────────────────────────────────────────────────────
@@ -281,6 +365,177 @@ async def coverage(
         ) from exc
     hmo_pipeline.cache_coverage_report(str(run_id), report)
     return report
+
+
+# ── Build items (Phase 4) ────────────────────────────────────────────────
+
+
+@router.post(
+    "/{run_id}/hmo-studio/build-items",
+    response_model=HmoItemBuildResponse,
+)
+async def build_items(
+    run_id: uuid.UUID,
+    force_rebuild: bool = False,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> HmoItemBuildResponse:
+    """Resolve the run's RDF instances against the live schema mapping.
+
+    Every class/property referenced by the RDF graph must already have
+    a live Wikibase id from the schema bootstrap
+    (``/api/hmo-wikibase-schema/bootstrap``) — a 409 here means the
+    ontology grew since the last bootstrap; re-run it and retry.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    ttl_path = rdf_output_path_for_run(str(run_id))
+    if not ttl_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "No RDF graph for this run yet. Build the RDF (RDF Graph) "
+                "before building Wikibase items."
+            ),
+        )
+    try:
+        result = await hmo_item_build.build_items_for_run(
+            db, run_id, ttl_path, force_rebuild=force_rebuild,
+        )
+    except UnmappedOntologyUriError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "The RDF graph references ontology classes/properties with "
+                "no live Wikibase mapping yet. Run the schema bootstrap "
+                f"first. Missing: {', '.join(exc.missing_uris[:10])}"
+            ),
+        ) from exc
+    return HmoItemBuildResponse(
+        from_cache=result.from_cache,
+        entity_count=result.entity_count,
+        deferred_link_count=result.deferred_link_count,
+        skipped_statement_count=result.skipped_statement_count,
+        entities=[
+            HmoResolvedEntityDto(
+                local_id=e.local_id,
+                labels=e.labels,
+                descriptions=e.descriptions,
+                class_qid=e.class_qid,
+                source_uri=e.source_uri,
+                claims=[HmoResolvedClaimDto(**c.to_dict()) for c in e.claims],
+                deferred_links=[HmoDeferredLinkDto(**d.to_dict()) for d in e.deferred_links],
+                skipped_statements=e.skipped_statements,
+            )
+            for e in result.entities
+        ],
+    )
+
+
+# ── Upload items (Phase 5) ───────────────────────────────────────────────
+
+
+@router.post(
+    "/{run_id}/hmo-studio/upload-items",
+    response_model=HmoItemUploadResponse,
+)
+async def upload_items(
+    run_id: uuid.UUID,
+    payload: HmoItemUploadRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> HmoItemUploadResponse:
+    """Upload the run's most recent item build (create-only, two-pass).
+
+    Requires ``build-items`` to have run first. Live writes require both
+    bot username + password in the user's encrypted-secret store.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    writer = None
+    if not payload.dry_run:
+        bot_username = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_username")
+        bot_password = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_password")
+        missing = [
+            name for name, val in (
+                ("wikibase_cloud_bot_username", bot_username),
+                ("wikibase_cloud_bot_password", bot_password),
+            )
+            if not val
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Add Wikibase bot credentials in Settings → "
+                    "Credentials, then retry. Missing: " + ", ".join(missing)
+                ),
+            )
+        from converter.wikibase.cloud_client import (  # noqa: PLC0415
+            WikibaseBotCredentials,
+            WikibaseCloudClient,
+            WikibaseCloudWriter,
+        )
+
+        writer = WikibaseCloudWriter(
+            WikibaseCloudClient.config_for_mhm_hmo_cloud(),
+            WikibaseBotCredentials(
+                username=bot_username or "",
+                bot_name=_DEFAULT_BOT_NAME,
+                password=bot_password or "",
+            ),
+        )
+
+    try:
+        result = await hmo_item_upload.upload_items_for_run(
+            db, run_id, writer=writer, dry_run=payload.dry_run,
+        )
+    except hmo_item_upload.ItemBuildMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc),
+        ) from exc
+
+    return HmoItemUploadResponse(
+        dry_run=result.dry_run,
+        created=result.created,
+        skipped=result.skipped,
+        failed=result.failed,
+        linked=result.linked,
+        unresolved_links=result.unresolved_links,
+        outcomes=[HmoItemUploadOutcomeDto(**o.__dict__) for o in result.outcomes],
+        link_outcomes=[HmoDeferredLinkOutcomeDto(**o.__dict__) for o in result.link_outcomes],
+    )
+
+
+@router.get("/{run_id}/hmo-studio/item-status", response_model=HmoItemStatusResponse)
+async def item_status(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> HmoItemStatusResponse:
+    """Build-cache presence + upload counts for this run's items."""
+    await _lookup_run_with_access(db, run_id, auth)
+
+    cache_row = (
+        await db.execute(
+            select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    uploaded_count = (
+        await db.execute(
+            select(func.count(WikibaseEntityMapping.id)).where(
+                WikibaseEntityMapping.run_id == run_id,
+                WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+            )
+        )
+    ).scalar_one()
+
+    return HmoItemStatusResponse(
+        build_present=cache_row is not None,
+        entity_count=cache_row.entity_count if cache_row else 0,
+        deferred_link_count=cache_row.deferred_link_count if cache_row else 0,
+        uploaded_count=uploaded_count,
+        built_at=cache_row.built_at.isoformat() if cache_row else None,
+    )
 
 
 # ── Status ─────────────────────────────────────────────────────────────
