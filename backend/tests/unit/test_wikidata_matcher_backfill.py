@@ -47,9 +47,16 @@ def test_find_viaf_by_qid_abstains_on_two_valid_clusters() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mazal_hit_backfills_wikidata_and_viaf_before_label_search() -> None:
+async def test_mazal_hit_backfills_wikidata_and_viaf_before_label_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Mazal P8189 triangulation must run before unreliable label search."""
     from app.pipeline.authority import DesktopMatcher
+
+    # guard_wikidata_crosscheck (Rule W-37) makes a real Wikidata SPARQL
+    # lookup by default — this test is about Mazal/Wikidata *ordering*, not
+    # that guard, so keep it deterministic and offline.
+    monkeypatch.setenv("MHM_DISABLE_WIKIDATA_CROSSCHECK", "1")
 
     matcher = DesktopMatcher()
     matcher._mazal = object()
@@ -57,8 +64,8 @@ async def test_mazal_hit_backfills_wikidata_and_viaf_before_label_search() -> No
     matcher._wikidata = object()
     matcher._authority_backend = None
 
-    async def _mazal_person(*_a: Any, **_k: Any) -> str:
-        return "987007257676505171"
+    async def _mazal_person(*_a: Any, **_k: Any) -> dict[str, str]:
+        return {"mazal_id": "987007257676505171", "main_marc_tag": "100"}
 
     async def _mazal_details(*_a: Any, **_k: Any) -> dict[str, str]:
         return {"preferred_name_lat": "Allony, Nehemya", "dates": "1906-1983"}
@@ -93,7 +100,15 @@ async def test_mazal_hit_backfills_wikidata_and_viaf_before_label_search() -> No
         "role": "former owner",
         "field": "710",
     }
-    marc: dict[str, Any] = {}
+    # guard_modern_person (converter/authority/stage3_guards.py) rejects a
+    # birth year >= 1900 when the manuscript looks premodern/undated — an
+    # empty marc_record leaves ms_year=None, which reads as "undated" and
+    # wrongly flags this 1906-born *former owner* as cataloguer noise (the
+    # guard has no role awareness, so it can't tell an owner from an
+    # anachronistic author match). Giving it a compatible production year
+    # keeps this test's actual point — Mazal P8189 triangulation ordering —
+    # isolated from that unrelated guard.
+    marc: dict[str, Any] = {"dates": {"year": 1950}}
 
     candidates = await matcher.match(
         entity, marc, db_session=None, user_id=None, skip_cache=True,

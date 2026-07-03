@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from app.pipeline.rdf_build import (
-    RdfBuildOptions,
     SHAPES_PATH,
+    RdfBuildOptions,
     _run_mapper_sync,
     _run_shacl_sync,
 )
@@ -27,7 +27,9 @@ def test_minimal_record_runs_shacl_without_ontology_prefix_errors() -> None:
     opts = RdfBuildOptions(add_philological_overlay=False)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "manuscripts.ttl"
-        _, manuscripts, errors, _, _ = _run_mapper_sync([rec], [], out, build_options=opts)
+        _, manuscripts, errors, _, _, _, _, _, _ = _run_mapper_sync(
+            [rec], [], out, build_options=opts,
+        )
         assert errors == []
         assert manuscripts == 1
         conforms, violations = _run_shacl_sync(out, SHAPES_PATH)

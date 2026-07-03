@@ -13,7 +13,13 @@ def test_build_compare_label_conflict() -> None:
         "statements": [],
     }
     live = {
-        "labels": {"en": {"language": "en", "value": "Simon Dubnov"}},
+        "labels": {
+            "en": {"language": "en", "value": "Simon Dubnov"},
+            # A live "he" label that DIFFERS from studio's is what makes
+            # this a genuine conflict — a live label absent entirely would
+            # be "studio_only" (nothing to conflict with).
+            "he": {"language": "he", "value": "דובנאוו, שמעון"},
+        },
         "descriptions": {},
         "claims": {},
     }

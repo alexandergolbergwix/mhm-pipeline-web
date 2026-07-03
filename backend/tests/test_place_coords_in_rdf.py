@@ -1,8 +1,10 @@
 """Tests — geo coordinates for ALL place roles in the RDF graph.
 
 Covers:
-  - _merge_authority_ids writes production-place coords into rec
-  - _merge_authority_ids writes related-place coords into rec
+  - rdf_enrichment.merge_approved_authority (imported here as
+    _merge_authority_ids, its pre-refactor name) writes production-place
+    coords into rec
+  - the same writes related-place coords into rec
   - graph_builder._add_production_event emits wgs84:lat/long
   - graph_builder._add_related_places emits wgs84:lat/long
   - No coords fabricated when KIMA has no match
@@ -12,16 +14,13 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
-
-import pytest
 
 # Allow imports from the backend tree without installing the package.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from rdflib import Graph, Literal, URIRef
-from rdflib.namespace import OWL, RDF, RDFS
+from rdflib import Graph, URIRef
+from rdflib.namespace import OWL
 
 _WGS84_LAT  = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#lat")
 _WGS84_LONG = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#long")
@@ -51,7 +50,7 @@ def _rec(place: str = "", related: list[str] | None = None, subjects: list[dict]
 
 class TestMergeAuthorityIdsProductionPlace:
     def test_writes_production_place_lat_lon(self) -> None:
-        from app.pipeline.rdf_build import _merge_authority_ids
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
         rec = _rec(place="Fez")
         _merge_authority_ids(rec, [_kima_match("Fez", 34.03, -5.00)])
@@ -59,14 +58,14 @@ class TestMergeAuthorityIdsProductionPlace:
         assert rec["production_place_lon"] == -5.00
 
     def test_writes_wikidata_id_for_production_place(self) -> None:
-        from app.pipeline.rdf_build import _merge_authority_ids
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
         rec = _rec(place="Fez")
         _merge_authority_ids(rec, [_kima_match("Fez", 34.03, -5.00, qid="Q83751")])
         assert rec["production_place_wikidata_id"] == "Q83751"
 
     def test_fill_only_if_absent_for_production_place(self) -> None:
-        from app.pipeline.rdf_build import _merge_authority_ids
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
         rec = _rec(place="Fez")
         rec["production_place_lat"] = 99.0  # pre-existing
@@ -74,7 +73,7 @@ class TestMergeAuthorityIdsProductionPlace:
         assert rec["production_place_lat"] == 99.0  # not overwritten
 
     def test_partial_name_match_still_fills(self) -> None:
-        from app.pipeline.rdf_build import _merge_authority_ids
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
         rec = _rec(place="ʻAmrān (Yemen)")
         # KIMA normalised entity_text shorter than the full name
@@ -82,7 +81,7 @@ class TestMergeAuthorityIdsProductionPlace:
         assert rec.get("production_place_lat") == 15.65
 
     def test_no_fabrication_when_no_matching_place(self) -> None:
-        from app.pipeline.rdf_build import _merge_authority_ids
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
         rec = _rec(place="Somewhere Unknown")
         _merge_authority_ids(rec, [_kima_match("Fez", 34.03, -5.00)])
@@ -91,7 +90,7 @@ class TestMergeAuthorityIdsProductionPlace:
 
 class TestMergeAuthorityIdsRelatedPlaces:
     def test_writes_related_place_coords(self) -> None:
-        from app.pipeline.rdf_build import _merge_authority_ids
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
         rec = _rec(related=["Córdoba"])
         _merge_authority_ids(rec, [_kima_match("Córdoba", 37.89, -4.78, role="place")])
@@ -99,7 +98,7 @@ class TestMergeAuthorityIdsRelatedPlaces:
         assert rec["related_place_coords"]["Córdoba"]["lon"] == -4.78
 
     def test_fill_only_if_absent_for_related_place(self) -> None:
-        from app.pipeline.rdf_build import _merge_authority_ids
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
         rec = _rec(related=["Córdoba"])
         rec["related_place_coords"] = {"Córdoba": {"lat": 99.0, "lon": 0.0}}
@@ -107,7 +106,7 @@ class TestMergeAuthorityIdsRelatedPlaces:
         assert rec["related_place_coords"]["Córdoba"]["lat"] == 99.0  # not overwritten
 
     def test_no_crash_when_related_places_empty(self) -> None:
-        from app.pipeline.rdf_build import _merge_authority_ids
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
         rec = _rec()
         _merge_authority_ids(rec, [_kima_match("Fez", 34.03, -5.00)])

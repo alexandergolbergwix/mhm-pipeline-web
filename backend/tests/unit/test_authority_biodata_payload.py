@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from tests.unit.test_biodata_enrich import VIAF_RASHI_CLUSTER
@@ -25,7 +23,7 @@ async def test_match_one_attaches_biodata_from_viaf_cluster(
     async def fake_mazal_person(self, text, *, db_session, user_id, skip_cache, marc_dates=None):
         return None
 
-    async def fake_viaf_meta(self, text, *, db_session, user_id, skip_cache):
+    async def fake_viaf_meta(self, text, *, db_session, user_id, skip_cache, marc_dates=None):
         return {
             "viaf_id": "27066507",
             "preferred_name_lat": "Rashi, 1040-1105",

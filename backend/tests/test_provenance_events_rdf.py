@@ -1,7 +1,9 @@
 """Phase 3 (web) — provenance events in the RDF graph (CLAUDE.md Rule 60).
 
 Covers:
-  - _merge_authority_ids writes KIMA coords back onto provenance_events
+  - rdf_enrichment.merge_approved_authority (imported here as
+    _merge_authority_ids, its pre-refactor name) writes KIMA coords back
+    onto provenance_events
   - GraphBuilder emits a CIDOC event + wgs84-bearing E53_Place per geo event
   - query_geography surfaces the new places (via hm:mentions_place)
   - integrity: no wgs84 / no event emitted when coords are absent
@@ -13,9 +15,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.pipeline.rdf_build import _merge_authority_ids  # noqa: E402
+from app.pipeline.rdf_enrichment import (
+    merge_approved_authority as _merge_authority_ids,  # noqa: E402
+)
 from app.pipeline.research_queries import query_geography  # noqa: E402
-
 
 _WGS84_LAT = "http://www.w3.org/2003/01/geo/wgs84_pos#lat"
 _WGS84_LONG = "http://www.w3.org/2003/01/geo/wgs84_pos#long"
