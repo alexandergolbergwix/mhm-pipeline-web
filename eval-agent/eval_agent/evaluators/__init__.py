@@ -8,6 +8,7 @@ from eval_agent.evaluators._base import Candidate, Evaluator, Verdict
 from eval_agent.evaluators.authority import AuthorityEvaluator
 from eval_agent.evaluators.contents_ner import ContentsNERevaluator
 from eval_agent.evaluators.genre_classifier import GenreClassifierEvaluator
+from eval_agent.evaluators.hmo_wikibase_schema import HmoWikibaseSchemaEvaluator
 from eval_agent.evaluators.person_ner import PersonNERevaluator
 from eval_agent.evaluators.provenance_ner import ProvenanceNERevaluator
 from eval_agent.evaluators.wikidata_autofix import WikidataAutofixEvaluator
@@ -30,6 +31,8 @@ REGISTRY: dict[str, type[Evaluator]] = {
     # Wikidata Studio item projection. Reads wikidata_items.json.
     "wikidata_item": WikidataItemEvaluator,
     "wikidata_autofix": WikidataAutofixEvaluator,
+    # HMO Wikibase Studio schema bootstrap. Reads hmo_wikibase_schema.json.
+    "hmo_wikibase_schema": HmoWikibaseSchemaEvaluator,
 }
 
 # Evaluators that read authority_enriched.json instead of ner_results.json.
@@ -37,6 +40,9 @@ AUTHORITY_EVALUATORS: frozenset[str] = frozenset({"authority"})
 
 # Evaluators that read wikidata_items.json instead of ner_results.json.
 WIKIDATA_ITEM_EVALUATORS: frozenset[str] = frozenset({"wikidata_item", "wikidata_autofix"})
+
+# Evaluators that read hmo_wikibase_schema.json instead of ner_results.json.
+HMO_WIKIBASE_SCHEMA_EVALUATORS: frozenset[str] = frozenset({"hmo_wikibase_schema"})
 
 
 def build(evaluator_id: str) -> Evaluator:

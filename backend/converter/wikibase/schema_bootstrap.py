@@ -1,4 +1,13 @@
-"""Offline schema bootstrap drafts for an HMO project Wikibase."""
+"""Offline schema bootstrap drafts for an HMO project Wikibase.
+
+Draft-building is pure and offline: :func:`build_default_hmo_schema_bootstrap`
+parses the real HMO ontology (via :mod:`ontology_schema_reader`) into
+:class:`WikibaseSchemaClassDraft`/:class:`WikibaseSchemaPropertyDraft`
+lists. Turning these drafts into live Wikibase entities on
+``mhm-hmo.wikibase.cloud`` is the job of
+``backend/app/pipeline/hmo_schema_bootstrap.py`` (Phase 3) — this module
+still performs no network calls.
+"""
 
 from __future__ import annotations
 
@@ -6,12 +15,12 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-_HMO = "https://w3id.org/hmo/"
-_CIDOC = "http://www.cidoc-crm.org/cidoc-crm/"
-_LRMOO = "http://iflastandards.info/ns/lrm/lrmoo/"
-_RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-_RDFS = "http://www.w3.org/2000/01/rdf-schema#"
-_DCTERMS = "http://purl.org/dc/terms/"
+from converter.wikibase.ontology_schema_reader import (
+    OntologyClassEntry,
+    OntologyPropertyEntry,
+    OntologySchema,
+    read_hmo_schema,
+)
 
 
 @dataclass(frozen=True)
@@ -79,189 +88,69 @@ class WikibaseSchemaBootstrap:
         }
 
 
-def build_default_hmo_schema_bootstrap() -> WikibaseSchemaBootstrap:
-    """Build the first offline schema draft for an HMO project Wikibase."""
-    return WikibaseSchemaBootstrap(
-        classes=[
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_Manuscript",
-                label="Manuscript",
-                description="Physical manuscript as an HMO/LRMoo manifestation singleton.",
-                source_uri=f"{_LRMOO}F4_Manifestation_Singleton",
-                aliases=["Manifestation Singleton", "Bibliographic Unit"],
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_Work",
-                label="Work",
-                description="Intellectual or artistic work carried by manuscript witnesses.",
-                source_uri=f"{_LRMOO}F1_Work",
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_Expression",
-                label="Expression",
-                description="Realization of a work, including textual form and language.",
-                source_uri=f"{_LRMOO}F2_Expression",
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_CodicologicalUnit",
-                label="Codicological Unit",
-                description="Material production unit within a manuscript volume.",
-                source_uri=f"{_HMO}Codicological_Unit",
-                aliases=["Codicological unit", "CU"],
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_Person",
-                label="Person",
-                description="Individual associated with manuscript creation, transmission, ownership, or scholarship.",
-                source_uri=f"{_CIDOC}E21_Person",
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_Place",
-                label="Place",
-                description="Geographic place associated with manuscript production, provenance, or custody.",
-                source_uri=f"{_CIDOC}E53_Place",
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_Organization",
-                label="Organization",
-                description="Group, institution, collection, or corporate body associated with a manuscript.",
-                source_uri=f"{_CIDOC}E74_Group",
-                aliases=["Group", "Institution"],
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_Event",
-                label="Event",
-                description="Production, acquisition, provenance, or other manuscript-related event.",
-                source_uri=f"{_CIDOC}E5_Event",
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_TransmissionWitness",
-                label="Transmission Witness",
-                description="HMO philological witness connecting a text tradition to a manuscript carrier.",
-                source_uri=f"{_HMO}TransmissionWitness",
-            ),
-            WikibaseSchemaClassDraft(
-                local_id="ClassDraft_TextTradition",
-                label="Text Tradition",
-                description="Philological text tradition represented by one or more transmission witnesses.",
-                source_uri=f"{_HMO}TextTradition",
-            ),
-        ],
-        properties=[
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_InstanceOf",
-                label="instance of",
-                description="Links an item to its HMO, CIDOC CRM, or LRMoo class.",
-                datatype="wikibase-item",
-                source_uri=f"{_RDF}type",
-                expected_value="schema class item",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_SourceUri",
-                label="source URI",
-                description="Original RDF URI for the exported HMO resource.",
-                datatype="url",
-                source_uri=f"{_DCTERMS}identifier",
-                aliases=["RDF URI"],
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_LocalHmoUri",
-                label="local HMO URI",
-                description="Stable local HMO URI minted by the MHM pipeline.",
-                datatype="url",
-                source_uri=f"{_HMO}local_hmo_uri",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_Label",
-                label="label",
-                description="Human-readable label preserved from the RDF graph.",
-                datatype="monolingualtext",
-                source_uri=f"{_RDFS}label",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_HasPart",
-                label="has part",
-                description="Connects a manuscript or unit to a component part.",
-                datatype="wikibase-item",
-                source_uri=f"{_HMO}has_part",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_PartOf",
-                label="part of",
-                description="Connects a component entity to its containing manuscript or unit.",
-                datatype="wikibase-item",
-                source_uri=f"{_HMO}part_of",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_CarriedBy",
-                label="carried by",
-                description="Links a textual witness or expression to its physical manuscript carrier.",
-                datatype="wikibase-item",
-                source_uri=f"{_HMO}carried_by",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_Embodies",
-                label="embodies",
-                description="Links a manuscript carrier to the expression or work it embodies.",
-                datatype="wikibase-item",
-                source_uri=f"{_LRMOO}R4_embodies",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_CreatedBy",
-                label="created by",
-                description="Links a manuscript, expression, or event to a creator or scribe.",
-                datatype="wikibase-item",
-                source_uri=f"{_CIDOC}P14_carried_out_by",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_AssociatedPerson",
-                label="associated person",
-                description="Person associated with a manuscript, event, provenance note, or scholarly assertion.",
-                datatype="wikibase-item",
-                source_uri=f"{_HMO}associated_person",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_AssociatedPlace",
-                label="associated place",
-                description="Place associated with production, provenance, custody, or description.",
-                datatype="wikibase-item",
-                source_uri=f"{_HMO}associated_place",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_AssociatedDate",
-                label="associated date",
-                description="Date or date text associated with a manuscript-related fact.",
-                datatype="time",
-                source_uri=f"{_HMO}associated_date",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_AuthorityId",
-                label="authority ID",
-                description="Identifier from an authority source such as Mazal/NLI, VIAF, or KIMA.",
-                datatype="external-id",
-                source_uri=f"{_HMO}authority_id",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_ExternalIdentifier",
-                label="external identifier",
-                description="External manuscript, catalog, collection, or authority identifier.",
-                datatype="external-id",
-                source_uri=f"{_DCTERMS}identifier",
-            ),
-            WikibaseSchemaPropertyDraft(
-                local_id="PropertyDraft_EvidenceSourceNote",
-                label="evidence/source note",
-                description="Textual note recording the evidence or source for an exported assertion.",
-                datatype="monolingualtext",
-                source_uri=f"{_HMO}evidence_source_note",
-                aliases=["source note", "evidence note"],
-            ),
-        ],
-        notes=[
-            "Offline schema bootstrap only: this module performs no network calls and no Wikibase writes.",
-            "Local IDs are stable draft identifiers, not Wikibase Q/P identifiers.",
-        ],
-    )
+def build_default_hmo_schema_bootstrap(
+    ttl_path: Path | None = None,
+) -> WikibaseSchemaBootstrap:
+    """Build the offline schema draft for the full HMO ontology.
+
+    Parses every ``owl:Class``/``owl:ObjectProperty``/``owl:DatatypeProperty``
+    from the HMO ontology Turtle file (defaulting to
+    :func:`default_hmo_ontology_path`) via :func:`read_hmo_schema`, and maps
+    each entry into a :class:`WikibaseSchemaClassDraft` or
+    :class:`WikibaseSchemaPropertyDraft`. ``owl:AnnotationProperty``
+    declarations are intentionally excluded (see ``OntologySchema.skipped``).
+    """
+    schema = read_hmo_schema(ttl_path)
+    return build_bootstrap_from_ontology_schema(schema)
+
+
+def build_bootstrap_from_ontology_schema(
+    schema: OntologySchema,
+) -> WikibaseSchemaBootstrap:
+    """Map a parsed :class:`OntologySchema` into schema bootstrap drafts."""
+    classes = [
+        WikibaseSchemaClassDraft(
+            local_id=f"ClassDraft_{slug}",
+            label=entry.label,
+            description=entry.description,
+            source_uri=entry.uri,
+            aliases=entry.aliases,
+        )
+        for entry, slug in zip(schema.classes, _unique_slugs(schema.classes), strict=True)
+    ]
+    properties = [
+        WikibaseSchemaPropertyDraft(
+            local_id=f"PropertyDraft_{slug}",
+            label=entry.label,
+            description=entry.description,
+            datatype=entry.datatype,
+            source_uri=entry.uri,
+            aliases=entry.aliases,
+        )
+        for entry, slug in zip(schema.properties, _unique_slugs(schema.properties), strict=True)
+    ]
+    notes = [
+        "Offline schema bootstrap only: this module performs no network calls "
+        "and no Wikibase writes.",
+        "Local IDs are stable draft identifiers, not Wikibase Q/P identifiers.",
+        f"Derived from the HMO ontology: {len(schema.classes)} classes, "
+        f"{len(schema.properties)} properties, {len(schema.skipped)} skipped "
+        "(annotation properties).",
+    ]
+    return WikibaseSchemaBootstrap(classes=classes, properties=properties, notes=notes)
+
+
+def _unique_slugs(
+    entries: list[OntologyClassEntry] | list[OntologyPropertyEntry],
+) -> list[str]:
+    """De-duplicate ``local_name`` values that collide across namespaces."""
+    counts: dict[str, int] = {}
+    slugs: list[str] = []
+    for entry in entries:
+        counts[entry.local_name] = counts.get(entry.local_name, 0) + 1
+        count = counts[entry.local_name]
+        slugs.append(entry.local_name if count == 1 else f"{entry.local_name}_{count}")
+    return slugs
 
 
 def export_schema_bootstrap_to_file(path: Path) -> Path:

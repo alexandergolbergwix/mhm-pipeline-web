@@ -27,8 +27,6 @@ from app.models.event import (
     ProjectSnapshot,
 )
 from app.models.extraction_approval import ExtractionApproval
-from app.models.rdf_artifact import RdfArtifact
-from app.models.saved_query import SavedQuery
 from app.models.inference_cache import InferenceCache
 from app.models.invitation import Invitation
 from app.models.item_override import WikidataItemOverride
@@ -41,6 +39,7 @@ from app.models.project import (
     Membership,
     Project,
 )
+from app.models.rdf_artifact import RdfArtifact
 from app.models.run import (
     RUN_STATUS_FAILED,
     RUN_STATUS_PENDING,
@@ -51,8 +50,15 @@ from app.models.run import (
     RunRecord,
 )
 from app.models.run_job import RunJob
+from app.models.saved_query import SavedQuery
 from app.models.session import Session
 from app.models.user import ROLE_ADMIN, ROLE_EDITOR, User
+from app.models.wikibase_entity_mapping import (
+    ENTITY_KIND_CLASS,
+    ENTITY_KIND_INSTANCE,
+    ENTITY_KIND_PROPERTY,
+    WikibaseEntityMapping,
+)
 from app.models.wikidata_studio_cache import WikidataStudioCache
 
 __all__ = [
@@ -63,6 +69,9 @@ __all__ = [
     "ApiKey",
     "AuthorityMatch",
     "Base",
+    "ENTITY_KIND_CLASS",
+    "ENTITY_KIND_INSTANCE",
+    "ENTITY_KIND_PROPERTY",
     "ENTITY_TYPE_AUTHORITY_MATCH",
     "ENTITY_TYPE_EXTRACTION_ENTITY",
     "ENTITY_TYPE_MARC_RECORD",
@@ -104,4 +113,5 @@ __all__ = [
     "STATUS_PENDING_EMAIL_CONFIRM",
     "Session",
     "User",
+    "WikibaseEntityMapping",
 ]

@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 import requests
 
@@ -215,6 +215,20 @@ class EditOutcome:
     new_revid: int | None  # revid for the new revision (for permalinks)
 
 
+@dataclass(frozen=True)
+class EntityEditOutcome:
+    """Result of a WikibaseIntegrator item/property/claim write.
+
+    Sibling to :class:`EditOutcome`, for the Wikibase *entity* API
+    (items/properties/claims) rather than plain MediaWiki pages.
+    """
+
+    entity_id: str | None  # QID or PID, None on failure
+    status: str  # "created" | "updated" | "failed"
+    message: str
+    page_url: str | None
+
+
 class WikibaseCloudWriter:
     """Authenticated MediaWiki API writer for ``mhm-hmo.wikibase.cloud``.
 
@@ -250,8 +264,10 @@ class WikibaseCloudWriter:
         self._session = session or requests.Session()
         self._session.headers["User-Agent"] = user_agent
         self._timeout = timeout
+        self._user_agent = user_agent
         self._csrf_token: str | None = None
         self._logged_in = False
+        self._wbi: Any | None = None  # lazily-built WikibaseIntegrator instance
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
         return (
@@ -465,6 +481,131 @@ class WikibaseCloudWriter:
             new_revid=int(revid_val) if isinstance(revid_val, int) else None,
         )
 
+    # ── Entity write (items / properties / claims) ──────────────────────
+    #
+    # Unlike ``edit_page`` (plain MediaWiki page edits for IIIF manifest
+    # JSON, above), item/property/claim writes go through
+    # ``wikibaseintegrator`` — the same library ``converter/wikidata/
+    # uploader.py`` already uses for wikidata.org — rather than hand-rolled
+    # ``wbeditentity``/``wbcreateclaim`` calls, so auth/CSRF/retry/MAXLAG
+    # handling stays in one place across both Wikibase targets.
+
+    def _init_wbi(self) -> Any:
+        """Lazily build a WikibaseIntegrator instance pointed at this config."""
+        if self._wbi is not None:
+            return self._wbi
+
+        from wikibaseintegrator import WikibaseIntegrator, wbi_login  # noqa: PLC0415
+        from wikibaseintegrator.wbi_config import config as wbi_config  # noqa: PLC0415
+
+        wbi_config["MEDIAWIKI_API_URL"] = self._config.api_url
+        wbi_config["WIKIBASE_URL"] = self._config.base_url.rstrip("/")
+        wbi_config["USER_AGENT"] = self._user_agent
+        wbi_config["MAXLAG"] = 10
+        wbi_config["BACKOFF_MAX_TRIES"] = self._MAX_RETRIES
+        wbi_config["BACKOFF_MAX_VALUE"] = int(self._MAX_BACKOFF_SECONDS)
+
+        login = wbi_login.Login(
+            user=self._credentials.login_name,
+            password=self._credentials.password,
+            mediawiki_api_url=self._config.api_url,
+            user_agent=self._user_agent,
+        )
+        self._wbi = WikibaseIntegrator(login=login)
+        return self._wbi
+
+    def create_item(
+        self,
+        labels: Mapping[str, str],
+        descriptions: Mapping[str, str],
+        *,
+        claims: Sequence[Any] | None = None,
+        aliases: Mapping[str, Sequence[str]] | None = None,
+        summary: str = "",
+    ) -> EntityEditOutcome:
+        """Create a new Wikibase Item.
+
+        ``claims`` is a sequence of already-built
+        ``wikibaseintegrator.datatypes`` claim objects (e.g.
+        ``datatypes.Item(prop_nr="P1", value="Q2")``) — callers build the
+        claim with the right datatype, this method only adds and writes it.
+        """
+        wbi = self._init_wbi()
+        entity = wbi.item.new()
+        _apply_labels_descriptions_aliases(entity, labels, descriptions, aliases)
+        return self._write_entity(entity, claims, summary)
+
+    def create_property(
+        self,
+        labels: Mapping[str, str],
+        descriptions: Mapping[str, str],
+        datatype: str,
+        *,
+        claims: Sequence[Any] | None = None,
+        aliases: Mapping[str, Sequence[str]] | None = None,
+        summary: str = "",
+    ) -> EntityEditOutcome:
+        """Create a new Wikibase Property with the given datatype."""
+        wbi = self._init_wbi()
+        entity = wbi.property.new(datatype=datatype)
+        _apply_labels_descriptions_aliases(entity, labels, descriptions, aliases)
+        return self._write_entity(entity, claims, summary)
+
+    def _write_entity(
+        self, entity: Any, claims: Sequence[Any] | None, summary: str
+    ) -> EntityEditOutcome:
+        if claims:
+            for claim in claims:
+                entity.claims.add(claim)
+        try:
+            written = entity.write(summary=summary or None, bot=True)
+        except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+            return EntityEditOutcome(
+                entity_id=None, status="failed", message=str(exc), page_url=None
+            )
+        entity_id = written.id
+        return EntityEditOutcome(
+            entity_id=entity_id,
+            status="created",
+            message="ok",
+            page_url=self.page_url(_entity_page_title(entity_id)),
+        )
+
+    def _get_wbi_entity(self, entity_id: str) -> Any:
+        """Fetch a live item or property by id, dispatching on the Q/P prefix."""
+        wbi = self._init_wbi()
+        return wbi.item.get(entity_id) if entity_id.startswith("Q") else wbi.property.get(entity_id)
+
+    def add_claim(
+        self, entity_id: str, claim: Any, *, summary: str = ""
+    ) -> EntityEditOutcome:
+        """Add one already-built claim to an existing item or property."""
+        try:
+            entity = self._get_wbi_entity(entity_id)
+            entity.claims.add(claim)
+            written = entity.write(summary=summary or None, bot=True)
+        except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+            return EntityEditOutcome(
+                entity_id=entity_id,
+                status="failed",
+                message=str(exc),
+                page_url=self.page_url(_entity_page_title(entity_id)),
+            )
+        return EntityEditOutcome(
+            entity_id=written.id,
+            status="updated",
+            message="ok",
+            page_url=self.page_url(_entity_page_title(written.id)),
+        )
+
+    def get_entity(self, entity_id: str) -> Mapping[str, Any] | None:
+        """Fetch an entity by QID/PID. Verification only, never used for writes."""
+        try:
+            entity = self._get_wbi_entity(entity_id)
+        except Exception:  # noqa: BLE001 - "not found"/network errors both mean "no entity"
+            return None
+        return cast(Mapping[str, Any], entity.get_json())
+
     # ── HTTP plumbing ────────────────────────────────────────────────
 
     def _post_with_retry(self, params: dict[str, str]) -> Mapping[object, object]:
@@ -511,3 +652,29 @@ class WikibaseCloudWriter:
 def _content_hash(text: str) -> str:
     """Stable SHA-256 of the stripped page body for idempotency checks."""
     return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
+
+def _entity_page_title(entity_id: str) -> str:
+    """Build the ``Item:Q123`` / ``Property:P123`` page title for an entity id."""
+    if entity_id.startswith("Q"):
+        return f"Item:{entity_id}"
+    if entity_id.startswith("P"):
+        return f"Property:{entity_id}"
+    return entity_id
+
+
+def _apply_labels_descriptions_aliases(
+    entity: Any,
+    labels: Mapping[str, str],
+    descriptions: Mapping[str, str],
+    aliases: Mapping[str, Sequence[str]] | None,
+) -> None:
+    """Set labels/descriptions/aliases on a freshly-built WBI item/property."""
+    for lang, value in labels.items():
+        entity.labels.set(lang, value)
+    for lang, value in descriptions.items():
+        entity.descriptions.set(lang, value)
+    if aliases:
+        for lang, values in aliases.items():
+            for value in values:
+                entity.aliases.set(lang, value)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from rdflib.namespace import OWL, RDF, RDFS
 from rdflib.term import Node
 
 from converter.config.namespaces import CIDOC, HM, LRMOO
+from converter.wikibase._ids import local_name, safe_local_id
 from converter.wikibase.models import (
     StatementValue,
     WikibaseEntityDraft,
@@ -75,8 +75,8 @@ class HmoWikibaseExporter:
                 WikibaseEntityDraft(
                     local_id=local_ids[subject],
                     labels=_labels_for_node(graph, subject),
-                    descriptions={"en": f"Offline HMO Wikibase draft for {_local_name(class_uri)}"},
-                    entity_type=_local_name(class_uri),
+                    descriptions={"en": f"Offline HMO Wikibase draft for {local_name(class_uri)}"},
+                    entity_type=local_name(class_uri),
                     class_uri=str(class_uri),
                     source_uri=str(subject),
                     statements=statements,
@@ -119,7 +119,7 @@ def _local_ids_for_nodes(nodes: list[URIRef | BNode]) -> dict[URIRef | BNode, st
     seen: defaultdict[str, int] = defaultdict(int)
     local_ids: dict[URIRef | BNode, str] = {}
     for node in nodes:
-        base = _safe_local_id(_node_local_name(node))
+        base = safe_local_id(_node_local_name(node))
         seen[base] += 1
         suffix = "" if seen[base] == 1 else f"_{seen[base]}"
         local_ids[node] = f"QDraft_{base}{suffix}"
@@ -161,7 +161,7 @@ def _statement_from_triple(
 ) -> WikibaseStatementDraft:
     """Convert an RDF predicate/object pair into a local statement draft."""
     property_uri = str(predicate)
-    property_name = _local_name(predicate)
+    property_name = local_name(predicate)
     if isinstance(obj, Literal):
         value, datatype = _literal_value(obj)
         return WikibaseStatementDraft(
@@ -208,20 +208,4 @@ def _node_local_name(node: URIRef | BNode) -> str:
     """Return a readable local name for a URI or blank node."""
     if isinstance(node, BNode):
         return f"BlankNode_{node}"
-    return _local_name(node)
-
-
-def _local_name(node: Node) -> str:
-    """Extract the final local component of an RDF URI-like node."""
-    text = str(node)
-    if "#" in text:
-        return text.rsplit("#", maxsplit=1)[-1]
-    if "/" in text:
-        return text.rstrip("/").rsplit("/", maxsplit=1)[-1]
-    return text
-
-
-def _safe_local_id(value: str) -> str:
-    """Normalise an RDF local name into a safe local draft identifier."""
-    cleaned = re.sub(r"[^0-9A-Za-z_]+", "_", value).strip("_")
-    return cleaned or "Entity"
+    return local_name(node)

@@ -128,6 +128,21 @@ evaluator that consumes `authority_enriched.json` rather than
 now accepts **`authority_enriched.json`** as an alternative to
 `ner_results.json` when locating a pipeline run on disk.
 
+Also registered: **`wikidata_item`** / **`wikidata_autofix`** (Wikidata
+Studio, read `wikidata_items.json`) and **`hmo_wikibase_schema`** (HMO
+Wikibase Studio's schema bootstrap, reads `hmo_wikibase_schema.json` —
+one entry per ontology class/property the bootstrap created or would
+create; entries have no MARC correlation, so `marc_record` is always
+`{}` for this evaluator). All three are deterministic verification
+evaluators (not precision-tracked classifiers), so they have no
+`state/feature_list.json` entries, matching `authority`'s precedent.
+The `hmo_wikibase_schema` rubric (`config/rubrics/hmo_wikibase_schema.md`)
+judges each class/property against the HMO ontology (hebrew-manuscripts.ttl)
+semantics and, for the small overlap, Wikidata's own manuscript-modeling
+conventions (`Wikidata:WikiProject_Manuscripts/Data_Model`) — see the web
+repo's `dev-docs/hmo-wikibase-studio-plan.md` for the wider HMO Wikibase
+Studio effort this evaluator supports.
+
 **Candidate set (mirrors the curator's Authority editor).** The
 authority evaluator judges every *resolved* authority decision across
 all three shapes the editor surfaces — not just `marc_authority_matches`:
