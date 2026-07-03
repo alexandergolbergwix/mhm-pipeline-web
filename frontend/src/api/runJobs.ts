@@ -15,7 +15,8 @@ export type RunJobKind =
   | "wikidata_verify"
   | "rdf_build"
   | "wikidata_studio_build"
-  | "wikidata_upload";
+  | "wikidata_upload"
+  | "hmo_schema_bootstrap";
 
 export interface RunJobProgress {
   phase?: string;
@@ -60,6 +61,7 @@ export const JOB_KIND_LABELS: Record<string, string> = {
   rdf_build:                "RDF build",
   wikidata_studio_build:    "Wikidata Studio build",
   wikidata_upload:          "Wikidata upload",
+  hmo_schema_bootstrap:     "HMO schema bootstrap",
 };
 
 export function jobRunHref(job: RunJobSnapshot): string {
@@ -76,6 +78,8 @@ export function jobRunHref(job: RunJobSnapshot): string {
     case "wikidata_verify":
     case "wikidata_upload":
       return `/runs/${job.run_id}/wikidata-studio`;
+    case "hmo_schema_bootstrap":
+      return `/runs/${job.run_id}/hmo-studio`;
     default:
       return `/runs/${job.run_id}/overview`;
   }

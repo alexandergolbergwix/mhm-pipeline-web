@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -78,13 +79,26 @@ class SchemaStatusResult:
 
 
 async def bootstrap_schema(
-    db: AsyncSession, *, writer: Any | None, dry_run: bool,
+    db: AsyncSession,
+    *,
+    writer: Any | None,
+    dry_run: bool,
+    on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+    should_cancel: Callable[[], Awaitable[bool]] | None = None,
 ) -> SchemaBootstrapResult:
     """Create every missing HMO ontology class/property on the Wikibase Cloud.
 
     ``writer`` must be a live :class:`WikibaseCloudWriter` when
     ``dry_run=False``; it is unused (and may be ``None``) when
     ``dry_run=True``.
+
+    ``on_progress(processed, total, message)`` is awaited after every
+    entry (live mode only — dry-run has no network calls to report
+    progress on) so a caller running this inside a background job
+    (``hmo_schema_bootstrap_job.py``) can update a job-progress row.
+    ``should_cancel()`` is polled the same way to support cooperative
+    cancellation; when it returns True the loop stops and the result
+    reflects whatever was completed so far.
     """
     from converter.wikibase.ontology_schema_reader import read_hmo_schema  # noqa: PLC0415
 
@@ -99,43 +113,48 @@ async def bootstrap_schema(
         (cls.uri, ENTITY_KIND_CLASS, cls.label, cls.description, cls.aliases, None)
         for cls in schema.classes
     ]
+    total = len(ordered)
 
     entries: list[SchemaBootstrapEntry] = []
     created = skipped = failed = would_create = 0
 
-    for uri, kind, label, description, aliases, datatype in ordered:
+    for idx, (uri, kind, label, description, aliases, datatype) in enumerate(ordered):
+        if not dry_run and should_cancel is not None and await should_cancel():
+            break
+
         if uri in existing:
             entries.append(
                 SchemaBootstrapEntry(uri, kind, label, existing[uri], "skipped")
             )
             skipped += 1
-            continue
-
-        if dry_run:
+        elif dry_run:
             entries.append(SchemaBootstrapEntry(uri, kind, label, None, "would_create"))
             would_create += 1
-            continue
-
-        outcome = await asyncio.to_thread(
-            _create_live, writer, kind, label, description, aliases, datatype,
-        )
-        if outcome.entity_id is None:
-            entries.append(
-                SchemaBootstrapEntry(uri, kind, label, None, "failed", outcome.message)
+        else:
+            outcome = await asyncio.to_thread(
+                _create_live, writer, kind, label, description, aliases, datatype,
             )
-            failed += 1
-            logger.warning(
-                "Failed to create schema %s %s (%s): %s",
-                kind, label, uri, outcome.message,
-            )
-            continue
+            if outcome.entity_id is None:
+                entries.append(
+                    SchemaBootstrapEntry(uri, kind, label, None, "failed", outcome.message)
+                )
+                failed += 1
+                logger.warning(
+                    "Failed to create schema %s %s (%s): %s",
+                    kind, label, uri, outcome.message,
+                )
+            else:
+                await _record_mapping(
+                    db, ontology_uri=uri, entity_kind=kind,
+                    wikibase_id=outcome.entity_id, label=label, datatype=datatype,
+                )
+                entries.append(
+                    SchemaBootstrapEntry(uri, kind, label, outcome.entity_id, "created")
+                )
+                created += 1
 
-        await _record_mapping(
-            db, ontology_uri=uri, entity_kind=kind,
-            wikibase_id=outcome.entity_id, label=label, datatype=datatype,
-        )
-        entries.append(SchemaBootstrapEntry(uri, kind, label, outcome.entity_id, "created"))
-        created += 1
+        if not dry_run and on_progress is not None:
+            await on_progress(idx + 1, total, label)
 
     return SchemaBootstrapResult(
         dry_run=dry_run, created=created, skipped=skipped, failed=failed,

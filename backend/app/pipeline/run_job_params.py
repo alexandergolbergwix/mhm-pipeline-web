@@ -14,6 +14,7 @@ from app.models.run_job import (
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_EXTRACTION,
+    JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
@@ -85,6 +86,29 @@ async def prepare_job_params(
                 detail="Live upload requires a Wikidata token in Settings.",
             )
         merged["_wikidata_token"] = token
+
+    if kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP and not merged.get("dry_run", True):
+        from app.routers.hmo_studio import _unwrap_user_secret  # noqa: PLC0415
+
+        bot_username = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_username")
+        bot_password = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_password")
+        missing = [
+            name for name, val in (
+                ("wikibase_cloud_bot_username", bot_username),
+                ("wikibase_cloud_bot_password", bot_password),
+            )
+            if not val
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Add Wikibase bot credentials in Settings → "
+                    "Credentials, then retry. Missing: " + ", ".join(missing)
+                ),
+            )
+        merged["_wikibase_bot_username"] = bot_username
+        merged["_wikibase_bot_password"] = bot_password
 
     if kind == JOB_KIND_RDF_BUILD:
         merged.setdefault("add_epistemological_status", True)

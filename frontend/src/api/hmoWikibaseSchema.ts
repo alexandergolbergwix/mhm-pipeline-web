@@ -1,4 +1,5 @@
 import { api } from "@/api/client";
+import type { RunJobSnapshot } from "@/api/runJobs";
 
 export interface HmoSchemaStatus {
   total_classes: number;
@@ -31,8 +32,22 @@ export interface HmoSchemaBootstrapResult {
 export const HmoWikibaseSchema = {
   status: () => api.get<HmoSchemaStatus>("/hmo-wikibase-schema/status"),
 
-  bootstrap: (dryRun: boolean) =>
-    api.post<HmoSchemaBootstrapResult>(
-      "/hmo-wikibase-schema/bootstrap", { dry_run: dryRun },
+  /**
+   * Dry-run stays synchronous (returns the result directly). A live
+   * bootstrap (`dryRun=false`) makes ~380 sequential external calls — too
+   * slow for one HTTP request — so the backend spawns a `run_jobs`
+   * background job and returns its snapshot immediately; the caller must
+   * track `job.id` (e.g. via `useRunJobAttachment`) for progress.
+   */
+  bootstrap: (dryRun: boolean, runId?: string) =>
+    api.post<HmoSchemaBootstrapResult | RunJobSnapshot>(
+      "/hmo-wikibase-schema/bootstrap",
+      { dry_run: dryRun, run_id: dryRun ? undefined : runId },
     ),
 };
+
+export function isSchemaBootstrapJob(
+  r: HmoSchemaBootstrapResult | RunJobSnapshot,
+): r is RunJobSnapshot {
+  return "kind" in r && r.kind === "hmo_schema_bootstrap";
+}
