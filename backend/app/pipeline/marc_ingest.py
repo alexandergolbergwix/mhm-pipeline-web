@@ -19,8 +19,9 @@ import csv
 import io
 import json
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 # Tabular column header → internal slot.
 _CN_HEADERS = (
@@ -224,7 +225,9 @@ def _normalise_records(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 def _dates_from_260_264(record: dict[str, Any]) -> dict[str, Any] | None:
     """Return parsed production dates from MARC 260/264 $c, or ``None``."""
     from converter.transformer.field_handlers import FieldHandlers  # noqa: PLC0415
-    from converter.transformer.hebrew_gregorian_calendar import enrich_dates_with_calendar_fields  # noqa: PLC0415
+    from converter.transformer.hebrew_gregorian_calendar import (
+        enrich_dates_with_calendar_fields,  # noqa: PLC0415
+    )
 
     for tag in ("260", "264"):
         for piece in _split_multi(_str(record.get(f"{tag}$c"))):
@@ -1126,7 +1129,7 @@ def extract_named_entities(record: dict[str, Any]) -> list[dict[str, str]]:
         out.append({
             "text": normalize_entity_text(text),
             "kind": "place",
-            "role": f"{ev.get('type') or 'provenance'} place",
+            "role": f"{ev.get('type') or 'provenance'}_place",
             "field": str(ev.get("source_field") or ""),
         })
 

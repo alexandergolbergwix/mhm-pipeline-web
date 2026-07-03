@@ -26,7 +26,7 @@ from app.pipeline.research_queries import query_summary
 def _build_real_graph(records: list[dict]) -> rdflib.Graph:
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "manuscripts.ttl"
-        _triples, manuscripts, errors = _run_mapper_sync(records, [], out)
+        _triples, manuscripts, errors, _, _, _, _, _, _ = _run_mapper_sync(records, [], out)
         assert errors == [], errors
         assert manuscripts == len(records)
         g = rdflib.Graph()

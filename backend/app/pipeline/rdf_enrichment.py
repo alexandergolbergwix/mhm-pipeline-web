@@ -398,10 +398,17 @@ def _merge_kima_place(
                 continue
             pt = clean_marc_label(str(ev.get("place_text") or ""))
             if pt and names_overlap(pt, entity_text):
-                ev.setdefault("lat", kima_lat)
-                ev.setdefault("lon", kima_lon)
-                if wikidata_qid:
-                    ev.setdefault("wikidata_id", wikidata_qid)
+                # build_provenance_event (marc_ingest.py) pre-populates
+                # lat/lon/wikidata_id with explicit None placeholders, so
+                # setdefault (which only fires when the key is absent, not
+                # when its value is None) never actually filled them in —
+                # provenance-event coords from KIMA were silently dropped.
+                if ev.get("lat") is None:
+                    ev["lat"] = kima_lat
+                if ev.get("lon") is None:
+                    ev["lon"] = kima_lon
+                if wikidata_qid and ev.get("wikidata_id") is None:
+                    ev["wikidata_id"] = wikidata_qid
                 if kima_geo:
                     ev.setdefault("geonames_id", str(kima_geo))
 

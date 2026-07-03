@@ -5,8 +5,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from app.pipeline.rdf_enrichment import merge_approved_authority, merge_approved_ner
 from app.pipeline.rdf_build import _run_mapper_sync
+from app.pipeline.rdf_enrichment import merge_approved_authority, merge_approved_ner
 
 
 def test_merge_ner_adds_former_owner() -> None:
@@ -57,7 +57,9 @@ def test_authority_ids_emit_in_ttl() -> None:
     }]
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.ttl"
-        triples, manuscripts, errors, _, _ = _run_mapper_sync([rec], matches, out)
+        triples, manuscripts, errors, _, _, _, _, _, _ = _run_mapper_sync(
+            [rec], matches, out,
+        )
         assert errors == []
         assert manuscripts == 1
         assert triples > 0
