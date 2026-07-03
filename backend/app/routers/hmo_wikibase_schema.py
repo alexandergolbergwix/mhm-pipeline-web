@@ -61,6 +61,7 @@ class SchemaBootstrapResponse(BaseModel):
     created: int
     skipped: int
     failed: int
+    would_create: int = 0
     entries: list[SchemaBootstrapEntryDto]
 
 
@@ -147,6 +148,7 @@ async def bootstrap_schema(
         created=result.created,
         skipped=result.skipped,
         failed=result.failed,
+        would_create=result.would_create,
         entries=[SchemaBootstrapEntryDto(**entry.__dict__) for entry in result.entries],
     )
 

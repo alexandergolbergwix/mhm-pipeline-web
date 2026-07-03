@@ -63,6 +63,7 @@ async def test_dry_run_bootstrap_needs_no_credentials(auth_user) -> None:
     body = response.json()
     assert body["dry_run"] is True
     assert body["created"] == 0
+    assert body["would_create"] == 1
     assert len(body["entries"]) == 1
     assert body["entries"][0]["status"] == "would_create"
 

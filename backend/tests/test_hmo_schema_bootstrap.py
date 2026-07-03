@@ -109,6 +109,7 @@ async def test_dry_run_reports_would_create_without_writing(
 
     assert result.dry_run is True
     assert result.created == 0
+    assert result.would_create == 2
     assert {e.status for e in result.entries} == {"would_create"}
     assert len(result.entries) == 2
 

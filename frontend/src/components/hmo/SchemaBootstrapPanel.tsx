@@ -132,7 +132,7 @@ function BootstrapResultSummary({ result }: { result: HmoSchemaBootstrapResult }
       <div className="flex items-baseline justify-between flex-wrap gap-2">
         <p className="text-sm">
           <span className="muted">{result.dry_run ? "Would create:" : "Created:"}</span>{" "}
-          <b className="text-biu-sky">{result.created}</b>
+          <b className="text-biu-sky">{result.dry_run ? result.would_create : result.created}</b>
           {" · "}
           <span className="muted">skipped {result.skipped}</span>
           {result.failed > 0 && (

@@ -62,6 +62,9 @@ class SchemaBootstrapResult:
     created: int
     skipped: int
     failed: int
+    # Populated only when dry_run=True — "created" stays 0 in a dry run
+    # since nothing is actually written.
+    would_create: int = 0
     entries: list[SchemaBootstrapEntry] = field(default_factory=list)
 
 
@@ -98,7 +101,7 @@ async def bootstrap_schema(
     ]
 
     entries: list[SchemaBootstrapEntry] = []
-    created = skipped = failed = 0
+    created = skipped = failed = would_create = 0
 
     for uri, kind, label, description, aliases, datatype in ordered:
         if uri in existing:
@@ -110,6 +113,7 @@ async def bootstrap_schema(
 
         if dry_run:
             entries.append(SchemaBootstrapEntry(uri, kind, label, None, "would_create"))
+            would_create += 1
             continue
 
         outcome = await asyncio.to_thread(
@@ -134,7 +138,8 @@ async def bootstrap_schema(
         created += 1
 
     return SchemaBootstrapResult(
-        dry_run=dry_run, created=created, skipped=skipped, failed=failed, entries=entries,
+        dry_run=dry_run, created=created, skipped=skipped, failed=failed,
+        would_create=would_create, entries=entries,
     )
 
 

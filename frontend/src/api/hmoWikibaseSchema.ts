@@ -24,6 +24,7 @@ export interface HmoSchemaBootstrapResult {
   created: number;
   skipped: number;
   failed: number;
+  would_create: number;
   entries: HmoSchemaBootstrapEntry[];
 }
 
