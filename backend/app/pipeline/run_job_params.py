@@ -88,7 +88,7 @@ async def prepare_job_params(
         merged["_wikidata_token"] = token
 
     if kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP and not merged.get("dry_run", True):
-        from app.routers.hmo_studio import _unwrap_user_secret  # noqa: PLC0415
+        from app.routers.hmo_studio import _resolve_bot_name, _unwrap_user_secret  # noqa: PLC0415
 
         bot_username = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_username")
         bot_password = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_password")
@@ -109,6 +109,7 @@ async def prepare_job_params(
             )
         merged["_wikibase_bot_username"] = bot_username
         merged["_wikibase_bot_password"] = bot_password
+        merged["_wikibase_bot_name"] = await _resolve_bot_name(db, auth)
 
     if kind == JOB_KIND_RDF_BUILD:
         merged.setdefault("add_epistemological_status", True)

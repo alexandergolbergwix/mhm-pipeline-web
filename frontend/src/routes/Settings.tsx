@@ -16,6 +16,14 @@ const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
     label: "Wikidata token",
     hint: "Bot password (User@Bot:hex) or OAuth credentials for live Wikidata upload.",
   },
+  wikibase_cloud_bot_name: {
+    label: "Wikibase Cloud bot name",
+    hint: (
+      "The name you gave the bot password when you created it at " +
+      "Special:BotPasswords on mhm-hmo.wikibase.cloud (the part after " +
+      "the @ in User@BotName). Defaults to \"mhm-pipeline\" if left unset."
+    ),
+  },
   wikibase_cloud_bot_username: {
     label: "Wikibase Cloud bot username",
     hint: "Your account name on mhm-hmo.wikibase.cloud (without the @bot suffix).",

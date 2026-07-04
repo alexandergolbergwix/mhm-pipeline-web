@@ -59,11 +59,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["hmo-studio"])
 
 
-# Default bot login name (the second half of the ``User@Bot`` pair).
-# Operators create a bot password at
-# https://mhm-hmo.wikibase.cloud/wiki/Special:BotPasswords and pick this
-# name themselves. The desktop pipeline calls it the "bot name"; we
-# keep the same default and let environments override via a stored key.
+# Fallback bot login name (the second half of the ``User@Bot`` pair) for
+# users who haven't stored their own ``wikibase_cloud_bot_name``. Each
+# user picks this name themselves when creating a bot password at
+# https://mhm-hmo.wikibase.cloud/wiki/Special:BotPasswords — it does not
+# have to match this default, so it is read from Settings first.
 _DEFAULT_BOT_NAME = "mhm-pipeline"
 
 
@@ -308,7 +308,7 @@ async def upload_manifests(
         manifest_dir=manifest_dir,
         bot_username=bot_username or "",
         bot_password=bot_password or "",
-        bot_name=_DEFAULT_BOT_NAME,
+        bot_name=await _resolve_bot_name(db, auth),
         dry_run=payload.dry_run,
     )
 
@@ -480,7 +480,7 @@ async def upload_items(
             WikibaseCloudClient.config_for_mhm_hmo_cloud(),
             WikibaseBotCredentials(
                 username=bot_username or "",
-                bot_name=_DEFAULT_BOT_NAME,
+                bot_name=await _resolve_bot_name(db, auth),
                 password=bot_password or "",
             ),
         )
@@ -717,6 +717,16 @@ async def _has_user_secret(
         )
     ).scalar_one_or_none()
     return row is not None
+
+
+async def _resolve_bot_name(db: AsyncSession, auth: AuthContext) -> str:
+    """The user's chosen bot name, falling back to ``_DEFAULT_BOT_NAME``.
+
+    Stored under ``wikibase_cloud_bot_name`` in Settings — must match the
+    name the user picked at ``Special:BotPasswords`` on their own account.
+    """
+    stored = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_name")
+    return stored or _DEFAULT_BOT_NAME
 
 
 async def _unwrap_user_secret(
