@@ -22,6 +22,32 @@ export interface SchemaBootstrapDetailsProps {
 }
 
 
+// "skipped" is the backend/filter value (idempotency marker — this
+// ontology URI already has a live Wikibase id from a previous
+// bootstrap) but reads as "nothing happened" to a curator. Every
+// status label shown in the UI uses this friendlier wording instead.
+const STATUS_LABELS: Record<string, string> = {
+  created: "created",
+  would_create: "would create",
+  skipped: "mapped",
+  failed: "failed",
+};
+
+function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
+
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+
 function countByStatus(entries: HmoSchemaBootstrapEntry[]): Record<string, number> {
   const counts: Record<string, number> = {
     created: 0,
@@ -66,6 +92,22 @@ export function SchemaBootstrapDetails({
   const headline = result.dry_run ? "Would create" : "Created";
   const headlineCount = result.dry_run ? result.would_create : result.created;
 
+  function exportJson() {
+    const payload = {
+      generated_at: new Date().toISOString(),
+      dry_run: result.dry_run,
+      created: result.created,
+      skipped: result.skipped,
+      failed: result.failed,
+      would_create: result.would_create,
+      entries: result.entries.map((entry) => ({
+        ...entry,
+        ai_verdict: verdicts[schemaEntryLocalId(entry)] ?? verdicts[entry.ontology_uri] ?? null,
+      })),
+    };
+    downloadJson(`hmo-wikibase-schema-${new Date().toISOString().slice(0, 10)}.json`, payload);
+  }
+
   return (
     <div className="border-t border-white/5 pt-3 space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -73,7 +115,7 @@ export function SchemaBootstrapDetails({
           <span className="muted">{headline}:</span>{" "}
           <b className="text-biu-sky">{headlineCount}</b>
           {" · "}
-          <span className="muted">skipped {result.skipped}</span>
+          <span className="muted">mapped {result.skipped}</span>
           {result.failed > 0 && (
             <>
               {" · "}
@@ -81,9 +123,14 @@ export function SchemaBootstrapDetails({
             </>
           )}
         </p>
-        <button onClick={() => setExpanded((v) => !v)} className="button-ghost text-xs">
-          {expanded ? "Hide details" : "Show details"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportJson} className="button-ghost text-xs">
+            Export JSON
+          </button>
+          <button onClick={() => setExpanded((v) => !v)} className="button-ghost text-xs">
+            {expanded ? "Hide details" : "Show details"}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -102,7 +149,7 @@ export function SchemaBootstrapDetails({
           tone="text-biu-sky"
         />
         <SummaryChip
-          label="skipped"
+          label="mapped"
           count={counts.skipped}
           active={statusFilter === "skipped"}
           onClick={() => setStatusFilter((f) => (f === "skipped" ? "all" : "skipped"))}
@@ -183,8 +230,8 @@ export function SchemaBootstrapDetails({
             {counts.skipped > 0 && (
               <>
                 {" · "}
-                <span title="These ontology URIs already have a Wikibase Item/Property id stored in the mapping table from a previous bootstrap.">
-                  Skipped = already on Wikibase
+                <span title="Nothing was skipped over — every one of these ontology URIs was checked against the mapping table and already has a live Wikibase Item/Property id from a previous bootstrap run, so re-running creates nothing new for them.">
+                  Mapped = already live on Wikibase, re-checked every run
                 </span>
               </>
             )}
@@ -242,5 +289,5 @@ function EntryStatusPill({status}: {status: string}) {
         : status === "skipped"
           ? "muted"
           : "text-danger";
-  return <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}`}>{status}</GlassPill>;
+  return <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}`}>{statusLabel(status)}</GlassPill>;
 }

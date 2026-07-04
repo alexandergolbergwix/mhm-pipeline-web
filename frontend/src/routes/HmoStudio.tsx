@@ -18,6 +18,7 @@ import {Glass, GlassPill} from "@/components/glass";
 import {SchemaBootstrapPanel} from "@/components/hmo/SchemaBootstrapPanel";
 import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
 import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
+import {GraphOverviewSummary} from "@/components/rdf/GraphOverviewSummary";
 import {useProjectEvents} from "@/api/realtime";
 import {useRunJobs} from "@/stores/runJobs";
 
@@ -169,6 +170,9 @@ export default function HmoStudioRoute() {
         {error && (
           <Glass as="p" variant="compact" className="p-3 text-sm text-danger">{error}</Glass>
         )}
+
+        {/* Corpus RDF graph overview — same stats as the RDF Graph tab */}
+        {runId && <GraphOverviewSummary runId={runId} />}
 
         {/* Ontology schema bootstrap (global, shared across every run) */}
         <SchemaBootstrapPanel runId={runId} />
