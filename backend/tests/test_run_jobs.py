@@ -7,6 +7,7 @@ import pytest
 from app.models.run_job import (
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_RDF_BUILD,
+    JOB_STATUS_QUEUED,
     JOB_STATUS_RUNNING,
     RunJob,
     SUPPORTED_JOB_KINDS,
@@ -52,6 +53,78 @@ async def test_duplicate_active_job_returns_409(db_session, sample_run) -> None:
         json={"kind": JOB_KIND_AUTHORITY_RE_ENRICH, "params": {}},
     )
     assert r.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_notify_job_update_refreshes_before_serialising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: ``RunJob.updated_at`` uses ``onupdate=func.now()``, so
+    SQLAlchemy expires it after commit. ``_notify_job_update`` hands the
+    job to the *synchronous* ``serialise_job``, which would try to
+    lazy-load that expired column outside the asyncio greenlet bridge —
+    raising ``MissingGreenlet`` on real Postgres (production incident,
+    2026-07-04; this suite runs on SQLite, which never lazy-loads across
+    a greenlet boundary the same way — hence why it shipped undetected).
+
+    Asserts the fix's contract — ``refresh`` before ``serialise_job`` —
+    via a fake session and a fake engine rather than the real ones. An
+    earlier version of this test mutated the *real*, shared
+    ``engine.dialect.name`` to reach the Postgres-only branch; even
+    though no query ever ran, that alone poisoned SQLAlchemy's compiled
+    statement cache for the rest of the test session (spurious
+    "no such table" errors in unrelated tests). A standalone fake
+    object avoids touching the real engine/dialect singleton at all.
+    """
+    import uuid
+
+    from app.pipeline import run_job_service
+
+    class _FakeDialect:
+        name = "postgresql"
+
+    class _FakeEngine:
+        dialect = _FakeDialect()
+
+    monkeypatch.setattr("app.db.engine", _FakeEngine())
+
+    call_order: list[str] = []
+
+    class _FakeSession:
+        async def refresh(self, _instance: RunJob) -> None:
+            call_order.append("refresh")
+
+        async def execute(self, *_a: object, **_kw: object) -> None:
+            call_order.append("execute")
+
+        async def commit(self) -> None:
+            pass
+
+        async def rollback(self) -> None:
+            pass
+
+    original_serialise = run_job_service.serialise_job
+
+    def spy_serialise(job: RunJob) -> dict[str, object]:
+        call_order.append("serialise")
+        return original_serialise(job)
+
+    monkeypatch.setattr(run_job_service, "serialise_job", spy_serialise)
+
+    job = RunJob(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        run_id=uuid.uuid4(),
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_QUEUED,
+        params={},
+        progress={},
+        created_by=uuid.uuid4(),
+    )
+
+    await run_job_service._notify_job_update(_FakeSession(), job)  # noqa: SLF001
+
+    assert call_order == ["refresh", "serialise", "execute"]
 
 
 @pytest.mark.asyncio

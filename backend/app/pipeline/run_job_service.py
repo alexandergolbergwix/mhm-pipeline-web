@@ -269,12 +269,23 @@ async def _notify_job_update(db: AsyncSession, job: RunJob) -> None:
     Skip cleanly there rather than raising into a session shared by the
     caller (an unhandled DBAPI error here would leave that connection's
     transaction aborted for whatever runs next on it).
+
+    ``updated_at`` uses ``onupdate=func.now()`` (server-generated), so
+    the just-committed value is expired on the in-memory object; the
+    caller always calls this right after ``db.commit()``, before any
+    further attribute access. ``serialise_job`` is a plain sync
+    function, so touching an expired column from it would try to
+    lazy-load outside the asyncio greenlet bridge and raise
+    ``MissingGreenlet``. Refresh (an awaited, greenlet-safe DB call)
+    first so every column is already loaded by the time we serialise.
     """
     from app.db import engine  # noqa: PLC0415
     from app.realtime import NOTIFY_CHANNEL  # noqa: PLC0415
 
     if engine.dialect.name != "postgresql":
         return
+
+    await db.refresh(job)
 
     payload = {
         "type": "run_job_update",
