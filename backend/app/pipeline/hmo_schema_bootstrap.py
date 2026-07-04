@@ -384,7 +384,22 @@ def bootstrap_result_from_mapping(raw: dict[str, Any]) -> SchemaBootstrapResult 
     )
 
 
-async def load_last_bootstrap_report(db: AsyncSession) -> SchemaBootstrapResult | None:
+async def load_last_bootstrap_report(
+    db: AsyncSession,
+    *,
+    force_refresh: bool = False,
+) -> SchemaBootstrapResult | None:
+    """Latest bootstrap report, regenerated when mappings have changed."""
+    if not force_refresh:
+        cached = await _load_persisted_bootstrap_report(db)
+        if cached is not None and not await _bootstrap_report_is_stale(db, cached):
+            return cached
+    fresh = await bootstrap_schema(db, writer=None, dry_run=True)
+    cache_schema_bootstrap_report(fresh)
+    return fresh
+
+
+async def _load_persisted_bootstrap_report(db: AsyncSession) -> SchemaBootstrapResult | None:
     """Latest succeeded job result, else on-disk cache."""
     from sqlalchemy import desc, select  # noqa: PLC0415
 
@@ -408,6 +423,23 @@ async def load_last_bootstrap_report(db: AsyncSession) -> SchemaBootstrapResult 
         if parsed is not None and parsed.entries:
             return parsed
     return load_cached_schema_bootstrap_report()
+
+
+async def _bootstrap_report_is_stale(
+    db: AsyncSession,
+    report: SchemaBootstrapResult,
+) -> bool:
+    """True when DB mappings no longer match the stored report snapshot."""
+    status = await schema_status(db)
+    if status.missing_sample:
+        return report.would_create == 0
+    if report.would_create > 0 or report.failed > 0:
+        return True
+    mapped_in_report = sum(
+        1 for e in report.entries if e.status in ("skipped", "created")
+    )
+    expected = status.total_classes + status.total_properties
+    return mapped_in_report < expected
 
 
 def load_cached_schema_bootstrap_report() -> SchemaBootstrapResult | None:

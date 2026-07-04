@@ -43,13 +43,30 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
   const [verdicts, setVerdicts] = useState<Record<string, AiVerdict>>({});
   const [verifyOpen, setVerifyOpen] = useState(false);
 
+  const refreshPreviewIfFullyMapped = useCallback(async (s: HmoSchemaStatus) => {
+    const complete =
+      s.mapped_classes === s.total_classes
+      && s.mapped_properties === s.total_properties;
+    if (!complete) return;
+    try {
+      const preview = await HmoWikibaseSchema.bootstrap(true, runId);
+      if (!isSchemaBootstrapJob(preview)) {
+        setResult(preview);
+      }
+    } catch {
+      /* keep whatever last-report returned */
+    }
+  }, [runId]);
+
   const refresh = useCallback(async () => {
     try {
-      setStatus(await HmoWikibaseSchema.status());
+      const s = await HmoWikibaseSchema.status();
+      setStatus(s);
+      await refreshPreviewIfFullyMapped(s);
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     }
-  }, []);
+  }, [refreshPreviewIfFullyMapped]);
 
   const loadLastReport = useCallback(async () => {
     try {
@@ -60,10 +77,26 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
     }
   }, []);
 
+  const initPanel = useCallback(async () => {
+    try {
+      const s = await HmoWikibaseSchema.status();
+      setStatus(s);
+      const complete =
+        s.mapped_classes === s.total_classes
+        && s.mapped_properties === s.total_properties;
+      if (complete) {
+        await refreshPreviewIfFullyMapped(s);
+      } else {
+        await loadLastReport();
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+    }
+  }, [loadLastReport, refreshPreviewIfFullyMapped]);
+
   useEffect(() => {
-    void refresh();
-    void loadLastReport();
-  }, [refresh, loadLastReport]);
+    void initPanel();
+  }, [initPanel]);
 
   const { activeJob, setTrackedJobId, ensureJobPolling } = useRunJobAttachment(
     runId,

@@ -223,6 +223,48 @@ def test_build_wikibase_labels_disambiguates_duplicate_en_labels() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stale_bootstrap_report_is_regenerated_when_fully_mapped(
+    db_session, tiny_schema, tmp_path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await pipeline.bootstrap_schema(db_session, writer=_FakeWriter(), dry_run=False)
+
+    stale = pipeline.SchemaBootstrapResult(
+        dry_run=True,
+        created=0,
+        skipped=0,
+        failed=0,
+        would_create=2,
+        entries=[
+            pipeline.SchemaBootstrapEntry(
+                ontology_uri="http://example.org#Manuscript",
+                entity_kind=ENTITY_KIND_CLASS,
+                label="Manuscript",
+                wikibase_id=None,
+                status="would_create",
+                message="",
+            ),
+            pipeline.SchemaBootstrapEntry(
+                ontology_uri="http://example.org#has_folio_count",
+                entity_kind=ENTITY_KIND_PROPERTY,
+                label="has folio count",
+                wikibase_id=None,
+                status="would_create",
+                message="",
+            ),
+        ],
+    )
+    monkeypatch.setattr(pipeline, "_SCHEMA_STATE_ROOT", tmp_path)
+    pipeline.cache_schema_bootstrap_report(stale)
+
+    report = await pipeline.load_last_bootstrap_report(db_session)
+
+    assert report is not None
+    assert report.would_create == 0
+    assert report.skipped == 2
+    assert {e.status for e in report.entries} == {"skipped"}
+
+
+@pytest.mark.asyncio
 async def test_live_bootstrap_uses_disambiguated_labels_for_duplicates(
     db_session, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
