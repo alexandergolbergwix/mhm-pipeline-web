@@ -54,17 +54,22 @@ export async function waitForRunJob(
   throw new Error("Background job timed out — try Cancel and start again.");
 }
 
-/** Parse ``job_id`` from a 409 ``studio_build_in_progress`` response body. */
-export function studioBuildJobIdFromConflict(detail: string): string | null {
+/** Parse ``job_id`` out of a 409 ``{code, message, job_id}`` response body. */
+export function jobIdFromConflict(detail: string, expectedCode: string): string | null {
   try {
     const parsed = JSON.parse(detail) as {code?: string; job_id?: string};
-    if (parsed.code === "studio_build_in_progress" && parsed.job_id) {
+    if (parsed.code === expectedCode && parsed.job_id) {
       return parsed.job_id;
     }
   } catch {
     /* detail was a plain string, not the structured conflict payload */
   }
   return null;
+}
+
+/** Parse ``job_id`` from a 409 ``studio_build_in_progress`` response body. */
+export function studioBuildJobIdFromConflict(detail: string): string | null {
+  return jobIdFromConflict(detail, "studio_build_in_progress");
 }
 
 function studioBuildProgressMessage(job: RunJobSnapshot): string {
@@ -113,4 +118,47 @@ export async function loadStudioBuild(
     });
     return fetchBuild();
   }
+}
+
+/**
+ * Generic "GET a cached report, and on a 409 {code, job_id} conflict wait
+ * for the background job that's (re)building it before re-fetching" flow.
+ * Any endpoint following the wikidata-studio-build 409 convention (job
+ * enqueued server-side, poll until terminal, then re-GET) can use this
+ * instead of a bespoke retry loop that would otherwise hammer the slow
+ * endpoint every time it fails.
+ */
+export async function loadWithJobFallback<T>(
+  runId: string,
+  jobKind: RunJobKind,
+  conflictCode: string,
+  fetchReport: () => Promise<T>,
+  opts?: {onProgress?: (message: string) => void},
+): Promise<T> {
+  try {
+    return await fetchReport();
+  } catch (e) {
+    if (!(e instanceof ApiError) || e.status !== 409) throw e;
+    const jobId =
+      jobIdFromConflict(e.detail, conflictCode)
+      ?? (await findActiveRunJob(runId, jobKind))?.id;
+    if (!jobId) throw e;
+    opts?.onProgress?.("Building in the background…");
+    await waitForRunJob(runId, jobId, {
+      onUpdate: (job) => {
+        const msg = job.progress?.message;
+        opts?.onProgress?.(typeof msg === "string" && msg.trim() ? msg : "Building in the background…");
+      },
+    });
+    return fetchReport();
+  }
+}
+
+/** HMO Studio coverage report — mirrors {@link loadStudioBuild}'s 409 flow. */
+export async function loadHmoCoverage<T>(
+  runId: string,
+  fetchCoverage: () => Promise<T>,
+  opts?: {onProgress?: (message: string) => void},
+): Promise<T> {
+  return loadWithJobFallback(runId, "hmo_coverage", "hmo_coverage_in_progress", fetchCoverage, opts);
 }

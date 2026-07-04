@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import {Layout} from "@/components/Layout";
@@ -12,6 +12,7 @@ import {
   type HmoStudioStatus,
   type HmoUploadResult,
 } from "@/api/hmoStudio";
+import {loadHmoCoverage} from "@/utils/waitForRunJob";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
@@ -36,6 +37,8 @@ export default function HmoStudioRoute() {
 
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
+  const [coverageProgress, setCoverageProgress] = useState<string | null>(null);
+  const coverageAttemptedRef = useRef(false);
   const [dryRun, setDryRun] = useState(true);
   const [recordCns, setRecordCns] = useState<string[]>([]);
   const [recordQuery, setRecordQuery] = useState("");
@@ -57,12 +60,19 @@ export default function HmoStudioRoute() {
 
   const loadCoverage = useCallback(async () => {
     if (!runId) return;
-    setBusy("coverage"); setError(null);
+    setBusy("coverage"); setError(null); setCoverageProgress(null);
     try {
-      setCoverage(await HmoStudio.coverage(runId));
+      // On a cold cache the backend enqueues a background job instead of
+      // building inline (that used to hold the request — and its DB
+      // connection — open past Heroku's 30s router timeout on large
+      // runs). loadHmoCoverage polls the job and re-fetches once it's
+      // done, so this may take a while but never times out the request.
+      setCoverage(await loadHmoCoverage(runId, () => HmoStudio.coverage(runId), {
+        onProgress: setCoverageProgress,
+      }));
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
-    } finally { setBusy(null); }
+    } finally { setBusy(null); setCoverageProgress(null); }
   }, [runId]);
 
   useEffect(() => {
@@ -97,9 +107,16 @@ export default function HmoStudioRoute() {
     }
   });
 
-  // Auto-load coverage when the RDF is present and we haven't loaded it yet.
+  // Auto-load coverage once when the RDF is present. Guarded by a ref
+  // (not just `coverage === null`) so a failed attempt — including one
+  // whose background job errored out — does not retry in a tight loop;
+  // the user can still retry manually via the "Refresh" button.
   useEffect(() => {
-    if (status?.rdf_present && coverage === null && busy !== "coverage") {
+    if (
+      status?.rdf_present && coverage === null && busy !== "coverage"
+      && !coverageAttemptedRef.current
+    ) {
+      coverageAttemptedRef.current = true;
       void loadCoverage();
     }
   }, [status, coverage, busy, loadCoverage]);
@@ -194,6 +211,10 @@ export default function HmoStudioRoute() {
               {busy === "coverage" ? "Loading…" : "Refresh"}
             </button>
           </div>
+
+          {busy === "coverage" && coverageProgress && (
+            <p className="muted text-xs">{coverageProgress}</p>
+          )}
 
           {!status?.rdf_present && (
             <p className="muted text-sm">

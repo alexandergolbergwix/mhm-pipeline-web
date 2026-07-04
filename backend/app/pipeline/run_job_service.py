@@ -18,6 +18,7 @@ from app.models.run_job import (
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_EXTRACTION,
+    JOB_KIND_HMO_COVERAGE,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
@@ -204,6 +205,9 @@ async def _execute_job(job_id: uuid.UUID) -> None:
                 run_hmo_schema_bootstrap_job,
             )
             await run_hmo_schema_bootstrap_job(job_id)
+        elif kind == JOB_KIND_HMO_COVERAGE:
+            from app.pipeline.hmo_coverage_job import run_hmo_coverage_job  # noqa: PLC0415
+            await run_hmo_coverage_job(job_id)
         else:
             await _fail_job(job_id, f"unknown job kind {kind!r}")
     except Exception as exc:  # noqa: BLE001

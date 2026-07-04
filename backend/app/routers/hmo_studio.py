@@ -305,6 +305,41 @@ async def upload_manifests(
 # ── Coverage report ────────────────────────────────────────────────────
 
 
+async def _enqueue_coverage_job(
+    db: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> uuid.UUID:
+    from app.models.run_job import JOB_KIND_HMO_COVERAGE  # noqa: PLC0415
+    from app.pipeline.run_job_service import (  # noqa: PLC0415
+        ActiveJobError,
+        create_job,
+        find_active_job,
+    )
+
+    active = await find_active_job(db, run_id=run_id, kind=JOB_KIND_HMO_COVERAGE)
+    if active is not None:
+        return active.id
+    try:
+        job = await create_job(
+            db, project_id=project_id, run_id=run_id,
+            kind=JOB_KIND_HMO_COVERAGE, params={}, created_by=user_id,
+        )
+        return job.id
+    except ActiveJobError as exc:
+        return exc.job_id
+
+
+def _coverage_in_progress_detail(job_id: uuid.UUID) -> dict[str, str]:
+    return {
+        "code": "hmo_coverage_in_progress",
+        "message": "HMO coverage report is building in the background.",
+        "job_id": str(job_id),
+    }
+
+
 @router.get("/{run_id}/hmo-studio/coverage")
 async def coverage(
     run_id: uuid.UUID,
@@ -314,9 +349,15 @@ async def coverage(
     """Return the HMO → Wikidata projection-coverage JSON.
 
     Cached on disk after the first build. The cached file is returned
-    verbatim if present; otherwise rebuilt against the run's TTL.
+    verbatim if present; on a cache miss this used to rebuild inline
+    (parsing the TTL twice + building Wikidata item drafts), which on a
+    large run took well over Heroku's 30s router timeout and pinned
+    this request's DB connection the whole time. It now enqueues a
+    background job and returns 409 with the job id — the frontend polls
+    ``GET /runs/{run_id}/jobs/{job_id}`` and re-fetches this endpoint
+    once the job succeeds (the job also writes the same on-disk cache).
     """
-    await _lookup_run_with_access(db, run_id, auth)
+    run = await _lookup_run_with_access(db, run_id, auth)
     cache = hmo_pipeline.coverage_path_for_run(str(run_id))
     if cache.exists():
         try:
@@ -335,14 +376,14 @@ async def coverage(
                 "before requesting coverage."
             ),
         )
-    try:
-        report = await hmo_pipeline.coverage_report_for_run(ttl_path=ttl_path)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc),
-        ) from exc
-    hmo_pipeline.cache_coverage_report(str(run_id), report)
-    return report
+
+    job_id = await _enqueue_coverage_job(
+        db, project_id=run.project_id, run_id=run_id, user_id=auth.user.id,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=_coverage_in_progress_detail(job_id),
+    )
 
 
 # ── Build items (Phase 4) ────────────────────────────────────────────────
