@@ -30,10 +30,12 @@ class _FakeOutcome:
 
 
 class _FakeWriter:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_updates: bool = False) -> None:
         self.create_calls: list[dict] = []
         self.claim_calls: list[tuple[str, object]] = []
+        self.update_calls: list[dict] = []
         self._next_q = 1
+        self._fail_updates = fail_updates
 
     def create_item(self, **kwargs):
         self.create_calls.append(kwargs)
@@ -43,6 +45,12 @@ class _FakeWriter:
 
     def add_claim(self, entity_id, claim):
         self.claim_calls.append((entity_id, claim))
+        return _FakeOutcome(entity_id=entity_id, status="updated")
+
+    def update_item(self, entity_id, **kwargs):
+        self.update_calls.append({"entity_id": entity_id, **kwargs})
+        if self._fail_updates:
+            return _FakeOutcome(entity_id=None, status="failed", message="boom")
         return _FakeOutcome(entity_id=entity_id, status="updated")
 
 
@@ -140,6 +148,63 @@ async def test_second_upload_is_create_only_idempotent(db_session) -> None:
     # Pass 2 still resolves the link against the already-mapped QIDs from
     # the first upload, even though nothing new was created this call.
     assert result.linked == 0 or result.unresolved_links == 0
+
+
+@pytest.mark.asyncio
+async def test_dry_run_update_existing_reports_would_update(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    writer = _FakeWriter()
+    await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=None, dry_run=True, update_existing=True,
+    )
+
+    assert result.created == 0
+    assert result.skipped == 0
+    assert result.updated == 2
+    assert {o.status for o in result.outcomes} == {"would_update"}
+
+
+@pytest.mark.asyncio
+async def test_update_existing_refreshes_already_uploaded_items(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    first_writer = _FakeWriter()
+    await pipeline.upload_items_for_run(db_session, run_id, writer=first_writer, dry_run=False)
+
+    second_writer = _FakeWriter()
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=second_writer, dry_run=False, update_existing=True,
+    )
+
+    assert result.created == 0
+    assert result.skipped == 0
+    assert result.updated == 2
+    assert second_writer.create_calls == []
+    assert {call["entity_id"] for call in second_writer.update_calls} == {"Q1", "Q2"}
+    assert all(o.status == "updated" for o in result.outcomes)
+    # Deferred links still resolve against the mapped QIDs, unaffected by
+    # the update pass.
+    assert result.unresolved_links == 0
+
+
+@pytest.mark.asyncio
+async def test_update_existing_reports_failed_writes(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    first_writer = _FakeWriter()
+    await pipeline.upload_items_for_run(db_session, run_id, writer=first_writer, dry_run=False)
+
+    failing_writer = _FakeWriter(fail_updates=True)
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=failing_writer, dry_run=False, update_existing=True,
+    )
+
+    assert result.updated == 0
+    assert result.failed == 2
+    assert all(o.status == "failed" for o in result.outcomes)
 
 
 @pytest.mark.asyncio

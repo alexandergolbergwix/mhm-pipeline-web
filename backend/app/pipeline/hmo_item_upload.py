@@ -1,19 +1,21 @@
 """Upload resolved HMO items to the Wikibase Cloud (Phase 5 of HMO
 Wikibase Studio — see dev-docs/hmo-wikibase-studio-plan.md).
 
-Create-only, two-pass:
+Two-pass, create-or-update:
 
 * **Pass 1** creates every not-yet-uploaded instance (identified by its
   RDF source URI, unique per ``(ontology_uri, run_id)`` in
   ``wikibase_entity_mappings``) with its non-deferred claims, recording
-  a mapping row immediately per success.
+  a mapping row immediately per success. An already-mapped instance is
+  skipped by default; passing ``update_existing=True`` instead refreshes
+  its labels/descriptions and merges in any new claims (via
+  :meth:`converter.wikibase.cloud_client.WikibaseCloudWriter.update_item`
+  — a curator-added statement not present in the current build is left
+  untouched, never wiped).
 * **Pass 2** resolves each entity's ``deferred_links`` (item -> item
   claims that needed both ends to have live QIDs) now that pass 1 (or a
   prior run) may have created the target — entries whose target never
   got created are reported as ``unresolved``, never silently dropped.
-
-v1 is create-only: an already-mapped instance is skipped, never
-diffed/edited. See the plan's "Residual Risks" for what that defers.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from app.models.wikibase_cloud_write import (
     OPERATION_CREATE,
     OPERATION_FAILED,
     OPERATION_SKIP,
+    OPERATION_UPDATE,
     TARGET_CLAIM,
     TARGET_ITEM,
 )
@@ -56,7 +59,8 @@ class ItemBuildMissingError(RuntimeError):
 class HmoItemUploadOutcome:
     local_id: str
     source_uri: str
-    status: str  # "created" | "skipped" | "would_create" | "failed"
+    # "created" | "updated" | "skipped" | "would_create" | "would_update" | "failed"
+    status: str
     wikibase_id: str | None = None
     message: str = ""
 
@@ -81,6 +85,7 @@ class HmoItemUploadResult:
     outcomes: list[HmoItemUploadOutcome] = field(default_factory=list)
     link_outcomes: list[HmoDeferredLinkOutcome] = field(default_factory=list)
     cancelled: bool = False
+    updated: int = 0
 
 
 async def upload_items_for_run(
@@ -89,6 +94,7 @@ async def upload_items_for_run(
     *,
     writer: Any | None,
     dry_run: bool = True,
+    update_existing: bool = False,
     audit_ctx: WikibaseAuditContext | None = None,
     on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
@@ -96,10 +102,14 @@ async def upload_items_for_run(
     """Upload the run's most recent item build. Raises
     :class:`ItemBuildMissingError` if ``build-items`` hasn't run yet.
 
+    An already-mapped instance is skipped by default; pass
+    ``update_existing=True`` to instead refresh its labels/descriptions
+    and merge in any new claims (see :func:`_pass_one_create`).
+
     ``on_progress(processed, total, message)`` is awaited after every
-    item create (pass 1) and deferred-link write (pass 2), with ``total``
-    covering both passes. ``should_cancel()`` is polled before each write
-    for cooperative cancellation — a partial result with
+    item create/update (pass 1) and deferred-link write (pass 2), with
+    ``total`` covering both passes. ``should_cancel()`` is polled before
+    each write for cooperative cancellation — a partial result with
     ``cancelled=True`` is returned, never an exception.
     """
     cache_row = (
@@ -115,8 +125,11 @@ async def upload_items_for_run(
     local_id_to_source_uri = {e.local_id: e.source_uri for e in entities}
     total = len(entities) + sum(len(e.deferred_links) for e in entities)
 
-    outcomes, created_this_call, created, skipped, failed, cancelled = await _pass_one_create(
+    (
+        outcomes, created_this_call, created, skipped, failed, updated, cancelled,
+    ) = await _pass_one_create(
         db, run_id, entities, existing, writer=writer, dry_run=dry_run,
+        update_existing=update_existing,
         audit_ctx=audit_ctx,
         on_progress=on_progress, should_cancel=should_cancel, total=total,
     )
@@ -143,6 +156,7 @@ async def upload_items_for_run(
         outcomes=outcomes,
         link_outcomes=link_outcomes,
         cancelled=cancelled,
+        updated=updated,
     )
 
 
@@ -154,14 +168,15 @@ async def _pass_one_create(
     *,
     writer: Any | None,
     dry_run: bool,
+    update_existing: bool = False,
     audit_ctx: WikibaseAuditContext | None = None,
     on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
     total: int = 0,
-) -> tuple[list[HmoItemUploadOutcome], dict[str, str], int, int, int, bool]:
+) -> tuple[list[HmoItemUploadOutcome], dict[str, str], int, int, int, int, bool]:
     outcomes: list[HmoItemUploadOutcome] = []
     created_this_call: dict[str, str] = {}
-    created = skipped = failed = 0
+    created = skipped = failed = updated = 0
     cancelled = False
 
     for idx, entity in enumerate(entities):
@@ -171,20 +186,73 @@ async def _pass_one_create(
         if not dry_run and on_progress is not None:
             await on_progress(idx + 1, total, f"{idx + 1}/{len(entities)} items uploaded")
         if entity.source_uri in existing:
+            existing_qid = existing[entity.source_uri]
+            if not update_existing:
+                outcomes.append(
+                    HmoItemUploadOutcome(
+                        entity.local_id, entity.source_uri, "skipped", existing_qid,
+                    )
+                )
+                skipped += 1
+                if audit_ctx is not None and not dry_run:
+                    await record_wikibase_write(
+                        db, audit_ctx,
+                        operation=OPERATION_SKIP,
+                        target_kind=TARGET_ITEM,
+                        target_key=entity.source_uri,
+                        wikibase_id=existing_qid,
+                    )
+                continue
+
+            if dry_run:
+                outcomes.append(
+                    HmoItemUploadOutcome(
+                        entity.local_id, entity.source_uri, "would_update", existing_qid,
+                    )
+                )
+                updated += 1
+                continue
+
+            wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
+            result = await asyncio.to_thread(
+                writer.update_item,
+                existing_qid,
+                labels=entity.labels,
+                descriptions=entity.descriptions,
+                claims=wbi_claims,
+            )
+            if result.entity_id is None or result.status == "failed":
+                outcomes.append(
+                    HmoItemUploadOutcome(
+                        entity.local_id, entity.source_uri, "failed",
+                        existing_qid, message=result.message,
+                    )
+                )
+                failed += 1
+                if audit_ctx is not None:
+                    await record_wikibase_write(
+                        db, audit_ctx,
+                        operation=OPERATION_FAILED,
+                        target_kind=TARGET_ITEM,
+                        target_key=entity.source_uri,
+                        wikibase_id=existing_qid,
+                        outcome_message=result.message,
+                    )
+                continue
+
             outcomes.append(
                 HmoItemUploadOutcome(
-                    entity.local_id, entity.source_uri, "skipped",
-                    existing[entity.source_uri],
+                    entity.local_id, entity.source_uri, "updated", existing_qid,
                 )
             )
-            skipped += 1
-            if audit_ctx is not None and not dry_run:
+            updated += 1
+            if audit_ctx is not None:
                 await record_wikibase_write(
                     db, audit_ctx,
-                    operation=OPERATION_SKIP,
+                    operation=OPERATION_UPDATE,
                     target_kind=TARGET_ITEM,
                     target_key=entity.source_uri,
-                    wikibase_id=existing[entity.source_uri],
+                    wikibase_id=existing_qid,
                 )
             continue
 
@@ -246,7 +314,7 @@ async def _pass_one_create(
                 wikibase_id=result.entity_id,
             )
 
-    return outcomes, created_this_call, created, skipped, failed, cancelled
+    return outcomes, created_this_call, created, skipped, failed, updated, cancelled
 
 
 async def _pass_two_link(

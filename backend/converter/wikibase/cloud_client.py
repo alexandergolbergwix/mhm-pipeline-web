@@ -724,6 +724,63 @@ class WikibaseCloudWriter:
         _apply_labels_descriptions_aliases(entity, labels, descriptions, aliases)
         return self._write_entity(entity, claims, summary)
 
+    def update_item(
+        self,
+        entity_id: str,
+        labels: Mapping[str, str],
+        descriptions: Mapping[str, str],
+        *,
+        claims: Sequence[Any] | None = None,
+        aliases: Mapping[str, Sequence[str]] | None = None,
+        summary: str = "",
+    ) -> EntityEditOutcome:
+        """Refresh labels/descriptions and merge claims onto an already
+        existing item.
+
+        Claims use ``ActionIfExists.APPEND_OR_REPLACE``: a claim whose
+        property+value already matches is left alone (no duplicate is
+        added), a claim for a new value is appended, and any statement
+        a curator added by hand directly on the wiki (not present in
+        ``claims``) is left untouched — this is a merge, not a
+        wholesale replace of the item's claims.
+        """
+        try:
+            entity = self._get_wbi_entity(entity_id)
+        except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+            msg = format_wbi_exception(exc)
+            logger.warning("Wikibase entity fetch failed for update %s: %s", entity_id, msg)
+            return EntityEditOutcome(
+                entity_id=entity_id, status="failed", message=msg,
+                page_url=self.page_url(_entity_page_title(entity_id)),
+            )
+
+        _apply_labels_descriptions_aliases(entity, labels, descriptions, aliases)
+        if claims:
+            from wikibaseintegrator.wbi_enums import ActionIfExists  # noqa: PLC0415
+
+            entity.claims.add(claims, action_if_exists=ActionIfExists.APPEND_OR_REPLACE)
+
+        try:
+            write_kwargs: dict[str, Any] = {
+                "summary": summary or wikibase_edit_summary("entity update"),
+            }
+            if isinstance(self._auth, WikibaseBotCredentials):
+                write_kwargs["bot"] = True
+            written = entity.write(**write_kwargs)
+        except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+            msg = format_wbi_exception(exc)
+            logger.warning("Wikibase entity update failed for %s: %s", entity_id, msg)
+            return EntityEditOutcome(
+                entity_id=entity_id, status="failed", message=msg,
+                page_url=self.page_url(_entity_page_title(entity_id)),
+            )
+        return EntityEditOutcome(
+            entity_id=written.id,
+            status="updated",
+            message="ok",
+            page_url=self.page_url(_entity_page_title(written.id)),
+        )
+
     def create_property(
         self,
         labels: Mapping[str, str],

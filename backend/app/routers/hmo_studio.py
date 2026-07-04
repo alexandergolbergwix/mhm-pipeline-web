@@ -151,6 +151,14 @@ class HmoItemUploadRequest(BaseModel):
                     "writing. Set False for live; live requires server "
                     "Wikibase Cloud OAuth to be configured.",
     )
+    update_existing: bool = Field(
+        default=False,
+        description="Default False — an already-uploaded item is skipped. "
+                    "Set True to also refresh labels/descriptions and merge "
+                    "in any new claims on already-uploaded items (a "
+                    "curator-added statement not present in the current "
+                    "build is never removed).",
+    )
 
 
 class HmoItemUploadOutcomeDto(BaseModel):
@@ -172,6 +180,7 @@ class HmoDeferredLinkOutcomeDto(BaseModel):
 class HmoItemUploadResponse(BaseModel):
     dry_run: bool
     created: int
+    updated: int
     skipped: int
     failed: int
     linked: int
@@ -467,7 +476,7 @@ async def upload_items(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any] | HmoItemUploadResponse:
-    """Upload the run's most recent item build (create-only, two-pass).
+    """Upload the run's most recent item build (create-or-update, two-pass).
 
     Requires ``build-items`` to have run first. Dry-run (the default) is a
     fast, no-network preview and stays synchronous. A live upload makes
@@ -475,12 +484,16 @@ async def upload_items(
     thousands of calls, far over Heroku's 30s HTTP timeout — so it spawns
     a ``run_jobs`` background job and returns the job snapshot right away;
     poll ``GET /runs/{run_id}/jobs/{job_id}`` for progress.
+
+    An already-uploaded item is skipped unless ``update_existing=True``,
+    in which case its labels/descriptions/claims are refreshed in place.
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     if not payload.dry_run:
         params = await prepare_job_params(
-            db, auth, run_id=run_id, kind=JOB_KIND_HMO_ITEM_UPLOAD, params={},
+            db, auth, run_id=run_id, kind=JOB_KIND_HMO_ITEM_UPLOAD,
+            params={"update_existing": payload.update_existing},
         )
         try:
             job = await create_job(
@@ -505,6 +518,7 @@ async def upload_items(
     try:
         result = await hmo_item_upload.upload_items_for_run(
             db, run_id, writer=None, dry_run=True,
+            update_existing=payload.update_existing,
         )
     except hmo_item_upload.ItemBuildMissingError as exc:
         raise HTTPException(
@@ -514,6 +528,7 @@ async def upload_items(
     return HmoItemUploadResponse(
         dry_run=result.dry_run,
         created=result.created,
+        updated=result.updated,
         skipped=result.skipped,
         failed=result.failed,
         linked=result.linked,

@@ -29,6 +29,7 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
   const [result, setResult] = useState<HmoItemUploadResult | null>(null);
   const [job, setJob] = useState<RunJobSnapshot | null>(null);
   const [dryRun, setDryRun] = useState(true);
+  const [updateExisting, setUpdateExisting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,7 +68,7 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
     setBusy(true);
     setError(null);
     try {
-      const r = await HmoStudio.uploadItems(runId, dryRun);
+      const r = await HmoStudio.uploadItems(runId, dryRun, updateExisting);
       if (isItemUploadJob(r)) {
         setJob(r);
         setTrackedJobId(r.id);
@@ -89,12 +90,15 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
     <Glass as="section" className="p-6 space-y-3">
       <div>
         <div className="kicker">Upload to Wikibase Cloud</div>
-        <h3 className="text-lg font-medium">Create-only, two-pass upload</h3>
+        <h3 className="text-lg font-medium">Create-or-update, two-pass upload</h3>
         <p className="muted text-sm leading-relaxed mt-1">
           Pass 1 creates every not-yet-uploaded item with its literal
           claims. Pass 2 links item-to-item claims once both ends have
-          real Wikibase ids. Already-uploaded items are skipped, never
-          edited.
+          real Wikibase ids. Already-uploaded items are skipped by
+          default — enable &quot;Update existing items&quot; below to
+          refresh their labels/descriptions and merge in any new claims
+          instead (a statement you added by hand on the wiki is never
+          removed).
         </p>
       </div>
 
@@ -113,6 +117,15 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
             disabled={busy || jobRunning}
           />
           Dry run
+        </label>
+        <label className="flex items-center gap-1 text-sm muted">
+          <input
+            type="checkbox"
+            checked={updateExisting}
+            onChange={(e) => setUpdateExisting(e.target.checked)}
+            disabled={busy || jobRunning}
+          />
+          Update existing items
         </label>
         <button
           onClick={doUpload}
@@ -159,6 +172,13 @@ function UploadResultSummary({ result }: { result: HmoItemUploadResult }) {
         <p className="text-sm">
           <span className="muted">{result.dry_run ? "Would create:" : "Created:"}</span>{" "}
           <b className="text-biu-sky">{result.created}</b>
+          {result.updated > 0 && (
+            <>
+              {" · "}
+              <span className="muted">{result.dry_run ? "would update " : "updated "}</span>
+              <b className="text-biu-sky">{result.updated}</b>
+            </>
+          )}
           {" · linked "}
           <b className="text-biu-sky">{result.linked}</b>
           {" · skipped "}

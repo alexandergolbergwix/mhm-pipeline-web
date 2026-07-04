@@ -195,6 +195,76 @@ def test_add_claim_reports_failure_instead_of_raising(monkeypatch: pytest.Monkey
     assert "missing" in outcome.message
 
 
+def test_update_item_refreshes_labels_and_merges_claims(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = _writer()
+    fake_wbi = _stub_wbi(writer, monkeypatch)
+
+    existing = fake_wbi.item.new()
+    existing.id = "Q1"
+    existing.labels.set("en", "Old label")
+    # A curator-added statement not present in the new build — must
+    # survive the merge, never be wiped by an update_item() call.
+    hand_added_claim = datatypes.String(prop_nr="P99", value="hand-added")
+    existing.claims.add(hand_added_claim)
+    monkeypatch.setattr(fake_wbi.item, "get", lambda entity_id: existing)
+
+    def fake_write(self: ItemEntity, **kwargs: Any) -> ItemEntity:
+        return self
+
+    monkeypatch.setattr(ItemEntity, "write", fake_write)
+
+    new_claim = datatypes.Item(prop_nr="P31", value="Q5")
+    outcome = writer.update_item(
+        "Q1",
+        labels={"en": "New label"},
+        descriptions={"en": "a manuscript"},
+        claims=[new_claim],
+    )
+
+    assert outcome.status == "updated"
+    assert outcome.entity_id == "Q1"
+    assert existing.labels.get("en").value == "New label"
+    assert existing.descriptions.get("en").value == "a manuscript"
+    assert len(existing.claims) == 2
+    assert existing.claims.get("P99")[0].mainsnak.datavalue["value"] == "hand-added"
+
+
+def test_update_item_reports_failure_when_fetch_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = _writer()
+    fake_wbi = _stub_wbi(writer, monkeypatch)
+
+    def raise_get(entity_id: str) -> ItemEntity:
+        raise RuntimeError("no-such-entity: missing")
+
+    monkeypatch.setattr(fake_wbi.item, "get", raise_get)
+
+    outcome = writer.update_item("Q404", labels={"en": "X"}, descriptions={"en": "y"})
+
+    assert outcome.status == "failed"
+    assert outcome.entity_id == "Q404"
+    assert "missing" in outcome.message
+
+
+def test_update_item_reports_failure_when_write_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = _writer()
+    fake_wbi = _stub_wbi(writer, monkeypatch)
+
+    existing = fake_wbi.item.new()
+    existing.id = "Q1"
+    monkeypatch.setattr(fake_wbi.item, "get", lambda entity_id: existing)
+
+    def fake_write(self: ItemEntity, **kwargs: Any) -> ItemEntity:
+        raise RuntimeError("permissiondenied: nope")
+
+    monkeypatch.setattr(ItemEntity, "write", fake_write)
+
+    outcome = writer.update_item("Q1", labels={"en": "X"}, descriptions={"en": "y"})
+
+    assert outcome.status == "failed"
+    assert outcome.entity_id == "Q1"
+    assert "nope" in outcome.message
+
+
 def test_format_wbi_exception_includes_code_and_conflicts() -> None:
     from wikibaseintegrator.wbi_exceptions import MWApiError
 

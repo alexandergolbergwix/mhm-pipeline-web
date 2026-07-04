@@ -118,7 +118,14 @@ export interface HmoItemBuildResult {
 export interface HmoItemUploadOutcome {
   local_id: string;
   source_uri: string;
-  status: "created" | "skipped" | "would_create" | "failed" | string;
+  status:
+    | "created"
+    | "updated"
+    | "skipped"
+    | "would_create"
+    | "would_update"
+    | "failed"
+    | string;
   wikibase_id: string | null;
   message: string;
 }
@@ -134,6 +141,7 @@ export interface HmoDeferredLinkOutcome {
 export interface HmoItemUploadResult {
   dry_run: boolean;
   created: number;
+  updated: number;
   skipped: number;
   failed: number;
   linked: number;
@@ -167,6 +175,7 @@ export function itemUploadResultFromJob(job: RunJobSnapshot): HmoItemUploadResul
   return {
     dry_run: false,
     created: Number((raw as {created?: unknown}).created ?? 0),
+    updated: Number((raw as {updated?: unknown}).updated ?? 0),
     skipped: Number((raw as {skipped?: unknown}).skipped ?? 0),
     failed: Number((raw as {failed?: unknown}).failed ?? 0),
     linked: Number((raw as {linked?: unknown}).linked ?? 0),
@@ -206,11 +215,14 @@ export const HmoStudio = {
    * request — so the backend spawns a `run_jobs` background job and
    * returns its snapshot immediately; track `job.id` (e.g. via
    * `useRunJobAttachment`) for progress.
+   *
+   * `updateExisting` refreshes labels/descriptions and merges in any new
+   * claims on already-uploaded items instead of skipping them.
    */
-  uploadItems: (runId: string, dryRun: boolean) =>
+  uploadItems: (runId: string, dryRun: boolean, updateExisting = false) =>
     api.post<HmoItemUploadResult | RunJobSnapshot>(
       `/runs/${runId}/hmo-studio/upload-items`,
-      { dry_run: dryRun },
+      { dry_run: dryRun, update_existing: updateExisting },
     ),
 
   itemStatus: (runId: string) =>

@@ -29,6 +29,7 @@ def serialise_upload_result(result: pipeline.HmoItemUploadResult) -> dict:
     return {
         "dry_run": result.dry_run,
         "created": result.created,
+        "updated": result.updated,
         "skipped": result.skipped,
         "failed": result.failed,
         "linked": result.linked,
@@ -46,6 +47,7 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         actor_user_id = job.created_by
         project_id = job.project_id
         run_id = job.run_id
+        update_existing = bool((job.params or {}).get("update_existing", False))
 
     try:
         writer = build_server_wikibase_writer()
@@ -86,6 +88,7 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         try:
             result = await pipeline.upload_items_for_run(
                 db, run_id, writer=writer, dry_run=False,
+                update_existing=update_existing,
                 audit_ctx=audit_ctx,
                 on_progress=on_progress, should_cancel=should_cancel,
             )
@@ -98,7 +101,9 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=build_missing)
         return
 
-    processed_count = result.created + result.skipped + result.failed + result.linked
+    processed_count = (
+        result.created + result.updated + result.skipped + result.failed + result.linked
+    )
     await finish_job(
         job_id,
         status=JOB_STATUS_CANCELLED if result.cancelled else JOB_STATUS_SUCCEEDED,

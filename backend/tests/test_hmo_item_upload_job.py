@@ -42,6 +42,9 @@ class _FakeWriter:
     def add_claim(self, entity_id, claim):
         return _FakeOutcome(entity_id=entity_id, status="updated")
 
+    def update_item(self, entity_id, **kwargs):
+        return _FakeOutcome(entity_id=entity_id, status="updated")
+
 
 def _entities(n: int = 2) -> list[ResolvedWikibaseEntity]:
     person = ResolvedWikibaseEntity(
@@ -66,7 +69,7 @@ def _entities(n: int = 2) -> list[ResolvedWikibaseEntity]:
     return [*manuscripts, person]
 
 
-async def _seed(db_session, sample_run, entities) -> uuid.UUID:
+async def _seed_cache(db_session, sample_run, entities) -> None:
     db_session.add(
         HmoStudioItemCache(
             run_id=sample_run["run_id"],
@@ -77,18 +80,27 @@ async def _seed(db_session, sample_run, entities) -> uuid.UUID:
             skipped_statement_count=0,
         )
     )
+    await db_session.commit()
+
+
+async def _seed_job(db_session, sample_run, *, params: dict | None = None) -> uuid.UUID:
     job = RunJob(
         project_id=sample_run["project_id"],
         run_id=sample_run["run_id"],
         kind="hmo_item_upload",
         status="queued",
-        params={},
+        params=params or {},
         progress={},
     )
     db_session.add(job)
     await db_session.commit()
     await db_session.refresh(job)
     return job.id
+
+
+async def _seed(db_session, sample_run, entities, *, params: dict | None = None) -> uuid.UUID:
+    await _seed_cache(db_session, sample_run, entities)
+    return await _seed_job(db_session, sample_run, params=params)
 
 
 @pytest.mark.asyncio
@@ -147,6 +159,23 @@ async def test_job_reports_progress_and_succeeds(sample_run, db_session, monkeyp
     assert job.progress["phase"] == "done"
     # 3 items + 2 links, both passes counted against one shared total.
     assert job.progress["processed"] == job.progress["total"] == 5
+
+
+@pytest.mark.asyncio
+async def test_job_updates_existing_items_when_requested(sample_run, db_session, monkeypatch):
+    monkeypatch.setattr(job_module, "build_server_wikibase_writer", lambda: _FakeWriter())
+    job_id = await _seed(db_session, sample_run, _entities(3))
+    await job_module.run_hmo_item_upload_job(job_id)
+
+    second_job_id = await _seed_job(db_session, sample_run, params={"update_existing": True})
+    await job_module.run_hmo_item_upload_job(second_job_id)
+
+    job = await db_session.get(RunJob, second_job_id)
+    assert job.status == JOB_STATUS_SUCCEEDED
+    assert job.result["created"] == 0
+    assert job.result["updated"] == 3
+    assert job.result["failed"] == 0
+    assert all(o["status"] == "updated" for o in job.result["outcomes"])
 
 
 @pytest.mark.asyncio
