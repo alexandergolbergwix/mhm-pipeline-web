@@ -8,7 +8,7 @@ Three pieces this conftest sets up:
   win when set (e.g. on CI matrix runs that pin them).
 
 * **In-memory SQLite engine** — replaces the production async-Postgres
-  engine with ``sqlite+aiosqlite:///:memory:`` for the duration of the
+  engine with a file-backed temp SQLite for the duration of the
   test session. The Postgres-specific column types (``JSONB`` and
   ``UUID(as_uuid=True)``) are taught to compile down to ``JSON`` and
   ``CHAR(36)`` on SQLite so the production ORM models work unchanged.
@@ -32,6 +32,7 @@ import os
 import secrets
 import uuid
 from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
 
 import pytest_asyncio
 
@@ -43,9 +44,20 @@ def _seed_test_env() -> None:
     os.environ.setdefault("MASTER_KEY", secrets.token_urlsafe(32))
     os.environ.setdefault("EMAIL_HMAC_KEY", secrets.token_urlsafe(32))
     os.environ.setdefault("ENV", "test")
-    # Point the app at an in-memory SQLite — the engine swap below
-    # honours this so the production code path is unchanged.
-    os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+    # Point the app at a file-backed temp SQLite. NOT ``:memory:`` — the
+    # StaticPool below shares one connection across every session, and a
+    # background task (e.g. a spawned run job) racing a test on that
+    # connection can raise a DBAPI error that *invalidates* it. SQLAlchemy
+    # then reconnects, and a reconnected ``:memory:`` connection is a
+    # brand-new EMPTY database — every later test dies with "no such
+    # table" (the intermittent 174-error cascade). A file survives the
+    # reconnect. Unlinked first so a stale file from a previous run can't
+    # leak an outdated schema.
+    import tempfile  # noqa: PLC0415
+
+    db_path = Path(tempfile.gettempdir()) / f"mhm-pipeline-test-{os.getpid()}.sqlite"
+    db_path.unlink(missing_ok=True)
+    os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
     # Skip the Postgres LISTEN bridge — it crashes against SQLite.
     os.environ.setdefault("DISABLE_PG_LISTENER", "1")
     # Default admin notification recipient so access-request confirm
@@ -178,12 +190,12 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 
 @pytest_asyncio.fixture(scope="session")
 async def _engine():
-    """Single in-memory engine for the whole test session.
+    """Single temp-file SQLite engine for the whole test session.
 
     Reuses the engine ``_patch_app_db_for_sqlite`` already installed on
     ``app.db`` so the test fixtures + the FastAPI app share one
-    in-memory connection. Tables are created here; rows are cleared
-    between tests by ``db_session``'s teardown.
+    connection. Tables are created here; rows are cleared between tests
+    by ``db_session``'s teardown.
     """
     from app import db as app_db
     from app.models import Base  # forces every model module to register
@@ -421,3 +433,42 @@ def _no_pg_listener() -> Iterator[None]:
     finally:
         realtime.start_listener = real_start  # type: ignore[assignment]
         realtime.stop_listener = real_stop  # type: ignore[assignment]
+
+
+# ── Helper: per-test rate-limiter reset ────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limiter() -> None:
+    """Drop every in-process slowapi counter before each test.
+
+    The limiter is keyed by client IP and the ASGI test client always
+    presents the same synthetic IP, so tests that hit rate-limited
+    endpoints (``/api/auth/login`` is 10/minute) steal budget from each
+    other — whichever login-using test runs 11th within a minute gets a
+    429 depending on suite order. Resetting per test keeps them
+    independent while still letting a single test exercise the limit
+    with repeated calls.
+
+    Best-effort across slowapi versions: the storage reset API has
+    shifted between minors; the only invariant relied on is that some
+    path clears the in-memory counters.
+    """
+    from app.middleware.rate_limit import limiter
+
+    try:
+        limiter.reset()
+        return
+    except Exception:  # noqa: S110 — fall through to storage-level wipe
+        pass
+
+    storage = getattr(limiter, "_storage", None)
+    if storage is not None:
+        for attr in ("reset", "clear"):
+            fn = getattr(storage, attr, None)
+            if callable(fn):
+                try:
+                    fn()
+                    return
+                except Exception:  # noqa: S110 — best-effort wipe
+                    pass
