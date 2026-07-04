@@ -3,6 +3,7 @@ import {useMemo, useState} from "react";
 import type {HmoSchemaBootstrapEntry, HmoSchemaBootstrapResult} from "@/api/hmoWikibaseSchema";
 import {schemaEntryLocalId} from "@/api/hmoSchemaVerify";
 import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
+import {SchemaEntryDetailDrawer} from "@/components/hmo/SchemaEntryDetailDrawer";
 import type {AiVerdict} from "@/api/extractionApprovals";
 import {GlassPill} from "@/components/glass";
 
@@ -14,6 +15,10 @@ export interface SchemaBootstrapDetailsProps {
   result: HmoSchemaBootstrapResult;
   defaultExpanded?: boolean;
   verdicts?: Record<string, AiVerdict>;
+  /** When present, rows can be opened in a detail drawer that cross-
+   *  references this run's actual RDF graph for real usage data. */
+  runId?: string;
+  wikibaseBaseUrl?: string;
 }
 
 
@@ -35,10 +40,13 @@ export function SchemaBootstrapDetails({
   result,
   defaultExpanded = true,
   verdicts = {},
+  runId,
+  wikibaseBaseUrl,
 }: SchemaBootstrapDetailsProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
+  const [selectedEntry, setSelectedEntry] = useState<HmoSchemaBootstrapEntry | null>(null);
 
   const counts = useMemo(() => countByStatus(result.entries), [result.entries]);
 
@@ -129,6 +137,7 @@ export function SchemaBootstrapDetails({
                   <th className="text-left px-3 py-2">Wikibase id</th>
                   <th className="text-left px-3 py-2">AI verdict</th>
                   <th className="text-left px-3 py-2">Message</th>
+                  <th className="text-left px-3 py-2">Deep dive</th>
                 </tr>
               </thead>
               <tbody>
@@ -136,7 +145,11 @@ export function SchemaBootstrapDetails({
                   const localId = schemaEntryLocalId(entry);
                   const verdict = verdicts[localId] ?? verdicts[entry.ontology_uri] ?? null;
                   return (
-                    <tr key={entry.ontology_uri} className="border-t border-white/5 align-top">
+                    <tr
+                      key={entry.ontology_uri}
+                      className="border-t border-white/5 align-top cursor-pointer hover:bg-white/3"
+                      onClick={() => setSelectedEntry(entry)}
+                    >
                       <td className="px-3 py-2 text-xs muted">{entry.entity_kind}</td>
                       <td className="px-3 py-2 text-xs">{entry.label}</td>
                       <td className="px-3 py-2 text-xs font-mono max-w-[14rem] truncate" title={entry.ontology_uri}>
@@ -150,12 +163,13 @@ export function SchemaBootstrapDetails({
                         <AiVerdictPill verdict={verdict} size="sm" />
                       </td>
                       <td className="px-3 py-2 text-xs muted max-w-[12rem]">{entry.message || "—"}</td>
+                      <td className="px-3 py-2 text-xs text-biu-sky">Open →</td>
                     </tr>
                   );
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center muted text-sm">
+                    <td colSpan={8} className="px-3 py-6 text-center muted text-sm">
                       No entries match the current filter.
                     </td>
                   </tr>
@@ -164,7 +178,8 @@ export function SchemaBootstrapDetails({
             </table>
           </div>
           <p className="text-xs muted">
-            Showing {rows.length} of {result.entries.length} entries
+            Showing {rows.length} of {result.entries.length} entries · click a row for the full
+            detail (description, Wikibase link, AI reasoning, and real usage in the RDF graph)
             {counts.skipped > 0 && (
               <>
                 {" · "}
@@ -176,6 +191,17 @@ export function SchemaBootstrapDetails({
           </p>
         </>
       )}
+      <SchemaEntryDetailDrawer
+        entry={selectedEntry}
+        runId={runId}
+        wikibaseBaseUrl={wikibaseBaseUrl}
+        verdict={
+          selectedEntry
+            ? verdicts[schemaEntryLocalId(selectedEntry)] ?? verdicts[selectedEntry.ontology_uri] ?? null
+            : null
+        }
+        onClose={() => setSelectedEntry(null)}
+      />
     </div>
   );
 }

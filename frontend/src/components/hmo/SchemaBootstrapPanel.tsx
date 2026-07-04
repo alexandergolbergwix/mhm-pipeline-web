@@ -14,6 +14,7 @@ import { HmoSchemaVerificationModal } from "@/components/hmo/HmoSchemaVerificati
 import { SchemaBootstrapDetails } from "@/components/hmo/SchemaBootstrapDetails";
 import { Glass, GlassPill } from "@/components/glass";
 import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
+import { useHmoSchemaVerifySession } from "@/hooks/useHmoSchemaVerifySession";
 
 interface SchemaBootstrapPanelProps {
   runId?: string;
@@ -54,6 +55,15 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [verdicts, setVerdicts] = useState<Record<string, AiVerdict>>({});
   const [verifyOpen, setVerifyOpen] = useState(false);
+
+  const onVerdictsLanded = useCallback((next: Record<string, AiVerdict>) => {
+    if (Object.keys(next).length > 0) {
+      setVerdicts((prev) => ({...prev, ...next}));
+    }
+  }, []);
+  // Owned here (not inside the modal) so closing the modal never
+  // cancels an in-flight verification — it just hides the viewer.
+  const verifySession = useHmoSchemaVerifySession(onVerdictsLanded);
 
   const refreshPreviewIfFullyMapped = useCallback(async (s: HmoSchemaStatus) => {
     const complete =
@@ -243,7 +253,7 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
             className="button-ghost text-sm"
             disabled={jobRunning}
           >
-            Verify with AI
+            {verifySession.running ? "Verifying with AI…" : "Verify with AI"}
           </button>
         )}
         {!dryRun && wikibaseConfigured && !runId && (
@@ -260,6 +270,8 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
           result={displayResult}
           defaultExpanded
           verdicts={verdicts}
+          runId={runId}
+          wikibaseBaseUrl={status?.wikibase_base_url}
         />
       )}
 
@@ -268,12 +280,8 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
           runId={runId}
           scopeLabel={`${verifiableEntries(displayResult.entries).length} schema entries`}
           ontologyUris={verifiableEntries(displayResult.entries).map((e) => e.ontology_uri)}
+          session={verifySession}
           onClose={() => setVerifyOpen(false)}
-          onVerdictsLanded={(next) => {
-            if (Object.keys(next).length > 0) {
-              setVerdicts((prev) => ({...prev, ...next}));
-            }
-          }}
         />
       )}
     </Glass>

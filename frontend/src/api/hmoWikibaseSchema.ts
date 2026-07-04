@@ -19,6 +19,8 @@ export interface HmoSchemaBootstrapEntry {
   wikibase_id: string | null;
   status: "created" | "skipped" | "would_create" | "failed" | string;
   message: string;
+  description?: string;
+  datatype?: string | null;
 }
 
 export interface HmoSchemaBootstrapResult {

@@ -43,6 +43,7 @@ from app.pipeline.rdf_build import (
     load_graph,
     node_detail,
     normalise_matches,
+    ontology_usage,
     rdf_output_path_for_run,
     validate_with_shacl,
 )
@@ -174,6 +175,25 @@ class NodeDetailResponse(BaseModel):
     properties: list[NodeProperty]
     outgoing: list[NodeEdgeRef]
     incoming: list[NodeEdgeRef]
+
+
+class OntologyUsageExample(BaseModel):
+    node_id: str | None = None
+    label: str | None = None
+    category: str | None = None
+    subject_id: str | None = None
+    subject_label: str | None = None
+    object_id: str | None = None
+    object_label: str | None = None
+    object_is_literal: bool | None = None
+
+
+class OntologyUsageResponse(BaseModel):
+    built: bool
+    entity_kind: str
+    count: int
+    examples: list[OntologyUsageExample]
+    total_triples: int
 
 
 class ShaclViolationDto(BaseModel):
@@ -664,6 +684,37 @@ async def node(
     g = await asyncio.to_thread(load_graph, ttl)
     detail = await asyncio.to_thread(node_detail, g, id)
     return NodeDetailResponse(**detail)
+
+
+@router.get("/{run_id}/rdf/ontology-usage", response_model=OntologyUsageResponse)
+async def rdf_ontology_usage(
+    run_id: uuid.UUID,
+    ontology_uri: str,
+    entity_kind: str = Query(pattern="^(class|property)$"),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> OntologyUsageResponse:
+    """How much a HMO ontology class/property is actually used in this
+    run's RDF graph — backs the schema bootstrap detail drawer's
+    "based on the RDF graph" section.
+
+    Returns ``built=False`` (rather than a 404) when no RDF has been
+    built yet for this run, so the frontend can show a clear
+    "build the graph first" nudge instead of an error state.
+    """
+    await _lookup_run_with_access(db, run_id, auth)
+    await _ensure_ttl_on_disk(run_id, db)
+    ttl = rdf_output_path_for_run(str(run_id))
+    if not ttl.exists():
+        return OntologyUsageResponse(
+            built=False, entity_kind=entity_kind, count=0, examples=[], total_triples=0,
+        )
+
+    import asyncio  # noqa: PLC0415
+
+    g = await asyncio.to_thread(load_graph, ttl)
+    usage = await asyncio.to_thread(ontology_usage, g, ontology_uri, entity_kind)
+    return OntologyUsageResponse(built=True, **usage)
 
 
 def _is_literal_value(o: Any) -> bool:

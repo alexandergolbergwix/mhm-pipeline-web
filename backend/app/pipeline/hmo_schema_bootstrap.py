@@ -66,6 +66,8 @@ class SchemaBootstrapEntry:
     wikibase_id: str | None  # None for "would_create"/"failed"
     status: str  # "created" | "skipped" | "would_create" | "failed"
     message: str = ""
+    description: str = ""
+    datatype: str | None = None
 
 
 @dataclass(frozen=True)
@@ -144,7 +146,10 @@ async def bootstrap_schema(
 
         if uri in existing:
             entries.append(
-                SchemaBootstrapEntry(uri, kind, wikibase_label, existing[uri], "skipped")
+                SchemaBootstrapEntry(
+                    uri, kind, wikibase_label, existing[uri], "skipped",
+                    description=description, datatype=datatype,
+                )
             )
             skipped += 1
             if audit_ctx is not None and not dry_run:
@@ -156,7 +161,12 @@ async def bootstrap_schema(
                     wikibase_id=existing[uri],
                 )
         elif dry_run:
-            entries.append(SchemaBootstrapEntry(uri, kind, wikibase_label, None, "would_create"))
+            entries.append(
+                SchemaBootstrapEntry(
+                    uri, kind, wikibase_label, None, "would_create",
+                    description=description, datatype=datatype,
+                )
+            )
             would_create += 1
         else:
             outcome = await asyncio.to_thread(
@@ -167,6 +177,7 @@ async def bootstrap_schema(
                 entries.append(
                     SchemaBootstrapEntry(
                         uri, kind, wikibase_label, None, "failed", outcome.message,
+                        description=description, datatype=datatype,
                     )
                 )
                 failed += 1
@@ -190,6 +201,7 @@ async def bootstrap_schema(
                 entries.append(
                     SchemaBootstrapEntry(
                         uri, kind, wikibase_label, outcome.entity_id, "created",
+                        description=description, datatype=datatype,
                     )
                 )
                 created += 1
@@ -370,6 +382,8 @@ def bootstrap_result_from_mapping(raw: dict[str, Any]) -> SchemaBootstrapResult 
             wikibase_id=e.get("wikibase_id") if isinstance(e.get("wikibase_id"), str) else None,
             status=str(e.get("status") or ""),
             message=str(e.get("message") or ""),
+            description=str(e.get("description") or ""),
+            datatype=e.get("datatype") if isinstance(e.get("datatype"), str) else None,
         )
         for e in entries_raw
         if isinstance(e, dict)
@@ -464,6 +478,8 @@ def load_cached_schema_bootstrap_report() -> SchemaBootstrapResult | None:
             wikibase_id=e.get("wikibase_id") if isinstance(e.get("wikibase_id"), str) else None,
             status=str(e.get("status") or ""),
             message=str(e.get("message") or ""),
+            description=str(e.get("description") or ""),
+            datatype=e.get("datatype") if isinstance(e.get("datatype"), str) else None,
         )
         for e in entries_raw
         if isinstance(e, dict)

@@ -121,6 +121,28 @@ export interface NodeDetail {
 }
 
 
+// One usage example for an ontology class ("typed" node) or property
+// (predicate) found in a run's actual RDF graph.
+export interface OntologyUsageExample {
+  node_id?:          string | null;
+  label?:            string | null;
+  category?:         string | null;
+  subject_id?:       string | null;
+  subject_label?:    string | null;
+  object_id?:        string | null;
+  object_label?:     string | null;
+  object_is_literal?: boolean | null;
+}
+
+export interface OntologyUsageResponse {
+  built:        boolean;
+  entity_kind:  "class" | "property" | string;
+  count:        number;
+  examples:     OntologyUsageExample[];
+  total_triples: number;
+}
+
+
 export interface ShaclViolation {
   focus_node: string;
   source_shape: string;
@@ -280,6 +302,16 @@ export const Rdf = {
   node: (runId: string, nodeId: string) =>
     api.get<NodeDetail>(
       `/runs/${runId}/rdf/node?id=${encodeURIComponent(nodeId)}`,
+    ),
+
+  /** Real usage of one HMO ontology class/property in this run's RDF
+   *  graph — backs the schema bootstrap detail drawer's "based on the
+   *  RDF graph" section. Returns ``built: false`` (not an error) when
+   *  the run has no RDF built yet. */
+  ontologyUsage: (runId: string, ontologyUri: string, entityKind: "class" | "property") =>
+    api.get<OntologyUsageResponse>(
+      `/runs/${runId}/rdf/ontology-usage?ontology_uri=${encodeURIComponent(ontologyUri)}` +
+      `&entity_kind=${entityKind}`,
     ),
 
   validate: (runId: string) =>

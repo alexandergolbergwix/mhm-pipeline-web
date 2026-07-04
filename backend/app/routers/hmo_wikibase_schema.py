@@ -80,6 +80,8 @@ class SchemaBootstrapEntryDto(BaseModel):
     wikibase_id: str | None
     status: str
     message: str = ""
+    description: str = ""
+    datatype: str | None = None
 
 
 class SchemaBootstrapResponse(BaseModel):

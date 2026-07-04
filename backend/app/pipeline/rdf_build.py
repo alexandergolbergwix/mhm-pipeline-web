@@ -789,6 +789,61 @@ def node_detail(graph: rdflib.Graph, node_id: str) -> dict[str, Any]:
     }
 
 
+def ontology_usage(
+    graph: rdflib.Graph,
+    ontology_uri: str,
+    entity_kind: str,
+    *,
+    limit: int = 8,
+) -> dict[str, Any]:
+    """Real usage of one HMO ontology class/property inside a run's RDF graph.
+
+    Backs the schema bootstrap detail drawer's "based on the RDF graph"
+    section: the AI-verify pill only judges the Wikibase mapping, this
+    answers the separate question "does the ontology term actually
+    appear in the data produced for this run".
+
+    ``entity_kind="class"`` counts nodes typed ``rdf:type <ontology_uri>``;
+    ``entity_kind="property"`` counts triples using it as the predicate.
+    """
+    from rdflib import Literal, URIRef  # noqa: PLC0415
+    from rdflib.namespace import RDF  # noqa: PLC0415
+
+    uri_ref = URIRef(ontology_uri)
+    examples: list[dict[str, Any]] = []
+
+    if entity_kind == "class":
+        subjects = list(graph.subjects(RDF.type, uri_ref))
+        count = len(subjects)
+        for s in subjects[:limit]:
+            node_id = str(s)
+            examples.append({
+                "node_id": node_id,
+                "label": _resolve_label(graph, node_id),
+                "category": _resolve_category(graph, node_id),
+            })
+    else:
+        triples = list(graph.triples((None, uri_ref, None)))
+        count = len(triples)
+        for s, _p, o in triples[:limit]:
+            is_literal = isinstance(o, Literal)
+            subject_id = str(s)
+            examples.append({
+                "subject_id": subject_id,
+                "subject_label": _resolve_label(graph, subject_id),
+                "object_id": None if is_literal else str(o),
+                "object_label": str(o) if is_literal else _resolve_label(graph, str(o)),
+                "object_is_literal": is_literal,
+            })
+
+    return {
+        "entity_kind": entity_kind,
+        "count": count,
+        "examples": examples,
+        "total_triples": len(graph),
+    }
+
+
 def _resolve_label(graph: rdflib.Graph, uri: str) -> str:
     """Best-effort label lookup for a referenced node."""
     from rdflib import Literal, URIRef  # noqa: PLC0415
