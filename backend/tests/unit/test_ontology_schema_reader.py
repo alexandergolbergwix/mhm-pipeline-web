@@ -15,6 +15,7 @@ from rdflib import Graph, Literal, Namespace
 from rdflib.namespace import OWL, RDF, RDFS, XSD
 
 from converter.wikibase.ontology_schema_reader import (
+    EXTERNAL_VOCAB_PROPERTIES,
     default_hmo_ontology_path,
     read_hmo_schema,
 )
@@ -45,6 +46,35 @@ def test_read_hmo_schema_walks_the_full_real_ontology() -> None:
     for prop in schema.properties:
         assert prop.datatype is not None
         assert prop.datatype != ""
+
+
+def test_default_ontology_carries_external_vocab_properties_used_by_instance_graph() -> None:
+    """RDFS/OWL/geo/CIDOC predicates the RDF instance graph emits directly
+    (rdfs:comment, rdfs:seeAlso, owl:sameAs, geo:lat/long,
+    cidoc:P4_has_time_span) must resolve here too, or Phase 4's item build
+    (hmo_item_build.py) fails closed with UnmappedOntologyUriError for
+    every run — see the 2026-07-04 "why did every AI verdict fail"/"Build
+    items" incident.
+    """
+    schema = read_hmo_schema()
+    property_uris = {p.uri for p in schema.properties}
+    for entry in EXTERNAL_VOCAB_PROPERTIES:
+        assert entry.uri in property_uris
+
+
+def test_custom_ttl_path_does_not_get_external_vocab_properties(tmp_path: Path) -> None:
+    """A synthetic fixture ontology (as used by every other test in this
+    file) must stay a literal, unaugmented parse — only the bundled
+    default ontology gets the external-vocab top-up."""
+    graph = Graph()
+    subject = _EX.Bare_Class
+    graph.add((subject, RDF.type, OWL.Class))
+    ttl_path = tmp_path / "test.ttl"
+    graph.serialize(destination=ttl_path, format="turtle")
+
+    schema = read_hmo_schema(ttl_path)
+
+    assert schema.properties == []
 
 
 def test_class_picks_english_label_and_keeps_other_languages_as_aliases(

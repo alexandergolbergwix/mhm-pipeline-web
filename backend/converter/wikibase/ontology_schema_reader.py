@@ -74,13 +74,92 @@ class OntologySchema:
     skipped: list[OntologySkippedEntry] = field(default_factory=list)
 
 
+# Standard RDF/OWL/geo/CIDOC predicates the RDF *instance* graph
+# (``converter/rdf/graph_builder.py``) emits directly from their canonical
+# external namespaces rather than via an HM-local alias — so they never
+# appear as an ``owl:Class``/``owl:ObjectProperty``/``owl:DatatypeProperty``
+# declaration inside ``hebrew-manuscripts.ttl`` itself. Phase 4's item build
+# (``hmo_item_build.py`` / ``hmo_exporter.resolve_against_mappings``) walks
+# every predicate on every typed instance node, so any of these left
+# unmapped blocks the whole "Build items" step with an
+# ``UnmappedOntologyUriError``. Bootstrapping them here — once — as
+# ordinary Wikibase properties keeps the exporter's "every predicate needs
+# a live PID" invariant simple instead of special-casing each one deep in
+# the resolver.
+EXTERNAL_VOCAB_PROPERTIES: tuple[OntologyPropertyEntry, ...] = (
+    OntologyPropertyEntry(
+        uri=str(RDFS.comment),
+        local_name="comment",
+        label="comment",
+        description=(
+            "Free-text annotation (rdfs:comment) — provenance/summary/note "
+            "text copied verbatim from MARC onto the RDF graph, usually Hebrew."
+        ),
+        datatype="monolingualtext",
+    ),
+    OntologyPropertyEntry(
+        uri=str(RDFS.seeAlso),
+        local_name="seeAlso",
+        label="see also",
+        description="External or cross-reference URI (rdfs:seeAlso) attached to an instance node.",
+        datatype="url",
+    ),
+    OntologyPropertyEntry(
+        uri=str(OWL.sameAs),
+        local_name="sameAs",
+        label="same as",
+        description=(
+            "Cross-reference to an external authority URI (owl:sameAs) — "
+            "Wikidata, GeoNames, or another linked-data identifier."
+        ),
+        datatype="url",
+    ),
+    OntologyPropertyEntry(
+        uri="http://www.w3.org/2003/01/geo/wgs84_pos#lat",
+        local_name="lat",
+        label="latitude",
+        description="WGS84 latitude (geo:lat) of a place instance.",
+        datatype="quantity",
+    ),
+    OntologyPropertyEntry(
+        uri="http://www.w3.org/2003/01/geo/wgs84_pos#long",
+        local_name="long",
+        label="longitude",
+        description="WGS84 longitude (geo:long) of a place instance.",
+        datatype="quantity",
+    ),
+    OntologyPropertyEntry(
+        uri="http://www.cidoc-crm.org/cidoc-crm/P4_has_time_span",
+        local_name="P4_has_time_span",
+        label="has time-span",
+        description=(
+            "CIDOC-CRM P4_has_time-span: links a production/custody event to "
+            "its E52 Time-Span node."
+        ),
+        datatype="wikibase-item",
+    ),
+)
+
+
 def default_hmo_ontology_path() -> Path:
     """Return the path to the bundled HMO ontology Turtle file."""
     return Path(__file__).resolve().parents[2] / "ontology" / "hebrew-manuscripts.ttl"
 
 
 def read_hmo_schema(ttl_path: Path | None = None) -> OntologySchema:
-    """Parse the HMO ontology Turtle file into class/property entries."""
+    """Parse the HMO ontology Turtle file into class/property entries.
+
+    When called against the bundled default ontology (``ttl_path=None``,
+    the real ``hebrew-manuscripts.ttl`` used in production), the result
+    also carries :data:`EXTERNAL_VOCAB_PROPERTIES` — the handful of
+    RDFS/OWL/geo/CIDOC predicates the RDF *instance* graph emits directly
+    from their canonical namespaces (see that constant's docstring) rather
+    than via an HM-local alias, so they never appear as an
+    ``owl:ObjectProperty``/``owl:DatatypeProperty`` declaration in the
+    ontology file itself. A custom ``ttl_path`` (used by unit tests against
+    small synthetic ontologies) gets a literal, unaugmented parse.
+    """
+    is_default_ontology = ttl_path is None
     graph = Graph()
     graph.parse(ttl_path or default_hmo_ontology_path())
 
@@ -101,6 +180,12 @@ def read_hmo_schema(ttl_path: Path | None = None) -> OntologySchema:
     for kind, is_object in ((OWL.ObjectProperty, True), (OWL.DatatypeProperty, False)):
         for subject in _subjects_of_type(graph, kind):
             properties.append(_build_property_entry(graph, subject, is_object=is_object))
+
+    if is_default_ontology:
+        declared_uris = {entry.uri for entry in properties}
+        properties.extend(
+            entry for entry in EXTERNAL_VOCAB_PROPERTIES if entry.uri not in declared_uris
+        )
 
     return OntologySchema(
         classes=sorted(classes, key=lambda entry: entry.uri),
