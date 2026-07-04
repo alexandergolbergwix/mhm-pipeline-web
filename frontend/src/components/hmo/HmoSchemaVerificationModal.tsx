@@ -180,8 +180,9 @@ export function HmoSchemaVerificationModal({
             <h3 className="text-xl font-semibold">Verify schema entries with AI</h3>
             {action && <p className="muted text-sm max-w-2xl">{action.description}</p>}
             <p className="muted text-xs mt-1 max-w-2xl">
-              Only entries that would be created (or failed on a live run) are judged —
-              already-mapped rows are skipped by design.
+              Audits every class and property in the latest bootstrap report —
+              including rows already mapped on Wikibase — for label, datatype,
+              and Wikibase id correctness.
             </p>
           </div>
           <button onClick={onClose} className="button-ghost !py-1 !px-3 text-sm" title="Close">

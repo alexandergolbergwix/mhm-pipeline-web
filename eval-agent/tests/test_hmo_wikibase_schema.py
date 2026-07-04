@@ -21,7 +21,7 @@ def test_discover_accepts_hmo_wikibase_schema_without_ner_or_authority(tmp_path)
     assert run.hmo_wikibase_schema == tmp_path.resolve() / "hmo_wikibase_schema.json"
 
 
-def test_load_filters_to_created_and_would_create_only(tmp_path):
+def test_load_includes_skipped_and_failed_entries(tmp_path):
     path = tmp_path / "hmo_wikibase_schema.json"
     path.write_text(
         json.dumps(
@@ -39,7 +39,7 @@ def test_load_filters_to_created_and_would_create_only(tmp_path):
 
     loaded = hmo_wikibase_schema.load(path)
 
-    assert {e["ontology_uri"] for e in loaded} == {"u1", "u4"}
+    assert {e["ontology_uri"] for e in loaded} == {"u1", "u2", "u3", "u4"}
 
 
 def test_evaluator_emits_one_candidate_per_entry():

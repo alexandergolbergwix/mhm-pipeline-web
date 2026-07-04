@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 _HMO_SCHEMA_VERIFY_CHANNEL = "hmo-schema-verify-sessions"
 HMO_SCHEMA_VERIFY_CHANNEL = _HMO_SCHEMA_VERIFY_CHANNEL
-_JUDGEABLE_STATUSES = frozenset({"created", "would_create", "failed"})
+_JUDGEABLE_STATUSES = frozenset({"created", "would_create", "skipped", "failed"})
 
 
 def schema_entry_local_id(entry: dict[str, Any]) -> str:

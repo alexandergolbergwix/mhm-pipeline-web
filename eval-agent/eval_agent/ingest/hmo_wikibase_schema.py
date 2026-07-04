@@ -3,10 +3,9 @@
 The file is the eval-agent boundary for HMO Wikibase Studio schema
 verification (Phase 3 of dev-docs/hmo-wikibase-studio-plan.md in the
 web repo): each row is one ontology class/property the bootstrap
-either created, skipped (already mapped), or would create/skip in a
-dry run. Only ``"created"``/``"would_create"`` rows are worth judging —
-a ``"skipped"`` row was already verified in an earlier bootstrap pass
-and a ``"failed"`` row has no live entity to evaluate.
+either created, skipped (already mapped), would create in a dry run,
+or failed to write. All four statuses are judged — skipped rows are
+the normal case once the schema is fully mapped and need auditing too.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-_JUDGEABLE_STATUSES = frozenset({"created", "would_create"})
+_JUDGEABLE_STATUSES = frozenset({"created", "would_create", "skipped", "failed"})
 
 
 def load(path: Path) -> list[dict[str, Any]]:

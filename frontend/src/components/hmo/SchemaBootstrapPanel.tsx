@@ -18,6 +18,17 @@ interface SchemaBootstrapPanelProps {
   runId?: string;
 }
 
+const VERIFIABLE_STATUSES = new Set([
+  "would_create",
+  "created",
+  "failed",
+  "skipped",
+]);
+
+function verifiableEntries(entries: HmoSchemaBootstrapResult["entries"]) {
+  return entries.filter((e) => VERIFIABLE_STATUSES.has(e.status));
+}
+
 function bootstrapResultFromJob(job: RunJobSnapshot): HmoSchemaBootstrapResult | null {
   const raw = job.result;
   if (!raw || typeof raw !== "object") return null;
@@ -242,12 +253,8 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
       {verifyOpen && runId && displayResult && (
         <HmoSchemaVerificationModal
           runId={runId}
-          scopeLabel={`${displayResult.entries.filter((e) => e.status === "would_create" || e.status === "created" || e.status === "failed").length} schema entries`}
-          ontologyUris={
-            displayResult.entries
-              .filter((e) => e.status === "would_create" || e.status === "created" || e.status === "failed")
-              .map((e) => e.ontology_uri)
-          }
+          scopeLabel={`${verifiableEntries(displayResult.entries).length} schema entries`}
+          ontologyUris={verifiableEntries(displayResult.entries).map((e) => e.ontology_uri)}
           onClose={() => setVerifyOpen(false)}
           onVerdictsLanded={(next) => {
             if (Object.keys(next).length > 0) {
