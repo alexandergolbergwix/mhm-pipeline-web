@@ -22,6 +22,7 @@ from converter.wikibase.cloud_client import (
     WikibaseBotCredentials,
     WikibaseCloudWriter,
     WikibaseEndpointConfig,
+    format_wbi_exception,
 )
 
 
@@ -192,6 +193,19 @@ def test_add_claim_reports_failure_instead_of_raising(monkeypatch: pytest.Monkey
 
     assert outcome.status == "failed"
     assert "missing" in outcome.message
+
+
+def test_format_wbi_exception_includes_code_and_conflicts() -> None:
+    from wikibaseintegrator.wbi_exceptions import MWApiError
+
+    exc = MWApiError({
+        "code": "modification-failed",
+        "info": "Label in language en already in use.",
+        "messages": [{"name": "wikibase-validator-label-conflict", "parameters": ["en", "P12"]}],
+    })
+    msg = format_wbi_exception(exc)
+    assert "modification-failed" in msg
+    assert "Label in language en already in use" in msg
 
 
 def test_get_entity_returns_none_when_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:

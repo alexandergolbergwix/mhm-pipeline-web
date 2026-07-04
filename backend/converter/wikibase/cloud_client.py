@@ -12,12 +12,15 @@ Production auth uses server-held OAuth 2.0 (Heroku config vars); the legacy
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_HMO_WIKIBASE_URL = "https://mhm-hmo.wikibase.cloud"
 DEFAULT_WIKIBASE_WRITE_USER = "mhm-pipeline-web"
@@ -170,6 +173,45 @@ def _api_error_message(payload: Mapping[object, object]) -> str | None:
     if code is not None:
         return f"API error {code}"
     return "API error"
+
+
+def format_wbi_exception(exc: BaseException) -> str:
+    """Turn a wikibaseintegrator failure into a curator-visible message."""
+    try:
+        from wikibaseintegrator.wbi_exceptions import MWApiError  # noqa: PLC0415
+    except ImportError:
+        return str(exc)
+
+    if not isinstance(exc, MWApiError):
+        return str(exc)
+
+    parts: list[str] = []
+    code = getattr(exc, "code", None)
+    info = getattr(exc, "info", None)
+    if code:
+        parts.append(f"code={code}")
+    if info and info not in parts:
+        parts.append(f"info={info}")
+    messages = getattr(exc, "messages", None)
+    if messages:
+        parts.append(f"messages={messages}")
+    try:
+        conflicts = exc.get_conflicting_entity_ids()
+    except Exception:  # noqa: BLE001
+        conflicts = None
+    if conflicts:
+        parts.append(f"conflicts={conflicts}")
+    langs = getattr(exc, "get_languages", None)
+    if callable(langs):
+        try:
+            bad_langs = langs()
+            if bad_langs:
+                parts.append(f"languages={bad_langs}")
+        except Exception:  # noqa: BLE001
+            pass
+    if parts:
+        return "; ".join(parts)
+    return str(exc)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -712,8 +754,10 @@ class WikibaseCloudWriter:
                 write_kwargs["bot"] = True
             written = entity.write(**write_kwargs)
         except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+            msg = format_wbi_exception(exc)
+            logger.warning("Wikibase entity write failed: %s", msg)
             return EntityEditOutcome(
-                entity_id=None, status="failed", message=str(exc), page_url=None
+                entity_id=None, status="failed", message=msg, page_url=None
             )
         entity_id = written.id
         return EntityEditOutcome(
@@ -742,10 +786,12 @@ class WikibaseCloudWriter:
                 write_kwargs["bot"] = True
             written = entity.write(**write_kwargs)
         except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+            msg = format_wbi_exception(exc)
+            logger.warning("Wikibase claim write failed on %s: %s", entity_id, msg)
             return EntityEditOutcome(
                 entity_id=entity_id,
                 status="failed",
-                message=str(exc),
+                message=msg,
                 page_url=self.page_url(_entity_page_title(entity_id)),
             )
         return EntityEditOutcome(

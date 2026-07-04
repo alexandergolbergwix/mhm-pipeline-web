@@ -165,6 +165,14 @@ export function SchemaBootstrapDetails({
           </div>
           <p className="text-xs muted">
             Showing {rows.length} of {result.entries.length} entries
+            {counts.skipped > 0 && (
+              <>
+                {" · "}
+                <span title="These ontology URIs already have a Wikibase Item/Property id stored in the mapping table from a previous bootstrap.">
+                  Skipped = already on Wikibase
+                </span>
+              </>
+            )}
           </p>
         </>
       )}

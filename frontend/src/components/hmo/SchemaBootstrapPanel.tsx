@@ -209,7 +209,7 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
       {verifyOpen && runId && displayResult && (
         <HmoSchemaVerificationModal
           runId={runId}
-          scopeLabel={`${displayResult.entries.length} schema entries`}
+          scopeLabel={`${displayResult.entries.filter((e) => e.status === "would_create" || e.status === "created" || e.status === "failed").length} schema entries`}
           ontologyUris={
             displayResult.entries
               .filter((e) => e.status === "would_create" || e.status === "created" || e.status === "failed")
@@ -217,8 +217,9 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
           }
           onClose={() => setVerifyOpen(false)}
           onVerdictsLanded={(next) => {
-            setVerdicts((prev) => ({...prev, ...next}));
-            setVerifyOpen(false);
+            if (Object.keys(next).length > 0) {
+              setVerdicts((prev) => ({...prev, ...next}));
+            }
           }}
         />
       )}
