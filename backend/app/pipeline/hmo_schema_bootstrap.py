@@ -119,24 +119,32 @@ async def bootstrap_schema(
 
     # Properties first — item claims (Phase 4/5) reference them by PID.
     ordered = [
-        (prop.uri, ENTITY_KIND_PROPERTY, prop.label, prop.description, prop.aliases, prop.datatype)
+        (
+            prop.uri, ENTITY_KIND_PROPERTY, prop.local_name,
+            prop.label, prop.description, prop.aliases, prop.datatype,
+        )
         for prop in schema.properties
     ] + [
-        (cls.uri, ENTITY_KIND_CLASS, cls.label, cls.description, cls.aliases, None)
+        (
+            cls.uri, ENTITY_KIND_CLASS, cls.local_name,
+            cls.label, cls.description, cls.aliases, None,
+        )
         for cls in schema.classes
     ]
+    wikibase_labels = build_wikibase_labels(ordered)
     total = len(ordered)
 
     entries: list[SchemaBootstrapEntry] = []
     created = skipped = failed = would_create = 0
 
-    for idx, (uri, kind, label, description, aliases, datatype) in enumerate(ordered):
+    for idx, (uri, kind, _local_name, _label, description, aliases, datatype) in enumerate(ordered):
+        wikibase_label = wikibase_labels[uri]
         if not dry_run and should_cancel is not None and await should_cancel():
             break
 
         if uri in existing:
             entries.append(
-                SchemaBootstrapEntry(uri, kind, label, existing[uri], "skipped")
+                SchemaBootstrapEntry(uri, kind, wikibase_label, existing[uri], "skipped")
             )
             skipped += 1
             if audit_ctx is not None and not dry_run:
@@ -148,15 +156,18 @@ async def bootstrap_schema(
                     wikibase_id=existing[uri],
                 )
         elif dry_run:
-            entries.append(SchemaBootstrapEntry(uri, kind, label, None, "would_create"))
+            entries.append(SchemaBootstrapEntry(uri, kind, wikibase_label, None, "would_create"))
             would_create += 1
         else:
             outcome = await asyncio.to_thread(
-                _create_live, writer, kind, label, description, aliases, datatype,
+                _create_live,
+                writer, kind, wikibase_label, description, aliases, datatype,
             )
             if outcome.entity_id is None:
                 entries.append(
-                    SchemaBootstrapEntry(uri, kind, label, None, "failed", outcome.message)
+                    SchemaBootstrapEntry(
+                        uri, kind, wikibase_label, None, "failed", outcome.message,
+                    )
                 )
                 failed += 1
                 if audit_ctx is not None:
@@ -169,15 +180,17 @@ async def bootstrap_schema(
                     )
                 logger.warning(
                     "Failed to create schema %s %s (%s): %s",
-                    kind, label, uri, outcome.message,
+                    kind, wikibase_label, uri, outcome.message,
                 )
             else:
                 await _record_mapping(
                     db, ontology_uri=uri, entity_kind=kind,
-                    wikibase_id=outcome.entity_id, label=label, datatype=datatype,
+                    wikibase_id=outcome.entity_id, label=wikibase_label, datatype=datatype,
                 )
                 entries.append(
-                    SchemaBootstrapEntry(uri, kind, label, outcome.entity_id, "created")
+                    SchemaBootstrapEntry(
+                        uri, kind, wikibase_label, outcome.entity_id, "created",
+                    )
                 )
                 created += 1
                 if audit_ctx is not None:
@@ -190,7 +203,7 @@ async def bootstrap_schema(
                     )
 
         if not dry_run and on_progress is not None:
-            await on_progress(idx + 1, total, label)
+            await on_progress(idx + 1, total, wikibase_label)
 
     return SchemaBootstrapResult(
         dry_run=dry_run, created=created, skipped=skipped, failed=failed,
@@ -220,6 +233,46 @@ async def schema_status(db: AsyncSession) -> SchemaStatusResult:
 
 def _audit_target_kind(entity_kind: str) -> str:
     return TARGET_PROPERTY if entity_kind == ENTITY_KIND_PROPERTY else TARGET_ITEM
+
+
+def wikibase_label_for_entry(
+    label: str,
+    local_name: str,
+    ontology_uri: str,
+    used_labels: dict[str, str],
+) -> str:
+    """Assign a unique English Wikibase label within one bootstrap batch.
+
+    Wikibase rejects duplicate ``en`` labels across properties/items. The
+    HMO ontology reuses CIDOC/LRM labels (e.g. two ``is composed of``
+    properties); the first declaration keeps the bare label, later ones
+    get ``{label} ({local_name})``.
+    """
+    primary = label.strip()
+    if primary not in used_labels or used_labels[primary] == ontology_uri:
+        used_labels[primary] = ontology_uri
+        return primary
+    disambiguated = f"{primary} ({local_name})"
+    candidate = disambiguated
+    counter = 2
+    while candidate in used_labels and used_labels[candidate] != ontology_uri:
+        candidate = f"{disambiguated} #{counter}"
+        counter += 1
+    used_labels[candidate] = ontology_uri
+    return candidate
+
+
+def build_wikibase_labels(
+    ordered: list[
+        tuple[str, str, str, str, str, list[str], str | None]
+    ],
+) -> dict[str, str]:
+    """Map ontology URI → Wikibase ``en`` label for every schema entry."""
+    used: dict[str, str] = {}
+    labels: dict[str, str] = {}
+    for uri, _kind, local_name, label, *_rest in ordered:
+        labels[uri] = wikibase_label_for_entry(label, local_name, uri, used)
+    return labels
 
 
 def _create_live(

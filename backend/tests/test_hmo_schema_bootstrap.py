@@ -194,3 +194,63 @@ async def test_schema_status_reports_counts_and_missing_sample(
     assert after.mapped_classes == 1
     assert after.mapped_properties == 1
     assert after.missing_sample == []
+
+
+def test_build_wikibase_labels_disambiguates_duplicate_en_labels() -> None:
+    ordered = [
+        (
+            "http://cidoc/P46",
+            ENTITY_KIND_PROPERTY,
+            "P46_is_composed_of",
+            "is composed of",
+            "cidoc",
+            [],
+            "wikibase-item",
+        ),
+        (
+            "http://hmo/is_composed_of",
+            ENTITY_KIND_PROPERTY,
+            "is_composed_of",
+            "is composed of",
+            "hmo",
+            [],
+            "wikibase-item",
+        ),
+    ]
+    labels = pipeline.build_wikibase_labels(ordered)
+    assert labels["http://cidoc/P46"] == "is composed of"
+    assert labels["http://hmo/is_composed_of"] == "is composed of (is_composed_of)"
+
+
+@pytest.mark.asyncio
+async def test_live_bootstrap_uses_disambiguated_labels_for_duplicates(
+    db_session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema = OntologySchema(
+        classes=[],
+        properties=[
+            OntologyPropertyEntry(
+                uri="http://cidoc/P46",
+                local_name="P46_is_composed_of",
+                label="is composed of",
+                description="cidoc",
+                datatype="wikibase-item",
+            ),
+            OntologyPropertyEntry(
+                uri="http://hmo/is_composed_of",
+                local_name="is_composed_of",
+                label="is composed of",
+                description="hmo",
+                datatype="wikibase-item",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        "converter.wikibase.ontology_schema_reader.read_hmo_schema", lambda: schema
+    )
+    writer = _FakeWriter()
+    result = await pipeline.bootstrap_schema(db_session, writer=writer, dry_run=False)
+
+    assert result.created == 2
+    assert writer.property_calls[0]["labels"]["en"] == "is composed of"
+    assert writer.property_calls[1]["labels"]["en"] == "is composed of (is_composed_of)"
