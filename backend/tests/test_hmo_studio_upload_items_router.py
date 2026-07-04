@@ -10,6 +10,16 @@ from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from converter.wikibase.resolved_models import ResolvedWikibaseEntity
 
 
+@pytest.fixture(autouse=True)
+def no_server_wikibase_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_CLIENT_ID", "")
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET", "")
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN", "")
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+
+
 @pytest.mark.asyncio
 async def test_upload_items_requires_a_build_first(sample_run) -> None:
     run_id = sample_run["run_id"]

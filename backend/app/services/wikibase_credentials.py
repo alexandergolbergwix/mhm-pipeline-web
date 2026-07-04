@@ -59,11 +59,30 @@ def build_server_wikibase_writer() -> WikibaseCloudWriter:
         )
     settings = get_settings()
     write_user = settings.wikibase_cloud_write_user.strip() or "mhm-pipeline-web"
-    return WikibaseCloudWriter(
+    writer = WikibaseCloudWriter(
         server_wikibase_endpoint_config(),
         auth,
         user_agent=f"{write_user}/1.0 (MHM Pipeline Web)",
     )
+    try:
+        writer.ensure_authenticated()
+        api_user = writer.current_api_user()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Wikibase Cloud authentication failed: {exc}",
+        ) from exc
+    if api_user != write_user:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"Wikibase OAuth session is {api_user!r}, expected {write_user!r}. "
+                f"Create the {write_user} wiki account on "
+                f"{settings.wikibase_cloud_base_url}, register a new OAuth consumer "
+                f"under that account, and update the Heroku OAuth config vars."
+            ),
+        )
+    return writer
 
 
 def verify_server_wikibase_auth_sync(
