@@ -78,9 +78,12 @@ async def run_hmo_schema_bootstrap_job(job_id: uuid.UUID) -> None:
         job_id,
         status=JOB_STATUS_CANCELLED if cancelled else JOB_STATUS_SUCCEEDED,
         result={
+            "dry_run": False,
             "created": result.created,
             "skipped": result.skipped,
             "failed": result.failed,
+            "would_create": 0,
+            "entries": [pipeline.serialise_bootstrap_entry(e) for e in result.entries],
         },
         progress={
             "phase": "cancelled" if cancelled else "done",

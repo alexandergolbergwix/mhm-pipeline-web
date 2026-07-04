@@ -290,6 +290,109 @@ async def _record_mapping(
     await db.commit()
 
 
+def serialise_bootstrap_entry(entry: SchemaBootstrapEntry) -> dict[str, Any]:
+    return asdict(entry)
+
+
+def serialise_bootstrap_result(result: SchemaBootstrapResult) -> dict[str, Any]:
+    return {
+        "dry_run": result.dry_run,
+        "created": result.created,
+        "skipped": result.skipped,
+        "failed": result.failed,
+        "would_create": result.would_create,
+        "entries": [serialise_bootstrap_entry(e) for e in result.entries],
+    }
+
+
+def bootstrap_result_from_mapping(raw: dict[str, Any]) -> SchemaBootstrapResult | None:
+    entries_raw = raw.get("entries")
+    if not isinstance(entries_raw, list):
+        return None
+    entries = [
+        SchemaBootstrapEntry(
+            ontology_uri=str(e.get("ontology_uri") or ""),
+            entity_kind=str(e.get("entity_kind") or ""),
+            label=str(e.get("label") or ""),
+            wikibase_id=e.get("wikibase_id") if isinstance(e.get("wikibase_id"), str) else None,
+            status=str(e.get("status") or ""),
+            message=str(e.get("message") or ""),
+        )
+        for e in entries_raw
+        if isinstance(e, dict)
+    ]
+    return SchemaBootstrapResult(
+        dry_run=bool(raw.get("dry_run")),
+        created=int(raw.get("created") or 0),
+        skipped=int(raw.get("skipped") or 0),
+        failed=int(raw.get("failed") or 0),
+        would_create=int(raw.get("would_create") or 0),
+        entries=entries,
+    )
+
+
+async def load_last_bootstrap_report(db: AsyncSession) -> SchemaBootstrapResult | None:
+    """Latest succeeded job result, else on-disk cache."""
+    from sqlalchemy import desc, select  # noqa: PLC0415
+
+    from app.models.run_job import (  # noqa: PLC0415
+        JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
+        JOB_STATUS_SUCCEEDED,
+        RunJob,
+    )
+
+    job = (
+        await db.execute(
+            select(RunJob)
+            .where(RunJob.kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP)
+            .where(RunJob.status == JOB_STATUS_SUCCEEDED)
+            .order_by(desc(RunJob.finished_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if job is not None and isinstance(job.result, dict):
+        parsed = bootstrap_result_from_mapping(job.result)
+        if parsed is not None and parsed.entries:
+            return parsed
+    return load_cached_schema_bootstrap_report()
+
+
+def load_cached_schema_bootstrap_report() -> SchemaBootstrapResult | None:
+    """Read the last on-disk bootstrap report, if any."""
+    report_path = _SCHEMA_STATE_ROOT / "hmo_wikibase_schema.json"
+    if not report_path.is_file():
+        return None
+    try:
+        raw = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    entries_raw = raw.get("entries")
+    if not isinstance(entries_raw, list):
+        return None
+    entries = [
+        SchemaBootstrapEntry(
+            ontology_uri=str(e.get("ontology_uri") or ""),
+            entity_kind=str(e.get("entity_kind") or ""),
+            label=str(e.get("label") or ""),
+            wikibase_id=e.get("wikibase_id") if isinstance(e.get("wikibase_id"), str) else None,
+            status=str(e.get("status") or ""),
+            message=str(e.get("message") or ""),
+        )
+        for e in entries_raw
+        if isinstance(e, dict)
+    ]
+    return SchemaBootstrapResult(
+        dry_run=bool(raw.get("dry_run")),
+        created=int(raw.get("created") or 0),
+        skipped=int(raw.get("skipped") or 0),
+        failed=int(raw.get("failed") or 0),
+        would_create=int(raw.get("would_create") or 0),
+        entries=entries,
+    )
+
+
 def cache_schema_bootstrap_report(result: SchemaBootstrapResult) -> Path:
     """Persist the bootstrap report where the eval-agent's
     ``hmo_wikibase_schema`` evaluator can read it from disk.
@@ -303,7 +406,8 @@ def cache_schema_bootstrap_report(result: SchemaBootstrapResult) -> Path:
     _SCHEMA_STATE_ROOT.mkdir(parents=True, exist_ok=True)
     report_path = _SCHEMA_STATE_ROOT / "hmo_wikibase_schema.json"
     report_path.write_text(
-        json.dumps(asdict(result), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        json.dumps(serialise_bootstrap_result(result), ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
         encoding="utf-8",
     )
     marc_path = _SCHEMA_STATE_ROOT / "marc_extracted.json"

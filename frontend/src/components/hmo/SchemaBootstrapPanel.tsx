@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError } from "@/api/client";
+import type { AiVerdict } from "@/api/extractionApprovals";
 import {
   HmoWikibaseSchema,
   isSchemaBootstrapJob,
@@ -8,25 +9,30 @@ import {
   type HmoSchemaStatus,
 } from "@/api/hmoWikibaseSchema";
 import type { RunJobSnapshot } from "@/api/runJobs";
+import { HmoSchemaVerificationModal } from "@/components/hmo/HmoSchemaVerificationModal";
+import { SchemaBootstrapDetails } from "@/components/hmo/SchemaBootstrapDetails";
 import { Glass, GlassPill } from "@/components/glass";
 import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
 
 interface SchemaBootstrapPanelProps {
-  /** Anchors the background job for a live bootstrap (dry-run doesn't need one). */
   runId?: string;
 }
 
-/**
- * Global (not per-run) schema bootstrap panel: creates every missing
- * HMO ontology class/property on mhm-hmo.wikibase.cloud. Lives above
- * the per-run panels in HmoStudio.tsx since the schema is shared
- * across every run (Phase 3, dev-docs/hmo-wikibase-studio-plan.md).
- *
- * A live bootstrap makes ~380 sequential external calls — too slow for one
- * HTTP request — so the backend runs it as a `run_jobs` background job and
- * this panel tracks its progress via `useRunJobAttachment` (poll + live
- * WebSocket push), rendering a progress bar that survives tab navigation.
- */
+function bootstrapResultFromJob(job: RunJobSnapshot): HmoSchemaBootstrapResult | null {
+  const raw = job.result;
+  if (!raw || typeof raw !== "object") return null;
+  const entries = (raw as {entries?: unknown}).entries;
+  if (!Array.isArray(entries)) return null;
+  return {
+    dry_run: false,
+    created: Number((raw as {created?: unknown}).created ?? 0),
+    skipped: Number((raw as {skipped?: unknown}).skipped ?? 0),
+    failed: Number((raw as {failed?: unknown}).failed ?? 0),
+    would_create: Number((raw as {would_create?: unknown}).would_create ?? 0),
+    entries: entries as HmoSchemaBootstrapResult["entries"],
+  };
+}
+
 export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
   const [status, setStatus] = useState<HmoSchemaStatus | null>(null);
   const [result, setResult] = useState<HmoSchemaBootstrapResult | null>(null);
@@ -34,6 +40,8 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
   const [dryRun, setDryRun] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verdicts, setVerdicts] = useState<Record<string, AiVerdict>>({});
+  const [verifyOpen, setVerifyOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -43,16 +51,32 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
     }
   }, []);
 
+  const loadLastReport = useCallback(async () => {
+    try {
+      const report = await HmoWikibaseSchema.lastReport();
+      setResult(report);
+    } catch {
+      /* non-fatal — panel still works without a cached report */
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void loadLastReport();
+  }, [refresh, loadLastReport]);
 
   const { activeJob, setTrackedJobId, ensureJobPolling } = useRunJobAttachment(
     runId,
     "hmo_schema_bootstrap",
     (j) => {
       setJob(j);
-      if (j.status === "succeeded" || j.status === "failed" || j.status === "cancelled") {
+      if (j.status === "succeeded") {
+        const fromJob = bootstrapResultFromJob(j);
+        if (fromJob) setResult(fromJob);
+        void refresh();
+        void loadLastReport();
+      }
+      if (j.status === "failed" || j.status === "cancelled") {
         void refresh();
       }
     },
@@ -86,6 +110,8 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
     status.mapped_classes === status.total_classes &&
     status.mapped_properties === status.total_properties;
   const jobRunning = liveJob?.status === "queued" || liveJob?.status === "running";
+  const displayResult =
+    result ?? (liveJob?.status === "succeeded" ? bootstrapResultFromJob(liveJob) : null);
 
   return (
     <Glass as="section" className="p-6 space-y-3">
@@ -101,11 +127,8 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
           <p className="muted text-sm leading-relaxed mt-1">
             Creates every class/property from the ontology as a real
             Wikibase Item/Property on{" "}
-            <code className="text-xs">mhm-hmo.wikibase.cloud</code>. One
-            ontology, one Wikibase instance — shared by every run.
-            Idempotent: re-running only creates what&apos;s missing. A live
-            run happens in the background — you can navigate away and come
-            back without losing progress.
+            <code className="text-xs">mhm-hmo.wikibase.cloud</code>. Preview
+            with a dry run, verify entries with AI, then run a live bootstrap.
           </p>
         </div>
         {status && (
@@ -156,6 +179,16 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
               ? "Preview bootstrap"
               : "Run schema bootstrap"}
         </button>
+        {displayResult && runId && (
+          <button
+            type="button"
+            onClick={() => setVerifyOpen(true)}
+            className="button-ghost text-sm"
+            disabled={jobRunning}
+          >
+            Verify with AI
+          </button>
+        )}
         {!dryRun && wikibaseConfigured && !runId && (
           <span className="text-xs muted">
             Open this panel from a run to start a live bootstrap.
@@ -165,7 +198,30 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
 
       {liveJob && <BootstrapJobProgress job={liveJob} />}
 
-      {result && <BootstrapResultSummary result={result} />}
+      {displayResult && (
+        <SchemaBootstrapDetails
+          result={displayResult}
+          defaultExpanded
+          verdicts={verdicts}
+        />
+      )}
+
+      {verifyOpen && runId && displayResult && (
+        <HmoSchemaVerificationModal
+          runId={runId}
+          scopeLabel={`${displayResult.entries.length} schema entries`}
+          ontologyUris={
+            displayResult.entries
+              .filter((e) => e.status === "would_create" || e.status === "created" || e.status === "failed")
+              .map((e) => e.ontology_uri)
+          }
+          onClose={() => setVerifyOpen(false)}
+          onVerdictsLanded={(next) => {
+            setVerdicts((prev) => ({...prev, ...next}));
+            setVerifyOpen(false);
+          }}
+        />
+      )}
     </Glass>
   );
 }
@@ -202,77 +258,6 @@ function BootstrapJobProgress({ job }: { job: RunJobSnapshot }) {
       {job.status === "failed" && job.error && (
         <p className="text-xs text-danger">{job.error}</p>
       )}
-      {job.status === "succeeded" && job.result && (
-        <p className="text-xs muted">
-          created {String(job.result.created ?? 0)} · skipped {String(job.result.skipped ?? 0)}
-          {Number(job.result.failed ?? 0) > 0 && (
-            <> · <span className="text-danger">failed {String(job.result.failed)}</span></>
-          )}
-        </p>
-      )}
     </div>
   );
-}
-
-function BootstrapResultSummary({ result }: { result: HmoSchemaBootstrapResult }) {
-  const [expand, setExpand] = useState(false);
-  return (
-    <div className="border-t border-white/5 pt-3 space-y-2">
-      <div className="flex items-baseline justify-between flex-wrap gap-2">
-        <p className="text-sm">
-          <span className="muted">{result.dry_run ? "Would create:" : "Created:"}</span>{" "}
-          <b className="text-biu-sky">{result.dry_run ? result.would_create : result.created}</b>
-          {" · "}
-          <span className="muted">skipped {result.skipped}</span>
-          {result.failed > 0 && (
-            <>
-              {" · "}
-              <span className="text-danger">failed {result.failed}</span>
-            </>
-          )}
-        </p>
-        <button onClick={() => setExpand((v) => !v)} className="button-ghost text-xs">
-          {expand ? "Hide details" : "Show details"}
-        </button>
-      </div>
-      {expand && (
-        <div className="overflow-x-auto border border-white/5 rounded-lg max-h-72 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0">
-              <tr>
-                <th className="text-left px-3 py-2">Kind</th>
-                <th className="text-left px-3 py-2">Label</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="text-left px-3 py-2">Wikibase id</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.entries.map((entry) => (
-                <tr key={entry.ontology_uri} className="border-t border-white/5">
-                  <td className="px-3 py-2 text-xs muted">{entry.entity_kind}</td>
-                  <td className="px-3 py-2 text-xs">{entry.label}</td>
-                  <td className="px-3 py-2">
-                    <EntryStatusPill status={entry.status} />
-                  </td>
-                  <td className="px-3 py-2 text-xs font-mono">{entry.wikibase_id ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EntryStatusPill({ status }: { status: string }) {
-  const tone =
-    status === "created"
-      ? "text-biu-sky"
-      : status === "would_create"
-        ? "text-warn"
-        : status === "skipped"
-          ? "muted"
-          : "text-danger";
-  return <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}`}>{status}</GlassPill>;
 }

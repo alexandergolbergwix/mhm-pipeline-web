@@ -95,7 +95,11 @@ async def test_job_reports_progress_and_succeeds(sample_run, db_session, monkeyp
 
     job = await db_session.get(RunJob, job_id)
     assert job.status == JOB_STATUS_SUCCEEDED
-    assert job.result == {"created": 3, "skipped": 0, "failed": 0}
+    assert job.result is not None
+    assert job.result["created"] == 3
+    assert job.result["skipped"] == 0
+    assert job.result["failed"] == 0
+    assert len(job.result["entries"]) == 3
     assert job.progress["phase"] == "done"
     assert job.progress["processed"] == job.progress["total"] == 3
 

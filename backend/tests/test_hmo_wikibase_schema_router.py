@@ -102,6 +102,30 @@ async def test_live_bootstrap_without_server_oauth_is_rejected(sample_run) -> No
 
 
 @pytest.mark.asyncio
+async def test_last_bootstrap_report_returns_entries(auth_user) -> None:
+    _user, client = auth_user
+    preview = await client.post(
+        "/api/hmo-wikibase-schema/bootstrap", json={"dry_run": True},
+    )
+    assert preview.status_code == 200
+    response = await client.get("/api/hmo-wikibase-schema/bootstrap/last-report")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["entries"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_schema_verify_actions_list(sample_run) -> None:
+    client = sample_run["client"]
+    response = await client.get(
+        "/api/hmo-wikibase-schema/ai-verify/actions?scope_kind=selection",
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert any(a["id"] == "audit_schema_entry" for a in body)
+
+
+@pytest.mark.asyncio
 async def test_live_bootstrap_with_server_oauth_spawns_a_job(
     sample_run, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

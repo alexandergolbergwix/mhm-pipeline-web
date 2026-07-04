@@ -45,6 +45,9 @@ export const HmoWikibaseSchema = {
       "/hmo-wikibase-schema/bootstrap",
       { dry_run: dryRun, run_id: dryRun ? undefined : runId },
     ),
+
+  lastReport: () =>
+    api.get<HmoSchemaBootstrapResult>("/hmo-wikibase-schema/bootstrap/last-report"),
 };
 
 export function isSchemaBootstrapJob(

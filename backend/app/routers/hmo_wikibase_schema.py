@@ -21,17 +21,32 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.run_job import JOB_KIND_HMO_SCHEMA_BOOTSTRAP
-from app.pipeline import hmo_schema_bootstrap as pipeline
+from app.pipeline import hmo_schema_actions, hmo_schema_bootstrap as pipeline
+from app.pipeline.agent_runner import (
+    list_verify_sessions,
+    new_session_id,
+    read_verify_session,
+    sse_stream,
+)
+from app.pipeline.hmo_schema_verify import (
+    HMO_SCHEMA_VERIFY_CHANNEL,
+    filter_schema_entries,
+    hmo_schema_verify_event_stream,
+    schema_verdict_query_summary,
+)
+from app.pipeline.inference_cache import read_from_inference_cache
 from app.pipeline.run_job_params import prepare_job_params
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.routers.runs import _lookup_run_with_access
+from app.routers.wikidata_studio import _resolve_gemini_key
 from app.services.wikibase_credentials import verify_server_wikibase_auth
 from app.settings import get_settings
 
@@ -90,6 +105,166 @@ class SchemaBootstrapRequest(BaseModel):
                     "job (which needs a run_id for its progress-polling row) "
                     "to whichever run's page the curator was on.",
     )
+
+
+class SchemaVerifyStartRequest(BaseModel):
+    run_id: uuid.UUID
+    action_id: str = Field(..., min_length=1, max_length=64)
+    ontology_uris: list[str] | None = None
+    override_cache: bool = False
+    tier_model: str | None = Field(default=None, max_length=64)
+
+
+def _bootstrap_response(result: pipeline.SchemaBootstrapResult) -> SchemaBootstrapResponse:
+    return SchemaBootstrapResponse(
+        dry_run=result.dry_run,
+        created=result.created,
+        skipped=result.skipped,
+        failed=result.failed,
+        would_create=result.would_create,
+        entries=[SchemaBootstrapEntryDto(**entry.__dict__) for entry in result.entries],
+    )
+
+
+@router.get("/bootstrap/last-report", response_model=SchemaBootstrapResponse)
+async def get_last_bootstrap_report(
+    auth: AuthContext = Depends(current_auth),  # noqa: ARG001
+    db: AsyncSession = Depends(get_session),
+) -> SchemaBootstrapResponse:
+    """Return the latest bootstrap report (job result or on-disk cache)."""
+    report = await pipeline.load_last_bootstrap_report(db)
+    if report is None:
+        report = await pipeline.bootstrap_schema(db, writer=None, dry_run=True)
+        pipeline.cache_schema_bootstrap_report(report)
+    return _bootstrap_response(report)
+
+
+@router.get("/ai-verify/actions")
+async def list_schema_verify_actions(
+    scope_kind: str = Query("selection", pattern=r"^(single|selection|all)$"),
+    auth: AuthContext = Depends(current_auth),  # noqa: ARG001
+) -> list[dict[str, Any]]:
+    return [
+        hmo_schema_actions.to_dict(a)
+        for a in hmo_schema_actions.list_actions(scope_kind=scope_kind)  # type: ignore[arg-type]
+    ]
+
+
+@router.post("/ai-verify/start-stream")
+async def start_schema_verify_stream(
+    payload: SchemaVerifyStartRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    await _lookup_run_with_access(db, payload.run_id, auth, write=False)
+
+    action = hmo_schema_actions.get_action(payload.action_id)
+    if action is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"unknown action_id {payload.action_id!r}",
+        )
+
+    report = await pipeline.load_last_bootstrap_report(db)
+    if report is None:
+        report = await pipeline.bootstrap_schema(db, writer=None, dry_run=True)
+        pipeline.cache_schema_bootstrap_report(report)
+
+    items = filter_schema_entries(report, ontology_uris=payload.ontology_uris)
+    if not items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="no schema entries in scope — run a dry-run bootstrap first",
+        )
+    if len(items) < action.min_candidates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"action {action.id!r} requires at least "
+                f"{action.min_candidates} candidates; got {len(items)}"
+            ),
+        )
+
+    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+
+    judge_model = payload.tier_model or GEMINI_MODEL
+    evaluator_id = action.evaluators[0] if action.evaluators else "hmo_wikibase_schema"
+    pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    uncached: list[dict[str, Any]] = []
+    if not payload.override_cache:
+        for item in items:
+            hit = await read_from_inference_cache(
+                db,
+                kind="ai_verdict",
+                query_summary=schema_verdict_query_summary(
+                    item, judge_model, evaluator=evaluator_id,
+                ),
+            )
+            if hit is not None:
+                pre_cached.append((item, hit))
+            else:
+                uncached.append(item)
+    else:
+        uncached = list(items)
+
+    api_key = await _resolve_gemini_key(db, auth)
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "No Gemini API key configured. Open Settings → Credentials "
+                "and add one from https://aistudio.google.com/app/apikey."
+            ),
+        )
+
+    session_id = new_session_id()
+    return StreamingResponse(
+        sse_stream(hmo_schema_verify_event_stream(
+            run_id=str(payload.run_id),
+            session_id=session_id,
+            action=action,
+            items=items,
+            uncached_items=uncached,
+            pre_cached=pre_cached,
+            report=report,
+            api_key=api_key,
+            override_cache=payload.override_cache,
+            tier_model=payload.tier_model,
+        )),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Session-Id": session_id,
+        },
+    )
+
+
+@router.get("/ai-verify/sessions")
+async def list_schema_verify_sessions(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    return list_verify_sessions(HMO_SCHEMA_VERIFY_CHANNEL, str(run_id))
+
+
+@router.get("/ai-verify/sessions/{session_id}")
+async def get_schema_verify_session(
+    run_id: uuid.UUID,
+    session_id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    data = read_verify_session(HMO_SCHEMA_VERIFY_CHANNEL, str(run_id), session_id)
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session not found",
+        )
+    return data
 
 
 @router.get("/status", response_model=SchemaStatusResponse)
