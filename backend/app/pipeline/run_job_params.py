@@ -14,6 +14,7 @@ from app.models.run_job import (
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_EXTRACTION,
+    JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
@@ -87,7 +88,9 @@ async def prepare_job_params(
             )
         merged["_wikidata_token"] = token
 
-    if kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP and not merged.get("dry_run", True):
+    if kind == JOB_KIND_HMO_ITEM_UPLOAD or (
+        kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP and not merged.get("dry_run", True)
+    ):
         from app.settings import get_settings  # noqa: PLC0415
 
         if not get_settings().wikibase_cloud_configured:

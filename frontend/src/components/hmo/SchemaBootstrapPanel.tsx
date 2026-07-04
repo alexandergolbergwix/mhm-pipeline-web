@@ -13,6 +13,7 @@ import type { RunJobSnapshot } from "@/api/runJobs";
 import { HmoSchemaVerificationModal } from "@/components/hmo/HmoSchemaVerificationModal";
 import { SchemaBootstrapDetails } from "@/components/hmo/SchemaBootstrapDetails";
 import { Glass, GlassPill } from "@/components/glass";
+import { JobProgressInline } from "@/components/jobs/JobProgressInline";
 import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
 import { useHmoSchemaVerifySession } from "@/hooks/useHmoSchemaVerifySession";
 
@@ -263,7 +264,17 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
         )}
       </div>
 
-      {liveJob && <BootstrapJobProgress job={liveJob} />}
+      {liveJob && (
+        <JobProgressInline
+          job={liveJob}
+          labels={{
+            running: "Bootstrapping…",
+            succeeded: "Bootstrap complete:",
+            failed: "Bootstrap failed:",
+            cancelled: "Bootstrap cancelled:",
+          }}
+        />
+      )}
 
       {displayResult && (
         <SchemaBootstrapDetails
@@ -288,38 +299,3 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
   );
 }
 
-function BootstrapJobProgress({ job }: { job: RunJobSnapshot }) {
-  const { processed, total, message } = job.progress;
-  const pct = total && total > 0 ? Math.round(((processed ?? 0) / total) * 100) : 0;
-  const done = job.status === "succeeded" || job.status === "failed" || job.status === "cancelled";
-
-  return (
-    <div className="border-t border-white/5 pt-3 space-y-2">
-      <div className="flex items-baseline justify-between flex-wrap gap-2 text-sm">
-        <p>
-          <span className="muted">
-            {job.status === "succeeded" ? "Bootstrap complete:" :
-             job.status === "failed" ? "Bootstrap failed:" :
-             job.status === "cancelled" ? "Bootstrap cancelled:" :
-             "Bootstrapping…"}
-          </span>{" "}
-          {message && <span className="text-ink">{message}</span>}
-        </p>
-        {!done && total ? (
-          <span className="muted text-xs">{processed ?? 0} / {total}</span>
-        ) : null}
-      </div>
-      {!done && (
-        <div className="h-1.5 w-full rounded-full bg-white/8 overflow-hidden">
-          <div
-            className="h-full bg-biu-sky transition-[width] duration-300"
-            style={{ width: `${Math.min(100, Math.max(pct, total ? 2 : 100))}%` }}
-          />
-        </div>
-      )}
-      {job.status === "failed" && job.error && (
-        <p className="text-xs text-danger">{job.error}</p>
-      )}
-    </div>
-  );
-}

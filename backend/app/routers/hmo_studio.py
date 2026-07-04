@@ -29,7 +29,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,9 +44,12 @@ from app.models.event import (
 )
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+from app.models.run_job import JOB_KIND_HMO_ITEM_UPLOAD
 from app.pipeline import hmo_item_build
 from app.pipeline import hmo_item_upload
 from app.pipeline import hmo_studio as hmo_pipeline
+from app.pipeline.run_job_params import prepare_job_params
+from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.routers.runs import _lookup_run_with_access
 from app.services.wikibase_audit import WikibaseAuditContext
@@ -453,40 +456,52 @@ async def build_items(
 # ── Upload items (Phase 5) ───────────────────────────────────────────────
 
 
-@router.post(
-    "/{run_id}/hmo-studio/upload-items",
-    response_model=HmoItemUploadResponse,
-)
+@router.post("/{run_id}/hmo-studio/upload-items")
 async def upload_items(
     run_id: uuid.UUID,
     payload: HmoItemUploadRequest,
+    response: Response,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> HmoItemUploadResponse:
+) -> dict[str, Any] | HmoItemUploadResponse:
     """Upload the run's most recent item build (create-only, two-pass).
 
-    Requires ``build-items`` to have run first. Live writes require
-    server-held Wikibase Cloud OAuth.
+    Requires ``build-items`` to have run first. Dry-run (the default) is a
+    fast, no-network preview and stays synchronous. A live upload makes
+    one sequential Wikibase Cloud write per item + deferred link —
+    thousands of calls, far over Heroku's 30s HTTP timeout — so it spawns
+    a ``run_jobs`` background job and returns the job snapshot right away;
+    poll ``GET /runs/{run_id}/jobs/{job_id}`` for progress.
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
-    writer = None
-    audit_ctx = None
     if not payload.dry_run:
-        writer = build_server_wikibase_writer()
-        from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD  # noqa: PLC0415
-
-        audit_ctx = WikibaseAuditContext(
-            actor_user_id=auth.user.id,
-            project_id=run.project_id,
-            run_id=run_id,
-            channel=CHANNEL_ITEM_UPLOAD,
+        params = await prepare_job_params(
+            db, auth, run_id=run_id, kind=JOB_KIND_HMO_ITEM_UPLOAD, params={},
         )
+        try:
+            job = await create_job(
+                db,
+                project_id=run.project_id,
+                run_id=run_id,
+                kind=JOB_KIND_HMO_ITEM_UPLOAD,
+                params=params,
+                created_by=auth.user.id,
+            )
+        except ActiveJobError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "an item upload job is already running",
+                    "job_id": str(exc.job_id),
+                },
+            ) from exc
+        response.status_code = status.HTTP_201_CREATED
+        return serialise_job(job)
 
     try:
         result = await hmo_item_upload.upload_items_for_run(
-            db, run_id, writer=writer, dry_run=payload.dry_run,
-            audit_ctx=audit_ctx,
+            db, run_id, writer=None, dry_run=True,
         )
     except hmo_item_upload.ItemBuildMissingError as exc:
         raise HTTPException(

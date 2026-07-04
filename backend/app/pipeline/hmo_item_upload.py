@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -79,6 +80,7 @@ class HmoItemUploadResult:
     unresolved_links: int
     outcomes: list[HmoItemUploadOutcome] = field(default_factory=list)
     link_outcomes: list[HmoDeferredLinkOutcome] = field(default_factory=list)
+    cancelled: bool = False
 
 
 async def upload_items_for_run(
@@ -88,9 +90,18 @@ async def upload_items_for_run(
     writer: Any | None,
     dry_run: bool = True,
     audit_ctx: WikibaseAuditContext | None = None,
+    on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+    should_cancel: Callable[[], Awaitable[bool]] | None = None,
 ) -> HmoItemUploadResult:
     """Upload the run's most recent item build. Raises
-    :class:`ItemBuildMissingError` if ``build-items`` hasn't run yet."""
+    :class:`ItemBuildMissingError` if ``build-items`` hasn't run yet.
+
+    ``on_progress(processed, total, message)`` is awaited after every
+    item create (pass 1) and deferred-link write (pass 2), with ``total``
+    covering both passes. ``should_cancel()`` is polled before each write
+    for cooperative cancellation — a partial result with
+    ``cancelled=True`` is returned, never an exception.
+    """
     cache_row = (
         await db.execute(
             select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id)
@@ -102,17 +113,25 @@ async def upload_items_for_run(
     entities = [ResolvedWikibaseEntity.from_dict(e) for e in cache_row.resolved_entities]
     existing = await _load_run_instance_mappings(db, run_id)
     local_id_to_source_uri = {e.local_id: e.source_uri for e in entities}
+    total = len(entities) + sum(len(e.deferred_links) for e in entities)
 
-    outcomes, created_this_call, created, skipped, failed = await _pass_one_create(
+    outcomes, created_this_call, created, skipped, failed, cancelled = await _pass_one_create(
         db, run_id, entities, existing, writer=writer, dry_run=dry_run,
         audit_ctx=audit_ctx,
+        on_progress=on_progress, should_cancel=should_cancel, total=total,
     )
     known_qids = {**existing, **created_this_call}
 
-    link_outcomes, linked, link_failed, unresolved = await _pass_two_link(
-        db, entities, local_id_to_source_uri, known_qids, writer=writer, dry_run=dry_run,
-        audit_ctx=audit_ctx,
-    )
+    link_outcomes: list[HmoDeferredLinkOutcome] = []
+    linked = link_failed = unresolved = 0
+    if not cancelled:
+        link_outcomes, linked, link_failed, unresolved, cancelled = await _pass_two_link(
+            db, entities, local_id_to_source_uri, known_qids,
+            writer=writer, dry_run=dry_run,
+            audit_ctx=audit_ctx,
+            on_progress=on_progress, should_cancel=should_cancel,
+            total=total, processed_offset=len(entities),
+        )
 
     return HmoItemUploadResult(
         dry_run=dry_run,
@@ -123,6 +142,7 @@ async def upload_items_for_run(
         unresolved_links=unresolved,
         outcomes=outcomes,
         link_outcomes=link_outcomes,
+        cancelled=cancelled,
     )
 
 
@@ -135,12 +155,21 @@ async def _pass_one_create(
     writer: Any | None,
     dry_run: bool,
     audit_ctx: WikibaseAuditContext | None = None,
-) -> tuple[list[HmoItemUploadOutcome], dict[str, str], int, int, int]:
+    on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+    should_cancel: Callable[[], Awaitable[bool]] | None = None,
+    total: int = 0,
+) -> tuple[list[HmoItemUploadOutcome], dict[str, str], int, int, int, bool]:
     outcomes: list[HmoItemUploadOutcome] = []
     created_this_call: dict[str, str] = {}
     created = skipped = failed = 0
+    cancelled = False
 
-    for entity in entities:
+    for idx, entity in enumerate(entities):
+        if not dry_run and should_cancel is not None and await should_cancel():
+            cancelled = True
+            break
+        if not dry_run and on_progress is not None:
+            await on_progress(idx + 1, total, f"{idx + 1}/{len(entities)} items uploaded")
         if entity.source_uri in existing:
             outcomes.append(
                 HmoItemUploadOutcome(
@@ -217,7 +246,7 @@ async def _pass_one_create(
                 wikibase_id=result.entity_id,
             )
 
-    return outcomes, created_this_call, created, skipped, failed
+    return outcomes, created_this_call, created, skipped, failed, cancelled
 
 
 async def _pass_two_link(
@@ -229,13 +258,31 @@ async def _pass_two_link(
     writer: Any | None,
     dry_run: bool,
     audit_ctx: WikibaseAuditContext | None = None,
-) -> tuple[list[HmoDeferredLinkOutcome], int, int, int]:
+    on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+    should_cancel: Callable[[], Awaitable[bool]] | None = None,
+    total: int = 0,
+    processed_offset: int = 0,
+) -> tuple[list[HmoDeferredLinkOutcome], int, int, int, bool]:
     outcomes: list[HmoDeferredLinkOutcome] = []
     linked = failed = unresolved = 0
+    cancelled = False
+    seen_links = 0
+    total_links = total - processed_offset
 
     for entity in entities:
+        if cancelled:
+            break
         source_qid = known_qids.get(entity.source_uri)
         for link in entity.deferred_links:
+            if not dry_run and should_cancel is not None and await should_cancel():
+                cancelled = True
+                break
+            seen_links += 1
+            if not dry_run and on_progress is not None:
+                await on_progress(
+                    processed_offset + seen_links, total,
+                    f"{seen_links}/{total_links} item links added",
+                )
             target_source_uri = local_id_to_source_uri.get(link.target_local_id)
             target_qid = known_qids.get(target_source_uri) if target_source_uri else None
 
@@ -293,7 +340,7 @@ async def _pass_two_link(
                     wikibase_id=source_qid,
                 )
 
-    return outcomes, linked, failed, unresolved
+    return outcomes, linked, failed, unresolved, cancelled
 
 
 def _build_wbi_claim(claim: ResolvedClaim) -> Any:

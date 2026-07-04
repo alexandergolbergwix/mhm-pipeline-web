@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError } from "@/api/client";
-import { HmoStudio, type HmoItemStatus, type HmoItemUploadResult } from "@/api/hmoStudio";
+import {
+  HmoStudio,
+  isItemUploadJob,
+  itemUploadResultFromJob,
+  type HmoItemStatus,
+  type HmoItemUploadResult,
+} from "@/api/hmoStudio";
+import type { RunJobSnapshot } from "@/api/runJobs";
 import { Glass, GlassPill } from "@/components/glass";
+import { JobProgressInline } from "@/components/jobs/JobProgressInline";
+import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
 
 interface ItemUploadPanelProps {
   runId: string;
@@ -18,6 +27,7 @@ interface ItemUploadPanelProps {
 export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: ItemUploadPanelProps) {
   const [status, setStatus] = useState<HmoItemStatus | null>(null);
   const [result, setResult] = useState<HmoItemUploadResult | null>(null);
+  const [job, setJob] = useState<RunJobSnapshot | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,13 +44,38 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
     void refresh();
   }, [refresh, refreshToken]);
 
+  const { activeJob, setTrackedJobId, ensureJobPolling } = useRunJobAttachment(
+    runId,
+    "hmo_item_upload",
+    (j) => {
+      setJob(j);
+      if (j.status === "succeeded") {
+        const fromJob = itemUploadResultFromJob(j);
+        if (fromJob) setResult(fromJob);
+        void refresh();
+      }
+      if (j.status === "failed" || j.status === "cancelled") {
+        void refresh();
+      }
+    },
+  );
+
+  const liveJob = activeJob ?? job;
+  const jobRunning = liveJob?.status === "queued" || liveJob?.status === "running";
+
   async function doUpload() {
     setBusy(true);
     setError(null);
     try {
       const r = await HmoStudio.uploadItems(runId, dryRun);
-      setResult(r);
-      await refresh();
+      if (isItemUploadJob(r)) {
+        setJob(r);
+        setTrackedJobId(r.id);
+        ensureJobPolling();
+      } else {
+        setResult(r);
+        await refresh();
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
@@ -75,16 +110,16 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
             type="checkbox"
             checked={dryRun}
             onChange={(e) => setDryRun(e.target.checked)}
-            disabled={busy}
+            disabled={busy || jobRunning}
           />
           Dry run
         </label>
         <button
           onClick={doUpload}
-          disabled={busy || !canUpload || (!dryRun && !wikibaseConfigured)}
+          disabled={busy || jobRunning || !canUpload || (!dryRun && !wikibaseConfigured)}
           className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}
         >
-          {busy
+          {busy || jobRunning
             ? dryRun
               ? "Previewing…"
               : "Uploading…"
@@ -98,6 +133,18 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
           </span>
         )}
       </div>
+
+      {liveJob && (
+        <JobProgressInline
+          job={liveJob}
+          labels={{
+            running: "Uploading…",
+            succeeded: "Upload complete:",
+            failed: "Upload failed:",
+            cancelled: "Upload cancelled:",
+          }}
+        />
+      )}
 
       {result && <UploadResultSummary result={result} />}
     </Glass>

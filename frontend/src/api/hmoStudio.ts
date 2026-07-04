@@ -1,4 +1,5 @@
 import { api } from "@/api/client";
+import type { RunJobSnapshot } from "@/api/runJobs";
 
 export interface HmoManifestSummary {
   shelfmark: string;
@@ -149,6 +150,32 @@ export interface HmoItemStatus {
   built_at: string | null;
 }
 
+/** A live upload spawns a background run job; a dry run returns the result inline. */
+export function isItemUploadJob(
+  r: HmoItemUploadResult | RunJobSnapshot,
+): r is RunJobSnapshot {
+  return "kind" in r && r.kind === "hmo_item_upload";
+}
+
+/** Rebuild an HmoItemUploadResult from a finished job's result payload. */
+export function itemUploadResultFromJob(job: RunJobSnapshot): HmoItemUploadResult | null {
+  const raw = job.result;
+  if (!raw || typeof raw !== "object") return null;
+  const outcomes = (raw as {outcomes?: unknown}).outcomes;
+  if (!Array.isArray(outcomes)) return null;
+  const links = (raw as {link_outcomes?: unknown}).link_outcomes;
+  return {
+    dry_run: false,
+    created: Number((raw as {created?: unknown}).created ?? 0),
+    skipped: Number((raw as {skipped?: unknown}).skipped ?? 0),
+    failed: Number((raw as {failed?: unknown}).failed ?? 0),
+    linked: Number((raw as {linked?: unknown}).linked ?? 0),
+    unresolved_links: Number((raw as {unresolved_links?: unknown}).unresolved_links ?? 0),
+    outcomes: outcomes as HmoItemUploadOutcome[],
+    link_outcomes: Array.isArray(links) ? (links as HmoDeferredLinkOutcome[]) : [],
+  };
+}
+
 export const HmoStudio = {
   buildManifests: (runId: string) =>
     api.post<HmoBuildResult>(
@@ -173,8 +200,15 @@ export const HmoStudio = {
       {},
     ),
 
+  /**
+   * Dry run returns the preview result inline. A live upload makes
+   * thousands of sequential Wikibase Cloud writes — too slow for one HTTP
+   * request — so the backend spawns a `run_jobs` background job and
+   * returns its snapshot immediately; track `job.id` (e.g. via
+   * `useRunJobAttachment`) for progress.
+   */
   uploadItems: (runId: string, dryRun: boolean) =>
-    api.post<HmoItemUploadResult>(
+    api.post<HmoItemUploadResult | RunJobSnapshot>(
       `/runs/${runId}/hmo-studio/upload-items`,
       { dry_run: dryRun },
     ),

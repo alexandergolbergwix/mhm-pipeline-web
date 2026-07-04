@@ -82,6 +82,43 @@ async def test_live_upload_without_server_oauth_is_rejected(sample_run, db_sessi
 
 
 @pytest.mark.asyncio
+async def test_live_upload_spawns_background_job(
+    sample_run, db_session, monkeypatch,
+) -> None:
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_CLIENT_ID", "id")
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN", "token")
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+    # Keep the job row queued — this test pins the router contract, not
+    # the worker (covered by test_hmo_item_upload_job.py).
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda job_id: None)
+
+    run_id = sample_run["run_id"]
+    db_session.add(
+        HmoStudioItemCache(
+            run_id=run_id, input_fingerprint="0" * 64, resolved_entities=[], entity_count=0,
+        )
+    )
+    await db_session.commit()
+
+    first = await sample_run["client"].post(
+        f"/api/runs/{run_id}/hmo-studio/upload-items", json={"dry_run": False}
+    )
+    assert first.status_code == 201
+    body = first.json()
+    assert body["kind"] == "hmo_item_upload"
+    assert body["status"] == "queued"
+
+    second = await sample_run["client"].post(
+        f"/api/runs/{run_id}/hmo-studio/upload-items", json={"dry_run": False}
+    )
+    assert second.status_code == 409
+    assert second.json()["detail"]["job_id"] == body["id"]
+
+
+@pytest.mark.asyncio
 async def test_item_status_before_and_after_build(sample_run, db_session) -> None:
     run_id = sample_run["run_id"]
 
