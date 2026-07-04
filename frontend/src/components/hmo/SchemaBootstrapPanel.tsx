@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import {
@@ -126,6 +127,20 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
         </div>
       )}
 
+      {status && !credsReady && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-warn">
+            Add Wikibase bot credentials in Settings to run a live bootstrap
+            (previewing works without them):
+          </span>
+          <CredBadge ok={status.bot_username_set} label="bot username" />
+          <CredBadge ok={status.bot_password_set} label="bot password" />
+          <Link to="/settings" className="button-ghost text-xs">
+            Open Settings → Credentials
+          </Link>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3 pt-1">
         <label className="flex items-center gap-1 text-sm muted">
           <input
@@ -149,11 +164,6 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
               ? "Preview bootstrap"
               : "Run schema bootstrap"}
         </button>
-        {!dryRun && !credsReady && (
-          <span className="text-xs muted">
-            Add Wikibase bot credentials in Settings first.
-          </span>
-        )}
         {!dryRun && credsReady && !runId && (
           <span className="text-xs muted">
             Open this panel from a run to start a live bootstrap.
@@ -260,6 +270,16 @@ function BootstrapResultSummary({ result }: { result: HmoSchemaBootstrapResult }
         </div>
       )}
     </div>
+  );
+}
+
+function CredBadge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${
+      ok ? "text-biu-sky" : "text-danger"
+    }`}>
+      {ok ? "✓" : "⚠"} {label}
+    </GlassPill>
   );
 }
 
