@@ -152,7 +152,7 @@ export default function RunDetail() {
     if (msg.type.startsWith("match.") || msg.type === "snapshot.restored") {
       void refresh();
     }
-  });
+  }, {onReconnect: () => void refresh()});
 
   async function toggle(m: AuthorityMatch) {
     if (!runId) return;

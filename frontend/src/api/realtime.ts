@@ -1,12 +1,13 @@
 /**
- * useProjectEvents(projectId, onEvent)
+ * useProjectEvents(projectId, onEvent, options?)
  *
  * Opens a WebSocket to /api/ws/projects/{id} and invokes `onEvent` for
- * every server-pushed message. Auto-reconnects with backoff. Closes on
- * unmount.
+ * every server-pushed project event (debounced by default). Calls
+ * `onReconnect` after a successful reconnect so callers can resync.
+ * Auto-reconnects with backoff. Closes on unmount.
  */
 
-import { useEffect, useRef } from "react";
+import {useEffect, useRef} from "react";
 
 import type { RunJobSnapshot } from "@/api/runJobs";
 
@@ -27,12 +28,25 @@ export interface ProjectEventMessage {
   job?: RunJobSnapshot;
 }
 
+export interface UseProjectEventsOptions {
+  /** Trailing-edge debounce for onEvent (ms). Default 400. Set 0 to disable. */
+  debounceMs?: number;
+  /** Invoked after a reconnect (not the initial connect) so pages can resync. */
+  onReconnect?: () => void;
+}
+
+const DEFAULT_DEBOUNCE_MS = 400;
+
 export function useProjectEvents(
   projectId: string | undefined,
   onEvent: (msg: ProjectEventMessage) => void,
+  options?: UseProjectEventsOptions,
 ) {
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
+  const onReconnectRef = useRef(options?.onReconnect);
+  onReconnectRef.current = options?.onReconnect;
+  const debounceMs = options?.debounceMs ?? DEFAULT_DEBOUNCE_MS;
 
   useEffect(() => {
     if (!projectId) return;
@@ -41,6 +55,20 @@ export function useProjectEvents(
     let cancelled = false;
     let retry = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let hasConnected = false;
+
+    function flushDebounced(msg: ProjectEventMessage) {
+      if (debounceMs <= 0) {
+        onEventRef.current(msg);
+        return;
+      }
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        onEventRef.current(msg);
+      }, debounceMs);
+    }
 
     function connect() {
       if (cancelled) return;
@@ -51,18 +79,22 @@ export function useProjectEvents(
       socket.addEventListener("message", (e) => {
         try {
           const msg = JSON.parse(e.data) as ProjectEventMessage;
-          onEventRef.current(msg);
+          if (msg.type === "ping") return;
+          flushDebounced(msg);
         } catch { /* ignore */ }
       });
 
       socket.addEventListener("open", () => {
         retry = 0;
+        if (hasConnected) {
+          onReconnectRef.current?.();
+        } else {
+          hasConnected = true;
+        }
       });
 
       socket.addEventListener("close", () => {
         if (cancelled) return;
-        // Exponential backoff capped at 30s — typical Postgres restart
-        // window during a Heroku platform upgrade.
         const delay = Math.min(30_000, 1_000 * 2 ** retry);
         retry += 1;
         retryTimer = setTimeout(connect, delay);
@@ -74,7 +106,8 @@ export function useProjectEvents(
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
+      if (debounceTimer) clearTimeout(debounceTimer);
       socket?.close();
     };
-  }, [projectId]);
+  }, [projectId, debounceMs]);
 }

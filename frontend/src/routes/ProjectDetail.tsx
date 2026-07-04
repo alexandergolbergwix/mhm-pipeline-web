@@ -31,7 +31,7 @@ export default function ProjectDetail() {
     if (msg.type.startsWith("member.") || msg.type === "project.updated") {
       void refresh();
     }
-  });
+  }, {onReconnect: () => void refresh()});
 
   if (error)
     return <Layout><Glass className="p-6 text-danger">{error}</Glass></Layout>;
@@ -232,7 +232,7 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
 
   useProjectEvents(projectId, (msg) => {
     if (msg.type === "run.created") void refresh();
-  });
+  }, {onReconnect: () => void refresh()});
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

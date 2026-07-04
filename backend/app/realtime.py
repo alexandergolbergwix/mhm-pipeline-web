@@ -9,12 +9,13 @@ Two pieces:
 
 2. ``EventStream`` — an asyncpg listener that subscribes to a single
    Postgres NOTIFY channel (``project_events``). Every append-event
-   trigger fires a row with ``{project_id, event_id}``; we fan that out
-   through the in-process Broker so other dynos receive their share.
-   The trigger lives in migration 0006.
+   trigger fires a row with ``{project_id, event_id, type, ...}``; we
+   fan that out through the in-process Broker so other dynos receive
+   their share. The trigger lives in migration 0006 (trimmed in 0027).
 
-This pattern lets Heroku Postgres be the canonical pub/sub fabric — no
-Redis bill — while in-process WebSocket fan-out keeps the latency low.
+Heroku Postgres LISTEN/NOTIFY is the default pub/sub fabric for
+cross-dyno fan-out. Heroku Redis (Rule W-25) is available as a
+fallback if NOTIFY reliability ever becomes an issue.
 """
 
 from __future__ import annotations
@@ -23,8 +24,10 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any
 
 import asyncpg
@@ -36,23 +39,40 @@ from app.settings import get_settings
 logger = logging.getLogger(__name__)
 
 NOTIFY_CHANNEL = "project_events"
+MAX_CONNECTIONS_PER_USER = 5
+
+
+@dataclass(frozen=True, slots=True)
+class _Connection:
+    ws: WebSocket
+    user_id: uuid.UUID
 
 
 class Broker:
     """Per-process WebSocket pub/sub keyed by ``project_id``."""
 
     def __init__(self) -> None:
-        self._rooms: dict[uuid.UUID, set[WebSocket]] = defaultdict(set)
+        self._rooms: dict[uuid.UUID, set[_Connection]] = defaultdict(set)
         self._lock = asyncio.Lock()
 
-    async def join(self, project_id: uuid.UUID, ws: WebSocket) -> None:
+    async def join(
+        self, project_id: uuid.UUID, ws: WebSocket, user_id: uuid.UUID,
+    ) -> bool:
         async with self._lock:
-            self._rooms[project_id].add(ws)
+            room = self._rooms[project_id]
+            user_count = sum(1 for conn in room if conn.user_id == user_id)
+            if user_count >= MAX_CONNECTIONS_PER_USER:
+                return False
+            room.add(_Connection(ws=ws, user_id=user_id))
+            return True
 
     async def leave(self, project_id: uuid.UUID, ws: WebSocket) -> None:
         async with self._lock:
-            self._rooms.get(project_id, set()).discard(ws)
-            if not self._rooms.get(project_id):
+            room = self._rooms.get(project_id)
+            if not room:
+                return
+            room.difference_update({conn for conn in room if conn.ws is ws})
+            if not room:
                 self._rooms.pop(project_id, None)
 
     async def broadcast(self, project_id: uuid.UUID, message: dict[str, Any]) -> None:
@@ -61,15 +81,19 @@ class Broker:
             return
         payload = json.dumps(message, default=str)
         dead: list[WebSocket] = []
-        for ws in room:
+        for conn in room:
             try:
-                await ws.send_text(payload)
+                await conn.ws.send_text(payload)
             except Exception:  # noqa: BLE001
-                dead.append(ws)
+                dead.append(conn.ws)
         if dead:
             async with self._lock:
                 for ws in dead:
-                    self._rooms.get(project_id, set()).discard(ws)
+                    self._rooms.get(project_id, set()).difference_update(
+                        {conn for conn in self._rooms.get(project_id, set()) if conn.ws is ws},
+                    )
+                if not self._rooms.get(project_id):
+                    self._rooms.pop(project_id, None)
 
 
 broker = Broker()
@@ -81,8 +105,10 @@ broker = Broker()
 async def _asyncpg_dsn() -> str:
     """Convert the SQLAlchemy URL to a raw asyncpg DSN."""
     url = make_url(get_settings().database_url)
-    # SQLAlchemy uses postgresql+asyncpg://; asyncpg wants plain postgresql://
-    return f"postgresql://{url.username or ''}:{url.password or ''}@{url.host}:{url.port or 5432}/{url.database}"
+    return (
+        f"postgresql://{url.username or ''}:{url.password or ''}"
+        f"@{url.host}:{url.port or 5432}/{url.database}"
+    )
 
 
 async def _on_notify(_conn: asyncpg.Connection, _pid: int, _chan: str, payload: str) -> None:
@@ -100,6 +126,8 @@ _listener_task: asyncio.Task[None] | None = None
 
 async def start_listener() -> None:
     global _listener_task
+    if os.environ.get("DISABLE_PG_LISTENER", "").strip() in {"1", "true", "yes"}:
+        return
     if _listener_task is not None:
         return
     _listener_task = asyncio.create_task(_listener_loop(), name="pg-notify-listener")
@@ -127,10 +155,8 @@ async def _listener_loop() -> None:
         try:
             await conn.add_listener(NOTIFY_CHANNEL, _on_notify)
             logger.info("listening on Postgres channel %s", NOTIFY_CHANNEL)
-            # Park forever until the connection drops or we're cancelled.
             while True:
                 await asyncio.sleep(60)
-                # cheap keepalive
                 try:
                     await conn.fetchval("SELECT 1")
                 except Exception:  # noqa: BLE001

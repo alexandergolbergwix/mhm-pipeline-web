@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 import uuid
 
-from fastapi import APIRouter, Cookie, Depends, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Cookie, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +18,8 @@ from app.models.session import Session as SessionRow
 from app.realtime import broker
 
 router = APIRouter(tags=["realtime"])
+
+PING_INTERVAL_S = 30
 
 
 async def _resolve_session_user(
@@ -54,13 +59,18 @@ async def _has_project_access(
     return m is not None
 
 
+async def _ping_loop(websocket: WebSocket) -> None:
+    while True:
+        await websocket.send_text(json.dumps({"type": "ping"}))
+        await asyncio.sleep(PING_INTERVAL_S)
+
+
 @router.websocket("/ws/projects/{project_id}")
 async def project_events_ws(
     websocket: WebSocket,
     project_id: uuid.UUID,
     cookie_value: str | None = Cookie(default=None, alias=COOKIE_NAME),
 ) -> None:
-    # AuthN/AuthZ before accepting the upgrade.
     async with SessionLocal() as db:
         user_id = await _resolve_session_user(db, cookie_value)
         if user_id is None:
@@ -71,13 +81,20 @@ async def project_events_ws(
             return
 
     await websocket.accept()
-    await broker.join(project_id, websocket)
+    if not await broker.join(project_id, websocket, user_id):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    ping_task = asyncio.create_task(_ping_loop(websocket), name="ws-ping")
     try:
-        # Drain whatever the client sends (ping frames mostly). The
-        # contract here is server-pushed events only.
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         pass
+    except Exception:  # noqa: BLE001 — transport errors; finally still runs
+        pass
     finally:
+        ping_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await ping_task
         await broker.leave(project_id, websocket)

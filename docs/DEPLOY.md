@@ -6,7 +6,9 @@ Postgres if/when the Mazal authority dump pushes you past 1 GB.
 
 The app is a single dyno: FastAPI serves both `/api/*` and the
 pre-built Vite frontend from `frontend/dist/`. WebSocket fan-out runs
-over Postgres `LISTEN/NOTIFY` — no Redis required.
+over Postgres `LISTEN/NOTIFY` (cross-dyno); Heroku Redis (§6.8) is
+also provisioned for inference-cache L1 and rate limiting, and can
+serve as a pub/sub fallback if NOTIFY reliability ever becomes an issue.
 
 ---
 

@@ -213,8 +213,7 @@ async def add_member(
     db.add(Membership(project_id=ctx.project.id, user_id=user.id, role=payload.role))
     await append_event(
         db, project_id=ctx.project.id, actor_id=ctx.user_id, type="member.added",
-        payload={"user_id": str(user.id), "email": pii.decrypt_pii(user.email_encrypted),
-                 "role": payload.role},
+        payload={"user_id": str(user.id), "role": payload.role},
     )
     await db.commit()
     return MemberItem(

@@ -66,7 +66,7 @@ export default function ProjectHistory() {
 
   useEffect(() => { void refresh(); }, [projectId]);
 
-  useProjectEvents(projectId, () => { void refresh(); });
+  useProjectEvents(projectId, () => { void refresh(); }, {onReconnect: () => void refresh()});
 
   async function loadMore() {
     if (!beforeCursor || loadingMore) return;
