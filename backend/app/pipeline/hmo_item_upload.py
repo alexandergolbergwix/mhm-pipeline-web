@@ -167,6 +167,7 @@ async def _pass_one_create(
             # resolvable" to report would_link vs. unresolved — the
             # value itself is never used for a real write in dry-run.
             created_this_call[entity.source_uri] = "Q_PENDING"
+            created += 1
             continue
 
         wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
@@ -255,6 +256,7 @@ async def _pass_two_link(
                         "would_link",
                     )
                 )
+                linked += 1
                 continue
 
             claim = _build_wbi_claim(ResolvedClaim(link.property_id, "wikibase-item", target_qid))

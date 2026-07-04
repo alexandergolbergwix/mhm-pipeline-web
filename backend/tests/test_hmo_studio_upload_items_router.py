@@ -58,6 +58,10 @@ async def test_dry_run_upload_needs_no_credentials(sample_run, db_session) -> No
     body = response.json()
     assert body["dry_run"] is True
     assert body["outcomes"][0]["status"] == "would_create"
+    # Regression: the "Would create: N" headline the frontend renders
+    # comes straight off this field — it must count would_create
+    # outcomes, not just live writes (see hmo_item_upload.py).
+    assert body["created"] == 1
 
 
 @pytest.mark.asyncio

@@ -93,7 +93,11 @@ async def test_dry_run_reports_would_create_and_would_link(db_session) -> None:
 
     result = await pipeline.upload_items_for_run(db_session, run_id, writer=None, dry_run=True)
 
-    assert result.created == 0
+    # `created`/`linked` are the summary counts the UI headlines as
+    # "Would create: N · linked N" — they must count "would_*" outcomes
+    # too, not just live writes, or a dry-run preview always shows 0/0.
+    assert result.created == 2
+    assert result.linked == 1
     assert {o.status for o in result.outcomes} == {"would_create"}
     assert result.link_outcomes[0].status == "would_link"
 
