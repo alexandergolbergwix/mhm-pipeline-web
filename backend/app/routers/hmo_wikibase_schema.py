@@ -150,6 +150,54 @@ async def list_schema_verify_actions(
     ]
 
 
+@router.get("/ai-verify/cached-verdicts")
+async def get_cached_schema_verdicts(
+    tier_model: str | None = Query(default=None),
+    auth: AuthContext = Depends(current_auth),  # noqa: ARG001
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, dict[str, Any]]:
+    """Verdicts persisted from a previous AI-verify run, keyed by local id.
+
+    Lets the schema panel show verdict pills on page load without
+    re-running verification — the SSE stream's verdicts otherwise only
+    ever live in the open modal's React state (Rule W-17 style
+    persistence, but for the global schema, not per-run entities).
+    """
+    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+
+    report = await pipeline.load_last_bootstrap_report(db)
+    if report is None:
+        return {}
+    judge_model = tier_model or GEMINI_MODEL
+    evaluator_id = "hmo_wikibase_schema"
+    items = filter_schema_entries(report, ontology_uris=None)
+    out: dict[str, dict[str, Any]] = {}
+    for item in items:
+        hit = await read_from_inference_cache(
+            db,
+            kind="ai_verdict",
+            query_summary=schema_verdict_query_summary(item, judge_model, evaluator=evaluator_id),
+        )
+        if hit is None:
+            continue
+        local_id = str(item.get("_local_id") or "")
+        if not local_id:
+            continue
+        verdict = hit.get("verdict") or {} if isinstance(hit, dict) else {}
+        out[local_id] = {
+            "overall": verdict.get("overall") or "unknown",
+            "name_ok": None,
+            "type_ok": None,
+            "role_ok": None,
+            "reasoning": verdict.get("reasoning"),
+            "model": hit.get("judge_id") if isinstance(hit, dict) else None,
+            "judged_at": hit.get("judged_at") if isinstance(hit, dict) else None,
+            "cache_key": hit.get("cache_key") if isinstance(hit, dict) else None,
+            "evaluator": (hit.get("evaluator") if isinstance(hit, dict) else None) or evaluator_id,
+        }
+    return out
+
+
 @router.post("/ai-verify/start-stream")
 async def start_schema_verify_stream(
     payload: SchemaVerifyStartRequest,

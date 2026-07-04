@@ -115,6 +115,60 @@ async def test_last_bootstrap_report_returns_entries(auth_user) -> None:
 
 
 @pytest.mark.asyncio
+async def test_cached_verdicts_empty_before_any_verification(auth_user) -> None:
+    _user, client = auth_user
+    preview = await client.post(
+        "/api/hmo-wikibase-schema/bootstrap", json={"dry_run": True},
+    )
+    assert preview.status_code == 200
+
+    response = await client.get("/api/hmo-wikibase-schema/ai-verify/cached-verdicts")
+    assert response.status_code == 200
+    assert response.json() == {}
+
+
+@pytest.mark.asyncio
+async def test_cached_verdicts_survive_across_requests(auth_user, db_session) -> None:
+    """A verdict written to the inference cache (as the verify stream does
+    at session end) must be visible from a fresh GET — this is what lets
+    the schema panel show verdict pills again after a hard refresh."""
+    _user, client = auth_user
+    preview = await client.post(
+        "/api/hmo-wikibase-schema/bootstrap", json={"dry_run": True},
+    )
+    assert preview.status_code == 200
+    entry = preview.json()["entries"][0]
+
+    from app.pipeline.hmo_schema_verify import schema_entry_local_id, schema_verdict_query_summary
+    from app.pipeline.inference_cache import write_to_inference_cache
+    from app.pipeline.ai_verifier import GEMINI_MODEL
+
+    local_id = schema_entry_local_id(entry)
+    await write_to_inference_cache(
+        db_session,
+        kind="ai_verdict",
+        query_summary=schema_verdict_query_summary(
+            entry, GEMINI_MODEL, evaluator="hmo_wikibase_schema",
+        ),
+        result={
+            "verdict": {"overall": "pass", "reasoning": "looks right"},
+            "judge_id": GEMINI_MODEL,
+            "judged_at": "2026-07-04T00:00:00Z",
+            "cache_key": "abc123",
+            "evaluator": "hmo_wikibase_schema",
+        },
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/hmo-wikibase-schema/ai-verify/cached-verdicts")
+    assert response.status_code == 200
+    body = response.json()
+    assert local_id in body
+    assert body[local_id]["overall"] == "pass"
+    assert body[local_id]["reasoning"] == "looks right"
+
+
+@pytest.mark.asyncio
 async def test_schema_verify_actions_list(sample_run) -> None:
     client = sample_run["client"]
     response = await client.get(

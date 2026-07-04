@@ -8,6 +8,7 @@ import {
   type HmoSchemaBootstrapResult,
   type HmoSchemaStatus,
 } from "@/api/hmoWikibaseSchema";
+import {HmoSchemaVerify} from "@/api/hmoSchemaVerify";
 import type { RunJobSnapshot } from "@/api/runJobs";
 import { HmoSchemaVerificationModal } from "@/components/hmo/HmoSchemaVerificationModal";
 import { SchemaBootstrapDetails } from "@/components/hmo/SchemaBootstrapDetails";
@@ -88,6 +89,17 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
     }
   }, []);
 
+  const loadCachedVerdicts = useCallback(async () => {
+    try {
+      const cached = await HmoSchemaVerify.cachedVerdicts();
+      if (Object.keys(cached).length > 0) {
+        setVerdicts((prev) => ({...cached, ...prev}));
+      }
+    } catch {
+      /* non-fatal — verdict pills just stay blank until re-verified */
+    }
+  }, []);
+
   const initPanel = useCallback(async () => {
     try {
       const s = await HmoWikibaseSchema.status();
@@ -107,7 +119,8 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
 
   useEffect(() => {
     void initPanel();
-  }, [initPanel]);
+    void loadCachedVerdicts();
+  }, [initPanel, loadCachedVerdicts]);
 
   const { activeJob, setTrackedJobId, ensureJobPolling } = useRunJobAttachment(
     runId,

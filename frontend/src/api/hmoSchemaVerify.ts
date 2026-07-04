@@ -1,4 +1,5 @@
 import {api, csrfHeaders} from "@/api/client";
+import type {AiVerdict} from "@/api/extractionApprovals";
 import type {AgentActionMeta, AgentEvent, VerifySession, VerifySessionListing} from "@/api/wikidataVerify";
 
 
@@ -100,6 +101,9 @@ export const HmoSchemaVerify = {
     api.get<VerifySession>(
       `/hmo-wikibase-schema/ai-verify/sessions/${sessionId}?run_id=${runId}`,
     ),
+
+  cachedVerdicts: () =>
+    api.get<Record<string, AiVerdict>>("/hmo-wikibase-schema/ai-verify/cached-verdicts"),
 
   stream: streamSchemaVerification,
 };

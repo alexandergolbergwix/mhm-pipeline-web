@@ -22,6 +22,7 @@ from app.pipeline.hmo_schema_bootstrap import (
     SchemaBootstrapResult,
     serialise_bootstrap_result,
 )
+from app.pipeline.inference_cache import write_to_inference_cache
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,45 @@ def cached_schema_verdict_event(
     }
 
 
+async def _write_schema_verdicts_to_cache(
+    *,
+    items_by_id: dict[str, dict[str, Any]],
+    verdicts: list[dict[str, Any]],
+    judge_model: str,
+) -> None:
+    """Persist fresh verdicts to the inference cache so they survive a
+    page refresh — the SSE stream itself only ever renders them in the
+    open modal's React state, and pre-cache lookups on the next
+    ``start-stream`` call are the only way they get shown again.
+    """
+    from app.db import session_scope  # noqa: PLC0415
+
+    async with session_scope() as db:
+        for v in verdicts:
+            cand = v.get("candidate") if isinstance(v, dict) else None
+            local_id = str(cand.get("_local_id") or "") if isinstance(cand, dict) else ""
+            item = items_by_id.get(local_id)
+            if item is None:
+                continue
+            model = str(v.get("judge_id") or v.get("model") or judge_model)
+            evaluator_id = str(v.get("evaluator_id") or v.get("evaluator") or "hmo_wikibase_schema")
+            cached_result = {
+                "verdict": v.get("verdict") or {},
+                "judge_id": v.get("judge_id") or v.get("model"),
+                "judged_at": v.get("judged_at"),
+                "cache_key": v.get("cache_key"),
+                "evaluator": evaluator_id,
+                "confidence": v.get("confidence"),
+                "sub_type": v.get("sub_type"),
+            }
+            await write_to_inference_cache(
+                db,
+                kind="ai_verdict",
+                query_summary=schema_verdict_query_summary(item, model, evaluator=evaluator_id),
+                result=cached_result,
+            )
+
+
 async def hmo_schema_verify_event_stream(
     *,
     run_id: str,
@@ -195,6 +235,18 @@ async def hmo_schema_verify_event_stream(
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(session_dir, ev)
             yield ev
+
+        if on_disk_verdicts:
+            try:
+                await _write_schema_verdicts_to_cache(
+                    items_by_id={
+                        str(i.get("_local_id") or ""): i for i in uncached_items
+                    },
+                    verdicts=on_disk_verdicts,
+                    judge_model=tier_model or "gemini-3.5-flash",
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("failed to write HMO schema verdicts to inference cache")
 
         end_ev = AgentEvent(
             type="session.end",
