@@ -50,7 +50,7 @@ from app.pipeline import hmo_item_upload
 from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.run_job_params import prepare_job_params
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
-from app.pipeline.rdf_build import rdf_output_path_for_run
+from app.pipeline.rdf_build import ensure_ttl_on_disk, rdf_output_path_for_run
 from app.routers.runs import _lookup_run_with_access
 from app.services.wikibase_audit import WikibaseAuditContext
 from app.services.wikibase_credentials import build_server_wikibase_writer
@@ -208,6 +208,7 @@ async def build_manifests(
     """
     await _lookup_run_with_access(db, run_id, auth, write=True)
     ttl_path = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -371,6 +372,7 @@ async def coverage(
             )
 
     ttl_path = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -411,6 +413,7 @@ async def build_items(
     """
     await _lookup_run_with_access(db, run_id, auth, write=True)
     ttl_path = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -565,6 +568,7 @@ async def studio_status(
     await _lookup_run_with_access(db, run_id, auth)
 
     ttl_path = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl_path, run_id, db)
     manifest_dir = hmo_pipeline.manifest_dir_for_run(str(run_id))
     coverage_cache = hmo_pipeline.coverage_path_for_run(str(run_id))
     upload_report = hmo_pipeline.upload_report_path_for_run(str(run_id))

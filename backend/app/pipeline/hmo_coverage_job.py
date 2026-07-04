@@ -30,11 +30,15 @@ logger = logging.getLogger(__name__)
 
 
 async def run_hmo_coverage_job(job_id: uuid.UUID) -> None:
+    from app.pipeline.rdf_build import ensure_ttl_on_disk, rdf_output_path_for_run  # noqa: PLC0415
+
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
         if job is None:
             return
         run_id = job.run_id
+        ttl_path = rdf_output_path_for_run(str(run_id))
+        await ensure_ttl_on_disk(ttl_path, run_id, db)
 
     if await is_cancel_requested(job_id):
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)
@@ -48,10 +52,8 @@ async def run_hmo_coverage_job(job_id: uuid.UUID) -> None:
     })
 
     from app.pipeline import hmo_studio as hmo_pipeline  # noqa: PLC0415
-    from app.pipeline.rdf_build import rdf_output_path_for_run  # noqa: PLC0415
 
     try:
-        ttl_path = rdf_output_path_for_run(str(run_id))
         report = await hmo_pipeline.coverage_report_for_run(ttl_path=ttl_path)
     except Exception as exc:  # noqa: BLE001
         logger.exception("hmo coverage build job failed for run %s", run_id)

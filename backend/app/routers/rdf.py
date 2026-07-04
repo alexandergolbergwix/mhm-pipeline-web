@@ -39,6 +39,7 @@ from app.pipeline.rdf_build import (
     ShaclReport,
     build_rdf_graph,
     compute_layout,
+    ensure_ttl_on_disk,
     graph_to_cytoscape_json,
     load_graph,
     node_detail,
@@ -234,26 +235,6 @@ class TripleOverrideResponse(BaseModel):
     new_lang: str | None
     old_value: str | None
     created_at: str
-
-
-# ── Helpers ────────────────────────────────────────────────────────────
-
-
-async def _ensure_ttl_on_disk(run_id: uuid.UUID, db: AsyncSession) -> None:
-    """Restore the TTL from the DB if the local cache file is missing.
-
-    The local dyno filesystem is ephemeral on Heroku — this re-seeds it
-    from the durable Postgres copy without requiring a full rebuild.
-    Only called by read endpoints; the build endpoint writes both.
-    """
-    ttl = rdf_output_path_for_run(str(run_id))
-    if ttl.exists():
-        return
-    row = await db.get(RdfArtifact, run_id)
-    if row is None:
-        return
-    ttl.parent.mkdir(parents=True, exist_ok=True)
-    ttl.write_text(row.ttl_content, encoding="utf-8")
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────
@@ -477,8 +458,8 @@ async def graph_catalog(
 ) -> GraphCatalogResponse:
     """Full-corpus node/edge counts for filter chips (not capped by viewport)."""
     await _lookup_run_with_access(db, run_id, auth)
-    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl, run_id, db)
     if not ttl.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -518,8 +499,8 @@ async def _viewport_response(
             detail=f"unknown layout={layout!r}; valid: {list(LAYOUT_KINDS)}",
         )
 
-    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl, run_id, db)
     if not ttl.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -671,8 +652,8 @@ async def node(
     containing slashes don't need encoding gymnastics.
     """
     await _lookup_run_with_access(db, run_id, auth)
-    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl, run_id, db)
     if not ttl.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -703,8 +684,8 @@ async def rdf_ontology_usage(
     "build the graph first" nudge instead of an error state.
     """
     await _lookup_run_with_access(db, run_id, auth)
-    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl, run_id, db)
     if not ttl.exists():
         return OntologyUsageResponse(
             built=False, entity_kind=entity_kind, count=0, examples=[], total_triples=0,
@@ -732,8 +713,8 @@ async def download_ttl(
     """Stream the raw Turtle file as a download."""
     await _lookup_run_with_access(db, run_id, auth)
 
-    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl, run_id, db)
     if not ttl.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -755,8 +736,8 @@ async def validate(
     """Run SHACL validation over the latest built graph."""
     await _lookup_run_with_access(db, run_id, auth, write=True)
 
-    await _ensure_ttl_on_disk(run_id, db)
     ttl = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl, run_id, db)
     if not ttl.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -890,6 +871,7 @@ async def get_status(
     await _lookup_run_with_access(db, run_id, auth)
 
     ttl = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl, run_id, db)
     if not ttl.exists():
         return RdfStatusResponse(status="idle")
 
