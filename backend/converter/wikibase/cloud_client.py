@@ -228,6 +228,16 @@ class EditOutcome:
 
 
 @dataclass(frozen=True)
+class CreateAccountOutcome:
+    """Result of a MediaWiki ``action=createaccount`` call."""
+
+    ok: bool
+    username: str
+    status: str  # "created" | "exists" | "failed"
+    message: str
+
+
+@dataclass(frozen=True)
 class EntityEditOutcome:
     """Result of a WikibaseIntegrator item/property/claim write.
 
@@ -329,6 +339,95 @@ class WikibaseCloudWriter:
         if not name:
             raise RuntimeError(f"userinfo missing name in {payload!r}")
         return name
+
+    def wiki_user_exists(self, username: str) -> bool:
+        """Return whether a local wiki account with ``username`` already exists."""
+        payload = self._post_with_retry({
+            "action": "query",
+            "list": "users",
+            "ususers": username,
+            "usprop": "",
+            "format": "json",
+        })
+        users_block = _nested_mapping(payload, "query", "users")
+        if users_block is None:
+            return False
+        users = users_block.get("users")
+        if not isinstance(users, list) or not users:
+            return False
+        first = users[0]
+        if not isinstance(first, Mapping):
+            return False
+        return _string_value(first, "missing") is None
+
+    def create_local_account(
+        self,
+        username: str,
+        password: str,
+        *,
+        email: str,
+    ) -> CreateAccountOutcome:
+        """Create a local MediaWiki account using the active OAuth/bot session."""
+        self.ensure_authenticated()
+        if self.wiki_user_exists(username):
+            return CreateAccountOutcome(
+                ok=True,
+                username=username,
+                status="exists",
+                message="account already exists",
+            )
+
+        token_payload = self._post_with_retry({
+            "action": "query",
+            "meta": "tokens",
+            "type": "createaccount",
+            "format": "json",
+        })
+        tokens = _nested_mapping(token_payload, "query", "tokens")
+        create_token = _string_value(tokens or {}, "createaccounttoken")
+        if not create_token:
+            return CreateAccountOutcome(
+                ok=False,
+                username=username,
+                status="failed",
+                message=f"createaccount token missing in {token_payload!r}",
+            )
+
+        result = self._post_with_retry({
+            "action": "createaccount",
+            "username": username,
+            "password": password,
+            "retype": password,
+            "email": email,
+            "createreturnurl": self._config.base_url.rstrip("/"),
+            "createtoken": create_token,
+            "format": "json",
+        })
+        create_block = result.get("createaccount") if isinstance(result, Mapping) else None
+        if isinstance(create_block, Mapping):
+            outcome = _string_value(create_block, "status")
+            if outcome == "PASS":
+                return CreateAccountOutcome(
+                    ok=True,
+                    username=username,
+                    status="created",
+                    message="ok",
+                )
+            message = _string_value(create_block, "message") or outcome or "createaccount failed"
+            return CreateAccountOutcome(
+                ok=False,
+                username=username,
+                status="failed",
+                message=message,
+            )
+
+        error_message = _api_error_message(result) or f"unexpected response: {result!r}"
+        return CreateAccountOutcome(
+            ok=False,
+            username=username,
+            status="failed",
+            message=error_message,
+        )
 
     def login(self) -> None:
         """Perform bot-password MediaWiki login (legacy / tests only)."""

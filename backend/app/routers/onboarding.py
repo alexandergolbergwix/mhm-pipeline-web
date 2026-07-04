@@ -28,6 +28,8 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     ResetPasswordResponse,
 )
+from app.services.auth_me import build_me_response
+from app.services.wikibase_user_access import ensure_wikibase_access
 from app.settings import get_settings
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
@@ -89,17 +91,13 @@ async def accept_invite(
     # Mint a session right away — the invitee is logged in after accept.
     kek = kek_mod.derive_kek(payload.password, salt=user.kek_salt)
     session_row, session_secret = await create_session(db, user=user, kek=kek)
+    wikibase = await ensure_wikibase_access(db, user=user, email=email)
     await db.commit()
     set_session_cookie(
         response, session_id=session_row.id, session_secret=session_secret,
     )
 
-    return LoginResponse(
-        id=user.id,
-        email=email,
-        name=pii.decrypt_pii(user.name_encrypted),
-        role=user.role,
-    )
+    return build_me_response(user, email, wikibase)
 
 
 # ── Forgot / reset password ──────────────────────────────────────────────

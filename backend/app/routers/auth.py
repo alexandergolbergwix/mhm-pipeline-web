@@ -43,6 +43,8 @@ from app.schemas.auth import (
     MeResponse,
     PasswordChangeRequest,
 )
+from app.services.auth_me import build_me_response
+from app.services.wikibase_user_access import ensure_wikibase_access
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -92,16 +94,13 @@ async def login(
     if pw.needs_rehash(user.password_hash):
         user.password_hash = pw.hash_password(payload.password)
 
+    email = pii.decrypt_pii(user.email_encrypted)
+    wikibase = await ensure_wikibase_access(db, user=user, email=email)
     await db.commit()
 
     set_session_cookie(response, session_id=session_row.id, session_secret=session_secret)
 
-    return LoginResponse(
-        id=user.id,
-        email=pii.decrypt_pii(user.email_encrypted),
-        name=pii.decrypt_pii(user.name_encrypted),
-        role=user.role,
-    )
+    return build_me_response(user, email, wikibase)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -117,13 +116,14 @@ async def logout(
 
 
 @router.get("/me", response_model=MeResponse)
-async def me(auth: AuthContext = Depends(current_auth)) -> MeResponse:
-    return MeResponse(
-        id=auth.user.id,
-        email=pii.decrypt_pii(auth.user.email_encrypted),
-        name=pii.decrypt_pii(auth.user.name_encrypted),
-        role=auth.user.role,
-    )
+async def me(
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> MeResponse:
+    email = pii.decrypt_pii(auth.user.email_encrypted)
+    wikibase = await ensure_wikibase_access(db, user=auth.user, email=email)
+    await db.commit()
+    return build_me_response(auth.user, email, wikibase)
 
 
 @router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)

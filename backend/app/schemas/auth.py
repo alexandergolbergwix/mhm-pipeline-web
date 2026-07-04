@@ -22,6 +22,13 @@ class MeResponse(BaseModel):
     email: EmailStr
     name: str
     role: Literal["admin", "editor"]
+    wikibase_configured: bool = False
+    wikibase_authorized: bool = False
+    wikibase_base_url: str | None = None
+    wikibase_username: str | None = None
+    wikibase_wiki_account_status: Literal[
+        "none", "pending", "active", "skipped", "failed",
+    ] = "none"
 
 
 class LoginResponse(MeResponse):

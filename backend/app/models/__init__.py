@@ -61,6 +61,7 @@ from app.models.wikibase_entity_mapping import (
     WikibaseEntityMapping,
 )
 from app.models.wikibase_cloud_write import WikibaseCloudWrite
+from app.models.wikibase_user_access import WikibaseUserAccess
 from app.models.wikidata_studio_cache import WikidataStudioCache
 
 __all__ = [

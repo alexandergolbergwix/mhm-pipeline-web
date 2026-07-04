@@ -8,6 +8,11 @@ export interface AuthUser {
   email: string;
   name: string;
   role: "admin" | "editor";
+  wikibase_configured?: boolean;
+  wikibase_authorized?: boolean;
+  wikibase_base_url?: string | null;
+  wikibase_username?: string | null;
+  wikibase_wiki_account_status?: "none" | "pending" | "active" | "skipped" | "failed";
 }
 
 interface AuthState {
