@@ -16,6 +16,21 @@ from sqlalchemy.ext.asyncio import (
 from app.settings import get_settings
 
 
+# Postgres kills any connection that sits "idle in transaction" past this
+# many milliseconds. This is a backstop, not a fix for any specific bug:
+# a request handler that opens a session, runs one query, then hangs
+# forever on something unrelated to the DB (a stuck subprocess call, an
+# external HTTP call with no timeout, a StreamingResponse whose generator
+# never finishes) leaves its connection checked out of the pool forever —
+# Heroku Postgres' own default (1 day) does nothing to reclaim it, so a
+# handful of such hangs is enough to starve the whole `pool_size=5 +
+# max_overflow=10` budget and turn totally unrelated requests (login,
+# /auth/me) into 30s H12 timeouts. 2 minutes is generous for any
+# legitimate multi-statement transaction's think-time between queries but
+# short enough that a leak self-heals well before it can exhaust the pool.
+_IDLE_IN_TRANSACTION_TIMEOUT_MS = "120000"
+
+
 def _ssl_connect_args(url: str) -> dict[str, Any]:
     """Build asyncpg connect_args that force SSL on managed Postgres.
 
@@ -30,17 +45,20 @@ def _ssl_connect_args(url: str) -> dict[str, Any]:
     skip the flag for sqlite and explicit localhost URLs so local dev
     + the in-memory test fixture keep working.
     """
+    server_settings = {
+        "idle_in_transaction_session_timeout": _IDLE_IN_TRANSACTION_TIMEOUT_MS,
+    }
     if url.startswith("sqlite"):
         return {}
     if "@localhost" in url or "@127.0.0.1" in url or "@host.docker.internal" in url:
-        return {}
+        return {"server_settings": server_settings}
     # Heroku Postgres certs are valid but the hostname matches an
     # AWS-internal record; check_hostname=False keeps it working
     # without requiring an extra CA bundle on the dyno.
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    return {"ssl": ctx}
+    return {"ssl": ctx, "server_settings": server_settings}
 
 
 def _make_engine():

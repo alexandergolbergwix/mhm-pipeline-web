@@ -32,7 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
-from app.db import get_session
+from app.db import get_session, session_scope
 from app.models.extraction_approval import ExtractionApproval
 from app.models.run import RunRecord
 from app.models.run_job import JOB_KIND_NER_VERIFY
@@ -99,42 +99,58 @@ async def start_stream(
     run_id: uuid.UUID,
     payload: StartRequest,
     auth: AuthContext = Depends(current_auth),
-    db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
-    await _lookup_run_with_access(db, run_id, auth, write=False)
+    """Kick off one AI verification session and stream events via SSE.
 
-    action = extraction_actions.get_action(payload.action_id)
-    if action is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"unknown action_id {payload.action_id!r}",
-        )
+    Deliberately does NOT take ``db: AsyncSession = Depends(get_session)``:
+    FastAPI only closes yield-dependencies once the whole response — for a
+    ``StreamingResponse``, that means once ``_session_event_stream`` below
+    is fully exhausted — has been sent. A verification session can run for
+    many minutes (or hang forever if the eval-agent subprocess call never
+    returns), so holding the request-scoped session open for that whole
+    window pins one Postgres connection per in-flight session and, if the
+    generator hangs, leaks it for good (see 2026-07-04 outage — a handful
+    of hung sessions exhausted the whole ``pool_size=5 + max_overflow=10``
+    budget and turned unrelated requests like ``/auth/login`` into 503s).
+    All of the setup below runs inside its own short-lived
+    ``session_scope()`` that commits and returns its connection to the
+    pool before the streaming response is even constructed.
+    """
+    async with session_scope() as db:
+        await _lookup_run_with_access(db, run_id, auth, write=False)
 
-    entities = await _fetch_entities(db, run_id, payload.entity_ids)
-    if not entities:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="no extracted entities in scope",
-        )
-    if len(entities) < action.min_candidates:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"action {action.id!r} requires at least "
-                f"{action.min_candidates} candidates; got {len(entities)}"
-            ),
-        )
+        action = extraction_actions.get_action(payload.action_id)
+        if action is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"unknown action_id {payload.action_id!r}",
+            )
 
-    api_key = await _resolve_gemini_key(db, auth)
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "No Gemini API key configured. Open Settings -> "
-                "Credentials and add one from "
-                "https://aistudio.google.com/app/apikey."
-            ),
-        )
+        entities = await _fetch_entities(db, run_id, payload.entity_ids)
+        if not entities:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="no extracted entities in scope",
+            )
+        if len(entities) < action.min_candidates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"action {action.id!r} requires at least "
+                    f"{action.min_candidates} candidates; got {len(entities)}"
+                ),
+            )
+
+        api_key = await _resolve_gemini_key(db, auth)
+        if not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "No Gemini API key configured. Open Settings -> "
+                    "Credentials and add one from "
+                    "https://aistudio.google.com/app/apikey."
+                ),
+            )
 
     # locate_eval_agent() is intentionally NOT checked here. The cache
     # pre-check inside _session_event_stream may satisfy the entire

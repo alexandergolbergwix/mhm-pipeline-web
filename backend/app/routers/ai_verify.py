@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
-from app.db import get_session
+from app.db import get_session, session_scope
 from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import JOB_KIND_AUTHORITY_VERIFY
 from app.pipeline import agent_actions, agent_runner
@@ -96,7 +96,6 @@ async def start_stream(
     run_id: uuid.UUID,
     payload: StartRequest,
     auth: AuthContext = Depends(current_auth),
-    db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
     """Kick off one AI verification session and stream events via SSE.
 
@@ -105,43 +104,58 @@ async def start_stream(
     via ``POST /runs/{id}/jobs`` (kind ``authority_verify``), closing
     the browser does not cancel work — use ``POST …/jobs/{id}/cancel``.
     The SSE path still cancels the subprocess when the connection drops.
+
+    Deliberately does NOT take ``db: AsyncSession = Depends(get_session)``:
+    FastAPI only closes yield-dependencies once the whole response — for a
+    ``StreamingResponse``, that means once ``_session_event_stream`` below
+    is fully exhausted — has been sent. A verification session can run for
+    many minutes (or hang forever if the eval-agent subprocess call never
+    returns), so holding the request-scoped session open for that whole
+    window pins one Postgres connection per in-flight session and, if the
+    generator hangs, leaks it for good (see 2026-07-04 outage — a handful
+    of hung sessions exhausted the whole ``pool_size=5 + max_overflow=10``
+    budget and turned unrelated requests like ``/auth/login`` into 503s).
+    All of the setup below runs inside its own short-lived
+    ``session_scope()`` that commits and returns its connection to the
+    pool before the streaming response is even constructed.
     """
-    await _lookup_run_with_access(db, run_id, auth, write=False)
+    async with session_scope() as db:
+        await _lookup_run_with_access(db, run_id, auth, write=False)
 
-    action = agent_actions.get_action(payload.action_id)
-    if action is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"unknown action_id {payload.action_id!r}",
-        )
+        action = agent_actions.get_action(payload.action_id)
+        if action is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"unknown action_id {payload.action_id!r}",
+            )
 
-    # Resolve scope → AuthorityMatch rows + their MARC records.
-    matches = await _fetch_matches(db, run_id, payload.match_ids)
-    if not matches:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="no matches in scope",
-        )
-    if len(matches) < action.min_candidates:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"action {action.id!r} requires at least "
-                f"{action.min_candidates} candidates; got {len(matches)}"
-            ),
-        )
+        # Resolve scope → AuthorityMatch rows + their MARC records.
+        matches = await _fetch_matches(db, run_id, payload.match_ids)
+        if not matches:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="no matches in scope",
+            )
+        if len(matches) < action.min_candidates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"action {action.id!r} requires at least "
+                    f"{action.min_candidates} candidates; got {len(matches)}"
+                ),
+            )
 
-    # Resolve Gemini key (always required — no stub path).
-    api_key = await _resolve_gemini_key(db, auth)
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "No Gemini API key configured. Open Settings → "
-                "Credentials and add one from "
-                "https://aistudio.google.com/app/apikey."
-            ),
-        )
+        # Resolve Gemini key (always required — no stub path).
+        api_key = await _resolve_gemini_key(db, auth)
+        if not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "No Gemini API key configured. Open Settings → "
+                    "Credentials and add one from "
+                    "https://aistudio.google.com/app/apikey."
+                ),
+            )
 
     # locate_eval_agent() is intentionally NOT checked here — a
     # fully-cached run never needs the eval-agent subprocess (e.g. Heroku).

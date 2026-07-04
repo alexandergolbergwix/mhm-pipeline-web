@@ -244,8 +244,40 @@ async def spawn_eval_agent_run(
 
     stderr_task = asyncio.create_task(_drain_stderr())
     try:
-        async for ev in _read_subprocess_stream(proc.stdout):
-            yield ev
+        try:
+            async for ev in _read_subprocess_stream(proc.stdout):
+                yield ev
+        except TimeoutError:
+            # The subprocess produced no output at all for
+            # _SUBPROCESS_IDLE_TIMEOUT_S — treat it as hung (e.g. a Gemini
+            # HTTP call with no client-side timeout) rather than let the
+            # generator, and thus this SSE response, block forever. Before
+            # 2026-07-04 this manifested as an indefinitely open streaming
+            # response that quietly pinned a Postgres connection (see
+            # start_stream's docstring) — killing the subprocess here is
+            # the fix at the source rather than relying on the DB-side
+            # backstop alone.
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            logger.error(
+                "eval-agent produced no output for %ss — killed as hung",
+                _SUBPROCESS_IDLE_TIMEOUT_S,
+            )
+            yield AgentEvent(
+                type="runner.error",
+                payload={
+                    "message": (
+                        "Verification subprocess produced no output for "
+                        f"{_SUBPROCESS_IDLE_TIMEOUT_S}s and was terminated "
+                        "as hung. This usually means the Gemini API call "
+                        "itself stalled — retry, or check the API key/quota."
+                    ),
+                    "return_code": proc.returncode,
+                },
+            )
+            yield AgentEvent(type="runner.exit", payload={"return_code": proc.returncode})
+            return
         rc = await proc.wait()
         await stderr_task
         if rc != 0:
@@ -279,12 +311,30 @@ async def spawn_eval_agent_run(
             stderr_task.cancel()
 
 
+# No output at all (not even a keepalive [STEP] line) from the eval-agent
+# subprocess for this long is treated as a hang, not a slow-but-alive
+# judging loop — Gemini calls plus retries for one item can take a while,
+# but the CLI logs a [STEP]/[STATS] line per item, so total silence this
+# long means the subprocess itself is stuck (e.g. an HTTP call with no
+# client-side timeout), not just working through a big backlog.
+_SUBPROCESS_IDLE_TIMEOUT_S = 180.0
+
+
 async def _read_subprocess_stream(
     stdout: asyncio.StreamReader,
 ) -> AsyncIterator[AgentEvent]:
-    """Translate the eval-agent's three line conventions into events."""
+    """Translate the eval-agent's three line conventions into events.
+
+    Raises ``TimeoutError`` if the subprocess goes fully silent for
+    ``_SUBPROCESS_IDLE_TIMEOUT_S`` — see the caller's handling of that.
+    """
     while True:
-        line_bytes = await stdout.readline()
+        try:
+            line_bytes = await asyncio.wait_for(
+                stdout.readline(), timeout=_SUBPROCESS_IDLE_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError from None
         if not line_bytes:
             return
         line = line_bytes.decode("utf-8", errors="replace").rstrip("\n")

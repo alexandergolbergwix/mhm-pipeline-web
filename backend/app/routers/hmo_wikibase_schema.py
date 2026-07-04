@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
-from app.db import get_session
+from app.db import get_session, session_scope
 from app.models.run_job import JOB_KIND_HMO_SCHEMA_BOOTSTRAP
 from app.pipeline import hmo_schema_actions, hmo_schema_bootstrap as pipeline
 from app.pipeline.agent_runner import (
@@ -204,68 +204,84 @@ async def get_cached_schema_verdicts(
 async def start_schema_verify_stream(
     payload: SchemaVerifyStartRequest,
     auth: AuthContext = Depends(current_auth),
-    db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
-    await _lookup_run_with_access(db, payload.run_id, auth, write=False)
+    """Kick off one AI verification session and stream events via SSE.
 
-    action = hmo_schema_actions.get_action(payload.action_id)
-    if action is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"unknown action_id {payload.action_id!r}",
-        )
+    Deliberately does NOT take ``db: AsyncSession = Depends(get_session)``:
+    FastAPI only closes yield-dependencies once the whole response — for a
+    ``StreamingResponse``, that means once the generator below is fully
+    exhausted — has been sent. A verification session can run for many
+    minutes (or hang forever if the eval-agent subprocess call never
+    returns), so holding the request-scoped session open for that whole
+    window pins one Postgres connection per in-flight session and, if the
+    generator hangs, leaks it for good (see 2026-07-04 outage — a handful
+    of hung sessions exhausted the whole ``pool_size=5 + max_overflow=10``
+    budget and turned unrelated requests like ``/auth/login`` into 503s).
+    All of the setup below runs inside its own short-lived
+    ``session_scope()`` that commits and returns its connection to the
+    pool before the streaming response is even constructed.
+    """
+    async with session_scope() as db:
+        await _lookup_run_with_access(db, payload.run_id, auth, write=False)
 
-    report = await pipeline.load_last_bootstrap_report(db)
-    if report is None:
-        report = await pipeline.bootstrap_schema(db, writer=None, dry_run=True)
-        pipeline.cache_schema_bootstrap_report(report)
+        action = hmo_schema_actions.get_action(payload.action_id)
+        if action is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"unknown action_id {payload.action_id!r}",
+            )
 
-    items = filter_schema_entries(report, ontology_uris=payload.ontology_uris)
-    if not items:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="no schema entries in scope — run a dry-run bootstrap first",
-        )
-    if len(items) < action.min_candidates:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"action {action.id!r} requires at least "
-                f"{action.min_candidates} candidates; got {len(items)}"
-            ),
-        )
+        report = await pipeline.load_last_bootstrap_report(db)
+        if report is None:
+            report = await pipeline.bootstrap_schema(db, writer=None, dry_run=True)
+            pipeline.cache_schema_bootstrap_report(report)
 
-    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
-
-    judge_model = payload.tier_model or GEMINI_MODEL
-    evaluator_id = action.evaluators[0] if action.evaluators else "hmo_wikibase_schema"
-    pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    uncached: list[dict[str, Any]] = []
-    if not payload.override_cache:
-        for item in items:
-            hit = await read_from_inference_cache(
-                db,
-                kind="ai_verdict",
-                query_summary=schema_verdict_query_summary(
-                    item, judge_model, evaluator=evaluator_id,
+        items = filter_schema_entries(report, ontology_uris=payload.ontology_uris)
+        if not items:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="no schema entries in scope — run a dry-run bootstrap first",
+            )
+        if len(items) < action.min_candidates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"action {action.id!r} requires at least "
+                    f"{action.min_candidates} candidates; got {len(items)}"
                 ),
             )
-            if hit is not None:
-                pre_cached.append((item, hit))
-            else:
-                uncached.append(item)
-    else:
-        uncached = list(items)
 
-    api_key = await _resolve_gemini_key(db, auth)
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "No Gemini API key configured. Open Settings → Credentials "
-                "and add one from https://aistudio.google.com/app/apikey."
-            ),
-        )
+        from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+
+        judge_model = payload.tier_model or GEMINI_MODEL
+        evaluator_id = action.evaluators[0] if action.evaluators else "hmo_wikibase_schema"
+        pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        uncached: list[dict[str, Any]] = []
+        if not payload.override_cache:
+            for item in items:
+                hit = await read_from_inference_cache(
+                    db,
+                    kind="ai_verdict",
+                    query_summary=schema_verdict_query_summary(
+                        item, judge_model, evaluator=evaluator_id,
+                    ),
+                )
+                if hit is not None:
+                    pre_cached.append((item, hit))
+                else:
+                    uncached.append(item)
+        else:
+            uncached = list(items)
+
+        api_key = await _resolve_gemini_key(db, auth)
+        if not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "No Gemini API key configured. Open Settings → Credentials "
+                    "and add one from https://aistudio.google.com/app/apikey."
+                ),
+            )
 
     session_id = new_session_id()
     return StreamingResponse(
