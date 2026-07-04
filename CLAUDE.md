@@ -747,6 +747,32 @@ Tests: `test_homonym_scoring.py`, `test_viaf_mazal_guards.py`,
 `frontend/e2e/authority-homonym-picker.spec.ts`.
 Sync `stage3_guards.py` edits to desktop `converter/authority/` when changed.
 
+### Rule W-38 — Run jobs are claimed, heartbeated, and reconciled (added 2026-07-04)
+
+The background job runner (`run_job_service.py`) is multi-dyno safe via
+row ownership, not a queue broker:
+
+- **Ownership**: `run_jobs.claimed_by` stores `WORKER_ID`
+  (`{DYNO-or-hostname}:{uuid8}`). `_try_claim_job` is a single atomic
+  conditional UPDATE — a job is claimable iff `queued`, or `running` and
+  (unowned | mine | same-dyno prefix | heartbeat stale). Never flip a row
+  to `running` outside this claim path.
+- **Heartbeat**: a lifespan-started `run_job_maintenance_loop()` ticks
+  every 60 s — bump `updated_at` on rows whose asyncio task is alive here,
+  then `fail_stale_jobs()` (`STALE_JOB_AFTER` = 5 min), then respawn
+  queued orphans older than `ORPHAN_GRACE`. Workers no longer need to
+  call `update_job_progress` merely to stay alive.
+- **Dedup**: partial unique index `uq_run_jobs_active_kind` on
+  `(run_id, kind) WHERE status IN ('queued','running')` (migration 0030);
+  `create_job` catches the `IntegrityError` race and re-raises
+  `ActiveJobError` → the existing 409-attach protocol.
+- `claimed_by` is intentionally NOT in `serialise_job` — API/frontend
+  payloads are unchanged.
+
+Tests: `tests/unit/test_run_job_recovery.py` (claim/heartbeat/tick/race
+cases). Any change to claiming, staleness, or the maintenance loop MUST
+extend that suite.
+
 ---
 
 ## Project structure

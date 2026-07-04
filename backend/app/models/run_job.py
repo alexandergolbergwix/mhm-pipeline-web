@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +28,7 @@ JOB_KIND_WIKIDATA_STUDIO_BUILD = "wikidata_studio_build"
 JOB_KIND_WIKIDATA_UPLOAD = "wikidata_upload"
 JOB_KIND_HMO_SCHEMA_BOOTSTRAP = "hmo_schema_bootstrap"
 JOB_KIND_HMO_COVERAGE = "hmo_coverage"
+JOB_KIND_HMO_ITEM_UPLOAD = "hmo_item_upload"
 
 SUPPORTED_JOB_KINDS = frozenset({
     JOB_KIND_AUTHORITY_RE_ENRICH,
@@ -40,6 +41,7 @@ SUPPORTED_JOB_KINDS = frozenset({
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_HMO_COVERAGE,
+    JOB_KIND_HMO_ITEM_UPLOAD,
 })
 
 TERMINAL_JOB_STATUSES = frozenset({
@@ -56,6 +58,16 @@ ACTIVE_JOB_STATUSES = frozenset({
 
 class RunJob(Base):
     __tablename__ = "run_jobs"
+    __table_args__ = (
+        Index(
+            "uq_run_jobs_active_kind",
+            "run_id",
+            "kind",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=_new_uuid,
@@ -93,6 +105,7 @@ class RunJob(Base):
     cancel_requested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
+    claimed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
     )

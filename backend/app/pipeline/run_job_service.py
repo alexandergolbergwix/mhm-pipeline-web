@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import socket
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, func, or_, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
@@ -19,6 +22,7 @@ from app.models.run_job import (
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_EXTRACTION,
     JOB_KIND_HMO_COVERAGE,
+    JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
@@ -36,6 +40,15 @@ from app.models.run_job import (
 logger = logging.getLogger(__name__)
 
 _background_tasks: dict[str, asyncio.Task[None]] = {}
+
+# Worker identity. The dyno/host prefix lets a restarted process instantly
+# reclaim rows left by its own dead predecessor (Heroku replaces web.1 with
+# a new web.1); the uuid suffix distinguishes live processes. Caveat: with
+# WEB_CONCURRENCY>1 sibling uvicorn workers share the prefix, so a restarted
+# sibling could steal a live sibling's job at startup — acceptable while
+# WEB_CONCURRENCY stays 1 (the current production setup).
+WORKER_DYNO = os.environ.get("DYNO") or socket.gethostname()
+WORKER_ID = f"{WORKER_DYNO}:{uuid.uuid4().hex[:8]}"
 
 
 def _now() -> datetime:
@@ -83,7 +96,16 @@ async def create_job(
         created_by=created_by,
     )
     db.add(job)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # Two concurrent starts raced past find_active_job; the partial
+        # unique index on active (run_id, kind) makes the loser land here.
+        await db.rollback()
+        existing = await find_active_job(db, run_id=run_id, kind=kind)
+        if existing is not None:
+            raise ActiveJobError(existing.id) from exc
+        raise
     await db.refresh(job)
     spawn_job(job.id)
     return job
@@ -95,7 +117,13 @@ class ActiveJobError(Exception):
         super().__init__(f"active job already exists: {job_id}")
 
 
-STALE_JOB_AFTER = timedelta(minutes=20)
+# The maintenance loop heartbeats owned rows every minute, so staleness no
+# longer depends on how often a worker reports progress — 5 minutes of
+# silence means the owning process is gone.
+STALE_JOB_AFTER = timedelta(minutes=5)
+MAINTENANCE_INTERVAL_SECONDS = 60
+# A queued row this old whose creator never claimed it is an orphan.
+ORPHAN_GRACE = timedelta(seconds=90)
 
 
 async def recover_interrupted_jobs() -> int:
@@ -103,6 +131,9 @@ async def recover_interrupted_jobs() -> int:
 
     In-memory ``asyncio`` tasks are lost on process recycle but the Postgres
     rows stay ``running`` — without this hook the UI polls a zombie forever.
+    Safe on multi-dyno setups: ``_try_claim_job`` rejects rows owned by a
+    live foreign process, so a spawn here only proceeds for rows this dyno
+    may legitimately take over.
     """
     async with session_scope() as db:
         rows = (
@@ -125,27 +156,147 @@ async def fail_stale_jobs() -> int:
     """Mark long-running jobs with no recent heartbeat as failed."""
     cutoff = _now() - STALE_JOB_AFTER
     async with session_scope() as db:
+        res = await db.execute(
+            update(RunJob)
+            .where(
+                RunJob.status == JOB_STATUS_RUNNING,
+                RunJob.updated_at < cutoff,
+            )
+            .values(
+                status=JOB_STATUS_FAILED,
+                error=(
+                    "Job interrupted — the server restarted or the worker "
+                    "stopped responding. Cancel and start again."
+                ),
+                finished_at=_now(),
+            )
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+        count = res.rowcount or 0
+    if count:
+        logger.warning("marked %d stale run job(s) as failed", count)
+    return count
+
+
+async def _try_claim_job(db: AsyncSession, job_id: uuid.UUID) -> bool:
+    """Atomically take ownership of a job row.
+
+    A queued row is always claimable. A running row is claimable only when
+    it is unowned (pre-claim-column rows), already ours, left behind by a
+    previous incarnation of this dyno, or stale. The single conditional
+    UPDATE makes the cross-process race deterministic: exactly one claimant
+    sees ``rowcount == 1``.
+    """
+    res = await db.execute(
+        update(RunJob)
+        .where(
+            RunJob.id == job_id,
+            or_(
+                RunJob.status == JOB_STATUS_QUEUED,
+                and_(
+                    RunJob.status == JOB_STATUS_RUNNING,
+                    or_(
+                        RunJob.claimed_by.is_(None),
+                        RunJob.claimed_by == WORKER_ID,
+                        RunJob.claimed_by.like(f"{WORKER_DYNO}:%"),
+                        RunJob.updated_at < _now() - STALE_JOB_AFTER,
+                    ),
+                ),
+            ),
+        )
+        .values(
+            status=JOB_STATUS_RUNNING,
+            claimed_by=WORKER_ID,
+            started_at=func.coalesce(RunJob.started_at, func.now()),
+            updated_at=func.now(),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    return (res.rowcount or 0) == 1
+
+
+async def _heartbeat_owned_jobs() -> int:
+    """Bump ``updated_at`` on rows whose asyncio task is alive in this process.
+
+    Decouples staleness from worker progress cadence: a job that is busy but
+    quiet (e.g. the RDF build's TTL-write tail) still heartbeats. The
+    status/claimed_by guards make the races no-ops — a job that finished
+    between snapshot and UPDATE is skipped, and a row stolen after a
+    false-stale verdict is not zombie-heartbeated.
+    """
+    live_ids = [
+        uuid.UUID(key)
+        for key, task in _background_tasks.items()
+        if not task.done()
+    ]
+    if not live_ids:
+        return 0
+    async with session_scope() as db:
+        res = await db.execute(
+            update(RunJob)
+            .where(
+                RunJob.id.in_(live_ids),
+                RunJob.status == JOB_STATUS_RUNNING,
+                RunJob.claimed_by == WORKER_ID,
+            )
+            .values(updated_at=func.now())
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+        return res.rowcount or 0
+
+
+async def _respawn_orphaned_jobs() -> int:
+    """Spawn queued rows whose creator died before claiming them.
+
+    Cross-dyno double-spawn is harmless: the losing spawn's
+    ``_try_claim_job`` returns False and its task exits immediately.
+    """
+    cutoff = _now() - ORPHAN_GRACE
+    async with session_scope() as db:
         rows = (
             await db.execute(
-                select(RunJob).where(
-                    RunJob.status == JOB_STATUS_RUNNING,
+                select(RunJob.id).where(
+                    RunJob.status == JOB_STATUS_QUEUED,
                     RunJob.updated_at < cutoff,
                 )
             )
         ).scalars().all()
-        if not rows:
-            return 0
-        for job in rows:
-            job.status = JOB_STATUS_FAILED
-            job.error = (
-                "Job interrupted — the server restarted or the worker stopped "
-                "responding. Cancel and start again."
-            )
-            job.finished_at = _now()
-        await db.commit()
-        count = len(rows)
-    logger.warning("marked %d stale run job(s) as failed", count)
-    return count
+    spawned = 0
+    for job_id in rows:
+        if str(job_id) not in _background_tasks:
+            spawn_job(job_id)
+            spawned += 1
+    if spawned:
+        logger.info("re-spawned %d orphaned queued run job(s)", spawned)
+    return spawned
+
+
+async def run_job_maintenance_tick() -> None:
+    """One reconcile pass: heartbeat, then reap, then respawn orphans.
+
+    Heartbeat runs first so this process's live-but-quiet jobs can never be
+    reaped by its own tick.
+    """
+    await _heartbeat_owned_jobs()
+    await fail_stale_jobs()
+    await _respawn_orphaned_jobs()
+
+
+async def run_job_maintenance_loop() -> None:
+    """Periodic job-table reconcile, started from the app lifespan.
+
+    Sleeps first — the lifespan already runs a startup pass, so an
+    immediate tick would be redundant.
+    """
+    while True:
+        await asyncio.sleep(MAINTENANCE_INTERVAL_SECONDS)
+        try:
+            await run_job_maintenance_tick()
+        except Exception:  # noqa: BLE001 — the loop must survive any tick failure
+            logger.exception("run job maintenance tick failed")
 
 
 def spawn_job(job_id: uuid.UUID) -> None:
@@ -172,11 +323,8 @@ async def _execute_job(job_id: uuid.UUID) -> None:
             if job is None:
                 return
             kind = job.kind
-            if job.status not in (JOB_STATUS_QUEUED, JOB_STATUS_RUNNING):
+            if not await _try_claim_job(db, job_id):
                 return
-            job.status = JOB_STATUS_RUNNING
-            job.started_at = _now()
-            await db.commit()
 
         if kind == JOB_KIND_AUTHORITY_RE_ENRICH:
             from app.pipeline.authority_re_enrich_job import (  # noqa: PLC0415
@@ -208,6 +356,11 @@ async def _execute_job(job_id: uuid.UUID) -> None:
         elif kind == JOB_KIND_HMO_COVERAGE:
             from app.pipeline.hmo_coverage_job import run_hmo_coverage_job  # noqa: PLC0415
             await run_hmo_coverage_job(job_id)
+        elif kind == JOB_KIND_HMO_ITEM_UPLOAD:
+            from app.pipeline.hmo_item_upload_job import (  # noqa: PLC0415
+                run_hmo_item_upload_job,
+            )
+            await run_hmo_item_upload_job(job_id)
         else:
             await _fail_job(job_id, f"unknown job kind {kind!r}")
     except Exception as exc:  # noqa: BLE001

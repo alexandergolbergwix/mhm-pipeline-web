@@ -8,7 +8,8 @@ frontend is run separately by ``vite dev`` on port 5173 and proxies
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -40,14 +41,23 @@ async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
     from app.pipeline.run_job_service import (  # noqa: PLC0415
         fail_stale_jobs,
         recover_interrupted_jobs,
+        run_job_maintenance_loop,
     )
 
     await fail_stale_jobs()
     await recover_interrupted_jobs()
+    maintenance = asyncio.create_task(
+        run_job_maintenance_loop(), name="run-job-maintenance",
+    )
     await start_listener()
     try:
         yield
     finally:
+        # Cancel maintenance before anything else: a mid-SIGTERM tick must
+        # not heartbeat rows whose asyncio tasks are about to die with us.
+        maintenance.cancel()
+        with suppress(asyncio.CancelledError):
+            await maintenance
         await stop_listener()
         await close_redis()
 
