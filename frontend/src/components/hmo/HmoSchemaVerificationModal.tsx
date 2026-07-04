@@ -9,6 +9,7 @@ import type {AgentActionMeta, AgentEvent} from "@/api/wikidataVerify";
 import {
   AgentFlowDiagram,
   makeInitialFlowState,
+  reduceFlow,
   type FlowState,
 } from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
@@ -113,14 +114,7 @@ export function HmoSchemaVerificationModal({
     try {
       for await (const ev of stream) {
         setEvents((prev) => [...prev, ev]);
-        if (ev.type === "agent.stats") {
-          const payload = (ev.payload ?? ev) as Record<string, unknown>;
-          setFlow((prev) => ({
-            ...prev,
-            judged: Number(payload.judged ?? prev.judged),
-            total: Number(payload.total ?? prev.total),
-          }));
-        }
+        setFlow((prev) => reduceFlow(prev, ev));
         if (ev.type === "runner.warning") {
           const payload = (ev.payload ?? ev) as Record<string, unknown>;
           const msg = typeof payload.message === "string"
@@ -257,7 +251,7 @@ export function HmoSchemaVerificationModal({
             {events.length === 0 && <li className="muted italic">Waiting for the first event…</li>}
             {events.slice(-80).map((ev, i) => (
               <li key={i} className="flex gap-2">
-                <span className="muted shrink-0 w-28">{ev.type.slice(0, 18).padEnd(18)}</span>
+                <span className="muted shrink-0 w-28">{(ev.type ?? "message").slice(0, 18).padEnd(18)}</span>
                 <span className="text-ink/90 truncate">{ev.type}</span>
               </li>
             ))}

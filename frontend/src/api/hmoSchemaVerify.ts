@@ -19,17 +19,25 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 
-function parseFrame(frame: string): AgentEvent | null {
+export function parseHmoSchemaSseFrame(frame: string): AgentEvent | null {
+  let type = "message";
+  let data = "";
   for (const line of frame.split("\n")) {
-    if (line.startsWith("data: ")) {
-      try {
-        return JSON.parse(line.slice(6)) as AgentEvent;
-      } catch {
-        return null;
-      }
-    }
+    if (line.startsWith(": ")) continue;
+    const colon = line.indexOf(":");
+    if (colon < 0) continue;
+    const field = line.slice(0, colon);
+    const value = line.slice(colon + 1).replace(/^ /, "");
+    if (field === "event") type = value;
+    else if (field === "data") data = value;
   }
-  return null;
+  if (!data) return null;
+  try {
+    const parsed: unknown = JSON.parse(data);
+    return isRecord(parsed) ? {type, ...parsed} : {type, raw: data};
+  } catch {
+    return {type, raw: data};
+  }
 }
 
 
@@ -67,7 +75,7 @@ export function streamSchemaVerification(
       while (sep >= 0) {
         const frame = buf.slice(0, sep);
         buf = buf.slice(sep + 2);
-        const ev = parseFrame(frame);
+        const ev = parseHmoSchemaSseFrame(frame);
         if (ev) yield ev;
         sep = buf.indexOf("\n\n");
       }
