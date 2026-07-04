@@ -84,7 +84,7 @@ class HmoWikibaseExporter:
                 WikibaseEntityDraft(
                     local_id=local_ids[subject],
                     labels=_labels_for_node(graph, subject),
-                    descriptions={"en": f"Offline HMO Wikibase draft for {local_name(class_uri)}"},
+                    descriptions=_descriptions_for_node(graph, subject, class_uri),
                     entity_type=local_name(class_uri),
                     class_uri=str(class_uri),
                     source_uri=str(subject),
@@ -161,6 +161,41 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
     if labels:
         return labels
     return {"en": _node_local_name(subject).replace("_", " ")}
+
+
+def _descriptions_for_node(
+    graph: Graph, subject: URIRef | BNode, class_uri: URIRef,
+) -> dict[str, str]:
+    """Collect RDF descriptions, falling back to a generic per-class one.
+
+    ``rdfs:comment`` on the node itself (manuscript summaries, condition
+    notes, etc.) is the real, curator-written source of truth when
+    present. Otherwise fall back to a short class-based description —
+    NOT the earlier "Offline HMO Wikibase draft for X" wording, which
+    reads as leftover internal/debug text once shipped to the live
+    Wikibase.
+    """
+    descriptions: dict[str, str] = {}
+    for comment in graph.objects(subject, RDFS.comment):
+        if not isinstance(comment, Literal):
+            continue
+        language = comment.language or "en"
+        descriptions.setdefault(language, _truncate_description(str(comment)))
+    if descriptions:
+        return descriptions
+    readable = local_name(class_uri).replace("_", " ")
+    return {"en": f"{readable} in the Hebrew Manuscripts Ontology (HMO)"}
+
+
+_MAX_DESCRIPTION_LENGTH = 250  # Wikibase's hard cap on description length.
+
+
+def _truncate_description(text: str) -> str:
+    """Clip free-text (e.g. a MARC 520 summary) to Wikibase's limit."""
+    text = text.strip()
+    if len(text) <= _MAX_DESCRIPTION_LENGTH:
+        return text
+    return text[: _MAX_DESCRIPTION_LENGTH - 1].rstrip() + "…"
 
 
 def _statement_from_triple(
