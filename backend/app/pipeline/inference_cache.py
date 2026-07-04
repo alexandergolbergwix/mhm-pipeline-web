@@ -91,6 +91,7 @@ KIND_TTL: dict[str, timedelta | None] = {
     "research.summary":        timedelta(days=7),   # invalidated by run-set fingerprint change
     "research.movement":       timedelta(days=30),  # full corpus; fingerprint-invalidated
     "research.movement_facets": timedelta(days=30), # facets; fingerprint-invalidated
+    "wikidata.label":           timedelta(days=90),  # labels rarely change
 }
 
 # Redis TTL in seconds — None = no expiry (SET without EX).
@@ -111,10 +112,79 @@ _REDIS_TTL_SECONDS: dict[str, int | None] = {
     "research.summary":        86_400 * 3,  # 3-day Redis window; invalidated by fingerprint
     "research.movement":       86_400,      # 1-day Redis window; invalidated by fingerprint
     "research.movement_facets": 86_400,     # 1-day Redis window; invalidated by fingerprint
+    "wikidata.label":           86_400 * 7, # 7-day Redis hot window
 }
 
 
 # ── Public helpers ────────────────────────────────────────────────────
+
+_VOLATILE_PAYLOAD_KEYS = frozenset({
+    "timestamp", "timestamp_ms", "date", "datetime", "created_at",
+    "updated_at", "judged_at", "requested_at", "fetched_at", "now",
+    "time", "nonce", "request_id", "trace_id",
+})
+
+
+def _strip_volatile(value: Any) -> Any:
+    """Recursively drop keys that vary per-call but not per-answer.
+
+    Dates/timestamps/nonces/request ids a caller may stamp onto an
+    otherwise-identical payload must not fragment the cache key — two
+    calls with the same endpoint + logical payload should always hash
+    the same regardless of when they were made.
+    """
+    if isinstance(value, dict):
+        return {
+            k: _strip_volatile(v)
+            for k, v in value.items()
+            if k.lower() not in _VOLATILE_PAYLOAD_KEYS
+        }
+    if isinstance(value, list):
+        return [_strip_volatile(v) for v in value]
+    return value
+
+
+def endpoint_query_summary(*, endpoint: str, payload: Any) -> dict[str, Any]:
+    """Build a ``query_summary`` keyed by endpoint URL + payload.
+
+    Use this for straightforward external HTTP lookups where "same
+    endpoint + same logical payload → same answer" holds — i.e.
+    idempotent reads (label lookups, SPARQL queries, reference-data
+    fetches). Do NOT use it for anything that must observe live state
+    at write-time (Wikidata reconciliation right before a create/merge,
+    security checks like Turnstile) — caching those would let a stale
+    answer silently drive a decision that must always see fresh data.
+    """
+    return {"endpoint": str(endpoint), "payload": _strip_volatile(payload)}
+
+
+async def cache_http_call(
+    db: AsyncSession,
+    *,
+    kind: str,
+    endpoint: str,
+    payload: Any,
+    fetch: Callable[[], Awaitable[Any]],
+    user_id: uuid.UUID | None = None,
+    skip_cache: bool = False,
+) -> Any:
+    """``cache_lookup_or_call``, but the key is derived from *endpoint* +
+    *payload* instead of a hand-built ``query_summary``.
+
+    This is the "most external API calls should be cached" entry point:
+    call sites that just need "endpoint + payload → cached answer"
+    without hand-rolling their own summary dict should use this instead
+    of building ``query_summary`` themselves.
+    """
+    return await cache_lookup_or_call(
+        db,
+        kind=kind,
+        query_summary=endpoint_query_summary(endpoint=endpoint, payload=payload),
+        fetch=fetch,
+        user_id=user_id,
+        skip_cache=skip_cache,
+    )
+
 
 def canonical_hash(query_summary: dict[str, Any]) -> str:
     """SHA-256 of the canonical JSON of *query_summary*.
@@ -366,8 +436,10 @@ async def read_from_inference_cache(
 
 __all__ = [
     "KIND_TTL",
+    "cache_http_call",
     "cache_lookup_or_call",
     "canonical_hash",
+    "endpoint_query_summary",
     "read_from_inference_cache",
     "write_to_inference_cache",
 ]

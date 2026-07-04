@@ -18,10 +18,7 @@ from app.pipeline.agent_runner import (
     resolve_verify_state_dir,
     spawn_eval_agent_run,
 )
-from app.pipeline.hmo_schema_bootstrap import (
-    SchemaBootstrapResult,
-    serialise_bootstrap_result,
-)
+from app.pipeline.hmo_schema_bootstrap import SchemaBootstrapResult
 from app.pipeline.inference_cache import write_to_inference_cache
 
 logger = logging.getLogger(__name__)
@@ -70,11 +67,18 @@ def filter_schema_entries(
     return items
 
 
-def write_schema_verify_fixture(*, dest_dir: Path, report: SchemaBootstrapResult) -> None:
+def write_schema_verify_fixture(*, dest_dir: Path, items: list[dict[str, Any]]) -> None:
+    """Write only the *uncached* entries to the eval-agent fixture.
+
+    Writing the full bootstrap report here (as opposed to just the items
+    that missed the inference cache) made the web-tier Redis/Postgres
+    cache pointless: the eval-agent subprocess would re-judge every entry
+    on disk regardless of what the pre-check already found cached,
+    burning a fresh Gemini call for each one every single run.
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
     (dest_dir / "hmo_wikibase_schema.json").write_text(
-        json.dumps(serialise_bootstrap_result(report), ensure_ascii=False, indent=2)
-        + "\n",
+        json.dumps({"entries": items}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     marc_path = dest_dir / "marc_extracted.json"
@@ -160,7 +164,6 @@ async def hmo_schema_verify_event_stream(
     items: list[dict[str, Any]],
     uncached_items: list[dict[str, Any]],
     pre_cached: list[tuple[dict[str, Any], dict[str, Any]]],
-    report: SchemaBootstrapResult,
     api_key: str,
     override_cache: bool,
     tier_model: str | None,
@@ -215,8 +218,13 @@ async def hmo_schema_verify_event_stream(
             )
             persist_session_event(session_dir, warn_ev)
             yield warn_ev
+        elif not uncached_items:
+            # Everything requested was already served from the pre-cache
+            # loop above — don't spin up the eval-agent subprocess (and
+            # its Gemini client) just to judge zero fresh entries.
+            pass
         else:
-            write_schema_verify_fixture(dest_dir=pipeline_output, report=report)
+            write_schema_verify_fixture(dest_dir=pipeline_output, items=uncached_items)
             async for ev in spawn_eval_agent_run(
                 pipeline_output=pipeline_output,
                 evaluators=action.evaluators,

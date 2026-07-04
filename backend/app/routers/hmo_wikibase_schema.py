@@ -292,7 +292,6 @@ async def start_schema_verify_stream(
             items=items,
             uncached_items=uncached,
             pre_cached=pre_cached,
-            report=report,
             api_key=api_key,
             override_cache=payload.override_cache,
             tier_model=payload.tier_model,

@@ -140,6 +140,66 @@ class TestWriteToInferenceCache:
         assert hit_b is None
 
 
+class TestEndpointQuerySummary:
+    def test_strips_volatile_keys(self) -> None:
+        from app.pipeline.inference_cache import endpoint_query_summary
+
+        qs = endpoint_query_summary(
+            endpoint="https://example.org/api",
+            payload={"qid": "Q42", "timestamp": "2026-07-04T12:00:00Z", "nested": {
+                "created_at": "2026-01-01", "value": "keep-me",
+            }},
+        )
+        assert "timestamp" not in qs["payload"]
+        assert qs["payload"]["qid"] == "Q42"
+        assert "created_at" not in qs["payload"]["nested"]
+        assert qs["payload"]["nested"]["value"] == "keep-me"
+
+    def test_same_endpoint_and_payload_hash_identically_despite_dates(self) -> None:
+        from app.pipeline.inference_cache import canonical_hash, endpoint_query_summary
+
+        qs_a = endpoint_query_summary(
+            endpoint="https://example.org/api",
+            payload={"qid": "Q42", "requested_at": "2026-07-04T12:00:00Z"},
+        )
+        qs_b = endpoint_query_summary(
+            endpoint="https://example.org/api",
+            payload={"qid": "Q42", "requested_at": "2026-07-05T09:30:00Z"},
+        )
+        assert canonical_hash(qs_a) == canonical_hash(qs_b)
+
+    def test_different_endpoint_produces_different_hash(self) -> None:
+        from app.pipeline.inference_cache import canonical_hash, endpoint_query_summary
+
+        qs_a = endpoint_query_summary(endpoint="https://a.example.org/api", payload={"qid": "Q42"})
+        qs_b = endpoint_query_summary(endpoint="https://b.example.org/api", payload={"qid": "Q42"})
+        assert canonical_hash(qs_a) != canonical_hash(qs_b)
+
+
+class TestCacheHttpCall:
+    @pytest.mark.asyncio
+    async def test_second_call_skips_fetch(self, db_session) -> None:
+        from app.pipeline.inference_cache import cache_http_call
+
+        calls = {"n": 0}
+
+        async def _fetch() -> dict:
+            calls["n"] += 1
+            return {"label": "Maimonides"}
+
+        for _ in range(2):
+            result = await cache_http_call(
+                db_session,
+                kind="wikidata.label",
+                endpoint="https://www.wikidata.org/w/api.php",
+                payload={"id": "Q133337", "lang": "en", "fetched_at": "2026-07-04"},
+                fetch=_fetch,
+            )
+            assert result == {"label": "Maimonides"}
+
+        assert calls["n"] == 1
+
+
 class TestCanonicalHash:
     def test_key_order_does_not_affect_hash(self) -> None:
         """canonical_hash must be stable regardless of dict insertion order."""
