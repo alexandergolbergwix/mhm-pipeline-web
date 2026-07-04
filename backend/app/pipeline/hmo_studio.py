@@ -186,33 +186,56 @@ def _build_manifests_sync(
 
 
 async def upload_manifests_for_run(
-    *, manifest_dir: Path,
-    bot_username: str, bot_password: str, bot_name: str,
-    cloud_url: str = _DEFAULT_BASE_URL,
+    *,
+    manifest_dir: Path,
+    writer: Any,
     dry_run: bool = True,
+    db: Any | None = None,
+    audit_ctx: Any | None = None,
 ) -> HmoUploadResult:
     """Upload every ``MS_*.json`` manifest from *manifest_dir* to the
     Wikibase Cloud under the ``IIIF:`` namespace.
 
     ``dry_run=True`` (the default) skips the network call entirely and
-    reports what would be sent — same shape as a live upload. The writer
-    still enforces ``assert=bot``, idempotency, and retry-with-backoff
-    on every live edit (see :class:`WikibaseCloudWriter`).
+    reports what would be sent — same shape as a live upload.
     """
-    return await asyncio.to_thread(
+    result = await asyncio.to_thread(
         _upload_manifests_sync,
-        manifest_dir, bot_username, bot_password, bot_name, cloud_url, dry_run,
+        manifest_dir, writer, dry_run,
     )
+    if audit_ctx is not None and db is not None and not dry_run:
+        from app.models.wikibase_cloud_write import (  # noqa: PLC0415
+            OPERATION_CREATE,
+            OPERATION_FAILED,
+            OPERATION_UNCHANGED,
+            OPERATION_UPDATE,
+            TARGET_PAGE,
+        )
+        from app.services.wikibase_audit import record_wikibase_write  # noqa: PLC0415
+
+        op_map = {
+            "created": OPERATION_CREATE,
+            "updated": OPERATION_UPDATE,
+            "unchanged": OPERATION_UNCHANGED,
+            "failed": OPERATION_FAILED,
+        }
+        for outcome in result.outcomes:
+            operation = op_map.get(outcome.status, OPERATION_FAILED)
+            await record_wikibase_write(
+                db, audit_ctx,
+                operation=operation,
+                target_kind=TARGET_PAGE,
+                target_key=f"IIIF:{outcome.shelfmark}",
+                outcome_message=outcome.message or "ok",
+            )
+    return result
 
 
 def _upload_manifests_sync(
     manifest_dir: Path,
-    bot_username: str, bot_password: str, bot_name: str,
-    cloud_url: str, dry_run: bool,
+    writer: Any,
+    dry_run: bool,
 ) -> HmoUploadResult:
-    from converter.wikibase.cloud_client import (  # noqa: PLC0415
-        WikibaseBotCredentials, WikibaseCloudClient, WikibaseCloudWriter,
-    )
     from converter.wikidata.iiif_manifest_builder import BuildStats  # noqa: PLC0415
     from converter.wikidata.iiif_uploader import IiifManifestUploader  # noqa: PLC0415
 
@@ -221,18 +244,6 @@ def _upload_manifests_sync(
             f"Manifest directory missing: {manifest_dir}. Build manifests first.",
         )
 
-    config = WikibaseCloudClient.config_for_mhm_hmo_cloud()
-    # Allow operators to override the default URL via build_manifests_for_run.
-    if cloud_url and cloud_url.rstrip("/") != config.base_url.rstrip("/"):
-        from converter.wikibase.cloud_client import WikibaseEndpointConfig  # noqa: PLC0415
-        config = WikibaseEndpointConfig(
-            base_url=cloud_url, display_name="HMO Wikibase Cloud",
-        )
-
-    credentials = WikibaseBotCredentials(
-        username=bot_username, bot_name=bot_name, password=bot_password,
-    )
-    writer = WikibaseCloudWriter(config, credentials)
     uploader = IiifManifestUploader(writer, dry_run=dry_run)
 
     outcomes: list[HmoUploadOutcome] = []

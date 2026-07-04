@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from converter.wikibase.cloud_client import EditOutcome, WikibaseCloudWriter
+from converter.wikibase.cloud_client import EditOutcome, WikibaseCloudWriter, wikibase_edit_summary
 from converter.wikidata.iiif_manifest_builder import BuildStats
 
 
@@ -116,10 +116,10 @@ class IiifManifestUploader:
     @staticmethod
     def _edit_summary(shelfmark: str, stats: BuildStats) -> str:
         """Build the human-readable edit summary written to page history."""
-        return (
-            f"MHM Pipeline: IIIF manifest for MS_{shelfmark} "
+        return wikibase_edit_summary(
+            f"IIIF manifest for MS_{shelfmark} "
             f"({stats.canvas_count} canvas{'es' if stats.canvas_count != 1 else ''}, "
             f"{stats.range_count} CU{'s' if stats.range_count != 1 else ''}, "
             f"{stats.annotation_count} "
-            f"annotation{'s' if stats.annotation_count != 1 else ''})"
+            f"annotation{'s' if stats.annotation_count != 1 else ''})",
         )

@@ -27,8 +27,8 @@ from app.routers import (
     extraction_verify, health, history, hmo_studio, hmo_wikibase_schema, invites,
     linked_data_explorer, onboarding, projects, rdf, research, research_evidence,
     research_entity, research_export, research_pathfinding, research_provenance,
-    run_jobs, runs, saved_queries, section_export, section_import, wikidata_labels,
-    wikidata_studio, ws,
+    run_jobs, runs, saved_queries, section_export, section_import, wikibase_writes,
+    wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
 
@@ -109,6 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(rdf.router, prefix="/api")
     app.include_router(history.router, prefix="/api")
     app.include_router(export.router, prefix="/api")
+    app.include_router(wikibase_writes.router, prefix="/api")
     app.include_router(api_keys.router, prefix="/api")
     app.include_router(wikidata_studio.router, prefix="/api")
     app.include_router(hmo_studio.router, prefix="/api")

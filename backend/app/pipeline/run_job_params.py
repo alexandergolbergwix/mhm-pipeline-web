@@ -88,28 +88,16 @@ async def prepare_job_params(
         merged["_wikidata_token"] = token
 
     if kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP and not merged.get("dry_run", True):
-        from app.routers.hmo_studio import _resolve_bot_name, _unwrap_user_secret  # noqa: PLC0415
+        from app.settings import get_settings  # noqa: PLC0415
 
-        bot_username = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_username")
-        bot_password = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_password")
-        missing = [
-            name for name, val in (
-                ("wikibase_cloud_bot_username", bot_username),
-                ("wikibase_cloud_bot_password", bot_password),
-            )
-            if not val
-        ]
-        if missing:
+        if not get_settings().wikibase_cloud_configured:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
-                    "Add Wikibase bot credentials in Settings → "
-                    "Credentials, then retry. Missing: " + ", ".join(missing)
+                    "Wikibase Cloud is not configured on this server. "
+                    "Contact the administrator."
                 ),
             )
-        merged["_wikibase_bot_username"] = bot_username
-        merged["_wikibase_bot_password"] = bot_password
-        merged["_wikibase_bot_name"] = await _resolve_bot_name(db, auth)
 
     if kind == JOB_KIND_RDF_BUILD:
         merged.setdefault("add_epistemological_status", True)

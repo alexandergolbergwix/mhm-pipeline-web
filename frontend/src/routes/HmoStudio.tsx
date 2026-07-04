@@ -143,7 +143,7 @@ export default function HmoStudioRoute() {
     }
   }, [status]);
 
-  const credsReady = !!status?.bot_username_set && !!status?.bot_password_set;
+  const wikibaseConfigured = !!status?.wikibase_configured;
 
   return (
     <Layout>
@@ -257,7 +257,7 @@ export default function HmoStudioRoute() {
               </label>
               <button onClick={doUpload}
                       disabled={busy !== null || (status?.manifest_count ?? 0) === 0
-                                              || (!dryRun && !credsReady)}
+                                              || (!dryRun && !wikibaseConfigured)}
                       className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}>
                 {busy === "upload"
                   ? (dryRun ? "Previewing…" : "Uploading…")
@@ -295,7 +295,7 @@ export default function HmoStudioRoute() {
             />
             <ItemUploadPanel
               runId={runId}
-              credsReady={credsReady}
+              wikibaseConfigured={wikibaseConfigured}
               refreshToken={itemBuildToken}
             />
           </>
@@ -341,26 +341,22 @@ export default function HmoStudioRoute() {
           )}
         </Glass>
 
-        {/* Bot creds */}
+        {/* Wikibase Cloud server config */}
         <Glass as="section" className="p-6 space-y-2">
-          <div className="kicker">Wikibase Cloud bot credentials</div>
+          <div className="kicker">Wikibase Cloud</div>
           <h3 className="text-lg font-medium">Live-upload prerequisite</h3>
           <p className="muted text-sm leading-relaxed">
             Live writes to <code className="text-xs">mhm-hmo.wikibase.cloud</code>
-            {" "}require a bot username + bot password (issued at{" "}
-            <a target="_blank" rel="noopener"
-               href="https://mhm-hmo.wikibase.cloud/wiki/Special:BotPasswords"
-               className="text-biu-sky hover:underline">
-              Special:BotPasswords
-            </a>). Dry-run previews work without credentials.
+            {" "}use server-held OAuth credentials configured by the deployment
+            admin. Dry-run previews work without them.
           </p>
-          <div className="flex flex-wrap gap-2 pt-1 text-xs">
-            <CredBadge ok={!!status?.bot_username_set} label="bot username" />
-            <CredBadge ok={!!status?.bot_password_set} label="bot password" />
-            <Link to="/settings" className="button-ghost text-xs">
-              Open Settings → Credentials
-            </Link>
-          </div>
+          <GlassPill
+            className={`inline-block px-3 py-0.5 text-[10px] kicker ${
+              wikibaseConfigured ? "text-biu-sky" : "text-warn"
+            }`}
+          >
+            {wikibaseConfigured ? "✓ server configured" : "⚠ not configured — contact admin"}
+          </GlassPill>
         </Glass>
       </div>
 
@@ -486,17 +482,6 @@ function ProjectionPill({ status }: { status: string }) {
   return (
     <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}`}>
       {label}
-    </GlassPill>
-  );
-}
-
-
-function CredBadge({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${
- ok ? "text-biu-sky" : "text-danger"
- }`}>
-      {ok ? "✓" : "⚠"} {label}
     </GlassPill>
   );
 }

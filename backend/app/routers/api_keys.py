@@ -8,11 +8,13 @@ flow lifted straight from the desktop app's Credentials dialog.
 The wrapping KEK is derived from the user's password; we only have it
 while their cookie is presented. Forgetting the password makes every
 stored secret unrecoverable (zero-knowledge).
+
+Wikibase Cloud credentials are server-held OAuth config vars — not
+stored per-user here.
 """
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from typing import Literal
 
@@ -25,35 +27,18 @@ from app.auth.session import AuthContext, current_auth
 from app.crypto import secrets as secrets_mod
 from app.db import get_session
 from app.models.api_key import ApiKey
-from app.services.wikibase_credentials import (
-    resolve_wikibase_bot_credentials,
-    verify_wikibase_bot_credentials,
-    verify_wikibase_bot_credentials_sync,
-)
 
 router = APIRouter(prefix="/me/api-keys", tags=["api-keys"])
-
-_WIKIBASE_BOT_KEYS = frozenset({
-    "wikibase_cloud_bot_name",
-    "wikibase_cloud_bot_username",
-    "wikibase_cloud_bot_password",
-})
 
 
 KeyName = Literal[
     "gemini",
     "wikidata",
-    "wikibase_cloud_bot_name",
-    "wikibase_cloud_bot_username",
-    "wikibase_cloud_bot_password",
     "huggingface",
 ]
 _VALID_KEYS: set[str] = {
     "gemini",
     "wikidata",
-    "wikibase_cloud_bot_name",
-    "wikibase_cloud_bot_username",
-    "wikibase_cloud_bot_password",
     "huggingface",
 }
 
@@ -67,45 +52,6 @@ class ApiKeyStatus(BaseModel):
 
 class SetApiKeyRequest(BaseModel):
     value: str = Field(min_length=1, max_length=4096)
-
-
-class WikibaseCloudVerifyRequest(BaseModel):
-    username: str | None = Field(default=None, max_length=256)
-    bot_name: str | None = Field(default=None, max_length=256)
-    password: str | None = Field(default=None, max_length=4096)
-
-
-class WikibaseCloudVerifyResponse(BaseModel):
-    ok: bool
-    message: str
-    login_name: str | None = None
-
-
-@router.post("/wikibase-cloud/verify", response_model=WikibaseCloudVerifyResponse)
-async def verify_wikibase_cloud_credentials(
-    payload: WikibaseCloudVerifyRequest | None = None,
-    auth: AuthContext = Depends(current_auth),
-    db: AsyncSession = Depends(get_session),
-) -> WikibaseCloudVerifyResponse:
-    """Test bot-password login against mhm-hmo.wikibase.cloud.
-
-    Omit the body (or leave fields empty) to verify whatever is already
-    stored in Settings. Pass individual fields to test a value before
-    saving it alongside the other stored secrets.
-    """
-    overrides = payload or WikibaseCloudVerifyRequest()
-    result = await verify_wikibase_bot_credentials(
-        db,
-        auth,
-        username=overrides.username,
-        bot_name=overrides.bot_name,
-        password=overrides.password,
-    )
-    return WikibaseCloudVerifyResponse(
-        ok=result.ok,
-        message=result.message,
-        login_name=result.login_name,
-    )
 
 
 @router.get("", response_model=list[ApiKeyStatus])
@@ -156,26 +102,6 @@ async def set_key(
     existing.ciphertext_nonce = wrapped.ciphertext_nonce
     existing.dek_wrapped = wrapped.dek_wrapped
     existing.dek_wrap_nonce = wrapped.dek_wrap_nonce
-
-    if name in _WIKIBASE_BOT_KEYS:
-        overrides: dict[str, str] = {}
-        if name == "wikibase_cloud_bot_username":
-            overrides["username"] = payload.value
-        elif name == "wikibase_cloud_bot_password":
-            overrides["password"] = payload.value
-        elif name == "wikibase_cloud_bot_name":
-            overrides["bot_name"] = payload.value
-        credentials = await resolve_wikibase_bot_credentials(db, auth, **overrides)
-        if credentials is not None:
-            verify_result = await asyncio.to_thread(
-                verify_wikibase_bot_credentials_sync, credentials,
-            )
-            if not verify_result.ok:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=verify_result.message,
-                )
-
     await db.commit()
     return ApiKeyStatus(
         name=name,  # type: ignore[arg-type]

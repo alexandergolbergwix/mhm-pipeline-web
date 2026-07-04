@@ -7,8 +7,9 @@ export interface HmoSchemaStatus {
   mapped_classes: number;
   mapped_properties: number;
   missing_sample: string[];
-  bot_username_set: boolean;
-  bot_password_set: boolean;
+  wikibase_configured: boolean;
+  wikibase_base_url: string;
+  wikibase_write_user: string;
 }
 
 export interface HmoSchemaBootstrapEntry {

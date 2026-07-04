@@ -21,14 +21,25 @@ from __future__ import annotations
 import asyncio
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+from app.models.wikibase_cloud_write import (
+    OPERATION_CREATE,
+    OPERATION_FAILED,
+    OPERATION_SKIP,
+    TARGET_CLAIM,
+    TARGET_ITEM,
+)
+from app.services.wikibase_audit import record_wikibase_write
 from converter.wikibase.resolved_models import ResolvedClaim, ResolvedWikibaseEntity
+
+if TYPE_CHECKING:
+    from app.services.wikibase_audit import WikibaseAuditContext
 
 
 class ItemBuildMissingError(RuntimeError):
@@ -76,6 +87,7 @@ async def upload_items_for_run(
     *,
     writer: Any | None,
     dry_run: bool = True,
+    audit_ctx: WikibaseAuditContext | None = None,
 ) -> HmoItemUploadResult:
     """Upload the run's most recent item build. Raises
     :class:`ItemBuildMissingError` if ``build-items`` hasn't run yet."""
@@ -93,11 +105,13 @@ async def upload_items_for_run(
 
     outcomes, created_this_call, created, skipped, failed = await _pass_one_create(
         db, run_id, entities, existing, writer=writer, dry_run=dry_run,
+        audit_ctx=audit_ctx,
     )
     known_qids = {**existing, **created_this_call}
 
     link_outcomes, linked, link_failed, unresolved = await _pass_two_link(
-        entities, local_id_to_source_uri, known_qids, writer=writer, dry_run=dry_run,
+        db, entities, local_id_to_source_uri, known_qids, writer=writer, dry_run=dry_run,
+        audit_ctx=audit_ctx,
     )
 
     return HmoItemUploadResult(
@@ -120,6 +134,7 @@ async def _pass_one_create(
     *,
     writer: Any | None,
     dry_run: bool,
+    audit_ctx: WikibaseAuditContext | None = None,
 ) -> tuple[list[HmoItemUploadOutcome], dict[str, str], int, int, int]:
     outcomes: list[HmoItemUploadOutcome] = []
     created_this_call: dict[str, str] = {}
@@ -134,6 +149,14 @@ async def _pass_one_create(
                 )
             )
             skipped += 1
+            if audit_ctx is not None and not dry_run:
+                await record_wikibase_write(
+                    db, audit_ctx,
+                    operation=OPERATION_SKIP,
+                    target_kind=TARGET_ITEM,
+                    target_key=entity.source_uri,
+                    wikibase_id=existing[entity.source_uri],
+                )
             continue
 
         if dry_run:
@@ -160,6 +183,14 @@ async def _pass_one_create(
                 )
             )
             failed += 1
+            if audit_ctx is not None:
+                await record_wikibase_write(
+                    db, audit_ctx,
+                    operation=OPERATION_FAILED,
+                    target_kind=TARGET_ITEM,
+                    target_key=entity.source_uri,
+                    outcome_message=result.message,
+                )
             continue
 
         await _record_instance_mapping(
@@ -176,17 +207,27 @@ async def _pass_one_create(
             )
         )
         created += 1
+        if audit_ctx is not None:
+            await record_wikibase_write(
+                db, audit_ctx,
+                operation=OPERATION_CREATE,
+                target_kind=TARGET_ITEM,
+                target_key=entity.source_uri,
+                wikibase_id=result.entity_id,
+            )
 
     return outcomes, created_this_call, created, skipped, failed
 
 
 async def _pass_two_link(
+    db: AsyncSession,
     entities: list[ResolvedWikibaseEntity],
     local_id_to_source_uri: dict[str, str],
     known_qids: dict[str, str],
     *,
     writer: Any | None,
     dry_run: bool,
+    audit_ctx: WikibaseAuditContext | None = None,
 ) -> tuple[list[HmoDeferredLinkOutcome], int, int, int]:
     outcomes: list[HmoDeferredLinkOutcome] = []
     linked = failed = unresolved = 0
@@ -226,6 +267,14 @@ async def _pass_two_link(
                     )
                 )
                 failed += 1
+                if audit_ctx is not None:
+                    await record_wikibase_write(
+                        db, audit_ctx,
+                        operation=OPERATION_FAILED,
+                        target_kind=TARGET_CLAIM,
+                        target_key=f"{source_qid}|{link.property_id}|{target_qid}",
+                        outcome_message=result.message,
+                    )
                 continue
             outcomes.append(
                 HmoDeferredLinkOutcome(
@@ -233,6 +282,14 @@ async def _pass_two_link(
                 )
             )
             linked += 1
+            if audit_ctx is not None:
+                await record_wikibase_write(
+                    db, audit_ctx,
+                    operation=OPERATION_CREATE,
+                    target_kind=TARGET_CLAIM,
+                    target_key=f"{source_qid}|{link.property_id}|{target_qid}",
+                    wikibase_id=source_qid,
+                )
 
     return outcomes, linked, failed, unresolved
 

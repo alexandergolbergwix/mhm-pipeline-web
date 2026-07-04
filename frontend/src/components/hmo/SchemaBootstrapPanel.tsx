@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import {
@@ -81,7 +80,7 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
     }
   }
 
-  const credsReady = !!status?.bot_username_set && !!status?.bot_password_set;
+  const wikibaseConfigured = !!status?.wikibase_configured;
   const fullyMapped =
     !!status &&
     status.mapped_classes === status.total_classes &&
@@ -127,18 +126,11 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
         </div>
       )}
 
-      {status && !credsReady && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-warn">
-            Add Wikibase bot credentials in Settings to run a live bootstrap
-            (previewing works without them):
-          </span>
-          <CredBadge ok={status.bot_username_set} label="bot username" />
-          <CredBadge ok={status.bot_password_set} label="bot password" />
-          <Link to="/settings" className="button-ghost text-xs">
-            Open Settings → Credentials
-          </Link>
-        </div>
+      {status && !wikibaseConfigured && (
+        <p className="text-xs text-warn">
+          Wikibase Cloud is not configured on this server — contact an admin to
+          enable live bootstrap (dry-run preview works without it).
+        </p>
       )}
 
       <div className="flex flex-wrap items-center gap-3 pt-1">
@@ -153,7 +145,7 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
         </label>
         <button
           onClick={doBootstrap}
-          disabled={busy || jobRunning || (!dryRun && (!credsReady || !runId))}
+          disabled={busy || jobRunning || (!dryRun && (!wikibaseConfigured || !runId))}
           className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}
         >
           {busy || jobRunning
@@ -164,7 +156,7 @@ export function SchemaBootstrapPanel({ runId }: SchemaBootstrapPanelProps) {
               ? "Preview bootstrap"
               : "Run schema bootstrap"}
         </button>
-        {!dryRun && credsReady && !runId && (
+        {!dryRun && wikibaseConfigured && !runId && (
           <span className="text-xs muted">
             Open this panel from a run to start a live bootstrap.
           </span>
@@ -270,16 +262,6 @@ function BootstrapResultSummary({ result }: { result: HmoSchemaBootstrapResult }
         </div>
       )}
     </div>
-  );
-}
-
-function CredBadge({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${
-      ok ? "text-biu-sky" : "text-danger"
-    }`}>
-      {ok ? "✓" : "⚠"} {label}
-    </GlassPill>
   );
 }
 

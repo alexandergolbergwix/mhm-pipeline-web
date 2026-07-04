@@ -25,7 +25,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,17 @@ from app.models.wikibase_entity_mapping import (
     ENTITY_KIND_PROPERTY,
     WikibaseEntityMapping,
 )
+from app.models.wikibase_cloud_write import (
+    OPERATION_CREATE,
+    OPERATION_FAILED,
+    OPERATION_SKIP,
+    TARGET_ITEM,
+    TARGET_PROPERTY,
+)
+from app.services.wikibase_audit import record_wikibase_write
+
+if TYPE_CHECKING:
+    from app.services.wikibase_audit import WikibaseAuditContext
 
 # Global (not per-run) state dir: the schema is one ontology, one
 # Wikibase instance. This is also the eval-agent boundary for the
@@ -85,6 +96,7 @@ async def bootstrap_schema(
     dry_run: bool,
     on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
+    audit_ctx: WikibaseAuditContext | None = None,
 ) -> SchemaBootstrapResult:
     """Create every missing HMO ontology class/property on the Wikibase Cloud.
 
@@ -127,6 +139,14 @@ async def bootstrap_schema(
                 SchemaBootstrapEntry(uri, kind, label, existing[uri], "skipped")
             )
             skipped += 1
+            if audit_ctx is not None and not dry_run:
+                await record_wikibase_write(
+                    db, audit_ctx,
+                    operation=OPERATION_SKIP,
+                    target_kind=_audit_target_kind(kind),
+                    target_key=uri,
+                    wikibase_id=existing[uri],
+                )
         elif dry_run:
             entries.append(SchemaBootstrapEntry(uri, kind, label, None, "would_create"))
             would_create += 1
@@ -139,6 +159,14 @@ async def bootstrap_schema(
                     SchemaBootstrapEntry(uri, kind, label, None, "failed", outcome.message)
                 )
                 failed += 1
+                if audit_ctx is not None:
+                    await record_wikibase_write(
+                        db, audit_ctx,
+                        operation=OPERATION_FAILED,
+                        target_kind=_audit_target_kind(kind),
+                        target_key=uri,
+                        outcome_message=outcome.message,
+                    )
                 logger.warning(
                     "Failed to create schema %s %s (%s): %s",
                     kind, label, uri, outcome.message,
@@ -152,6 +180,14 @@ async def bootstrap_schema(
                     SchemaBootstrapEntry(uri, kind, label, outcome.entity_id, "created")
                 )
                 created += 1
+                if audit_ctx is not None:
+                    await record_wikibase_write(
+                        db, audit_ctx,
+                        operation=OPERATION_CREATE,
+                        target_kind=_audit_target_kind(kind),
+                        target_key=uri,
+                        wikibase_id=outcome.entity_id,
+                    )
 
         if not dry_run and on_progress is not None:
             await on_progress(idx + 1, total, label)
@@ -182,6 +218,10 @@ async def schema_status(db: AsyncSession) -> SchemaStatusResult:
     )
 
 
+def _audit_target_kind(entity_kind: str) -> str:
+    return TARGET_PROPERTY if entity_kind == ENTITY_KIND_PROPERTY else TARGET_ITEM
+
+
 def _create_live(
     writer: Any,
     entity_kind: str,
@@ -204,9 +244,13 @@ def _create_live(
             descriptions={"en": description},
             datatype=datatype,
             aliases=alias_map,
+            summary=f"mhm-pipeline-web: bootstrap property {label}",
         )
     return writer.create_item(
-        labels=labels, descriptions={"en": description}, aliases=alias_map,
+        labels=labels,
+        descriptions={"en": description},
+        aliases=alias_map,
+        summary=f"mhm-pipeline-web: bootstrap class {label}",
     )
 
 

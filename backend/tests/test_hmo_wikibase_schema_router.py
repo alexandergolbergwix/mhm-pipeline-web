@@ -2,8 +2,8 @@
 (Phase 3 — see dev-docs/hmo-wikibase-studio-plan.md).
 
 Confirms: unauthenticated calls are rejected, dry-run never touches the
-writer (so it needs no credentials), and a live call without stored bot
-credentials is rejected with a friendly 400 pointing at Settings.
+writer (so it needs no credentials), and a live call without server OAuth
+is rejected with a 503 pointing at the deployment admin.
 """
 
 from __future__ import annotations
@@ -28,6 +28,17 @@ def _tiny_schema() -> OntologySchema:
 
 
 @pytest.fixture(autouse=True)
+def no_server_wikibase_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CI/dev shells may export Heroku OAuth vars — tests expect unconfigured."""
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_CLIENT_ID", "")
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET", "")
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN", "")
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def tiny_schema(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "converter.wikibase.ontology_schema_reader.read_hmo_schema", lambda: _tiny_schema()
@@ -49,8 +60,9 @@ async def test_status_reports_ontology_counts(auth_user) -> None:
     assert body["total_classes"] == 1
     assert body["total_properties"] == 0
     assert body["mapped_classes"] == 0
-    assert body["bot_username_set"] is False
-    assert body["bot_password_set"] is False
+    assert body["wikibase_configured"] is False
+    assert body["wikibase_base_url"] == "https://mhm-hmo.wikibase.cloud"
+    assert body["wikibase_write_user"] == "mhm-pipeline-web"
 
 
 @pytest.mark.asyncio
@@ -79,52 +91,37 @@ async def test_live_bootstrap_without_run_id_is_rejected(auth_user) -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_bootstrap_without_credentials_is_rejected(sample_run) -> None:
+async def test_live_bootstrap_without_server_oauth_is_rejected(sample_run) -> None:
     client = sample_run["client"]
     response = await client.post(
         "/api/hmo-wikibase-schema/bootstrap",
         json={"dry_run": False, "run_id": str(sample_run["run_id"])},
     )
-    assert response.status_code == 400
-    assert "wikibase_cloud_bot_username" in response.json()["detail"]
-    assert "wikibase_cloud_bot_password" in response.json()["detail"]
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_live_bootstrap_with_credentials_spawns_a_job(
+async def test_live_bootstrap_with_server_oauth_spawns_a_job(
     sample_run, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # This only checks the HTTP-response contract (job created, plaintext
-    # creds never echoed back) — never actually run the background task,
-    # which would make a real network call to mhm-hmo.wikibase.cloud.
     from app.pipeline import run_job_service
 
     monkeypatch.setattr(run_job_service, "spawn_job", lambda job_id: None)
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_CLIENT_ID", "test-client")
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET", "test-secret")
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
 
     client = sample_run["client"]
-    from app.services.wikibase_credentials import WikibaseCredentialVerifyResult
-
-    # Store via the real Settings endpoint so the wrapped secret's KEK
-    # matches what the session presents (prepare_job_params unwraps it).
-    monkeypatch.setattr(
-        "app.routers.api_keys.verify_wikibase_bot_credentials_sync",
-        lambda _creds: WikibaseCredentialVerifyResult(
-            ok=True, message="Login successful", login_name="bot@hmo",
-        ),
-    )
-    for key_name, value in (
-        ("wikibase_cloud_bot_username", "bot@hmo"),
-        ("wikibase_cloud_bot_password", "s3cret"),
-    ):
-        resp = await client.put(f"/api/me/api-keys/{key_name}", json={"value": value})
-        assert resp.status_code == 200, resp.text
-
     response = await client.post(
         "/api/hmo-wikibase-schema/bootstrap",
         json={"dry_run": False, "run_id": str(sample_run["run_id"])},
     )
+    get_settings.cache_clear()
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["kind"] == "hmo_schema_bootstrap"
     assert body["status"] in ("queued", "running", "succeeded", "failed")
-    assert "wikibase_cloud_bot_username" not in (body.get("params") or {})
+    assert "_wikibase_bot_username" not in (body.get("params") or {})

@@ -11,6 +11,8 @@ ontology file, one Wikibase Cloud instance — so this router has no
 Gated on ``current_auth`` only (any signed-in user), matching the
 ``/me/api-keys`` router's pattern for account-scoped rather than
 project-scoped operations — this endpoint has no project to scope to.
+
+Live writes use server-held OAuth (Heroku config), not per-user keys.
 """
 
 from __future__ import annotations
@@ -21,17 +23,17 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
-from app.models.api_key import ApiKey
 from app.models.run_job import JOB_KIND_HMO_SCHEMA_BOOTSTRAP
 from app.pipeline import hmo_schema_bootstrap as pipeline
 from app.pipeline.run_job_params import prepare_job_params
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.routers.runs import _lookup_run_with_access
+from app.services.wikibase_credentials import verify_server_wikibase_auth
+from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/hmo-wikibase-schema", tags=["hmo-wikibase-schema"])
@@ -43,8 +45,17 @@ class SchemaStatusResponse(BaseModel):
     mapped_classes: int
     mapped_properties: int
     missing_sample: list[str]
-    bot_username_set: bool
-    bot_password_set: bool
+    wikibase_configured: bool
+    wikibase_base_url: str
+    wikibase_write_user: str
+
+
+class WikibaseVerifyResponse(BaseModel):
+    ok: bool
+    message: str
+    base_url: str | None = None
+    api_username: str | None = None
+    write_user: str | None = None
 
 
 class SchemaBootstrapEntryDto(BaseModel):
@@ -69,9 +80,8 @@ class SchemaBootstrapRequest(BaseModel):
     dry_run: bool = Field(
         default=True,
         description="Default True — reports what would be created without "
-                    "writing. Set False for live; live also requires the "
-                    "user to have both wikibase_cloud_bot_username and "
-                    "wikibase_cloud_bot_password stored in Settings.",
+                    "writing. Set False for live; live requires server "
+                    "Wikibase Cloud OAuth to be configured.",
     )
     run_id: uuid.UUID | None = Field(
         default=None,
@@ -88,6 +98,7 @@ async def get_schema_status(
     db: AsyncSession = Depends(get_session),
 ) -> SchemaStatusResponse:
     """Ontology class/property counts vs. how many already have a live mapping."""
+    settings = get_settings()
     result = await pipeline.schema_status(db)
     return SchemaStatusResponse(
         total_classes=result.total_classes,
@@ -95,8 +106,26 @@ async def get_schema_status(
         mapped_classes=result.mapped_classes,
         mapped_properties=result.mapped_properties,
         missing_sample=result.missing_sample,
-        bot_username_set=await _has_user_secret(db, auth, "wikibase_cloud_bot_username"),
-        bot_password_set=await _has_user_secret(db, auth, "wikibase_cloud_bot_password"),
+        wikibase_configured=settings.wikibase_cloud_configured,
+        wikibase_base_url=settings.wikibase_cloud_base_url.strip()
+        or "https://mhm-hmo.wikibase.cloud",
+        wikibase_write_user=settings.wikibase_cloud_write_user.strip()
+        or "mhm-pipeline-web",
+    )
+
+
+@router.get("/verify", response_model=WikibaseVerifyResponse)
+async def verify_wikibase_connection(
+    auth: AuthContext = Depends(current_auth),  # noqa: ARG001 — gate
+) -> WikibaseVerifyResponse:
+    """Live smoke test: OAuth session, CSRF, and wiki username match."""
+    result = await verify_server_wikibase_auth()
+    return WikibaseVerifyResponse(
+        ok=result.ok,
+        message=result.message,
+        base_url=result.base_url,
+        api_username=result.api_username,
+        write_user=result.write_user,
     )
 
 
@@ -116,9 +145,9 @@ async def bootstrap_schema(
     (~380 today), comfortably over Heroku's 30s HTTP timeout — it spawns a
     ``run_jobs`` background job and returns ``{job_id, ...}`` right away;
     poll ``GET /runs/{run_id}/jobs/{job_id}`` (or subscribe to the
-    project's WebSocket room) for progress. Requires both bot username +
-    password in the user's encrypted-secret store, and a ``run_id`` to
-    anchor the job row to (the schema itself is global).
+    project's WebSocket room) for progress. Requires server Wikibase
+    Cloud OAuth and a ``run_id`` to anchor the job row to (the schema
+    itself is global).
     """
     if payload.dry_run:
         result = await pipeline.bootstrap_schema(db, writer=None, dry_run=True)
@@ -162,17 +191,3 @@ async def bootstrap_schema(
         ) from exc
     response.status_code = status.HTTP_201_CREATED
     return serialise_job(job)
-
-
-# ── Helpers (mirrors hmo_studio.py's credential-unwrap pattern) ─────────
-
-
-async def _has_user_secret(db: AsyncSession, auth: AuthContext, key_name: str) -> bool:
-    row = (
-        await db.execute(
-            select(ApiKey).where(
-                ApiKey.user_id == auth.user.id, ApiKey.key_name == key_name,
-            )
-        )
-    ).scalar_one_or_none()
-    return row is not None

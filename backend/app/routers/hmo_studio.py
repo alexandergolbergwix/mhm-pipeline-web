@@ -16,9 +16,9 @@ Endpoints, all under ``/api/runs/{run_id}/hmo-studio/``::
                                 schema (Phase 4) into real-PID/QID-shaped
                                 item drafts, cached per-run
 
-Bot credentials (username + password) are loaded from the calling
-user's encrypted-secret store; if either is missing the router responds
-``400`` with a friendly redirect to ``Settings → Credentials``.
+Bot credentials are no longer per-user — the server holds OAuth config
+(Heroku env vars). Live writes require ``wikibase_cloud_configured`` on
+the deployment; curators are attributed via ``wikibase_cloud_writes``.
 """
 
 from __future__ import annotations
@@ -29,16 +29,13 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
-from app.crypto import secrets as secrets_mod
 from app.db import get_session
-from app.models.api_key import ApiKey
 from app.models.event import (
     ENTITY_TYPE_WIKIBASE_ITEM,
     OP_CREATE,
@@ -52,19 +49,14 @@ from app.pipeline import hmo_item_upload
 from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.routers.runs import _lookup_run_with_access
+from app.services.wikibase_audit import WikibaseAuditContext
+from app.services.wikibase_credentials import build_server_wikibase_writer
+from app.settings import get_settings
 from app.versioning import apply_event
 from converter.wikibase.resolved_models import UnmappedOntologyUriError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["hmo-studio"])
-
-
-# Fallback bot login name (the second half of the ``User@Bot`` pair) for
-# users who haven't stored their own ``wikibase_cloud_bot_name``. Each
-# user picks this name themselves when creating a bot password at
-# https://mhm-hmo.wikibase.cloud/wiki/Special:BotPasswords — it does not
-# have to match this default, so it is read from Settings first.
-_DEFAULT_BOT_NAME = "mhm-pipeline"
 
 
 # ── Response models ────────────────────────────────────────────────────
@@ -106,17 +98,15 @@ class HmoStatus(BaseModel):
     coverage_present: bool
     last_upload_at: str | None
     last_upload: HmoUploadResponse | None
-    bot_username_set: bool
-    bot_password_set: bool
+    wikibase_configured: bool
 
 
 class HmoUploadRequest(BaseModel):
     dry_run: bool = Field(
         default=True,
         description="Default True — describes what would happen without "
-                    "writing. Set False for live; live also requires the "
-                    "user to have both wikibase_cloud_bot_username and "
-                    "wikibase_cloud_bot_password stored in Settings.",
+                    "writing. Set False for live; live requires server "
+                    "Wikibase Cloud OAuth to be configured.",
     )
 
 
@@ -155,9 +145,8 @@ class HmoItemUploadRequest(BaseModel):
     dry_run: bool = Field(
         default=True,
         description="Default True — describes what would happen without "
-                    "writing. Set False for live; live also requires the "
-                    "user to have both wikibase_cloud_bot_username and "
-                    "wikibase_cloud_bot_password stored in Settings.",
+                    "writing. Set False for live; live requires server "
+                    "Wikibase Cloud OAuth to be configured.",
     )
 
 
@@ -251,9 +240,8 @@ async def upload_manifests(
 ) -> HmoUploadResponse:
     """Upload generated manifests to the HMO Wikibase Cloud.
 
-    Live writes require both bot username + password in the user's
-    encrypted-secret store. Dry-run is allowed without credentials
-    (handy for previewing what would be sent).
+    Live writes require server-held Wikibase Cloud OAuth. Dry-run is
+    allowed without credentials (handy for previewing what would be sent).
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
@@ -267,30 +255,9 @@ async def upload_manifests(
             ),
         )
 
-    bot_username = await _unwrap_user_secret(
-        db, auth, "wikibase_cloud_bot_username",
-    )
-    bot_password = await _unwrap_user_secret(
-        db, auth, "wikibase_cloud_bot_password",
-    )
-
+    writer = None
     if not payload.dry_run:
-        missing = [
-            name for name, val in (
-                ("wikibase_cloud_bot_username", bot_username),
-                ("wikibase_cloud_bot_password", bot_password),
-            )
-            if not val
-        ]
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Add Wikibase bot credentials in Settings → "
-                    "Credentials, then retry. Missing: "
-                    + ", ".join(missing)
-                ),
-            )
+        writer = build_server_wikibase_writer()
 
     # Audit upload intent BEFORE the network call — one versioning event
     # per manifest the pipeline will try to write. We persist the audit
@@ -304,12 +271,23 @@ async def upload_manifests(
         dry_run=payload.dry_run,
     )
 
+    audit_ctx = None
+    if not payload.dry_run:
+        from app.models.wikibase_cloud_write import CHANNEL_MANIFEST_UPLOAD  # noqa: PLC0415
+
+        audit_ctx = WikibaseAuditContext(
+            actor_user_id=auth.user.id,
+            project_id=run.project_id,
+            run_id=run_id,
+            channel=CHANNEL_MANIFEST_UPLOAD,
+        )
+
     result = await hmo_pipeline.upload_manifests_for_run(
         manifest_dir=manifest_dir,
-        bot_username=bot_username or "",
-        bot_password=bot_password or "",
-        bot_name=await _resolve_bot_name(db, auth),
+        writer=writer,
         dry_run=payload.dry_run,
+        db=db,
+        audit_ctx=audit_ctx,
     )
 
     # Cache the report on disk so /status can surface "last upload" info.
@@ -446,48 +424,28 @@ async def upload_items(
 ) -> HmoItemUploadResponse:
     """Upload the run's most recent item build (create-only, two-pass).
 
-    Requires ``build-items`` to have run first. Live writes require both
-    bot username + password in the user's encrypted-secret store.
+    Requires ``build-items`` to have run first. Live writes require
+    server-held Wikibase Cloud OAuth.
     """
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     writer = None
+    audit_ctx = None
     if not payload.dry_run:
-        bot_username = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_username")
-        bot_password = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_password")
-        missing = [
-            name for name, val in (
-                ("wikibase_cloud_bot_username", bot_username),
-                ("wikibase_cloud_bot_password", bot_password),
-            )
-            if not val
-        ]
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Add Wikibase bot credentials in Settings → "
-                    "Credentials, then retry. Missing: " + ", ".join(missing)
-                ),
-            )
-        from converter.wikibase.cloud_client import (  # noqa: PLC0415
-            WikibaseBotCredentials,
-            WikibaseCloudClient,
-            WikibaseCloudWriter,
-        )
+        writer = build_server_wikibase_writer()
+        from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD  # noqa: PLC0415
 
-        writer = WikibaseCloudWriter(
-            WikibaseCloudClient.config_for_mhm_hmo_cloud(),
-            WikibaseBotCredentials(
-                username=bot_username or "",
-                bot_name=await _resolve_bot_name(db, auth),
-                password=bot_password or "",
-            ),
+        audit_ctx = WikibaseAuditContext(
+            actor_user_id=auth.user.id,
+            project_id=run.project_id,
+            run_id=run_id,
+            channel=CHANNEL_ITEM_UPLOAD,
         )
 
     try:
         result = await hmo_item_upload.upload_items_for_run(
             db, run_id, writer=writer, dry_run=payload.dry_run,
+            audit_ctx=audit_ctx,
         )
     except hmo_item_upload.ItemBuildMissingError as exc:
         raise HTTPException(
@@ -587,8 +545,7 @@ async def studio_status(
     else:
         state = "idle"
 
-    bot_username_set = await _has_user_secret(db, auth, "wikibase_cloud_bot_username")
-    bot_password_set = await _has_user_secret(db, auth, "wikibase_cloud_bot_password")
+    wikibase_configured = get_settings().wikibase_cloud_configured
 
     return HmoStatus(
         state=state,
@@ -597,8 +554,7 @@ async def studio_status(
         coverage_present=coverage_cache.exists(),
         last_upload_at=last_upload_at,
         last_upload=last_upload,
-        bot_username_set=bot_username_set,
-        bot_password_set=bot_password_set,
+        wikibase_configured=wikibase_configured,
     )
 
 
@@ -699,65 +655,3 @@ def _iso_mtime(path: Path) -> str:
 
     ts = path.stat().st_mtime
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
-
-
-async def _has_user_secret(
-    db: AsyncSession, auth: AuthContext, key_name: str,
-) -> bool:
-    """True iff the user has *anything* saved under *key_name*.
-
-    Does not unwrap — just checks for the row's presence so the Studio
-    UI can show "configured ✓" before the user attempts an upload.
-    """
-    row = (
-        await db.execute(
-            select(ApiKey).where(
-                ApiKey.user_id == auth.user.id, ApiKey.key_name == key_name,
-            )
-        )
-    ).scalar_one_or_none()
-    return row is not None
-
-
-async def _resolve_bot_name(db: AsyncSession, auth: AuthContext) -> str:
-    """The user's chosen bot name, falling back to ``_DEFAULT_BOT_NAME``.
-
-    Stored under ``wikibase_cloud_bot_name`` in Settings — must match the
-    name the user picked at ``Special:BotPasswords`` on their own account.
-    """
-    stored = await _unwrap_user_secret(db, auth, "wikibase_cloud_bot_name")
-    return stored or _DEFAULT_BOT_NAME
-
-
-async def _unwrap_user_secret(
-    db: AsyncSession, auth: AuthContext, key_name: str,
-) -> str | None:
-    """Unwrap the user's stored secret under *key_name* with the request's KEK.
-
-    Returns ``None`` when the user hasn't saved one (or unwrap fails —
-    e.g. KEK rotated). Mirrors the pattern in :mod:`ai_verifier`.
-    """
-    row = (
-        await db.execute(
-            select(ApiKey).where(
-                ApiKey.user_id == auth.user.id, ApiKey.key_name == key_name,
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        return None
-    try:
-        return secrets_mod.unwrap_secret(
-            secrets_mod.WrappedSecret(
-                ciphertext=row.ciphertext,
-                ciphertext_nonce=row.ciphertext_nonce,
-                dek_wrapped=row.dek_wrapped,
-                dek_wrap_nonce=row.dek_wrap_nonce,
-            ),
-            kek=auth.kek,
-        )
-    except InvalidTag:
-        logger.warning(
-            "Failed to unwrap %s for user %s", key_name, auth.user.id,
-        )
-        return None

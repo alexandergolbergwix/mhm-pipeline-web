@@ -78,8 +78,7 @@ export interface HmoStudioStatus {
   coverage_present: boolean;
   last_upload_at: string | null;
   last_upload: HmoUploadResult | null;
-  bot_username_set: boolean;
-  bot_password_set: boolean;
+  wikibase_configured: boolean;
 }
 
 // ── Phase 4/5: full item export + upload ──────────────────────────────

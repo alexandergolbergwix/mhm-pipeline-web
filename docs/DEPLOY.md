@@ -92,6 +92,10 @@ added for the public **request-access** flow (§2.2), is:
 | `HF_TOKEN` | HF token when `EXTRACTION_MODE=hf-api` | conditional |
 | `REDIS_URL` | Set automatically by Heroku Redis add-on; used as inference cache L1 | strongly recommended |
 | `RATELIMIT_STORAGE_URI` | Same value as `REDIS_URL`; used by `slowapi` for distributed rate limiting | strongly recommended |
+| `WIKIBASE_CLOUD_OAUTH_CLIENT_ID` | OAuth 2.0 consumer key for `mhm-hmo.wikibase.cloud` live writes | yes (for HMO Studio live upload) |
+| `WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET` | OAuth 2.0 consumer secret | yes (for HMO Studio live upload) |
+| `WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN` | Pre-issued JWT access token (optional if client id+secret suffice) | optional |
+| `WIKIBASE_CLOUD_BASE_URL` | Wikibase Cloud instance URL (default `https://mhm-hmo.wikibase.cloud`) | optional |
 
 ### 2.1 — Extraction backend (Modal vs local vs HF)
 
@@ -125,6 +129,28 @@ cd modal && modal deploy modal_app.py
 ```
 The deploy prints the URL to set as `MODAL_NER_URL`. See
 `modal/README.md` and `.claude/commands/deploy-modal.md` for details.
+
+### 2.1.1 — Wikibase Cloud OAuth (HMO Studio live writes)
+
+HMO Studio manifest/item uploads and the global schema bootstrap write
+to `mhm-hmo.wikibase.cloud` using **server-held OAuth 2.0** — not
+per-user Settings keys. Create an OAuth consumer on the Wikibase Cloud
+instance (owner account → Preferences → Consumer registration), grant
+`basic`, `highvolume`, `editpage`, and `createeditmovepage`, then:
+
+```bash
+heroku config:set --app "$APP" \
+    WIKIBASE_CLOUD_OAUTH_CLIENT_ID="..." \
+    WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET="..." \
+    WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN="..." \
+    WIKIBASE_CLOUD_BASE_URL="https://mhm-hmo.wikibase.cloud"
+```
+
+`WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN` is optional when client id + secret
+suffice for WikibaseIntegrator login. After deploy, confirm
+`GET /api/hmo-wikibase-schema/status` returns `"wikibase_configured": true`.
+Every live write is attributed to the clicking curator in the
+`wikibase_cloud_writes` Postgres audit table (not in wiki edit summaries).
 
 ### 2.2 — Spam protection setup (request-access flow)
 

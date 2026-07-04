@@ -51,7 +51,7 @@ async def test_dry_run_upload_needs_no_credentials(sample_run, db_session) -> No
 
 
 @pytest.mark.asyncio
-async def test_live_upload_without_credentials_is_rejected(sample_run, db_session) -> None:
+async def test_live_upload_without_server_oauth_is_rejected(sample_run, db_session) -> None:
     run_id = sample_run["run_id"]
     db_session.add(
         HmoStudioItemCache(
@@ -63,8 +63,8 @@ async def test_live_upload_without_credentials_is_rejected(sample_run, db_sessio
     response = await sample_run["client"].post(
         f"/api/runs/{run_id}/hmo-studio/upload-items", json={"dry_run": False}
     )
-    assert response.status_code == 400
-    assert "wikibase_cloud_bot_username" in response.json()["detail"]
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio

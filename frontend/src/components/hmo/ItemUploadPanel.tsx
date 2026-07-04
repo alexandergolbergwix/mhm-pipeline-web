@@ -6,7 +6,7 @@ import { Glass, GlassPill } from "@/components/glass";
 
 interface ItemUploadPanelProps {
   runId: string;
-  credsReady: boolean;
+  wikibaseConfigured: boolean;
   /** Bump this to force a status refresh after a sibling ItemBuildPanel builds. */
   refreshToken?: unknown;
 }
@@ -15,7 +15,7 @@ interface ItemUploadPanelProps {
  * Phase 5: create-only, two-pass upload of the run's most recent item
  * build. Disabled until a build exists.
  */
-export function ItemUploadPanel({ runId, credsReady, refreshToken }: ItemUploadPanelProps) {
+export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: ItemUploadPanelProps) {
   const [status, setStatus] = useState<HmoItemStatus | null>(null);
   const [result, setResult] = useState<HmoItemUploadResult | null>(null);
   const [dryRun, setDryRun] = useState(true);
@@ -81,7 +81,7 @@ export function ItemUploadPanel({ runId, credsReady, refreshToken }: ItemUploadP
         </label>
         <button
           onClick={doUpload}
-          disabled={busy || !canUpload || (!dryRun && !credsReady)}
+          disabled={busy || !canUpload || (!dryRun && !wikibaseConfigured)}
           className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}
         >
           {busy
@@ -92,9 +92,9 @@ export function ItemUploadPanel({ runId, credsReady, refreshToken }: ItemUploadP
               ? "Preview upload"
               : "Upload items"}
         </button>
-        {!dryRun && !credsReady && (
-          <span className="text-xs muted">
-            Add Wikibase bot credentials in Settings first.
+        {!dryRun && !wikibaseConfigured && (
+          <span className="text-xs text-warn">
+            Wikibase Cloud is not configured on this server — contact an admin.
           </span>
         )}
       </div>

@@ -60,6 +60,7 @@ from app.models.wikibase_entity_mapping import (
     ENTITY_KIND_PROPERTY,
     WikibaseEntityMapping,
 )
+from app.models.wikibase_cloud_write import WikibaseCloudWrite
 from app.models.wikidata_studio_cache import WikidataStudioCache
 
 __all__ = [
@@ -116,4 +117,5 @@ __all__ = [
     "Session",
     "User",
     "WikibaseEntityMapping",
+    "WikibaseCloudWrite",
 ]

@@ -48,6 +48,25 @@ class Settings(BaseSettings):
     # Leave empty to disable the Wikibase data source in the explorer UI.
     wikibase_sparql_url: str = Field(default="")
 
+    # ── HMO Wikibase Cloud (server-held OAuth 2.0) ────────────────────
+    wikibase_cloud_base_url: str = Field(default="https://mhm-hmo.wikibase.cloud")
+    wikibase_cloud_oauth_client_id: str = Field(default="")
+    wikibase_cloud_oauth_client_secret: str = Field(default="")
+    # Optional JWT from Special:OAuthConsumerRegistration — when set,
+    # used as Bearer auth for both WBI entity writes and MediaWiki edits.
+    wikibase_cloud_oauth_access_token: str = Field(default="")
+    # Prefix for every edit summary / revision attribution on the wiki.
+    wikibase_cloud_write_user: str = Field(default="mhm-pipeline-web")
+
+    @property
+    def wikibase_cloud_configured(self) -> bool:
+        if self.wikibase_cloud_oauth_access_token.strip():
+            return True
+        return bool(
+            self.wikibase_cloud_oauth_client_id.strip()
+            and self.wikibase_cloud_oauth_client_secret.strip()
+        )
+
     # ── Registration / spam protection ────────────────────────────────
     resend_api_key: str = Field(default="")
     resend_from_email: str = Field(default="MHM Pipeline <noreply@example.org>")

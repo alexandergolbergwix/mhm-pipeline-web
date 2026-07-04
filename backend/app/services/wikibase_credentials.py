@@ -1,105 +1,120 @@
-"""Resolve and verify per-user Wikibase Cloud bot credentials."""
+"""Server-held Wikibase Cloud OAuth credentials (Heroku config vars)."""
 
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException, status
 
-from app.auth.session import AuthContext
+from app.settings import get_settings
 from converter.wikibase.cloud_client import (
-    WikibaseBotCredentials,
+    WikibaseCloudAuth,
     WikibaseCloudWriter,
+    WikibaseEndpointConfig,
+    wikibase_edit_summary,
 )
-
-_DEFAULT_BOT_NAME = "mhm-pipeline"
 
 
 @dataclass(frozen=True)
-class WikibaseCredentialVerifyResult:
+class WikibaseAuthVerifyResult:
     ok: bool
     message: str
-    login_name: str | None = None
+    base_url: str | None = None
+    api_username: str | None = None
+    write_user: str | None = None
 
 
-async def resolve_wikibase_bot_credentials(
-    db: AsyncSession,
-    auth: AuthContext,
-    *,
-    username: str | None = None,
-    bot_name: str | None = None,
-    password: str | None = None,
-) -> WikibaseBotCredentials | None:
-    """Build a credential tuple from overrides plus stored Settings values."""
-    from app.routers.hmo_studio import _resolve_bot_name, _unwrap_user_secret  # noqa: PLC0415
-
-    resolved_username = username or await _unwrap_user_secret(
-        db, auth, "wikibase_cloud_bot_username",
-    )
-    resolved_password = password or await _unwrap_user_secret(
-        db, auth, "wikibase_cloud_bot_password",
-    )
-    if not resolved_username or not resolved_password:
+def get_server_wikibase_auth() -> WikibaseCloudAuth | None:
+    """Return server OAuth config when sufficiently complete, else ``None``."""
+    settings = get_settings()
+    if not settings.wikibase_cloud_configured:
         return None
-
-    if bot_name is not None:
-        resolved_bot_name = bot_name.strip() or _DEFAULT_BOT_NAME
-    else:
-        resolved_bot_name = await _resolve_bot_name(db, auth)
-
-    return WikibaseBotCredentials(
-        username=resolved_username.strip(),
-        bot_name=resolved_bot_name.strip(),
-        password=resolved_password,
+    access_token = settings.wikibase_cloud_oauth_access_token.strip() or None
+    return WikibaseCloudAuth(
+        mode="oauth2",
+        client_id=settings.wikibase_cloud_oauth_client_id.strip(),
+        client_secret=settings.wikibase_cloud_oauth_client_secret.strip(),
+        access_token=access_token,
     )
 
 
-def verify_wikibase_bot_credentials_sync(
-    credentials: WikibaseBotCredentials,
-) -> WikibaseCredentialVerifyResult:
-    """Log in to mhm-hmo.wikibase.cloud with the given bot password."""
-    if "@" in credentials.username:
-        return WikibaseCredentialVerifyResult(
-            ok=False,
-            message=(
-                "Username should be your account name only — not User@BotName. "
-                "Put the bot name in the separate Wikibase Cloud bot name field."
+def server_wikibase_endpoint_config() -> WikibaseEndpointConfig:
+    settings = get_settings()
+    base_url = settings.wikibase_cloud_base_url.strip() or "https://mhm-hmo.wikibase.cloud"
+    return WikibaseEndpointConfig(base_url=base_url, display_name="MHM HMO Wikibase")
+
+
+def build_server_wikibase_writer() -> WikibaseCloudWriter:
+    auth = get_server_wikibase_auth()
+    if auth is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Wikibase Cloud is not configured on this server. "
+                "Set WIKIBASE_CLOUD_OAUTH_CLIENT_ID and "
+                "WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET (or "
+                "WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN) in the deployment config."
             ),
         )
-
-    writer = WikibaseCloudWriter.for_mhm_hmo_cloud(credentials)
-    try:
-        writer.login()
-    except RuntimeError as exc:
-        message = str(exc)
-        prefix = "Login failed ("
-        if message.startswith(prefix) and message.endswith(")"):
-            message = message[len(prefix):-1]
-        return WikibaseCredentialVerifyResult(ok=False, message=message)
-
-    return WikibaseCredentialVerifyResult(
-        ok=True,
-        message="Login successful",
-        login_name=credentials.login_name,
+    settings = get_settings()
+    write_user = settings.wikibase_cloud_write_user.strip() or "mhm-pipeline-web"
+    return WikibaseCloudWriter(
+        server_wikibase_endpoint_config(),
+        auth,
+        user_agent=f"{write_user}/1.0 (MHM Pipeline Web)",
     )
 
 
-async def verify_wikibase_bot_credentials(
-    db: AsyncSession,
-    auth: AuthContext,
-    *,
-    username: str | None = None,
-    bot_name: str | None = None,
-    password: str | None = None,
-) -> WikibaseCredentialVerifyResult:
-    """Resolve stored/overridden credentials and verify them against Wikibase."""
-    credentials = await resolve_wikibase_bot_credentials(
-        db, auth, username=username, bot_name=bot_name, password=password,
-    )
-    if credentials is None:
-        return WikibaseCredentialVerifyResult(
+def verify_server_wikibase_auth_sync(
+    auth: WikibaseCloudAuth | None = None,
+) -> WikibaseAuthVerifyResult:
+    """Smoke-test server OAuth against the configured Wikibase Cloud."""
+    resolved = auth or get_server_wikibase_auth()
+    if resolved is None:
+        return WikibaseAuthVerifyResult(
             ok=False,
-            message="Set Wikibase Cloud bot username and password first.",
+            message="Wikibase Cloud OAuth is not configured on this server.",
         )
-    return await asyncio.to_thread(verify_wikibase_bot_credentials_sync, credentials)
+    settings = get_settings()
+    config = server_wikibase_endpoint_config()
+    write_user = settings.wikibase_cloud_write_user.strip() or "mhm-pipeline-web"
+    writer = WikibaseCloudWriter(
+        config,
+        resolved,
+        user_agent=f"{write_user}/1.0 (MHM Pipeline Web)",
+    )
+    try:
+        writer.ensure_authenticated()
+        writer._get_csrf_token()  # noqa: SLF001 — integration smoke test
+        api_username = writer.current_api_user()
+    except RuntimeError as exc:
+        return WikibaseAuthVerifyResult(
+            ok=False,
+            message=str(exc),
+            base_url=config.base_url,
+            write_user=write_user,
+        )
+    if api_username != write_user:
+        return WikibaseAuthVerifyResult(
+            ok=False,
+            message=(
+                f"OAuth session is user {api_username!r}, expected "
+                f"{write_user!r}. Re-register the OAuth consumer under the "
+                f"{write_user} wiki account on {config.base_url}."
+            ),
+            base_url=config.base_url,
+            api_username=api_username,
+            write_user=write_user,
+        )
+    return WikibaseAuthVerifyResult(
+        ok=True,
+        message=f"Connected to {config.base_url} as {api_username}",
+        base_url=config.base_url,
+        api_username=api_username,
+        write_user=write_user,
+    )
+
+
+async def verify_server_wikibase_auth() -> WikibaseAuthVerifyResult:
+    return await asyncio.to_thread(verify_server_wikibase_auth_sync)

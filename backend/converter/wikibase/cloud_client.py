@@ -3,20 +3,10 @@
 The :class:`WikibaseCloudClient` is read-only and used by the HMO Wikibase
 preview panel for siteinfo checks.
 
-The :class:`WikibaseCloudWriter` (added 2026-05-17 for Phase 3 / Rule 45)
-is the authenticated companion that writes IIIF manifest JSON pages to
-``mhm-hmo.wikibase.cloud`` under the ``IIIF:`` namespace. It is a
-**separate** class so the read-only surface stays unambiguous. The
-writer:
-
-* enforces ``assert=bot`` on every edit
-* is idempotent (reads existing wikitext first, skips identical content)
-* retries on transient HTTP errors with exponential backoff capped at 30s
-* redacts the bot password from ``__repr__``
-
-Credentials are passed via :class:`WikibaseBotCredentials` and stored
-via ``SettingsManager`` (OS keychain on macOS, Credential Manager on
-Windows) — never on disk in plaintext.
+The :class:`WikibaseCloudWriter` is the authenticated companion that writes
+IIIF manifest JSON pages and Wikibase entities on ``mhm-hmo.wikibase.cloud``.
+Production auth uses server-held OAuth 2.0 (Heroku config vars); the legacy
+:class:`WikibaseBotCredentials` bot-password path remains for unit tests.
 """
 
 from __future__ import annotations
@@ -25,11 +15,17 @@ import hashlib
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import requests
 
 _DEFAULT_HMO_WIKIBASE_URL = "https://mhm-hmo.wikibase.cloud"
+DEFAULT_WIKIBASE_WRITE_USER = "mhm-pipeline-web"
+
+
+def wikibase_edit_summary(detail: str, *, write_user: str = DEFAULT_WIKIBASE_WRITE_USER) -> str:
+    """Standard edit-summary prefix so wiki history shows mhm-pipeline-web."""
+    return f"{write_user}: {detail}"
 
 
 @dataclass(frozen=True)
@@ -182,6 +178,22 @@ def _api_error_message(payload: Mapping[object, object]) -> str | None:
 
 
 @dataclass(frozen=True)
+class WikibaseCloudAuth:
+    """Server-held OAuth 2.0 credentials for Wikibase Cloud writes."""
+
+    mode: Literal["oauth2"]
+    client_id: str
+    client_secret: str
+    access_token: str | None = None
+
+    def __repr__(self) -> str:  # pragma: no cover - trivial
+        return (
+            f"WikibaseCloudAuth(mode={self.mode!r}, "
+            f"client_id={self.client_id!r}, access_token={'<set>' if self.access_token else None})"
+        )
+
+
+@dataclass(frozen=True)
 class WikibaseBotCredentials:
     """Bot password tuple issued by ``Special:BotPasswords``.
 
@@ -230,21 +242,7 @@ class EntityEditOutcome:
 
 
 class WikibaseCloudWriter:
-    """Authenticated MediaWiki API writer for ``mhm-hmo.wikibase.cloud``.
-
-    This class never writes to ``wikidata.org`` (that is the
-    :class:`WikidataUploader`'s domain, governed by Rules 25 and 38).
-    The Wikibase Cloud is a separate trust boundary used for hosting
-    IIIF manifest pages and (later) HMO Wikibase items.
-
-    Safety properties:
-
-    * ``assert=bot`` on every edit — refuses if the session is not bot-flagged
-    * idempotent — reads existing wikitext first; skips on SHA-256 match
-    * retries on transient failures up to 6 times with exponential backoff
-      (capped at 30 seconds)
-    * never writes credentials to logs or ``__repr__``
-    """
+    """Authenticated MediaWiki API writer for a Wikibase Cloud instance."""
 
     _MAX_RETRIES = 6
     _BASE_BACKOFF_SECONDS = 1.0
@@ -253,39 +251,40 @@ class WikibaseCloudWriter:
     def __init__(
         self,
         config: WikibaseEndpointConfig,
-        credentials: WikibaseBotCredentials,
+        auth: WikibaseCloudAuth | WikibaseBotCredentials,
         *,
         session: requests.Session | None = None,
         timeout: float = 30.0,
         user_agent: str = "MHMPipeline/1.0 (https://github.com/alexandergolbergwix/pipeline)",
     ) -> None:
         self._config = config
-        self._credentials = credentials
+        self._auth = auth
         self._session = session or requests.Session()
         self._session.headers["User-Agent"] = user_agent
         self._timeout = timeout
         self._user_agent = user_agent
         self._csrf_token: str | None = None
         self._logged_in = False
-        self._wbi: Any | None = None  # lazily-built WikibaseIntegrator instance
+        self._wbi: Any | None = None
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
-        return (
-            f"WikibaseCloudWriter(base_url={self._config.base_url!r}, "
-            f"username={self._credentials.username!r}, password='<REDACTED>')"
-        )
+        return f"WikibaseCloudWriter(base_url={self._config.base_url!r}, auth={self._auth!r})"
+
+    @property
+    def uses_oauth(self) -> bool:
+        return isinstance(self._auth, WikibaseCloudAuth)
 
     @classmethod
     def for_mhm_hmo_cloud(
         cls,
-        credentials: WikibaseBotCredentials,
+        auth: WikibaseCloudAuth | WikibaseBotCredentials,
         *,
         timeout: float = 30.0,
     ) -> WikibaseCloudWriter:
         """Build a writer pointed at the default MHM HMO Wikibase Cloud."""
         return cls(
             WikibaseCloudClient.config_for_mhm_hmo_cloud(),
-            credentials,
+            auth,
             timeout=timeout,
         )
 
@@ -302,12 +301,41 @@ class WikibaseCloudWriter:
 
     # ── Auth ─────────────────────────────────────────────────────────
 
-    def login(self) -> None:
-        """Perform the two-step MediaWiki login.
+    def ensure_authenticated(self) -> None:
+        """Establish an authenticated session (OAuth bearer or bot login)."""
+        if self._logged_in:
+            return
+        if isinstance(self._auth, WikibaseCloudAuth):
+            if self._auth.access_token:
+                self._session.headers["Authorization"] = f"Bearer {self._auth.access_token}"
+                self._logged_in = True
+                return
+            self._init_wbi()
+            self._logged_in = True
+            return
+        self.login()
 
-        Raises:
-            RuntimeError: on any auth failure.
-        """
+    def current_api_user(self) -> str:
+        """Return the MediaWiki username for the active OAuth/bot session."""
+        self.ensure_authenticated()
+        payload = self._post_with_retry({
+            "action": "query",
+            "meta": "userinfo",
+            "uiprop": "name",
+            "format": "json",
+        })
+        userinfo = _nested_mapping(payload, "query", "userinfo")
+        name = _string_value(userinfo or {}, "name")
+        if not name:
+            raise RuntimeError(f"userinfo missing name in {payload!r}")
+        return name
+
+    def login(self) -> None:
+        """Perform bot-password MediaWiki login (legacy / tests only)."""
+        if not isinstance(self._auth, WikibaseBotCredentials):
+            self.ensure_authenticated()
+            return
+
         login_token_payload = self._post_with_retry(
             {
                 "action": "query",
@@ -324,8 +352,8 @@ class WikibaseCloudWriter:
         result = self._post_with_retry(
             {
                 "action": "login",
-                "lgname": self._credentials.login_name,
-                "lgpassword": self._credentials.password,
+                "lgname": self._auth.login_name,
+                "lgpassword": self._auth.password,
                 "lgtoken": login_token,
                 "format": "json",
             }
@@ -343,8 +371,7 @@ class WikibaseCloudWriter:
         """Return a cached CSRF token, fetching/refreshing if needed."""
         if self._csrf_token is not None:
             return self._csrf_token
-        if not self._logged_in:
-            self.login()
+        self.ensure_authenticated()
         payload = self._post_with_retry(
             {
                 "action": "query",
@@ -425,11 +452,12 @@ class WikibaseCloudWriter:
             "text": body,
             "summary": summary,
             "token": token,
-            "bot": "1",
             "contentmodel": content_model,
             "format": "json",
-            "assert": "bot",
         }
+        if isinstance(self._auth, WikibaseBotCredentials):
+            params["bot"] = "1"
+            params["assert"] = "bot"
         result = self._post_with_retry(params)
 
         # Stale CSRF? refresh once and retry.
@@ -505,12 +533,32 @@ class WikibaseCloudWriter:
         wbi_config["BACKOFF_MAX_TRIES"] = self._MAX_RETRIES
         wbi_config["BACKOFF_MAX_VALUE"] = int(self._MAX_BACKOFF_SECONDS)
 
-        login = wbi_login.Login(
-            user=self._credentials.login_name,
-            password=self._credentials.password,
-            mediawiki_api_url=self._config.api_url,
-            user_agent=self._user_agent,
-        )
+        if isinstance(self._auth, WikibaseCloudAuth):
+            if self._auth.access_token:
+                oauth_session = requests.Session()
+                oauth_session.headers.update({
+                    "Authorization": f"Bearer {self._auth.access_token}",
+                    "User-Agent": self._user_agent,
+                })
+                login = wbi_login._Login(  # noqa: SLF001
+                    session=oauth_session,
+                    mediawiki_api_url=self._config.api_url,
+                    user_agent=self._user_agent,
+                )
+            else:
+                login = wbi_login.OAuth2(
+                    consumer_token=self._auth.client_id,
+                    consumer_secret=self._auth.client_secret,
+                    mediawiki_api_url=self._config.api_url,
+                    user_agent=self._user_agent,
+                )
+        else:
+            login = wbi_login.Login(
+                user=self._auth.login_name,
+                password=self._auth.password,
+                mediawiki_api_url=self._config.api_url,
+                user_agent=self._user_agent,
+            )
         self._wbi = WikibaseIntegrator(login=login)
         return self._wbi
 
@@ -558,7 +606,12 @@ class WikibaseCloudWriter:
             for claim in claims:
                 entity.claims.add(claim)
         try:
-            written = entity.write(summary=summary or None, bot=True)
+            write_kwargs: dict[str, Any] = {
+                "summary": summary or wikibase_edit_summary("entity write"),
+            }
+            if isinstance(self._auth, WikibaseBotCredentials):
+                write_kwargs["bot"] = True
+            written = entity.write(**write_kwargs)
         except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
             return EntityEditOutcome(
                 entity_id=None, status="failed", message=str(exc), page_url=None
@@ -583,7 +636,12 @@ class WikibaseCloudWriter:
         try:
             entity = self._get_wbi_entity(entity_id)
             entity.claims.add(claim)
-            written = entity.write(summary=summary or None, bot=True)
+            write_kwargs: dict[str, Any] = {
+                "summary": summary or wikibase_edit_summary("add claim"),
+            }
+            if isinstance(self._auth, WikibaseBotCredentials):
+                write_kwargs["bot"] = True
+            written = entity.write(**write_kwargs)
         except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
             return EntityEditOutcome(
                 entity_id=entity_id,

@@ -15,11 +15,9 @@ from app.db import session_scope
 from app.models.run_job import JOB_STATUS_CANCELLED, JOB_STATUS_FAILED, JOB_STATUS_SUCCEEDED, RunJob
 from app.pipeline import hmo_schema_bootstrap as pipeline
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
-
-# Fallback only — normally overridden by the user's own
-# ``wikibase_cloud_bot_name`` Settings value (see run_job_params.py),
-# since each user picks their own bot name at Special:BotPasswords.
-_DEFAULT_BOT_NAME = "mhm-pipeline"
+from app.models.wikibase_cloud_write import CHANNEL_SCHEMA_BOOTSTRAP
+from app.services.wikibase_audit import WikibaseAuditContext
+from app.services.wikibase_credentials import build_server_wikibase_writer
 
 
 async def run_hmo_schema_bootstrap_job(job_id: uuid.UUID) -> None:
@@ -27,30 +25,18 @@ async def run_hmo_schema_bootstrap_job(job_id: uuid.UUID) -> None:
         job = await db.get(RunJob, job_id)
         if job is None:
             return
-        params = job.params or {}
-        bot_username = str(params.get("_wikibase_bot_username") or "")
-        bot_password = str(params.get("_wikibase_bot_password") or "")
-        bot_name = str(params.get("_wikibase_bot_name") or _DEFAULT_BOT_NAME)
+        actor_user_id = job.created_by
+        project_id = job.project_id
+        run_id = job.run_id
 
-    if not bot_username or not bot_password:
+    try:
+        writer = build_server_wikibase_writer()
+    except Exception as exc:  # noqa: BLE001
         await finish_job(
             job_id, status=JOB_STATUS_FAILED,
-            error="Missing Wikibase bot credentials for live bootstrap.",
+            error=str(getattr(exc, "detail", exc)),
         )
         return
-
-    from converter.wikibase.cloud_client import (  # noqa: PLC0415
-        WikibaseBotCredentials,
-        WikibaseCloudClient,
-        WikibaseCloudWriter,
-    )
-
-    writer = WikibaseCloudWriter(
-        WikibaseCloudClient.config_for_mhm_hmo_cloud(),
-        WikibaseBotCredentials(
-            username=bot_username, bot_name=bot_name, password=bot_password,
-        ),
-    )
 
     await update_job_progress(job_id, {
         "phase": "running", "processed": 0, "total": 0,
@@ -58,6 +44,13 @@ async def run_hmo_schema_bootstrap_job(job_id: uuid.UUID) -> None:
     })
 
     last_seen_total = 0
+    audit_ctx = WikibaseAuditContext(
+        actor_user_id=actor_user_id,
+        project_id=project_id,
+        run_id=run_id,
+        job_id=job_id,
+        channel=CHANNEL_SCHEMA_BOOTSTRAP,
+    )
 
     async def on_progress(processed: int, total: int, message: str) -> None:
         nonlocal last_seen_total
@@ -74,6 +67,7 @@ async def run_hmo_schema_bootstrap_job(job_id: uuid.UUID) -> None:
         result = await pipeline.bootstrap_schema(
             db, writer=writer, dry_run=False,
             on_progress=on_progress, should_cancel=should_cancel,
+            audit_ctx=audit_ctx,
         )
 
     pipeline.cache_schema_bootstrap_report(result)
