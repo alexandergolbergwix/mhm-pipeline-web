@@ -1,8 +1,13 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Layout } from "@/components/Layout";
 import { api, ApiError } from "@/api/client";
-import { ApiKeys, type ApiKeyName, type ApiKeyStatus } from "@/api/apiKeys";
+import {
+  ApiKeys,
+  type ApiKeyName,
+  type ApiKeyStatus,
+  WIKIBASE_CLOUD_KEY_NAMES,
+} from "@/api/apiKeys";
 import {Glass, GlassPill} from "@/components/glass";
 import {ThemeToggle} from "@/components/ThemeToggle";
 import {useAuth} from "@/stores/auth";
@@ -26,11 +31,11 @@ const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
   },
   wikibase_cloud_bot_username: {
     label: "Wikibase Cloud bot username",
-    hint: "Your account name on mhm-hmo.wikibase.cloud (without the @bot suffix).",
+    hint: "Your Wikibase account name only — not User@BotName (e.g. \"Alex\" not \"Alex@mhm-pipeline\").",
   },
   wikibase_cloud_bot_password: {
     label: "Wikibase Cloud bot password",
-    hint: "Bot password from Special:BotPasswords on mhm-hmo.wikibase.cloud — IIIF manifest publishing.",
+    hint: "Bot password from Special:BotPasswords on mhm-hmo.wikibase.cloud. Saved only after a live login test succeeds.",
   },
   huggingface: {
     label: "Hugging Face token",
@@ -47,9 +52,18 @@ const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
 
 
 export default function Settings() {
-  const { user } = useAuth();
+  const {user} = useAuth();
   const [keys, setKeys] = useState<ApiKeyStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const wikibaseKeys = useMemo(
+    () => keys?.filter((k) => WIKIBASE_CLOUD_KEY_NAMES.includes(k.name)) ?? [],
+    [keys],
+  );
+  const otherKeys = useMemo(
+    () => keys?.filter((k) => !WIKIBASE_CLOUD_KEY_NAMES.includes(k.name)) ?? [],
+    [keys],
+  );
 
   async function refresh() {
     try { setKeys(await ApiKeys.list()); }
@@ -97,7 +111,15 @@ export default function Settings() {
           {error && <p className="text-danger text-sm">{error}</p>}
           {keys === null && <p className="muted">Loading…</p>}
 
-          {keys?.map((k) => (
+          {wikibaseKeys.length > 0 && (
+            <WikibaseCloudCredentialsSection
+              keys={wikibaseKeys}
+              onChanged={refresh}
+              setError={setError}
+            />
+          )}
+
+          {otherKeys.map((k) => (
             <ApiKeyRow key={k.name} status={k} onChanged={refresh} setError={setError} />
           ))}
         </Glass>
@@ -157,6 +179,94 @@ function PasswordChangeSection() {
         </button>
       </form>
     </Glass>
+  );
+}
+
+
+function WikibaseCloudCredentialsSection({
+  keys,
+  onChanged,
+  setError,
+}: {
+  keys: ApiKeyStatus[];
+  onChanged: () => Promise<void>;
+  setError: (s: string | null) => void;
+}) {
+  const byName = useMemo(
+    () => Object.fromEntries(keys.map((k) => [k.name, k])) as Record<ApiKeyName, ApiKeyStatus>,
+    [keys],
+  );
+  const usernameSet = byName.wikibase_cloud_bot_username?.set ?? false;
+  const passwordSet = byName.wikibase_cloud_bot_password?.set ?? false;
+  const canTest = usernameSet && passwordSet;
+  const [testing, setTesting] = useState(false);
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [testOk, setTestOk] = useState<boolean | null>(null);
+
+  async function testLogin() {
+    setTesting(true);
+    setError(null);
+    setTestMessage(null);
+    setTestOk(null);
+    try {
+      const result = await ApiKeys.verifyWikibaseCloud();
+      setTestOk(result.ok);
+      setTestMessage(
+        result.ok && result.login_name
+          ? `${result.message} (${result.login_name})`
+          : result.message,
+      );
+    } catch (err) {
+      setTestOk(false);
+      setTestMessage(err instanceof ApiError ? err.detail : "Login test failed");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div className="border border-white/10 rounded-xl p-4 space-y-3 bg-white/[0.02]">
+      <div className="space-y-1">
+        <p className="font-medium">Wikibase Cloud bot login</p>
+        <p className="muted text-xs leading-relaxed">
+          Used for HMO Studio uploads and schema bootstrap on mhm-hmo.wikibase.cloud.
+          When username and password are both set, saving either one runs a live login
+          test — bad credentials are rejected before they are stored.
+        </p>
+      </div>
+
+      {WIKIBASE_CLOUD_KEY_NAMES.map((name) => {
+        const status = byName[name];
+        if (!status) return null;
+        return (
+          <ApiKeyRow
+            key={name}
+            status={status}
+            onChanged={onChanged}
+            setError={setError}
+          />
+        );
+      })}
+
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button
+          type="button"
+          disabled={!canTest || testing}
+          onClick={() => void testLogin()}
+          className="button-primary text-xs"
+        >
+          {testing ? "Testing login…" : "Test login"}
+        </button>
+        {!canTest && (
+          <span className="muted text-xs">Set username and password to test.</span>
+        )}
+      </div>
+      {testMessage && (
+        <p className={`text-sm ${testOk ? "text-biu-sky" : "text-danger"}`}>
+          {testMessage}
+        </p>
+      )}
+    </div>
   );
 }
 

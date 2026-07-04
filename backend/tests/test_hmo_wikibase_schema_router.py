@@ -102,8 +102,16 @@ async def test_live_bootstrap_with_credentials_spawns_a_job(
     monkeypatch.setattr(run_job_service, "spawn_job", lambda job_id: None)
 
     client = sample_run["client"]
+    from app.services.wikibase_credentials import WikibaseCredentialVerifyResult
+
     # Store via the real Settings endpoint so the wrapped secret's KEK
     # matches what the session presents (prepare_job_params unwraps it).
+    monkeypatch.setattr(
+        "app.routers.api_keys.verify_wikibase_bot_credentials_sync",
+        lambda _creds: WikibaseCredentialVerifyResult(
+            ok=True, message="Login successful", login_name="bot@hmo",
+        ),
+    )
     for key_name, value in (
         ("wikibase_cloud_bot_username", "bot@hmo"),
         ("wikibase_cloud_bot_password", "s3cret"),
