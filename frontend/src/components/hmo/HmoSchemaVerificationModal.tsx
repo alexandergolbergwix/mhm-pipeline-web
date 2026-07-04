@@ -1,16 +1,8 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {useEffect, useMemo} from "react";
 
-import type {AiVerdict} from "@/api/extractionApprovals";
-import {
-  HmoSchemaVerify,
-  verdictFromAgentEvent,
-} from "@/api/hmoSchemaVerify";
-import type {AgentActionMeta, AgentEvent} from "@/api/wikidataVerify";
+import type {HmoSchemaVerifySession} from "@/hooks/useHmoSchemaVerifySession";
 import {
   AgentFlowDiagram,
-  makeInitialFlowState,
-  reduceFlow,
-  type FlowState,
 } from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {Glass} from "@/components/glass";
@@ -20,150 +12,40 @@ export interface HmoSchemaVerificationModalProps {
   runId: string;
   ontologyUris?: string[];
   scopeLabel: string;
+  session: HmoSchemaVerifySession;
   onClose: () => void;
-  onVerdictsLanded?: (verdicts: Record<string, AiVerdict>) => void;
 }
 
 
-function mapVerdictEvents(events: Record<string, AgentEvent>): Record<string, AiVerdict> {
-  const mapped: Record<string, AiVerdict> = {};
-  for (const ev of Object.values(events)) {
-    const parsed = verdictFromAgentEvent(ev);
-    if (!parsed) continue;
-    mapped[parsed.localId] = {
-      overall: parsed.overall as AiVerdict["overall"],
-      name_ok: null,
-      type_ok: null,
-      role_ok: null,
-      reasoning: parsed.reasoning,
-      model: null,
-      judged_at: null,
-      cache_key: null,
-      session_id: null,
-      evaluator: "hmo_wikibase_schema",
-    };
-  }
-  return mapped;
-}
-
-
+/**
+ * Presentational only — the verification stream itself lives in
+ * ``session`` (owned by the panel, not this modal), so closing this
+ * modal never cancels an in-flight run. Reopening it renders whatever
+ * state the background session has reached.
+ */
 export function HmoSchemaVerificationModal({
   runId,
   ontologyUris,
   scopeLabel,
+  session,
   onClose,
-  onVerdictsLanded,
 }: HmoSchemaVerificationModalProps) {
-  const [actions, setActions] = useState<AgentActionMeta[]>([]);
-  const [actionId, setActionId] = useState("audit_schema_entry");
-  const [overrideCache, setOverrideCache] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [events, setEvents] = useState<AgentEvent[]>([]);
-  const [verdicts, setVerdicts] = useState<Record<string, AgentEvent>>({});
-  const [flow, setFlow] = useState<FlowState>(makeInitialFlowState());
-  const [error, setError] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
-  const [doneMessage, setDoneMessage] = useState<string | null>(null);
-  const cancelRef = useRef<(() => void) | null>(null);
-  const onVerdictsLandedRef = useRef(onVerdictsLanded);
-  onVerdictsLandedRef.current = onVerdictsLanded;
+  const {
+    actions, actionId, setActionId,
+    overrideCache, setOverrideCache,
+    running, events, verdicts, flow,
+    error, warning, doneMessage,
+    start, stop,
+  } = session;
 
   useEffect(() => {
-    let cancelled = false;
-    void HmoSchemaVerify.actions("selection")
-      .then((list) => {
-        if (cancelled) return;
-        setActions(list);
-        if (list.length > 0) setActionId(list[0].id);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => { cancelled = true; };
-  }, []);
+    if (!actionId && actions.length > 0) setActionId(actions[0].id);
+  }, [actionId, actions, setActionId]);
 
   const action = useMemo(
     () => actions.find((a) => a.id === actionId) ?? null,
     [actions, actionId],
   );
-
-  const pushVerdictsToParent = useCallback((next: Record<string, AgentEvent>) => {
-    const mapped = mapVerdictEvents(next);
-    if (Object.keys(mapped).length > 0) {
-      onVerdictsLandedRef.current?.(mapped);
-    }
-  }, []);
-
-  async function start(): Promise<void> {
-    if (running) return;
-    setError(null);
-    setWarning(null);
-    setDoneMessage(null);
-    setEvents([]);
-    setVerdicts({});
-    setFlow(makeInitialFlowState());
-    setRunning(true);
-    const {events: stream, cancel} = HmoSchemaVerify.stream({
-      run_id: runId,
-      action_id: actionId,
-      ontology_uris: ontologyUris,
-      override_cache: overrideCache,
-    });
-    cancelRef.current = cancel;
-    const collected: Record<string, AgentEvent> = {};
-    try {
-      for await (const ev of stream) {
-        setEvents((prev) => [...prev, ev]);
-        setFlow((prev) => reduceFlow(prev, ev));
-        if (ev.type === "runner.warning") {
-          const payload = (ev.payload ?? ev) as Record<string, unknown>;
-          const msg = typeof payload.message === "string"
-            ? payload.message
-            : "The eval-agent is not available on this server.";
-          setWarning(msg);
-        }
-        if (ev.type === "agent.verdict") {
-          const parsed = verdictFromAgentEvent(ev);
-          if (parsed) {
-            collected[parsed.localId] = ev;
-            const next = {...collected};
-            setVerdicts(next);
-            pushVerdictsToParent(next);
-          }
-        }
-        if (ev.type === "session.end") {
-          const payload = (ev.payload ?? ev) as Record<string, unknown>;
-          const fresh = Number(payload.fresh_verdicts ?? 0);
-          const cached = Number(payload.cache_hits ?? 0);
-          const skipped = Number(payload.uncached_skipped ?? 0);
-          const outcome = String(payload.outcome ?? "complete");
-          const parts: string[] = [];
-          if (fresh > 0) parts.push(`${fresh} fresh`);
-          if (cached > 0) parts.push(`${cached} cached`);
-          if (skipped > 0) parts.push(`${skipped} skipped (no agent)`);
-          if (parts.length === 0 && outcome === "partial") {
-            setDoneMessage("Verification finished with no verdicts — see warning above.");
-          } else if (parts.length > 0) {
-            setDoneMessage(`Verification complete: ${parts.join(" · ")}. Close this window when done reviewing.`);
-          } else {
-            setDoneMessage("Verification complete. Close this window when done reviewing.");
-          }
-        }
-      }
-    } catch (e) {
-      if ((e as Error).name !== "AbortError") {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    } finally {
-      setRunning(false);
-      cancelRef.current = null;
-    }
-  }
-
-  function stop(): void {
-    cancelRef.current?.();
-    setRunning(false);
-  }
 
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
   const verdictCount = Object.keys(verdicts).length;
@@ -182,7 +64,8 @@ export function HmoSchemaVerificationModal({
             <p className="muted text-xs mt-1 max-w-2xl">
               Audits every class and property in the latest bootstrap report —
               including rows already mapped on Wikibase — for label, datatype,
-              and Wikibase id correctness.
+              and Wikibase id correctness. Closing this window does not stop a
+              run in progress — it keeps judging in the background.
             </p>
           </div>
           <button onClick={onClose} className="button-ghost !py-1 !px-3 text-sm" title="Close">
@@ -214,7 +97,11 @@ export function HmoSchemaVerificationModal({
             <span>Override cache (force fresh LLM call)</span>
           </label>
           {!running ? (
-            <button onClick={() => { void start(); }} disabled={!action} className="button-primary text-sm">
+            <button
+              onClick={() => start(runId, ontologyUris)}
+              disabled={!action}
+              className="button-primary text-sm"
+            >
               Start verification
             </button>
           ) : (
