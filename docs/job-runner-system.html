@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MHM Pipeline Web — The Job Runner System</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel2: #1c2330;
+    --border: #2d3646;
+    --text: #e6edf3;
+    --muted: #9aa7b8;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --pink: #ff7b9c;
+    --mono: "SF Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+  }
+  header {
+    padding: 64px 24px 40px;
+    text-align: center;
+    background:
+      radial-gradient(ellipse 800px 300px at 50% -50px, rgba(88,166,255,.18), transparent),
+      radial-gradient(ellipse 600px 250px at 80% 0, rgba(188,140,255,.10), transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 2.4rem; margin: 0 0 8px; letter-spacing: -0.02em; }
+  header p.sub { color: var(--muted); font-size: 1.15rem; max-width: 760px; margin: 0 auto; }
+  .badges { margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .badge {
+    font-family: var(--mono); font-size: .78rem; padding: 4px 12px;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--panel);
+    color: var(--muted);
+  }
+  .badge b { color: var(--accent); font-weight: 600; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 24px 96px; }
+  section { margin-top: 56px; }
+  h2 {
+    font-size: 1.6rem; letter-spacing: -0.01em;
+    border-bottom: 1px solid var(--border); padding-bottom: 10px;
+  }
+  h2 .num {
+    display: inline-block; font-family: var(--mono); font-size: .95rem;
+    color: var(--accent); border: 1px solid var(--border); border-radius: 8px;
+    padding: 2px 9px; margin-right: 12px; vertical-align: 3px; background: var(--panel);
+  }
+  h3 { font-size: 1.15rem; margin-top: 32px; }
+  p, li { color: #c8d1dc; }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 6px; color: #a5d6ff;
+  }
+  pre {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; overflow-x: auto; font-size: .84rem; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: var(--text); }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px; margin: 20px 0;
+  }
+  .card.tip { border-left: 4px solid var(--green); }
+  .card.warn { border-left: 4px solid var(--amber); }
+  .card.key  { border-left: 4px solid var(--accent); }
+  .card h4 { margin: 0 0 6px; font-size: 1rem; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .9rem; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+  td code { white-space: nowrap; }
+  .figure {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; margin: 24px 0; overflow-x: auto;
+  }
+  .figure figcaption {
+    color: var(--muted); font-size: .85rem; margin-top: 14px; text-align: center;
+  }
+  .mermaid { display: flex; justify-content: center; }
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: .74rem;
+    padding: 2px 10px; border-radius: 999px; margin: 2px;
+  }
+  .pill.q { background: rgba(210,153,34,.15); color: var(--amber); border: 1px solid rgba(210,153,34,.4); }
+  .pill.r { background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid rgba(88,166,255,.4); }
+  .pill.s { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.4); }
+  .pill.f { background: rgba(248,81,73,.15); color: var(--red); border: 1px solid rgba(248,81,73,.4); }
+  .pill.c { background: rgba(154,167,184,.15); color: var(--muted); border: 1px solid rgba(154,167,184,.4); }
+  footer {
+    border-top: 1px solid var(--border); padding: 32px 24px; text-align: center;
+    color: var(--muted); font-size: .85rem;
+  }
+  .toc { columns: 2; gap: 32px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  svg .mono { font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚙️ The Job Runner System</h1>
+  <p class="sub">How <b>mhm-pipeline-web</b> runs long curator operations — extraction, RDF builds, AI&nbsp;verification, Wikidata uploads — outside the HTTP request, survives dyno restarts, and lets any browser tab attach to a running job.</p>
+  <div class="badges">
+    <span class="badge">no Celery · no queue broker</span>
+    <span class="badge">source of truth: <b>Postgres row</b></span>
+    <span class="badge">workers: <b>in-process asyncio</b></span>
+    <span class="badge">UI: <b>2s polling</b> + WS fast-path</span>
+  </div>
+</header>
+
+<main>
+
+<section id="toc">
+  <h2><span class="num">§</span>Contents</h2>
+  <div class="toc">
+    <ol>
+      <li><a href="#mental-model">The one-paragraph mental model</a></li>
+      <li><a href="#architecture">Big-picture architecture</a></li>
+      <li><a href="#lifecycle">Job status lifecycle</a></li>
+      <li><a href="#start-flow">Starting a job (sequence)</a></li>
+      <li><a href="#dispatch">Kind dispatch &amp; the worker contract</a></li>
+      <li><a href="#cancel">Cooperative cancellation</a></li>
+      <li><a href="#recovery">Crash &amp; restart resilience</a></li>
+      <li><a href="#frontend">The frontend: three layers</a></li>
+      <li><a href="#waitforrunjob">waitForRunJob.ts — the awaitable flavour</a></li>
+      <li><a href="#secrets">Secrets in params</a></li>
+      <li><a href="#reference">Reference tables</a></li>
+      <li><a href="#caveats">Caveats &amp; design notes</a></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="mental-model">
+  <h2><span class="num">1</span>The one-paragraph mental model</h2>
+  <div class="card key">
+    <p style="margin:0">
+      <b>A job is a Postgres row.</b> The API creates the row and spawns an <code>asyncio</code> task in the
+      web process itself; the task heartbeats progress into the row and cooperatively honours a cancel
+      flag; startup hooks reap stale rows and respawn interrupted ones. The frontend never trusts
+      memory — it <b>polls the row</b> (globally for the job tray, per-job when a page is attached, or in a
+      <code>waitForRunJob</code> loop when code needs to await), with WebSocket pushes merged in purely to
+      make progress feel instant. The <b>409-on-duplicate-start</b> is the glue that lets any tab attach to
+      an already-running job instead of erroring.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="architecture">
+  <h2><span class="num">2</span>Big-picture architecture</h2>
+  <p>Everything lives in two processes: the browser and the FastAPI dyno. Postgres holds the truth; the WebSocket channel is a latency optimisation only.</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 1000 560" width="100%" role="img" aria-label="Architecture overview">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/>
+        </marker>
+        <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/>
+        </marker>
+        <marker id="arrp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#bc8cff"/>
+        </marker>
+      </defs>
+
+      <!-- Browser box -->
+      <rect x="20" y="30" width="290" height="500" rx="14" fill="#161b22" stroke="#2d3646"/>
+      <text x="165" y="60" text-anchor="middle" fill="#e6edf3" font-size="17" font-weight="700">Browser (React)</text>
+
+      <rect x="45" y="85" width="240" height="70" rx="9" fill="#1c2330" stroke="#2d3646"/>
+      <text x="165" y="112" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">stores/runJobs.ts</text>
+      <text x="165" y="132" text-anchor="middle" fill="#9aa7b8" font-size="11.5">global 2s poll · JobTray</text>
+
+      <rect x="45" y="170" width="240" height="86" rx="9" fill="#1c2330" stroke="#2d3646"/>
+      <text x="165" y="197" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">useRunJobAttachment</text>
+      <text x="165" y="215" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">useVerifyJob</text>
+      <text x="165" y="236" text-anchor="middle" fill="#9aa7b8" font-size="11.5">per-job 2s poll · reattach on load</text>
+
+      <rect x="45" y="271" width="240" height="70" rx="9" fill="#1c2330" stroke="#2d3646"/>
+      <text x="165" y="298" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">waitForRunJob.ts</text>
+      <text x="165" y="318" text-anchor="middle" fill="#9aa7b8" font-size="11.5">awaitable loop · 20 min timeout</text>
+
+      <rect x="45" y="356" width="240" height="70" rx="9" fill="#1c2330" stroke="#2d3646"/>
+      <text x="165" y="383" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">useProjectEvents (WS)</text>
+      <text x="165" y="403" text-anchor="middle" fill="#9aa7b8" font-size="11.5">run_job_update → upsertJob()</text>
+
+      <rect x="45" y="441" width="240" height="66" rx="9" fill="#1c2330" stroke="#2d3646"/>
+      <text x="165" y="467" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">api/runJobs.ts</text>
+      <text x="165" y="487" text-anchor="middle" fill="#9aa7b8" font-size="11.5">start / get / list / cancel</text>
+
+      <!-- FastAPI box -->
+      <rect x="380" y="30" width="330" height="500" rx="14" fill="#161b22" stroke="#2d3646"/>
+      <text x="545" y="60" text-anchor="middle" fill="#e6edf3" font-size="17" font-weight="700">FastAPI dyno</text>
+
+      <rect x="405" y="85" width="280" height="72" rx="9" fill="#1c2330" stroke="#2d3646"/>
+      <text x="545" y="112" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">routers/run_jobs.py</text>
+      <text x="545" y="133" text-anchor="middle" fill="#9aa7b8" font-size="11.5">POST/GET /runs/{id}/jobs · cancel</text>
+
+      <rect x="405" y="173" width="280" height="90" rx="9" fill="#1c2330" stroke="#58a6ff"/>
+      <text x="545" y="200" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">run_job_service.py</text>
+      <text x="545" y="220" text-anchor="middle" fill="#9aa7b8" font-size="11.5">create · spawn · progress · finish</text>
+      <text x="545" y="240" text-anchor="middle" fill="#9aa7b8" font-size="11.5">recover · fail-stale · notify</text>
+
+      <rect x="405" y="280" width="280" height="106" rx="9" fill="#1c2330" stroke="#2d3646" stroke-dasharray="5 4"/>
+      <text x="545" y="306" text-anchor="middle" fill="#e6edf3" font-size="12.5" font-weight="600">asyncio.create_task( … )</text>
+      <rect x="422" y="320" width="118" height="24" rx="5" fill="#0d1117" stroke="#2d3646"/>
+      <text x="481" y="337" text-anchor="middle" fill="#a5d6ff" font-size="10.5" class="mono">extraction_job</text>
+      <rect x="548" y="320" width="118" height="24" rx="5" fill="#0d1117" stroke="#2d3646"/>
+      <text x="607" y="337" text-anchor="middle" fill="#a5d6ff" font-size="10.5" class="mono">verify_job ×3</text>
+      <rect x="422" y="352" width="118" height="24" rx="5" fill="#0d1117" stroke="#2d3646"/>
+      <text x="481" y="369" text-anchor="middle" fill="#a5d6ff" font-size="10.5" class="mono">rdf_build_job</text>
+      <rect x="548" y="352" width="118" height="24" rx="5" fill="#0d1117" stroke="#2d3646"/>
+      <text x="607" y="369" text-anchor="middle" fill="#a5d6ff" font-size="10.5" class="mono">upload / studio…</text>
+
+      <rect x="405" y="402" width="280" height="60" rx="9" fill="#1c2330" stroke="#2d3646"/>
+      <text x="545" y="426" text-anchor="middle" fill="#a5d6ff" font-size="13" class="mono">lifespan startup hooks</text>
+      <text x="545" y="446" text-anchor="middle" fill="#9aa7b8" font-size="11.5">fail_stale_jobs · recover_interrupted</text>
+
+      <rect x="405" y="476" width="280" height="42" rx="9" fill="#1c2330" stroke="#2d3646"/>
+      <text x="545" y="502" text-anchor="middle" fill="#a5d6ff" font-size="12.5" class="mono">WS broker (app.realtime)</text>
+
+      <!-- Postgres -->
+      <g>
+        <rect x="770" y="150" width="210" height="230" rx="14" fill="#161b22" stroke="#3fb950"/>
+        <ellipse cx="875" cy="165" rx="80" ry="16" fill="#1c2330" stroke="#3fb950"/>
+        <text x="875" y="205" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="700">Postgres</text>
+        <rect x="790" y="222" width="170" height="66" rx="8" fill="#1c2330" stroke="#2d3646"/>
+        <text x="875" y="248" text-anchor="middle" fill="#7ee787" font-size="13" class="mono">run_jobs</text>
+        <text x="875" y="268" text-anchor="middle" fill="#9aa7b8" font-size="10.5">status · progress · result</text>
+        <text x="875" y="315" text-anchor="middle" fill="#9aa7b8" font-size="11.5">source of truth</text>
+        <text x="875" y="345" text-anchor="middle" fill="#9aa7b8" font-size="11.5" class="mono">pg_notify ↩</text>
+      </g>
+
+      <!-- Arrows: browser → api -->
+      <line x1="310" y1="120" x2="405" y2="120" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr)"/>
+      <text x="357" y="110" text-anchor="middle" fill="#58a6ff" font-size="10.5" class="mono">poll 2s</text>
+      <line x1="310" y1="474" x2="405" y2="128" stroke="#58a6ff" stroke-width="1.4" opacity=".5" marker-end="url(#arr)"/>
+      <!-- WS -->
+      <line x1="405" y1="497" x2="310" y2="391" stroke="#bc8cff" stroke-width="2" marker-end="url(#arrp)"/>
+      <text x="345" y="455" text-anchor="middle" fill="#bc8cff" font-size="10.5" class="mono">WS push</text>
+
+      <!-- api → pg -->
+      <line x1="685" y1="218" x2="790" y2="250" stroke="#3fb950" stroke-width="2" marker-end="url(#arrg)"/>
+      <text x="738" y="220" text-anchor="middle" fill="#3fb950" font-size="10.5" class="mono">read/write row</text>
+      <line x1="685" y1="333" x2="790" y2="270" stroke="#3fb950" stroke-width="1.6" opacity=".7" marker-end="url(#arrg)"/>
+      <text x="752" y="312" text-anchor="middle" fill="#3fb950" font-size="10.5" class="mono">heartbeat</text>
+      <!-- pg notify → ws -->
+      <line x1="790" y1="345" x2="685" y2="493" stroke="#bc8cff" stroke-width="1.6" marker-end="url(#arrp)"/>
+      <text x="758" y="425" text-anchor="middle" fill="#bc8cff" font-size="10.5" class="mono">pg_notify</text>
+      <!-- service → tasks -->
+      <line x1="545" y1="263" x2="545" y2="280" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr)"/>
+    </svg>
+    <figcaption>Fig. 1 — The full loop. Blue = HTTP polling (source of truth), green = row writes, purple = the optional live push.</figcaption>
+  </figure>
+
+  <div class="card tip">
+    <h4>Why no Celery / queue?</h4>
+    <p style="margin:0">The job volume is "one curator clicked a button", not "thousands of tasks per second". A Postgres row + in-process <code>asyncio</code> task gives durable state, restart recovery, and progress reporting with zero extra infrastructure — the same Postgres already backs the app.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lifecycle">
+  <h2><span class="num">3</span>Job status lifecycle</h2>
+  <p>
+    Statuses: <span class="pill q">queued</span> <span class="pill r">running</span>
+    <span class="pill s">succeeded</span> <span class="pill f">failed</span> <span class="pill c">cancelled</span>.
+    The first two are "active" — only one active job per <code>(run_id, kind)</code> may exist.
+  </p>
+
+  <figure class="figure">
+    <pre class="mermaid">
+stateDiagram-v2
+    direction LR
+    [*] --> queued : POST /runs/{id}/jobs
+    queued --> running : _execute_job() flips status
+    running --> succeeded : finish_job(SUCCEEDED)
+    running --> failed : exception / runner.error
+    running --> cancelled : worker sees cancel flag
+    queued --> failed : bad params (e.g. missing key)
+    running --> failed : no heartbeat 20 min → fail_stale_jobs()
+    succeeded --> [*]
+    failed --> [*]
+    cancelled --> [*]
+
+    note right of running
+        updated_at = heartbeat
+        progress JSONB updated
+        per event / batch
+    end note
+    </pre>
+    <figcaption>Fig. 2 — Status state machine. Terminal states are never reopened; a restart re-spawns active rows instead.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<section id="start-flow">
+  <h2><span class="num">4</span>Starting a job — the full sequence</h2>
+  <p>The interesting part is what happens <em>around</em> the happy path: secret injection before the row exists, and the 409 that turns a duplicate start into an attach.</p>
+
+  <figure class="figure">
+    <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant UI as Browser page
+    participant API as routers/run_jobs.py
+    participant P as prepare_job_params()
+    participant S as run_job_service
+    participant DB as Postgres run_jobs
+    participant W as asyncio worker
+
+    UI->>API: POST /runs/{run_id}/jobs {kind, params}
+    API->>P: validate kind + scope
+    P->>P: unwrap user secret (Gemini / HF / Wikidata)
+    P-->>API: params + _api_key (underscore = private)
+    API->>S: create_job()
+    S->>DB: any active job for (run_id, kind)?
+    alt already active
+        S-->>API: ActiveJobError
+        API-->>UI: 409 {job_id}
+        UI->>UI: attach to existing job instead
+    else none
+        S->>DB: INSERT row (status=queued)
+        S->>W: asyncio.create_task(_execute_job)
+        S-->>UI: 201 job snapshot (secrets stripped)
+    end
+    W->>DB: status=running, started_at=now()
+    loop every event / batch
+        W->>DB: update progress JSONB (heartbeat)
+        DB--)UI: pg_notify → WS run_job_update (fast path)
+        UI->>API: GET job every 2s (source of truth)
+    end
+    W->>DB: finish_job(succeeded, result)
+    </pre>
+    <figcaption>Fig. 3 — Start-to-finish sequence. Note step 9: the 409 is part of the protocol, not an error condition.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<section id="dispatch">
+  <h2><span class="num">5</span>Kind dispatch &amp; the worker contract</h2>
+  <p><code>_execute_job()</code> in <code>run_job_service.py</code> is a plain if/elif dispatcher over 9 job kinds. Every worker follows the same contract.</p>
+
+  <figure class="figure">
+    <pre class="mermaid">
+flowchart TD
+    E["_execute_job(job_id)"] --> R["status → running"]
+    R --> K{"job.kind?"}
+    K -->|extraction| J1["run_extraction_job<br/>Modal / HF NER"]
+    K -->|ner_verify<br/>authority_verify<br/>wikidata_verify| J2["run_verify_job<br/>eval-agent event stream"]
+    K -->|rdf_build| J3["run_rdf_build_job<br/>GraphBuilder + coverage"]
+    K -->|authority_re_enrich| J4["run_authority_re_enrich_job"]
+    K -->|wikidata_studio_build| J5["run_wikidata_studio_build_job<br/>fingerprint cache"]
+    K -->|wikidata_upload| J6["run_wikidata_upload_job<br/>reconcile + validator gate"]
+    K -->|hmo_schema_bootstrap| J7["run_hmo_schema_bootstrap_job"]
+    K -->|unknown| F["_fail_job('unknown kind')"]
+    J1 & J2 & J3 & J4 & J5 & J6 & J7 --> C["finish_job(status, result, error)"]
+
+    style E fill:#1c2330,stroke:#58a6ff,color:#e6edf3
+    style K fill:#1c2330,stroke:#d29922,color:#e6edf3
+    style C fill:#1c2330,stroke:#3fb950,color:#e6edf3
+    style F fill:#1c2330,stroke:#f85149,color:#e6edf3
+    style R fill:#1c2330,stroke:#2d3646,color:#e6edf3
+    style J1 fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style J2 fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style J3 fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style J4 fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style J5 fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style J6 fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style J7 fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    </pre>
+    <figcaption>Fig. 4 — Dispatch by <code>kind</code>. Worker modules are imported lazily inside the branch to keep startup light.</figcaption>
+  </figure>
+
+  <h3>The worker contract (what every <code>run_*_job</code> does)</h3>
+  <pre><code># the shape every job worker follows (see verify_job.py)
+async for event in work_stream:
+    if await is_cancel_requested(job_id):        # ① cooperative cancel
+        await finish_job(job_id, status=CANCELLED, ...)
+        return
+    await update_job_progress(job_id, {          # ② heartbeat + UI progress
+        "phase": "running", "processed": n, "total": total,
+        "message": "...", "session_id": sid,
+    })
+await finish_job(job_id, status=SUCCEEDED,       # ③ terminal write
+                 result={...}, progress={"phase": "done", ...})</code></pre>
+  <div class="card key">
+    <h4>update_job_progress ≙ heartbeat</h4>
+    <p style="margin:0">Every progress write bumps <code>updated_at</code> (server-side <code>onupdate=func.now()</code>). That timestamp is what <code>fail_stale_jobs()</code> checks — so a worker that reports progress is, by definition, alive.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="cancel">
+  <h2><span class="num">6</span>Cooperative cancellation</h2>
+  <p>Cancel never kills a task. It stamps a flag; the worker notices it at the next loop iteration and shuts down cleanly (closing its stream, writing a proper terminal status).</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 960 240" width="100%" role="img" aria-label="Cancellation timeline">
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#9aa7b8"/>
+        </marker>
+      </defs>
+      <!-- timeline -->
+      <line x1="60" y1="120" x2="920" y2="120" stroke="#2d3646" stroke-width="3"/>
+      <!-- running segment -->
+      <rect x="60" y="108" width="520" height="24" rx="12" fill="rgba(88,166,255,.25)" stroke="#58a6ff"/>
+      <text x="320" y="100" text-anchor="middle" fill="#58a6ff" font-size="13" class="mono">running — worker loop, progress every event</text>
+      <!-- cancel point -->
+      <circle cx="420" cy="120" r="9" fill="#d29922"/>
+      <line x1="420" y1="129" x2="420" y2="175" stroke="#d29922" stroke-width="2" marker-end="url(#arr2)"/>
+      <text x="420" y="196" text-anchor="middle" fill="#d29922" font-size="12.5" class="mono">POST …/cancel → cancel_requested_at = now()</text>
+      <text x="420" y="214" text-anchor="middle" fill="#9aa7b8" font-size="11.5">(row flag only — task keeps running)</text>
+      <!-- notice point -->
+      <circle cx="580" cy="120" r="9" fill="#3fb950"/>
+      <line x1="580" y1="111" x2="580" y2="60" stroke="#3fb950" stroke-width="2" marker-end="url(#arr2)"/>
+      <text x="583" y="46" text-anchor="middle" fill="#3fb950" font-size="12.5" class="mono">worker's next is_cancel_requested() check</text>
+      <!-- cancelled segment -->
+      <rect x="580" y="108" width="180" height="24" rx="12" fill="rgba(154,167,184,.2)" stroke="#9aa7b8"/>
+      <text x="670" y="155" text-anchor="middle" fill="#9aa7b8" font-size="12" class="mono">stream.aclose() → finish_job(CANCELLED)</text>
+      <!-- terminal -->
+      <circle cx="760" cy="120" r="9" fill="#9aa7b8"/>
+      <text x="800" y="90" fill="#9aa7b8" font-size="13" class="mono">status = cancelled ✔</text>
+    </svg>
+    <figcaption>Fig. 5 — Cancellation is a two-phase handshake: flag now, act at the next safe point.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<section id="recovery">
+  <h2><span class="num">7</span>Crash &amp; restart resilience</h2>
+  <p>Heroku recycles dynos daily. The in-memory asyncio tasks die with the process — but the rows don't. Two startup hooks in the FastAPI lifespan repair the world:</p>
+
+  <div class="grid2">
+    <div class="card warn">
+      <h4>fail_stale_jobs()</h4>
+      <p style="margin:0">Any <code>running</code> row whose <code>updated_at</code> heartbeat is older than <b>20 minutes</b> is marked <code>failed</code> with a human-readable "the server restarted" error. Prevents the UI from polling a zombie forever.</p>
+    </div>
+    <div class="card tip">
+      <h4>recover_interrupted_jobs()</h4>
+      <p style="margin:0">Every remaining <code>queued</code>/<code>running</code> row gets <code>spawn_job()</code> called again — the job <b>restarts</b> on the fresh process instead of being lost.</p>
+    </div>
+  </div>
+
+  <figure class="figure">
+    <pre class="mermaid">
+flowchart LR
+    A["🔄 dyno restart"] --> B["FastAPI lifespan startup"]
+    B --> C["fail_stale_jobs()"]
+    C --> D{"running row,<br/>heartbeat &gt; 20 min old?"}
+    D -->|yes| E["mark FAILED<br/>'server restarted…'"]
+    D -->|no| F["leave as-is"]
+    B --> G["recover_interrupted_jobs()"]
+    G --> H{"row still<br/>queued / running?"}
+    H -->|yes| I["spawn_job() again<br/>→ fresh asyncio task"]
+    H -->|no| J["terminal — nothing to do"]
+
+    style A fill:#1c2330,stroke:#f85149,color:#e6edf3
+    style E fill:#1c2330,stroke:#f85149,color:#e6edf3
+    style I fill:#1c2330,stroke:#3fb950,color:#e6edf3
+    style B fill:#1c2330,stroke:#58a6ff,color:#e6edf3
+    style C fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style D fill:#161b22,stroke:#d29922,color:#c8d1dc
+    style F fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style G fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style H fill:#161b22,stroke:#d29922,color:#c8d1dc
+    style J fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    </pre>
+    <figcaption>Fig. 6 — Startup repair: stale rows are reaped <em>first</em>, then survivors are respawned.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<section id="frontend">
+  <h2><span class="num">8</span>The frontend: three layers, one truth</h2>
+  <p>All three layers poll at the same <b>2-second</b> cadence; the WebSocket merges snapshots in early, but the next poll always wins.</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 960 400" width="100%" role="img" aria-label="Frontend layers">
+      <defs>
+        <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/>
+        </marker>
+      </defs>
+      <!-- Layer 1 -->
+      <rect x="40" y="30" width="880" height="90" rx="12" fill="#161b22" stroke="#58a6ff"/>
+      <text x="70" y="62" fill="#e6edf3" font-size="15" font-weight="700">Layer 1 · Global store — <tspan class="mono" fill="#a5d6ff">stores/runJobs.ts</tspan></text>
+      <text x="70" y="88" fill="#9aa7b8" font-size="12.5">One app-wide 2s poll of GET /jobs/mine?active=true → feeds the JobTray. Auto-stops when no active jobs. WS upsertJob() merges in.</text>
+      <!-- Layer 2 -->
+      <rect x="40" y="145" width="880" height="90" rx="12" fill="#161b22" stroke="#bc8cff"/>
+      <text x="70" y="177" fill="#e6edf3" font-size="15" font-weight="700">Layer 2 · Page attachment — <tspan class="mono" fill="#a5d6ff">useRunJobAttachment / useVerifyJob</tspan></text>
+      <text x="70" y="203" fill="#9aa7b8" font-size="12.5">On mount: list active jobs for the run, reattach to an in-flight one. Own per-job 2s poll of GET /runs/{id}/jobs/{jobId}. 409 → attach.</text>
+      <text x="70" y="222" fill="#9aa7b8" font-size="12.5">Rule W-36: jobFingerprint(id:status:progress) gates the sync callback — identical snapshots never re-render.</text>
+      <!-- Layer 3 -->
+      <rect x="40" y="260" width="880" height="90" rx="12" fill="#161b22" stroke="#3fb950"/>
+      <text x="70" y="292" fill="#e6edf3" font-size="15" font-weight="700">Layer 3 · Awaitable — <tspan class="mono" fill="#a5d6ff">utils/waitForRunJob.ts</tspan></text>
+      <text x="70" y="318" fill="#9aa7b8" font-size="12.5">Promise-style: poll every 2s until succeeded (resolve) / failed / cancelled (throw) / 20-min timeout. Used by Wikidata Studio flows.</text>
+      <text x="70" y="337" fill="#9aa7b8" font-size="12.5">ensureRunJob() makes "start" idempotent: on 409 it finds and returns the already-running job.</text>
+      <!-- side labels -->
+      <line x1="930" y1="75" x2="930" y2="305" stroke="#2d3646" stroke-width="2"/>
+      <text x="944" y="196" fill="#9aa7b8" font-size="11.5" transform="rotate(90 944 196)" text-anchor="middle">reactive → imperative</text>
+    </svg>
+    <figcaption>Fig. 7 — Layer 1 is ambient (tray), layer 2 is reactive (page state), layer 3 is imperative (await a result).</figcaption>
+  </figure>
+
+  <h3>Poll ↔ WebSocket interplay</h3>
+  <figure class="figure">
+    <pre class="mermaid">
+sequenceDiagram
+    participant W as Worker
+    participant DB as Postgres
+    participant WS as WS broker
+    participant St as Zustand store
+    participant Pg as Page hook
+
+    W->>DB: update_job_progress()
+    DB--)WS: pg_notify(run_job_update)
+    WS--)St: upsertJob(snapshot)  ⚡ instant
+    Note over St: UI updates immediately
+    Pg->>DB: GET job (next 2s tick)
+    DB-->>Pg: authoritative snapshot
+    Note over Pg,St: poll result always wins —<br/>WS is latency-only, never truth
+    </pre>
+    <figcaption>Fig. 8 — The push makes progress feel instant; the poll keeps it correct.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<section id="waitforrunjob">
+  <h2><span class="num">9</span><code>waitForRunJob.ts</code> — the awaitable flavour, line by line</h2>
+  <p>Hooks give you <em>state</em>; sometimes code just needs to <em>wait</em>. This module is ~100 lines of exactly that.</p>
+
+  <pre><code>export async function waitForRunJob(runId, jobId, opts) {
+  const deadline = Date.now() + (opts?.timeoutMs ?? 20 * 60_000); // matches backend stale cutoff
+  while (Date.now() &lt; deadline) {
+    const job = await RunJobs.get(runId, jobId);   // poll the row
+    opts?.onUpdate?.(job);                         // stream progress text to the UI
+    if (job.status === "succeeded") return job;    // resolve
+    if (job.status === "failed" || job.status === "cancelled")
+      throw new Error(job.error ?? `Job ${job.status}`);
+    await sleep(2_000);                            // same 2s cadence as the hooks
+  }
+  throw new Error("Background job timed out — try Cancel and start again.");
+}</code></pre>
+
+  <figure class="figure">
+    <pre class="mermaid">
+flowchart TD
+    S["loadStudioBuild(runId, fetchBuild)"] --> T["try fetchBuild()"]
+    T -->|200| OK(["return build ✔"])
+    T -->|409 studio_build_in_progress| X["extract job_id from conflict payload<br/>(or findActiveRunJob fallback)"]
+    X --> WFJ["waitForRunJob(runId, jobId)<br/>onUpdate → progress banner"]
+    WFJ -->|succeeded| RT["retry fetchBuild()"]
+    RT --> OK
+    WFJ -->|failed / cancelled / timeout| ERR(["throw — surfaced to the curator"])
+
+    style S fill:#1c2330,stroke:#58a6ff,color:#e6edf3
+    style OK fill:#1c2330,stroke:#3fb950,color:#e6edf3
+    style ERR fill:#1c2330,stroke:#f85149,color:#e6edf3
+    style T fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    style X fill:#161b22,stroke:#d29922,color:#c8d1dc
+    style WFJ fill:#161b22,stroke:#bc8cff,color:#c8d1dc
+    style RT fill:#161b22,stroke:#2d3646,color:#c8d1dc
+    </pre>
+    <figcaption>Fig. 9 — The Studio pattern: a plain GET that answers 409 while a build job is rebuilding the cache becomes "wait, then retry".</figcaption>
+  </figure>
+
+  <table>
+    <thead><tr><th>Export</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>waitForRunJob()</code></td><td>Poll-until-terminal loop with progress callback and 20-min timeout.</td></tr>
+      <tr><td><code>ensureRunJob()</code></td><td>Start a job; on 409 attach to the already-active one. Idempotent start.</td></tr>
+      <tr><td><code>findActiveRunJob()</code></td><td>List active jobs for a run, pick the one matching a kind.</td></tr>
+      <tr><td><code>studioBuildJobIdFromConflict()</code></td><td>Parse <code>job_id</code> out of a structured 409 detail payload.</td></tr>
+      <tr><td><code>waitForStudioBuild()</code></td><td>Await an in-flight studio build, or start one when <code>forceRebuild</code>.</td></tr>
+      <tr><td><code>loadStudioBuild()</code></td><td>Fetch-or-wait-then-refetch wrapper (Fig. 9).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<section id="secrets">
+  <h2><span class="num">10</span>Secrets in params — the underscore convention</h2>
+  <p>Workers run detached from the HTTP request, so they can't ask the user for credentials. <code>prepare_job_params()</code> resolves them <em>at start time</em> and hides them in the params blob:</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 960 210" width="100%" role="img" aria-label="Secret injection">
+      <defs>
+        <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/>
+        </marker>
+      </defs>
+      <rect x="30" y="45" width="230" height="120" rx="10" fill="#161b22" stroke="#2d3646"/>
+      <text x="145" y="75" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="600">Client sends</text>
+      <text x="145" y="103" text-anchor="middle" fill="#a5d6ff" font-size="11.5" class="mono">{"action_id": "…",</text>
+      <text x="145" y="122" text-anchor="middle" fill="#a5d6ff" font-size="11.5" class="mono"> "entity_ids": […]}</text>
+
+      <line x1="260" y1="105" x2="360" y2="105" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr4)"/>
+      <text x="310" y="92" text-anchor="middle" fill="#9aa7b8" font-size="10.5" class="mono">prepare_job_params</text>
+
+      <rect x="360" y="30" width="270" height="150" rx="10" fill="#161b22" stroke="#d29922"/>
+      <text x="495" y="60" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="600">Stored in run_jobs.params</text>
+      <text x="495" y="88" text-anchor="middle" fill="#a5d6ff" font-size="11.5" class="mono">{"action_id": "…",</text>
+      <text x="495" y="107" text-anchor="middle" fill="#a5d6ff" font-size="11.5" class="mono"> "entity_ids": […],</text>
+      <text x="495" y="126" text-anchor="middle" fill="#d29922" font-size="11.5" class="mono"> "_api_key": "AIza…",</text>
+      <text x="495" y="145" text-anchor="middle" fill="#d29922" font-size="11.5" class="mono"> "session_id": "…"}</text>
+
+      <line x1="630" y1="105" x2="720" y2="105" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr4)"/>
+      <text x="675" y="92" text-anchor="middle" fill="#9aa7b8" font-size="10.5" class="mono">_public_params()</text>
+
+      <rect x="720" y="45" width="215" height="120" rx="10" fill="#161b22" stroke="#3fb950"/>
+      <text x="827" y="75" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="600">API returns</text>
+      <text x="827" y="103" text-anchor="middle" fill="#a5d6ff" font-size="11.5" class="mono">{"action_id": "…",</text>
+      <text x="827" y="122" text-anchor="middle" fill="#a5d6ff" font-size="11.5" class="mono"> "entity_ids": […]}</text>
+      <text x="827" y="148" text-anchor="middle" fill="#3fb950" font-size="10.5">_keys stripped ✔</text>
+    </svg>
+    <figcaption>Fig. 10 — Keys prefixed with <code>_</code> (<code>_api_key</code>, <code>_hf_token</code>, <code>_wikidata_token</code>) reach the worker but never the API response.</figcaption>
+  </figure>
+
+  <table>
+    <thead><tr><th>Job kind</th><th>Secret injected</th><th>Fails fast when missing</th></tr></thead>
+    <tbody>
+      <tr><td><code>extraction</code></td><td><code>_hf_token</code> (HuggingFace)</td><td>400 "add a token in Settings → Credentials"</td></tr>
+      <tr><td><code>*_verify</code> (×3)</td><td><code>_api_key</code> (Gemini, user key → env fallback)</td><td>400 "no Gemini API key"</td></tr>
+      <tr><td><code>wikidata_upload</code> (live)</td><td><code>_wikidata_token</code></td><td>400 "live upload requires a token"</td></tr>
+      <tr><td><code>hmo_schema_bootstrap</code> (live)</td><td>server-configured Wikibase Cloud creds</td><td>503 "not configured on this server"</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<section id="reference">
+  <h2><span class="num">11</span>Reference tables</h2>
+
+  <h3>HTTP API (<code>routers/run_jobs.py</code>)</h3>
+  <table>
+    <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>POST /api/runs/{run_id}/jobs</code></td><td>Start a job. <b>201</b> snapshot, or <b>409</b> <code>{job_id}</code> when one is active.</td></tr>
+      <tr><td><code>GET /api/runs/{run_id}/jobs?active=true</code></td><td>List a run's jobs (used to reattach after page reload).</td></tr>
+      <tr><td><code>GET /api/runs/{run_id}/jobs/{job_id}</code></td><td>Poll one job — the 2s tick everywhere.</td></tr>
+      <tr><td><code>POST /api/runs/{run_id}/jobs/{job_id}/cancel</code></td><td>Stamp <code>cancel_requested_at</code> (cooperative).</td></tr>
+      <tr><td><code>GET /api/jobs/mine?active=true</code></td><td>Current user's jobs across all runs — feeds the JobTray.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The 9 job kinds</h3>
+  <table>
+    <thead><tr><th>Kind</th><th>Worker module</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>extraction</code></td><td><code>extraction_job.py</code></td><td>NER over MARC records (Modal / HF backends).</td></tr>
+      <tr><td><code>ner_verify</code></td><td rowspan="3"><code>verify_job.py</code></td><td>Gemini eval-agent judges extracted entities.</td></tr>
+      <tr><td><code>authority_verify</code></td><td>…judges authority matches.</td></tr>
+      <tr><td><code>wikidata_verify</code></td><td>…judges built Wikidata items (with inference-cache pre-split).</td></tr>
+      <tr><td><code>authority_re_enrich</code></td><td><code>authority_re_enrich_job.py</code></td><td>Re-run Mazal/KIMA/VIAF/Wikidata matching without re-upload.</td></tr>
+      <tr><td><code>rdf_build</code></td><td><code>rdf_build_job.py</code></td><td>Rebuild the HMO RDF graph + coverage report.</td></tr>
+      <tr><td><code>wikidata_studio_build</code></td><td><code>wikidata_studio_build_job.py</code></td><td>Rebuild Studio items (fingerprint-cached, Rule W-26).</td></tr>
+      <tr><td><code>wikidata_upload</code></td><td><code>wikidata_upload_job.py</code></td><td>Fail-closed reconcile + validate + write (Rule W-30).</td></tr>
+      <tr><td><code>hmo_schema_bootstrap</code></td><td><code>hmo_schema_bootstrap_job.py</code></td><td>Bootstrap the HMO schema into Wikibase Cloud.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Key backend files</h3>
+  <table>
+    <thead><tr><th>File</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>backend/app/models/run_job.py</code></td><td><code>RunJob</code> ORM model, statuses, kinds (table <code>run_jobs</code>, migration 0024).</td></tr>
+      <tr><td><code>backend/app/pipeline/run_job_service.py</code></td><td>create / spawn / progress / finish / cancel / recover / fail-stale / pg_notify.</td></tr>
+      <tr><td><code>backend/app/pipeline/run_job_params.py</code></td><td>Kind validation, scope checks, secret injection.</td></tr>
+      <tr><td><code>backend/app/routers/run_jobs.py</code></td><td>The 5 HTTP endpoints.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Key frontend files</h3>
+  <table>
+    <thead><tr><th>File</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>frontend/src/api/runJobs.ts</code></td><td>Typed client + <code>RunJobSnapshot</code> + kind labels + deep links.</td></tr>
+      <tr><td><code>frontend/src/stores/runJobs.ts</code></td><td>Zustand store, global 2s poll, <code>selectActiveJob</code> pure selector.</td></tr>
+      <tr><td><code>frontend/src/hooks/useRunJobAttachment.ts</code></td><td>Attach / start-with-409-fallback / per-job poll / fingerprint gating.</td></tr>
+      <tr><td><code>frontend/src/hooks/useVerifyJob.ts</code></td><td>Same, specialised for the 3 verify kinds + session loading.</td></tr>
+      <tr><td><code>frontend/src/utils/waitForRunJob.ts</code></td><td>Awaitable poll loop + Studio 409 patterns.</td></tr>
+      <tr><td><code>frontend/src/utils/renderStable.ts</code></td><td><code>jobFingerprint</code>, <code>useLatestRef</code> — Rule W-36 stability helpers.</td></tr>
+      <tr><td><code>frontend/src/components/jobs/JobTray.tsx</code></td><td>Global tray UI + polling bootstrap.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<section id="caveats">
+  <h2><span class="num">12</span>Caveats &amp; design notes</h2>
+  <div class="card warn">
+    <h4>In-process workers share the event loop</h4>
+    <p style="margin:0">A heavy job competes with request handling on the same dyno. CPU-bound work belongs in Modal (extraction already does this); new job kinds should stay I/O-bound or offload.</p>
+  </div>
+  <div class="card warn">
+    <h4>Horizontal scaling caveat</h4>
+    <p style="margin:0">With multiple dynos, <em>every</em> dyno runs <code>recover_interrupted_jobs()</code> at startup and could re-spawn the same row. Fine at 1 web dyno (current setup); would need a claim/lock column before scaling out.</p>
+  </div>
+  <div class="card tip">
+    <h4>Why results embed snapshots</h4>
+    <p style="margin:0">Verify jobs write a <code>session_snapshot</code> into <code>result</code> (Rule W-33): session GETs must work even when a different dyno — with a different <code>/tmp</code> — serves the request. The row is the only shared storage.</p>
+  </div>
+  <div class="card key">
+    <h4>One active job per (run_id, kind)</h4>
+    <p style="margin:0">This invariant is what makes everything composable: the 409 is deterministic, "attach" is always unambiguous, and the UI never has to disambiguate competing jobs of the same kind.</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  MHM Pipeline Web · Job Runner System · generated 2026-07-04 ·
+  diagrams: inline SVG + <a href="https://mermaid.js.org" style="color:var(--accent)">Mermaid</a>
+</footer>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    themeVariables: {
+      darkMode: true,
+      background: "#161b22",
+      primaryColor: "#1c2330",
+      primaryTextColor: "#e6edf3",
+      primaryBorderColor: "#2d3646",
+      lineColor: "#58a6ff",
+      secondaryColor: "#1c2330",
+      tertiaryColor: "#0d1117",
+      fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+      fontSize: "14px",
+      noteBkgColor: "#1c2330",
+      noteTextColor: "#c8d1dc",
+      noteBorderColor: "#2d3646",
+      actorBkg: "#1c2330",
+      actorBorder: "#58a6ff",
+      actorTextColor: "#e6edf3",
+      signalColor: "#9aa7b8",
+      signalTextColor: "#c8d1dc",
+      labelBoxBkgColor: "#1c2330",
+      labelBoxBorderColor: "#2d3646",
+      labelTextColor: "#e6edf3",
+      loopTextColor: "#e6edf3",
+      sequenceNumberColor: "#0d1117",
+    },
+    sequence: { useMaxWidth: true, mirrorActors: false },
+    flowchart: { useMaxWidth: true, curve: "basis" },
+  });
+</script>
+</body>
+</html>
