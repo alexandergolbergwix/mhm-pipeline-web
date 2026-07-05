@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.pipeline import hmo_item_upload as pipeline
+from app.pipeline.hmo_item_reconcile import ReconcileOutcome, ReconciliationUnavailableError
 from converter.wikibase.resolved_models import (
     DeferredItemLink,
     ResolvedClaim,
@@ -204,6 +206,59 @@ async def test_update_existing_reports_failed_writes(db_session) -> None:
 
     assert result.updated == 0
     assert result.failed == 2
+    assert all(o.status == "failed" for o in result.outcomes)
+
+
+@pytest.mark.asyncio
+async def test_live_upload_adopts_a_reconciled_found_item_instead_of_creating(db_session) -> None:
+    """Pass 1 must not create a duplicate for an item that already exists
+    live on the Wikibase Cloud — it should adopt the found QID instead."""
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    writer = _FakeWriter()
+
+    async def _fake_reconcile(_db, source_uri: str) -> ReconcileOutcome:
+        if source_uri == "http://example.org#MS1":
+            return ReconcileOutcome(found=True, wikibase_id="Q999", message="found live")
+        return ReconcileOutcome(found=False)
+
+    with patch.object(pipeline, "reconcile_item", AsyncMock(side_effect=_fake_reconcile)):
+        result = await pipeline.upload_items_for_run(
+            db_session, run_id, writer=writer, dry_run=False,
+        )
+
+    outcomes_by_local_id = {o.local_id: o for o in result.outcomes}
+    assert outcomes_by_local_id["QDraft_MS1"].status == "adopted"
+    assert outcomes_by_local_id["QDraft_MS1"].wikibase_id == "Q999"
+    # The manuscript was adopted, not created — only the person went
+    # through a real create_item call.
+    assert len(writer.create_calls) == 1
+    assert result.created == 2  # one adopted + one created, both count as "resolved"
+
+    # The deferred MS1 -> Person1 link still resolves against the
+    # adopted QID, proving the mapping row was actually recorded.
+    assert result.unresolved_links == 0
+    assert result.linked == 1
+
+
+@pytest.mark.asyncio
+async def test_live_upload_blocks_creation_when_reconcile_is_unavailable(db_session) -> None:
+    """A SPARQL lookup failure must fail-closed: never proceed to create
+    a possibly-duplicate item when we can't first check for one."""
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    writer = _FakeWriter()
+
+    with patch.object(
+        pipeline, "reconcile_item",
+        AsyncMock(side_effect=ReconciliationUnavailableError("SPARQL endpoint unreachable")),
+    ):
+        result = await pipeline.upload_items_for_run(
+            db_session, run_id, writer=writer, dry_run=False,
+        )
+
+    assert result.failed == 2
+    assert writer.create_calls == []
     assert all(o.status == "failed" for o in result.outcomes)
 
 

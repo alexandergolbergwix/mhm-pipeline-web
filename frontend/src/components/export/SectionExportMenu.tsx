@@ -40,6 +40,7 @@ export type ExportSection =
   | "authority"
   | "rdf"
   | "wikibase"
+  | "wikibase_items"
   | "wikidata-studio";
 
 export type ExportFormat = string; // "json" | "csv" | "ttl" | "nt"
@@ -99,6 +100,9 @@ export function SectionExportMenu({
           break;
         case "wikibase":
           await SectionExport.wikibase(runId, fmt as WikibaseExportFormat);
+          break;
+        case "wikibase_items":
+          await SectionExport.wikibaseItems(runId, fmt as "json" | "csv");
           break;
         case "wikidata-studio":
           await SectionExport.wikidataStudio(runId, fmt as WikidataExportFormat, approvedOnly);

@@ -78,7 +78,8 @@ export type EntityType =
   | "extraction_entity"
   | "authority_match"
   | "wikidata_override"
-  | "wikibase_item";
+  | "wikibase_item"
+  | "hmo_item_override";
 
 export type EntityEventOp = "create" | "patch" | "revert" | "snapshot";
 

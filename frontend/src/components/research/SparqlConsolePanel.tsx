@@ -133,6 +133,40 @@ LIMIT 100`,
 }
 LIMIT 100`,
   },
+  {
+    label: "HMO item by source URI",
+    source: "wikibase",
+    query: `SELECT ?item WHERE {
+  ?item wdt:P<PASTE_PID> "<PASTE_SOURCE_URI>" .
+}`,
+  },
+  {
+    label: "HMO items of a class",
+    source: "wikibase",
+    query: `SELECT ?item ?label WHERE {
+  ?item wdt:P31 wd:<CLASS_QID> .
+  ?item rdfs:label ?label .
+  FILTER(LANG(?label) = "en" || LANG(?label) = "he")
+}
+LIMIT 200`,
+  },
+  {
+    label: "HMO items missing an English label",
+    source: "wikibase",
+    query: `SELECT ?item WHERE {
+  ?item wdt:P31 ?class .
+  FILTER NOT EXISTS { ?item rdfs:label ?l . FILTER(LANG(?l) = "en") }
+}
+LIMIT 200`,
+  },
+  {
+    label: "HMO items linking to an entity",
+    source: "wikibase",
+    query: `SELECT ?item WHERE {
+  ?item ?p wd:<TARGET_QID> .
+}
+LIMIT 200`,
+  },
 ];
 
 // ── Source selector ──────────────────────────────────────────────────────────

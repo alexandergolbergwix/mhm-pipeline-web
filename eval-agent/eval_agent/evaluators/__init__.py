@@ -8,6 +8,8 @@ from eval_agent.evaluators._base import Candidate, Evaluator, Verdict
 from eval_agent.evaluators.authority import AuthorityEvaluator
 from eval_agent.evaluators.contents_ner import ContentsNERevaluator
 from eval_agent.evaluators.genre_classifier import GenreClassifierEvaluator
+from eval_agent.evaluators.hmo_wikibase_item import HmoWikibaseItemEvaluator
+from eval_agent.evaluators.hmo_wikibase_item_autofix import HmoWikibaseItemAutofixEvaluator
 from eval_agent.evaluators.hmo_wikibase_schema import HmoWikibaseSchemaEvaluator
 from eval_agent.evaluators.person_ner import PersonNERevaluator
 from eval_agent.evaluators.provenance_ner import ProvenanceNERevaluator
@@ -33,6 +35,8 @@ REGISTRY: dict[str, type[Evaluator]] = {
     "wikidata_autofix": WikidataAutofixEvaluator,
     # HMO Wikibase Studio schema bootstrap. Reads hmo_wikibase_schema.json.
     "hmo_wikibase_schema": HmoWikibaseSchemaEvaluator,
+    "hmo_wikibase_item": HmoWikibaseItemEvaluator,
+    "hmo_wikibase_item_autofix": HmoWikibaseItemAutofixEvaluator,
 }
 
 # Evaluators that read authority_enriched.json instead of ner_results.json.
@@ -43,6 +47,10 @@ WIKIDATA_ITEM_EVALUATORS: frozenset[str] = frozenset({"wikidata_item", "wikidata
 
 # Evaluators that read hmo_wikibase_schema.json instead of ner_results.json.
 HMO_WIKIBASE_SCHEMA_EVALUATORS: frozenset[str] = frozenset({"hmo_wikibase_schema"})
+
+HMO_WIKIBASE_ITEM_EVALUATORS: frozenset[str] = frozenset({
+    "hmo_wikibase_item", "hmo_wikibase_item_autofix",
+})
 
 
 def build(evaluator_id: str) -> Evaluator:

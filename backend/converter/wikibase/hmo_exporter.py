@@ -37,6 +37,8 @@ SKIPPED_SCHEMA_TYPES: frozenset[URIRef] = frozenset(
     }
 )
 
+HMO_SOURCE_URI = str(HM.hmo_source_uri)
+
 PREFERRED_CLASS_ORDER: tuple[URIRef, ...] = (
     LRMOO.F4_Manifestation_Singleton,
     LRMOO.F1_Work,
@@ -314,6 +316,20 @@ def resolve_against_mappings(
                 )
                 continue
             claims.append(claim)
+
+        source_uri_entry = schema_mappings.get(HMO_SOURCE_URI)
+        if source_uri_entry is None:
+            # Bootstrap ordering: an old database may not have this new
+            # property mapped yet — skip gracefully instead of failing
+            # the whole batch the way an unmapped ontology URI does.
+            skipped.append(
+                "hmo_source_uri: no live schema mapping yet — run the "
+                "schema bootstrap to enable live-Wikibase reconciliation"
+            )
+        else:
+            claims.append(
+                ResolvedClaim(source_uri_entry.wikibase_id, "string", draft.source_uri)
+            )
 
         resolved.append(
             ResolvedWikibaseEntity(

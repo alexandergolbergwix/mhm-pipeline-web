@@ -41,6 +41,32 @@ export const SectionImport = {
   wikidataStudio(runId: string, file: File): Promise<ImportResult> {
     return uploadFile(`/api/runs/${runId}/wikidata-studio/import`, file);
   },
+
+  async wikibaseItems(runId: string, file: File): Promise<ImportResult> {
+    const text = await file.text();
+    const parsed = JSON.parse(text) as {items?: unknown[]};
+    const items = Array.isArray(parsed.items) ? parsed.items : (Array.isArray(parsed) ? parsed : []);
+    const res = await fetch(`/api/runs/${runId}/hmo-studio/items/import`, {
+      method: "POST",
+      credentials: "include",
+      headers: {"Content-Type": "application/json", ...csrfHeaders("POST")},
+      body: JSON.stringify({items}),
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const data = await res.json() as {detail?: unknown};
+        if (typeof data?.detail === "string") detail = data.detail;
+      } catch { /* ignore */ }
+      throw new Error(`Import failed: ${res.status} ${detail}`);
+    }
+    const body = await res.json() as {imported: number; skipped: number; errors: string[]};
+    return {
+      imported: body.imported,
+      skipped: body.skipped,
+      errors: (body.errors ?? []).map((message, i) => ({row: i + 1, message})),
+    };
+  },
 };
 
 async function uploadFile(url: string, file: File): Promise<ImportResult> {

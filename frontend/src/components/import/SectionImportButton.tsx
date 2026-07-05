@@ -35,6 +35,7 @@ export type ImportSection =
   | "authority"
   | "rdf"
   | "wikibase"
+  | "wikibase_items"
   | "wikidata-studio";
 
 interface SectionImportButtonProps {
@@ -50,6 +51,7 @@ const SECTION_ACCEPT: Record<ImportSection, string> = {
   authority:        ".json,.csv",
   rdf:              ".ttl",
   wikibase:         ".json",
+  wikibase_items:   ".json",
   "wikidata-studio": ".json,.csv",
 };
 
@@ -79,7 +81,9 @@ export function SectionImportButton({
     try {
       const fn = section === "wikidata-studio"
         ? SectionImport.wikidataStudio
-        : SectionImport[section as Exclude<ImportSection, "wikidata-studio">];
+        : section === "wikibase_items"
+          ? SectionImport.wikibaseItems
+          : SectionImport[section as Exclude<ImportSection, "wikidata-studio" | "wikibase_items">];
       const res = await fn(runId, file);
       setResult(res);
       onComplete?.(res);

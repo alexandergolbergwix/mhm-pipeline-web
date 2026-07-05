@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.wikibase_entity_mapping import WikibaseEntityMapping
+from app.pipeline.hmo_item_shacl import build_shacl_report_for_items
 from converter.wikibase.hmo_exporter import HmoWikibaseExporter, resolve_against_mappings
 from converter.wikibase.resolved_models import ResolvedWikibaseEntity, SchemaMappingEntry
 
@@ -34,6 +36,7 @@ class HmoItemBuildResult:
     skipped_statement_count: int
     from_cache: bool
     built_at: str | None = None
+    shacl_report: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 async def compute_hmo_build_fingerprint(db: AsyncSession, ttl_path: Path) -> str:
@@ -114,6 +117,7 @@ async def build_items_for_run(
                 skipped_statement_count=cached.skipped_statement_count,
                 from_cache=True,
                 built_at=cached.built_at.isoformat(),
+                shacl_report=cached.shacl_report or {},
             )
 
     schema_mappings = await _load_schema_mappings(db)
@@ -122,6 +126,8 @@ async def build_items_for_run(
 
     deferred_count = sum(len(e.deferred_links) for e in resolved)
     skipped_count = sum(len(e.skipped_statements) for e in resolved)
+    resolved_dicts = [e.to_dict() for e in resolved]
+    shacl_report = await build_shacl_report_for_items(ttl_path, resolved_dicts)
     await _upsert_cache(
         db,
         run_id=run_id,
@@ -129,6 +135,7 @@ async def build_items_for_run(
         entities=resolved,
         deferred_count=deferred_count,
         skipped_count=skipped_count,
+        shacl_report=shacl_report,
     )
 
     return HmoItemBuildResult(
@@ -137,6 +144,7 @@ async def build_items_for_run(
         deferred_link_count=deferred_count,
         skipped_statement_count=skipped_count,
         from_cache=False,
+        shacl_report=shacl_report,
     )
 
 
@@ -148,6 +156,7 @@ async def _upsert_cache(
     entities: list[ResolvedWikibaseEntity],
     deferred_count: int,
     skipped_count: int,
+    shacl_report: dict[str, list[dict[str, Any]]] | None = None,
 ) -> None:
     existing = (
         await db.execute(
@@ -165,6 +174,7 @@ async def _upsert_cache(
                 entity_count=len(entities),
                 deferred_link_count=deferred_count,
                 skipped_statement_count=skipped_count,
+                shacl_report=shacl_report,
             )
         )
     else:
@@ -173,4 +183,5 @@ async def _upsert_cache(
         existing.entity_count = len(entities)
         existing.deferred_link_count = deferred_count
         existing.skipped_statement_count = skipped_count
+        existing.shacl_report = shacl_report
     await db.commit()

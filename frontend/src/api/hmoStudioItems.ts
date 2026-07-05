@@ -1,0 +1,77 @@
+import {api} from "@/api/client";
+import type {AiVerdict} from "@/api/extractionApprovals";
+
+export interface HmoResolvedClaim {
+  property_id: string;
+  datatype: string;
+  value: unknown;
+}
+
+export interface HmoStudioItem {
+  local_id: string;
+  labels: Record<string, string>;
+  descriptions: Record<string, string>;
+  aliases?: Record<string, string[]>;
+  class_qid: string;
+  source_uri: string;
+  claims: HmoResolvedClaim[];
+  deferred_links?: Array<{source_local_id: string; property_id: string; target_local_id: string}>;
+  skipped_statements?: string[];
+  status: string;
+  wikibase_id: string | null;
+  approved: boolean | null;
+  shacl_issues: Array<{severity: string; message: string; focus_node?: string}>;
+  ai_verdict: AiVerdict | null;
+  ai_verdict_at?: string | null;
+  override_present: boolean;
+  override_id?: string | null;
+}
+
+export interface HmoItemOverridePayload {
+  labels?: Record<string, string | null>;
+  descriptions?: Record<string, string | null>;
+  aliases?: Record<string, string[] | null>;
+  add_statements?: Array<Record<string, unknown>>;
+  remove_statements?: number[];
+  statement_edits?: Record<string, Record<string, unknown>>;
+  approved?: boolean | null;
+}
+
+export const HmoStudioItems = {
+  list(runId: string): Promise<{run_id: string; items: HmoStudioItem[]}> {
+    return api.get(`/runs/${runId}/hmo-studio/items`);
+  },
+
+  patchOverride(
+    runId: string,
+    localId: string,
+    payload: HmoItemOverridePayload,
+  ): Promise<HmoItemOverridePayload & {run_id: string; local_id: string}> {
+    return api.patch(
+      `/runs/${runId}/hmo-studio/items/${encodeURIComponent(localId)}/override`,
+      payload,
+    );
+  },
+
+  reconcile(runId: string, localId: string): Promise<Record<string, unknown>> {
+    return api.post(
+      `/runs/${runId}/hmo-studio/items/${encodeURIComponent(localId)}/reconcile`,
+      {},
+    );
+  },
+
+  applyAiFixes(
+    runId: string,
+    localId: string,
+    fixes: Array<Record<string, unknown>>,
+  ): Promise<HmoItemOverridePayload & {run_id: string; local_id: string}> {
+    return api.post(
+      `/runs/${runId}/hmo-studio/items/${encodeURIComponent(localId)}/ai-fixes/apply`,
+      {fixes},
+    );
+  },
+
+  cachedVerdicts(runId: string): Promise<Record<string, AiVerdict>> {
+    return api.get(`/runs/${runId}/hmo-studio/items/ai-verify/cached-verdicts`);
+  },
+};

@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+from app.pipeline.hmo_item_reconcile import ReconciliationUnavailableError, reconcile_item
 from app.models.wikibase_cloud_write import (
     OPERATION_CREATE,
     OPERATION_FAILED,
@@ -59,7 +60,7 @@ class ItemBuildMissingError(RuntimeError):
 class HmoItemUploadOutcome:
     local_id: str
     source_uri: str
-    # "created" | "updated" | "skipped" | "would_create" | "would_update" | "failed"
+    # "created" | "updated" | "skipped" | "adopted" | "would_create" | "would_update" | "failed"
     status: str
     wikibase_id: str | None = None
     message: str = ""
@@ -265,6 +266,44 @@ async def _pass_one_create(
             # value itself is never used for a real write in dry-run.
             created_this_call[entity.source_uri] = "Q_PENDING"
             created += 1
+            continue
+
+        try:
+            reconcile = await reconcile_item(db, entity.source_uri)
+        except ReconciliationUnavailableError as exc:
+            outcomes.append(
+                HmoItemUploadOutcome(
+                    entity.local_id, entity.source_uri, "failed",
+                    message=f"reconcile unavailable: {exc}",
+                )
+            )
+            failed += 1
+            continue
+
+        if reconcile.found and reconcile.wikibase_id:
+            await _record_instance_mapping(
+                db,
+                source_uri=entity.source_uri,
+                wikibase_id=reconcile.wikibase_id,
+                run_id=run_id,
+                label=entity.labels.get("en") or entity.local_id,
+            )
+            created_this_call[entity.source_uri] = reconcile.wikibase_id
+            outcomes.append(
+                HmoItemUploadOutcome(
+                    entity.local_id, entity.source_uri, "adopted", reconcile.wikibase_id,
+                    message=reconcile.message,
+                )
+            )
+            created += 1
+            if audit_ctx is not None:
+                await record_wikibase_write(
+                    db, audit_ctx,
+                    operation=OPERATION_CREATE,
+                    target_kind=TARGET_ITEM,
+                    target_key=entity.source_uri,
+                    wikibase_id=reconcile.wikibase_id,
+                )
             continue
 
         wbi_claims = [_build_wbi_claim(c) for c in entity.claims]

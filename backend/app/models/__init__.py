@@ -12,11 +12,13 @@ from app.models.base import Base
 from app.models.email_throttle import EmailThrottle
 from app.models.entity_snapshot import EntitySnapshot
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
+from app.models.hmo_studio_item_override import HmoStudioItemOverride
 from app.models.event import (
     ALL_ENTITY_TYPES,
     ALL_OPS,
     ENTITY_TYPE_AUTHORITY_MATCH,
     ENTITY_TYPE_EXTRACTION_ENTITY,
+    ENTITY_TYPE_HMO_ITEM_OVERRIDE,
     ENTITY_TYPE_MARC_RECORD,
     ENTITY_TYPE_WIKIBASE_ITEM,
     ENTITY_TYPE_WIKIDATA_OVERRIDE,
@@ -77,12 +79,14 @@ __all__ = [
     "ENTITY_KIND_PROPERTY",
     "ENTITY_TYPE_AUTHORITY_MATCH",
     "ENTITY_TYPE_EXTRACTION_ENTITY",
+    "ENTITY_TYPE_HMO_ITEM_OVERRIDE",
     "ENTITY_TYPE_MARC_RECORD",
     "ENTITY_TYPE_WIKIBASE_ITEM",
     "ENTITY_TYPE_WIKIDATA_OVERRIDE",
     "EmailThrottle",
     "EntitySnapshot",
     "HmoStudioItemCache",
+    "HmoStudioItemOverride",
     "ExtractionApproval",
     "InferenceCache",
     "Invitation",

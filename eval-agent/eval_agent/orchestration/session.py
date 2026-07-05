@@ -41,6 +41,7 @@ from eval_agent.client.judge_interface import Judge
 from eval_agent.client.rate_limiter import RateLimiter
 from eval_agent.evaluators import (
     AUTHORITY_EVALUATORS,
+    HMO_WIKIBASE_ITEM_EVALUATORS,
     HMO_WIKIBASE_SCHEMA_EVALUATORS,
     REGISTRY,
     WIKIDATA_ITEM_EVALUATORS,
@@ -48,6 +49,7 @@ from eval_agent.evaluators import (
 )
 from eval_agent.evaluators._base import Candidate, Evaluator, Verdict
 from eval_agent.ingest import (
+    hmo_wikibase_items,
     hmo_wikibase_schema,
     marc_extract,
     ner_results,
@@ -320,6 +322,11 @@ class Session:
             if run.hmo_wikibase_schema is not None
             else []
         )
+        hmo_item_records_list = (
+            hmo_wikibase_items.load(run.hmo_wikibase_items)
+            if run.hmo_wikibase_items is not None
+            else []
+        )
         # Stash indexes so the agentic tools (called inside _judge_one on the
         # thread pool) can read the full record on demand. Prefer the
         # authority record (a superset of MARC) when present.
@@ -339,6 +346,8 @@ class Session:
             ui.kv("Wikidata items", len(wikidata_records_list))
         if hmo_schema_records_list:
             ui.kv("HMO Wikibase schema entries", len(hmo_schema_records_list))
+        if hmo_item_records_list:
+            ui.kv("HMO Wikibase items", len(hmo_item_records_list))
 
         # Extract all candidates up-front so we can print a budget preview.
         # File-coupled evaluators iterate their own JSON files; NER
@@ -351,11 +360,15 @@ class Session:
                 records = wikidata_records_list
             elif ev.id in HMO_WIKIBASE_SCHEMA_EVALUATORS:
                 records = hmo_schema_records_list
+            elif ev.id in HMO_WIKIBASE_ITEM_EVALUATORS:
+                records = hmo_item_records_list
             else:
                 records = ner_records_list
             for rec in records:
                 if ev.id in WIKIDATA_ITEM_EVALUATORS:
                     rid = wikidata_items.control_number(rec)
+                elif ev.id in HMO_WIKIBASE_ITEM_EVALUATORS:
+                    rid = hmo_wikibase_items.control_number(rec)
                 elif ev.id in HMO_WIKIBASE_SCHEMA_EVALUATORS:
                     rid = ""  # schema entries have no MARC correlation
                 else:
@@ -363,9 +376,8 @@ class Session:
                 marc_rec = marc_index.get(rid, {})
                 if (
                     ev.id in WIKIDATA_ITEM_EVALUATORS
-                    and not marc_rec
-                    and len(marc_records) == 1
-                ):
+                    or ev.id in HMO_WIKIBASE_ITEM_EVALUATORS
+                ) and not marc_rec and len(marc_records) == 1:
                     marc_rec = marc_records[0]
                 for cand in ev.extract_candidates(
                     ner_record=rec,

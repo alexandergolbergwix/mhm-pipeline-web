@@ -77,4 +77,13 @@ export const SectionExport = {
     );
     return Promise.resolve();
   },
+
+  wikibaseItems(runId: string, format: "json" | "csv" = "json"): Promise<void> {
+    const params = new URLSearchParams({format});
+    downloadFromUrl(
+      `/api/runs/${runId}/hmo-studio/items/export?${params}`,
+      `run-${runId}-hmo-wikibase-items.${format}`,
+    );
+    return Promise.resolve();
+  },
 };

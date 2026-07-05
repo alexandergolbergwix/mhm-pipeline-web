@@ -8,7 +8,11 @@ import pytest
 from rdflib import Graph, Literal, RDF, RDFS
 
 from converter.config.namespaces import HM
-from converter.wikibase.hmo_exporter import HmoWikibaseExporter, resolve_against_mappings
+from converter.wikibase.hmo_exporter import (
+    HMO_SOURCE_URI,
+    HmoWikibaseExporter,
+    resolve_against_mappings,
+)
 from converter.wikibase.resolved_models import SchemaMappingEntry, UnmappedOntologyUriError
 
 
@@ -35,6 +39,7 @@ def test_resolve_builds_string_and_time_claims_and_defers_entity_links() -> None
         str(HM.Person): SchemaMappingEntry("Q2"),
         str(HM.has_date_of_creation): SchemaMappingEntry("P1", "time"),
         str(HM.created_by): SchemaMappingEntry("P2", "wikibase-item"),
+        HMO_SOURCE_URI: SchemaMappingEntry("P99", "string"),
     }
 
     resolved = resolve_against_mappings(drafts, mappings)
@@ -48,6 +53,27 @@ def test_resolve_builds_string_and_time_claims_and_defers_entity_links() -> None
     assert ms_entity.deferred_links[0].property_id == "P2"
     assert ms_entity.deferred_links[0].target_local_id == by_class["Q2"].local_id
     assert ms_entity.skipped_statements == []
+    source_uri_claim = ms_entity.claims[-1]
+    assert source_uri_claim.property_id == "P99"
+    assert source_uri_claim.datatype == "string"
+    assert source_uri_claim.value == ms_entity.source_uri
+
+
+def test_resolve_skips_source_uri_claim_gracefully_when_unmapped() -> None:
+    """A database that hasn't run the schema bootstrap since
+    ``hmo_source_uri`` was added must not fail the whole batch — it's a
+    graceful skip, unlike an unmapped class/statement property URI."""
+    graph = Graph()
+    ms = HM.MS1
+    graph.add((ms, RDF.type, HM.Codicological_Unit))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    mappings = {str(HM.Codicological_Unit): SchemaMappingEntry("Q1")}
+
+    resolved = resolve_against_mappings(drafts, mappings)
+
+    assert resolved[0].claims == []
+    assert any("hmo_source_uri" in note for note in resolved[0].skipped_statements)
 
 
 def test_resolve_raises_on_unmapped_property_uri() -> None:
@@ -130,10 +156,11 @@ def test_resolve_skips_object_property_pointing_at_external_uri() -> None:
     mappings = {
         str(HM.Codicological_Unit): SchemaMappingEntry("Q1"),
         str(HM.associated_authority): SchemaMappingEntry("P9", "wikibase-item"),
+        HMO_SOURCE_URI: SchemaMappingEntry("P99", "string"),
     }
 
     resolved = resolve_against_mappings(drafts, mappings)
 
-    assert resolved[0].claims == []
+    assert resolved[0].claims[0].property_id == "P99"
     assert resolved[0].deferred_links == []
     assert len(resolved[0].skipped_statements) == 1

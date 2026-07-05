@@ -19,6 +19,7 @@ import {Glass, GlassPill} from "@/components/glass";
 import {SchemaBootstrapPanel} from "@/components/hmo/SchemaBootstrapPanel";
 import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
 import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
+import {HmoItemsPanel} from "@/components/hmo/HmoItemsPanel";
 import {GraphOverviewSummary} from "@/components/rdf/GraphOverviewSummary";
 import {useProjectEvents} from "@/api/realtime";
 import {useRunJobs} from "@/stores/runJobs";
@@ -45,6 +46,8 @@ export default function HmoStudioRoute() {
   const [editCn, setEditCn] = useState<string | null>(null);
   const [showRecordPicker, setShowRecordPicker] = useState(false);
   const [itemBuildToken, setItemBuildToken] = useState(0);
+  const [itemBuildPresent, setItemBuildPresent] = useState(false);
+  const [itemsTab, setItemsTab] = useState<"build" | "review">("build");
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
 
   // ── refreshers ─────────────────────────────────────────────────────────
@@ -96,6 +99,15 @@ export default function HmoStudioRoute() {
       .catch(() => { /* non-fatal — WS push just stays disabled */ });
     return () => { cancelled = true; };
   }, [runId]);
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    HmoStudio.itemStatus(runId)
+      .then((st) => { if (!cancelled) setItemBuildPresent(st.build_present); })
+      .catch(() => { /* non-fatal */ });
+    return () => { cancelled = true; };
+  }, [runId, itemBuildToken]);
 
   // Live job progress: the schema-bootstrap background job pushes updates
   // through the project's existing WebSocket room (see run_job_service.py
@@ -310,20 +322,51 @@ export default function HmoStudioRoute() {
           )}
         </Glass>
 
-        {/* Wikibase items (Phase 4/5: full ontology-based item export/upload) */}
+        {/* Wikibase items (Phase 4/5 + rich review) */}
         {runId && (
-          <>
-            <ItemBuildPanel
-              runId={runId}
-              rdfPresent={!!status?.rdf_present}
-              onBuilt={() => setItemBuildToken((t) => t + 1)}
-            />
-            <ItemUploadPanel
-              runId={runId}
-              wikibaseConfigured={wikibaseConfigured}
-              refreshToken={itemBuildToken}
-            />
-          </>
+          <Glass as="section" className="p-6 space-y-4">
+            <div className="flex flex-wrap gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => setItemsTab("build")}
+                className={itemsTab === "build" ? "button-primary text-xs" : "button-ghost text-xs"}
+              >
+                Build &amp; upload
+              </button>
+              <button
+                type="button"
+                onClick={() => setItemsTab("review")}
+                className={itemsTab === "review" ? "button-primary text-xs" : "button-ghost text-xs"}
+                data-testid="hmo-items-review-tab"
+              >
+                Wikibase Items
+              </button>
+            </div>
+            {itemsTab === "build" ? (
+              <>
+                <ItemBuildPanel
+                  runId={runId}
+                  rdfPresent={!!status?.rdf_present}
+                  onBuilt={() => {
+                    setItemBuildToken((t) => t + 1);
+                    setItemBuildPresent(true);
+                  }}
+                />
+                <ItemUploadPanel
+                  runId={runId}
+                  wikibaseConfigured={wikibaseConfigured}
+                  refreshToken={itemBuildToken}
+                />
+              </>
+            ) : (
+              <HmoItemsPanel
+                runId={runId}
+                projectId={projectId}
+                buildPresent={itemBuildPresent}
+                refreshToken={itemBuildToken}
+              />
+            )}
+          </Glass>
         )}
 
         {/* MARC record editor */}

@@ -47,6 +47,7 @@ ENTITY_TYPE_EXTRACTION_ENTITY = "extraction_entity"
 ENTITY_TYPE_AUTHORITY_MATCH = "authority_match"
 ENTITY_TYPE_WIKIDATA_OVERRIDE = "wikidata_override"
 ENTITY_TYPE_WIKIBASE_ITEM = "wikibase_item"
+ENTITY_TYPE_HMO_ITEM_OVERRIDE = "hmo_item_override"
 
 # Op constants used by ProjectEvent.op.
 OP_CREATE = "create"
@@ -60,6 +61,7 @@ ALL_ENTITY_TYPES: frozenset[str] = frozenset({
     ENTITY_TYPE_AUTHORITY_MATCH,
     ENTITY_TYPE_WIKIDATA_OVERRIDE,
     ENTITY_TYPE_WIKIBASE_ITEM,
+    ENTITY_TYPE_HMO_ITEM_OVERRIDE,
 })
 
 ALL_OPS: frozenset[str] = frozenset({

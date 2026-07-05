@@ -953,6 +953,12 @@ hm:external_wikidata_uri rdf:type owl:DatatypeProperty ;
     rdfs:label "Wikidata URI"@en ,
                "כתובת ויקידאטה"@he .
 
+hm:hmo_source_uri rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:label "HMO source URI"@en ,
+               "כתובת מקור HMO"@he ;
+    rdfs:comment "Canonical RDF subject URI of the HMO instance this Wikibase item represents — used for SPARQL reconciliation"@en .
+
 hm:has_digital_representation_url rdf:type owl:DatatypeProperty ;
     rdfs:domain lrmoo:F4_Manifestation_Singleton ;
     rdfs:range xsd:anyURI ;
@@ -3558,3 +3564,13 @@ hm:has_censorship_mark rdf:type owl:DatatypeProperty ;
     rdfs:range xsd:boolean ;
     rdfs:label "has censorship mark"@en ,
                "יש סימן צנזורה"@he .
+
+#################################################################
+#    Wikibase Studio identifier (reconciliation anchor)
+#################################################################
+
+hm:hmo_source_uri rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:label "HMO source URI"@en ,
+               "כתובת מקור HMO"@he ;
+    rdfs:comment "The canonical HMO RDF subject URI an exported Wikibase Studio item was built from — an exact-match anchor for live-Wikibase reconciliation/dedup."@en .

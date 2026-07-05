@@ -10,6 +10,7 @@ stays fast and focused on the caching logic.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -137,3 +138,47 @@ async def test_force_rebuild_bypasses_cache(db_session, tmp_path) -> None:
     )
 
     assert forced.from_cache is False
+
+
+@pytest.mark.asyncio
+async def test_shacl_report_is_stored_and_returned_on_cache_hit(db_session, tmp_path) -> None:
+    await _seed_schema_mappings(db_session)
+    ttl_path = tmp_path / "manuscripts.ttl"
+    ttl_path.write_text(_TTL, encoding="utf-8")
+    run_id = uuid.uuid4()
+
+    fake_report = {
+        "QDraft_MS1": [
+            {"focus_node": "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#MS1",
+             "severity": "Violation", "message": "synthetic violation", "value": None,
+             "source_shape": ""},
+        ],
+    }
+    with patch.object(
+        pipeline, "build_shacl_report_for_items", AsyncMock(return_value=fake_report),
+    ):
+        first = await pipeline.build_items_for_run(db_session, run_id, ttl_path)
+    assert first.from_cache is False
+    assert first.shacl_report == fake_report
+
+    second = await pipeline.build_items_for_run(db_session, run_id, ttl_path)
+    assert second.from_cache is True
+    assert second.shacl_report == fake_report
+
+
+@pytest.mark.asyncio
+async def test_build_uses_real_shacl_pipeline_and_does_not_crash_on_malformed_ttl(
+    db_session, tmp_path,
+) -> None:
+    """End-to-end (no mocking): a build against the real ``validate_with_shacl``
+    path must never crash even if SHACL itself has nothing useful to say
+    about this tiny synthetic fixture — it degrades to a (possibly empty)
+    report rather than raising."""
+    await _seed_schema_mappings(db_session)
+    ttl_path = tmp_path / "manuscripts.ttl"
+    ttl_path.write_text(_TTL, encoding="utf-8")
+    run_id = uuid.uuid4()
+
+    result = await pipeline.build_items_for_run(db_session, run_id, ttl_path)
+
+    assert isinstance(result.shacl_report, dict)
