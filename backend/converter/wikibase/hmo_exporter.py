@@ -160,9 +160,11 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
             continue
         language = label.language or "und"
         labels.setdefault(language, str(label))
-    if labels:
-        return labels
-    return {"en": _node_local_name(subject).replace("_", " ")}
+    if not labels:
+        return {"en": _node_local_name(subject).replace("_", " ")}
+    if "en" not in labels:
+        labels["en"] = labels.get("he") or next(iter(labels.values()))
+    return labels
 
 
 def _descriptions_for_node(

@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 from rdflib import Graph, Literal, RDF, RDFS
 
-from converter.config.namespaces import HM
+from converter.config.namespaces import CIDOC, HM, LRMOO
 from converter.wikibase.hmo_exporter import (
     HMO_SOURCE_URI,
     HmoWikibaseExporter,
@@ -100,6 +100,29 @@ def test_resolve_raises_on_unmapped_class_uri() -> None:
     with pytest.raises(UnmappedOntologyUriError) as excinfo:
         resolve_against_mappings(drafts, {})
     assert str(HM.Codicological_Unit) in excinfo.value.missing_uris
+
+
+def test_draft_labels_mirror_hebrew_into_english_when_missing() -> None:
+    graph = Graph()
+    work = HM.Work1
+    graph.add((work, RDF.type, LRMOO.F1_Work))
+    graph.add((work, RDFS.label, Literal("ספר תהילים", lang="he")))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    assert len(drafts) == 1
+    assert drafts[0].labels["he"] == "ספר תהילים"
+    assert drafts[0].labels["en"] == "ספר תהילים"
+
+
+def test_draft_labels_keep_existing_english_untouched() -> None:
+    graph = Graph()
+    person = HM.Person1
+    graph.add((person, RDF.type, CIDOC.E21_Person))
+    graph.add((person, RDFS.label, Literal("רבי משה", lang="he")))
+    graph.add((person, RDFS.label, Literal("Moses Maimonides", lang="en")))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    assert drafts[0].labels == {"he": "רבי משה", "en": "Moses Maimonides"}
 
 
 def test_draft_description_falls_back_to_clean_class_name_when_no_comment() -> None:

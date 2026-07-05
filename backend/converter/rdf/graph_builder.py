@@ -294,7 +294,10 @@ class GraphBuilder:
             )
             for pair in work_expression_pairs:
                 tradition_name = f"{pair['title']} tradition"
-                tradition_uri = self.add_text_tradition(graph, tradition_name)
+                tradition_title = pair["title"]
+                tradition_uri = self.add_text_tradition(
+                    graph, tradition_name, display_title=tradition_title
+                )
                 self.add_transmission_witness(
                     graph,
                     ms_uri,
@@ -310,7 +313,7 @@ class GraphBuilder:
                     tradition_uri,
                     pair["title"],
                     tradition_name,
-                    justification="Cataloging and philological alignment for generated pilot data",
+                    tradition_title=tradition_title,
                 )
 
         # Add epistemological metadata for catalog-derived data (v1.4)
@@ -2049,11 +2052,32 @@ class GraphBuilder:
                 Literal("New Philology view: manuscript as unique cultural event", lang="en"),
             )
         )
+        graph.add(
+            (
+                phil_view_uri,
+                RDFS.label,
+                Literal(f"Philological view of MS {control_number}", lang="en"),
+            )
+        )
+        graph.add(
+            (
+                phil_view_uri,
+                RDFS.comment,
+                Literal(
+                    f"Philological analysis layer for manuscript {control_number}.",
+                    lang="en",
+                ),
+            )
+        )
 
         return phil_view_uri
 
     def add_text_tradition(
-        self, graph: Graph, tradition_name: str, description: str | None = None
+        self,
+        graph: Graph,
+        tradition_name: str,
+        description: str | None = None,
+        display_title: str | None = None,
     ) -> URIRef:
         """Add a Text Tradition entity.
 
@@ -2062,17 +2086,21 @@ class GraphBuilder:
 
         Args:
             graph: RDF graph
-            tradition_name: Name of the text tradition
+            tradition_name: Stable identifier for URI generation
             description: Optional description of the tradition
+            display_title: Human-readable title for labels and claims (defaults to tradition_name)
 
         Returns:
             URI of the text tradition
         """
         tradition_uri = self.uri_gen.text_tradition_uri(tradition_name)
+        label_text = display_title or tradition_name
+        comment_text = description or f"Textual tradition of the work '{label_text}'."
 
         graph.add((tradition_uri, RDF.type, HM.TextTradition))
-        graph.add((tradition_uri, RDFS.label, Literal(tradition_name, lang="he")))
-        graph.add((tradition_uri, HM.tradition_name, Literal(tradition_name, datatype=XSD.string)))
+        graph.add((tradition_uri, RDFS.label, Literal(label_text, lang="he")))
+        graph.add((tradition_uri, HM.tradition_name, Literal(label_text, datatype=XSD.string)))
+        graph.add((tradition_uri, RDFS.comment, Literal(comment_text, lang="en")))
 
         if description:
             graph.add(
@@ -2115,6 +2143,16 @@ class GraphBuilder:
                 Literal(f"Witness of {work_title} in MS {control_number}", lang="en"),
             )
         )
+        graph.add(
+            (
+                witness_uri,
+                RDFS.comment,
+                Literal(
+                    f"Attests the textual tradition of '{work_title}' in manuscript {control_number}.",
+                    lang="en",
+                ),
+            )
+        )
 
         graph.add((ms_uri, HM.witnesses, tradition_uri))
         graph.add((ms_uri, HM.has_text_tradition, tradition_uri))
@@ -2142,6 +2180,7 @@ class GraphBuilder:
         tradition_uri: URIRef,
         work_title: str,
         tradition_name: str,
+        tradition_title: str | None = None,
         justification: str | None = None,
     ) -> URIRef:
         """Add a Paradigm Bridge linking a Work to a TextTradition.
@@ -2153,24 +2192,38 @@ class GraphBuilder:
             work_uri: Work URI (bibliographic paradigm)
             tradition_uri: Text tradition URI (philological paradigm)
             work_title: Title of the work
-            tradition_name: Name of the text tradition
+            tradition_name: Stable identifier for URI generation
+            tradition_title: Human-readable tradition title for labels
             justification: Optional explanation for the link
 
         Returns:
             URI of the paradigm bridge
         """
         bridge_uri = self.uri_gen.paradigm_bridge_uri(work_title, tradition_name)
+        display_tradition = tradition_title or work_title
+        comment_text = justification or (
+            f"Links the work '{work_title}' to its textual tradition."
+        )
 
         graph.add((bridge_uri, RDF.type, HM.ParadigmBridge))
+        graph.add(
+            (
+                bridge_uri,
+                RDFS.label,
+                Literal(
+                    f"Paradigm bridge: {work_title} ↔ {display_tradition}",
+                    lang="en",
+                ),
+            )
+        )
+        graph.add((bridge_uri, RDFS.comment, Literal(comment_text, lang="en")))
         graph.add((bridge_uri, HM.has_linked_work, work_uri))
         graph.add((bridge_uri, HM.has_linked_tradition, tradition_uri))
         graph.add((work_uri, HM.paradigm_bridge, bridge_uri))
         graph.add((tradition_uri, HM.paradigm_bridge, bridge_uri))
-
-        if justification:
-            graph.add(
-                (bridge_uri, HM.paradigm_justification, Literal(justification, datatype=XSD.string))
-            )
+        graph.add(
+            (bridge_uri, HM.paradigm_justification, Literal(comment_text, datatype=XSD.string))
+        )
 
         return bridge_uri
 
