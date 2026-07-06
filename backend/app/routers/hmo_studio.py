@@ -362,13 +362,17 @@ async def coverage(
     """Return the HMO → Wikidata projection-coverage JSON.
 
     Cached on disk after the first build. The cached file is returned
-    verbatim if present; on a cache miss this used to rebuild inline
-    (parsing the TTL twice + building Wikidata item drafts), which on a
-    large run took well over Heroku's 30s router timeout and pinned
-    this request's DB connection the whole time. It now enqueues a
-    background job and returns 409 with the job id — the frontend polls
+    verbatim if present; on a local cache miss (e.g. a Heroku deploy or
+    dyno restart wiped the ephemeral filesystem) it falls back to the
+    durable Postgres cache (``HmoCoverageCache``, keyed by a hash of the
+    RDF TTL bytes) so an unchanged graph never pays for a rebuild twice.
+    Only a genuine cache miss — no cached report anywhere, or the RDF
+    graph changed since the last build — enqueues a background job and
+    returns 409 with the job id; rebuilding inline used to hold the
+    request (and its DB connection) open well past Heroku's 30s router
+    timeout on a large run. The frontend polls
     ``GET /runs/{run_id}/jobs/{job_id}`` and re-fetches this endpoint
-    once the job succeeds (the job also writes the same on-disk cache).
+    once the job succeeds (the job writes both caches).
     """
     run = await _lookup_run_with_access(db, run_id, auth)
     cache = hmo_pipeline.coverage_path_for_run(str(run_id))
@@ -390,6 +394,12 @@ async def coverage(
                 "before requesting coverage."
             ),
         )
+
+    fingerprint = await hmo_pipeline.compute_coverage_fingerprint(ttl_path)
+    db_report = await hmo_pipeline.load_cached_coverage_from_db(db, run_id, fingerprint)
+    if db_report is not None:
+        hmo_pipeline.cache_coverage_report(str(run_id), db_report)
+        return db_report
 
     job_id = await _enqueue_coverage_job(
         db, project_id=run.project_id, run_id=run_id, user_id=auth.user.id,

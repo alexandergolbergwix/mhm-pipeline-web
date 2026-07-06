@@ -54,6 +54,7 @@ async def run_hmo_coverage_job(job_id: uuid.UUID) -> None:
     from app.pipeline import hmo_studio as hmo_pipeline  # noqa: PLC0415
 
     try:
+        fingerprint = await hmo_pipeline.compute_coverage_fingerprint(ttl_path)
         report = await hmo_pipeline.coverage_report_for_run(ttl_path=ttl_path)
     except Exception as exc:  # noqa: BLE001
         logger.exception("hmo coverage build job failed for run %s", run_id)
@@ -61,6 +62,15 @@ async def run_hmo_coverage_job(job_id: uuid.UUID) -> None:
         return
 
     hmo_pipeline.cache_coverage_report(str(run_id), report)
+    # Durable write-through so a dyno restart doesn't force this 9-14
+    # minute rebuild again for an RDF graph that hasn't changed.
+    try:
+        async with session_scope() as db:
+            await hmo_pipeline.save_coverage_to_db(db, run_id, fingerprint, report)
+    except Exception:  # noqa: BLE001 — the on-disk cache is already good; never fail the job on this
+        logger.exception(
+            "failed to persist durable coverage cache for run %s", run_id,
+        )
 
     if await is_cancel_requested(job_id):
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)

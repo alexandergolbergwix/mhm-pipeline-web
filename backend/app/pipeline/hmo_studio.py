@@ -30,11 +30,16 @@ and exponential-backoff retry on every edit.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -380,3 +385,70 @@ def cache_coverage_report(run_id: str, report: dict[str, Any]) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+# ── Durable (Postgres) coverage cache ───────────────────────────────────
+#
+# The on-disk cache above lives under the dyno's local filesystem, which
+# every Heroku deploy or dyno restart wipes. Coverage builds parse the RDF
+# TTL twice via rdflib and can take 9-14 minutes on a large corpus, so
+# losing the cache on every dyno recycle forced curators to wait through a
+# full rebuild repeatedly for an RDF graph that had not actually changed.
+# This mirrors ``RdfArtifact`` (the TTL's own durable-restore mechanism)
+# and ``HmoStudioItemCache`` (the item-build cache's fingerprint pattern).
+
+
+def _hash_ttl_bytes(ttl_path: Path) -> str:
+    return hashlib.sha256(ttl_path.read_bytes()).hexdigest()
+
+
+async def compute_coverage_fingerprint(ttl_path: Path) -> str:
+    """SHA-256 over the RDF TTL bytes the coverage report is built from.
+
+    The coverage report is a pure function of the TTL (no schema-mapping
+    or other DB state factors in, unlike the item-build cache), so the
+    TTL hash alone is a sufficient cache key.
+    """
+    return await asyncio.to_thread(_hash_ttl_bytes, ttl_path)
+
+
+async def load_cached_coverage_from_db(
+    db: AsyncSession, run_id: uuid.UUID, fingerprint: str,
+) -> dict[str, Any] | None:
+    """Return the Postgres-cached report for *run_id* iff the fingerprint
+    still matches the current RDF graph; ``None`` on a miss."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.hmo_coverage_cache import HmoCoverageCache  # noqa: PLC0415
+
+    row = (
+        await db.execute(
+            select(HmoCoverageCache).where(HmoCoverageCache.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    if row is None or row.input_fingerprint != fingerprint:
+        return None
+    return row.report
+
+
+async def save_coverage_to_db(
+    db: AsyncSession, run_id: uuid.UUID, fingerprint: str, report: dict[str, Any],
+) -> None:
+    """Upsert the durable coverage cache row for *run_id*."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.hmo_coverage_cache import HmoCoverageCache  # noqa: PLC0415
+
+    existing = (
+        await db.execute(
+            select(HmoCoverageCache).where(HmoCoverageCache.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        db.add(HmoCoverageCache(
+            run_id=run_id, input_fingerprint=fingerprint, report=report,
+        ))
+    else:
+        existing.input_fingerprint = fingerprint
+        existing.report = report
+    await db.commit()

@@ -773,6 +773,36 @@ Tests: `tests/unit/test_run_job_recovery.py` (claim/heartbeat/tick/race
 cases). Any change to claiming, staleness, or the maintenance loop MUST
 extend that suite.
 
+### Rule W-39 — Every on-disk build cache needs a durable Postgres counterpart (added 2026-07-06)
+
+Incident: `GET /hmo-studio/coverage` kept returning 409
+`hmo_coverage_in_progress` for the same run over and over. The report
+itself was fine (the background job legitimately takes 9-14 minutes —
+it parses the run's RDF TTL via rdflib twice), but
+`hmo_pipeline.cache_coverage_report` only wrote the result to the
+dyno's local filesystem. Every Heroku deploy or dyno restart wipes that
+cache (`claimed_by` on the job rows confirmed a fresh `WORKER_ID` each
+time), so the *same run* paid the full 9-14 minute rebuild repeatedly
+even though its RDF graph never changed.
+
+Fix: `app/models/hmo_coverage_cache.py::HmoCoverageCache` — one row per
+`run_id`, keyed by a SHA-256 fingerprint of the RDF TTL bytes (migration
+`0032_hmo_coverage_cache`). `GET /coverage` now falls back to this
+durable cache (and re-seeds the on-disk file) before enqueueing a
+rebuild job; the background job write-throughs both caches on success.
+
+**General invariant**: any per-run build result cached only under
+`backend/state/runs/{run_id}/...` (on-disk) MUST also have a Postgres
+write-through, mirroring `RdfArtifact` (the original TTL-restore fix,
+2026-07-04) and `HmoStudioItemCache`/`WikidataStudioCache` (which
+already did this correctly). A cache that only survives on local disk
+is not a cache on Heroku — it is state that silently evaporates on
+every deploy and forces a full, possibly multi-minute, rebuild.
+
+Tests: `backend/tests/test_hmo_studio_coverage_router.py`
+(`test_coverage_restores_from_durable_db_cache_on_disk_miss`,
+`test_coverage_stale_db_cache_still_enqueues_rebuild`).
+
 ---
 
 ## Project structure
