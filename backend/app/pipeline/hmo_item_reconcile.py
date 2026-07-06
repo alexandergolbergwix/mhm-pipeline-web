@@ -46,12 +46,43 @@ async def _source_uri_property_pid(db: AsyncSession) -> str | None:
     return row
 
 
+async def resolve_source_uri_pid(db: AsyncSession) -> str | None:
+    """The ``hmo_source_uri`` property id, resolved once per caller.
+
+    Schema-level (``run_id IS NULL``) and effectively constant for the
+    lifetime of a job — a caller looping over thousands of entities
+    (the item-upload job) should resolve this ONCE and pass it into
+    every :func:`reconcile_item` call via ``pid=`` instead of paying a
+    redundant identical query (and a redundant open/close DB
+    transaction) per item.
+    """
+    return await _source_uri_property_pid(db)
+
+
 async def reconcile_item(
     db: AsyncSession,
     source_uri: str,
+    *,
+    pid: str | None = None,
 ) -> ReconcileOutcome:
-    """Find a live Wikibase item by ``hmo_source_uri`` claim value."""
-    pid = await _source_uri_property_pid(db)
+    """Find a live Wikibase item by ``hmo_source_uri`` claim value.
+
+    ``pid`` should be pre-resolved via :func:`resolve_source_uri_pid`
+    by callers that invoke this in a loop; a caller that omits it gets
+    it looked up here (and the resulting transaction is immediately
+    closed below), the same as before this function grew a fast path.
+    """
+    if pid is None:
+        pid = await _source_uri_property_pid(db)
+        # Close out this read-only transaction BEFORE the SPARQL call
+        # below — a caller looping over thousands of entities without
+        # pre-resolving ``pid`` would otherwise chain this straight into
+        # a slow, retrying external HTTP call (Wikibase Cloud
+        # create/update, up to ~4 minutes of backoff on a flaky
+        # endpoint). Leaving the SELECT's transaction open across that
+        # is exactly the "idle in transaction" hazard app.db's 2-minute
+        # backstop exists to catch — better to never hold it open at all.
+        await db.commit()
     if not pid:
         return ReconcileOutcome(found=False, message="hmo_source_uri not mapped in schema")
 

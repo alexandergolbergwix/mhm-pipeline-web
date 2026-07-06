@@ -30,8 +30,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
-from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
-from app.pipeline.hmo_item_reconcile import ReconciliationUnavailableError, reconcile_item
 from app.models.wikibase_cloud_write import (
     OPERATION_CREATE,
     OPERATION_FAILED,
@@ -39,6 +37,12 @@ from app.models.wikibase_cloud_write import (
     OPERATION_UPDATE,
     TARGET_CLAIM,
     TARGET_ITEM,
+)
+from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+from app.pipeline.hmo_item_reconcile import (
+    ReconciliationUnavailableError,
+    reconcile_item,
+    resolve_source_uri_pid,
 )
 from app.services.wikibase_audit import record_wikibase_write
 from converter.wikibase.resolved_models import ResolvedClaim, ResolvedWikibaseEntity
@@ -126,6 +130,14 @@ async def upload_items_for_run(
     local_id_to_source_uri = {e.local_id: e.source_uri for e in entities}
     total = len(entities) + sum(len(e.deferred_links) for e in entities)
 
+    # Resolved once, not once per entity: the property id is schema-level
+    # and constant for the whole run, so re-querying it per item (up to
+    # ~7800 identical SELECTs on a large corpus) would only add redundant
+    # DB round trips ahead of each item's slow external Wikibase Cloud
+    # call — see reconcile_item's docstring for the idle-transaction risk
+    # that pattern would reintroduce.
+    reconcile_pid = None if dry_run else await resolve_source_uri_pid(db)
+
     (
         outcomes, created_this_call, created, skipped, failed, updated, cancelled,
     ) = await _pass_one_create(
@@ -133,6 +145,7 @@ async def upload_items_for_run(
         update_existing=update_existing,
         audit_ctx=audit_ctx,
         on_progress=on_progress, should_cancel=should_cancel, total=total,
+        reconcile_pid=reconcile_pid,
     )
     known_qids = {**existing, **created_this_call}
 
@@ -174,6 +187,7 @@ async def _pass_one_create(
     on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
     total: int = 0,
+    reconcile_pid: str | None = None,
 ) -> tuple[list[HmoItemUploadOutcome], dict[str, str], int, int, int, int, bool]:
     outcomes: list[HmoItemUploadOutcome] = []
     created_this_call: dict[str, str] = {}
@@ -269,7 +283,7 @@ async def _pass_one_create(
             continue
 
         try:
-            reconcile = await reconcile_item(db, entity.source_uri)
+            reconcile = await reconcile_item(db, entity.source_uri, pid=reconcile_pid)
         except ReconciliationUnavailableError as exc:
             outcomes.append(
                 HmoItemUploadOutcome(

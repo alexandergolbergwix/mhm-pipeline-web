@@ -803,6 +803,53 @@ Tests: `backend/tests/test_hmo_studio_coverage_router.py`
 (`test_coverage_restores_from_durable_db_cache_on_disk_miss`,
 `test_coverage_stale_db_cache_still_enqueues_rebuild`).
 
+### Rule W-40 — Never hold an open DB transaction across a slow/retrying external write (added 2026-07-06)
+
+Audit trigger: `hmo_item_upload_job.py` runs `upload_items_for_run` (up
+to ~7800 sequential Wikibase Cloud writes) inside one long-lived
+`session_scope()` for the whole job — that part is the established
+pattern (mirrors `authority_re_enrich_job.py`) and is fine, because
+each item's DB write commits immediately after it's made. The bug was
+one level down: `hmo_item_reconcile.py::reconcile_item` ran a Postgres
+SELECT (`_source_uri_property_pid`) and left that transaction **open**
+while it then made a SPARQL reconcile call and, on a miss, the caller
+made a `create_item`/`update_item` call — `cloud_client.py`'s
+`_post_with_retry` does up to 6 attempts with exponential backoff
+(1s→2s→4s→8s→16s→30s, ~61s of sleep alone, more with request
+timeouts on top). That is squarely the failure mode `app/db.py`'s
+2-minute `idle_in_transaction_session_timeout` backstop documents
+verbatim ("a request handler that opens a session, runs one query,
+then hangs forever on... an external HTTP call with no timeout") — a
+slow/flaky Wikibase Cloud response could get the connection killed by
+Postgres mid-job, crashing the whole upload instead of just failing
+one item.
+
+Fix, two parts:
+1. `reconcile_item` now takes an optional `pid=` kwarg. A caller
+   looping over many entities calls the new `resolve_source_uri_pid(db)`
+   **once** before the loop and passes it through — the schema-level
+   property id doesn't change during a run, so re-querying it ~7800
+   times was also pure waste. `hmo_item_upload.py::upload_items_for_run`
+   does this now.
+2. When `pid` isn't pre-resolved (the single-item preview endpoint,
+   `hmo_studio_items.py::reconcile_hmo_item`), `reconcile_item` commits
+   right after the SELECT and before making any network call — the
+   transaction is never open across slow I/O, regardless of caller.
+
+**General invariant**: a background job (or request handler) that
+interleaves a DB read/write with a slow external call (HTTP with
+retry/backoff, subprocess, SSE stream) must close out its transaction
+(`commit`/`rollback`) *before* the slow call, not rely on the
+2-minute idle-in-transaction timeout to eventually clean up — that
+timeout is a backstop against bugs, not a scheduling mechanism.
+
+Tests: `backend/tests/unit/test_hmo_item_reconcile.py`
+(`test_pid_lookup_transaction_is_closed_before_the_sparql_call`,
+`test_pre_resolved_pid_skips_the_redundant_lookup`),
+`backend/tests/test_hmo_item_upload.py`
+(`test_live_upload_resolves_reconcile_pid_once_not_per_entity`,
+`test_dry_run_never_resolves_reconcile_pid`).
+
 ---
 
 ## Project structure

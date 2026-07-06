@@ -17,6 +17,7 @@ from app.pipeline.hmo_item_reconcile import (
     HMO_SOURCE_URI,
     ReconciliationUnavailableError,
     reconcile_item,
+    resolve_source_uri_pid,
 )
 
 
@@ -112,3 +113,55 @@ async def test_raises_when_sparql_endpoint_not_configured(db_session, monkeypatc
 
     with pytest.raises(ReconciliationUnavailableError):
         await reconcile_item(db_session, "http://example.org/MS1")
+
+
+@pytest.mark.asyncio
+async def test_pid_lookup_transaction_is_closed_before_the_sparql_call(
+    db_session, monkeypatch,
+) -> None:
+    """A caller that doesn't pre-resolve ``pid`` must never sit in an open
+    transaction across the slow external SPARQL call — a bulk upload
+    chaining this straight into a retrying Wikibase Cloud write could
+    otherwise exceed app.db's 2-minute idle-in-transaction backstop."""
+    await _seed_source_uri_mapping(db_session)
+    monkeypatch.setattr(
+        reconcile_module.get_settings(), "wikibase_sparql_url",
+        "https://mhm-hmo.wikibase.cloud/query/sparql",
+        raising=False,
+    )
+
+    async def _fake_sparql(_url, _query):
+        assert not db_session.in_transaction(), (
+            "reconcile_item must commit its pid lookup before making the "
+            "SPARQL call, not hold the transaction open across it"
+        )
+        return {"results": {"bindings": []}}
+
+    with patch.object(reconcile_module, "run_wikibase_sparql", _fake_sparql):
+        await reconcile_item(db_session, "http://example.org/MS1")
+
+
+@pytest.mark.asyncio
+async def test_pre_resolved_pid_skips_the_redundant_lookup(db_session, monkeypatch) -> None:
+    """A caller looping over many entities (the item-upload job) resolves
+    the pid once via resolve_source_uri_pid and passes it through — this
+    must skip the per-item DB round trip entirely."""
+    await _seed_source_uri_mapping(db_session, pid="P42")
+    pid = await resolve_source_uri_pid(db_session)
+    assert pid == "P42"
+
+    monkeypatch.setattr(
+        reconcile_module.get_settings(), "wikibase_sparql_url",
+        "https://mhm-hmo.wikibase.cloud/query/sparql",
+        raising=False,
+    )
+    with patch.object(
+        reconcile_module, "_source_uri_property_pid",
+        AsyncMock(side_effect=AssertionError("must not re-query pid when it was pre-resolved")),
+    ), patch.object(
+        reconcile_module, "run_wikibase_sparql",
+        AsyncMock(return_value={"results": {"bindings": []}}),
+    ):
+        outcome = await reconcile_item(db_session, "http://example.org/MS1", pid=pid)
+
+    assert outcome.found is False

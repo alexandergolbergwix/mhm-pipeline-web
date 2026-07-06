@@ -217,7 +217,7 @@ async def test_live_upload_adopts_a_reconciled_found_item_instead_of_creating(db
     await _seed_cache(db_session, run_id, _ms_and_person())
     writer = _FakeWriter()
 
-    async def _fake_reconcile(_db, source_uri: str) -> ReconcileOutcome:
+    async def _fake_reconcile(_db, source_uri: str, *, pid: str | None = None) -> ReconcileOutcome:
         if source_uri == "http://example.org#MS1":
             return ReconcileOutcome(found=True, wikibase_id="Q999", message="found live")
         return ReconcileOutcome(found=False)
@@ -239,6 +239,38 @@ async def test_live_upload_adopts_a_reconciled_found_item_instead_of_creating(db
     # adopted QID, proving the mapping row was actually recorded.
     assert result.unresolved_links == 0
     assert result.linked == 1
+
+
+@pytest.mark.asyncio
+async def test_live_upload_resolves_reconcile_pid_once_not_per_entity(db_session) -> None:
+    """A bulk upload must resolve the schema-level hmo_source_uri property
+    id ONCE for the whole run, not once per entity — a real run can have
+    thousands of entities, and re-querying (plus re-opening a DB
+    transaction) per item ahead of each slow Wikibase Cloud call is both
+    wasteful and reintroduces the idle-in-transaction hazard."""
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    writer = _FakeWriter()
+
+    with patch.object(
+        pipeline, "resolve_source_uri_pid", AsyncMock(return_value=None),
+    ) as resolve_mock:
+        await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    resolve_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dry_run_never_resolves_reconcile_pid(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+
+    with patch.object(
+        pipeline, "resolve_source_uri_pid", AsyncMock(return_value=None),
+    ) as resolve_mock:
+        await pipeline.upload_items_for_run(db_session, run_id, writer=None, dry_run=True)
+
+    resolve_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
