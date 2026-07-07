@@ -533,9 +533,23 @@ def _run_shacl_sync(
 
     validator = ShaclValidator(shapes_path=shapes_path)
     data_graph = Graph().parse(str(graph_path), format="turtle")
+    # ``inference="none"`` is intentional, not a placeholder for "not implemented
+    # yet". The ontology reuses several properties (forms_part_of, has_expression,
+    # has_work, has_script_type, mentions_scribe, paradigm_bridge, ...) across
+    # multiple levels of the Manuscript/CodicologicalUnit/PaleographicalUnit
+    # hierarchy and across the Colophon/Production/ParadigmBridge classes, by
+    # design (the v1.4 nested-CU model). Their rdfs:domain/range axioms only
+    # describe the *primary* class each property was first declared for, not an
+    # exhaustive union — so RDFS inference (which pyshacl uses to synthesize new
+    # rdf:type triples from those axioms) cross-types nodes that were never
+    # meant to be typed that way, then validates them against unrelated shapes
+    # (ManuscriptShape/ColophonShape/ParadigmBridgeShape) that don't apply.
+    # Every ontology class here is already given its real rdf:type explicitly
+    # by the graph builder, so shapes can match it precisely without inference;
+    # see CLAUDE.md Rule W-43.
     result = validator.validate(
         data_graph,
-        inference="rdfs",
+        inference="none",
         ontology_path=ONTOLOGY_PATH,
     )
     if not result.conforms and result.violations:

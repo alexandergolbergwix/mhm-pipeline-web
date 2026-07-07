@@ -12,6 +12,25 @@
 3. If the run was authority-re-enriched, rebuild is mandatory before the
    Geography tab reflects new places (R10).
 
+### Skill: rebuild a run's RDF + HMO items without a curator session
+Use `heroku run --app mhm-pipeline-web -- bash -lc "cd backend && python -m
+scripts.rebuild_run_rdf_and_items <run_id>"` (or locally, same command minus
+`heroku run`). Mirrors `POST /rdf/build` → `POST /hmo-studio/build-items
+?force_rebuild=true` exactly (same DB queries, same pipeline calls, same
+Postgres write-through + cache busting) but runs directly against the DB, so
+it needs no session cookie — the right tool for one-off maintenance rebuilds
+(e.g. after a `graph_builder.py`/SHACL fix like Rule W-43) rather than for
+routine curator use, which should always go through the UI/API so the
+`run_jobs` audit trail and curator attribution stay intact.
+
+### Skill: validate SHACL inference mode after any ontology/graph_builder change
+Never re-add `inference="rdfs"`/`"owlrl"`/`"both"` to `_run_shacl_sync` (R11).
+If a change seems to need inference to pass validation, that is a signal the
+new node/property needs an explicit `rdf:type` assertion in `graph_builder.py`
+instead (R12) — see Rule W-43 for the exact failure mode (RDFS domain-leak
+cross-typing) and its regression test
+(`test_rdf_shacl_conformance.py::test_run_48ba6c13_corpus_fully_conforms_under_inference_none`).
+
 ### Skill: sync converter from desktop
 1. Run `/sync-from-desktop` (or
    `bash /Users/alexandergo/Documents/Doctorat/pipeline/scripts/sync_converter_to_web.sh`).

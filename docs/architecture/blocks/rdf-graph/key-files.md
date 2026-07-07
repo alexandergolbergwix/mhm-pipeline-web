@@ -18,3 +18,4 @@
 | `backend/app/models/rdf_artifact.py` | `rdf_artifacts` table — durable TTL per run (PK `run_id`, `ttl_content`, counts) |
 | `pipeline/scripts/sync_converter_to_web.sh` | Upstream sync of `converter/{rdf,transformer,config}` + `projection_coverage.py` + both ontology TTLs |
 | `.claude/commands/sync-from-desktop.md` | `/sync-from-desktop` playbook (rsync + drift diff) |
+| `backend/scripts/rebuild_run_rdf_and_items.py` | One-off maintenance: rebuild one run's RDF + HMO item drafts directly against the DB (no session cookie needed) — mirrors `POST /rdf/build` + `POST /hmo-studio/build-items?force_rebuild=true` (Rule W-43) |

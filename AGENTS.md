@@ -21,6 +21,13 @@ Every stage shares the same spine: slow work runs as claimed/heartbeated
 behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
+**→ Read [CLAUDE.md](CLAUDE.md) first** for the full incident-annotated
+architectural rules (Rules W-1…W-43). Each rule records a real production
+incident plus the invariant that closes it — check it before touching RDF
+build/SHACL, Wikidata Studio writes, HMO Wikibase uploads, auth/rate-limit
+surfaces, or the job/cache/versioning plumbing. This `AGENTS.md` is the
+navigation layer; `CLAUDE.md` is where the "why" lives.
+
 **→ Deep dive: [docs/architecture/system-design.md](docs/architecture/system-design.md)**
 — the navigation hub. It holds the runtime topology, the end-to-end data
 flow, the global rules (G1–G8), and links to a *skills-and-rules* doc per
@@ -51,7 +58,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-42) stay in [CLAUDE.md](CLAUDE.md).
+(W-1…W-43) stay in [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 

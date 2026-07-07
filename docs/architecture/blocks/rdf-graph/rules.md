@@ -23,6 +23,13 @@
    vendored converter files directly in the web repo; change the desktop
    repo and re-run the sync. *Why:* the two ports must produce identical RDF;
    drift makes desktop↔web comparisons meaningless (Rule W-10/W-34).
+   **Known exception (as of 2026-07-07, Rule W-43):** the desktop repo's
+   `converter/rdf/graph_builder.py` and several `converter/transformer/*.py`
+   files currently carry unrelated, untested WIP changes, so a full
+   `sync_converter_to_web.sh` run would delete web-imported modules and pull
+   in failing code. The Rule W-43 fix was hand-ported (same four edits, both
+   repos) instead of synced; run the real sync once the desktop WIP lands
+   and passes tests, then delete this note.
 6. **R6 — Canonical ontology lives in the desktop repo.**
    `backend/ontology/hebrew-manuscripts.ttl` and `shacl-shapes.ttl` are
    copies made at sync time; MUST NOT be hand-edited here. *Why:* Rule W-34
@@ -42,3 +49,20 @@
     an RDF build MUST be rebuilt for new places/provenance events to appear
     in the graph-sourced Geography surfaces. *Why:* the TTL is a snapshot of
     approvals at build time (Rule W-32 note).
+11. **R11 — SHACL build validation MUST use `inference="none"`.** NEVER pass
+    `inference="rdfs"`/`"owlrl"`/`"both"` to `ShaclValidator.validate()` in
+    `_run_shacl_sync`. *Why:* the ontology reuses properties across multiple
+    hierarchy levels by design; RDFS inference cross-types nodes from
+    `rdfs:domain` axioms that only name the *primary* class, then validates
+    them against unrelated shapes — 1319 false-positive violations on one
+    real corpus, zero real ones (Rule W-43). Every node the graph builder
+    emits already gets its real `rdf:type` asserted explicitly; shapes must
+    match on that, never on inferred typing.
+12. **R12 — New `ManuscriptView`/paradigm-individual code MUST self-type.**
+    Any new "view" or controlled-vocabulary individual node (mirroring
+    `CatalogingView`/`PhilologicalView` + `BibliographicParadigm`/
+    `PhilologicalParadigm`) MUST get its superclass (`hm:ManuscriptView`) and
+    the individual's own class (`hm:ViewType`) asserted directly in the data
+    graph at construction time in `graph_builder.py` — never rely on the
+    ontology file's `owl:NamedIndividual` declaration or `rdfs:subClassOf`
+    being merged in at validation time (Rule W-43).

@@ -158,8 +158,6 @@ class GraphBuilder:
                 if role in ("scribe", "copyist"):
                     graph.add((prod_uri, CIDOC.P14_carried_out_by, person_uri))
                     graph.add((prod_uri, HM.has_scribe, person_uri))
-                    graph.add((prod_uri, HM.mentions_scribe, person_uri))
-                    graph.add((ms_uri, HM.mentions_scribe, person_uri))
                     scribe_entity_uris.append(person_uri)
                 elif role == "former_owner":
                     graph.add((ms_uri, HM.former_owner, person_uri))
@@ -260,8 +258,6 @@ class GraphBuilder:
                 )
             graph.add((pu_uri, HM.has_scribe, scribe_uri))
             graph.add((prod_uri, HM.has_scribe, scribe_uri))
-            graph.add((prod_uri, HM.mentions_scribe, scribe_uri))
-            graph.add((ms_uri, HM.mentions_scribe, scribe_uri))
 
         if data.is_multi_volume and self._has_enough_volume_evidence(data):
             self._add_multi_volume_set(graph, ms_uri, data, control_number)
@@ -1806,7 +1802,12 @@ class GraphBuilder:
         cat_view_uri = URIRef(f"{HM}CatalogingView_{control_number}")
 
         graph.add((cat_view_uri, RDF.type, HM.CatalogingView))
+        graph.add((cat_view_uri, RDF.type, HM.ManuscriptView))
         graph.add((cat_view_uri, HM.view_type, HM.BibliographicParadigm))
+        # Co-type the paradigm individual as ViewType directly in the data graph
+        # so ManuscriptViewShape's sh:class(ViewType) check on view_type holds
+        # even under inference="none" (see CLAUDE.md Rule W-43).
+        graph.add((HM.BibliographicParadigm, RDF.type, HM.ViewType))
         graph.add(
             (
                 cat_view_uri,
@@ -2057,8 +2058,10 @@ class GraphBuilder:
         phil_view_uri = self.uri_gen.philological_view_uri(control_number)
 
         graph.add((phil_view_uri, RDF.type, HM.PhilologicalView))
+        graph.add((phil_view_uri, RDF.type, HM.ManuscriptView))
         graph.add((ms_uri, HM.has_philological_perspective, phil_view_uri))
         graph.add((phil_view_uri, HM.view_type, HM.PhilologicalParadigm))
+        graph.add((HM.PhilologicalParadigm, RDF.type, HM.ViewType))
         graph.add(
             (phil_view_uri, HM.is_primary_paradigm, Literal(is_primary, datatype=XSD.boolean))
         )
@@ -2244,8 +2247,6 @@ class GraphBuilder:
         graph.add((bridge_uri, RDFS.comment, Literal(comment_text, lang="en")))
         graph.add((bridge_uri, HM.has_linked_work, work_uri))
         graph.add((bridge_uri, HM.has_linked_tradition, tradition_uri))
-        graph.add((work_uri, HM.paradigm_bridge, bridge_uri))
-        graph.add((tradition_uri, HM.paradigm_bridge, bridge_uri))
         graph.add(
             (bridge_uri, HM.paradigm_justification, Literal(comment_text, datatype=XSD.string))
         )

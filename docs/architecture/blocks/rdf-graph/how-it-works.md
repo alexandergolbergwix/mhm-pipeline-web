@@ -52,8 +52,11 @@
    the local file from Postgres when the dyno recycled. Cache busting after a
    build deletes `graph_*.json` / `graph_viewport_*.json` and invalidates the
    research merged-graph LRU.
-7. **Validation** — `POST /rdf/validate` runs pyshacl with `rdfs` inference
-   against `backend/ontology/shacl-shapes.ttl` + the HMO ontology.
+7. **Validation** — `POST /rdf/validate` runs pyshacl with `inference="none"`
+   against `backend/ontology/shacl-shapes.ttl` + the HMO ontology (also the
+   path used by the HMO item upload's SHACL gate, Rule W-42). RDFS inference
+   is deliberately not used here — it cross-types nodes via shared-property
+   `rdfs:domain` axioms and produces false-positive violations (Rule W-43).
 8. **Vendoring** — `backend/converter/` is a byte-identical mirror of the
    desktop repo's `converter/`, refreshed via
    `pipeline/scripts/sync_converter_to_web.sh` (rsync `--delete` of

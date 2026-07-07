@@ -49,3 +49,27 @@ def test_large_corpus_ttl_does_not_crash_shacl_engine() -> None:
     conforms, violations = _run_shacl_sync(corpus, SHAPES_PATH)
     assert not any("Unknown namespace prefix" in v.message for v in violations)
     assert isinstance(conforms, bool)
+
+
+@pytest.mark.skipif(not SHAPES_PATH.exists(), reason="SHACL shapes file missing")
+def test_run_48ba6c13_corpus_fully_conforms_under_inference_none() -> None:
+    """Regression guard for Rule W-43.
+
+    This is the exact TTL from the run that surfaced the 773-item SHACL
+    violation audit (Rule W-42). Under the old ``inference="rdfs"`` it
+    produced 961 violations across 8 message clusters (Paradigm bridge
+    linking, NLI identifier cardinality, Expression/Work realization,
+    Colophon text, and 68 "Manuscript view must have a view type" —
+    the CatalogingView edge case). Every single one was an RDFS
+    domain-leak false positive: ``_run_shacl_sync`` now always validates
+    with ``inference="none"``, under which this corpus is 0 violations.
+    """
+    corpus = Path(
+        "/Users/alexandergo/Downloads/"
+        "run-48ba6c13-115c-4763-bff1-c08b9031b518-manuscripts (2).ttl"
+    )
+    if not corpus.exists():
+        pytest.skip("local corpus TTL fixture not present")
+    conforms, violations = _run_shacl_sync(corpus, SHAPES_PATH)
+    assert conforms is True, [str(v) for v in violations]
+    assert violations == []
