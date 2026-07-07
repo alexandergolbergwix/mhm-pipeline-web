@@ -50,18 +50,24 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
-playbooks for the common tasks. The incident-annotated rule history
-(W-1…W-41) stays in [CLAUDE.md](CLAUDE.md).
+playbooks for the common tasks. Incident-annotated rule **details**
+(W-1…W-42) stay in [CLAUDE.md](CLAUDE.md).
 
-### Skill: keep `docs/architecture` in sync with every code change
+### Skill: keep docs in sync with every code change
 
 Reading a block's docs before changing it (above) only works if the *last*
-agent wrote back to them. Treat an out-of-date architecture page as a bug:
-docs and code land in the **same** change, never as a follow-up. Before
-finishing any change that adds, renames, or removes a file, route, job
-kind, model field, or invariant, read and follow:
+agent wrote back to them. Treat an out-of-date doc as a bug: docs and code
+land in the **same** change, never as a follow-up.
 
-- `.codex/skills/docs-architecture-sync/SKILL.md`
+| Layer | Update when |
+|---|---|
+| `docs/architecture/blocks/<block>/` | Any file, route, job kind, model field, or block invariant changes. Follow `.codex/skills/docs-architecture-sync/SKILL.md`. |
+| [CLAUDE.md](CLAUDE.md) | A new incident-driven invariant → add `Rule W-N` (full prose). |
+| [AGENTS.md](AGENTS.md) | Agent entry guidance changes: rule-range pointer, block index, cross-cutting workflows, doc-sync policy. |
+| [README.md](README.md) | Operator quickstart or documentation table when the high-level surface changes. |
+
+Block rules (R-series per block) live in each block's `rules.md`; do not
+duplicate them here.
 
 ## Inherited rules
 

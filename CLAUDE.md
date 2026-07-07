@@ -1160,8 +1160,11 @@ Update this CLAUDE.md whenever:
 - A trust boundary changes.
 - A "Stage N" creeps back into user-facing strings (delete it; cite Rule W-3).
 
+Also bump the `W-1…W-N` pointer in [AGENTS.md](AGENTS.md) and
+[README.md](README.md) when you add a new `Rule W-N`.
+
 A code change that alters the architecture is not complete until the
-plan doc + this file are updated.
+plan doc, block docs (see [AGENTS.md](AGENTS.md)), and this file are updated.
 
 ---
 

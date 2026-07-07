@@ -33,6 +33,13 @@ a false model of the system.
      block's list and give it a one-line "*Why:*". Mirror it as an
      incident-annotated `Rule W-N` in root `CLAUDE.md` when the change is a
      hardening fix (bug found in production/review), not a new feature.
+   - `AGENTS.md` — when agent entry guidance changes: bump the `W-1…W-N`
+     pointer, add/retire a block in the index table, or document a new
+     cross-cutting agent workflow. Keep it lean — details stay in CLAUDE.md
+     and block `rules.md`.
+   - `README.md` — operator quickstart / documentation table when the
+     high-level project surface changes (new stage, new deploy note, rule
+     range in the doc table).
    - `skills.md` — new step-by-step operational task (an endpoint sequence,
      a debug recipe, a curator workflow) a future agent will need to repeat.
    - `tests.md` — new test file/suite that pins the changed behavior.
@@ -62,4 +69,6 @@ declaring the doc update done.
 
 `git status --short` the docs you touched alongside the code diff — if the
 code diff mentions a file, job kind, route, or rule number that doesn't
-appear anywhere under `docs/architecture/`, go back and add it.
+appear anywhere under `docs/architecture/`, go back and add it. Also grep
+`AGENTS.md`, `README.md`, and `CLAUDE.md` for stale `W-1…W-N` pointers when
+you add a new `Rule W-N`.
