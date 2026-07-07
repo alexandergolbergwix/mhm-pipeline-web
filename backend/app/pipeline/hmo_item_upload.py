@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.wikibase_cloud_write import (
+    OPERATION_ADOPT,
     OPERATION_CREATE,
     OPERATION_FAILED,
     OPERATION_SKIP,
@@ -228,47 +229,18 @@ async def _pass_one_create(
                 updated += 1
                 continue
 
-            wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
-            result = await asyncio.to_thread(
-                writer.update_item,
-                existing_qid,
-                labels=entity.labels,
-                descriptions=entity.descriptions,
-                claims=wbi_claims,
+            outcome = await push_single_item(
+                db, run_id, entity,
+                writer=writer, audit_ctx=audit_ctx,
+                update_existing=update_existing,
+                reconcile_pid=reconcile_pid,
+                existing_qid=existing_qid,
             )
-            if result.entity_id is None or result.status == "failed":
-                outcomes.append(
-                    HmoItemUploadOutcome(
-                        entity.local_id, entity.source_uri, "failed",
-                        existing_qid, message=result.message,
-                    )
-                )
+            outcomes.append(outcome)
+            if outcome.status == "updated":
+                updated += 1
+            elif outcome.status == "failed":
                 failed += 1
-                if audit_ctx is not None:
-                    await record_wikibase_write(
-                        db, audit_ctx,
-                        operation=OPERATION_FAILED,
-                        target_kind=TARGET_ITEM,
-                        target_key=entity.source_uri,
-                        wikibase_id=existing_qid,
-                        outcome_message=result.message,
-                    )
-                continue
-
-            outcomes.append(
-                HmoItemUploadOutcome(
-                    entity.local_id, entity.source_uri, "updated", existing_qid,
-                )
-            )
-            updated += 1
-            if audit_ctx is not None:
-                await record_wikibase_write(
-                    db, audit_ctx,
-                    operation=OPERATION_UPDATE,
-                    target_kind=TARGET_ITEM,
-                    target_key=entity.source_uri,
-                    wikibase_id=existing_qid,
-                )
             continue
 
         if dry_run:
@@ -282,92 +254,167 @@ async def _pass_one_create(
             created += 1
             continue
 
-        try:
-            reconcile = await reconcile_item(db, entity.source_uri, pid=reconcile_pid)
-        except ReconciliationUnavailableError as exc:
-            outcomes.append(
-                HmoItemUploadOutcome(
-                    entity.local_id, entity.source_uri, "failed",
-                    message=f"reconcile unavailable: {exc}",
-                )
-            )
-            failed += 1
-            continue
-
-        if reconcile.found and reconcile.wikibase_id:
-            await _record_instance_mapping(
-                db,
-                source_uri=entity.source_uri,
-                wikibase_id=reconcile.wikibase_id,
-                run_id=run_id,
-                label=entity.labels.get("en") or entity.local_id,
-            )
-            created_this_call[entity.source_uri] = reconcile.wikibase_id
-            outcomes.append(
-                HmoItemUploadOutcome(
-                    entity.local_id, entity.source_uri, "adopted", reconcile.wikibase_id,
-                    message=reconcile.message,
-                )
-            )
+        outcome = await push_single_item(
+            db, run_id, entity,
+            writer=writer, audit_ctx=audit_ctx,
+            update_existing=update_existing,
+            reconcile_pid=reconcile_pid,
+            existing_qid=None,
+        )
+        outcomes.append(outcome)
+        if outcome.status in ("created", "adopted"):
             created += 1
+            if outcome.wikibase_id:
+                created_this_call[entity.source_uri] = outcome.wikibase_id
+        elif outcome.status == "failed":
+            failed += 1
+
+    return outcomes, created_this_call, created, skipped, failed, updated, cancelled
+
+
+async def push_single_item(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    entity: ResolvedWikibaseEntity,
+    *,
+    writer: Any,
+    audit_ctx: WikibaseAuditContext | None,
+    update_existing: bool,
+    reconcile_pid: str | None,
+    existing_qid: str | None,
+) -> HmoItemUploadOutcome:
+    """Create-or-update exactly one item on the live Wikibase Cloud, now.
+
+    The per-entity body shared by the bulk two-pass upload's live path
+    (:func:`_pass_one_create`, unchanged behaviour) and the single-item
+    ``POST .../items/{local_id}/push`` endpoint, which lets a curator push
+    one fixed item immediately instead of re-running the whole corpus
+    upload with ``update_existing=True``. Always live — dry-run outcomes
+    are computed inline by the caller and never reach this function.
+
+    ``existing_qid`` is the source_uri's current ``wikibase_entity_mappings``
+    row if one exists, or ``None`` for a not-yet-uploaded item.
+    """
+    if existing_qid is not None:
+        if not update_existing:
             if audit_ctx is not None:
                 await record_wikibase_write(
                     db, audit_ctx,
-                    operation=OPERATION_CREATE,
+                    operation=OPERATION_SKIP,
                     target_kind=TARGET_ITEM,
                     target_key=entity.source_uri,
-                    wikibase_id=reconcile.wikibase_id,
+                    wikibase_id=existing_qid,
                 )
-            continue
+            return HmoItemUploadOutcome(
+                entity.local_id, entity.source_uri, "skipped", existing_qid,
+            )
 
         wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
         result = await asyncio.to_thread(
-            writer.create_item,
+            writer.update_item,
+            existing_qid,
             labels=entity.labels,
             descriptions=entity.descriptions,
             claims=wbi_claims,
         )
-        if result.entity_id is None:
-            outcomes.append(
-                HmoItemUploadOutcome(
-                    entity.local_id, entity.source_uri, "failed", message=result.message,
-                )
-            )
-            failed += 1
+        if result.entity_id is None or result.status == "failed":
             if audit_ctx is not None:
                 await record_wikibase_write(
                     db, audit_ctx,
                     operation=OPERATION_FAILED,
                     target_kind=TARGET_ITEM,
                     target_key=entity.source_uri,
+                    wikibase_id=existing_qid,
                     outcome_message=result.message,
                 )
-            continue
-
-        await _record_instance_mapping(
-            db,
-            source_uri=entity.source_uri,
-            wikibase_id=result.entity_id,
-            run_id=run_id,
-            label=entity.labels.get("en") or entity.local_id,
-        )
-        created_this_call[entity.source_uri] = result.entity_id
-        outcomes.append(
-            HmoItemUploadOutcome(
-                entity.local_id, entity.source_uri, "created", result.entity_id,
+            return HmoItemUploadOutcome(
+                entity.local_id, entity.source_uri, "failed",
+                existing_qid, message=result.message,
             )
-        )
-        created += 1
+
         if audit_ctx is not None:
             await record_wikibase_write(
                 db, audit_ctx,
-                operation=OPERATION_CREATE,
+                operation=OPERATION_UPDATE,
                 target_kind=TARGET_ITEM,
                 target_key=entity.source_uri,
-                wikibase_id=result.entity_id,
+                wikibase_id=existing_qid,
             )
+        return HmoItemUploadOutcome(
+            entity.local_id, entity.source_uri, "updated", existing_qid,
+        )
 
-    return outcomes, created_this_call, created, skipped, failed, updated, cancelled
+    try:
+        reconcile = await reconcile_item(db, entity.source_uri, pid=reconcile_pid)
+    except ReconciliationUnavailableError as exc:
+        return HmoItemUploadOutcome(
+            entity.local_id, entity.source_uri, "failed",
+            message=f"reconcile unavailable: {exc}",
+        )
+
+    if reconcile.found and reconcile.wikibase_id:
+        await _record_instance_mapping(
+            db,
+            source_uri=entity.source_uri,
+            wikibase_id=reconcile.wikibase_id,
+            run_id=run_id,
+            label=entity.labels.get("en") or entity.local_id,
+        )
+        if audit_ctx is not None:
+            await record_wikibase_write(
+                db, audit_ctx,
+                operation=OPERATION_ADOPT,
+                target_kind=TARGET_ITEM,
+                target_key=entity.source_uri,
+                wikibase_id=reconcile.wikibase_id,
+                outcome_message=(
+                    f"adopted via reconcile: {reconcile.message}"
+                    if reconcile.message else "adopted via reconcile"
+                ),
+            )
+        return HmoItemUploadOutcome(
+            entity.local_id, entity.source_uri, "adopted", reconcile.wikibase_id,
+            message=reconcile.message,
+        )
+
+    wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
+    result = await asyncio.to_thread(
+        writer.create_item,
+        labels=entity.labels,
+        descriptions=entity.descriptions,
+        claims=wbi_claims,
+    )
+    if result.entity_id is None:
+        if audit_ctx is not None:
+            await record_wikibase_write(
+                db, audit_ctx,
+                operation=OPERATION_FAILED,
+                target_kind=TARGET_ITEM,
+                target_key=entity.source_uri,
+                outcome_message=result.message,
+            )
+        return HmoItemUploadOutcome(
+            entity.local_id, entity.source_uri, "failed", message=result.message,
+        )
+
+    await _record_instance_mapping(
+        db,
+        source_uri=entity.source_uri,
+        wikibase_id=result.entity_id,
+        run_id=run_id,
+        label=entity.labels.get("en") or entity.local_id,
+    )
+    if audit_ctx is not None:
+        await record_wikibase_write(
+            db, audit_ctx,
+            operation=OPERATION_CREATE,
+            target_kind=TARGET_ITEM,
+            target_key=entity.source_uri,
+            wikibase_id=result.entity_id,
+        )
+    return HmoItemUploadOutcome(
+        entity.local_id, entity.source_uri, "created", result.entity_id,
+    )
 
 
 async def _pass_two_link(

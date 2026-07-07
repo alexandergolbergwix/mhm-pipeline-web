@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.hmo_studio_item_override import HmoStudioItemOverride
+from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.pipeline.hmo_item_merge import apply_hmo_item_override, override_row_to_dict
+from app.services.wikibase_audit import fetch_latest_wikibase_writes
 
 
 class ItemBuildMissingError(RuntimeError):
@@ -51,6 +53,10 @@ async def fetch_merged_hmo_items(
     ).all()
     uri_to_qid = {uri: qid for uri, qid in mapping_rows}
 
+    latest_writes = await fetch_latest_wikibase_writes(
+        db, run_id, channel=CHANNEL_ITEM_UPLOAD, target_kind=TARGET_ITEM,
+    )
+
     shacl_report = cache_row.shacl_report or {}
     items: list[dict[str, Any]] = []
 
@@ -64,6 +70,8 @@ async def fetch_merged_hmo_items(
         source_uri = str(merged.get("source_uri") or "")
         wikibase_id = uri_to_qid.get(source_uri)
         status = "created" if wikibase_id else "would_create"
+
+        last_write = latest_writes.get(source_uri)
 
         ai_verdict = ov_row.ai_verdict if ov_row else None
         items.append({
@@ -80,6 +88,11 @@ async def fetch_merged_hmo_items(
             ),
             "override_present": ov_row is not None,
             "override_id": str(ov_row.id) if ov_row else None,
+            "upload_outcome": last_write.operation if last_write else None,
+            "upload_message": last_write.outcome_message if last_write else "",
+            "upload_at": (
+                last_write.created_at.isoformat() if last_write else None
+            ),
         })
     return items
 

@@ -71,4 +71,6 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   abstain.
 - `backend/tests/test_hmo_schema_verify.py` — schema channel: uncached-only
   fixture, cache write-through.
+- `backend/tests/test_verify_job_hmo.py` — `hmo_item_verify` job-backed
+  dispatch: unknown action, empty scope, end-to-end wiring, cache behaviour.
 - `frontend/e2e/` verification specs (mocked SSE via `page.route()`).

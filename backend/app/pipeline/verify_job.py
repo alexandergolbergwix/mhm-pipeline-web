@@ -9,6 +9,7 @@ from typing import Any
 from app.db import session_scope
 from app.models.run_job import (
     JOB_KIND_AUTHORITY_VERIFY,
+    JOB_KIND_HMO_ITEM_VERIFY,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_WIKIDATA_VERIFY,
     JOB_STATUS_CANCELLED,
@@ -277,6 +278,60 @@ async def _open_verify_stream(
             else:
                 uncached = list(items)
             return _wikidata_verify_event_stream(
+                run_id=str(run_id),
+                session_id=session_id,
+                action=action,
+                items=items,
+                uncached_items=uncached,
+                pre_cached=pre_cached,
+                marc_records=marc_records,
+                api_key=api_key,
+                override_cache=override_cache,
+                tier_model=tier_model,
+            )
+
+        if kind == JOB_KIND_HMO_ITEM_VERIFY:
+            from app.pipeline import hmo_item_actions  # noqa: PLC0415
+            from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+            from app.pipeline.hmo_item_verify import (  # noqa: PLC0415
+                hmo_item_verdict_query_summary,
+                hmo_item_verify_event_stream,
+            )
+            from app.pipeline.inference_cache import read_from_inference_cache  # noqa: PLC0415
+            from app.routers.hmo_studio_items import (  # noqa: PLC0415
+                _fetch_verify_items,
+                _load_marc_records,
+                _prepare_verify_scope,
+            )
+
+            action = hmo_item_actions.get_action(str(params["action_id"]))
+            if action is None:
+                return None
+            items = await _fetch_verify_items(db, run_id, item_ids=params.get("item_ids"))
+            items = await _prepare_verify_scope(action, items)
+            if not items:
+                return None
+            judge_model = tier_model or GEMINI_MODEL
+            evaluator_id = action.evaluators[0] if action.evaluators else "hmo_wikibase_item"
+            pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
+            uncached: list[dict[str, Any]] = []
+            if not override_cache:
+                for item in items:
+                    hit = await read_from_inference_cache(
+                        db,
+                        kind="ai_verdict",
+                        query_summary=hmo_item_verdict_query_summary(
+                            item, judge_model, evaluator=evaluator_id,
+                        ),
+                    )
+                    if hit is not None:
+                        pre_cached.append((item, hit))
+                    else:
+                        uncached.append(item)
+            else:
+                uncached = list(items)
+            marc_records = await _load_marc_records(db, run_id)
+            return hmo_item_verify_event_stream(
                 run_id=str(run_id),
                 session_id=session_id,
                 action=action,

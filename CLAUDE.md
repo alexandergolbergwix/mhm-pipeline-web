@@ -852,6 +852,112 @@ Tests: `backend/tests/unit/test_hmo_item_reconcile.py`
 
 ---
 
+### Rule W-41 — HMO items table upload-outcome fields + upload-lifecycle AI verification (added 2026-07-07)
+
+The HMO Wikibase Items review table (`HmoItemTable.tsx`) surfaces the *last
+actual upload attempt* per item, not just the binary would_create/created
+`status` derived from `wikibase_entity_mappings` presence:
+
+- **`OPERATION_ADOPT`** (`backend/app/models/wikibase_cloud_write.py`) is a
+  distinct audit-log operation from `OPERATION_CREATE`: it's recorded when
+  `hmo_item_upload.py`'s reconcile-match branch links an entity to an
+  *already-existing* live Wikibase item (found via `hmo_source_uri` SPARQL
+  reconcile) instead of creating a brand-new one. Without this distinction
+  "new entity" and "linked to a pre-existing item" were indistinguishable in
+  the audit log — `outcome_message` also records the reconcile match reason.
+- **`fetch_latest_wikibase_writes(db, run_id, *, channel, target_kind)`**
+  (`backend/app/services/wikibase_audit.py`) is a portable (Postgres +
+  SQLite) "latest row per `target_key`" query — a `GROUP BY target_key,
+  MAX(created_at)` subquery joined back to `wikibase_cloud_writes`, no
+  Postgres-only `DISTINCT ON` (the test suite shares a SQLite connection).
+- **`fetch_merged_hmo_items()`** (`hmo_item_views.py`) joins the latest
+  `item_upload` channel / `item` target_kind write per `source_uri` and adds
+  three fields to every item dict: `upload_outcome` (`create`/`update`/
+  `adopt`/`skip`/`unchanged`/`failed`/`None` if never attempted),
+  `upload_message` (failure/adopt reason, `""` otherwise), `upload_at` (ISO
+  timestamp). The existing `status` (`would_create`/`created`) field is
+  untouched for backward compatibility.
+- **Frontend**: `HmoStudioItem` (`frontend/src/api/hmoStudioItems.ts`) gained
+  the three fields; `HmoItemUploadOutcomeBadge.tsx` renders a color-coded
+  pill (create/adopt/update = success tone, skip/unchanged = muted, failed =
+  danger tone with the message as a tooltip, `—` when never attempted) used
+  by both `HmoItemTable.tsx`'s "Last upload" column (filterable via the
+  existing right-click column-filter popup, `ColKey` extended with
+  `"upload_outcome"`) and `HmoItemDetailDrawer.tsx`.
+
+**Single-item live push** closes the "apply AI fix" loop without a full
+corpus re-upload: `push_single_item(db, run_id, entity, *, writer, audit_ctx,
+update_existing, reconcile_pid, existing_qid)` in `hmo_item_upload.py` is the
+per-entity create-or-update body extracted out of `_pass_one_create`'s live
+path (bulk upload behaviour is unchanged — it just calls this helper now).
+`POST /runs/{run_id}/hmo-studio/items/{local_id}/push` builds a
+`ResolvedWikibaseEntity` from the item's **override-merged** state (via
+`fetch_merged_hmo_items`, so a curator-applied AI fix is included — the bulk
+upload path does NOT apply overrides, only this single-item path does) and
+calls `push_single_item` with `update_existing=True` always (create if new,
+update if already mapped). Per Rule W-40, the endpoint commits its read
+transaction (run lookup, item fetch, pid resolution) before the live
+Wikibase Cloud / SPARQL call. Frontend: `HmoStudioItems.pushItem(runId,
+localId)`; `HmoItemDetailDrawer.tsx` gained "Push to Wikibase now" and a
+combined "Apply fix & push" button next to the existing "Apply AI fix".
+
+**Upload-lifecycle AI verification** reuses the existing `hmo_wikibase_item`
+(pre-upload audit) and `hmo_wikibase_item_autofix` (post-upload live-QID
+compare) evaluators — no new evaluator was added. `JOB_KIND_HMO_ITEM_VERIFY
+= "hmo_item_verify"` is a new background job kind
+(`backend/app/models/run_job.py`); `verify_job.py::_open_verify_stream` gained
+a branch mirroring `JOB_KIND_WIKIDATA_VERIFY` exactly but calling
+`hmo_item_actions.get_action(...)` and `hmo_item_verify_event_stream(...)`,
+reusing the already-exported `_fetch_verify_items` / `_prepare_verify_scope`
+/ `_load_marc_records` helpers from `hmo_studio_items.py`.
+`VERIFY_JOB_CHANNELS` (`verify_session_store.py`) and the verify-params
+validation branch in `run_job_params.py` were extended the same way as the
+other three verify kinds. `useVerifyJob`'s `kind` union and `RunJobKind`
+gained `"hmo_item_verify"`.
+
+In `ItemUploadPanel.tsx`, two curator-controlled, **default-off** checkboxes
+wire this into the upload flow — per the "Auto-approve AI verdicts" hard
+invariant (this app does NOT auto-approve or auto-fix; a curator always
+confirms), verification runs automatically when opted in but a failed
+pre-upload audit never silently blocks or silently proceeds:
+
+- **"Verify with AI before upload"**: on click, fetches the current item
+  list, scopes to `status === "would_create"` local_ids, starts a
+  `hmo_item_verify` job (`action_id: "audit_hmo_wikibase_item"`), and shows
+  an inline compact `AgentFlowDiagram` + `VerdictsTable` while it runs (via
+  `hydrateVerifySession` + `fetchVerifySessionWithJobFallback`, the same
+  Heroku-multi-dyno-safe session-loading path the other three verify modals
+  use). If any verdict is `fail`, a confirm banner offers "Review flagged
+  items" (opens the existing `HmoItemVerificationModal`, scoped to the
+  failed ids — it re-verifies through the shared Postgres/Redis cache, so
+  this is near-instant) or "Upload anyway" — never a silent block or a
+  silent proceed. No fails ⇒ the actual upload starts automatically.
+- **"Verify with AI after upload"**: when the live `hmo_item_upload` job
+  succeeds, filters `result.outcomes` to status in `{created, updated,
+  adopted}`, collects their `local_id`s, and auto-starts a
+  `hmo_item_verify` job with `action_id: "autofix_hmo_wikibase_item"`
+  scoped to just those ids. Verdicts + `suggested_fixes` persist
+  automatically into `HmoStudioItemOverride.ai_verdict` via the existing
+  `_persist_hmo_item_verdicts`, so the table's AI-verdict column and the
+  drawer's "Apply AI fix" / "Push to Wikibase now" buttons light up with no
+  further backend work.
+
+Both checkboxes' helper tooltips note the per-item Gemini call is cached
+(Rule W-25) and rate-limited by the action's existing `rate_limit_rpm` (60
+for audit, 30 for autofix) — no new cost controls were needed.
+
+Tests: `backend/tests/test_hmo_item_upload.py` (adopt records
+`OPERATION_ADOPT`, `push_single_item` unit coverage),
+`backend/tests/test_hmo_item_views.py` (`upload_outcome`/`upload_message`/
+`upload_at` populated from `wikibase_cloud_writes`), a new
+`test_verify_job_hmo.py` and `test_run_job_params_hmo_verify.py` covering
+the `JOB_KIND_HMO_ITEM_VERIFY` branch, and `frontend/e2e/
+hmo-wikibase-items.spec.ts` extended to cover the "Last upload" column and
+the pre/post-upload verify checkboxes end-to-end with mocked routes (Rule
+W-19).
+
+---
+
 ## Project structure
 
 | Path | Purpose |

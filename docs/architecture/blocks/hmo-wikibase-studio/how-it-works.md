@@ -37,7 +37,9 @@ streams over SSE via the eval-agent subprocess; verdicts land in the
 `inference_cache` (kind `ai_verdict`) and on the override row. The autofix
 action first enriches QID-bearing items with a live-Wikibase compare snapshot
 (`hmo_wikibase_live_enrich.py`), and accepted fixes are merged into the
-override via `POST .../ai-fixes/apply`.
+override via `POST .../ai-fixes/apply`. It also joins the latest
+`wikibase_cloud_writes` row per item (`upload_outcome`/`upload_message`/
+`upload_at`) — see [upload outcomes + verify](upload-outcomes-and-verify.md).
 
 **Upload (two-pass).** `upload_items_for_run` (`hmo_item_upload.py:96`).
 Pass 1: for each entity — already mapped → skip (or `update_item` merge when
@@ -50,7 +52,11 @@ dropped. Dry-run is synchronous and network-free; live spawns a
 `JOB_KIND_HMO_ITEM_UPLOAD` job with progress callbacks and cooperative
 cancellation (partial result with `cancelled=True`, never an exception). The
 reconcile PID is resolved **once** before the loop
-(`resolve_source_uri_pid`, `hmo_item_upload.py:139`) — Rule W-40.
+(`resolve_source_uri_pid`, `hmo_item_upload.py:139`) — Rule W-40. The
+per-entity create-or-update body is the shared `push_single_item` helper —
+see [upload outcomes + verify](upload-outcomes-and-verify.md) for the
+single-item push endpoint and the opt-in pre/post-upload AI verification
+that also build on this pass.
 
 **Writer.** `WikibaseCloudWriter` (`cloud_client.py:296`) wraps
 `wikibaseintegrator` for entity writes (`create_item`/`create_property`/

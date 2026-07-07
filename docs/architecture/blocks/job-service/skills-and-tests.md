@@ -69,3 +69,4 @@
 | `backend/tests/unit/test_hmo_item_reconcile.py` | No open transaction across the SPARQL reconcile call (R12) |
 | `backend/tests/test_hmo_studio_coverage_router.py` | Coverage 409-attach + durable-cache restore around the `hmo_coverage` job (Rule W-39) |
 | `backend/tests/unit/test_wikidata_upload_guards.py` | The fail-closed gate the `wikidata_upload` job routes through (Rule W-30) |
+| `backend/tests/test_run_job_params_hmo_verify.py` | `hmo_item_verify` param validation: unknown action / empty scope rejected, valid scope accepted |

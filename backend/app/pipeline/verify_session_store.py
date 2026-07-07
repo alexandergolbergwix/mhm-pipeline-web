@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.run_job import (
     JOB_KIND_AUTHORITY_VERIFY,
+    JOB_KIND_HMO_ITEM_VERIFY,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_WIKIDATA_VERIFY,
     JOB_STATUS_SUCCEEDED,
@@ -27,6 +28,7 @@ VERIFY_JOB_CHANNELS: dict[str, str] = {
     JOB_KIND_NER_VERIFY: "extraction-verify-sessions",
     JOB_KIND_AUTHORITY_VERIFY: "ai-verify-sessions",
     JOB_KIND_WIKIDATA_VERIFY: "wikidata-verify-sessions",
+    JOB_KIND_HMO_ITEM_VERIFY: "hmo-item-verify-sessions",
 }
 
 

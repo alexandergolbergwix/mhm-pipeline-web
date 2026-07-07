@@ -6,6 +6,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.wikibase_cloud_write import WikibaseCloudWrite
@@ -52,3 +53,53 @@ async def record_wikibase_write(
     except Exception:  # noqa: BLE001 — audit must never break writes
         logger.warning("failed to record wikibase_cloud_write", exc_info=True)
         await db.rollback()
+
+
+async def fetch_latest_wikibase_writes(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    *,
+    channel: str,
+    target_kind: str,
+) -> dict[str, WikibaseCloudWrite]:
+    """Latest audit row per ``target_key`` for this run/channel/target_kind.
+
+    Uses a portable "group by max(created_at)" join rather than Postgres-only
+    ``DISTINCT ON`` so it also works against the shared SQLite connection the
+    test suite uses.
+    """
+    latest_sub = (
+        select(
+            WikibaseCloudWrite.target_key.label("target_key"),
+            func.max(WikibaseCloudWrite.created_at).label("max_created_at"),
+        )
+        .where(
+            WikibaseCloudWrite.run_id == run_id,
+            WikibaseCloudWrite.channel == channel,
+            WikibaseCloudWrite.target_kind == target_kind,
+        )
+        .group_by(WikibaseCloudWrite.target_key)
+        .subquery()
+    )
+    rows = (
+        await db.execute(
+            select(WikibaseCloudWrite).join(
+                latest_sub,
+                (WikibaseCloudWrite.target_key == latest_sub.c.target_key)
+                & (WikibaseCloudWrite.created_at == latest_sub.c.max_created_at),
+            ).where(
+                WikibaseCloudWrite.run_id == run_id,
+                WikibaseCloudWrite.channel == channel,
+                WikibaseCloudWrite.target_kind == target_kind,
+            )
+        )
+    ).scalars().all()
+    out: dict[str, WikibaseCloudWrite] = {}
+    for row in rows:
+        # Two writes for the same target_key landing in the same instant
+        # (coarser SQLite timestamp resolution) is unlikely but not
+        # impossible — break ties deterministically on id.
+        existing = out.get(row.target_key)
+        if existing is None or row.id > existing.id:
+            out[row.target_key] = row
+    return out

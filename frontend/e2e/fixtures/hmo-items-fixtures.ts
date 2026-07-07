@@ -20,6 +20,9 @@ export interface MockHmoStudioItem {
   shacl_issues: Array<{code: string; severity: string; message: string}>;
   ai_verdict: null;
   override_present: boolean;
+  upload_outcome?: string | null;
+  upload_message?: string;
+  upload_at?: string | null;
 }
 
 export function makeHmoStudioItem(overrides: Partial<MockHmoStudioItem> = {}): MockHmoStudioItem {
@@ -36,6 +39,9 @@ export function makeHmoStudioItem(overrides: Partial<MockHmoStudioItem> = {}): M
     shacl_issues: overrides.shacl_issues ?? [],
     ai_verdict: overrides.ai_verdict ?? null,
     override_present: overrides.override_present ?? false,
+    upload_outcome: overrides.upload_outcome ?? null,
+    upload_message: overrides.upload_message ?? "",
+    upload_at: overrides.upload_at ?? null,
   };
 }
 
@@ -283,4 +289,14 @@ export async function gotoHmoItemsTab(page: Page): Promise<void> {
   await page.getByTestId("hmo-items-review-tab").click();
   await expect(page.getByTestId("hmo-items-panel")).toBeVisible();
   await expect(page.getByTestId("hmo-item-table")).toBeVisible();
+}
+
+/** The "Build & upload" sub-tab (default) — hosts ItemBuildPanel + ItemUploadPanel. */
+export async function gotoHmoBuildUploadTab(page: Page): Promise<void> {
+  const statusWait = page.waitForResponse(`**/api/runs/${TEST_RUN_ID}/hmo-studio/status`);
+  const itemStatusWait = page.waitForResponse(`**/api/runs/${TEST_RUN_ID}/hmo-studio/item-status`);
+  await page.goto(`/runs/${TEST_RUN_ID}/hmo-studio`);
+  await Promise.all([statusWait, itemStatusWait]);
+  await expect(page.getByRole("heading", {name: "HMO Wikibase Studio"})).toBeVisible();
+  await expect(page.getByTestId("hmo-upload-submit")).toBeVisible();
 }

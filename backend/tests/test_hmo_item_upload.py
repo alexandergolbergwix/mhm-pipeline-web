@@ -13,10 +13,18 @@ from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
+from app.models.wikibase_cloud_write import (
+    CHANNEL_ITEM_UPLOAD,
+    OPERATION_ADOPT,
+    TARGET_ITEM,
+    WikibaseCloudWrite,
+)
 from app.pipeline import hmo_item_upload as pipeline
 from app.pipeline.hmo_item_reconcile import ReconcileOutcome, ReconciliationUnavailableError
+from app.services.wikibase_audit import WikibaseAuditContext
 from converter.wikibase.resolved_models import (
     DeferredItemLink,
     ResolvedClaim,
@@ -292,6 +300,128 @@ async def test_live_upload_blocks_creation_when_reconcile_is_unavailable(db_sess
     assert result.failed == 2
     assert writer.create_calls == []
     assert all(o.status == "failed" for o in result.outcomes)
+
+
+@pytest.mark.asyncio
+async def test_live_upload_records_operation_adopt_in_audit_log(db_session, sample_run) -> None:
+    """The audit log must distinguish "adopted a pre-existing item" from
+    "created a brand-new item" — the review table's Last-upload column
+    depends on this to show "linked to existing item" instead of "new"."""
+    run_id = sample_run["run_id"]
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    writer = _FakeWriter()
+    audit_ctx = WikibaseAuditContext(
+        actor_user_id=sample_run["user_id"],
+        project_id=sample_run["project_id"],
+        run_id=run_id,
+        channel=CHANNEL_ITEM_UPLOAD,
+    )
+
+    async def _fake_reconcile(_db, source_uri: str, *, pid: str | None = None) -> ReconcileOutcome:
+        if source_uri == "http://example.org#MS1":
+            return ReconcileOutcome(found=True, wikibase_id="Q999", message="found live")
+        return ReconcileOutcome(found=False)
+
+    with patch.object(pipeline, "reconcile_item", AsyncMock(side_effect=_fake_reconcile)):
+        await pipeline.upload_items_for_run(
+            db_session, run_id, writer=writer, dry_run=False, audit_ctx=audit_ctx,
+        )
+
+    row = (
+        await db_session.execute(
+            select(WikibaseCloudWrite).where(
+                WikibaseCloudWrite.run_id == run_id,
+                WikibaseCloudWrite.target_key == "http://example.org#MS1",
+            )
+        )
+    ).scalar_one()
+    assert row.operation == OPERATION_ADOPT
+    assert row.wikibase_id == "Q999"
+    assert "found live" in row.outcome_message
+
+
+@pytest.mark.asyncio
+async def test_push_single_item_creates_when_no_existing_qid(db_session) -> None:
+    run_id = uuid.uuid4()
+    ms = _ms_and_person()[0]
+    writer = _FakeWriter()
+
+    with patch.object(pipeline, "reconcile_item", AsyncMock(return_value=ReconcileOutcome(found=False))):
+        outcome = await pipeline.push_single_item(
+            db_session, run_id, ms,
+            writer=writer, audit_ctx=None, update_existing=False,
+            reconcile_pid=None, existing_qid=None,
+        )
+
+    assert outcome.status == "created"
+    assert outcome.wikibase_id == "Q1"
+    assert len(writer.create_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_push_single_item_updates_when_existing_qid_and_update_flag_set(db_session) -> None:
+    run_id = uuid.uuid4()
+    ms = _ms_and_person()[0]
+    writer = _FakeWriter()
+
+    outcome = await pipeline.push_single_item(
+        db_session, run_id, ms,
+        writer=writer, audit_ctx=None, update_existing=True,
+        reconcile_pid=None, existing_qid="Q42",
+    )
+
+    assert outcome.status == "updated"
+    assert outcome.wikibase_id == "Q42"
+    assert writer.update_calls[0]["entity_id"] == "Q42"
+    assert writer.create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_push_single_item_skips_when_existing_qid_and_no_update_flag(db_session) -> None:
+    run_id = uuid.uuid4()
+    ms = _ms_and_person()[0]
+    writer = _FakeWriter()
+
+    outcome = await pipeline.push_single_item(
+        db_session, run_id, ms,
+        writer=writer, audit_ctx=None, update_existing=False,
+        reconcile_pid=None, existing_qid="Q42",
+    )
+
+    assert outcome.status == "skipped"
+    assert outcome.wikibase_id == "Q42"
+    assert writer.create_calls == []
+    assert writer.update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_push_single_item_records_audit_row_when_ctx_given(db_session, sample_run) -> None:
+    run_id = sample_run["run_id"]
+    ms = _ms_and_person()[0]
+    writer = _FakeWriter()
+    audit_ctx = WikibaseAuditContext(
+        actor_user_id=sample_run["user_id"],
+        project_id=sample_run["project_id"],
+        run_id=run_id,
+        channel=CHANNEL_ITEM_UPLOAD,
+    )
+
+    with patch.object(pipeline, "reconcile_item", AsyncMock(return_value=ReconcileOutcome(found=False))):
+        outcome = await pipeline.push_single_item(
+            db_session, run_id, ms,
+            writer=writer, audit_ctx=audit_ctx, update_existing=False,
+            reconcile_pid=None, existing_qid=None,
+        )
+
+    row = (
+        await db_session.execute(
+            select(WikibaseCloudWrite).where(
+                WikibaseCloudWrite.run_id == run_id,
+                WikibaseCloudWrite.target_key == ms.source_uri,
+            )
+        )
+    ).scalar_one()
+    assert row.wikibase_id == outcome.wikibase_id
 
 
 @pytest.mark.asyncio

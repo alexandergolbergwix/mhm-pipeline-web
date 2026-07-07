@@ -94,6 +94,14 @@ class HmoAiFixApplyRequest(BaseModel):
     fixes: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class HmoItemPushResponse(BaseModel):
+    local_id: str
+    source_uri: str
+    status: str
+    wikibase_id: str | None = None
+    message: str = ""
+
+
 class HmoItemsImportRequest(BaseModel):
     items: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -288,6 +296,73 @@ async def reconcile_hmo_item(
         "status": "adopted",
         "message": outcome.message,
     }
+
+
+@router.post(
+    "/{run_id}/hmo-studio/items/{local_id:path}/push",
+    response_model=HmoItemPushResponse,
+)
+async def push_hmo_item(
+    run_id: uuid.UUID,
+    local_id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> HmoItemPushResponse:
+    """Create-or-update exactly this one item on the live Wikibase Cloud,
+    using its current override-merged build state.
+
+    Lets a curator go from "apply an AI-suggested fix" (which only updates
+    the override row) straight to "the live item now reflects the fix"
+    without re-running the whole corpus upload with ``update_existing``.
+    """
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    try:
+        items = await fetch_merged_hmo_items(db, run_id)
+    except ItemBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    item = next((i for i in items if i.get("local_id") == local_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"unknown local_id {local_id!r}")
+
+    from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD  # noqa: PLC0415
+    from app.pipeline.hmo_item_reconcile import resolve_source_uri_pid  # noqa: PLC0415
+    from app.pipeline.hmo_item_upload import push_single_item  # noqa: PLC0415
+    from app.services.wikibase_audit import WikibaseAuditContext  # noqa: PLC0415
+    from app.services.wikibase_credentials import build_server_wikibase_writer  # noqa: PLC0415
+    from converter.wikibase.resolved_models import ResolvedWikibaseEntity  # noqa: PLC0415
+
+    writer = build_server_wikibase_writer()
+    entity = ResolvedWikibaseEntity.from_dict(item)
+    existing_qid = item.get("wikibase_id")
+    reconcile_pid = None if existing_qid else await resolve_source_uri_pid(db)
+
+    # Close out the read transaction (run lookup, item fetch, pid lookup)
+    # before the slow live Wikibase Cloud / SPARQL call below — never hold
+    # a DB transaction open across external I/O (Rule G5 / W-40).
+    await db.commit()
+
+    outcome = await push_single_item(
+        db, run_id, entity,
+        writer=writer,
+        audit_ctx=WikibaseAuditContext(
+            actor_user_id=auth.user.id,
+            project_id=run.project_id,
+            run_id=run_id,
+            job_id=None,
+            channel=CHANNEL_ITEM_UPLOAD,
+        ),
+        update_existing=True,
+        reconcile_pid=reconcile_pid,
+        existing_qid=existing_qid,
+    )
+    return HmoItemPushResponse(
+        local_id=outcome.local_id,
+        source_uri=outcome.source_uri,
+        status=outcome.status,
+        wikibase_id=outcome.wikibase_id,
+        message=outcome.message,
+    )
 
 
 @router.get("/{run_id}/hmo-studio/items/export")

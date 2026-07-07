@@ -15,6 +15,7 @@ from app.models.run_job import (
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_EXTRACTION,
     JOB_KIND_HMO_ITEM_UPLOAD,
+    JOB_KIND_HMO_ITEM_VERIFY,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
@@ -61,7 +62,10 @@ async def prepare_job_params(
         merged["_hf_token"] = hf_token
         return merged
 
-    if kind in (JOB_KIND_NER_VERIFY, JOB_KIND_AUTHORITY_VERIFY, JOB_KIND_WIKIDATA_VERIFY):
+    if kind in (
+        JOB_KIND_NER_VERIFY, JOB_KIND_AUTHORITY_VERIFY, JOB_KIND_WIKIDATA_VERIFY,
+        JOB_KIND_HMO_ITEM_VERIFY,
+    ):
         api_key = await _resolve_gemini_key(db, auth)
         if not api_key:
             raise HTTPException(
@@ -183,6 +187,26 @@ async def _validate_verify_params(
         )
         if not items:
             raise HTTPException(status_code=400, detail="no Wikidata Studio items in scope")
+        if len(items) < action.min_candidates:
+            raise HTTPException(
+                status_code=400,
+                detail=f"action requires at least {action.min_candidates} candidates",
+            )
+
+    if kind == JOB_KIND_HMO_ITEM_VERIFY:
+        from app.pipeline import hmo_item_actions  # noqa: PLC0415
+        from app.routers.hmo_studio_items import (  # noqa: PLC0415
+            _fetch_verify_items,
+            _prepare_verify_scope,
+        )
+
+        action = hmo_item_actions.get_action(action_id)
+        if action is None:
+            raise HTTPException(status_code=400, detail=f"unknown action_id {action_id!r}")
+        items = await _fetch_verify_items(db, run_id, item_ids=params.get("item_ids"))
+        items = await _prepare_verify_scope(action, items)
+        if not items:
+            raise HTTPException(status_code=400, detail="no HMO items in scope")
         if len(items) < action.min_candidates:
             raise HTTPException(
                 status_code=400,

@@ -63,3 +63,19 @@
 15. **R15 — Byte-identical vendoring.** `backend/converter/wikibase/` mirrors
     the desktop tree; sync via `pipeline/scripts/sync_converter_to_web.sh`,
     never edit divergently. *Why:* one source of truth for writer behavior.
+16. **R16 — Adopt is audited distinctly from create.** A reconcile-match hit
+    MUST log `OPERATION_ADOPT`, never `OPERATION_CREATE`. *Why:* the review
+    table's "Last upload" column reads this to tell curators "linked to a
+    pre-existing item" apart from "brand new" — collapsing them makes every
+    corpus with pre-existing Wikibase items look like it minted duplicates.
+17. **R17 — One function writes an item live.** `push_single_item` is the
+    only place that performs a live create/update of an entity; the bulk
+    pass-1 loop and the single-item push endpoint both call it. *Why:*
+    letting the single-item endpoint grow its own create/update body would
+    silently diverge from R1/R2/R3/R5/R9/R12 the next time one path changes.
+18. **R18 — Upload-lifecycle AI verification never gates or fixes silently.**
+    A failed pre-upload verdict MUST show a curator a choice (review vs.
+    upload anyway), never auto-block or auto-proceed; a post-upload verdict
+    only proposes a fix, the curator applies it (mirrors eval-agent R13).
+    *Why:* project-wide human-in-the-loop invariant — AI verdicts are
+    advisory everywhere in this app.

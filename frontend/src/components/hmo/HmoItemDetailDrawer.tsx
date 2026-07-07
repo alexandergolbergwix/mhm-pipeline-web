@@ -5,6 +5,7 @@ import {HmoStudioItems, type HmoItemOverridePayload, type HmoStudioItem} from "@
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {Glass} from "@/components/glass";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
+import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
 import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
 
 export interface HmoItemDetailDrawerProps {
@@ -39,6 +40,8 @@ export function HmoItemDetailDrawer({
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [sparqlLabel, setSparqlLabel] = useState("");
+  const [pushing, setPushing] = useState(false);
+  const [pushMsg, setPushMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (pinned) return;
@@ -103,6 +106,35 @@ export function HmoItemDetailDrawer({
     }
   }, [item.ai_verdict, item.local_id, onSaved, runId]);
 
+  const pushToWikibase = useCallback(async () => {
+    setPushing(true);
+    setPushMsg(null);
+    try {
+      const res = await HmoStudioItems.pushItem(runId, item.local_id);
+      setPushMsg(`${res.status}${res.wikibase_id ? ` \u2192 ${res.wikibase_id}` : ""}${res.message ? `: ${res.message}` : ""}`);
+      onSaved();
+    } catch (e) {
+      setPushMsg(e instanceof ApiError ? e.detail : String(e));
+    } finally {
+      setPushing(false);
+    }
+  }, [item.local_id, onSaved, runId]);
+
+  const applyAutofixAndPush = useCallback(async () => {
+    const fixes = (item.ai_verdict as {suggested_fixes?: Array<Record<string, unknown>>} | null)?.suggested_fixes;
+    if (!fixes?.length) return;
+    setSaving(true);
+    setPushMsg(null);
+    try {
+      await HmoStudioItems.applyAiFixes(runId, item.local_id, fixes);
+      setSaving(false);
+      await pushToWikibase();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+      setSaving(false);
+    }
+  }, [item.ai_verdict, item.local_id, pushToWikibase, runId]);
+
   const localTargets = allItems
     .filter((i) => i.local_id !== item.local_id)
     .map((i) => i.local_id);
@@ -135,6 +167,11 @@ export function HmoItemDetailDrawer({
 
       <div className="flex flex-wrap items-center gap-2">
         <HmoItemShaclBadge issues={item.shacl_issues ?? []} />
+        <HmoItemUploadOutcomeBadge
+          outcome={item.upload_outcome}
+          message={item.upload_message}
+          at={item.upload_at}
+        />
         <AiVerdictPill verdict={item.ai_verdict} />
         {onVerify && (
           <button type="button" className="button-ghost text-xs" onClick={onVerify}>
@@ -142,13 +179,30 @@ export function HmoItemDetailDrawer({
           </button>
         )}
         {(item.ai_verdict as {suggested_fixes?: unknown[]} | null)?.suggested_fixes?.length ? (
-          <button type="button" className="button-primary text-xs" onClick={() => void applyAutofix()}>
-            Apply AI fix
-          </button>
+          <>
+            <button type="button" className="button-primary text-xs" onClick={() => void applyAutofix()} disabled={saving}>
+              Apply AI fix
+            </button>
+            <button type="button" className="button-primary text-xs" onClick={() => void applyAutofixAndPush()} disabled={saving || pushing}>
+              Apply fix &amp; push
+            </button>
+          </>
         ) : null}
+        <button type="button" className="button-ghost text-xs" onClick={() => void pushToWikibase()} disabled={pushing}>
+          {pushing ? "Pushing…" : "Push to Wikibase now"}
+        </button>
       </div>
 
       {error && <p className="text-danger text-sm">{error}</p>}
+      {pushMsg && <p className="text-xs muted">Push result: {pushMsg}</p>}
+
+      {item.upload_outcome && (
+        <p className="text-xs muted">
+          Last upload: <b>{item.upload_outcome}</b>
+          {item.upload_at ? ` at ${new Date(item.upload_at).toLocaleString()}` : ""}
+          {item.upload_message ? ` — ${item.upload_message}` : ""}
+        </p>
+      )}
 
       <section className="space-y-2">
         <h4 className="text-sm font-medium">Labels</h4>

@@ -23,6 +23,7 @@ from app.models.run_job import (
     JOB_KIND_EXTRACTION,
     JOB_KIND_HMO_COVERAGE,
     JOB_KIND_HMO_ITEM_UPLOAD,
+    JOB_KIND_HMO_ITEM_VERIFY,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
@@ -334,7 +335,10 @@ async def _execute_job(job_id: uuid.UUID) -> None:
         elif kind == JOB_KIND_EXTRACTION:
             from app.pipeline.extraction_job import run_extraction_job  # noqa: PLC0415
             await run_extraction_job(job_id)
-        elif kind in (JOB_KIND_NER_VERIFY, JOB_KIND_AUTHORITY_VERIFY, JOB_KIND_WIKIDATA_VERIFY):
+        elif kind in (
+            JOB_KIND_NER_VERIFY, JOB_KIND_AUTHORITY_VERIFY, JOB_KIND_WIKIDATA_VERIFY,
+            JOB_KIND_HMO_ITEM_VERIFY,
+        ):
             from app.pipeline.verify_job import run_verify_job  # noqa: PLC0415
             await run_verify_job(job_id)
         elif kind == JOB_KIND_RDF_BUILD:

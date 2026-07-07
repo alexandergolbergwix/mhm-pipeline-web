@@ -20,6 +20,10 @@ OPERATION_UPDATE = "update"
 OPERATION_SKIP = "skip"
 OPERATION_UNCHANGED = "unchanged"
 OPERATION_FAILED = "failed"
+# A reconcile match found a pre-existing Wikibase item for this source_uri —
+# distinct from OPERATION_CREATE (brand-new item) so the review table can
+# tell curators "linked to an existing item" apart from "created new".
+OPERATION_ADOPT = "adopt"
 
 TARGET_PAGE = "page"
 TARGET_ITEM = "item"

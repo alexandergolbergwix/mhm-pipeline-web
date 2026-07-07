@@ -25,6 +25,20 @@ export interface HmoStudioItem {
   ai_verdict_at?: string | null;
   override_present: boolean;
   override_id?: string | null;
+  /** Latest wikibase_cloud_writes outcome for this item's source_uri, if any upload was attempted. */
+  upload_outcome?: string | null;
+  /** Failure/adopt reason from the latest upload attempt; "" when not applicable. */
+  upload_message?: string | null;
+  /** ISO timestamp of the latest upload attempt, or null if never attempted. */
+  upload_at?: string | null;
+}
+
+export interface HmoItemPushResult {
+  local_id: string;
+  source_uri: string;
+  status: string;
+  wikibase_id: string | null;
+  message: string;
 }
 
 export interface HmoItemOverridePayload {
@@ -73,5 +87,12 @@ export const HmoStudioItems = {
 
   cachedVerdicts(runId: string): Promise<Record<string, AiVerdict>> {
     return api.get(`/runs/${runId}/hmo-studio/items/ai-verify/cached-verdicts`);
+  },
+
+  pushItem(runId: string, localId: string): Promise<HmoItemPushResult> {
+    return api.post(
+      `/runs/${runId}/hmo-studio/items/${encodeURIComponent(localId)}/push`,
+      {},
+    );
   },
 };

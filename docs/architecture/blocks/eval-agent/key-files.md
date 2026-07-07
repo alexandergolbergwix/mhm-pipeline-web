@@ -5,7 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/agent_runner.py` | Core runner: `locate_eval_agent`, `resolve_verify_state_dir/-session_dir`, `spawn_eval_agent_run`, `sse_stream`, trace persistence + session listing/reading (both layouts) |
-| `backend/app/pipeline/verify_job.py` | Background-job wrapper (`run_verify_job`) for the three job-backed channels; embeds `session_snapshot` in `run_jobs.result` |
+| `backend/app/pipeline/verify_job.py` | Background-job wrapper (`run_verify_job`) for the four job-backed channels (authority/NER/Wikidata/HMO item); embeds `session_snapshot` in `run_jobs.result` |
 | `backend/app/pipeline/verify_session_store.py` | `load_verify_session`: disk trace OR job-row `session_snapshot` fallback (Heroku multi-dyno) |
 | `backend/app/pipeline/ner_verdict_cache.py` | NER `ai_verdict` cache keys, content fingerprints, `sanitise_stale_ai_verdict` |
 | `backend/app/pipeline/ai_verifier.py` | `GEMINI_MODEL`, `unwrap_user_gemini_key`, legacy single-match Gemini/heuristic verdict |

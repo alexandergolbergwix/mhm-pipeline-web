@@ -7,8 +7,8 @@
 The run-job service is the single mechanism for anything a curator triggers that
 cannot finish inside Heroku's 30-second HTTP router timeout: NER extraction over a
 whole run, authority re-enrichment, RDF builds, AI-verify sessions (NER / authority /
-Wikidata), Wikidata Studio builds and uploads, HMO coverage reports, HMO Wikibase
-schema bootstrap, and HMO item uploads. A router POST creates a `run_jobs` row and
+Wikidata / HMO item), Wikidata Studio builds and uploads, HMO coverage reports, HMO
+Wikibase schema bootstrap, and HMO item uploads. A router POST creates a `run_jobs` row and
 returns immediately; an in-process `asyncio` task does the work; the frontend polls
 (and receives WebSocket pushes) until the row reaches a terminal status.
 
@@ -41,7 +41,7 @@ open clients see updates without waiting for the next poll tick.
 - [extraction](../extraction/README.md) — `extraction` + `ner_verify` job surfaces
 - [authority](../authority/README.md) — `authority_re_enrich` + `authority_verify`
 - [rdf-graph](../rdf-graph/README.md) — `rdf_build` and the `RdfArtifact` write-through
-- [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — `hmo_coverage`, `hmo_schema_bootstrap`, `hmo_item_upload`
+- [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — `hmo_coverage`, `hmo_schema_bootstrap`, `hmo_item_upload`, `hmo_item_verify`
 - [wikidata-studio](../wikidata-studio/README.md) — `wikidata_studio_build`, `wikidata_upload`, `wikidata_verify`
 - [caching](../caching/README.md) — durable Postgres counterparts for job outputs (Rules W-26/W-39)
 - [frontend](../frontend/README.md) — `runJobs` store, attachment hooks, render-stability rules

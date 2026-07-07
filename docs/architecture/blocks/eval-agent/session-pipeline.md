@@ -42,7 +42,7 @@ still stream.
 | `ai-verify-sessions` | `ai_verify.py` | `AuthorityMatch` (+ MARC record) | `marc_extracted.json` + `authority_enriched.json` | `AuthorityMatch.payload.ai_verdict` | `authority_verify` |
 | `extraction-verify-sessions` | `extraction_verify.py` | `ExtractionApproval` | above pair + `ner_results.json` (entities + `ml_genres`) | `ExtractionApproval.ai_verdict` + `ai_verdict_at` (Rule W-17) | `ner_verify` |
 | `wikidata-verify-sessions` | `wikidata_studio.py` | built Studio item | `marc_extracted.json` + `wikidata_items.json` | inference_cache only (items are rebuilt artefacts) | `wikidata_verify` |
-| `hmo-item-verify-sessions` | `hmo_studio_items.py` → `hmo_item_verify.py` | merged HMO item | `marc_extracted.json` + `hmo_wikibase_items.json` | `HmoStudioItemOverride.ai_verdict` + `ai_verdict_at` | — (SSE only) |
+| `hmo-item-verify-sessions` | `hmo_studio_items.py` → `hmo_item_verify.py` | merged HMO item | `marc_extracted.json` + `hmo_wikibase_items.json` | `HmoStudioItemOverride.ai_verdict` + `ai_verdict_at` | `hmo_item_verify` |
 | `hmo-schema-verify-sessions` | `hmo_wikibase_schema.py` → `hmo_schema_verify.py` | schema bootstrap entry | `hmo_wikibase_schema.json` (+ empty `marc_extracted.json`) | inference_cache only | — (SSE only) |
 
 Channel quirks:

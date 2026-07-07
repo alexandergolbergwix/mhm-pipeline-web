@@ -18,10 +18,15 @@ Pipeline stages, in order:
 2. **Item build** — resolve a run's RDF TTL against the live schema mapping into
    `ResolvedWikibaseEntity` drafts, with SHACL issues attached.
 3. **Review** — curator table with per-item overrides, approval flags, AI
-   audit/autofix verdicts, live-Wikibase compare, export/import.
+   audit/autofix verdicts, live-Wikibase compare, export/import, and a
+   "Last upload" column showing the durable create/adopt/update/skip/failed
+   outcome of the most recent live push (from the `wikibase_cloud_writes`
+   audit log, not just the presence of a mapping row).
 4. **Upload** — two-pass create-or-update job (~7800 sequential writes on a
    large corpus) with reconcile-before-create, per-item commit, cancellation,
-   progress, and a full audit trail.
+   progress, a full audit trail, opt-in pre/post-upload AI verification, and
+   a single-item push endpoint for applying one curator/AI fix live without
+   a full re-upload.
 5. **IIIF manifests + coverage** — per-manuscript IIIF Presentation 3.0 manifests
    uploaded as wiki pages, plus an HMO → Wikidata projection-coverage report.
 
@@ -30,6 +35,9 @@ Pipeline stages, in order:
 - [Key files](key-files.md) — every backend/frontend file in this block and its purpose.
 - [How it works](how-it-works.md) — schema bootstrap, item build, review, upload,
   writer, credentials + audit, coverage + manifests.
+- [Upload outcomes + verify](upload-outcomes-and-verify.md) — durable
+  create/adopt/update/failed outcomes on the review table, single-item push,
+  opt-in pre/post-upload AI verification.
 - [Rules](rules.md) — the 15 invariants (R1–R15) this block enforces.
 - [Skills](skills.md) — operator playbooks: bootstrap, upload, debug coverage,
   rotate credentials, adopt existing items.

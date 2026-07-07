@@ -51,7 +51,17 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. The incident-annotated rule history
-(W-1…W-40) stays in [CLAUDE.md](CLAUDE.md).
+(W-1…W-41) stays in [CLAUDE.md](CLAUDE.md).
+
+### Skill: keep `docs/architecture` in sync with every code change
+
+Reading a block's docs before changing it (above) only works if the *last*
+agent wrote back to them. Treat an out-of-date architecture page as a bug:
+docs and code land in the **same** change, never as a follow-up. Before
+finishing any change that adds, renames, or removes a file, route, job
+kind, model field, or invariant, read and follow:
+
+- `.codex/skills/docs-architecture-sync/SKILL.md`
 
 ## Inherited rules
 

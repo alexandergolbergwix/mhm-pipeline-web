@@ -18,7 +18,8 @@ export type RunJobKind =
   | "wikidata_upload"
   | "hmo_schema_bootstrap"
   | "hmo_coverage"
-  | "hmo_item_upload";
+  | "hmo_item_upload"
+  | "hmo_item_verify";
 
 export interface RunJobProgress {
   phase?: string;
@@ -66,6 +67,7 @@ export const JOB_KIND_LABELS: Record<string, string> = {
   hmo_schema_bootstrap:     "HMO schema bootstrap",
   hmo_coverage:             "HMO coverage report",
   hmo_item_upload:          "HMO item upload",
+  hmo_item_verify:          "HMO item AI verify",
 };
 
 export function jobRunHref(job: RunJobSnapshot): string {
@@ -85,6 +87,7 @@ export function jobRunHref(job: RunJobSnapshot): string {
     case "hmo_schema_bootstrap":
     case "hmo_coverage":
     case "hmo_item_upload":
+    case "hmo_item_verify":
       return `/runs/${job.run_id}/hmo-studio`;
     default:
       return `/runs/${job.run_id}/overview`;
