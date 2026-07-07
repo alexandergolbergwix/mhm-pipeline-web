@@ -3,7 +3,7 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 import type {HmoStudioItem} from "@/api/hmoStudioItems";
 import {ColumnFilterPopup} from "@/components/extraction/ColumnFilterPopup";
 import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
-import {GlassPill} from "@/components/glass";
+import {HmoItemMappingBadge} from "@/components/hmo/HmoItemMappingBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
 import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
@@ -136,9 +136,9 @@ export function HmoItemTable({
                 ["local_id", "Local ID", true],
                 ["class_qid", "Class", false],
                 ["source_uri", "Source URI", false],
-                ["status", "Status", false],
-                ["wikibase_id", "Wikibase", false],
-                ["upload_outcome", "Last upload", false],
+                ["status", "On wiki?", false],
+                ["wikibase_id", "QID", false],
+                ["upload_outcome", "Last push", false],
                 ["validation", "Validation", false],
                 ["ai_verdict", "AI verdict", false],
                 ["approved", "Approved", false],
@@ -174,13 +174,14 @@ export function HmoItemTable({
                 <td className="px-3 py-2 font-mono text-xs">{item.local_id}</td>
                 <td className="px-3 py-2 font-mono text-xs">{item.class_qid}</td>
                 <td className="px-3 py-2 text-xs truncate max-w-[200px]" title={item.source_uri}>{item.source_uri}</td>
-                <td className="px-3 py-2"><GlassPill className="px-2 py-0.5 text-[10px] kicker">{item.status}</GlassPill></td>
+                <td className="px-3 py-2"><HmoItemMappingBadge status={item.status} /></td>
                 <td className="px-3 py-2 font-mono text-xs">{item.wikibase_id ?? "—"}</td>
                 <td className="px-3 py-2" data-testid={`hmo-item-upload-outcome-${item.local_id}`}>
                   <HmoItemUploadOutcomeBadge
                     outcome={item.upload_outcome}
                     message={item.upload_message}
                     at={item.upload_at}
+                    showDetail
                   />
                 </td>
                 <td className="px-3 py-2"><HmoItemShaclBadge issues={item.shacl_issues ?? []} /></td>

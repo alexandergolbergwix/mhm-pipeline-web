@@ -60,7 +60,9 @@ export function HmoItemsPanel({runId, projectId, buildPresent, refreshToken}: Hm
           <div className="kicker">Wikibase Items</div>
           <h3 className="text-lg font-medium">{items.length} resolved item{items.length === 1 ? "" : "s"}</h3>
           <p className="muted text-sm mt-1">
-            Rich review table for the run&apos;s HMO Wikibase item build — search, filter, edit, verify, export.
+            Review table for this run&apos;s item build. <b>On wiki?</b> means a live QID mapping exists;
+            <b> Last push</b> is the latest upload attempt (new item, linked existing, updated, or failed with reason).
+            Open a row for overrides, AI verify, and single-item push.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

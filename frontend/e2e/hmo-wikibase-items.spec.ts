@@ -54,12 +54,12 @@ test.describe("HMO Wikibase Items review UI", () => {
 });
 
 test.describe("HMO Wikibase Items — Last upload column", () => {
-  test("shows a dash for an item never uploaded", async ({page}) => {
+  test("shows never tried for an item never uploaded", async ({page}) => {
     await installHmoItemsMocks(page, makeHmoItemsState());
     await gotoHmoItemsTab(page);
     const cell = page.getByTestId("hmo-item-upload-outcome-QDraft_MS_123");
     await expect(cell).toBeVisible();
-    await expect(cell).toHaveText("—");
+    await expect(cell).toHaveText(/never tried/);
   });
 
   test("shows the adopted pill with the reconcile reason for an adopted item", async ({page}) => {
@@ -92,9 +92,10 @@ test.describe("HMO Wikibase Items — Last upload column", () => {
     await gotoHmoItemsTab(page);
     const cell = page.getByTestId("hmo-item-upload-outcome-QDraft_MS_123");
     await expect(cell.getByText("failed")).toBeVisible();
+    await expect(cell.getByText("Wikibase Cloud 500")).toBeVisible();
   });
 
-  test("filtering by Last upload column narrows the table", async ({page}) => {
+  test("filtering by Last push column narrows the table", async ({page}) => {
     await installHmoItemsMocks(page, makeHmoItemsState({
       items: [
         makeHmoStudioItem({local_id: "QDraft_A", upload_outcome: "create"}),
@@ -105,7 +106,7 @@ test.describe("HMO Wikibase Items — Last upload column", () => {
     await expect(page.getByTestId("hmo-item-row-QDraft_A")).toBeVisible();
     await expect(page.getByTestId("hmo-item-row-QDraft_B")).toBeVisible();
 
-    await page.getByRole("button", {name: "Last upload"}).click();
+    await page.getByRole("button", {name: "Last push"}).click();
     const checkboxList = page.getByTestId("filter-mode-checkbox");
     await expect(checkboxList).toBeVisible();
     await checkboxList.locator("label", {hasText: "failed"}).locator('input[type="checkbox"]').check();

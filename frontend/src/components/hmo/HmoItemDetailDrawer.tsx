@@ -4,6 +4,7 @@ import {ApiError} from "@/api/client";
 import {HmoStudioItems, type HmoItemOverridePayload, type HmoStudioItem} from "@/api/hmoStudioItems";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {Glass} from "@/components/glass";
+import {HmoItemMappingBadge} from "@/components/hmo/HmoItemMappingBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
 import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
@@ -166,6 +167,7 @@ export function HmoItemDetailDrawer({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <HmoItemMappingBadge status={item.status} />
         <HmoItemShaclBadge issues={item.shacl_issues ?? []} />
         <HmoItemUploadOutcomeBadge
           outcome={item.upload_outcome}
