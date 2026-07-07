@@ -1,0 +1,52 @@
+# HMO Wikibase Studio
+
+> Up: [System Design](../../system-design.md) · [AGENTS.md](../../../../AGENTS.md)
+
+## What this block does
+
+HMO Wikibase Studio publishes the project's own Hebrew Manuscripts Ontology (HMO)
+graph — classes, properties, and per-run instances (manuscripts, persons, places,
+works…) — as native entities on the self-hosted Wikibase Cloud instance
+(`https://mhm-hmo.wikibase.cloud`). It is the Wikidata-Studio equivalent for our
+own ontology, and a **separate trust boundary from wikidata.org**: Rule 25's
+moratorium gate does not apply here (desktop Rule 45).
+
+Pipeline stages, in order:
+
+1. **Schema bootstrap** — create every ontology class/property as a live
+   Wikibase Property/Item (global, not per-run).
+2. **Item build** — resolve a run's RDF TTL against the live schema mapping into
+   `ResolvedWikibaseEntity` drafts, with SHACL issues attached.
+3. **Review** — curator table with per-item overrides, approval flags, AI
+   audit/autofix verdicts, live-Wikibase compare, export/import.
+4. **Upload** — two-pass create-or-update job (~7800 sequential writes on a
+   large corpus) with reconcile-before-create, per-item commit, cancellation,
+   progress, and a full audit trail.
+5. **IIIF manifests + coverage** — per-manuscript IIIF Presentation 3.0 manifests
+   uploaded as wiki pages, plus an HMO → Wikidata projection-coverage report.
+
+## Contents
+
+- [Key files](key-files.md) — every backend/frontend file in this block and its purpose.
+- [How it works](how-it-works.md) — schema bootstrap, item build, review, upload,
+  writer, credentials + audit, coverage + manifests.
+- [Rules](rules.md) — the 15 invariants (R1–R15) this block enforces.
+- [Skills](skills.md) — operator playbooks: bootstrap, upload, debug coverage,
+  rotate credentials, adopt existing items.
+- [Tests](tests.md) — the test suites pinning this block.
+
+## Related blocks
+
+- [rdf-graph](../rdf-graph/README.md) — produces the TTL this block builds from (and
+  `ensure_ttl_on_disk` restore).
+- [job-service](../job-service/README.md) — claim/heartbeat/dedup semantics of the
+  bootstrap, upload, and coverage jobs (Rule W-38).
+- [caching](../caching/README.md) — inference cache (AI verdicts) and the durable
+  Postgres cache pattern.
+- [wikidata-studio](../wikidata-studio/README.md) — the wikidata.org sibling; its
+  build fingerprint hashes `hmo_instance_qids` so HMO uploads invalidate
+  P2888/P973 cross-links.
+- [platform-security](../platform-security/README.md) — auth context, RBAC, encrypted
+  key handling used by AI verify.
+- [frontend](../frontend/README.md) — glass components, job-attachment hooks, and
+  render-stability rules the HMO panels follow.

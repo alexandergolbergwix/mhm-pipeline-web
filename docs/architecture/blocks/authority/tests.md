@@ -1,0 +1,16 @@
+# Authority Enrichment — Tests pinning this block
+
+> Up: [Authority Enrichment](README.md)
+
+- `backend/tests/unit/test_authority_routing.py` — matcher routing by kind (person/place/work), KIMA→Mazal backfill
+- `backend/tests/unit/test_authority_supervisor_examples.py` — Gilla's 2026-06 real-record regression examples
+- `backend/tests/unit/test_authority_hardening.py` — guard verdicts, flag accumulation, ID stripping, idempotency
+- `backend/tests/unit/test_homonym_scoring.py` — scoring weights, abstain conditions, tie threshold
+- `backend/tests/unit/test_viaf_mazal_guards.py` — VIAF date mismatch, cross-source conflict, SRU skip on tag-100
+- `backend/tests/unit/test_authority_auto_approve.py` — rule filter + blocked guard flags
+- `backend/tests/unit/test_authority_post_enrich.py` — personality cross-links, sibling crosscheck pass
+- `backend/tests/unit/test_postgres_authority_matchers.py` — Postgres backend SQL / normalization parity
+- `backend/tests/unit/test_authority_biodata_payload.py` — biodata payload slice
+- `backend/tests/unit/test_colophon_structured.py`, `test_notes_work_extraction.py` — note-sourced entities feeding this block
+- `backend/tests/test_provenance_events_ingest.py`, `test_institution_place.py`, `test_ashkenazi_gazetteer.py` — place chain
+- `frontend/e2e/authority-homonym-picker.spec.ts`, `authority-biodata.spec.ts`, `authority-grouping.spec.ts` — curator UI click paths

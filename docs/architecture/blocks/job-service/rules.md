@@ -1,0 +1,54 @@
+# Background Run-Job Service — Rules
+
+> Up: [Background Run-Job Service](README.md)
+
+1. **R1 — Never flip a row to `running` outside `_try_claim_job`.** All ownership
+   transitions go through the single atomic conditional UPDATE (`run_job_service.py:182`).
+   *Why:* it is the only thing that makes the cross-process race deterministic — exactly one claimant sees `rowcount == 1`.
+
+2. **R2 — A running row owned by a fresh foreign worker MUST NOT be claimed.**
+   Claimable only when queued, unowned, ours, same-dyno-prefix, or heartbeat-stale (> `STALE_JOB_AFTER` = 5 min).
+   *Why:* otherwise two dynos execute the same job concurrently (double Wikibase writes, double entity upserts).
+
+3. **R3 — Staleness is decided by the maintenance heartbeat, not worker progress.**
+   `_heartbeat_owned_jobs` bumps `updated_at` on rows whose asyncio task is alive; workers must never be required to call `update_job_progress` just to stay alive.
+   *Why:* a busy-but-quiet job (e.g. the RDF TTL-write tail) would otherwise be reaped as stale mid-work.
+
+4. **R4 — The maintenance tick order is heartbeat → reap → respawn, and must stay so.**
+   (`run_job_maintenance_tick`, `run_job_service.py:277`.)
+   *Why:* heartbeating first means a process can never reap its own live jobs in the same tick.
+
+5. **R5 — One active job per `(run_id, kind)`, enforced by `uq_run_jobs_active_kind`; the create race MUST surface as HTTP 409 with the existing `job_id`.**
+   `create_job` catches the `IntegrityError` and re-raises `ActiveJobError`; the router maps it to `409 {"message": "job already running", "job_id": ...}` so the client attaches instead of duplicating.
+   *Why:* the pre-check `find_active_job` is racy across dynos; the partial unique index is the real guard and the 409-attach protocol is the client contract.
+
+6. **NEVER expose `claimed_by` or underscore-prefixed params through the API.**
+   `serialise_job` omits `claimed_by` and `_public_params` strips `_hf_token`, `_api_key`, `_wikidata_token` (`run_job_service.py:481-505`).
+   *Why:* params carry unwrapped user secrets; the wire payload shape is also pinned by frontend types.
+
+7. **R7 — Secrets are unwrapped only in `prepare_job_params`, at start time, in the request context.**
+   Workers read them back from `params["_*"]`; they never re-derive credentials.
+   *Why:* the user's KEK exists only in the authenticated request; a background task cannot unwrap anything later.
+
+8. **R8 — Cancellation is cooperative: workers MUST poll `is_cancel_requested` at every loop boundary and finish with `status=cancelled`.**
+   `request_cancel` only stamps `cancel_requested_at`; nothing force-kills the task.
+   *Why:* mid-item interruption of external writes (Wikibase, Wikidata) would leave half-applied state; the worker chooses safe stopping points.
+
+9. **R9 — Terminal state is written only via `finish_job` / `_fail_job`, and `_fail_job` never overwrites `succeeded`/`cancelled`.**
+   *Why:* the crash handler in `_execute_job` races with normal completion; the guard keeps a late exception from clobbering a good result.
+
+10. **R10 — Verify jobs MUST embed `session_snapshot` in `result`.**
+    (`verify_job.py:145-164`, Rule W-33.) *Why:* `/tmp` verify state is per-dyno; the snapshot is what lets session GET handlers survive multi-dyno routing.
+
+11. **R11 — Progress/NOTIFY pushes are best-effort and must never fail the job.**
+    `_notify_job_update` skips non-Postgres dialects, refreshes the row before serialising (expired `updated_at` → `MissingGreenlet` otherwise), and swallows publish errors with a rollback.
+    *Why:* a missed live push costs 2 s of poll latency; an exception here would abort a healthy job.
+
+12. **R12 — A worker that interleaves DB work with slow/retrying external I/O must commit before the slow call** (Rule W-40), and any on-disk build result it caches needs a Postgres write-through (Rule W-39).
+    *Why:* the 2-minute idle-in-transaction timeout kills connections held across retry backoff; local-disk caches evaporate on every deploy.
+
+13. **R13 — Frontend: select primitives from `useRunJobs`, derive with `selectActiveJob` in `useMemo`, fingerprint-guard `sync`/`onComplete` callbacks** (Rule W-36); use `useRunJobAttachment`/`useVerifyJob`, never hand-rolled poll effects.
+    *Why:* store-method selectors and unguarded effect callbacks caused three production blank-UI incidents (React #185).
+
+14. **R14 — On start, a UI that receives a 409 MUST attach to the returned `job_id` rather than error out.**
+    *Why:* another tab/curator (or a respawned orphan) may already be running the job; attaching is the designed multi-client behaviour.

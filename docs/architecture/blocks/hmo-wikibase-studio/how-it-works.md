@@ -1,0 +1,84 @@
+# HMO Wikibase Studio — How it works
+
+> Up: [HMO Wikibase Studio](README.md)
+
+**Schema bootstrap (global).** `converter/wikibase/ontology_schema_reader.read_hmo_schema`
+parses `hebrew-manuscripts.ttl` (~103 classes / ~277 properties).
+`bootstrap_schema` (`hmo_schema_bootstrap.py:94`) creates every URI without a
+schema-level mapping row (`wikibase_entity_mappings` with `run_id IS NULL`),
+properties before classes (item claims reference PIDs). Duplicate `en` labels
+(CIDOC/LRM reuse) are disambiguated as `{label} ({local_name})`
+(`wikibase_label_for_entry`, :250). Each successful create commits its mapping
+row immediately (`_record_mapping`, :335) so a crash mid-batch resumes without
+re-creating live entities. Dry-run is synchronous in the router; live runs as a
+`JOB_KIND_HMO_SCHEMA_BOOTSTRAP` background job (a `run_id` is required only to
+anchor the job row). The last report is persisted both as a job result and on
+disk under `backend/state/hmo_wikibase_schema/` where the eval-agent's
+`hmo_wikibase_schema` evaluator reads it (subprocess boundary — no imports).
+
+**Item build (per run).** `POST /runs/{id}/hmo-studio/build-items` →
+`build_items_for_run` (`hmo_item_build.py:88`). Fingerprint = SHA-256 over the
+TTL bytes **and** the schema-mapping version (count + max `created_at` of
+schema rows), so a bootstrap invalidates every run's cached build. On a miss it
+runs `HmoWikibaseExporter().from_ttl` + `resolve_against_mappings`, computes the
+SHACL report, and upserts `HmoStudioItemCache`. An `UnmappedOntologyUriError`
+surfaces as a 409 telling the curator to re-run the bootstrap. The exporter
+truncates labels/descriptions to 250 chars and string/monolingualtext claim
+values to 400 chars (`hmo_exporter.py:155,197-198`) so long free-text titles no
+longer trigger `ModificationFailed`.
+
+**Review.** `fetch_merged_hmo_items` (`hmo_item_views.py:22`) merges the cached
+build with `HmoStudioItemOverride` rows (label/description/alias edits,
+`statement_edits`, `remove_statements`, `add_statements`, `approved`), joins
+`wikibase_entity_mappings` for live QIDs (`status = created | would_create`),
+and attaches per-item SHACL issues and AI verdicts. Override PATCHes route
+through `apply_event` (entity type `hmo_item_override` — Rule W-21). AI verify
+streams over SSE via the eval-agent subprocess; verdicts land in the
+`inference_cache` (kind `ai_verdict`) and on the override row. The autofix
+action first enriches QID-bearing items with a live-Wikibase compare snapshot
+(`hmo_wikibase_live_enrich.py`), and accepted fixes are merged into the
+override via `POST .../ai-fixes/apply`.
+
+**Upload (two-pass).** `upload_items_for_run` (`hmo_item_upload.py:96`).
+Pass 1: for each entity — already mapped → skip (or `update_item` merge when
+`update_existing=True`); unmapped → SPARQL reconcile by `hmo_source_uri`; a hit
+is **adopted** (mapping row recorded, no create); a miss → `create_item`. Every
+successful create/adopt commits its `wikibase_entity_mappings` row immediately.
+Pass 2 resolves `deferred_links` (item→item claims needing both live QIDs) via
+`add_claim`; targets that never got created are reported `unresolved`, never
+dropped. Dry-run is synchronous and network-free; live spawns a
+`JOB_KIND_HMO_ITEM_UPLOAD` job with progress callbacks and cooperative
+cancellation (partial result with `cancelled=True`, never an exception). The
+reconcile PID is resolved **once** before the loop
+(`resolve_source_uri_pid`, `hmo_item_upload.py:139`) — Rule W-40.
+
+**Writer.** `WikibaseCloudWriter` (`cloud_client.py:296`) wraps
+`wikibaseintegrator` for entity writes (`create_item`/`create_property`/
+`update_item`/`add_claim`/`get_entity`) and raw MediaWiki API for page edits
+(IIIF manifests, idempotent via content hash). `_post_with_retry` (:871) does up
+to 6 attempts with exponential backoff 1s→30s cap, retrying 429/5xx/network
+errors; WBI writes get the same budget via `BACKOFF_MAX_TRIES`/`MAXLAG=10`.
+Entity-write failures return `EntityEditOutcome(status="failed")` — they never
+raise into the batch loop.
+
+**Credentials + audit.** `build_server_wikibase_writer`
+(`wikibase_credentials.py:48`) builds the writer from server-held OAuth2 Heroku
+config vars (`WIKIBASE_CLOUD_OAUTH_*`), authenticates, and 503s unless
+`current_api_user()` equals `WIKIBASE_CLOUD_WRITE_USER` (default
+`mhm-pipeline-web`). Every live write outcome (create/update/skip/failed, for
+schema entries, items, claims, and manifest pages) appends a
+`wikibase_cloud_writes` row via `record_wikibase_write` with actor, channel,
+job, and target; the audit log is readable per project (`require_editor`) and
+globally (`require_admin`) via `routers/wikibase_writes.py`.
+`wikibase_user_access.py` additionally auto-provisions a wiki account per
+curator on login (best-effort, never blocks login).
+
+**Coverage + manifests.** `GET /coverage` returns the on-disk JSON if present,
+else falls back to the durable `HmoCoverageCache` row (fingerprint = SHA-256 of
+TTL bytes) and re-seeds the disk file; only a genuine miss enqueues a
+`JOB_KIND_HMO_COVERAGE` job and returns 409 `hmo_coverage_in_progress` with the
+job id. The job write-throughs both caches on success (`hmo_coverage_job.py:64-73`).
+IIIF manifests are built deterministically from the TTL (`MS_<shelfmark>.json`)
+and uploaded under the `IIIF:` namespace, with per-manifest *intent* audited as
+versioning events before the network call (`_audit_manifest_upload_intent`,
+`routers/hmo_studio.py:649`).

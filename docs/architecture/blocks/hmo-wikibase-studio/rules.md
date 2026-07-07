@@ -1,0 +1,65 @@
+# HMO Wikibase Studio — Rules
+
+> Up: [HMO Wikibase Studio](README.md)
+
+1. **R1 — Reconcile before create, fail closed.** Pass 1 MUST call
+   `reconcile_item` before any `create_item`; a `ReconciliationUnavailableError`
+   (network/HTTP failure) marks the item `failed`, NEVER "absent → create".
+   *Why:* a transient SPARQL outage must not mass-duplicate items (same failure
+   mode Rule W-30 closed on the Wikidata side).
+2. **R2 — Never hold a DB transaction across a slow external call (Rule W-40).**
+   `reconcile_item` commits its PID SELECT before the SPARQL call when `pid` is
+   not pre-resolved; loop callers MUST pre-resolve via `resolve_source_uri_pid`.
+   *Why:* Postgres' 2-minute idle-in-transaction backstop would kill the
+   connection mid-job during the writer's ~61s retry backoff.
+3. **R3 — Per-write commit for crash-safe resume.** Every successful schema
+   create and item create/adopt MUST commit its `wikibase_entity_mappings` row
+   immediately, and re-runs MUST skip already-mapped URIs.
+   *Why:* resuming after a crash mid-batch must never re-create a live entity.
+4. **R4 — Live batches run as `run_jobs` background jobs.** Schema bootstrap
+   (~380 writes) and item upload (~7800 writes) MUST NOT run inline in a request;
+   dry-runs (no network) stay synchronous. *Why:* Heroku's 30s router timeout,
+   plus jobs give progress, dedup (409-attach), and cancellation.
+5. **R5 — Update is a merge, never a wipe.** `update_item` uses
+   `ActionIfExists.APPEND_OR_REPLACE`; a curator-added statement on the wiki
+   that is absent from the build MUST be left untouched. *Why:* the upload must
+   never destroy manual curation on the live instance.
+6. **R6 — Deferred links are reported, never dropped.** Pass 2 MUST emit an
+   `unresolved` outcome for any link whose target lacks a live QID.
+   *Why:* silently missing item→item claims are invisible data loss.
+7. **R7 — Every on-disk build cache needs a durable Postgres counterpart
+   (Rule W-39).** Coverage reports, item builds, and TTLs MUST write through to
+   `HmoCoverageCache` / `HmoStudioItemCache` / `RdfArtifact`. *Why:* Heroku
+   dyno restarts wipe local disk; a disk-only cache silently forces 9–14 minute
+   rebuilds of unchanged inputs.
+8. **R8 — Build cache is fingerprinted by TTL bytes AND schema-mapping
+   version.** Never serve a cached item build after a schema bootstrap changed
+   the mappings. *Why:* previously-unresolvable statements may now resolve (or
+   resolve to different PIDs).
+9. **R9 — Truncate before write.** Labels/descriptions are capped at 250 chars
+   and string/monolingualtext claim values at 400 in `hmo_exporter.py` — new
+   value paths MUST go through `_truncate`. *Why:* overlong values fail the
+   whole entity write with `ModificationFailed`.
+10. **R10 — The writer's OAuth session MUST be the configured write user.**
+    `build_server_wikibase_writer` 503s on a username mismatch. *Why:* all wiki
+    history must attribute to `mhm-pipeline-web`; a consumer registered under a
+    personal account would silently mis-attribute every edit.
+11. **R11 — Every live write is audited; audit never breaks the write.**
+    `record_wikibase_write` (and versioning `apply_event` calls) MUST swallow
+    their own failures. Manifest uploads audit *intent* before the network call.
+    *Why:* forensic recovery needs the trail, but an audit-table hiccup must
+    not 500 a batch.
+12. **R12 — Batch loops never let one bad item kill the batch.** Writer entity
+    methods return `status="failed"` outcomes instead of raising; manifest
+    upload catches per-file. *Why:* one malformed record must not abort
+    thousands of good writes.
+13. **R13 — SHACL is a signal, not a gate.** `build_shacl_report_for_items`
+    degrades to an empty report on any pyshacl failure. *Why:* item review must
+    stay usable when validation tooling breaks; curators see badges, not 500s.
+14. **R14 — wikibase.cloud is not wikidata.org.** The Rule 25 moratorium and
+    Rule W-30 upload gates apply ONLY to wikidata.org; this block writes to the
+    project-owned Wikibase Cloud. *Why:* distinct trust boundaries (desktop
+    Rule 45) — do not import one side's gates into the other's write path.
+15. **R15 — Byte-identical vendoring.** `backend/converter/wikibase/` mirrors
+    the desktop tree; sync via `pipeline/scripts/sync_converter_to_web.sh`,
+    never edit divergently. *Why:* one source of truth for writer behavior.

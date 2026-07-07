@@ -1,0 +1,42 @@
+# Wikidata Studio — Rules
+
+> Up: [Wikidata Studio](README.md)
+
+1. **R1 — Never re-implement builder logic in the web layer.** All item
+   construction lives in `backend/converter/wikidata/` (byte-parity with the
+   desktop; sync via `pipeline/scripts/sync_converter_to_web.sh`).
+   *Why:* every desktop safety fix (Rules 23/38/42/47) must land here by copy, not by re-derivation.
+2. **R2 — The reconcile that matters runs INSIDE `upload_items`.** The
+   `/reconcile` endpoint is preview-only and MUST never be relied on to change
+   upload behaviour. *Why:* a stale preview mutating in-memory items was the decorative-guard bug of the 2026-06-08 audit.
+3. **R3 — Fail closed on lookup errors.** A `ReconciliationUnavailableError`
+   MUST block the item (`status="blocked"`), never fall through to CREATE.
+   *Why:* a transient WDQS outage read as "no existing item" mints duplicates at scale.
+4. **R4 — Every creatable entity type MUST have a dedup path**: manuscripts by
+   P3959→shelfmark, persons by conflict-checked identifiers, works by
+   label+author (rejecting differing P50). *Why:* the raw first-match path caused the ~5,948-item bulk-deletion request.
+5. **R5 — `validate_item` is a hard gate in the write path**, not just a build
+   badge. Any ERROR-severity issue blocks create AND update, regardless of
+   curator approval. *Why:* the moat closest to the write is the one that must never miss.
+6. **R6 — Live wikidata.org writes NEVER run without `MORATORIUM_LIFTED=true`**
+   (or `WIKIDATA_TEST_MODE=true` → test.wikidata.org). Enforced twice: web
+   layer and uploader. *Why:* desktop Rule 25 — the moratorium is the standing consequence of the 2026-04 incidents.
+7. **R7 — Never modify items we didn't create.** The uploader's four Rule-38
+   guards (`_is_our_item` + three `_assert_modifiable`/conflict checks) MUST
+   stay intact in `wikidata_upload.py`; `uploader.py` stays byte-identical to
+   desktop. *Why:* community items were mass-damaged once; UPDATE semantics are gated on first-revision authorship.
+8. **R8 — Every P/Q constant in `property_mapping.py` MUST be verified against
+   the live Wikidata page before landing**; wrong constants removed get a
+   `_KNOWN_BAD_*` entry + unit test. *Why:* Q179808 (Palme d'Or as "palimpsest") and P7416-as-count shipped silently from memory-derived constants.
+9. **R9 — Curator edits persist ONLY as `WikidataItemOverride` diffs**, applied
+   at rebuild time before validation; never mutate cached `result_items` or
+   builder output directly. *Why:* items are rebuilt from source on every fingerprint change — un-persisted edits evaporate.
+10. **R10 — Treat the QuickStatements download as ungated.** Any bulk QS
+    import MUST get manual review (or close the gap first); `item_approved_only`
+    is the only filter. *Why:* QS CREATE lines bypass reconcile, validator, moratorium, and all Rule-38 guards.
+11. **R11 — The build never runs inside an HTTP request when there is no cache
+    row** — it goes through the `wikidata_studio_build` run-job (409 + attach).
+    A stale cache is served with `cache_stale=true`, not silently rebuilt.
+    *Why:* Heroku's 30 s router timeout, and passive page loads must not spawn surprise job-tray banners.
+12. **R12 — Live uploads use the curator's own encrypted Wikidata token**
+    (Settings → `_unwrap_user_secret`), never a shared credential. *Why:* attribution and the `_is_our_item` authorship check both depend on the acting user.
