@@ -144,6 +144,7 @@ export interface HmoItemUploadResult {
   updated: number;
   skipped: number;
   failed: number;
+  blocked: number;
   linked: number;
   unresolved_links: number;
   outcomes: HmoItemUploadOutcome[];
@@ -178,6 +179,7 @@ export function itemUploadResultFromJob(job: RunJobSnapshot): HmoItemUploadResul
     updated: Number((raw as {updated?: unknown}).updated ?? 0),
     skipped: Number((raw as {skipped?: unknown}).skipped ?? 0),
     failed: Number((raw as {failed?: unknown}).failed ?? 0),
+    blocked: Number((raw as {blocked?: unknown}).blocked ?? 0),
     linked: Number((raw as {linked?: unknown}).linked ?? 0),
     unresolved_links: Number((raw as {unresolved_links?: unknown}).unresolved_links ?? 0),
     outcomes: outcomes as HmoItemUploadOutcome[],
@@ -219,10 +221,19 @@ export const HmoStudio = {
    * `updateExisting` refreshes labels/descriptions and merges in any new
    * claims on already-uploaded items instead of skipping them.
    */
-  uploadItems: (runId: string, dryRun: boolean, updateExisting = false) =>
+  uploadItems: (
+    runId: string,
+    dryRun: boolean,
+    updateExisting = false,
+    allowShaclErrors = false,
+  ) =>
     api.post<HmoItemUploadResult | RunJobSnapshot>(
       `/runs/${runId}/hmo-studio/upload-items`,
-      { dry_run: dryRun, update_existing: updateExisting },
+      {
+        dry_run: dryRun,
+        update_existing: updateExisting,
+        allow_shacl_errors: allowShaclErrors,
+      },
     ),
 
   itemStatus: (runId: string) =>

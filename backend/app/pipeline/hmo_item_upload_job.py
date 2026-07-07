@@ -32,6 +32,7 @@ def serialise_upload_result(result: pipeline.HmoItemUploadResult) -> dict:
         "updated": result.updated,
         "skipped": result.skipped,
         "failed": result.failed,
+        "blocked": result.blocked,
         "linked": result.linked,
         "unresolved_links": result.unresolved_links,
         "outcomes": [o.__dict__ for o in result.outcomes],
@@ -48,6 +49,7 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         project_id = job.project_id
         run_id = job.run_id
         update_existing = bool((job.params or {}).get("update_existing", False))
+        allow_shacl_errors = bool((job.params or {}).get("allow_shacl_errors", False))
 
     try:
         writer = build_server_wikibase_writer()
@@ -89,6 +91,7 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
             result = await pipeline.upload_items_for_run(
                 db, run_id, writer=writer, dry_run=False,
                 update_existing=update_existing,
+                allow_shacl_errors=allow_shacl_errors,
                 audit_ctx=audit_ctx,
                 on_progress=on_progress, should_cancel=should_cancel,
             )
@@ -102,7 +105,8 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         return
 
     processed_count = (
-        result.created + result.updated + result.skipped + result.failed + result.linked
+        result.created + result.updated + result.skipped + result.failed
+        + result.blocked + result.linked
     )
     await finish_job(
         job_id,

@@ -14,6 +14,7 @@ from rdflib.term import Node
 
 from converter.config.namespaces import CIDOC, HM, LRMOO
 from converter.wikibase._ids import local_name, safe_local_id
+from converter.wikibase.label_sanitize import sanitize_monolingual_map
 from converter.wikibase.models import (
     StatementValue,
     WikibaseEntityDraft,
@@ -34,6 +35,12 @@ SKIPPED_SCHEMA_TYPES: frozenset[URIRef] = frozenset(
         OWL.DatatypeProperty,
         OWL.AnnotationProperty,
         RDF.Property,
+    }
+)
+
+EXPORT_SKIP_INSTANCE_TYPES: frozenset[URIRef] = frozenset(
+    {
+        HM.ParadigmBridge,
     }
 )
 
@@ -121,6 +128,8 @@ def _typed_instance_nodes(graph: Graph) -> list[URIRef | BNode]:
             continue
         if class_uri in SKIPPED_SCHEMA_TYPES:
             continue
+        if class_uri in EXPORT_SKIP_INSTANCE_TYPES:
+            continue
         nodes.add(subject)
     return sorted(nodes, key=str)
 
@@ -161,13 +170,15 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
     for label in graph.objects(subject, RDFS.label):
         if not isinstance(label, Literal):
             continue
-        language = label.language or "und"
+        language = label.language or "en"
         labels.setdefault(language, str(label))
     if not labels:
-        return {"en": _node_local_name(subject).replace("_", " ")}
+        labels = {"en": _node_local_name(subject).replace("_", " ")}
     if "en" not in labels:
         labels["en"] = labels.get("he") or next(iter(labels.values()))
-    return {lang: _truncate(text, _MAX_LABEL_LENGTH) for lang, text in labels.items()}
+    return sanitize_monolingual_map(
+        {lang: _truncate(text, _MAX_LABEL_LENGTH) for lang, text in labels.items()}
+    )
 
 
 def _descriptions_for_node(
@@ -189,7 +200,7 @@ def _descriptions_for_node(
         language = comment.language or "en"
         descriptions.setdefault(language, _truncate(str(comment), _MAX_DESCRIPTION_LENGTH))
     if descriptions:
-        return descriptions
+        return sanitize_monolingual_map(descriptions)
     readable = local_name(class_uri).replace("_", " ")
     return {"en": f"{readable} in the Hebrew Manuscripts Ontology (HMO)"}
 

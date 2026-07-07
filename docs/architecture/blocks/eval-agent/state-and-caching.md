@@ -8,8 +8,11 @@ Four of the five channels can run headless via `POST /runs/{id}/jobs`
 (kinds `authority_verify` / `ner_verify` / `wikidata_verify` /
 `hmo_item_verify`; the HMO schema channel is SSE-only). `run_verify_job`
 (`verify_job.py:52`) re-opens the same channel generator, folds events into
-`run_jobs.progress`, honours cancel requests, and on success stores
-`result.session_snapshot` = `{session_id, run_id, events, verdicts}` built by
+`run_jobs.progress`, honours cancel requests, and on every streamed event also
+stores a partial `progress.session_snapshot` (same shape as the final snapshot)
+so the UI can render verdict rows while the job is still running on another
+dyno. On success it also stores `result.session_snapshot` =
+`{session_id, run_id, events, verdicts}` built by
 `snapshot_from_collected_events`. Session GETs go through
 `load_verify_session` (`verify_session_store.py:60`): disk trace first, job
 snapshot when the trace is missing (or has fewer verdicts) — because per-dyno
@@ -59,9 +62,10 @@ Three cache tiers, coarsest to finest:
 ## Frontend
 
 All five modals share `AgentFlowDiagram` (live step/stats visualisation) and
-`VerdictsTable`, and consume SSE via `fetch` + `res.body.getReader()` (POST body
-carries action/scope, so `EventSource` can't be used); cancel aborts the fetch,
-which cancels the generator, which terminates the subprocess. Modals auto-load
-the last session on open via the sessions endpoints. `useApprovalStore`
-fast-polls (2 s) while a verify modal is open and emits `mhm.entities.refreshed`
-so inline `AiVerdictPill`s update without a reload.
+`VerdictsTable`. SSE modals consume events via `fetch` + `res.body.getReader()`
+(POST body carries action/scope, so `EventSource` can't be used). Job-backed
+surfaces (`useVerifyJob`, incl. `ItemUploadPanel` pre/post-upload verify)
+hydrate the same table from `run_jobs.progress.session_snapshot` while the job
+runs. Modals auto-load the last session on open via the sessions endpoints.
+`useApprovalStore` fast-polls (2 s) while a verify modal is open and emits
+`mhm.entities.refreshed` so inline `AiVerdictPill`s update without a reload.

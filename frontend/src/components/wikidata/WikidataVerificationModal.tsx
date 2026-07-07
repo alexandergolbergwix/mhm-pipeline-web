@@ -56,12 +56,13 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
   const [showingHistorical, setShowingHistorical] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const loadSession = useCallback(async (sessionId: string) => {
+  const loadSession = useCallback(async (sessionId: string, job?: import("@/api/runJobs").RunJobSnapshot) => {
     const full = await fetchVerifySessionWithJobFallback(
       runId,
       sessionId,
       "wikidata_verify",
       WikidataVerify.session,
+      job,
     );
     const hydrated = hydrateVerifySession(full, itemIdFromVerdict);
     setEvents(hydrated.events);

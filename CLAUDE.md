@@ -151,6 +151,10 @@ cross-dyno verdict tier; `/tmp` state is ephemeral per dyno lifetime
 but sufficient for in-session replay and eval-agent subprocess I/O.
 Completed background verify jobs also embed ``session_snapshot`` in
 ``run_jobs.result`` so session GET handlers survive multi-dyno routing.
+While a verify job is still running, ``verify_job.py`` also writes a
+partial ``session_snapshot`` into ``run_jobs.progress`` on every streamed
+event so ``useVerifyJob`` can hydrate ``VerdictsTable`` live without
+reading the worker dyno's ``/tmp`` trace.
 
 ### Rule W-19 — User-flow e2e is the canonical test surface
 
@@ -925,9 +929,10 @@ pre-upload audit never silently blocks or silently proceeds:
   list, scopes to `status === "would_create"` local_ids, starts a
   `hmo_item_verify` job (`action_id: "audit_hmo_wikibase_item"`), and shows
   an inline compact `AgentFlowDiagram` + `VerdictsTable` while it runs (via
-  `hydrateVerifySession` + `fetchVerifySessionWithJobFallback`, the same
-  Heroku-multi-dyno-safe session-loading path the other three verify modals
-  use). If any verdict is `fail`, a confirm banner offers "Review flagged
+  `useVerifyJob` → `fetchVerifySessionWithJobFallback` hydrating from
+  ``run_jobs.progress.session_snapshot`` while the job is active, then
+  ``result.session_snapshot`` at finish — the same Heroku-multi-dyno-safe
+  path as the other three verify modals). If any verdict is `fail`, a confirm
   items" (opens the existing `HmoItemVerificationModal`, scoped to the
   failed ids — it re-verifies through the shared Postgres/Redis cache, so
   this is near-instant) or "Upload anyway" — never a silent block or a
@@ -955,6 +960,36 @@ the `JOB_KIND_HMO_ITEM_VERIFY` branch, and `frontend/e2e/
 hmo-wikibase-items.spec.ts` extended to cover the "Last upload" column and
 the pre/post-upload verify checkboxes end-to-end with mocked routes (Rule
 W-19).
+
+---
+
+### Rule W-42 — HMO item upload is SHACL-gated by default (added 2026-07-07)
+
+Audit of run `48ba6c13`: 773/2131 built items had SHACL Violation/Error rows
+but all 773 were already on the wiki because the upload path ignored
+`HmoStudioItemCache.shacl_report` (block rule R13 read as "never gate").
+
+Invariants now enforced:
+
+- **`blocking_shacl_issues`** (`hmo_item_shacl_gate.py`) treats
+  `Violation` and `Error` severities as hard blocks; warnings stay advisory.
+- **`upload_items_for_run` / `push_single_item`** consult the cached report
+  before any Wikibase call unless `allow_shacl_errors=true` (UI checkbox
+  "Upload items with validation errors"). Blocked items emit `blocked` /
+  `would_block` outcomes and audit `OPERATION_FAILED` with joined messages.
+- **Never emit `und` labels** — `hmo_exporter._labels_for_node`,
+  `label_sanitize.py`, and `cloud_client._apply_labels_descriptions_aliases`
+  map unsupported language codes to `en` (fixes 50× `not-recognized-language`).
+- **Exporter skips `ParadigmBridge` Wikibase items** — bridges stay in RDF +
+  pass-2 deferred links only. RDF build adds `view_type` on cataloging views,
+  dedupes duplicate `external_identifier_nli`, and strengthens paradigm-bridge
+  endpoint typing.
+- **Cleanup surface:** `GET …/hmo-studio/items/validation-errors?on_wiki_only=`
+  lists items still on the wiki with blocking SHACL issues.
+
+Tests: `test_hmo_item_upload.py` (SHACL block/allow/und),
+`test_hmo_item_shacl_gate.py`, `test_hmo_item_views.py`,
+`test_hmo_exporter_resolution.py` (no `und`, no ParadigmBridge export).
 
 ---
 

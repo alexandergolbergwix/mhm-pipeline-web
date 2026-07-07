@@ -19,8 +19,9 @@ function itemLabel(item: HmoStudioItem): string {
 
 function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
   if (col === "validation") {
+    if (item.has_blocking_shacl) return ["blocked"];
     const n = item.shacl_issues?.length ?? 0;
-    return [n === 0 ? "ok" : (item.shacl_issues.some((i) => i.severity === "Error") ? "error" : "warn")];
+    return [n === 0 ? "ok" : (item.shacl_issues.some((i) => i.severity === "Violation" || i.severity === "Error") ? "error" : "warn")];
   }
   if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "unknown"];
   if (col === "upload_outcome") return [item.upload_outcome ?? "never"];
@@ -182,10 +183,13 @@ export function HmoItemTable({
                     outcome={item.upload_outcome}
                     message={item.upload_message}
                     at={item.upload_at}
+                    localId={item.local_id}
                     showDetail
                   />
                 </td>
-                <td className="px-3 py-2"><HmoItemShaclBadge issues={item.shacl_issues ?? []} /></td>
+                <td className="px-3 py-2">
+                  <HmoItemShaclBadge issues={item.shacl_issues ?? []} localId={item.local_id} />
+                </td>
                 <td className="px-3 py-2"><AiVerdictPill verdict={item.ai_verdict} /></td>
                 <td className="px-3 py-2">
                   <input

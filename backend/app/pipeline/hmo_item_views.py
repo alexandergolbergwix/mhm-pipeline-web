@@ -13,6 +13,7 @@ from app.models.hmo_studio_item_override import HmoStudioItemOverride
 from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.pipeline.hmo_item_merge import apply_hmo_item_override, override_row_to_dict
+from app.pipeline.hmo_item_shacl import item_has_blocking_shacl
 from app.services.wikibase_audit import fetch_latest_wikibase_writes
 
 
@@ -74,13 +75,15 @@ async def fetch_merged_hmo_items(
         last_write = latest_writes.get(source_uri)
 
         ai_verdict = ov_row.ai_verdict if ov_row else None
+        shacl_issues = shacl_report.get(local_id) or []
         items.append({
             **merged,
             "local_id": local_id,
             "status": status,
             "wikibase_id": wikibase_id,
             "approved": ov_row.approved if ov_row else None,
-            "shacl_issues": shacl_report.get(local_id) or [],
+            "shacl_issues": shacl_issues,
+            "has_blocking_shacl": item_has_blocking_shacl(shacl_issues),
             "ai_verdict": ai_verdict,
             "ai_verdict_at": (
                 ov_row.ai_verdict_at.isoformat()
@@ -95,6 +98,20 @@ async def fetch_merged_hmo_items(
             ),
         })
     return items
+
+
+async def fetch_validation_error_items(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    *,
+    on_wiki_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Items with blocking SHACL issues — for cleanup / curator review."""
+    items = await fetch_merged_hmo_items(db, run_id)
+    blocked = [i for i in items if i.get("has_blocking_shacl")]
+    if on_wiki_only:
+        blocked = [i for i in blocked if i.get("status") == "created"]
+    return blocked
 
 
 def item_label(item: dict[str, Any]) -> str:

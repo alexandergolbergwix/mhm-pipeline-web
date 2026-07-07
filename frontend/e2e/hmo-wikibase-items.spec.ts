@@ -95,7 +95,25 @@ test.describe("HMO Wikibase Items — Last upload column", () => {
     await gotoHmoItemsTab(page);
     const cell = page.getByTestId("hmo-item-upload-outcome-QDraft_MS_123");
     await expect(cell.getByText("failed")).toBeVisible();
-    await expect(cell.getByText("Wikibase Cloud 500")).toBeVisible();
+    await page.getByTestId("hmo-item-upload-badge-QDraft_MS_123").click();
+    await expect(page.getByTestId("hmo-item-upload-detail-QDraft_MS_123")).toContainText("Wikibase Cloud 500");
+  });
+
+  test("clicking validation errors opens the issue detail popover", async ({page}) => {
+    await installHmoItemsMocks(page, makeHmoItemsState({
+      items: [
+        makeHmoStudioItem({
+          shacl_issues: [
+            {code: "MISSING_LABEL", severity: "Error", message: "Item is missing an English label"},
+          ],
+        }),
+      ],
+    }));
+    await gotoHmoItemsTab(page);
+    await page.getByTestId("hmo-item-shacl-badge-QDraft_MS_123").click();
+    await expect(page.getByTestId("hmo-item-shacl-detail-QDraft_MS_123")).toContainText(
+      "Item is missing an English label",
+    );
   });
 
   test("filtering by Last push column narrows the table", async ({page}) => {

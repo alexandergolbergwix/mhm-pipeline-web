@@ -45,7 +45,12 @@ from app.pipeline.hmo_item_verify import (
     hmo_item_verdict_query_summary,
     hmo_item_verify_event_stream,
 )
-from app.pipeline.hmo_item_views import ItemBuildMissingError, fetch_merged_hmo_items, item_label
+from app.pipeline.hmo_item_views import (
+    ItemBuildMissingError,
+    fetch_merged_hmo_items,
+    fetch_validation_error_items,
+    item_label,
+)
 from app.pipeline.hmo_wikibase_live_enrich import enrich_hmo_items_with_wikibase_live
 from app.pipeline.inference_cache import read_from_inference_cache
 from app.pipeline.wikidata_autofix_apply import merge_ai_fixes
@@ -298,6 +303,36 @@ async def reconcile_hmo_item(
     }
 
 
+class HmoValidationErrorsResponse(BaseModel):
+    run_id: uuid.UUID
+    count: int
+    items: list[dict[str, Any]]
+
+
+@router.get(
+    "/{run_id}/hmo-studio/items/validation-errors",
+    response_model=HmoValidationErrorsResponse,
+)
+async def list_validation_error_items(
+    run_id: uuid.UUID,
+    on_wiki_only: bool = Query(
+        default=False,
+        description="When true, return only items already on the wiki (status=created).",
+    ),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> HmoValidationErrorsResponse:
+    """Items whose SHACL report has Violation/Error-level issues."""
+    await _lookup_run_with_access(db, run_id, auth)
+    try:
+        items = await fetch_validation_error_items(
+            db, run_id, on_wiki_only=on_wiki_only,
+        )
+    except ItemBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return HmoValidationErrorsResponse(run_id=run_id, count=len(items), items=items)
+
+
 @router.post(
     "/{run_id}/hmo-studio/items/{local_id:path}/push",
     response_model=HmoItemPushResponse,
@@ -305,6 +340,7 @@ async def reconcile_hmo_item(
 async def push_hmo_item(
     run_id: uuid.UUID,
     local_id: str,
+    allow_shacl_errors: bool = Query(default=False),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> HmoItemPushResponse:
@@ -355,6 +391,8 @@ async def push_hmo_item(
         update_existing=True,
         reconcile_pid=reconcile_pid,
         existing_qid=existing_qid,
+        allow_shacl_errors=allow_shacl_errors,
+        shacl_issues=item.get("shacl_issues"),
     )
     return HmoItemPushResponse(
         local_id=outcome.local_id,

@@ -22,12 +22,14 @@ def _build_overlay_graph(title: str = "ספר תהילים") -> tuple:
 
 
 def test_philological_overlay_entities_have_english_labels() -> None:
+    # ParadigmBridge is intentionally excluded from Wikibase export (Rule
+    # W-42) — it stays RDF-only, so its label quality is checked against the
+    # graph directly in test_paradigm_bridge_label_is_not_uri_slug below.
     _, by_type, title = _build_overlay_graph()
 
     for entity_type in (
         "TextTradition",
         "TransmissionWitness",
-        "ParadigmBridge",
         "PhilologicalView",
     ):
         draft = by_type[entity_type]
@@ -40,7 +42,6 @@ def test_philological_overlay_entities_have_meaningful_descriptions() -> None:
     for entity_type in (
         "TextTradition",
         "TransmissionWitness",
-        "ParadigmBridge",
         "PhilologicalView",
     ):
         description = by_type[entity_type].descriptions["en"]
@@ -75,9 +76,13 @@ def test_work_and_expression_labels_mirrored_to_english() -> None:
 
 
 def test_paradigm_bridge_label_is_not_uri_slug() -> None:
-    _, by_type, title = _build_overlay_graph()
+    # ParadigmBridge is RDF-only (skipped from Wikibase export, Rule W-42),
+    # so its label is checked directly on the graph rather than via by_type.
+    graph, _, title = _build_overlay_graph()
 
-    bridge_label = by_type["ParadigmBridge"].labels["en"]
+    bridge_nodes = list(graph.subjects(RDF.type, HM.ParadigmBridge))
+    assert len(bridge_nodes) == 1
+    bridge_label = str(graph.value(bridge_nodes[0], RDFS.label))
     assert bridge_label.startswith("Paradigm bridge:")
     assert title in bridge_label
     assert "Bridge_" not in bridge_label

@@ -542,7 +542,7 @@ class UriGenerator:
         normalized_trad = self.normalize_hebrew(tradition_name) or self.normalize_string(
             tradition_name
         )
-        return URIRef(f"{self.namespace}Bridge_{normalized_work}_to_{normalized_trad}")
+        return URIRef(f"{self.namespace}ParadigmBridge_{normalized_work}_to_{normalized_trad}")
 
     def multi_volume_set_uri(self, set_name: str) -> URIRef:
         """Generate URI for a Multi-Volume Set.

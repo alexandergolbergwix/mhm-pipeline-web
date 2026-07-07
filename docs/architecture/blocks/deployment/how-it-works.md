@@ -12,7 +12,8 @@ persist session state via `resolve_verify_state_dir()`
 (`agent_runner.py:101-119`), which honours `EVAL_AGENT_STATE_DIR` and falls
 back to `/tmp/mhm-eval-agent-state` whenever `DYNO` is set (Rule W-33 web).
 That state is ephemeral per dyno; durability lives in Postgres
-(`inference_cache` verdicts, `run_jobs.result.session_snapshot`).
+(`inference_cache` verdicts, `run_jobs.progress.session_snapshot` while a verify
+job runs, `run_jobs.result.session_snapshot` at finish).
 
 **Release phase / migrations.** Every deploy runs `scripts/release.sh` before
 any new dyno boots: (1) fail fast if `locate_eval_agent()` can't find

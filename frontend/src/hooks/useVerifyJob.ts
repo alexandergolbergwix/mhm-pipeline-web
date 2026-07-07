@@ -3,15 +3,32 @@ import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {ApiError} from "@/api/client";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
-import {jobFingerprint, useLatestRef} from "@/utils/renderStable";
+import {jobVerifySessionSnapshot} from "@/utils/fetchVerifySession";
+import {useLatestRef} from "@/utils/renderStable";
 import {shouldLoadVerifySession} from "@/utils/verifySession";
 
 interface UseVerifyJobOptions {
   runId: string;
   kind: "ner_verify" | "authority_verify" | "wikidata_verify" | "hmo_item_verify";
-  loadSession: (sessionId: string) => Promise<void>;
+  loadSession: (sessionId: string, job?: RunJobSnapshot) => Promise<void>;
   onFailed?: (message: string) => void;
   onComplete?: () => void;
+}
+
+/** Poll key that ignores the growing session_snapshot blob in progress. */
+function verifyJobPollKey(job: RunJobSnapshot): string {
+  const p = job.progress ?? {};
+  const snap = jobVerifySessionSnapshot(job);
+  const verdictCount = (snap?.verdicts ?? []).length;
+  return [
+    job.id,
+    job.status,
+    p.processed ?? 0,
+    p.total ?? 0,
+    verdictCount,
+    p.last_event_type ?? "",
+    p.phase ?? "",
+  ].join(":");
 }
 
 export function useVerifyJob({
@@ -32,7 +49,7 @@ export function useVerifyJob({
     [jobsRecord, runId, kind],
   );
 
-  const storeJobKey = storeJob ? jobFingerprint(storeJob) : null;
+  const storeJobKey = storeJob ? verifyJobPollKey(storeJob) : null;
 
   const lastFingerprintRef = useRef<string | null>(null);
   const loadSessionRef = useLatestRef(loadSession);
@@ -40,16 +57,17 @@ export function useVerifyJob({
   const onFailedRef = useLatestRef(onFailed);
 
   const applyJob = useCallback(async (job: RunJobSnapshot, force = false) => {
-    const fp = jobFingerprint(job);
+    const fp = verifyJobPollKey(job);
     if (!force && fp === lastFingerprintRef.current) return;
     lastFingerprintRef.current = fp;
 
     const sessionId = String(
       job.progress?.session_id ?? job.params?.session_id ?? "",
     );
-    if (sessionId && shouldLoadVerifySession(job)) {
+    const hasInlineSnapshot = Boolean(jobVerifySessionSnapshot(job)?.verdicts?.length);
+    if (sessionId && (shouldLoadVerifySession(job) || hasInlineSnapshot)) {
       try {
-        await loadSessionRef.current(sessionId);
+        await loadSessionRef.current(sessionId, job);
       } catch (e) {
         const isActive = job.status === "queued" || job.status === "running";
         if (e instanceof ApiError && e.status === 404 && isActive) {

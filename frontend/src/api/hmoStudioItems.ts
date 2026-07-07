@@ -21,6 +21,7 @@ export interface HmoStudioItem {
   wikibase_id: string | null;
   approved: boolean | null;
   shacl_issues: Array<{severity: string; message: string; focus_node?: string}>;
+  has_blocking_shacl?: boolean;
   ai_verdict: AiVerdict | null;
   ai_verdict_at?: string | null;
   override_present: boolean;
@@ -89,10 +90,19 @@ export const HmoStudioItems = {
     return api.get(`/runs/${runId}/hmo-studio/items/ai-verify/cached-verdicts`);
   },
 
-  pushItem(runId: string, localId: string): Promise<HmoItemPushResult> {
+  pushItem(runId: string, localId: string, allowShaclErrors = false): Promise<HmoItemPushResult> {
+    const qs = allowShaclErrors ? "?allow_shacl_errors=true" : "";
     return api.post(
-      `/runs/${runId}/hmo-studio/items/${encodeURIComponent(localId)}/push`,
+      `/runs/${runId}/hmo-studio/items/${encodeURIComponent(localId)}/push${qs}`,
       {},
     );
+  },
+
+  validationErrors(
+    runId: string,
+    onWikiOnly = false,
+  ): Promise<{run_id: string; count: number; items: HmoStudioItem[]}> {
+    const qs = onWikiOnly ? "?on_wiki_only=true" : "";
+    return api.get(`/runs/${runId}/hmo-studio/items/validation-errors${qs}`);
   },
 };

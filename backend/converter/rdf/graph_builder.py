@@ -278,8 +278,8 @@ class GraphBuilder:
         for ref in data.catalog_references:
             self._add_catalog_reference(graph, ref, ms_uri)
 
-        if data.colophon_text:
-            self._add_colophon(graph, ms_uri, data.colophon_text, control_number)
+        if data.colophon_text and str(data.colophon_text).strip():
+            self._add_colophon(graph, ms_uri, str(data.colophon_text).strip(), control_number)
 
         if data.binding_info:
             self._add_binding(graph, ms_uri, data.binding_info, control_number)
@@ -427,7 +427,23 @@ class GraphBuilder:
                 prod_uri=prod_uri,
             )
 
+        self._finalize_graph_integrity(graph)
+
         return graph
+
+    @staticmethod
+    def _finalize_graph_integrity(graph: Graph) -> None:
+        """Dedupe datatype properties that trigger false-positive SHACL failures."""
+        seen_subjects: set[URIRef | BNode] = set()
+        for subject, _predicate, _obj in graph.triples((None, HM.external_identifier_nli, None)):
+            if subject in seen_subjects:
+                continue
+            seen_subjects.add(subject)
+            values = list(graph.objects(subject, HM.external_identifier_nli))
+            if len(values) <= 1:
+                continue
+            for duplicate in values[1:]:
+                graph.remove((subject, HM.external_identifier_nli, duplicate))
 
     def _add_summary(self, graph: Graph, ms_uri: URIRef, summary: str) -> None:
         """Attach MARC 520 summary text to the manuscript."""
@@ -1790,6 +1806,7 @@ class GraphBuilder:
         cat_view_uri = URIRef(f"{HM}CatalogingView_{control_number}")
 
         graph.add((cat_view_uri, RDF.type, HM.CatalogingView))
+        graph.add((cat_view_uri, HM.view_type, HM.BibliographicParadigm))
         graph.add(
             (
                 cat_view_uri,
@@ -2200,6 +2217,14 @@ class GraphBuilder:
             URI of the paradigm bridge
         """
         bridge_uri = self.uri_gen.paradigm_bridge_uri(work_title, tradition_name)
+        if str(bridge_uri) == str(work_uri) or str(bridge_uri) == str(tradition_uri):
+            bridge_uri = URIRef(f"{bridge_uri}_bridge")
+
+        if (work_uri, RDF.type, LRMOO.F1_Work) not in graph:
+            graph.add((work_uri, RDF.type, LRMOO.F1_Work))
+        if (tradition_uri, RDF.type, HM.TextTradition) not in graph:
+            graph.add((tradition_uri, RDF.type, HM.TextTradition))
+
         display_tradition = tradition_title or work_title
         comment_text = justification or (
             f"Links the work '{work_title}' to its textual tradition."

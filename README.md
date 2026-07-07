@@ -1,30 +1,25 @@
 # MHM Pipeline — Web
 
-A collaborative, multi-project, version-controlled web rewrite of the
-MHM Pipeline desktop app, designed to deploy on Heroku for **~$16/month**.
+A collaborative, multi-project, version-controlled web app for the Hebrew
+manuscripts pipeline: MARC ingest → AI extraction → authority enrichment →
+RDF graph → HMO Wikibase Studio → guarded Wikidata Studio, with curator review,
+event-sourced history, and AI verification at every stage.
 
-This repo contains **Phase 1** — the foundation: invite-only auth with
-zero-knowledge encryption of user API keys, PII at-rest encryption, and
-a working login flow against a local Postgres.
+Designed to deploy on Heroku (FastAPI + React SPA + Postgres + Redis + Modal
+for NER).
 
-## Status
+## Documentation
 
-| Phase | Status |
+| Doc | Purpose |
 |---|---|
-| 1. Bootstrap + zero-knowledge auth | ✅ scaffolded |
-| 2. Invites + password change/reset | ⏳ next |
-| 3. Projects + memberships | ⏳ |
-| 4. Pipeline port (MARC → authority → RDF → SHACL → Wikidata) | ⏳ |
-| 5. Authority Review UI | ⏳ |
-| 6. Event-sourced history + restore | ⏳ |
-| 7. Real-time collaboration (Yjs over WebSocket) | ⏳ |
-| 8. Liquid-glass surfaces (R3F `MeshTransmissionMaterial`) | ⏳ |
-| 9. Settings + encrypted API key entry | ⏳ |
-| 10. Optional Gemini-as-NER toggle | ⏳ |
-| 11. Heroku deploy | ⏳ |
+| [docs/architecture/system-design.md](docs/architecture/system-design.md) | Navigation hub — runtime topology, data flow, links to every block |
+| [AGENTS.md](AGENTS.md) | Agent/operator instructions and block index |
+| [CLAUDE.md](CLAUDE.md) | Architectural invariants (Rules W-1…W-41) |
+| [docs/testing.md](docs/testing.md) | Three-layer test pyramid (pytest, Vitest, Playwright) |
+| [docs/project-hierarchy-plan.md](docs/project-hierarchy-plan.md) | Curator-facing stage map and route inventory |
 
-See `docs/ARCHITECTURE.md` (to be written in Phase 2) for the long-form
-design notes.
+Each logical block under `docs/architecture/blocks/<name>/` has a `README.md`
+plus `key-files.md`, `how-it-works.md`, `rules.md`, and `skills.md`.
 
 ## Local quickstart
 
@@ -36,7 +31,7 @@ cd /Users/alexandergo/Documents/Doctorat/mhm-pipeline-web
 # 1. Postgres
 docker compose up -d postgres
 
-# 2. Generate crypto keys + write .env
+# 2. Generate crypto keys + write .env (first time only)
 python3 - <<'PY'
 import secrets, pathlib
 env = pathlib.Path(".env")
@@ -57,116 +52,91 @@ PY
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/alembic upgrade head            # creates users + sessions
+.venv/bin/alembic upgrade head
 cd ..
 python3 -m scripts.create_user --email you@example.org --name "Your Name"
 
 # 4. Frontend
 cd frontend
-npm install
-npm run dev                                # http://localhost:5173
+yarn install
+yarn dev                                 # http://localhost:5173
 
-# 5. Backend (in another shell)
+# 5. Backend (another shell)
 cd backend
-.venv/bin/uvicorn app.main:app --reload    # http://localhost:8000
+.venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Open <http://localhost:5173>, sign in with the credentials you just
-created. The frontend proxies `/api/*` to the backend automatically.
+Open <http://localhost:5173>, sign in with the credentials you created. The
+frontend dev server proxies `/api/*` to the backend.
+
+## Common commands
+
+```bash
+# Backend tests
+cd backend && .venv/bin/python -m pytest tests/ -v
+
+# Frontend unit tests
+cd frontend && yarn test:unit
+
+# Browser e2e (one-time: npx playwright install chromium)
+cd frontend && yarn test:e2e
+
+# Typecheck frontend
+cd frontend && yarn tsc --noEmit
+```
+
+See [CLAUDE.md](CLAUDE.md) for Modal deploy, Mazal/KIMA Postgres import, and
+Heroku config notes.
 
 ## Architecture overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Browser                                                    │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ Vite + React + TypeScript + Tailwind                │    │
-│  │   - Zustand (auth state)                            │    │
-│  │   - TanStack Query (server state)                   │    │
-│  │   - React Router                                    │    │
-│  │   - (Phase 8) R3F + MeshTransmissionMaterial        │    │
-│  └────────────────────┬────────────────────────────────┘    │
-│                       │  fetch /api/* with HTTP-only cookie  │
-└───────────────────────┼─────────────────────────────────────┘
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│  FastAPI (uvicorn)                                          │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ /api/auth/{login,logout,me}                         │    │
-│  │ /api/healthz, /api/readyz                           │    │
-│  │ (Phase 3+) /api/projects, /api/runs, /ws, …         │    │
-│  └────────────────────┬────────────────────────────────┘    │
-│                       │  SQLAlchemy 2 (async) + Alembic     │
-└───────────────────────┼─────────────────────────────────────┘
-                        ▼
-                  ┌──────────────┐
-                  │  PostgreSQL  │
-                  │              │
-                  │  users       │  ← email_index (HMAC), email/name ciphertext
-                  │  sessions    │  ← kek_wrapped (AES-GCM with session_secret)
-                  │  api_keys    │  ← envelope (DEK + KEK) — zero-knowledge
-                  │  (Phase 3+)  │
-                  └──────────────┘
+Browser (React/Vite SPA)
+   │ HTTPS /api/*  (session cookie + CSRF)
+FastAPI on Heroku dynos
+   ├─ Heroku Postgres  — read-models, event log, inference cache, run_jobs,
+   │                     Mazal/KIMA authority tables
+   ├─ Heroku Redis     — L1 inference cache + rate-limit storage
+   ├─ Modal (HTTPS)    — NER + genre models (never imported by backend)
+   ├─ eval-agent       — subprocess-only AI judge (verify sessions)
+   └─ Wikibase Cloud / Wikidata — external write targets (guarded)
 ```
 
-### Encryption layers — the cheat sheet
+Background work runs as claimed, heartbeated **run jobs** (`run_job_service`).
+AI verify jobs stream verdicts to the UI via `run_jobs.progress.session_snapshot`
+while running (multi-dyno safe) and `run_jobs.result.session_snapshot` at
+finish — see the [eval-agent](docs/architecture/blocks/eval-agent/README.md)
+and [job-service](docs/architecture/blocks/job-service/README.md) blocks.
+
+### Encryption layers
 
 | What | Encrypted with | Where the key lives | Who can decrypt |
 |---|---|---|---|
-| `users.email`, `users.name`, invite emails | AES-256-GCM with **server `MASTER_KEY`** | Heroku Config Var | The server (any request handler) |
-| `users.email_index` | HMAC-SHA256 with **`EMAIL_HMAC_KEY`** | Heroku Config Var | The server (lookup only — no decryption) |
-| `users.password_hash` | Argon2id (irreversible) | n/a | Nobody (verify-only) |
-| User API keys (Gemini, Wikidata, Wikibase) | AES-GCM(DEK) + AES-GCM(KEK).<br/>**KEK derived from user's password**, wrapped with random `session_secret` per session. | The `session_secret` lives in the user's HTTP-only cookie | **Only** while the user's browser is presenting the cookie. **Server + DB dump together still leak nothing.** |
+| `users.email`, `users.name`, invite emails | AES-256-GCM with **server `MASTER_KEY`** | Heroku Config Var | The server |
+| `users.email_index` | HMAC-SHA256 with **`EMAIL_HMAC_KEY`** | Heroku Config Var | Lookup only |
+| `users.password_hash` | Argon2id | n/a | Verify-only |
+| User API keys (Gemini, Wikidata, Wikibase) | Envelope (DEK + KEK derived from password, wrapped per session) | `session_secret` in HTTP-only cookie | Only during an active session |
 
-### Threat model
+### Threat model (summary)
 
-- **Network sniffing** → HTTPS (free on Heroku)
-- **DB leak** → app-level encryption: emails/names AES-GCM, secrets envelope-wrapped, password hashes Argon2id. Even an attacker with raw `pg_dump` output learns nothing about API keys, and can only see HMAC-hashed emails (not plaintext).
-- **Server compromise during a live session** → KEKs in active sessions are unavoidably exposed. Mitigated by short session TTL (12h default) and audit logs (Phase 6).
-- **Forgotten password** → user-derived KEK is unrecoverable by design; password reset wipes saved API keys (user warned in the UI). This is the zero-knowledge trade-off we picked.
+- **DB leak** → PII and API keys are encrypted at rest; API keys need the user's session cookie to unwrap.
+- **Server compromise during a live session** → active KEKs are exposed; mitigated by short session TTL and audit logs.
+- **Forgotten password** → user-derived KEK is unrecoverable; password reset wipes saved API keys (by design).
 
 ## Project layout
 
 ```
 mhm-pipeline-web/
-├── backend/
-│   ├── app/
-│   │   ├── main.py             # FastAPI factory
-│   │   ├── settings.py         # env-var config
-│   │   ├── db.py               # async SQLAlchemy session
-│   │   ├── crypto/             # MASTER_KEY/PII + KEK/secrets envelopes
-│   │   ├── models/             # users, sessions (more in later phases)
-│   │   ├── schemas/            # Pydantic request/response shapes
-│   │   ├── auth/               # Argon2id + session cookie + KEK wrapping
-│   │   ├── routers/            # /api/auth, /api/healthz, …
-│   │   └── migrations/         # Alembic
-│   └── tests/
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx, main.tsx
-│   │   ├── api/client.ts       # fetch wrapper with credentials: 'include'
-│   │   ├── stores/auth.ts      # Zustand auth state
-│   │   ├── components/ProtectedRoute.tsx
-│   │   ├── routes/Login.tsx, Home.tsx
-│   │   └── styles/index.css    # Tailwind + glass-fallback CSS
-│   └── (vite + tailwind config)
-├── scripts/
-│   ├── start.sh                # Heroku web entry (uvicorn)
-│   ├── release.sh              # Heroku release entry (alembic upgrade head)
-│   └── create_user.py          # dev bootstrap
-├── docker-compose.yml          # local Postgres
-├── Procfile, runtime.txt       # Heroku
-└── .env.example
+├── backend/app/          # FastAPI: routers, pipeline/, models/, auth/
+├── backend/converter/    # Byte-identical mirror of desktop converter tree
+├── backend/tests/        # pytest + httpx route tests
+├── frontend/src/         # React routes, components/, api/, stores/
+├── frontend/e2e/         # Playwright specs (canonical UI regression layer)
+├── eval-agent/           # Vendored AI judge (subprocess only from backend)
+├── modal/                # Modal NER app (deploy target, not a backend import)
+├── docs/architecture/    # Per-block system documentation (keep in sync with code)
+└── scripts/              # start.sh, release.sh, Heroku scheduler jobs
 ```
-
-## Tests
-
-```bash
-cd backend
-.venv/bin/python -m pytest -q
-```
-
-Phase 1 ships 10 crypto round-trip + tampering tests (`tests/test_crypto.py`).
 
 ## License
 

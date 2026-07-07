@@ -169,22 +169,39 @@ def test_draft_description_is_truncated_to_wikibase_limit() -> None:
 
 
 def test_draft_label_is_truncated_to_wikibase_limit() -> None:
-    """Regression: a ParadigmBridge/PhilologicalView label built from two
-    real (often long) Hebrew titles must never exceed Wikibase's 250-char
-    label cap — an untruncated label makes the whole item write fail."""
+    """Long Hebrew labels must never exceed Wikibase's 250-char cap."""
     graph = Graph()
-    bridge = HM.Bridge1
+    node = HM.MS1
     long_label = "x" * 300
-    graph.add((bridge, RDF.type, HM.ParadigmBridge))
-    graph.add((bridge, RDFS.label, Literal(long_label, lang="he")))
+    graph.add((node, RDF.type, HM.Codicological_Unit))
+    graph.add((node, RDFS.label, Literal(long_label, lang="he")))
 
     drafts = HmoWikibaseExporter().from_graph(graph)
     label = drafts[0].labels["he"]
     assert len(label) == 250
     assert label.endswith("…")
-    # The English mirror is built from the (already truncated) label, so
-    # it must also respect the cap.
     assert len(drafts[0].labels["en"]) == 250
+
+
+def test_paradigm_bridge_nodes_are_not_exported_as_items() -> None:
+    graph = Graph()
+    bridge = HM.Bridge1
+    graph.add((bridge, RDF.type, HM.ParadigmBridge))
+    graph.add((bridge, RDFS.label, Literal("Paradigm bridge", lang="en")))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    assert drafts == []
+
+
+def test_labels_never_use_und_language_code() -> None:
+    graph = Graph()
+    node = HM.MS1
+    graph.add((node, RDF.type, HM.Codicological_Unit))
+    graph.add((node, RDFS.label, Literal("שנה", lang=None)))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    assert "und" not in drafts[0].labels
+    assert "en" in drafts[0].labels
 
 
 def test_resolve_truncates_overlong_string_and_monolingualtext_claim_values() -> None:

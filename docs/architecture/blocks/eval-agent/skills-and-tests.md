@@ -36,7 +36,8 @@
    `cd eval-agent && GEMINI_API_KEY=… .venv/bin/python -m eval_agent.cli run
    --pipeline-output <fixture-dir> --evaluators <ev> --state-dir /tmp/dbg --no-self-verify`.
 6. On Heroku remember the dyno-locality trap: the GET may be served by a dyno
-   that never ran the job — check `run_jobs.result.session_snapshot` first.
+   that never ran the job — check `run_jobs.progress.session_snapshot` (while
+   running) or `run_jobs.result.session_snapshot` (after finish) first.
 
 ## Skill: replay a session
 `GET …/ai-verify/sessions` lists sessions (newest first, from `session.start`/
@@ -64,6 +65,8 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   stderr surfacing, cancellation.
 - `backend/tests/test_verify_session_store.py` — disk vs `session_snapshot`
   precedence.
+- `backend/tests/unit/test_verify_job_progress.py` — partial `session_snapshot`
+  in `progress`.
 - `backend/tests/test_extraction_verify_router.py`,
   `test_extraction_verify_suggested_fix.py` — NER channel routes, threshold
   sentinel, verdict persistence + suggested_fix.

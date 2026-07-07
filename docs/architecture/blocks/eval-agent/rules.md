@@ -19,9 +19,10 @@
   the slug filesystem is read-only (Rule W-33). *Why:* otherwise every fixture
   write and trace append 500s.
 - **R5 — `/tmp` state is per-dyno and ephemeral; Postgres is the durable tier.**
-  Background verify jobs MUST embed `session_snapshot` in `run_jobs.result`, and
-  session GETs MUST go through `load_verify_session`. *Why:* multi-dyno routing
-  means the serving dyno usually never saw the trace file.
+  Background verify jobs MUST embed `session_snapshot` in `run_jobs.progress`
+  (while running) and `run_jobs.result` (on finish), and session GETs MUST go
+  through `load_verify_session`. *Why:* multi-dyno routing means the serving
+  dyno usually never saw the trace file; `useVerifyJob` hydrates from the job row.
 - **R6 — Every fresh verdict is write-through.** Persist to the owning DB row
   (where one exists) AND to `inference_cache` kind `ai_verdict` in a **fresh
   `session_scope()`** — the request session is closed by the time the

@@ -37,8 +37,10 @@
 9. **R9 — Terminal state is written only via `finish_job` / `_fail_job`, and `_fail_job` never overwrites `succeeded`/`cancelled`.**
    *Why:* the crash handler in `_execute_job` races with normal completion; the guard keeps a late exception from clobbering a good result.
 
-10. **R10 — Verify jobs MUST embed `session_snapshot` in `result`.**
-    (`verify_job.py:145-164`, Rule W-33.) *Why:* `/tmp` verify state is per-dyno; the snapshot is what lets session GET handlers survive multi-dyno routing.
+10. **R10 — Verify jobs MUST embed `session_snapshot` in `progress` (live) and `result` (terminal).**
+    (`verify_job.py`, Rule W-33.) *Why:* `/tmp` verify state is per-dyno; the
+    snapshot is what lets session GET handlers and `useVerifyJob` survive
+    multi-dyno routing while the job is still running.
 
 11. **R11 — Progress/NOTIFY pushes are best-effort and must never fail the job.**
     `_notify_job_update` skips non-Postgres dialects, refreshes the row before serialising (expired `updated_at` → `MissingGreenlet` otherwise), and swallows publish errors with a rollback.

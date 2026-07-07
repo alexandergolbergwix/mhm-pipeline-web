@@ -14,7 +14,8 @@
 | `frontend/src/stores/theme.ts` | `useTheme` — color scheme, `initTheme()` |
 | `frontend/src/hooks/useApprovalStore.ts` | Polling entity store for AI Extraction (fast/slow poll + ETag + `mhm.entities.refreshed` listener) |
 | `frontend/src/hooks/useRunJobAttachment.ts` | Attach a page to an in-flight background job (attach-on-mount, fingerprint-guarded sync) |
-| `frontend/src/hooks/useVerifyJob.ts` | Verify-modal job lifecycle (ner/authority/wikidata verify kinds, session loading) |
+| `frontend/src/hooks/useVerifyJob.ts` | Verify job lifecycle (four verify kinds, incl. `hmo_item_verify`): poll/attach, hydrate from `progress.session_snapshot` |
+| `frontend/src/utils/fetchVerifySession.ts` | Job-row snapshot fallback for multi-dyno session hydration |
 | `frontend/src/hooks/useReportDerivedIds.ts` | `useReportDerivedIds` / `useReportFilteredEntities` — fingerprint-guarded child→parent reporting |
 | `frontend/src/utils/renderStable.ts` | `jobFingerprint`, `idsFingerprint`, `useLatestRef`, `EMPTY_SET` — the render-stability toolkit |
 | `frontend/src/cache/extractionCache.ts` | User-scoped SWR entity cache + `EXTRACTION_ENTITIES_REFRESH_EVENT = "mhm.entities.refreshed"` |

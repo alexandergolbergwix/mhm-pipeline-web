@@ -64,7 +64,13 @@ class _FakeWriter:
         return _FakeOutcome(entity_id=entity_id, status="updated")
 
 
-async def _seed_cache(db_session, run_id, entities: list[ResolvedWikibaseEntity]) -> None:
+async def _seed_cache(
+    db_session,
+    run_id,
+    entities: list[ResolvedWikibaseEntity],
+    *,
+    shacl_report: dict | None = None,
+) -> None:
     db_session.add(
         HmoStudioItemCache(
             run_id=run_id,
@@ -73,6 +79,7 @@ async def _seed_cache(db_session, run_id, entities: list[ResolvedWikibaseEntity]
             entity_count=len(entities),
             deferred_link_count=sum(len(e.deferred_links) for e in entities),
             skipped_statement_count=0,
+            shacl_report=shacl_report or {},
         )
     )
     await db_session.commit()
@@ -442,3 +449,95 @@ async def test_unresolved_link_reported_when_target_never_created(db_session) ->
 
     assert result.unresolved_links == 1
     assert result.link_outcomes[0].status == "unresolved"
+
+
+@pytest.mark.asyncio
+async def test_shacl_violation_blocks_live_create(db_session) -> None:
+    run_id = uuid.uuid4()
+    entities = _ms_and_person()
+    shacl = {
+        entities[0].local_id: [{
+            "severity": "Violation",
+            "message": "Paradigm bridge must link to a Work",
+            "focus_node": entities[0].source_uri,
+        }],
+    }
+    await _seed_cache(db_session, run_id, entities, shacl_report=shacl)
+    writer = _FakeWriter()
+
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=writer, dry_run=False,
+    )
+
+    assert result.blocked == 1
+    assert result.created == 1
+    assert len(writer.create_calls) == 1
+    blocked = [o for o in result.outcomes if o.status == "blocked"]
+    assert len(blocked) == 1
+    assert "Paradigm bridge" in blocked[0].message
+
+
+@pytest.mark.asyncio
+async def test_dry_run_reports_would_block_for_shacl_violations(db_session) -> None:
+    run_id = uuid.uuid4()
+    entities = _ms_and_person()
+    shacl = {
+        entities[0].local_id: [{
+            "severity": "Violation",
+            "message": "NLI identifier must be a single string value",
+        }],
+    }
+    await _seed_cache(db_session, run_id, entities, shacl_report=shacl)
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=None, dry_run=True,
+    )
+    assert result.blocked == 1
+    assert result.created == 1
+    assert any(o.status == "would_block" for o in result.outcomes)
+
+
+@pytest.mark.asyncio
+async def test_allow_shacl_errors_bypasses_upload_gate(db_session) -> None:
+    run_id = uuid.uuid4()
+    entities = _ms_and_person()
+    shacl = {
+        entities[0].local_id: [{
+            "severity": "Violation",
+            "message": "blocked unless opted in",
+        }],
+    }
+    await _seed_cache(db_session, run_id, entities, shacl_report=shacl)
+    writer = _FakeWriter()
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=writer, dry_run=False,
+        allow_shacl_errors=True,
+    )
+    assert result.blocked == 0
+    assert result.created == 2
+    assert len(writer.create_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_push_single_item_never_emits_und_labels(db_session, sample_run) -> None:
+    run_id = uuid.uuid4()
+    entity = ResolvedWikibaseEntity(
+        local_id="QDraft_TimeSpan_1",
+        labels={"en": "1001", "und": "1001"},
+        descriptions={"en": "year"},
+        class_qid="Q21",
+        source_uri="http://example.org#TimeSpan_1",
+    )
+    writer = _FakeWriter()
+    audit_ctx = WikibaseAuditContext(
+        actor_user_id=sample_run["user_id"],
+        project_id=sample_run["project_id"],
+        run_id=run_id,
+        channel=CHANNEL_ITEM_UPLOAD,
+    )
+    with patch.object(pipeline, "reconcile_item", AsyncMock(return_value=ReconcileOutcome(found=False))):
+        await pipeline.push_single_item(
+            db_session, run_id, entity,
+            writer=writer, audit_ctx=audit_ctx, update_existing=False,
+            reconcile_pid=None, existing_qid=None,
+        )
+    assert "und" not in writer.create_calls[0]["labels"]

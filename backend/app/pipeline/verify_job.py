@@ -50,6 +50,28 @@ def _progress_from_event(
     }
 
 
+def _progress_with_snapshot(
+    ev: AgentEvent,
+    *,
+    total: int,
+    judged: int,
+    session_id: str,
+    run_id: uuid.UUID,
+    collected_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Progress row for Postgres — includes partial session_snapshot for live UI."""
+    progress = _progress_from_event(
+        ev, total=total, judged=judged, session_id=session_id,
+    )
+    if collected_events:
+        progress["session_snapshot"] = snapshot_from_collected_events(
+            run_id=str(run_id),
+            session_id=session_id,
+            events=collected_events,
+        )
+    return progress
+
+
 async def run_verify_job(job_id: uuid.UUID) -> None:
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
@@ -123,7 +145,14 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
 
             await update_job_progress(
                 job_id,
-                _progress_from_event(ev, total=total, judged=judged, session_id=session_id),
+                _progress_with_snapshot(
+                    ev,
+                    total=total,
+                    judged=judged,
+                    session_id=session_id,
+                    run_id=run_id,
+                    collected_events=collected_events,
+                ),
             )
 
             if ev.type == "session.end":

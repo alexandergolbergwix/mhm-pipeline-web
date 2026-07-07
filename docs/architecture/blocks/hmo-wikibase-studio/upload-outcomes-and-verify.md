@@ -29,7 +29,14 @@ three fields; `HmoItemUploadOutcomeBadge.tsx` renders a color-coded pill
 (create/adopt/update = success tone, skip/unchanged = muted, failed =
 danger tone with the message as a tooltip, `—` when never attempted), used
 by both `HmoItemTable.tsx`'s filterable "Last upload" column (`ColKey`
-extended with `"upload_outcome"`) and `HmoItemDetailDrawer.tsx`.
+extended with `"upload_outcome"`) and `HmoItemDetailDrawer.tsx`. Click the
+badge when `failed`/`blocked` to read the full message in a popover.
+
+**SHACL upload gate.** `upload_items_for_run` / `push_single_item` block
+create/update when `shacl_report[local_id]` contains `Violation` or `Error`
+unless `allow_shacl_errors=true` (UI: "Upload items with validation errors").
+Outcomes: `blocked` (live) / `would_block` (dry-run). Cleanup list:
+`GET …/items/validation-errors?on_wiki_only=true`.
 
 **Single-item push.** `push_single_item(db, run_id, entity, *, writer,
 audit_ctx, update_existing, reconcile_pid, existing_qid)`
@@ -67,7 +74,10 @@ blocks or silently proceeds:
 
 - **"Verify with AI before upload"**: scopes to `would_create` local_ids,
   starts a `hmo_item_verify` job (`action_id: "audit_hmo_wikibase_item"`),
-  shows an inline `AgentFlowDiagram` + `VerdictsTable`. Any `fail` verdict
+  shows an inline `AgentFlowDiagram` + `VerdictsTable` that **updates live**
+  as each verdict lands (`useVerifyJob` hydrates from
+  `run_jobs.progress.session_snapshot` — required on Heroku where the web dyno
+  cannot read the worker's `/tmp` trace until finish). Any `fail` verdict
   shows a confirm banner: "Review flagged items" (opens
   `HmoItemVerificationModal` scoped to the failed ids — near-instant, same
   cache) or "Upload anyway" — never a silent block or silent proceed. No

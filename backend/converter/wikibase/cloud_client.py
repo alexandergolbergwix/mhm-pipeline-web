@@ -20,6 +20,8 @@ from typing import Any, Literal, cast
 
 import requests
 
+from converter.wikibase.label_sanitize import sanitize_monolingual_map
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_HMO_WIKIBASE_URL = "https://mhm-hmo.wikibase.cloud"
@@ -930,11 +932,14 @@ def _apply_labels_descriptions_aliases(
     aliases: Mapping[str, Sequence[str]] | None,
 ) -> None:
     """Set labels/descriptions/aliases on a freshly-built WBI item/property."""
-    for lang, value in labels.items():
+    for lang, value in sanitize_monolingual_map(labels).items():
         entity.labels.set(lang, value)
-    for lang, value in descriptions.items():
+    for lang, value in sanitize_monolingual_map(descriptions).items():
         entity.descriptions.set(lang, value)
     if aliases:
         for lang, values in aliases.items():
+            code = str(lang or "").strip().lower()
+            if code in {"", "und"}:
+                code = "en"
             for value in values:
-                entity.aliases.set(lang, value)
+                entity.aliases.set(code, value)

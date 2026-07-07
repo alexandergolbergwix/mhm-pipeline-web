@@ -35,6 +35,12 @@ export interface RunJobProgress {
   session_id?: string;
   last_event_type?: string;
   mode?: string;
+  session_snapshot?: {
+    session_id?: string;
+    run_id?: string;
+    events?: unknown[];
+    verdicts?: Array<Record<string, unknown>>;
+  };
 }
 
 export interface RunJobSnapshot {

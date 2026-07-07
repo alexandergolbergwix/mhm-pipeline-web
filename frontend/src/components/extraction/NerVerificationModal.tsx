@@ -95,12 +95,13 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
   // by the Retry button when the initial load failed mid-dev-reload.
   const [reloadKey, setReloadKey] = useState(0);
 
-  const loadSession = useCallback(async (sessionId: string) => {
+  const loadSession = useCallback(async (sessionId: string, job?: import("@/api/runJobs").RunJobSnapshot) => {
     const full = await fetchVerifySessionWithJobFallback(
       runId,
       sessionId,
       "ner_verify",
       NerVerify.session,
+      job,
     );
     const hydrated = hydrateVerifySession(full, (row) => {
       const cand = (row.candidate ?? {}) as Record<string, unknown>;

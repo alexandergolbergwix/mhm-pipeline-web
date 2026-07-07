@@ -53,13 +53,13 @@
     methods return `status="failed"` outcomes instead of raising; manifest
     upload catches per-file. *Why:* one malformed record must not abort
     thousands of good writes.
-13. **R13 — SHACL is a signal, not a gate.** `build_shacl_report_for_items`
-    degrades to an empty report on any pyshacl failure. *Why:* item review must
-    stay usable when validation tooling breaks; curators see badges, not 500s.
+13. **R13 — SHACL tooling failures degrade; violations gate uploads (R19).**
+    `build_shacl_report_for_items` logs and returns an empty report when pyshacl
+    cannot run — the review UI must stay usable. That is NOT permission to ignore
+    violations once a report exists.
 14. **R14 — wikibase.cloud is not wikidata.org.** The Rule 25 moratorium and
-    Rule W-30 upload gates apply ONLY to wikidata.org; this block writes to the
-    project-owned Wikibase Cloud. *Why:* distinct trust boundaries (desktop
-    Rule 45) — do not import one side's gates into the other's write path.
+    Rule W-30 Wikidata upload gates do NOT apply here, but HMO has its own SHACL
+    gate (R19) and the same reconcile/validator discipline.
 15. **R15 — Byte-identical vendoring.** `backend/converter/wikibase/` mirrors
     the desktop tree; sync via `pipeline/scripts/sync_converter_to_web.sh`,
     never edit divergently. *Why:* one source of truth for writer behavior.
@@ -79,3 +79,17 @@
     only proposes a fix, the curator applies it (mirrors eval-agent R13).
     *Why:* project-wide human-in-the-loop invariant — AI verdicts are
     advisory everywhere in this app.
+19. **R19 — SHACL Violation/Error blocks live upload by default.** Pass 1 and
+    `push_single_item` consult `HmoStudioItemCache.shacl_report` via
+    `blocking_shacl_issues` (`hmo_item_shacl_gate.py`); blocked items get
+    `blocked`/`would_block` outcomes and never call Wikibase unless the curator
+    sets `allow_shacl_errors=true`. *Why:* 2026-07 audit — 773/2131 items with
+    SHACL violations were created because the write path ignored the report.
+20. **R20 — Never emit `und` language codes to Wikibase.** Labels/descriptions
+    are sanitized in `hmo_exporter.py`, `label_sanitize.py`, and
+    `cloud_client._apply_labels_descriptions_aliases` before every write. *Why:*
+    Wikibase Cloud rejects `und` (`not-recognized-language`), failing whole items.
+21. **R21 — ParadigmBridge is RDF-only, not a Wikibase item.** Exporter skips
+    `HM.ParadigmBridge` instances; bridge semantics stay in TTL + pass-2
+    deferred links. Cataloging views MUST carry `hm:view_type`; RDF build dedupes
+    duplicate `hm:external_identifier_nli` literals per node.

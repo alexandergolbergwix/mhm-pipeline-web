@@ -159,6 +159,11 @@ class HmoItemUploadRequest(BaseModel):
                     "curator-added statement not present in the current "
                     "build is never removed).",
     )
+    allow_shacl_errors: bool = Field(
+        default=False,
+        description="Default False — items with SHACL Violation/Error issues "
+                    "are blocked from create/update. Set True to upload anyway.",
+    )
 
 
 class HmoItemUploadOutcomeDto(BaseModel):
@@ -183,6 +188,7 @@ class HmoItemUploadResponse(BaseModel):
     updated: int
     skipped: int
     failed: int
+    blocked: int = 0
     linked: int
     unresolved_links: int
     outcomes: list[HmoItemUploadOutcomeDto]
@@ -503,7 +509,10 @@ async def upload_items(
     if not payload.dry_run:
         params = await prepare_job_params(
             db, auth, run_id=run_id, kind=JOB_KIND_HMO_ITEM_UPLOAD,
-            params={"update_existing": payload.update_existing},
+            params={
+                "update_existing": payload.update_existing,
+                "allow_shacl_errors": payload.allow_shacl_errors,
+            },
         )
         try:
             job = await create_job(
@@ -529,6 +538,7 @@ async def upload_items(
         result = await hmo_item_upload.upload_items_for_run(
             db, run_id, writer=None, dry_run=True,
             update_existing=payload.update_existing,
+            allow_shacl_errors=payload.allow_shacl_errors,
         )
     except hmo_item_upload.ItemBuildMissingError as exc:
         raise HTTPException(
@@ -541,6 +551,7 @@ async def upload_items(
         updated=result.updated,
         skipped=result.skipped,
         failed=result.failed,
+        blocked=result.blocked,
         linked=result.linked,
         unresolved_links=result.unresolved_links,
         outcomes=[HmoItemUploadOutcomeDto(**o.__dict__) for o in result.outcomes],

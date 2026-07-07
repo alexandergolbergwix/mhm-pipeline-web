@@ -22,7 +22,7 @@ import { useHmoItemVerifySession } from "@/hooks/useHmoItemVerifySession";
 import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
 import { useVerifyJob } from "@/hooks/useVerifyJob";
 import { fetchVerifySessionWithJobFallback } from "@/utils/fetchVerifySession";
-import { hydrateVerifySession } from "@/utils/verifySessionHydrate";
+import { hydrateVerifySession, mergeFlowWithJobProgress } from "@/utils/verifySessionHydrate";
 
 interface ItemUploadPanelProps {
   runId: string;
@@ -51,6 +51,7 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
   const [job, setJob] = useState<RunJobSnapshot | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [updateExisting, setUpdateExisting] = useState(false);
+  const [allowShaclErrors, setAllowShaclErrors] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,14 +80,14 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
     void refresh();
   }, [refresh, refreshToken]);
 
-  const loadVerifySession = useCallback(async (sessionId: string) => {
+  const loadVerifySession = useCallback(async (sessionId: string, job?: RunJobSnapshot) => {
     const full = await fetchVerifySessionWithJobFallback(
-      runId, sessionId, "hmo_item_verify", HmoItemVerify.session,
+      runId, sessionId, "hmo_item_verify", HmoItemVerify.session, job,
     );
     const hydrated = hydrateVerifySession(full, verdictLocalId);
     setVerifyEvents(hydrated.events);
     setVerifyVerdicts(hydrated.verdicts);
-    setVerifyFlow(hydrated.flow);
+    setVerifyFlow(mergeFlowWithJobProgress(hydrated.flow, job?.progress));
   }, [runId]);
 
   const handleVerifyFailed = useCallback((msg: string) => {
@@ -105,7 +106,7 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
     setBusy(true);
     setError(null);
     try {
-      const r = await HmoStudio.uploadItems(runId, dryRun, updateExisting);
+      const r = await HmoStudio.uploadItems(runId, dryRun, updateExisting, allowShaclErrors);
       if (isItemUploadJob(r)) {
         setJob(r);
         setTrackedJobId(r.id);
@@ -120,7 +121,7 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
       setBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, dryRun, updateExisting, refresh]);
+  }, [runId, dryRun, updateExisting, allowShaclErrors, refresh]);
 
   const { activeJob, setTrackedJobId, ensureJobPolling } = useRunJobAttachment(
     runId,
@@ -251,6 +252,19 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
             disabled={busy || jobRunning || preVerifyRunning}
           />
           Update existing items
+        </label>
+        <label
+          className="flex items-center gap-1 text-sm muted"
+          title="When off, items with SHACL Violation/Error issues are skipped (dry-run: would block). Rebuild items after RDF fixes to clear validation errors."
+        >
+          <input
+            type="checkbox"
+            checked={allowShaclErrors}
+            onChange={(e) => setAllowShaclErrors(e.target.checked)}
+            disabled={busy || jobRunning || preVerifyRunning}
+            data-testid="hmo-upload-allow-shacl-checkbox"
+          />
+          Upload items with validation errors
         </label>
         <button
           onClick={handleUploadClick}
@@ -406,6 +420,15 @@ function UploadResultSummary({ result }: { result: HmoItemUploadResult }) {
             <>
               {" · "}
               <span className="text-danger">failed {result.failed}</span>
+            </>
+          )}
+          {result.blocked > 0 && (
+            <>
+              {" · "}
+              <span className="text-warn">
+                {result.dry_run ? "would block " : "blocked "}
+                {result.blocked}
+              </span>
             </>
           )}
         </p>

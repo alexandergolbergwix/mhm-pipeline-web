@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {Runs} from "@/api/runs";
+import type {RunJobSnapshot} from "@/api/runJobs";
 import {
   AiVerify,
   type AgentActionMeta,
@@ -72,12 +73,13 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
   >(null);
   const [showingHistorical, setShowingHistorical] = useState(false);
 
-  const loadSession = useCallback(async (sessionId: string) => {
+  const loadSession = useCallback(async (sessionId: string, job?: RunJobSnapshot) => {
     const full = await fetchVerifySessionWithJobFallback(
       runId,
       sessionId,
       "authority_verify",
       AiVerify.session,
+      job,
     );
     const hydrated = hydrateVerifySession(full, (row) =>
       verdictStorageKey({type: "agent.verdict", ...row}),

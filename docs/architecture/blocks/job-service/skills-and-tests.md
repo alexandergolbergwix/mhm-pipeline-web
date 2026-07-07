@@ -53,7 +53,8 @@
 3. Render progress with `JobProgressInline` (`frontend/src/components/jobs/JobProgressInline.tsx`)
    using `job.progress.{processed,total,message,phase}`.
 4. For verify modals use `useVerifyJob({runId, kind, loadSession, onFailed, onComplete})` —
-   it also loads the eval-agent session (`progress.session_id`) and phrases
+   it loads the eval-agent session from `progress.session_snapshot` while the job
+   runs (then disk/`result` at finish), keyed off `progress.session_id`, and phrases
    partial/skipped outcomes.
 5. For a fire-and-forget await, `waitForRunJob` (`frontend/src/utils/waitForRunJob.ts`)
    polls until terminal.
@@ -70,3 +71,4 @@
 | `backend/tests/test_hmo_studio_coverage_router.py` | Coverage 409-attach + durable-cache restore around the `hmo_coverage` job (Rule W-39) |
 | `backend/tests/unit/test_wikidata_upload_guards.py` | The fail-closed gate the `wikidata_upload` job routes through (Rule W-30) |
 | `backend/tests/test_run_job_params_hmo_verify.py` | `hmo_item_verify` param validation: unknown action / empty scope rejected, valid scope accepted |
+| `backend/tests/unit/test_verify_job_progress.py` | Verify jobs embed partial `session_snapshot` in `progress` (R10 live UI) |

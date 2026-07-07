@@ -27,6 +27,13 @@ _…_event_stream generator
 sse_stream(): "event: <type>\ndata: <json>\n\n" + ": keepalive" every 15 s
 ```
 
+Background job path (`POST /runs/{id}/jobs` with a `*_verify` kind):
+`run_verify_job` (`verify_job.py`) re-opens the same generator, appends each
+event to `collected_events`, and on every progress tick writes a partial
+`progress.session_snapshot` (same `{session_id, run_id, events, verdicts}`
+shape as the terminal snapshot) so `useVerifyJob` can render `VerdictsTable`
+live across Heroku dynos without reading the worker's `/tmp` trace.
+
 `spawn_eval_agent_run` (`agent_runner.py:153`) drains stderr concurrently
 (deadlock + error-visibility), kills the child after 180 s of total silence
 (`_SUBPROCESS_IDLE_TIMEOUT_S`), terminates it on consumer cancellation, and

@@ -11,8 +11,10 @@
 | `backend/app/pipeline/hmo_item_merge.py` | Applies curator override rows onto built entities |
 | `backend/app/pipeline/hmo_item_views.py` | `fetch_merged_hmo_items` — build cache + overrides + QID mappings + SHACL + AI verdicts, merged for the UI |
 | `backend/app/pipeline/hmo_item_reconcile.py` | SPARQL exists-check by `hmo_source_uri` claim; fail-closed; `resolve_source_uri_pid` fast path |
-| `backend/app/pipeline/hmo_item_upload.py` | Two-pass upload: pass 1 create/adopt/update items (via shared `push_single_item`), pass 2 deferred item→item links |
+| `backend/app/pipeline/hmo_item_upload.py` | Two-pass upload: pass 1 create/adopt/update items (via shared `push_single_item`), pass 2 deferred item→item links; SHACL gate (R19) |
+| `backend/app/pipeline/hmo_item_shacl_gate.py` | `blocking_shacl_issues`, label/description sanitization for Wikibase writes |
 | `backend/app/pipeline/hmo_item_upload_job.py` | Background job wrapper for the live item upload |
+| `backend/converter/wikibase/label_sanitize.py` | Shared `und`→`en` language-code hygiene for exporter + cloud writer |
 | `backend/app/models/wikibase_cloud_write.py` | Audit-log model; `OPERATION_ADOPT` distinguishes reconcile-match links from `OPERATION_CREATE` |
 | `backend/app/pipeline/hmo_item_verify.py` / `hmo_item_actions.py` | AI-verify SSE stream + prefab actions (`audit_hmo_wikibase_item`, `autofix_hmo_wikibase_item`) |
 | `backend/app/pipeline/hmo_schema_verify.py` / `hmo_schema_actions.py` | Same, for schema bootstrap entries (`hmo_wikibase_schema` evaluator) |
