@@ -40,13 +40,24 @@ export function selectActiveJob(
   ) ?? null;
 }
 
+// `refresh()` fires every POLL_MS on a bare setInterval with no backpressure —
+// if one round-trip is slow (network jitter, a Heroku dyno hiccup) the next
+// tick fires anyway, and two responses can land out of order. Applying
+// whichever arrives last (instead of whichever was requested last) makes
+// job progress visibly jump backward (e.g. 5803/7822 -> 1023/7822) before
+// the next tick corrects it. A monotonic request counter discards any
+// response that isn't for the most recently issued request.
+let refreshSeq = 0;
+
 export const useRunJobs = create<RunJobsState>((set, get) => ({
   jobs: {},
   pollTimer: null,
 
   async refresh() {
+    const seq = ++refreshSeq;
     try {
       const {jobs} = await RunJobs.listMine(true);
+      if (seq !== refreshSeq) return;
       const map: Record<string, RunJobSnapshot> = {};
       for (const j of jobs) map[j.id] = j;
       set({jobs: map});

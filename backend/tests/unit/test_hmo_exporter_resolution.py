@@ -168,6 +168,57 @@ def test_draft_description_is_truncated_to_wikibase_limit() -> None:
     assert description.endswith("…")
 
 
+def test_draft_label_is_truncated_to_wikibase_limit() -> None:
+    """Regression: a ParadigmBridge/PhilologicalView label built from two
+    real (often long) Hebrew titles must never exceed Wikibase's 250-char
+    label cap — an untruncated label makes the whole item write fail."""
+    graph = Graph()
+    bridge = HM.Bridge1
+    long_label = "x" * 300
+    graph.add((bridge, RDF.type, HM.ParadigmBridge))
+    graph.add((bridge, RDFS.label, Literal(long_label, lang="he")))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    label = drafts[0].labels["he"]
+    assert len(label) == 250
+    assert label.endswith("…")
+    # The English mirror is built from the (already truncated) label, so
+    # it must also respect the cap.
+    assert len(drafts[0].labels["en"]) == 250
+
+
+def test_resolve_truncates_overlong_string_and_monolingualtext_claim_values() -> None:
+    """Regression: 'x' claims (e.g. hm:tradition_name) and monolingualtext
+    claims (e.g. the rdfs:comment-derived 'comment' claim) both hit
+    Wikibase's default 400-char string-value cap on real long titles —
+    truncate rather than let the whole item write fail."""
+    graph = Graph()
+    ms = HM.MS1
+    long_value = "y" * 500
+    graph.add((ms, RDF.type, HM.Codicological_Unit))
+    graph.add((ms, HM.tradition_name, Literal(long_value)))
+    graph.add((ms, HM.intervention_description, Literal(long_value, lang="he")))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    mappings = {
+        str(HM.Codicological_Unit): SchemaMappingEntry("Q1"),
+        str(HM.tradition_name): SchemaMappingEntry("P10", "string"),
+        str(HM.intervention_description): SchemaMappingEntry("P11", "monolingualtext"),
+        HMO_SOURCE_URI: SchemaMappingEntry("P99", "string"),
+    }
+
+    resolved = resolve_against_mappings(drafts, mappings)
+    claims_by_pid = {c.property_id: c for c in resolved[0].claims}
+
+    string_claim = claims_by_pid["P10"]
+    assert len(string_claim.value) == 400
+    assert string_claim.value.endswith("…")
+
+    mono_claim = claims_by_pid["P11"]
+    assert len(mono_claim.value["text"]) == 400
+    assert mono_claim.value["text"].endswith("…")
+
+
 def test_resolve_skips_object_property_pointing_at_external_uri() -> None:
     graph = Graph()
     ms = HM.MS1

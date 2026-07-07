@@ -152,6 +152,9 @@ def _preferred_class_uri(graph: Graph, subject: URIRef | BNode) -> URIRef:
     return URIRef(f"{HM}UnknownHmoEntity")
 
 
+_MAX_LABEL_LENGTH = 250  # Wikibase's hard cap on label length.
+
+
 def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
     """Collect RDF labels, falling back to a readable URI local name."""
     labels: dict[str, str] = {}
@@ -164,7 +167,7 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
         return {"en": _node_local_name(subject).replace("_", " ")}
     if "en" not in labels:
         labels["en"] = labels.get("he") or next(iter(labels.values()))
-    return labels
+    return {lang: _truncate(text, _MAX_LABEL_LENGTH) for lang, text in labels.items()}
 
 
 def _descriptions_for_node(
@@ -184,7 +187,7 @@ def _descriptions_for_node(
         if not isinstance(comment, Literal):
             continue
         language = comment.language or "en"
-        descriptions.setdefault(language, _truncate_description(str(comment)))
+        descriptions.setdefault(language, _truncate(str(comment), _MAX_DESCRIPTION_LENGTH))
     if descriptions:
         return descriptions
     readable = local_name(class_uri).replace("_", " ")
@@ -192,14 +195,16 @@ def _descriptions_for_node(
 
 
 _MAX_DESCRIPTION_LENGTH = 250  # Wikibase's hard cap on description length.
+_MAX_STRING_VALUE_LENGTH = 400  # Wikibase's default string/monolingualtext claim-value cap.
 
 
-def _truncate_description(text: str) -> str:
-    """Clip free-text (e.g. a MARC 520 summary) to Wikibase's limit."""
+def _truncate(text: str, max_length: int) -> str:
+    """Clip free-text (e.g. a MARC 520 summary, or an overlong label) to
+    a Wikibase string-field length cap, preserving a visual ellipsis."""
     text = text.strip()
-    if len(text) <= _MAX_DESCRIPTION_LENGTH:
+    if len(text) <= max_length:
         return text
-    return text[: _MAX_DESCRIPTION_LENGTH - 1].rstrip() + "…"
+    return text[: max_length - 1].rstrip() + "…"
 
 
 def _statement_from_triple(
@@ -374,10 +379,16 @@ def _build_claim_spec(
         return ResolvedClaim(
             prop_entry.wikibase_id,
             "monolingualtext",
-            {"text": str(stmt.value), "language": stmt.language or "en"},
+            {
+                "text": _truncate(str(stmt.value), _MAX_STRING_VALUE_LENGTH),
+                "language": stmt.language or "en",
+            },
         )
     if datatype in ("string", "url", "external-id"):
-        return ResolvedClaim(prop_entry.wikibase_id, datatype, str(stmt.value))
+        return ResolvedClaim(
+            prop_entry.wikibase_id, datatype,
+            _truncate(str(stmt.value), _MAX_STRING_VALUE_LENGTH),
+        )
     if datatype == "quantity":
         try:
             amount = float(stmt.value)  # type: ignore[arg-type]
