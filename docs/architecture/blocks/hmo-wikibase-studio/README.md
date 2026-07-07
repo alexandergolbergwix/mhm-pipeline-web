@@ -17,8 +17,9 @@ Pipeline stages, in order:
    Wikibase Property/Item (global, not per-run).
 2. **Item build** — resolve a run's RDF TTL against the live schema mapping into
    `ResolvedWikibaseEntity` drafts, with SHACL issues attached.
-3. **Review** — curator table with per-item overrides, approval flags, AI
-   audit/autofix verdicts, live-Wikibase compare, export/import, and a
+3. **Review** — single-page curator surface on `HmoStudio`: collapsible
+   build/upload controls above an always-visible item table with per-item
+   overrides, approval flags, AI audit/autofix verdicts, live-Wikibase compare, export/import, and a
    "Last upload" column showing the durable create/adopt/update/skip/failed
    outcome of the most recent live push (from the `wikibase_cloud_writes`
    audit log, not just the presence of a mapping row).

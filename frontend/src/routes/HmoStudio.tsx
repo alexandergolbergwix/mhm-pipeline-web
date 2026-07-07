@@ -48,7 +48,8 @@ export default function HmoStudioRoute() {
   const [showRecordPicker, setShowRecordPicker] = useState(false);
   const [itemBuildToken, setItemBuildToken] = useState(0);
   const [itemBuildPresent, setItemBuildPresent] = useState(false);
-  const [itemsTab, setItemsTab] = useState<"build" | "review">("build");
+  const [buildUploadOpen, setBuildUploadOpen] = useState(true);
+  const buildUploadDefaultSetRef = useRef(false);
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
 
   // ── refreshers ─────────────────────────────────────────────────────────
@@ -105,7 +106,14 @@ export default function HmoStudioRoute() {
     if (!runId) return;
     let cancelled = false;
     HmoStudio.itemStatus(runId)
-      .then((st) => { if (!cancelled) setItemBuildPresent(st.build_present); })
+      .then((st) => {
+        if (cancelled) return;
+        setItemBuildPresent(st.build_present);
+        if (!buildUploadDefaultSetRef.current) {
+          buildUploadDefaultSetRef.current = true;
+          setBuildUploadOpen(!st.build_present);
+        }
+      })
       .catch(() => { /* non-fatal */ });
     return () => { cancelled = true; };
   }, [runId, itemBuildToken]);
@@ -325,26 +333,21 @@ export default function HmoStudioRoute() {
 
         {/* Wikibase items (Phase 4/5 + rich review) */}
         {runId && (
-          <Glass as="section" className="p-6 space-y-4">
-            <div className="flex flex-wrap gap-2 text-sm">
+          <div className="space-y-4" data-testid="hmo-wikibase-items-section">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="kicker">Wikibase items</div>
               <button
                 type="button"
-                onClick={() => setItemsTab("build")}
-                className={itemsTab === "build" ? "button-primary text-xs" : "button-ghost text-xs"}
+                onClick={() => setBuildUploadOpen((open) => !open)}
+                className="button-ghost text-xs"
+                data-testid="hmo-build-upload-toggle"
+                aria-expanded={buildUploadOpen}
               >
-                Build &amp; upload
-              </button>
-              <button
-                type="button"
-                onClick={() => setItemsTab("review")}
-                className={itemsTab === "review" ? "button-primary text-xs" : "button-ghost text-xs"}
-                data-testid="hmo-items-review-tab"
-              >
-                Wikibase Items
+                {buildUploadOpen ? "Hide build & upload" : "Show build & upload"}
               </button>
             </div>
-            {itemsTab === "build" ? (
-              <>
+            {buildUploadOpen && (
+              <div className="space-y-4" data-testid="hmo-build-upload-panel">
                 <ItemBuildPanel
                   runId={runId}
                   rdfPresent={!!status?.rdf_present}
@@ -358,16 +361,15 @@ export default function HmoStudioRoute() {
                   wikibaseConfigured={wikibaseConfigured}
                   refreshToken={itemBuildToken}
                 />
-              </>
-            ) : (
-              <HmoItemsPanel
-                runId={runId}
-                projectId={projectId}
-                buildPresent={itemBuildPresent}
-                refreshToken={itemBuildToken}
-              />
+              </div>
             )}
-          </Glass>
+            <HmoItemsPanel
+              runId={runId}
+              projectId={projectId}
+              buildPresent={itemBuildPresent}
+              refreshToken={itemBuildToken}
+            />
+          </div>
         )}
 
         {/* MARC record editor */}

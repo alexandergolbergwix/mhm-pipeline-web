@@ -280,23 +280,31 @@ export async function installHmoItemsMocks(
   });
 }
 
+export async function openBuildUploadPanel(page: Page): Promise<void> {
+  const panel = page.getByTestId("hmo-build-upload-panel");
+  if (!(await panel.isVisible())) {
+    await page.getByTestId("hmo-build-upload-toggle").click();
+    await expect(panel).toBeVisible();
+  }
+}
+
 export async function gotoHmoItemsTab(page: Page): Promise<void> {
   const statusWait = page.waitForResponse(`**/api/runs/${TEST_RUN_ID}/hmo-studio/status`);
   const itemStatusWait = page.waitForResponse(`**/api/runs/${TEST_RUN_ID}/hmo-studio/item-status`);
   await page.goto(`/runs/${TEST_RUN_ID}/hmo-studio`);
   await Promise.all([statusWait, itemStatusWait]);
   await expect(page.getByRole("heading", {name: "HMO Wikibase Studio"})).toBeVisible();
-  await page.getByTestId("hmo-items-review-tab").click();
   await expect(page.getByTestId("hmo-items-panel")).toBeVisible();
   await expect(page.getByTestId("hmo-item-table")).toBeVisible();
 }
 
-/** The "Build & upload" sub-tab (default) — hosts ItemBuildPanel + ItemUploadPanel. */
+/** Opens the collapsible build/upload disclosure (ItemBuildPanel + ItemUploadPanel). */
 export async function gotoHmoBuildUploadTab(page: Page): Promise<void> {
   const statusWait = page.waitForResponse(`**/api/runs/${TEST_RUN_ID}/hmo-studio/status`);
   const itemStatusWait = page.waitForResponse(`**/api/runs/${TEST_RUN_ID}/hmo-studio/item-status`);
   await page.goto(`/runs/${TEST_RUN_ID}/hmo-studio`);
   await Promise.all([statusWait, itemStatusWait]);
   await expect(page.getByRole("heading", {name: "HMO Wikibase Studio"})).toBeVisible();
+  await openBuildUploadPanel(page);
   await expect(page.getByTestId("hmo-upload-submit")).toBeVisible();
 }

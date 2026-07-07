@@ -31,7 +31,11 @@ longer trigger `ModificationFailed`.
 build with `HmoStudioItemOverride` rows (label/description/alias edits,
 `statement_edits`, `remove_statements`, `add_statements`, `approved`), joins
 `wikibase_entity_mappings` for live QIDs (`status = created | would_create`),
-and attaches per-item SHACL issues and AI verdicts. Override PATCHes route
+and attaches per-item SHACL issues and AI verdicts. On the frontend,
+`HmoStudio.tsx` places `ItemBuildPanel` + `ItemUploadPanel` in a collapsible
+"Show build & upload" disclosure (expanded when no build exists yet, collapsed
+when `build_present`) directly above `HmoItemsPanel`, so rebuild/upload and
+the review table share one page — no sub-tab switch. Override PATCHes route
 through `apply_event` (entity type `hmo_item_override` — Rule W-21). AI verify
 streams over SSE via the eval-agent subprocess; verdicts land in the
 `inference_cache` (kind `ai_verdict`) and on the override row. The autofix

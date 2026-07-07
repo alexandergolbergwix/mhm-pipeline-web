@@ -63,7 +63,8 @@ to the wiki; 503 means the SPARQL endpoint is down (fail closed, retry later).
    fresh `upload_outcome`/`upload_message`/`upload_at`.
 
 ### Skill: enable AI verification during a live upload
-1. In the ItemUploadPanel (Build tab), tick "Verify with AI before upload"
+1. In the ItemUploadPanel (collapsible "Show build & upload" section on the
+   Wikibase Items page), tick "Verify with AI before upload"
    and/or "Verify with AI after upload" — both default off.
 2. Before-upload: a `fail` verdict shows a confirm banner; choose "Review
    flagged items" to open the verify modal scoped to just those ids, or

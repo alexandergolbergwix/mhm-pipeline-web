@@ -87,7 +87,7 @@ export function HmoItemsPanel({runId, projectId, buildPresent, refreshToken}: Hm
       </div>
 
       {!buildPresent && (
-        <p className="muted text-sm">Build items first using the panel above.</p>
+        <p className="muted text-sm">Build items first using &quot;Show build &amp; upload&quot; above.</p>
       )}
       {error && <p className="text-danger text-sm">{error}</p>}
       {buildPresent && !loading && (

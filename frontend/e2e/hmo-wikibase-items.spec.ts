@@ -6,6 +6,7 @@ import {
   installHmoItemsMocks,
   makeHmoItemsState,
   makeHmoStudioItem,
+  openBuildUploadPanel,
   TEST_PROJECT_ID,
   TEST_RUN_ID,
 } from "./fixtures/hmo-items-fixtures";
@@ -23,6 +24,17 @@ test.describe("HMO Wikibase Items review UI", () => {
     await expect(page.getByTestId("hmo-items-verify-ai")).toBeVisible();
     await expect(page.getByTestId("hmo-items-verify-ai")).toHaveText(/Verify with AI/);
     await expect(page.getByTestId("hmo-item-row-QDraft_MS_123")).toBeVisible();
+  });
+
+  test("build and upload disclosure toggles without leaving the review table", async ({page}) => {
+    await gotoHmoItemsTab(page);
+    await expect(page.getByTestId("hmo-build-upload-panel")).toHaveCount(0);
+    await expect(page.getByTestId("hmo-item-table")).toBeVisible();
+    await openBuildUploadPanel(page);
+    await expect(page.getByTestId("hmo-upload-submit")).toBeVisible();
+    await page.getByTestId("hmo-build-upload-toggle").click();
+    await expect(page.getByTestId("hmo-build-upload-panel")).toHaveCount(0);
+    await expect(page.getByTestId("hmo-item-table")).toBeVisible();
   });
 
   test("global search filters rows", async ({page}) => {

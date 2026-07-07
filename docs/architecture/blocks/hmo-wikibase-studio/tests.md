@@ -44,6 +44,7 @@
 - `backend/tests/unit/test_hmo_schema_verify.py` — cached-verdict filtering for
   the eval-agent fixture.
 - `frontend/e2e/hmo-wikibase-items.spec.ts` — items review UI click paths,
-  incl. the "Last upload" column (badge content + column-filter popup) and
+  incl. the merged single-page layout (build/upload disclosure toggle),
+  the "Last upload" column (badge content + column-filter popup) and
   upload-lifecycle AI verification (checkboxes, successful/failed pre-verify,
   the fail-confirm banner's "review" vs "upload anyway" paths).

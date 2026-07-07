@@ -69,6 +69,15 @@ land in the **same** change, never as a follow-up.
 Block rules (R-series per block) live in each block's `rules.md`; do not
 duplicate them here.
 
+## HMO Wikibase Items — curator surface
+
+On **HMO Wikibase Studio** (`HmoStudio`), item **build**, **upload**, and
+**review** share one page: a collapsible **Show build & upload** disclosure
+(`ItemBuildPanel` + `ItemUploadPanel`) sits above the always-visible
+`HmoItemsPanel` review table. Use **Build items** / **Force rebuild** in that
+disclosure after RDF or SHACL fixes — no tab switch required. Deep dive:
+[docs/architecture/blocks/hmo-wikibase-studio/](docs/architecture/blocks/hmo-wikibase-studio/README.md).
+
 ## Inherited rules
 
 This repository inherits its shared agent rules and reusable workflows from:

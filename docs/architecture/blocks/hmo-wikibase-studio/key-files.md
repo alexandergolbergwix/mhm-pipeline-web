@@ -33,6 +33,6 @@
 | `backend/app/models/hmo_studio_item_cache.py` | Per-run build cache (unique on `run_id`, fingerprinted) |
 | `backend/app/models/hmo_coverage_cache.py` | Durable Postgres coverage cache (Rule W-39) |
 | `backend/app/models/hmo_studio_item_override.py` | Curator override rows (labels/descriptions/aliases/statement edits/approved/ai_verdict) |
-| `frontend/src/routes/HmoStudio.tsx` | Studio page: schema panel, manifest build/upload, ItemBuildPanel, ItemUploadPanel, HmoItemsPanel |
+| `frontend/src/routes/HmoStudio.tsx` | Studio page: schema panel, manifest build/upload; Wikibase Items section merges `ItemBuildPanel` + `ItemUploadPanel` (collapsible disclosure) with `HmoItemsPanel` review table on one page |
 | `frontend/src/components/hmo/*` | Review UI: `HmoItemTable`, `HmoItemDetailDrawer`, `HmoItemShaclBadge`, `HmoItemUploadOutcomeBadge`, `ItemUploadPanel` (pre/post-upload AI verify checkboxes), verification modals, schema panels |
 | `dev-docs/hmo-wikibase-studio-plan.md` | The 8-phase buildout plan + status |
