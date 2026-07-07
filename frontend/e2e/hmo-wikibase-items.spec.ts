@@ -26,15 +26,37 @@ test.describe("HMO Wikibase Items review UI", () => {
     await expect(page.getByTestId("hmo-item-row-QDraft_MS_123")).toBeVisible();
   });
 
-  test("build and upload disclosure toggles without leaving the review table", async ({page}) => {
+  test("build and upload controls stay visible above the review table", async ({page}) => {
     await gotoHmoItemsTab(page);
-    await expect(page.getByTestId("hmo-build-upload-panel")).toHaveCount(0);
-    await expect(page.getByTestId("hmo-item-table")).toBeVisible();
-    await openBuildUploadPanel(page);
+    await expect(page.getByTestId("hmo-item-lifecycle-bar")).toBeVisible();
+    await expect(page.getByTestId("hmo-rebuild-skip-cache")).toBeVisible();
+    await expect(page.getByTestId("hmo-upload-update-existing")).toBeVisible();
     await expect(page.getByTestId("hmo-upload-submit")).toBeVisible();
-    await page.getByTestId("hmo-build-upload-toggle").click();
-    await expect(page.getByTestId("hmo-build-upload-panel")).toHaveCount(0);
     await expect(page.getByTestId("hmo-item-table")).toBeVisible();
+  });
+
+  test("data status column shows new / will update / updated", async ({page}) => {
+    await installHmoItemsMocks(page, makeHmoItemsState({
+      items: [
+        makeHmoStudioItem({local_id: "QNew", status: "would_create"}),
+        makeHmoStudioItem({
+          local_id: "QWillUpdate",
+          status: "created",
+          wikibase_id: "Q9001",
+          upload_outcome: "create",
+        }),
+        makeHmoStudioItem({
+          local_id: "QUpdated",
+          status: "created",
+          wikibase_id: "Q9002",
+          upload_outcome: "update",
+        }),
+      ],
+    }));
+    await gotoHmoItemsTab(page);
+    await expect(page.getByTestId("hmo-item-data-status-QNew")).toContainText("new (not uploaded)");
+    await expect(page.getByTestId("hmo-item-data-status-QWillUpdate")).toContainText("will update existing");
+    await expect(page.getByTestId("hmo-item-data-status-QUpdated")).toContainText("updated");
   });
 
   test("global search filters rows", async ({page}) => {
@@ -139,7 +161,7 @@ test.describe("HMO Wikibase Items — Last upload column", () => {
     await expect(page.getByTestId("hmo-item-row-QDraft_A")).toBeVisible();
     await expect(page.getByTestId("hmo-item-row-QDraft_B")).toBeVisible();
 
-    await page.getByRole("button", {name: "Last push"}).click();
+    await page.getByTestId("hmo-item-col-upload_outcome").click();
     const checkboxList = page.getByTestId("filter-mode-checkbox");
     await expect(checkboxList).toBeVisible();
     await checkboxList.locator("label", {hasText: "failed"}).locator('input[type="checkbox"]').check();

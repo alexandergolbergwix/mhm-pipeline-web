@@ -18,8 +18,6 @@ import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
 import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {SchemaBootstrapPanel} from "@/components/hmo/SchemaBootstrapPanel";
-import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
-import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
 import {HmoItemsPanel} from "@/components/hmo/HmoItemsPanel";
 import {GraphOverviewSummary} from "@/components/rdf/GraphOverviewSummary";
 import {useProjectEvents} from "@/api/realtime";
@@ -48,8 +46,6 @@ export default function HmoStudioRoute() {
   const [showRecordPicker, setShowRecordPicker] = useState(false);
   const [itemBuildToken, setItemBuildToken] = useState(0);
   const [itemBuildPresent, setItemBuildPresent] = useState(false);
-  const [buildUploadOpen, setBuildUploadOpen] = useState(true);
-  const buildUploadDefaultSetRef = useRef(false);
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
 
   // ── refreshers ─────────────────────────────────────────────────────────
@@ -109,10 +105,6 @@ export default function HmoStudioRoute() {
       .then((st) => {
         if (cancelled) return;
         setItemBuildPresent(st.build_present);
-        if (!buildUploadDefaultSetRef.current) {
-          buildUploadDefaultSetRef.current = true;
-          setBuildUploadOpen(!st.build_present);
-        }
       })
       .catch(() => { /* non-fatal */ });
     return () => { cancelled = true; };
@@ -331,45 +323,20 @@ export default function HmoStudioRoute() {
           )}
         </Glass>
 
-        {/* Wikibase items (Phase 4/5 + rich review) */}
+        {/* Wikibase items (build, upload, review on one page) */}
         {runId && (
-          <div className="space-y-4" data-testid="hmo-wikibase-items-section">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="kicker">Wikibase items</div>
-              <button
-                type="button"
-                onClick={() => setBuildUploadOpen((open) => !open)}
-                className="button-ghost text-xs"
-                data-testid="hmo-build-upload-toggle"
-                aria-expanded={buildUploadOpen}
-              >
-                {buildUploadOpen ? "Hide build & upload" : "Show build & upload"}
-              </button>
-            </div>
-            {buildUploadOpen && (
-              <div className="space-y-4" data-testid="hmo-build-upload-panel">
-                <ItemBuildPanel
-                  runId={runId}
-                  rdfPresent={!!status?.rdf_present}
-                  onBuilt={() => {
-                    setItemBuildToken((t) => t + 1);
-                    setItemBuildPresent(true);
-                  }}
-                />
-                <ItemUploadPanel
-                  runId={runId}
-                  wikibaseConfigured={wikibaseConfigured}
-                  refreshToken={itemBuildToken}
-                />
-              </div>
-            )}
-            <HmoItemsPanel
-              runId={runId}
-              projectId={projectId}
-              buildPresent={itemBuildPresent}
-              refreshToken={itemBuildToken}
-            />
-          </div>
+          <HmoItemsPanel
+            runId={runId}
+            projectId={projectId}
+            buildPresent={itemBuildPresent}
+            refreshToken={itemBuildToken}
+            rdfPresent={!!status?.rdf_present}
+            wikibaseConfigured={wikibaseConfigured}
+            onLifecycleChange={() => {
+              setItemBuildToken((t) => t + 1);
+              setItemBuildPresent(true);
+            }}
+          />
         )}
 
         {/* MARC record editor */}

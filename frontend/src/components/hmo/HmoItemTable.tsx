@@ -3,15 +3,17 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 import type {HmoStudioItem} from "@/api/hmoStudioItems";
 import {ColumnFilterPopup} from "@/components/extraction/ColumnFilterPopup";
 import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
-import {HmoItemMappingBadge} from "@/components/hmo/HmoItemMappingBadge";
+import {HmoItemDataStatusBadge} from "@/components/hmo/HmoItemDataStatusBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
 import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
 
+import {resolveHmoItemDataStatus} from "@/utils/hmoItemDataStatus";
+
 const PAGE_SIZE = 25;
 
-type ColKey = "class_qid" | "status" | "upload_outcome" | "validation" | "ai_verdict" | "approved";
+type ColKey = "class_qid" | "data_status" | "upload_outcome" | "validation" | "ai_verdict" | "approved";
 
 function itemLabel(item: HmoStudioItem): string {
   return item.labels?.en || item.labels?.he || item.local_id;
@@ -24,6 +26,7 @@ function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
     return [n === 0 ? "ok" : (item.shacl_issues.some((i) => i.severity === "Violation" || i.severity === "Error") ? "error" : "warn")];
   }
   if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "unknown"];
+  if (col === "data_status") return [resolveHmoItemDataStatus(item)];
   if (col === "upload_outcome") return [item.upload_outcome ?? "never"];
   if (col === "approved") {
     if (item.approved === true) return ["approved"];
@@ -48,7 +51,7 @@ export function HmoItemTable({
   onToggleApproved,
 }: HmoItemTableProps) {
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"label" | "status" | "local_id">("label");
+  const [sortKey, setSortKey] = useState<"label" | "local_id" | "data_status">("label");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, Set<string>>>>({});
@@ -78,6 +81,9 @@ export function HmoItemTable({
       if (sortKey === "label") {
         av = itemLabel(a);
         bv = itemLabel(b);
+      } else if (sortKey === "data_status") {
+        av = resolveHmoItemDataStatus(a);
+        bv = resolveHmoItemDataStatus(b);
       } else {
         av = String(a[sortKey] ?? "");
         bv = String(b[sortKey] ?? "");
@@ -138,7 +144,7 @@ export function HmoItemTable({
                 ["local_id", "Local ID", true],
                 ["class_qid", "Class", false],
                 ["source_uri", "Source URI", false],
-                ["status", "On wiki?", false],
+                ["data_status", "Data status", false],
                 ["wikibase_id", "QID", false],
                 ["upload_outcome", "Last push", false],
                 ["validation", "Validation", false],
@@ -154,6 +160,7 @@ export function HmoItemTable({
                     <button
                       type="button"
                       className="hover:text-ink"
+                      data-testid={`hmo-item-col-${key}`}
                       onClick={(e) => setPopup({col: key as ColKey, x: e.clientX, y: e.clientY})}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -176,7 +183,9 @@ export function HmoItemTable({
                 <td className="px-3 py-2 font-mono text-xs">{item.local_id}</td>
                 <td className="px-3 py-2 font-mono text-xs">{item.class_qid}</td>
                 <td className="px-3 py-2 text-xs truncate max-w-[200px]" title={item.source_uri}>{item.source_uri}</td>
-                <td className="px-3 py-2"><HmoItemMappingBadge status={item.status} /></td>
+                <td className="px-3 py-2" data-testid={`hmo-item-data-status-${item.local_id}`}>
+                  <HmoItemDataStatusBadge item={item} />
+                </td>
                 <td className="px-3 py-2 font-mono text-xs">{item.wikibase_id ?? "—"}</td>
                 <td className="px-3 py-2" data-testid={`hmo-item-upload-outcome-${item.local_id}`}>
                   <HmoItemUploadOutcomeBadge

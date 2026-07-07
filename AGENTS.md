@@ -72,10 +72,10 @@ duplicate them here.
 ## HMO Wikibase Items — curator surface
 
 On **HMO Wikibase Studio** (`HmoStudio`), item **build**, **upload**, and
-**review** share one page: a collapsible **Show build & upload** disclosure
-(`ItemBuildPanel` + `ItemUploadPanel`) sits above the always-visible
-`HmoItemsPanel` review table. Use **Build items** / **Force rebuild** in that
-disclosure after RDF or SHACL fixes — no tab switch required. Deep dive:
+**review** share one page: a lifecycle bar directly above the review table
+always exposes **Rebuild (skip cache)** and **Reupload (update existing)**.
+The table's **Data status** column shows `new (not uploaded)`, `will update
+existing`, or `updated` per row. Deep dive:
 [docs/architecture/blocks/hmo-wikibase-studio/](docs/architecture/blocks/hmo-wikibase-studio/README.md).
 
 ## Inherited rules

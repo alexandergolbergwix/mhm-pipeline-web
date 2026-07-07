@@ -8,6 +8,8 @@ import {Glass} from "@/components/glass";
 import {HmoItemDetailDrawer} from "@/components/hmo/HmoItemDetailDrawer";
 import {HmoItemTable} from "@/components/hmo/HmoItemTable";
 import {HmoItemVerificationModal} from "@/components/hmo/HmoItemVerificationModal";
+import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
+import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
 import {useHmoItemVerifySession} from "@/hooks/useHmoItemVerifySession";
 
 export interface HmoItemsPanelProps {
@@ -15,9 +17,20 @@ export interface HmoItemsPanelProps {
   projectId?: string;
   buildPresent: boolean;
   refreshToken?: number;
+  rdfPresent?: boolean;
+  wikibaseConfigured?: boolean;
+  onLifecycleChange?: () => void;
 }
 
-export function HmoItemsPanel({runId, projectId, buildPresent, refreshToken}: HmoItemsPanelProps) {
+export function HmoItemsPanel({
+  runId,
+  projectId,
+  buildPresent,
+  refreshToken,
+  rdfPresent = false,
+  wikibaseConfigured = false,
+  onLifecycleChange,
+}: HmoItemsPanelProps) {
   const [items, setItems] = useState<HmoStudioItem[]>([]);
   const [filteredIds, setFilteredIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,8 +73,9 @@ export function HmoItemsPanel({runId, projectId, buildPresent, refreshToken}: Hm
           <div className="kicker">Wikibase Items</div>
           <h3 className="text-lg font-medium">{items.length} resolved item{items.length === 1 ? "" : "s"}</h3>
           <p className="muted text-sm mt-1">
-            Review table for this run&apos;s item build. <b>On wiki?</b> means a live QID mapping exists;
-            <b> Last push</b> is the latest upload attempt (new item, linked existing, updated, or failed with reason).
+            Review table for this run&apos;s item build. <b>Data status</b> shows whether each row is
+            new, already on the wiki and due for a reupload, or was updated in the last push.
+            <b> Last push</b> is the latest upload attempt (create, adopt, update, skip, or failed).
             Open a row for overrides, AI verify, and single-item push.
           </p>
         </div>
@@ -86,8 +100,24 @@ export function HmoItemsPanel({runId, projectId, buildPresent, refreshToken}: Hm
         </div>
       </div>
 
+      <div className="space-y-3 border-b border-white/5 pb-4" data-testid="hmo-item-lifecycle-bar">
+        <ItemBuildPanel
+          runId={runId}
+          rdfPresent={rdfPresent}
+          compact
+          onBuilt={onLifecycleChange}
+        />
+        <ItemUploadPanel
+          runId={runId}
+          wikibaseConfigured={wikibaseConfigured}
+          refreshToken={refreshToken}
+          compact
+          onUploaded={onLifecycleChange}
+        />
+      </div>
+
       {!buildPresent && (
-        <p className="muted text-sm">Build items first using &quot;Show build &amp; upload&quot; above.</p>
+        <p className="muted text-sm">Build items above before the review table loads.</p>
       )}
       {error && <p className="text-danger text-sm">{error}</p>}
       {buildPresent && !loading && (

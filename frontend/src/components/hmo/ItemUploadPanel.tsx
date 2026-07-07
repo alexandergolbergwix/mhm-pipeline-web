@@ -29,6 +29,9 @@ interface ItemUploadPanelProps {
   wikibaseConfigured: boolean;
   /** Bump this to force a status refresh after a sibling ItemBuildPanel builds. */
   refreshToken?: unknown;
+  /** Toolbar row for the review panel; upload progress/results still render below. */
+  compact?: boolean;
+  onUploaded?: () => void;
 }
 
 function verdictOverall(ev: AgentEvent): string {
@@ -45,7 +48,13 @@ function verdictLocalId(row: Record<string, unknown>): string {
  * Phase 5: create-only, two-pass upload of the run's most recent item
  * build. Disabled until a build exists.
  */
-export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: ItemUploadPanelProps) {
+export function ItemUploadPanel({
+  runId,
+  wikibaseConfigured,
+  refreshToken,
+  compact = false,
+  onUploaded,
+}: ItemUploadPanelProps) {
   const [status, setStatus] = useState<HmoItemStatus | null>(null);
   const [result, setResult] = useState<HmoItemUploadResult | null>(null);
   const [job, setJob] = useState<RunJobSnapshot | null>(null);
@@ -114,6 +123,7 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
       } else {
         setResult(r);
         await refresh();
+        onUploaded?.();
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
@@ -132,6 +142,7 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
         const fromJob = itemUploadResultFromJob(j);
         if (fromJob) setResult(fromJob);
         void refresh();
+        onUploaded?.();
         if (postVerify) {
           const scopeIds = fromJob?.outcomes
             .filter((o) => o.status === "created" || o.status === "updated" || o.status === "adopted")
@@ -212,46 +223,31 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
   const preVerifyRunning = verifyPhase === "pre" && verifyRunning;
   const canUpload = !!status?.build_present;
 
-  return (
-    <Glass as="section" className="p-6 space-y-3">
-      <div>
-        <div className="kicker">Upload to Wikibase Cloud</div>
-        <h3 className="text-lg font-medium">Create-or-update, two-pass upload</h3>
-        <p className="muted text-sm leading-relaxed mt-1">
-          Pass 1 creates every not-yet-uploaded item with its literal
-          claims. Pass 2 links item-to-item claims once both ends have
-          real Wikibase ids. Already-uploaded items are skipped by
-          default — enable &quot;Update existing items&quot; below to
-          refresh their labels/descriptions and merge in any new claims
-          instead (a statement you added by hand on the wiki is never
-          removed).
-        </p>
-      </div>
-
-      {error && <p className="text-sm text-danger">{error}</p>}
-
-      {!canUpload && (
-        <p className="text-sm muted">Build items above before uploading.</p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 pt-1">
+  const controls = (
+    <>
+      <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-1 text-sm muted">
           <input
             type="checkbox"
             checked={dryRun}
             onChange={(e) => setDryRun(e.target.checked)}
             disabled={busy || jobRunning || preVerifyRunning}
+            data-testid="hmo-upload-dry-run"
           />
           Dry run
         </label>
-        <label className="flex items-center gap-1 text-sm muted">
+        <label
+          className="flex items-center gap-1 text-sm muted"
+          title="Refresh labels, descriptions, and new claims on items that already have a live Wikibase QID"
+        >
           <input
             type="checkbox"
             checked={updateExisting}
             onChange={(e) => setUpdateExisting(e.target.checked)}
             disabled={busy || jobRunning || preVerifyRunning}
+            data-testid="hmo-upload-update-existing"
           />
-          Update existing items
+          Reupload (update existing)
         </label>
         <label
           className="flex items-center gap-1 text-sm muted"
@@ -317,7 +313,11 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
           Verify with AI after upload
         </label>
       </div>
+    </>
+  );
 
+  const extras = (
+    <>
       {verifyError && <p className="text-sm text-danger">{verifyError}</p>}
 
       {failConfirm && (
@@ -387,11 +387,51 @@ export function ItemUploadPanel({ runId, wikibaseConfigured, refreshToken }: Ite
           onClose={() => setReviewOpen(false)}
         />
       )}
+    </>
+  );
+
+  if (compact) {
+    return (
+      <div className="space-y-3" data-testid="hmo-item-upload-actions">
+        {error && <p className="text-sm text-danger">{error}</p>}
+        {!canUpload && (
+          <p className="text-sm muted">Build items before uploading.</p>
+        )}
+        {controls}
+        {extras}
+      </div>
+    );
+  }
+
+  return (
+    <Glass as="section" className="p-6 space-y-3">
+      <div>
+        <div className="kicker">Upload to Wikibase Cloud</div>
+        <h3 className="text-lg font-medium">Create-or-update, two-pass upload</h3>
+        <p className="muted text-sm leading-relaxed mt-1">
+          Pass 1 creates every not-yet-uploaded item with its literal
+          claims. Pass 2 links item-to-item claims once both ends have
+          real Wikibase ids. Already-uploaded items are skipped by
+          default — enable &quot;Reupload (update existing)&quot; to
+          refresh their labels/descriptions and merge in any new claims
+          instead (a statement you added by hand on the wiki is never
+          removed).
+        </p>
+      </div>
+
+      {error && <p className="text-sm text-danger">{error}</p>}
+
+      {!canUpload && (
+        <p className="text-sm muted">Build items above before uploading.</p>
+      )}
+
+      {controls}
+      {extras}
     </Glass>
   );
 }
 
-function UploadResultSummary({ result }: { result: HmoItemUploadResult }) {
+function UploadResultSummary({result}: {result: HmoItemUploadResult}) {
   const [expand, setExpand] = useState(false);
   return (
     <div className="border-t border-white/5 pt-3 space-y-2">

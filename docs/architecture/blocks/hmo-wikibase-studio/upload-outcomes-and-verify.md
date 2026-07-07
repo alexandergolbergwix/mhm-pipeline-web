@@ -28,9 +28,17 @@ Frontend: `HmoStudioItem` (`frontend/src/api/hmoStudioItems.ts`) carries the
 three fields; `HmoItemUploadOutcomeBadge.tsx` renders a color-coded pill
 (create/adopt/update = success tone, skip/unchanged = muted, failed =
 danger tone with the message as a tooltip, `—` when never attempted), used
-by both `HmoItemTable.tsx`'s filterable "Last upload" column (`ColKey`
-extended with `"upload_outcome"`) and `HmoItemDetailDrawer.tsx`. Click the
-badge when `failed`/`blocked` to read the full message in a popover.
+by `HmoItemTable.tsx`'s filterable **Last push** column (`ColKey`
+`upload_outcome`) and `HmoItemDetailDrawer.tsx`. Click the badge when
+`failed`/`blocked` to read the full message in a popover.
+
+**Data status column.** `resolveHmoItemDataStatus` (`frontend/src/utils/
+hmoItemDataStatus.ts`) derives a curator-facing posture from `status` +
+`upload_outcome`: `new (not uploaded)` when `would_create`; `updated` when
+the latest audit row is `update`; `will update existing` when a mapping
+exists but the last push was not an update (reupload with **Reupload (update
+existing)** would refresh the live item). `HmoItemDataStatusBadge.tsx`
+renders the pill; the column is filterable like **Last push**.
 
 **SHACL upload gate.** `upload_items_for_run` / `push_single_item` block
 create/update when `shacl_report[local_id]` contains `Violation` or `Error`

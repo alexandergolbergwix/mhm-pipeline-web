@@ -281,11 +281,7 @@ export async function installHmoItemsMocks(
 }
 
 export async function openBuildUploadPanel(page: Page): Promise<void> {
-  const panel = page.getByTestId("hmo-build-upload-panel");
-  if (!(await panel.isVisible())) {
-    await page.getByTestId("hmo-build-upload-toggle").click();
-    await expect(panel).toBeVisible();
-  }
+  await expect(page.getByTestId("hmo-item-lifecycle-bar")).toBeVisible();
 }
 
 export async function gotoHmoItemsTab(page: Page): Promise<void> {
@@ -298,7 +294,7 @@ export async function gotoHmoItemsTab(page: Page): Promise<void> {
   await expect(page.getByTestId("hmo-item-table")).toBeVisible();
 }
 
-/** Opens the collapsible build/upload disclosure (ItemBuildPanel + ItemUploadPanel). */
+/** Opens the Wikibase Items lifecycle bar (build + upload controls above the table). */
 export async function gotoHmoBuildUploadTab(page: Page): Promise<void> {
   const statusWait = page.waitForResponse(`**/api/runs/${TEST_RUN_ID}/hmo-studio/status`);
   const itemStatusWait = page.waitForResponse(`**/api/runs/${TEST_RUN_ID}/hmo-studio/item-status`);
