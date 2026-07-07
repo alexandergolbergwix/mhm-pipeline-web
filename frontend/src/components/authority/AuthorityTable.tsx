@@ -17,6 +17,7 @@ import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from "react
 import type {AuthorityMatch, ExistsIn} from "@/api/runs";
 import {Runs} from "@/api/runs";
 import { ColumnFilterPopup } from "@/components/extraction/ColumnFilterPopup";
+import {CURATOR_TABLE_SCROLL_CLASS} from "@/components/CuratorTableScroll";
 import { ConfidenceBadge, VerdictBadge } from "@/components/MatchDetailDialog";
 import { HistoryTimeline } from "@/components/history/HistoryTimeline";
 import {Glass, GlassPill} from "@/components/glass";
@@ -524,7 +525,7 @@ export function AuthorityTable({
         )}
       </div>
 
-      <div ref={scrollRef} className="max-h-[min(70vh,720px)] overflow-auto authority-table-scroll">
+      <div ref={scrollRef} className={CURATOR_TABLE_SCROLL_CLASS}>
         <table className="w-full text-sm border-collapse">
           <thead className="muted text-left sticky top-0 z-10 table-head">
             <tr className="border-b border-white/5">

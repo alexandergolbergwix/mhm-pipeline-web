@@ -31,6 +31,7 @@ import {
   type UploadOutcome,
 } from "@/api/wikidataStudio";
 import {Glass, GlassPill} from "@/components/glass";
+import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {LoadingOverlay, LoadingPanel} from "@/components/LoadingOverlay";
 
 type EntityFilter = "all" | "manuscript" | "person" | "work";
@@ -1128,9 +1129,9 @@ function StatementTableView({
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      <CuratorTableScroll bordered={false}>
         <table className="w-full text-sm border-collapse">
-          <thead className="muted text-left">
+          <thead className="muted text-left sticky top-0 z-10 table-head">
             <tr className="border-b border-white/5">
               <th className="py-2 pr-2 w-8"></th>
               <TableHeader label="Item"      col="item"     sKey={sKey} sDir={sDir} onClick={toggleSort} />
@@ -1165,7 +1166,7 @@ function StatementTableView({
             )}
           </tbody>
         </table>
-      </div>
+      </CuratorTableScroll>
     </Glass>
   );
 }

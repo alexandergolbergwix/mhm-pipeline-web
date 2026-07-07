@@ -19,6 +19,9 @@ test.describe("HMO Wikibase Items review UI", () => {
     await gotoHmoItemsTab(page);
     await expect(page.getByTestId("hmo-items-panel")).toBeVisible();
     await expect(page.getByTestId("hmo-item-table")).toBeVisible();
+    await expect(page.getByTestId("hmo-item-table-scroll")).toBeVisible();
+    await expect(page.getByTestId("hmo-items-verify-ai")).toBeVisible();
+    await expect(page.getByTestId("hmo-items-verify-ai")).toHaveText(/Verify with AI/);
     await expect(page.getByTestId("hmo-item-row-QDraft_MS_123")).toBeVisible();
   });
 

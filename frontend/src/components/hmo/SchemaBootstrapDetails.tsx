@@ -4,6 +4,7 @@ import type {HmoSchemaBootstrapEntry, HmoSchemaBootstrapResult} from "@/api/hmoW
 import {schemaEntryLocalId} from "@/api/hmoSchemaVerify";
 import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
 import {SchemaEntryDetailDrawer} from "@/components/hmo/SchemaEntryDetailDrawer";
+import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import type {AiVerdict} from "@/api/extractionApprovals";
 import {GlassPill} from "@/components/glass";
 
@@ -173,9 +174,9 @@ export function SchemaBootstrapDetails({
             placeholder="Filter by label, URI, or Wikibase id…"
             className="input-glass w-full text-sm"
           />
-          <div className="overflow-x-auto border border-white/5 rounded-lg max-h-96 overflow-y-auto">
+          <CuratorTableScroll>
             <table className="w-full text-sm">
-              <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0">
+              <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0 z-10 table-head">
                 <tr>
                   <th className="text-left px-3 py-2">Kind</th>
                   <th className="text-left px-3 py-2">Label</th>
@@ -223,7 +224,7 @@ export function SchemaBootstrapDetails({
                 )}
               </tbody>
             </table>
-          </div>
+          </CuratorTableScroll>
           <p className="text-xs muted">
             Showing {rows.length} of {result.entries.length} entries · click a row for the full
             detail (description, Wikibase link, AI reasoning, and real usage in the RDF graph)

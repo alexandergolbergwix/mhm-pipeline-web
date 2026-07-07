@@ -15,6 +15,7 @@ import type { AgentEvent } from "@/api/wikidataVerify";
 import { AgentFlowDiagram, makeInitialFlowState, type FlowState } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
 import { Glass, GlassPill } from "@/components/glass";
+import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import { HmoItemVerificationModal } from "@/components/hmo/HmoItemVerificationModal";
 import { JobProgressInline } from "@/components/jobs/JobProgressInline";
 import { useHmoItemVerifySession } from "@/hooks/useHmoItemVerifySession";
@@ -454,9 +455,9 @@ function OutcomeTable({
   return (
     <div>
       <div className="text-xs muted mb-1">{title}</div>
-      <div className="overflow-x-auto border border-white/5 rounded-lg max-h-56 overflow-y-auto">
+      <CuratorTableScroll>
         <table className="w-full text-sm">
-          <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0">
+          <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0 z-10 table-head">
             <tr>
               {headers.map((h) => (
                 <th key={h} className="text-left px-3 py-2">
@@ -487,7 +488,7 @@ function OutcomeTable({
             )}
           </tbody>
         </table>
-      </div>
+      </CuratorTableScroll>
     </div>
   );
 }

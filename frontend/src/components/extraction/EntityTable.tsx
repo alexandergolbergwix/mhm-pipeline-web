@@ -41,6 +41,7 @@ import {useAuth} from "@/stores/auth";
 import {useLatestRef, EMPTY_STRING_SET} from "@/utils/renderStable";
 import {langOf} from "@/utils/hebrew";
 import {Glass} from "@/components/glass";
+import {CURATOR_TABLE_SCROLL_CLASS} from "@/components/CuratorTableScroll";
 
 export type SortDirection = "asc" | "desc";
 
@@ -496,7 +497,7 @@ export function EntityTable(props: EntityTableProps) {
   // is narrower than the column total.
   return (
     <Glass className="overflow-hidden" data-testid="entity-table">
-      <div className="max-h-[640px] overflow-auto" ref={parentRef}>
+      <div className={CURATOR_TABLE_SCROLL_CLASS} ref={parentRef}>
        <div className="min-w-max">
       <div
         className="sticky top-0 z-20 grid items-center gap-2 border-b border-white/10 bg-[rgba(16,24,36,0.92)] backdrop-blur px-2 py-2 text-xs uppercase tracking-wide kicker"

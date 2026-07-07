@@ -41,6 +41,7 @@ import { NerVerificationModal } from "@/components/extraction/NerVerificationMod
 import { SectionExportMenu } from "@/components/export/SectionExportMenu";
 import { SectionImportButton } from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
+import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {recheckEntity} from "@/api/nerVerify";
 import {canEntityAutoFix, getEntitySuggestedFix} from "@/utils/extractionAutofix";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
@@ -732,9 +733,9 @@ export default function StageExtraction() {
             <summary className="kicker cursor-pointer">
               Per-record overview ({records.length} records)
             </summary>
-            <div className="overflow-x-auto mt-3">
+            <CuratorTableScroll bordered={false} className="mt-3">
               <table className="w-full text-sm border-collapse">
-                <thead className="muted text-left">
+                <thead className="muted text-left sticky top-0 z-10 table-head">
                   <tr className="border-b border-white/5">
                     <th className="py-2 pr-3 w-6"></th>
                     <th className="py-2 pr-3">Control number</th>
@@ -760,7 +761,7 @@ export default function StageExtraction() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </CuratorTableScroll>
           </Glass>
         )}
       </div>

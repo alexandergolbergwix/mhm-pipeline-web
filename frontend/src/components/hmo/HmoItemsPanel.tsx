@@ -73,14 +73,15 @@ export function HmoItemsPanel({runId, projectId, buildPresent, refreshToken}: Hm
           </button>
           <button
             type="button"
-            className="button-primary text-xs"
+            className="button-ghost text-xs"
             disabled={!filteredIds.length}
+            data-testid="hmo-items-verify-ai"
             onClick={() => {
               setVerifyIds(filteredIds);
               setVerifyOpen(true);
             }}
           >
-            Verify visible ({filteredIds.length})
+            Verify with AI ({filteredIds.length})
           </button>
         </div>
       </div>

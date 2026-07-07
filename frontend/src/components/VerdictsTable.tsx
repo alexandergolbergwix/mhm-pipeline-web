@@ -56,6 +56,7 @@ import {downloadFromUrl} from "@/utils/download";
 import {collectWikidataFixes, type WikidataSuggestedFix} from "@/utils/wikidataAutofix";
 import {verdictStorageKey} from "@/utils/verdictKey";
 import {Glass} from "@/components/glass";
+import {CURATOR_TABLE_SCROLL_CLASS} from "@/components/CuratorTableScroll";
 import {EMPTY_STRING_SET} from "@/utils/renderStable";
 
 
@@ -375,7 +376,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
         </button>
       </div>
 
-      <div className="overflow-x-auto -mx-3">
+      <div className={`${CURATOR_TABLE_SCROLL_CLASS} -mx-3`}>
         <table className="w-full text-xs border-collapse">
           <thead className="muted text-left">
             <tr className="border-b border-white/5">

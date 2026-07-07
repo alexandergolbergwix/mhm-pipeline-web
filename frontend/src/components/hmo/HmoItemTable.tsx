@@ -6,6 +6,7 @@ import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
 import {HmoItemMappingBadge} from "@/components/hmo/HmoItemMappingBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
+import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
 
 const PAGE_SIZE = 25;
@@ -127,9 +128,9 @@ export function HmoItemTable({
         data-testid="hmo-item-search"
       />
 
-      <div className="overflow-x-auto border border-white/5 rounded-lg">
+      <CuratorTableScroll data-testid="hmo-item-table-scroll">
         <table className="w-full text-sm" data-testid="hmo-item-table">
-          <thead className="bg-white/3 text-xs uppercase muted tracking-wider">
+          <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0 z-10 table-head">
             <tr>
               {([
                 ["label", "Label", true],
@@ -208,7 +209,7 @@ export function HmoItemTable({
             )}
           </tbody>
         </table>
-      </div>
+      </CuratorTableScroll>
 
       <div className="flex items-center justify-between text-xs muted">
         <span>{filtered.length} item{filtered.length === 1 ? "" : "s"}</span>

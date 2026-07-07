@@ -16,6 +16,7 @@ import {loadHmoCoverage} from "@/utils/waitForRunJob";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
+import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {SchemaBootstrapPanel} from "@/components/hmo/SchemaBootstrapPanel";
 import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
 import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
@@ -485,9 +486,9 @@ function CoverageTable({ report }: { report: HmoCoverageReport }) {
         })}
       </div>
 
-      <div className="overflow-x-auto border border-white/5 rounded-lg">
+      <CuratorTableScroll>
         <table className="w-full text-sm">
-          <thead className="bg-white/3 text-xs uppercase muted tracking-wider">
+          <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0 z-10 table-head">
             <tr>
               <th className="text-left px-3 py-2">HMO class</th>
               <th className="text-left px-3 py-2">Projection</th>
@@ -530,7 +531,7 @@ function CoverageTable({ report }: { report: HmoCoverageReport }) {
             )}
           </tbody>
         </table>
-      </div>
+      </CuratorTableScroll>
     </div>
   );
 }
@@ -585,9 +586,9 @@ function UploadReportPanel({
       </div>
 
       {expand && (
-        <div className="overflow-x-auto border border-white/5 rounded-lg">
+        <CuratorTableScroll>
           <table className="w-full text-sm">
-            <thead className="bg-white/3 text-xs uppercase muted tracking-wider">
+            <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0 z-10 table-head">
               <tr>
                 <th className="text-left px-3 py-2">Shelfmark</th>
                 <th className="text-left px-3 py-2">Status</th>
@@ -618,7 +619,7 @@ function UploadReportPanel({
               )}
             </tbody>
           </table>
-        </div>
+        </CuratorTableScroll>
       )}
     </div>
   );
