@@ -1,0 +1,44 @@
+---
+description: Hebrew DOCX — content saved in repo .md (draft) and/or .docx (deliverable); after export, patch .docx only
+globs: "**/*.{md,docx}"
+alwaysApply: false
+---
+
+# Hebrew + English DOCX
+
+## Where content lives
+
+Save in the repo under `docs/` (or path the user gives):
+
+- **`.md`** — tagged draft while writing; optional git mirror later
+- **`.docx`** — Word deliverable to send; **canonical after first export**
+
+| Stage | Save to | Tool |
+|-------|---------|------|
+| Drafting | `.md` | edit markdown |
+| First export | `.md` → `.docx` | `md_to_rtl_docx.py` |
+| Any later change | **`.docx`** (required) | `rtl_docx_tool.py` |
+| Optional mirror | `.md` | manual sync only |
+
+After `.docx` exists: always `extract` first (picks up Word edits), then `replace-paragraph` / `replace-section` on **that same `.docx` path**.
+
+**Word edits are sacred:** never `md_to_rtl_docx.py --force` unless the user explicitly requests rebuild **and** accepts losing Word edits (`--discard-word-edits` required). Do not sync from stale `.md`.
+
+What gets **sent** is the `.docx`. Do not send `.md` unless the user explicitly asks.
+
+## Audience — recipient vs author (blocking)
+
+Documents for an external reader (supervisor letter, committee response):
+
+- **Never** add content the user wanted **in chat only** or marked «בשבילי לא בשביל [recipient]».
+- **Never** add internal QA stats, UI verification instructions («בדוק שורה־שורה בממשק»), or author-team voice («למפות שלנו»).
+- Write **to the recipient** at their level; keep dev/ops notes in chat.
+
+## Never
+
+- Full `md_to_rtl_docx.py` re-run on an existing doc (`--force --discard-word-edits` only if user explicitly requests rebuild and accepts losing Word edits)
+- Edit content only in chat without writing to `.docx`
+- Markdown tables (`|…|`) in Hebrew docx — use bullets instead
+- Raw zipfile XML; one-run mixed Hebrew+English
+
+Skill: `pipeline/.codex/skills/heb-en-docx/SKILL.md`
