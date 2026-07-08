@@ -17,8 +17,11 @@
 4. **R4 — Every build write-throughs `RdfArtifact`.** Any path that writes
    `manuscripts.ttl` MUST upsert the TTL into Postgres in the same
    request/job, and read paths MUST call `ensure_ttl_on_disk` before touching
-   the file. *Why:* Heroku's slug filesystem is ephemeral; on-disk-only state
-   evaporates on every deploy (Rule W-39 — `RdfArtifact` is the precedent).
+   the file. When a local file exists but its bytes differ from
+   `rdf_artifacts.ttl_content`, overwrite from Postgres — never no-op
+   merely because a path is present. *Why:* Heroku's slug filesystem is
+   ephemeral and multi-dyno; stale on-disk TTL made HMO “skip cache” export
+   old graphs while Postgres already held a rebuild (Rule W-39).
 5. **R5 — `backend/converter/` is a byte-identical mirror.** NEVER edit
    vendored converter files directly in the web repo; change the desktop
    repo and re-run the sync. *Why:* the two ports must produce identical RDF;

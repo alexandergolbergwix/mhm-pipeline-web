@@ -29,7 +29,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -425,7 +425,7 @@ async def coverage(
 )
 async def build_items(
     run_id: uuid.UUID,
-    force_rebuild: bool = False,
+    force_rebuild: bool = Query(False, description="Bypass HmoStudioItemCache and re-export from RDF"),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> HmoItemBuildResponse:

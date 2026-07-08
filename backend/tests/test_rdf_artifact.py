@@ -193,3 +193,23 @@ async def test_graph_endpoint_returns_404_when_no_artifact(rdf_run, tmp_path):
 
     assert resp.status_code == 404
     assert "build" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_ensure_ttl_on_disk_refreshes_stale_local_copy(db_session, tmp_path) -> None:
+    """When Postgres has a newer artefact, overwrite a stale on-disk TTL."""
+    from app.models.rdf_artifact import RdfArtifact
+    from app.pipeline.rdf_build import ensure_ttl_on_disk
+
+    run_id = uuid.uuid4()
+    ttl_path = tmp_path / str(run_id) / "manuscripts.ttl"
+    ttl_path.parent.mkdir(parents=True)
+    ttl_path.write_text("@prefix ex: <urn:stale:> .\n", encoding="utf-8")
+
+    fresh_ttl = "@prefix ex: <urn:fresh:> .\n"
+    db_session.add(RdfArtifact(run_id=run_id, ttl_content=fresh_ttl, triples_count=1))
+    await db_session.commit()
+
+    await ensure_ttl_on_disk(ttl_path, run_id, db_session)
+
+    assert ttl_path.read_text(encoding="utf-8") == fresh_ttl

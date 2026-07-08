@@ -906,30 +906,37 @@ def rdf_output_path_for_run(run_id: str) -> Path:
 async def ensure_ttl_on_disk(
     ttl_path: Path, run_id: uuid.UUID | str, db: AsyncSession,
 ) -> None:
-    """Restore a run's TTL from Postgres if the local disk cache is missing.
+    """Restore or refresh a run's TTL from Postgres when the local copy is missing or stale.
 
     The dyno's local filesystem is ephemeral on Heroku — every deploy or
     dyno restart wipes ``backend/state/runs/``. ``POST /rdf/build``
     always persists a durable copy in ``rdf_artifacts`` (see
     :class:`app.models.rdf_artifact.RdfArtifact`); this re-seeds the
     local cache from it so read-only consumers never need a full
-    rebuild just because the dyno recycled. No-op when the file is
-    already present, or when no build has ever run for this run.
+    rebuild just because the dyno recycled.
+
+    When a local file *does* exist we still compare its bytes to the
+    durable Postgres artefact. A mismatch means another dyno (or an
+    earlier deploy) wrote a fresher graph — item export must not keep
+    reading a stale on-disk TTL.
 
     ``ttl_path`` is taken as a parameter (rather than recomputed via
     :func:`rdf_output_path_for_run`) so callers that resolve the path
     through an overridable/patched reference keep working consistently.
     """
-    if ttl_path.exists():
-        return
     from app.models.rdf_artifact import RdfArtifact  # noqa: PLC0415
 
     rid = run_id if isinstance(run_id, uuid.UUID) else uuid.UUID(str(run_id))
     row = await db.get(RdfArtifact, rid)
     if row is None:
         return
+
+    db_bytes = row.ttl_content.encode("utf-8")
+    if ttl_path.exists() and ttl_path.read_bytes() == db_bytes:
+        return
+
     ttl_path.parent.mkdir(parents=True, exist_ok=True)
-    ttl_path.write_text(row.ttl_content, encoding="utf-8")
+    ttl_path.write_bytes(db_bytes)
 
 
 _MATCH_FIELDS: tuple[str, ...] = (

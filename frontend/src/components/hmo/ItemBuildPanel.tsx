@@ -66,7 +66,7 @@ export function ItemBuildPanel({runId, rdfPresent, onBuilt, compact = false}: It
           disabled={busy || !rdfPresent}
           className="button-ghost text-sm"
           data-testid="hmo-rebuild-skip-cache"
-          title="Bypass the cached item build and resolve fresh from the RDF TTL"
+          title="Bypass the cached item build, refresh the RDF TTL from Postgres if needed, and re-export"
         >
           {busy ? "Rebuilding…" : "Rebuild (skip cache)"}
         </button>

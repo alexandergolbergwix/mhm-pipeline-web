@@ -90,4 +90,10 @@ async def test_build_items_succeeds_once_schema_is_mapped(sample_run, db_session
     )
     assert response2.json()["from_cache"] is True
 
+    response3 = await sample_run["client"].post(
+        f"/api/runs/{run_id}/hmo-studio/build-items?force_rebuild=true",
+    )
+    assert response3.status_code == 200
+    assert response3.json()["from_cache"] is False
+
     ttl_path.unlink()
