@@ -4,10 +4,28 @@ import {ApiError} from "@/api/client";
 import {HmoStudioItems, type HmoItemOverridePayload, type HmoStudioItem} from "@/api/hmoStudioItems";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {Glass} from "@/components/glass";
+import {HmoItemAiVerdictBadge} from "@/components/hmo/HmoItemAiVerdictBadge";
 import {HmoItemMappingBadge} from "@/components/hmo/HmoItemMappingBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
-import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
+
+function AiVerdictReasoningCard({verdict}: {verdict: HmoStudioItem["ai_verdict"]}) {
+  if (!verdict) return null;
+  const reasoning = verdict.reasoning?.trim();
+  const fixes = (verdict as {suggested_fixes?: unknown[]}).suggested_fixes ?? [];
+  if (!reasoning && fixes.length === 0) return null;
+  return (
+    <section className="space-y-2 border-t border-white/5 pt-3" data-testid="hmo-item-ai-verdict-reasoning">
+      <h4 className="text-sm font-medium">AI explanation</h4>
+      {reasoning && (
+        <p className="text-sm text-ink leading-relaxed whitespace-pre-wrap">{reasoning}</p>
+      )}
+      {fixes.length > 0 && (
+        <p className="text-xs muted">{fixes.length} suggested fix(es) — use Apply AI fix above.</p>
+      )}
+    </section>
+  );
+}
 
 export interface HmoItemDetailDrawerProps {
   runId: string;
@@ -176,7 +194,7 @@ export function HmoItemDetailDrawer({
           message={item.upload_message}
           at={item.upload_at}
         />
-        <AiVerdictPill verdict={item.ai_verdict} />
+        <HmoItemAiVerdictBadge verdict={item.ai_verdict} localId={item.local_id} />
         {onVerify && (
           <button type="button" className="button-ghost text-xs" onClick={onVerify} data-testid="hmo-item-verify-btn">
             Verify with AI
@@ -204,6 +222,8 @@ export function HmoItemDetailDrawer({
 
       {error && <p className="text-danger text-sm">{error}</p>}
       {pushMsg && <p className="text-xs muted">Push result: {pushMsg}</p>}
+
+      <AiVerdictReasoningCard verdict={item.ai_verdict} />
 
       {item.upload_outcome && (
         <p className="text-xs muted">

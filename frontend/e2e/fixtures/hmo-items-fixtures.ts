@@ -4,6 +4,8 @@
  */
 import {expect, type Page, type Route} from "@playwright/test";
 
+import type {AiVerdict} from "@/api/extractionApprovals";
+
 export const TEST_RUN_ID = "55555555-5555-5555-5555-555555555555";
 export const TEST_PROJECT_ID = "66666666-6666-6666-6666-666666666666";
 
@@ -18,7 +20,7 @@ export interface MockHmoStudioItem {
   wikibase_id: string | null;
   approved: boolean | null;
   shacl_issues: Array<{code: string; severity: string; message: string}>;
-  ai_verdict: null;
+  ai_verdict: AiVerdict | null;
   override_present: boolean;
   upload_outcome?: string | null;
   upload_message?: string;

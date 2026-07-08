@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 
 import type {HmoStudioItem} from "@/api/hmoStudioItems";
 import {ColumnFilterPopup} from "@/components/extraction/ColumnFilterPopup";
-import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
+import {HmoItemAiVerdictBadge} from "@/components/hmo/HmoItemAiVerdictBadge";
 import {HmoItemDataStatusBadge} from "@/components/hmo/HmoItemDataStatusBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
@@ -199,7 +199,9 @@ export function HmoItemTable({
                 <td className="px-3 py-2">
                   <HmoItemShaclBadge issues={item.shacl_issues ?? []} localId={item.local_id} />
                 </td>
-                <td className="px-3 py-2"><AiVerdictPill verdict={item.ai_verdict} /></td>
+                <td className="px-3 py-2">
+                  <HmoItemAiVerdictBadge verdict={item.ai_verdict} localId={item.local_id} />
+                </td>
                 <td className="px-3 py-2">
                   <input
                     type="checkbox"

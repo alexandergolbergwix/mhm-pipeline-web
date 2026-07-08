@@ -69,6 +69,28 @@ test.describe("HMO Wikibase Items review UI", () => {
     await expect(page.getByTestId("hmo-item-row-QDraft_MS_123")).toBeVisible();
   });
 
+  test("clicking AI verdict pill opens full explanation popover", async ({page}) => {
+    await installHmoItemsMocks(page, makeHmoItemsState({
+      items: [
+        makeHmoStudioItem({
+          local_id: "QFail",
+          ai_verdict: {
+            overall: "fail",
+            reasoning: "Label on Wikibase does not match the Hebrew title in the build.",
+            model: "gemini-3.5-flash",
+            judged_at: "2026-07-08T10:00:00Z",
+          },
+        }),
+      ],
+    }));
+    await gotoHmoItemsTab(page);
+    await page.getByTestId("hmo-item-ai-verdict-QFail").click();
+    const detail = page.getByTestId("hmo-item-ai-verdict-detail-QFail");
+    await expect(detail).toBeVisible();
+    await expect(detail).toContainText("Why AI flagged this as wrong");
+    await expect(detail).toContainText("Label on Wikibase does not match");
+  });
+
   test("approval checkbox triggers override PATCH", async ({page}) => {
     let patched = false;
     await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/items/QDraft_MS_123/override`, (route) => {

@@ -429,11 +429,14 @@ async def export_hmo_items(
         fields = [
             "local_id", "class_qid", "source_uri", "status", "wikibase_id",
             "approved", "label_en", "label_he",
+            "ai_verdict_overall", "ai_verdict_reasoning", "ai_verdict_model",
+            "ai_verdict_judged_at",
         ]
         writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         for it in items:
             labels = it.get("labels") or {}
+            av = it.get("ai_verdict") if isinstance(it.get("ai_verdict"), dict) else {}
             writer.writerow({
                 "local_id": it.get("local_id"),
                 "class_qid": it.get("class_qid"),
@@ -443,6 +446,10 @@ async def export_hmo_items(
                 "approved": it.get("approved"),
                 "label_en": labels.get("en"),
                 "label_he": labels.get("he"),
+                "ai_verdict_overall": av.get("overall"),
+                "ai_verdict_reasoning": av.get("reasoning"),
+                "ai_verdict_model": av.get("model"),
+                "ai_verdict_judged_at": it.get("ai_verdict_at") or av.get("judged_at"),
             })
         yield buf.getvalue()
 
