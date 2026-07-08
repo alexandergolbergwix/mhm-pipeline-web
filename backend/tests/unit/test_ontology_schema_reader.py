@@ -119,7 +119,9 @@ def test_class_without_label_or_comment_falls_back_to_local_name(
     ("range_uri", "expected_datatype"),
     [
         (XSD.string, "string"),
-        (XSD.integer, "string"),
+        (XSD.integer, "quantity"),
+        (XSD.decimal, "quantity"),
+        (XSD.boolean, "boolean"),
         (XSD.anyURI, "url"),
         (XSD.date, "time"),
         (XSD.dateTime, "time"),
@@ -199,3 +201,35 @@ def test_parent_uri_from_sub_class_of_and_sub_property_of(tmp_path: Path) -> Non
 
     assert schema.classes[0].parent_uri == str(parent_class)
     assert schema.properties[0].parent_uri == str(parent_prop)
+
+
+def test_external_identifier_properties_map_to_external_id_datatype(
+    tmp_path: Path,
+) -> None:
+    graph = Graph()
+    subject = _EX.external_identifier_nli
+    graph.add((subject, RDF.type, OWL.DatatypeProperty))
+    graph.add((subject, RDFS.range, XSD.string))
+    graph.add((subject, RDFS.label, Literal("NLI identifier", lang="en")))
+    ttl_path = tmp_path / "test.ttl"
+    graph.serialize(destination=ttl_path, format="turtle")
+
+    schema = read_hmo_schema(ttl_path)
+
+    assert schema.properties[0].datatype == "external-id"
+
+
+def test_year_boundary_properties_on_integer_range_map_to_time(
+    tmp_path: Path,
+) -> None:
+    graph = Graph()
+    subject = _EX.earliest_possible_date
+    graph.add((subject, RDF.type, OWL.DatatypeProperty))
+    graph.add((subject, RDFS.range, XSD.integer))
+    graph.add((subject, RDFS.label, Literal("earliest possible date", lang="en")))
+    ttl_path = tmp_path / "test.ttl"
+    graph.serialize(destination=ttl_path, format="turtle")
+
+    schema = read_hmo_schema(ttl_path)
+
+    assert schema.properties[0].datatype == "time"

@@ -145,6 +145,7 @@ async def bootstrap_schema(
             break
 
         if uri in existing:
+            await _sync_schema_mapping_datatype(db, ontology_uri=uri, datatype=datatype)
             entries.append(
                 SchemaBootstrapEntry(
                     uri, kind, wikibase_label, existing[uri], "skipped",
@@ -330,6 +331,29 @@ async def _load_schema_mappings(db: AsyncSession) -> dict[str, str]:
         )
     ).all()
     return {uri: wikibase_id for uri, wikibase_id in rows}
+
+
+async def _sync_schema_mapping_datatype(
+    db: AsyncSession,
+    *,
+    ontology_uri: str,
+    datatype: str | None,
+) -> None:
+    """Refresh stored datatype when ontology inference improves (skip path)."""
+    if datatype is None:
+        return
+    row = (
+        await db.execute(
+            select(WikibaseEntityMapping).where(
+                WikibaseEntityMapping.run_id.is_(None),
+                WikibaseEntityMapping.ontology_uri == ontology_uri,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or row.datatype == datatype:
+        return
+    row.datatype = datatype
+    await db.commit()
 
 
 async def _record_mapping(

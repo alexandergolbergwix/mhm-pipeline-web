@@ -612,6 +612,8 @@ def _build_wbi_claim(claim: ResolvedClaim) -> Any:
         )
     if claim.datatype == "quantity":
         return datatypes.Quantity(prop_nr=claim.property_id, amount=claim.value["amount"])
+    if claim.datatype == "boolean":
+        return datatypes.Boolean(prop_nr=claim.property_id, value=bool(claim.value))
     raise ValueError(f"unsupported claim datatype: {claim.datatype!r}")
 
 

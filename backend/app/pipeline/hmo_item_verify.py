@@ -252,8 +252,12 @@ async def hmo_item_verify_event_stream(
         )
         items_by_id = {
             str(i.get("_local_id") or i.get("local_id") or ""): i
-            for i in uncached_items
+            for i in items
         }
+        verdicts_to_persist: list[dict[str, Any]] = [
+            cached_hmo_item_verdict_event(item, cached_payload)
+            for item, cached_payload in pre_cached
+        ]
         for v in on_disk_verdicts:
             cand = v.get("candidate") if isinstance(v.get("candidate"), dict) else None
             if isinstance(cand, dict):
@@ -268,13 +272,14 @@ async def hmo_item_verify_event_stream(
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(session_dir, ev)
             yield ev
+            verdicts_to_persist.append(v)
 
-        if on_disk_verdicts:
+        if verdicts_to_persist:
             try:
                 await _persist_hmo_item_verdicts(
                     run_id=UUID(run_id),
                     items_by_id=items_by_id,
-                    verdicts=on_disk_verdicts,
+                    verdicts=verdicts_to_persist,
                     judge_model=tier_model or "gemini-3.5-flash",
                 )
             except Exception:  # noqa: BLE001

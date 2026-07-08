@@ -139,6 +139,55 @@ async def test_live_bootstrap_creates_and_records_mappings(
 
 
 @pytest.mark.asyncio
+async def test_second_bootstrap_syncs_datatype_on_skip(db_session) -> None:
+    schema = OntologySchema(
+        classes=[],
+        properties=[
+            OntologyPropertyEntry(
+                uri="http://example.org#has_folio_count",
+                local_name="has_folio_count",
+                label="has folio count",
+                description="Number of folios.",
+                datatype="quantity",
+            ),
+        ],
+    )
+
+    db_session.add(
+        WikibaseEntityMapping(
+            ontology_uri="http://example.org#has_folio_count",
+            entity_kind=ENTITY_KIND_PROPERTY,
+            wikibase_id="P99",
+            run_id=None,
+            label="has folio count",
+            datatype="string",
+        )
+    )
+    await db_session.commit()
+
+    import converter.wikibase.ontology_schema_reader as reader_mod
+
+    original = reader_mod.read_hmo_schema
+    reader_mod.read_hmo_schema = lambda ttl_path=None: schema
+    try:
+        result = await pipeline.bootstrap_schema(
+            db_session, writer=_FakeWriter(), dry_run=False,
+        )
+    finally:
+        reader_mod.read_hmo_schema = original
+
+    assert result.skipped == 1
+    row = (
+        await db_session.execute(
+            select(WikibaseEntityMapping).where(
+                WikibaseEntityMapping.ontology_uri == "http://example.org#has_folio_count",
+            )
+        )
+    ).scalar_one()
+    assert row.datatype == "quantity"
+
+
+@pytest.mark.asyncio
 async def test_second_bootstrap_run_creates_nothing(db_session, tiny_schema) -> None:
     first_writer = _FakeWriter()
     await pipeline.bootstrap_schema(db_session, writer=first_writer, dry_run=False)

@@ -30,6 +30,11 @@ Return JSON with the standard verdict keys:
     identifier typed as `string` instead of `external-id`.
   - An object property (one whose description names another HMO class
     as its value) NOT typed as `wikibase-item`.
+  - **Exception:** when the ontology explicitly declares
+    `owl:DatatypeProperty` with `rdfs:range xsd:string`, a Wikibase
+    datatype of `string` is correct even for catalog metadata like
+    holding institution, holding collection, or free-text role labels
+  copied from MARC — do NOT fail these as missing `wikibase-item`.
   For classes, `"type_ok"` is `"yes"` when the class is not redundant
   with an existing, more specific HMO class for the same concept.
 - `role_ok`: judges consistency with established manuscript-cataloging

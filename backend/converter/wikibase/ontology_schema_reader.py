@@ -29,6 +29,41 @@ _SKOS_DEFINITION = URIRef("http://www.w3.org/2004/02/skos/core#definition")
 # xsd datatypes that map to Wikibase's "time" datatype.
 _TIME_RANGES = frozenset({XSD.date, XSD.dateTime, XSD.gYear, XSD.gYearMonth})
 _URL_RANGES = frozenset({XSD.anyURI})
+_QUANTITY_RANGES = frozenset({
+    XSD.integer,
+    XSD.decimal,
+    XSD.float,
+    XSD.double,
+    XSD.nonNegativeInteger,
+    XSD.positiveInteger,
+    XSD.long,
+    XSD.short,
+})
+
+# Integer year boundaries on Time-Span nodes — shape as Wikibase ``time``
+# (year precision), not quantity.
+_YEAR_AS_TIME_LOCAL_NAMES = frozenset({
+    "earliest_possible_date",
+    "latest_possible_date",
+    "P82a_begin_of_the_begin",
+    "P82b_end_of_the_end",
+})
+
+# Catalog / authority identifiers stored as xsd:string in RDF but modeled as
+# Wikibase external-id properties in the schema bootstrap.
+_EXTERNAL_ID_LOCAL_NAMES = frozenset({
+    "external_identifier_nli",
+    "shelfmark",
+    "holding_call_number",
+    "geonames_id",
+    "has_geonames_id",
+    "lcsh_id",
+    "has_LCSH_id",
+    "viaf_id",
+    "has_VIAF_ID",
+    "wikidata_id",
+    "sfardata_id",
+})
 
 
 @dataclass(frozen=True)
@@ -229,7 +264,7 @@ def _build_property_entry(
     description = _description(graph, subject, kind="property", name=name)
     parent = _first_object(graph, subject, RDFS.subPropertyOf, only_uri=True)
     range_value = _first_object(graph, subject, RDFS.range, only_uri=True)
-    datatype = _infer_datatype(subject, range_value, is_object=is_object)
+    datatype = _infer_datatype(subject, range_value, is_object=is_object, local_name=name)
     return OntologyPropertyEntry(
         uri=str(subject),
         local_name=name,
@@ -284,7 +319,13 @@ def _first_object(
     return None
 
 
-def _infer_datatype(subject: URIRef, range_value: URIRef | None, *, is_object: bool) -> str:
+def _infer_datatype(
+    subject: URIRef,
+    range_value: URIRef | None,
+    *,
+    is_object: bool,
+    local_name: str,
+) -> str:
     if range_value is None:
         if is_object:
             return "wikibase-item"
@@ -294,7 +335,15 @@ def _infer_datatype(subject: URIRef, range_value: URIRef | None, *, is_object: b
         return "time"
     if range_value in _URL_RANGES:
         return "url"
+    if range_value == XSD.boolean:
+        return "boolean"
+    if range_value in _QUANTITY_RANGES:
+        if local_name in _YEAR_AS_TIME_LOCAL_NAMES:
+            return "time"
+        return "quantity"
     if str(range_value).startswith(str(XSD)):
+        if local_name in _EXTERNAL_ID_LOCAL_NAMES:
+            return "external-id"
         return "string"
     # Non-xsd range on an object property (or an untyped datatype property
     # pointing at a class) means the range is itself an HMO/CIDOC/LRMoo class.

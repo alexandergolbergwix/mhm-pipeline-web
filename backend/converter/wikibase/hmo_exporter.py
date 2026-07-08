@@ -406,6 +406,15 @@ def _build_claim_spec(
         except (TypeError, ValueError):
             return None
         return ResolvedClaim(prop_entry.wikibase_id, "quantity", {"amount": amount})
+    if datatype == "boolean":
+        if isinstance(stmt.value, bool):
+            return ResolvedClaim(prop_entry.wikibase_id, "boolean", stmt.value)
+        text = str(stmt.value).strip().lower()
+        if text in {"true", "1", "yes"}:
+            return ResolvedClaim(prop_entry.wikibase_id, "boolean", True)
+        if text in {"false", "0", "no"}:
+            return ResolvedClaim(prop_entry.wikibase_id, "boolean", False)
+        return None
     return None
 
 
