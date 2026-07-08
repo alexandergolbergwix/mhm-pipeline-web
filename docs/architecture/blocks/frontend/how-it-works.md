@@ -52,8 +52,8 @@ so fallbacks never inline `new Set()`.
   updates without becoming a new source of truth. Pages attach via
   `useRunJobAttachment(runId, kind, sync)` (attach-on-mount to jobs started
   elsewhere/earlier, plus a targeted per-job 2 s poll) or `useVerifyJob`
-  for the three verify modals (which also loads the SSE session and
-  tolerates early 404s on `trace.jsonl`).
+  for verify modals (which also load the SSE session, pass optional
+  `tier_model`, and tolerate early 404s on `trace.jsonl`).
 - *Entity polling* — `useApprovalStore(runId, {active})` polls
   `/extraction/entities` every 2 s while a verify modal is open
   (`active=true`) and every 30 s otherwise, with ETag/304 revalidation, a

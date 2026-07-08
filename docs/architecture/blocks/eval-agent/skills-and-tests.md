@@ -16,9 +16,20 @@
    (setup inside `session_scope()`, per R9), `GET …/sessions`,
    `GET …/sessions/{sid}`. For background support add a `JOB_KIND_*`, a branch
    in `verify_job.py::_open_verify_stream`, and a `VERIFY_JOB_CHANNELS` entry.
-5. Frontend: new modal reusing `AgentFlowDiagram` + `VerdictsTable`, API client
-   copying the `fetch`+`getReader` SSE pattern.
+5. Frontend: new modal reusing `AgentFlowDiagram` + `VerdictsTable` + `Tier1ModelSelect`,
+   API client copying the `fetch`+`getReader` SSE pattern (or `useVerifyJob` for
+   large scopes). Pass `tier_model` in job/SSE params.
 6. Tests: extend `test_agent_runner_sessions.py`-style coverage + a router test.
+
+## Skill: add a tier-1 judge model
+1. Add an entry to `eval-agent/config/tier1_models.yaml` (`provider`, `api_key_env`,
+   `base_url` for OpenAI-compat, `supports_agentic`).
+2. If `provider: openai_compat`, implement or extend `OpenAICompatJudge`; if Gemini,
+   `GeminiJudge` already handles it. `session.py::_build_judge` routes by provider.
+3. Document the env var in `docs/architecture/blocks/deployment/env-vars.md`; set on
+   Heroku with `heroku config:set`.
+4. Tests: `eval-agent/tests/test_judge_models.py` + provider client unit test;
+   `backend/tests/test_run_job_params_tier_model.py` for credential validation.
 
 ## Skill: debug a failed verify session
 1. Get `run_id` + `session_id` (SSE response header `X-Session-Id`, or job
@@ -78,6 +89,10 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   dispatch: unknown action, empty scope, end-to-end wiring, cache behaviour.
 - `eval-agent/tests/test_hmo_wikibase_items.py` — HMO `control_number()` from
   embedded URI ids (Rule W-45).
+- `eval-agent/tests/test_judge_models.py`, `test_openai_compat_judge.py` —
+  tier-1 registry + Qubrid OpenAI-compat judge (Rule W-46).
+- `backend/tests/test_judge_models_router.py`,
+  `test_run_job_params_tier_model.py` — `GET /api/judge-models`, credential gates.
 - `backend/tests/unit/test_agent_runner_subprocess_timeout.py` —
   `[TRACE] agent.verdict` line parsing during subprocess read.
 - `frontend/e2e/` verification specs (mocked SSE via `page.route()`).

@@ -154,7 +154,7 @@ async def spawn_eval_agent_run(
     *,
     pipeline_output: Path,
     evaluators: tuple[str, ...],
-    api_key: str,
+    api_key: str | None = None,
     state_dir: Path | None = None,
     eval_agent_root: Path | None = None,
     tier_model: str | None = None,
@@ -180,8 +180,16 @@ async def spawn_eval_agent_run(
     are still overwritten with the new verdict so the next run benefits.
     """
     root = eval_agent_root or locate_eval_agent()
-    if not api_key:
-        raise ValueError("Gemini API key required for verification.")
+    from app.pipeline.judge_models import (  # noqa: PLC0415
+        ensure_tier1_credentials,
+        resolve_tier1_model,
+    )
+
+    spec = resolve_tier1_model(tier_model)
+    try:
+        ensure_tier1_credentials(spec, gemini_key=api_key or None)
+    except Exception as exc:
+        raise ValueError(str(exc)) from exc
 
     py = _python_for(root)
     cmd: list[str] = [
@@ -213,6 +221,11 @@ async def spawn_eval_agent_run(
     env.setdefault("PYTHONUNBUFFERED", "1")
     if api_key:
         env["GEMINI_API_KEY"] = api_key
+    if tier_model:
+        spec = resolve_tier1_model(tier_model)
+        provider_key = os.environ.get(spec.api_key_env)
+        if provider_key and spec.provider != "gemini":
+            env[spec.api_key_env] = provider_key
     # Defense-in-depth for Rule 52: inject state_dir via env var AS WELL AS
     # --state-dir argv so older bundled eval-agent versions that only honour
     # the env var still write results to the right location.

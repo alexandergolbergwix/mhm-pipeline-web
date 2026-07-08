@@ -141,17 +141,26 @@ class SessionConfig:
                     )
 
         # Resolve agentic mode from flags (default = gated agentic).
+        from eval_agent.judge_models import resolve_tier1_model  # noqa: PLC0415
+
         tier_model = (
             getattr(args, "tier_model", None)
             or ag_cfg.get("tier_model")
             or judge_cfg.get("id", "gemini-3.5-flash")
         )
+        tier_spec = resolve_tier1_model(str(tier_model))
+        tier_model = tier_spec.id
+
         if getattr(args, "linear", False):
             mode = "linear"
         elif getattr(args, "agentic_all", False):
             mode = "agentic_all"
         else:
             mode = ag_cfg.get("mode", "agentic") if ag_cfg.get("enabled", True) else "linear"
+
+        # Non-Gemini tier-1 models have no tool-use / escalation path.
+        if mode != "linear" and not tier_spec.supports_agentic:
+            mode = "linear"
 
         # In linear mode the judge model IS the tier model; in agentic modes
         # tier-1 runs on tier_model and the loop escalates to escalate_model.
@@ -738,20 +747,45 @@ def _load_schema() -> dict[str, Any]:
 
 
 def _build_judge(config: SessionConfig) -> Judge:
+    import os
+
+    from eval_agent.client.openai_compat_client import OpenAICompatJudge  # noqa: PLC0415
+    from eval_agent.judge_models import resolve_tier1_model  # noqa: PLC0415
+
+    spec = resolve_tier1_model(config.judge_model)
+    defaults = _load_defaults().get("judge", {})
+    rl = RateLimiter(config.rpm)
+
+    if spec.provider == "openai_compat":
+        api_key = config.api_key or os.environ.get(spec.api_key_env, "")
+        if not api_key:
+            raise RuntimeError(
+                f"{spec.label} API key required (env {spec.api_key_env})",
+            )
+        if not spec.base_url:
+            raise RuntimeError(f"{spec.id} missing base_url in tier1_models.yaml")
+        return OpenAICompatJudge(
+            model=spec.id,
+            api_key=api_key,
+            base_url=spec.base_url,
+            rate_limiter=rl,
+            extra_body=spec.extra_body,
+            temperature=float(defaults.get("temperature", 0.0)),
+            max_output_tokens=int(defaults.get("max_output_tokens", 4096)),
+        )
+
     api_key = config.api_key
     if not api_key:
         import getpass
-        import os
+
         api_key = os.environ.get("GEMINI_API_KEY") or ""
         if not api_key:
             api_key = getpass.getpass("Gemini API key (hidden, not stored): ")
     if not api_key:
         raise RuntimeError("Gemini API key required (env GEMINI_API_KEY or prompt)")
 
-    defaults = _load_defaults().get("judge", {})
-    rl = RateLimiter(config.rpm)
     return GeminiJudge(
-        model=config.judge_model,
+        model=spec.id,
         api_key=api_key,
         rate_limiter=rl,
         thinking_level=str(defaults.get("thinking_level", "low")),

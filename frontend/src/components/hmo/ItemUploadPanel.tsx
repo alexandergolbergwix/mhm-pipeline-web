@@ -18,6 +18,7 @@ import { Glass, GlassPill } from "@/components/glass";
 import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import { HmoItemVerificationModal } from "@/components/hmo/HmoItemVerificationModal";
 import { JobProgressInline } from "@/components/jobs/JobProgressInline";
+import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
 import { useVerifyJob } from "@/hooks/useVerifyJob";
 import { fetchVerifySessionWithJobFallback } from "@/utils/fetchVerifySession";
@@ -73,6 +74,7 @@ export function ItemUploadPanel({
   const [failConfirm, setFailConfirm] = useState<{ failed: number; total: number; ids: string[] } | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewIds, setReviewIds] = useState<string[]>([]);
+  const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
 
   const refresh = useCallback(async () => {
     try {
@@ -154,6 +156,7 @@ export function ItemUploadPanel({
               action_id: "autofix_hmo_wikibase_item",
               item_ids: scopeIds,
               override_cache: false,
+              tier_model: tierModel,
             });
           }
         }
@@ -198,12 +201,13 @@ export function ItemUploadPanel({
         action_id: "audit_hmo_wikibase_item",
         item_ids: scopeIds,
         override_cache: false,
+        tier_model: tierModel,
       });
     } catch (e) {
       setVerifyError(e instanceof ApiError ? e.detail : String(e));
       setVerifyPhase(null);
     }
-  }, [runId, doUpload, startVerifyJob]);
+  }, [runId, doUpload, startVerifyJob, tierModel]);
 
   const handleUploadClick = useCallback(() => {
     setError(null);
@@ -282,7 +286,16 @@ export function ItemUploadPanel({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-xs muted">
+      <div className="flex flex-wrap items-end gap-4 text-xs muted">
+        {(preVerify || postVerify) && (
+          <Tier1ModelSelect
+            list={tier1List}
+            loading={tier1Loading}
+            tierModel={tierModel}
+            onChange={setTierModel}
+            disabled={busy || jobRunning || preVerifyRunning}
+          />
+        )}
         <label
           className="flex items-center gap-1"
           title="Runs the audit_hmo_wikibase_item evaluator (Gemini, cached per item) over the not-yet-uploaded items before the upload starts. Rate-limited to 60 requests/min; cached verdicts are free on repeat runs."

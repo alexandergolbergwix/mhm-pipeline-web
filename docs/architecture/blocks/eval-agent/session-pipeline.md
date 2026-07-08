@@ -5,11 +5,13 @@
 ## Shared session pipeline (all channels)
 
 ```
-curator picks action + scope (never types a prompt — agent_actions registry)
+curator picks action + scope + tier-1 judge (never types a prompt — agent_actions registry)
    │
    ▼
 POST …/ai-verify/start-stream        (or POST /runs/{id}/jobs for background)
-   │  short-lived session_scope(): access check, fetch scope rows, unwrap Gemini key
+   │  short-lived session_scope(): access check, fetch scope rows,
+   │  resolve tier_model via judge_models registry + unwrap provider credentials
+   │  (Gemini: user Settings key or GEMINI_API_KEY; Qubrid: server QUBRID_API_KEY)
    ▼
 _…_event_stream generator
    1. pre-check inference_cache (Redis L1 → Postgres L2, kind=ai_verdict)
@@ -17,7 +19,8 @@ _…_event_stream generator
    2. emit session.start  {session_id, action_id, scope_size, goal, cache_hits}
    3. emit agent.verdict for each pre-cached hit  (from_inference_cache: true)
    4. if uncached: write filtered fixture into sessions/<sid>/pipeline-output/
-      and spawn `python -m eval_agent.cli run --pipeline-output … --state-dir <per-run>`
+      and spawn `python -m eval_agent.cli run --pipeline-output … --state-dir <per-run>
+      [--tier-model <id>]` (provider env keys injected — never `--api-key` argv)
       → stdout [STEP]/[STATS]/[TRACE] lines become runner.step / agent.stats /
       agent.verdict (each judged row is emitted as `[TRACE] {"type":"agent.verdict",…}`
       during the loop — do not wait for `results.jsonl`)

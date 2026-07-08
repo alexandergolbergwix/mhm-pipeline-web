@@ -41,6 +41,7 @@ import {
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
 import { MarcRecordPopup } from "@/components/MarcRecordPopup";
+import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {Glass} from "@/components/glass";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
@@ -91,6 +92,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
     null | { session_id: string; started_at: string | null; scope_size: number; action_id: string | null }
   >(null);
   const [showingHistorical, setShowingHistorical] = useState(false);
+  const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
   // Bumping this triggers the actions-loading effect to re-fire — used
   // by the Retry button when the initial load failed mid-dev-reload.
   const [reloadKey, setReloadKey] = useState(0);
@@ -232,6 +234,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
         action_id:      actionId,
         entity_ids:     entityIds,
         override_cache: overrideCache,
+        tier_model:     tierModel,
       });
     } catch (e) {
       setError((e as Error).message);
@@ -277,6 +280,13 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
               ))}
             </select>
           </div>
+          <Tier1ModelSelect
+            list={tier1List}
+            loading={tier1Loading}
+            tierModel={tierModel}
+            onChange={setTierModel}
+            disabled={running}
+          />
           <label
             className="muted text-xs flex items-center gap-2"
             title="Verdicts are cached in the shared team store (Redis/Postgres). Repeated runs over the same inputs are nearly free. Tick to skip the cache and force a fresh Gemini judgement on every candidate."

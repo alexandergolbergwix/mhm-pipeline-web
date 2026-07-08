@@ -46,9 +46,10 @@
 - **R11 — NER "judge everything" threshold is a negative sentinel (`-1.0`),
   never `0.0`.** *Why:* eval-agent computes `float(args.threshold or default)` —
   `0.0` is falsy and silently restores the 0.85 default, dropping selections.
-- **R12 — Secrets flow server-side only.** The Gemini key is unwrapped from the
-  per-user encrypted store (env `GEMINI_API_KEY` as fallback) and injected into
-  the subprocess env; it MUST never appear in argv, SSE payloads, or the trace.
+- **R12 — Secrets flow server-side only.** Provider API keys are resolved in
+  `run_job_params` (Gemini: per-user encrypted store with env `GEMINI_API_KEY`
+  fallback; Qubrid: server `QUBRID_API_KEY` only) and injected into the
+  subprocess env; they MUST never appear in argv, SSE payloads, or the trace.
   *Why:* argv is visible in `ps`; traces are replayable artefacts.
 - **R13 — AI verdicts are advisory.** They surface as pills; the curator always
   confirms. NEVER auto-approve from a verdict (auto-approve rules may *gate* on
@@ -65,3 +66,9 @@
   from `source_uri` / `local_id` (e.g. `…#Acquisition_<cn>_01`), not only `/MS_`
   paths. *Why:* 672/966 AI autofix fails on run `48ba6c13` were “no MARC
   context” because the join always returned `{}` (Rule W-45).
+- **R16 — Tier-1 judge models are registry-driven.** Canonical list in
+  `eval-agent/config/tier1_models.yaml` (backend reads via `locate_eval_agent()`).
+  Every verify surface sends `tier_model`; `run_job_params` validates per-provider
+  credentials. Non-Gemini models force linear judging (`supports_agentic: false`).
+  *Why:* Qubrid Kimi has no Gemini tool-loop; cache keys already include
+  `judge_model` (R7) (Rule W-46).

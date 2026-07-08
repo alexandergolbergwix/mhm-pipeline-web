@@ -8,7 +8,12 @@
 | `backend/app/pipeline/verify_job.py` | Background-job wrapper (`run_verify_job`) for the four job-backed channels; embeds partial `session_snapshot` in `run_jobs.progress` (live) and full snapshot in `run_jobs.result` (terminal) |
 | `backend/app/pipeline/verify_session_store.py` | `load_verify_session`: disk trace OR job-row `session_snapshot` fallback (Heroku multi-dyno) |
 | `backend/app/pipeline/ner_verdict_cache.py` | NER `ai_verdict` cache keys, content fingerprints, `sanitise_stale_ai_verdict` |
-| `backend/app/pipeline/ai_verifier.py` | `GEMINI_MODEL`, `unwrap_user_gemini_key`, legacy single-match Gemini/heuristic verdict |
+| `backend/app/pipeline/run_job_params.py` | Validates verify job params; resolves tier-1 credentials before spawn |
+| `backend/app/pipeline/judge_models.py` | Reads `eval-agent/config/tier1_models.yaml`; model list + availability |
+| `backend/app/pipeline/ai_verifier.py` | `GEMINI_MODEL` (default tier-1), `unwrap_user_gemini_key`, legacy single-match LLM/heuristic verdict |
+| `eval-agent/config/tier1_models.yaml` | Registry: `gemini-3.5-flash`, `moonshotai/Kimi-K2.5` (Qubrid OpenAI-compat) |
+| `eval-agent/eval_agent/judge_models.py` | Eval-agent-side registry loader |
+| `eval-agent/eval_agent/client/openai_compat_client.py` | `OpenAICompatJudge` — `/chat/completions` + JSON object parsing |
 | `backend/app/routers/ai_verify.py` | Authority channel: `/runs/{id}/ai-verify/*` + `_persist_ai_verdicts_to_matches` |
 | `backend/app/routers/extraction_verify.py` | NER channel: `/runs/{id}/extraction/ai-verify/*` + `_persist_ai_verdicts_to_entities` |
 | `backend/app/routers/wikidata_studio.py` | Wikidata channel: `/{id}/wikidata-studio/ai-verify/*`, `_wikidata_verify_event_stream` (~line 1677) |
@@ -21,6 +26,8 @@
 | `eval-agent/config/schemas/verdict.v2.json` | Verdict JSON Schema validated by `eval-agent verify` |
 | `frontend/src/utils/fetchVerifySession.ts` | `jobVerifySessionSnapshot`, `fetchVerifySessionWithJobFallback` — disk session GET with job-row `progress`/`result` snapshot fallback |
 | `frontend/src/hooks/useVerifyJob.ts` | Background verify job hook: poll/attach, hydrate verdicts from `progress.session_snapshot`, partial-outcome messaging |
-| `frontend/src/components/AiVerificationModal.tsx`, `AgentFlowDiagram.tsx`, `VerdictsTable.tsx` | Shared modal chrome, live flow diagram, verdict table (evaluator-agnostic) |
+| `backend/app/routers/judge_models.py` | `GET /api/judge-models` — tier-1 picker for verify modals |
+| `frontend/src/components/Tier1ModelSelect.tsx` | Shared tier-1 judge dropdown (`useTier1Model` hook) |
 | `frontend/src/components/extraction/NerVerificationModal.tsx`, `wikidata/WikidataVerificationModal.tsx`, `hmo/HmoItemVerificationModal.tsx`, `hmo/HmoSchemaVerificationModal.tsx` | Per-channel modals (NER + HMO items use `useVerifyJob`; schema still SSE) |
-| `frontend/src/api/aiVerify.ts` (+ `nerVerify.ts`, `wikidataVerify.ts`, `hmoItemVerify.ts`, `hmoSchemaVerify.ts`) | SSE session clients (`fetch` + `ReadableStream`) for replay + schema; job-backed modals hydrate via `fetchVerifySessionWithJobFallback` |
+| `frontend/src/components/AiVerificationModal.tsx`, `AgentFlowDiagram.tsx`, `VerdictsTable.tsx` | Shared modal chrome, live flow diagram, verdict table (evaluator-agnostic) |
+| `frontend/src/api/aiVerify.ts` (+ `nerVerify.ts`, `wikidataVerify.ts`, `hmoItemVerify.ts`, `hmoSchemaVerify.ts`, `judgeModels.ts`) | SSE session clients + tier-1 model list; job-backed modals hydrate via `fetchVerifySessionWithJobFallback` |

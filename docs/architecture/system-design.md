@@ -38,7 +38,7 @@ FastAPI on Heroku dynos (multi-dyno; slug FS read-only, /tmp writable)
    │                     Mazal/KIMA authority tables, run_jobs
    ├─ Heroku Redis     — L1 inference cache + slowapi rate-limit storage
    ├─ Modal (HTTPS)    — 4 NER models + genre classifier (never imported)
-   ├─ eval-agent       — Gemini-judge subprocess (never imported)
+   ├─ eval-agent       — tier-1 LLM judge subprocess (Gemini / Qubrid Kimi; never imported)
    ├─ External APIs    — VIAF SRU, Wikidata SPARQL/API, Wikibase Cloud, Resend
    └─ Heroku Scheduler — snapshots, event prune, cache prune
 ```
@@ -85,5 +85,5 @@ Shared by all five stages; understand these first:
 - [End-to-end data flow](data-flow.md) — MARC upload → published linked data.
 - [Task index](task-index.md) — "you are asked to X → read Y first".
 
-The incident-annotated rule history (W-1…W-40) lives in the repo root
+The incident-annotated rule history (W-1…W-46) lives in the repo root
 [CLAUDE.md](../../CLAUDE.md); block docs restate the ones that matter locally.

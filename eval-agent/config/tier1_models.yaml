@@ -1,0 +1,21 @@
+# Tier-1 judge models for eval-agent verification sessions.
+# Backend reads this file via locate_eval_agent() — keep in sync with
+# eval_agent/judge_models.py loader expectations.
+
+default: gemini-3.5-flash
+
+models:
+  gemini-3.5-flash:
+    label: Gemini 3.5 Flash
+    provider: gemini
+    api_key_env: GEMINI_API_KEY
+    supports_agentic: true
+
+  moonshotai/Kimi-K2.5:
+    label: Kimi K2.5 (Qubrid)
+    provider: openai_compat
+    api_key_env: QUBRID_API_KEY
+    base_url: https://platform.qubrid.com/v1
+    supports_agentic: false
+    extra_body:
+      thinking: false

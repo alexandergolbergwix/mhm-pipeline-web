@@ -66,16 +66,33 @@ async def prepare_job_params(
         JOB_KIND_NER_VERIFY, JOB_KIND_AUTHORITY_VERIFY, JOB_KIND_WIKIDATA_VERIFY,
         JOB_KIND_HMO_ITEM_VERIFY,
     ):
-        api_key = await _resolve_gemini_key(db, auth)
-        if not api_key:
+        from app.pipeline.judge_models import (  # noqa: PLC0415
+            UnknownTier1ModelError,
+            default_tier1_model,
+            ensure_tier1_credentials,
+            resolve_tier1_model,
+        )
+
+        tier_raw = merged.get("tier_model")
+        try:
+            spec = resolve_tier1_model(str(tier_raw) if tier_raw else None)
+        except UnknownTier1ModelError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "No Gemini API key configured. Open Settings → "
-                    "Credentials and add one."
-                ),
-            )
-        merged["_api_key"] = api_key
+                detail=str(exc),
+            ) from exc
+
+        gemini_key = await _resolve_gemini_key(db, auth)
+        try:
+            ensure_tier1_credentials(spec, gemini_key=gemini_key)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        merged["tier_model"] = spec.id
+        merged["_api_key"] = gemini_key or ""
         if not merged.get("session_id"):
             merged["session_id"] = new_session_id()
         await _validate_verify_params(db, run_id, kind, merged, auth)

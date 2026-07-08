@@ -14,7 +14,8 @@
 | `frontend/src/stores/theme.ts` | `useTheme` — color scheme, `initTheme()` |
 | `frontend/src/hooks/useApprovalStore.ts` | Polling entity store for AI Extraction (fast/slow poll + ETag + `mhm.entities.refreshed` listener) |
 | `frontend/src/hooks/useRunJobAttachment.ts` | Attach a page to an in-flight background job (attach-on-mount, fingerprint-guarded sync) |
-| `frontend/src/hooks/useVerifyJob.ts` | Verify job lifecycle (four verify kinds, incl. `hmo_item_verify`): poll/attach, hydrate from `progress.session_snapshot` |
+| `frontend/src/api/judgeModels.ts` | `GET /api/judge-models` — tier-1 judge list for verify modals |
+| `frontend/src/components/Tier1ModelSelect.tsx` | Shared tier-1 judge dropdown + `useTier1Model` hook |
 | `frontend/src/utils/fetchVerifySession.ts` | Job-row snapshot fallback for multi-dyno session hydration |
 | `frontend/src/hooks/useReportDerivedIds.ts` | `useReportDerivedIds` / `useReportFilteredEntities` — fingerprint-guarded child→parent reporting |
 | `frontend/src/utils/renderStable.ts` | `jobFingerprint`, `idsFingerprint`, `useLatestRef`, `EMPTY_SET` — the render-stability toolkit |

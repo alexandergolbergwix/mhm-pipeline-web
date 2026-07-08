@@ -26,6 +26,7 @@ from app.realtime import start_listener, stop_listener
 from app.routers import (
     access_request, admin, ai_verify, api_keys, auth, corpus, export, extraction,
     extraction_verify, health, history, hmo_studio, hmo_studio_items, hmo_wikibase_schema, invites,
+    judge_models,
     linked_data_explorer, onboarding, projects, rdf, research, research_evidence,
     research_entity, research_export, research_pathfinding, research_provenance,
     run_jobs, runs, saved_queries, section_export, section_import, wikibase_writes,
@@ -128,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(wikidata_labels.router, prefix="/api")
     app.include_router(ai_verify.router, prefix="/api")
     app.include_router(extraction_verify.router, prefix="/api")
+    app.include_router(judge_models.router, prefix="/api")
     app.include_router(access_request.router, prefix="/api")
     app.include_router(section_export.router, prefix="/api")
     app.include_router(section_import.router, prefix="/api")

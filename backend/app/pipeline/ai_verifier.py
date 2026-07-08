@@ -24,6 +24,11 @@ from cryptography.exceptions import InvalidTag
 from app.crypto import secrets as secrets_mod
 from app.models.api_key import ApiKey
 from app.models.run import AuthorityMatch
+from app.pipeline.judge_models import (
+    default_tier1_model,
+    resolve_tier1_model,
+    tier1_api_key_for_spec,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +46,22 @@ class AiVerdict:
     judged_at: str          # ISO 8601
 
 
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = default_tier1_model()
 
 
 async def verify_match(
     match: AuthorityMatch, *, marc_record: dict[str, Any] | None,
     gemini_key: str | None,
+    tier_model: str | None = None,
 ) -> AiVerdict:
-    """Return a verdict for *match* — Gemini if a key is present, otherwise
-    a deterministic heuristic verdict that uses the same signals the AI
-    would (sources, guards, dates, role).
-    """
-    if gemini_key:
+    """Return a verdict for *match* — LLM if credentials exist, else heuristic."""
+    spec = resolve_tier1_model(tier_model)
+    api_key = tier1_api_key_for_spec(spec, gemini_key=gemini_key)
+    if api_key:
         try:
-            return await _gemini_verdict(match, marc_record, gemini_key)
+            return await _llm_verdict(match, marc_record, spec, api_key)
         except Exception as exc:  # noqa: BLE001 — never let an upstream blip kill the call
-            logger.warning("Gemini call failed (%s); falling back to heuristic", exc)
+            logger.warning("%s call failed (%s); falling back to heuristic", spec.id, exc)
     return _heuristic_verdict(match)
 
 
@@ -154,18 +159,69 @@ def _heuristic_verdict(m: AuthorityMatch) -> AiVerdict:
     )
 
 
-# ── Gemini verdict ──────────────────────────────────────────────────────
+# ── LLM verdict ───────────────────────────────────────────────────────
+
+
+async def _llm_verdict(
+    m: AuthorityMatch,
+    marc_record: dict[str, Any] | None,
+    spec,
+    api_key: str,
+) -> AiVerdict:
+    if spec.provider == "openai_compat":
+        return await _openai_compat_verdict(m, marc_record, spec, api_key)
+    return await _gemini_verdict(m, marc_record, api_key, model_id=spec.id)
+
+
+async def _openai_compat_verdict(
+    m: AuthorityMatch,
+    marc_record: dict[str, Any] | None,
+    spec,
+    api_key: str,
+) -> AiVerdict:
+    import httpx  # noqa: PLC0415
+
+    if not spec.base_url:
+        raise RuntimeError(f"{spec.id} missing base_url")
+    prompt = _build_prompt(m, marc_record)
+    body: dict[str, Any] = {
+        "model": spec.id,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.0,
+        "response_format": {"type": "json_object"},
+    }
+    if spec.extra_body:
+        body.update(spec.extra_body)
+    url = f"{spec.base_url.rstrip('/')}/chat/completions"
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post(
+            url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=body,
+        )
+        r.raise_for_status()
+        data = r.json()
+    choices = data.get("choices") or []
+    text = choices[0]["message"]["content"] if choices else "{}"
+    parsed = json.loads(text)
+    return AiVerdict(
+        overall=str(parsed.get("overall", "abstain")),
+        reasoning=str(parsed.get("reasoning", "")),
+        model=spec.id,
+        judged_at=_now(),
+    )
 
 
 async def _gemini_verdict(
     m: AuthorityMatch, marc_record: dict[str, Any] | None, api_key: str,
+    *, model_id: str | None = None,
 ) -> AiVerdict:
     """Call Gemini's generateContent with a structured-output schema."""
     import httpx  # noqa: PLC0415 — heavy import deferred
 
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent"
+        f"{model_id or GEMINI_MODEL}:generateContent"
     )
     prompt = _build_prompt(m, marc_record)
     body = {
@@ -193,7 +249,7 @@ async def _gemini_verdict(
     return AiVerdict(
         overall=str(parsed.get("overall", "abstain")),
         reasoning=str(parsed.get("reasoning", "")),
-        model=GEMINI_MODEL,
+        model=model_id or GEMINI_MODEL,
         judged_at=_now(),
     )
 

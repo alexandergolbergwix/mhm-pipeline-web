@@ -6,6 +6,7 @@ import {
 } from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {Glass} from "@/components/glass";
+import {Tier1ModelSelect} from "@/components/Tier1ModelSelect";
 
 
 export interface HmoSchemaVerificationModalProps {
@@ -33,6 +34,7 @@ export function HmoSchemaVerificationModal({
   const {
     actions, actionId, setActionId,
     overrideCache, setOverrideCache,
+    tierModel, setTierModel, tier1List, tier1Loading,
     running, events, verdicts, flow,
     error, warning, doneMessage,
     start, stop,
@@ -87,6 +89,13 @@ export function HmoSchemaVerificationModal({
               ))}
             </select>
           </div>
+          <Tier1ModelSelect
+            list={tier1List}
+            loading={tier1Loading}
+            tierModel={tierModel}
+            onChange={setTierModel}
+            disabled={running}
+          />
           <label className="muted text-xs flex items-center gap-2">
             <input
               type="checkbox"

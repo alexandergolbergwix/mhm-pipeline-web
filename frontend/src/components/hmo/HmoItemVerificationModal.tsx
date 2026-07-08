@@ -8,6 +8,7 @@ import {
   type FlowState,
 } from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
+import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {Glass} from "@/components/glass";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
@@ -46,6 +47,7 @@ export function HmoItemVerificationModal({
   const [flow, setFlow] = useState<FlowState>(makeInitialFlowState());
   const [error, setError] = useState<string | null>(null);
   const [doneMessage, setDoneMessage] = useState<string | null>(null);
+  const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
 
   const loadSession = useCallback(async (sessionId: string, job?: import("@/api/runJobs").RunJobSnapshot) => {
     const full = await fetchVerifySessionWithJobFallback(
@@ -115,11 +117,12 @@ export function HmoItemVerificationModal({
         action_id: actionId,
         item_ids: itemIds,
         override_cache: overrideCache,
+        tier_model: tierModel,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [actionId, itemIds, overrideCache, running, startVerifyJob]);
+  }, [actionId, itemIds, overrideCache, running, startVerifyJob, tierModel]);
 
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
   const action = useMemo(
@@ -143,6 +146,13 @@ export function HmoItemVerificationModal({
           <select value={actionId} onChange={(e) => setActionId(e.target.value)} className="input-glass text-sm" data-testid="hmo-item-verify-action">
             {actions.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
           </select>
+          <Tier1ModelSelect
+            list={tier1List}
+            loading={tier1Loading}
+            tierModel={tierModel}
+            onChange={setTierModel}
+            disabled={running}
+          />
           <label className="flex items-center gap-1 muted">
             <input type="checkbox" checked={overrideCache} onChange={(e) => setOverrideCache(e.target.checked)} />
             Override cache

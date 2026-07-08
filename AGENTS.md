@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** for the full incident-annotated
-architectural rules (Rules W-1…W-45). Each rule records a real production
+architectural rules (Rules W-1…W-46). Each rule records a real production
 incident plus the invariant that closes it — check it before touching RDF
 build/SHACL, Wikidata Studio writes, HMO Wikibase uploads, auth/rate-limit
 surfaces, or the job/cache/versioning plumbing. This `AGENTS.md` is the
@@ -58,7 +58,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-45) stay in [CLAUDE.md](CLAUDE.md).
+(W-1…W-46) stay in [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -84,6 +84,17 @@ Skip only for question-only replies with zero file edits.
 Block rules (R-series per block) live in each block's `rules.md`; do not
 duplicate them here.
 
+## AI verification — tier-1 judge
+
+Every verify modal (authority, NER, Wikidata Studio, HMO items, HMO schema) and
+the HMO upload pre/post-verify checkboxes expose a **Tier-1 judge** dropdown.
+Models are listed by `GET /api/judge-models` from
+`eval-agent/config/tier1_models.yaml`. Job/SSE params carry `tier_model`.
+Gemini uses the curator's Settings key (or server `GEMINI_API_KEY`); Qubrid
+Kimi uses server `QUBRID_API_KEY` only. Non-Gemini models run linear judging
+(no agentic tool-loop). See eval-agent block **R16** and **Rule W-46** in
+[CLAUDE.md](CLAUDE.md).
+
 ## HMO Wikibase Items — curator surface
 
 On **HMO Wikibase Studio** (`HmoStudio`), item **build**, **upload**, and
@@ -91,7 +102,8 @@ On **HMO Wikibase Studio** (`HmoStudio`), item **build**, **upload**, and
 always exposes **Rebuild (skip cache)** and **Reupload (update existing)**.
 The toolbar also exposes **Verify with AI** (pre-upload audit) and
 **Autofix with AI** (live-QID compare; scoped to rows that already have a
-QID). After autofix, open a row for **Apply AI fix** / **Apply fix & push**.
+QID), each with an optional **Tier-1 judge** picker when enabled. After
+autofix, open a row for **Apply AI fix** / **Apply fix & push**.
 The table's **Data status** column shows `new (not uploaded)`, `will update
 existing`, or `updated` per row. Deep dive:
 [docs/architecture/blocks/hmo-wikibase-studio/](docs/architecture/blocks/hmo-wikibase-studio/README.md).

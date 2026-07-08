@@ -28,6 +28,7 @@ import {
 } from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
+import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {verdictStorageKey} from "@/utils/verdictKey";
 import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
 import {hydrateVerifySession} from "@/utils/verifySessionHydrate";
@@ -72,6 +73,7 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
     null | { session_id: string; started_at: string | null; scope_size: number; action_id: string | null }
   >(null);
   const [showingHistorical, setShowingHistorical] = useState(false);
+  const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
 
   const loadSession = useCallback(async (sessionId: string, job?: RunJobSnapshot) => {
     const full = await fetchVerifySessionWithJobFallback(
@@ -166,6 +168,7 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
         action_id:      actionId,
         match_ids:      matchIds,
         override_cache: overrideCache,
+        tier_model:     tierModel,
       });
     } catch (e) {
       setError((e as Error).message);
@@ -206,6 +209,13 @@ export function AiVerificationModal(props: AiVerificationModalProps) {
               ))}
             </select>
           </div>
+          <Tier1ModelSelect
+            list={tier1List}
+            loading={tier1Loading}
+            tierModel={tierModel}
+            onChange={setTierModel}
+            disabled={running}
+          />
           <label className="muted text-xs flex items-center gap-2"
                  title="Verdicts are cached on disk. Repeated runs over the same candidates serve from cache for free. Tick to skip the cache and force a fresh Gemini judgement on every candidate.">
             <input type="checkbox" checked={overrideCache}

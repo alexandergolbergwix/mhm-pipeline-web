@@ -19,4 +19,4 @@
 | `ENV`, `COOKIE_SECURE`, `FRONTEND_ORIGIN`, `SESSION_TTL_HOURS` | `settings.py` | Prod flags, cookie policy, link bases |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_NOTIFICATION_EMAIL`, `TURNSTILE_SECRET_KEY`/`SITE_KEY` | email/turnstile services | Unset → log-only mail / Turnstile bypass (dev) |
 | `WIKIBASE_CLOUD_*` | `settings.py:52-62` | Server-held OAuth for HMO Wikibase Cloud writes |
-| `GEMINI_API_KEY`, `HF_*_REPO`, `MHM_MODEL_DIR`, `KIMA_DB_PATH`, `MAZAL_DB_PATH`, `DISABLE_VIAF/KIMA/WIKIDATA`, `MHM_NO_NETWORK`, `DISABLE_PG_LISTENER` | pipeline modules | Model/data locations and kill switches |
+| `GEMINI_API_KEY`, `QUBRID_API_KEY`, `HF_*_REPO`, `MHM_MODEL_DIR`, `KIMA_DB_PATH`, `MAZAL_DB_PATH`, `DISABLE_VIAF/KIMA/WIKIDATA`, `MHM_NO_NETWORK`, `DISABLE_PG_LISTENER` | pipeline modules | LLM judge keys (Gemini default tier-1; Qubrid for Kimi K2.5 — Rule W-46), model/data locations and kill switches |

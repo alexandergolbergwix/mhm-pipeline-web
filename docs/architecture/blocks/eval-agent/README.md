@@ -4,8 +4,9 @@
 
 ## What this block does
 
-Runs the vendored **eval-agent** (a Gemini-backed, per-candidate agentic judge) over
-curator-scoped rows and streams live verdicts back to the browser. Five verify
+Runs the vendored **eval-agent** (a per-candidate agentic judge backed by
+Gemini or other tier-1 models from `tier1_models.yaml`) over curator-scoped
+rows and streams live verdicts back to the browser. Five verify
 channels share one runner core: authority matches, NER/extraction entities,
 Wikidata Studio items, HMO Wikibase items, and HMO Wikibase schema entries. Each
 channel builds a filtered JSON fixture on disk, spawns `eval-agent run` as a
@@ -19,7 +20,7 @@ verdict summaries back onto the owning DB row, and write-throughs the shared
 - [Key files](key-files.md) — runner core, per-channel routers/streams, vendored CLI, rubrics, frontend modals
 - [Session pipeline & channels](session-pipeline.md) — the shared SSE session pipeline and the five channels' quirks
 - [State, jobs & caching](state-and-caching.md) — background jobs + session snapshots, state-dir layout, verdict summary shape, cache tiers, frontend
-- [Rules](rules.md) — R1–R13 invariants (trust boundary, state dirs, cache keys, SSE, secrets)
+- [Rules](rules.md) — R1–R16 invariants (trust boundary, state dirs, cache keys, SSE, secrets, tier-1 registry)
 - [Skills & tests](skills-and-tests.md) — add a channel, debug/replay a session, inspect the cache; tests pinning this block
 
 ## Related blocks

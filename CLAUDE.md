@@ -1165,6 +1165,35 @@ Tests: `backend/tests/unit/test_rdf_helpers.py`,
 
 ---
 
+### Rule W-46 — Tier-1 judge model registry + Qubrid Kimi path (added 2026-07-08)
+
+Curators can pick the tier-1 judge per verify run from a server registry
+instead of always defaulting to `gemini-3.5-flash`:
+
+- **Registry:** `eval-agent/config/tier1_models.yaml` — today
+  `gemini-3.5-flash` (Gemini, agentic-capable) and
+  `moonshotai/Kimi-K2.5` (Qubrid OpenAI-compat, linear-only).
+  Backend mirrors via `app/pipeline/judge_models.py` (no Python import
+  across the subprocess boundary).
+- **Eval-agent:** `OpenAICompatJudge` in
+  `eval_agent/client/openai_compat_client.py`; `session.py::_build_judge`
+  routes by provider. Non-agentic models force `mode=linear` in
+  `SessionConfig.from_args`.
+- **Credentials:** Gemini — user Settings key or `GEMINI_API_KEY`;
+  Qubrid — server `QUBRID_API_KEY` only (injected into subprocess env,
+  never argv). `prepare_job_params` fails fast with a clear 400 when the
+  chosen model's key is missing.
+- **API/UI:** `GET /api/judge-models`; `Tier1ModelSelect` on every verify
+  modal + upload pre/post-verify checkboxes. Job params carry `tier_model`.
+- **Cache:** unchanged — `judge_model` already part of inference-cache
+  query summaries (Rule W-25 / eval-agent R7).
+
+Tests: `eval-agent/tests/test_judge_models.py`,
+`test_openai_compat_judge.py`, `backend/tests/test_judge_models_router.py`,
+`test_run_job_params_tier_model.py`.
+
+---
+
 ## Project structure
 
 | Path | Purpose |

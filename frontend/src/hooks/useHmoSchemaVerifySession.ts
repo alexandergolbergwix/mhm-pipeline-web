@@ -4,6 +4,7 @@ import type {AiVerdict} from "@/api/extractionApprovals";
 import {HmoSchemaVerify, verdictFromAgentEvent} from "@/api/hmoSchemaVerify";
 import type {AgentActionMeta, AgentEvent} from "@/api/wikidataVerify";
 import {makeInitialFlowState, reduceFlow, type FlowState} from "@/components/AgentFlowDiagram";
+import {useTier1Model} from "@/components/Tier1ModelSelect";
 
 function mapVerdictEvents(events: Record<string, AgentEvent>): Record<string, AiVerdict> {
   const mapped: Record<string, AiVerdict> = {};
@@ -32,6 +33,10 @@ export interface HmoSchemaVerifySession {
   setActionId: (id: string) => void;
   overrideCache: boolean;
   setOverrideCache: (v: boolean) => void;
+  tierModel: string;
+  setTierModel: (v: string) => void;
+  tier1List: ReturnType<typeof useTier1Model>["list"];
+  tier1Loading: boolean;
   running: boolean;
   events: AgentEvent[];
   verdicts: Record<string, AgentEvent>;
@@ -65,6 +70,7 @@ export function useHmoSchemaVerifySession(
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [doneMessage, setDoneMessage] = useState<string | null>(null);
+  const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
   const cancelRef = useRef<(() => void) | null>(null);
   const onVerdictsLandedRef = useRef(onVerdictsLanded);
   onVerdictsLandedRef.current = onVerdictsLanded;
@@ -104,6 +110,7 @@ export function useHmoSchemaVerifySession(
       action_id: actionId,
       ontology_uris: ontologyUris,
       override_cache: overrideCache,
+      tier_model: tierModel,
     });
     cancelRef.current = cancel;
     const collected: Record<string, AgentEvent> = {};
@@ -157,7 +164,7 @@ export function useHmoSchemaVerifySession(
         cancelRef.current = null;
       }
     })();
-  }, [running, actionId, overrideCache, pushVerdictsToParent]);
+  }, [running, actionId, overrideCache, tierModel, pushVerdictsToParent]);
 
   const stop = useCallback(() => {
     cancelRef.current?.();
@@ -167,6 +174,7 @@ export function useHmoSchemaVerifySession(
   return {
     actions, actionId, setActionId,
     overrideCache, setOverrideCache,
+    tierModel, setTierModel, tier1List, tier1Loading,
     running, events, verdicts, flow,
     error, warning, doneMessage,
     start, stop,

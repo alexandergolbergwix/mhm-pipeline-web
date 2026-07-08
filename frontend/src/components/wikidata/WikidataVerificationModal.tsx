@@ -26,6 +26,7 @@ import {
   type FlowState,
 } from "@/components/AgentFlowDiagram";
 import { VerdictsTable } from "@/components/VerdictsTable";
+import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {Glass} from "@/components/glass";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
 
@@ -55,6 +56,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
   >(null);
   const [showingHistorical, setShowingHistorical] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
 
   const loadSession = useCallback(async (sessionId: string, job?: import("@/api/runJobs").RunJobSnapshot) => {
     const full = await fetchVerifySessionWithJobFallback(
@@ -165,6 +167,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
         action_id: actionId,
         item_ids: itemIds,
         override_cache: overrideCache,
+        tier_model: tierModel,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -224,6 +227,13 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
               ))}
             </select>
           </div>
+          <Tier1ModelSelect
+            list={tier1List}
+            loading={tier1Loading}
+            tierModel={tierModel}
+            onChange={setTierModel}
+            disabled={running}
+          />
           <label
             className="muted text-xs flex items-center gap-2"
             title="Verdicts are cached on disk. Repeated runs over the same items serve from cache for free. Tick to skip the cache and force a fresh LLM judgement on every item."
