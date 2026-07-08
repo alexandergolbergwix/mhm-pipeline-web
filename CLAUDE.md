@@ -1135,6 +1135,36 @@ Tests: `backend/tests/unit/test_agent_runner_subprocess_timeout.py`
 
 ---
 
+### Rule W-45 — HMO item build hygiene + verify MARC correlation (added 2026-07-08)
+
+Audit of run `48ba6c13` AI autofix export (966 `fail` / 1967 items):
+
+1. **672 fails were “no MARC context”** — not bad RDF, but a broken verify
+   join. `hmo_wikibase_items.control_number()` only matched `/MS_` in
+   `source_uri`; HMO instance URIs embed the parent id as
+   `…#Acquisition_<cn>_01` / `Expression_…_in_<cn>`. **Every** item got an
+   empty `marc_rec` → Gemini conservatively failed. Fix:
+   `eval-agent/eval_agent/ingest/hmo_wikibase_items.py` regex-extracts the
+   8+ digit control number from `source_uri` / `local_id`.
+2. **28 bogus `Q30 Acquisition` items** — `graph_builder` minted
+   `CIDOC.E8_Acquisition` from generic MARC **561$a** `data.provenance`
+   (ownership/censorship notes). Real acquisitions stay on
+   `provenance_events` type `acquisition` (541) + `hm:ownership_history` on
+   the manuscript. The standalone Acquisition node + Wikibase item is gone.
+3. **~165 label-quote fails** — 505/500 titles kept ISBD ``"title :" "subtitle"``
+   nesting and `""` wrappers. `clean_marc_label()` now normalizes adjacent
+   quoted ISBD pairs (preserving Hebrew abbreviation gershayim like `ה"ה`);
+   `label_sanitize.sanitize_monolingual_map()` applies it at Wikibase export.
+4. **Descriptive 505 fragments as Works** — notes like `גם תרגום לטיני…` /
+   `כולל גם נוסח ביוונית` were promoted to `contents` / `work_mentions`.
+   `is_descriptive_content_title()` filters them at ingest and in
+   `_add_content_work`.
+
+Tests: `backend/tests/unit/test_rdf_helpers.py`,
+`test_graph_builder_provenance.py`, `eval-agent/tests/test_hmo_wikibase_items.py`.
+
+---
+
 ## Project structure
 
 | Path | Purpose |

@@ -66,3 +66,15 @@
     graph at construction time in `graph_builder.py` — never rely on the
     ontology file's `owl:NamedIndividual` declaration or `rdfs:subClassOf`
     being merged in at validation time (Rule W-43).
+13. **R13 — MARC 561$a provenance MUST NOT mint `E8_Acquisition`.** Generic
+    provenance text belongs on `hm:ownership_history` / `rdfs:comment` on the
+    manuscript; only typed `provenance_events` with `type=acquisition` (541) may
+    emit `CIDOC.E8_Acquisition` nodes. *Why:* 561 ownership/censorship notes
+    were exported as Wikibase Acquisition items with mismatched descriptions
+    (Rule W-45).
+14. **R14 — 505/500 work titles MUST pass `clean_marc_label` + descriptive
+    filter.** `is_descriptive_content_title()` rejects note fragments (`גם …`,
+    `כולל גם נוסח …`) before they become Work/Expression/TextTradition nodes;
+    Wikibase labels go through the same sanitizer at export. *Why:* ISBD quote
+    artifacts and descriptive notes dominated AI autofix `fail` verdicts on run
+    `48ba6c13` (Rule W-45).

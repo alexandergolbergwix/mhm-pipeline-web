@@ -76,6 +76,8 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   fixture, cache write-through.
 - `backend/tests/test_verify_job_hmo.py` — `hmo_item_verify` job-backed
   dispatch: unknown action, empty scope, end-to-end wiring, cache behaviour.
+- `eval-agent/tests/test_hmo_wikibase_items.py` — HMO `control_number()` from
+  embedded URI ids (Rule W-45).
 - `backend/tests/unit/test_agent_runner_subprocess_timeout.py` —
   `[TRACE] agent.verdict` line parsing during subprocess read.
 - `frontend/e2e/` verification specs (mocked SSE via `page.route()`).

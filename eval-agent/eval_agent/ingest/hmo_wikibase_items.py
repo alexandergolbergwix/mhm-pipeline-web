@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
+
+_HMO_CONTROL_NUMBER_RE = re.compile(r"(\d{8,})")
 
 
 def load(path: Path) -> list[dict[str, Any]]:
@@ -36,9 +39,11 @@ def control_number(item: dict[str, Any]) -> str:
         value = item.get(key)
         if value:
             return str(value)
-    source_uri = str(item.get("source_uri") or "")
-    if "/MS_" in source_uri:
-        return source_uri.rsplit("/", 1)[-1]
+    for field in (item.get("source_uri"), item.get("local_id"), item.get("_local_id")):
+        text = str(field or "")
+        match = _HMO_CONTROL_NUMBER_RE.search(text)
+        if match:
+            return match.group(1)
     return ""
 
 

@@ -60,3 +60,8 @@
   Large-scope curator modals MUST use `useVerifyJob` (not direct `start-stream`
   SSE). *Why:* 2026-07-08 — 1967-item HMO autofix showed flow progress but
   VERDICTS (0) for the entire run (Rule W-44).
+- **R15 — HMO item verify MUST correlate MARC by embedded control number.**
+  `hmo_wikibase_items.control_number()` extracts the 8+ digit parent record id
+  from `source_uri` / `local_id` (e.g. `…#Acquisition_<cn>_01`), not only `/MS_`
+  paths. *Why:* 672/966 AI autofix fails on run `48ba6c13` were “no MARC
+  context” because the join always returned `{}` (Rule W-45).

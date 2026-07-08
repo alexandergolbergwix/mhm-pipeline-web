@@ -31,14 +31,69 @@ _INSTITUTIONAL_KEYWORDS: frozenset[str] = frozenset({
 })
 
 
+_ISBD_ADJACENT_QUOTED = re.compile(
+    r'"([^"]+?)"\s+"([^"]+?)"',
+    flags=re.UNICODE,
+)
+
+
+def _normalize_marc_isbd_quotes(text: str) -> str:
+    """Collapse MARC ISBD ``"title :" "subtitle"`` quote nesting."""
+    out = text.replace('""', '"')
+
+    def _merge_quoted_pair(match: re.Match[str]) -> str:
+        left = match.group(1).strip()
+        right = match.group(2).strip()
+        if ":" in left:
+            return f"{left} {right}"
+        return match.group(0)
+
+    prev = None
+    while prev != out:
+        prev = out
+        out = _ISBD_ADJACENT_QUOTED.sub(_merge_quoted_pair, out, count=1)
+
+    out = re.sub(r'(?<=\s)"([^"]+?)"(?=\s|$)', r"\1", out)
+    out = re.sub(r'^"([^"]+?)"', r"\1", out)
+    out = re.sub(r'"([^"]+?)"$', r"\1", out)
+    out = re.sub(r':\s*"+\s*', ": ", out)
+    out = out.replace('""', '"')
+    out = re.sub(r"\s{2,}", " ", out).strip()
+    return out
+
+
+_DESCRIPTIVE_CONTENT_PREFIXES: tuple[str, ...] = (
+    "גם ",
+    "כולל גם ",
+    "also ",
+    "נוסח ",
+    "באותיות ",
+)
+
+
+def is_descriptive_content_title(title: str) -> bool:
+    """True when a 505/500 fragment is a note, not a named work title."""
+    cleaned = clean_marc_label(title)
+    if not cleaned:
+        return True
+    lower = cleaned.casefold()
+    if any(lower.startswith(prefix) for prefix in _DESCRIPTIVE_CONTENT_PREFIXES):
+        return True
+    if "באותיות לטיניות" in lower or "latin letters" in lower:
+        return True
+    if lower.startswith("כולל ") and "נוסח" in lower:
+        return True
+    return False
+
+
 def clean_marc_label(text: str) -> str:
     """Strip MARC ISBD quote artifacts and surrounding whitespace."""
     if not text:
         return ""
     if not isinstance(text, str):
         text = str(text)
-    cleaned = text.strip().strip("\"'").strip()
-    cleaned = cleaned.replace('""', '"')
+    cleaned = _normalize_marc_isbd_quotes(text.strip())
+    cleaned = cleaned.strip("\"'").strip()
     while cleaned.startswith('"') and cleaned.endswith('"') and len(cleaned) > 1:
         cleaned = cleaned[1:-1].strip()
     return cleaned

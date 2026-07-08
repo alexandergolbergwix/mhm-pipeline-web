@@ -27,6 +27,7 @@ from ..transformer.uri_generator import UriGenerator
 from .rdf_helpers import (
     clean_marc_label,
     infer_person_type,
+    is_descriptive_content_title,
     is_plausible_coords,
     names_overlap,
     normalize_participation_role,
@@ -130,12 +131,6 @@ class GraphBuilder:
             structural_cu_uris.append(main_cu_uri)
 
         prod_uri = self._add_production_event(graph, ms_uri, data, control_number)
-
-        if data.provenance:
-            acquisition_uri = URIRef(f"{HM}Acquisition_{control_number}_01")
-            graph.add((acquisition_uri, RDF.type, CIDOC.E8_Acquisition))
-            graph.add((acquisition_uri, RDFS.comment, Literal(data.provenance, lang="he")))
-            graph.add((ms_uri, HM.has_acquisition_event, acquisition_uri))
 
         # Typed, dated, geolocated non-production custody events (Rule 60).
         self._add_provenance_events(graph, ms_uri, data, control_number)
@@ -1131,21 +1126,22 @@ class GraphBuilder:
             ms_uri: Manuscript URI
             control_number: MARC control number
         """
-        if not content.get("title"):
+        title = clean_marc_label(str(content.get("title") or ""))
+        if not title or is_descriptive_content_title(title):
             return None
 
-        work_uri = self.uri_gen.work_uri(content["title"])
+        work_uri = self.uri_gen.work_uri(title)
         graph.add((work_uri, RDF.type, LRMOO.F1_Work))
-        graph.add((work_uri, HM.has_title, Literal(content["title"], lang="he")))
-        graph.add((work_uri, RDFS.label, Literal(content["title"], lang="he")))
+        graph.add((work_uri, HM.has_title, Literal(title, lang="he")))
+        graph.add((work_uri, RDFS.label, Literal(title, lang="he")))
 
-        expression_uri = self.uri_gen.expression_uri(content["title"], control_number)
+        expression_uri = self.uri_gen.expression_uri(title, control_number)
         graph.add((expression_uri, RDF.type, LRMOO.F2_Expression))
         graph.add(
             (
                 expression_uri,
                 RDFS.label,
-                Literal(f"{content['title']} (in MS {control_number})", lang="he"),
+                Literal(f"{title} (in MS {control_number})", lang="he"),
             )
         )
         graph.add((expression_uri, LRMOO.R3_is_realised_in, work_uri))
@@ -1179,7 +1175,7 @@ class GraphBuilder:
         return {
             "work": work_uri,
             "expression": expression_uri,
-            "title": content["title"],
+            "title": title,
             "folio_range": content.get("folio_range"),
         }
 

@@ -511,12 +511,18 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     # contained work. We mirror that here so the contents_ner pipeline
     # + the desktop WikidataItemBuilder's `_add_works_and_authorities`
     # see a populated `contents` list.
+    from converter.rdf.rdf_helpers import (  # noqa: PLC0415
+        clean_marc_label,
+        is_descriptive_content_title,
+    )
+
     contents: list[dict[str, Any]] = list(record.get("contents") or [])
     for chunk in _split_multi(_str(record.get("505$a"))):
-        for title in chunk.split("--"):
-            title = title.strip().strip(".,;:")
-            if title:
-                contents.append({"title": title})
+        for raw_title in chunk.split("--"):
+            title = clean_marc_label(raw_title.strip().strip(".,;:"))
+            if not title or is_descriptive_content_title(title):
+                continue
+            contents.append({"title": title})
     if contents:
         record["contents"] = contents
 
@@ -634,16 +640,21 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
     if raw_500a and raw_500a not in candidates:
         candidates.append(raw_500a)
 
+    from converter.rdf.rdf_helpers import (  # noqa: PLC0415
+        clean_marc_label,
+        is_descriptive_content_title,
+    )
+
     work_mentions: list[dict[str, str]] = []
     seen_titles: set[str] = set()
     for note in candidates:
         for match in _WORK_MENTION_TRIGGERS.finditer(note):
             raw_titles = match.group("titles").strip()
             for raw in _WORK_SEP_RE.split(raw_titles):
-                title = raw.strip().strip(".,;:")
-                if len(title) < 3:
+                title = clean_marc_label(raw.strip().strip(".,;:"))
+                if len(title) < 3 or is_descriptive_content_title(title):
                     continue
-                key = title.lower()
+                key = title.casefold()
                 if key in seen_titles:
                     continue
                 seen_titles.add(key)
@@ -874,7 +885,10 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
 
 def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
     """Promote ``work_mentions`` (500 כולל: parsing) into ``contents`` for RDF."""
-    from converter.rdf.rdf_helpers import clean_marc_label  # noqa: PLC0415
+    from converter.rdf.rdf_helpers import (  # noqa: PLC0415
+        clean_marc_label,
+        is_descriptive_content_title,
+    )
 
     mentions = record.get("work_mentions") or []
     if not mentions:
@@ -888,10 +902,10 @@ def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
     for wm in mentions:
         if not isinstance(wm, dict):
             continue
-        title = str(wm.get("title") or "").strip()
-        if not title:
+        title = clean_marc_label(str(wm.get("title") or ""))
+        if not title or is_descriptive_content_title(title):
             continue
-        key = clean_marc_label(title).casefold()
+        key = title.casefold()
         if key in existing:
             continue
         contents.append({
