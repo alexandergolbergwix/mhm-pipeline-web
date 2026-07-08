@@ -18,7 +18,6 @@ import { Glass, GlassPill } from "@/components/glass";
 import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import { HmoItemVerificationModal } from "@/components/hmo/HmoItemVerificationModal";
 import { JobProgressInline } from "@/components/jobs/JobProgressInline";
-import { useHmoItemVerifySession } from "@/hooks/useHmoItemVerifySession";
 import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
 import { useVerifyJob } from "@/hooks/useVerifyJob";
 import { fetchVerifySessionWithJobFallback } from "@/utils/fetchVerifySession";
@@ -74,8 +73,6 @@ export function ItemUploadPanel({
   const [failConfirm, setFailConfirm] = useState<{ failed: number; total: number; ids: string[] } | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewIds, setReviewIds] = useState<string[]>([]);
-
-  const reviewSession = useHmoItemVerifySession(runId);
 
   const refresh = useCallback(async () => {
     try {
@@ -383,7 +380,6 @@ export function ItemUploadPanel({
           runId={runId}
           scopeLabel={`${reviewIds.length} flagged item${reviewIds.length === 1 ? "" : "s"}`}
           itemIds={reviewIds}
-          session={reviewSession}
           onClose={() => setReviewOpen(false)}
         />
       )}

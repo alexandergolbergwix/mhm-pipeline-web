@@ -47,3 +47,20 @@ async def test_read_subprocess_stream_yields_events_before_silence(monkeypatch):
     assert len(events) == 1
     assert events[0].type == "runner.step"
     assert events[0].payload == {"message": "warming up"}
+
+
+@pytest.mark.asyncio
+async def test_read_subprocess_stream_parses_trace_agent_verdict():
+    stdout = asyncio.StreamReader()
+    line = (
+        '[TRACE] {"type":"agent.verdict","candidate":{"_local_id":"ms::1"},'
+        '"verdict":{"overall":"pass"}}\n'
+    )
+    stdout.feed_data(line.encode())
+    stdout.feed_eof()
+
+    events = [ev async for ev in agent_runner._read_subprocess_stream(stdout)]
+
+    assert len(events) == 1
+    assert events[0].type == "agent.verdict"
+    assert events[0].payload["candidate"]["_local_id"] == "ms::1"

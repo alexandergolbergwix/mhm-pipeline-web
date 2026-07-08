@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** for the full incident-annotated
-architectural rules (Rules W-1…W-43). Each rule records a real production
+architectural rules (Rules W-1…W-44). Each rule records a real production
 incident plus the invariant that closes it — check it before touching RDF
 build/SHACL, Wikidata Studio writes, HMO Wikibase uploads, auth/rate-limit
 surfaces, or the job/cache/versioning plumbing. This `AGENTS.md` is the
@@ -58,13 +58,21 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-43) stay in [CLAUDE.md](CLAUDE.md).
+(W-1…W-44) stay in [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
 Reading a block's docs before changing it (above) only works if the *last*
 agent wrote back to them. Treat an out-of-date doc as a bug: docs and code
 land in the **same** change, never as a follow-up.
+
+**Mandatory gate:** before marking any code change complete, read and follow
+[`.cursor/skills/docs-on-code-change/SKILL.md`](.cursor/skills/docs-on-code-change/SKILL.md)
+(Cursor) or
+[`.codex/skills/docs-on-code-change/SKILL.md`](.codex/skills/docs-on-code-change/SKILL.md)
+(Codex). That gate invokes the detailed workflow in
+[`.codex/skills/docs-architecture-sync/SKILL.md`](.codex/skills/docs-architecture-sync/SKILL.md).
+Skip only for question-only replies with zero file edits.
 
 | Layer | Update when |
 |---|---|

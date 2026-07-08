@@ -16,4 +16,4 @@
 | Add an endpoint (esp. unauthenticated) | [platform-security](blocks/platform-security/README.md) |
 | Build UI | [frontend](blocks/frontend/README.md) |
 | Deploy, migrate, configure | [deployment](blocks/deployment/README.md) |
-| Finish up any code change (docs sync) | [.codex/skills/docs-architecture-sync/SKILL.md](../../.codex/skills/docs-architecture-sync/SKILL.md) |
+| Finish up any code change (docs sync) | [.cursor/skills/docs-on-code-change/SKILL.md](../../.cursor/skills/docs-on-code-change/SKILL.md) (gate) → [.codex/skills/docs-architecture-sync/SKILL.md](../../.codex/skills/docs-architecture-sync/SKILL.md) (how) |

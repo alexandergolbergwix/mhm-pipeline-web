@@ -18,8 +18,11 @@ _…_event_stream generator
    3. emit agent.verdict for each pre-cached hit  (from_inference_cache: true)
    4. if uncached: write filtered fixture into sessions/<sid>/pipeline-output/
       and spawn `python -m eval_agent.cli run --pipeline-output … --state-dir <per-run>`
-      → stdout [STEP]/[STATS]/[TRACE] lines become runner.step / agent.stats / trace events
-   5. finally: read state_dir/runs/<latest>/results.jsonl → emit agent.verdict per row,
+      → stdout [STEP]/[STATS]/[TRACE] lines become runner.step / agent.stats /
+      agent.verdict (each judged row is emitted as `[TRACE] {"type":"agent.verdict",…}`
+      during the loop — do not wait for `results.jsonl`)
+   5. finally: read state_dir/runs/<latest>/results.jsonl for persistence and for
+      any verdicts not already streamed (skip re-yield when TRACE already emitted),
       persist summaries to the owning DB rows, write-through inference_cache,
       emit session.end {outcome, cache_hits, fresh_verdicts, uncached_skipped}
    │  every event is also appended to sessions/<sid>/trace.jsonl (audit + replay)

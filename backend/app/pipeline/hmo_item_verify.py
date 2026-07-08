@@ -184,6 +184,7 @@ async def hmo_item_verify_event_stream(
     pipeline_output = session_dir / "pipeline-output"
     session_dir.mkdir(parents=True, exist_ok=True)
     eval_agent_error: str | None = None
+    streamed_fresh_verdict_keys: set[str] = set()
 
     if uncached_items:
         try:
@@ -246,6 +247,14 @@ async def hmo_item_verify_event_stream(
             ):
                 persist_session_event(session_dir, ev)
                 yield ev
+                if ev.type == "agent.verdict":
+                    cand = (ev.payload or {}).get("candidate")
+                    if isinstance(cand, dict):
+                        local_id = str(
+                            cand.get("_local_id") or cand.get("local_id") or "",
+                        )
+                        if local_id:
+                            streamed_fresh_verdict_keys.add(local_id)
     finally:
         on_disk_verdicts = (
             read_run_verdicts(state_dir) if (uncached_items and not eval_agent_error) else []
@@ -260,6 +269,7 @@ async def hmo_item_verify_event_stream(
         ]
         for v in on_disk_verdicts:
             cand = v.get("candidate") if isinstance(v.get("candidate"), dict) else None
+            local_id = ""
             if isinstance(cand, dict):
                 local_id = str(
                     cand.get("_local_id") or cand.get("local_id") or "",
@@ -269,9 +279,10 @@ async def hmo_item_verify_event_stream(
                     from app.pipeline.hmo_item_views import item_label  # noqa: PLC0415
 
                     cand["label"] = item_label(item)
-            ev = AgentEvent(type="agent.verdict", payload=v)
-            persist_session_event(session_dir, ev)
-            yield ev
+            if local_id not in streamed_fresh_verdict_keys:
+                ev = AgentEvent(type="agent.verdict", payload=v)
+                persist_session_event(session_dir, ev)
+                yield ev
             verdicts_to_persist.append(v)
 
         if verdicts_to_persist:

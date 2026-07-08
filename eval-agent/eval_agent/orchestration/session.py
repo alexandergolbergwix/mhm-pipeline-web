@@ -440,6 +440,7 @@ class Session:
             for i, fut in enumerate(as_completed(futures), 1):
                 v = fut.result()
                 verdicts.append(v)
+                _emit_verdict_trace(v)
                 if v.error:
                     errors_seen += 1
                 ui.progress_line(i, total,
@@ -707,6 +708,13 @@ class Session:
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+def _emit_verdict_trace(v: Verdict) -> None:
+    """Emit one judged row for MHM Pipeline SSE/job integrators."""
+    record = v.to_jsonl_record()
+    record["type"] = "agent.verdict"
+    print("[TRACE] " + json.dumps(record, ensure_ascii=False), flush=True)
 
 
 def _load_defaults() -> dict[str, Any]:

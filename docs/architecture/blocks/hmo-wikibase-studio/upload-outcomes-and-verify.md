@@ -107,5 +107,7 @@ block, Rule W-25) and rate-limited by the action's existing
 (N)** beside **Verify with AI** — `N` is the count of visible table rows
 with a live `wikibase_id`. It opens `HmoItemVerificationModal` with
 `action_id: "autofix_hmo_wikibase_item"` pre-selected (same evaluator as
-the post-upload checkbox). Suggested fixes surface in the row drawer as
-**Apply AI fix** / **Apply fix & push** once verdicts land.
+the post-upload checkbox). The modal uses `useVerifyJob` (not direct SSE) so
+verdicts hydrate live from `run_jobs.progress.session_snapshot` on Heroku.
+Suggested fixes surface in the row drawer as **Apply AI fix** / **Apply fix &
+push** once verdicts land.

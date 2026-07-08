@@ -54,3 +54,9 @@
   confirms. NEVER auto-approve from a verdict (auto-approve rules may *gate* on
   `require_ai_pass`/`respect_ai_fail`, which is still a curator-authored rule).
   *Why:* project-wide human-in-the-loop invariant.
+- **R14 — Verdicts MUST stream during the subprocess, not only at the end.**
+  `eval-agent` emits `[TRACE] {"type":"agent.verdict",…}` after each judged
+  candidate; verify `finally` blocks skip re-yielding keys already streamed.
+  Large-scope curator modals MUST use `useVerifyJob` (not direct `start-stream`
+  SSE). *Why:* 2026-07-08 — 1967-item HMO autofix showed flow progress but
+  VERDICTS (0) for the entire run (Rule W-44).

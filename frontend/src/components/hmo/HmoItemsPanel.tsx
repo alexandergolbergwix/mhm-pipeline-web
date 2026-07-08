@@ -10,7 +10,6 @@ import {HmoItemTable} from "@/components/hmo/HmoItemTable";
 import {HmoItemVerificationModal} from "@/components/hmo/HmoItemVerificationModal";
 import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
 import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
-import {useHmoItemVerifySession} from "@/hooks/useHmoItemVerifySession";
 
 export interface HmoItemsPanelProps {
   runId: string;
@@ -66,10 +65,6 @@ export function HmoItemsPanel({
       setLoading(false);
     }
   }, [buildPresent, runId]);
-
-  const verifySession = useHmoItemVerifySession(runId, () => {
-    void load();
-  });
 
   useEffect(() => {
     void load();
@@ -174,7 +169,7 @@ export function HmoItemsPanel({
           scopeLabel={verifyIds?.length === 1 ? `Item ${verifyIds[0]}` : `${verifyIds?.length ?? 0} items`}
           itemIds={verifyIds}
           initialActionId={verifyActionId}
-          session={verifySession}
+          onVerdictsLanded={() => void load()}
           onClose={() => {
             setVerifyOpen(false);
             setVerifyActionId(undefined);

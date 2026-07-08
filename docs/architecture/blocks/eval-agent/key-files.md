@@ -16,10 +16,11 @@
 | `backend/app/pipeline/hmo_schema_verify.py` | HMO schema channel stream (cache-only persistence, no DB row) |
 | `backend/app/pipeline/agent_actions.py` | Prefab action registry (authority); siblings: `extraction_actions.py`, `wikidata_actions.py`, `hmo_item_actions.py`, `hmo_schema_actions.py` |
 | `eval-agent/eval_agent/cli.py` | Vendored CLI: `run` subcommand, `--state-dir` monkey-patches session module paths |
+| `eval-agent/eval_agent/orchestration/session.py` | Judging loop; emits `[TRACE] agent.verdict` per candidate for live UI (`_emit_verdict_trace`) |
 | `eval-agent/config/rubrics/*.md` | Per-evaluator judging rubrics (authority, person_ner, contents_ner, provenance_ner, genre_classifier, wikidata_item(+autofix), hmo_wikibase_item(+autofix), hmo_wikibase_schema) |
 | `eval-agent/config/schemas/verdict.v2.json` | Verdict JSON Schema validated by `eval-agent verify` |
 | `frontend/src/utils/fetchVerifySession.ts` | `jobVerifySessionSnapshot`, `fetchVerifySessionWithJobFallback` — disk session GET with job-row `progress`/`result` snapshot fallback |
 | `frontend/src/hooks/useVerifyJob.ts` | Background verify job hook: poll/attach, hydrate verdicts from `progress.session_snapshot`, partial-outcome messaging |
 | `frontend/src/components/AiVerificationModal.tsx`, `AgentFlowDiagram.tsx`, `VerdictsTable.tsx` | Shared modal chrome, live flow diagram, verdict table (evaluator-agnostic) |
-| `frontend/src/components/extraction/NerVerificationModal.tsx`, `wikidata/WikidataVerificationModal.tsx`, `hmo/HmoItemVerificationModal.tsx`, `hmo/HmoSchemaVerificationModal.tsx` | Per-channel modals |
-| `frontend/src/api/aiVerify.ts` (+ `nerVerify.ts`, `wikidataVerify.ts`, `hmoItemVerify.ts`, `hmoSchemaVerify.ts`) | SSE clients: `fetch` + `ReadableStream` (POST body needed, so no `EventSource`) |
+| `frontend/src/components/extraction/NerVerificationModal.tsx`, `wikidata/WikidataVerificationModal.tsx`, `hmo/HmoItemVerificationModal.tsx`, `hmo/HmoSchemaVerificationModal.tsx` | Per-channel modals (NER + HMO items use `useVerifyJob`; schema still SSE) |
+| `frontend/src/api/aiVerify.ts` (+ `nerVerify.ts`, `wikidataVerify.ts`, `hmoItemVerify.ts`, `hmoSchemaVerify.ts`) | SSE session clients (`fetch` + `ReadableStream`) for replay + schema; job-backed modals hydrate via `fetchVerifySessionWithJobFallback` |

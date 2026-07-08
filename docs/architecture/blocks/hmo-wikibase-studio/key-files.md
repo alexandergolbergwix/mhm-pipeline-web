@@ -37,5 +37,5 @@
 | `frontend/src/components/hmo/HmoItemDataStatusBadge.tsx` | Data status pill: new / will update existing / updated |
 | `frontend/src/utils/hmoItemDataStatus.ts` | `resolveHmoItemDataStatus` — derives data status from mapping + last push |
 | `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: lifecycle bar (`ItemBuildPanel`/`ItemUploadPanel` compact) + `HmoItemTable` |
-| `frontend/src/components/hmo/*` | Review UI: `HmoItemTable`, `HmoItemDetailDrawer`, `HmoItemShaclBadge`, `HmoItemUploadOutcomeBadge`, `ItemUploadPanel` (pre/post-upload AI verify checkboxes), verification modals, schema panels |
+| `frontend/src/components/hmo/*` | Review UI: `HmoItemTable`, `HmoItemDetailDrawer`, `HmoItemVerificationModal` (`useVerifyJob`), `ItemUploadPanel` (pre/post-upload AI verify), schema panels |
 | `dev-docs/hmo-wikibase-studio-plan.md` | The 8-phase buildout plan + status |

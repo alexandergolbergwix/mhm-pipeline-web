@@ -1091,6 +1091,50 @@ query — it already reaches scribes via `has_scribe`/`P14_carried_out_by`),
 
 ---
 
+### Rule W-44 — Large-scope AI verify MUST stream verdicts live via job + TRACE (added 2026-07-08)
+
+Incident: run `48ba6c13` — **Autofix with AI (1967 items)** showed an active
+`AgentFlowDiagram` (`[STATS]` lines updating judged count) but
+`VerdictsTable` stayed at **VERDICTS (0)** / "Waiting for verdicts…" for the
+entire multi-hour run.
+
+Root cause, two parts:
+
+1. **Subprocess verdict timing.** `eval-agent` wrote `results.jsonl` only in
+   `checkpoint()` at session end. `spawn_eval_agent_run` forwarded
+   `[STEP]`/`[STATS]` during the loop but not `agent.verdict`; verify streams
+   re-read `results.jsonl` in a `finally` block and only then emitted verdicts.
+   For 1967 uncached items at 30 rpm autofix that meant ~65 minutes with a live
+   UI count of zero even while Gemini was judging.
+2. **HMO item modal used direct SSE.** `HmoItemVerificationModal` called
+   `POST …/ai-verify/start-stream` via `useHmoItemVerifySession` instead of the
+   job-backed path (`useVerifyJob` + `run_jobs.progress.session_snapshot`) that
+   NER verify and `ItemUploadPanel` pre/post-upload already use. Long-lived SSE
+   on Heroku is fragile; without incremental `agent.verdict` events the job
+   snapshot also had nothing to hydrate mid-run.
+
+Invariants now enforced:
+
+- **`eval-agent` emits `[TRACE] {"type":"agent.verdict",…}` after each judged
+  candidate** (`eval_agent/orchestration/session.py::_emit_verdict_trace`).
+  `agent_runner._read_subprocess_stream` maps these to `AgentEvent` type
+  `agent.verdict` during the subprocess loop.
+- **Verify stream `finally` blocks MUST NOT re-yield verdicts already streamed**
+  during the subprocess (track streamed `_local_id` / `_match_id` keys; still
+  persist from `results.jsonl` for durability).
+- **Large-scope curator verify modals MUST use `useVerifyJob`**, not a direct
+  `start-stream` hook. `HmoItemVerificationModal` now mirrors
+  `NerVerificationModal`: `RunJobs.start(…, kind="hmo_item_verify")`, poll every
+  2 s, hydrate from `fetchVerifySessionWithJobFallback` +
+  `progress.session_snapshot`. The `start-stream` route remains for replay/tests;
+  it is not the primary UI path for 1000+ item scopes.
+
+Tests: `backend/tests/unit/test_agent_runner_subprocess_timeout.py`
+(`test_read_subprocess_stream_parses_trace_agent_verdict`),
+`backend/tests/test_verify_job_hmo.py`.
+
+---
+
 ## Project structure
 
 | Path | Purpose |

@@ -3,12 +3,17 @@ name: docs-architecture-sync
 description: >-
   Keeps docs/architecture (the per-block README/key-files/how-it-works/
   rules/skills/tests pages) synchronized with backend and frontend code
-  changes in mhm-pipeline-web. Use before finishing any change that adds,
-  renames, or removes a file, route, job kind, model field, or invariant —
-  docs and code must land in the same change, never as a follow-up.
+  changes in mhm-pipeline-web. Invoked by docs-on-code-change on every code
+  change; use before finishing any change that adds, renames, or removes a
+  file, route, job kind, model field, or invariant — docs and code must land
+  in the same change, never as a follow-up.
 ---
 
 # Keep `docs/architecture` in sync with code changes
+
+> **Entry point:** agents MUST pass
+> [docs-on-code-change](../docs-on-code-change/SKILL.md) before marking any
+> code task complete. This file is the detailed *how*.
 
 An out-of-date architecture page is a bug, not a nice-to-have. The next
 agent reads a block's `README.md` + `rules.md` before touching it (see

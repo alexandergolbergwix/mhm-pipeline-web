@@ -1,17 +1,31 @@
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
 
-import {AgentFlowDiagram, type FlowState} from "@/components/AgentFlowDiagram";
+import {HmoItemVerify} from "@/api/hmoItemVerify";
+import type {AgentActionMeta, AgentEvent} from "@/api/wikidataVerify";
+import {
+  AgentFlowDiagram,
+  makeInitialFlowState,
+  type FlowState,
+} from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {Glass} from "@/components/glass";
-import type {HmoItemVerifySession} from "@/hooks/useHmoItemVerifySession";
+import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
+import {useVerifyJob} from "@/hooks/useVerifyJob";
+import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
+import {hydrateVerifySession, mergeFlowWithJobProgress} from "@/utils/verifySessionHydrate";
+
+function verdictLocalId(row: Record<string, unknown>): string {
+  const cand = (row.candidate ?? {}) as Record<string, unknown>;
+  return String(cand._local_id ?? cand.local_id ?? "");
+}
 
 export interface HmoItemVerificationModalProps {
   runId: string;
   scopeLabel: string;
   itemIds?: string[];
   initialActionId?: string;
-  session: HmoItemVerifySession;
   onClose: () => void;
+  onVerdictsLanded?: () => void;
 }
 
 export function HmoItemVerificationModal({
@@ -19,29 +33,99 @@ export function HmoItemVerificationModal({
   scopeLabel,
   itemIds,
   initialActionId,
-  session,
   onClose,
+  onVerdictsLanded,
 }: HmoItemVerificationModalProps) {
-  const {
-    actions, actionId, setActionId, overrideCache, setOverrideCache,
-    running, events, verdicts, flow, error, warning, doneMessage, start, stop,
-  } = session;
+  useGlassOverlayLifecycle(true);
 
-  const [localFlow, setLocalFlow] = useState<FlowState>(flow);
+  const [actions, setActions] = useState<AgentActionMeta[]>([]);
+  const [actionId, setActionId] = useState("audit_hmo_wikibase_item");
+  const [overrideCache, setOverrideCache] = useState(false);
+  const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [verdicts, setVerdicts] = useState<Record<string, AgentEvent>>({});
+  const [flow, setFlow] = useState<FlowState>(makeInitialFlowState());
+  const [error, setError] = useState<string | null>(null);
+  const [doneMessage, setDoneMessage] = useState<string | null>(null);
+
+  const loadSession = useCallback(async (sessionId: string, job?: import("@/api/runJobs").RunJobSnapshot) => {
+    const full = await fetchVerifySessionWithJobFallback(
+      runId,
+      sessionId,
+      "hmo_item_verify",
+      HmoItemVerify.session,
+      job,
+    );
+    const hydrated = hydrateVerifySession(full, verdictLocalId);
+    setEvents(hydrated.events);
+    setVerdicts(hydrated.verdicts);
+    setFlow(mergeFlowWithJobProgress(hydrated.flow, job?.progress));
+  }, [runId]);
+
+  const handleVerifyFailed = useCallback((msg: string) => {
+    setError(msg);
+    setDoneMessage(null);
+  }, []);
+
+  const handleVerifyComplete = useCallback(() => {
+    setDoneMessage("Verification complete.");
+    onVerdictsLanded?.();
+  }, [onVerdictsLanded]);
+
+  const {running, start: startVerifyJob, stop, progress} = useVerifyJob({
+    runId,
+    kind: "hmo_item_verify",
+    loadSession,
+    onFailed: handleVerifyFailed,
+    onComplete: handleVerifyComplete,
+  });
 
   useEffect(() => {
-    setLocalFlow(flow);
-  }, [flow]);
+    if (!runId) return;
+    let cancelled = false;
+    void HmoItemVerify.actions(runId, "selection")
+      .then((list) => {
+        if (cancelled) return;
+        setActions(list);
+        if (initialActionId) {
+          setActionId(initialActionId);
+        } else if (list.length > 0) {
+          setActionId(list[0].id);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => { cancelled = true; };
+  }, [runId, initialActionId]);
 
   useEffect(() => {
-    if (initialActionId) {
-      setActionId(initialActionId);
+    if (!progress) return;
+    setFlow((prev) => mergeFlowWithJobProgress(prev, progress));
+  }, [progress]);
+
+  const handleStart = useCallback(async () => {
+    if (running) return;
+    setError(null);
+    setDoneMessage(null);
+    setEvents([]);
+    setVerdicts({});
+    setFlow(makeInitialFlowState());
+    try {
+      await startVerifyJob({
+        action_id: actionId,
+        item_ids: itemIds,
+        override_cache: overrideCache,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
-  }, [initialActionId, setActionId]);
+  }, [actionId, itemIds, overrideCache, running, startVerifyJob]);
 
-  const handleStart = useCallback(() => {
-    start(runId, itemIds);
-  }, [itemIds, runId, start]);
+  const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+  const action = useMemo(
+    () => actions.find((a) => a.id === actionId) ?? null,
+    [actions, actionId],
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -50,6 +134,7 @@ export function HmoItemVerificationModal({
           <div>
             <div className="kicker">AI verification</div>
             <h3 className="text-lg font-medium">{scopeLabel}</h3>
+            {action && <p className="muted text-sm mt-1">{action.description}</p>}
           </div>
           <button type="button" className="button-ghost text-sm" onClick={onClose}>Close</button>
         </div>
@@ -63,7 +148,7 @@ export function HmoItemVerificationModal({
             Override cache
           </label>
           {!running ? (
-            <button type="button" className="button-primary text-sm" onClick={handleStart}>Start</button>
+            <button type="button" className="button-primary text-sm" onClick={() => void handleStart()}>Start</button>
           ) : (
             <button type="button" className="button-ghost text-sm" onClick={stop}>Stop</button>
           )}
@@ -78,10 +163,9 @@ export function HmoItemVerificationModal({
         )}
 
         {error && <p className="text-danger text-sm">{error}</p>}
-        {warning && <p className="text-warn text-sm">{warning}</p>}
         {doneMessage && <p className="text-biu-sky text-sm">{doneMessage}</p>}
 
-        <AgentFlowDiagram lastEvent={events[events.length - 1] ?? null} flow={localFlow} />
+        <AgentFlowDiagram lastEvent={lastEvent} flow={flow} />
         <VerdictsTable verdicts={verdicts} />
       </Glass>
     </div>
