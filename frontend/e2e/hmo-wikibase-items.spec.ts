@@ -23,6 +23,8 @@ test.describe("HMO Wikibase Items review UI", () => {
     await expect(page.getByTestId("hmo-item-table-scroll")).toBeVisible();
     await expect(page.getByTestId("hmo-items-verify-ai")).toBeVisible();
     await expect(page.getByTestId("hmo-items-verify-ai")).toHaveText(/Verify with AI/);
+    await expect(page.getByTestId("hmo-items-autofix-ai")).toBeVisible();
+    await expect(page.getByTestId("hmo-items-autofix-ai")).toHaveText(/Autofix with AI/);
     await expect(page.getByTestId("hmo-item-row-QDraft_MS_123")).toBeVisible();
   });
 

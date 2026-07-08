@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
 
 import {ApiError} from "@/api/client";
 import {HmoStudioItems, type HmoStudioItem} from "@/api/hmoStudioItems";
@@ -38,10 +38,20 @@ export function HmoItemsPanel({
   const [openItem, setOpenItem] = useState<HmoStudioItem | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [verifyIds, setVerifyIds] = useState<string[] | undefined>(undefined);
+  const [verifyActionId, setVerifyActionId] = useState<string | undefined>(undefined);
 
-  const verifySession = useHmoItemVerifySession(runId, () => {
-    void load();
-  });
+  const autofixItemIds = useMemo(() => {
+    const visible = new Set(filteredIds);
+    return items
+      .filter((item) => visible.has(item.local_id) && Boolean(item.wikibase_id?.trim()))
+      .map((item) => item.local_id);
+  }, [filteredIds, items]);
+
+  const openVerify = useCallback((itemIds: string[], actionId?: string) => {
+    setVerifyIds(itemIds);
+    setVerifyActionId(actionId);
+    setVerifyOpen(true);
+  }, []);
 
   const load = useCallback(async () => {
     if (!buildPresent) return;
@@ -56,6 +66,10 @@ export function HmoItemsPanel({
       setLoading(false);
     }
   }, [buildPresent, runId]);
+
+  const verifySession = useHmoItemVerifySession(runId, () => {
+    void load();
+  });
 
   useEffect(() => {
     void load();
@@ -90,12 +104,19 @@ export function HmoItemsPanel({
             className="button-ghost text-xs"
             disabled={!filteredIds.length}
             data-testid="hmo-items-verify-ai"
-            onClick={() => {
-              setVerifyIds(filteredIds);
-              setVerifyOpen(true);
-            }}
+            onClick={() => openVerify(filteredIds, "audit_hmo_wikibase_item")}
           >
             Verify with AI ({filteredIds.length})
+          </button>
+          <button
+            type="button"
+            className="button-ghost text-xs"
+            disabled={!autofixItemIds.length}
+            title="Compare each item's live Wikibase entity against the build and propose fixes you can apply per row (requires a QID)."
+            data-testid="hmo-items-autofix-ai"
+            onClick={() => openVerify(autofixItemIds, "autofix_hmo_wikibase_item")}
+          >
+            Autofix with AI ({autofixItemIds.length})
           </button>
         </div>
       </div>
@@ -138,10 +159,12 @@ export function HmoItemsPanel({
           allItems={items}
           onClose={() => setOpenItem(null)}
           onSaved={() => void load()}
-          onVerify={() => {
-            setVerifyIds([openItem.local_id]);
-            setVerifyOpen(true);
-          }}
+          onVerify={() => openVerify([openItem.local_id], "audit_hmo_wikibase_item")}
+          onAutofix={
+            openItem.wikibase_id?.trim()
+              ? () => openVerify([openItem.local_id], "autofix_hmo_wikibase_item")
+              : undefined
+          }
         />
       )}
 
@@ -150,8 +173,12 @@ export function HmoItemsPanel({
           runId={runId}
           scopeLabel={verifyIds?.length === 1 ? `Item ${verifyIds[0]}` : `${verifyIds?.length ?? 0} items`}
           itemIds={verifyIds}
+          initialActionId={verifyActionId}
           session={verifySession}
-          onClose={() => setVerifyOpen(false)}
+          onClose={() => {
+            setVerifyOpen(false);
+            setVerifyActionId(undefined);
+          }}
         />
       )}
     </Glass>

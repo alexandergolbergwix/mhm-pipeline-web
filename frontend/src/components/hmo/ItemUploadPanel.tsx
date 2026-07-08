@@ -310,7 +310,7 @@ export function ItemUploadPanel({
             disabled={busy || jobRunning || preVerifyRunning}
             data-testid="hmo-upload-postverify-checkbox"
           />
-          Verify with AI after upload
+          Verify with AI after upload (autofix)
         </label>
       </div>
     </>

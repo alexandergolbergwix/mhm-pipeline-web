@@ -81,6 +81,9 @@ duplicate them here.
 On **HMO Wikibase Studio** (`HmoStudio`), item **build**, **upload**, and
 **review** share one page: a lifecycle bar directly above the review table
 always exposes **Rebuild (skip cache)** and **Reupload (update existing)**.
+The toolbar also exposes **Verify with AI** (pre-upload audit) and
+**Autofix with AI** (live-QID compare; scoped to rows that already have a
+QID). After autofix, open a row for **Apply AI fix** / **Apply fix & push**.
 The table's **Data status** column shows `new (not uploaded)`, `will update
 existing`, or `updated` per row. Deep dive:
 [docs/architecture/blocks/hmo-wikibase-studio/](docs/architecture/blocks/hmo-wikibase-studio/README.md).

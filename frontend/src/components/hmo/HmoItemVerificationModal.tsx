@@ -9,6 +9,7 @@ export interface HmoItemVerificationModalProps {
   runId: string;
   scopeLabel: string;
   itemIds?: string[];
+  initialActionId?: string;
   session: HmoItemVerifySession;
   onClose: () => void;
 }
@@ -17,6 +18,7 @@ export function HmoItemVerificationModal({
   runId,
   scopeLabel,
   itemIds,
+  initialActionId,
   session,
   onClose,
 }: HmoItemVerificationModalProps) {
@@ -30,6 +32,12 @@ export function HmoItemVerificationModal({
   useEffect(() => {
     setLocalFlow(flow);
   }, [flow]);
+
+  useEffect(() => {
+    if (initialActionId) {
+      setActionId(initialActionId);
+    }
+  }, [initialActionId, setActionId]);
 
   const handleStart = useCallback(() => {
     start(runId, itemIds);
@@ -47,7 +55,7 @@ export function HmoItemVerificationModal({
         </div>
 
         <div className="flex flex-wrap gap-3 items-center text-sm">
-          <select value={actionId} onChange={(e) => setActionId(e.target.value)} className="input-glass text-sm">
+          <select value={actionId} onChange={(e) => setActionId(e.target.value)} className="input-glass text-sm" data-testid="hmo-item-verify-action">
             {actions.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
           </select>
           <label className="flex items-center gap-1 muted">
@@ -60,6 +68,14 @@ export function HmoItemVerificationModal({
             <button type="button" className="button-ghost text-sm" onClick={stop}>Stop</button>
           )}
         </div>
+
+        {actionId === "autofix_hmo_wikibase_item" && (
+          <p className="text-xs muted">
+            Compares each item&apos;s live Wikibase entity against the build and proposes
+            high-confidence fixes. Open a row afterward to use <b>Apply AI fix</b> or
+            <b> Apply fix &amp; push</b>.
+          </p>
+        )}
 
         {error && <p className="text-danger text-sm">{error}</p>}
         {warning && <p className="text-warn text-sm">{warning}</p>}

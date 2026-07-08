@@ -51,8 +51,9 @@ by `hmo_source_uri` and records the mapping (`status: adopted`) without writing
 to the wiki; 503 means the SPARQL endpoint is down (fail closed, retry later).
 
 ### Skill: apply an AI-suggested fix and push it live without a full re-upload
-1. Run "Verify with AI after upload" (or open the item's AI-verify modal
-   manually) so `HmoStudioItemOverride.ai_verdict.suggested_fix` is populated.
+1. Run **Autofix with AI** on the Wikibase Items toolbar (or "Verify with AI
+   after upload", or the row drawer's **Autofix with AI**) so
+   `HmoStudioItemOverride.ai_verdict.suggested_fix` is populated.
 2. In `HmoItemDetailDrawer`, click "Apply AI fix" to merge the suggestion into
    the override, or "Apply fix & push" to merge AND immediately call
    `POST /runs/{id}/hmo-studio/items/{local_id}/push` in one action.

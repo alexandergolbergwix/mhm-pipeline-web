@@ -102,3 +102,10 @@ blocks or silently proceeds:
 Both checkboxes' tooltips note the per-item Gemini call is cached (caching
 block, Rule W-25) and rate-limited by the action's existing
 `rate_limit_rpm` (60 audit, 30 autofix) — no new cost controls were needed.
+
+**Review-toolbar autofix.** `HmoItemsPanel.tsx` also exposes **Autofix with AI
+(N)** beside **Verify with AI** — `N` is the count of visible table rows
+with a live `wikibase_id`. It opens `HmoItemVerificationModal` with
+`action_id: "autofix_hmo_wikibase_item"` pre-selected (same evaluator as
+the post-upload checkbox). Suggested fixes surface in the row drawer as
+**Apply AI fix** / **Apply fix & push** once verdicts land.

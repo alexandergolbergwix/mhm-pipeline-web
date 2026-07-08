@@ -17,6 +17,7 @@ export interface HmoItemDetailDrawerProps {
   onClose: () => void;
   onSaved: () => void;
   onVerify?: () => void;
+  onAutofix?: () => void;
 }
 
 export function HmoItemDetailDrawer({
@@ -27,6 +28,7 @@ export function HmoItemDetailDrawer({
   onClose,
   onSaved,
   onVerify,
+  onAutofix,
 }: HmoItemDetailDrawerProps) {
   const [pinned, setPinned] = useState(false);
   const [labels, setLabels] = useState({...item.labels});
@@ -176,8 +178,13 @@ export function HmoItemDetailDrawer({
         />
         <AiVerdictPill verdict={item.ai_verdict} />
         {onVerify && (
-          <button type="button" className="button-ghost text-xs" onClick={onVerify}>
+          <button type="button" className="button-ghost text-xs" onClick={onVerify} data-testid="hmo-item-verify-btn">
             Verify with AI
+          </button>
+        )}
+        {onAutofix && (
+          <button type="button" className="button-ghost text-xs" onClick={onAutofix} data-testid="hmo-item-autofix-btn">
+            Autofix with AI
           </button>
         )}
         {(item.ai_verdict as {suggested_fixes?: unknown[]} | null)?.suggested_fixes?.length ? (
