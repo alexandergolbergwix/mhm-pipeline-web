@@ -96,6 +96,7 @@ def schema_verdict_query_summary(
         "ontology_uri": str(entry.get("ontology_uri") or ""),
         "entity_kind": str(entry.get("entity_kind") or ""),
         "label": str(entry.get("label") or ""),
+        "datatype": entry.get("datatype"),
         "wikibase_id": entry.get("wikibase_id"),
         "status": str(entry.get("status") or ""),
         "judge_model": judge_model,

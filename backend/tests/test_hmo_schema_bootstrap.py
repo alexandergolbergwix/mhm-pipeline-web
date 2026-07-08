@@ -187,6 +187,30 @@ async def test_second_bootstrap_syncs_datatype_on_skip(db_session) -> None:
     assert row.datatype == "quantity"
 
 
+def test_refresh_report_datatypes_upgrades_stale_string_entries() -> None:
+    uri = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#is_factual"
+    stale = pipeline.SchemaBootstrapResult(
+        dry_run=False,
+        created=0,
+        skipped=1,
+        failed=0,
+        entries=[
+            pipeline.SchemaBootstrapEntry(
+                ontology_uri=uri,
+                entity_kind=ENTITY_KIND_PROPERTY,
+                label="is factual",
+                wikibase_id="P204",
+                status="skipped",
+                datatype="string",
+            ),
+        ],
+    )
+
+    refreshed = pipeline.refresh_report_datatypes(stale)
+
+    assert refreshed.entries[0].datatype == "boolean"
+
+
 @pytest.mark.asyncio
 async def test_second_bootstrap_run_creates_nothing(db_session, tiny_schema) -> None:
     first_writer = _FakeWriter()

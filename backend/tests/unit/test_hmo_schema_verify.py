@@ -36,6 +36,19 @@ def _report(*statuses: str) -> SchemaBootstrapResult:
     )
 
 
+def test_schema_verdict_query_summary_includes_datatype() -> None:
+    entry = {
+        "ontology_uri": "http://example.org#is_factual",
+        "entity_kind": "property",
+        "label": "is factual",
+        "datatype": "boolean",
+        "wikibase_id": "P204",
+        "status": "skipped",
+    }
+    summary = hsv.schema_verdict_query_summary(entry, "gemini-3.5-flash")
+    assert summary["datatype"] == "boolean"
+
+
 def test_filter_schema_entries_includes_skipped_rows() -> None:
     report = _report("skipped", "would_create", "failed", "created")
 

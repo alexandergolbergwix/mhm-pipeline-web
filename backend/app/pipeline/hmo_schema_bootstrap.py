@@ -23,7 +23,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -430,8 +430,13 @@ async def load_last_bootstrap_report(
     """Latest bootstrap report, regenerated when mappings have changed."""
     if not force_refresh:
         cached = await _load_persisted_bootstrap_report(db)
-        if cached is not None and not await _bootstrap_report_is_stale(db, cached):
-            return cached
+        if cached is not None:
+            refreshed = await asyncio.to_thread(refresh_report_datatypes, cached)
+            if refreshed is not cached:
+                cache_schema_bootstrap_report(refreshed)
+                cached = refreshed
+            if not await _bootstrap_report_is_stale(db, cached):
+                return cached
     fresh = await bootstrap_schema(db, writer=None, dry_run=True)
     cache_schema_bootstrap_report(fresh)
     return fresh
@@ -478,6 +483,44 @@ async def _bootstrap_report_is_stale(
     )
     expected = status.total_classes + status.total_properties
     return mapped_in_report < expected
+
+
+def refresh_report_datatypes(result: SchemaBootstrapResult) -> SchemaBootstrapResult:
+    """Re-apply ontology datatype inference to a persisted bootstrap report.
+
+    Job results and on-disk caches snapshot datatypes at write time. When
+    ``ontology_schema_reader`` improves (e.g. xsd:boolean → ``boolean``),
+    stale reports otherwise keep serving ``string`` and poison AI-verify
+    cache lookups that omit datatype from their key.
+    """
+    from converter.wikibase.ontology_schema_reader import read_hmo_schema  # noqa: PLC0415
+
+    schema = read_hmo_schema()
+    dtype_by_uri = {prop.uri: prop.datatype for prop in schema.properties}
+
+    new_entries: list[SchemaBootstrapEntry] = []
+    changed = False
+    for entry in result.entries:
+        if entry.entity_kind != ENTITY_KIND_PROPERTY:
+            new_entries.append(entry)
+            continue
+        fresh_dtype = dtype_by_uri.get(entry.ontology_uri)
+        if fresh_dtype is None or entry.datatype == fresh_dtype:
+            new_entries.append(entry)
+            continue
+        changed = True
+        new_entries.append(replace(entry, datatype=fresh_dtype))
+
+    if not changed:
+        return result
+    return SchemaBootstrapResult(
+        dry_run=result.dry_run,
+        created=result.created,
+        skipped=result.skipped,
+        failed=result.failed,
+        would_create=result.would_create,
+        entries=new_entries,
+    )
 
 
 def load_cached_schema_bootstrap_report() -> SchemaBootstrapResult | None:
