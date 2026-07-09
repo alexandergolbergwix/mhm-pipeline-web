@@ -92,6 +92,7 @@ class GraphBuilder:
         work_expression_pairs: list[dict[str, Any]] = []
         structural_cu_uris: list[URIRef] = []
         scribe_entity_uris: list[URIRef] = []
+        shelfmark = data.shelfmark
 
         self._add_manuscript(graph, ms_uri, data, control_number)
         self._materialize_authority_enrichment(data)
@@ -117,12 +118,13 @@ class GraphBuilder:
 
             main_cu_uri = URIRef(f"{HM}CU_{control_number}_main")
             graph.add((main_cu_uri, RDF.type, HM.Codicological_Unit))
-            graph.add(
-                (
-                    main_cu_uri,
-                    RDFS.label,
-                    Literal(f"Main codicological unit of MS {control_number}", lang="en"),
-                )
+            self._stamp_codicological_unit_metadata(
+                graph,
+                main_cu_uri,
+                control_number=control_number,
+                is_main=True,
+                work_title=data.title,
+                shelfmark=shelfmark,
             )
             graph.add((ms_uri, HM.is_composed_of, main_cu_uri))
             graph.add((main_cu_uri, HM.forms_part_of, ms_uri))
@@ -173,12 +175,14 @@ class GraphBuilder:
             work_expression_pairs.append(content_record)
             cu_uri = URIRef(f"{HM}CU_{control_number}_{index:02d}")
             graph.add((cu_uri, RDF.type, HM.Codicological_Unit))
-            graph.add(
-                (
-                    cu_uri,
-                    RDFS.label,
-                    Literal(f"Codicological unit {index} of MS {control_number}", lang="en"),
-                )
+            self._stamp_codicological_unit_metadata(
+                graph,
+                cu_uri,
+                control_number=control_number,
+                sequence=index,
+                work_title=content_record.get("title"),
+                folio_range=content_record.get("folio_range"),
+                shelfmark=shelfmark,
             )
             graph.add((ms_uri, HM.is_composed_of, cu_uri))
             graph.add((cu_uri, HM.forms_part_of, ms_uri))
@@ -205,12 +209,18 @@ class GraphBuilder:
         if not structural_cu_uris:
             default_cu_uri = URIRef(f"{HM}CU_{control_number}_01")
             graph.add((default_cu_uri, RDF.type, HM.Codicological_Unit))
-            graph.add(
-                (
-                    default_cu_uri,
-                    RDFS.label,
-                    Literal(f"Codicological unit 1 of MS {control_number}", lang="en"),
-                )
+            default_title = (
+                work_expression_pairs[0].get("title")
+                if work_expression_pairs
+                else data.title
+            )
+            self._stamp_codicological_unit_metadata(
+                graph,
+                default_cu_uri,
+                control_number=control_number,
+                sequence=1,
+                work_title=default_title,
+                shelfmark=shelfmark,
             )
             graph.add((ms_uri, HM.is_composed_of, default_cu_uri))
             graph.add((default_cu_uri, HM.forms_part_of, ms_uri))
@@ -389,6 +399,8 @@ class GraphBuilder:
                 parent_uri=parent_uri,
                 folio_range=cu.get("folio_range"),
                 unit_status=str(cu.get("unit_status", "CoreUnit_status")),
+                work_title=data.title,
+                shelfmark=shelfmark,
             )
             cu_uris[idx] = cu_uri
 
@@ -439,6 +451,40 @@ class GraphBuilder:
     def _add_summary(self, graph: Graph, ms_uri: URIRef, summary: str) -> None:
         """Attach MARC 520 summary text to the manuscript."""
         graph.add((ms_uri, RDFS.comment, Literal(summary, lang="he")))
+
+    @staticmethod
+    def _stamp_codicological_unit_metadata(
+        graph: Graph,
+        cu_uri: URIRef,
+        *,
+        control_number: str,
+        sequence: int | None = None,
+        is_main: bool = False,
+        work_title: str | None = None,
+        folio_range: str | None = None,
+        shelfmark: str | None = None,
+    ) -> None:
+        """Attach human-readable Wikibase label + description to a CU node."""
+        if is_main:
+            label = f"Main codicological unit of MS {control_number}"
+            prefix = f"Primary codicological unit of manuscript {control_number}"
+        else:
+            unit_number = sequence if sequence is not None else 1
+            label = f"Codicological unit {unit_number} of MS {control_number}"
+            prefix = f"Codicological unit {unit_number} of manuscript {control_number}"
+
+        details: list[str] = []
+        if shelfmark:
+            details.append(f"shelfmark {shelfmark}")
+        if work_title:
+            details.append(f"containing '{work_title}'")
+        if folio_range:
+            details.append(f"folios {folio_range}")
+
+        comment = prefix + (f" ({', '.join(details)})" if details else "") + "."
+
+        graph.add((cu_uri, RDFS.label, Literal(label, lang="en")))
+        graph.add((cu_uri, RDFS.comment, Literal(comment, lang="en")))
 
     def _add_manuscript(
         self, graph: Graph, ms_uri: URIRef, data: ExtractedData, control_number: str
@@ -1980,6 +2026,8 @@ class GraphBuilder:
         parent_uri: URIRef | None = None,
         folio_range: str | None = None,
         unit_status: str = "CoreUnit_status",
+        work_title: str | None = None,
+        shelfmark: str | None = None,
     ) -> URIRef:
         """Add a codicological unit to a manuscript.
 
@@ -1995,6 +2043,8 @@ class GraphBuilder:
             parent_uri: Optional parent CU URI for nested units
             folio_range: Optional folio range for this unit
             unit_status: Status of the unit (core, later addition, etc.)
+            work_title: Optional work title for Wikibase description text
+            shelfmark: Optional holding shelfmark for Wikibase description text
 
         Returns:
             URI of the codicological unit
@@ -2009,12 +2059,14 @@ class GraphBuilder:
             graph.add((cu_uri, HM.is_atomic_unit, Literal(False, datatype=XSD.boolean)))
 
         graph.add((cu_uri, RDF.type, HM.Codicological_Unit))
-        graph.add(
-            (
-                cu_uri,
-                RDFS.label,
-                Literal(f"Codicological unit {sequence} of MS {control_number}", lang="en"),
-            )
+        self._stamp_codicological_unit_metadata(
+            graph,
+            cu_uri,
+            control_number=control_number,
+            sequence=sequence,
+            work_title=work_title,
+            folio_range=folio_range,
+            shelfmark=shelfmark,
         )
         graph.add((cu_uri, HM.nesting_level, Literal(nesting_level, datatype=XSD.integer)))
         graph.add((cu_uri, HM.unit_sequence, Literal(sequence, datatype=XSD.integer)))
