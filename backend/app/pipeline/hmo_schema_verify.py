@@ -40,14 +40,18 @@ def filter_schema_entries(
     ontology_uris: list[str] | None,
     statuses: frozenset[str] | None = None,
 ) -> list[dict[str, Any]]:
+    from converter.wikibase.ontology_schema_reader import schema_entry_metadata_by_uri  # noqa: PLC0415
+
     wanted = set(ontology_uris or [])
     allowed = statuses or _JUDGEABLE_STATUSES
+    metadata = schema_entry_metadata_by_uri()
     items: list[dict[str, Any]] = []
     for entry in report.entries:
         if entry.status not in allowed:
             continue
         if wanted and entry.ontology_uri not in wanted:
             continue
+        meta = metadata.get(entry.ontology_uri, {})
         row = {
             "ontology_uri": entry.ontology_uri,
             "entity_kind": entry.entity_kind,
@@ -57,6 +61,10 @@ def filter_schema_entries(
             "wikibase_id": entry.wikibase_id,
             "status": entry.status,
             "message": entry.message,
+            "aliases": meta.get("aliases") or [],
+            "property_kind": meta.get("property_kind"),
+            "range_uri": meta.get("range_uri"),
+            "parent_uri": meta.get("parent_uri"),
             "_local_id": schema_entry_local_id({
                 "ontology_uri": entry.ontology_uri,
                 "entity_kind": entry.entity_kind,
@@ -96,7 +104,10 @@ def schema_verdict_query_summary(
         "ontology_uri": str(entry.get("ontology_uri") or ""),
         "entity_kind": str(entry.get("entity_kind") or ""),
         "label": str(entry.get("label") or ""),
+        "description": str(entry.get("description") or ""),
         "datatype": entry.get("datatype"),
+        "property_kind": entry.get("property_kind"),
+        "range_uri": entry.get("range_uri"),
         "wikibase_id": entry.get("wikibase_id"),
         "status": str(entry.get("status") or ""),
         "judge_model": judge_model,

@@ -954,10 +954,10 @@ hm:external_wikidata_uri rdf:type owl:DatatypeProperty ;
                "כתובת ויקידאטה"@he .
 
 hm:hmo_source_uri rdf:type owl:DatatypeProperty ;
-    rdfs:range xsd:string ;
+    rdfs:range xsd:anyURI ;
     rdfs:label "HMO source URI"@en ,
                "כתובת מקור HMO"@he ;
-    rdfs:comment "Canonical RDF subject URI of the HMO instance this Wikibase item represents — used for SPARQL reconciliation"@en .
+    rdfs:comment "Canonical RDF subject URI of the HMO instance this Wikibase item represents — used for SPARQL reconciliation and live-Wikibase dedup."@en .
 
 hm:has_digital_representation_url rdf:type owl:DatatypeProperty ;
     rdfs:domain lrmoo:F4_Manifestation_Singleton ;
@@ -1340,124 +1340,150 @@ lrmoo:F4_Manifestation_Singleton rdf:type owl:Class ;
 lrmoo:F27_Work_Creation rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E65_Creation ;
     rdfs:label "Work Creation"@en ,
-               "יצירת יצירה"@he .
+               "יצירת יצירה"@he ;
+    rdfs:comment "LRMoo event class: creation of a Work (F1)."@en .
 
 lrmoo:F28_Expression_Creation rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E65_Creation ;
     rdfs:label "Expression Creation"@en ,
-               "יצירת ביטוי"@he .
+               "יצירת ביטוי"@he ;
+    rdfs:comment "LRMoo event class: creation of an Expression (F2)."@en .
 
 lrmoo:F30_Manifestation_Creation rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E65_Creation ;
     rdfs:label "Manifestation Creation"@en ,
-               "יצירת מהדורה"@he .
+               "יצירת מהדורה"@he ;
+    rdfs:comment "LRMoo event class: creation of a Manifestation (F3)."@en .
 
 lrmoo:F32_Item_Production_Event rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E12_Production ;
     rdfs:label "Item Production Event"@en ,
-               "אירוע ייצור עותק"@he .
+               "אירוע ייצור עותק"@he ;
+    rdfs:comment "LRMoo event class: production of a physical Item (F5)."@en .
 
 lrmoo:F5_Item rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E22_Human-Made_Object ;
     rdfs:label "Item"@en ,
-               "פריט"@he .
+               "פריט"@he ;
+    rdfs:comment "LRMoo class for a physical item (subclass of human-made object)."@en .
 
 ### CIDOC-CRM Classes
 
 cidoc-crm:E10_Transfer_of_Custody rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E7_Activity ;
     rdfs:label "Transfer of Custody"@en ,
-               "העברת משמורת"@he .
+               "העברת משמורת"@he ;
+    rdfs:comment "CIDOC-CRM activity transferring custody of an object."@en .
 
 cidoc-crm:E12_Production rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E7_Activity ;
     rdfs:label "Production"@en ,
-               "ייצור"@he .
+               "ייצור"@he ;
+    rdfs:comment "CIDOC-CRM activity that brings an object into existence."@en .
 
 cidoc-crm:E18_Physical_Thing rdf:type owl:Class ;
-    rdfs:label "Physical Thing"@en .
+    rdfs:label "Physical Thing"@en ;
+    rdfs:comment "CIDOC-CRM root class for material entities."@en .
 
 cidoc-crm:E26_Physical_Feature rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E18_Physical_Thing ;
-    rdfs:label "Physical Feature"@en .
+    rdfs:label "Physical Feature"@en ;
+    rdfs:comment "CIDOC-CRM class for a discernible part of a physical thing."@en .
 
 cidoc-crm:E21_Person rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E39_Actor ;
     rdfs:label "Person"@en ,
-               "אדם"@he .
+               "אדם"@he ;
+    rdfs:comment "CIDOC-CRM class for an individual human being."@en .
 
 cidoc-crm:E22_Human-Made_Object rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E18_Physical_Thing ;
-    rdfs:label "Human-Made Object"@en .
+    rdfs:label "Human-Made Object"@en ;
+    rdfs:comment "CIDOC-CRM class for objects intentionally made by humans."@en .
 
 cidoc-crm:E31_Document rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E73_Information_Object ;
     rdfs:label "Document"@en ,
-               "מסמך"@he .
+               "מסמך"@he ;
+    rdfs:comment "CIDOC-CRM class for a material information carrier."@en .
 
 cidoc-crm:E33_Linguistic_Object rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E73_Information_Object ;
     rdfs:label "Linguistic Object"@en ,
-               "אובייקט לשוני"@he .
+               "אובייקט לשוני"@he ;
+    rdfs:comment "CIDOC-CRM class for a linguistic expression as information object."@en .
 
 cidoc-crm:E35_Title rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E33_Linguistic_Object ;
     rdfs:label "Title"@en ,
-               "כותרת"@he .
+               "כותרת"@he ;
+    rdfs:comment "CIDOC-CRM class for a name or title (linguistic object)."@en .
 
 cidoc-crm:E39_Actor rdf:type owl:Class ;
     rdfs:label "Actor"@en ,
-               "פועל"@he .
+               "פועל"@he ;
+    rdfs:comment "CIDOC-CRM class for an agent capable of carrying out actions."@en .
 
 cidoc-crm:E42_Identifier rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E33_Linguistic_Object ;
     rdfs:label "Identifier"@en ,
-               "מזהה"@he .
+               "מזהה"@he ;
+    rdfs:comment "CIDOC-CRM class for an identifier assigned to an entity."@en .
 
 cidoc-crm:E52_Time-Span rdf:type owl:Class ;
     rdfs:label "Time-Span"@en ,
-               "פרק זמן"@he .
+               "פרק זמן"@he ;
+    rdfs:comment "CIDOC-CRM class for a temporal extent with optional bounds."@en .
 
 cidoc-crm:E53_Place rdf:type owl:Class ;
     rdfs:label "Place"@en ,
-               "מקום"@he .
+               "מקום"@he ;
+    rdfs:comment "CIDOC-CRM class for a geographic or conceptual place."@en .
 
 cidoc-crm:E55_Type rdf:type owl:Class ;
     rdfs:label "Type"@en ,
-               "סוג"@he .
+               "סוג"@he ;
+    rdfs:comment "CIDOC-CRM class for a categorical type or classification."@en .
 
 cidoc-crm:E56_Language rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E55_Type ;
     rdfs:label "Language"@en ,
-               "שפה"@he .
+               "שפה"@he ;
+    rdfs:comment "CIDOC-CRM class for a natural language."@en .
 
 cidoc-crm:E57_Material rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E55_Type ;
     rdfs:label "Material"@en ,
-               "חומר"@he .
+               "חומר"@he ;
+    rdfs:comment "CIDOC-CRM class for a substance used in production."@en .
 
 cidoc-crm:E65_Creation rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E7_Activity ;
     rdfs:label "Creation"@en ,
-               "יצירה"@he .
+               "יצירה"@he ;
+    rdfs:comment "CIDOC-CRM activity class for bringing something into being."@en .
 
 cidoc-crm:E73_Information_Object rdf:type owl:Class ;
     rdfs:label "Information Object"@en ,
-               "אובייקט מידע"@he .
+               "אובייקט מידע"@he ;
+    rdfs:comment "CIDOC-CRM class for an intangible content-bearing object."@en .
 
 cidoc-crm:E74_Group rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E39_Actor ;
     rdfs:label "Group"@en ,
-               "קבוצה"@he .
+               "קבוצה"@he ;
+    rdfs:comment "CIDOC-CRM class for a persistent group of two or more actors."@en .
 
 cidoc-crm:E7_Activity rdf:type owl:Class ;
     rdfs:label "Activity"@en ,
-               "פעילות"@he .
+               "פעילות"@he ;
+    rdfs:comment "CIDOC-CRM class for a purposeful event over time."@en .
 
 cidoc-crm:E8_Acquisition rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E7_Activity ;
     rdfs:label "Acquisition"@en ,
-               "רכישה"@he .
+               "רכישה"@he ;
+    rdfs:comment "CIDOC-CRM activity transferring title to an object."@en .
 
 ### Hebrew Manuscripts Custom Classes
 
@@ -1517,7 +1543,8 @@ hm:ModeScriptType owl:disjointWith hm:TypeScriptType .
 hm:ParticipationRole rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E55_Type ;
     rdfs:label "Participation Role"@en ,
-               "תפקיד השתתפות"@he .
+               "תפקיד השתתפות"@he ;
+    rdfs:comment "HMO controlled type for a person's role in an event."@en .
 
 hm:Reference_Event rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E7_Activity ;
@@ -1569,17 +1596,20 @@ hm:Watermark rdf:type owl:Class ;
 hm:ConditionType rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E55_Type ;
     rdfs:label "Condition Type"@en ,
-               "סוג מצב"@he .
+               "סוג מצב"@he ;
+    rdfs:comment "HMO controlled type for physical condition category."@en .
 
 hm:VocalizationType rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E55_Type ;
     rdfs:label "Vocalization Type"@en ,
-               "סוג ניקוד"@he .
+               "סוג ניקוד"@he ;
+    rdfs:comment "HMO controlled type for Hebrew vocalization system."@en .
 
 hm:BindingType rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E55_Type ;
     rdfs:label "Binding Type"@en ,
-               "סוג כריכה"@he .
+               "סוג כריכה"@he ;
+    rdfs:comment "HMO controlled type for manuscript binding style."@en .
 
 hm:DateFormatType rdf:type owl:Class ;
     rdfs:subClassOf cidoc-crm:E55_Type ;
@@ -3377,7 +3407,8 @@ hm:has_production_time rdf:type owl:ObjectProperty ;
     rdfs:domain cidoc-crm:E12_Production ;
     rdfs:range cidoc-crm:E52_Time-Span ;
     rdfs:label "has production time"@en ,
-               "יש זמן הפקה"@he .
+               "יש זמן הפקה"@he ;
+    rdfs:comment "Links a production event to its Time-Span."@en .
 
 hm:has_scribe rdf:type owl:ObjectProperty ;
     rdfs:subPropertyOf cidoc-crm:P14_carried_out_by ;
@@ -3472,14 +3503,16 @@ hm:has_digital_representation rdf:type owl:ObjectProperty ;
     rdfs:domain lrmoo:F4_Manifestation_Singleton ;
     rdfs:range hm:DigitalAccess ;
     rdfs:label "has digital representation"@en ,
-               "יש ייצוג דיגיטלי"@he .
+               "יש ייצוג דיגיטלי"@he ;
+    rdfs:comment "Links a manuscript to a DigitalAccess node for its digital representation."@en .
 
 hm:has_holding_institution rdf:type owl:ObjectProperty ;
     rdfs:domain lrmoo:F4_Manifestation_Singleton ;
     rdfs:range cidoc-crm:E74_Group ;
     owl:propertyChainAxiom ( hm:has_physical_holding hm:held_at ) ;
     rdfs:label "has holding institution"@en ,
-               "יש מוסד מחזיק"@he .
+               "יש מוסד מחזיק"@he ;
+    rdfs:comment "Links a manuscript to the institution (Group) that holds it."@en .
 
 hm:has_attribution_source rdf:type owl:ObjectProperty ;
     rdfs:subPropertyOf hm:attribution_source ;
@@ -3566,11 +3599,5 @@ hm:has_censorship_mark rdf:type owl:DatatypeProperty ;
                "יש סימן צנזורה"@he .
 
 #################################################################
-#    Wikibase Studio identifier (reconciliation anchor)
+#    End of ontology
 #################################################################
-
-hm:hmo_source_uri rdf:type owl:DatatypeProperty ;
-    rdfs:range xsd:string ;
-    rdfs:label "HMO source URI"@en ,
-               "כתובת מקור HMO"@he ;
-    rdfs:comment "The canonical HMO RDF subject URI an exported Wikibase Studio item was built from — an exact-match anchor for live-Wikibase reconciliation/dedup."@en .

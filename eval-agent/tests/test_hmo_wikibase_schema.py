@@ -48,9 +48,13 @@ def test_evaluator_emits_one_candidate_per_entry():
         "ontology_uri": "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#has_folio_count",
         "entity_kind": "property",
         "label": "has folio count",
+        "description": "Number of folios in the manuscript.",
+        "aliases": ["מספר דפים"],
         "datatype": "string",
         "wikibase_id": "P42",
         "status": "created",
+        "property_kind": "DatatypeProperty",
+        "range_uri": "http://www.w3.org/2001/XMLSchema#integer",
     }
 
     candidates = list(
@@ -62,7 +66,9 @@ def test_evaluator_emits_one_candidate_per_entry():
     assert candidate.evaluator_id == "hmo_wikibase_schema"
     assert candidate.sub_type == "property"
     assert candidate.payload["datatype"] == "string"
-    assert candidate.payload["wikibase_id"] == "P42"
+    assert candidate.payload["description"] == "Number of folios in the manuscript."
+    assert candidate.payload["aliases"] == ["מספר דפים"]
+    assert candidate.payload["property_kind"] == "DatatypeProperty"
     assert candidate.marc_context == {}
 
 
@@ -76,9 +82,12 @@ def test_build_prompt_includes_rubric_and_prediction_fields():
         "ontology_uri": "http://example.org#Manuscript",
         "entity_kind": "class",
         "label": "Manuscript",
+        "description": "A unique physical manuscript object.",
+        "aliases": ["כתב יד"],
         "datatype": None,
         "wikibase_id": None,
         "status": "would_create",
+        "parent_uri": "http://example.org#HumanMadeObject",
     }
     candidate = next(
         iter(evaluator.extract_candidates(ner_record=entry, marc_record={}, threshold=0.9))
@@ -88,5 +97,10 @@ def test_build_prompt_includes_rubric_and_prediction_fields():
 
     assert "HMO Wikibase Schema Rubric" in prompt
     assert "Manuscript" in prompt
+    assert "description:" in prompt
+    assert "A unique physical manuscript object." in prompt
+    assert "aliases:" in prompt
+    assert "כתב יד" in prompt
+    assert "parent URI:" in prompt
     assert "(class — no datatype)" in prompt
     assert "(dry-run — not yet created)" in prompt

@@ -72,3 +72,10 @@
   credentials. Non-Gemini models force linear judging (`supports_agentic: false`).
   *Why:* Qubrid Kimi has no Gemini tool-loop; cache keys already include
   `judge_model` (R7) (Rule W-46).
+- **R17 — HMO schema verify prompts MUST include full ontology context.** The
+  `hmo_wikibase_schema` evaluator passes `description`, `aliases`, `property_kind`,
+  and `range_uri` into the judge prompt; `filter_schema_entries` enriches rows from
+  `ontology_schema_reader.schema_entry_metadata_by_uri()`. Cache keys include
+  `description` + OWL metadata so stale “missing description” verdicts invalidate
+  after prompt fixes. *Why:* 2026-07-08 schema export — ~105 partials falsely
+  claimed missing descriptions the fixture already carried (Rule W-47).

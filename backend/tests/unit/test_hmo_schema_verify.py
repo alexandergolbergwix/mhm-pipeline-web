@@ -36,17 +36,22 @@ def _report(*statuses: str) -> SchemaBootstrapResult:
     )
 
 
-def test_schema_verdict_query_summary_includes_datatype() -> None:
+def test_schema_verdict_query_summary_includes_datatype_and_description() -> None:
     entry = {
         "ontology_uri": "http://example.org#is_factual",
         "entity_kind": "property",
         "label": "is factual",
+        "description": "Whether the claim is factual.",
         "datatype": "boolean",
+        "property_kind": "DatatypeProperty",
+        "range_uri": "http://www.w3.org/2001/XMLSchema#boolean",
         "wikibase_id": "P204",
         "status": "skipped",
     }
     summary = hsv.schema_verdict_query_summary(entry, "gemini-3.5-flash")
     assert summary["datatype"] == "boolean"
+    assert summary["description"] == "Whether the claim is factual."
+    assert summary["property_kind"] == "DatatypeProperty"
 
 
 def test_filter_schema_entries_includes_skipped_rows() -> None:
@@ -62,7 +67,38 @@ def test_filter_schema_entries_includes_skipped_rows() -> None:
     }
 
 
-def test_filter_schema_entries_honours_ontology_uri_selection() -> None:
+def test_filter_schema_entries_enriches_ontology_metadata() -> None:
+    from converter.wikibase.ontology_schema_reader import read_hmo_schema  # noqa: PLC0415
+
+    prop = next(p for p in read_hmo_schema().properties if p.local_name == "folio_number")
+    report = SchemaBootstrapResult(
+        dry_run=True,
+        created=0,
+        skipped=1,
+        failed=0,
+        would_create=0,
+        entries=[
+            SchemaBootstrapEntry(
+                ontology_uri=prop.uri,
+                entity_kind="property",
+                label=prop.label,
+                wikibase_id="P85",
+                status="skipped",
+                message="",
+                description=prop.description,
+                datatype=prop.datatype,
+            )
+        ],
+    )
+
+    items = filter_schema_entries(report, ontology_uris=None)
+
+    assert len(items) == 1
+    assert items[0]["property_kind"] == "DatatypeProperty"
+    assert items[0]["range_uri"] is not None
+    assert items[0]["description"] == prop.description
+
+
     report = _report("skipped", "would_create")
 
     items = filter_schema_entries(

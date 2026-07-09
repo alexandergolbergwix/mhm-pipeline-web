@@ -65,6 +65,16 @@ _EXTERNAL_ID_LOCAL_NAMES = frozenset({
     "sfardata_id",
 })
 
+# Datatype properties whose xsd:string range stores a URI value — Wikibase ``url``.
+_URL_LOCAL_NAMES = frozenset({
+    "hmo_source_uri",
+})
+
+# Free-text titles stored as xsd:string but better modeled as monolingualtext on Wikibase.
+_MONOLINGUALTEXT_LOCAL_NAMES = frozenset({
+    "book_name",
+})
+
 
 @dataclass(frozen=True)
 class OntologyClassEntry:
@@ -87,8 +97,10 @@ class OntologyPropertyEntry:
     label: str
     description: str
     datatype: str
+    property_kind: str = "DatatypeProperty"
     aliases: list[str] = field(default_factory=list)
     parent_uri: str | None = None
+    range_uri: str | None = None
 
 
 @dataclass(frozen=True)
@@ -131,6 +143,8 @@ EXTERNAL_VOCAB_PROPERTIES: tuple[OntologyPropertyEntry, ...] = (
             "text copied verbatim from MARC onto the RDF graph, usually Hebrew."
         ),
         datatype="monolingualtext",
+        property_kind="DatatypeProperty",
+        range_uri=str(XSD.string),
     ),
     OntologyPropertyEntry(
         uri=str(RDFS.seeAlso),
@@ -138,6 +152,8 @@ EXTERNAL_VOCAB_PROPERTIES: tuple[OntologyPropertyEntry, ...] = (
         label="see also",
         description="External or cross-reference URI (rdfs:seeAlso) attached to an instance node.",
         datatype="url",
+        property_kind="DatatypeProperty",
+        range_uri=str(XSD.anyURI),
     ),
     OntologyPropertyEntry(
         uri=str(OWL.sameAs),
@@ -148,6 +164,8 @@ EXTERNAL_VOCAB_PROPERTIES: tuple[OntologyPropertyEntry, ...] = (
             "Wikidata, GeoNames, or another linked-data identifier."
         ),
         datatype="url",
+        property_kind="ObjectProperty",
+        range_uri=str(OWL.Thing),
     ),
     OntologyPropertyEntry(
         uri="http://www.w3.org/2003/01/geo/wgs84_pos#lat",
@@ -155,6 +173,8 @@ EXTERNAL_VOCAB_PROPERTIES: tuple[OntologyPropertyEntry, ...] = (
         label="latitude",
         description="WGS84 latitude (geo:lat) of a place instance.",
         datatype="quantity",
+        property_kind="DatatypeProperty",
+        range_uri="http://www.w3.org/2003/01/geo/wgs84_pos#lat",
     ),
     OntologyPropertyEntry(
         uri="http://www.w3.org/2003/01/geo/wgs84_pos#long",
@@ -162,6 +182,8 @@ EXTERNAL_VOCAB_PROPERTIES: tuple[OntologyPropertyEntry, ...] = (
         label="longitude",
         description="WGS84 longitude (geo:long) of a place instance.",
         datatype="quantity",
+        property_kind="DatatypeProperty",
+        range_uri="http://www.w3.org/2003/01/geo/wgs84_pos#long",
     ),
     OntologyPropertyEntry(
         uri="http://www.cidoc-crm.org/cidoc-crm/P4_has_time_span",
@@ -172,8 +194,31 @@ EXTERNAL_VOCAB_PROPERTIES: tuple[OntologyPropertyEntry, ...] = (
             "its E52 Time-Span node."
         ),
         datatype="wikibase-item",
+        property_kind="ObjectProperty",
+        range_uri="http://www.cidoc-crm.org/cidoc-crm/E52_Time-Span",
     ),
 )
+
+
+def schema_entry_metadata_by_uri(
+    ttl_path: Path | None = None,
+) -> dict[str, dict[str, object]]:
+    """Lookup table of verify-enrichment fields keyed by ontology URI."""
+    schema = read_hmo_schema() if ttl_path is None else read_hmo_schema(ttl_path)
+    metadata: dict[str, dict[str, object]] = {}
+    for cls in schema.classes:
+        metadata[cls.uri] = {
+            "aliases": list(cls.aliases),
+            "parent_uri": cls.parent_uri,
+        }
+    for prop in schema.properties:
+        metadata[prop.uri] = {
+            "aliases": list(prop.aliases),
+            "parent_uri": prop.parent_uri,
+            "property_kind": prop.property_kind,
+            "range_uri": prop.range_uri,
+        }
+    return metadata
 
 
 def default_hmo_ontology_path() -> Path:
@@ -271,8 +316,10 @@ def _build_property_entry(
         label=label,
         description=description,
         datatype=datatype,
+        property_kind="ObjectProperty" if is_object else "DatatypeProperty",
         aliases=aliases,
         parent_uri=str(parent) if parent is not None else None,
+        range_uri=str(range_value) if range_value is not None else None,
     )
 
 
@@ -344,6 +391,10 @@ def _infer_datatype(
     if str(range_value).startswith(str(XSD)):
         if local_name in _EXTERNAL_ID_LOCAL_NAMES:
             return "external-id"
+        if local_name in _URL_LOCAL_NAMES:
+            return "url"
+        if local_name in _MONOLINGUALTEXT_LOCAL_NAMES:
+            return "monolingualtext"
         return "string"
     # Non-xsd range on an object property (or an untyped datatype property
     # pointing at a class) means the range is itself an HMO/CIDOC/LRMoo class.

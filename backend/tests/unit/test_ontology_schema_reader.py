@@ -18,6 +18,7 @@ from converter.wikibase.ontology_schema_reader import (
     EXTERNAL_VOCAB_PROPERTIES,
     default_hmo_ontology_path,
     read_hmo_schema,
+    schema_entry_metadata_by_uri,
 )
 
 _EX = Namespace("http://example.org/hmo-test#")
@@ -233,3 +234,33 @@ def test_year_boundary_properties_on_integer_range_map_to_time(
     schema = read_hmo_schema(ttl_path)
 
     assert schema.properties[0].datatype == "time"
+
+
+def test_hmo_source_uri_maps_to_url_datatype() -> None:
+    schema = read_hmo_schema()
+    prop = next(p for p in schema.properties if p.local_name == "hmo_source_uri")
+    assert prop.datatype == "url"
+
+
+def test_book_name_maps_to_monolingualtext_datatype() -> None:
+    schema = read_hmo_schema()
+    prop = next(p for p in schema.properties if p.local_name == "book_name")
+    assert prop.datatype == "monolingualtext"
+
+
+def test_property_entries_carry_owl_kind_and_range() -> None:
+    schema = read_hmo_schema()
+    prop = next(p for p in schema.properties if p.local_name == "has_date_of_creation")
+    assert prop.property_kind == "ObjectProperty"
+    assert prop.range_uri is not None
+    assert "E52_Time-Span" in prop.range_uri
+
+
+def test_schema_entry_metadata_by_uri_includes_verify_fields() -> None:
+    metadata = schema_entry_metadata_by_uri()
+    uri = next(
+        p.uri for p in read_hmo_schema().properties if p.local_name == "folio_number"
+    )
+    entry = metadata[uri]
+    assert entry["property_kind"] == "DatatypeProperty"
+    assert entry["range_uri"] is not None

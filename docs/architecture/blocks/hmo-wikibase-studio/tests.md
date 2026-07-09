@@ -2,8 +2,11 @@
 
 > Up: [HMO Wikibase Studio](README.md)
 
-- `backend/tests/test_hmo_schema_bootstrap.py`, `test_hmo_schema_bootstrap_job.py`,
-  `test_hmo_wikibase_schema_router.py` — bootstrap idempotency, label de-dup, job wrapper.
+- `backend/tests/unit/test_ontology_schema_reader.py` — full-ontology walk,
+  external-vocab properties, datatype inference (`hmo_source_uri` → `url`,
+  `book_name` → `monolingualtext`, OWL kind/range metadata).
+- `backend/tests/unit/test_hmo_schema_verify.py` — fixture enrichment +
+  cache-key fields (`description`, `property_kind`, `range_uri`).
 - `backend/tests/test_hmo_item_build.py`, `test_hmo_studio_build_items_router.py`,
   `backend/tests/unit/test_hmo_exporter_resolution.py` (incl. truncation cases) — build + cache fingerprint.
 - `backend/tests/test_hmo_item_upload.py` (incl.

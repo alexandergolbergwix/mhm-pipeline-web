@@ -93,3 +93,10 @@
     `HM.ParadigmBridge` instances; bridge semantics stay in TTL + pass-2
     deferred links. Cataloging views MUST carry `hm:view_type`; RDF build dedupes
     duplicate `hm:external_identifier_nli` literals per node.
+22. **R22 — Schema datatype inference is ontology-faithful (Rule W-47).**
+    `ontology_schema_reader._infer_datatype` maps OWL ranges to Wikibase
+    datatypes; URI reconciliation anchors (`hmo_source_uri`) use `url`;
+    folio designations stay `string`; CIDOC object properties stay
+    `wikibase-item`. AI schema verify enriches fixtures with OWL metadata before
+    judging. *Why:* 2026-07-08 export had mass false partials/fails from judge
+    blindness to descriptions and Wikidata-centric datatype assumptions.

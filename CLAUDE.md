@@ -1194,6 +1194,47 @@ Tests: `eval-agent/tests/test_judge_models.py`,
 
 ---
 
+### Rule W-47 — HMO schema AI verify must show ontology context to the judge (added 2026-07-08)
+
+Audit of the 2026-07-08 schema verdict export (`387` entries: `232`
+partial / `36` fail): **~105 partials** falsely claimed “missing
+description” even though every row had a non-empty `description` in the
+bootstrap JSON. Root cause: `eval-agent/eval_agent/evaluators/
+hmo_wikibase_schema.py` never passed `description` (or OWL metadata)
+into `build_prompt()` — the rubric told the judge to score `name_ok`
+from label **and** description, but only the label was visible.
+
+Invariants now enforced:
+
+- **Evaluator prompt** includes `description`, `aliases`, and — for
+  properties — `OWL kind` + `rdfs:range` + `parent_uri` when present.
+- **Fixture enrichment** — `hmo_schema_verify.filter_schema_entries`
+  merges `schema_entry_metadata_by_uri()` from
+  `ontology_schema_reader.py` so skipped/cached bootstrap rows still carry
+  OWL context without re-running bootstrap.
+- **Cache key** — `schema_verdict_query_summary` includes `description`,
+  `property_kind`, and `range_uri` so pre-fix verdicts do not warm-hit
+  after deploy.
+- **Rubric** (`hmo_wikibase_schema.md`) documents CIDOC object-property
+  `wikibase-item` typing, folio **designation** strings vs folio
+  **counts**, `holding_institution` vs `has_holding_institution`, `url`
+  for `owl:sameAs`, and `quantity` (not `globe-coordinate`) for
+  `geo:lat`/`geo:long` — matching the item exporter.
+- **Datatype inference** — `hmo_source_uri` → `url` (`xsd:anyURI` in
+  TTL + local-name override); `book_name` → `monolingualtext`; thirty
+  CIDOC/LRMoo/HMO classes gained `rdfs:comment` (zero fallback-class
+  descriptions remain).
+
+Tests: `eval-agent/tests/test_hmo_wikibase_schema.py`,
+`backend/tests/unit/test_ontology_schema_reader.py`,
+`backend/tests/unit/test_hmo_schema_verify.py`.
+
+**Curator ops:** re-run HMO schema AI verify with a fresh session (or
+`skip_cache`) after deploy — old `ai_verdict` cache rows keyed without
+`description` will miss and re-judge correctly.
+
+---
+
 ## Project structure
 
 | Path | Purpose |
