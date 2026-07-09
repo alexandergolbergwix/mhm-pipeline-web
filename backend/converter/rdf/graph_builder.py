@@ -139,14 +139,25 @@ class GraphBuilder:
 
         for author in data.authors:
             person_uri = self._add_person(
-                graph, author, work_uri, "author", related_work_title=data.title
+                graph,
+                author,
+                work_uri,
+                "author",
+                related_work_title=data.title,
+                control_number=control_number,
             )
             if person_uri and work_uri:
                 graph.add((work_uri, HM.has_author, person_uri))
 
         for contributor in data.contributors:
             role = normalize_role(contributor.get("role", "contributor"))
-            person_uri = self._add_person(graph, contributor, ms_uri, role)
+            person_uri = self._add_person(
+                graph,
+                contributor,
+                ms_uri,
+                role,
+                control_number=control_number,
+            )
             if person_uri:
                 role_ind = normalize_participation_role(role)
                 if role_ind is not None:
@@ -243,6 +254,11 @@ class GraphBuilder:
                     Literal(f"Paleographical unit {idx + 1} of MS {control_number}", lang="en"),
                 )
             )
+            self._stamp_wikibase_comment(
+                graph,
+                pu_uri,
+                f"Paleographical unit {idx + 1} of manuscript {control_number}.",
+            )
             graph.add((parent_cu, HM.is_composed_of, pu_uri))
             graph.add((pu_uri, HM.forms_part_of, parent_cu))
 
@@ -261,6 +277,11 @@ class GraphBuilder:
                         Literal(f"Unknown scribe {idx + 1} (MS {control_number})", lang="en"),
                     )
                 )
+                self._stamp_wikibase_comment(
+                    graph,
+                    scribe_uri,
+                    f"Unknown scribe {idx + 1} linked to manuscript {control_number}.",
+                )
             graph.add((pu_uri, HM.has_scribe, scribe_uri))
             graph.add((prod_uri, HM.has_scribe, scribe_uri))
 
@@ -271,7 +292,7 @@ class GraphBuilder:
             self._add_anthology_structure(graph, ms_uri, control_number, len(data.contents))
 
         for subject in data.subjects:
-            self._add_subject(graph, subject, ms_uri, work_uri)
+            self._add_subject(graph, subject, ms_uri, work_uri, control_number)
 
         for genre in data.genres:
             self._add_genre_node(graph, data, ms_uri, genre)
@@ -486,6 +507,19 @@ class GraphBuilder:
         graph.add((cu_uri, RDFS.label, Literal(label, lang="en")))
         graph.add((cu_uri, RDFS.comment, Literal(comment, lang="en")))
 
+    @staticmethod
+    def _stamp_wikibase_comment(
+        graph: Graph,
+        node_uri: URIRef,
+        text: str,
+        *,
+        lang: str = "en",
+    ) -> None:
+        """Attach a human-readable Wikibase description via ``rdfs:comment``."""
+        cleaned = text.strip()
+        if cleaned:
+            graph.add((node_uri, RDFS.comment, Literal(cleaned, lang=lang)))
+
     def _add_manuscript(
         self, graph: Graph, ms_uri: URIRef, data: ExtractedData, control_number: str
     ):
@@ -553,6 +587,15 @@ class GraphBuilder:
         for note in data.notes:
             graph.add((ms_uri, RDFS.comment, Literal(note, lang="he")))
 
+        details = [f"NLI control number {control_number}"]
+        if data.shelfmark:
+            details.append(f"shelfmark {data.shelfmark}")
+        self._stamp_wikibase_comment(
+            graph,
+            ms_uri,
+            f"Hebrew manuscript ({', '.join(details)}).",
+        )
+
     def _add_work(
         self, graph: Graph, data: ExtractedData, author_name: str | None = None
     ) -> URIRef:
@@ -582,6 +625,13 @@ class GraphBuilder:
 
         for genre in data.genres:
             self._add_genre_node(graph, data, work_uri, genre)
+
+        author_part = f" by {author_name}" if author_name else ""
+        self._stamp_wikibase_comment(
+            graph,
+            work_uri,
+            f"Literary work '{data.title}'{author_part}.",
+        )
 
         return work_uri
 
@@ -650,6 +700,13 @@ class GraphBuilder:
             graph.add((lang_uri, RDFS.label, Literal(lang_name)))
             graph.add((expression_uri, CIDOC.P72_has_language, lang_uri))
 
+        title_text = data.title or "unidentified work"
+        self._stamp_wikibase_comment(
+            graph,
+            expression_uri,
+            f"Textual expression of '{title_text}' in manuscript {control_number}.",
+        )
+
         return expression_uri
 
     def _add_production_event(
@@ -674,7 +731,13 @@ class GraphBuilder:
             graph.add((prod_uri, CIDOC.P7_took_place_at, place_uri))
             graph.add((prod_uri, HM.has_production_place, place_uri))
             graph.add((place_uri, RDF.type, CIDOC.E53_Place))
-            graph.add((place_uri, RDFS.label, Literal(clean_marc_label(data.place), lang="he")))
+            place_label = clean_marc_label(data.place)
+            graph.add((place_uri, RDFS.label, Literal(place_label, lang="he")))
+            self._stamp_wikibase_comment(
+                graph,
+                place_uri,
+                f"Place of production '{place_label}' for manuscript {control_number}.",
+            )
             self._emit_place_coords(
                 graph,
                 place_uri,
@@ -767,6 +830,12 @@ class GraphBuilder:
                 person_uri = self.uri_gen.person_uri(contributor["name"])
                 graph.add((prod_uri, CIDOC.P14_carried_out_by, person_uri))
                 graph.add((prod_uri, HM.has_scribe, person_uri))
+
+        self._stamp_wikibase_comment(
+            graph,
+            prod_uri,
+            f"Production event for manuscript {control_number}.",
+        )
 
         return prod_uri
 
@@ -1054,6 +1123,7 @@ class GraphBuilder:
         related_uri: URIRef | None,
         role: str,
         related_work_title: str | None = None,
+        control_number: str | None = None,
     ) -> URIRef | None:
         """Add Person entity to graph.
 
@@ -1159,6 +1229,14 @@ class GraphBuilder:
             graph.add((creation_uri, LRMOO.R16_created, related_uri))
             graph.add((creation_uri, CIDOC.P14_carried_out_by, person_uri))
 
+        if control_number:
+            role_text = role.replace("_", " ")
+            self._stamp_wikibase_comment(
+                graph,
+                person_uri,
+                f"Person '{display_name}' ({role_text}) linked to manuscript {control_number}.",
+            )
+
         return person_uri
 
     def _add_content_work(
@@ -1180,6 +1258,7 @@ class GraphBuilder:
         graph.add((work_uri, RDF.type, LRMOO.F1_Work))
         graph.add((work_uri, HM.has_title, Literal(title, lang="he")))
         graph.add((work_uri, RDFS.label, Literal(title, lang="he")))
+        self._stamp_wikibase_comment(graph, work_uri, f"Contained literary work '{title}'.")
 
         expression_uri = self.uri_gen.expression_uri(title, control_number)
         graph.add((expression_uri, RDF.type, LRMOO.F2_Expression))
@@ -1192,6 +1271,14 @@ class GraphBuilder:
         )
         graph.add((expression_uri, LRMOO.R3_is_realised_in, work_uri))
         graph.add((expression_uri, LRMOO.R3i_realises, work_uri))
+        folio_part = (
+            f", folios {content['folio_range']}" if content.get("folio_range") else ""
+        )
+        self._stamp_wikibase_comment(
+            graph,
+            expression_uri,
+            f"Textual expression of '{title}' in manuscript {control_number}{folio_part}.",
+        )
 
         if content.get("folio_range"):
             graph.add(
@@ -1243,11 +1330,17 @@ class GraphBuilder:
         graph.add((work_uri, RDF.type, LRMOO.F1_Work))
         graph.add((work_uri, RDFS.label, Literal(title, lang="en")))
         graph.add((work_uri, HM.has_title, Literal(title, lang="en")))
+        self._stamp_wikibase_comment(graph, work_uri, title + ".")
 
         graph.add((expression_uri, RDF.type, LRMOO.F2_Expression))
         graph.add((expression_uri, RDFS.label, Literal(f"{title} (expression)", lang="en")))
         graph.add((expression_uri, LRMOO.R3_is_realised_in, work_uri))
         graph.add((expression_uri, LRMOO.R3i_realises, work_uri))
+        self._stamp_wikibase_comment(
+            graph,
+            expression_uri,
+            f"Textual expression of unidentified content in manuscript {control_number}.",
+        )
 
         graph.add((ms_uri, LRMOO.R4_embodies, expression_uri))
         graph.add((ms_uri, HM.has_expression, expression_uri))
@@ -1329,7 +1422,12 @@ class GraphBuilder:
             graph.add((anthology_uri, HM.has_anthology_position, pos_uri))
 
     def _add_subject(
-        self, graph: Graph, subject: dict[str, Any], ms_uri: URIRef, work_uri: URIRef | None
+        self,
+        graph: Graph,
+        subject: dict[str, Any],
+        ms_uri: URIRef,
+        work_uri: URIRef | None,
+        control_number: str,
     ):
         """Add subject entity to graph.
 
@@ -1376,6 +1474,20 @@ class GraphBuilder:
             graph.add((subject_uri, RDF.type, HM.SubjectType))
 
         graph.add((subject_uri, RDFS.label, Literal(clean_marc_label(subject["term"]), lang="he")))
+
+        term_label = clean_marc_label(subject["term"])
+        if subject_type == "person":
+            self._stamp_wikibase_comment(
+                graph,
+                subject_uri,
+                f"Subject person '{term_label}' for manuscript {control_number}.",
+            )
+        elif subject_type == "place":
+            self._stamp_wikibase_comment(
+                graph,
+                subject_uri,
+                f"Subject place '{term_label}' for manuscript {control_number}.",
+            )
 
         if subject.get("authority_id"):
             graph.add(
@@ -1903,6 +2015,11 @@ class GraphBuilder:
                 Literal(f"Evidence chain for MS {control_number}", lang="en"),
             )
         )
+        self._stamp_wikibase_comment(
+            graph,
+            evidence_chain_uri,
+            f"Epistemological evidence chain for manuscript {control_number}.",
+        )
 
         # Link manuscript to evidence chain
         graph.add((ms_uri, HM.has_evidence_chain, evidence_chain_uri))
@@ -1912,6 +2029,18 @@ class GraphBuilder:
 
         graph.add((catalog_step_uri, RDF.type, HM.EvidenceStep))
         graph.add((evidence_chain_uri, HM.evidence_step, catalog_step_uri))
+        graph.add(
+            (
+                catalog_step_uri,
+                RDFS.label,
+                Literal(f"CatalogStep {control_number}", lang="en"),
+            )
+        )
+        self._stamp_wikibase_comment(
+            graph,
+            catalog_step_uri,
+            f"Catalog-derived evidence step for manuscript {control_number}.",
+        )
 
         # Mark as catalog-inherited data
         graph.add(
@@ -2498,6 +2627,11 @@ class GraphBuilder:
         graph.add((chain_uri, RDF.type, HM.EvidenceChain))
         graph.add((subject_uri, HM.has_evidence_chain, chain_uri))
         graph.add((chain_uri, HM.supports_assertion, subject_uri))
+        self._stamp_wikibase_comment(
+            graph,
+            chain_uri,
+            f"Evidence chain for {data_field} on manuscript {control_number}.",
+        )
 
         status_uri = getattr(HM, epistemological_status, HM.CatalogInherited)
         graph.add((subject_uri, HM.has_epistemological_status, status_uri))
@@ -2526,6 +2660,18 @@ class GraphBuilder:
         graph.add((step_uri, RDF.type, HM.InterpretationStep))
         graph.add((step_uri, RDF.type, HM.EvidenceStep))
         graph.add((chain_uri, HM.evidence_step, step_uri))
+        graph.add(
+            (
+                step_uri,
+                RDFS.label,
+                Literal(f"EvidenceStep {control_number} ({data_field})", lang="en"),
+            )
+        )
+        self._stamp_wikibase_comment(
+            graph,
+            step_uri,
+            f"Evidence step for field '{data_field}' on manuscript {control_number}.",
+        )
         if reasoning_text:
             graph.add((step_uri, HM.reasoning_text, Literal(reasoning_text, datatype=XSD.string)))
 

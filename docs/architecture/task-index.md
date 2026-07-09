@@ -17,3 +17,4 @@
 | Build UI | [frontend](blocks/frontend/README.md) |
 | Deploy, migrate, configure | [deployment](blocks/deployment/README.md) |
 | Finish up any code change (docs sync) | [.cursor/skills/docs-on-code-change/SKILL.md](../../.cursor/skills/docs-on-code-change/SKILL.md) (gate) → [.codex/skills/docs-architecture-sync/SKILL.md](../../.codex/skills/docs-architecture-sync/SKILL.md) (how) |
+| Deploy or push to GitHub/Heroku | [.cursor/skills/pre-deploy-docs-sync/SKILL.md](../../.cursor/skills/pre-deploy-docs-sync/SKILL.md) — **mandatory** final docs audit via [task-index](task-index.md) before any push/deploy |

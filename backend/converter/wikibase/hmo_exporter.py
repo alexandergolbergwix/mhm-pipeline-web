@@ -28,6 +28,11 @@ from converter.wikibase.resolved_models import (
     UnmappedOntologyUriError,
 )
 
+_CONTROL_NUMBER_RE = re.compile(r"(\d{8,})")
+_MANUSCRIPT_TYPES: frozenset[URIRef] = frozenset(
+    {LRMOO.F4_Manifestation_Singleton, HM.Bibliographic_Unit},
+)
+
 SKIPPED_SCHEMA_TYPES: frozenset[URIRef] = frozenset(
     {
         OWL.Class,
@@ -98,6 +103,7 @@ class HmoWikibaseExporter:
                     class_uri=str(class_uri),
                     source_uri=str(subject),
                     statements=statements,
+                    control_numbers=_control_numbers_for_node(graph, subject),
                 )
             )
 
@@ -132,6 +138,55 @@ def _typed_instance_nodes(graph: Graph) -> list[URIRef | BNode]:
             continue
         nodes.add(subject)
     return sorted(nodes, key=str)
+
+
+def _control_numbers_in_uri(uri: str) -> set[str]:
+    return set(_CONTROL_NUMBER_RE.findall(uri))
+
+
+def _index_manuscript_uris(graph: Graph) -> dict[str, str]:
+    """Map manuscript node URI → NLI control number."""
+    out: dict[str, str] = {}
+    for ms_type in _MANUSCRIPT_TYPES:
+        for ms in graph.subjects(RDF.type, ms_type):
+            if not isinstance(ms, URIRef):
+                continue
+            matches = _control_numbers_in_uri(str(ms))
+            if matches:
+                out[str(ms)] = sorted(matches)[0]
+    return out
+
+
+def _control_numbers_for_node(graph: Graph, subject: URIRef | BNode) -> list[str]:
+    """Collect every manuscript control number reachable from this RDF node."""
+    ms_index = _index_manuscript_uris(graph)
+    found: set[str] = set(_control_numbers_in_uri(str(subject)))
+    visited: set[str] = set()
+    queue: list[URIRef | BNode] = [subject]
+
+    while queue:
+        node = queue.pop()
+        node_key = str(node)
+        if node_key in visited:
+            continue
+        visited.add(node_key)
+
+        found.update(_control_numbers_in_uri(node_key))
+        if node_key in ms_index:
+            found.add(ms_index[node_key])
+
+        for parent in graph.subjects(object=node):
+            if not isinstance(parent, URIRef | BNode):
+                continue
+            parent_key = str(parent)
+            if parent_key in visited:
+                continue
+            found.update(_control_numbers_in_uri(parent_key))
+            if parent_key in ms_index:
+                found.add(ms_index[parent_key])
+            queue.append(parent)
+
+    return sorted(found)
 
 
 def _local_ids_for_nodes(nodes: list[URIRef | BNode]) -> dict[URIRef | BNode, str]:
@@ -356,6 +411,8 @@ def resolve_against_mappings(
                 descriptions=draft.descriptions,
                 class_qid=class_entry.wikibase_id,
                 source_uri=draft.source_uri,
+                entity_type=draft.entity_type,
+                control_numbers=list(draft.control_numbers),
                 claims=claims,
                 deferred_links=deferred,
                 skipped_statements=skipped,

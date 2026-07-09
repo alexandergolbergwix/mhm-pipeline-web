@@ -49,6 +49,7 @@ class WikibaseEntityDraft:
     class_uri: str
     source_uri: str
     statements: list[WikibaseStatementDraft] = field(default_factory=list)
+    control_numbers: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serialisable representation of this entity draft."""
@@ -60,4 +61,5 @@ class WikibaseEntityDraft:
             "class_uri": self.class_uri,
             "source_uri": self.source_uri,
             "statements": [statement.to_dict() for statement in self.statements],
+            "control_numbers": list(self.control_numbers),
         }

@@ -30,7 +30,10 @@ must include `description` + OWL context (Rule W-47 / eval-agent R17).
 TTL bytes **and** the schema-mapping version (count + max `created_at` of
 schema rows), so a bootstrap invalidates every run's cached build. On a miss it
 runs `HmoWikibaseExporter().from_ttl` + `resolve_against_mappings`, computes the
-SHACL report, and upserts `HmoStudioItemCache`. An `UnmappedOntologyUriError`
+SHACL report, and upserts `HmoStudioItemCache`. Each resolved entity carries
+`entity_type` and `control_numbers` (RDF incoming-edge BFS — Rule W-48 / R23)
+so the eval-agent can join parent MARC even when `source_uri` has no embedded
+8+ digit id (e.g. shared `Person_*` nodes). An `UnmappedOntologyUriError`
 surfaces as a 409 telling the curator to re-run the bootstrap. The exporter
 truncates labels/descriptions to 250 chars and string/monolingualtext claim
 values to 400 chars (`hmo_exporter.py:155,197-198`) so long free-text titles no

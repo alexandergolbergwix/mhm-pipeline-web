@@ -66,6 +66,14 @@
   from `source_uri` / `local_id` (e.g. `…#Acquisition_<cn>_01`), not only `/MS_`
   paths. *Why:* 672/966 AI autofix fails on run `48ba6c13` were “no MARC
   context” because the join always returned `{}` (Rule W-45).
+- **R18 — HMO item verify uses `control_numbers` + HMO-specific grounding (Rule W-48).**
+  Built items carry `control_numbers: list[str]` from RDF graph BFS at item
+  build; ingest `enrich_control_numbers()` propagates across `deferred_links`;
+  `session.py` tries every CN when loading MARC. The `hmo_wikibase_item`
+  evaluator passes `entity_type`, structural vs manuscript-scoped grounding, and
+  the rewritten rubric (`full`/`partial`/`fail`) — HMO `class_qid` is not
+  Wikidata. *Why:* export (4) still had 792 items with empty MARC and 1283
+  generic descriptions after W-45 URI-regex alone.
 - **R16 — Tier-1 judge models are registry-driven.** Canonical list in
   `eval-agent/config/tier1_models.yaml` (backend reads via `locate_eval_agent()`).
   Every verify surface sends `tier_model`; `run_job_params` validates per-provider

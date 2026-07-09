@@ -43,6 +43,16 @@
    verdict counts. Stale rows keyed without `description` miss automatically
    once `schema_verdict_query_summary` includes it.
 
+## Skill: tune HMO item AI verify after build/rubric changes (Rule W-48)
+1. Confirm the run was **RDF-rebuilt** and **HMO items re-built (skip cache)**
+   so fixtures carry `control_numbers` and non-generic `descriptions`.
+2. Check `pipeline-output/hmo_wikibase_items.json` for a sample Person row —
+   `control_numbers` should be non-empty even when `source_uri` has no digits.
+3. Re-run verify with **override cache**; compare export verdict counts to the
+   prior JSON. "No MARC context" and generic-description partials should drop.
+4. If one shared Person spans multiple MSS, the evaluator uses the first CN —
+   partial on homonyms may remain until label-hygiene work lands (Rule W-45).
+
 ## Skill: debug a failed verify session
 1. Get `run_id` + `session_id` (SSE response header `X-Session-Id`, or job
    `params.session_id`).
@@ -106,7 +116,8 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
 - `backend/tests/test_verify_job_hmo.py` — `hmo_item_verify` job-backed
   dispatch: unknown action, empty scope, end-to-end wiring, cache behaviour.
 - `eval-agent/tests/test_hmo_wikibase_items.py` — HMO `control_number()` from
-  embedded URI ids (Rule W-45).
+  embedded URI ids (Rule W-45); `enrich_control_numbers()` via deferred links
+  (Rule W-48).
 - `eval-agent/tests/test_judge_models.py`, `test_openai_compat_judge.py` —
   tier-1 registry + Qubrid OpenAI-compat judge (Rule W-46).
 - `backend/tests/test_judge_models_router.py`,

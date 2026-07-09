@@ -63,6 +63,14 @@ The task is **incomplete** if:
 
 Tell the user what doc files you updated in the completion summary (one short line).
 
+## Before deploy or push
+
+When the user asks to deploy or push, run
+[pre-deploy-docs-sync](../../../.codex/skills/pre-deploy-docs-sync/SKILL.md)
+**after** this gate passes and **before** any `git push` / Heroku / `gh` command.
+Re-audit the full branch diff against [task-index.md](../../../docs/architecture/task-index.md);
+do not assume docs from mid-session still cover the diff about to ship.
+
 ## Full workflow
 
 All page-level detail lives in

@@ -16,7 +16,7 @@ dyno restarts never force a rebuild.
 
 - [Key files](key-files.md) — file-by-file map of the build path, routers, and vendored converter
 - [How it works](how-it-works.md) — the 8-step build flow from trigger to vendoring
-- [Rules](rules.md) — invariants R1–R10 (approved-rows-only, coord gating, durability, mirror discipline)
+- [Rules](rules.md) — invariants R1–R15 (approved-rows-only, coord gating, durability, mirror discipline, Wikibase descriptions)
 - [Skills](skills.md) — rebuild, sync-from-desktop, ontology extension, coverage inspection, debugging playbooks
 - [Tests](tests.md) — test suites pinning this block
 

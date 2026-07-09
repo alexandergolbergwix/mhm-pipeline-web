@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** for the full incident-annotated
-architectural rules (Rules W-1…W-47). Each rule records a real production
+architectural rules (Rules W-1…W-49). Each rule records a real production
 incident plus the invariant that closes it — check it before touching RDF
 build/SHACL, Wikidata Studio writes, HMO Wikibase uploads, auth/rate-limit
 surfaces, or the job/cache/versioning plumbing. This `AGENTS.md` is the
@@ -58,7 +58,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-47) stay in [CLAUDE.md](CLAUDE.md).
+(W-1…W-49) stay in [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -83,6 +83,22 @@ Skip only for question-only replies with zero file edits.
 
 Block rules (R-series per block) live in each block's `rules.md`; do not
 duplicate them here.
+
+### Skill: pre-deploy / pre-push docs sync (mandatory before ship)
+
+**Before every Heroku deploy, `git push`, or any GitHub-facing action**, read and
+follow:
+
+- Cursor: [`.cursor/skills/pre-deploy-docs-sync/SKILL.md`](.cursor/skills/pre-deploy-docs-sync/SKILL.md)
+- Codex: [`.codex/skills/pre-deploy-docs-sync/SKILL.md`](.codex/skills/pre-deploy-docs-sync/SKILL.md)
+
+That gate runs **after** code is complete and **before** you ask for or execute
+push/deploy. It uses [task-index.md](docs/architecture/task-index.md) to map the
+branch diff to `docs/architecture/blocks/<block>/` pages, then applies
+[docs-architecture-sync](.codex/skills/docs-architecture-sync/SKILL.md) to fill
+any gaps. Do not push with doc drift — even if docs were updated mid-session,
+re-verify against the full diff. User permission for each push is still required
+separately.
 
 ## AI verification — tier-1 judge
 

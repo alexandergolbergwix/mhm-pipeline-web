@@ -100,3 +100,10 @@
     `wikibase-item`. AI schema verify enriches fixtures with OWL metadata before
     judging. *Why:* 2026-07-08 export had mass false partials/fails from judge
     blindness to descriptions and Wikidata-centric datatype assumptions.
+23. **R23 — Every built item carries manuscript scope for AI verify (Rule W-48).**
+    `HmoWikibaseExporter` MUST stamp `control_numbers` via incoming-edge RDF
+    BFS (not URI-regex alone) and persist them on `ResolvedWikibaseEntity`;
+    generic `… in the Hebrew Manuscripts Ontology (HMO)` descriptions MUST be
+    avoided by stamping `rdfs:comment` at RDF build for primary scholarly
+    entities. *Why:* export (4) on run `48ba6c13` still had 792 items with no
+    MARC join and 1283 generic descriptions → mass AI verify fails/partials.

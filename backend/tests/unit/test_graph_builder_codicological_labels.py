@@ -45,3 +45,30 @@ def test_codicological_unit_rdf_comment_is_stamped() -> None:
     comment = str(graph.value(cu_nodes[0], RDFS.comment))
     assert GENERIC_SUFFIX not in comment
     assert "Primary codicological unit of manuscript 990001800310205171" in comment
+
+
+def test_primary_entities_avoid_generic_wikibase_descriptions() -> None:
+    data = ExtractedData(
+        title="ספר תהילים",
+        shelfmark="Heb. 12.34",
+        authors=[{"name": "אהרן בן אליהו", "role": "author"}],
+        place="ירושלים",
+    )
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    drafts = HmoWikibaseExporter().from_graph(graph)
+
+    by_type = {draft.entity_type: draft for draft in drafts}
+    for entity_type in (
+        "F4_Manifestation_Singleton",
+        "F1_Work",
+        "F2_Expression",
+        "E21_Person",
+        "E53_Place",
+        "E12_Production",
+    ):
+        draft = by_type.get(entity_type)
+        assert draft is not None, entity_type
+        description = draft.descriptions.get("en", "")
+        assert GENERIC_SUFFIX not in description, (entity_type, description)
+        if entity_type not in {"F1_Work", "E53_Place"}:
+            assert "990001800310205171" in description

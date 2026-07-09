@@ -20,6 +20,8 @@
 | `backend/app/pipeline/hmo_item_verify.py` | HMO item channel stream + `HmoStudioItemOverride.ai_verdict` persistence |
 | `backend/app/pipeline/hmo_schema_verify.py` | HMO schema channel stream: `filter_schema_entries` enriches OWL metadata, `schema_verdict_query_summary` cache keys (cache-only persistence, no DB row) |
 | `backend/converter/wikibase/ontology_schema_reader.py` | Parses `hebrew-manuscripts.ttl` → Wikibase datatypes; `schema_entry_metadata_by_uri()` for verify fixture enrichment (Rule W-47) |
+| `eval-agent/eval_agent/ingest/hmo_wikibase_items.py` | Loads item fixture; `control_number()` / `control_numbers()`; `enrich_control_numbers()` across deferred links (Rule W-48) |
+| `eval-agent/eval_agent/evaluators/hmo_wikibase_item.py` | HMO item evaluator — `entity_type`, `control_numbers`, structural vs manuscript-scoped grounding (Rule W-48) |
 | `eval-agent/eval_agent/evaluators/hmo_wikibase_schema.py` | Schema bootstrap evaluator — prompt includes description, aliases, OWL kind/range |
 | `backend/app/pipeline/agent_actions.py` | Prefab action registry (authority); siblings: `extraction_actions.py`, `wikidata_actions.py`, `hmo_item_actions.py`, `hmo_schema_actions.py` |
 | `eval-agent/eval_agent/cli.py` | Vendored CLI: `run` subcommand, `--state-dir` monkey-patches session module paths |

@@ -10,6 +10,8 @@
 - `backend/tests/unit/test_rdf_shacl_conformance.py` — SHACL shapes
 - `backend/tests/unit/test_rdf_ontology_usage.py` — ontology-usage endpoint core
 - `backend/tests/unit/test_graph_builder_philological_labels.py` — overlay labels
+- `backend/tests/unit/test_graph_builder_codicological_labels.py` — CU + primary
+  entity Wikibase descriptions (Rule W-48)
 - `backend/tests/unit/test_rdf_helpers.py` — MARC ISBD label hygiene (Rule W-45)
 - `backend/tests/unit/test_graph_builder_provenance.py` — 561 provenance must not
   mint Acquisition (Rule W-45)

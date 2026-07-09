@@ -4,8 +4,16 @@
 
 ## Skills
 
+### Skill: pre-deploy docs audit (mandatory before push)
+Before **any** `git push`, Heroku deploy, or `gh` action, run
+[pre-deploy-docs-sync](../../../../.cursor/skills/pre-deploy-docs-sync/SKILL.md):
+map the branch diff via [task-index.md](../../task-index.md) to
+`docs/architecture/blocks/`, apply
+[docs-architecture-sync](../../../../.codex/skills/docs-architecture-sync/SKILL.md),
+then ask the user for push permission. See **Rule W-49** in `CLAUDE.md`.
+
 ### Skill: deploy the backend (Heroku)
-1. Merge to `main`; push to the Heroku remote (or GitHub auto-deploy). **Ask the user before any push.**
+1. Run the pre-deploy docs audit (above). Merge to `main`; push to the Heroku remote (or GitHub auto-deploy). **Ask the user before any push.**
 2. Release phase runs automatically: eval-agent check → `alembic upgrade head`. Watch `heroku releases:output`.
 3. Verify: `GET /healthz` then `/readyz`; `heroku logs --tail` for the lifespan startup line and `run-job-maintenance` task.
 4. Remember dyno disk was wiped — first HMO/Studio requests may re-seed on-disk caches from their Postgres counterparts.

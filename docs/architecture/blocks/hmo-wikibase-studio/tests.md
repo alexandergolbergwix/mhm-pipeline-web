@@ -7,8 +7,10 @@
   `book_name` → `monolingualtext`, OWL kind/range metadata).
 - `backend/tests/unit/test_hmo_schema_verify.py` — fixture enrichment +
   cache-key fields (`description`, `property_kind`, `range_uri`).
-- `backend/tests/test_hmo_item_build.py`, `test_hmo_studio_build_items_router.py`,
-  `backend/tests/unit/test_hmo_exporter_resolution.py` (incl. truncation cases) — build + cache fingerprint.
+- `backend/tests/unit/test_hmo_exporter_resolution.py` (incl. truncation cases),
+  `backend/tests/unit/test_hmo_exporter_control_numbers.py` — build + CN graph walk.
+- `backend/tests/test_hmo_item_build.py`, `test_hmo_studio_build_items_router.py` —
+  build + cache fingerprint.
 - `backend/tests/test_hmo_item_upload.py` (incl.
   `test_live_upload_resolves_reconcile_pid_once_not_per_entity`,
   `test_dry_run_never_resolves_reconcile_pid`,

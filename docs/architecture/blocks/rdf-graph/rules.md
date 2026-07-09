@@ -81,3 +81,9 @@
     Wikibase labels go through the same sanitizer at export. *Why:* ISBD quote
     artifacts and descriptive notes dominated AI autofix `fail` verdicts on run
     `48ba6c13` (Rule W-45).
+15. **R15 — Primary RDF nodes MUST carry Wikibase-ready `rdfs:comment`.**
+    `graph_builder._stamp_wikibase_comment` (and the CU helper) attach English
+    descriptions at build for manuscript/work/expression/person/place/production
+    and epistemology nodes so `hmo_exporter` never falls back to generic
+    `… in the Hebrew Manuscripts Ontology (HMO)` text. *Why:* 1283/1911 items
+    in export (4) still had placeholder descriptions (Rule W-48).

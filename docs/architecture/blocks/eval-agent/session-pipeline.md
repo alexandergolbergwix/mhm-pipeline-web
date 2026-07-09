@@ -74,7 +74,10 @@ Channel quirks:
   (`_prepare_wikidata_verify_scope`); the live fingerprint enters the cache key.
 - **HMO item/schema** do the pre-cache split in the *router* and pass
   `pre_cached`/`uncached_items` into the stream; authority/NER split inside the
-  generator. Schema writes only the uncached entries into the fixture — writing
+  generator. Item fixtures carry `control_numbers` + `entity_type`; ingest
+  `enrich_control_numbers()` fills gaps via `deferred_links`; `session.py`
+  loads MARC from any CN in the list (R18 / Rule W-48). Schema writes only the
+  uncached entries into the fixture — writing
   the full report made the web-tier cache pointless. Schema fixtures are
   enriched with `description`, `aliases`, `property_kind`, and `range_uri` from
   `ontology_schema_reader.schema_entry_metadata_by_uri()` before judging; cache

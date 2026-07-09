@@ -24,6 +24,17 @@
 4. If a property still fails on datatype, check OWL (`property_kind` +
    `rdfs:range`) before changing Wikibase — see **R22** and Rule W-47.
 
+### Skill: re-run HMO item AI verify after CN/description/rubric fixes (Rule W-48)
+1. **RDF rebuild** the run (description stamps live in `graph_builder.py`).
+2. **HMO Studio → Rebuild (skip cache)** so `HmoStudioItemCache` picks up
+   `control_numbers` + refreshed descriptions.
+3. Open **Verify with AI** (or **Autofix with AI** for live-QID rows); enable
+   **override cache** — rubric, evaluator, and build fields all changed.
+4. Optional **Reupload (update existing)** only when live wiki labels/descriptions
+   should change; verify alone does not need a wiki push.
+5. Export verdicts JSON and compare to the prior export; expect a sharp drop in
+   "no MARC context" fails and generic-description partials.
+
 ### Skill: run an item upload for a run
 1. Build the RDF graph first (RDF Graph section), then
    `POST /runs/{id}/hmo-studio/build-items` (409 → schema bootstrap is behind

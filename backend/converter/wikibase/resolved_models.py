@@ -88,6 +88,8 @@ class ResolvedWikibaseEntity:
     descriptions: dict[str, str]
     class_qid: str
     source_uri: str
+    entity_type: str = ""
+    control_numbers: list[str] = field(default_factory=list)
     claims: list[ResolvedClaim] = field(default_factory=list)
     deferred_links: list[DeferredItemLink] = field(default_factory=list)
     # Human-readable notes for statements that couldn't be resolved to a
@@ -102,6 +104,8 @@ class ResolvedWikibaseEntity:
             "descriptions": self.descriptions,
             "class_qid": self.class_qid,
             "source_uri": self.source_uri,
+            "entity_type": self.entity_type,
+            "control_numbers": list(self.control_numbers),
             "claims": [c.to_dict() for c in self.claims],
             "deferred_links": [d.to_dict() for d in self.deferred_links],
             "skipped_statements": self.skipped_statements,
@@ -115,6 +119,8 @@ class ResolvedWikibaseEntity:
             descriptions=data["descriptions"],
             class_qid=data["class_qid"],
             source_uri=data["source_uri"],
+            entity_type=str(data.get("entity_type") or ""),
+            control_numbers=list(data.get("control_numbers") or []),
             claims=[ResolvedClaim.from_dict(c) for c in data.get("claims") or []],
             deferred_links=[
                 DeferredItemLink.from_dict(d) for d in data.get("deferred_links") or []

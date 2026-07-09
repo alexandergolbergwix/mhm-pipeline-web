@@ -1235,6 +1235,44 @@ Tests: `eval-agent/tests/test_hmo_wikibase_schema.py`,
 
 ---
 
+### Rule W-48 — HMO item AI verify needs manuscript scope + substantive descriptions (added 2026-07-09)
+
+Second audit of run `48ba6c13` export (4) after W-45/W-47 fixes — **690
+fail / 857 partial** on 1911 items (down from 966 fails, still not
+curator-ready):
+
+1. **792 items still had no MARC join** — mostly `QDraft_Person_*` rows
+   whose `source_uri` carries no 8+ digit control number. URI-regex alone
+   (W-45) cannot reach derived persons/works linked only through the RDF
+   graph. **Fix (build):** `hmo_exporter._control_numbers_for_node` BFS-walks
+   **incoming** RDF edges to every manuscript URI, stamps `control_numbers`
+   on `WikibaseEntityDraft` / `ResolvedWikibaseEntity`, and persists them in
+   `HmoStudioItemCache`. **Fix (verify):**
+   `hmo_wikibase_items.enrich_control_numbers()` propagates across
+   `deferred_links`; `session.py` tries every CN in the list when loading
+   MARC.
+2. **1283 generic Wikibase descriptions** — `… in the Hebrew Manuscripts
+   Ontology (HMO)` fallback when a node lacks `rdfs:comment`. Codicological
+   units were fixed in W-45; Work/Expression/Person/Manuscript/Production/
+   epistemology nodes were not. **Fix:** `graph_builder._stamp_wikibase_comment`
+   (and the existing CU helper) attach English `rdfs:comment` at RDF build;
+   `hmo_exporter._descriptions_for_node` prefers those over the fallback.
+3. **Wrong judge framing** — the item rubric treated HMO items like raw NER
+   spans (`grounded=None`, Wikidata-centric `class_qid` confusion). **Fix:**
+   rewritten `hmo_wikibase_item.md` + evaluator passes `entity_type`,
+   `control_numbers`, structural vs manuscript-scoped grounding, and
+   `full`/`partial`/`fail` overalls.
+
+**Curator ops after deploy:** RDF rebuild → HMO **Rebuild (skip cache)** →
+re-run item AI verify with **override cache** (rubric + build fields changed).
+Reupload only when live wiki labels/descriptions should change.
+
+Tests: `backend/tests/unit/test_hmo_exporter_control_numbers.py`,
+`test_graph_builder_codicological_labels.py`,
+`eval-agent/tests/test_hmo_wikibase_items.py`.
+
+---
+
 ## Project structure
 
 | Path | Purpose |
@@ -1407,6 +1445,25 @@ Also bump the `W-1…W-N` pointer in [AGENTS.md](AGENTS.md) and
 
 A code change that alters the architecture is not complete until the
 plan doc, block docs (see [AGENTS.md](AGENTS.md)), and this file are updated.
+
+### Rule W-49 — Pre-deploy / pre-push docs sync is mandatory (added 2026-07-09)
+
+Before **any** `git push`, Heroku deploy, `gh` action, or `modal deploy` that
+ships code from this repo, the agent MUST run the
+[pre-deploy-docs-sync](.codex/skills/pre-deploy-docs-sync/SKILL.md) gate:
+
+1. `git status` + full branch diff — enumerate every changed path.
+2. Map paths through [docs/architecture/task-index.md](docs/architecture/task-index.md)
+   to the affected `docs/architecture/blocks/<block>/` pages.
+3. Apply [docs-architecture-sync](.codex/skills/docs-architecture-sync/SKILL.md)
+   — update `key-files`, `how-it-works`, `rules`, `skills`, `tests`, and bump
+   `W-1…W-N` pointers when `Rule W-N` was added.
+4. Report `Docs: <paths>` or `Docs: verified current` in the deploy/push summary.
+
+This is the **final audit** on top of [docs-on-code-change](.cursor/skills/docs-on-code-change/SKILL.md)
+during implementation. "Docs were done earlier" is not sufficient without
+re-checking the diff about to ship. User permission for each push remains
+required separately (never auto-push).
 
 ---
 
