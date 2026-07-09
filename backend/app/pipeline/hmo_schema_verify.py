@@ -19,6 +19,10 @@ from app.pipeline.agent_runner import (
     spawn_eval_agent_run,
 )
 from app.pipeline.hmo_schema_bootstrap import SchemaBootstrapResult
+from app.pipeline.hmo_schema_verdict_cache import (
+    schema_verdict_input_fingerprint,
+    schema_verdict_query_summary,
+)
 from app.pipeline.inference_cache import write_to_inference_cache
 
 logger = logging.getLogger(__name__)
@@ -94,27 +98,6 @@ def write_schema_verify_fixture(*, dest_dir: Path, items: list[dict[str, Any]]) 
         marc_path.write_text("[]\n", encoding="utf-8")
 
 
-def schema_verdict_query_summary(
-    entry: dict[str, Any],
-    judge_model: str = "gemini-3.5-flash",
-    *,
-    evaluator: str = "hmo_wikibase_schema",
-) -> dict[str, Any]:
-    return {
-        "ontology_uri": str(entry.get("ontology_uri") or ""),
-        "entity_kind": str(entry.get("entity_kind") or ""),
-        "label": str(entry.get("label") or ""),
-        "description": str(entry.get("description") or ""),
-        "datatype": entry.get("datatype"),
-        "property_kind": entry.get("property_kind"),
-        "range_uri": entry.get("range_uri"),
-        "wikibase_id": entry.get("wikibase_id"),
-        "status": str(entry.get("status") or ""),
-        "judge_model": judge_model,
-        "evaluator": evaluator,
-    }
-
-
 def cached_schema_verdict_event(
     entry: dict[str, Any],
     cached_payload: dict[str, Any],
@@ -151,11 +134,16 @@ async def _write_schema_verdicts_to_cache(
                 continue
             model = str(v.get("judge_id") or v.get("model") or judge_model)
             evaluator_id = str(v.get("evaluator_id") or v.get("evaluator") or "hmo_wikibase_schema")
+            fingerprint = schema_verdict_input_fingerprint(
+                item,
+                model,
+                evaluator=evaluator_id,
+            )
             cached_result = {
                 "verdict": v.get("verdict") or {},
                 "judge_id": v.get("judge_id") or v.get("model"),
                 "judged_at": v.get("judged_at"),
-                "cache_key": v.get("cache_key"),
+                "cache_key": fingerprint,
                 "evaluator": evaluator_id,
                 "confidence": v.get("confidence"),
                 "sub_type": v.get("sub_type"),

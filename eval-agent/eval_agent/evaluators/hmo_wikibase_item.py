@@ -150,4 +150,11 @@ class HmoWikibaseItemEvaluator(Evaluator):
                 "  when the name/title is supported by authors/title/contents/notes."
                 + merge_note
             )
+        if control_numbers:
+            return (
+                "  STATE = LINKED OUT-OF-RUN — control_numbers are set but no MARC slice\n"
+                "  is available in this verify fixture (manuscripts may be outside the\n"
+                "  scoped run). Judge from labels, descriptions, and claims; do not\n"
+                "  downgrade solely for missing MARC."
+            )
         return super().format_grounding(candidate)

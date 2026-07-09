@@ -53,6 +53,11 @@ from app.pipeline.agent_runner import (
     sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.marc_verify_context import attach_marc_context
+from app.pipeline.wikidata_verdict_cache import (
+    wikidata_verdict_input_fingerprint,
+    wikidata_verdict_query_summary,
+)
 from app.routers.runs import _lookup_run_with_access  # noqa: PLF401 — module-internal
 from app.versioning import apply_event
 
@@ -207,6 +212,7 @@ async def start_verify_stream(
 
     judge_model = payload.tier_model or GEMINI_MODEL
     evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
+    attach_marc_context(items, marc_records)
     pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
     uncached: list[dict[str, Any]] = []
     if not payload.override_cache:
@@ -214,7 +220,7 @@ async def start_verify_stream(
             hit = await read_from_inference_cache(
                 db,
                 kind="ai_verdict",
-                query_summary=_wikidata_verdict_query_summary(
+                query_summary=wikidata_verdict_query_summary(
                     item, judge_model, evaluator=evaluator_id,
                 ),
             )
@@ -1782,6 +1788,7 @@ async def _wikidata_verify_event_stream(
                         for i in uncached_items
                     },
                     verdicts=on_disk_verdicts,
+                    marc_records=marc_records,
                 )
             except Exception:  # noqa: BLE001
                 logger.exception("failed to write Wikidata item verdicts to inference cache")
@@ -1824,27 +1831,8 @@ def _wikidata_verdict_query_summary(
     *,
     evaluator: str = "wikidata_item",
 ) -> dict[str, Any]:
-    summary: dict[str, Any] = {
-        "local_id": str(item.get("_local_id") or item.get("local_id") or ""),
-        "entity_type": str(item.get("entity_type") or ""),
-        "labels": item.get("labels") or {},
-        "descriptions": item.get("descriptions") or {},
-        "aliases": item.get("aliases") or {},
-        "statements": item.get("statements") or [],
-        "existing_qid": item.get("existing_qid"),
-        "validation_issues": item.get("validation_issues") or [],
-        "judge_model": judge_model,
-        "evaluator": evaluator,
-    }
-    if evaluator == "wikidata_autofix":
-        live = item.get("wikidata_live")
-        if isinstance(live, dict):
-            summary["wikidata_live_fingerprint"] = {
-                "conflict_count": live.get("conflict_count"),
-                "row_count": len(live.get("rows") or []),
-                "qid": live.get("qid"),
-            }
-    return summary
+    """Backward-compatible wrapper — prefer ``wikidata_verdict_cache``."""
+    return wikidata_verdict_query_summary(item, judge_model, evaluator=evaluator)
 
 
 async def _prepare_wikidata_verify_scope(
@@ -1891,6 +1879,7 @@ async def _write_wikidata_verdicts_to_cache(
     *,
     items_by_id: dict[str, dict[str, Any]],
     verdicts: list[dict[str, Any]],
+    marc_records: list[dict[str, Any]] | None = None,
 ) -> None:
     from app.db import session_scope  # noqa: PLC0415
 
@@ -1910,11 +1899,21 @@ async def _write_wikidata_verdicts_to_cache(
             evaluator_id = str(
                 v.get("evaluator_id") or v.get("evaluator") or "wikidata_item",
             )
+            marc_ctx = item.get("_marc_context")
+            if not isinstance(marc_ctx, dict):
+                from app.pipeline.wikidata_verdict_cache import marc_context_for_wikidata_item  # noqa: PLC0415
+                marc_ctx = marc_context_for_wikidata_item(item, marc_records or [])
+            fingerprint = wikidata_verdict_input_fingerprint(
+                item,
+                judge_model,
+                evaluator=evaluator_id,
+                marc_context=marc_ctx if isinstance(marc_ctx, dict) else None,
+            )
             cached_result = {
                 "verdict": v.get("verdict") or {},
                 "judge_id": v.get("judge_id") or v.get("model"),
                 "judged_at": v.get("judged_at"),
-                "cache_key": v.get("cache_key"),
+                "cache_key": fingerprint,
                 "evaluator": v.get("evaluator_id") or v.get("evaluator") or "wikidata_item",
                 "confidence": v.get("confidence"),
                 "sub_type": v.get("sub_type"),
@@ -1923,8 +1922,9 @@ async def _write_wikidata_verdicts_to_cache(
             await write_to_inference_cache(
                 db,
                 kind="ai_verdict",
-                query_summary=_wikidata_verdict_query_summary(
+                query_summary=wikidata_verdict_query_summary(
                     item, judge_model, evaluator=evaluator_id,
+                    marc_context=marc_ctx if isinstance(marc_ctx, dict) else None,
                 ),
                 result=cached_result,
             )

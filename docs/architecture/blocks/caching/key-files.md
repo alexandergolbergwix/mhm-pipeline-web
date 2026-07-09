@@ -18,5 +18,7 @@
 | `backend/app/pipeline/hmo_studio.py:405` | `compute_coverage_fingerprint` (TTL bytes) + `save_coverage_to_db` |
 | `backend/app/pipeline/extraction_entities_cache.py` | Run-scoped fingerprint + ETag for `GET /extraction/entities`; `invalidate_entities_cache` |
 | `backend/app/pipeline/ner_verdict_cache.py` | Content keys for `kind=ai_verdict` (`ner_verdict_query_summary`, `sanitise_stale_ai_verdict`) |
+| `backend/app/pipeline/hmo_item_verdict_cache.py` | HMO item `ai_verdict` keys + `sanitise_stale_hmo_item_verdict` (entity_type, MARC slice, schema salt) |
+| `backend/app/pipeline/marc_verify_context.py` | Multi-CN MARC merge/project for verify cache fingerprints |
 | `backend/app/jobs/prune_inference_cache.py` | Deletes rows with `expires_at < now()`; NULL-TTL rows never touched |
 | `backend/scripts/run_prune_inference_cache.py` | Heroku Scheduler entrypoint, daily 02:05 UTC |

@@ -34,3 +34,9 @@
 9. **R9 — Cache keys MUST be content-addressed via `canonical_hash` and free
    of volatile fields.** *Why:* sorted-keys canonical JSON + `_strip_volatile`
    guarantee two semantically-equal calls share one row across users.
+10. **R10 — AI verdict caches (`kind=ai_verdict`) MUST fingerprint the full
+    judge input and store that fingerprint as `cache_key` on every persist
+    path (Rule W-51).** *Why:* eval-agent prompt hashes and bare entity ids
+    do not change when labels, MARC, claims, or match payloads change —
+    stale pills would survive rebuilds. `override_cache` is for unchanged-input
+    re-judge only; input changes must auto-miss via `sanitise_stale_*` on reads.

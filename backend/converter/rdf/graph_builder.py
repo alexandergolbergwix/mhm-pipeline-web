@@ -29,9 +29,13 @@ from .rdf_helpers import (
     infer_person_type,
     is_descriptive_content_title,
     is_plausible_coords,
+    is_usable_work_title,
+    label_language_for_text,
     names_overlap,
     normalize_participation_role,
     normalize_role,
+    preferred_lat_label_compatible,
+    sanitize_work_title,
 )
 
 # WGS84 geo-positioning predicates for place coordinates (Rule 60).
@@ -99,7 +103,8 @@ class GraphBuilder:
 
         work_uri = None
         expression_uri = None
-        if data.title:
+        main_title = sanitize_work_title(data.title or "") if data.title else ""
+        if main_title and is_usable_work_title(main_title):
             author_name = data.authors[0]["name"] if data.authors else None
             work_uri = self._add_work(graph, data, author_name)
 
@@ -112,7 +117,7 @@ class GraphBuilder:
                 {
                     "work": work_uri,
                     "expression": expression_uri,
-                    "title": data.title or f"MS {control_number}",
+                    "title": main_title,
                 }
             )
 
@@ -520,6 +525,19 @@ class GraphBuilder:
         if cleaned:
             graph.add((node_uri, RDFS.comment, Literal(cleaned, lang=lang)))
 
+    @staticmethod
+    def _ensure_viewtype_paradigm_metadata(
+        graph: Graph,
+        paradigm_uri: URIRef,
+        *,
+        label: str,
+        description: str,
+    ) -> None:
+        """Stamp label + description on shared ViewType individuals once."""
+        if not any(graph.objects(paradigm_uri, RDFS.comment)):
+            graph.add((paradigm_uri, RDFS.label, Literal(label, lang="en")))
+            GraphBuilder._stamp_wikibase_comment(graph, paradigm_uri, description)
+
     def _add_manuscript(
         self, graph: Graph, ms_uri: URIRef, data: ExtractedData, control_number: str
     ):
@@ -624,12 +642,16 @@ class GraphBuilder:
         Returns:
             Work URI
         """
-        work_uri = self.uri_gen.work_uri(data.title, author_name)
+        title = sanitize_work_title(data.title or "")
+        if not title:
+            title = data.title or ""
+        lang = label_language_for_text(title)
+        work_uri = self.uri_gen.work_uri(title, author_name)
 
         graph.add((work_uri, RDF.type, LRMOO.F1_Work))
 
-        graph.add((work_uri, HM.has_title, Literal(data.title, lang="he")))
-        graph.add((work_uri, RDFS.label, Literal(data.title, lang="he")))
+        graph.add((work_uri, HM.has_title, Literal(title, lang=lang)))
+        graph.add((work_uri, RDFS.label, Literal(title, lang=lang)))
 
         if data.subtitle:
             full_title = f"{data.title} : {data.subtitle}"
@@ -645,7 +667,7 @@ class GraphBuilder:
         self._stamp_wikibase_comment(
             graph,
             work_uri,
-            f"Literary work '{data.title}'{author_part}.",
+            f"Literary work '{title}'{author_part}.",
         )
 
         return work_uri
@@ -705,9 +727,10 @@ class GraphBuilder:
 
         graph.add((expression_uri, RDF.type, LRMOO.F2_Expression))
 
-        title_label = clean_marc_label(data.title) if data.title else ""
+        title_label = sanitize_work_title(data.title) if data.title else ""
         expr_label = title_label or f"Expression in MS {control_number}"
-        graph.add((expression_uri, RDFS.label, Literal(expr_label, lang="he")))
+        lang = label_language_for_text(expr_label) if title_label else "en"
+        graph.add((expression_uri, RDFS.label, Literal(expr_label, lang=lang)))
 
         graph.add((expression_uri, LRMOO.R3_is_realised_in, work_uri))
         graph.add((expression_uri, LRMOO.R3i_realises, work_uri))
@@ -1162,10 +1185,11 @@ class GraphBuilder:
 
         from converter.authority.stage3_guards import (  # noqa: PLC0415
             is_non_person_marc_heading,
+            is_placeholder_name,
             sanitize_person_years,
         )
 
-        if is_non_person_marc_heading(display_name):
+        if is_non_person_marc_heading(display_name) or is_placeholder_name(display_name):
             return None
 
         person_uri = self.uri_gen.person_uri(display_name)
@@ -1177,11 +1201,12 @@ class GraphBuilder:
 
         graph.add((person_uri, RDFS.label, Literal(display_name, lang="he")))
         pref_lat = clean_marc_label(str(person_data.get("preferred_name_lat") or ""))
-        if pref_lat and pref_lat.casefold() != display_name.casefold():
+        if pref_lat and preferred_lat_label_compatible(display_name, pref_lat):
             graph.add((person_uri, RDFS.label, Literal(pref_lat, lang="en")))
         pref_heb = clean_marc_label(str(person_data.get("preferred_name_heb") or ""))
         if pref_heb and pref_heb.casefold() != display_name.casefold():
-            graph.add((person_uri, RDFS.label, Literal(pref_heb, lang="he")))
+            if names_overlap(display_name, pref_heb):
+                graph.add((person_uri, RDFS.label, Literal(pref_heb, lang="he")))
 
         birth_year, death_year = sanitize_person_years(
             person_data.get("birth_year") if isinstance(person_data.get("birth_year"), int) else None,
@@ -1270,15 +1295,16 @@ class GraphBuilder:
             ms_uri: Manuscript URI
             control_number: MARC control number
         """
-        title = clean_marc_label(str(content.get("title") or ""))
-        if not title or is_descriptive_content_title(title):
+        title = sanitize_work_title(str(content.get("title") or ""))
+        if not is_usable_work_title(title):
             return None
 
+        lang = label_language_for_text(title)
         work_uri = self.uri_gen.work_uri(title)
         graph.add((work_uri, RDF.type, LRMOO.F1_Work))
-        graph.add((work_uri, HM.has_title, Literal(title, lang="he")))
-        graph.add((work_uri, RDFS.label, Literal(title, lang="he")))
-        self._stamp_wikibase_comment(graph, work_uri, f"Contained literary work '{title}'.")
+        graph.add((work_uri, HM.has_title, Literal(title, lang=lang)))
+        graph.add((work_uri, RDFS.label, Literal(title, lang=lang)))
+        self._stamp_wikibase_comment(graph, work_uri, f"Literary work '{title}' in manuscript {control_number}.")
 
         expression_uri = self.uri_gen.expression_uri(title, control_number)
         graph.add((expression_uri, RDF.type, LRMOO.F2_Expression))
@@ -1286,7 +1312,7 @@ class GraphBuilder:
             (
                 expression_uri,
                 RDFS.label,
-                Literal(title, lang="he"),
+                Literal(title, lang=lang),
             )
         )
         graph.add((expression_uri, LRMOO.R3_is_realised_in, work_uri))
@@ -1311,13 +1337,29 @@ class GraphBuilder:
 
         if content.get("sequence") is not None:
             position_bnode = BNode()
+            order = int(content["sequence"])
             graph.add((position_bnode, RDF.type, HM.AnthologyPosition))
             graph.add(
                 (
                     position_bnode,
                     HM.anthology_order,
-                    Literal(content["sequence"], datatype=XSD.integer),
+                    Literal(order, datatype=XSD.integer),
                 )
+            )
+            graph.add(
+                (
+                    position_bnode,
+                    RDFS.label,
+                    Literal(f"Anthology position {order} in '{title}'", lang="en"),
+                )
+            )
+            self._stamp_wikibase_comment(
+                graph,
+                position_bnode,
+                (
+                    f"Anthology position {order} for '{title}' "
+                    f"in manuscript {control_number}."
+                ),
             )
             graph.add((expression_uri, HM.has_anthology_position, position_bnode))
 
@@ -1988,6 +2030,15 @@ class GraphBuilder:
         # so ManuscriptViewShape's sh:class(ViewType) check on view_type holds
         # even under inference="none" (see CLAUDE.md Rule W-43).
         graph.add((HM.BibliographicParadigm, RDF.type, HM.ViewType))
+        self._ensure_viewtype_paradigm_metadata(
+            graph,
+            HM.BibliographicParadigm,
+            label="Bibliographic paradigm",
+            description=(
+                "Bibliographic Work-Expression-Manifestation cataloging paradigm "
+                "for Hebrew manuscript records."
+            ),
+        )
         graph.add(
             (
                 cat_view_uri,
@@ -2006,6 +2057,12 @@ class GraphBuilder:
 
         # Mark as primary paradigm (catalog data uses bibliographic approach)
         graph.add((cat_view_uri, HM.is_primary_paradigm, Literal(True, datatype=XSD.boolean)))
+
+        self._stamp_wikibase_comment(
+            graph,
+            cat_view_uri,
+            f"Cataloging view (bibliographic paradigm) for manuscript {control_number}.",
+        )
 
         # Add paradigm note explaining this is catalog-derived data
         graph.add(
@@ -2265,6 +2322,14 @@ class GraphBuilder:
         graph.add((ms_uri, HM.has_philological_perspective, phil_view_uri))
         graph.add((phil_view_uri, HM.view_type, HM.PhilologicalParadigm))
         graph.add((HM.PhilologicalParadigm, RDF.type, HM.ViewType))
+        self._ensure_viewtype_paradigm_metadata(
+            graph,
+            HM.PhilologicalParadigm,
+            label="Philological paradigm",
+            description=(
+                "New-Philology manuscript-as-event paradigm for Hebrew manuscripts."
+            ),
+        )
         graph.add(
             (phil_view_uri, HM.is_primary_paradigm, Literal(is_primary, datatype=XSD.boolean))
         )

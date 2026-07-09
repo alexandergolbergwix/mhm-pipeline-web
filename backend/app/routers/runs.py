@@ -188,8 +188,13 @@ async def list_matches(
         ),
     )
     matches = matches_result.scalars().all()
+    marc_rows = marc_result.scalars().all()
+    marc_by_cn = {
+        str(r.control_number): dict(r.marc or {"_control_number": r.control_number})
+        for r in marc_rows
+    }
     marc_index = MarcStructuredIndex.from_records(
-        dict(r.marc or {}) for r in marc_result.scalars().all()
+        dict(r.marc or {}) for r in marc_rows
     )
     result: list[AuthorityMatchResponse] = []
     for m in matches:
@@ -199,7 +204,11 @@ async def list_matches(
             m.entity_text or "",
             candidate_type=str(candidate_type) if candidate_type else None,
         )
-        result.append(AuthorityMatchResponse(**serialise_match(m, exists_in=ei)))
+        result.append(AuthorityMatchResponse(**serialise_match(
+            m,
+            exists_in=ei,
+            marc_record=marc_by_cn.get(str(m.control_number)),
+        )))
     return result
 
 

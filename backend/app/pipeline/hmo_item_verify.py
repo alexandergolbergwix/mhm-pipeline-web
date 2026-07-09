@@ -22,6 +22,10 @@ from app.pipeline.agent_runner import (
     resolve_verify_state_dir,
     spawn_eval_agent_run,
 )
+from app.pipeline.hmo_item_verdict_cache import (
+    hmo_item_verdict_input_fingerprint,
+    hmo_item_verdict_query_summary,
+)
 from app.pipeline.inference_cache import write_to_inference_cache
 
 logger = logging.getLogger(__name__)
@@ -47,33 +51,13 @@ def write_hmo_item_verify_fixture(
     )
 
 
-def hmo_item_verdict_query_summary(
-    item: dict[str, Any],
-    judge_model: str = "gemini-3.5-flash",
-    *,
-    evaluator: str = "hmo_wikibase_item",
-) -> dict[str, Any]:
-    summary: dict[str, Any] = {
-        "local_id": str(item.get("_local_id") or item.get("local_id") or ""),
-        "class_qid": str(item.get("class_qid") or ""),
-        "labels": item.get("labels") or {},
-        "descriptions": item.get("descriptions") or {},
-        "claims": item.get("claims") or [],
-        "source_uri": item.get("source_uri"),
-        "wikibase_id": item.get("wikibase_id"),
-        "shacl_issues": item.get("shacl_issues") or [],
-        "judge_model": judge_model,
-        "evaluator": evaluator,
-    }
-    if evaluator == "hmo_wikibase_item_autofix":
-        live = item.get("wikibase_live")
-        if isinstance(live, dict):
-            summary["wikibase_live_fingerprint"] = {
-                "conflict_count": live.get("conflict_count"),
-                "row_count": len(live.get("rows") or []),
-                "qid": live.get("qid"),
-            }
-    return summary
+# Re-export for callers that still import from hmo_item_verify.
+__all__ = [
+    "HMO_ITEM_VERIFY_CHANNEL",
+    "cached_hmo_item_verdict_event",
+    "hmo_item_verdict_query_summary",
+    "hmo_item_verify_event_stream",
+]
 
 
 def cached_hmo_item_verdict_event(
@@ -117,6 +101,11 @@ async def _persist_hmo_item_verdicts(
                 v.get("evaluator_id") or v.get("evaluator") or "hmo_wikibase_item",
             )
             verdict_body = v.get("verdict") or {}
+            fingerprint = hmo_item_verdict_input_fingerprint(
+                item,
+                model,
+                evaluator=evaluator_id,
+            )
             summary = {
                 "overall": verdict_body.get("overall") or "unknown",
                 "name_ok": verdict_body.get("name_ok"),
@@ -125,7 +114,7 @@ async def _persist_hmo_item_verdicts(
                 "reasoning": verdict_body.get("reasoning"),
                 "model": model,
                 "judged_at": v.get("judged_at"),
-                "cache_key": v.get("cache_key"),
+                "cache_key": fingerprint,
                 "session_id": None,
                 "evaluator": evaluator_id,
             }

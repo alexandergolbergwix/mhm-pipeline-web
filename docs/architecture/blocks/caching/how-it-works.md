@@ -82,3 +82,16 @@ so the router can answer without recomputing anything.
 
 Invalidation is never manual: changing any input changes the fingerprint,
 and the next request notices.
+
+### AI verify verdict cache (two tiers + DB row)
+
+1. **Postgres/Redis `kind=ai_verdict`** — keyed by `canonical_hash(query_summary)`.
+   Router pre-check: cache hit → skip Gemini entirely. HMO items use
+   `hmo_item_verdict_query_summary` (labels, descriptions, claims, SHACL,
+   `entity_type`, `control_numbers`, merged `marc_context`, `hmo_item_verdict_schema`).
+2. **eval-agent file cache** (`verdict_cache.jsonl`) — keyed by
+   `sha256(judge_id + prompt)` for items that missed tier 1. Prompt changes
+   (rubric/grounding) invalidate naturally. `override_cache` → `--no-cache`
+   bypasses tier 2 reads only; tier 1 is skipped separately when override is set.
+3. **`HmoStudioItemOverride.ai_verdict`** — display row; `sanitise_stale_hmo_item_verdict`
+   hides it when `cache_key` ≠ current content fingerprint (mirrors NER).

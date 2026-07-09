@@ -53,6 +53,9 @@ Return JSON with:
 4. **Generic fallback descriptions** (`… in the Hebrew Manuscripts Ontology (HMO)`)
    without substantive content → `name_ok = partial` at best; `fail` when the
    item is a primary scholarly entity (Work, Expression, Person, Manuscript).
+   When `marc_context` is empty but `control_numbers` are present, the linked
+   manuscripts may be outside the current run's MARC slice — judge from labels,
+   descriptions, and claims instead of requiring MARC verification.
 
 5. **Malformed labels** (unbalanced quotes, trailing punctuation inside quotes,
    doubled backslashes, `und` language codes) → `name_ok = partial` or `no`.

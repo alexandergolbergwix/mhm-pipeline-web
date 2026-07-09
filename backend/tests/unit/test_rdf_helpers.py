@@ -5,7 +5,9 @@ from __future__ import annotations
 from converter.rdf.rdf_helpers import (
     clean_marc_label,
     is_descriptive_content_title,
+    label_language_for_text,
     parse_contents_entry,
+    sanitize_work_title,
 )
 
 
@@ -46,3 +48,22 @@ def test_clean_marc_label_strips_in_ms_suffix() -> None:
 
 def test_clean_marc_label_strips_enum_prefix_when_requested() -> None:
     assert clean_marc_label("14) משל הקדמוני", strip_enum_prefix=True) == "משל הקדמוני"
+
+
+def test_sanitize_work_title_drops_unbalanced_quotes() -> None:
+    assert sanitize_work_title('ספר הקבלה לאברהם בן דוד (הראב"ד') == (
+        "ספר הקבלה לאברהם בן דוד"
+    )
+
+
+def test_sanitize_work_title_drops_unbalanced_open_paren() -> None:
+    assert sanitize_work_title("קטע מפרוש התורה (מסוף שמות") == "קטע מפרוש התורה"
+
+
+def test_is_descriptive_content_title_rejects_in_latin_fragment() -> None:
+    assert is_descriptive_content_title("Meir Netiv in Latin")
+
+
+def test_label_language_for_text_detects_latin() -> None:
+    assert label_language_for_text("Diodati Segre") == "en"
+    assert label_language_for_text("ספר תהילים") == "he"

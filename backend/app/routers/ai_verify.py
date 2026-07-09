@@ -40,6 +40,11 @@ from app.pipeline.agent_runner import (
     read_run_verdicts, resolve_verify_session_dir, resolve_verify_state_dir,
     spawn_eval_agent_run, sse_stream,
 )
+from app.pipeline.authority_verdict_cache import (
+    authority_verdict_input_fingerprint,
+    authority_verdict_query_summary,
+    marc_context_for_authority_match,
+)
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.pipeline.verify_session_store import load_verify_session
 from app.routers.runs import _lookup_run_with_access
@@ -214,6 +219,10 @@ async def _session_event_stream(
     from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
 
     _judge_model = tier_model or GEMINI_MODEL
+    marc_by_cn = {
+        str(m.control_number): dict(r.marc or {"_control_number": m.control_number})
+        for m, r in matches
+    }
 
     # ── Pre-check inference cache ──────────────────────────────────────
     # Done BEFORE locate_eval_agent() so a fully-cached run never
@@ -234,7 +243,9 @@ async def _session_event_stream(
                 if not _match_has_authority_id(match):
                     unverifiable.append((match, record))
                     continue
-                qs = _authority_verdict_query_summary(match, _judge_model)
+                marc_rec = dict(record.marc or {"_control_number": match.control_number})
+                marc_ctx = marc_context_for_authority_match(match, marc_rec)
+                qs = authority_verdict_query_summary(match, _judge_model, marc_context=marc_ctx)
                 hit = await read_from_inference_cache(
                     pre_db, kind="ai_verdict", query_summary=qs,
                 )
@@ -397,6 +408,7 @@ async def _session_event_stream(
                     run_id=run_id,
                     session_id=session_id,
                     verdicts=all_verdicts_to_persist,
+                    marc_by_cn=marc_by_cn,
                 )
             except Exception:  # noqa: BLE001
                 logger.exception("failed to persist ai verdicts to matches")
@@ -408,6 +420,7 @@ async def _session_event_stream(
                 await _write_authority_verdicts_to_cache(
                     matches_by_id={str(m.id): m for m, _ in uncached},
                     verdicts=on_disk_verdicts,
+                    marc_by_cn=marc_by_cn,
                 )
             except Exception:  # noqa: BLE001
                 logger.exception("failed to write authority verdicts to inference cache")
@@ -432,26 +445,15 @@ def _authority_verdict_query_summary(
     match: AuthorityMatch,
     judge_model: str = "gemini-3.5-flash",
 ) -> dict[str, Any]:
-    """Stable content key for caching an authority verdict across users/runs.
-
-    Keyed by the entity's canonical identity: name + role + authority IDs +
-    the judge model. Including the model ensures that a verdict cached under
-    an older model is never served after an upgrade.
-    """
-    return {
-        "text":         (match.entity_text or "").strip(),
-        "role":         (match.role or "").strip(),
-        "mazal_id":     match.mazal_id or "",
-        "viaf_id":      match.viaf_id or "",
-        "wikidata_qid": match.wikidata_qid or "",
-        "judge_model":  judge_model,
-    }
+    """Backward-compatible wrapper — prefer ``authority_verdict_cache``."""
+    return authority_verdict_query_summary(match, judge_model, marc_context={})
 
 
 async def _write_authority_verdicts_to_cache(
     *,
     matches_by_id: dict[str, AuthorityMatch],
     verdicts: list[dict[str, Any]],
+    marc_by_cn: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Persist newly-judged authority verdicts into the shared inference cache."""
     from app.db import session_scope  # noqa: PLC0415
@@ -464,12 +466,20 @@ async def _write_authority_verdicts_to_cache(
             if match is None:
                 continue
             _jm = v.get("judge_id") or v.get("model") or "gemini-3.5-flash"
-            qs = _authority_verdict_query_summary(match, _jm)
+            marc_rec = (marc_by_cn or {}).get(str(match.control_number))
+            marc_ctx = marc_context_for_authority_match(match, marc_rec)
+            qs = authority_verdict_query_summary(match, _jm, marc_context=marc_ctx)
+            fingerprint = authority_verdict_input_fingerprint(
+                match,
+                _jm,
+                marc_context=marc_ctx,
+                marc_record=marc_rec,
+            )
             cached_result = {
                 "verdict":    v.get("verdict") or {},
                 "judge_id":   v.get("judge_id") or v.get("model"),
                 "judged_at":  v.get("judged_at"),
-                "cache_key":  v.get("cache_key"),
+                "cache_key":  fingerprint,
                 "evaluator":  v.get("evaluator_id") or v.get("evaluator"),
                 "confidence": v.get("confidence"),
                 "sub_type":   v.get("sub_type"),
@@ -484,6 +494,7 @@ async def _persist_ai_verdicts_to_matches(
     run_id: str,
     session_id: str,
     verdicts: list[dict[str, Any]],
+    marc_by_cn: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Write each verdict back to its AuthorityMatch.payload.ai_verdict.
 
@@ -510,20 +521,21 @@ async def _persist_ai_verdicts_to_matches(
         suggested_fix = vd.get("suggested_fix")
         if suggested_fix is None and isinstance(cand, dict):
             suggested_fix = cand.get("suggested_fix")
-        summary = {
+        _jm = str(v.get("judge_id") or v.get("model") or "gemini-3.5-flash")
+        summaries[mid] = {
             "overall":        vd.get("overall"),
             "name_ok":        vd.get("name_ok"),
             "type_ok":        vd.get("type_ok"),
             "role_ok":        vd.get("role_ok"),
             "reasoning":      vd.get("reasoning"),
             "suggested_fix":  suggested_fix,
-            "model":          v.get("judge_id") or v.get("model"),
+            "model":          _jm,
             "judged_at":      v.get("judged_at"),
             "cache_key":      v.get("cache_key"),
             "session_id":     session_id,
             "evaluator":      v.get("evaluator_id") or v.get("evaluator"),
+            "_judge_model":   _jm,
         }
-        summaries[mid] = summary
 
     if not summaries:
         return
@@ -539,7 +551,15 @@ async def _persist_ai_verdicts_to_matches(
         ).scalars().all()
         for m in rows:
             payload = dict(m.payload or {})
-            payload["ai_verdict"] = summaries[m.id]
+            summary = dict(summaries[m.id])
+            judge_model = str(summary.pop("_judge_model", "gemini-3.5-flash"))
+            marc_rec = (marc_by_cn or {}).get(str(m.control_number))
+            summary["cache_key"] = authority_verdict_input_fingerprint(
+                m,
+                judge_model,
+                marc_record=marc_rec,
+            )
+            payload["ai_verdict"] = summary
             m.payload = payload
         await db.commit()
 

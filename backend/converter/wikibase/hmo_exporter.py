@@ -13,6 +13,7 @@ from rdflib.namespace import OWL, RDF, RDFS
 from rdflib.term import Node
 
 from converter.config.namespaces import CIDOC, HM, LRMOO
+from converter.rdf.rdf_helpers import label_language_for_text
 from converter.wikibase._ids import local_name, safe_local_id
 from converter.wikibase.label_sanitize import sanitize_monolingual_map
 from converter.wikibase.models import (
@@ -229,8 +230,10 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
         labels.setdefault(language, str(label))
     if not labels:
         labels = {"en": _node_local_name(subject).replace("_", " ")}
-    if "en" not in labels:
-        labels["en"] = labels.get("he") or next(iter(labels.values()))
+    elif "en" not in labels:
+        fallback = labels.get("he") or next(iter(labels.values()))
+        if label_language_for_text(fallback) == "en":
+            labels["en"] = fallback
     return sanitize_monolingual_map(
         {lang: _truncate(text, _MAX_LABEL_LENGTH) for lang, text in labels.items()}
     )
@@ -257,7 +260,21 @@ def _descriptions_for_node(
     if descriptions:
         return sanitize_monolingual_map(descriptions)
     readable = local_name(class_uri).replace("_", " ")
-    return {"en": f"{readable} in the Hebrew Manuscripts Ontology (HMO)"}
+    control_numbers = _control_numbers_for_node(graph, subject)
+    labels = _labels_for_node(graph, subject)
+    label_text = labels.get("en") or labels.get("he") or ""
+    if control_numbers:
+        return {
+            "en": _truncate(
+                f"{readable} linked to manuscript {control_numbers[0]}.",
+                _MAX_DESCRIPTION_LENGTH,
+            ),
+        }
+    if label_text and not label_text.startswith("BlankNode"):
+        return {
+            "en": _truncate(f"{readable}: {label_text}.", _MAX_DESCRIPTION_LENGTH),
+        }
+    return {"en": _truncate(f"{readable} in the Hebrew manuscripts corpus.", _MAX_DESCRIPTION_LENGTH)}
 
 
 _MAX_DESCRIPTION_LENGTH = 250  # Wikibase's hard cap on description length.

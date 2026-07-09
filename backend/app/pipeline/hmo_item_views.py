@@ -14,6 +14,12 @@ from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.pipeline.hmo_item_merge import apply_hmo_item_override, override_row_to_dict
 from app.pipeline.hmo_item_shacl import item_has_blocking_shacl
+from app.pipeline.hmo_item_verdict_cache import sanitise_stale_hmo_item_verdict
+from app.pipeline.marc_verify_context import (
+    index_marc_records,
+    load_run_marc_records,
+    marc_context_for_item,
+)
 from app.services.wikibase_audit import fetch_latest_wikibase_writes
 
 
@@ -61,6 +67,11 @@ async def fetch_merged_hmo_items(
     shacl_report = cache_row.shacl_report or {}
     items: list[dict[str, Any]] = []
 
+    marc_index: dict[str, dict[str, Any]] = {}
+    if any(row.ai_verdict for row in override_rows):
+        marc_records = await load_run_marc_records(db, run_id)
+        marc_index = index_marc_records(marc_records)
+
     for raw in cache_row.resolved_entities or []:
         entity = dict(raw)
         local_id = str(entity.get("local_id") or "")
@@ -76,7 +87,7 @@ async def fetch_merged_hmo_items(
 
         ai_verdict = ov_row.ai_verdict if ov_row else None
         shacl_issues = shacl_report.get(local_id) or []
-        items.append({
+        row = {
             **merged,
             "local_id": local_id,
             "status": status,
@@ -96,7 +107,15 @@ async def fetch_merged_hmo_items(
             "upload_at": (
                 last_write.created_at.isoformat() if last_write else None
             ),
-        })
+        }
+        if ai_verdict and marc_index:
+            row["ai_verdict"] = sanitise_stale_hmo_item_verdict(
+                row,
+                marc_context=marc_context_for_item(row, marc_index),
+            )
+            if row["ai_verdict"] is None:
+                row["ai_verdict_at"] = None
+        items.append(row)
     return items
 
 

@@ -91,6 +91,7 @@ def _normalize_marc_isbd_quotes(text: str) -> str:
     out = re.sub(r'"([^"]+?)"$', r"\1", out)
     out = re.sub(r':\s*"+\s*', ": ", out)
     out = out.replace('""', '"')
+    out = re.sub(r'\\+', "", out)
     out = re.sub(r"\s{2,}", " ", out).strip()
     return out
 
@@ -114,9 +115,44 @@ def is_descriptive_content_title(title: str) -> bool:
         return True
     if "באותיות לטיניות" in lower or "latin letters" in lower:
         return True
+    if re.search(r"\bin latin\b", lower):
+        return True
     if lower.startswith("כולל ") and "נוסח" in lower:
         return True
     return False
+
+
+def sanitize_work_title(text: str) -> str:
+    """Normalize a 245/505 work title for RDF labels and Wikibase export."""
+    cleaned = clean_marc_label(text)
+    if cleaned.count('"') % 2 == 1:
+        cleaned = cleaned.replace('"', "")
+    if cleaned.count("(") > cleaned.count(")"):
+        last_open = cleaned.rfind("(")
+        if last_open >= 0:
+            cleaned = cleaned[:last_open].strip()
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    return cleaned
+
+
+def label_language_for_text(text: str) -> str:
+    """Pick ``he`` vs ``en`` for an RDF/Wikibase label from script content."""
+    hebrew = len(re.findall(r"[\u0590-\u05ea]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    if hebrew == 0 and latin > 0:
+        return "en"
+    if latin > hebrew * 2:
+        return "en"
+    return "he"
+
+
+def is_usable_work_title(title: str) -> bool:
+    """False for notes, placeholders, or titles with too little letter content."""
+    cleaned = sanitize_work_title(title)
+    if not cleaned or is_descriptive_content_title(cleaned):
+        return False
+    letters = re.sub(r"[^\w\u0590-\u05ea]", "", cleaned)
+    return len(letters) >= 3
 
 
 def clean_marc_label(
@@ -136,6 +172,9 @@ def clean_marc_label(
     if strip_enum_prefix:
         cleaned = _ENUM_PREFIX_RE.sub("", cleaned).strip()
     cleaned = cleaned.strip("\"'").strip()
+    cleaned = re.sub(r"[,;:]+\s*$", "", cleaned).strip()
+    if cleaned.endswith(".") and not cleaned.endswith(".."):
+        cleaned = cleaned[:-1].strip()
     while cleaned.startswith('"') and cleaned.endswith('"') and len(cleaned) > 1:
         cleaned = cleaned[1:-1].strip()
     return cleaned
@@ -214,6 +253,25 @@ def names_overlap(a: str, b: str) -> bool:
     if not left or not right:
         return False
     return left == right or left in right or right in left
+
+
+def preferred_lat_label_compatible(heb_name: str, lat_name: str) -> bool:
+    """True when a Latin authority heading is safe to publish as the English label.
+
+    VIAF/Mazal catalog headings (``Surname, Given``) often disagree with the
+    MARC Hebrew heading for the same field — publishing them as ``en`` labels
+    produces judge-visible mismatches. Only emit ``en`` when the two forms
+    clearly refer to the same surface string.
+    """
+    heb = clean_marc_label(heb_name)
+    lat = clean_marc_label(lat_name)
+    if not heb or not lat:
+        return False
+    if not names_overlap(heb, lat):
+        return False
+    if "," in lat and "," not in heb and len(heb) < len(lat) * 0.6:
+        return False
+    return True
 
 
 def person_dict_key(person: dict[str, Any]) -> str:

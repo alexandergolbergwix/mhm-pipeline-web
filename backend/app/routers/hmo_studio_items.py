@@ -26,7 +26,6 @@ from app.models.event import (
     ProjectEvent,
 )
 from app.models.hmo_studio_item_override import HmoStudioItemOverride
-from app.models.run import RunRecord
 from app.pipeline import hmo_item_actions
 from app.pipeline.agent_runner import (
     list_verify_sessions,
@@ -39,12 +38,16 @@ from app.pipeline.hmo_item_reconcile import (
     ReconciliationUnavailableError,
     reconcile_item,
 )
+from app.pipeline.hmo_item_verdict_cache import (
+    hmo_item_verdict_query_summary,
+    sanitise_stale_hmo_item_verdict,
+)
 from app.pipeline.hmo_item_verify import (
     HMO_ITEM_VERIFY_CHANNEL,
     cached_hmo_item_verdict_event,
-    hmo_item_verdict_query_summary,
     hmo_item_verify_event_stream,
 )
+from app.pipeline.marc_verify_context import attach_marc_context, load_run_marc_records
 from app.pipeline.hmo_item_views import (
     ItemBuildMissingError,
     fetch_merged_hmo_items,
@@ -564,11 +567,18 @@ async def get_cached_hmo_item_verdicts(
 
     judge_model = tier_model or GEMINI_MODEL
     items = await fetch_merged_hmo_items(db, run_id)
+    marc_records = await load_run_marc_records(db, run_id)
+    attach_marc_context(items, marc_records)
     out: dict[str, dict[str, Any]] = {}
     for item in items:
         local_id = str(item.get("local_id") or "")
-        if item.get("ai_verdict"):
-            out[local_id] = item["ai_verdict"]
+        fresh = sanitise_stale_hmo_item_verdict(
+            item,
+            judge_model=judge_model,
+            marc_context=item.get("_marc_context") if isinstance(item.get("_marc_context"), dict) else None,
+        )
+        if fresh:
+            out[local_id] = fresh
             continue
         hit = await read_from_inference_cache(
             db,
@@ -613,6 +623,8 @@ async def start_hmo_item_verify_stream(
 
         judge_model = payload.tier_model or GEMINI_MODEL
         evaluator_id = action.evaluators[0] if action.evaluators else "hmo_wikibase_item"
+        marc_records = await _load_marc_records(db, run_id)
+        attach_marc_context(items, marc_records)
         pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
         uncached: list[dict[str, Any]] = []
         if not payload.override_cache:
@@ -631,7 +643,6 @@ async def start_hmo_item_verify_stream(
         else:
             uncached = list(items)
 
-        marc_records = await _load_marc_records(db, run_id)
         api_key = await _resolve_gemini_key(db, auth)
         if not api_key:
             raise HTTPException(
@@ -719,13 +730,7 @@ async def _prepare_verify_scope(
 
 
 async def _load_marc_records(db: AsyncSession, run_id: uuid.UUID) -> list[dict[str, Any]]:
-    records = (
-        await db.execute(
-            select(RunRecord).where(RunRecord.run_id == run_id)
-            .order_by(RunRecord.control_number.asc())
-        )
-    ).scalars().all()
-    return [dict(r.marc or {"_control_number": r.control_number}) for r in records]
+    return await load_run_marc_records(db, run_id)
 
 
 async def _resolve_gemini_key(db: AsyncSession, auth: AuthContext) -> str | None:

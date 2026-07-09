@@ -1495,6 +1495,35 @@ Tests: `test_rdf_helpers.py`, `test_graph_builder_codicological_labels.py`,
 
 ---
 
+### Rule W-51 — AI verdict caches are content-addressed everywhere (added 2026-07-09)
+
+Every ``kind=ai_verdict`` surface (NER extraction, authority matches,
+Wikidata Studio items, HMO Wikibase items, HMO schema bootstrap) MUST
+use the same two-tier contract:
+
+1. **Inference cache lookup** — ``canonical_hash(query_summary)`` where
+   ``query_summary`` includes every curator-visible input (entity text,
+   match payload, item labels/claims/SHACL, merged MARC slice, judge
+   model, evaluator id, and a schema salt like ``w50_v1``).
+2. **Stored row ``cache_key``** — the same content fingerprint, never
+   the eval-agent's prompt-hash. ``sanitise_stale_*`` on read paths
+   drops verdicts whose ``cache_key`` no longer matches the current
+   input so a rebuild or MARC edit invalidates pills without
+   ``override_cache``.
+
+``override_cache`` / ``--no-cache`` is only for forcing a re-judge when
+the input is unchanged (rubric tweak, model swap). Changing the data is
+always sufficient invalidation — mirrors Rule W-26 fingerprint-keyed
+build caches (Rule R6: never delete manually).
+
+Modules: ``ner_verdict_cache``, ``authority_verdict_cache``,
+``wikidata_verdict_cache``, ``hmo_item_verdict_cache``,
+``hmo_schema_verdict_cache``, shared ``ai_verdict_cache_common``.
+
+Tests: ``test_*_verdict_cache.py`` per channel.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

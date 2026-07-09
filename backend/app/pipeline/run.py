@@ -24,6 +24,7 @@ from app.models.run import (
     RunRecord,
 )
 from app.pipeline import authority, marc_ingest
+from app.pipeline.authority_verdict_cache import authority_payload_for_api
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,12 @@ async def get_run_or_404(db: AsyncSession, run_id: uuid.UUID) -> Run:
     return r
 
 
-def serialise_match(m: AuthorityMatch, *, exists_in: dict | None = None) -> dict[str, Any]:
+def serialise_match(
+    m: AuthorityMatch,
+    *,
+    exists_in: dict | None = None,
+    marc_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "id": str(m.id),
         "control_number": m.control_number,
@@ -154,7 +160,7 @@ def serialise_match(m: AuthorityMatch, *, exists_in: dict | None = None) -> dict
         "wikidata_qid": m.wikidata_qid,
         "confidence": m.confidence,
         "source": m.source,
-        "payload": m.payload or {},
+        "payload": authority_payload_for_api(m, marc_record=marc_record),
         "approved": m.approved,
         "approved_by": str(m.approved_by) if m.approved_by else None,
         "approved_at": m.approved_at.isoformat() if m.approved_at else None,
