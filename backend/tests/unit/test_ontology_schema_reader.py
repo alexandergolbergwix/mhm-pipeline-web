@@ -264,3 +264,18 @@ def test_schema_entry_metadata_by_uri_includes_verify_fields() -> None:
     entry = metadata[uri]
     assert entry["property_kind"] == "DatatypeProperty"
     assert entry["range_uri"] is not None
+
+
+def test_default_ontology_has_no_property_fallback_descriptions() -> None:
+    schema = read_hmo_schema()
+    fallback = [
+        p for p in schema.properties if p.description.startswith("HMO property:")
+    ]
+    assert fallback == [], f"still missing rdfs:comment: {[p.local_name for p in fallback[:10]]}"
+
+
+def test_title_properties_map_to_monolingualtext() -> None:
+    schema = read_hmo_schema()
+    for name in ("has_title", "has_alternate_title"):
+        prop = next(p for p in schema.properties if p.local_name == name)
+        assert prop.datatype == "monolingualtext"

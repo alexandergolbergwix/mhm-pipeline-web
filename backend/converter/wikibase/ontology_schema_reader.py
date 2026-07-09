@@ -73,6 +73,8 @@ _URL_LOCAL_NAMES = frozenset({
 # Free-text titles stored as xsd:string but better modeled as monolingualtext on Wikibase.
 _MONOLINGUALTEXT_LOCAL_NAMES = frozenset({
     "book_name",
+    "has_title",
+    "has_alternate_title",
 })
 
 

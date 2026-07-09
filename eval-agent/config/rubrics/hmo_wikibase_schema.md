@@ -56,6 +56,18 @@ Return JSON with the standard verdict keys:
     `quantity` properties in this schema (the item exporter does not use
     `globe-coordinate`) — do NOT fail these for not being
     `globe-coordinate`.
+  - **Time-Span year boundaries** (`P82a_begin_of_the_begin`,
+    `P82b_end_of_the_end`, `earliest_possible_date`, `latest_possible_date`):
+    OWL declares `rdfs:range xsd:integer` on the Time-Span node, but the
+    schema bootstrap intentionally maps these to Wikibase `time` (year
+    precision) — `type_ok` is `"yes"`, not `"no"`.
+  - **Free-text catalog period notes** (`addition_period` and similar):
+    when OWL declares `xsd:string` and the description says it is a free-text
+    catalog note (not a structured date), `string` is correct — do NOT
+    require `time`.
+  - **Work title strings** (`has_title`, `has_alternate_title`):
+    `monolingualtext` is the correct Wikibase datatype for multilingual
+    titles stored as `xsd:string` in RDF.
   - **`xsd:boolean` ranges** (certainty flags, supersession flags) are
     correctly typed as `boolean` on Wikibase.
   For classes, `"type_ok"` is `"yes"` when the class is not redundant

@@ -3599,5 +3599,115 @@ hm:has_censorship_mark rdf:type owl:DatatypeProperty ;
                "יש סימן צנזורה"@he .
 
 #################################################################
+#    Property documentation (schema bootstrap / AI verify)
+#################################################################
+
+lrmoo:R10_has_member rdfs:comment "LRMoo R10_has_member: has member."@en .
+lrmoo:R10i_is_member_of rdfs:comment "LRMoo R10i_is_member_of: is member of."@en .
+lrmoo:R16_created rdfs:comment "LRMoo R16_created: created (Work Creation → Work)."@en .
+lrmoo:R17_created rdfs:comment "LRMoo R17_created: created (Expression Creation → Expression)."@en .
+lrmoo:R24_created rdfs:comment "LRMoo R24_created: created (Manifestation Creation → Manifestation)."@en .
+lrmoo:R27_materialized rdfs:comment "LRMoo R27_materialized: materialized (Item Production → Item)."@en .
+lrmoo:R3_is_realised_in rdfs:comment "LRMoo R3_is_realised_in: is realised in."@en .
+lrmoo:R3i_realises rdfs:comment "LRMoo R3i_realises: realises."@en .
+lrmoo:R4_embodies rdfs:comment "LRMoo R4_embodies: embodies."@en .
+lrmoo:R4i_is_embodied_in rdfs:comment "LRMoo R4i_is_embodied_in: R4i is embodied in."@en .
+lrmoo:R69_has_physical_form rdfs:comment "LRMoo R69_has_physical_form: has physical form."@en .
+lrmoo:R7_exemplifies rdfs:comment "LRMoo R7_exemplifies: exemplifies."@en .
+lrmoo:R7i_is_exemplified_by rdfs:comment "LRMoo R7i_is_exemplified_by: is exemplified by."@en .
+cidoc-crm:P129_is_about rdfs:comment "CIDOC-CRM P129_is_about: is about."@en .
+cidoc-crm:P138i_has_representation rdfs:comment "CIDOC-CRM P138i_has_representation: has representation."@en .
+cidoc-crm:P14_carried_out_by rdfs:comment "CIDOC-CRM P14_carried_out_by: carried out by."@en .
+cidoc-crm:P16_used_specific_object rdfs:comment "CIDOC-CRM P16_used_specific_object: used specific object."@en .
+cidoc-crm:P16i_was_used_for rdfs:comment "CIDOC-CRM P16i_was_used_for: was used for."@en .
+cidoc-crm:P190_has_symbolic_content rdfs:comment "CIDOC-CRM P190_has_symbolic_content: has symbolic content."@en .
+cidoc-crm:P1_is_identified_by rdfs:comment "CIDOC-CRM P1_is_identified_by: is identified by."@en .
+cidoc-crm:P23_transferred_title_to rdfs:comment "CIDOC-CRM P23_transferred_title_to: transferred title to."@en .
+cidoc-crm:P24_transferred_title_from rdfs:comment "CIDOC-CRM P24_transferred_title_from: transferred title from."@en .
+cidoc-crm:P28_custody_surrendered_by rdfs:comment "CIDOC-CRM P28_custody_surrendered_by: custody surrendered by."@en .
+cidoc-crm:P29_custody_received_by rdfs:comment "CIDOC-CRM P29_custody_received_by: custody received by."@en .
+cidoc-crm:P2_has_type rdfs:comment "CIDOC-CRM P2_has_type: has type."@en .
+cidoc-crm:P46_is_composed_of rdfs:comment "CIDOC-CRM P46_is_composed_of: is composed of."@en .
+cidoc-crm:P4_has_time-span rdfs:comment "CIDOC-CRM P4_has_time-span: has time-span."@en .
+cidoc-crm:P70_documents rdfs:comment "CIDOC-CRM P70_documents: documents."@en .
+cidoc-crm:P70i_is_documented_in rdfs:comment "CIDOC-CRM P70i_is_documented_in: is documented in."@en .
+cidoc-crm:P72_has_language rdfs:comment "CIDOC-CRM P72_has_language: has language."@en .
+cidoc-crm:P74_has_current_or_former_residence rdfs:comment "CIDOC-CRM P74_has_current_or_former_residence: has current or former residence."@en .
+cidoc-crm:P7_took_place_at rdfs:comment "CIDOC-CRM P7_took_place_at: took place at."@en .
+cidoc-crm:P82a_begin_of_the_begin rdfs:comment "CIDOC-CRM P82a: earliest beginning of a Time-Span (integer year in RDF, mapped to Wikibase time)."@en .
+cidoc-crm:P82b_end_of_the_end rdfs:comment "CIDOC-CRM P82b: latest end of a Time-Span (integer year in RDF, mapped to Wikibase time)."@en .
+cidoc-crm:P89_falls_within rdfs:comment "CIDOC-CRM P89_falls_within: falls within."@en .
+cidoc-crm:P94_has_created rdfs:comment "CIDOC-CRM P94_has_created: has created."@en .
+hm:book_name rdfs:comment "Book or tractate name in a canonical reference (e.g. Mishnah, Talmud)."@en .
+hm:chapter_number rdfs:comment "HMO datatype property: chapter number."@en .
+hm:colophon_text rdfs:comment "Full colophon text transcribed from the manuscript."@en .
+hm:column_number rdfs:comment "HMO datatype property: column number."@en .
+hm:earliest_possible_date rdfs:comment "Earliest possible year on an HMO Time-Span (xsd:integer in RDF, Wikibase time datatype)."@en .
+hm:external_identifier_nli rdfs:comment "National Library of Israel (NLI) authority identifier for the manuscript."@en .
+hm:external_uri_nli rdfs:comment "HMO datatype property: NLI URI."@en .
+hm:external_wikidata_uri rdfs:comment "HMO datatype property: Wikidata URI."@en .
+hm:forms_part_of rdfs:comment "HMO object property: forms part of."@en .
+hm:geonames_id rdfs:comment "GeoNames identifier for a place."@en .
+hm:has_LCSH_id rdfs:comment "LCSH identifier linked to a subject or entity."@en .
+hm:has_VIAF_ID rdfs:comment "VIAF identifier linked to a person or corporate body."@en .
+hm:has_acquisition_event rdfs:comment "HMO object property: has acquisition event."@en .
+hm:has_alternate_title rdfs:comment "Alternate title for a Work (multilingual text, subproperty of has_title)."@en .
+hm:has_attribution_source rdfs:comment "HMO object property: has attribution source."@en .
+hm:has_catchwords rdfs:comment "HMO datatype property: has catchwords."@en .
+hm:has_censorship_mark rdfs:comment "HMO datatype property: has censorship mark."@en .
+hm:has_colophon_text rdfs:comment "HMO datatype property: has colophon text."@en .
+hm:has_columns rdfs:comment "HMO datatype property: number of columns."@en .
+hm:has_digital_representation_url rdfs:comment "HMO datatype property: digital representation URL."@en .
+hm:has_expression_creation rdfs:comment "HMO object property: has expression creation event."@en .
+hm:has_folio_range rdfs:comment "HMO datatype property: folio range."@en .
+hm:has_genre rdfs:comment "HMO object property: has genre."@en .
+hm:has_geonames_id rdfs:comment "GeoNames identifier linked to a place entity."@en .
+hm:has_height_mm rdfs:comment "HMO datatype property: height (mm)."@en .
+hm:has_lines_per_page rdfs:comment "HMO datatype property: lines per page."@en .
+hm:has_number_of_folios rdfs:comment "HMO datatype property: number of folios."@en .
+hm:has_owner rdfs:comment "HMO object property: has owner."@en .
+hm:has_preferred_citation rdfs:comment "HMO datatype property: preferred citation."@en .
+hm:has_production_date_certain rdfs:comment "HMO datatype property: has production date certain."@en .
+hm:has_production_event rdfs:comment "HMO object property: has production event."@en .
+hm:has_production_place rdfs:comment "HMO object property: has production place."@en .
+hm:has_quire_structure rdfs:comment "HMO datatype property: quire structure."@en .
+hm:has_reference_event rdfs:comment "HMO object property: has reference event."@en .
+hm:has_rights_statement rdfs:comment "HMO datatype property: rights statement."@en .
+hm:has_role rdfs:comment "HMO datatype property: has role."@en .
+hm:has_ruling_description rdfs:comment "HMO datatype property: ruling description."@en .
+hm:has_scribe rdfs:comment "HMO object property: has scribe."@en .
+hm:has_script_mode rdfs:comment "HMO object property: has script mode."@en .
+hm:has_subject rdfs:comment "HMO object property: has subject."@en .
+hm:has_text_tradition rdfs:comment "HMO object property: has text tradition."@en .
+hm:has_title rdfs:comment "Primary title for a Work (multilingual text)."@en .
+hm:has_transfer_of_custody rdfs:comment "HMO object property: has transfer of custody."@en .
+hm:has_transmission_witness rdfs:comment "HMO object property: has transmission witness."@en .
+hm:has_width_mm rdfs:comment "HMO datatype property: width (mm)."@en .
+hm:iiif_manifest_url rdfs:comment "HMO datatype property: IIIF manifest URL."@en .
+hm:intervention_description rdfs:comment "HMO datatype property: intervention description."@en .
+hm:is_chain_for rdfs:comment "HMO object property: is chain for."@en .
+hm:is_composed_of rdfs:comment "HMO object property: is composed of."@en .
+hm:is_documented_in rdfs:comment "HMO object property: is documented in."@en .
+hm:is_scribe_mentioned_in rdfs:comment "HMO object property: is scribe mentioned in."@en .
+hm:latest_possible_date rdfs:comment "Latest possible year on an HMO Time-Span (xsd:integer in RDF, Wikibase time datatype)."@en .
+hm:lcsh_id rdfs:comment "Library of Congress Subject Heading identifier."@en .
+hm:line_number rdfs:comment "HMO datatype property: line number."@en .
+hm:mentions_occasion rdfs:comment "HMO datatype property: mentions occasion."@en .
+hm:mishnah_number rdfs:comment "HMO datatype property: mishnah number."@en .
+hm:ownership_history rdfs:comment "HMO datatype property: ownership history."@en .
+hm:place_attribution_source rdfs:comment "HMO datatype property: place attribution source."@en .
+hm:sfardata_id rdfs:comment "Sfardata authority identifier."@en .
+hm:stemma_child rdfs:comment "HMO object property: stemma child."@en .
+hm:tractate_name rdfs:comment "HMO datatype property: tractate name."@en .
+hm:tradition_description rdfs:comment "HMO datatype property: tradition description."@en .
+hm:tradition_name rdfs:comment "HMO datatype property: tradition name."@en .
+hm:usage_restriction_note rdfs:comment "HMO datatype property: usage restriction note."@en .
+hm:variation_note rdfs:comment "HMO datatype property: variation note."@en .
+hm:verse_number rdfs:comment "HMO datatype property: verse number."@en .
+hm:viaf_id rdfs:comment "Virtual International Authority File (VIAF) cluster identifier."@en .
+hm:volume_number rdfs:comment "HMO datatype property: volume number."@en .
+hm:wikidata_id rdfs:comment "Wikidata QID cross-reference."@en .
+
+#################################################################
 #    End of ontology
 #################################################################
