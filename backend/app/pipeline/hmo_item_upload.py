@@ -601,9 +601,13 @@ def _build_wbi_claim(claim: ResolvedClaim) -> Any:
     if claim.datatype == "external-id":
         return datatypes.ExternalID(prop_nr=claim.property_id, value=claim.value)
     if claim.datatype == "monolingualtext":
+        from converter.wikibase.label_sanitize import normalize_wikibase_language  # noqa: PLC0415
+
         v = claim.value
         return datatypes.MonolingualText(
-            prop_nr=claim.property_id, text=v["text"], language=v.get("language", "en"),
+            prop_nr=claim.property_id,
+            text=v["text"],
+            language=normalize_wikibase_language(v.get("language")),
         )
     if claim.datatype == "time":
         v = claim.value
@@ -613,7 +617,9 @@ def _build_wbi_claim(claim: ResolvedClaim) -> Any:
     if claim.datatype == "quantity":
         return datatypes.Quantity(prop_nr=claim.property_id, amount=claim.value["amount"])
     if claim.datatype == "boolean":
-        return datatypes.Boolean(prop_nr=claim.property_id, value=bool(claim.value))
+        from converter.wikibase.wbi_datatypes import Boolean  # noqa: PLC0415
+
+        return Boolean(prop_nr=claim.property_id, value=bool(claim.value))
     raise ValueError(f"unsupported claim datatype: {claim.datatype!r}")
 
 
