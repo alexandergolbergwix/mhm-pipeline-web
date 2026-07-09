@@ -54,6 +54,8 @@ Three cache tiers, coarsest to finest:
 2. **Postgres `inference_cache` kind `ai_verdict`** (durable, 90-day, keyed by the
    channel's `*_verdict_query_summary` including `judge_model`) with **Redis L1**
    (7-day hot window) automatically in front — skips the subprocess entirely.
+   HMO schema keys also include `description`, `property_kind`, and `range_uri`
+   (R17) so prompt fixes invalidate stale verdicts without manual cache purge.
 3. **The DB row itself** (`ai_verdict` column/payload) — what tables and pills read.
 
 `override_cache=true` skips cache *reads* at both web and subprocess tiers

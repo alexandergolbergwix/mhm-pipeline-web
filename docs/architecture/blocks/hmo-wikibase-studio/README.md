@@ -14,7 +14,9 @@ moratorium gate does not apply here (desktop Rule 45).
 Pipeline stages, in order:
 
 1. **Schema bootstrap** — create every ontology class/property as a live
-   Wikibase Property/Item (global, not per-run).
+   Wikibase Property/Item (global, not per-run). Datatype mapping is
+   ontology-driven (`ontology_schema_reader`); optional AI verify judges the
+   bootstrap report (~387 entries) before/after live writes.
 2. **Item build** — resolve a run's RDF TTL against the live schema mapping into
    `ResolvedWikibaseEntity` drafts, with SHACL issues attached.
 3. **Review** — single-page curator surface on `HmoStudio`: always-visible
@@ -41,7 +43,7 @@ Pipeline stages, in order:
 - [Upload outcomes + verify](upload-outcomes-and-verify.md) — durable
   create/adopt/update/failed outcomes on the review table, single-item push,
   opt-in pre/post-upload AI verification.
-- [Rules](rules.md) — the 15 invariants (R1–R15) this block enforces.
+- [Rules](rules.md) — the 22 invariants (R1–R22) this block enforces.
 - [Skills](skills.md) — operator playbooks: bootstrap, upload, debug coverage,
   rotate credentials, adopt existing items.
 - [Tests](tests.md) — the test suites pinning this block.

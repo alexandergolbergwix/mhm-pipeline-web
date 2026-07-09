@@ -9,7 +9,7 @@
 | Change matching, guards, or authority data | [authority](blocks/authority/README.md) |
 | Change ontology output or graph build | [rdf-graph](blocks/rdf-graph/README.md) |
 | Touch anything that writes to Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) — read its `rules.md` **before** coding |
-| Touch Wikibase Cloud items/schema | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) |
+| Touch Wikibase Cloud items/schema | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) — schema AI verify: eval-agent [R17](blocks/eval-agent/rules.md), Rule W-47 |
 | Add an AI-verify surface | [eval-agent](blocks/eval-agent/README.md) |
 | Add caching or an external API call | [caching](blocks/caching/README.md) |
 | Add a curator-mutable field | [versioning-export](blocks/versioning-export/README.md) |

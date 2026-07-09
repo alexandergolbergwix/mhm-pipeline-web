@@ -3,7 +3,12 @@
 > Up: [HMO Wikibase Studio](README.md)
 
 **Schema bootstrap (global).** `converter/wikibase/ontology_schema_reader.read_hmo_schema`
-parses `hebrew-manuscripts.ttl` (~103 classes / ~277 properties).
+parses `hebrew-manuscripts.ttl` (~103 classes / ~277 properties) and maps each
+`owl:ObjectProperty` / `owl:DatatypeProperty` to a Wikibase datatype via
+`rdfs:range` (`_infer_datatype`: URI props like `hmo_source_uri` → `url`, folio
+labels → `string`, CIDOC class ranges → `wikibase-item`). `schema_entry_metadata_by_uri`
+supplies verify-enrichment fields (`property_kind`, `range_uri`, aliases) for AI
+schema verify without re-bootstrapping.
 `bootstrap_schema` (`hmo_schema_bootstrap.py:94`) creates every URI without a
 schema-level mapping row (`wikibase_entity_mappings` with `run_id IS NULL`),
 properties before classes (item claims reference PIDs). Duplicate `en` labels
@@ -15,6 +20,10 @@ re-creating live entities. Dry-run is synchronous in the router; live runs as a
 anchor the job row). The last report is persisted both as a job result and on
 disk under `backend/state/hmo_wikibase_schema/` where the eval-agent's
 `hmo_wikibase_schema` evaluator reads it (subprocess boundary — no imports).
+**Schema AI verify** (`hmo_schema_verify.py`) filters bootstrap entries,
+enriches each row with OWL metadata, writes only uncached rows to the fixture,
+and streams verdicts to `inference_cache` (no per-row DB column). The judge prompt
+must include `description` + OWL context (Rule W-47 / eval-agent R17).
 
 **Item build (per run).** `POST /runs/{id}/hmo-studio/build-items` →
 `build_items_for_run` (`hmo_item_build.py:88`). Fingerprint = SHA-256 over the

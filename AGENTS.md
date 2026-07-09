@@ -95,6 +95,19 @@ Kimi uses server `QUBRID_API_KEY` only. Non-Gemini models run linear judging
 (no agentic tool-loop). See eval-agent block **R16** and **Rule W-46** in
 [CLAUDE.md](CLAUDE.md).
 
+## HMO Wikibase Schema — AI verify
+
+The global **HMO Wikibase Schema** panel (`/hmo-wikibase-schema`) judges every
+ontology class/property from the bootstrap report (~387 rows). The eval-agent
+`hmo_wikibase_schema` evaluator **must** receive `description`, `aliases`, and
+OWL metadata (`property_kind`, `rdfs:range`) in its prompt — `filter_schema_entries`
+enriches rows from `ontology_schema_reader.schema_entry_metadata_by_uri()` before
+the fixture is written. Verdict cache keys include those fields so stale
+"missing description" judgements invalidate after prompt fixes (**Rule W-47**,
+eval-agent **R17**). After changing datatype inference or ontology comments,
+re-run schema AI verify with **override cache** (or a fresh session) and compare
+exports. Rubric: `eval-agent/config/rubrics/hmo_wikibase_schema.md`.
+
 ## HMO Wikibase Items — curator surface
 
 On **HMO Wikibase Studio** (`HmoStudio`), item **build**, **upload**, and

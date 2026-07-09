@@ -75,4 +75,8 @@ Channel quirks:
 - **HMO item/schema** do the pre-cache split in the *router* and pass
   `pre_cached`/`uncached_items` into the stream; authority/NER split inside the
   generator. Schema writes only the uncached entries into the fixture — writing
-  the full report made the web-tier cache pointless.
+  the full report made the web-tier cache pointless. Schema fixtures are
+  enriched with `description`, `aliases`, `property_kind`, and `range_uri` from
+  `ontology_schema_reader.schema_entry_metadata_by_uri()` before judging; cache
+  keys in `schema_verdict_query_summary` include those fields so prompt/rubric
+  fixes do not warm-hit stale verdicts (R17 / Rule W-47).

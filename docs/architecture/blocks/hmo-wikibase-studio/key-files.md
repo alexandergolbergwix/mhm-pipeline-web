@@ -4,6 +4,7 @@
 
 | File | Purpose |
 |---|---|
+| `backend/converter/wikibase/ontology_schema_reader.py` | TTL → class/property entries, Wikibase datatype inference, `schema_entry_metadata_by_uri()` for schema AI verify |
 | `backend/app/pipeline/hmo_schema_bootstrap.py` | Ontology-driven schema bootstrap; label de-dup; per-create commit; report cache for eval-agent |
 | `backend/app/pipeline/hmo_schema_bootstrap_job.py` | Background job wrapper for the live bootstrap (~380 writes) |
 | `backend/app/pipeline/hmo_item_build.py` | RDF → resolved items, cached in `HmoStudioItemCache` keyed by TTL hash + schema-mapping version |

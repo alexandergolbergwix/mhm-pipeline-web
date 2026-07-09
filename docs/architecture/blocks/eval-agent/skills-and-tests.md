@@ -31,6 +31,18 @@
 4. Tests: `eval-agent/tests/test_judge_models.py` + provider client unit test;
    `backend/tests/test_run_job_params_tier_model.py` for credential validation.
 
+## Skill: tune HMO schema AI verify after ontology/datatype changes
+1. Confirm `ontology_schema_reader` inference for the property
+   (`read_hmo_schema()` → `datatype`, `property_kind`, `range_uri`).
+2. Update `eval-agent/config/rubrics/hmo_wikibase_schema.md` when the judge
+   should accept ontology-faithful typing (CIDOC object props → `wikibase-item`,
+   folio designations → `string`, etc.) — not Wikidata clone semantics.
+3. Ensure `hmo_wikibase_schema.py` `build_prompt()` still passes every field
+   the rubric references (`description` is mandatory — R17).
+4. Re-run verify with **override cache** after deploy; export JSON and diff
+   verdict counts. Stale rows keyed without `description` miss automatically
+   once `schema_verdict_query_summary` includes it.
+
 ## Skill: debug a failed verify session
 1. Get `run_id` + `session_id` (SSE response header `X-Session-Id`, or job
    `params.session_id`).
@@ -85,6 +97,12 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   abstain.
 - `backend/tests/test_hmo_schema_verify.py` — schema channel: uncached-only
   fixture, cache write-through.
+- `backend/tests/unit/test_hmo_schema_verify.py` — fixture OWL enrichment,
+  cache-key fields (`description`, `property_kind`, `range_uri`).
+- `backend/tests/unit/test_ontology_schema_reader.py` — datatype inference
+  (`hmo_source_uri` → `url`, `book_name` → `monolingualtext`, OWL metadata).
+- `eval-agent/tests/test_hmo_wikibase_schema.py` — description + aliases in
+  evaluator prompt (Rule W-47).
 - `backend/tests/test_verify_job_hmo.py` — `hmo_item_verify` job-backed
   dispatch: unknown action, empty scope, end-to-end wiring, cache behaviour.
 - `eval-agent/tests/test_hmo_wikibase_items.py` — HMO `control_number()` from

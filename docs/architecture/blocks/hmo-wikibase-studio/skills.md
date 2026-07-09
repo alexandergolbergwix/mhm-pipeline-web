@@ -13,6 +13,17 @@
 4. Re-running is idempotent — mapped URIs are skipped. Check
    `GET /api/hmo-wikibase-schema/status` for mapped vs. total counts.
 
+### Skill: re-run HMO schema AI verify after ontology or rubric changes
+1. Dry-run bootstrap (or `GET /api/hmo-wikibase-schema/last-report`) so the
+   report reflects current datatype inference — `refresh_report_datatypes` patches
+   stale `datatype` fields on skipped rows when the reader improves.
+2. Open the schema panel → **Verify with AI**; pick a tier-1 judge; enable
+   **override cache** so pre-W-47 verdicts (keys without `description`) re-judge.
+3. Export verdicts JSON from the panel; expect a sharp drop in false "missing
+   description" partials once description + OWL metadata reach the prompt.
+4. If a property still fails on datatype, check OWL (`property_kind` +
+   `rdfs:range`) before changing Wikibase — see **R22** and Rule W-47.
+
 ### Skill: run an item upload for a run
 1. Build the RDF graph first (RDF Graph section), then
    `POST /runs/{id}/hmo-studio/build-items` (409 → schema bootstrap is behind
