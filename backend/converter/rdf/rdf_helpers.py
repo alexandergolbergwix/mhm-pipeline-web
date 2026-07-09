@@ -36,6 +36,39 @@ _ISBD_ADJACENT_QUOTED = re.compile(
     flags=re.UNICODE,
 )
 
+_IN_MS_SUFFIX_RE = re.compile(r"\s*\(in MS\s+\d{8,}\)\s*$", re.IGNORECASE)
+_ENUM_PREFIX_RE = re.compile(r"^\d+\)\s*")
+_NUMBERED_CONTENTS_RE = re.compile(
+    r"^\s*(?P<seq>\d+)\)\s*(?P<folio>.+?)\s*:\s*(?P<title>.+?)\s*$",
+    flags=re.UNICODE,
+)
+
+
+def parse_contents_entry(raw: str) -> dict[str, Any]:
+    """Split a MARC 505 row into sequence, folio range, and scholarly title."""
+    text = str(raw or "").strip()
+    if not text:
+        return {"title": "", "folio_range": None, "sequence": None, "raw": ""}
+
+    match = _NUMBERED_CONTENTS_RE.match(text)
+    if match:
+        folio_raw = match.group("folio").strip()
+        folio_clean = re.sub(r"^דף\s*", "", folio_raw).strip() or folio_raw
+        title = clean_marc_label(
+            match.group("title"),
+            strip_ms_scope=True,
+            strip_enum_prefix=True,
+        )
+        return {
+            "title": title,
+            "folio_range": folio_clean,
+            "sequence": int(match.group("seq")),
+            "raw": text,
+        }
+
+    title = clean_marc_label(text, strip_ms_scope=True, strip_enum_prefix=True)
+    return {"title": title, "folio_range": None, "sequence": None, "raw": text}
+
 
 def _normalize_marc_isbd_quotes(text: str) -> str:
     """Collapse MARC ISBD ``"title :" "subtitle"`` quote nesting."""
@@ -86,13 +119,22 @@ def is_descriptive_content_title(title: str) -> bool:
     return False
 
 
-def clean_marc_label(text: str) -> str:
+def clean_marc_label(
+    text: str,
+    *,
+    strip_ms_scope: bool = True,
+    strip_enum_prefix: bool = False,
+) -> str:
     """Strip MARC ISBD quote artifacts and surrounding whitespace."""
     if not text:
         return ""
     if not isinstance(text, str):
         text = str(text)
     cleaned = _normalize_marc_isbd_quotes(text.strip())
+    if strip_ms_scope:
+        cleaned = _IN_MS_SUFFIX_RE.sub("", cleaned).strip()
+    if strip_enum_prefix:
+        cleaned = _ENUM_PREFIX_RE.sub("", cleaned).strip()
     cleaned = cleaned.strip("\"'").strip()
     while cleaned.startswith('"') and cleaned.endswith('"') and len(cleaned) > 1:
         cleaned = cleaned[1:-1].strip()

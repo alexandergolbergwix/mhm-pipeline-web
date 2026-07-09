@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from rdflib import RDF, RDFS
 
-from converter.config.namespaces import HM
+from converter.config.namespaces import HM, LRMOO
 from converter.rdf.graph_builder import GraphBuilder
 from converter.transformer.field_handlers import ExtractedData
 from converter.wikibase.hmo_exporter import HmoWikibaseExporter
@@ -72,3 +72,16 @@ def test_primary_entities_avoid_generic_wikibase_descriptions() -> None:
         assert GENERIC_SUFFIX not in description, (entity_type, description)
         if entity_type not in {"F1_Work", "E53_Place"}:
             assert "990001800310205171" in description
+
+
+def test_expression_label_omits_in_ms_suffix() -> None:
+    title = "ספר תהילים"
+    graph = GraphBuilder().build_graph(
+        ExtractedData(title=title, shelfmark="Heb. 12.34"),
+        "990001800310205171",
+    )
+    expr_nodes = list(graph.subjects(RDF.type, LRMOO.F2_Expression))
+    assert expr_nodes
+    label = str(graph.value(expr_nodes[0], RDFS.label))
+    assert "(in MS" not in label
+    assert title in label

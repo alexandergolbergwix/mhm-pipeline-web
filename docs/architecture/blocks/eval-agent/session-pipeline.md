@@ -76,7 +76,8 @@ Channel quirks:
   `pre_cached`/`uncached_items` into the stream; authority/NER split inside the
   generator. Item fixtures carry `control_numbers` + `entity_type`; ingest
   `enrich_control_numbers()` fills gaps via `deferred_links`; `session.py`
-  loads MARC from any CN in the list (R18 / Rule W-48). Schema writes only the
+  merges MARC across all `control_numbers` via `marc_extract.merge_records()`
+  (R19 / Rule W-50). Schema writes only the
   uncached entries into the fixture — writing
   the full report made the web-tier cache pointless. Schema fixtures are
   enriched with `description`, `aliases`, `property_kind`, and `range_uri` from

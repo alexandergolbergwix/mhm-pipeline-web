@@ -74,6 +74,14 @@
   the rewritten rubric (`full`/`partial`/`fail`) — HMO `class_qid` is not
   Wikidata. *Why:* export (4) still had 792 items with empty MARC and 1283
   generic descriptions after W-45 URI-regex alone.
+- **R19 — Multi-CN MARC merge for shared corpus entities (Rule W-50).**
+  When `control_numbers` lists more than one manuscript, `session.py` MUST
+  pass `marc_extract.merge_records()` (union of authors/contents/subjects) to
+  the HMO item evaluator; `primary_control_number()` picks the URI-matched CN.
+  Rubric: CU English labels and short Expression titles are `name_ok=yes`;
+  empty `shacl_issues` MUST NOT yield `role_ok=no`. *Why:* export (4) false
+  MARC misses for shared authors and ~891 CU label partials from judge
+  calibration.
 - **R16 — Tier-1 judge models are registry-driven.** Canonical list in
   `eval-agent/config/tier1_models.yaml` (backend reads via `locate_eval_agent()`).
   Every verify surface sends `tier_model`; `run_job_params` validates per-provider

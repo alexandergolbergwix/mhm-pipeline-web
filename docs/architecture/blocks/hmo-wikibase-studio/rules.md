@@ -107,3 +107,8 @@
     avoided by stamping `rdfs:comment` at RDF build for primary scholarly
     entities. *Why:* export (4) on run `48ba6c13` still had 792 items with no
     MARC join and 1283 generic descriptions → mass AI verify fails/partials.
+24. **R24 — Expression/505 label hygiene + vocabulary comments (Rule W-50).**
+    `parse_contents_entry()` splits numbered 505 rows; Expression labels omit
+    `(in MS …)`; genre/subject/material/script nodes get `rdfs:comment` at
+    build. *Why:* export (4) had ~149 partials from 505 prefixes + `(in MS …)`
+    in labels and 52+ generic SubjectType descriptions.

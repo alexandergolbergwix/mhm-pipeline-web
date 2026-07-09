@@ -56,3 +56,14 @@ def test_enrich_control_numbers_propagates_via_deferred_links() -> None:
     by_id = {item["local_id"]: item for item in enriched}
     assert by_id["QDraft_Person_1"]["_control_number"] == "990000403370205171"
 
+
+def test_primary_control_number_prefers_uri_match() -> None:
+    item = {
+        "control_numbers": ["990000403370205171", "990000880710205171"],
+        "source_uri": "http://example#Person_in_990000880710205171",
+    }
+    assert (
+        hmo_wikibase_items.primary_control_number(item)
+        == "990000880710205171"
+    )
+

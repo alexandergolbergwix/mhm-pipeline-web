@@ -5,6 +5,7 @@ from __future__ import annotations
 from converter.rdf.rdf_helpers import (
     clean_marc_label,
     is_descriptive_content_title,
+    parse_contents_entry,
 )
 
 
@@ -30,3 +31,18 @@ def test_is_descriptive_content_title_rejects_gam_prefix() -> None:
 
 def test_is_descriptive_content_title_rejects_kolel_gam_nusach() -> None:
     assert is_descriptive_content_title("כולל גם נוסח ביוונית")
+
+
+def test_parse_contents_entry_splits_folio_and_title() -> None:
+    parsed = parse_contents_entry("14) דף 298ב-371א : משל הקדמוני")
+    assert parsed["sequence"] == 14
+    assert parsed["folio_range"] == "298ב-371א"
+    assert parsed["title"] == "משל הקדמוני"
+
+
+def test_clean_marc_label_strips_in_ms_suffix() -> None:
+    assert clean_marc_label("משל הקדמוני (in MS 990000403370205171)") == "משל הקדמוני"
+
+
+def test_clean_marc_label_strips_enum_prefix_when_requested() -> None:
+    assert clean_marc_label("14) משל הקדמוני", strip_enum_prefix=True) == "משל הקדמוני"

@@ -512,17 +512,23 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     # + the desktop WikidataItemBuilder's `_add_works_and_authorities`
     # see a populated `contents` list.
     from converter.rdf.rdf_helpers import (  # noqa: PLC0415
-        clean_marc_label,
         is_descriptive_content_title,
+        parse_contents_entry,
     )
 
     contents: list[dict[str, Any]] = list(record.get("contents") or [])
     for chunk in _split_multi(_str(record.get("505$a"))):
         for raw_title in chunk.split("--"):
-            title = clean_marc_label(raw_title.strip().strip(".,;:"))
+            parsed = parse_contents_entry(raw_title.strip().strip(".,;:"))
+            title = parsed["title"]
             if not title or is_descriptive_content_title(title):
                 continue
-            contents.append({"title": title})
+            entry: dict[str, Any] = {"title": title}
+            if parsed.get("folio_range"):
+                entry["folio_range"] = parsed["folio_range"]
+            if parsed.get("sequence") is not None:
+                entry["sequence"] = parsed["sequence"]
+            contents.append(entry)
     if contents:
         record["contents"] = contents
 

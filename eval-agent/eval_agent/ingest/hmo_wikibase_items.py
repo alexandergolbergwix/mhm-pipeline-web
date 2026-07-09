@@ -67,6 +67,19 @@ def control_numbers(item: dict[str, Any]) -> list[str]:
     return [cn] if cn else []
 
 
+def primary_control_number(item: dict[str, Any]) -> str:
+    """Pick the CN most specific to this item (URI/local_id match), else first."""
+    numbers = control_numbers(item)
+    if not numbers:
+        return ""
+    for field in (item.get("source_uri"), item.get("local_id"), item.get("_local_id")):
+        text = str(field or "")
+        for cn in numbers:
+            if cn in text:
+                return cn
+    return numbers[0]
+
+
 def enrich_control_numbers(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Propagate manuscript control numbers across deferred-link graphs."""
     cn_by_local_id: dict[str, str] = {}

@@ -26,10 +26,11 @@ Return JSON with:
    (`CatalogStep`, `EvidenceStep`, `Codicological_Unit`, …).
 
 2. **MARC context may be keyed by `control_numbers`**, not by whether the
-   item label appears in MARC. When `control_numbers` is non-empty and the
-   MARC block is populated, treat the item as **manuscript-scoped** and
-   verify persons/works/places against that record's authors, title,
-   subjects, notes, colophon, provenance, etc.
+   item label appears in MARC. When multiple control numbers are listed, the
+   MARC block is a **union** across all linked manuscripts. When
+   `control_numbers` is non-empty and the MARC block is populated, treat the
+   item as **manuscript-scoped** and verify persons/works/places against that
+   merged record's authors, title, subjects, notes, colophon, provenance, etc.
 
 3. **Structural / epistemology entities** (`CatalogStep`, `EvidenceStep`,
    `EvidenceChain`, `Evidence`, `PhilologicalView`, paradigm individuals):
@@ -39,6 +40,16 @@ Return JSON with:
    - Do **not** fail solely because the label is a system identifier such as
      `CatalogStep 990000403370205171`.
 
+3b. **`Codicological_Unit`** — English labels such as
+   `Main codicological unit of manuscript 9900…` are intentional system
+   labels. `name_ok = yes` when the description names the MS and content
+   scope; do not downgrade for English CU wording alone.
+
+3c. **`F2_Expression`** — short scholarly title in the Hebrew label is
+   correct; manuscript scope and folio ranges belong in the description.
+   `name_ok = yes` when the title matches MARC 245/505 content and the
+   description is substantive (not the generic HMO fallback).
+
 4. **Generic fallback descriptions** (`… in the Hebrew Manuscripts Ontology (HMO)`)
    without substantive content → `name_ok = partial` at best; `fail` when the
    item is a primary scholarly entity (Work, Expression, Person, Manuscript).
@@ -47,7 +58,8 @@ Return JSON with:
    doubled backslashes, `und` language codes) → `name_ok = partial` or `no`.
 
 6. **Blocking SHACL** (`Violation` / `Error` in `shacl_issues`) → `role_ok = no`,
-   `overall = fail`, regardless of labels.
+   `overall = fail`, regardless of labels. When `shacl_issues` is **empty**,
+   do **not** set `role_ok = no` or mention hypothetical validation failures.
 
 ## `overall` computation
 

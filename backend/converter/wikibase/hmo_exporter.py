@@ -265,12 +265,14 @@ _MAX_STRING_VALUE_LENGTH = 400  # Wikibase's default string/monolingualtext clai
 
 
 def _truncate(text: str, max_length: int) -> str:
-    """Clip free-text (e.g. a MARC 520 summary, or an overlong label) to
-    a Wikibase string-field length cap, preserving a visual ellipsis."""
+    """Clip free-text to a Wikibase length cap at a word boundary when possible."""
     text = text.strip()
     if len(text) <= max_length:
         return text
-    return text[: max_length - 1].rstrip() + "…"
+    cut = text[: max_length - 1]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip() + "…"
 
 
 def _statement_from_triple(

@@ -295,7 +295,7 @@ class GraphBuilder:
             self._add_subject(graph, subject, ms_uri, work_uri, control_number)
 
         for genre in data.genres:
-            self._add_genre_node(graph, data, ms_uri, genre)
+            self._add_genre_node(graph, data, ms_uri, genre, control_number=control_number)
 
         for ref in data.catalog_references:
             self._add_catalog_reference(graph, ref, ms_uri)
@@ -559,18 +559,33 @@ class GraphBuilder:
             graph.add((ms_uri, HM.has_material, material_uri))
             graph.add((material_uri, RDF.type, CIDOC.E57_Material))
             graph.add((material_uri, RDFS.label, Literal(material, lang="en")))
+            self._stamp_wikibase_comment(
+                graph,
+                material_uri,
+                f"Material '{material}' attested on manuscript {control_number}.",
+            )
 
         if data.script_type:
             script_uri = self.uri_gen.script_type_uri(data.script_type)
             graph.add((ms_uri, HM.has_script_type, script_uri))
             graph.add((script_uri, RDF.type, HM.TypeScriptType))
             graph.add((script_uri, RDFS.label, Literal(data.script_type, lang="en")))
+            self._stamp_wikibase_comment(
+                graph,
+                script_uri,
+                f"Script type '{data.script_type}' for manuscript {control_number}.",
+            )
 
         if data.script_mode:
             mode_uri = self.uri_gen.script_type_uri(data.script_mode)
             graph.add((ms_uri, HM.has_script_mode, mode_uri))
             graph.add((mode_uri, RDF.type, HM.ModeScriptType))
             graph.add((mode_uri, RDFS.label, Literal(data.script_mode, lang="en")))
+            self._stamp_wikibase_comment(
+                graph,
+                mode_uri,
+                f"Script mode '{data.script_mode}' for manuscript {control_number}.",
+            )
 
         if data.digital_url:
             graph.add(
@@ -641,13 +656,22 @@ class GraphBuilder:
         data: ExtractedData,
         target_uri: URIRef,
         genre: str,
+        *,
+        control_number: str | None = None,
     ) -> None:
         """Emit CIDOC P2_has_type + hm:has_genre for one MARC 655 label."""
         genre_uri = self.uri_gen.subject_uri(genre)
         graph.add((target_uri, CIDOC.P2_has_type, genre_uri))
         graph.add((target_uri, HM.has_genre, genre_uri))
         graph.add((genre_uri, RDF.type, HM.SubjectType))
-        graph.add((genre_uri, RDFS.label, Literal(genre, lang="he")))
+        genre_label = clean_marc_label(genre)
+        graph.add((genre_uri, RDFS.label, Literal(genre_label, lang="he")))
+        cn_part = f" on manuscript {control_number}" if control_number else ""
+        self._stamp_wikibase_comment(
+            graph,
+            genre_uri,
+            f"Subject heading '{genre_label}' from MARC 655/150{cn_part}.",
+        )
         genre_key = f"genre_{genre}"
         attr_src = (data.attribution_sources or {}).get(genre_key)
         if attr_src:
@@ -681,12 +705,8 @@ class GraphBuilder:
 
         graph.add((expression_uri, RDF.type, LRMOO.F2_Expression))
 
-        # Add label for Expression
-        expr_label = (
-            f"{data.title} (in MS {control_number})"
-            if data.title
-            else f"Expression in MS {control_number}"
-        )
+        title_label = clean_marc_label(data.title) if data.title else ""
+        expr_label = title_label or f"Expression in MS {control_number}"
         graph.add((expression_uri, RDFS.label, Literal(expr_label, lang="he")))
 
         graph.add((expression_uri, LRMOO.R3_is_realised_in, work_uri))
@@ -700,7 +720,7 @@ class GraphBuilder:
             graph.add((lang_uri, RDFS.label, Literal(lang_name)))
             graph.add((expression_uri, CIDOC.P72_has_language, lang_uri))
 
-        title_text = data.title or "unidentified work"
+        title_text = title_label or "unidentified work"
         self._stamp_wikibase_comment(
             graph,
             expression_uri,
@@ -1266,7 +1286,7 @@ class GraphBuilder:
             (
                 expression_uri,
                 RDFS.label,
-                Literal(f"{title} (in MS {control_number})", lang="he"),
+                Literal(title, lang="he"),
             )
         )
         graph.add((expression_uri, LRMOO.R3_is_realised_in, work_uri))
@@ -1487,6 +1507,12 @@ class GraphBuilder:
                 graph,
                 subject_uri,
                 f"Subject place '{term_label}' for manuscript {control_number}.",
+            )
+        else:
+            self._stamp_wikibase_comment(
+                graph,
+                subject_uri,
+                f"Subject term '{term_label}' on manuscript {control_number}.",
             )
 
         if subject.get("authority_id"):

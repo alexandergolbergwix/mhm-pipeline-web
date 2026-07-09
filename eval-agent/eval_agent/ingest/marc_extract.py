@@ -37,6 +37,74 @@ def index_by_id(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return out
 
 
+_LIST_MERGE_KEYS = frozenset({
+    "authors",
+    "contributors",
+    "subjects",
+    "contents",
+    "notes",
+    "related_places",
+    "languages",
+    "genres",
+    "materials",
+})
+
+_SCALAR_KEYS = frozenset({
+    "title",
+    "shelfmark",
+    "extent",
+    "material",
+    "provenance",
+    "place",
+    "colophon_text",
+    "dates",
+})
+
+
+def merge_records(
+    records: list[dict[str, Any]],
+    *,
+    primary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Union list fields across linked manuscripts; scalars from the primary record."""
+    if not records:
+        return {}
+    if len(records) == 1:
+        return dict(records[0])
+    base = dict(primary or records[0])
+    for rec in records:
+        for key, value in rec.items():
+            if key in _LIST_MERGE_KEYS and isinstance(value, list):
+                existing = base.get(key)
+                if not isinstance(existing, list):
+                    existing = []
+                    base[key] = existing
+                for item in value:
+                    if item not in existing:
+                        existing.append(item)
+            elif key in _SCALAR_KEYS:
+                continue
+            elif key != "_control_number" and key not in base:
+                base[key] = value
+    return base
+
+
+def project_many(
+    index: dict[str, dict[str, Any]],
+    control_numbers: list[str],
+    keys: list[str],
+    *,
+    primary_cn: str | None = None,
+) -> dict[str, str]:
+    """Project a merged MARC view across all linked control numbers."""
+    recs = [index[cn] for cn in control_numbers if cn in index]
+    if not recs:
+        return {}
+    primary = index.get(primary_cn or "") if primary_cn else None
+    merged = merge_records(recs, primary=primary)
+    return project(merged, keys)
+
+
 def project(record: dict[str, Any], keys: list[str]) -> dict[str, str]:
     """Pick keys from a record and coerce values to single-line strings.
 

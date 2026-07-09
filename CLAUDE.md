@@ -1465,6 +1465,34 @@ during implementation. "Docs were done earlier" is not sufficient without
 re-checking the diff about to ship. User permission for each push remains
 required separately (never auto-push).
 
+### Rule W-50 — HMO verify label hygiene + multi-CN MARC merge (added 2026-07-09)
+
+Export (4) on run `48ba6c13` showed ~1111 `name_ok=partial` rows driven by
+label design and judge calibration, not bad RDF:
+
+1. **505 / Expression labels** — `parse_contents_entry()` in
+   `converter/rdf/rdf_helpers.py` splits `N) folio : title` 505 rows at
+   ingest; `graph_builder._add_content_work` / `_add_expression` emit short
+   Hebrew titles only (never `(in MS {cn})` in labels; scope stays in
+   `rdfs:comment`). `clean_marc_label` strips `(in MS …)` suffixes and
+   optional enumeration prefixes; `hmo_exporter._truncate` clips at word
+   boundaries.
+2. **Multi-CN MARC for verify** — shared persons across manuscripts MUST
+   merge MARC from every `control_numbers` entry:
+   `marc_extract.merge_records()` / `project_many()`; `session.py` passes
+   the union to `hmo_wikibase_item`; `primary_control_number()` picks the
+   CN matching `source_uri` / `local_id`.
+3. **Vocabulary-node descriptions** — genre/subject/material/script nodes get
+   `rdfs:comment` at RDF build (not generic exporter fallback).
+4. **SHACL in verify** — fixtures from `fetch_merged_hmo_items` carry real
+   `shacl_issues`; evaluator `blocking_shacl` short-circuits; rubric forbids
+   `role_ok=no` when `shacl_issues` is empty.
+
+Upload SHACL gate (`hmo_item_shacl_gate.py`) unchanged — fail-closed.
+
+Tests: `test_rdf_helpers.py`, `test_graph_builder_codicological_labels.py`,
+`eval-agent/tests/test_marc_extract_merge.py`, `test_hmo_wikibase_items.py`.
+
 ---
 
 ## What this web app does NOT do (yet)
