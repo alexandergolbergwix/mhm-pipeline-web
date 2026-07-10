@@ -2,7 +2,30 @@
 
 from __future__ import annotations
 
+from eval_agent.evaluators._base import Candidate
+from eval_agent.evaluators.hmo_wikibase_item import HmoWikibaseItemEvaluator
 from eval_agent.ingest import hmo_wikibase_items
+
+
+def _candidate(entity_type: str) -> Candidate:
+    return Candidate(
+        record_id="990001",
+        evaluator_id="hmo_wikibase_item",
+        sub_type=entity_type,
+        payload={"entity_type": entity_type, "control_numbers": ["990001"]},
+        confidence=1.0,
+    )
+
+
+def test_grounding_treats_production_as_system_labeled_event() -> None:
+    grounding = HmoWikibaseItemEvaluator().format_grounding(_candidate("E12_Production"))
+    assert "SYSTEM-LABELED EVENT" in grounding
+    assert "rule 3d" in grounding
+
+
+def test_grounding_treats_text_tradition_as_system_labeled_event() -> None:
+    grounding = HmoWikibaseItemEvaluator().format_grounding(_candidate("TextTradition"))
+    assert "SYSTEM-LABELED EVENT" in grounding
 
 
 def test_control_number_from_acquisition_source_uri() -> None:

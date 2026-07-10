@@ -40,3 +40,15 @@ def test_hebrew_only_label_not_copied_to_en() -> None:
     labels = _labels_for_node(graph, work)
     assert labels.get("he") == "קטע מפרוש התורה"
     assert "en" not in labels
+
+
+def test_descriptions_merge_multiple_rdfs_comments() -> None:
+    graph = Graph()
+    work = URIRef(f"{HM}Work_shared")
+    graph.add((work, RDF.type, LRMOO.F1_Work))
+    graph.add((work, RDFS.label, Literal("תורה", lang="he")))
+    graph.add((work, RDFS.comment, Literal("Literary work 'תורה' in manuscript 990001.", lang="en")))
+    graph.add((work, RDFS.comment, Literal("Literary work 'תורה' in manuscript 990002.", lang="en")))
+    desc = _descriptions_for_node(graph, work, LRMOO.F1_Work)
+    assert "990001" in desc["en"]
+    assert "990002" in desc["en"]

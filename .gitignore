@@ -55,6 +55,7 @@ frontend/test-results/
 
 # Run state artefacts — regeneratable from MARC inputs.
 backend/state/
+/state/
 backend/uploads/
 backend/runs/
 backend/tmp/

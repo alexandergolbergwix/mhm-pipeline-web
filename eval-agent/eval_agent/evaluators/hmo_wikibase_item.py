@@ -20,6 +20,17 @@ _STRUCTURAL_ENTITY_TYPES = frozenset({
     "ViewType",
 })
 
+# Event / transmission entities whose English "System label of MS <cn>" is
+# intentional (rubric rule 3d): don't downgrade for the system wording when the
+# description carries substance (place/date/scribe/folio/tradition scope).
+_SYSTEM_LABELED_EVENT_TYPES = frozenset({
+    "E12_Production",
+    "E52_Time-Span",
+    "F27_Work_Creation",
+    "TransmissionWitness",
+    "TextTradition",
+})
+
 
 class HmoWikibaseItemEvaluator(Evaluator):
     id = "hmo_wikibase_item"
@@ -127,6 +138,16 @@ class HmoWikibaseItemEvaluator(Evaluator):
             merge_note = (
                 "\n  MARC context is merged from all linked control numbers — verify\n"
                 "  persons/works against the union of authors/title/contents/notes."
+            )
+        if entity_type in _SYSTEM_LABELED_EVENT_TYPES:
+            return (
+                "  STATE = SYSTEM-LABELED EVENT — English labels such as\n"
+                "  'Production of MS …', 'Production period 1460', or\n"
+                "  'Witness of … in MS …' are intentional (rubric rule 3d).\n"
+                "  name_ok = yes when the label carries the MS/period AND the\n"
+                "  description is substantive (place/date/scribe/folio/tradition).\n"
+                "  role_ok = n/a unless SHACL blocking issues are present."
+                + merge_note
             )
         if entity_type == "Codicological_Unit":
             return (

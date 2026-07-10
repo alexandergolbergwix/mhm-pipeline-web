@@ -43,7 +43,7 @@ Pipeline stages, in order:
 - [Upload outcomes + verify](upload-outcomes-and-verify.md) — durable
   create/adopt/update/failed outcomes on the review table, single-item push,
   opt-in pre/post-upload AI verification.
-- [Rules](rules.md) — the 23 invariants (R1–R23) this block enforces.
+- [Rules](rules.md) — the 25 invariants (R1–R25) this block enforces.
 - [Skills](skills.md) — operator playbooks: bootstrap, upload, debug coverage,
   rotate credentials, adopt existing items.
 - [Tests](tests.md) — the test suites pinning this block.

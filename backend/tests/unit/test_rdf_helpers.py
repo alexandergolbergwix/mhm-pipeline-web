@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from converter.rdf.rdf_helpers import (
     clean_marc_label,
+    clean_person_display_name,
+    disambiguate_person_label,
+    disambiguate_work_label,
     is_descriptive_content_title,
     label_language_for_text,
     parse_contents_entry,
@@ -67,3 +70,29 @@ def test_is_descriptive_content_title_rejects_in_latin_fragment() -> None:
 def test_label_language_for_text_detects_latin() -> None:
     assert label_language_for_text("Diodati Segre") == "en"
     assert label_language_for_text("ספר תהילים") == "he"
+
+
+def test_disambiguate_person_label_adds_ms_scope() -> None:
+    assert disambiguate_person_label("יעקב", control_number="990001") == "יעקב (MS 990001)"
+
+
+def test_disambiguate_work_label_adds_ms_scope() -> None:
+    assert disambiguate_work_label("תורה", "990001") == "תורה (MS 990001)"
+
+
+def test_clean_person_display_name_strips_dangling_ben() -> None:
+    assert clean_person_display_name("לוב, יצחק בן") == "לוב, יצחק"
+    assert disambiguate_person_label("יצחק לוריא") == "יצחק לוריא"
+
+
+def test_clean_person_display_name_strips_dangling_ibn() -> None:
+    assert clean_person_display_name("חביב, שמעון אבן") == "חביב, שמעון"
+
+
+def test_sanitize_work_title_preserves_gershayim() -> None:
+    assert sanitize_work_title('שד"ל') == 'שד"ל'
+    assert sanitize_work_title('ה"ה') == 'ה"ה'
+
+
+def test_sanitize_work_title_drops_dangling_close_paren() -> None:
+    assert sanitize_work_title("משל הקדמוני)") == "משל הקדמוני"

@@ -95,3 +95,11 @@
   `description` + OWL metadata so stale “missing description” verdicts invalidate
   after prompt fixes. *Why:* 2026-07-08 schema export — ~105 partials falsely
   claimed missing descriptions the fixture already carried (Rule W-47).
+- **R19 — HMO item rubric treats event/transmission entities as system-labeled
+  (Rule W-52).** `hmo_wikibase_item.md` rules 3d/3e + the evaluator's
+  `SYSTEM-LABELED EVENT` grounding state: `E12_Production`, `E52_Time-Span`,
+  `F27_Work_Creation`, `TransmissionWitness`, `TextTradition` get `name_ok=yes`
+  when the English system label carries the MS/period AND the description is
+  substantive; `E74_Group` orgs are judged as organizations, not Hebrew
+  persons. *Why:* run-`48ba6c13` fixup loop — the judge downgraded intentional
+  `Production of MS …` labels absent a rubric carve-out.

@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.wikibase_entity_mapping import WikibaseEntityMapping
+from app.pipeline.hmo_export_quality_gate import assert_export_quality
 from app.pipeline.hmo_item_shacl import build_shacl_report_for_items
 from converter.wikibase.hmo_exporter import HmoWikibaseExporter, resolve_against_mappings
 from converter.wikibase.resolved_models import ResolvedWikibaseEntity, SchemaMappingEntry
@@ -122,6 +123,7 @@ async def build_items_for_run(
 
     schema_mappings = await _load_schema_mappings(db)
     drafts = await run_in_threadpool(HmoWikibaseExporter().from_ttl, ttl_path)
+    await run_in_threadpool(assert_export_quality, drafts)
     resolved = await run_in_threadpool(resolve_against_mappings, drafts, schema_mappings)
 
     deferred_count = sum(len(e.deferred_links) for e in resolved)

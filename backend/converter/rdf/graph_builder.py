@@ -26,6 +26,9 @@ from ..transformer.field_handlers import ExtractedData
 from ..transformer.uri_generator import UriGenerator
 from .rdf_helpers import (
     clean_marc_label,
+    clean_person_display_name,
+    disambiguate_person_label,
+    disambiguate_work_label,
     infer_person_type,
     is_descriptive_content_title,
     is_plausible_coords,
@@ -34,6 +37,7 @@ from .rdf_helpers import (
     names_overlap,
     normalize_participation_role,
     normalize_role,
+    parse_contents_entry,
     preferred_lat_label_compatible,
     sanitize_work_title,
 )
@@ -106,7 +110,7 @@ class GraphBuilder:
         main_title = sanitize_work_title(data.title or "") if data.title else ""
         if main_title and is_usable_work_title(main_title):
             author_name = data.authors[0]["name"] if data.authors else None
-            work_uri = self._add_work(graph, data, author_name)
+            work_uri = self._add_work(graph, data, author_name, control_number=control_number)
 
             expression_uri = self._add_expression(graph, work_uri, ms_uri, data, control_number)
 
@@ -183,6 +187,26 @@ class GraphBuilder:
                     )
                     graph.add((custody_uri, RDF.type, CIDOC.E10_Transfer_of_Custody))
                     graph.add((ms_uri, HM.has_transfer_of_custody, custody_uri))
+                    owner_label = clean_marc_label(str(contributor.get("name") or "unknown owner"))
+                    graph.add(
+                        (
+                            custody_uri,
+                            RDFS.label,
+                            Literal(
+                                f"Transfer of custody to {owner_label} (MS {control_number})",
+                                lang="en",
+                            ),
+                        )
+                    )
+                    graph.add((custody_uri, CIDOC.P14_carried_out_by, person_uri))
+                    self._stamp_wikibase_comment(
+                        graph,
+                        custody_uri,
+                        (
+                            f"Transfer of custody of manuscript {control_number} "
+                            f"to {owner_label}."
+                        ),
+                    )
 
         for index, content in enumerate(data.contents, 1):
             content_record = self._add_content_work(graph, content, ms_uri, control_number)
@@ -320,10 +344,17 @@ class GraphBuilder:
                 graph, ms_uri, control_number, is_primary=False
             )
             for pair in work_expression_pairs:
-                tradition_name = f"{pair['title']} tradition"
                 tradition_title = pair["title"]
+                if not is_usable_work_title(tradition_title) or is_descriptive_content_title(
+                    tradition_title
+                ):
+                    continue
+                tradition_name = f"{tradition_title} tradition"
                 tradition_uri = self.add_text_tradition(
-                    graph, tradition_name, display_title=tradition_title
+                    graph,
+                    tradition_name,
+                    display_title=tradition_title,
+                    control_number=control_number,
                 )
                 self.add_transmission_witness(
                     graph,
@@ -556,8 +587,14 @@ class GraphBuilder:
             (ms_uri, HM.external_identifier_nli, Literal(control_number, datatype=XSD.string))
         )
 
-        label = data.title or f"MS {control_number}"
-        graph.add((ms_uri, RDFS.label, Literal(label, lang="he")))
+        he_title = sanitize_work_title(data.title or "") if data.title else ""
+        if not he_title or len(he_title) < 4:
+            he_title = f"MS {data.shelfmark or control_number}"
+        graph.add((ms_uri, RDFS.label, Literal(he_title, lang=label_language_for_text(he_title))))
+        if data.shelfmark:
+            graph.add(
+                (ms_uri, RDFS.label, Literal(f"Jerusalem, NLI, {data.shelfmark}", lang="en"))
+            )
 
         if data.extent:
             graph.add(
@@ -629,8 +666,37 @@ class GraphBuilder:
             f"Hebrew manuscript ({', '.join(details)}).",
         )
 
+    def _stamp_work_wikibase_comment(
+        self,
+        graph: Graph,
+        work_uri: URIRef,
+        title: str,
+        control_number: str,
+        *,
+        author_name: str | None = None,
+    ) -> None:
+        """Stamp manuscript-scoped work descriptions; merge when a work is shared."""
+        author_part = f" by {author_name}" if author_name else ""
+        for existing in graph.objects(work_uri, RDFS.comment):
+            if isinstance(existing, Literal) and control_number in str(existing):
+                return
+        title_for_comment = title if len(title) <= 120 else f"{title[:117]}..."
+        self._stamp_wikibase_comment(
+            graph,
+            work_uri,
+            (
+                f"Literary work in manuscript {control_number}: "
+                f"'{title_for_comment}'{author_part}."
+            ),
+        )
+
     def _add_work(
-        self, graph: Graph, data: ExtractedData, author_name: str | None = None
+        self,
+        graph: Graph,
+        data: ExtractedData,
+        author_name: str | None = None,
+        *,
+        control_number: str | None = None,
     ) -> URIRef:
         """Add Work entity to graph.
 
@@ -645,6 +711,8 @@ class GraphBuilder:
         title = sanitize_work_title(data.title or "")
         if not title:
             title = data.title or ""
+        if control_number:
+            title = disambiguate_work_label(title, control_number) or title
         lang = label_language_for_text(title)
         work_uri = self.uri_gen.work_uri(title, author_name)
 
@@ -661,14 +729,23 @@ class GraphBuilder:
             graph.add((work_uri, HM.has_title, Literal(variant, lang="he")))
 
         for genre in data.genres:
-            self._add_genre_node(graph, data, work_uri, genre)
+            self._add_genre_node(graph, data, work_uri, genre, control_number=control_number)
 
         author_part = f" by {author_name}" if author_name else ""
-        self._stamp_wikibase_comment(
-            graph,
-            work_uri,
-            f"Literary work '{title}'{author_part}.",
-        )
+        if control_number:
+            self._stamp_work_wikibase_comment(
+                graph,
+                work_uri,
+                title,
+                control_number,
+                author_name=author_name,
+            )
+        else:
+            self._stamp_wikibase_comment(
+                graph,
+                work_uri,
+                f"Literary work '{title}'{author_part}.",
+            )
 
         return work_uri
 
@@ -687,7 +764,9 @@ class GraphBuilder:
         graph.add((target_uri, HM.has_genre, genre_uri))
         graph.add((genre_uri, RDF.type, HM.SubjectType))
         genre_label = clean_marc_label(genre)
-        graph.add((genre_uri, RDFS.label, Literal(genre_label, lang="he")))
+        graph.add(
+            (genre_uri, RDFS.label, Literal(genre_label, lang=label_language_for_text(genre_label)))
+        )
         cn_part = f" on manuscript {control_number}" if control_number else ""
         self._stamp_wikibase_comment(
             graph,
@@ -744,10 +823,12 @@ class GraphBuilder:
             graph.add((expression_uri, CIDOC.P72_has_language, lang_uri))
 
         title_text = title_label or "unidentified work"
+        lang_names = [LANGUAGE_CODES.get(code, code) for code in data.languages]
+        lang_part = f", language {', '.join(lang_names)}" if lang_names else ""
         self._stamp_wikibase_comment(
             graph,
             expression_uri,
-            f"Textual expression of '{title_text}' in manuscript {control_number}.",
+            f"Textual expression of '{title_text}' in manuscript {control_number}{lang_part}.",
         )
 
         return expression_uri
@@ -775,7 +856,9 @@ class GraphBuilder:
             graph.add((prod_uri, HM.has_production_place, place_uri))
             graph.add((place_uri, RDF.type, CIDOC.E53_Place))
             place_label = clean_marc_label(data.place)
-            graph.add((place_uri, RDFS.label, Literal(place_label, lang="he")))
+            graph.add(
+                (place_uri, RDFS.label, Literal(place_label, lang=label_language_for_text(place_label)))
+            )
             self._stamp_wikibase_comment(
                 graph,
                 place_uri,
@@ -847,7 +930,14 @@ class GraphBuilder:
                     )
                 )
 
-            graph.add((time_uri, RDFS.label, Literal(time_label)))
+            graph.add(
+                (time_uri, RDFS.label, Literal(f"Production period {time_label}", lang="en"))
+            )
+            self._stamp_wikibase_comment(
+                graph,
+                time_uri,
+                f"Production date span ({time_label}) for manuscript {control_number}.",
+            )
 
             # Add date format type (v1.4)
             if "date_format" in data.dates:
@@ -868,17 +958,37 @@ class GraphBuilder:
                 )
             )
 
+        scribe_names: list[str] = []
         for contributor in data.contributors:
             if contributor.get("role") in ("scribe", "copyist"):
                 person_uri = self.uri_gen.person_uri(contributor["name"])
                 graph.add((prod_uri, CIDOC.P14_carried_out_by, person_uri))
                 graph.add((prod_uri, HM.has_scribe, person_uri))
+                scribe_name = clean_person_display_name(str(contributor.get("name") or "")).strip()
+                if scribe_name and scribe_name not in scribe_names:
+                    scribe_names.append(scribe_name)
 
-        self._stamp_wikibase_comment(
-            graph,
-            prod_uri,
-            f"Production event for manuscript {control_number}.",
-        )
+        # Build a substantive label + description so the exporter never falls
+        # back to the bare "Production {cn}" URI local name (Rule W-52).
+        detail_parts: list[str] = []
+        if data.place:
+            detail_parts.append(clean_marc_label(data.place))
+        if data.dates:
+            detail_parts.append(self._format_time_label(data.dates))
+        if scribe_names:
+            detail_parts.append(f"scribe {', '.join(scribe_names)}")
+        detail = ", ".join(p for p in detail_parts if p)
+
+        prod_label = f"Production of MS {control_number}"
+        if detail:
+            prod_label = f"{prod_label} ({detail})"
+        graph.add((prod_uri, RDFS.label, Literal(prod_label, lang="en")))
+
+        if detail:
+            comment = f"Production of manuscript {control_number}: {detail}."
+        else:
+            comment = f"Production event for manuscript {control_number}."
+        self._stamp_wikibase_comment(graph, prod_uri, comment)
 
         return prod_uri
 
@@ -943,6 +1053,15 @@ class GraphBuilder:
                 graph.add((event_uri, CIDOC.P4_has_time_span, time_uri))
                 graph.add((time_uri, RDF.type, CIDOC["E52_Time-Span"]))
                 graph.add((time_uri, RDFS.label, Literal(str(year), lang="en")))
+                if not any(graph.objects(time_uri, RDFS.comment)):
+                    self._stamp_wikibase_comment(
+                        graph,
+                        time_uri,
+                        (
+                            f"Time span {year} for {etype} event "
+                            f"of manuscript {control_number}."
+                        ),
+                    )
 
             agent = ev.get("agent_name")
             if agent:
@@ -1179,9 +1298,15 @@ class GraphBuilder:
         if not person_data.get("name"):
             return None
 
-        display_name = clean_marc_label(str(person_data["name"]))
+        display_name = clean_person_display_name(str(person_data["name"]))
         if not display_name:
             return None
+
+        display_name = disambiguate_person_label(
+            display_name,
+            dates=str(person_data.get("dates") or "") or None,
+            control_number=control_number,
+        )
 
         from converter.authority.stage3_guards import (  # noqa: PLC0415
             is_non_person_marc_heading,
@@ -1199,11 +1324,13 @@ class GraphBuilder:
         else:
             graph.add((person_uri, RDF.type, CIDOC.E21_Person))
 
-        graph.add((person_uri, RDFS.label, Literal(display_name, lang="he")))
-        pref_lat = clean_marc_label(str(person_data.get("preferred_name_lat") or ""))
+        graph.add(
+            (person_uri, RDFS.label, Literal(display_name, lang=label_language_for_text(display_name)))
+        )
+        pref_lat = clean_person_display_name(str(person_data.get("preferred_name_lat") or ""))
         if pref_lat and preferred_lat_label_compatible(display_name, pref_lat):
             graph.add((person_uri, RDFS.label, Literal(pref_lat, lang="en")))
-        pref_heb = clean_marc_label(str(person_data.get("preferred_name_heb") or ""))
+        pref_heb = clean_person_display_name(str(person_data.get("preferred_name_heb") or ""))
         if pref_heb and pref_heb.casefold() != display_name.casefold():
             if names_overlap(display_name, pref_heb):
                 graph.add((person_uri, RDFS.label, Literal(pref_heb, lang="he")))
@@ -1273,6 +1400,19 @@ class GraphBuilder:
             graph.add((creation_uri, RDF.type, LRMOO.F27_Work_Creation))
             graph.add((creation_uri, LRMOO.R16_created, related_uri))
             graph.add((creation_uri, CIDOC.P14_carried_out_by, person_uri))
+            work_title = sanitize_work_title(related_work_title) or related_work_title
+            graph.add(
+                (
+                    creation_uri,
+                    RDFS.label,
+                    Literal(f"Creation of '{work_title}' by {display_name}", lang="en"),
+                )
+            )
+            self._stamp_wikibase_comment(
+                graph,
+                creation_uri,
+                f"Work-creation event: {display_name} authored '{work_title}'.",
+            )
 
         if control_number:
             role_text = role.replace("_", " ")
@@ -1295,7 +1435,20 @@ class GraphBuilder:
             ms_uri: Manuscript URI
             control_number: MARC control number
         """
-        title = sanitize_work_title(str(content.get("title") or ""))
+        # Defense-in-depth: ingest normally splits `N) folio : title` 505 rows
+        # via parse_contents_entry, but if a raw row reaches here, recover the
+        # scholarly title / folio / sequence so the label never carries the
+        # enumeration prefix or folio scope (Rule W-50).
+        raw_title = str(content.get("title") or "")
+        folio_range = content.get("folio_range")
+        sequence = content.get("sequence")
+        if folio_range is None and sequence is None:
+            parsed = parse_contents_entry(raw_title)
+            raw_title = parsed["title"] or raw_title
+            folio_range = parsed["folio_range"]
+            sequence = parsed["sequence"]
+        content = {**content, "folio_range": folio_range, "sequence": sequence}
+        title = sanitize_work_title(raw_title)
         if not is_usable_work_title(title):
             return None
 
@@ -1304,7 +1457,7 @@ class GraphBuilder:
         graph.add((work_uri, RDF.type, LRMOO.F1_Work))
         graph.add((work_uri, HM.has_title, Literal(title, lang=lang)))
         graph.add((work_uri, RDFS.label, Literal(title, lang=lang)))
-        self._stamp_wikibase_comment(graph, work_uri, f"Literary work '{title}' in manuscript {control_number}.")
+        self._stamp_work_wikibase_comment(graph, work_uri, title, control_number)
 
         expression_uri = self.uri_gen.expression_uri(title, control_number)
         graph.add((expression_uri, RDF.type, LRMOO.F2_Expression))
@@ -1535,9 +1688,11 @@ class GraphBuilder:
             subject_uri = self.uri_gen.subject_uri(subject["term"])
             graph.add((subject_uri, RDF.type, HM.SubjectType))
 
-        graph.add((subject_uri, RDFS.label, Literal(clean_marc_label(subject["term"]), lang="he")))
-
         term_label = clean_marc_label(subject["term"])
+        graph.add(
+            (subject_uri, RDFS.label, Literal(term_label, lang=label_language_for_text(term_label)))
+        )
+
         if subject_type == "person":
             self._stamp_wikibase_comment(
                 graph,
@@ -1605,6 +1760,21 @@ class GraphBuilder:
         graph.add((colophon_uri, RDF.type, HM.Colophon))
         graph.add((colophon_uri, HM.colophon_text, Literal(colophon_text, lang="he")))
         graph.add((colophon_uri, HM.has_colophon_text, Literal(colophon_text, lang="he")))
+        snippet = colophon_text.strip()
+        if len(snippet) > 100:
+            snippet = snippet[:97] + "..."
+        graph.add(
+            (
+                colophon_uri,
+                RDFS.label,
+                Literal(f"Colophon in MS {control_number}", lang="en"),
+            )
+        )
+        self._stamp_wikibase_comment(
+            graph,
+            colophon_uri,
+            f"Colophon in manuscript {control_number}: {snippet}",
+        )
 
         graph.add((ms_uri, HM.has_colophon, colophon_uri))
 
@@ -2366,6 +2536,7 @@ class GraphBuilder:
         tradition_name: str,
         description: str | None = None,
         display_title: str | None = None,
+        control_number: str | None = None,
     ) -> URIRef:
         """Add a Text Tradition entity.
 
@@ -2377,16 +2548,27 @@ class GraphBuilder:
             tradition_name: Stable identifier for URI generation
             description: Optional description of the tradition
             display_title: Human-readable title for labels and claims (defaults to tradition_name)
+            control_number: MARC control number of the attesting manuscript, for the comment
 
         Returns:
             URI of the text tradition
         """
         tradition_uri = self.uri_gen.text_tradition_uri(tradition_name)
         label_text = display_title or tradition_name
-        comment_text = description or f"Textual tradition of the work '{label_text}'."
+        if description:
+            comment_text = description
+        elif control_number:
+            comment_text = (
+                f"Textual tradition of the work '{label_text}', "
+                f"attested in manuscript {control_number}."
+            )
+        else:
+            comment_text = f"Textual tradition of the work '{label_text}'."
 
         graph.add((tradition_uri, RDF.type, HM.TextTradition))
-        graph.add((tradition_uri, RDFS.label, Literal(label_text, lang="he")))
+        graph.add(
+            (tradition_uri, RDFS.label, Literal(label_text, lang=label_language_for_text(label_text)))
+        )
         graph.add((tradition_uri, HM.tradition_name, Literal(label_text, datatype=XSD.string)))
         graph.add((tradition_uri, RDFS.comment, Literal(comment_text, lang="en")))
 

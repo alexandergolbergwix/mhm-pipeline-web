@@ -50,6 +50,21 @@ Return JSON with:
    `name_ok = yes` when the title matches MARC 245/505 content and the
    description is substantive (not the generic HMO fallback).
 
+3d. **`E12_Production` / `E52_Time-Span` / `F27_Work_Creation` /
+   `TransmissionWitness` / `TextTradition`** — English system labels such as
+   `Production of MS 9900…`, `Production period 1460`, or
+   `Witness of '…' in MS 9900…` are intentional. `name_ok = yes` when the
+   label carries the MS control number (or period) AND the description is
+   substantive (place, date, scribe, folio, or tradition scope). Do **not**
+   downgrade for the `Production of MS …` wording alone; `role_ok = n/a`
+   unless SHACL blocking issues exist.
+
+3e. **`E74_Group`** (organizations / collections, e.g. a named library or a
+   `Sassoon` collection) — `name_ok = yes` when the English org name is
+   present and the description carries manuscript linkage. Never expect a
+   Hebrew personal-name format for an organization; `role_ok` follows the
+   org's custody/ownership role, not authorship.
+
 4. **Generic fallback descriptions** (`… in the Hebrew Manuscripts Ontology (HMO)`)
    without substantive content → `name_ok = partial` at best; `fail` when the
    item is a primary scholarly entity (Work, Expression, Person, Manuscript).
@@ -88,7 +103,8 @@ Tiebreaker: prefer `fail` over `partial` when both apply.
 | `Codicological_Unit` | Unit of a known MS | Description should mention MS + content/folios |
 | `E21_Person` / `E74_Group` | Person/org | Name in authors/contributors/subjects/colophon |
 | `E53_Place` | Place | production place / subjects / provenance |
-| `E12_Production` | Production event | dates/places from MARC |
+| `E12_Production` / `E52_Time-Span` / `F27_Work_Creation` | Production/date/creation event | System label with MS/period + substantive description OK (rule 3d) |
+| `TextTradition` / `TransmissionWitness` | Philological transmission | System label with MS + tradition scope OK (rule 3d) |
 | `CatalogStep` / `EvidenceStep` / `EvidenceChain` | Structural | System label OK; generic-only description is partial |
 
 Be conservative on **claims** (do not invent P/Q statements), but do not

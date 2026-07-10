@@ -507,6 +507,7 @@ async def _process_entity(
     loop: bool,
     max_iterations: int,
     rebuild: bool,
+    persist_verdicts: bool,
 ) -> EntityReport:
     local_id = str(item.get("local_id") or "")
     report = EntityReport(
@@ -545,6 +546,21 @@ async def _process_entity(
         print(f"    reasoning: {(vd.get('reasoning') or '')[:200]}")
 
         if acceptable or not loop:
+            if persist_verdicts:
+                from app.pipeline.hmo_item_verify import _persist_hmo_item_verdicts  # noqa: PLC0415
+
+                await _persist_hmo_item_verdicts(
+                    run_id=run_id,
+                    items_by_id={local_id: item},
+                    verdicts=[{
+                        "candidate": {**item, "_local_id": local_id},
+                        "verdict": vd,
+                        "judge_id": tier_model,
+                        "judged_at": datetime.now(timezone.utc).isoformat(),
+                        "evaluator_id": "hmo_wikibase_item",
+                    }],
+                    judge_model=tier_model,
+                )
             break
 
         patch = _heuristic_fix_from_marc(item, issues)
@@ -636,6 +652,7 @@ async def _async_main(args: argparse.Namespace) -> int:
             loop=args.loop,
             max_iterations=args.max_iterations,
             rebuild=args.rebuild,
+            persist_verdicts=args.persist_verdicts,
         )
         reports.append(asdict(entity_report))
 
@@ -685,6 +702,11 @@ def main() -> None:
         "--include-structural",
         action="store_true",
         help="include structural/blank-node items in scope",
+    )
+    parser.add_argument(
+        "--persist-verdicts",
+        action="store_true",
+        help="write each fresh verdict to hmo_studio_item_overrides + inference_cache",
     )
     args = parser.parse_args()
     args.skip_structural = not args.include_structural

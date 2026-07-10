@@ -1524,6 +1524,66 @@ Tests: ``test_*_verdict_cache.py`` per channel.
 
 ---
 
+### Rule W-52 — HMO item build must emit substantive metadata for every exportable entity (added 2026-07-10)
+
+Fixup-loop audit of run ``48ba6c13`` (Qubrid/Kimi judge on the
+partial/fail scope) traced most residual ``name_ok=partial`` verdicts to
+missing or system-only metadata on non-Work/Person entities — not bad
+data. Every entity the HMO exporter ships as a Wikibase item MUST carry a
+substantive label + description at RDF build time:
+
+- **``graph_builder`` labels/descriptions.**
+  ``_add_production_event`` stamps an ``rdfs:label``
+  ``Production of MS {cn} ({place}, {date}, scribe {names})`` and a matching
+  ``rdfs:comment`` (never the bare ``Production {cn}`` URI local name).
+  Time-Span labels are ``Production period {span}`` (``en``), never a bare
+  year. ``add_text_tradition`` labels in the title's own script
+  (``label_language_for_text`` — a Latin tradition title is never tagged
+  ``he``) and its comment names the attesting manuscript; the philological
+  loop skips traditions/witnesses whose title fails ``is_usable_work_title``.
+  Manuscript labels sanitize the 245 and fall back to ``MS {shelfmark}``
+  when the title is <4 chars, plus an ``en`` ``Jerusalem, NLI, {shelfmark}``
+  label. Genre/subject/place labels route through ``label_language_for_text``
+  so a Latin term is never tagged ``he``. ``_add_content_work`` defensively
+  re-runs ``parse_contents_entry`` so a raw ``N) folio : title`` 505 row
+  never becomes a label.
+
+- **Person/org hygiene.** ``clean_person_display_name`` strips a dangling
+  ``בן``/``אבן`` particle. ``sanitize_work_title`` is gershayim-aware
+  (``שד"ל``/``ה"ה`` survive; unbalanced ISBD quotes and dangling ``)`` are
+  stripped). ``E74_Group`` org labels are English-only. The exporter dedupes
+  repeated sentences when merging one ``rdfs:comment`` per linked manuscript.
+
+- **Export quality gate is a hard block** (``hmo_export_quality`` +
+  ``assert_export_quality``). New codes: ``production_missing_label``,
+  ``timespan_bare_label``, ``latin_label_in_he``, ``unbalanced_label_quotes``,
+  ``witness_unusable_title`` — added to the existing blank-node /
+  Hebrew-in-en / generic-description / missing-scope checks. A build with any
+  issue raises before caching, so a regression can never reach the wiki.
+
+- **Rubric alignment (eval-agent).** ``hmo_wikibase_item.md`` rules 3d/3e:
+  ``E12_Production`` / ``E52_Time-Span`` / ``F27_Work_Creation`` /
+  ``TransmissionWitness`` / ``TextTradition`` carry intentional English system
+  labels — ``name_ok=yes`` when the label carries the MS/period AND the
+  description is substantive; ``E74_Group`` orgs are judged as organizations,
+  not Hebrew persons. The evaluator's ``format_grounding`` emits a
+  ``SYSTEM-LABELED EVENT`` state for those types.
+
+- **Cache salt (Rule W-51).** ``HMO_ITEM_VERDICT_SCHEMA`` bumped to
+  ``w52_v1`` so old verdicts miss automatically after the rubric/RDF change —
+  no ``override_cache`` needed; a rebuild + re-verify is sufficient.
+
+**Curator ops after deploy:** RDF rebuild → HMO **Rebuild (skip cache)** →
+re-verify (no override cache). Reupload only when live wiki labels/
+descriptions should change.
+
+Tests: ``test_graph_builder_codicological_labels.py``,
+``test_graph_builder_philological_labels.py``, ``test_rdf_helpers.py``,
+``test_hmo_export_quality.py``, ``test_hmo_exporter_resolution.py``,
+``eval-agent/tests/test_hmo_wikibase_items.py``.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

@@ -87,3 +87,13 @@
     and epistemology nodes so `hmo_exporter` never falls back to generic
     `… in the Hebrew Manuscripts Ontology (HMO)` text. *Why:* 1283/1911 items
     in export (4) still had placeholder descriptions (Rule W-48).
+16. **R16 — Every exportable entity gets a substantive label + description
+    (Rule W-52).** `_add_production_event` labels `Production of MS {cn}
+    ({place}, {date}, scribe …)`; Time-Span labels are `Production period
+    {span}` not a bare year; `add_text_tradition` labels in the title's own
+    script (Latin never tagged `he`) and skips unusable titles; manuscript
+    labels fall back to `MS {shelfmark}` + an `en` `Jerusalem, NLI, …` label;
+    genre/subject/place labels route through `label_language_for_text`;
+    `_add_content_work` re-runs `parse_contents_entry` defensively. *Why:* the
+    run-`48ba6c13` fixup-loop audit tied most residual `name_ok=partial`
+    verdicts to system-only labels on Production/Time-Span/tradition nodes.

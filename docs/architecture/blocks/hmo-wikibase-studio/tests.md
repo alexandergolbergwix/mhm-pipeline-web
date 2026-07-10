@@ -2,6 +2,12 @@
 
 > Up: [HMO Wikibase Studio](README.md)
 
+- `backend/tests/unit/test_hmo_export_quality.py` — export quality gate,
+  incl. Rule W-52 codes (`production_missing_label`, `timespan_bare_label`,
+  `latin_label_in_he`, `unbalanced_label_quotes`, `witness_unusable_title`)
+- `backend/tests/unit/test_hmo_exporter_resolution.py` /
+  `test_hmo_exporter_descriptions.py` — no Hebrew-in-`en`, comment→`en`
+  normalization, sentence dedup
 - `backend/tests/unit/test_ontology_schema_reader.py` — full-ontology walk,
   external-vocab properties, datatype inference (`hmo_source_uri` → `url`,
   `book_name` → `monolingualtext`, OWL kind/range metadata).

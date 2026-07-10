@@ -85,3 +85,67 @@ def test_expression_label_omits_in_ms_suffix() -> None:
     label = str(graph.value(expr_nodes[0], RDFS.label))
     assert "(in MS" not in label
     assert title in label
+
+
+def test_production_event_has_substantive_label(monkeypatch) -> None:
+    from converter.config.namespaces import CIDOC
+
+    data = ExtractedData(
+        title="ספר תהילים",
+        place="ירושלים",
+        dates={"year": 1460},
+        contributors=[{"name": "אהרן הסופר", "role": "scribe"}],
+    )
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    prod_nodes = list(graph.subjects(RDF.type, CIDOC.E12_Production))
+    assert prod_nodes
+    label = str(graph.value(prod_nodes[0], RDFS.label))
+    assert label.startswith("Production of MS 990001800310205171")
+    assert "1460" in label
+
+
+def test_time_span_label_is_not_bare_year() -> None:
+    from converter.config.namespaces import CIDOC
+
+    data = ExtractedData(title="ספר תהילים", dates={"year": 1460})
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    span_nodes = list(graph.subjects(RDF.type, CIDOC["E52_Time-Span"]))
+    assert span_nodes
+    label = str(graph.value(span_nodes[0], RDFS.label))
+    assert label == "Production period 1460"
+
+
+def test_manuscript_label_has_hebrew_title_and_english_shelfmark() -> None:
+    data = ExtractedData(title="ספר תהילים", shelfmark="Heb. 12.34")
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    ms_nodes = list(graph.subjects(RDF.type, LRMOO.F4_Manifestation_Singleton))
+    assert ms_nodes
+    labels = {lit.language: str(lit) for lit in graph.objects(ms_nodes[0], RDFS.label)}
+    assert labels.get("he") == "ספר תהילים"
+    assert labels.get("en") == "Jerusalem, NLI, Heb. 12.34"
+
+
+def test_manuscript_short_title_falls_back_to_shelfmark() -> None:
+    data = ExtractedData(title="אב", shelfmark="Heb. 12.34")  # too-short title
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    ms_nodes = list(graph.subjects(RDF.type, LRMOO.F4_Manifestation_Singleton))
+    assert ms_nodes
+    label_texts = {str(lit) for lit in graph.objects(ms_nodes[0], RDFS.label)}
+    # Latin "MS <shelfmark>" fallback is used instead of the 2-char title.
+    assert "MS Heb. 12.34" in label_texts
+    assert "אב" not in label_texts
+
+
+def test_text_tradition_latin_title_uses_en_label() -> None:
+    data = ExtractedData(
+        title="Diodati Segre",
+        contents=[{"title": "Diodati Segre commentary", "sequence": 1}],
+    )
+    builder = GraphBuilder(add_philological_overlay=True)
+    graph = builder.build_graph(data, "990001800310205171")
+    trad_nodes = list(graph.subjects(RDF.type, HM.TextTradition))
+    assert trad_nodes
+    for node in trad_nodes:
+        for lit in graph.objects(node, RDFS.label):
+            # A Latin tradition title must never be tagged Hebrew.
+            assert lit.language == "en"

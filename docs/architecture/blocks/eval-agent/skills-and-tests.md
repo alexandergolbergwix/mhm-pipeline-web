@@ -117,7 +117,8 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   dispatch: unknown action, empty scope, end-to-end wiring, cache behaviour.
 - `eval-agent/tests/test_hmo_wikibase_items.py` — HMO `control_number()` from
   embedded URI ids (Rule W-45); `enrich_control_numbers()` via deferred links
-  (Rule W-48).
+  (Rule W-48); `SYSTEM-LABELED EVENT` grounding for Production / TextTradition
+  (Rule W-52).
 - `eval-agent/tests/test_judge_models.py`, `test_openai_compat_judge.py` —
   tier-1 registry + Qubrid OpenAI-compat judge (Rule W-46).
 - `backend/tests/test_judge_models_router.py`,

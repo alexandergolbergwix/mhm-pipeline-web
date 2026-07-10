@@ -36,6 +36,9 @@ _ISBD_ADJACENT_QUOTED = re.compile(
     flags=re.UNICODE,
 )
 
+_GERSHAYIM_RE = re.compile(r'(?<=[֐-ת])"(?=[֐-ת])')
+_GERSHAYIM_SENTINEL = ""
+
 _IN_MS_SUFFIX_RE = re.compile(r"\s*\(in MS\s+\d{8,}\)\s*$", re.IGNORECASE)
 _ENUM_PREFIX_RE = re.compile(r"^\d+\)\s*")
 _NUMBERED_CONTENTS_RE = re.compile(
@@ -123,14 +126,25 @@ def is_descriptive_content_title(title: str) -> bool:
 
 
 def sanitize_work_title(text: str) -> str:
-    """Normalize a 245/505 work title for RDF labels and Wikibase export."""
+    """Normalize a 245/505 work title for RDF labels and Wikibase export.
+
+    Hebrew gershayim abbreviation markers (a straight quote between two Hebrew
+    letters, e.g. ``ה"ה`` / ``שד"ל``) are legitimate and must survive the
+    unbalanced-quote strip that removes ISBD artifacts.
+    """
     cleaned = clean_marc_label(text)
-    if cleaned.count('"') % 2 == 1:
-        cleaned = cleaned.replace('"', "")
-    if cleaned.count("(") > cleaned.count(")"):
-        last_open = cleaned.rfind("(")
+    # Protect gershayim from the unbalanced-quote strip.
+    protected = _GERSHAYIM_RE.sub(_GERSHAYIM_SENTINEL, cleaned)
+    if protected.count('"') % 2 == 1:
+        protected = protected.replace('"', "")
+    # Drop a dangling trailing close-paren with no matching open.
+    if protected.count(")") > protected.count("("):
+        protected = re.sub(r"\s*\)+\s*$", "", protected).strip()
+    if protected.count("(") > protected.count(")"):
+        last_open = protected.rfind("(")
         if last_open >= 0:
-            cleaned = cleaned[:last_open].strip()
+            protected = protected[:last_open].strip()
+    cleaned = protected.replace(_GERSHAYIM_SENTINEL, '"')
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
     return cleaned
 
@@ -153,6 +167,45 @@ def is_usable_work_title(title: str) -> bool:
         return False
     letters = re.sub(r"[^\w\u0590-\u05ea]", "", cleaned)
     return len(letters) >= 3
+
+
+def disambiguate_work_label(title: str, control_number: str) -> str:
+    """Add manuscript scope to very short generic work titles."""
+    cleaned = sanitize_work_title(title)
+    if not cleaned:
+        return ""
+    letters = re.sub(r"[^\w\u0590-\u05ea]", "", cleaned)
+    if len(cleaned.split()) <= 1 and len(letters) <= 8:
+        return f"{cleaned} (MS {control_number})"
+    return cleaned
+
+
+def clean_person_display_name(name: str) -> str:
+    """Strip dangling patronymic particles from person headings."""
+    cleaned = clean_marc_label(name)
+    if re.search(r"[\u0590-\u05ea]", cleaned):
+        cleaned = re.sub(r",\s*(?:בן|אבן)\s*$", "", cleaned).strip()
+        cleaned = re.sub(r"\s+(?:בן|אבן)\s*$", "", cleaned).strip()
+    return cleaned
+
+
+def disambiguate_person_label(
+    name: str,
+    *,
+    dates: str | None = None,
+    control_number: str | None = None,
+) -> str:
+    """Add MS or date scope to very short Hebrew personal names."""
+    cleaned = clean_marc_label(name)
+    if not cleaned:
+        return ""
+    hebrew = len(re.findall(r"[\u0590-\u05ea]", cleaned))
+    if hebrew > 0 and len(cleaned.split()) <= 1:
+        if dates and str(dates).strip():
+            return f"{cleaned} ({str(dates).strip()})"
+        if control_number:
+            return f"{cleaned} (MS {control_number})"
+    return cleaned
 
 
 def clean_marc_label(

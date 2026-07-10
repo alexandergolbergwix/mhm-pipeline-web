@@ -27,7 +27,10 @@
 | `backend/app/routers/hmo_wikibase_schema.py` | Global `/hmo-wikibase-schema/*`: status, verify, bootstrap, last-report, schema AI verify |
 | `backend/app/routers/wikibase_writes.py` | Read APIs for the audit log (project editor + admin views) |
 | `backend/converter/wikibase/cloud_client.py` | `WikibaseCloudClient` (read-only) + `WikibaseCloudWriter` (OAuth2/bot; wikibaseintegrator entity writes; retry/backoff) |
-| `backend/converter/wikibase/hmo_exporter.py` | TTL → entity drafts; RDF incoming-edge BFS stamps `control_numbers` per item; label/description truncation (250) and string claim truncation (400) |
+| `backend/converter/wikibase/hmo_exporter.py` | TTL → entity drafts; RDF incoming-edge BFS stamps `control_numbers` per item; comment→`en` normalization + sentence dedup; label/description truncation (250) and string claim truncation (400) |
+| `backend/converter/wikibase/hmo_export_quality.py` | `audit_entity_drafts` — label/description hygiene checks (Rule W-52 codes: production/timespan/latin-in-he/unbalanced-quotes/witness) |
+| `backend/app/pipeline/hmo_export_quality_gate.py` | `assert_export_quality` — hard block: raises before caching on any export quality issue |
+| `backend/scripts/hmo_item_verify_fixup_loop.py` | Qubrid/Kimi fixup loop: eval → diagnose → (rebuild) → re-eval per entity; `--persist-verdicts` |
 | `backend/converter/wikibase/resolved_models.py` | `ResolvedWikibaseEntity` incl. `entity_type` + `control_numbers` persisted in `HmoStudioItemCache` |
 | `backend/app/services/wikibase_credentials.py` | Server-held OAuth config → verified `WikibaseCloudWriter` (checks the session is the expected write user) |
 | `backend/app/services/wikibase_audit.py` | `record_wikibase_write` — one `wikibase_cloud_writes` row per outcome, never raises; `fetch_latest_wikibase_writes` — portable "latest row per target" query powering the review table's upload-outcome fields |

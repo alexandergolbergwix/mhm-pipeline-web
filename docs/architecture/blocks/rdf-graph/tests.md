@@ -20,3 +20,9 @@
 - `backend/tests/test_provenance_events_rdf.py` (5) +
   `test_provenance_events_ingest.py` (10) — Rule W-32 event nodes
 - `backend/tests/test_place_coords_in_rdf.py` — coord write-back into TTL
+- `backend/tests/unit/test_graph_builder_codicological_labels.py` — Rule W-52
+  Production/Time-Span labels, manuscript shelfmark fallback, tradition language
+- `backend/tests/unit/test_graph_builder_philological_labels.py` — Hebrew
+  labels not mirrored into `en` (Rule W-45/W-51/W-52)
+- `backend/tests/unit/test_rdf_helpers.py` — gershayim-safe title sanitization,
+  dangling `בן`/`אבן` strip, 505 `parse_contents_entry` (Rule W-50/W-52)

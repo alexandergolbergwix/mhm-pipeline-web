@@ -12,7 +12,10 @@ from app.pipeline.ai_verdict_cache_common import (
 
 from app.pipeline.inference_cache import canonical_hash
 
-HMO_ITEM_VERDICT_SCHEMA = "w50_v1"
+# Bumped to w52_v1 with Rule W-52 (structural-entity metadata + rubric 3d/3e):
+# the rubric and RDF build fields changed, so old verdicts must miss the cache
+# automatically without an override_cache pass.
+HMO_ITEM_VERDICT_SCHEMA = "w52_v1"
 
 
 def _sorted_control_numbers(item: dict[str, Any]) -> list[str]:

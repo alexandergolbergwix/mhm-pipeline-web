@@ -112,3 +112,12 @@
     `(in MS …)`; genre/subject/material/script nodes get `rdfs:comment` at
     build. *Why:* export (4) had ~149 partials from 505 prefixes + `(in MS …)`
     in labels and 52+ generic SubjectType descriptions.
+25. **R25 — Export quality gate is a hard block (Rule W-52).**
+    `hmo_export_quality.audit_entity_drafts` + `assert_export_quality` raise
+    before caching on any issue: blank-node export, Hebrew-in-`en`, generic
+    description, work missing MS scope, missing label/description, and the
+    W-52 codes `production_missing_label`, `timespan_bare_label`,
+    `latin_label_in_he`, `unbalanced_label_quotes`, `witness_unusable_title`.
+    `HMO_ITEM_VERDICT_SCHEMA` is `w52_v1` so a rebuild + re-verify invalidates
+    stale verdicts without `override_cache`. *Why:* the run-`48ba6c13` fixup
+    loop showed system-only/malformed labels drove most residual partials.

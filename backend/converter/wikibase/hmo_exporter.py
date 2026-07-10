@@ -129,6 +129,8 @@ def _typed_instance_nodes(graph: Graph) -> list[URIRef | BNode]:
     """Return typed data nodes while skipping ontology/schema declarations."""
     nodes: set[URIRef | BNode] = set()
     for subject, class_uri in graph.subject_objects(RDF.type):
+        if isinstance(subject, BNode):
+            continue
         if not isinstance(subject, URIRef | BNode):
             continue
         if not isinstance(class_uri, URIRef):
@@ -234,9 +236,33 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
         fallback = labels.get("he") or next(iter(labels.values()))
         if label_language_for_text(fallback) == "en":
             labels["en"] = fallback
+    if (
+        labels.get("he")
+        and labels.get("en") == labels.get("he")
+        and label_language_for_text(labels["he"]) == "he"
+    ):
+        labels.pop("en", None)
     return sanitize_monolingual_map(
         {lang: _truncate(text, _MAX_LABEL_LENGTH) for lang, text in labels.items()}
     )
+
+
+def _enrich_description_with_control_numbers(
+    description: str,
+    control_numbers: list[str],
+) -> str:
+    """Ensure multi-manuscript entities mention their full manuscript scope."""
+    if not control_numbers:
+        return description
+    if len(control_numbers) == 1:
+        return description
+    if all(cn in description for cn in control_numbers):
+        return description
+    listed = ", ".join(control_numbers[:3])
+    if len(control_numbers) > 3:
+        listed += f", +{len(control_numbers) - 3} more"
+    prefix = f"Linked to {len(control_numbers)} manuscripts ({listed}). "
+    return _truncate(prefix + description, _MAX_DESCRIPTION_LENGTH)
 
 
 def _descriptions_for_node(
@@ -252,11 +278,23 @@ def _descriptions_for_node(
     Wikibase.
     """
     descriptions: dict[str, str] = {}
+    comment_texts: list[str] = []
     for comment in graph.objects(subject, RDFS.comment):
         if not isinstance(comment, Literal):
             continue
         language = comment.language or "en"
-        descriptions.setdefault(language, _truncate(str(comment), _MAX_DESCRIPTION_LENGTH))
+        text = _truncate(str(comment), _MAX_DESCRIPTION_LENGTH)
+        if text and text not in comment_texts:
+            comment_texts.append(text)
+        descriptions.setdefault(language, text)
+    if comment_texts:
+        merged = comment_texts[0] if len(comment_texts) == 1 else " · ".join(comment_texts)
+        merged = _dedupe_sentences(merged)
+        control_numbers = _control_numbers_for_node(graph, subject)
+        merged = _enrich_description_with_control_numbers(merged, control_numbers)
+        return sanitize_monolingual_map(
+            {"en": _truncate(merged, _MAX_DESCRIPTION_LENGTH)},
+        )
     if descriptions:
         return sanitize_monolingual_map(descriptions)
     readable = local_name(class_uri).replace("_", " ")
@@ -279,6 +317,28 @@ def _descriptions_for_node(
 
 _MAX_DESCRIPTION_LENGTH = 250  # Wikibase's hard cap on description length.
 _MAX_STRING_VALUE_LENGTH = 400  # Wikibase's default string/monolingualtext claim-value cap.
+
+
+def _dedupe_sentences(text: str) -> str:
+    """Drop repeated sentences from a merged multi-manuscript description.
+
+    A shared person/place node collects one ``rdfs:comment`` per linked
+    manuscript; joined together these often repeat the same clause. Split on
+    sentence boundaries, dedupe case-insensitively preserving order, rejoin.
+    """
+    parts = re.split(r"(?<=[.·])\s+", text)
+    seen: set[str] = set()
+    kept: list[str] = []
+    for part in parts:
+        stripped = part.strip()
+        if not stripped:
+            continue
+        key = stripped.casefold().rstrip(".·").strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(stripped)
+    return " ".join(kept)
 
 
 def _truncate(text: str, max_length: int) -> str:

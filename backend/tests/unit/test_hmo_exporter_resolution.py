@@ -102,7 +102,9 @@ def test_resolve_raises_on_unmapped_class_uri() -> None:
     assert str(HM.Codicological_Unit) in excinfo.value.missing_uris
 
 
-def test_draft_labels_mirror_hebrew_into_english_when_missing() -> None:
+def test_draft_hebrew_label_not_mirrored_into_english() -> None:
+    # Rule W-45/W-51: a Hebrew label is never duplicated into the English
+    # slot (the export quality gate flags that as `hebrew_label_in_en_slot`).
     graph = Graph()
     work = HM.Work1
     graph.add((work, RDF.type, LRMOO.F1_Work))
@@ -111,7 +113,7 @@ def test_draft_labels_mirror_hebrew_into_english_when_missing() -> None:
     drafts = HmoWikibaseExporter().from_graph(graph)
     assert len(drafts) == 1
     assert drafts[0].labels["he"] == "ספר תהילים"
-    assert drafts[0].labels["en"] == "ספר תהילים"
+    assert "en" not in drafts[0].labels
 
 
 def test_draft_labels_keep_existing_english_untouched() -> None:
@@ -152,7 +154,9 @@ def test_draft_description_uses_rdfs_comment_when_present() -> None:
     graph.add((ms, RDFS.comment, Literal("A 15th-century Sephardic manuscript.", lang="en")))
 
     drafts = HmoWikibaseExporter().from_graph(graph)
-    assert drafts[0].descriptions == {"en": "A 15th-century Sephardic manuscript."}
+    # HMO comments are authored in English and normalise to the `en` slot;
+    # description hygiene strips the trailing sentence period.
+    assert drafts[0].descriptions == {"en": "A 15th-century Sephardic manuscript"}
 
 
 def test_draft_description_is_truncated_to_wikibase_limit() -> None:
@@ -163,7 +167,8 @@ def test_draft_description_is_truncated_to_wikibase_limit() -> None:
     graph.add((ms, RDFS.comment, Literal(long_comment, lang="he")))
 
     drafts = HmoWikibaseExporter().from_graph(graph)
-    description = drafts[0].descriptions["he"]
+    # Comment text normalises to the `en` slot regardless of source language.
+    description = drafts[0].descriptions["en"]
     assert len(description) == 250
     assert description.endswith("…")
 

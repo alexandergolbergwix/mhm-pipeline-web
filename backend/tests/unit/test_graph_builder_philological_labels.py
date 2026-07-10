@@ -21,19 +21,20 @@ def _build_overlay_graph(title: str = "ספר תהילים") -> tuple:
     return graph, by_type, title
 
 
-def test_philological_overlay_entities_have_english_labels() -> None:
+def test_philological_overlay_entities_have_labels() -> None:
     # ParadigmBridge is intentionally excluded from Wikibase export (Rule
     # W-42) — it stays RDF-only, so its label quality is checked against the
     # graph directly in test_paradigm_bridge_label_is_not_uri_slug below.
     _, by_type, title = _build_overlay_graph()
 
-    for entity_type in (
-        "TextTradition",
-        "TransmissionWitness",
-        "PhilologicalView",
-    ):
-        draft = by_type[entity_type]
-        assert draft.labels.get("en"), f"{entity_type} missing English label"
+    # TransmissionWitness / PhilologicalView carry intentional English system
+    # labels; TextTradition mirrors the (Hebrew) work title, so its label is
+    # `he` — Hebrew is NOT copied into the English slot (Rule W-45/W-51).
+    for entity_type in ("TransmissionWitness", "PhilologicalView"):
+        assert by_type[entity_type].labels.get("en"), f"{entity_type} missing English label"
+    tradition = by_type["TextTradition"]
+    assert tradition.labels.get("he") == title
+    assert "en" not in tradition.labels
 
 
 def test_philological_overlay_entities_have_meaningful_descriptions() -> None:
@@ -66,13 +67,17 @@ def test_text_tradition_uses_clean_display_title_not_uri_suffix() -> None:
     assert not tradition_name_values[0].endswith(" tradition")
 
 
-def test_work_and_expression_labels_mirrored_to_english() -> None:
+def test_work_and_expression_hebrew_labels_not_mirrored_to_english() -> None:
+    # Rule W-45/W-51: a Hebrew title stays in the `he` slot and is never
+    # duplicated into `en` (the export quality gate flags that as noise).
     _, by_type, title = _build_overlay_graph()
 
     work = by_type["F1_Work"]
     expression = by_type["F2_Expression"]
-    assert work.labels["en"] == title
-    assert expression.labels["en"].startswith(title)
+    assert work.labels["he"] == title
+    assert "en" not in work.labels
+    assert expression.labels["he"].startswith(title)
+    assert "en" not in expression.labels
 
 
 def test_paradigm_bridge_label_is_not_uri_slug() -> None:
