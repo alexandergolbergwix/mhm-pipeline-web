@@ -1745,6 +1745,46 @@ until desktop is migrated.
 Tests: the full suite asserts the new URIs; ``test_rdf_shacl_conformance.py``
 (run-48ba6c13 corpus) reconfirms 0 violations under the new namespace.
 
+**Data migration (``scripts/migrate_hmo_source_uri_namespace.py``).** The
+namespace swap orphaned two live data surfaces, both fixed by this dry-run-first
+script (Rule W-51-style deterministic prefix swap):
+1. ``wikibase_entity_mappings.ontology_uri`` — 2580 schema + instance rows on
+   the prod DB (``--skip-wiki``). **Required**: the deployed code resolves
+   NEW-namespace URIs, so without this every ontology/PID lookup misses and HMO
+   Studio build/upload is broken.
+2. Live wiki ``hmo_source_uri`` (P293) claims — 1520 items (``--skip-db``).
+   Optional once Rule W-56 lands (reconcile matches both namespaces), but worth
+   running for a fully-canonical wiki.
+
+Run: ``cd backend && DATABASE_URL=… python -m scripts.migrate_hmo_source_uri_namespace``
+(dry-run) then ``--apply``.
+
+---
+
+### Rule W-56 — Wikibase reconcile queries the instance's own direct-property URI, namespace-agnostically (added 2026-07-10)
+
+Two bugs in ``hmo_item_reconcile.py`` (found during the Rule W-55 migration):
+
+1. **``wdt:`` resolves to Wikidata, not the project instance.** The reconcile
+   SPARQL used ``?item wdt:PNNN "…"``; on ``mhm-hmo.wikibase.cloud`` the
+   ``wdt:`` prefix defaults to ``http://www.wikidata.org/prop/direct/``, so the
+   query matched **nothing** — reconcile had silently never found an existing
+   item (failing open to "create", the duplicate-creation risk the guards exist
+   to prevent). Fix: build the instance's own direct-property URI from
+   ``settings.wikibase_cloud_base_url`` (``{base}/prop/direct/PNNN``).
+2. **Single-namespace match orphans migrated items.** After Rule W-55, live
+   items carry the OLD ``hmo_source_uri`` namespace while new builds emit the
+   new one. ``_reconcile_uri_variants`` now matches BOTH the current
+   (``https://w3id.org/mhm/ontology#``) and legacy
+   (``http://www.ontology.org.il/HebrewManuscripts/2025-12-06#``) forms via a
+   SPARQL ``VALUES`` clause, so a namespace migration never causes a re-upload
+   to duplicate an existing item — regardless of whether the wiki claims were
+   rewritten.
+
+Any future Wikibase-Cloud SPARQL that filters by a project property MUST use
+the instance's direct-property URI, never ``wdt:``. Tests:
+``test_hmo_item_reconcile.py::test_query_uses_instance_property_uri_and_both_namespaces``.
+
 ---
 
 ## What this web app does NOT do (yet)

@@ -129,3 +129,13 @@
     label hygiene, place comments) and the eval-agent rubric 3d/3f/3g additions.
     `HMO_ITEM_VERDICT_SCHEMA` → `w53_v1`. *Why:* export (5) on run `48ba6c13`
     had 155 partial / 4 fail dominated by thin/malformed labels + person typing.
+27. **R27 — Reconcile uses the instance direct-property URI, both namespaces
+    (Rule W-56).** `hmo_item_reconcile.py` builds `{wikibase_cloud_base_url}/
+    prop/direct/PNNN` (never `wdt:`, which resolves to Wikidata on
+    wikibase.cloud → matched nothing) and matches `hmo_source_uri` in both the
+    current w3id and legacy `ontology.org.il` namespaces via a `VALUES` clause,
+    so a Rule-W-55 namespace migration never orphans a live item into a
+    duplicate create. The `scripts/migrate_hmo_source_uri_namespace.py`
+    dry-run-first migrator swaps the prod `wikibase_entity_mappings` (required)
+    + live wiki `hmo_source_uri` (optional after R27). *Why:* the migration
+    audit found reconcile had silently never matched (failing open to create).

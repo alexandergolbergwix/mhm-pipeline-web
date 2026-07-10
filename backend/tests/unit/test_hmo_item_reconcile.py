@@ -69,6 +69,42 @@ async def test_found_when_sparql_returns_a_binding(db_session, monkeypatch) -> N
 
 
 @pytest.mark.asyncio
+async def test_query_uses_instance_property_uri_and_both_namespaces(
+    db_session, monkeypatch,
+) -> None:
+    """Rule W-56: the reconcile query must NOT use ``wdt:`` (that resolves to
+    Wikidata on wikibase.cloud) and must match old + new ontology namespaces."""
+    await _seed_source_uri_mapping(db_session)
+    monkeypatch.setattr(
+        reconcile_module.get_settings(), "wikibase_sparql_url",
+        "https://mhm-hmo.wikibase.cloud/query/sparql", raising=False,
+    )
+    monkeypatch.setattr(
+        reconcile_module.get_settings(), "wikibase_cloud_base_url",
+        "https://mhm-hmo.wikibase.cloud", raising=False,
+    )
+    captured: dict[str, str] = {}
+
+    async def _capture(url, query):
+        captured["query"] = query
+        return {"results": {"bindings": []}}
+
+    with patch.object(reconcile_module, "run_wikibase_sparql", _capture):
+        await reconcile_item(
+            db_session,
+            "https://w3id.org/mhm/ontology#CU_990000403370205171_main",
+        )
+    q = captured["query"]
+    assert "wdt:" not in q
+    assert "/prop/direct/P" in q
+    assert "https://w3id.org/mhm/ontology#CU_990000403370205171_main" in q
+    assert (
+        "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+        "CU_990000403370205171_main" in q
+    )
+
+
+@pytest.mark.asyncio
 async def test_not_found_when_sparql_returns_no_bindings(db_session, monkeypatch) -> None:
     await _seed_source_uri_mapping(db_session)
     monkeypatch.setattr(

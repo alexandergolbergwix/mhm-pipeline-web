@@ -34,6 +34,25 @@ def _escape_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
+# Ontology namespace history (Rule W-55). Items uploaded before the w3id move
+# carry ``hmo_source_uri`` in the old namespace; reconcile must match both so a
+# namespace migration never orphans a live item into a duplicate create.
+_CURRENT_HMO_NS = "https://w3id.org/mhm/ontology#"
+_LEGACY_HMO_NS = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+
+
+def _reconcile_uri_variants(source_uri: str) -> list[str]:
+    """Every namespace variant of ``source_uri`` reconcile should match."""
+    variants = [source_uri]
+    if source_uri.startswith(_CURRENT_HMO_NS):
+        legacy = _LEGACY_HMO_NS + source_uri[len(_CURRENT_HMO_NS):]
+        variants.append(legacy)
+    elif source_uri.startswith(_LEGACY_HMO_NS):
+        current = _CURRENT_HMO_NS + source_uri[len(_LEGACY_HMO_NS):]
+        variants.append(current)
+    return variants
+
+
 async def _source_uri_property_pid(db: AsyncSession) -> str | None:
     row = (
         await db.execute(
@@ -92,9 +111,20 @@ async def reconcile_item(
         raise ReconciliationUnavailableError("Wikibase SPARQL endpoint not configured")
 
     pid_num = pid[1:] if pid.startswith("P") else pid
-    literal = _escape_literal(source_uri)
+    # Use the instance's OWN direct-property URI, not the ``wdt:`` prefix — on
+    # wikibase.cloud ``wdt:`` defaults to Wikidata's namespace so ``wdt:PNNN``
+    # silently matches nothing (Rule W-56). Also match the source URI in BOTH
+    # the current and any legacy ontology namespace so a Rule-W-55 namespace
+    # migration doesn't orphan already-uploaded items (which still carry the
+    # old-namespace ``hmo_source_uri``) → prevents duplicate creation.
+    base = str(getattr(settings, "wikibase_cloud_base_url", "") or "").rstrip("/")
+    if not base:
+        base = wikibase_url.split("/query/sparql")[0].rstrip("/")
+    direct = f"<{base}/prop/direct/P{pid_num}>"
+    values = " ".join(f'"{_escape_literal(v)}"' for v in _reconcile_uri_variants(source_uri))
     query = (
-        f"SELECT ?item WHERE {{ ?item wdt:P{pid_num} \"{literal}\" . }} LIMIT 1"
+        f"SELECT ?item WHERE {{ VALUES ?val {{ {values} }} "
+        f"?item {direct} ?val . }} LIMIT 1"
     )
     try:
         data = await run_wikibase_sparql(wikibase_url, query)
