@@ -188,7 +188,7 @@ async def test_second_bootstrap_syncs_datatype_on_skip(db_session) -> None:
 
 
 def test_refresh_report_datatypes_upgrades_stale_string_entries() -> None:
-    uri = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#is_factual"
+    uri = "https://w3id.org/mhm/ontology#is_factual"
     stale = pipeline.SchemaBootstrapResult(
         dry_run=False,
         created=0,

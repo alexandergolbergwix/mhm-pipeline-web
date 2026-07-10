@@ -18,7 +18,7 @@ from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.rdf_build import rdf_output_path_for_run
 
 _TTL = """
-@prefix hm: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+@prefix hm: <https://w3id.org/mhm/ontology#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 

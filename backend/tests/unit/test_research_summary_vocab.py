@@ -67,6 +67,6 @@ class TestSummaryCountsRealConverterVocab:
         """The graph has triples and NONE of them use the legacy hm:Manuscript_Object."""
         g = _build_real_graph(_records())
         assert len(g) > 0
-        hm = rdflib.Namespace("http://www.ontology.org.il/HebrewManuscripts/2025-12-06#")
+        hm = rdflib.Namespace("https://w3id.org/mhm/ontology#")
         legacy = list(g.triples((None, rdflib.RDF.type, hm.Manuscript_Object)))
         assert legacy == [], "converter unexpectedly emits the legacy class"

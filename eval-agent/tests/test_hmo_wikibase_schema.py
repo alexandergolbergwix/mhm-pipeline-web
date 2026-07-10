@@ -45,7 +45,7 @@ def test_load_includes_skipped_and_failed_entries(tmp_path):
 def test_evaluator_emits_one_candidate_per_entry():
     evaluator = HmoWikibaseSchemaEvaluator()
     entry = {
-        "ontology_uri": "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#has_folio_count",
+        "ontology_uri": "https://w3id.org/mhm/ontology#has_folio_count",
         "entity_kind": "property",
         "label": "has folio count",
         "description": "Number of folios in the manuscript.",

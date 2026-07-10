@@ -35,7 +35,7 @@ import shutil
 import pytest
 import pytest_asyncio
 
-_HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+_HM = "https://w3id.org/mhm/ontology#"
 
 _PROVENANCE_TTL = f"""\
 @prefix hm:    <{_HM}> .

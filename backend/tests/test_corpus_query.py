@@ -25,7 +25,7 @@ import uuid
 import pytest
 import pytest_asyncio
 
-_HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+_HM = "https://w3id.org/mhm/ontology#"
 
 # ── small TTL for each project ─────────────────────────────────────────────
 
@@ -119,7 +119,7 @@ async def corpus_setup(sample_run, async_client, db_session):
 _CORPUS_URL = "/api/research/corpus/sparql"
 _ALL_MS_QUERY = """
 SELECT ?ms ?label WHERE {
-  ?ms a <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#Manuscript_Object> .
+  ?ms a <https://w3id.org/mhm/ontology#Manuscript_Object> .
   ?ms <http://www.w3.org/2000/01/rdf-schema#label> ?label .
 }
 """

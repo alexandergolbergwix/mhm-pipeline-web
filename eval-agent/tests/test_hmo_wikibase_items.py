@@ -42,7 +42,7 @@ def test_paleographical_unit_treated_as_structural() -> None:
 def test_control_number_from_acquisition_source_uri() -> None:
     item = {
         "source_uri": (
-            "http://www.ontology.org.il/HebrewManuscripts/2025-12-06"
+            "https://w3id.org/mhm/ontology"
             "#Acquisition_990000403370205171_01"
         ),
     }

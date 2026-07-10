@@ -2,7 +2,7 @@
 
 from rdflib import Graph, Namespace
 
-HM = Namespace("http://www.ontology.org.il/HebrewManuscripts/2025-12-06#")
+HM = Namespace("https://w3id.org/mhm/ontology#")
 LRMOO = Namespace("http://iflastandards.info/ns/lrm/lrmoo/")
 CIDOC = Namespace("http://www.cidoc-crm.org/cidoc-crm/")
 RDF = Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")

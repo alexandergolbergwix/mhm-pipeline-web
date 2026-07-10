@@ -57,7 +57,7 @@ _J9U_PID = "P8189"   # National Library of Israel J9U authority id
 _NNL_PID = "P3959"   # NLI / NNL manuscript catalogue id
 
 _PREFIXES = (
-    "PREFIX hm: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#>\n"
+    "PREFIX hm: <https://w3id.org/mhm/ontology#>\n"
     "PREFIX cidoc: <http://www.cidoc-crm.org/cidoc-crm/>\n"
     "PREFIX lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/>\n"
     "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n"

@@ -1698,6 +1698,55 @@ copy is web-owned (see [[vendored-eval-agent-copy]]). Do **not** run
 
 ---
 
+### Rule W-55 — Canonical ontology namespace is `https://w3id.org/mhm/ontology#` (added 2026-07-10)
+
+The HMO ontology + all instance URIs moved off the non-dereferenceable
+placeholder ``http://www.ontology.org.il/HebrewManuscripts/2025-12-06#`` (a
+domain the project does not serve — it returns 404) to the project's real
+permanent identifier namespace ``https://w3id.org/mhm/ontology#``.
+
+`w3id.org/mhm` is the project's registered w3id.org permalink prefix (see
+``pipeline/docs/w3id/htaccess``): ``/ontology`` → the ontology TTL on GitHub,
+``/ontology#Term`` dereferences to it, ``/manuscript/<cn>`` / ``/person/<id>`` /
+``/work/<id>`` → the live ``mhm-hmo.wikibase.cloud`` items, ``/`` → the wiki
+landing. The IIIF/P2888 permalinks already used ``w3id.org/mhm`` (this aligns
+the ontology + RDF instance namespace with them).
+
+The migration is a single base-string swap applied repo-wide (30 files: the
+`HM`/`HMO` namespace constants in ``converter/config/namespaces.py``, the
+research SPARQL prefixes, ``property_mapping.HMO_NS_TEMPLATE``, the active
+ontology TTLs — ``hebrew-manuscripts.ttl`` / ``shacl-shapes.ttl`` /
+``controlled-vocabularies.ttl`` — and every test fixture/assertion). The
+archival ``hebrew-manuscripts-original.ttl`` is left on the old namespace as
+the pre-migration record (it is not loaded by code).
+
+**Two hard consequences before any deploy/upload:**
+
+1. **Live Wikibase reconciliation (Rule W-30 / W-42).** HMO items already on
+   ``mhm-hmo.wikibase.cloud`` carry ``hmo_source_uri`` values in the **old**
+   namespace. New builds emit ``w3id`` source URIs, so reconcile-by-source-URI
+   will NOT match the existing items → **mass duplicate creation** on the next
+   upload. A run's items MUST NOT be re-uploaded after this change until the
+   live ``hmo_source_uri`` values are migrated old→new (or the reconciler is
+   made domain-agnostic on the URI local-name). This is the April-failure class
+   the upload guards exist to prevent.
+2. **Stale build artifacts.** Every stored ``RdfArtifact`` TTL + ``HmoStudio
+   ItemCache`` and each run's on-disk ``manuscripts.ttl`` still hold old URIs;
+   research SPARQL now uses the new prefix, so runs must be **RDF-rebuilt** for
+   the Geography/graph tabs and Studio to reflect the change. Build/verdict
+   caches are content-addressed and self-invalidate.
+
+**Mirror parity (Rule R5 / W-43 residual):** the desktop pipeline's
+``converter/config/namespaces.py`` + ontology TTLs still hold the old
+namespace. They MUST get the same swap before any ``/sync-from-desktop`` — a
+sync now would revert the web change. Do not run ``sync_converter_to_web.sh``
+until desktop is migrated.
+
+Tests: the full suite asserts the new URIs; ``test_rdf_shacl_conformance.py``
+(run-48ba6c13 corpus) reconfirms 0 violations under the new namespace.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

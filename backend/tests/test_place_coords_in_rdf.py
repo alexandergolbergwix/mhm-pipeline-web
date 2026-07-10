@@ -166,7 +166,7 @@ class TestGraphBuilderRelatedPlaceCoords:
 
     def test_wgs84_emitted_for_related_place(self) -> None:
         g = self._build_graph(["Córdoba"], {"Córdoba": {"lat": 37.89, "lon": -4.78}})
-        place_uri = URIRef("http://www.ontology.org.il/HebrewManuscripts/2025-12-06#place_C%C3%B3rdoba")
+        place_uri = URIRef("https://w3id.org/mhm/ontology#place_C%C3%B3rdoba")
         lats = list(g.objects(place_uri, _WGS84_LAT))
         # Accept any URI that contains 'rdoba' in case encoding differs
         all_place_lats = [

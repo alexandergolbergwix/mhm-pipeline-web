@@ -29,7 +29,7 @@ router = APIRouter(tags=["research"])
 
 # ── namespace constants ────────────────────────────────────────────────────
 
-_HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+_HM = "https://w3id.org/mhm/ontology#"
 _LRMOO = "http://iflastandards.info/ns/lrm/lrmoo/"
 _WGS84 = "http://www.w3.org/2003/01/geo/wgs84_pos#"
 _RDFS_LABEL = str(rdflib.RDFS.label)

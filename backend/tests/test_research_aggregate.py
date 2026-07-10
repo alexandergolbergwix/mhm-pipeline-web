@@ -21,7 +21,7 @@ from app.pipeline.research_aggregate import (
     wikidata_provider,
 )
 
-HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+HM = "https://w3id.org/mhm/ontology#"
 LRMOO = "http://iflastandards.info/ns/lrm/lrmoo/"
 CIDOC = "http://www.cidoc-crm.org/cidoc-crm/"
 

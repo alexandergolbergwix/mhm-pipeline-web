@@ -19,7 +19,7 @@ import pytest_asyncio
 
 from app.routers.research import _is_coherent_summary, _summary_fingerprint
 
-_HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+_HM = "https://w3id.org/mhm/ontology#"
 _LRMOO = "http://iflastandards.info/ns/lrm/lrmoo/"
 
 # Real converter classes — one manuscript so query_summary counts 1.

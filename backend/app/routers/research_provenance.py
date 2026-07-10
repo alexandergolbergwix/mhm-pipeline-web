@@ -45,7 +45,7 @@ from app.routers.linked_data_explorer import (
 
 router = APIRouter(tags=["research"])
 
-_HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+_HM = "https://w3id.org/mhm/ontology#"
 _RDFS_LABEL = str(rdflib.RDFS.label)
 
 

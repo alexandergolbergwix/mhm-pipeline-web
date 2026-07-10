@@ -18,7 +18,7 @@ from app.models.wikibase_entity_mapping import WikibaseEntityMapping
 from app.pipeline import hmo_item_build as pipeline
 
 _TTL = """
-@prefix hm: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+@prefix hm: <https://w3id.org/mhm/ontology#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
@@ -32,14 +32,14 @@ async def _seed_schema_mappings(db_session) -> None:
     db_session.add_all(
         [
             WikibaseEntityMapping(
-                ontology_uri="http://www.ontology.org.il/HebrewManuscripts/2025-12-06#Codicological_Unit",
+                ontology_uri="https://w3id.org/mhm/ontology#Codicological_Unit",
                 entity_kind="class",
                 wikibase_id="Q1",
                 run_id=None,
                 label="Codicological Unit",
             ),
             WikibaseEntityMapping(
-                ontology_uri="http://www.ontology.org.il/HebrewManuscripts/2025-12-06#has_date_of_creation",
+                ontology_uri="https://w3id.org/mhm/ontology#has_date_of_creation",
                 entity_kind="property",
                 wikibase_id="P1",
                 run_id=None,
@@ -95,7 +95,7 @@ async def test_schema_bootstrap_invalidates_cache(db_session, tmp_path) -> None:
     # the schema-mapping version even though the TTL is unchanged.
     db_session.add(
         WikibaseEntityMapping(
-            ontology_uri="http://www.ontology.org.il/HebrewManuscripts/2025-12-06#has_material",
+            ontology_uri="https://w3id.org/mhm/ontology#has_material",
             entity_kind="property",
             wikibase_id="P2",
             run_id=None,
@@ -149,7 +149,7 @@ async def test_shacl_report_is_stored_and_returned_on_cache_hit(db_session, tmp_
 
     fake_report = {
         "QDraft_MS1": [
-            {"focus_node": "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#MS1",
+            {"focus_node": "https://w3id.org/mhm/ontology#MS1",
              "severity": "Violation", "message": "synthetic violation", "value": None,
              "source_shape": ""},
         ],

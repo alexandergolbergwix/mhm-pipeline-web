@@ -24,7 +24,7 @@ import shutil
 import pytest
 import pytest_asyncio
 
-_HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+_HM = "https://w3id.org/mhm/ontology#"
 _WGS = "http://www.w3.org/2003/01/geo/wgs84_pos#"
 
 _GEO_TTL = f"""\

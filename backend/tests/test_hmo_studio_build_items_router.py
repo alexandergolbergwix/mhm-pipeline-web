@@ -10,7 +10,7 @@ from app.models.wikibase_entity_mapping import WikibaseEntityMapping
 from app.pipeline.rdf_build import rdf_output_path_for_run
 
 _TTL = """
-@prefix hm: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+@prefix hm: <https://w3id.org/mhm/ontology#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
@@ -57,14 +57,14 @@ async def test_build_items_succeeds_once_schema_is_mapped(sample_run, db_session
     db_session.add_all(
         [
             WikibaseEntityMapping(
-                ontology_uri="http://www.ontology.org.il/HebrewManuscripts/2025-12-06#Codicological_Unit",
+                ontology_uri="https://w3id.org/mhm/ontology#Codicological_Unit",
                 entity_kind="class",
                 wikibase_id="Q1",
                 run_id=None,
                 label="Codicological Unit",
             ),
             WikibaseEntityMapping(
-                ontology_uri="http://www.ontology.org.il/HebrewManuscripts/2025-12-06#has_date_of_creation",
+                ontology_uri="https://w3id.org/mhm/ontology#has_date_of_creation",
                 entity_kind="property",
                 wikibase_id="P1",
                 run_id=None,

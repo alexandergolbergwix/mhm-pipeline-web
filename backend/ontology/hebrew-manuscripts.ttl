@@ -3,7 +3,7 @@
 ## `hm:` – versioned namespace used for all ontology entities
 ## All domain entities MUST use the hm: prefix.
 
-@prefix : <http://www.ontology.org.il/HebrewManuscripts/> .
+@prefix : <https://w3id.org/mhm/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix xml: <http://www.w3.org/XML/1998/namespace> .
@@ -13,12 +13,12 @@
 @prefix nli: <https://www.nli.org.il/en/authorities/> .
 @prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
 @prefix cidoc-crm: <http://www.cidoc-crm.org/cidoc-crm/> .
-@prefix hm: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
-@prefix hmo: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
-@base <http://www.ontology.org.il/HebrewManuscripts/> .
+@prefix hm: <https://w3id.org/mhm/ontology#> .
+@prefix hmo: <https://w3id.org/mhm/ontology#> .
+@base <https://w3id.org/mhm/> .
 
-<http://www.ontology.org.il/HebrewManuscripts/2025-12-06> rdf:type owl:Ontology ;
-    owl:versionIRI <http://www.ontology.org.il/HebrewManuscripts/2025-12-06/1.8> ;
+<https://w3id.org/mhm/ontology> rdf:type owl:Ontology ;
+    owl:versionIRI <https://w3id.org/mhm/ontology/1.8> ;
     owl:imports <http://iflastandards.info/ns/lrm/lrmoo/1.0> ,
                  <http://www.cidoc-crm.org/cidoc-crm/7.1.3> ;
     dcterms:title "Hebrew Manuscripts Ontology"@en ,

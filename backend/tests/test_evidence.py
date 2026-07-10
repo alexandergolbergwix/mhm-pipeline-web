@@ -20,7 +20,7 @@ import shutil
 import pytest
 import pytest_asyncio
 
-_HM = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#"
+_HM = "https://w3id.org/mhm/ontology#"
 
 # TTL that mints a manuscript URI with a control number embedded in the local name
 _SAMPLE_TTL = f"""\

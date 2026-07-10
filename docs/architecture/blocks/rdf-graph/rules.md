@@ -119,3 +119,13 @@
     {date}.` instead of a bare date that repeats the label. *Why:* the residual
     `partial` Production items after W-53 had date-only descriptions the judge
     read as "merely repeats the label".
+19. **R19 — Ontology + instance namespace is `https://w3id.org/mhm/ontology#`
+    (Rule W-55).** The `HM`/`HMO` namespace in `converter/config/namespaces.py`
+    (mirrored in research SPARQL prefixes + `property_mapping.HMO_NS_TEMPLATE` +
+    the active ontology TTLs) moved off the non-dereferenceable
+    `www.ontology.org.il/HebrewManuscripts/2025-12-06#` placeholder to the
+    project's real w3id.org permalink. *Blast radius:* existing `RdfArtifact`
+    TTLs + live-wiki `hmo_source_uri` values still hold old URIs — runs must be
+    RDF-rebuilt, and items must NOT be re-uploaded until source URIs are
+    migrated (duplicate-creation risk, Rule W-30/W-42). Desktop mirror needs the
+    same swap before `/sync-from-desktop`.

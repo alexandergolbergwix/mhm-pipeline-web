@@ -2,7 +2,7 @@
 
 ## Namespace
 
-Prefer the `hm:` prefix for ontology classes and properties (e.g. `hm:has_script_mode`, `hm:MultiVolumeSet`). The ontology IRI is `http://www.ontology.org.il/HebrewManuscripts/2025-12-06#`.
+Prefer the `hm:` prefix for ontology classes and properties (e.g. `hm:has_script_mode`, `hm:MultiVolumeSet`). The ontology IRI is `https://w3id.org/mhm/ontology#`.
 
 ## Removed legacy properties (breaking cleanup)
 

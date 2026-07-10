@@ -14,7 +14,7 @@ from rdflib.namespace import RDF, RDFS
 
 logger = logging.getLogger(__name__)
 
-HM    = Namespace("http://www.ontology.org.il/HebrewManuscripts/2025-12-06#")
+HM    = Namespace("https://w3id.org/mhm/ontology#")
 CIDOC = Namespace("http://www.cidoc-crm.org/cidoc-crm/")
 LRMOO = Namespace("http://iflastandards.info/ns/lrm/lrmoo/")
 WGS84 = Namespace("http://www.w3.org/2003/01/geo/wgs84_pos#")

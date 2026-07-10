@@ -174,7 +174,7 @@ P_EXACT_MATCH = "P2888"              # exact match (URI; bridge to HMO IRI)
 # from a control number. A warning is logged when this path fires.
 # This is the INTERNAL graph identifier used by output.ttl for RDF traversal;
 # it is NOT the URL emitted into Wikidata P2888 (see HMO_WIKIBASE_BASE_URL).
-HMO_NS_TEMPLATE = "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#MS_{control_number}"
+HMO_NS_TEMPLATE = "https://w3id.org/mhm/ontology#MS_{control_number}"
 
 # Project-owned Wikibase Cloud instance hosting the HMO graph entities. This
 # is the public, resolvable URI that Wikidata P2888 (exact match) points at.
