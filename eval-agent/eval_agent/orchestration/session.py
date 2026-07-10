@@ -341,7 +341,7 @@ class Session:
         # authority record (a superset of MARC) when present.
         self._marc_index = marc_index
         self._ner_index = {
-            str(r.get("_control_number", "")): r
+            marc_extract.canonical_control_number(r.get("_control_number")): r
             for r in (ner_records_list + authority_records_list)
             if r.get("_control_number")
         }
@@ -375,18 +375,23 @@ class Session:
                 records = ner_records_list
             for rec in records:
                 if ev.id in WIKIDATA_ITEM_EVALUATORS:
-                    rid = wikidata_items.control_number(rec)
+                    rid = marc_extract.canonical_control_number(wikidata_items.control_number(rec))
                 elif ev.id in HMO_WIKIBASE_ITEM_EVALUATORS:
-                    rid = hmo_wikibase_items.control_number(rec)
+                    rid = marc_extract.canonical_control_number(hmo_wikibase_items.control_number(rec))
                 elif ev.id in HMO_WIKIBASE_SCHEMA_EVALUATORS:
                     rid = ""  # schema entries have no MARC correlation
                 else:
-                    rid = str(rec.get("_control_number", ""))
+                    rid = marc_extract.canonical_control_number(rec.get("_control_number"))
                 marc_rec = marc_index.get(rid, {})
                 if ev.id in HMO_WIKIBASE_ITEM_EVALUATORS:
-                    cns = hmo_wikibase_items.control_numbers(rec)
+                    cns = [
+                        marc_extract.canonical_control_number(cn)
+                        for cn in hmo_wikibase_items.control_numbers(rec)
+                    ]
                     if cns:
-                        primary = hmo_wikibase_items.primary_control_number(rec)
+                        primary = marc_extract.canonical_control_number(
+                            hmo_wikibase_items.primary_control_number(rec)
+                        )
                         marc_rec = marc_extract.merge_records(
                             [marc_index[cn] for cn in cns if cn in marc_index],
                             primary=marc_index.get(primary) if primary else None,

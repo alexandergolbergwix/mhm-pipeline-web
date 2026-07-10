@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** for the full incident-annotated
-architectural rules (Rules W-1…W-52). Each rule records a real production
+architectural rules (Rules W-1…W-54). Each rule records a real production
 incident plus the invariant that closes it — check it before touching RDF
 build/SHACL, Wikidata Studio writes, HMO Wikibase uploads, auth/rate-limit
 surfaces, or the job/cache/versioning plumbing. This `AGENTS.md` is the
@@ -58,7 +58,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-52) stay in [CLAUDE.md](CLAUDE.md).
+(W-1…W-54) stay in [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -136,6 +136,28 @@ autofix, open a row for **Apply AI fix** / **Apply fix & push**.
 The table's **Data status** column shows `new (not uploaded)`, `will update
 existing`, or `updated` per row. Deep dive:
 [docs/architecture/blocks/hmo-wikibase-studio/](docs/architecture/blocks/hmo-wikibase-studio/README.md).
+
+## Local measurement re-verify (offline curator ops)
+
+To measure the true post-fix baseline of a Studio build/label/rubric change
+**before deploying** — e.g. how many previously-`partial`/`fail` items a Rule
+W-53 (HMO) or Wikidata Studio fix now flips to pass — use the
+**measurement-only** harness instead of the real production rebuild:
+
+- Skill: [`.codex/skills/local-measure-verify/SKILL.md`](.codex/skills/local-measure-verify/SKILL.md)
+- Script: [`backend/scripts/local_measure_verify.py`](backend/scripts/local_measure_verify.py)
+
+It reads a run's data from `DATABASE_URL` **read-only**, rebuilds the Studio
+items in a local scratch dir with the current (possibly undeployed) code, and
+re-judges a chosen scope (`--scope non-passing` by default) with an eval-agent
+tier-1 model (`--tier-model`, Qubrid Kimi K2.5 by default), writing a
+before/after report. **No DB / cache / live-wiki writes.** Channel-agnostic
+(`--channel hmo|wikidata`); add a `Channel` subclass to cover a new Studio
+surface. The write-back curator-ops path
+(`scripts/rebuild_run_rdf_and_items.py` + `hmo_item_verify_fixup_loop.py
+--persist-verdicts`, or the Studio UI) is separate and must be confirmed
+explicitly. Qubrid `QUBRID_API_KEY` and prod `DATABASE_URL` are fetched via
+`heroku config:get … -a mhm-pipeline-web`.
 
 ## Inherited rules
 

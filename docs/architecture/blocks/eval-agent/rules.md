@@ -103,3 +103,21 @@
   substantive; `E74_Group` orgs are judged as organizations, not Hebrew
   persons. *Why:* run-`48ba6c13` fixup loop — the judge downgraded intentional
   `Production of MS …` labels absent a rubric carve-out.
+- **R20 — HMO item rubric: honest-negative production, name order, vocabulary
+  terms (Rule W-53).** `hmo_wikibase_item.md` rule 3d gains an empty-production
+  addendum (a description stating production place/date is *not recorded* is
+  substantive → `name_ok=yes`; only the bare label-repeating template is
+  partial); rules 3f/3g accept MARC `Surname, Given` order, subject-heading
+  persons, generic-MS-titles carrying the shelfmark, and controlled-vocabulary
+  terms. The evaluator's `SYSTEM-LABELED EVENT` grounding mirrors the negative
+  carve-out and `Paleographical_Unit` is now a structural type. *Why:* export
+  (5) on run `48ba6c13` — 155 partial / 4 fail from thin labels + person typing.
+- **R21 — Canonical control-number MARC join (Rule W-54).**
+  `marc_extract.canonical_control_number()` strips surrounding quotes/whitespace;
+  `index_by_id` keys on it and `session.execute` canonicalises every `rid` /
+  `cns` / `primary` before `marc_index` lookups (NER, authority, Wikidata, HMO
+  item paths). *Why:* Stage-1 persists `_control_number` as `"990…"` (quoted)
+  while item control numbers are clean digits, so the join silently missed and
+  the judge saw **empty MARC** → conservative `partial` on short-title
+  Expressions / given-name Persons. Fixing the join key restores MARC grounding
+  run-wide. Mirrored web-side in `marc_verify_context.py` (cache-key parity).

@@ -15,6 +15,9 @@ _GENERIC_DESC_RE = re.compile(
 _IN_MS_LABEL_RE = re.compile(r"\(in MS\b", re.IGNORECASE)
 _GERSHAYIM_RE = re.compile(r'(?<=[֐-ת])"(?=[֐-ת])')
 _BARE_TIMESPAN_RE = re.compile(r"^\d{3,4}(-\d{3,4})?$")
+_PRODUCTION_REPEATS_LABEL_RE = re.compile(
+    r"^Production event for manuscript \S+\.?$", re.IGNORECASE
+)
 _PRIMARY_TYPES = frozenset({
     "E21_Person",
     "F1_Work",
@@ -120,6 +123,13 @@ def audit_entity_draft(draft: WikibaseEntityDraft) -> list[ExportQualityIssue]:
                 local_id=local_id,
                 entity_type=entity_type,
                 message="Production event lacks a substantive English label",
+            ))
+        if _PRODUCTION_REPEATS_LABEL_RE.match(desc_en.strip()):
+            issues.append(ExportQualityIssue(
+                code="production_description_repeats_label",
+                local_id=local_id,
+                entity_type=entity_type,
+                message="Production description merely repeats the label template",
             ))
 
     if entity_type == "E52_Time-Span":

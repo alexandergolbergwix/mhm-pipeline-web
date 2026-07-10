@@ -41,3 +41,18 @@ def test_project_many_merges_linked_manuscripts() -> None:
     )
     assert "Shared Author" in projected["authors"]
     assert "Scribe X" in projected["contributors"]
+
+
+def test_index_by_id_canonicalises_quoted_control_number() -> None:
+    # Stage-1 persists _control_number with literal surrounding quotes; the
+    # index must key on the clean digits so a clean item control number joins.
+    records = [{"_control_number": '"990000827290205171"', "title": "פיוטים ושירים"}]
+    index = marc_extract.index_by_id(records)
+    assert "990000827290205171" in index
+    assert index["990000827290205171"]["title"] == "פיוטים ושירים"
+
+
+def test_canonical_control_number_strips_quotes_and_space() -> None:
+    assert marc_extract.canonical_control_number('"990"') == "990"
+    assert marc_extract.canonical_control_number("  990 ") == "990"
+    assert marc_extract.canonical_control_number(None) == ""

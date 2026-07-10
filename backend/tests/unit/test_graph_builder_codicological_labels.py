@@ -149,3 +149,63 @@ def test_text_tradition_latin_title_uses_en_label() -> None:
         for lit in graph.objects(node, RDFS.label):
             # A Latin tradition title must never be tagged Hebrew.
             assert lit.language == "en"
+
+
+def _production_draft(data: ExtractedData, cn: str = "990001800310205171"):
+    graph = GraphBuilder().build_graph(data, cn)
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    return next((d for d in drafts if d.entity_type == "E12_Production"), None)
+
+
+def test_empty_production_description_states_negative_not_repeat(cn="990001800310205171") -> None:
+    data = ExtractedData(title="ספר תהילים", shelfmark="Heb. 12.34")
+    draft = _production_draft(data, cn)
+    assert draft is not None
+    desc = draft.descriptions["en"]
+    assert "not recorded in the catalog record" in desc
+    assert "Heb. 12.34" in desc
+    assert desc != f"Production event for manuscript {cn}."
+
+
+def test_paleographical_unit_comment_grounds_scribe() -> None:
+    data = ExtractedData(
+        title="ספר תהילים",
+        shelfmark="Heb. 12.34",
+        contributors=[{"name": "משה בן מימון", "role": "scribe"}],
+    )
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    pu_nodes = list(graph.subjects(RDF.type, HM.Paleographical_Unit))
+    assert pu_nodes
+    comment = str(graph.value(pu_nodes[0], RDFS.comment))
+    assert "scribe משה בן מימון" in comment
+
+
+def test_paleographical_unit_comment_states_negative_when_unknown() -> None:
+    data = ExtractedData(title="ספר תהילים", shelfmark="Heb. 12.34")
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    pu_nodes = list(graph.subjects(RDF.type, HM.Paleographical_Unit))
+    assert pu_nodes
+    comment = str(graph.value(pu_nodes[0], RDFS.comment))
+    assert "not recorded in the catalog" in comment
+
+
+def test_no_synthetic_tradition_for_unidentified_content() -> None:
+    data = ExtractedData(shelfmark="Heb. 12.34")
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    traditions = list(graph.subjects(RDF.type, HM.TextTradition))
+    assert traditions == []
+
+
+def test_long_isbd_work_label_uses_precolon_head() -> None:
+    long_title = (
+        "שער שברי לוחות : פירוש המסורת אשר חבר החכם השלם הרב הגדול "
+        "לפרש את כל דקדוקי המקרא ואת כל טעמיו והוא חיבור נפלא מאד"
+    )
+    data = ExtractedData(title=long_title, shelfmark="Heb. 12.34")
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    work = next((d for d in drafts if d.entity_type == "F1_Work"), None)
+    assert work is not None
+    label = work.labels.get("he") or work.labels.get("en")
+    assert label == "שער שברי לוחות"
+    assert "שער שברי לוחות" in work.descriptions["en"]

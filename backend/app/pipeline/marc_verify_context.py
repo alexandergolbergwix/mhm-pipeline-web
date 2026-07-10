@@ -46,12 +46,18 @@ AUTHORITY_MARC_KEYS = [
 ]
 
 
+def canonical_control_number(value: Any) -> str:
+    """Strip surrounding quotes/whitespace so a persisted ``"990…"`` joins a
+    clean ``990…`` control number (mirror of eval-agent marc_extract)."""
+    return str(value or "").strip().strip("\"'").strip()
+
+
 def index_marc_records(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for rec in records:
-        rid = rec.get("_control_number") or rec.get("001") or ""
+        rid = canonical_control_number(rec.get("_control_number") or rec.get("001") or "")
         if rid:
-            out[str(rid)] = rec
+            out[rid] = rec
     return out
 
 
@@ -126,9 +132,9 @@ def marc_context_for_item(
     field_keys = keys or HMO_ITEM_MARC_KEYS
     stored = item.get("control_numbers")
     if isinstance(stored, list) and stored:
-        control_numbers = sorted({str(x) for x in stored if x})
+        control_numbers = sorted({canonical_control_number(x) for x in stored if x})
     else:
-        cn = str(item.get("_control_number") or item.get("control_number") or "")
+        cn = canonical_control_number(item.get("_control_number") or item.get("control_number") or "")
         control_numbers = [cn] if cn else []
     if not control_numbers:
         return {}

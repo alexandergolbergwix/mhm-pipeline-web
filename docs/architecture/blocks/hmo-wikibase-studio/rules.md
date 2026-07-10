@@ -118,6 +118,14 @@
     description, work missing MS scope, missing label/description, and the
     W-52 codes `production_missing_label`, `timespan_bare_label`,
     `latin_label_in_he`, `unbalanced_label_quotes`, `witness_unusable_title`.
-    `HMO_ITEM_VERDICT_SCHEMA` is `w52_v1` so a rebuild + re-verify invalidates
+    `HMO_ITEM_VERDICT_SCHEMA` is `w53_v1` so a rebuild + re-verify invalidates
     stale verdicts without `override_cache`. *Why:* the run-`48ba6c13` fixup
     loop showed system-only/malformed labels drove most residual partials.
+26. **R26 — Honest-negative + second-pass hygiene gate (Rule W-53).**
+    `hmo_export_quality` adds `production_description_repeats_label` (blocks an
+    `E12_Production` whose description is the label-repeating template rather
+    than a grounded honest negative). Pairs with the RDF-graph R17 build fixes
+    (Ibn uninversion, 710-person, grounded Production/PU comments, ISBD/pipe/vav
+    label hygiene, place comments) and the eval-agent rubric 3d/3f/3g additions.
+    `HMO_ITEM_VERDICT_SCHEMA` → `w53_v1`. *Why:* export (5) on run `48ba6c13`
+    had 155 partial / 4 fail dominated by thin/malformed labels + person typing.

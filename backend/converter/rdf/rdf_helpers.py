@@ -38,6 +38,7 @@ _ISBD_ADJACENT_QUOTED = re.compile(
 
 _GERSHAYIM_RE = re.compile(r'(?<=[֐-ת])"(?=[֐-ת])')
 _GERSHAYIM_SENTINEL = ""
+_ISBD_QUOTED_CONJUNCTION_RE = re.compile(r'(?<=[\u0590-\u05ea])"\s+ו"(?=[\u0590-\u05ea])')
 
 _IN_MS_SUFFIX_RE = re.compile(r"\s*\(in MS\s+\d{8,}\)\s*$", re.IGNORECASE)
 _ENUM_PREFIX_RE = re.compile(r"^\d+\)\s*")
@@ -122,6 +123,13 @@ def is_descriptive_content_title(title: str) -> bool:
         return True
     if lower.startswith("כולל ") and "נוסח" in lower:
         return True
+    # A single-token vav-prefix construct-state fragment (``ותשובת`` = "and the
+    # responsa-of…") is a 505 continuation, not a work title (P2.3). Only
+    # single-token; multi-word titles starting with a vav stay.
+    if len(cleaned.split()) == 1 and cleaned.startswith("ו"):
+        remainder = re.sub(r"[^֐-ת]", "", cleaned[1:])
+        if len(remainder) <= 6:
+            return True
     return False
 
 
@@ -133,6 +141,10 @@ def sanitize_work_title(text: str) -> str:
     unbalanced-quote strip that removes ISBD artifacts.
     """
     cleaned = clean_marc_label(text)
+    # Collapse an ISBD conjunction of two quoted titles whose outer quotes were
+    # already stripped (``X" ו"Y`` → ``X וY``) so the interior straight quotes
+    # are not mistaken for gershayim by the parity check (P2.1).
+    cleaned = _ISBD_QUOTED_CONJUNCTION_RE.sub(" ו", cleaned)
     # Protect gershayim from the unbalanced-quote strip.
     protected = _GERSHAYIM_RE.sub(_GERSHAYIM_SENTINEL, cleaned)
     if protected.count('"') % 2 == 1:
@@ -180,12 +192,40 @@ def disambiguate_work_label(title: str, control_number: str) -> str:
     return cleaned
 
 
+_IBN_INVERTED_RE = re.compile(r"^(?P<sur>\S+),\s*(?P<given>.+?)\s+אבן$")
+
+
+def shorten_isbd_label(title: str, *, max_len: int = 80) -> str:
+    """Return a short label head for an over-long ISBD title.
+
+    When the sanitized title exceeds ``max_len`` and carries an ISBD ``:``
+    subtitle chain, the pre-colon head is the short scholarly title; the full
+    title belongs in the description/alias (P2.4).
+    """
+    cleaned = sanitize_work_title(title)
+    if len(cleaned) > max_len and " : " in cleaned:
+        head = cleaned.split(" : ", 1)[0].strip()
+        if head and len(head) >= 3:
+            return head
+    return cleaned
+
+
 def clean_person_display_name(name: str) -> str:
-    """Strip dangling patronymic particles from person headings."""
+    """Normalise dangling particles in person headings.
+
+    A trailing ``אבן`` after a ``Surname, Given`` inverted heading is the
+    **Ibn** that belongs to the surname (``סיד, יצחק אבן`` = Ibn Sid) — it is
+    uninverted, not deleted. A trailing ``בן`` after a comma-inverted heading
+    is a genuinely truncated patronymic and is stripped.
+    """
     cleaned = clean_marc_label(name)
-    if re.search(r"[\u0590-\u05ea]", cleaned):
-        cleaned = re.sub(r",\s*(?:בן|אבן)\s*$", "", cleaned).strip()
-        cleaned = re.sub(r"\s+(?:בן|אבן)\s*$", "", cleaned).strip()
+    if not re.search(r"[֐-ת]", cleaned):
+        return cleaned
+    ibn = _IBN_INVERTED_RE.match(cleaned)
+    if ibn:
+        return f"{ibn.group('given').strip()} אבן {ibn.group('sur').strip()}".strip()
+    cleaned = re.sub(r",\s*(?:בן|אבן)\s*$", "", cleaned).strip()
+    cleaned = re.sub(r"\s+בן\s*$", "", cleaned).strip()
     return cleaned
 
 
@@ -220,6 +260,10 @@ def clean_marc_label(
     if not isinstance(text, str):
         text = str(text)
     cleaned = _normalize_marc_isbd_quotes(text.strip())
+    # A ``|`` glues a MARC publication/edition note onto the title; the tail is
+    # never part of the title label (P2.2).
+    if "|" in cleaned:
+        cleaned = cleaned.split("|", 1)[0].strip()
     if strip_ms_scope:
         cleaned = _IN_MS_SUFFIX_RE.sub("", cleaned).strip()
     if strip_enum_prefix:
@@ -271,16 +315,32 @@ def is_institutional_name(name: str) -> bool:
     return any(kw in lowered for kw in _INSTITUTIONAL_KEYWORDS)
 
 
+_PERSONAL_HEADING_RE = re.compile(r"^\S+,\s+\S")
+
+
 def infer_person_type(person_data: dict[str, Any]) -> str:
-    """Return ``organization`` when the record should emit E74_Group."""
+    """Return ``organization`` when the record should emit E74_Group.
+
+    Field-based inference (110/610/710/810 → organization) must not override
+    an obviously personal name: NLI catalogs famous former-owner persons
+    (Adler, Roth, Sassoon) under corporate 710, so an inverted ``Surname,
+    Given`` heading with no institutional keyword is a person even in those
+    fields. ``Gaster, Moses Collection`` stays an organization on the
+    ``collection`` keyword.
+    """
     explicit = str(person_data.get("type") or "").lower()
     if explicit in {"organization", "org", "corporate", "institution"}:
         return "organization"
-    marc_field = str(person_data.get("field") or "")
-    if marc_field in {"110", "710", "610", "810"}:
-        return "organization"
+    if explicit in {"person", "personal", "individual"}:
+        return "person"
     name = str(person_data.get("name") or "")
     if is_institutional_name(name):
+        return "organization"
+    stripped = name.strip()
+    if _PERSONAL_HEADING_RE.match(stripped) and not re.search(r"\d", stripped):
+        return "person"
+    marc_field = str(person_data.get("field") or "")
+    if marc_field in {"110", "710", "610", "810"}:
         return "organization"
     return "person"
 

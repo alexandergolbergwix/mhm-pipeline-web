@@ -27,13 +27,25 @@ def load(path: Path) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def canonical_control_number(value: Any) -> str:
+    """Normalise a control number for joining.
+
+    Stage-1 sometimes persists ``_control_number`` with literal surrounding
+    quote characters (``"990…"``) while item/candidate control numbers are the
+    clean digit string. Keying and looking up on the raw quoted value silently
+    misses the join and leaves the judge with no MARC context. Canonicalising
+    both sides (strip surrounding quotes + whitespace) makes the join robust.
+    """
+    return str(value or "").strip().strip("\"'").strip()
+
+
 def index_by_id(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Return ``{_control_number: record}``. Empty-id records skipped."""
+    """Return ``{canonical_control_number: record}``. Empty-id records skipped."""
     out: dict[str, dict[str, Any]] = {}
     for r in records:
-        rid = r.get("_control_number") or r.get("001") or ""
+        rid = canonical_control_number(r.get("_control_number") or r.get("001") or "")
         if rid:
-            out[str(rid)] = r
+            out[rid] = r
     return out
 
 

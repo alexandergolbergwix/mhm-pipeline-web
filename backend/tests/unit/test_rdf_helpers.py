@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from converter.rdf.rdf_helpers import (
     clean_marc_label,
+    infer_person_type,
     clean_person_display_name,
     disambiguate_person_label,
     disambiguate_work_label,
@@ -11,6 +12,7 @@ from converter.rdf.rdf_helpers import (
     label_language_for_text,
     parse_contents_entry,
     sanitize_work_title,
+    shorten_isbd_label,
 )
 
 
@@ -85,8 +87,23 @@ def test_clean_person_display_name_strips_dangling_ben() -> None:
     assert disambiguate_person_label("יצחק לוריא") == "יצחק לוריא"
 
 
-def test_clean_person_display_name_strips_dangling_ibn() -> None:
-    assert clean_person_display_name("חביב, שמעון אבן") == "חביב, שמעון"
+def test_clean_person_display_name_uninverts_ibn_heading() -> None:
+    assert clean_person_display_name("חביב, שמעון אבן") == "שמעון אבן חביב"
+    assert clean_person_display_name("סיד, יצחק אבן") == "יצחק אבן סיד"
+
+
+def test_infer_person_type_710_person_over_field() -> None:
+    for name in ("Sassoon, David Solomon", "Adler, Elkan Nathan", "Roth, Cecil"):
+        assert infer_person_type({"name": name, "field": "710"}) == "person"
+
+
+def test_infer_person_type_710_collection_stays_org() -> None:
+    assert infer_person_type(
+        {"name": "Gaster, Moses Collection", "field": "710"}
+    ) == "organization"
+    assert infer_person_type(
+        {"name": "Library of the Jewish Theological Seminary", "field": "710"}
+    ) == "organization"
 
 
 def test_sanitize_work_title_preserves_gershayim() -> None:
@@ -96,3 +113,30 @@ def test_sanitize_work_title_preserves_gershayim() -> None:
 
 def test_sanitize_work_title_drops_dangling_close_paren() -> None:
     assert sanitize_work_title("משל הקדמוני)") == "משל הקדמוני"
+
+
+def test_sanitize_work_title_collapses_isbd_quoted_conjunction() -> None:
+    assert sanitize_work_title('הוא תיקוני עוונות" ו"שער הנבואה') == (
+        "הוא תיקוני עוונות ושער הנבואה"
+    )
+
+
+def test_clean_marc_label_truncates_at_pipe_note() -> None:
+    assert clean_marc_label('ממנטובה|נדפס בעילום שם ע"י שד"ל') == "ממנטובה"
+
+
+def test_is_descriptive_content_title_rejects_single_vav_fragment() -> None:
+    assert is_descriptive_content_title("ותשובת")
+    assert not is_descriptive_content_title("ויקרא רבה")
+
+
+def test_shorten_isbd_label_uses_precolon_head_for_long_titles() -> None:
+    long_title = (
+        "שער שברי לוחות : פירוש המסורת אשר חבר החכם השלם הרב הגדול "
+        "לפרש את כל דקדוקי המקרא ואת כל טעמיו והוא חיבור נפלא מאד"
+    )
+    assert shorten_isbd_label(long_title) == "שער שברי לוחות"
+
+
+def test_shorten_isbd_label_keeps_short_titles() -> None:
+    assert shorten_isbd_label("משל הקדמוני") == "משל הקדמוני"

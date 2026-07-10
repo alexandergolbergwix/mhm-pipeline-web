@@ -28,6 +28,17 @@ def test_grounding_treats_text_tradition_as_system_labeled_event() -> None:
     assert "SYSTEM-LABELED EVENT" in grounding
 
 
+def test_production_grounding_accepts_empty_production_as_honest_negative() -> None:
+    grounding = HmoWikibaseItemEvaluator().format_grounding(_candidate("E12_Production"))
+    assert "not recorded" in grounding.lower()
+    assert "honest negative" in grounding.lower()
+
+
+def test_paleographical_unit_treated_as_structural() -> None:
+    grounding = HmoWikibaseItemEvaluator().format_grounding(_candidate("Paleographical_Unit"))
+    assert "STRUCTURAL" in grounding
+
+
 def test_control_number_from_acquisition_source_uri() -> None:
     item = {
         "source_uri": (

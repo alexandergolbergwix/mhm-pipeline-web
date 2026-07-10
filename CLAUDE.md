@@ -1584,6 +1584,120 @@ Tests: ``test_graph_builder_codicological_labels.py``,
 
 ---
 
+### Rule W-53 — HMO item build: honest-negative grounding, person heading fidelity, second-pass label hygiene (added 2026-07-10)
+
+Export (5) on run ``48ba6c13`` (Kimi K2.5, override cache) scored 1750
+pass / 155 partial / 4 fail; the residuals were almost entirely
+``name_ok=partial`` (thin/malformed/wrong-language labels + descriptions) plus
+4 person-typing fails. This rule closes them:
+
+- **Person heading fidelity (`rdf_helpers.py`).**
+  ``clean_person_display_name`` now **uninverts** a trailing ``אבן`` after a
+  ``Surname, Given`` heading (``סיד, יצחק אבן`` → ``יצחק אבן סיד``, Ibn Sid)
+  instead of deleting the Ibn; a bare trailing ``בן`` is still stripped as a
+  truncated patronymic. ``infer_person_type`` no longer lets a 110/610/710/810
+  field force ``organization`` when the name is an obvious personal
+  ``Surname, Given`` heading with no institutional keyword — NLI catalogs
+  former-owner **persons** (Adler/Roth/Sassoon) under 710. ``… Collection`` /
+  ``Library of …`` still resolve to ``E74_Group`` on the institutional keyword.
+
+- **Honest-negative event grounding (`graph_builder.py`).** When a manuscript
+  records no production place/date/scribe, ``_add_production_event`` grounds the
+  description in the title + shelfmark and states the negative
+  (``… production place and date are not recorded in the catalog record.``)
+  instead of the label-repeating template. Paleographical_Unit comments name
+  the script/scribe when known, else say ``… not recorded in the catalog``. The
+  synthetic *Unidentified textual content* placeholder work no longer mints a
+  circular TextTradition/Witness/Bridge (tagged ``synthetic`` and skipped).
+
+- **Second-pass label hygiene (`rdf_helpers.py` + `graph_builder.py`).**
+  ISBD ``X" ו"Y`` quoted-conjunctions collapse to ``X וY`` before the gershayim
+  parity check; a ``|`` publication note is truncated off titles; single-token
+  vav-prefix construct fragments (``ותשובת``) are rejected as work titles;
+  over-long ISBD titles use the pre-colon head as the label with the full title
+  in the description (``shorten_isbd_label``). Person labels emit a single
+  longest-Hebrew-form ``he`` label; ``E74_Group`` descriptions are org-worded.
+  One-word manuscript ``he`` titles are shelfmark-disambiguated; every
+  ``E53_Place`` mint site (subject / provenance-event / holding-institution /
+  related-place) stamps a manuscript-scoped comment with a script-correct
+  language tag.
+
+- **Gate + rubric + salt.** ``hmo_export_quality`` adds
+  ``production_description_repeats_label``. The item rubric
+  (``hmo_wikibase_item.md``) gains 3d empty-production honest-negative, 3f
+  (MARC-heading order + subject-heading persons), 3g (generic-MS-title +
+  controlled-vocabulary terms); the evaluator's SYSTEM-LABELED grounding and
+  ``Paleographical_Unit`` structural typing mirror it.
+  ``HMO_ITEM_VERDICT_SCHEMA`` → ``w53_v1`` (Rule W-51) so old verdicts miss
+  automatically — a rebuild + re-verify is sufficient, no ``override_cache``.
+
+**Curator ops after deploy:** RDF rebuild → HMO **Rebuild (skip cache)** →
+re-verify (no override cache). Reupload only when live wiki labels/descriptions
+should change.
+
+Mirror caveat (Rule W-43 residual): the four ``graph_builder.py`` /
+``rdf_helpers.py`` edits still owe a hand-port to the desktop pipeline repo —
+do **not** run ``sync_converter_to_web.sh``.
+
+Tests: ``test_rdf_helpers.py`` (Ibn/710-person, quote/pipe/vav/long-title),
+``test_graph_builder_codicological_labels.py`` (empty-production, PU comment,
+no synthetic tradition, long-title head), ``test_hmo_export_quality.py``
+(``production_description_repeats_label``),
+``eval-agent/tests/test_hmo_wikibase_items.py`` (rubric grounding).
+
+---
+
+### Rule W-54 — Canonical control-number join for AI verify (added 2026-07-10)
+
+Deep investigation of the residual ``partial`` HMO item verdicts that survived
+Rule W-53 (measured locally via
+[`.codex/skills/local-measure-verify`](.codex/skills/local-measure-verify/SKILL.md))
+found the dominant cause was **not** thin data — it was a silent MARC-join
+failure. Stage-1 persists ``run_records.marc["_control_number"]`` **with
+literal surrounding quote characters** (``"990…"``), but Studio item /
+candidate control numbers are the clean digit string. Every verify indexer
+keyed on the raw quoted value, so the join missed and the judge received an
+**empty MARC context** — then conservatively returned ``name_ok=partial``
+("description merely repeats the label") for exactly the derived entities
+(short-title ``F2_Expression``, given-name-only ``E21_Person``) that most need
+manuscript corroboration. This is the same "no MARC context" class Rules W-45 /
+W-48 chased via URI-regex + BFS control-number propagation; the join **key**
+was quoted the whole time.
+
+Invariant: **canonicalise the control number at every join boundary** — strip
+surrounding quotes + whitespace on both the index key and every lookup.
+
+- ``eval_agent/ingest/marc_extract.py`` — new ``canonical_control_number()``;
+  ``index_by_id`` keys on it. ``orchestration/session.py`` canonicalises every
+  ``rid`` / ``cns`` / ``primary`` before ``marc_index`` lookups (NER, authority,
+  Wikidata item, HMO item paths) and the ``_ner_index`` keys.
+- ``app/pipeline/marc_verify_context.py`` — mirror ``canonical_control_number()``
+  in ``index_marc_records`` + ``marc_context_for_item`` (cache-key + fixup
+  parity).
+
+Also generalised the Rule W-53 production-description grounding: the
+manuscript's title + shelfmark are woven into **every** ``E12_Production``
+description (not only the fully-empty case), so a date-only description reads
+``Production of manuscript {cn} ('{title}', shelfmark {sh}): {date}.`` instead
+of a bare date that repeats the label.
+
+This restores real title/authors/subjects grounding to the judge **run-wide**,
+not just for the measured scope — any verify channel keyed by control number
+benefits.
+
+Tests: ``eval-agent/tests/test_marc_extract_merge.py``
+(``index_by_id_canonicalises_quoted_control_number``,
+``canonical_control_number``), ``backend/tests/unit/test_marc_verify_context.py``
+(``marc_context_joins_quoted_control_number``),
+``test_graph_builder_codicological_labels.py``.
+
+Mirror caveat (Rule W-43 residual): ``graph_builder.py`` /
+``marc_verify_context.py`` edits are web-local; the vendored ``eval-agent/``
+copy is web-owned (see [[vendored-eval-agent-copy]]). Do **not** run
+``sync_converter_to_web.sh``.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

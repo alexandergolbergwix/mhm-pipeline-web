@@ -97,3 +97,25 @@
     `_add_content_work` re-runs `parse_contents_entry` defensively. *Why:* the
     run-`48ba6c13` fixup-loop audit tied most residual `name_ok=partial`
     verdicts to system-only labels on Production/Time-Span/tradition nodes.
+17. **R17 — Honest-negative grounding + person fidelity + second-pass label
+    hygiene (Rule W-53).** `clean_person_display_name` uninverts a trailing
+    ``אבן`` (Ibn) instead of deleting it; `infer_person_type` keeps a
+    ``Surname, Given`` personal heading a person even under MARC 710/610.
+    `_add_production_event` / the Paleographical_Unit loop state the negative
+    (``… not recorded in the catalog record``) grounded in title/shelfmark/
+    script/scribe rather than repeating the label; the synthetic *Unidentified
+    textual content* work no longer mints a circular TextTradition.
+    `rdf_helpers` collapses ISBD ``X" ו"Y`` conjunctions, truncates ``|``
+    publication notes, rejects single-token vav fragments, and shortens
+    over-long ISBD titles (`shorten_isbd_label`); persons emit one
+    longest-Hebrew ``he`` label with org-worded `E74_Group` descriptions;
+    one-word MS titles are shelfmark-disambiguated; every `E53_Place` mint site
+    stamps a script-correct comment. *Why:* export (5) residual
+    `name_ok=partial` clusters + 4 person-typing fails on run `48ba6c13`.
+18. **R18 — Production descriptions always carry MS context (Rule W-54).**
+    `_add_production_event` weaves the manuscript title + shelfmark into **every**
+    `E12_Production` description, not only the fully-empty case, so a date-only
+    description reads `Production of manuscript {cn} ('{title}', shelfmark {sh}):
+    {date}.` instead of a bare date that repeats the label. *Why:* the residual
+    `partial` Production items after W-53 had date-only descriptions the judge
+    read as "merely repeats the label".

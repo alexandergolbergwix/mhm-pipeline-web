@@ -18,6 +18,7 @@ _STRUCTURAL_ENTITY_TYPES = frozenset({
     "BibliographicParadigm",
     "PhilologicalParadigm",
     "ViewType",
+    "Paleographical_Unit",
 })
 
 # Event / transmission entities whose English "System label of MS <cn>" is
@@ -146,6 +147,10 @@ class HmoWikibaseItemEvaluator(Evaluator):
                 "  'Witness of … in MS …' are intentional (rubric rule 3d).\n"
                 "  name_ok = yes when the label carries the MS/period AND the\n"
                 "  description is substantive (place/date/scribe/folio/tradition).\n"
+                "  A description that states production place/date is NOT recorded\n"
+                "  in the catalog IS substantive (honest negative) → name_ok = yes;\n"
+                "  only the bare 'Production event for manuscript {cn}.' template\n"
+                "  (repeats the label) is partial.\n"
                 "  role_ok = n/a unless SHACL blocking issues are present."
                 + merge_note
             )

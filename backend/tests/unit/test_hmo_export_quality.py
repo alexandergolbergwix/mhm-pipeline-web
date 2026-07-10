@@ -69,6 +69,29 @@ def test_production_missing_label_flagged() -> None:
     assert not any(i.code == "production_missing_label" for i in audit_entity_draft(good))
 
 
+def test_production_description_repeats_label_flagged() -> None:
+    bad = _draft(
+        "E12_Production",
+        {"en": "Production of MS 990001"},
+        descriptions={"en": "Production event for manuscript 990001."},
+    )
+    codes = {i.code for i in audit_entity_draft(bad)}
+    assert "production_description_repeats_label" in codes
+
+    good = _draft(
+        "E12_Production",
+        {"en": "Production of MS 990001"},
+        descriptions={
+            "en": (
+                "Production of manuscript 990001 ('ספר תהילים', shelfmark Heb. 12.34); "
+                "production place and date are not recorded in the catalog record."
+            )
+        },
+    )
+    codes = {i.code for i in audit_entity_draft(good)}
+    assert "production_description_repeats_label" not in codes
+
+
 def test_timespan_bare_label_flagged() -> None:
     bad = _draft("E52_Time-Span", {"en": "1460"})
     assert any(i.code == "timespan_bare_label" for i in audit_entity_draft(bad))

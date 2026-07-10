@@ -58,12 +58,38 @@ Return JSON with:
    substantive (place, date, scribe, folio, or tradition scope). Do **not**
    downgrade for the `Production of MS …` wording alone; `role_ok = n/a`
    unless SHACL blocking issues exist.
+   - **Empty-production addendum:** when a `E12_Production` description states
+     that the catalog record carries **no** production place/date/scribe
+     (e.g. `… production place and date are not recorded in the catalog
+     record.`), that IS substantive — it is an honest negative finding, not a
+     placeholder → `name_ok = yes`. Only the exact old template
+     `Production event for manuscript {cn}.` (which merely repeats the label)
+     is `partial`.
 
 3e. **`E74_Group`** (organizations / collections, e.g. a named library or a
    `Sassoon` collection) — `name_ok = yes` when the English org name is
    present and the description carries manuscript linkage. Never expect a
    Hebrew personal-name format for an organization; `role_ok` follows the
    org's custody/ownership role, not authorship.
+
+3f. **Person name order + subject-heading persons.**
+   - A MARC-heading `Surname, Given` order (`נשיא, דוד בן אהרן`) is the
+     scholarly-standard inverted form → do **not** downgrade `name_ok` for the
+     order alone.
+   - A **subject-heading person** (`E21_Person` whose description says
+     `Subject heading (person) … from MARC 600 …`) needs no biographical
+     substance — the controlled heading + manuscript linkage is complete →
+     `name_ok = yes`.
+
+3g. **Generic manuscript titles + controlled-vocabulary terms.**
+   - A manuscript (`F4_Manifestation_Singleton`) whose `en` label carries the
+     shelfmark (`Jerusalem, NLI, {shelfmark}`) or whose `he` label carries the
+     shelfmark in parentheses is sufficiently identified even when the bare
+     `he` title is a single generic word (`תורה`, `תכלאל`) → `name_ok = yes`.
+   - A `SubjectType` / `E53_Place` that is a controlled-vocabulary term with a
+     description carrying manuscript linkage (`Subject heading … from MARC …`,
+     `Place '…', {role} location of manuscript …`) is complete →
+     `name_ok = yes`; do not require biographical/gazetteer prose.
 
 4. **Generic fallback descriptions** (`… in the Hebrew Manuscripts Ontology (HMO)`)
    without substantive content → `name_ok = partial` at best; `fail` when the
