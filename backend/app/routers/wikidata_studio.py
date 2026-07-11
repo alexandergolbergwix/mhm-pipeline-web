@@ -12,25 +12,22 @@ workflow's unit of truth (see Rule 54 in the desktop CLAUDE.md).
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 import logging
 import uuid
 from pathlib import Path
 from typing import Any, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from uuid import UUID
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
-from app.export.formatters import json_stream
+from app.export.formatters import csv_stream, json_stream
 from app.models.event import (
     ENTITY_TYPE_WIKIDATA_OVERRIDE,
     OP_CREATE,
@@ -39,16 +36,15 @@ from app.models.event import (
 )
 from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
-from app.models.run import AuthorityMatch, Run, RunRecord
-from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import JOB_KIND_WIKIDATA_STUDIO_BUILD, JOB_KIND_WIKIDATA_VERIFY
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
-from app.pipeline.verify_session_store import load_verify_session
+from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.agent_runner import (
     AgentEvent,
-    locate_eval_agent,
     list_verify_sessions,
+    locate_eval_agent,
     new_session_id,
     persist_session_event,
     read_run_verdicts,
@@ -59,6 +55,7 @@ from app.pipeline.agent_runner import (
     sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.verify_session_store import load_verify_session
 from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
 from app.pipeline.wikidata_item_views import (
     StudioBuildMissingError,
@@ -67,6 +64,7 @@ from app.pipeline.wikidata_item_views import (
 )
 from app.pipeline.wikidata_verdict_cache import (
     attach_wikidata_marc_context,
+    marc_context_for_wikidata_item,
     sanitise_stale_wikidata_verdict,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
@@ -1105,42 +1103,65 @@ async def export_wikidata_items(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    def _csv_stream():
-        buf = io.StringIO()
-        fields = [
-            "local_id", "entity_type", "existing_qid", "approved",
-            "label_en", "label_he",
-            "upload_outcome", "upload_message", "upload_at",
-            "ai_verdict_overall", "ai_verdict_reasoning", "ai_verdict_model",
-            "ai_verdict_judged_at",
-        ]
-        writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
-        writer.writeheader()
-        for it in items:
-            labels = it.get("labels") or {}
-            av = it.get("ai_verdict") if isinstance(it.get("ai_verdict"), dict) else {}
-            writer.writerow({
-                "local_id": it.get("local_id"),
-                "entity_type": it.get("entity_type"),
-                "existing_qid": it.get("existing_qid"),
-                "approved": it.get("approved"),
-                "label_en": labels.get("en"),
-                "label_he": labels.get("he"),
-                "upload_outcome": it.get("upload_outcome"),
-                "upload_message": it.get("upload_message"),
-                "upload_at": it.get("upload_at"),
-                "ai_verdict_overall": av.get("overall"),
-                "ai_verdict_reasoning": av.get("reasoning"),
-                "ai_verdict_model": av.get("model"),
-                "ai_verdict_judged_at": it.get("ai_verdict_at") or av.get("judged_at"),
-            })
-        yield buf.getvalue()
+    def _json_cell(value: Any) -> str:
+        if value in (None, "", {}, []):
+            return ""
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+    marc_records = await _load_marc_records_for_run(db, run_id)
+    fields = [
+        "local_id", "entity_type", "existing_qid", "approved", "source_uri",
+        "record_ids_json", "label_en", "label_he", "description_en", "description_he",
+        "aliases_json", "statement_count", "statements_json", "validation_issues_json",
+        "has_blocking_validation", "marc_context_json", "upload_outcome", "upload_message",
+        "upload_at", "ai_verdict_overall", "ai_verdict_name_ok", "ai_verdict_type_ok",
+        "ai_verdict_role_ok", "ai_verdict_reasoning", "ai_verdict_model",
+        "ai_verdict_judged_at", "ai_verdict_json",
+    ]
+    rows: list[dict[str, Any]] = []
+    for it in items:
+        labels = it.get("labels") if isinstance(it.get("labels"), dict) else {}
+        descriptions = it.get("descriptions") if isinstance(it.get("descriptions"), dict) else {}
+        av = it.get("ai_verdict") if isinstance(it.get("ai_verdict"), dict) else {}
+        marc_context = marc_context_for_wikidata_item(it, marc_records)
+        records = it.get("record_ids") or it.get("records") or []
+        statements = it.get("statements") if isinstance(it.get("statements"), list) else []
+        rows.append({
+            "local_id": it.get("local_id"),
+            "entity_type": it.get("entity_type"),
+            "existing_qid": it.get("existing_qid"),
+            "approved": it.get("approved"),
+            "source_uri": it.get("source_uri"),
+            "record_ids_json": _json_cell(records),
+            "label_en": labels.get("en"),
+            "label_he": labels.get("he"),
+            "description_en": descriptions.get("en"),
+            "description_he": descriptions.get("he"),
+            "aliases_json": _json_cell(it.get("aliases")),
+            "statement_count": len(statements),
+            "statements_json": _json_cell(statements),
+            "validation_issues_json": _json_cell(it.get("validation_issues")),
+            "has_blocking_validation": it.get("has_blocking_validation"),
+            "marc_context_json": _json_cell(marc_context),
+            "upload_outcome": it.get("upload_outcome"),
+            "upload_message": it.get("upload_message"),
+            "upload_at": it.get("upload_at"),
+            "ai_verdict_overall": av.get("overall"),
+            "ai_verdict_name_ok": av.get("name_ok"),
+            "ai_verdict_type_ok": av.get("type_ok"),
+            "ai_verdict_role_ok": av.get("role_ok"),
+            "ai_verdict_reasoning": av.get("reasoning"),
+            "ai_verdict_model": av.get("model"),
+            "ai_verdict_judged_at": it.get("ai_verdict_at") or av.get("judged_at"),
+            "ai_verdict_json": _json_cell(av),
+        })
 
     return StreamingResponse(
-        _csv_stream(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        csv_stream(rows, fields),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""},
     )
+
 
 
 @router.post("/{run_id}/wikidata-studio/items/import")
@@ -2293,7 +2314,6 @@ async def _write_wikidata_verdicts_to_cache(
             )
             marc_ctx = item.get("_marc_context")
             if not isinstance(marc_ctx, dict):
-                from app.pipeline.wikidata_verdict_cache import marc_context_for_wikidata_item  # noqa: PLC0415
                 marc_ctx = marc_context_for_wikidata_item(item, marc_records or [])
             fingerprint = wikidata_verdict_input_fingerprint(
                 item,

@@ -62,4 +62,7 @@ surfaces an empty/invalid scope as a failed job instead of a stuck modal.
 `wikidata_autofix_apply.merge_ai_fixes` converts only `confidence == "high"`
 AI fixes into override fragments the curator applies via
 `POST /apply-ai-fixes`. `WikidataComparePanel` renders the same diff for
-manual apply.
+manual apply. The diagnostic `GET …/items/export?format=csv` preserves the
+item fields, linked MARC slice, validation issues, upload state, flattened
+rubric fields, and complete `ai_verdict_json`, so non-passing rows can be
+grouped into safe builder or rubric fixes without reconstructing the prompt.

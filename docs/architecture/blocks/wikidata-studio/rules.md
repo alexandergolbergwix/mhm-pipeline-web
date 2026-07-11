@@ -72,3 +72,5 @@
     sanitisation. Unmarked pre-fix keys are compatible only when their legacy
     fingerprint still matches. *Why:* a mismatched fingerprint hides a valid
     persisted verdict as stale, leaving the review table blank.
+
+17. **R17 — The diagnostic Wikidata CSV MUST include the item fields, linked MARC context, validation issues, and complete persisted AI-verdict JSON.** It may add flattened columns for common verdict fields, but MUST NOT replace the complete JSON column. *Why:* a 294-item export with `ai_verdict` omitted or flattened to one reason field cannot identify recurring builder defects or map them back to the evaluator prompt.

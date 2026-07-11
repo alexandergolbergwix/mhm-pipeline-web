@@ -1910,6 +1910,24 @@ shown as cancellable. Test: `frontend/tests/unit/useVerifyJob.spec.ts`.
 
 ---
 
+### Rule W-62 — Wikidata diagnostic exports MUST preserve verdict and prompt evidence (added 2026-07-11)
+
+The first 294-item Wikidata Studio JSON export had `ai_verdict: null` for every
+row, and the old CSV reduced any populated verdict to only `overall`, one
+reasoning string, and model. That export could not tell us which generated
+labels, descriptions, statements, validation issues, or MARC evidence caused a
+partial/fail judgment, so it could not drive a safe builder fix.
+
+The Wikidata Studio CSV now includes the evaluator-relevant item fields,
+record IDs, linked MARC context, validation issues, upload state, flattened
+rubric fields, and a complete `ai_verdict_json` column. The export MUST retain
+that complete verdict JSON and prompt context; adding a new rubric field requires
+adding it to the JSON source (and any useful flattened column) so the Codex
+analysis workflow can group recurring builder defects. Test:
+`test_wikidata_items_export_import.py`.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

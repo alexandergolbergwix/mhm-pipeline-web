@@ -3,7 +3,7 @@
 > Up: [Wikidata Studio](README.md)
 
 - `backend/tests/unit/test_item_validator.py` — every check incl. label-hygiene warnings + `TestP50OnManuscript`, `TestP7416AsQuantity`, `TestP31WrongQid`.
-- `backend/tests/test_wikidata_items_export_import.py` — override export/import round-trip.
+- `backend/tests/test_wikidata_items_export_import.py` — override export/import round-trip and diagnostic CSV coverage (item fields, MARC context, and full AI verdict).
 - `backend/tests/test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py` (including build `records` ↔ verify `record_ids`, MARC-context fingerprint parity, and safe legacy-key display), `test_wikidata_qid_ledger.py`, `test_wikidata_single_push.py`, `test_wikidata_export_quality.py` — parity plan Phases 1–4.
 - `backend/tests/unit/test_wikidata_upload_guards.py` (~17+) — reconcile-before-create per type, fail-closed outage, validator hard gate, blocked-never-written, audit trail, ledger/adopt, dry-run truthfulness.
 - `backend/tests/unit/test_wikidata_studio_slicing.py`, `test_wikidata_studio_works.py`, `test_wikidata_manuscript_labels.py`, `test_wikidata_matcher_backfill.py` — build/serialisation behaviour.
