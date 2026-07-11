@@ -254,3 +254,32 @@ class TestSourceRecordAssociation:
         works = [item for item in items if item["entity_type"] == "work"]
         assert len(works) == 1
         assert works[0]["records"] == [first["_control_number"], second["_control_number"]]
+
+
+class TestProjectionQuality:
+    @pytest.mark.asyncio
+    async def test_catalog_id_stays_out_of_work_label_and_unknown_role_is_skipped(self) -> None:
+        rec = _fake_marc_record(control_number="\"990000000000000001\"")
+        rec["title"] = "פירוש המשנה"
+        rec["marc_authority_matches"] = [{
+            "name": "Unknown Contributor",
+            "role": "unmapped role",
+            "field": "700",
+            "mazal_id": "",
+        }]
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[{
+                "control_number": "990000000000000001",
+                "entity_text": "Unknown Contributor",
+                "role": "unmapped role",
+                "field": "700",
+                "mazal_id": "",
+            }],
+            entities_by_cn=None,
+            return_native=False,
+        )
+        manuscript = next(item for item in result["items"] if item["entity_type"] == "manuscript")
+        assert manuscript["records"] == ["990000000000000001"]
+        assert all("NLI 990000000000000001" not in str(item.get("labels")) for item in result["items"])
+        assert all("Unknown Contributor" not in str(item.get("labels")) for item in result["items"])

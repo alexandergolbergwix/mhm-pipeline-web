@@ -77,3 +77,6 @@ hydrate the same table from `run_jobs.progress.session_snapshot` while the job
 runs. Modals auto-load the last session on open via the sessions endpoints.
 `useApprovalStore` fast-polls (2 s) while a verify modal is open and emits
 `mhm.entities.refreshed` so inline `AiVerdictPill`s update without a reload.
+
+
+Wikidata item verdict payloads include `authority_evidence` and `local_reference_targets` alongside labels, statements, validation issues, and the exact MARC slice. These fields are part of `wikidata_verdict_query_summary`, so changing authority context or local-target resolution invalidates old inference-cache verdicts. The CSV export exposes both as compact JSON columns for offline triage.

@@ -102,6 +102,8 @@ async def test_csv_export_includes_prompt_context_and_full_verdict(sample_run, d
             "local_id": "csv-item",
             "entity_type": "work",
             "records": ["csv-cn-1"],
+            "authority_evidence": [{"source": "NLI", "birth_year": 1950}],
+            "local_reference_targets": {"person::1": {"entity_type": "person"}},
             "labels": {"en": "Generated work", "he": "יצירה"},
             "descriptions": {"en": "Generated description"},
             "aliases": {"en": ["Alias"]},
@@ -139,6 +141,8 @@ async def test_csv_export_includes_prompt_context_and_full_verdict(sample_run, d
     assert len(rows) == 1
     row = rows[0]
     assert row["description_en"] == "Generated description"
+    assert json.loads(row["authority_evidence_json"])[0]["source"] == "NLI"
+    assert "person::1" in row["local_reference_targets_json"]
     assert "P31" in row["statements_json"]
     assert "MARC title" in row["marc_context_json"]
     assert json.loads(row["ai_verdict_json"])["reasoning"] == "Statement needs evidence"

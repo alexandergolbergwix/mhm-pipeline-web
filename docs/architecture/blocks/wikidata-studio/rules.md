@@ -77,3 +77,6 @@
 
 
 18. **R18 — Every built item MUST retain the MARC control numbers that supplied it.** Manuscripts carry their own control number; deduplicated person/work items carry the sorted union. Verification reads this metadata (or only a legacy P3959 reference recovery) and MUST NEVER substitute the first record in a run. *Why:* a 294-item production verify grounded unrelated people and works in the first MARC record, creating systematic false fails (Rule W-63).
+
+
+19. **R19 — Built labels and verifier evidence are separated and complete (Rule W-65).** Catalog IDs stay in P3959/source metadata, unsupported roles do not become authors, authority-derived person claims carry compact authority evidence, and the verify fixture annotates valid `__LOCAL:` targets. The CSV/export/cache/prompt preserve these fields. *Why:* production partial/fail verdicts were dominated by label pollution, role drift, and missing authority context.

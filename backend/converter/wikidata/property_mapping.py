@@ -605,6 +605,21 @@ def nli_reference(control_number: str) -> list[dict[str, str]]:
     return snaks
 
 
+def nli_authority_reference(authority_id: str) -> list[dict[str, str]]:
+    """Build a reference for an NLI authority record (9870… J9U ID)."""
+    today = datetime.now(tz=UTC).strftime("+%Y-%m-%dT00:00:00Z")
+    value = authority_id.strip()
+    return [
+        {"property": P_STATED_IN, "value": Q_KTIV, "type": "item"},
+        {"property": P_NLI_J9U_ID, "value": value, "type": "external-id"},
+        {
+            "property": P_REFERENCE_URL,
+            "value": f"https://www.nli.org.il/en/authorities/{value}",
+            "type": "url",
+        },
+        {"property": P_RETRIEVED, "value": today, "type": "time", "precision": PRECISION_DAY},
+    ]
+
 def viaf_reference(viaf_id: str) -> list[dict[str, str]]:
     """Build a Wikidata reference snak set for VIAF-cluster sourcing.
 

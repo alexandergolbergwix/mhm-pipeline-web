@@ -45,6 +45,8 @@ class WikidataItemEvaluator(Evaluator):
             "statement_count": len(ner_record.get("statements") or []),
             "existing_qid": ner_record.get("existing_qid"),
             "validation_issues": ner_record.get("validation_issues") or [],
+            "authority_evidence": ner_record.get("authority_evidence") or [],
+            "local_reference_targets": ner_record.get("local_reference_targets") or {},
         }
         control_number = wikidata_items.control_number(ner_record)
         yield Candidate(
@@ -68,6 +70,8 @@ class WikidataItemEvaluator(Evaluator):
         issues_json = json.dumps(
             p.get("validation_issues") or [], ensure_ascii=False, indent=2
         )
+        authority_json = json.dumps(p.get("authority_evidence") or [], ensure_ascii=False, indent=2)
+        local_targets_json = json.dumps(p.get("local_reference_targets") or {}, ensure_ascii=False, indent=2)
         block = (
             "Model: Wikidata Studio item projection\n"
             "Prediction:\n"
@@ -81,5 +85,7 @@ class WikidataItemEvaluator(Evaluator):
             f"  statement count:   {p.get('statement_count', 0)}\n"
             f"  statements sample:\n{statements_json}\n"
             f"  validation issues:\n{issues_json}\n"
+            f"  authority evidence:\n{authority_json}\n"
+            f"  local reference targets:\n{local_targets_json}\n"
         )
         return self.render_prompt(candidate, prediction_block=block)

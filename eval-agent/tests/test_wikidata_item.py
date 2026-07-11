@@ -59,6 +59,8 @@ def test_wikidata_item_evaluator_emits_local_id_keyed_candidate():
         "validation_issues": [
             {"code": "missing_reference", "severity": "warning", "message": "No ref"}
         ],
+        "authority_evidence": [{"source": "NLI", "birth_year": 1500}],
+        "local_reference_targets": {"person::1": {"entity_type": "person", "labels": {"en": "Jane Doe"}}},
     }
     marc = {
         "_control_number": "12345",
@@ -77,6 +79,8 @@ def test_wikidata_item_evaluator_emits_local_id_keyed_candidate():
     assert candidate.evaluator_id == "wikidata_item"
     assert candidate.payload["_local_id"] == "12345"
     assert candidate.payload["validation_issues"][0]["code"] == "missing_reference"
+    assert candidate.payload["authority_evidence"][0]["source"] == "NLI"
+    assert "person::1" in candidate.payload["local_reference_targets"]
     assert candidate.marc_context["title"] == "Sefer ha-refu'ot"
 
 

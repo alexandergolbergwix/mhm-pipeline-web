@@ -134,3 +134,6 @@
 
 
 - **R24 — Verify progress is idempotent (Rule W-64).** Job workers count distinct candidate local IDs from `agent.verdict`; they never add replayed disk/cache verdicts or treat `agent.stats.judged` as an absolute total. *Why:* a 294-item Wikidata job rendered 395/294 during a replayed result stream.
+
+
+- **R25 — Wikidata verdict prompts carry authority and local-target evidence (Rule W-65).** The evaluator payload/cache/export includes compact authority evidence and resolved `__LOCAL:` targets; the rubric accepts coherent year precision 9 and clean Hebrew labels. *Why:* missing non-MARC authority context and unresolved internal references caused systematic partial/fail verdicts.

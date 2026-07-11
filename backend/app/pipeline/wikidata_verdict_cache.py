@@ -15,7 +15,7 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-WIKIDATA_VERDICT_SCHEMA = "w57_v1"
+WIKIDATA_VERDICT_SCHEMA = "w65_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v2"
 
 
@@ -94,6 +94,8 @@ def wikidata_verdict_query_summary(
         "statements": normalise_statement_rows(item.get("statements") or []),
         "existing_qid": item.get("existing_qid"),
         "validation_issues": normalise_shacl_issues(item.get("validation_issues") or []),
+        "authority_evidence": item.get("authority_evidence") or [],
+        "local_reference_targets": item.get("local_reference_targets") or {},
         "marc_context": marc_slice,
         "judge_model": judge_model,
         "evaluator": evaluator,

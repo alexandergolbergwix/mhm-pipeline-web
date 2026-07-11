@@ -859,6 +859,14 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
     is idempotent for all non-subfield-key paths.
     """
     row = dict(rec)
+    control_number = (
+        row.get("_control_number")
+        or row.get("control_number")
+        or row.get("controlNumber")
+        or row.get("001")
+        or ""
+    )
+    row["_control_number"] = str(control_number).strip().strip("\"'")
     if any("$" in k for k in row):
         _collapse_marc_subfields(row)
     if row.get("contributors"):

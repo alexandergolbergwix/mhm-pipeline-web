@@ -1114,6 +1114,7 @@ async def export_wikidata_items(
         "local_id", "entity_type", "existing_qid", "approved", "source_uri",
         "record_ids_json", "label_en", "label_he", "description_en", "description_he",
         "aliases_json", "statement_count", "statements_json", "validation_issues_json",
+        "authority_evidence_json", "local_reference_targets_json",
         "has_blocking_validation", "marc_context_json", "upload_outcome", "upload_message",
         "upload_at", "ai_verdict_overall", "ai_verdict_name_ok", "ai_verdict_type_ok",
         "ai_verdict_role_ok", "ai_verdict_reasoning", "ai_verdict_model",
@@ -1139,6 +1140,8 @@ async def export_wikidata_items(
             "description_en": descriptions.get("en"),
             "description_he": descriptions.get("he"),
             "aliases_json": _json_cell(it.get("aliases")),
+            "authority_evidence_json": _json_cell(it.get("authority_evidence")),
+            "local_reference_targets_json": _json_cell(it.get("local_reference_targets")),
             "statement_count": len(statements),
             "statements_json": _json_cell(statements),
             "validation_issues_json": _json_cell(it.get("validation_issues")),
@@ -2059,8 +2062,45 @@ async def _fetch_wikidata_verify_items(
             if control_number in run_record_ids
         ]
         items.append(item)
+    _attach_local_reference_targets(items)
     return items, [dict(r.marc or {"_control_number": r.control_number}) for r in records]
 
+
+
+def _attach_local_reference_targets(items: list[dict[str, Any]]) -> None:
+    """Annotate local statement targets so the evaluator can resolve them."""
+    by_local_id = {
+        str(item.get("_local_id") or item.get("local_id") or ""): item
+        for item in items
+    }
+    for item in items:
+        targets: dict[str, dict[str, Any]] = {}
+        for statement in item.get("statements") or []:
+            if not isinstance(statement, dict):
+                continue
+            values: list[Any] = [statement.get("value"), statement.get("value_id")]
+            values.extend(
+                qualifier.get("value")
+                for qualifier in statement.get("qualifiers") or []
+                if isinstance(qualifier, dict)
+            )
+            for value in values:
+                text = str(value or "")
+                if not text.startswith("__LOCAL:"):
+                    continue
+                target_id = text.removeprefix("__LOCAL:")
+                target = by_local_id.get(target_id)
+                if target is None:
+                    continue
+                labels = target.get("labels")
+                targets[target_id] = {
+                    "entity_type": target.get("entity_type"),
+                    "labels": labels if isinstance(labels, dict) else {},
+                    "existing_qid": target.get("existing_qid"),
+                    "authority_evidence": target.get("authority_evidence") or [],
+                }
+        if targets:
+            item["local_reference_targets"] = targets
 
 _WIKIDATA_VERIFY_CHANNEL = "wikidata-verify-sessions"
 

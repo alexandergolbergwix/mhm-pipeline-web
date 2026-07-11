@@ -114,6 +114,7 @@ from converter.wikidata.property_mapping import (
     hmo_wikibase_page_url,
     nli_j9u_id,
     nli_reference,
+    nli_authority_reference,
     viaf_reference,
 )
 
@@ -159,6 +160,7 @@ class WikidataItem:
     # shared across several manuscripts, so this is deliberately a list.
     # It is review metadata only; it is not emitted as a Wikidata statement.
     records: list[str] = field(default_factory=list)
+    authority_evidence: list[dict[str, object]] = field(default_factory=list)
 
 
 # ── Label normalisation ──────────────────────────────────────────────
@@ -224,9 +226,14 @@ def _normalise_label(s: str) -> str:
         return s
     s = s.strip()
     s = s.strip(_QUOTE_CHARS + _HEBREW_QUOTE_CHARS).strip()
+    # MARC exports frequently escape catalog quote wrappers as ASCII\".
+    # Remove those wrappers globally while preserving Hebrew gershayim.
+    s = s.replace("\\\"", "\"").replace("\"", "")
     s = _MARC_RELATOR_RE.sub("", s).strip()
     s = _MARC_BRACKET_NOTE_RE.sub(" ", s).strip()
     s = _MARC_ISBD_TRAIL_RE.sub("", s).strip()
+    while s.endswith(")") and s.count(")") > s.count("("):
+        s = s[:-1].rstrip()
     s = re.sub(r" {2,}", " ", s)
     # Title-case only when the string is entirely uppercase Latin script
     # (i.e. no Hebrew/Arabic/Cyrillic characters, and >50% are uppercase letters).
@@ -581,7 +588,7 @@ def _build_work_description(author_name: str | None, century: str | None) -> str
     identical ('Hebrew manuscript work'), making same-titled works
     indistinguishable. Now includes author and century when available.
     """
-    parts = ["Hebrew manuscript work"]
+    parts = ["Work preserved in a Hebrew manuscript"]
     if author_name:
         cleaned = author_name.strip().rstrip(",;:")
         if cleaned:
@@ -611,6 +618,11 @@ _ROLE_TO_LABEL: dict[str, str] = {
     "PATRON": "patron",
     "patron": "patron",
 }
+
+
+def _is_catalog_note_placeholder(value: object) -> bool:
+    text = _normalise_label(str(value or ""))
+    return text.lower() in {"רשומה זמנית", "temporary record", "temporary entry", "תאור זמני"}
 
 
 def _is_placeholder_title(title: str | None) -> bool:
@@ -939,7 +951,7 @@ def _associate_item_with_source_record(
         or source_record.get("control_number")
         or source_record.get("controlNumber")
         or ""
-    ).strip().strip("\"")
+    ).strip().strip("\"'")
     if control_number:
         item.records = sorted({*item.records, control_number})
 
@@ -1402,7 +1414,12 @@ class WikidataItemBuilder:
 
         # ── Summary (MARC 520) → P7535 ─────────────────────────
         summary = record.get("summary")
-        if summary and str(summary).strip() and str(summary) != "None":
+        if (
+            summary
+            and not _is_catalog_note_placeholder(summary)
+            and str(summary).strip()
+            and str(summary) != "None"
+        ):
             item.statements.append(
                 WikidataStatement(
                     property_id="P7535",
@@ -1463,7 +1480,12 @@ class WikidataItemBuilder:
 
         # ── Colophon text → P1684 (inscription) ─────────────────
         colophon = record.get("colophon_text")
-        if colophon and str(colophon).strip() and str(colophon) != "None":
+        if (
+            colophon
+            and not _is_catalog_note_placeholder(colophon)
+            and str(colophon).strip()
+            and str(colophon) != "None"
+        ):
             colophon_qualifiers: list[dict[str, object]] = [
                 {
                     "property": P_OBJECT_HAS_ROLE,
@@ -1501,7 +1523,7 @@ class WikidataItemBuilder:
                 if isinstance(intervention, dict)
                 else str(intervention).strip()
             )
-            if not text or text == "None":
+            if not text or text == "None" or _is_catalog_note_placeholder(text):
                 continue
             int_type = (
                 str(intervention.get("type", "")).lower() if isinstance(intervention, dict) else ""
@@ -1602,6 +1624,8 @@ class WikidataItemBuilder:
         # ── General notes (MARC 500) → P7535 ────────────────────
         for note in record.get("notes") or []:
             note_text = str(note).strip()
+            if _is_catalog_note_placeholder(note_text):
+                continue
             if not note_text or note_text == "None" or len(note_text) <= 5:
                 continue
             if _SOURCE_FILENAME_RE.match(note_text):
@@ -1618,7 +1642,12 @@ class WikidataItemBuilder:
 
         # ── Provenance raw text (MARC 561) → P7535 + provenance qualifier
         prov_text = record.get("provenance")
-        if prov_text and str(prov_text).strip() and str(prov_text) != "None":
+        if (
+            prov_text
+            and not _is_catalog_note_placeholder(prov_text)
+            and str(prov_text).strip()
+            and str(prov_text) != "None"
+        ):
             item.statements.append(
                 WikidataStatement(
                     property_id="P7535",
@@ -2296,11 +2325,14 @@ class WikidataItemBuilder:
             key = _person_key(name, viaf_uri, mazal_id)
             if key in seen_person_keys:
                 return
-            seen_person_keys.add(key)
 
             # Normalize role for lookup (case-insensitive, strip whitespace)
             role_norm = role.strip().lower()
-            pid = ROLE_TO_PID.get(role_norm, ROLE_TO_PID.get(role, P_AUTHOR))
+            pid = ROLE_TO_PID.get(role_norm) or ROLE_TO_PID.get(role.upper())
+            if pid is None:
+                logger.warning("Skipping unsupported MARC/NER role %r for %r", role, name)
+                return
+            seen_person_keys.add(key)
 
             # Bug fix (2026-04-15, Geagea complaint on Q139085958): an
             # institutional contributor (MARC 710 "current owner" = National
@@ -2312,7 +2344,6 @@ class WikidataItemBuilder:
             #     by) which is correct.
             if pid == P_AUTHOR and _is_institutional_name(name):
                 pid = "P195"  # collection
-
             # Rule 42 Phase 1 (HMO fidelity, 2026-05-17): known-anonymous
             # author. Rule 28 already blocks the creation of a person item
             # for placeholder names ("Anonymous", "לא ידוע", …). Instead of
@@ -2348,6 +2379,9 @@ class WikidataItemBuilder:
                         references=ref,
                     )
                 )
+                return
+
+            if pid == "P195":
                 return
 
             person_item = self._get_or_create_person(name, viaf_uri, mazal_id, role, record)
@@ -2390,51 +2424,11 @@ class WikidataItemBuilder:
                         references=ref,
                     )
                 )
-            elif not person_item.labels and not _is_institutional_name(name):
-                # Fix 2026-04-15 third audit Fix #8: the notability gate skipped
-                # this person (no external identifiers). Use P2093 (author name
-                # string) as a string fallback so the name is not silently lost.
-                # P2093 is appropriate for unresolved person names in bibliographic
-                # statements; it avoids creating stub items that would be deleted.
-                #
-                # Fix 2026-04-16: OWNER role has no string-fallback property —
-                # P127 (owned by) requires an item value. For owners without a
-                # Wikidata item, the MARC 561 provenance text already goes to
-                # P7535 (scope and content), so we suppress P2093 for this role.
-                # For all other roles, add P3831 (object has role) qualifier so
-                # curators can distinguish author/scribe/translator fallbacks.
-                role_norm_lower = role.strip().lower()
-                if role_norm_lower in ("owner", "current_owner", "בעלים"):
-                    pass  # skip — provenance text captured in P7535
-                else:
-                    role_qid = _ROLE_TO_OCCUPATION.get(role, _ROLE_TO_OCCUPATION.get(role_norm_lower))
-                    p2093_qualifiers: list[dict] = []
-                    if role_qid:
-                        p2093_qualifiers = [
-                            {"property": P_OBJECT_HAS_ROLE, "value": role_qid, "type": "item"}
-                        ]
-                    cleaned_name_for_p2093 = name.strip().rstrip(",;:")
-                    # Rule 46 (2026-05-18): when the name string is Hebrew-
-                    # only, append an additional P1810 (named as) qualifier
-                    # carrying the smart Latin transliteration. Without this,
-                    # curators searching Wikidata in English have no way to
-                    # find the P2093 fallback. The romanization is for human
-                    # searchability — it never replaces the Hebrew P2093
-                    # value, which remains the authoritative form.
-                    en_alias = english_label_for_hebrew(cleaned_name_for_p2093, record)
-                    if en_alias and en_alias != cleaned_name_for_p2093:
-                        p2093_qualifiers = list(p2093_qualifiers) + [
-                            {"property": P_OBJECT_NAMED_AS, "value": en_alias, "type": "string"}
-                        ]
-                    item.statements.append(
-                        WikidataStatement(
-                            property_id="P2093",
-                            value=cleaned_name_for_p2093,
-                            value_type="string",
-                            references=ref,
-                            qualifiers=p2093_qualifiers,
-                        )
-                    )
+            elif not person_item.labels:
+                # Unresolved people cannot be safely represented as item-valued
+                # manuscript claims. Keep the source in MARC/HMO evidence only.
+                logger.info("Skipping unresolved %s claim for %r", role, name)
+                return
             elif pid != P_AUTHOR:
                 # Person identified via MARC/NER but not confirmed by authority
                 # matching → add P1480 (presumably) to signal uncertain attribution.
@@ -2549,6 +2543,31 @@ class WikidataItemBuilder:
                 if entry_name and entry_name[:len(name_prefix)] == name_prefix:
                     match_info = m  # type: ignore[assignment]
                     break
+        name_type = str(match_info.get("name_type") or match_info.get("viaf_name_type") or "").strip().lower()
+        if name_type and name_type not in {"personal", "person", "individual"}:
+            logger.warning(
+                "Skipping non-person authority %r with name_type=%r",
+                clean_name, name_type,
+            )
+            self._skipped_person_keys.add(key)
+            self._skipped_person_stubs[key] = person
+            return person
+        person.authority_evidence = [{
+            key: value
+            for key, value in {
+                "source": match_info.get("source"),
+                "name_type": name_type or "Personal",
+                "viaf_uri": viaf_uri,
+                "mazal_id": mazal_id,
+                "wikidata_qid": match_info.get("wikidata_qid"),
+                "birth_year": match_info.get("birth_year"),
+                "death_year": match_info.get("death_year"),
+                "dates": match_info.get("dates"),
+                "preferred_name_lat": match_info.get("preferred_name_lat"),
+                "preferred_name_heb": match_info.get("preferred_name_heb"),
+            }.items()
+            if value not in (None, "", [], {})
+        }] if match_info or viaf_uri or mazal_id else []
         has_identifier = any(
             [
                 viaf_uri,
@@ -2607,8 +2626,12 @@ class WikidataItemBuilder:
         if viaf_id_for_ref:
             person_ref = viaf_reference(viaf_id_for_ref)
         else:
-            ms_ctrl = str(source_record.get("_control_number") or "")
-            person_ref = nli_reference(ms_ctrl) if ms_ctrl else []
+            authority_id = str(mazal_id or match_info.get("j9u_id") or "").strip()
+            if authority_id.startswith("9870"):
+                person_ref = nli_authority_reference(authority_id)
+            else:
+                ms_ctrl = str(source_record.get("_control_number") or "")
+                person_ref = nli_reference(ms_ctrl) if ms_ctrl else []
 
         # Detect script: Hebrew vs Latin
         has_hebrew = any("\u0590" <= c <= "\u05ff" for c in clean_name)
@@ -2696,6 +2719,16 @@ class WikidataItemBuilder:
                             birth_year = yr
                         else:
                             death_year = yr
+
+        if birth_year is not None and death_year is not None:
+            try:
+                birth_int = int(birth_year)
+                death_int = int(death_year)
+            except (TypeError, ValueError):
+                birth_int = death_int = 0
+            if death_int < birth_int or death_int - birth_int > 130:
+                logger.warning("Dropping contradictory authority dates for %r: %r-%r", clean_name, birth_year, death_year)
+                birth_year = death_year = None
 
         # Bug fix 2026-04-16 (deeper audit Fix #13): person descriptions
         # should disambiguate, not just restate dates. Build as
@@ -2840,11 +2873,11 @@ class WikidataItemBuilder:
                         )
                     )
 
-        # P1559 = name in native language — inverted MARC catalog form for
-        # searchability; labels stay in natural "Given Surname" order.
+        # P1559 = name in native language — use natural order, matching the public label.
+        # Catalog inverted forms are source evidence, not the Wikidata value.
         cleaned_name = name.strip().rstrip(",;:")
         if pref_heb and not is_org:
-            inverted_heb = _normalise_label(_strip_person_name_qualifiers(pref_heb))
+            inverted_heb = _normalise_label(_to_natural_name_order(_strip_person_name_qualifiers(pref_heb)))
             person.statements = [
                 s for s in person.statements
                 if getattr(s, "property_id", "") != "P1559"
@@ -2873,7 +2906,7 @@ class WikidataItemBuilder:
                 person.statements.append(
                     WikidataStatement(
                         property_id="P1559",
-                        value=cleaned_name,
+                        value=_normalise_label(_to_natural_name_order(cleaned_name)),
                         value_type="monolingualtext",
                         language=native_lang,
                     )
@@ -3004,27 +3037,15 @@ class WikidataItemBuilder:
                 # (consonantal ALA-LC) stays disabled — its "Tknot rvno..."
                 # output is still too ugly.
                 #
-                # Final label format = "<translit> (NLI <control_number>)"
-                # when both are available. The NLI identifier suffix gives
-                # an unambiguous link back to the source record, and the
-                # ML transliteration gives readability — exactly what the
-                # user asked for 2026-05-18.
+                # Use the transliteration only; catalog IDs stay in P3959
+                # and source metadata, never in public labels.
                 en_candidate = english_label_for_hebrew(
                     title,
                     source_record,
                     allow_algorithmic=False,  # consonantal output too ugly
                 )
-                ms_control_number = str(
-                    source_record.get("_control_number", "") or ""
-                ).strip()
-                if en_candidate and ms_control_number:
-                    work.labels["en"] = (
-                        f"{en_candidate} (NLI {ms_control_number})"
-                    )
-                elif en_candidate:
+                if en_candidate:
                     work.labels["en"] = en_candidate
-                elif ms_control_number:
-                    work.labels["en"] = f"NLI {ms_control_number}"
         else:
             # Latin-only title (e.g. "Bible", "Diodati Segre"): route to the en
             # slot only — never any he slot (label OR alias). Putting Latin text

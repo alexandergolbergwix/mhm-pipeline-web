@@ -17,3 +17,7 @@
 
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).
+
+
+- `backend/tests/test_wikidata_items_export_import.py` — diagnostic CSV columns include authority evidence and local-reference target JSON.
+- `eval-agent/tests/test_wikidata_item.py` — evaluator payload/prompt carries authority and internal-reference context.

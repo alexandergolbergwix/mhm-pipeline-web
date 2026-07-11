@@ -1943,6 +1943,10 @@ A Wikidata AI verify job with a 294-item scope displayed **395 / 294** while it 
 
 ---
 
+### Rule W-65 — Wikidata projections MUST expose clean labels and verifier evidence (added 2026-07-11)
+
+Production verdicts showed recurring false failures from catalog IDs embedded in work labels, unknown MARC roles defaulting to authors, and authority-derived person claims judged without the authority match that produced them. The builder now keeps IDs in P3959/source metadata, skips unsupported or non-person roles instead of inventing author claims, records compact authority evidence, and annotates resolvable `__LOCAL:` links. The verifier prompt, cache, and export preserve that evidence; coherent year-level Wikidata dates (`precision=9`) are valid.
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

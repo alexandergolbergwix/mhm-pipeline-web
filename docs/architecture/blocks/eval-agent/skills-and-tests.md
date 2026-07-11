@@ -140,3 +140,7 @@ python backend/scripts/analyze_wikidata_verdicts.py \
 - `backend/tests/unit/test_agent_runner_subprocess_timeout.py` —
   `[TRACE] agent.verdict` line parsing during subprocess read.
 - `frontend/e2e/` verification specs (mocked SSE via `page.route()`).
+
+
+- The Wikidata evaluator fixture carries `authority_evidence` and resolved `local_reference_targets`; its rubric accepts coherent year precision 9, clean Hebrew-only labels, and valid internal `__LOCAL:` links.
+- The Wikidata CSV diagnostic export includes `authority_evidence_json` and `local_reference_targets_json`; use these fields when clustering partial/fail rows.

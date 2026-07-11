@@ -100,3 +100,19 @@ def test_record_ids_recover_from_nli_reference_when_legacy_item_lacks_records() 
         }],
     }
     assert wikidata_verdict_query_summary(item)["record_ids"] == ["990000000000000123"]
+
+
+def test_query_summary_changes_when_verifier_evidence_changes() -> None:
+    item = {
+        "_local_id": "person_1",
+        "entity_type": "person",
+        "labels": {"en": "Jane Doe"},
+        "descriptions": {"en": "Person"},
+        "statements": [],
+        "authority_evidence": [{"source": "NLI", "birth_year": 1950}],
+        "local_reference_targets": {},
+    }
+    a = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
+    item["authority_evidence"] = [{"source": "NLI", "birth_year": 1951}]
+    b = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
+    assert a != b

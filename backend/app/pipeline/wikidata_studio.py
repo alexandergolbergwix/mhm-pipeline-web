@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-records-v1"
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-records-v2"
 
 
 async def hmo_instance_qids_for_run(
@@ -195,7 +195,8 @@ async def build_items_for_run(
             or out.get("control_number")
             or out.get("controlNumber")
             or ""
-        )
+        ).strip().strip("\"'")
+        out["_control_number"] = cn
         out["authors"]      = _to_dict_list(out.get("authors"),      default_role="author",      default_field="100")
         out["contributors"] = _to_dict_list(out.get("contributors"), default_role="contributor", default_field="700")
         out["subjects"]     = _to_dict_list(out.get("subjects"),     default_role="subject",     default_field="600")
@@ -305,7 +306,7 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
     return {
         "name":               raw_name,
         "role":               raw_role,
-        "field":              "700/710/711",
+        "field":              m.get("field") or payload.get("field") or "700/710/711",
         "mazal_id":           m.get("mazal_id", ""),
         "viaf_uri":           (
             f"https://viaf.org/viaf/{m['viaf_id']}"
@@ -332,7 +333,7 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
         # Mazal supplementary IDs
         "mazal_aleph_id":     payload.get("mazal_aleph_id") or "",
         "guard_flags":        payload.get("guard_flags") or [],
-        "name_type":          payload.get("viaf_name_type") or "",
+        "name_type":          payload.get("name_type") or payload.get("viaf_name_type") or "",
         "matched":            1,
         "approved":           True,
     }
