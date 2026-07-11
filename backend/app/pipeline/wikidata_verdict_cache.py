@@ -19,18 +19,37 @@ WIKIDATA_VERDICT_SCHEMA = "w57_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v2"
 
 
-def _record_ids(item: dict[str, Any]) -> list[str]:
+def record_ids_for_wikidata_item(item: dict[str, Any]) -> list[str]:
+    """Return explicit source records, or recover them from P3959 references."""
+    record_ids: set[str] = set()
     for key in ("record_ids", "records"):
         stored = item.get(key)
-        if isinstance(stored, list) and stored:
-            return sorted({str(x) for x in stored if x})
-    cn = str(
-        item.get("control_number")
-        or item.get("_control_number")
-        or item.get("record_id")
-        or ""
-    )
-    return [cn] if cn else []
+        if isinstance(stored, list):
+            record_ids.update(str(value).strip().strip("\"") for value in stored if value)
+    for key in ("control_number", "_control_number", "record_id"):
+        value = str(item.get(key) or "").strip().strip("\"")
+        if value:
+            record_ids.add(value)
+    for statement in item.get("statements") or []:
+        if not isinstance(statement, dict):
+            continue
+        for reference in statement.get("references") or []:
+            if not isinstance(reference, dict):
+                continue
+            snaks = reference.get("snaks")
+            rows = snaks if isinstance(snaks, list) else [reference]
+            for snak in rows:
+                if not isinstance(snak, dict):
+                    continue
+                prop = snak.get("property") or snak.get("property_id")
+                value = str(snak.get("value") or "").strip().strip("\"")
+                if prop == "P3959" and value:
+                    record_ids.add(value)
+    return sorted(record_ids)
+
+
+def _record_ids(item: dict[str, Any]) -> list[str]:
+    return record_ids_for_wikidata_item(item)
 
 
 def marc_context_for_wikidata_item(

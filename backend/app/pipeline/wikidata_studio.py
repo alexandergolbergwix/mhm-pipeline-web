@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-records-v1"
+
 
 async def hmo_instance_qids_for_run(
     db: "AsyncSession", run_id: uuid.UUID, control_numbers: list[str],
@@ -105,6 +107,7 @@ def compute_build_fingerprint(
         ).hexdigest()[:16]
 
     parts = {
+        "build_schema": WIKIDATA_STUDIO_BUILD_SCHEMA,
         "approved_only": approved_only,
         "records": sorted(r.control_number for r in records),
         "hmo_instance_qids": sorted((hmo_instance_qids or {}).items()),

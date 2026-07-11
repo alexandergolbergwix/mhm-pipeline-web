@@ -128,3 +128,6 @@
   runner after `run_job_params` validates that provider. *Why:* applying the
   Gemini guard to Kimi made an already configured Qubrid job fail before its
   first event.
+
+
+- **R23 — Wikidata verify grounding is source-record exact (Rule W-63).** The builder persists `records` on every manuscript, person, and work item; shared entities use the sorted union. The worker may recover IDs from legacy P3959 reference snaks, but MUST NEVER default an item to the first run record. *Why:* that fallback paired 294 unrelated candidates with one MARC row and produced systematic false failures.

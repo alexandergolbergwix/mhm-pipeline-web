@@ -65,7 +65,7 @@ Three cache tiers, coarsest to finest:
 
 For Wikidata Studio, `wikidata_verdict_cache` canonicalises build `records`
 and worker `record_ids` into the same MARC-aware key before persistence, cache
-reads, and stale-verdict sanitisation.
+reads, and stale-verdict sanitisation. Verification never assigns a missing item to the first run record: new builder rows carry `records`, while legacy rows may recover only P3959 reference IDs; rows with no source association remain ungrounded rather than borrowing unrelated evidence.
 
 ## Frontend
 

@@ -87,3 +87,16 @@ def test_sanitise_stale_wikidata_verdict_keeps_matching_key() -> None:
     kept = sanitise_stale_wikidata_verdict(item, stored)
     assert kept is not None
     assert kept["cache_key"] == fp
+
+
+
+def test_record_ids_recover_from_nli_reference_when_legacy_item_lacks_records() -> None:
+    item = {
+        "statements": [{
+            "references": [
+                {"property": "P248", "value": "Q118384267"},
+                {"property": "P3959", "value": "990000000000000123"},
+            ],
+        }],
+    }
+    assert wikidata_verdict_query_summary(item)["record_ids"] == ["990000000000000123"]

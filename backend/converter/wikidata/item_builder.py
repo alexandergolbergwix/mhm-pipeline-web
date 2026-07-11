@@ -155,6 +155,10 @@ class WikidataItem:
     existing_qid: str | None = None
     entity_type: str = ""  # "manuscript" | "person" | "work"
     local_id: str = ""
+    # MARC 001 values that supplied this item. Person and work items can be
+    # shared across several manuscripts, so this is deliberately a list.
+    # It is review metadata only; it is not emitted as a Wikidata statement.
+    records: list[str] = field(default_factory=list)
 
 
 # ── Label normalisation ──────────────────────────────────────────────
@@ -925,6 +929,21 @@ def _clean_work_title(title: str) -> str:
     return _FOLIO_PREFIX_RE.sub("", title.strip()).strip()
 
 
+def _associate_item_with_source_record(
+    item: WikidataItem,
+    source_record: dict[str, object],
+) -> None:
+    """Keep review metadata tied to the MARC record that created an item."""
+    control_number = str(
+        source_record.get("_control_number")
+        or source_record.get("control_number")
+        or source_record.get("controlNumber")
+        or ""
+    ).strip().strip("\"")
+    if control_number:
+        item.records = sorted({*item.records, control_number})
+
+
 # ── Builder ──────────────────────────────────────────────────────────
 
 
@@ -993,6 +1012,7 @@ class WikidataItemBuilder:
         ref = nli_reference(control_number)
 
         item = WikidataItem(entity_type="manuscript", local_id=control_number)
+        _associate_item_with_source_record(item, record)
 
         # ── Labels & descriptions ────────────────────────────────
         self._set_labels(item, record, title)
@@ -2464,7 +2484,9 @@ class WikidataItemBuilder:
         """Get existing or create new person item with full authority data."""
         key = _person_key(name, viaf_uri, mazal_id)
         if key in self._person_items:
-            return self._person_items[key]
+            person = self._person_items[key]
+            _associate_item_with_source_record(person, source_record)
+            return person
         if key in self._skipped_person_keys:
             # Same skip decision already made; return the cached stub so
             # callers can still inspect .labels==() to route to P2093,
@@ -2472,6 +2494,7 @@ class WikidataItemBuilder:
             return self._skipped_person_stubs[key]
 
         person = WikidataItem(entity_type="person", local_id=key)
+        _associate_item_with_source_record(person, source_record)
 
         # Clean name: strip surrounding quotes (ASCII + Unicode typographic)
         # and trailing MARC ISBD punctuation.  The full set ",;:." matches the
@@ -2926,7 +2949,9 @@ class WikidataItemBuilder:
         title = _strip_name_quotes(title).rstrip(" .,;:/-")
         key = _work_key(title)
         if key in self._work_items:
-            return self._work_items[key]
+            work = self._work_items[key]
+            _associate_item_with_source_record(work, source_record)
+            return work
 
         # Bug fix 2026-04-15 (web audit Fix #2): consult the reconciler to
         # find an existing Wikidata work matching this Hebrew title before
@@ -2959,6 +2984,7 @@ class WikidataItemBuilder:
                 )
 
         work = WikidataItem(entity_type="work", local_id=key)
+        _associate_item_with_source_record(work, source_record)
         if existing_qid:
             work.existing_qid = existing_qid
         # Latin-only work titles (e.g. "Bible", "Diodati Segre") must NOT

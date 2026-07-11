@@ -1927,6 +1927,14 @@ adding it to the JSON source (and any useful flattened column) so the `analyze_w
 
 ---
 
+### Rule W-63 — Wikidata verification MUST use the item source records, never an arbitrary run record (added 2026-07-11)
+
+A 294-item Wikidata Studio verification completed without a worker crash, yet its judge repeatedly compared people and works to the first MARC record in the run. The generated item dataclass did not persist source control numbers for person or work rows. The verify loader then treated that missing metadata as a reason to use `records[:1]`, silently attaching unrelated title, author, and contributor evidence. The evaluator correctly rejected those false pairings, while the UI presented them as generic evaluation errors.
+
+`WikidataItem` now carries review-only `records` metadata. Manuscripts retain their own MARC 001; deduplicated person and work rows retain the sorted union of every source record. The build fingerprint includes a schema marker so old cache rows become stale. Verification uses that metadata, with a P3959-reference recovery only for legacy rows, and MUST leave an item ungrounded rather than borrow the first run record. Every future builder item type or verifier adapter MUST preserve and consume this exact source-record association. Tests: `test_wikidata_studio_works.py`, `test_wikidata_verdict_cache.py`.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

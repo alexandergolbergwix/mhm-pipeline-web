@@ -65,6 +65,7 @@ from app.pipeline.wikidata_item_views import (
 from app.pipeline.wikidata_verdict_cache import (
     attach_wikidata_marc_context,
     marc_context_for_wikidata_item,
+    record_ids_for_wikidata_item,
     sanitise_stale_wikidata_verdict,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
@@ -2038,34 +2039,25 @@ async def _fetch_wikidata_verify_items(
         force_rebuild=False,
         run_user_id=auth.user.id,
     )
-    sliced, total, _props, _plabels, _approved_item_count = _slice_items(
-        cached.result_items or [],
-        entity_type=None,
-        q=None,
-        sort="label",
-        sort_dir="asc",
-        page=1,
-        page_size=500,
-    )
-    # Build a lookup so each item gets only its own manuscript's control number.
-    cn_by_local_id: dict[str, str] = {}
-    for r in records:
-        cn_by_local_id[str(r.control_number)] = str(r.control_number)
+    scoped_items = list(cached.result_items or [])
+    run_record_ids = {str(r.control_number) for r in records}
 
     wanted = set(item_ids or [])
     items: list[dict[str, Any]] = []
-    for raw in sliced:
+    for raw in scoped_items:
         item = dict(raw)
         local_id = str(item.get("local_id") or "")
         if wanted and local_id not in wanted:
             continue
         item["_local_id"] = local_id
-        # Use the item's own record(s); "records" is a list of CNs on every studio item.
-        own_records: list[str] = [str(cn) for cn in (item.get("records") or []) if cn]
-        if not own_records:
-            own_cn = str(item.get("control_number") or item.get("_control_number") or "")
-            own_records = [own_cn] if own_cn else []
-        item["record_ids"] = own_records or [str(r.control_number) for r in records[:1]]
+        # Never ground an item in the first run record: that pairs unrelated
+        # person/work rows with arbitrary MARC data. Legacy cache rows recover
+        # source IDs from P3959 reference snaks; fresh builds store `records`.
+        item["record_ids"] = [
+            control_number
+            for control_number in record_ids_for_wikidata_item(item)
+            if control_number in run_record_ids
+        ]
         items.append(item)
     return items, [dict(r.marc or {"_control_number": r.control_number}) for r in records]
 

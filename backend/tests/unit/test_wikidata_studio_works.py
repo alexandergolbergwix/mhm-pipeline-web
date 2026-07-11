@@ -194,3 +194,63 @@ class TestMarcDictEntriesDoNotCrashBuild:
             return_native=False,
         )
         assert result["summary"]["manuscripts"] >= 1
+
+
+class TestSourceRecordAssociation:
+    @pytest.mark.asyncio
+    async def test_every_built_item_retains_its_own_marc_records(self) -> None:
+        first = _fake_marc_record(control_number="990000000000000001")
+        second = _fake_marc_record(control_number="990000000000000002")
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[first, second],
+            approved_matches=[
+                {
+                    "control_number": first["_control_number"],
+                    "entity_text": "אברהם ראשון",
+                    "role": "author",
+                    "mazal_id": "987000000000000001",
+                    "viaf_id": "",
+                    "wikidata_qid": "",
+                    "confidence": "high",
+                    "source": "mazal",
+                    "payload": {},
+                },
+                {
+                    "control_number": second["_control_number"],
+                    "entity_text": "אברהם שני",
+                    "role": "author",
+                    "mazal_id": "987000000000000002",
+                    "viaf_id": "",
+                    "wikidata_qid": "",
+                    "confidence": "high",
+                    "source": "mazal",
+                    "payload": {},
+                },
+            ],
+            entities_by_cn={
+                first["_control_number"]: [_fake_work_entity("חיבור משותף")],
+                second["_control_number"]: [_fake_work_entity("חיבור משותף")],
+            },
+            return_native=False,
+        )
+
+        items = result["items"]
+        manuscripts = {
+            item["local_id"]: item
+            for item in items
+            if item["entity_type"] == "manuscript"
+        }
+        assert manuscripts[first["_control_number"]]["records"] == [first["_control_number"]]
+        assert manuscripts[second["_control_number"]]["records"] == [second["_control_number"]]
+
+        persons = {
+            item["labels"].get("he"): item
+            for item in items
+            if item["entity_type"] == "person"
+        }
+        assert persons["אברהם ראשון"]["records"] == [first["_control_number"]]
+        assert persons["אברהם שני"]["records"] == [second["_control_number"]]
+
+        works = [item for item in items if item["entity_type"] == "work"]
+        assert len(works) == 1
+        assert works[0]["records"] == [first["_control_number"], second["_control_number"]]

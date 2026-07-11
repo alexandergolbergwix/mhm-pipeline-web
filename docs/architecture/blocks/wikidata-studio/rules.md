@@ -51,7 +51,7 @@
     parity, not guards alone.
 14. **R14 — `page_size` on `GET /wikidata-studio` is capped at 500.** Bulk
     loads (modern items panel, pre-upload verify scope) MUST paginate via
-    `fetchAllStudioItems` / `STUDIO_MAX_PAGE_SIZE` — never pass a larger
+    `fetchAllStudioItems` / `STUDIO_MAX_PAGE_SIZE` for browser loads; the worker reads the full cached corpus directly — never pass a larger
     `page_size` in one request. *Why:* a single `page_size=5000` request 422s
     and the UI shows 0 items.
 15. **R15 — Background jobs surface in the global job tray.** `WikidataStudio.tsx`
@@ -74,3 +74,6 @@
     persisted verdict as stale, leaving the review table blank.
 
 17. **R17 — The diagnostic Wikidata CSV MUST include the item fields, linked MARC context, validation issues, and complete persisted AI-verdict JSON.** It may add flattened columns for common verdict fields, but MUST NOT replace the complete JSON column. *Why:* a 294-item export with `ai_verdict` omitted or flattened to one reason field cannot identify recurring builder defects or map them back to the evaluator prompt.
+
+
+18. **R18 — Every built item MUST retain the MARC control numbers that supplied it.** Manuscripts carry their own control number; deduplicated person/work items carry the sorted union. Verification reads this metadata (or only a legacy P3959 reference recovery) and MUST NEVER substitute the first record in a run. *Why:* a 294-item production verify grounded unrelated people and works in the first MARC record, creating systematic false fails (Rule W-63).

@@ -19,6 +19,7 @@
 | `backend/app/pipeline/wikidata_entity_compare.py` | Fetch live Wikidata entity + build Studio-vs-live diff rows |
 | `backend/app/pipeline/wikidata_live_enrich.py` | Attach `wikidata_live` compare snapshots to items that carry a QID (autofix input) |
 | `backend/app/pipeline/work_title_match.py` | Work-title normalization / variants for Mazal work matching |
+| `backend/converter/wikidata/item_builder.py` | Desktop builder; persists source MARC `records` on each manuscript, person, and work item for exact review grounding |
 | `backend/converter/wikidata/property_mapping.py` | All P/Q constants (byte-parity with desktop; live-verified — Rule W-26) |
 | `backend/converter/wikidata/item_validator.py` | The moat layer: ~20 checks, ERROR-severity issues block approval and writes |
 | `backend/converter/wikidata/reconciler.py` | SPARQL dedup lookups; `ReconciliationUnavailableError` fail-closed contract |
