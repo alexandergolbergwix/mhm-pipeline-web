@@ -21,3 +21,6 @@ Any new external-write path or reconcile change MUST extend
 
 - `backend/tests/test_wikidata_items_export_import.py` — diagnostic CSV columns include authority evidence and local-reference target JSON.
 - `eval-agent/tests/test_wikidata_item.py` — evaluator payload/prompt carries authority and internal-reference context.
+
+
+- `backend/tests/unit/test_wikidata_builder_modules.py` — public builder API retains the shared models and all extracted projection methods.

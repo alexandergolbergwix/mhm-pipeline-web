@@ -19,7 +19,13 @@
 | `backend/app/pipeline/wikidata_entity_compare.py` | Fetch live Wikidata entity + build Studio-vs-live diff rows |
 | `backend/app/pipeline/wikidata_live_enrich.py` | Attach `wikidata_live` compare snapshots to items that carry a QID (autofix input) |
 | `backend/app/pipeline/work_title_match.py` | Work-title normalization / variants for Mazal work matching |
-| `backend/converter/wikidata/item_builder.py` | Desktop builder; persists source MARC `records` on each manuscript, person, and work item for exact review grounding |
+| `backend/converter/wikidata/item_builder.py` | Public compatibility facade: orchestration, reconciliation, and legacy exports only |
+| `backend/converter/wikidata/item_models.py` | Shared `WikidataItem` / `WikidataStatement` data structures |
+| `backend/converter/wikidata/manuscript_projection.py` | Manuscript identity, catalog, digital-access, note, and relationship projection |
+| `backend/converter/wikidata/manuscript_metadata.py` | Labels, instance types, language, physical description, and provenance projection |
+| `backend/converter/wikidata/content_projection.py` | Contents, genre, and canonical-subject projection |
+| `backend/converter/wikidata/person_linking.py`, `person_projection.py` | Role-safe manuscript links and authority-backed person construction |
+| `backend/converter/wikidata/work_projection.py` | Work creation, labels, deduplication, and author links |
 | `backend/converter/wikidata/property_mapping.py` | All P/Q constants (byte-parity with desktop; live-verified — Rule W-26) |
 | `backend/converter/wikidata/item_validator.py` | The moat layer: ~20 checks, ERROR-severity issues block approval and writes |
 | `backend/converter/wikidata/reconciler.py` | SPARQL dedup lookups; `ReconciliationUnavailableError` fail-closed contract |

@@ -11,7 +11,7 @@ verbatim** (`converter.wikidata.item_builder.WikidataItemBuilder`), then lets a
 curator review, edit, approve, reconcile, and finally export/upload them. The
 web layer (`backend/app/pipeline/wikidata_studio.py`) is thin glue: it reshapes
 DB rows into the desktop's input format and never re-implements builder logic,
-so every desktop safety fix arrives by file sync.
+so every desktop safety fix arrives by file sync. The public builder is a compatibility facade over focused projection modules; callers continue to import `WikidataItemBuilder` unchanged.
 
 The block exists in the shadow of two real 2026-04 incidents: a mass-merge
 disaster (902+ wrong merges) and a mass-duplicate/non-notable-creation

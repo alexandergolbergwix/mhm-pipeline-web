@@ -1,0 +1,327 @@
+"""Labels and manuscript metadata projection helpers."""
+
+from __future__ import annotations
+
+import re
+
+from converter.wikidata.item_builder import (
+    LANG_TO_QID,
+    MATERIAL_TO_QID,
+    P_HEIGHT,
+    P_LANGUAGE,
+    P_MATERIAL,
+    P_NUMBER_OF_PAGES,
+    P_OBJECT_NAMED_AS,
+    P_OWNED_BY,
+    P_START_TIME,
+    P_WIDTH,
+    P_WRITING_SYSTEM,
+    Q_CODEX,
+    Q_COMPOSITE_MANUSCRIPT,
+    Q_HEBREW_ALPHABET,
+    Q_ILLUMINATED_MANUSCRIPT,
+    Q_LEAF_UNIT,
+    Q_MANUSCRIPT,
+    Q_PALIMPSEST,
+    WikidataItem,
+    WikidataStatement,
+    _QUOTE_CHARS,
+    _build_manuscript_description,
+    _has_hebrew_script,
+    _is_placeholder_title,
+    _normalise_label,
+    _person_key,
+)
+
+
+class ManuscriptMetadataMixin:
+    def _set_labels(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        title: str,
+    ) -> None:
+        """Set labels, descriptions, and aliases for a manuscript item.
+
+        Bug fix 2026-04-15 (Geagea complaint): MARC 245 sometimes contains
+        a generic placeholder like "קובץ." (= "compilation") rather than a
+        real title, used by catalogers when an anthology has no overarching
+        name. Emitting that as the Hebrew label produced 94 useless labels
+        on Wikidata. We now detect placeholder titles and route them to
+        an alias slot, falling back to a shelfmark-based label.
+        """
+        is_placeholder = _is_placeholder_title(title)
+        shelfmark = record.get("shelfmark")
+        title_clean = _normalise_label(title) if title else ""
+        title_has_hebrew = _has_hebrew_script(title_clean)
+        if title_clean and not is_placeholder:
+            # Latin-only titles (e.g. "Meir Netiv in Latin", "Referat über
+            # den XI Zionistischen Kongress in Basel") must NOT go into the
+            # he-label slot — the validator flags that as HE_LABEL_IS_LATIN.
+            # Route them to the en slot only and keep them as an en-alias for
+            # searchability (the en label may later be overwritten by the
+            # shelfmark-based form).
+            if title_has_hebrew:
+                item.labels["he"] = title_clean
+                # Hebrew text must NOT go into the en label slot. The en label
+                # is set below to the shelfmark-based form ("Jerusalem, NLI,
+                # <shelfmark>"). Without a shelfmark the en slot stays absent,
+                # which is correct — an empty slot is far preferable to a
+                # Hebrew string masquerading as an English label.
+            else:
+                item.labels["en"] = title_clean
+                item.aliases.setdefault("en", []).append(title_clean)
+        elif title:
+            # Placeholder: keep the original cataloger string as a Hebrew
+            # alias for searchability, but do NOT use it as the label.
+            item.aliases.setdefault("he", []).append(_normalise_label(title))
+
+        if shelfmark:
+            item.labels["en"] = f"Jerusalem, NLI, {shelfmark}"
+            if title_clean and not is_placeholder and title_has_hebrew:
+                item.aliases.setdefault("he", []).append(title_clean)
+            # When the title was a placeholder OR Latin-only AND we have a
+            # shelfmark, synthesise a useful Hebrew label from the shelfmark.
+            if "he" not in item.labels and (is_placeholder or not title_has_hebrew):
+                item.labels["he"] = f"כתב יד עברי, ספרייה לאומית, {shelfmark}"
+
+        if "en" not in item.labels and "he" not in item.labels:
+            cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
+            if cn:
+                item.labels["en"] = f"Jerusalem, NLI, {cn}"
+                item.labels["he"] = f"כתב יד עברי, ספרייה לאומית, {cn}"
+
+        # Variant titles as aliases
+        for vt in record.get("variant_titles") or []:
+            vt_clean = _normalise_label(str(vt))
+            if vt_clean:
+                item.aliases.setdefault("he", []).append(vt_clean)
+
+        # Description — language, date/century, script tradition, material, NLI
+        item.descriptions["en"] = _build_manuscript_description(record)
+
+    def _determine_instance_type(self, record: dict[str, object]) -> list[str]:
+        """Return all applicable P31 QIDs, most-specific first.
+
+        HMO models manuscripts as multiple intersecting classes (illuminated +
+        composite + palimpsest + codex etc.). The Wikidata equivalent is
+        multiple P31 statements. We always emit at least Q87167 (manuscript)
+        as the base type, placed last. WikiProject Manuscripts endorses
+        multi-P31 when no pair is in a subclass relation (Rule 42, Phase 1
+        HMO fidelity, 2026-05-17).
+        """
+        qids: list[str] = []
+        if record.get("has_decoration"):
+            qids.append(Q_ILLUMINATED_MANUSCRIPT)
+        if record.get("is_multi_volume") or record.get("is_anthology"):
+            qids.append(Q_CODEX)
+        if record.get("is_composite"):
+            qids.append(Q_COMPOSITE_MANUSCRIPT)
+        if record.get("is_palimpsest"):
+            qids.append(Q_PALIMPSEST)
+        from converter.wikidata.marc_subject_resolve import instance_qids_from_genre_labels  # noqa: PLC0415
+
+        for qid in instance_qids_from_genre_labels(list(record.get("genres") or [])):
+            if qid not in qids:
+                qids.append(qid)
+        qids.append(Q_MANUSCRIPT)  # base type always last
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for qid in qids:
+            if qid not in seen:
+                seen.add(qid)
+                ordered.append(qid)
+        return ordered
+
+    def _add_languages(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add P407 language and P282 writing system statements."""
+        langs = record.get("languages") or []
+        for lang_code in langs:
+            qid = LANG_TO_QID.get(str(lang_code))
+            if qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_LANGUAGE,
+                        value=qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+        if any(str(c) in ("heb", "arc", "yid", "lad", "jrb", "jpr") for c in langs):
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_WRITING_SYSTEM,
+                    value=Q_HEBREW_ALPHABET,
+                    value_type="item",
+                    references=ref,
+                )
+            )
+
+    def _add_physical_description(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add material, dimensions, folio count."""
+        for material in record.get("materials") or []:
+            qid = MATERIAL_TO_QID.get(str(material))
+            if qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_MATERIAL,
+                        value=qid,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
+        height = record.get("height_mm")
+        if height and float(height) > 0:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_HEIGHT,
+                    value=float(height),
+                    value_type="quantity",
+                    unit="mm",
+                    references=ref,
+                )
+            )
+        width = record.get("width_mm")
+        if width and float(width) > 0:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_WIDTH,
+                    value=float(width),
+                    value_type="quantity",
+                    unit="mm",
+                    references=ref,
+                )
+            )
+        extent = record.get("extent")
+        if extent:
+            extent_str = str(extent)
+            folio_match = re.search(r"(\d+)", extent_str)
+            if folio_match:
+                # WikiProject Manuscripts Data Model (2026-06-04 audit):
+                # ALL physical extent goes on P1104 (number of pages) with an
+                # explicit unit.  P7416 "folio(s)" is a STRING QUALIFIER for
+                # citing a source folio — it is NOT a count property.
+                # Units: page (Q1069725) when the extent string says "page/עמוד",
+                #        leaf (Q107256474) otherwise — manuscripts count in
+                #        leaves/folios and WikiProject mandates the leaf unit.
+                # https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model
+                low = extent_str.lower()
+                says_pages = "page" in low or "עמוד" in low
+                unit_qid = "Q1069725" if says_pages else Q_LEAF_UNIT  # page or leaf
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_NUMBER_OF_PAGES,
+                        value=int(folio_match.group(1)),
+                        value_type="quantity",
+                        unit=unit_qid,
+                        references=ref,
+                    )
+                )
+
+    def _add_provenance_claims(
+        self,
+        item: WikidataItem,
+        record: dict[str, object],
+        ref: list[dict[str, str]],
+    ) -> None:
+        """Add provenance claims from NER-extracted MARC 561 entities.
+
+        OWNER → P127 (owned by) with optional P580/P582 date qualifiers.
+        COLLECTION → noted via P1932 (named as) qualifier on P195.
+        """
+        entities = record.get("entities") or []
+        prov_entities = [e for e in entities if e.get("source") == "provenance_ner"]
+        if not prov_entities:
+            return
+
+        owners = [e for e in prov_entities if e.get("type") == "OWNER"]
+        dates = [e for e in prov_entities if e.get("type") == "DATE"]
+        collections = [e for e in prov_entities if e.get("type") == "COLLECTION"]
+
+        # Build date qualifiers from DATE entities (P580/P582 per WikiProject Data Model)
+        date_qualifiers: list[dict[str, object]] = []
+        for date_ent in dates:
+            date_text = str(date_ent.get("text", "")).strip().strip(_QUOTE_CHARS + ".:")
+            if not date_text:
+                continue
+            # Try to parse as Gregorian year
+            year_match = re.search(r"(\d{4})", date_text)
+            if year_match:
+                year = int(year_match.group(1))
+                date_qualifiers.append(
+                    {
+                        "property": P_START_TIME,
+                        "value": f"+{year:04d}-00-00T00:00:00Z",
+                        "type": "time",
+                    }
+                )
+
+        seen_owners: set[str] = set()
+        for owner in owners:
+            owner_name = str(owner.get("text", "")).strip().strip(_QUOTE_CHARS + ".")
+            if not owner_name or owner_name in seen_owners:
+                continue
+            seen_owners.add(owner_name)
+
+            viaf_uri = owner.get("viaf_uri")
+            mazal_id = owner.get("mazal_id")
+            key = _person_key(owner_name, viaf_uri, mazal_id)
+
+            person_item = self._get_or_create_person(
+                owner_name,
+                viaf_uri,
+                mazal_id,
+                "OWNER",
+                record,
+            )
+            resolved_qid = self._person_qids.get(key) or person_item.existing_qid
+
+            # Attach date qualifiers to the ownership statement
+            owner_qualifiers = list(date_qualifiers)  # Copy shared dates
+            if resolved_qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_OWNED_BY,
+                        value=resolved_qid,
+                        value_type="item",
+                        qualifiers=owner_qualifiers,
+                        references=ref,
+                    )
+                )
+            else:
+                owner_qualifiers.append(
+                    {
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": owner_name.rstrip(",;:"),
+                        "type": "string",
+                    }
+                )
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_OWNED_BY,
+                        value=f"__LOCAL:{person_item.local_id}",
+                        value_type="item",
+                        qualifiers=owner_qualifiers,
+                        references=ref,
+                    )
+                )
+
+        seen_colls: set[str] = set()
+        for coll in collections:
+            coll_name = str(coll.get("text", "")).strip().strip(_QUOTE_CHARS + ".")
+            if not coll_name or coll_name in seen_colls:
+                continue
+            seen_colls.add(coll_name)
+            # P195 (collection) expects item QIDs, not strings.
+            # NER-extracted collection names are skipped — would need
+            # reconciliation to Wikidata institution QIDs.
