@@ -66,6 +66,13 @@
 3. The legacy sidebar view still uses server-side pagination (50/page) via
    `WikidataStudio.tsx` — do not mix the two patterns on the same surface.
 
+### Skill: measure Studio item quality locally
+
+1. Run `backend/scripts/local_measure_verify.py --channel wikidata` against the selected run. It is read-only: it rebuilds in a scratch directory and does not change the database, cache, or Wikidata.
+2. Compare item totals by entity type. A sudden loss of every authority-backed person indicates an input/join regression; fewer persons with explicit `no external identifier` or `unsupported role` skips is intentional fail-closed filtering, not a job failure.
+3. Treat validator ERRORs, generic placeholder labels, missing source-specific descriptions, and unresolved local targets as build defects. Do not map an unfamiliar MARC role to a Wikidata property from memory; verify its live property semantics and entity-type constraints first.
+4. A full semantic audit with the configured Tier-1 judge sends source-derived item and MARC evidence to that external provider. Obtain explicit curator approval before running it.
+
 ### Skill: apply AI autofixes
 
 1. Open the item's compare panel (items with a QID get a `wikidata_live`
