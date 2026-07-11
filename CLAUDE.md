@@ -1827,7 +1827,7 @@ Tests: `test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`,
 `test_wikidata_export_quality.py`, `test_wikidata_items_export_import.py`,
 extended `test_wikidata_upload_guards.py`, `frontend/e2e/wikidata-item-*.spec.ts`.
 
-Migration: `0033_wikidata_override_ai_verdict`.
+Migration: `0033_wikidata_ai_verdict`.
 
 ---
 
