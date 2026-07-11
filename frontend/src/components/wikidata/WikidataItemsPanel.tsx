@@ -3,6 +3,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {ApiError} from "@/api/client";
 import {
   Studio,
+  fetchAllStudioItems,
   type StudioBuild,
   type StudioItem,
 } from "@/api/wikidataStudio";
@@ -71,11 +72,9 @@ export function WikidataItemsPanel({
         setBuildProgress("Starting fresh build…");
         await waitForStudioBuild(runId, {approvedOnly, forceRebuild: true});
       }
-      const fetchPage = () => Studio.build(runId, {
+      const fetchPage = () => fetchAllStudioItems(runId, {
         approvedOnly,
         forceRebuild: false,
-        page: 1,
-        pageSize: 5000,
       });
       setBuildProgress(force ? "Loading items…" : "Checking cache…");
       const result = await loadStudioBuild(runId, fetchPage, {

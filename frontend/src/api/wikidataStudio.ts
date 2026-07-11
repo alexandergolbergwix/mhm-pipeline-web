@@ -187,6 +187,32 @@ export interface StudioBuildParams {
   uploadOutcome?: string | null;
 }
 
+/** Backend caps ``page_size`` at 500 on ``GET /wikidata-studio``. */
+export const STUDIO_MAX_PAGE_SIZE = 500;
+
+export async function fetchAllStudioItems(
+  runId: string,
+  params: Omit<StudioBuildParams, "page" | "pageSize"> = {},
+): Promise<StudioBuild> {
+  const pageSize = STUDIO_MAX_PAGE_SIZE;
+  let page = 1;
+  let merged: StudioBuild | null = null;
+  const allItems: StudioItem[] = [];
+  while (true) {
+    const chunk = await Studio.build(runId, {...params, page, pageSize});
+    if (!merged) merged = chunk;
+    allItems.push(...chunk.items);
+    if (allItems.length >= chunk.total || chunk.items.length === 0) break;
+    page += 1;
+  }
+  return {
+    ...merged!,
+    items: allItems,
+    page: 1,
+    page_size: allItems.length,
+  };
+}
+
 export const Studio = {
   build: (runId: string, params: StudioBuildParams = {}) => {
     const {

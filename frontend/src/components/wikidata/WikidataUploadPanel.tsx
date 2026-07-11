@@ -3,7 +3,7 @@ import {useCallback, useEffect, useState} from "react";
 import {ApiError} from "@/api/client";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {
-  Studio,
+  fetchAllStudioItems,
   type UploadOutcome,
   type UploadResponse,
 } from "@/api/wikidataStudio";
@@ -193,11 +193,7 @@ export function WikidataUploadPanel({
     setVerifyFlow(makeInitialFlowState());
     setFailConfirm(null);
     try {
-      const build = await Studio.build(runId, {
-        approvedOnly,
-        page: 1,
-        pageSize: 5000,
-      });
+      const build = await fetchAllStudioItems(runId, {approvedOnly});
       const scopeIds = build.items
         .filter((i) => i.local_id && (!i.existing_qid || updateExisting))
         .map((i) => i.local_id as string);
