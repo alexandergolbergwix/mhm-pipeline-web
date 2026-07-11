@@ -90,6 +90,21 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   `sanitise_stale_ai_verdict` already hides verdicts whose `cache_key` no longer
   matches the (possibly edited) entity content.
 
+## Skill: analyze partial/fail Wikidata CSV rows with Codex
+
+Run `backend/scripts/analyze_wikidata_verdicts.py` after downloading the
+Wikidata Studio CSV or JSON export. It keeps only `partial`/`fail` rows and sends compact
+labels, descriptions, statements, validation issues, MARC context, and the
+complete `ai_verdict_json` to `codex exec --sandbox read-only`. It never edits
+the repository. Use `--no-codex` to inspect the compact payload locally; an
+export with no verdicts exits without spending model tokens.
+
+```bash
+python backend/scripts/analyze_wikidata_verdicts.py \
+  ~/Downloads/run-<run-id>-wikidata-studio-items.csv \
+  --report /tmp/wikidata-verdict-fixes.md
+```
+
 ## Tests pinning this block
 
 - `backend/tests/test_agent_runner_sessions.py` — session dir layouts (new +
@@ -117,6 +132,7 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   dispatch: unknown action, empty scope, end-to-end wiring, cache behaviour.
 - `backend/tests/test_run_job_params_wikidata_verify.py` — fast Studio enqueue,
   worker-side empty-scope errors, and provider-aware Kimi credentials.
+- `backend/tests/test_analyze_wikidata_verdicts.py` — partial/fail CSV/JSON filtering and compact prompt context.
 - `eval-agent/tests/test_hmo_wikibase_items.py` — HMO `control_number()` from
   embedded URI ids (Rule W-45); `enrich_control_numbers()` via deferred links
   (Rule W-48); `SYSTEM-LABELED EVENT` grounding for Production / TextTradition

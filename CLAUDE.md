@@ -1922,8 +1922,7 @@ The Wikidata Studio CSV now includes the evaluator-relevant item fields,
 record IDs, linked MARC context, validation issues, upload state, flattened
 rubric fields, and a complete `ai_verdict_json` column. The export MUST retain
 that complete verdict JSON and prompt context; adding a new rubric field requires
-adding it to the JSON source (and any useful flattened column) so the Codex
-analysis workflow can group recurring builder defects. Test:
+adding it to the JSON source (and any useful flattened column) so the `analyze_wikidata_verdicts.py` Codex analysis workflow can group recurring builder defects. Test:
 `test_wikidata_items_export_import.py`.
 
 ---
