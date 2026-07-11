@@ -49,3 +49,8 @@
     table/drawer/upload-hub UI are the canonical curator paths. *Why:* the
     2026-04 duplicate-creation failure mode needed audit + ledger + surface
     parity, not guards alone.
+14. **R14 — `page_size` on `GET /wikidata-studio` is capped at 500.** Bulk
+    loads (modern items panel, pre-upload verify scope) MUST paginate via
+    `fetchAllStudioItems` / `STUDIO_MAX_PAGE_SIZE` — never pass a larger
+    `page_size` in one request. *Why:* a single `page_size=5000` request 422s
+    and the UI shows 0 items.

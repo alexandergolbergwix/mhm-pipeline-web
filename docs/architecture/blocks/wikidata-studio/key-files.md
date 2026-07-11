@@ -34,5 +34,5 @@
 | `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Upload hub: dry-run/live job, pre/post AI verify, moratorium pill |
 | `frontend/src/components/shared/UploadOutcomeBadge.tsx` | Shared upload-outcome pill (HMO + Wikidata) |
 | `frontend/src/components/wikidata/` | Also: `ItemValidatorBadge`, `ItemApprovalBadge`, `WikidataComparePanel`, `WikidataVerificationModal`, data-status + AI verdict badges |
-| `frontend/src/api/wikidataStudio.ts` | Typed API client (`StudioItem` merged fields, push/reconcile/ai-fix/export/import) |
+| `frontend/src/api/wikidataStudio.ts` | Typed API client; `STUDIO_MAX_PAGE_SIZE` (500); `fetchAllStudioItems` paginates bulk loads |
 | `frontend/src/utils/wikidataItemDataStatus.ts` | `new` / `will_update` / `updated` posture helper |

@@ -1820,7 +1820,9 @@ Invariants now enforced:
   `ReconciliationUnavailableError`. Escape hatch: `gated=false&ack=raw` (logged).
 - **Frontend parity** — `WikidataItemTable` + `WikidataItemDetailDrawer` +
   `WikidataUploadPanel` (pre/post verify confirm gate, Rule W-41/W-44); legacy
-  sidebar view preserved as secondary toggle.
+  sidebar view preserved as secondary toggle. Bulk item loads use
+  `fetchAllStudioItems` (`STUDIO_MAX_PAGE_SIZE=500`) — the API rejects
+  `page_size>500` with a 422 that surfaces as an empty table.
 
 Tests: `test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`,
 `test_wikidata_qid_ledger.py`, `test_wikidata_single_push.py`,

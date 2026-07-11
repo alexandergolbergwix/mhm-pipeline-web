@@ -29,7 +29,11 @@ validation (`_build_sync`, `pipeline/wikidata_studio.py:223`), validates every
 item, exports QuickStatements, stamps `local_id` + `approved` per item, and
 upserts the cache row. `?force_rebuild=true` bypasses the fingerprint check
 but still writes the cache. Server-side slicing (entity_type filter, search,
-sort, pagination, max 500/page) is applied on the cached items.
+sort, pagination, max 500/page) is applied on the cached items. The modern
+**Items panel** (`WikidataItemsPanel`) loads the full corpus for client-side
+table filters by calling `fetchAllStudioItems` — repeated `GET`s at
+`page_size=500` until `total` is satisfied (never exceed the API cap in one
+request).
 
 ### Item overrides, approval, statement exclude
 

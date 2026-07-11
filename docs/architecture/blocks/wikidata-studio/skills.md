@@ -56,6 +56,16 @@
    authored by this user — edit it manually on Wikidata or leave it; the
    pipeline will not touch community items.
 
+### Skill: load all items in the modern review panel
+
+1. The backend caps `page_size` at **500** on `GET …/wikidata-studio`.
+2. Use `fetchAllStudioItems(runId, {approvedOnly, …})` from
+   `frontend/src/api/wikidataStudio.ts` — it pages at `STUDIO_MAX_PAGE_SIZE`
+   until `total` is reached. `WikidataItemsPanel` and pre-upload verify in
+   `WikidataUploadPanel` both call this helper.
+3. The legacy sidebar view still uses server-side pagination (50/page) via
+   `WikidataStudio.tsx` — do not mix the two patterns on the same surface.
+
 ### Skill: apply AI autofixes
 
 1. Open the item's compare panel (items with a QID get a `wikidata_live`
