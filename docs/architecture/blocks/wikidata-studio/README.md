@@ -31,7 +31,9 @@ that refuses live wikidata.org writes by default.
   autofix.
 - [Rules](rules.md) — the 20 invariants (R1–R20) this block enforces.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
-  dry-runs, force-rebuild, blocked items, AI autofixes.
+  dry-runs, force-rebuild, blocked items, local quality audit, AI autofixes.
+- [Local quality audit](quality-audit.md) — read-only measurement, count
+  interpretation, and safe remediation order.
 - [Tests](tests.md) — the test suites pinning this block.
 
 ## Related blocks
