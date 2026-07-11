@@ -14,7 +14,7 @@ for NER).
 |---|---|
 | [docs/architecture/system-design.md](docs/architecture/system-design.md) | Navigation hub — runtime topology, data flow, links to every block |
 | [AGENTS.md](AGENTS.md) | Agent/operator instructions and block index |
-| [CLAUDE.md](CLAUDE.md) | Architectural invariants (Rules W-1…W-65) |
+| [CLAUDE.md](CLAUDE.md) | Architectural invariants (Rules W-1…W-66) |
 | [docs/testing.md](docs/testing.md) | Three-layer test pyramid (pytest, Vitest, Playwright) |
 | [docs/project-hierarchy-plan.md](docs/project-hierarchy-plan.md) | Curator-facing stage map and route inventory |
 

@@ -1947,6 +1947,14 @@ A Wikidata AI verify job with a 294-item scope displayed **395 / 294** while it 
 
 Production verdicts showed recurring false failures from catalog IDs embedded in work labels, unknown MARC roles defaulting to authors, and authority-derived person claims judged without the authority match that produced them. The builder now keeps IDs in P3959/source metadata, skips unsupported or non-person roles instead of inventing author claims, records compact authority evidence, and annotates resolvable `__LOCAL:` links. The verifier prompt, cache, and export preserve that evidence; coherent year-level Wikidata dates (`precision=9`) are valid.
 
+---
+
+### Rule W-66 — Studio build joins MUST canonicalise all MARC control-number inputs (added 2026-07-11)
+
+After a Studio rebuild displayed 162 items rather than the prior 294, logs showed every person being skipped for lack of an external identifier. Records had clean control numbers while approved authority matches used the same IDs wrapped in quotes. `build_items_for_run` grouped matches by their raw stored key, so no authority match joined its source record; the builder correctly failed closed, but did so for the entire person corpus.
+
+The Studio boundary now applies `canonical_control_number` to record, authority-match, and NER-entity keys before grouping. Future build inputs MUST use this canonical key at every join boundary; local measurement must mirror the production authority-row shape. Test: `test_wikidata_studio_control_number_join.py`.
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

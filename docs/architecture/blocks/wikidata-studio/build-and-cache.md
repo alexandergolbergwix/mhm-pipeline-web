@@ -35,6 +35,8 @@ table filters by calling `fetchAllStudioItems` — repeated `GET`s at
 `page_size=500` until `total` is satisfied (never exceed the API cap in one
 request).
 
+Before grouping build inputs, `build_items_for_run` runs every MARC record, approved authority match, and approved NER entity key through `canonical_control_number`. This makes harmless storage formatting such as surrounding quotes or whitespace equivalent to the record’s clean 001. The normalisation is a build-boundary requirement: grouping any one source by its raw control number can silently remove its authority/person or NER/work projection.
+
 ### Item overrides, approval, statement exclude
 
 `WikidataItemOverride` stores a sparse curator diff per `(run_id, local_id)`:

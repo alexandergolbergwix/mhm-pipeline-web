@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING, Any
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 
+from app.pipeline.marc_verify_context import canonical_control_number
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -181,21 +183,27 @@ async def build_items_for_run(
     # in the desktop pipeline) plus its NER ``entities`` (mirroring
     # ner_results.json + the desktop's _merge_ner_into_records step).
     by_cn: dict[str, list[dict[str, Any]]] = {}
-    for m in approved_matches:
-        by_cn.setdefault(m["control_number"], []).append(m)
-    ents_by_cn = entities_by_cn or {}
+    for match in approved_matches:
+        control_number = canonical_control_number(match.get("control_number"))
+        if control_number:
+            by_cn.setdefault(control_number, []).append(match)
+    ents_by_cn: dict[str, list[dict[str, Any]]] = {}
+    for control_number, entities in (entities_by_cn or {}).items():
+        canonical = canonical_control_number(control_number)
+        if canonical:
+            ents_by_cn.setdefault(canonical, []).extend(entities)
 
     from app.pipeline.marc_ingest import prepare_record_for_pipeline  # noqa: PLC0415
 
     enriched: list[dict[str, Any]] = []
     for rec in marc_records:
         out = prepare_record_for_pipeline(rec)
-        cn = str(
+        cn = canonical_control_number(
             out.get("_control_number")
             or out.get("control_number")
             or out.get("controlNumber")
             or ""
-        ).strip().strip("\"'")
+        )
         out["_control_number"] = cn
         out["authors"]      = _to_dict_list(out.get("authors"),      default_role="author",      default_field="100")
         out["contributors"] = _to_dict_list(out.get("contributors"), default_role="contributor", default_field="700")

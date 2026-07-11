@@ -293,9 +293,16 @@ class WikidataChannel(Channel):
             )).scalars().all()
             marc_records = [dict(r.marc) for r in records]
             approved_matches = [{
+                "id": str(m.id),
                 "control_number": m.control_number,
                 "entity_text": m.entity_text,
+                "role": m.role,
+                "matched_name": m.matched_name,
+                "mazal_id": m.mazal_id,
+                "viaf_id": m.viaf_id,
                 "wikidata_qid": m.wikidata_qid,
+                "confidence": m.confidence,
+                "source": m.source,
                 "payload": m.payload or {},
             } for m in matches]
             entities_by_cn: dict[str, list[dict[str, Any]]] = {}
@@ -310,7 +317,11 @@ class WikidataChannel(Channel):
                     "confidence": r.confidence,
                     "model_confidence": r.model_confidence,
                 })
-            hmo_instance_qids = await wikidata_studio.hmo_instance_qids_for_run(db, run_id)
+            hmo_instance_qids = await wikidata_studio.hmo_instance_qids_for_run(
+                db,
+                run_id,
+                [str(record.control_number) for record in records],
+            )
 
         built = await wikidata_studio.build_items_for_run(
             marc_records=marc_records,
