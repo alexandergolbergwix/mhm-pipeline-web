@@ -93,11 +93,7 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
 ## Skill: analyze partial/fail Wikidata CSV rows with Codex
 
 Run `backend/scripts/analyze_wikidata_verdicts.py` after downloading the
-Wikidata Studio CSV or JSON export. It keeps only `partial`/`fail` rows and sends compact
-labels, descriptions, statements, validation issues, MARC context, and the
-complete `ai_verdict_json` to `codex exec --sandbox read-only`. It never edits
-the repository. Use `--no-codex` to inspect the compact payload locally; an
-export with no verdicts exits without spending model tokens.
+Wikidata Studio CSV or JSON export. It keeps only `partial`/`fail` rows, groups them by verdict signature and validation codes, and sends the count plus one minimal evidence sample per group to `codex exec --sandbox read-only`. `--max-examples` and `--max-clusters` are available when deeper evidence is needed; it never edits the repository. Use `--no-codex` to inspect the clustered payload locally; an export with no verdicts exits without spending model tokens.
 
 ```bash
 python backend/scripts/analyze_wikidata_verdicts.py \

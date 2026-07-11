@@ -4,7 +4,7 @@ import csv
 import json
 from pathlib import Path
 
-from scripts.analyze_wikidata_verdicts import _rows
+from scripts.analyze_wikidata_verdicts import _analysis, _rows
 
 
 def test_rows_keep_only_non_passing_verdicts_and_prompt_context(tmp_path: Path) -> None:
@@ -79,3 +79,34 @@ def test_rows_accept_json_items_export(tmp_path: Path) -> None:
     assert len(rows) == 1
     assert rows[0]["local_id"] == "json-bad"
     assert rows[0]["verdict"]["overall"] == "fail"
+
+
+def test_analysis_groups_repeated_signatures_and_limits_examples() -> None:
+    rows = [
+        {
+            "local_id": "a",
+            "entity_type": "person",
+            "labels": {"he": "א"},
+            "statements": [],
+            "validation_issues": [],
+            "marc_context": {},
+            "verdict": {"overall": "partial", "name_ok": "no", "reasoning": "missing evidence"},
+        },
+        {
+            "local_id": "b",
+            "entity_type": "person",
+            "labels": {"he": "ב"},
+            "statements": [],
+            "validation_issues": [],
+            "marc_context": {},
+            "verdict": {"overall": "partial", "name_ok": "no", "reasoning": "missing evidence"},
+        },
+    ]
+
+    analysis = _analysis(rows, max_examples=1, max_clusters=64)
+
+    assert analysis["selected_non_passing"] == 2
+    assert analysis["cluster_count"] == 1
+    cluster = analysis["clusters"][0]
+    assert cluster["count"] == 2
+    assert len(cluster["examples"]) == 1
