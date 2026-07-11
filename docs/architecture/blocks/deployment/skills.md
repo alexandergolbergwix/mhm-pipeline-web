@@ -15,7 +15,7 @@ then ask the user for push permission. See **Rule W-49** in `CLAUDE.md`.
 ### Skill: deploy the backend (Heroku)
 1. Run the pre-deploy docs audit (above). Merge to `main`; push to the Heroku remote (or GitHub auto-deploy). **Ask the user before any push.**
 2. Release phase runs automatically: eval-agent check → `alembic upgrade head`. Watch `heroku releases:output`.
-3. Verify: `GET /healthz` then `/readyz`; `heroku logs --tail` for the lifespan startup line and `run-job-maintenance` task.
+3. Verify: `GET /api/healthz` then `/api/readyz`; `heroku logs --tail` for the lifespan startup line and `run-job-maintenance` task.
 4. Remember dyno disk was wiped — first HMO/Studio requests may re-seed on-disk caches from their Postgres counterparts.
 
 ### Skill: run / add a migration
