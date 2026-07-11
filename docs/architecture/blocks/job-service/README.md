@@ -32,7 +32,7 @@ open clients see updates without waiting for the next poll tick.
 
 - [Key files](key-files.md) — every module, model, migration, hook, and test that makes up the service
 - [How it works](how-it-works.md) — lifecycle, job kinds and owners, frontend attachment
-- [Rules](rules.md) — R1–R15 invariants (claiming, staleness, secrets, cancellation, UI)
+- [Rules](rules.md) — R1–R16 invariants (claiming, staleness, secrets, cancellation, UI)
 - [Skills & tests](skills-and-tests.md) — add a job kind, debug a stuck job, attach UI; tests pinning this block
 
 ## Related blocks

@@ -47,7 +47,7 @@ that scope and records an invalid/empty scope as a failed job. This keeps the
 |---|---|---|
 | `extraction` | `extraction_job.py` | Streams `extract_entities_stream` over run records; persists entities from the results JSON at the end |
 | `authority_re_enrich` | `authority_re_enrich_job.py` | Re-matches every extracted entity, upserts/deletes `AuthorityMatch` rows, per-entity progress |
-| `ner_verify` / `authority_verify` / `wikidata_verify` / `hmo_item_verify` | `verify_job.py` | Opens the corresponding eval-agent event stream, tracks judged/total, embeds partial `session_snapshot` in `progress` (live UI) and full snapshot in `result` |
+| `ner_verify` / `authority_verify` / `wikidata_verify` / `hmo_item_verify` | `verify_job.py` | Opens the corresponding eval-agent event stream, tracks unique candidate IDs (never aggregate stats or replayed events), embeds partial `session_snapshot` in `progress` (live UI) and full snapshot in `result` |
 | `rdf_build` | `rdf_build_job.py` | Builds the TTL, write-throughs `RdfArtifact`, invalidates on-disk graph caches |
 | `wikidata_studio_build` | `wikidata_studio_build_job.py` | Delegates to `execute_studio_build` (fingerprint cache per Rule W-26) |
 | `wikidata_upload` | `wikidata_upload_job.py` | Item-by-item dry-run/live upload through the fail-closed `wikidata_upload.upload_items` gate (Rule W-30) |

@@ -1935,6 +1935,14 @@ A 294-item Wikidata Studio verification completed without a worker crash, yet it
 
 ---
 
+### Rule W-64 — Verify-job progress MUST count distinct candidates, not stream events (added 2026-07-11)
+
+A Wikidata AI verify job with a 294-item scope displayed **395 / 294** while it was running. The worker updated its counter from `agent.stats.judged`, incremented it again for streamed verdicts, and the Wikidata stream re-emitted results from disk during final persistence. These are transport events, not independent candidates, so the progress display became impossible to trust.
+
+`verify_job.py` now derives progress only from the set of stable candidate local IDs carried by `agent.verdict`, ignores aggregate stats for counting, and caps the count at the `session.start.scope_size`. Replayed cache or disk verdicts therefore update the live snapshot but never advance progress twice. Every verify channel MUST preserve a stable candidate identity in its verdict event. Test: `test_verify_job_progress.py`.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

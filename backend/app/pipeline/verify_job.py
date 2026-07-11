@@ -35,6 +35,21 @@ def _requires_gemini_key(tier_model: Any) -> bool:
     return spec.provider == "gemini"
 
 
+def _verdict_identity(ev: AgentEvent) -> str | None:
+    """Stable candidate identity for idempotent job progress accounting."""
+    payload = ev.payload or {}
+    candidate = payload.get("candidate")
+    sources = [candidate, payload] if isinstance(candidate, dict) else [payload]
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        for key in ("_local_id", "_item_id", "local_id", "id"):
+            value = str(source.get(key) or "").strip()
+            if value:
+                return value
+    return None
+
+
 def _progress_from_event(
     ev: AgentEvent,
     *,
@@ -43,10 +58,6 @@ def _progress_from_event(
     session_id: str,
 ) -> dict[str, Any]:
     payload = ev.payload or {}
-    if ev.type == "agent.stats":
-        judged = int(payload.get("judged") or judged)
-    if ev.type == "agent.verdict":
-        judged += 1
     return {
         "phase": "running",
         "processed": judged,
@@ -101,6 +112,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     error_message: str | None = None
     session_summary: dict[str, Any] = {}
     collected_events: list[dict[str, Any]] = []
+    judged_candidate_ids: set[str] = set()
     try:
         stream = await _open_verify_stream(
             kind=kind,
@@ -150,10 +162,12 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             if ev.type == "runner.error":
                 error_message = str((ev.payload or {}).get("message") or "verify failed")
                 break
-            if ev.type == "agent.stats":
-                judged = int((ev.payload or {}).get("judged") or judged)
-            elif ev.type == "agent.verdict":
-                judged += 1
+            if ev.type == "agent.verdict":
+                candidate_id = _verdict_identity(ev)
+                if candidate_id is not None:
+                    judged_candidate_ids.add(candidate_id)
+                    candidate_count = len(judged_candidate_ids)
+                    judged = min(candidate_count, total) if total else candidate_count
 
             await update_job_progress(
                 job_id,

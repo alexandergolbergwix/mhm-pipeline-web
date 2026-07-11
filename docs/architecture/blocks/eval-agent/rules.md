@@ -131,3 +131,6 @@
 
 
 - **R23 — Wikidata verify grounding is source-record exact (Rule W-63).** The builder persists `records` on every manuscript, person, and work item; shared entities use the sorted union. The worker may recover IDs from legacy P3959 reference snaks, but MUST NEVER default an item to the first run record. *Why:* that fallback paired 294 unrelated candidates with one MARC row and produced systematic false failures.
+
+
+- **R24 — Verify progress is idempotent (Rule W-64).** Job workers count distinct candidate local IDs from `agent.verdict`; they never add replayed disk/cache verdicts or treat `agent.stats.judged` as an absolute total. *Why:* a 294-item Wikidata job rendered 395/294 during a replayed result stream.

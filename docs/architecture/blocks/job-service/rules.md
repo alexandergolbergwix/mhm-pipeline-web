@@ -61,3 +61,6 @@
     the materialised scope and records a terminal job error. *Why:* loading 294
     Wikidata Studio items during `POST /jobs` hit Heroku’s 30-second H12 limit,
     leaving the modal running with no job or verdict events.
+
+
+16. **R16 — Verify-job progress counts unique candidate identities only.** `agent.stats` is advisory and streamed/replayed `agent.verdict` events may repeat; `verify_job.py` MUST derive `processed` from the deduplicated candidate local IDs and cap it at `scope_size`. *Why:* a 294-item Wikidata verify displayed 395/294 while still running (Rule W-64).
