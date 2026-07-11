@@ -45,7 +45,7 @@ export function JobTray() {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-[min(100vw-2rem,22rem)]"
+      className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 max-w-sm w-[min(100vw-2rem,22rem)]"
       data-testid="job-tray"
     >
       {jobs.map((job) => {

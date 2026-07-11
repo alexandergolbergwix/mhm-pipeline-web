@@ -49,7 +49,8 @@ so fallbacks never inline `new Set()`.
   `setInterval` over `GET /jobs/mine`, self-stopping when no jobs remain.
   A monotonic `refreshSeq` counter (`runJobs.ts:50`) discards out-of-order
   responses so progress never jumps backward. `upsertJob` merges push
-  updates without becoming a new source of truth. Pages attach via
+  updates without becoming a new source of truth. `JobTray` renders at
+  `z-[60]` so it stays above verify modals (`z-50`). Pages attach via
   `useRunJobAttachment(runId, kind, sync)` (attach-on-mount to jobs started
   elsewhere/earlier, plus a targeted per-job 2 s poll) or `useVerifyJob`
   for verify modals (which also load the SSE session, pass optional

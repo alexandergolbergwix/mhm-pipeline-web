@@ -137,6 +137,18 @@ The table's **Data status** column shows `new (not uploaded)`, `will update
 existing`, or `updated` per row. Deep dive:
 [docs/architecture/blocks/hmo-wikibase-studio/](docs/architecture/blocks/hmo-wikibase-studio/README.md).
 
+## Wikidata Studio — curator surface
+
+On **Wikidata Studio** (`/runs/:id/wikidata-studio`), the modern **review table**
+is the default (legacy sidebar toggle preserved). Bulk item loads paginate at
+`STUDIO_MAX_PAGE_SIZE` (500) via `fetchAllStudioItems` — never request
+`page_size > 500` in one call (block **R14**). **Verify with AI** uses
+`useVerifyJob` (`wikidata_verify` job kind); the global **job tray**
+(bottom-right) must stay visible during verify — `WikidataStudio.tsx` wires
+`useProjectEvents` → `upsertJob` on `run_job_update` (parity with HMO Studio),
+and `useVerifyJob` upserts on start/poll (block **R15**). Deep dive:
+[docs/architecture/blocks/wikidata-studio/](docs/architecture/blocks/wikidata-studio/README.md).
+
 ## Local measurement re-verify (offline curator ops)
 
 To measure the true post-fix baseline of a Studio build/label/rubric change

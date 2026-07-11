@@ -5,8 +5,10 @@ import {Layout} from "@/components/Layout";
 import {ApiError} from "@/api/client";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
+import {useProjectEvents} from "@/api/realtime";
 import {Runs} from "@/api/runs";
 import {RunJobs} from "@/api/runJobs";
+import {useRunJobs} from "@/stores/runJobs";
 import {loadStudioBuild, waitForRunJob, waitForStudioBuild} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 import {useDebounce} from "@/hooks/useDebounce";
@@ -66,6 +68,12 @@ export default function WikidataStudio() {
       .catch(() => { /* non-fatal: history button stays hidden */ });
     return () => { cancelled = true; };
   }, [runId]);
+
+  useProjectEvents(projectId || undefined, (msg) => {
+    if (msg.type === "run_job_update" && msg.job) {
+      useRunJobs.getState().upsertJob(msg.job);
+    }
+  });
 
   const [historyFor, setHistoryFor] = useState<{ id: string } | null>(null);
   const [editItem, setEditItem] = useState<StudioItem | null>(null);

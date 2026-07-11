@@ -57,6 +57,7 @@ export function useVerifyJob({
   const onFailedRef = useLatestRef(onFailed);
 
   const applyJob = useCallback(async (job: RunJobSnapshot, force = false) => {
+    useRunJobs.getState().upsertJob(job);
     const fp = verifyJobPollKey(job);
     if (!force && fp === lastFingerprintRef.current) return;
     lastFingerprintRef.current = fp;

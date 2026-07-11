@@ -13,6 +13,7 @@
 - `frontend/e2e/wikidata-item-table.spec.ts` — review table columns, data status, search, approval PATCH, upload-outcome filter.
 - `frontend/e2e/wikidata-item-drawer.spec.ts` — drawer apply-fix, push, reconcile API shapes.
 - `frontend/e2e/wikidata-upload-panel.spec.ts` — upload controls, moratorium pill, pre-verify fail confirm gate.
+- `frontend/tests/unit/useVerifyJob.spec.ts` — verify jobs upsert into the global job tray on start.
 
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).

@@ -54,3 +54,10 @@
     `fetchAllStudioItems` / `STUDIO_MAX_PAGE_SIZE` — never pass a larger
     `page_size` in one request. *Why:* a single `page_size=5000` request 422s
     and the UI shows 0 items.
+15. **R15 — Background jobs surface in the global job tray.** `WikidataStudio.tsx`
+    MUST subscribe to `run_job_update` WebSocket events and call
+    `useRunJobs.upsertJob` (parity with HMO Studio). Verify modals use
+    `useVerifyJob`, which also upserts on start and on every poll tick so the
+    tray appears immediately — not only after the 2 s `listMine` poll.
+    *Why:* without push + upsert, the verify modal shows Stop while the
+    bottom-right tray stays empty.
