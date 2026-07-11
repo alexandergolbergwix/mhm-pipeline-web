@@ -61,3 +61,11 @@
     tray appears immediately — not only after the 2 s `listMine` poll.
     *Why:* without push + upsert, the verify modal shows Stop while the
     bottom-right tray stays empty.
+
+16. **R16 — AI-verdict fingerprints MUST use the same canonical record IDs and
+    MARC slice when verifying, persisting, cache-reading, and rendering.**
+    Wikidata build artifacts use `records`; worker fixtures use `record_ids`;
+    both resolve through `wikidata_verdict_cache` before stale-verdict
+    sanitisation. Unmarked pre-fix keys are compatible only when their legacy
+    fingerprint still matches. *Why:* a mismatched fingerprint hides a valid
+    persisted verdict as stale, leaving the review table blank.

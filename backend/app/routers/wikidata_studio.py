@@ -59,7 +59,6 @@ from app.pipeline.agent_runner import (
     sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
-from app.pipeline.marc_verify_context import attach_marc_context
 from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
 from app.pipeline.wikidata_item_views import (
     StudioBuildMissingError,
@@ -67,6 +66,7 @@ from app.pipeline.wikidata_item_views import (
     fetch_validation_error_items,
 )
 from app.pipeline.wikidata_verdict_cache import (
+    attach_wikidata_marc_context,
     sanitise_stale_wikidata_verdict,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
@@ -226,7 +226,7 @@ async def start_verify_stream(
 
     judge_model = payload.tier_model or GEMINI_MODEL
     evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
-    attach_marc_context(items, marc_records)
+    attach_wikidata_marc_context(items, marc_records)
     pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
     uncached: list[dict[str, Any]] = []
     if not payload.override_cache:
@@ -1036,7 +1036,7 @@ async def get_cached_wikidata_item_verdicts(
         items = await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only)
     except StudioBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    attach_marc_context(items, await _load_marc_records_for_run(db, run_id))
+    attach_wikidata_marc_context(items, await _load_marc_records_for_run(db, run_id))
     out: dict[str, dict[str, Any]] = {}
     for item in items:
         local_id = str(item.get("local_id") or "")

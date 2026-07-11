@@ -16,13 +16,20 @@ from app.pipeline.marc_verify_context import (
 )
 
 WIKIDATA_VERDICT_SCHEMA = "w57_v1"
+WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v2"
 
 
 def _record_ids(item: dict[str, Any]) -> list[str]:
-    stored = item.get("record_ids")
-    if isinstance(stored, list) and stored:
-        return sorted({str(x) for x in stored if x})
-    cn = str(item.get("control_number") or item.get("_control_number") or "")
+    for key in ("record_ids", "records"):
+        stored = item.get(key)
+        if isinstance(stored, list) and stored:
+            return sorted({str(x) for x in stored if x})
+    cn = str(
+        item.get("control_number")
+        or item.get("_control_number")
+        or item.get("record_id")
+        or ""
+    )
     return [cn] if cn else []
 
 
@@ -35,6 +42,15 @@ def marc_context_for_wikidata_item(
         {"control_numbers": _record_ids(item), "record_ids": _record_ids(item)},
         index,
     )
+
+
+def attach_wikidata_marc_context(
+    items: list[dict[str, Any]],
+    marc_records: list[dict[str, Any]],
+) -> None:
+    """Attach the same MARC slice used by Wikidata verdict cache keys."""
+    for item in items:
+        item["_marc_context"] = marc_context_for_wikidata_item(item, marc_records)
 
 
 def wikidata_verdict_query_summary(
@@ -116,4 +132,26 @@ def sanitise_stale_wikidata_verdict(
         evaluator=eval_id,
         marc_context=marc_context,
     )
-    return sanitise_stored_verdict(stored, expected_fingerprint=expected)
+    current = sanitise_stored_verdict(stored, expected_fingerprint=expected)
+    if current is not None:
+        return current
+    if stored.get("cache_key_version"):
+        return None
+
+    legacy_item = {**item, "record_ids": _record_ids(item)}
+    legacy = sanitise_stored_verdict(
+        stored,
+        expected_fingerprint=wikidata_verdict_input_fingerprint(
+            legacy_item,
+            model,
+            evaluator=eval_id,
+            marc_context={},
+        ),
+    )
+    if legacy is None:
+        return None
+    return {
+        **legacy,
+        "cache_key": expected,
+        "cache_key_version": WIKIDATA_VERDICT_KEY_VERSION,
+    }

@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.pipeline.inference_cache import write_to_inference_cache
 from app.pipeline.wikidata_verdict_cache import (
+    WIKIDATA_VERDICT_KEY_VERSION,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
 )
@@ -66,6 +67,7 @@ async def _persist_wikidata_verdicts_to_overrides(
                 "model": model,
                 "judged_at": v.get("judged_at"),
                 "cache_key": fingerprint,
+                "cache_key_version": WIKIDATA_VERDICT_KEY_VERSION,
                 "session_id": None,
                 "evaluator": evaluator_id,
             }

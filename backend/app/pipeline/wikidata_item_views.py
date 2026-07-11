@@ -9,16 +9,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item_override import WikidataItemOverride
-from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD, TARGET_ITEM
-from app.pipeline.marc_verify_context import (
-    index_marc_records,
-    load_run_marc_records,
-    marc_context_for_item,
-)
+from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.pipeline.marc_verify_context import load_run_marc_records
 from app.pipeline.wikidata_item_merge import apply_wikidata_item_override, override_row_to_dict
-from app.pipeline.wikidata_qid_ledger import ledger_key_for_item, load_global_ledger, lookup_ledger_qid
-from app.pipeline.wikidata_verdict_cache import sanitise_stale_wikidata_verdict
+from app.pipeline.wikidata_qid_ledger import (
+    ledger_key_for_item,
+    load_global_ledger,
+    lookup_ledger_qid,
+)
+from app.pipeline.wikidata_verdict_cache import (
+    marc_context_for_wikidata_item,
+    sanitise_stale_wikidata_verdict,
+)
 from app.services.wikibase_audit import fetch_latest_wikibase_writes
 
 
@@ -60,10 +63,9 @@ async def fetch_merged_wikidata_items(
         db, run_id, channel=CHANNEL_WIKIDATA_UPLOAD, target_kind=TARGET_ITEM,
     )
 
-    marc_index: dict[str, dict[str, Any]] = {}
+    marc_records: list[dict[str, Any]] = []
     if any(row.ai_verdict for row in override_rows):
         marc_records = await load_run_marc_records(db, run_id)
-        marc_index = index_marc_records(marc_records)
 
     items: list[dict[str, Any]] = []
     for raw in cache_row.result_items or []:
@@ -104,12 +106,7 @@ async def fetch_merged_wikidata_items(
             ),
         }
         if ai_verdict:
-            marc_ctx = None
-            if marc_index:
-                marc_ctx = marc_context_for_item(
-                    {"control_numbers": row.get("records") or [], "record_ids": row.get("records") or []},
-                    marc_index,
-                )
+            marc_ctx = marc_context_for_wikidata_item(row, marc_records)
             row["ai_verdict"] = sanitise_stale_wikidata_verdict(
                 row,
                 ai_verdict,

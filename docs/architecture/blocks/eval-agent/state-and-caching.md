@@ -61,6 +61,10 @@ Three cache tiers, coarsest to finest:
 `override_cache=true` skips cache *reads* at both web and subprocess tiers
 (`--no-cache`) but every fresh verdict is still written back to all tiers.
 
+For Wikidata Studio, `wikidata_verdict_cache` canonicalises build `records`
+and worker `record_ids` into the same MARC-aware key before persistence, cache
+reads, and stale-verdict sanitisation.
+
 ## Frontend
 
 All five modals share `AgentFlowDiagram` (live step/stats visualisation) and

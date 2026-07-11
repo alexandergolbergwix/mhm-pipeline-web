@@ -1833,6 +1833,29 @@ Migration: `0033_wikidata_ai_verdict`.
 
 ---
 
+### Rule W-58 — Wikidata AI verdict cache keys canonicalize build and verify record identities (added 2026-07-11)
+
+Wikidata Studio verification persisted valid `WikidataItemOverride.ai_verdict`
+rows, but the review table still showed `--`. The worker fingerprints its
+fixture with `record_ids`; cached build rows expose the equivalent association
+as `records`. The old read model did not recognize `records` when recomputing
+the fingerprint. It also used a different generic MARC attachment path, so
+its MARC slice could differ from the worker’s. Stale-verdict sanitisation then
+correctly rejected the mismatched key — but incorrectly hid every just-finished
+verdict from the curator.
+
+The canonical `wikidata_verdict_cache` path now resolves both fields and
+attaches the same MARC slice in every path: direct verify, `wikidata_verify`
+run jobs, inference-cache lookup, durable override persistence, and the merged
+Studio read model. New summaries carry a `records_marc_v2` marker; unmarked
+pre-fix summaries are accepted only when their legacy worker fingerprint still
+matches the unedited item, then surfaced with the corrected key. A real-run
+regression test covers both persistence and the transition path. Any new
+Wikidata verdict reader or writer MUST use this canonical record-ID/MARC-context
+helper, rather than the generic attachment helper or a local reconstruction.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

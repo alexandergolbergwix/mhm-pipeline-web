@@ -265,8 +265,10 @@ async def _open_verify_stream(
             from app.pipeline import wikidata_actions  # noqa: PLC0415
             from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
             from app.pipeline.inference_cache import read_from_inference_cache  # noqa: PLC0415
-            from app.pipeline.marc_verify_context import attach_marc_context  # noqa: PLC0415
-            from app.pipeline.wikidata_verdict_cache import wikidata_verdict_query_summary  # noqa: PLC0415
+            from app.pipeline.wikidata_verdict_cache import (  # noqa: PLC0415
+                attach_wikidata_marc_context,
+                wikidata_verdict_query_summary,
+            )
             from app.routers.wikidata_studio import (  # noqa: PLC0415
                 _fetch_wikidata_verify_items,
                 _wikidata_verify_event_stream,
@@ -288,7 +290,7 @@ async def _open_verify_stream(
             items = await _prepare_wikidata_verify_scope(action, items)
             if not items:
                 return None
-            attach_marc_context(items, marc_records)
+            attach_wikidata_marc_context(items, marc_records)
             judge_model = tier_model or GEMINI_MODEL
             evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
             pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []

@@ -51,6 +51,9 @@ tool bypasses every guard above. `item_approved_only` is the only control.
 `wikidata_actions.py` registers two eval-agent actions surfaced by
 `WikidataVerificationModal` (SSE stream, sessions under
 `wikidata-verify-sessions/<run_id>/`, verdicts cached in `inference_cache`).
+The worker, cache lookup, persistence, and merged review table all canonicalise
+build `records` and fixture `record_ids` into the same MARC-aware verdict
+fingerprint; otherwise stale sanitisation would hide a completed verdict.
 `wikidata_live_enrich.py` embeds a live-Wikidata compare snapshot
 (`wikidata_entity_compare.build_compare`) into items that have a QID;
 `wikidata_autofix_apply.merge_ai_fixes` converts only `confidence == "high"`

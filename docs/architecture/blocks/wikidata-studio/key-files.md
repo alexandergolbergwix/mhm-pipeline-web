@@ -8,6 +8,7 @@
 | `backend/app/pipeline/wikidata_item_views.py` | Merged read model: cache + overrides + ledger QID + upload audit + stale-sanitized AI verdict |
 | `backend/app/pipeline/wikidata_item_merge.py` | Apply curator overrides onto serialised item dicts |
 | `backend/app/pipeline/wikidata_item_verify.py` | Persist AI verdicts to `WikidataItemOverride` after verify streams |
+| `backend/app/pipeline/wikidata_verdict_cache.py` | Canonical Wikidata record-ID/MARC-context cache keys and stale-verdict sanitisation |
 | `backend/app/pipeline/wikidata_qid_ledger.py` | Global `wikibase_entity_mappings` ledger (`wikidata:` keys) — adopt + idempotent upload |
 | `backend/app/pipeline/wikidata_export_quality_gate.py` | Build-time ERROR-only export quality gate before cache upsert |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | Background build job (`wikidata_studio_build` kind) — calls `execute_studio_build` off the request path |
