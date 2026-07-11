@@ -58,9 +58,12 @@
     MUST subscribe to `run_job_update` WebSocket events and call
     `useRunJobs.upsertJob` (parity with HMO Studio). Verify modals use
     `useVerifyJob`, which also upserts on start and on every poll tick so the
-    tray appears immediately — not only after the 2 s `listMine` poll.
+    tray appears immediately — not only after the 2 s `listMine` poll. If the
+    start request rejects before a job exists, it MUST roll back the modal to
+    idle rather than display a cancellable phantom job.
     *Why:* without push + upsert, the verify modal shows Stop while the
-    bottom-right tray stays empty.
+    bottom-right tray stays empty; an H12 enqueue failure must not reproduce
+    that same misleading state (Rule W-61).
 
 16. **R16 — AI-verdict fingerprints MUST use the same canonical record IDs and
     MARC slice when verifying, persisting, cache-reading, and rendering.**

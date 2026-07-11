@@ -1894,6 +1894,22 @@ other providers. Test: `test_run_job_params_wikidata_verify.py`.
 
 ---
 
+### Rule W-61 — Rejected verify-job enqueue requests MUST reset the curator modal (added 2026-07-11)
+
+The same 294-item Wikidata Studio verification that hit Heroku H12 never
+created a `run_jobs` row. `useVerifyJob.start` had already set `running=true`,
+but did not clear it when `RunJobs.start` rejected. The modal caught the error
+yet continued to show **Stop**, an empty flow, and zero verdicts — a phantom
+job the curator could neither inspect nor cancel.
+
+`useVerifyJob` now rolls back `running` and `jobId`, then rethrows the failed
+enqueue so the modal displays the API error and leaves the curator able to
+retry. Every job-start UI that sets optimistic local state MUST undo that state
+when the start request rejects; only a returned or 409-attached job may be
+shown as cancellable. Test: `frontend/tests/unit/useVerifyJob.spec.ts`.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

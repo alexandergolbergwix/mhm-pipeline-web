@@ -68,4 +68,6 @@ they select `s.jobs` and derive with `selectActiveJob(...)` in `useMemo` (Rule W
 `useRunJobAttachment(runId, kind, sync)` re-attaches to an already-running job on
 mount and fingerprint-guards the `sync` callback; `useVerifyJob` layers verify-session
 loading (from `progress.session_snapshot` while running, disk/`result` at finish)
-and partial-result messaging on top.
+and partial-result messaging on top. Its optimistic start state is rolled back
+when the enqueue HTTP request rejects, so a request that never created a job is
+not rendered as a cancellable running job.

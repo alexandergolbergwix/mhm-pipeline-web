@@ -167,11 +167,17 @@ export function useVerifyJob({
   async function start(params: Record<string, unknown>) {
     setRunning(true);
     lastFingerprintRef.current = null;
-    const job = await RunJobs.start(runId, kind, params);
-    setJobId(job.id);
-    await applyJob(job, true);
-    ensurePolling();
-    return job;
+    try {
+      const job = await RunJobs.start(runId, kind, params);
+      setJobId(job.id);
+      await applyJob(job, true);
+      ensurePolling();
+      return job;
+    } catch (error) {
+      setRunning(false);
+      setJobId(null);
+      throw error;
+    }
   }
 
   function stop() {

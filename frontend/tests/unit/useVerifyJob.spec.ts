@@ -52,4 +52,24 @@ describe("useVerifyJob", () => {
       expect(useRunJobs.getState().jobs.vj1?.kind).toBe("wikidata_verify");
     });
   });
+
+  it("clears running when the job enqueue request fails", async () => {
+    vi.spyOn(RunJobs, "start").mockRejectedValue(new Error("request timed out"));
+    vi.spyOn(RunJobs, "listForRun").mockResolvedValue({jobs: []});
+    const loadSession = vi.fn().mockResolvedValue(undefined);
+
+    const {result} = renderHook(() => useVerifyJob({
+      runId: "r1",
+      kind: "wikidata_verify",
+      loadSession,
+    }));
+
+    await act(async () => {
+      await expect(result.current.start({action_id: "audit_wikidata_item"}))
+        .rejects.toThrow("request timed out");
+    });
+
+    expect(result.current.running).toBe(false);
+  });
+
 });

@@ -19,7 +19,7 @@ specs with fully mocked backends ("every click is a test").
 - [Key files](key-files.md) — entry points, stores, hooks, glass system, test configs
 - [How it works](how-it-works.md) — routing, API clients, Zustand discipline, polling, glass, build tooling
 - [Testing](testing.md) — the three-layer test pyramid and the suites pinning this block
-- [Rules](rules.md) — the 12 invariants (R1–R12)
+- [Rules](rules.md) — the 13 invariants (R1–R13)
 - [Skills](skills.md) — pages, API clients, job UI, e2e specs, glass components, polling surfaces
 
 ## Related blocks

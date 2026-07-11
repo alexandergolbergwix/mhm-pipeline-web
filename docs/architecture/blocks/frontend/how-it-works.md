@@ -54,7 +54,8 @@ so fallbacks never inline `new Set()`.
   `useRunJobAttachment(runId, kind, sync)` (attach-on-mount to jobs started
   elsewhere/earlier, plus a targeted per-job 2 s poll) or `useVerifyJob`
   for verify modals (which also load the SSE session, pass optional
-  `tier_model`, and tolerate early 404s on `trace.jsonl`).
+  `tier_model`, tolerate early 404s on `trace.jsonl`, and rolls back its
+  optimistic running state if the enqueue request rejects).
 - *Entity polling* — `useApprovalStore(runId, {active})` polls
   `/extraction/entities` every 2 s while a verify modal is open
   (`active=true`) and every 30 s otherwise, with ETag/304 revalidation, a

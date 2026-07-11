@@ -58,7 +58,8 @@
 4. For verify modals use `useVerifyJob({runId, kind, loadSession, onFailed, onComplete})` —
    it loads the eval-agent session from `progress.session_snapshot` while the job
    runs (then disk/`result` at finish), keyed off `progress.session_id`, and phrases
-   partial/skipped outcomes.
+   partial/skipped outcomes. Let a rejected `RunJobs.start` propagate to the modal;
+   the hook clears its optimistic running state so the curator can retry.
 5. For a fire-and-forget await, `waitForRunJob` (`frontend/src/utils/waitForRunJob.ts`)
    polls until terminal.
 6. Poll cadence is owned by the store (2 s while active, self-stopping); never add
