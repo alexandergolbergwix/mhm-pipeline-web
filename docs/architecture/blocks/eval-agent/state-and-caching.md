@@ -11,7 +11,9 @@ Four of the five channels can run headless via `POST /runs/{id}/jobs`
 `run_jobs.progress`, honours cancel requests, and on every streamed event also
 stores a partial `progress.session_snapshot` (same shape as the final snapshot)
 so the UI can render verdict rows while the job is still running on another
-dyno. On success it also stores `result.session_snapshot` =
+dyno. `wikidata_verify` starts by loading its Studio scope only after its row
+is committed and claimed, keeping the job-start HTTP request bounded. On
+success it also stores `result.session_snapshot` =
 `{session_id, run_id, events, verdicts}` built by
 `snapshot_from_collected_events`. Session GETs go through
 `load_verify_session` (`verify_session_store.py:60`): disk trace first, job

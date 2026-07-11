@@ -38,9 +38,12 @@
 4. `status=running` but no progress movement: confirm `updated_at` is advancing
    (heartbeat alive → task exists but is blocked; look for a held DB transaction
    across external I/O, R12). If `updated_at` is frozen, the next tick will reap it.
-5. Perpetual 409 on start: an active row exists — cancel it via
+5. An H12/503 from `POST /jobs` with no row created means enqueue work exceeded
+   Heroku’s 30-second router limit. Move scope/build materialisation into the
+   claimed worker; keep `prepare_job_params` to bounded validation + secrets.
+6. Perpetual 409 on start: an active row exists — cancel it via
    `POST /runs/{run_id}/jobs/{job_id}/cancel`, or wait for the reaper.
-6. Reproduce claim/maintenance behaviour locally:
+7. Reproduce claim/maintenance behaviour locally:
    `cd backend && .venv/bin/python -m pytest tests/unit/test_run_job_recovery.py -v`.
 
 ## Skill: attach frontend UI to a background job
@@ -71,4 +74,5 @@
 | `backend/tests/test_hmo_studio_coverage_router.py` | Coverage 409-attach + durable-cache restore around the `hmo_coverage` job (Rule W-39) |
 | `backend/tests/unit/test_wikidata_upload_guards.py` | The fail-closed gate the `wikidata_upload` job routes through (Rule W-30) |
 | `backend/tests/test_run_job_params_hmo_verify.py` | `hmo_item_verify` param validation: unknown action / empty scope rejected, valid scope accepted |
+| `backend/tests/test_run_job_params_wikidata_verify.py` | `wikidata_verify` enqueue avoids the slow Studio scope; worker errors and Kimi’s non-Gemini credential path are pinned |
 | `backend/tests/unit/test_verify_job_progress.py` | Verify jobs embed partial `session_snapshot` in `progress` (R10 live UI) |

@@ -1856,6 +1856,44 @@ helper, rather than the generic attachment helper or a local reconstruction.
 
 ---
 
+### Rule W-59 — Commit Wikidata verify jobs before materialising their Studio scope (added 2026-07-11)
+
+A 294-item Wikidata Studio AI verification called `POST /api/runs/{id}/jobs`
+twice and both requests hit Heroku’s 30-second H12 router timeout. The generic
+job parameter validator was calling `_fetch_wikidata_verify_items()` inside
+the request; that path can load or rebuild the Studio cache and is exactly the
+slow work the run-job service exists to move off the request path. No job row
+was available for the modal to attach to, so it remained visually “running”
+with zero events.
+
+`prepare_job_params` now validates only the action and tier-1 credentials for
+`wikidata_verify`, then commits the queued row. After ownership is claimed,
+`verify_job._open_verify_stream` builds/enriches the selected Studio scope,
+checks its minimum size, and converts scope errors into a terminal failed job.
+Future job-start handlers MUST not materialise a build, network-enriched scope,
+or large candidate collection before `create_job` commits. Test:
+`test_run_job_params_wikidata_verify.py`.
+
+---
+
+### Rule W-60 — Verify workers use provider-aware tier-1 credentials (added 2026-07-11)
+
+`run_job_params` correctly validates Qubrid Kimi with the server-side
+`QUBRID_API_KEY`, but the shared `run_verify_job` then rejected every job whose
+stored `_api_key` was empty as “missing Gemini API key”. That user-scoped field
+is intentionally empty for non-Gemini providers. Selecting Kimi K2.5 therefore
+failed before the worker could emit `session.start`, even when Qubrid was
+configured.
+
+The worker now resolves the selected tier model and requires `_api_key` only
+when its provider is Gemini. Non-Gemini providers retain their server-side
+environment credentials and continue into the eval-agent runner. New verify
+providers MUST follow this split: request-time credential validation uses the
+model registry; worker-time guards must not impose Gemini-specific secrets on
+other providers. Test: `test_run_job_params_wikidata_verify.py`.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

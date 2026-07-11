@@ -6,7 +6,7 @@
 
 ```
 POST /runs/{run_id}/jobs {kind, params}
-  └─ prepare_job_params()          # validate kind, unwrap secrets → params["_*"]
+  └─ prepare_job_params()          # bounded validation + secrets → params["_*"]
   └─ create_job()                  # pre-check active job → 409 ActiveJobError
        │                           # INSERT (partial unique index backstops the race)
        └─ spawn_job(job_id) ──► asyncio task _execute_job()
@@ -34,6 +34,12 @@ The dyno prefix lets a restarted `web.1` reclaim its dead predecessor's rows
 instantly; the uuid suffix distinguishes live processes. Known caveat: with
 `WEB_CONCURRENCY > 1` sibling uvicorn workers share the prefix — acceptable while
 production runs one worker.
+
+`wikidata_verify` is deliberately bounded at enqueue: `prepare_job_params`
+checks the action and provider credentials but does not load or enrich the
+Studio scope. After the job is committed and claimed, `verify_job.py` builds
+that scope and records an invalid/empty scope as a failed job. This keeps the
+`POST /jobs` request below Heroku’s 30-second router limit.
 
 ## Job kinds and owners
 

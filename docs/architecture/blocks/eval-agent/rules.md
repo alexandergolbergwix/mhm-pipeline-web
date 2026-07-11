@@ -121,3 +121,10 @@
   the judge saw **empty MARC** → conservative `partial` on short-title
   Expressions / given-name Persons. Fixing the join key restores MARC grounding
   run-wide. Mirrored web-side in `marc_verify_context.py` (cache-key parity).
+
+- **R22 — Background verify workers MUST require the user-scoped `_api_key`
+  only when the selected tier-1 provider is Gemini.** Non-Gemini tiers, such
+  as Qubrid Kimi, use their server-side `api_key_env` and must reach the
+  runner after `run_job_params` validates that provider. *Why:* applying the
+  Gemini guard to Kimi made an already configured Qubrid job fail before its
+  first event.

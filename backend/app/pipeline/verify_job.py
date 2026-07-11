@@ -28,6 +28,13 @@ from app.pipeline.verify_session_store import snapshot_from_collected_events
 logger = logging.getLogger(__name__)
 
 
+def _requires_gemini_key(tier_model: Any) -> bool:
+    from app.pipeline.judge_models import resolve_tier1_model  # noqa: PLC0415
+
+    spec = resolve_tier1_model(str(tier_model) if tier_model else None)
+    return spec.provider == "gemini"
+
+
 def _progress_from_event(
     ev: AgentEvent,
     *,
@@ -82,7 +89,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
         params = dict(job.params or {})
         api_key = params.get("_api_key")
         session_id = str(params.get("session_id") or "")
-        if not api_key:
+        if _requires_gemini_key(params.get("tier_model")) and not api_key:
             await finish_job(job_id, status=JOB_STATUS_FAILED, error="missing Gemini API key")
             return
         if not session_id:
@@ -94,14 +101,19 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     error_message: str | None = None
     session_summary: dict[str, Any] = {}
     collected_events: list[dict[str, Any]] = []
-    stream = await _open_verify_stream(
-        kind=kind,
-        run_id=run_id,
-        job_id=job_id,
-        session_id=session_id,
-        params=params,
-        api_key=str(api_key),
-    )
+    try:
+        stream = await _open_verify_stream(
+            kind=kind,
+            run_id=run_id,
+            job_id=job_id,
+            session_id=session_id,
+            params=params,
+            api_key=str(api_key),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("could not open verify job %s stream", job_id)
+        await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
+        return
     if stream is None:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error="could not start verify stream")
         return
@@ -289,7 +301,16 @@ async def _open_verify_stream(
 
             items = await _prepare_wikidata_verify_scope(action, items)
             if not items:
-                return None
+                detail = (
+                    "no Wikidata Studio items with an existing QID in scope"
+                    if action.id == "autofix_from_wikidata"
+                    else "no Wikidata Studio items in scope"
+                )
+                raise ValueError(detail)
+            if len(items) < action.min_candidates:
+                raise ValueError(
+                    f"action requires at least {action.min_candidates} candidates",
+                )
             attach_wikidata_marc_context(items, marc_records)
             judge_model = tier_model or GEMINI_MODEL
             evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
@@ -326,7 +347,9 @@ async def _open_verify_stream(
         if kind == JOB_KIND_HMO_ITEM_VERIFY:
             from app.pipeline import hmo_item_actions  # noqa: PLC0415
             from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
-            from app.pipeline.hmo_item_verdict_cache import hmo_item_verdict_query_summary  # noqa: PLC0415
+            from app.pipeline.hmo_item_verdict_cache import (
+                hmo_item_verdict_query_summary,  # noqa: PLC0415
+            )
             from app.pipeline.hmo_item_verify import hmo_item_verify_event_stream  # noqa: PLC0415
             from app.pipeline.inference_cache import read_from_inference_cache  # noqa: PLC0415
             from app.pipeline.marc_verify_context import attach_marc_context  # noqa: PLC0415

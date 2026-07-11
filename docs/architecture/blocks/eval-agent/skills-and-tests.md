@@ -115,6 +115,8 @@ missing? The job-snapshot fallback (R5) serves it for job-backed channels.
   evaluator prompt (Rule W-47).
 - `backend/tests/test_verify_job_hmo.py` — `hmo_item_verify` job-backed
   dispatch: unknown action, empty scope, end-to-end wiring, cache behaviour.
+- `backend/tests/test_run_job_params_wikidata_verify.py` — fast Studio enqueue,
+  worker-side empty-scope errors, and provider-aware Kimi credentials.
 - `eval-agent/tests/test_hmo_wikibase_items.py` — HMO `control_number()` from
   embedded URI ids (Rule W-45); `enrich_control_numbers()` via deferred links
   (Rule W-48); `SYSTEM-LABELED EVENT` grounding for Production / TextTradition

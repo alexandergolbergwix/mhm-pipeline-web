@@ -68,7 +68,6 @@ async def prepare_job_params(
     ):
         from app.pipeline.judge_models import (  # noqa: PLC0415
             UnknownTier1ModelError,
-            default_tier1_model,
             ensure_tier1_credentials,
             resolve_tier1_model,
         )
@@ -192,23 +191,13 @@ async def _validate_verify_params(
 
     if kind == JOB_KIND_WIKIDATA_VERIFY:
         from app.pipeline import wikidata_actions  # noqa: PLC0415
-        from app.routers.wikidata_studio import _fetch_wikidata_verify_items  # noqa: PLC0415
 
         action = wikidata_actions.get_action(action_id)
         if action is None:
             raise HTTPException(status_code=400, detail=f"unknown action_id {action_id!r}")
-        items, _marc = await _fetch_wikidata_verify_items(
-            db, run_id, auth,
-            item_ids=params.get("item_ids"),
-            approved_only=bool(params.get("approved_only", True)),
-        )
-        if not items:
-            raise HTTPException(status_code=400, detail="no Wikidata Studio items in scope")
-        if len(items) < action.min_candidates:
-            raise HTTPException(
-                status_code=400,
-                detail=f"action requires at least {action.min_candidates} candidates",
-            )
+        # Building the Studio scope can exceed Heroku’s 30-second request limit.
+        # The claimed worker validates the scope after this request commits the job.
+        return
 
     if kind == JOB_KIND_HMO_ITEM_VERIFY:
         from app.pipeline import hmo_item_actions  # noqa: PLC0415

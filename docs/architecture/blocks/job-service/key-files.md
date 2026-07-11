@@ -5,7 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/run_job_service.py` | Core: create/claim/heartbeat/reap/respawn, spawn + dispatch, progress, finish, cancel, serialise |
-| `backend/app/pipeline/run_job_params.py` | Per-kind param validation + server-side secret injection at start time |
+| `backend/app/pipeline/run_job_params.py` | Bounded per-kind request validation + server-side secret injection; slow scope loading stays in workers |
 | `backend/app/routers/run_jobs.py` | HTTP API: list mine, list per run, start (201/409), get, cancel |
 | `backend/app/models/run_job.py` | `RunJob` model, kind/status constants, `uq_run_jobs_active_kind` partial unique index |
 | `backend/app/migrations/versions/0024_run_jobs.py` | Creates the `run_jobs` table + original active-kind index |

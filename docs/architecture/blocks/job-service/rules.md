@@ -54,3 +54,10 @@
 
 14. **R14 — On start, a UI that receives a 409 MUST attach to the returned `job_id` rather than error out.**
     *Why:* another tab/curator (or a respawned orphan) may already be running the job; attaching is the designed multi-client behaviour.
+
+15. **R15 — Job-start HTTP requests MUST stay bounded: validate action IDs, requested parameters,
+    and credentials, then commit the job; never materialise a
+    slow build/verify scope before `create_job`.** The claimed worker validates
+    the materialised scope and records a terminal job error. *Why:* loading 294
+    Wikidata Studio items during `POST /jobs` hit Heroku’s 30-second H12 limit,
+    leaving the modal running with no job or verdict events.

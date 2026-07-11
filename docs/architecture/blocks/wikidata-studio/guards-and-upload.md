@@ -54,6 +54,9 @@ tool bypasses every guard above. `item_approved_only` is the only control.
 The worker, cache lookup, persistence, and merged review table all canonicalise
 build `records` and fixture `record_ids` into the same MARC-aware verdict
 fingerprint; otherwise stale sanitisation would hide a completed verdict.
+The `wikidata_verify` job is committed before this scope is materialised, so a
+large build cannot exhaust the 30-second `POST /jobs` router budget; the worker
+surfaces an empty/invalid scope as a failed job instead of a stuck modal.
 `wikidata_live_enrich.py` embeds a live-Wikidata compare snapshot
 (`wikidata_entity_compare.build_compare`) into items that have a QID;
 `wikidata_autofix_apply.merge_ai_fixes` converts only `confidence == "high"`
