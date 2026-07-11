@@ -1,4 +1,5 @@
-import { api } from "@/api/client";
+import {api, csrfHeaders} from "@/api/client";
+import type {AiVerdict} from "@/api/extractionApprovals";
 
 export interface StudioSummary {
   total_items: number;
@@ -38,6 +39,11 @@ export interface StudioItem {
   local_id?: string;
   validation_issues?: ValidationIssue[];
   approved?: boolean | null;
+  upload_outcome?: string | null;
+  upload_message?: string | null;
+  upload_at?: string | null;
+  ai_verdict?: AiVerdict | null;
+  ai_verdict_at?: string | null;
 }
 
 export interface PropertyInfo {
@@ -116,6 +122,30 @@ export interface ItemOverrideResponse {
   add_statements: Array<Record<string, unknown>>;
   remove_statements: number[];
   statement_edits: Record<string, unknown>;
+  approved?: boolean | null;
+}
+
+export interface WikidataItemPushResult {
+  local_id: string;
+  status: string;
+  qid: string | null;
+  message: string;
+  moratorium_lifted?: boolean;
+  test_mode?: boolean;
+}
+
+export interface WikidataItemReconcileResult {
+  local_id: string;
+  status: string;
+  qid: string | null;
+  method?: string;
+  message: string;
+}
+
+export interface ValidationErrorsResponse {
+  run_id: string;
+  count: number;
+  items: StudioItem[];
 }
 
 export type CompareStatus = "same" | "conflict" | "wikidata_only" | "studio_only";
@@ -154,6 +184,7 @@ export interface StudioBuildParams {
   sortDir?: string;
   page?: number;
   pageSize?: number;
+  uploadOutcome?: string | null;
 }
 
 export const Studio = {
@@ -167,6 +198,7 @@ export const Studio = {
       sortDir,
       page,
       pageSize,
+      uploadOutcome,
     } = params;
     const qs = new URLSearchParams();
     qs.set("approved_only", approvedOnly ? "true" : "false");
@@ -177,11 +209,12 @@ export const Studio = {
     if (sortDir) qs.set("sort_dir", sortDir);
     if (page != null) qs.set("page", String(page));
     if (pageSize != null) qs.set("page_size", String(pageSize));
+    if (uploadOutcome) qs.set("upload_outcome", uploadOutcome);
     return api.get<StudioBuild>(`/runs/${runId}/wikidata-studio?${qs.toString()}`);
   },
 
-  qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false) =>
-    `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}${uploadApprovedOnly ? "&upload_approved_only=true" : ""}`,
+  qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false, gated = true) =>
+    `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}${uploadApprovedOnly ? "&upload_approved_only=true" : ""}&gated=${gated ? "true" : "false"}`,
 
   reconcile: (runId: string, approvedOnly = true) =>
     api.post<ReconcileResponse>(
@@ -229,4 +262,69 @@ export const Studio = {
       `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}/wikidata-compare/apply`,
       body,
     ),
+
+  pushItem(runId: string, localId: string): Promise<WikidataItemPushResult> {
+    return api.post(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}/push`,
+      {},
+    );
+  },
+
+  reconcileItem(runId: string, localId: string): Promise<WikidataItemReconcileResult> {
+    return api.post(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}/reconcile`,
+      {},
+    );
+  },
+
+  applyAiFixes(
+    runId: string,
+    localId: string,
+    fixes: Array<Record<string, unknown>>,
+  ): Promise<ItemOverrideResponse> {
+    return api.post(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}/ai-fixes/apply`,
+      {fixes},
+    );
+  },
+
+  clearOverride(runId: string, localId: string): Promise<void> {
+    return api.del(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}`,
+    );
+  },
+
+  validationErrors(runId: string, onWikiOnly = false): Promise<ValidationErrorsResponse> {
+    const qs = onWikiOnly ? "?on_wikidata_only=true" : "";
+    return api.get(`/runs/${runId}/wikidata-studio/items/validation-errors${qs}`);
+  },
+
+  cachedVerdicts(runId: string, tierModel?: string): Promise<Record<string, AiVerdict>> {
+    const qs = tierModel ? `?tier_model=${encodeURIComponent(tierModel)}` : "";
+    return api.get(`/runs/${runId}/wikidata-studio/items/ai-verify/cached-verdicts${qs}`);
+  },
+
+  exportItemsUrl(runId: string, format: "json" | "csv"): string {
+    return `/api/runs/${runId}/wikidata-studio/items/export?format=${format}`;
+  },
+
+  async importItems(runId: string, file: File): Promise<{imported: number; skipped: number}> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/runs/${runId}/wikidata-studio/items/import`, {
+      method: "POST",
+      credentials: "include",
+      headers: csrfHeaders("POST"),
+      body: form,
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const payload = await res.json() as {detail?: string};
+        if (payload.detail) detail = payload.detail;
+      } catch { /* ignore */ }
+      throw new Error(detail);
+    }
+    return res.json() as Promise<{imported: number; skipped: number}>;
+  },
 };

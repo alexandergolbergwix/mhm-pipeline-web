@@ -36,13 +36,14 @@ export interface WikidataVerificationModalProps {
   scopeKind: ScopeKind;
   itemIds?: string[];
   scopeLabel: string;
+  initialActionId?: string;
   onClose: () => void;
   onVerdictsLanded?: () => void;
 }
 
 
 export function WikidataVerificationModal(props: WikidataVerificationModalProps) {
-  const { runId, scopeKind, itemIds, scopeLabel, onClose, onVerdictsLanded } = props;
+  const {runId, scopeKind, itemIds, scopeLabel, initialActionId, onClose, onVerdictsLanded} = props;
 
   const [actions, setActions] = useState<AgentActionMeta[]>([]);
   const [actionId, setActionId] = useState("audit_wikidata_item");
@@ -106,7 +107,12 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
         ]);
         if (cancelled) return true;
         setActions(list);
-        if (list.length > 0) setActionId(list[0].id);
+        if (list.length > 0) {
+          const preferred = initialActionId && list.some((a) => a.id === initialActionId)
+            ? initialActionId
+            : list[0].id;
+          setActionId(preferred);
+        }
         setError(null);
 
         const newest = (sessions ?? []).find(
@@ -151,7 +157,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
       }
     })();
     return () => { cancelled = true; };
-  }, [runId, scopeKind, reloadKey]);
+  }, [runId, scopeKind, reloadKey, initialActionId]);
 
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
 

@@ -57,6 +57,7 @@ def _slice(**kw):
         all_items=[],
         entity_type=None,
         q=None,
+        upload_outcome=None,
         sort="label",
         sort_dir="asc",
         page=1,
@@ -356,9 +357,11 @@ class TestCacheStaleResponse:
         )
         resp = _studio_response_from_cache(
             cached,
+            cached.result_items or [],
             approved_only=True,
             entity_type=None,
             q=None,
+            upload_outcome=None,
             sort="label",
             sort_dir="asc",
             page=1,
@@ -393,12 +396,26 @@ class TestCacheStaleResponse:
         )
         resp = _studio_response_from_cache(
             cached,
+            [],
             approved_only=True,
             entity_type=None,
             q=None,
+            upload_outcome=None,
             sort="label",
             sort_dir="asc",
             page=1,
             page_size=50,
         )
         assert resp.cache_stale is False
+
+
+class TestUploadOutcomeFilter:
+    def test_filter_by_upload_outcome(self) -> None:
+        items = [
+            {**_item(en_label="A"), "upload_outcome": "create"},
+            {**_item(en_label="B"), "upload_outcome": "blocked"},
+            {**_item(en_label="C"), "upload_outcome": "create"},
+        ]
+        page_items, total, *_ = _slice(all_items=items, upload_outcome="create")
+        assert total == 2
+        assert {it["labels"]["en"] for it in page_items} == {"A", "C"}

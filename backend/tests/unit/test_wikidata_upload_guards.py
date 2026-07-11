@@ -246,10 +246,12 @@ def test_upload_sync_never_writes_blocked_items(monkeypatch):
 
     monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _FakeUploader)
 
-    outcomes = wu._upload_sync([good, outage], token="User@Bot:deadbeef", dry_run=False)
+    outcomes = wu._upload_sync(
+        [good, outage], token="User@Bot:deadbeef", dry_run=False, ledger={}, ledger_ns="wikidata",
+    )
 
     statuses = {o.local_id: o.status for o in outcomes}
-    assert statuses["990000001"] == "updated"
+    assert statuses["990000001"] == "adopted"
     assert statuses["990000002"] == "blocked"
     # The blocked item must never have been written.
     assert written == [good]
@@ -270,10 +272,11 @@ def test_dry_run_reports_update_create_and_block(monkeypatch):
 
     outcomes = wu._upload_sync(
         [update_item, create_item, block_item], token="", dry_run=True,
+        ledger={}, ledger_ns="wikidata",
     )
     by_id = {o.local_id: o for o in outcomes}
 
-    assert by_id["990000010"].status == "exists"
+    assert by_id["990000010"].status == "would_adopt"
     assert by_id["990000010"].qid == "Q10"
     assert by_id["990000011"].status == "success"
     assert by_id["990000012"].status == "blocked"
@@ -340,3 +343,92 @@ def test_person_by_identifiers_accepts_when_no_conflict(monkeypatch):
     monkeypatch.setattr(rec, "_candidate_conflicts", lambda _q, _p: [])
 
     assert rec.reconcile_person_by_identifiers("111", "9870555") == "Q1"
+
+
+@pytest.mark.asyncio
+async def test_live_upload_records_audit_rows(db_session, sample_run, monkeypatch) -> None:
+    from sqlalchemy import select
+
+    from app.models.wikibase_cloud_write import (
+        CHANNEL_WIKIDATA_UPLOAD,
+        OPERATION_ADOPT,
+        OPERATION_BLOCKED,
+        WikibaseCloudWrite,
+    )
+    from app.services.wikibase_audit import WikibaseAuditContext
+
+    monkeypatch.setenv("WIKIDATA_TEST_MODE", "true")
+
+    good = _manuscript("990000001")
+    block_item = _Item(entity_type="person", labels={"en": "Winter"}, statements=[], local_id="winter")
+
+    class _Rec(_FakeReconciler):
+        def reconcile_manuscript_by_identifiers(self, nnl_id, shelfmark):
+            self.ms_calls.append((nnl_id, shelfmark))
+            return {"990000001": "Q1"}.get(nnl_id)
+
+    monkeypatch.setattr(wu, "_make_reconciler", lambda: _Rec())
+
+    class _FakeUploader:
+        def __init__(self, token, is_test, batch_mode):
+            pass
+
+        def upload_item(self, item):
+            return _FakeResult(qid="Q1", status="updated", message="Updated Q1")
+
+    monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _FakeUploader)
+
+    outcomes = await wu.upload_items(
+        [good, block_item],
+        token="User@Bot:deadbeef",
+        dry_run=False,
+        audit_ctx=WikibaseAuditContext(
+            actor_user_id=sample_run["user_id"],
+            channel=CHANNEL_WIKIDATA_UPLOAD,
+            run_id=sample_run["run_id"],
+        ),
+        db=db_session,
+    )
+    assert len(outcomes) == 2
+    rows = (
+        await db_session.execute(
+            select(WikibaseCloudWrite).where(
+                WikibaseCloudWrite.run_id == sample_run["run_id"],
+                WikibaseCloudWrite.channel == CHANNEL_WIKIDATA_UPLOAD,
+            )
+        )
+    ).scalars().all()
+    ops = {r.target_key: r.operation for r in rows}
+    assert ops["990000001"] == OPERATION_ADOPT
+    assert ops["winter"] == OPERATION_BLOCKED
+
+
+@pytest.mark.asyncio
+async def test_dry_run_writes_no_audit_rows(db_session, sample_run, monkeypatch) -> None:
+    from sqlalchemy import select
+
+    from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD, WikibaseCloudWrite
+    from app.services.wikibase_audit import WikibaseAuditContext
+
+    monkeypatch.setattr(wu, "_make_reconciler", lambda: _FakeReconciler())
+
+    await wu.upload_items(
+        [_manuscript("990000001")],
+        token="",
+        dry_run=True,
+        audit_ctx=WikibaseAuditContext(
+            actor_user_id=sample_run["user_id"],
+            channel=CHANNEL_WIKIDATA_UPLOAD,
+            run_id=sample_run["run_id"],
+        ),
+        db=db_session,
+    )
+    count = (
+        await db_session.execute(
+            select(WikibaseCloudWrite).where(
+                WikibaseCloudWrite.run_id == sample_run["run_id"],
+                WikibaseCloudWrite.channel == CHANNEL_WIKIDATA_UPLOAD,
+            )
+        )
+    ).scalars().all()
+    assert count == []

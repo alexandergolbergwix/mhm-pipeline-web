@@ -26,7 +26,10 @@ import {
   makeStudioItem,
 } from "./fixtures/wikidata-fixtures";
 
-async function gotoStudio(page: import("@playwright/test").Page) {
+async function gotoStudio(page: import("@playwright/test").Page, mode: "modern" | "legacy" = "modern") {
+  await page.addInitScript((reviewMode) => {
+    localStorage.setItem("mhm.studio.reviewMode", reviewMode);
+  }, mode);
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await page.waitForLoadState("networkidle");
 }
@@ -34,10 +37,19 @@ async function gotoStudio(page: import("@playwright/test").Page) {
 // ── Page renders ─────────────────────────────────────────────────────────
 
 test.describe("WikidataStudio page", () => {
-  test("renders summary stats from build response", async ({page}) => {
+  test("renders modern review table by default", async ({page}) => {
     const build = makeBuildResponse();
     await installStudioMocks(page, build);
-    await gotoStudio(page);
+    await gotoStudio(page, "modern");
+
+    await expect(page.getByTestId("wikidata-items-panel")).toBeVisible({timeout: 8000});
+    await expect(page.getByTestId("wikidata-item-table")).toBeVisible();
+  });
+
+  test("renders summary stats from build response in legacy view", async ({page}) => {
+    const build = makeBuildResponse();
+    await installStudioMocks(page, build);
+    await gotoStudio(page, "legacy");
 
     await expect(
       page.locator(".glass-pill", {hasText: "Items"}).getByText("2", {exact: true}),
@@ -47,10 +59,10 @@ test.describe("WikidataStudio page", () => {
     ).toBeVisible();
   });
 
-  test("renders item list with item labels", async ({page}) => {
+  test("renders item list with item labels in legacy view", async ({page}) => {
     const build = makeBuildResponse();
     await installStudioMocks(page, build);
-    await gotoStudio(page);
+    await gotoStudio(page, "legacy");
 
     await expect(page.getByRole("button", {name: /Hebrew Manuscript/})).toBeVisible({timeout: 8000});
     await expect(page.getByRole("button", {name: /Moses Maimonides/})).toBeVisible();
@@ -59,7 +71,7 @@ test.describe("WikidataStudio page", () => {
   test("shows QID badge for items with existing_qid", async ({page}) => {
     const build = makeBuildResponse();
     await installStudioMocks(page, build);
-    await gotoStudio(page);
+    await gotoStudio(page, "modern");
 
     // Maimonides has existing_qid Q127398
     await expect(page.getByText(/Q127398/)).toBeVisible({timeout: 8000});
@@ -158,7 +170,7 @@ test.describe("AI verification", () => {
       },
     );
 
-    await gotoStudio(page);
+    await gotoStudio(page, "legacy");
     await page.getByRole("button", {name: /verify current with ai/i}).click();
     await page.getByRole("button", {name: /start verification/i}).click();
 
@@ -197,7 +209,7 @@ test.describe("approved_item_count", () => {
       total: 2,
     });
     await installStudioMocks(page, build);
-    await gotoStudio(page);
+    await gotoStudio(page, "modern");
 
     // The action bar should show "1 of 2 approved" from server counts
     await expect(page.getByText(/1 of 2 approved/)).toBeVisible({timeout: 8000});
@@ -227,7 +239,7 @@ test.describe("entity_type filter", () => {
       });
     });
 
-    await gotoStudio(page);
+    await gotoStudio(page, "legacy");
     // Click the "manuscript" filter chip
     await page.getByRole("button", {name: /^manuscript$/i}).click();
     await page.waitForLoadState("networkidle");
@@ -256,7 +268,7 @@ test.describe("sort controls", () => {
       });
     });
 
-    await gotoStudio(page);
+    await gotoStudio(page, "legacy");
     await page.locator("select").nth(1).selectOption("statements");
     await page.waitForLoadState("networkidle");
 
@@ -279,7 +291,7 @@ test.describe("sort controls", () => {
       });
     });
 
-    await gotoStudio(page);
+    await gotoStudio(page, "legacy");
     // Click the direction toggle button (↑ or ↓)
     await page.getByRole("button", {name: /↑|↓/}).click();
     await page.waitForLoadState("networkidle");
@@ -300,11 +312,10 @@ test.describe("ItemValidatorBadge", () => {
     });
     const build = makeBuildResponse({items: [itemWithIssue], total: 1});
     await installStudioMocks(page, build);
-    await gotoStudio(page);
+    await gotoStudio(page, "modern");
 
-    // The red dot button has aria-label containing "validation issue"
     await expect(
-      page.getByRole("button", {name: "1 validation issue", exact: true}),
+      page.getByTestId("wikidata-item-validator-badge-manuscript::Bad Item"),
     ).toBeVisible({timeout: 8000});
   });
 });
@@ -337,12 +348,9 @@ test.describe("ItemApprovalBadge toggle", () => {
       });
     });
 
-    await gotoStudio(page);
+    await gotoStudio(page, "modern");
 
-    // The sidebar shows a ○ (not approved) badge for this item — click it
-    const approvalBtn = page.getByTitle(/not reviewed.*click to approve/i).first();
-    await expect(approvalBtn).toBeVisible({timeout: 8000});
-    await approvalBtn.click();
+    await page.getByTestId("wikidata-item-approved-manuscript::Approvable").click();
 
     // A PATCH should have been sent with approved: true
     expect(patches.length).toBe(1);
@@ -356,7 +364,7 @@ test.describe("view mode toggle", () => {
   test("table view button switches to table view", async ({page}) => {
     const build = makeBuildResponse();
     await installStudioMocks(page, build);
-    await gotoStudio(page);
+    await gotoStudio(page, "legacy");
 
     await expect(page.getByRole("button", {name: /table view/i})).toBeVisible({timeout: 8000});
     await page.getByRole("button", {name: /table view/i}).click();
@@ -384,9 +392,9 @@ test.describe("force-rebuild", () => {
       });
     });
 
-    await gotoStudio(page);
+    await gotoStudio(page, "modern");
     // Check the force-rebuild checkbox
-    await page.getByRole("checkbox", {name: /skip cache/i}).check();
+    await page.getByTestId("wikidata-rebuild-skip-cache").check();
     // Click Rebuild
     await page.getByRole("button", {name: /^Rebuild$/i}).click();
     await page.waitForLoadState("networkidle");
@@ -405,7 +413,7 @@ test.describe("eval-agent verification", () => {
     await installStudioMocks(page, build, {
       onWikidataVerifyStart: (body) => { startBody = body; },
     });
-    await gotoStudio(page);
+    await gotoStudio(page, "legacy");
 
     await page.getByRole("button", {name: /verify current with ai/i}).click();
     await expect(page.getByText(/AI verification.*Wikidata Studio/i)).toBeVisible({timeout: 8000});
@@ -426,7 +434,7 @@ test.describe("eval-agent verification", () => {
     await installStudioMocks(page, build, {
       onWikidataVerifyStart: (body) => { startBody = body; },
     });
-    await gotoStudio(page);
+    await gotoStudio(page, "legacy");
 
     await page.getByRole("button", {name: /verify all visible with ai/i}).click();
     await expect(page.getByText(/2 visible/)).toBeVisible({timeout: 8000});
@@ -475,8 +483,7 @@ test.describe("pagination", () => {
       });
     });
 
-    await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
-    await page.waitForLoadState("networkidle");
+    await gotoStudio(page, "legacy");
 
     // Pagination controls should be visible
     const nextBtn = page.getByRole("button", {name: /next/i});

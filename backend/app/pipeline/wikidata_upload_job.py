@@ -18,12 +18,14 @@ from app.models.run_job import (
     RunJob,
 )
 from app.models.item_override import WikidataItemOverride
+from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
 from app.pipeline import wikidata_studio, wikidata_upload
 from app.pipeline.run_job_service import (
     finish_job,
     is_cancel_requested,
     update_job_progress,
 )
+from app.services.wikibase_audit import WikibaseAuditContext
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         if job is None:
             return
         run_id = job.run_id
+        project_id = job.project_id
         params = job.params or {}
         dry_run = bool(params.get("dry_run", True))
         approved_only = bool(params.get("approved_only", True))
@@ -57,6 +60,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 it for it in native
                 if wikidata_studio.local_id_for_item(it) in approved_ids
             ]
+        ledger = await wikidata_upload.load_ledger_for_prepare(db)
 
     total = len(native)
     await update_job_progress(job_id, {
@@ -75,6 +79,13 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         return
 
     outcomes: list[Any] = []
+    audit_ctx = None if dry_run else WikibaseAuditContext(
+        actor_user_id=job.created_by,
+        channel=CHANNEL_WIKIDATA_UPLOAD,
+        project_id=project_id,
+        run_id=run_id,
+        job_id=job_id,
+    )
     try:
         for idx, item in enumerate(native):
             if await is_cancel_requested(job_id):
@@ -90,9 +101,11 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     },
                 )
                 return
-            batch_outcomes = await wikidata_upload.upload_items(
-                [item], token=token or "", dry_run=dry_run,
-            )
+            async with session_scope() as db:
+                batch_outcomes = await wikidata_upload.upload_items(
+                    [item], token=token or "", dry_run=dry_run,
+                    audit_ctx=audit_ctx, db=db, ledger=ledger,
+                )
             outcomes.extend(batch_outcomes)
             await update_job_progress(job_id, {
                 "phase": "uploading",

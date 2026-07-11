@@ -34,6 +34,16 @@ export interface MockStudioItem {
   local_id?: string;
   validation_issues?: Array<{code: string; severity: string; message: string}>;
   approved?: boolean | null;
+  upload_outcome?: string | null;
+  upload_message?: string | null;
+  upload_at?: string | null;
+  ai_verdict?: {
+    overall: string;
+    reasoning?: string;
+    model?: string;
+    judged_at?: string;
+    suggested_fixes?: Array<Record<string, unknown>>;
+  } | null;
 }
 
 export function makeStudioItem(overrides: Partial<MockStudioItem> = {}): MockStudioItem {
@@ -62,6 +72,10 @@ export function makeStudioItem(overrides: Partial<MockStudioItem> = {}): MockStu
     local_id:          overrides.local_id ?? "manuscript::Hebrew Manuscript",
     validation_issues: overrides.validation_issues ?? [],
     approved:          overrides.approved ?? null,
+    upload_outcome:    overrides.upload_outcome ?? null,
+    upload_message:    overrides.upload_message ?? "",
+    upload_at:         overrides.upload_at ?? null,
+    ai_verdict:        overrides.ai_verdict ?? null,
   };
 }
 
@@ -254,24 +268,146 @@ export async function installStudioMocks(
     });
   });
 
-  // Item override PATCH
+  // Item override + push/reconcile/ai-fix routes
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, (route) => {
-    if (route.request().method() !== "PATCH") { route.continue(); return; }
     const url = route.request().url();
-    const localId = decodeURIComponent(url.split("/items/")[1]);
+    const method = route.request().method();
+    const localId = decodeURIComponent(url.split("/items/")[1]?.split("?")[0]?.split("/")[0] ?? "");
+
+    if (method === "PATCH") {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run_id: TEST_RUN_ID,
+          local_id: localId,
+          labels: {},
+          descriptions: {},
+          aliases: {},
+          add_statements: [],
+          remove_statements: [],
+          statement_edits: {},
+          approved: true,
+        }),
+      });
+      return;
+    }
+    if (method === "DELETE") {
+      route.fulfill({status: 204, body: ""});
+      return;
+    }
+    if (method === "POST" && url.includes("/push")) {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          local_id: localId,
+          status: "created",
+          qid: "Q99999",
+          message: "ok",
+          moratorium_lifted: false,
+          test_mode: true,
+        }),
+      });
+      return;
+    }
+    if (method === "POST" && url.includes("/reconcile")) {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          local_id: localId,
+          status: "adopted",
+          qid: "Q88888",
+          method: "P8189",
+          message: "found existing item",
+        }),
+      });
+      return;
+    }
+    if (method === "POST" && url.includes("/ai-fixes/apply")) {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run_id: TEST_RUN_ID,
+          local_id: localId,
+          labels: {en: "Fixed label"},
+          descriptions: {},
+          aliases: {},
+          add_statements: [],
+          remove_statements: [],
+          statement_edits: {},
+        }),
+      });
+      return;
+    }
+    route.continue();
+  });
+
+  // Upload job
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, (route) => {
+    if (route.request().method() !== "POST") {
+      route.continue();
+      return;
+    }
+    const body = route.request().postDataJSON() as {kind?: string};
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
+        id: "job-wd-upload",
+        project_id: TEST_PROJECT_ID,
         run_id: TEST_RUN_ID,
-        local_id: localId,
-        labels: {},
-        descriptions: {},
-        aliases: {},
-        add_statements: [],
-        remove_statements: [],
-        statement_edits: {},
-        approved: true,
+        kind: body.kind ?? "wikidata_upload",
+        status: "succeeded",
+        progress: {phase: "done"},
+        params: body,
+        result: {
+          dry_run: true,
+          moratorium_lifted: false,
+          test_mode: true,
+          outcomes: [{
+            local_id: "manuscript::Hebrew Manuscript",
+            label: "Hebrew Manuscript",
+            entity_type: "manuscript",
+            qid: null,
+            status: "pending",
+            message: "would create",
+            added_properties: [],
+          }],
+        },
+        error: null,
+        created_by: null,
+        started_at: null,
+        finished_at: null,
+        cancel_requested_at: null,
+        created_at: null,
+        updated_at: null,
+      }),
+    });
+  });
+
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/*`, (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "job-wd-upload",
+        project_id: TEST_PROJECT_ID,
+        run_id: TEST_RUN_ID,
+        kind: "wikidata_upload",
+        status: "succeeded",
+        progress: {phase: "done"},
+        params: {},
+        result: {dry_run: true, moratorium_lifted: false, test_mode: true, outcomes: []},
+        error: null,
+        created_by: null,
+        started_at: null,
+        finished_at: null,
+        cancel_requested_at: null,
+        created_at: null,
+        updated_at: null,
       }),
     });
   });

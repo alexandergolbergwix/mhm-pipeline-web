@@ -4,12 +4,13 @@ import {Glass} from "@/components/glass";
 
 interface ItemValidatorBadgeProps {
   issues: ValidationIssue[];
+  localId?: string;
   /** When true, renders full chip list (for ItemPanel header).
    *  When false (default), renders a single dot for the sidebar. */
   expanded?: boolean;
 }
 
-export function ItemValidatorBadge({issues, expanded = false}: ItemValidatorBadgeProps) {
+export function ItemValidatorBadge({issues, localId, expanded = false}: ItemValidatorBadgeProps) {
   const [open, setOpen] = useState(false);
   if (issues.length === 0) return null;
 
@@ -43,6 +44,7 @@ export function ItemValidatorBadge({issues, expanded = false}: ItemValidatorBadg
     <span className="relative inline-flex items-center">
       <button
         type="button"
+        data-testid={localId ? `wikidata-item-validator-badge-${localId}` : undefined}
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         title={issues.map((i) => `${i.code}: ${i.message}`).join("\n")}
         className={`w-2 h-2 rounded-full shrink-0 ${
@@ -51,7 +53,10 @@ export function ItemValidatorBadge({issues, expanded = false}: ItemValidatorBadg
         aria-label={`${issues.length} validation issue${issues.length === 1 ? "" : "s"}`}
       />
       {open && (
-        <Glass className="absolute left-3 top-0 z-50 w-64 shadow-xl rounded-lg p-2 space-y-1 text-xs" onClick={(e) => e.stopPropagation()}
+        <Glass
+          className="absolute left-3 top-0 z-50 w-64 shadow-xl rounded-lg p-2 space-y-1 text-xs"
+          data-testid={localId ? `wikidata-item-validator-detail-${localId}` : undefined}
+          onClick={(e) => e.stopPropagation()}
         >
           {issues.map((issue, idx) => (
             <div

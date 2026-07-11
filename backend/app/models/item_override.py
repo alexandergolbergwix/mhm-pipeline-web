@@ -60,6 +60,11 @@ class WikidataItemOverride(Base):
     # None = not reviewed; True = approved for export; False = explicitly rejected.
     approved: Mapped[bool | None] = mapped_column(Boolean(), nullable=True, default=None)
 
+    ai_verdict: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    ai_verdict_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

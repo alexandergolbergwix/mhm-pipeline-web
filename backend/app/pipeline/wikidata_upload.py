@@ -37,9 +37,30 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.wikibase_cloud_write import (
+    OPERATION_ADOPT,
+    OPERATION_BLOCKED,
+    OPERATION_CREATE,
+    OPERATION_FAILED,
+    OPERATION_SKIP,
+    OPERATION_UPDATE,
+    TARGET_ITEM,
+)
+from app.pipeline.wikidata_qid_ledger import (
+    ledger_key_for_item,
+    ledger_namespace,
+    lookup_ledger_qid,
+    record_ledger_mapping,
+)
+from app.services.wikibase_audit import record_wikibase_write
+
+if TYPE_CHECKING:
+    from app.services.wikibase_audit import WikibaseAuditContext
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +71,8 @@ class UploadOutcome:
     label: str
     entity_type: str
     qid: str | None
-    status: str             # success | updated | exists | skipped | blocked | failed
+    # success | updated | exists | skipped | blocked | failed | adopted | would_adopt
+    status: str
     message: str
     added_properties: list[str]
 
@@ -61,7 +83,7 @@ class ReconcileOutcome:
     label: str
     entity_type: str
     existing_qid: str | None
-    method: str             # "p3959/shelfmark" | "identifier" | "none" | "error"
+    method: str             # "p3959/shelfmark" | "identifier" | "none" | "error" | "ledger"
     message: str
 
 
@@ -74,21 +96,18 @@ class PreparedItem:
     label: str
     entity_type: str
     existing_qid: str | None
-    method: str             # how existing_qid was resolved
+    method: str
     blocked: bool
-    block_status: str       # "" | "blocked"
+    block_status: str
     block_message: str
+    had_builder_qid: bool = False
+    adopt_candidate: bool = False
 
 
 # ── Shared reconcile + validation core ──────────────────────────────────
 
 
 def _make_reconciler() -> Any:
-    """Construct a live ``WikidataReconciler``.
-
-    Isolated behind a module-level function so tests can monkeypatch it to
-    inject a fake reconciler without touching the network.
-    """
     from converter.wikidata.reconciler import WikidataReconciler  # noqa: PLC0415
 
     return WikidataReconciler()
@@ -97,17 +116,6 @@ def _make_reconciler() -> Any:
 def _reconcile_for_upload(
     reconciler: Any, item: Any, entity_type: str,
 ) -> tuple[str | None, str]:
-    """Look up an existing Wikidata QID for *item*. Returns ``(qid, method)``.
-
-    Manuscripts reconcile by **P3959** (the NNL catalog id our items actually
-    carry) then shelfmark; persons via the conflict-checked identifier path
-    (VIAF / NLI / LCCN / GND / ISNI). Works have no deterministic identifier
-    path and are left to CREATE.
-
-    Raises:
-        ReconciliationUnavailableError: a SPARQL lookup could not be completed, so
-        the caller must fail closed and refuse to CREATE on uncertainty.
-    """
     if entity_type == "person":
         viaf = _find_statement_value(item, "P214")
         nli = _find_statement_value(item, "P8189")
@@ -133,11 +141,6 @@ def _reconcile_for_upload(
         return (qid, "p3959/shelfmark" if qid else "none")
 
     if entity_type == "work":
-        # Works (the abstract texts a manuscript contains, linked via the
-        # P1574 exemplar-of chain) have no deterministic identifier, so we
-        # reconcile by label + author using the conflict-aware matcher: a
-        # candidate whose P50 author DIFFERS from ours is rejected as a
-        # different work, never merged.
         labels = getattr(item, "labels", {}) or {}
         title = labels.get("he") or labels.get("en") or ""
         author_qid = _find_statement_value(item, "P50")
@@ -154,33 +157,38 @@ def _reconcile_for_upload(
     return (None, "none")
 
 
-def _prepare_for_upload(items: list[Any], reconciler: Any) -> list[PreparedItem]:
-    """Resolve ``existing_qid`` (fail-closed) and run the validator gate.
-
-    For every item with no builder-supplied QID we reconcile against live
-    Wikidata. If the lookup CANNOT be completed we mark the item ``blocked`` —
-    never created — so a transient WDQS outage can't mint duplicates. After
-    reconciliation every item is run through ``validate_item``; any
-    ERROR-severity issue blocks the write regardless of create-vs-update.
-
-    Mutates ``item.existing_qid`` in place on a confirmed match so the
-    downstream uploader takes UPDATE semantics.
-    """
+def _prepare_for_upload(
+    items: list[Any],
+    reconciler: Any,
+    *,
+    ledger: dict[str, str] | None = None,
+    ledger_ns: str | None = None,
+) -> list[PreparedItem]:
     from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
     from converter.wikidata.reconciler import (  # noqa: PLC0415
         ReconciliationUnavailableError,
     )
 
+    ns = ledger_ns or ledger_namespace()
     prepared: list[PreparedItem] = []
     for i, item in enumerate(items):
         local_id = _local_id(item, i)
         label = _label(item)
         et = getattr(item, "entity_type", "") or "other"
+        had_builder_qid = bool(getattr(item, "existing_qid", None))
         existing = getattr(item, "existing_qid", None)
         method = "prebuilt" if existing else "none"
+        adopt_candidate = False
 
-        # 1. Reconcile against live Wikidata when the builder didn't already
-        #    supply a QID. Fail CLOSED on lookup error.
+        if not existing and ledger:
+            key = ledger_key_for_item(item, ns)
+            ledger_qid = lookup_ledger_qid(ledger, key)
+            if ledger_qid:
+                existing = ledger_qid
+                method = "ledger"
+                adopt_candidate = True
+                item.existing_qid = ledger_qid
+
         if not existing:
             try:
                 existing, method = _reconcile_for_upload(reconciler, item, et)
@@ -195,12 +203,13 @@ def _prepare_for_upload(items: list[Any], reconciler: Any) -> list[PreparedItem]
                         "Query Service outage must never be read as 'no "
                         "existing item'. Retry when WDQS is reachable."
                     ),
+                    had_builder_qid=had_builder_qid,
                 ))
                 continue
             if existing:
+                adopt_candidate = not had_builder_qid
                 item.existing_qid = existing
 
-        # 2. Validator hard gate — block any ERROR-severity item before write.
         errors = [
             iss for iss in validate_item(item)
             if getattr(iss, "severity", "") == "error"
@@ -216,6 +225,8 @@ def _prepare_for_upload(items: list[Any], reconciler: Any) -> list[PreparedItem]
                     "overrides and rebuild before uploading — error-severity "
                     "items are never created or updated."
                 ),
+                had_builder_qid=had_builder_qid,
+                adopt_candidate=adopt_candidate,
             ))
             continue
 
@@ -223,21 +234,13 @@ def _prepare_for_upload(items: list[Any], reconciler: Any) -> list[PreparedItem]
             item=item, local_id=local_id, label=label, entity_type=et,
             existing_qid=existing, method=method, blocked=False,
             block_status="", block_message="",
+            had_builder_qid=had_builder_qid,
+            adopt_candidate=adopt_candidate,
         ))
     return prepared
 
 
-# ── Reconcile (preview endpoint) ─────────────────────────────────────────
-
-
 async def reconcile_items(items: list[Any]) -> list[ReconcileOutcome]:
-    """SPARQL-query Wikidata for each item to find existing matches.
-
-    Returns one outcome per item. NEVER writes to Wikidata. This is the
-    *preview* surface; the authoritative reconcile happens inside
-    :func:`upload_items` so the upload decision can never drift from a stale
-    preview. Both share :func:`_reconcile_for_upload`.
-    """
     return await run_in_threadpool(_reconcile_sync, items)
 
 
@@ -256,7 +259,6 @@ def _reconcile_sync(items: list[Any]) -> list[ReconcileOutcome]:
         try:
             qid, method = _reconcile_for_upload(reconciler, item, et)
             if qid:
-                # Store back so a subsequent rebuild within this request sees it.
                 item.existing_qid = qid
             out.append(ReconcileOutcome(
                 local_id=local_id, label=label, entity_type=et,
@@ -275,7 +277,7 @@ def _reconcile_sync(items: list[Any]) -> list[ReconcileOutcome]:
                     "from creation until WDQS is reachable (fail-closed)."
                 ),
             ))
-        except Exception as exc:  # noqa: BLE001 — never let one bad lookup kill the batch
+        except Exception as exc:  # noqa: BLE001
             logger.warning("reconcile failed for %r: %s", label, exc)
             out.append(ReconcileOutcome(
                 local_id=local_id, label=label, entity_type=et,
@@ -286,30 +288,136 @@ def _reconcile_sync(items: list[Any]) -> list[ReconcileOutcome]:
     return out
 
 
-# ── Upload ──────────────────────────────────────────────────────────────
+async def reconcile_single_item(
+    db: AsyncSession,
+    item: Any,
+    *,
+    record_ledger: bool = True,
+) -> ReconcileOutcome:
+    """Reconcile one item; optionally persist a ledger mapping on match."""
+    ledger = await load_ledger_for_prepare(db)
+    outcomes = await run_in_threadpool(
+        _reconcile_sync_with_ledger, [item], ledger,
+    )
+    outcome = outcomes[0]
+    if record_ledger and outcome.existing_qid:
+        key = ledger_key_for_item(item)
+        await record_ledger_mapping(
+            db, key, outcome.existing_qid,
+            local_key=_local_id(item, 0),
+            label=_label(item),
+        )
+    return outcome
+
+
+def _reconcile_sync_with_ledger(
+    items: list[Any], ledger: dict[str, str],
+) -> list[ReconcileOutcome]:
+    from converter.wikidata.reconciler import ReconciliationUnavailableError  # noqa: PLC0415
+
+    ns = ledger_namespace()
+    reconciler = _make_reconciler()
+    out: list[ReconcileOutcome] = []
+    for i, item in enumerate(items):
+        local_id = _local_id(item, i)
+        label = _label(item)
+        et = getattr(item, "entity_type", "") or "other"
+        key = ledger_key_for_item(item, ns)
+        ledger_qid = lookup_ledger_qid(ledger, key)
+        if ledger_qid:
+            item.existing_qid = ledger_qid
+            out.append(ReconcileOutcome(
+                local_id=local_id, label=label, entity_type=et,
+                existing_qid=ledger_qid, method="ledger",
+                message=f"Found {ledger_qid} via ledger",
+            ))
+            continue
+        try:
+            qid, method = _reconcile_for_upload(reconciler, item, et)
+            if qid:
+                item.existing_qid = qid
+            out.append(ReconcileOutcome(
+                local_id=local_id, label=label, entity_type=et,
+                existing_qid=qid, method=method,
+                message=(
+                    f"Found {qid} via {method}" if qid
+                    else "No existing Wikidata item found"
+                ),
+            ))
+        except ReconciliationUnavailableError:
+            raise
+        except ReconciliationUnavailableError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            out.append(ReconcileOutcome(
+                local_id=local_id, label=label, entity_type=et,
+                existing_qid=None, method="error",
+                message=f"Lookup failed: {exc}",
+            ))
+    return out
+
+
+async def load_ledger_for_prepare(db: AsyncSession) -> dict[str, str]:
+    from app.pipeline.wikidata_qid_ledger import load_global_ledger  # noqa: PLC0415
+
+    return await load_global_ledger(db)
 
 
 async def upload_items(
     items: list[Any], *,
     token: str,
     dry_run: bool,
+    audit_ctx: WikibaseAuditContext | None = None,
+    db: AsyncSession | None = None,
+    ledger: dict[str, str] | None = None,
 ) -> list[UploadOutcome]:
-    """Upload (or dry-run) every item via the real WikidataUploader.
+    if ledger is None and db is not None:
+        ledger = await load_ledger_for_prepare(db)
+    ns = ledger_namespace()
+    outcomes = await run_in_threadpool(
+        _upload_sync, items, token, dry_run, ledger or {}, ns,
+    )
+    if db is not None and audit_ctx is not None and not dry_run:
+        for outcome in outcomes:
+            await _record_outcome_audit(db, audit_ctx, outcome)
+            if outcome.qid and outcome.status in ("created", "adopted"):
+                item = next(
+                    (it for it in items if _local_id(it, 0) == outcome.local_id),
+                    None,
+                )
+                if item is not None:
+                    await record_ledger_mapping(
+                        db,
+                        ledger_key_for_item(item, ns),
+                        outcome.qid,
+                        local_key=outcome.local_id,
+                        label=outcome.label,
+                    )
+    return outcomes
 
-    Both dry-run and live reconcile each item against live Wikidata first
-    (read-only SPARQL) and run the validator gate, so the dry-run preview is
-    an accurate description of what the live run would do — including which
-    items are BLOCKED.
 
-    Live uploads respect the moratorium (``MORATORIUM_LIFTED=true``) and
-    test-mode env (``WIKIDATA_TEST_MODE=true`` points at test.wikidata.org,
-    bypassing the moratorium).
-    """
-    return await run_in_threadpool(_upload_sync, items, token, dry_run)
+async def push_single_item(
+    db: AsyncSession,
+    item: Any,
+    *,
+    token: str,
+    audit_ctx: WikibaseAuditContext | None = None,
+) -> UploadOutcome:
+    """Live create-or-update for exactly one native WikidataItem."""
+    ledger = await load_ledger_for_prepare(db)
+    outcomes = await upload_items(
+        [item], token=token, dry_run=False,
+        audit_ctx=audit_ctx, db=db, ledger=ledger,
+    )
+    return outcomes[0]
 
 
 def _upload_sync(
-    items: list[Any], token: str, dry_run: bool,
+    items: list[Any],
+    token: str,
+    dry_run: bool,
+    ledger: dict[str, str],
+    ledger_ns: str,
 ) -> list[UploadOutcome]:
     from converter.wikidata.uploader import (  # noqa: PLC0415
         UnauthorisedModificationError,
@@ -322,7 +430,7 @@ def _upload_sync(
     )
 
     if dry_run:
-        return _dry_run(items)
+        return _dry_run(items, ledger, ledger_ns)
 
     if not is_test and not moratorium_lifted:
         return [
@@ -342,10 +450,8 @@ def _upload_sync(
             for i, it in enumerate(items)
         ]
 
-    # Authoritative reconcile + validation BEFORE any write. Blocked items
-    # never reach uploader.upload_item().
     reconciler = _make_reconciler()
-    prepared = _prepare_for_upload(items, reconciler)
+    prepared = _prepare_for_upload(items, reconciler, ledger=ledger, ledger_ns=ledger_ns)
 
     uploader = WikidataUploader(token=token, is_test=is_test, batch_mode=True)
 
@@ -360,10 +466,15 @@ def _upload_sync(
             continue
         try:
             result = uploader.upload_item(p.item)
+            status = result.status
+            if p.adopt_candidate and status == "updated":
+                status = "adopted"
+            elif status == "success":
+                status = "created"
             out.append(
                 UploadOutcome(
                     local_id=p.local_id, label=p.label, entity_type=p.entity_type,
-                    qid=result.qid, status=result.status, message=result.message,
+                    qid=result.qid, status=status, message=result.message,
                     added_properties=list(result.added_properties or []),
                 ),
             )
@@ -389,9 +500,13 @@ def _upload_sync(
     return out
 
 
-def _dry_run(items: list[Any]) -> list[UploadOutcome]:
+def _dry_run(
+    items: list[Any],
+    ledger: dict[str, str],
+    ledger_ns: str,
+) -> list[UploadOutcome]:
     reconciler = _make_reconciler()
-    prepared = _prepare_for_upload(items, reconciler)
+    prepared = _prepare_for_upload(items, reconciler, ledger=ledger, ledger_ns=ledger_ns)
 
     out: list[UploadOutcome] = []
     for p in prepared:
@@ -404,18 +519,30 @@ def _dry_run(items: list[Any]) -> list[UploadOutcome]:
                 added_properties=[],
             ))
             continue
+        if p.adopt_candidate and p.existing_qid:
+            status = "would_adopt"
+            message = (
+                f"Dry-run: would ADOPT {p.existing_qid} "
+                f"(matched via {p.method}; Rule-38 guards run live)"
+            )
+        elif p.existing_qid:
+            status = "exists"
+            message = (
+                f"Dry-run: would UPDATE {p.existing_qid} "
+                f"(matched via {p.method}; Rule-38 guards run live)"
+            )
+        else:
+            status = "success"
+            message = (
+                f"Dry-run: would CREATE with {len(stmts)} statement(s) "
+                "(reconciliation found no existing item)"
+            )
         out.append(
             UploadOutcome(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
                 qid=p.existing_qid,
-                status="exists" if p.existing_qid else "success",
-                message=(
-                    f"Dry-run: would UPDATE {p.existing_qid} "
-                    f"(matched via {p.method}; Rule-38 guards run live)"
-                    if p.existing_qid
-                    else f"Dry-run: would CREATE with {len(stmts)} statement(s) "
-                         "(reconciliation found no existing item)"
-                ),
+                status=status,
+                message=message,
                 added_properties=[
                     getattr(s, "property", None) or getattr(s, "property_id", None) or ""
                     for s in stmts
@@ -423,6 +550,54 @@ def _dry_run(items: list[Any]) -> list[UploadOutcome]:
             ),
         )
     return out
+
+
+async def _record_outcome_audit(
+    db: AsyncSession,
+    ctx: WikibaseAuditContext,
+    outcome: UploadOutcome,
+) -> None:
+    operation = _audit_operation_for_status(outcome.status)
+    if operation is None:
+        return
+    await record_wikibase_write(
+        db, ctx,
+        operation=operation,
+        target_kind=TARGET_ITEM,
+        target_key=outcome.local_id,
+        wikibase_id=outcome.qid,
+        outcome_message=outcome.message or "ok",
+    )
+
+
+def _audit_operation_for_status(status: str) -> str | None:
+    return {
+        "blocked": OPERATION_BLOCKED,
+        "skipped": OPERATION_SKIP,
+        "failed": OPERATION_FAILED,
+        "created": OPERATION_CREATE,
+        "success": OPERATION_CREATE,
+        "updated": OPERATION_UPDATE,
+        "adopted": OPERATION_ADOPT,
+        "exists": OPERATION_UPDATE,
+    }.get(status)
+
+
+def prepare_items_for_export(
+    items: list[Any],
+    *,
+    ledger: dict[str, str] | None = None,
+) -> tuple[list[PreparedItem], list[PreparedItem]]:
+    """Run reconcile + validator for QS gating. Returns (eligible, blocked)."""
+    reconciler = _make_reconciler()
+    prepared = _prepare_for_upload(
+        items, reconciler,
+        ledger=ledger or {},
+        ledger_ns=ledger_namespace(),
+    )
+    eligible = [p for p in prepared if not p.blocked]
+    blocked = [p for p in prepared if p.blocked]
+    return eligible, blocked
 
 
 # ── small helpers ───────────────────────────────────────────────────────

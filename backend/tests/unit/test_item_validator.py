@@ -36,6 +36,7 @@ class _Stmt:
 class _Item:
     entity_type: str = "manuscript"
     labels: dict = field(default_factory=lambda: {"en": "Hebrew manuscript, NLI, MS 1234"})
+    descriptions: dict = field(default_factory=dict)
     statements: list = field(default_factory=list)
     existing_qid: str = ""
 
@@ -582,3 +583,34 @@ class TestP3959MarcControlNumber:
         )
         codes = [i.code for i in validate_item(item)]
         assert "P3959_ON_NON_MANUSCRIPT" not in codes
+
+
+class TestLabelHygieneWarnings:
+    def test_generic_description_warning(self) -> None:
+        item = _Item(
+            labels={"en": "MS 1"},
+            descriptions={"en": "item in the Hebrew Manuscripts Ontology (HMO)"},
+        )
+        assert "GENERIC_DESCRIPTION" in _codes(validate_item(item))
+
+    def test_description_repeats_label_warning(self) -> None:
+        item = _Item(
+            labels={"en": "MS 1"},
+            descriptions={"en": "MS 1"},
+        )
+        assert "DESCRIPTION_REPEATS_LABEL" in _codes(validate_item(item))
+
+    def test_label_quote_noise_warning(self) -> None:
+        item = _Item(labels={"en": '"Title" (in MS 1234)'})
+        assert "LABEL_QUOTE_NOISE" in _codes(validate_item(item))
+
+    def test_label_lang_mismatch_warning(self) -> None:
+        item = _Item(labels={"he": "Jerusalem"})
+        assert "LABEL_LANG_MISMATCH" in _codes(validate_item(item))
+
+    def test_inverted_name_with_trailing_ibn_not_flagged(self) -> None:
+        item = _Item(
+            entity_type="person",
+            labels={"he": "סיד, יצחק אבן"},
+        )
+        assert "INVERTED_NAME_LABEL" not in _codes(validate_item(item))

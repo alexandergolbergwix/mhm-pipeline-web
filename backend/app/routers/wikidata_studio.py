@@ -12,20 +12,25 @@ workflow's unit of truth (see Rule 54 in the desktop CLAUDE.md).
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
+from app.export.formatters import json_stream
 from app.models.event import (
     ENTITY_TYPE_WIKIDATA_OVERRIDE,
     OP_CREATE,
@@ -37,6 +42,7 @@ from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.run_job import JOB_KIND_WIKIDATA_STUDIO_BUILD, JOB_KIND_WIKIDATA_VERIFY
+from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
 from app.pipeline.verify_session_store import load_verify_session
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.agent_runner import (
@@ -54,11 +60,19 @@ from app.pipeline.agent_runner import (
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.pipeline.marc_verify_context import attach_marc_context
+from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
+from app.pipeline.wikidata_item_views import (
+    StudioBuildMissingError,
+    fetch_merged_wikidata_items,
+    fetch_validation_error_items,
+)
 from app.pipeline.wikidata_verdict_cache import (
+    sanitise_stale_wikidata_verdict,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
 )
 from app.routers.runs import _lookup_run_with_access  # noqa: PLF401 — module-internal
+from app.services.wikibase_audit import WikibaseAuditContext
 from app.versioning import apply_event
 
 logger = logging.getLogger(__name__)
@@ -534,6 +548,7 @@ async def execute_studio_build(
         hebrew_translit.clear_prewarmed_labels()
 
     if result.get("native_items"):
+        assert_wikidata_export_quality(result["native_items"])
         for it_dict, it_native in zip(
             result["items"], result["native_items"], strict=True,
         ):
@@ -608,10 +623,12 @@ def _studio_build_in_progress_detail(job_id: uuid.UUID) -> dict[str, str]:
 
 def _studio_response_from_cache(
     cached: WikidataStudioCache,
+    merged_items: list[dict[str, Any]],
     *,
     approved_only: bool,
     entity_type: str | None,
     q: str | None,
+    upload_outcome: str | None,
     sort: str,
     sort_dir: str,
     page: int,
@@ -619,9 +636,10 @@ def _studio_response_from_cache(
     cache_stale: bool = False,
 ) -> StudioBuildResponse:
     sliced, total, props, plabels, approved_item_count = _slice_items(
-        cached.result_items or [],
+        merged_items,
         entity_type=entity_type,
         q=q,
+        upload_outcome=upload_outcome,
         sort=sort,
         sort_dir=sort_dir,
         page=page,
@@ -687,6 +705,10 @@ async def build_studio(
         default=50, ge=1, le=500,
         description="Items per page. Max 500.",
     ),
+    upload_outcome: str | None = Query(
+        default=None,
+        description="Filter by last upload outcome (create/adopt/update/blocked/…).",
+    ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StudioBuildResponse:
@@ -709,11 +731,14 @@ async def build_studio(
     if not force_rebuild and cached is not None:
         if cached.input_fingerprint == fingerprint:
             logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
+            merged = await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only)
             return _studio_response_from_cache(
                 cached,
+                merged,
                 approved_only=approved_only,
                 entity_type=entity_type,
                 q=q,
+                upload_outcome=upload_outcome,
                 sort=sort,
                 sort_dir=sort_dir,
                 page=page,
@@ -730,9 +755,11 @@ async def build_studio(
         )
         return _studio_response_from_cache(
             cached,
+            await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only),
             approved_only=approved_only,
             entity_type=entity_type,
             q=q,
+            upload_outcome=upload_outcome,
             sort=sort,
             sort_dir=sort_dir,
             page=page,
@@ -765,21 +792,57 @@ async def download_quickstatements(
                     "explicitly ticked 'Approved' in the Studio item overlay. "
                     "Independent of approved_only (which filters authority matches).",
     ),
+    gated: bool = Query(
+        default=True,
+        description="When true (default), run reconcile+validator and exclude blocked items.",
+    ),
+    ack: str | None = Query(default=None, description="Set to 'raw' with gated=false for ungated export."),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> PlainTextResponse:
     """Plain-text QuickStatements TSV — paste into
     https://quickstatements.toolforge.org."""
+    if not gated:
+        if ack != "raw":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ungated QuickStatements export requires gated=false and ack=raw.",
+            )
+        logger.warning("wikidata QS ungated export for run %s by user %s", run_id, auth.user.id)
+
+    native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
     if item_approved_only:
-        native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
         override_rows = (
             await db.execute(
                 select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
             )
         ).scalars().all()
         approved_ids = {r.local_id for r in override_rows if r.approved}
-        filtered = [it for it in native if wikidata_studio.local_id_for_item(it) in approved_ids]
-        qs_text = await wikidata_studio.quickstatements_for_items(filtered)
+        native = [it for it in native if wikidata_studio.local_id_for_item(it) in approved_ids]
+
+    if gated:
+        ledger = await wikidata_upload.load_ledger_for_prepare(db)
+        eligible, blocked = wikidata_upload.prepare_items_for_export(
+            native, ledger=ledger,
+        )
+        for p in blocked:
+            if p.method == "error" and "Reconciliation lookup" in p.block_message:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=p.block_message,
+                )
+        native = [p.item for p in eligible]
+        qs_text = await wikidata_studio.quickstatements_for_items(native)
+        header_lines = []
+        if blocked:
+            header_lines.append(f"# excluded {len(blocked)} items:")
+            for p in blocked[:50]:
+                header_lines.append(f"# {p.local_id} — {p.block_message}")
+            if len(blocked) > 50:
+                header_lines.append(f"# … and {len(blocked) - 50} more")
+            qs_text = "\n".join(header_lines) + "\n" + qs_text
+    elif item_approved_only or approved_only:
+        qs_text = await wikidata_studio.quickstatements_for_items(native)
     else:
         cached = await _get_studio_cache_row(db, run_id, approved_only)
         if cached is None:
@@ -899,6 +962,8 @@ async def upload_to_wikidata(
     same create/update/BLOCKED decision the live run would take."""
     import os  # noqa: PLC0415
 
+    run = await _lookup_run_with_access(db, run_id, auth, write=not dry_run)
+
     # Build the items first (with the latest approval state).
     native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
 
@@ -930,12 +995,307 @@ async def upload_to_wikidata(
 
     outcomes = await wikidata_upload.upload_items(
         native, token=token or "", dry_run=dry_run,
+        audit_ctx=WikibaseAuditContext(
+            actor_user_id=auth.user.id,
+            channel=CHANNEL_WIKIDATA_UPLOAD,
+            project_id=run.project_id,
+            run_id=run_id,
+        ) if not dry_run else None,
+        db=db if not dry_run else None,
     )
     return UploadResponse(
         dry_run=dry_run,
         moratorium_lifted=os.environ.get("MORATORIUM_LIFTED", "").lower() == "true",
         test_mode=os.environ.get("WIKIDATA_TEST_MODE", "").lower() == "true",
         outcomes=[UploadOutcomeDto(**o.__dict__) for o in outcomes],
+    )
+
+
+class WikidataItemPushResponse(BaseModel):
+    local_id: str
+    label: str
+    entity_type: str
+    qid: str | None
+    status: str
+    message: str
+
+
+@router.get("/{run_id}/wikidata-studio/items/ai-verify/cached-verdicts")
+async def get_cached_wikidata_item_verdicts(
+    run_id: uuid.UUID,
+    tier_model: str | None = Query(default=None),
+    approved_only: bool = Query(default=True),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, dict[str, Any]]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+
+    judge_model = tier_model or GEMINI_MODEL
+    try:
+        items = await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only)
+    except StudioBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    attach_marc_context(items, await _load_marc_records_for_run(db, run_id))
+    out: dict[str, dict[str, Any]] = {}
+    for item in items:
+        local_id = str(item.get("local_id") or "")
+        fresh = sanitise_stale_wikidata_verdict(
+            item,
+            item.get("ai_verdict") if isinstance(item.get("ai_verdict"), dict) else None,
+            judge_model=judge_model,
+            marc_context=item.get("_marc_context") if isinstance(item.get("_marc_context"), dict) else None,
+        )
+        if fresh:
+            out[local_id] = fresh
+            continue
+        hit = await read_from_inference_cache(
+            db,
+            kind="ai_verdict",
+            query_summary=wikidata_verdict_query_summary(item, judge_model),
+        )
+        if hit is None:
+            continue
+        verdict = hit.get("verdict") or {} if isinstance(hit, dict) else {}
+        out[local_id] = {
+            "overall": verdict.get("overall") or "unknown",
+            "reasoning": verdict.get("reasoning"),
+            "model": hit.get("judge_id") if isinstance(hit, dict) else None,
+            "evaluator": (hit.get("evaluator") if isinstance(hit, dict) else None) or "wikidata_item",
+        }
+    return out
+
+
+@router.get("/{run_id}/wikidata-studio/items/validation-errors")
+async def list_validation_errors(
+    run_id: uuid.UUID,
+    approved_only: bool = Query(default=True),
+    on_wikidata_only: bool = Query(default=False),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    try:
+        return await fetch_validation_error_items(
+            db, run_id, approved_only=approved_only, on_wikidata_only=on_wikidata_only,
+        )
+    except StudioBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.get("/{run_id}/wikidata-studio/items/export")
+async def export_wikidata_items(
+    run_id: uuid.UUID,
+    format: Literal["json", "csv"] = Query(default="json"),
+    approved_only: bool = Query(default=True),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    await _lookup_run_with_access(db, run_id, auth)
+    try:
+        items = await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only)
+    except StudioBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    filename = f"run-{run_id}-wikidata-studio-items.{format}"
+    if format == "json":
+        return StreamingResponse(
+            json_stream({"run_id": str(run_id), "items": items}),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    def _csv_stream():
+        buf = io.StringIO()
+        fields = [
+            "local_id", "entity_type", "existing_qid", "approved",
+            "label_en", "label_he",
+            "upload_outcome", "upload_message", "upload_at",
+            "ai_verdict_overall", "ai_verdict_reasoning", "ai_verdict_model",
+            "ai_verdict_judged_at",
+        ]
+        writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for it in items:
+            labels = it.get("labels") or {}
+            av = it.get("ai_verdict") if isinstance(it.get("ai_verdict"), dict) else {}
+            writer.writerow({
+                "local_id": it.get("local_id"),
+                "entity_type": it.get("entity_type"),
+                "existing_qid": it.get("existing_qid"),
+                "approved": it.get("approved"),
+                "label_en": labels.get("en"),
+                "label_he": labels.get("he"),
+                "upload_outcome": it.get("upload_outcome"),
+                "upload_message": it.get("upload_message"),
+                "upload_at": it.get("upload_at"),
+                "ai_verdict_overall": av.get("overall"),
+                "ai_verdict_reasoning": av.get("reasoning"),
+                "ai_verdict_model": av.get("model"),
+                "ai_verdict_judged_at": it.get("ai_verdict_at") or av.get("judged_at"),
+            })
+        yield buf.getvalue()
+
+    return StreamingResponse(
+        _csv_stream(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/{run_id}/wikidata-studio/items/import")
+async def import_wikidata_items(
+    run_id: uuid.UUID,
+    file: UploadFile = File(...),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    try:
+        known = {
+            str(i.get("local_id") or "")
+            for i in await fetch_merged_wikidata_items(db, run_id)
+        }
+    except StudioBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    raw = await file.read()
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="import file must be UTF-8 JSON") from exc
+
+    rows = payload.get("items") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=400, detail="import JSON must contain an items array")
+
+    imported = skipped = 0
+    errors: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            skipped += 1
+            continue
+        local_id = str(row.get("local_id") or "")
+        if not local_id or local_id not in known:
+            skipped += 1
+            errors.append(f"unknown local_id {local_id!r}")
+            continue
+        await patch_item_override(
+            run_id,
+            local_id,
+            ItemOverridePayload(
+                labels=row.get("labels"),
+                descriptions=row.get("descriptions"),
+                aliases=row.get("aliases"),
+                add_statements=row.get("add_statements"),
+                remove_statements=row.get("remove_statements"),
+                statement_edits=row.get("statement_edits"),
+                approved=row.get("approved"),
+            ),
+            auth,
+            db,
+        )
+        imported += 1
+
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+@router.post("/{run_id}/wikidata-studio/items/{local_id}/push", response_model=WikidataItemPushResponse)
+async def push_wikidata_item(
+    run_id: uuid.UUID,
+    local_id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> WikidataItemPushResponse:
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    try:
+        await fetch_merged_wikidata_items(db, run_id)
+    except StudioBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    native = await _build_native_items(db, run_id, auth, approved_only=True)
+    item = next(
+        (it for it in native if wikidata_studio.local_id_for_item(it) == local_id),
+        None,
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"unknown local_id {local_id!r}")
+
+    token = await _unwrap_user_secret(db, auth, "wikidata")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Live push requires a Wikidata token in Settings.",
+        )
+
+    await db.commit()
+
+    outcome = await wikidata_upload.push_single_item(
+        db, item,
+        token=token,
+        audit_ctx=WikibaseAuditContext(
+            actor_user_id=auth.user.id,
+            channel=CHANNEL_WIKIDATA_UPLOAD,
+            project_id=run.project_id,
+            run_id=run_id,
+        ),
+    )
+    return WikidataItemPushResponse(
+        local_id=outcome.local_id,
+        label=outcome.label,
+        entity_type=outcome.entity_type,
+        qid=outcome.qid,
+        status=outcome.status,
+        message=outcome.message,
+    )
+
+
+class WikidataReconcileItemResponse(BaseModel):
+    local_id: str
+    label: str
+    entity_type: str
+    existing_qid: str | None
+    method: str
+    message: str
+    status: str
+
+
+@router.post("/{run_id}/wikidata-studio/items/{local_id}/reconcile", response_model=WikidataReconcileItemResponse)
+async def reconcile_wikidata_item(
+    run_id: uuid.UUID,
+    local_id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> WikidataReconcileItemResponse:
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    native = await _build_native_items(db, run_id, auth, approved_only=True)
+    item = next(
+        (it for it in native if wikidata_studio.local_id_for_item(it) == local_id),
+        None,
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"unknown local_id {local_id!r}")
+
+    from converter.wikidata.reconciler import ReconciliationUnavailableError  # noqa: PLC0415
+
+    await db.commit()
+    try:
+        outcome = await wikidata_upload.reconcile_single_item(db, item, record_ledger=True)
+    except ReconciliationUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    status_label = "adopted" if outcome.existing_qid else "not_found"
+    return WikidataReconcileItemResponse(
+        local_id=outcome.local_id,
+        label=outcome.label,
+        entity_type=outcome.entity_type,
+        existing_qid=outcome.existing_qid,
+        method=outcome.method,
+        message=outcome.message,
+        status=status_label,
     )
 
 
@@ -1444,6 +1804,7 @@ def _slice_items(
     *,
     entity_type: str | None,
     q: str | None,
+    upload_outcome: str | None = None,
     sort: str,
     sort_dir: str,
     page: int,
@@ -1509,6 +1870,11 @@ def _slice_items(
     filtered = all_items
     if entity_type and entity_type != "all":
         filtered = [it for it in filtered if it.get("entity_type") == entity_type]
+    if upload_outcome:
+        filtered = [
+            it for it in filtered
+            if (it.get("upload_outcome") or "") == upload_outcome
+        ]
     if q:
         q_lower = q.strip().lower()
         def _matches(it: dict[str, Any]) -> bool:
@@ -1621,6 +1987,12 @@ async def _build_native_items(
         return_native=True,
     )
     return result.get("native_items") or []
+
+
+async def _load_marc_records_for_run(db: AsyncSession, run_id: uuid.UUID) -> list[dict[str, Any]]:
+    from app.pipeline.marc_verify_context import load_run_marc_records  # noqa: PLC0415
+
+    return await load_run_marc_records(db, run_id)
 
 
 async def _fetch_wikidata_verify_items(
@@ -1764,8 +2136,12 @@ async def _wikidata_verify_event_stream(
         on_disk_verdicts = read_run_verdicts(state_dir) if (uncached_items and not eval_agent_error) else []
         items_by_id = {
             str(i.get("_local_id") or i.get("local_id") or ""): i
-            for i in uncached_items
+            for i in items
         }
+        verdicts_to_persist: list[dict[str, Any]] = [
+            _cached_wikidata_verdict_event(item, cached_payload)
+            for item, cached_payload in pre_cached
+        ]
         for v in on_disk_verdicts:
             cand = v.get("candidate") if isinstance(v.get("candidate"), dict) else None
             if isinstance(cand, dict):
@@ -1779,8 +2155,24 @@ async def _wikidata_verify_event_stream(
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(session_dir, ev)
             yield ev
+            verdicts_to_persist.append(v)
 
-        if on_disk_verdicts:
+        if verdicts_to_persist:
+            try:
+                from app.pipeline.wikidata_item_verify import (  # noqa: PLC0415
+                    _persist_wikidata_verdicts_to_overrides,
+                )
+
+                await _persist_wikidata_verdicts_to_overrides(
+                    run_id=UUID(run_id),
+                    items_by_id=items_by_id,
+                    verdicts=verdicts_to_persist,
+                    judge_model=tier_model or "gemini-3.5-flash",
+                    marc_records=marc_records,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("failed to persist Wikidata item verdicts to overrides")
+
             try:
                 await _write_wikidata_verdicts_to_cache(
                     items_by_id={

@@ -15,7 +15,7 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-WIKIDATA_VERDICT_SCHEMA = "w50_v1"
+WIKIDATA_VERDICT_SCHEMA = "w57_v1"
 
 
 def _record_ids(item: dict[str, Any]) -> list[str]:

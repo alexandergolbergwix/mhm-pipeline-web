@@ -206,14 +206,19 @@ def validate_item(item: Any) -> list[ValidationIssue]:
     if label and "," in label and etype == "person":
         before, after = label.split(",", 1)
         if before.strip() and after.strip() and not after.strip()[0].isdigit():
-            issues.append(ValidationIssue(
-                "error", "INVERTED_NAME_LABEL",
-                f"Label {label!r} is in MARC-inverted form — "
-                "use natural 'Given Surname' in labels and keep the "
-                "inverted form in P1559 only (Epìdosis report, "
-                "Q139230386).",
-                _REF_P1559,
-            ))
+            # W-53: trailing אבן after an inverted heading is an Ibn patronymic,
+            # not MARC inversion to fix in the label slot.
+            if not after.strip().endswith("אבן"):
+                issues.append(ValidationIssue(
+                    "error", "INVERTED_NAME_LABEL",
+                    f"Label {label!r} is in MARC-inverted form — "
+                    "use natural 'Given Surname' in labels and keep the "
+                    "inverted form in P1559 only (Epìdosis report, "
+                    "Q139230386).",
+                    _REF_P1559,
+                ))
+
+    _check_label_hygiene(item, etype, label, issues)
 
     # 6. Institutional keyword on a person (P31=Q5)
     if etype == "person":
@@ -515,6 +520,92 @@ def validate_item(item: Any) -> list[ValidationIssue]:
             ))
 
     return issues
+
+
+_GENERIC_DESCRIPTION_PATTERNS = (
+    "hebrew manuscripts ontology",
+    "hmo)",
+    "in the hebrew manuscripts",
+)
+
+
+def _any_description(item: Any) -> str:
+    descriptions = getattr(item, "descriptions", {}) or {}
+    if isinstance(descriptions, dict):
+        return str(
+            descriptions.get("en") or descriptions.get("he")
+            or next(iter(descriptions.values()), "") or "",
+        ).strip()
+    return ""
+
+
+def _check_label_hygiene(
+    item: Any,
+    etype: str,
+    label: str,
+    issues: list[ValidationIssue],
+) -> None:
+    from converter.rdf.rdf_helpers import clean_marc_label, label_language_for_text  # noqa: PLC0415
+
+    desc = _any_description(item)
+    if desc and label and desc.strip().casefold() == label.strip().casefold():
+        issues.append(ValidationIssue(
+            "warning", "DESCRIPTION_REPEATS_LABEL",
+            "Description merely repeats the label — add substantive catalog "
+            "context (shelfmark, role, manuscript scope).",
+            _REF_HELP_LABEL,
+        ))
+
+    if desc:
+        desc_lo = desc.casefold()
+        if not desc_lo or desc_lo == label.strip().casefold():
+            issues.append(ValidationIssue(
+                "warning", "GENERIC_DESCRIPTION",
+                "Description is empty or identical to the label.",
+                _REF_HELP_LABEL,
+            ))
+        elif any(pat in desc_lo for pat in _GENERIC_DESCRIPTION_PATTERNS):
+            issues.append(ValidationIssue(
+                "warning", "GENERIC_DESCRIPTION",
+                "Description looks like a generic ontology boilerplate string.",
+                _REF_HELP_LABEL,
+            ))
+
+    if label:
+        cleaned = clean_marc_label(label, strip_ms_scope=True)
+        if cleaned != label.strip():
+            issues.append(ValidationIssue(
+                "warning", "LABEL_QUOTE_NOISE",
+                "Label carries ISBD quote noise or an (in MS …) scope suffix.",
+                _REF_HELP_LABEL,
+            ))
+        if '""' in label or (label.count('"') % 2 == 1):
+            issues.append(ValidationIssue(
+                "warning", "LABEL_QUOTE_NOISE",
+                "Label has unbalanced or doubled ISBD quote wrappers.",
+                _REF_HELP_LABEL,
+            ))
+
+    labels = getattr(item, "labels", {}) or {}
+    if isinstance(labels, dict):
+        for lang, text in labels.items():
+            if not text:
+                continue
+            expected = label_language_for_text(str(text))
+            if lang == "he" and expected == "en" and _LATIN_SCRIPT.search(str(text)):
+                if not _HEBREW_SCRIPT.search(str(text)):
+                    issues.append(ValidationIssue(
+                        "warning", "LABEL_LANG_MISMATCH",
+                        f"Latin-only text tagged as Hebrew label ({text!r}).",
+                        _REF_HELP_LABEL,
+                    ))
+            if lang == "en" and expected == "he" and _HEBREW_SCRIPT.search(str(text)):
+                if not _LATIN_SCRIPT.search(str(text)):
+                    issues.append(ValidationIssue(
+                        "warning", "LABEL_LANG_MISMATCH",
+                        f"Hebrew text tagged as English label ({text!r}).",
+                        _REF_HELP_LABEL,
+                    ))
 
 
 def worst_severity(issues: list[ValidationIssue]) -> str:

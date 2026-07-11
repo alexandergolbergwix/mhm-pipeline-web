@@ -1787,6 +1787,50 @@ the instance's direct-property URI, never ``wdt:``. Tests:
 
 ---
 
+### Rule W-57 — Wikidata Studio HMO-parity surface + write-path ledger (added 2026-07-10)
+
+The Wikidata Studio had fail-closed upload guards (Rule W-30) but lacked the
+review surface and durable state the HMO Wikibase Studio accumulated through
+Rules W-41…W-56: no upload audit trail, no merged read model, no AI-verdict
+pills outside the verify modal, no single-item push, no global QID ledger, and
+an ungated QuickStatements export that bypassed every guard.
+
+Invariants now enforced:
+
+- **Merged read model** — `fetch_merged_wikidata_items` joins build cache +
+  curator overrides + global QID ledger + latest `wikibase_cloud_writes` row
+  (channel `wikidata_upload`) + stale-sanitized `ai_verdict` on the override row.
+- **Durable upload audit** — `record_wikibase_write` per live outcome
+  (`create`/`update`/`adopt`/`skip`/`failed`/`blocked`); dry-run writes none.
+  Reuses `wikibase_cloud_writes`, not a parallel table.
+- **AI verdict persistence** — `WikidataItemOverride.ai_verdict`/`ai_verdict_at`
+  after verify streams (Rule W-17 pattern); content-addressed cache keys
+  (`WIKIDATA_VERDICT_SCHEMA`, currently `w57_v1`).
+- **Global QID ledger** — `wikibase_entity_mappings` rows with
+  `wikidata:{marc|person|work}:…` keys (`run_id IS NULL`) recorded on CREATE,
+  ADOPT, and per-item reconcile; consulted before WDQS on every write path.
+  Test-mode keys use the `wikidata-test:` prefix.
+- **Adopt semantics** — reconcile match → `adopted`/`would_adopt` outcome +
+  ledger write + audit `OPERATION_ADOPT`, not silent UPDATE flip.
+- **Single-item push** — `POST …/items/{local_id}/push` applies override-merged
+  state, runs full `_prepare_for_upload`, commits DB tx before network (Rule
+  W-40). Moratorium/test-mode honesty unchanged.
+- **Gated QuickStatements** — `GET …/quickstatements.txt?gated=true` (default)
+  runs `_prepare_for_upload`; blocked items excluded with comment header; 503 on
+  `ReconciliationUnavailableError`. Escape hatch: `gated=false&ack=raw` (logged).
+- **Frontend parity** — `WikidataItemTable` + `WikidataItemDetailDrawer` +
+  `WikidataUploadPanel` (pre/post verify confirm gate, Rule W-41/W-44); legacy
+  sidebar view preserved as secondary toggle.
+
+Tests: `test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`,
+`test_wikidata_qid_ledger.py`, `test_wikidata_single_push.py`,
+`test_wikidata_export_quality.py`, `test_wikidata_items_export_import.py`,
+extended `test_wikidata_upload_guards.py`, `frontend/e2e/wikidata-item-*.spec.ts`.
+
+Migration: `0033_wikidata_override_ai_verdict`.
+
+---
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

@@ -31,12 +31,21 @@
 9. **R9 — Curator edits persist ONLY as `WikidataItemOverride` diffs**, applied
    at rebuild time before validation; never mutate cached `result_items` or
    builder output directly. *Why:* items are rebuilt from source on every fingerprint change — un-persisted edits evaporate.
-10. **R10 — Treat the QuickStatements download as ungated.** Any bulk QS
-    import MUST get manual review (or close the gap first); `item_approved_only`
-    is the only filter. *Why:* QS CREATE lines bypass reconcile, validator, moratorium, and all Rule-38 guards.
+10. **R10 — QuickStatements export is gated by default.** `GET …/quickstatements.txt`
+    runs `_prepare_for_upload` when `gated=true` (default): blocked items are
+    excluded with comment headers; WDQS outage returns 503. Ungated export
+    requires `gated=false&ack=raw` and is logged. *Why:* raw QS CREATE lines
+    bypass reconcile, validator, moratorium, and Rule-38 guards (Rule W-30 residual).
 11. **R11 — The build never runs inside an HTTP request when there is no cache
     row** — it goes through the `wikidata_studio_build` run-job (409 + attach).
     A stale cache is served with `cache_stale=true`, not silently rebuilt.
     *Why:* Heroku's 30 s router timeout, and passive page loads must not spawn surprise job-tray banners.
 12. **R12 — Live uploads use the curator's own encrypted Wikidata token**
     (Settings → `_unwrap_user_secret`), never a shared credential. *Why:* attribution and the `_is_our_item` authorship check both depend on the acting user.
+13. **R13 — Wikidata Studio parity with HMO review surface (Rule W-57).**
+    Merged read model (`fetch_merged_wikidata_items`), durable
+    `wikidata_upload` audit rows, global QID ledger + adopt semantics,
+    AI-verdict persistence on overrides, single-item push, gated QS, and the
+    table/drawer/upload-hub UI are the canonical curator paths. *Why:* the
+    2026-04 duplicate-creation failure mode needed audit + ledger + surface
+    parity, not guards alone.

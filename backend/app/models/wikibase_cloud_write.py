@@ -13,6 +13,7 @@ from app.models.base import Base, _new_uuid
 
 CHANNEL_MANIFEST_UPLOAD = "manifest_upload"
 CHANNEL_ITEM_UPLOAD = "item_upload"
+CHANNEL_WIKIDATA_UPLOAD = "wikidata_upload"
 CHANNEL_SCHEMA_BOOTSTRAP = "schema_bootstrap"
 
 OPERATION_CREATE = "create"
@@ -24,6 +25,7 @@ OPERATION_FAILED = "failed"
 # distinct from OPERATION_CREATE (brand-new item) so the review table can
 # tell curators "linked to an existing item" apart from "created new".
 OPERATION_ADOPT = "adopt"
+OPERATION_BLOCKED = "blocked"
 
 TARGET_PAGE = "page"
 TARGET_ITEM = "item"

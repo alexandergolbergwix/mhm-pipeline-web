@@ -17,6 +17,7 @@ import {
 import {ItemOverrideDialog} from "@/components/ItemOverrideDialog";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
+import {WikidataItemsPanel} from "@/components/wikidata/WikidataItemsPanel";
 import {ItemValidatorBadge} from "@/components/wikidata/ItemValidatorBadge";
 import {ItemApprovalBadge} from "@/components/wikidata/ItemApprovalBadge";
 import {WikidataComparePanel} from "@/components/wikidata/WikidataComparePanel";
@@ -37,6 +38,7 @@ import {LoadingOverlay, LoadingPanel} from "@/components/LoadingOverlay";
 type EntityFilter = "all" | "manuscript" | "person" | "work";
 type ExistFilter  = "any" | "existing" | "new";
 type SortKey      = "label" | "statements" | "entity_type" | "wikidata";
+type ReviewMode = "modern" | "legacy";
 type View         = "item" | "table";
 
 // Studio table-view sort
@@ -102,6 +104,11 @@ export default function WikidataStudio() {
 
   const [marcPopupCn, setMarcPopupCn] = useState<string | null>(null);
   const labelStore = useLabelStore();
+
+  // Modern table+drawer (default) vs legacy sidebar Item/Table views.
+  const [reviewMode, setReviewMode] = useState<ReviewMode>(() =>
+    (localStorage.getItem("mhm.studio.reviewMode") as ReviewMode) || "modern");
+  useEffect(() => { localStorage.setItem("mhm.studio.reviewMode", reviewMode); }, [reviewMode]);
 
   // Item view (one item at a time) vs. table view (every statement in
   // the run, flat). Persisted across reloads.
@@ -250,6 +257,52 @@ export default function WikidataStudio() {
   }, [build, existFilter, minStmts]);
 
   if (error) return <Layout><Glass className="p-6 text-danger">{error}</Glass></Layout>;
+
+  if (reviewMode === "modern" && runId) {
+    return (
+      <Layout>
+        <div className="space-y-6">
+          <Glass as="section" className="p-6 space-y-2">
+            <div className="kicker">
+              Wikidata Studio · <Link to={`/runs/${runId}`} className="hover:text-ink underline">back to run</Link>
+            </div>
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <h2 className="text-2xl font-semibold">Items ready to upload</h2>
+              <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setReviewMode("modern")}
+                  className="px-3 py-1 rounded-full transition bg-white/12 text-ink"
+                >
+                  Review table
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewMode("legacy")}
+                  className="px-3 py-1 rounded-full transition muted hover:text-ink"
+                >
+                  Legacy sidebar
+                </button>
+              </GlassPill>
+            </div>
+          </Glass>
+
+          <WikidataItemsPanel
+            runId={runId}
+            projectId={projectId}
+            approvedOnly={approvedOnly}
+            uploadApprovedOnly={uploadApprovedOnly}
+            forceRebuild={forceRebuild}
+            onApprovedOnlyChange={setApprovedOnly}
+            onForceRebuildChange={setForceRebuild}
+            onUploadApprovedOnlyChange={setUploadApprovedOnly}
+            onBuildLoaded={setBuild}
+          />
+        </div>
+      </Layout>
+    );
+  }
+
   if (!build) return (
     <Layout>
       <Glass className="p-6">
@@ -277,8 +330,26 @@ export default function WikidataStudio() {
           <div className="kicker">
             Wikidata Studio · <Link to={`/runs/${runId}`} className="hover:text-ink underline">back to run</Link>
           </div>
-          <h2 className="text-2xl font-semibold">Items ready to upload</h2>
-          <p className="muted text-sm leading-relaxed max-w-2xl">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-2xl font-semibold">Items ready to upload</h2>
+            <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setReviewMode("modern")}
+                className={`px-3 py-1 rounded-full transition ${reviewMode === "modern" ? "bg-white/12 text-ink" : "muted hover:text-ink"}`}
+              >
+                Review table
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewMode("legacy")}
+                className={`px-3 py-1 rounded-full transition ${reviewMode === "legacy" ? "bg-white/12 text-ink" : "muted hover:text-ink"}`}
+              >
+                Legacy sidebar
+              </button>
+            </GlassPill>
+          </div>
+          <p className="muted text-sm leading-relaxed max-w-2xl w-full">
             Every candidate match feeds the builder by default. Flip
             <b className="text-ink"> Approved only</b> before exporting
             the final QuickStatements. <b className="text-ink">Reconcile</b>{" "}
