@@ -77,7 +77,7 @@ class TestRdfBuildCollapsedMarc:
 
 class TestWikidataStudioWorks:
     def test_works_created_from_505a_subfield_key(self) -> None:
-        """Raw 505 titles require curator approval before work projection."""
+        """Clean raw MARC 505 titles are explicit contents evidence."""
         rec = {
             "_control_number": "990001",
             "245$a": "כתב יד",
@@ -86,18 +86,23 @@ class TestWikidataStudioWorks:
         }
         result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
         summary = result["summary"]
-        assert summary["works"] == 0, f"unapproved raw 505 titles leaked: {summary['works']}"
+        assert summary["works"] == 3
+        works = [item for item in result["items"] if item["entity_type"] == "work"]
+        assert all(
+            item["work_candidate_evidence"][0]["source_field"] == "505"
+            for item in works
+        )
         assert summary["manuscripts"] == 1
 
     def test_works_created_from_flat_contents(self) -> None:
-        """Structured contents without an approved identity are omitted."""
+        """Clean structured contents default to MARC 505 evidence."""
         rec = {
             "_control_number": "990002",
             "title": "כתב יד",
             "contents": [{"title": "פירוש א"}, {"title": "פירוש ב"}],
         }
         result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
-        assert result["summary"]["works"] == 0
+        assert result["summary"]["works"] == 2
 
     def test_prepare_record_for_pipeline_derives_contents(self) -> None:
         rec = {"_control_number": "X", "505$a": "א -- ב -- ג"}

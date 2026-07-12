@@ -488,6 +488,21 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                     _REF_DATA_MODEL,
                 ))
 
+    # 16c. New work items require explicit accepted candidate evidence.
+    if etype == "work" and not getattr(item, "existing_qid", None):
+        evidence = getattr(item, "work_candidate_evidence", []) or []
+        accepted = [
+            row for row in evidence
+            if isinstance(row, dict) and row.get("accepted") is True
+        ]
+        if not accepted:
+            issues.append(ValidationIssue(
+                "error", "WORK_WITHOUT_SOURCE_EVIDENCE",
+                "New work item has no accepted MARC 505, structured MARC 500, "
+                "curator-approved NER, or authority evidence.",
+                _REF_NOTABILITY,
+            ))
+
     # 17a. P3959 on a non-manuscript item — Geagea complaint 2026-04-15.
     #      P3959 is a BIBLIOGRAPHIC record identifier: it belongs on the
     #      manuscript (Q87167 instance), not on person or work items.

@@ -21,6 +21,7 @@ from converter.wikidata.item_builder import (
     _person_key,
     _split_work_title_author,
 )
+from converter.wikidata.work_candidates import assess_work_candidate
 
 
 class ContentProjectionMixin:
@@ -30,48 +31,52 @@ class ContentProjectionMixin:
         record: dict[str, object],
         ref: list[dict[str, str]],
     ) -> None:
-        """Add P1574 (exemplar of) for contained works.
-
-        Links manuscript to known Wikidata work items when possible.
-        Also processes NER-extracted WORK entities from MARC 505.
-        """
+        """Add P1574 only for source-backed, identifiable contained works."""
         seen_works: set[str] = set()
         approved_work_titles = {
             _clean_work_title(str(match.get("name") or match.get("matched_name") or "")).casefold()
             for match in (record.get("marc_authority_matches") or [])
             if isinstance(match, dict)
+            and bool(match.get("approved", True))
             and str(match.get("role") or "").strip().lower()
             in {"contained work", "work", "exemplar of", "related work"}
         }
 
-        # From structured MARC 505 data
+        def remember_evidence(target: WikidataItem, evidence: dict[str, object]) -> None:
+            if evidence not in target.work_candidate_evidence:
+                target.work_candidate_evidence.append(evidence)
+
         for content in record.get("contents") or []:
-            work_title = (
-                str(content.get("title", "")) if isinstance(content, dict) else str(content)
+            entry = content if isinstance(content, dict) else {"title": str(content)}
+            raw_title = str(entry.get("title") or "").strip()
+            candidate_title, embedded_author = _split_work_title_author(raw_title)
+            cleaned = _clean_work_title(candidate_title)
+            work_qid = KNOWN_WORK_QIDS.get(cleaned) or KNOWN_WORK_QIDS.get(raw_title)
+            approved = cleaned.casefold() in approved_work_titles
+            decision = assess_work_candidate(
+                candidate_title,
+                source_field=entry.get("source_field") or "505",
+                approved=approved,
+                known_qid=work_qid,
+                candidate_kind=entry.get("candidate_kind") or "",
+                folio_range=entry.get("folio_range") or "",
+                sequence=entry.get("sequence"),
+                source_text=entry.get("source_text") or raw_title,
             )
-            if not work_title or not work_title.strip():
+            evidence = decision.evidence()
+            remember_evidence(item, evidence)
+            work_title = decision.title
+            key = work_title.casefold()
+            if not decision.accepted or not work_title or key in seen_works:
                 continue
-            work_title = work_title.strip()
-            if work_title in seen_works:
-                continue
-            seen_works.add(work_title)
+            seen_works.add(key)
 
             qualifiers: list[dict[str, object]] = []
-            if isinstance(content, dict) and content.get("folio_range"):
+            if decision.folio_range:
                 qualifiers.append(
-                    {
-                        "property": "P958",
-                        "value": str(content["folio_range"]),
-                        "type": "string",
-                    }
+                    {"property": "P958", "value": decision.folio_range, "type": "string"}
                 )
 
-            work_qid = KNOWN_WORK_QIDS.get(work_title)
-            if (
-                not work_qid
-                and _clean_work_title(work_title).casefold() not in approved_work_titles
-            ):
-                continue
             if work_qid:
                 item.statements.append(
                     WikidataStatement(
@@ -82,60 +87,66 @@ class ContentProjectionMixin:
                         references=ref,
                     )
                 )
-            else:
-                # Work identified by title matching only (not in KNOWN_WORK_QIDS
-                # and not reconciled to an existing Wikidata item). Add P1480
-                # (presumably) to express `possibly_realises` — the manuscript
-                # may exemplify this work, but the identification is uncertain.
-                work_item = self._get_or_create_work(work_title, None, record)
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_EXEMPLAR_OF,
-                        value=f"__LOCAL:{work_item.local_id}",
-                        value_type="item",
-                        qualifiers=qualifiers
-                        + [
-                            {
-                                "property": P_SOURCING_CIRCUMSTANCES,
-                                "value": Q_PRESUMABLY,
-                                "type": "item",
-                            }
-                        ],
-                        references=ref,
-                    )
-                )
+                continue
 
-        # From NER-extracted contents entities (WORK + FOLIO)
+            work_item = self._get_or_create_work(work_title, embedded_author, record)
+            remember_evidence(work_item, evidence)
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_EXEMPLAR_OF,
+                    value=f"__LOCAL:{work_item.local_id}",
+                    value_type="item",
+                    qualifiers=qualifiers
+                    + [{
+                        "property": P_SOURCING_CIRCUMSTANCES,
+                        "value": Q_PRESUMABLY,
+                        "type": "item",
+                    }],
+                    references=ref,
+                )
+            )
+
         entities = record.get("entities") or []
-        cont_entities = [e for e in entities if e.get("source") == "contents_ner"]
-        works = [e for e in cont_entities if e.get("type") == "WORK"]
-        folios = [e for e in cont_entities if e.get("type") == "FOLIO"]
+        cont_entities = [
+            entity for entity in entities
+            if isinstance(entity, dict) and entity.get("source") == "contents_ner"
+        ]
+        works = [entity for entity in cont_entities if entity.get("type") == "WORK"]
+        folios = [entity for entity in cont_entities if entity.get("type") == "FOLIO"]
 
         for work in works:
-            if work.get("approved") is False:
-                continue
-            work_title_raw = str(work.get("text", "")).strip().strip(_QUOTE_CHARS + ".")
-            work_title, embedded_author = _split_work_title_author(work_title_raw)
-            if not work_title or work_title in seen_works:
-                continue
+            raw = str(work.get("text") or "").strip().strip(_QUOTE_CHARS + ".")
+            work_title, embedded_author = _split_work_title_author(raw)
             work_title = _clean_work_title(work_title)
-            if _is_noise_work_title(work_title):
-                continue
-            seen_works.add(work_title)
-
             work_qid = KNOWN_WORK_QIDS.get(work_title)
-            qualifiers_ner: list[dict[str, object]] = []
+            decision = assess_work_candidate(
+                work_title,
+                source_field="contents_ner",
+                approved=work.get("approved") is not False,
+                known_qid=work_qid,
+                candidate_kind="named_work",
+                source_text=raw,
+            )
+            evidence = decision.evidence()
+            remember_evidence(item, evidence)
+            key = decision.title.casefold()
+            if (
+                not decision.accepted
+                or not decision.title
+                or _is_noise_work_title(decision.title)
+                or key in seen_works
+            ):
+                continue
+            seen_works.add(key)
 
-            # Find associated folio entity (nearest by position)
+            qualifiers: list[dict[str, object]] = []
             for folio in folios:
-                if abs(folio.get("end", 0) - work.get("start", 0)) < 3:
-                    qualifiers_ner.append(
-                        {
-                            "property": "P958",
-                            "value": str(folio.get("text", "")).strip(":"),
-                            "type": "string",
-                        }
-                    )
+                if abs(int(folio.get("end") or 0) - int(work.get("start") or 0)) < 3:
+                    qualifiers.append({
+                        "property": "P958",
+                        "value": str(folio.get("text") or "").strip(":"),
+                        "type": "string",
+                    })
                     break
 
             if work_qid:
@@ -144,37 +155,38 @@ class ContentProjectionMixin:
                         property_id=P_EXEMPLAR_OF,
                         value=work_qid,
                         value_type="item",
-                        qualifiers=qualifiers_ner,
+                        qualifiers=qualifiers,
                         references=ref,
                     )
                 )
-            else:
-                # Use embedded author extracted from the WORK title text as fallback
-                author_name = embedded_author
-                # Then try the WORK_AUTHOR positional lookup (overrides embedded_author if found)
-                work_authors = [e for e in cont_entities if e.get("type") == "WORK_AUTHOR"]
-                for wa in work_authors:
-                    if abs(wa.get("start", 0) - work.get("end", 0)) < 20:
-                        author_name = str(wa.get("text", "")).strip()
-                        break
-                work_item = self._get_or_create_work(work_title, author_name, record)
-                # NER-identified works are inherently uncertain → add P1480 (presumably)
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_EXEMPLAR_OF,
-                        value=f"__LOCAL:{work_item.local_id}",
-                        value_type="item",
-                        qualifiers=qualifiers_ner
-                        + [
-                            {
-                                "property": P_SOURCING_CIRCUMSTANCES,
-                                "value": Q_PRESUMABLY,
-                                "type": "item",
-                            }
-                        ],
-                        references=ref,
-                    )
+                continue
+
+            author_name = embedded_author
+            work_authors = [
+                entity for entity in cont_entities if entity.get("type") == "WORK_AUTHOR"
+            ]
+            for work_author in work_authors:
+                if abs(
+                    int(work_author.get("start") or 0) - int(work.get("end") or 0)
+                ) < 20:
+                    author_name = str(work_author.get("text") or "").strip()
+                    break
+            work_item = self._get_or_create_work(decision.title, author_name, record)
+            remember_evidence(work_item, evidence)
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_EXEMPLAR_OF,
+                    value=f"__LOCAL:{work_item.local_id}",
+                    value_type="item",
+                    qualifiers=qualifiers
+                    + [{
+                        "property": P_SOURCING_CIRCUMSTANCES,
+                        "value": Q_PRESUMABLY,
+                        "type": "item",
+                    }],
+                    references=ref,
                 )
+            )
 
     def _add_marc_genres(
         self,

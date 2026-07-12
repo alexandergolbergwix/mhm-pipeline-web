@@ -283,3 +283,121 @@ class TestProjectionQuality:
         assert manuscript["records"] == ["990000000000000001"]
         assert all("NLI 990000000000000001" not in str(item.get("labels")) for item in result["items"])
         assert all("Unknown Contributor" not in str(item.get("labels")) for item in result["items"])
+
+
+class TestSourceAwareMarcWorks:
+    @pytest.mark.asyncio
+    async def test_clean_505_work_is_restored_with_evidence(self) -> None:
+        rec = {
+            **_fake_marc_record(),
+            "contents": [{
+                "title": "ספר הדרושים",
+                "source_field": "505",
+                "candidate_kind": "named_work",
+                "folio_range": "א-ב",
+            }],
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[],
+            entities_by_cn={},
+            return_native=False,
+        )
+        work = next(item for item in result["items"] if item["entity_type"] == "work")
+        assert work["labels"]["he"] == "ספר הדרושים"
+        assert work["work_candidate_evidence"][0]["reason"] == "named_work_in_505"
+        manuscript = next(
+            item for item in result["items"] if item["entity_type"] == "manuscript"
+        )
+        p1574 = next(
+            stmt for stmt in manuscript["statements"]
+            if stmt["property_id"] == "P1574"
+        )
+        assert any(
+            qualifier["property"] == "P958" and qualifier["value"] == "א-ב"
+            for qualifier in p1574["qualifiers"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_unverified_latin_505_heading_does_not_create_work(self) -> None:
+        rec = {
+            **_fake_marc_record(),
+            "contents": [{
+                "title": "Diodati Segre",
+                "source_field": "505",
+                "candidate_kind": "named_work",
+            }],
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[],
+            entities_by_cn={},
+            return_native=False,
+        )
+        assert result["summary"]["works"] == 0
+        manuscript = next(
+            item for item in result["items"] if item["entity_type"] == "manuscript"
+        )
+        evidence = manuscript["work_candidate_evidence"]
+        assert evidence[0]["reason"] == "latin_title_requires_authority"
+        assert evidence[0]["accepted"] is False
+
+    @pytest.mark.asyncio
+    async def test_work_does_not_inherit_manuscript_language(self) -> None:
+        rec = {
+            **_fake_marc_record(),
+            "languages": ["heb", "ara"],
+            "contents": [{
+                "title": "ספר הדרושים",
+                "source_field": "505",
+                "candidate_kind": "named_work",
+            }],
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[],
+            entities_by_cn={},
+            return_native=False,
+        )
+        work = next(item for item in result["items"] if item["entity_type"] == "work")
+        assert not any(stmt["property_id"] == "P407" for stmt in work["statements"])
+
+
+@pytest.mark.asyncio
+async def test_structured_505_author_suffix_is_not_part_of_work_label() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "contents": [{
+            "title": "ספר היראה ליונה בן אברהם גרונדי",
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[],
+        entities_by_cn={},
+        return_native=False,
+    )
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert work["labels"]["he"] == "ספר היראה"
+    assert work["work_candidate_evidence"][0]["source_text"] == (
+        "ספר היראה ליונה בן אברהם גרונדי"
+    )
+
+
+@pytest.mark.asyncio
+async def test_title_phrase_starting_lamed_is_not_misread_as_author() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "500$a": 'החבור כולל כוונות התפילה לכל השנה עפ"י קבלת האר"י.',
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[],
+        entities_by_cn={},
+        return_native=False,
+    )
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert work["labels"]["he"] == "כוונות התפילה לכל השנה עפי קבלת הארי"
+    assert "by " not in work["descriptions"]["en"]

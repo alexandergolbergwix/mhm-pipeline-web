@@ -615,7 +615,7 @@ def _is_placeholder_title(title: str | None) -> bool:
     """
     if not title:
         return False
-    cleaned = title.strip().rstrip(".,;:")
+    cleaned = _normalise_label(title).strip().rstrip(".,;:")
     if cleaned in {
         "קובץ",
         "קבץ",
@@ -873,6 +873,11 @@ def _split_work_title_author(text: str) -> tuple[str, str | None]:
             continue
         if _PERSON_NAME_SIGNALS_RE.search(author_part):
             return title_part, author_part
+        # Hebrew prepositions such as "לכל השנה" are part of a title, not an
+        # author introduction. Genealogical markers above remain authoritative
+        # even when a real name begins with one of these lexical forms.
+        if author_part.split()[0] in {"כל", "פי", "שנה", "שנים", "יום", "ימי"}:
+            continue
         heb_tokens = [t for t in author_part.split() if re.search(r"[א-ת]{3,}", t)]
         if len(heb_tokens) >= 2:
             return title_part, author_part

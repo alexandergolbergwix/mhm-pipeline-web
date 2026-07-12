@@ -26,6 +26,7 @@
 | `backend/converter/wikidata/content_projection.py` | Contents, genre, and canonical-subject projection |
 | `backend/converter/wikidata/person_linking.py`, `person_projection.py` | Role-safe manuscript links and authority-backed person construction |
 | `backend/converter/wikidata/work_projection.py` | Work creation, labels, deduplication, and author links |
+| `backend/converter/wikidata/work_candidates.py` | Source-aware MARC 500/505/NER eligibility decisions and compact evidence |
 | `backend/converter/wikidata/property_mapping.py` | All P/Q constants (byte-parity with desktop; live-verified — Rule W-26) |
 | `backend/converter/wikidata/item_validator.py` | The moat layer: ~20 checks, ERROR-severity issues block approval and writes |
 | `backend/converter/wikidata/reconciler.py` | SPARQL dedup lookups; `ReconciliationUnavailableError` fail-closed contract |

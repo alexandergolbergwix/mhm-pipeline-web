@@ -31,8 +31,12 @@ the rest of the pipeline reads:
   (Hebrew gematria via desktop `converter.transformer.gematria`, or a
   Gregorian 4-digit fallback) and `colophon_scribe` (patronymic בן / ב"ר
   regex).
-- **Work mentions**: `_extract_work_mentions` scans notes + raw 500$a for
-  כולל: / ובו / מכיל / ובתוכו patterns → `work_mentions` list (Rule W-33).
+- **Work mentions**: `_extract_work_mentions` reparses raw 500$a on every
+  preparation. A trigger must begin the note or follow a manuscript noun;
+  quoted spans are preferred, and unquoted lists split only at semicolons or
+  recognised title heads. Each row retains `source_field`, `source_text`, and
+  `candidate_kind`; stale 500-derived contents are removed before the fresh
+  list is merged (Rules W-33/W-68).
 - **Editorial metadata**: `_extract_editorial_metadata` → `editor_names`,
   `edition_statement`, `edition_features`.
 - **Provenance events**: `_extract_provenance_events` builds

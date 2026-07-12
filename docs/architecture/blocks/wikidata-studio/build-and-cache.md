@@ -69,12 +69,20 @@ UI badges) and as a **hard gate inside the upload path**.
 
 ### Verification evidence contract
 
-The builder keeps catalog identifiers in P3959/source metadata rather than public labels, and each person item records compact `authority_evidence` (VIAF/NLI identity, preferred names, and dates). `_fetch_wikidata_verify_items` retains exact `record_ids` and annotates any resolvable `__LOCAL:<id>` statement with `local_reference_targets`; this is internal two-pass upload syntax, not a malformed Wikidata QID. The build schema marker is bumped when these fields change so a Rebuild cannot serve stale item shapes. The evaluator context also includes contents, work mentions, genres, catalog fields, and related works; cache schema/version salts change whenever this evidence contract changes.
+The builder keeps catalog identifiers in P3959/source metadata rather than public labels, and each person item records compact `authority_evidence` (VIAF/NLI identity, preferred names, and dates). `_fetch_wikidata_verify_items` retains exact `record_ids` and annotates any resolvable `__LOCAL:<id>` statement with `local_reference_targets`; this is internal two-pass upload syntax, not a malformed Wikidata QID. The build schema marker is bumped when these fields change so a Rebuild cannot serve stale item shapes. Work items and source manuscripts also carry `work_candidate_evidence`; a new work without accepted evidence fails validation. The evaluator context also includes contents, work mentions, genres, catalog fields, and related works; cache schema/version salts change whenever this evidence contract changes.
 
 
 ### Semantic projection safety
 
-Structured `contents` work mentions are emitted only for known Wikidata works or curator-approved authority matches; unapproved NER work rows are ignored. Hebrew work labels receive an English label only when the record contains trusted catalog romanization fields. Authority rows marked corporate or sourced from organization MARC tags are never emitted as unresolved human items, and person dates are accepted only from the exact authority-ID match. Subject network lookup and genre inference are disabled by default. Manuscript notes are not emitted as P7535/P5008/P17/P131 claims; P195 is asserted only when the source holder supports it. These gates keep the builder fail-closed when MARC text is ambiguous.
+Work projection uses `work_candidates.assess_work_candidate`: clean Hebrew
+MARC 505 titles are structural contents evidence; MARC 500 titles require the
+semantically anchored named-work parser; rejected NER stays rejected; Latin-only
+505 headings require authority/QID evidence. Accepted and rejected decisions
+retain source field/text, folio, sequence, and reason. Embedded authors are
+removed from public labels and used only for exact author linking; works do not
+inherit manuscript P407. Hebrew work labels receive English only from trusted
+catalog romanization. Other R21 authority/person/manuscript semantic gates remain
+fail-closed.
 
 ### Modular builder boundary
 

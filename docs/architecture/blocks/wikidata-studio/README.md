@@ -6,12 +6,12 @@
 
 Wikidata Studio turns a run's curated data (MARC records + *approved* authority
 matches + *approved* NER entities + curator item overrides) into real Wikidata
-items — manuscripts, persons, works — using the **desktop pipeline's builder
-verbatim** (`converter.wikidata.item_builder.WikidataItemBuilder`), then lets a
-curator review, edit, approve, reconcile, and finally export/upload them. The
-web layer (`backend/app/pipeline/wikidata_studio.py`) is thin glue: it reshapes
-DB rows into the desktop's input format and never re-implements builder logic,
-so every desktop safety fix arrives by file sync. The public builder is a compatibility facade over focused projection modules; callers continue to import `WikidataItemBuilder` unchanged.
+items — manuscripts, persons, works — using the shared `WikidataItemBuilder`
+compatibility facade, then lets a curator review, edit, approve, reconcile,
+and export/upload them. The web pipeline reshapes DB rows into builder input.
+Projection code is split into focused modules, including the web-side
+source-aware work-candidate boundary; shared fixes need an explicit upstream
+port before the next desktop sync. Callers keep importing the same facade.
 
 The block exists in the shadow of two real 2026-04 incidents: a mass-merge
 disaster (902+ wrong merges) and a mass-duplicate/non-notable-creation
@@ -29,7 +29,7 @@ that refuses live wikidata.org writes by default.
 - [How it works: guards and upload](guards-and-upload.md) —
   reconcile-before-create, upload job + moratorium + QS download, AI review +
   autofix.
-- [Rules](rules.md) — the 21 invariants (R1–R21) this block enforces.
+- [Rules](rules.md) — the 22 invariants (R1–R22) this block enforces.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
   dry-runs, force-rebuild, blocked items, local quality audit, AI autofixes.
 - [Local quality audit](quality-audit.md) — read-only measurement, count

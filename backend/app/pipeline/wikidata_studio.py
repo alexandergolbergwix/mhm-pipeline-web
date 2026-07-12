@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-records-v2"
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v3"
 
 
 async def hmo_instance_qids_for_run(
@@ -111,7 +111,7 @@ def compute_build_fingerprint(
     parts = {
         "build_schema": WIKIDATA_STUDIO_BUILD_SCHEMA,
         "approved_only": approved_only,
-        "records": sorted(r.control_number for r in records),
+        "records": sorted((r.control_number, _h(r.marc or {})) for r in records),
         "hmo_instance_qids": sorted((hmo_instance_qids or {}).items()),
         "matches": sorted(
             (
@@ -345,7 +345,7 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
         "guard_flags":        payload.get("guard_flags") or [],
         "name_type":          payload.get("name_type") or payload.get("viaf_name_type") or "",
         "matched":            1,
-        "approved":           True,
+        "approved":           bool(m.get("approved", True)),
     }
 
 
@@ -372,6 +372,9 @@ def _serialise_item(item: Any) -> dict[str, Any]:
             "statements":   [_coerce(s.__dict__) for s in getattr(item, "statements", [])],
             "existing_qid": getattr(item, "existing_qid", None),
             "entity_type":  getattr(item, "entity_type", None),
+            "records": getattr(item, "records", []),
+            "authority_evidence": getattr(item, "authority_evidence", []),
+            "work_candidate_evidence": getattr(item, "work_candidate_evidence", []),
         }
 
     # Enrich every statement (+ its qualifiers + references) with labels.

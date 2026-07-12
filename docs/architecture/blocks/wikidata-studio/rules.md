@@ -2,10 +2,13 @@
 
 > Up: [Wikidata Studio](README.md)
 
-1. **R1 — Never re-implement builder logic in the web layer.** All item
-   construction lives in `backend/converter/wikidata/` (byte-parity with the
-   desktop; sync via `pipeline/scripts/sync_converter_to_web.sh`).
-   *Why:* every desktop safety fix (Rules 23/38/42/47) must land here by copy, not by re-derivation.
+1. **R1 — Item construction stays behind the shared builder facade.** All
+   projection logic lives in focused modules under `backend/converter/wikidata/`;
+   routers and pipeline glue only shape inputs and persist outputs. Shared
+   converter changes must be ported upstream before a full desktop sync; the
+   source-aware work module is an explicit web-side divergence (Rule W-68).
+   *Why:* one projection boundary prevents router drift while keeping the
+   modular web implementation safe from destructive syncs.
 2. **R2 — The reconcile that matters runs INSIDE `upload_items`.** The
    `/reconcile` endpoint is preview-only and MUST never be relied on to change
    upload behaviour. *Why:* a stale preview mutating in-memory items was the decorative-guard bug of the 2026-06-08 audit.
@@ -64,7 +67,6 @@
     *Why:* without push + upsert, the verify modal shows Stop while the
     bottom-right tray stays empty; an H12 enqueue failure must not reproduce
     that same misleading state (Rule W-61).
-
 16. **R16 — AI-verdict fingerprints MUST use the same canonical record IDs and
     MARC slice when verifying, persisting, cache-reading, and rendering.**
     Wikidata build artifacts use `records`; worker fixtures use `record_ids`;
@@ -72,15 +74,23 @@
     sanitisation. Unmarked pre-fix keys are compatible only when their legacy
     fingerprint still matches. *Why:* a mismatched fingerprint hides a valid
     persisted verdict as stale, leaving the review table blank.
-
 17. **R17 — The diagnostic Wikidata CSV MUST include the item fields, linked MARC context, validation issues, and complete persisted AI-verdict JSON.** It may add flattened columns for common verdict fields, but MUST NOT replace the complete JSON column. *Why:* a 294-item export with `ai_verdict` omitted or flattened to one reason field cannot identify recurring builder defects or map them back to the evaluator prompt.
-
 
 18. **R18 — Every built item MUST retain the MARC control numbers that supplied it.** Manuscripts carry their own control number; deduplicated person/work items carry the sorted union. Verification reads this metadata (or only a legacy P3959 reference recovery) and MUST NEVER substitute the first record in a run. *Why:* a 294-item production verify grounded unrelated people and works in the first MARC record, creating systematic false fails (Rule W-63).
 
-
 19. **R19 — Built labels and verifier evidence are separated and complete (Rule W-65).** Catalog IDs stay in P3959/source metadata, unsupported roles do not become authors, authority-derived person claims carry compact authority evidence, and the verify fixture annotates valid `__LOCAL:` targets. The CSV/export/cache/prompt preserve these fields. *Why:* production partial/fail verdicts were dominated by label pollution, role drift, and missing authority context.
-
 20. **R20 — Studio build inputs MUST join on canonical MARC control numbers (Rule W-66).** `build_items_for_run` canonicalises record, approved-authority, and approved-NER keys before grouping. *Why:* quoted authority keys did not join clean record IDs, so production silently omitted every authority-backed person item.
-
-21. **R21 — Studio projections MUST fail closed on unsupported semantic claims.** Structured MARC contents and NER works are emitted only when their work identity is known or curator-approved; untrusted transliteration is not promoted to an English label; corporate authority matches without a verified QID are not emitted as human items; person dates require an exact authority-ID match; manuscript exports omit unsupported P7535/P5008/P17/P131 claims and use P195 only when the source supports the holder.
+21. **R21 — Studio projections MUST fail closed on unsupported semantic claims.**
+    Untrusted transliteration is not promoted to an English label; unresolved
+    corporate authorities are not humans; person dates require an exact
+    authority-ID match; manuscripts omit unsupported P7535/P5008/P17/P131 and
+    use P195 only when source holder evidence supports it.
+22. **R22 — Work creation is source-aware, not authority-only (Rule W-68).**
+    Clean Hebrew MARC 505 titles are structural contents evidence; MARC 500
+    titles must come from the anchored named-work parser; NER respects
+    rejection; Latin-only 505 headings require authority/QID evidence. Every
+    decision retains source field/text, folio, sequence, reason, and acceptance.
+    Rebuilds recompute persisted 500 derivations, work labels exclude embedded
+    authors, and works never inherit manuscript P407. *Why:* the authority-only
+    gate cut 228 items to 131, while the real defects were catalogue prose
+    emitted by the old broad 500 regex.

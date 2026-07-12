@@ -495,8 +495,10 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     # NLI cataloguers often list contained works after the keyword כולל
     # (e.g. "כולל: עת שערי רצון; שיר השירים"). Extract these as work
     # entity candidates so they can flow to match_work.
-    if not record.get("work_mentions"):
-        _extract_work_mentions(record)
+    # Derived work mentions may have been persisted by an older parser.
+    # Recompute them from the raw 500 field on every preparation so parser
+    # fixes invalidate stale catalogue fragments without a data migration.
+    _extract_work_mentions(record)
 
     if not record.get("editorial_metadata"):
         _extract_editorial_metadata(record)
@@ -523,7 +525,12 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             title = parsed["title"]
             if not title or is_descriptive_content_title(title):
                 continue
-            entry: dict[str, Any] = {"title": title}
+            entry: dict[str, Any] = {
+                "title": title,
+                "source_field": "505",
+                "candidate_kind": "named_work",
+                "source_text": parsed.get("raw") or raw_title,
+            }
             if parsed.get("folio_range"):
                 entry["folio_range"] = parsed["folio_range"]
             if parsed.get("sequence") is not None:
@@ -625,26 +632,48 @@ def _extract_colophon_fields(record: dict[str, Any]) -> None:
 # ── Work mentions extraction ────────────────────────────────────────────────
 
 _WORK_MENTION_TRIGGERS = _re.compile(
-    r"(?:כולל|ובו|מכיל|תפסיל|ובתוכו)[:\s]+(?P<titles>[^.]+?)(?=\.|$)",
+    r"(?:^|(?:(?:כה[\"״]?י|בכה[\"״]?י|החיבור|החבור|כתב[ -]היד)\s+))"
+    r"(?:כולל|ובו|מכיל|תפסיל|ובתוכו)\s*:?\s*(?P<titles>[^.|]+)",
     _re.UNICODE,
 )
-# Works separated by ; or , or "ו" conjunction
-_WORK_SEP_RE = _re.compile(r"[;,]\s*|(?:^|\s+)ו(?=[א-ת])")
+_WORK_TITLE_HEADS = (
+    "ספר", "מסכת", "פירוש", "פרוש", "תשובות", "סידור", "סדר", "תפילה",
+    "תפלת", "קונטרס", "חיבור", "דרוש", "פיוט", "מגילה", "הלכות", "ליקוט",
+    "שער", "שיר", "זוהר", "מדרש", "מחזור", "פסקי", "אגרת", "כתבי", "תיקון",
+    "קבלה", "כוונות", "תרגום", "מחברת", "פרי",
+)
+_WORK_HEAD_PATTERN = "|".join(_re.escape(head) for head in _WORK_TITLE_HEADS)
+_WORK_NAMED_SEP_RE = _re.compile(
+    rf"\s*;\s*|\s*,\s*(?=(?:{_WORK_HEAD_PATTERN})\b)|"
+    rf"\s+ו(?=(?:{_WORK_HEAD_PATTERN})\b)",
+    _re.UNICODE,
+)
+_GERSHAYIM_IN_WORD_RE = _re.compile(r'(?<!\sו)(?<=[֐-ת])"(?=[֐-ת])')
+_GERSHAYIM_SENTINEL = "\ue001"
+
+
+def _quoted_work_titles(text: str) -> list[str]:
+    protected = _GERSHAYIM_IN_WORD_RE.sub(_GERSHAYIM_SENTINEL, text.replace('""', '"'))
+    return [
+        match.replace(_GERSHAYIM_SENTINEL, '"').strip()
+        for match in _re.findall(r'"([^"|]{3,}?)"', protected)
+    ]
+
+
+def _unquoted_work_titles(text: str) -> list[str]:
+    candidate = text.strip()
+    if ":" in candidate:
+        _, suffix = candidate.split(":", 1)
+        if _re.match(rf"\s*(?:{_WORK_HEAD_PATTERN})\b", suffix):
+            candidate = suffix.strip()
+    return [part.strip() for part in _WORK_NAMED_SEP_RE.split(candidate) if part.strip()]
 
 
 def _extract_work_mentions(record: dict[str, Any]) -> None:
-    """Scan 500$a notes for work-listing keywords and emit work_mentions list.
-
-    We scan both the already-split ``record["notes"]`` AND the raw ``500$a``
-    subfield value (before ``_split_multi`` breaks it on semicolons) so that
-    a note like "כולל: עת שערי רצון; שיר השירים" produces both titles even
-    though the notes list has already been fragmented on the semicolon.
-    """
-    # Collect candidates: processed notes list + raw 500$a before split.
-    candidates: list[str] = list(record.get("notes") or [])
+    """Extract named works from semantically anchored MARC 500 notes."""
+    record.pop("work_mentions", None)
     raw_500a = _str(record.get("500$a"))
-    if raw_500a and raw_500a not in candidates:
-        candidates.append(raw_500a)
+    candidates = [part.strip() for part in raw_500a.split("|") if part.strip()]
 
     from converter.rdf.rdf_helpers import (  # noqa: PLC0415
         clean_marc_label,
@@ -656,7 +685,15 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
     for note in candidates:
         for match in _WORK_MENTION_TRIGGERS.finditer(note):
             raw_titles = match.group("titles").strip()
-            for raw in _WORK_SEP_RE.split(raw_titles):
+            quoted = _quoted_work_titles(raw_titles)
+            raw_candidates = list(quoted)
+            if quoted:
+                prefix = raw_titles.split('"', 1)[0].strip(" ,;:")
+                if _re.match(rf"(?:{_WORK_HEAD_PATTERN})\b", prefix):
+                    raw_candidates.insert(0, prefix)
+            else:
+                raw_candidates = _unquoted_work_titles(raw_titles)
+            for raw in raw_candidates:
                 title = clean_marc_label(raw.strip().strip(".,;:"))
                 if len(title) < 3 or is_descriptive_content_title(title):
                     continue
@@ -664,7 +701,12 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
                 if key in seen_titles:
                     continue
                 seen_titles.add(key)
-                work_mentions.append({"title": title, "source_field": "500"})
+                work_mentions.append({
+                    "title": title,
+                    "source_field": "500",
+                    "candidate_kind": "named_work",
+                    "source_text": match.group(0).strip(),
+                })
     if work_mentions:
         record["work_mentions"] = work_mentions
 
@@ -905,9 +947,22 @@ def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
     )
 
     mentions = record.get("work_mentions") or []
+    # Remove MARC 500-derived rows produced by older parser versions before
+    # merging the freshly parsed work_mentions. MARC 505 rows are preserved.
+    contents: list[dict[str, Any]] = [
+        content
+        for content in (record.get("contents") or [])
+        if not (
+            isinstance(content, dict)
+            and str(content.get("source_field") or "").strip() == "500"
+        )
+    ]
     if not mentions:
+        if contents:
+            record["contents"] = contents
+        else:
+            record.pop("contents", None)
         return
-    contents: list[dict[str, Any]] = list(record.get("contents") or [])
     existing = {
         clean_marc_label(str(c.get("title") or "")).casefold()
         for c in contents
@@ -925,6 +980,8 @@ def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
         contents.append({
             "title": title,
             "source_field": str(wm.get("source_field") or "500"),
+            "candidate_kind": str(wm.get("candidate_kind") or "named_work"),
+            "source_text": str(wm.get("source_text") or ""),
         })
         existing.add(key)
     if contents:

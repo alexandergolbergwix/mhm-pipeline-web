@@ -26,3 +26,16 @@ def test_manuscript_cn_fallback_passes_empty_label_validator() -> None:
     item = builder.build_manuscript_item(record)
     codes = {i.code for i in validate_item(item)}
     assert "EMPTY_LABEL" not in codes
+
+
+def test_quoted_placeholder_title_uses_control_number_fallback() -> None:
+    builder = WikidataItemBuilder()
+    record = {
+        "_control_number": "990001801390205171",
+        "title": '"קובץ."',
+    }
+    item = builder.build_manuscript_item(record)
+    assert item.labels["en"] == "Jerusalem, NLI, 990001801390205171"
+    assert item.labels["he"] == "כתב יד עברי, ספרייה לאומית, 990001801390205171"
+    codes = {issue.code for issue in validate_item(item)}
+    assert "KOVETZ_PLACEHOLDER" not in codes

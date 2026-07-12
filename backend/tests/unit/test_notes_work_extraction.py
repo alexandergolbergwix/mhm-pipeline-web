@@ -82,3 +82,78 @@ def test_place_from_260_a() -> None:
     record = {"260$a": "Jerusalem"}
     _collapse_marc_subfields(record)
     assert record.get("place") == "Jerusalem"
+
+
+def test_contextual_kolel_strips_catalogue_prefix_and_splits_named_heads() -> None:
+    from app.pipeline.marc_ingest import _collapse_marc_subfields
+
+    record = {"500$a": 'כה"י כולל את שני החלקים הראשונים: ספר הדרושים וספר הכונות.'}
+    _collapse_marc_subfields(record)
+    assert [row["title"] for row in record["work_mentions"]] == [
+        "ספר הדרושים",
+        "ספר הכונות",
+    ]
+
+
+def test_quoted_titles_exclude_unquoted_category_words() -> None:
+    from app.pipeline.marc_ingest import _collapse_marc_subfields
+
+    record = {
+        "500$a": 'כולל: ""סדר קריאת השבוע"" ו""סדר קריאת השבתות"" '
+        'ומועדים, ""מי שברך"", ""יקום פורקן"", ""אב הרחמים"", ו""יזכור"".',
+    }
+    _collapse_marc_subfields(record)
+    titles = [row["title"] for row in record["work_mentions"]]
+    assert titles == [
+        "סדר קריאת השבוע",
+        "סדר קריאת השבתות",
+        "מי שברך",
+        "יקום פורקן",
+        "אב הרחמים",
+        "יזכור",
+    ]
+    assert "מועדים" not in titles
+
+
+def test_kolel_inside_person_prose_is_not_a_work_trigger() -> None:
+    from app.pipeline.marc_ingest import _collapse_marc_subfields
+
+    record = {"500$a": "החכם הכולל מנדבנים בפולין."}
+    _collapse_marc_subfields(record)
+    assert not record.get("work_mentions")
+
+
+def test_505_contents_retain_source_and_folio_evidence() -> None:
+    from app.pipeline.marc_ingest import _collapse_marc_subfields
+
+    record = {"505$a": "1) דף א-ב : ספר הדרושים"}
+    _collapse_marc_subfields(record)
+    assert record["contents"] == [{
+        "title": "ספר הדרושים",
+        "source_field": "505",
+        "candidate_kind": "named_work",
+        "source_text": "1) דף א-ב : ספר הדרושים",
+        "folio_range": "א-ב",
+        "sequence": 1,
+    }]
+
+
+def test_stale_persisted_500_candidates_are_reparsed() -> None:
+    from app.pipeline.marc_ingest import prepare_record_for_pipeline
+
+    record = {
+        "500$a": "החכם הכולל מנדבנים בפולין.",
+        "work_mentions": [{
+            "title": "נדבנים",
+            "source_field": "500",
+            "candidate_kind": "named_work",
+        }],
+        "contents": [{
+            "title": "נדבנים",
+            "source_field": "500",
+            "candidate_kind": "named_work",
+        }],
+    }
+    prepared = prepare_record_for_pipeline(record)
+    assert not prepared.get("work_mentions")
+    assert not prepared.get("contents")

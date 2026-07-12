@@ -57,8 +57,7 @@
    path used by the HMO item upload's SHACL gate, Rule W-42). RDFS inference
    is deliberately not used here — it cross-types nodes via shared-property
    `rdfs:domain` axioms and produces false-positive violations (Rule W-43).
-8. **Vendoring** — `backend/converter/` is a byte-identical mirror of the
-   desktop repo's `converter/`, refreshed via
-   `pipeline/scripts/sync_converter_to_web.sh` (rsync `--delete` of
-   rdf/transformer/config + projection_coverage.py + both ontology TTLs) or
-   the `/sync-from-desktop` command, which also diffs for drift.
+8. **Vendoring** — shared `backend/converter/` code is normally synced from
+   the desktop repo. Before a full sync, reconcile the documented W-43/W-68
+   web-side exceptions upstream and run both suites; never let the sync delete
+   a focused projection module or reintroduce an incident bug.

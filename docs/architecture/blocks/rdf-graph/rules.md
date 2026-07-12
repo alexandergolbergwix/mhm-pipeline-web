@@ -22,17 +22,13 @@
    merely because a path is present. *Why:* Heroku's slug filesystem is
    ephemeral and multi-dyno; stale on-disk TTL made HMO “skip cache” export
    old graphs while Postgres already held a rebuild (Rule W-39).
-5. **R5 — `backend/converter/` is a byte-identical mirror.** NEVER edit
-   vendored converter files directly in the web repo; change the desktop
-   repo and re-run the sync. *Why:* the two ports must produce identical RDF;
-   drift makes desktop↔web comparisons meaningless (Rule W-10/W-34).
-   **Known exception (as of 2026-07-07, Rule W-43):** the desktop repo's
-   `converter/rdf/graph_builder.py` and several `converter/transformer/*.py`
-   files currently carry unrelated, untested WIP changes, so a full
-   `sync_converter_to_web.sh` run would delete web-imported modules and pull
-   in failing code. The Rule W-43 fix was hand-ported (same four edits, both
-   repos) instead of synced; run the real sync once the desktop WIP lands
-   and passes tests, then delete this note.
+5. **R5 — Shared converter code is upstream-owned; exceptions are explicit.**
+   The desktop repo remains canonical and the sync script is the normal path.
+   Web-side incident ports must be documented, tested, and upstreamed before
+   the next full sync. Current exceptions: unrelated desktop WIP blocks a full
+   sync (W-43), and the modular source-aware work boundary is web-side pending
+   upstream port (W-68). *Why:* untracked divergence makes desktop/web results
+   incomparable; destructive sync would erase production fixes.
 6. **R6 — Canonical ontology lives in the desktop repo.**
    `backend/ontology/hebrew-manuscripts.ttl` and `shacl-shapes.ttl` are
    copies made at sync time; MUST NOT be hand-edited here. *Why:* Rule W-34
@@ -75,12 +71,12 @@
     emit `CIDOC.E8_Acquisition` nodes. *Why:* 561 ownership/censorship notes
     were exported as Wikibase Acquisition items with mismatched descriptions
     (Rule W-45).
-14. **R14 — 505/500 work titles MUST pass `clean_marc_label` + descriptive
-    filter.** `is_descriptive_content_title()` rejects note fragments (`גם …`,
-    `כולל גם נוסח …`) before they become Work/Expression/TextTradition nodes;
-    Wikibase labels go through the same sanitizer at export. *Why:* ISBD quote
-    artifacts and descriptive notes dominated AI autofix `fail` verdicts on run
-    `48ba6c13` (Rule W-45).
+14. **R14 — 505/500 work titles MUST pass source-aware parsing plus label
+    hygiene.** Clean 505 rows retain folio/sequence/source evidence; 500 rows
+    come only from the anchored parser and are recomputed from raw MARC before
+    RDF merge. `clean_marc_label` / `is_descriptive_content_title` remain the
+    final hygiene layer. *Why:* broad כולל/comma/vav splitting minted catalogue
+    prose as Work/Expression/TextTradition nodes (Rules W-45/W-68).
 15. **R15 — Primary RDF nodes MUST carry Wikibase-ready `rdfs:comment`.**
     `graph_builder._stamp_wikibase_comment` (and the CU helper) attach English
     descriptions at build for manuscript/work/expression/person/place/production

@@ -511,6 +511,7 @@ async def execute_studio_build(
             "wikidata_qid": m.wikidata_qid,
             "confidence": m.confidence,
             "source": m.source,
+            "approved": bool(m.approved),
             "payload": m.payload or {},
         }
         for m in matches

@@ -1962,6 +1962,16 @@ The latest 228-item verdict export still contained three hard failures: a generi
 The builder now requires a known or curator-approved work identity for structured contents, honors NER approval, gates English labels on trusted catalog romanization, skips unresolved corporate authorities, accepts person dates only from exact authority-ID matches, disables network subject lookup and genre inference by default, removes unsupported manuscript claims, and invalidates old verdict-cache keys. The evaluator receives contents/genre/catalog evidence and treats P5008 as administrative and P7535 as archival-only. Future projection changes MUST preserve this fail-closed boundary and add source-backed property mappings before emitting claims. Tests: `test_wikidata_studio_works.py`, `test_item_validator.py`.
 
 
+### Rule W-68 — Wikidata work projection MUST be source-aware, not authority-only (added 2026-07-12)
+
+Rule W-67 stopped catalogue fragments by requiring every structured work to have a known QID or approved authority row. That overcorrection removed all 94 works from a 228-item run and dropped Wikidata Studio to 131 items, even though most MARC 505 rows were legitimate structural contents evidence. The original false positives came instead from the MARC 500 parser: it matched כולל anywhere in prose, split every comma and Hebrew conjunction-vav, and reused persisted derived candidates after parser fixes.
+
+The build now uses one source-aware candidate boundary. Clean Hebrew MARC 505 titles may create works; MARC 500 titles must come from a trigger anchored at the note start or a manuscript noun and from quoted spans or recognised title heads; rejected NER stays rejected; Latin-only 505 headings require authority or a known QID. Every accepted/rejected decision retains source field/text, folio, sequence, and reason in `work_candidate_evidence`. Rebuilds recompute 500 candidates from raw MARC and delete older 500-derived contents, so code changes do not need a data migration. New works without accepted evidence fail validation.
+
+Projection quality is part of the same invariant: embedded author suffixes are removed from public work labels and used only for exact author linking; work P1476 uses the title script; works never inherit manuscript P407; English labels still require trusted catalog romanization; quoted generic manuscript titles such as `"קובץ."` fall back to the control-number signature. Build fingerprints include MARC JSON content (not only control numbers), and schema/verdict-cache salts must change whenever this evidence shape changes.
+
+A measurement-only rebuild of run `48ba6c13-115c-4763-bff1-c08b9031b518` with this boundary produced 183 reviewable items: 68 manuscripts, 63 externally grounded people, and 52 source-backed works. The excluded set contained catalogue prose/dedications/geography plus the unverified Latin heading `Diodati Segre`. Tests: `test_notes_work_extraction.py`, `test_wikidata_work_candidates.py`, `test_wikidata_studio_works.py`, `test_rdf_build.py`, and `test_wikidata_manuscript_labels.py`.
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

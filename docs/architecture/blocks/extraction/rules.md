@@ -54,3 +54,5 @@
     review-UI capability (primitive selectors, fingerprint-guarded
     `onFilteredChange`, stable callbacks). *Why:* three production blank-UI
     incidents (React #185).
+
+15. **R15 — MARC 500 work mentions are derived, source-aware data (Rule W-68).** Recompute them from raw 500$a on every preparation; triggers must begin a note or follow a manuscript noun; prefer quoted titles and otherwise split only at semicolons or recognised title heads. Remove older 500-derived contents before merging fresh results. *Why:* the old כולל substring, comma, and Hebrew-vav splitter minted geography, people, citations, and catalogue prose as works.

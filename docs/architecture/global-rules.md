@@ -8,10 +8,12 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   are reached via HTTPS/subprocess only; the FastAPI backend never imports
   their code. *Why:* keeps deploys, dependencies, and failure domains
   independent.
-- **G2 — `backend/converter/` is vendored, byte-identical to desktop.** Sync
-  with `pipeline/scripts/sync_converter_to_web.sh`; never hand-edit unless
-  the same edit lands upstream. *Why:* the desktop repo is the source of
-  truth for shared pipeline logic.
+- **G2 — Shared converter code is upstream-owned; divergences are explicit.**
+  Use `pipeline/scripts/sync_converter_to_web.sh` for shared code. A web-side
+  incident fix or extracted module must be documented, regression-tested, and
+  ported upstream before the next full sync; never let a sync silently erase
+  it. *Why:* the desktop repo remains the shared source of truth, while the
+  modular web builder currently has documented W-43/W-68 divergences.
 - **G3 — No external inference call bypasses `cache_lookup_or_call`.**
   *Why:* cost, latency, and rate-limit protection are enforced in one place.
 - **G4 — Nothing durable lives only on dyno disk.** Any on-disk build result
@@ -33,4 +35,4 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   behaviour extends its pinning test suite. *Why:* tests are the regression
   contract; docs describe, tests enforce.
 
-Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-67).
+Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-68).

@@ -143,33 +143,31 @@ class WorkProjectionMixin:
                 value_type="item",
             )
         )
+        title_language = "he" if _has_hebrew_script(title) else "en"
         work.statements.append(
             WikidataStatement(
                 property_id=P_TITLE,
                 value=title,
                 value_type="monolingualtext",
-                language="he",
+                language=title_language,
             )
         )
-        # Fix 2026-04-15 third audit Fix #7: P407 was hardcoded to Q9288
-        # (Hebrew) for all works. Manuscripts in Aramaic, Judeo-Arabic, Latin,
-        # or Arabic would receive an incorrect language tag. Derive from the
-        # manuscript's MARC 008/041 language codes instead; fall back to Hebrew.
-        lang_qids_for_work = [
-            LANG_TO_QID[str(lc)]
-            for lc in (source_record.get("languages") or [])
-            if str(lc) in LANG_TO_QID
-        ]
-        if not lang_qids_for_work:
-            lang_qids_for_work = ["Q9288"]  # default: Hebrew
-        for lqid in lang_qids_for_work:
-            work.statements.append(
-                WikidataStatement(
-                    property_id=P_LANGUAGE,
-                    value=lqid,
-                    value_type="item",
+        # A manuscript language is not automatically the language of every
+        # contained work. Emit P407 only when work-specific language evidence
+        # is supplied by an authority/curator channel.
+        work_language_values = source_record.get("work_languages") or []
+        if isinstance(work_language_values, str):
+            work_language_values = [work_language_values]
+        for language_code in work_language_values:
+            language_qid = LANG_TO_QID.get(str(language_code))
+            if language_qid:
+                work.statements.append(
+                    WikidataStatement(
+                        property_id=P_LANGUAGE,
+                        value=language_qid,
+                        value_type="item",
+                    )
                 )
-            )
 
         # Link to author if available
         if author_name and author_name.strip():

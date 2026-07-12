@@ -35,3 +35,4 @@ class WikidataItem:
     local_id: str = ""
     records: list[str] = field(default_factory=list)
     authority_evidence: list[dict[str, object]] = field(default_factory=list)
+    work_candidate_evidence: list[dict[str, object]] = field(default_factory=list)
