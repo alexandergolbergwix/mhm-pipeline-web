@@ -36,6 +36,13 @@ class ContentProjectionMixin:
         Also processes NER-extracted WORK entities from MARC 505.
         """
         seen_works: set[str] = set()
+        approved_work_titles = {
+            _clean_work_title(str(match.get("name") or match.get("matched_name") or "")).casefold()
+            for match in (record.get("marc_authority_matches") or [])
+            if isinstance(match, dict)
+            and str(match.get("role") or "").strip().lower()
+            in {"contained work", "work", "exemplar of", "related work"}
+        }
 
         # From structured MARC 505 data
         for content in record.get("contents") or []:
@@ -60,6 +67,11 @@ class ContentProjectionMixin:
                 )
 
             work_qid = KNOWN_WORK_QIDS.get(work_title)
+            if (
+                not work_qid
+                and _clean_work_title(work_title).casefold() not in approved_work_titles
+            ):
+                continue
             if work_qid:
                 item.statements.append(
                     WikidataStatement(
@@ -100,6 +112,8 @@ class ContentProjectionMixin:
         folios = [e for e in cont_entities if e.get("type") == "FOLIO"]
 
         for work in works:
+            if work.get("approved") is False:
+                continue
             work_title_raw = str(work.get("text", "")).strip().strip(_QUOTE_CHARS + ".")
             work_title, embedded_author = _split_work_title_author(work_title_raw)
             if not work_title or work_title in seen_works:
@@ -211,7 +225,7 @@ class ContentProjectionMixin:
             if qid:
                 _append_genre(qid)
 
-        if not marc_genres:
+        if not marc_genres and record.get("allow_inferred_genre"):
             _clf = _get_genre_classifier()
             if _clf is not None:
                 heuristic_ref = list(ref) + [
@@ -309,7 +323,7 @@ class ContentProjectionMixin:
             if not term:
                 continue
             if stype == "topic":
-                qid = resolve_subject_qid(subj)
+                qid = resolve_subject_qid(subj, allow_network=False)
                 if qid:
                     _append_p921(qid)
                 continue

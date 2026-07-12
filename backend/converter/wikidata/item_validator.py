@@ -106,6 +106,10 @@ _KNOWN_BAD_VALUE_QIDS: dict[str, str] = {
         "Stolpersteine in Upper Austria (Wikimedia list) — was wrongly used as "
         "Q_POSSIBLY. Correct 'possibly' QID is Q30230067."
     ),
+    "Q1145267": (
+        "Curt Paul Janz (Swiss writer) — was wrongly used as a provenance role qualifier; "
+        "never emit this QID as a generic role value."
+    ),
 }
 
 

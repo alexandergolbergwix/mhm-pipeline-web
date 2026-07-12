@@ -77,7 +77,7 @@ class TestRdfBuildCollapsedMarc:
 
 class TestWikidataStudioWorks:
     def test_works_created_from_505a_subfield_key(self) -> None:
-        """Records with raw 505$a (old DB rows) must produce work items."""
+        """Raw 505 titles require curator approval before work projection."""
         rec = {
             "_control_number": "990001",
             "245$a": "כתב יד",
@@ -86,18 +86,18 @@ class TestWikidataStudioWorks:
         }
         result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
         summary = result["summary"]
-        assert summary["works"] == 3, f"expected 3 work items, got {summary['works']}"
+        assert summary["works"] == 0, f"unapproved raw 505 titles leaked: {summary['works']}"
         assert summary["manuscripts"] == 1
 
     def test_works_created_from_flat_contents(self) -> None:
-        """Records already normalised (flat contents list) still produce work items."""
+        """Structured contents without an approved identity are omitted."""
         rec = {
             "_control_number": "990002",
             "title": "כתב יד",
             "contents": [{"title": "פירוש א"}, {"title": "פירוש ב"}],
         }
         result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
-        assert result["summary"]["works"] == 2
+        assert result["summary"]["works"] == 0
 
     def test_prepare_record_for_pipeline_derives_contents(self) -> None:
         rec = {"_control_number": "X", "505$a": "א -- ב -- ג"}

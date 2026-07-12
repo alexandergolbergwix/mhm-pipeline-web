@@ -140,14 +140,29 @@ class ManuscriptProjectionMixin:
                 )
             )
 
-        item.statements.append(
-            WikidataStatement(
-                property_id=P_COLLECTION,
-                value=Q_NLI,
-                value_type="item",
-                references=ref,
-            )
+        current_owner_names = [
+            str(contributor.get("name") or "").strip().strip(_QUOTE_CHARS)
+            for contributor in (record.get("contributors") or [])
+            if isinstance(contributor, dict)
+            and "current owner" in str(contributor.get("role") or "").lower()
+        ]
+        has_external_current_owner = any(
+            name
+            and "national library of israel" not in name.casefold()
+            and "הספרייה הלאומית" not in name
+            and "הספריה הלאומית" not in name
+            for name in current_owner_names
         )
+        collection_qid = None if has_external_current_owner else Q_NLI
+        if collection_qid:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_COLLECTION,
+                    value=collection_qid,
+                    value_type="item",
+                    references=ref,
+                )
+            )
         # P17 = country (Israel — all NLI manuscripts are held in Israel)
         item.statements.append(
             WikidataStatement(
@@ -177,7 +192,11 @@ class ManuscriptProjectionMixin:
                     # P217 constraint requires P195 (collection) as a qualifier
                     # on the statement itself (not just a top-level P195 claim).
                     # Fix 2026-04-15 third audit Fix #1.
-                    qualifiers=[{"property": P_COLLECTION, "value": Q_NLI, "type": "item"}],
+                    qualifiers=(
+                        [{"property": P_COLLECTION, "value": collection_qid, "type": "item"}]
+                        if collection_qid
+                        else []
+                    ),
                     references=ref,
                 )
             )
@@ -706,13 +725,6 @@ class ManuscriptProjectionMixin:
                     value_type="monolingualtext",
                     language="he",
                     references=ref,
-                    qualifiers=[
-                        {
-                            "property": P_OBJECT_HAS_ROLE,
-                            "value": "Q1145267",
-                            "type": "item",  # provenance
-                        }
-                    ],
                 )
             )
 
@@ -763,5 +775,15 @@ class ManuscriptProjectionMixin:
                 value_type="item",
             )
         )
+
+        # P7535 is scoped to archival collections, not arbitrary manuscript
+        # catalog notes; P5008 is administrative and adds no notability.
+        # Remove both from manuscript exports until a source-backed structured
+        # mapping exists.
+        item.statements = [
+            statement
+            for statement in item.statements
+            if statement.property_id not in {"P7535", "P5008", "P17", "P131"}
+        ]
 
         return item

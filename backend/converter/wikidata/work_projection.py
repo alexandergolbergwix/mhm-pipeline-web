@@ -102,13 +102,23 @@ class WorkProjectionMixin:
                 #
                 # Use the transliteration only; catalog IDs stay in P3959
                 # and source metadata, never in public labels.
-                en_candidate = english_label_for_hebrew(
-                    title,
-                    source_record,
-                    allow_algorithmic=False,  # consonantal output too ugly
+                trusted_romanization = any(
+                    str(source_record.get(key) or "").strip()
+                    for key in (
+                        "title_romanized", "title_alalc", "title_latin",
+                        "title_en", "marc_880", "marc_246",
+                        "variant_title_romanized", "alt_title_romanized",
+                    )
                 )
-                if en_candidate:
-                    work.labels["en"] = en_candidate
+                if trusted_romanization:
+                    en_candidate = english_label_for_hebrew(
+                        title,
+                        source_record,
+                        allow_nakdan=False,
+                        allow_algorithmic=False,
+                    )
+                    if en_candidate:
+                        work.labels["en"] = en_candidate
         else:
             # Latin-only title (e.g. "Bible", "Diodati Segre"): route to the en
             # slot only — never any he slot (label OR alias). Putting Latin text

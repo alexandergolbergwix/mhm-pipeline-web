@@ -29,7 +29,7 @@ that refuses live wikidata.org writes by default.
 - [How it works: guards and upload](guards-and-upload.md) —
   reconcile-before-create, upload job + moratorium + QS download, AI review +
   autofix.
-- [Rules](rules.md) — the 20 invariants (R1–R20) this block enforces.
+- [Rules](rules.md) — the 21 invariants (R1–R21) this block enforces.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
   dry-runs, force-rebuild, blocked items, local quality audit, AI autofixes.
 - [Local quality audit](quality-audit.md) — read-only measurement, count

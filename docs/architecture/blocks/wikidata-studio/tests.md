@@ -6,7 +6,8 @@
 - `backend/tests/test_wikidata_items_export_import.py` — override export/import round-trip and diagnostic CSV coverage (item fields, MARC context, and full AI verdict).
 - `backend/tests/test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py` (including build `records` ↔ verify `record_ids`, MARC-context fingerprint parity, and safe legacy-key display), `test_wikidata_qid_ledger.py`, `test_wikidata_single_push.py`, `test_wikidata_export_quality.py` — parity plan Phases 1–4.
 - `backend/tests/unit/test_wikidata_upload_guards.py` (~17+) — reconcile-before-create per type, fail-closed outage, validator hard gate, blocked-never-written, audit trail, ledger/adopt, dry-run truthfulness.
-- `backend/tests/unit/test_wikidata_studio_slicing.py`, `test_wikidata_studio_works.py`, `test_wikidata_manuscript_labels.py`, `test_wikidata_matcher_backfill.py` — build/serialisation behaviour. `test_wikidata_studio_works.py` also pins exact per-item `records` association for manuscripts, persons, and shared works.
+- `backend/tests/unit/test_rdf_build.py` — raw 505 and flat contents require approval before work projection.
+- `backend/tests/unit/test_wikidata_studio_slicing.py`, `test_wikidata_studio_works.py`, `test_wikidata_manuscript_labels.py`, `test_wikidata_matcher_backfill.py` — build/serialisation behaviour. `test_wikidata_studio_works.py` also pins exact per-item `records` association for manuscripts, persons, and shared works; raw unapproved contents are omitted.
 - `backend/tests/unit/test_wikidata_studio_control_number_join.py` — quoted/whitespace control numbers join records to approved authority and NER evidence before item projection.
 - `backend/tests/unit/test_wikidata_autofix_apply.py`, `test_wikidata_entity_compare.py` — AI-fix merge + live compare.
 - `backend/tests/test_hmo_instance_qids_for_run.py` — HMO QID injection into the fingerprint/build.
@@ -21,7 +22,7 @@ Any new external-write path or reconcile change MUST extend
 
 
 - `backend/tests/test_wikidata_items_export_import.py` — diagnostic CSV columns include authority evidence and local-reference target JSON.
-- `eval-agent/tests/test_wikidata_item.py` — evaluator payload/prompt carries authority and internal-reference context.
+- `eval-agent/tests/test_wikidata_item.py` — evaluator payload/prompt carries authority, internal-reference, and contents/catalog context.
 
 
 - `backend/tests/unit/test_wikidata_builder_modules.py` — public builder API retains the shared models and all extracted projection methods.

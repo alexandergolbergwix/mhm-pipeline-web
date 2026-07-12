@@ -7,27 +7,15 @@ import re
 from converter.wikidata.item_builder import (
     LANG_TO_QID,
     PRECISION_YEAR,
-    P_AUTHOR,
     P_DATE_OF_BIRTH,
     P_DATE_OF_DEATH,
     P_INSTANCE_OF,
-    P_NATURE_OF_STATEMENT,
     P_NLI_J9U_ID,
-    P_OBJECT_HAS_ROLE,
-    P_OBJECT_NAMED_AS,
-    P_OCCUPATION,
-    P_SOURCING_CIRCUMSTANCES,
     P_VIAF_ID,
-    Q_AUTHOR_OCCUPATION,
     Q_HUMAN,
-    Q_HYPOTHESIS,
-    Q_NLI,
     Q_ORGANIZATION,
-    Q_PRESUMABLY,
-    ROLE_TO_PID,
     WikidataItem,
     WikidataStatement,
-    _ROLE_TO_OCCUPATION,
     _associate_item_with_source_record,
     _build_person_description,
     _has_hebrew_script,
@@ -114,22 +102,32 @@ class PersonProjectionMixin:
             if (mazal_id and mid == mazal_id) or (viaf_uri and vid == viaf_uri):
                 match_info = m  # type: ignore[assignment]
                 break
-        # Fallback: when no authority-ID match was found (neither viaf_uri nor
-        # mazal_id set), search by name prefix — catches persons resolved via
-        # direct Wikidata QID lookup rather than VIAF/Mazal.
-        if not match_info:
-            name_prefix = clean_name[:6] if len(clean_name) >= 6 else clean_name
-            for m in source_record.get("marc_authority_matches") or []:
-                entry_name = str(m.get("name", "") or "")
-                if entry_name and entry_name[: len(name_prefix)] == name_prefix:
-                    match_info = m  # type: ignore[assignment]
-                    break
         name_type = (
             str(match_info.get("name_type") or match_info.get("viaf_name_type") or "")
             .strip()
             .lower()
         )
-        if name_type and name_type not in {"personal", "person", "individual"}:
+        entity_kind = str(match_info.get("entity_kind") or "").strip().lower()
+        marc_field = str(
+            match_info.get("main_marc_tag") or match_info.get("field") or ""
+        ).strip().lower()
+        is_corporate = (
+            entity_kind in {"organization", "corporate", "institution", "group"}
+            or name_type in {"corporate", "organization", "institution", "company"}
+            or marc_field.startswith(("110", "111", "610", "611", "710", "711"))
+            or _is_institutional_name(clean_name)
+        )
+        if is_corporate:
+            logger.warning(
+                "Skipping corporate authority %r (kind=%r, field=%r)",
+                clean_name,
+                entity_kind or name_type,
+                marc_field,
+            )
+            self._skipped_person_keys.add(key)
+            self._skipped_person_stubs[key] = person
+            return person
+        if name_type and name_type not in {"personal", "person", "individual"} and not is_corporate:
             logger.warning(
                 "Skipping non-person authority %r with name_type=%r",
                 clean_name,
@@ -153,6 +151,10 @@ class PersonProjectionMixin:
                         "dates": match_info.get("dates"),
                         "preferred_name_lat": match_info.get("preferred_name_lat"),
                         "preferred_name_heb": match_info.get("preferred_name_heb"),
+                        "entity_kind": entity_kind,
+                        "main_marc_tag": match_info.get("main_marc_tag"),
+                        "field": match_info.get("field"),
+                        "role": match_info.get("role") or role,
                     }.items()
                     if value not in (None, "", [], {})
                 }
@@ -257,7 +259,7 @@ class PersonProjectionMixin:
 
         # P31 = human (or organization) — uses the shared institutional
         # keyword list (see _is_institutional_name above).
-        is_org = _is_institutional_name(name)
+        is_org = is_corporate
         person.statements.append(
             WikidataStatement(
                 property_id=P_INSTANCE_OF,
@@ -281,24 +283,10 @@ class PersonProjectionMixin:
                 dates_str = str(match.get("dates", ""))
                 break
 
-        # Strategy 2: Name matching across all sources
-        if not birth_year and not death_year:
-            for person_list in [
-                source_record.get("authors") or [],
-                source_record.get("contributors") or [],
-                source_record.get("marc_authority_matches") or [],
-            ]:
-                for entry in person_list:
-                    entry_name = str(entry.get("name", ""))
-                    if entry_name and name and entry_name[:5] == name[:5]:
-                        birth_year = entry.get("birth_year")
-                        death_year = entry.get("death_year")
-                        dates_str = str(entry.get("dates", ""))
-                        break
-                if birth_year or death_year:
-                    break
 
-        # Strategy 3: Parse dates string if we have it but not individual years
+        # Dates are accepted only from the exact authority-ID match above.
+
+        # Parse dates string if we have it but not individual years
         if not birth_year and not death_year and dates_str and dates_str != "None":
             parts = re.split(r"[-–]", dates_str.strip())
             for p in parts:
@@ -352,17 +340,6 @@ class PersonProjectionMixin:
                     value=f"+{int(death_year):04d}-00-00T00:00:00Z",
                     value_type="time",
                     precision=PRECISION_YEAR,
-                )
-            )
-
-        # P106 = occupation (from role)
-        occupation_qid = _ROLE_TO_OCCUPATION.get(role)
-        if occupation_qid and not is_org:
-            person.statements.append(
-                WikidataStatement(
-                    property_id=P_OCCUPATION,
-                    value=occupation_qid,
-                    value_type="item",
                 )
             )
 

@@ -1955,6 +1955,13 @@ After a Studio rebuild displayed 162 items rather than the prior 294, logs showe
 
 The Studio boundary now applies `canonical_control_number` to record, authority-match, and NER-entity keys before grouping. Future build inputs MUST use this canonical key at every join boundary; local measurement must mirror the production authority-row shape. Test: `test_wikidata_studio_control_number_join.py`.
 
+### Rule W-67 — Wikidata projections MUST fail closed on unsupported semantic claims (added 2026-07-12)
+
+The latest 228-item verdict export still contained three hard failures: a generic holiday term emitted as a work, a raw MARC 505 title (`Diodati Segre`) promoted to a work despite an unapproved NER/authority match, and the corporate institution Hekhal Shlomo emitted as a human. Partial verdicts also exposed machine-generated English labels, arbitrary P921/P136 enrichment, archival P7535 claims on ordinary manuscript notes, and a wrong Curt Paul Janz QID used as a provenance role.
+
+The builder now requires a known or curator-approved work identity for structured contents, honors NER approval, gates English labels on trusted catalog romanization, skips unresolved corporate authorities, accepts person dates only from exact authority-ID matches, disables network subject lookup and genre inference by default, removes unsupported manuscript claims, and invalidates old verdict-cache keys. The evaluator receives contents/genre/catalog evidence and treats P5008 as administrative and P7535 as archival-only. Future projection changes MUST preserve this fail-closed boundary and add source-backed property mappings before emitting claims. Tests: `test_wikidata_studio_works.py`, `test_item_validator.py`.
+
+
 ## What this web app does NOT do (yet)
 
 - Train models — pipeline (desktop) owns training.

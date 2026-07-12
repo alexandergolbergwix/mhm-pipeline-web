@@ -315,6 +315,8 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
         "name":               raw_name,
         "role":               raw_role,
         "field":              m.get("field") or payload.get("field") or "700/710/711",
+        "entity_kind":        m.get("entity_kind") or payload.get("entity_kind") or "person",
+        "main_marc_tag":      payload.get("main_marc_tag") or payload.get("main_marc_field") or "",
         "mazal_id":           m.get("mazal_id", ""),
         "viaf_uri":           (
             f"https://viaf.org/viaf/{m['viaf_id']}"

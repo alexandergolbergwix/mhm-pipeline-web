@@ -67,6 +67,9 @@ def test_wikidata_item_evaluator_emits_local_id_keyed_candidate():
         "title": "Sefer ha-refu'ot",
         "dates": "16th century",
         "shelfmark": "Ms. Heb. 8",
+        "contents": [{"title": "Sefer ha-refuot"}],
+        "genres": [{"term": "manuscript"}],
+        "catalog_references": [{"source_field": "505"}],
     }
 
     candidates = list(
@@ -82,6 +85,8 @@ def test_wikidata_item_evaluator_emits_local_id_keyed_candidate():
     assert candidate.payload["authority_evidence"][0]["source"] == "NLI"
     assert "person::1" in candidate.payload["local_reference_targets"]
     assert candidate.marc_context["title"] == "Sefer ha-refu'ot"
+    assert "Sefer ha-refuot" in candidate.marc_context["contents"]
+    assert "505" in candidate.marc_context["catalog_references"]
 
 
 def test_wikidata_item_is_registered():

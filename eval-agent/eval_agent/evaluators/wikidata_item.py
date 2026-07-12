@@ -21,6 +21,9 @@ class WikidataItemEvaluator(Evaluator):
         "title", "authors", "contributors", "subjects", "provenance",
         "notes", "dates", "place", "related_places", "languages",
         "material", "extent", "shelfmark", "colophon_text",
+        "contents", "work_mentions", "genres", "genre_entries",
+        "holding_institution", "catalog_references", "related_works",
+        "source_field", "505$a", "500$a", "561$a",
     ]
 
     def extract_candidates(
@@ -71,7 +74,11 @@ class WikidataItemEvaluator(Evaluator):
             p.get("validation_issues") or [], ensure_ascii=False, indent=2
         )
         authority_json = json.dumps(p.get("authority_evidence") or [], ensure_ascii=False, indent=2)
-        local_targets_json = json.dumps(p.get("local_reference_targets") or {}, ensure_ascii=False, indent=2)
+        local_targets_json = json.dumps(
+            p.get("local_reference_targets") or {},
+            ensure_ascii=False,
+            indent=2,
+        )
         block = (
             "Model: Wikidata Studio item projection\n"
             "Prediction:\n"

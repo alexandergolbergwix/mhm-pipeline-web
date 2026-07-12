@@ -38,3 +38,13 @@ Evidence handling:
   target is absent or the relation is otherwise unsupported.
 - A clean Hebrew label is sufficient for a Hebrew work or manuscript; an
   English label is optional when no reliable transliteration is available.
+- Do not require P5008 for notability; it is an administrative focus-list
+  claim, not evidence that the item is a work or manuscript.
+- P7535 is for archival-collection scope and content, not arbitrary manuscript
+  catalog notes or provenance. Treat it as unsupported unless the MARC context
+  identifies an archival collection.
+- P921 is the primary subject, not a dump of every 650 note; generic or
+  weakly matched topics should be omitted rather than asserted.
+- P11603 identifies a human who transcribed a written work; P195 identifies
+  the actual holding institution. Do not accept a building or institution as
+  a person or scribe.

@@ -137,3 +137,6 @@
 
 
 - **R25 — Wikidata verdict prompts carry authority and local-target evidence (Rule W-65).** The evaluator payload/cache/export includes compact authority evidence and resolved `__LOCAL:` targets; the rubric accepts coherent year precision 9 and clean Hebrew labels. *Why:* missing non-MARC authority context and unresolved internal references caused systematic partial/fail verdicts.
+
+
+- **R26 — Wikidata item prompts MUST include the source fields needed to judge semantic claims (Rule W-67).** The MARC slice includes contents, work mentions, genres, catalog fields, and related works; the rubric treats P5008 as administrative and P7535 as archival-only, while authority evidence identifies corporate entities and exact provenance. Cache schema/version changes MUST invalidate verdicts generated from the older context. *Why:* the judge cannot distinguish an unsupported work, institution-as-person, or archival property misuse when the relevant source fields are absent.
