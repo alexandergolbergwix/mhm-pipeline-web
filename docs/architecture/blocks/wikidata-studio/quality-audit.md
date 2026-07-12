@@ -46,6 +46,21 @@ record, authority, and NER inputs (Rule W-66).
 - Treat Hebrew-only labels as valid when no reliable transliteration exists;
   do not invent English labels.
 
+## Verdict-analysis baseline (run 48ba6c13)
+
+The exported 228-item review produced 60 `partial` verdicts and 2 `fail`
+verdicts; 45 items had not yet received a verdict. Root causes were grouped as
+low-confidence English transliteration or title artifacts (works), authority
+identity/type conflicts (people), and over-projected or under-explained MARC
+metadata (manuscripts). Fix the projection and evaluator evidence contract; do
+not weaken the rubric merely to turn incorrect public data into a pass.
+
+The required remediation order is: trust-gate English labels; reject incomplete
+work titles; infer corporate versus personal entities from MARC context; retain
+authority display variants without treating catalogue order as an error; project
+only specific, source-backed subject/genre/provenance claims; then rebuild and
+re-verify the full corpus with cache override.
+
 ## Completion criteria
 
 The rebuild must have no validator ERRORs or unresolved `__LOCAL:` targets;
