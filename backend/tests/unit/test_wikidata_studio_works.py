@@ -384,6 +384,12 @@ async def test_structured_505_author_suffix_is_not_part_of_work_label() -> None:
     assert work["work_candidate_evidence"][0]["source_text"] == (
         "ספר היראה ליונה בן אברהם גרונדי"
     )
+    assert any(
+        stmt["property_id"] == "P2093"
+        and stmt["value"] == "יונה בן אברהם גרונדי"
+        for stmt in work["statements"]
+    )
+    assert not any("יונה" in value for value in work["descriptions"].values())
 
 
 @pytest.mark.asyncio
@@ -399,5 +405,45 @@ async def test_title_phrase_starting_lamed_is_not_misread_as_author() -> None:
         return_native=False,
     )
     work = next(item for item in result["items"] if item["entity_type"] == "work")
-    assert work["labels"]["he"] == "כוונות התפילה לכל השנה עפי קבלת הארי"
+    assert work["labels"]["he"] == 'כוונות התפילה לכל השנה עפ"י קבלת האר"י'
     assert "by " not in work["descriptions"]["en"]
+
+
+@pytest.mark.asyncio
+async def test_work_uses_exact_approved_author_qid_before_person_pass() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "contents": [{
+            "title": "ספר היראה ליונה בן אברהם גרונדי",
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[{
+            "control_number": "1",
+            "entity_text": "יונה בן אברהם גרונדי",
+            "role": "author",
+            "mazal_id": "987000000000000001",
+            "wikidata_qid": "Q123",
+            "approved": True,
+        }],
+        entities_by_cn={},
+        return_native=False,
+    )
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert any(
+        stmt["property_id"] == "P50" and stmt["value"] == "Q123"
+        for stmt in work["statements"]
+    )
+    assert not any(stmt["property_id"] == "P2093" for stmt in work["statements"])
+
+
+def test_known_work_title_aliases_are_exact_and_not_fuzzy() -> None:
+    from converter.wikidata.property_mapping import known_work_qid_for_title
+
+    assert known_work_qid_for_title("יוסיפון") == "Q1561132"
+    assert known_work_qid_for_title('פרוש המשנה לרמב"ם (פרק חלק)') == "Q6124976"
+    assert known_work_qid_for_title("משנה תורה (ספר זמנים)") == "Q201029"
+    assert known_work_qid_for_title("יצירה דומה") is None

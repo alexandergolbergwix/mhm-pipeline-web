@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** for the full incident-annotated
-architectural rules (Rules W-1…W-68). Each rule records a real production
+architectural rules (Rules W-1…W-69). Each rule records a real production
 incident plus the invariant that closes it — check it before touching RDF
 build/SHACL, Wikidata Studio writes, HMO Wikibase uploads, auth/rate-limit
 surfaces, or the job/cache/versioning plumbing. This `AGENTS.md` is the
@@ -58,7 +58,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-68) stay in [CLAUDE.md](CLAUDE.md).
+(W-1…W-69) stay in [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -156,6 +156,8 @@ headings need authority/QID evidence, rejected NER stays rejected, and every
 decision carries `work_candidate_evidence`. Do not restore the W-67
 authority-only gate: it caused the 228→131 count collapse. A read-only rebuild
 of run 48ba6c13 with W-68 yields 183 clean items and zero validator errors.
+
+**Work/export quality boundary (Rule W-69):** work aliases use only exact verified QIDs; extracted authors become P50, a local target, or P2093; English descriptions never embed Hebrew names; internal Hebrew gershayim and normalized P1476 are preserved. The section export labels authority/NER `approved_only` separately from item approval and carries complete verdict/source JSON. Use `backend/scripts/check_wikidata_export_quality.py` for a compact read-only audit.
 
 ## Local measurement re-verify (offline curator ops)
 

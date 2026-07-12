@@ -68,3 +68,20 @@ every person item must carry an authority identifier; and every new
 relationship must be source-backed and property-verified. Then run the
 opt-in AI audit and use its grouped evidence to prioritize any remaining
 semantic corrections.
+
+## Deterministic export audit
+
+For a downloaded section or diagnostic export, run:
+
+```bash
+cd backend
+.venv/bin/python -m scripts.check_wikidata_export_quality \
+  /path/run-wikidata-approved.json --output /tmp/wikidata-quality.json
+```
+
+The report emits counts plus only the relevant row evidence. It currently checks
+work identity/author claims, Hebrew leakage in English descriptions, lost Hebrew
+gershayim, validator errors/warnings, and whether item approval/verdict fields
+are present. A section export may legitimately report
+`authority-approved-only`: that flag is not item approval and does not mean AI
+verification passed.

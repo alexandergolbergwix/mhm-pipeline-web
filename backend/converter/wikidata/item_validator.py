@@ -592,7 +592,8 @@ def _check_label_hygiene(
 
     if label:
         cleaned = clean_marc_label(label, strip_ms_scope=True)
-        if cleaned != label.strip():
+        terminal_geresh = bool(re.search(r"[\u0590-\u05ff]'$", label.strip()))
+        if cleaned != label.strip() and not (terminal_geresh and cleaned == label.strip()[:-1]):
             issues.append(ValidationIssue(
                 "warning", "LABEL_QUOTE_NOISE",
                 "Label carries ISBD quote noise or an (in MS …) scope suffix.",

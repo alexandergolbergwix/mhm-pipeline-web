@@ -81,3 +81,15 @@
 2. Only `confidence: "high"` fixes are merged (`merge_ai_fixes`) into an
    override PATCH via `POST …/items/{local_id}/apply-ai-fixes`; everything else
    stays a suggestion. Rebuild to see the applied state.
+### Skill: audit a downloaded Wikidata export
+
+1. Run the read-only checker against JSON or CSV; it never touches Postgres,
+   caches, Wikidata, or the source file:
+   `cd backend && .venv/bin/python -m scripts.check_wikidata_export_quality \
+   /path/run-wikidata-approved.json --output /tmp/wikidata-quality.json`.
+2. Read `counts` first, then inspect only the compact `findings` rows.
+   `authority-approved-only` means the root `approved_only` filtered authority
+   and NER inputs; it is not item approval or an AI pass.
+3. For AI partial/fail rows, use `scripts/analyze_wikidata_verdicts.py`; pass the
+   modern diagnostic export so complete `ai_verdict_json` and MARC context are
+   available to the Codex CLI.

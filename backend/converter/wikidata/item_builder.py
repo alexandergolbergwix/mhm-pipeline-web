@@ -32,6 +32,7 @@ from converter.wikidata.property_mapping import (
     MATERIAL_TO_QID,
     P_APPLIES_TO_PART,
     P_AUTHOR,
+    P_AUTHOR_NAME_STRING,
     P_BASED_ON_HEURISTIC,
     P_CATALOG_CODE,
     P_COLLECTION,
@@ -60,7 +61,6 @@ from converter.wikidata.property_mapping import (
     P_NLI_J9U_ID,
     P_NUMBER_OF_FOLIOS,
     P_NUMBER_OF_PAGES,
-    Q_LEAF_UNIT,
     P_NUMBER_OF_PARTS,
     P_OBJECT_HAS_ROLE,
     P_OBJECT_NAMED_AS,
@@ -94,6 +94,7 @@ from converter.wikidata.property_mapping import (
     Q_HYPOTHESIS,
     Q_ILLUMINATED_MANUSCRIPT,
     Q_KTIV,
+    Q_LEAF_UNIT,
     Q_MANUSCRIPT,
     Q_MARGINALIA,
     Q_NLI,
@@ -112,9 +113,10 @@ from converter.wikidata.property_mapping import (
     extract_wikidata_qid,
     hmo_wikibase_entity_url,
     hmo_wikibase_page_url,
+    known_work_qid_for_title,
+    nli_authority_reference,
     nli_j9u_id,
     nli_reference,
-    nli_authority_reference,
     viaf_reference,
 )
 
@@ -185,8 +187,11 @@ def _normalise_label(s: str) -> str:
     s = s.strip()
     s = s.strip(_QUOTE_CHARS + _HEBREW_QUOTE_CHARS).strip()
     # MARC exports frequently escape catalog quote wrappers as ASCII\".
-    # Remove those wrappers globally while preserving Hebrew gershayim.
-    s = s.replace('\\"', '"').replace('"', "")
+    # Preserve an internal ASCII gershayim between Hebrew letters (רס"ג,
+    # רש"י, רמב"ם); only remove wrapper/noise quotes.
+    s = s.replace('\\"', '"')
+    protected = re.sub(r'(?<=[\u0590-\u05ff])"(?=[\u0590-\u05ff])', "\ue002", s)
+    s = protected.replace('"', "").replace("\ue002", '"')
     s = _MARC_RELATOR_RE.sub("", s).strip()
     s = _MARC_BRACKET_NOTE_RE.sub(" ", s).strip()
     s = _MARC_ISBD_TRAIL_RE.sub("", s).strip()
@@ -561,9 +566,17 @@ def _build_work_description(author_name: str | None, century: str | None) -> str
     if author_name:
         cleaned = author_name.strip().rstrip(",;:")
         if cleaned:
-            parts.append(f"by {cleaned}")
+            # English descriptions must remain readable in English. Hebrew
+            # author names are retained in P50/P2093 and source evidence, not
+            # copied verbatim into the English description slot.
+            if _has_hebrew_script(cleaned):
+                parts.append("with author recorded in the source catalogue")
+            else:
+                parts.append(f"by {cleaned}")
     if century:
-        parts.append(f"({century})")
+        ascii_century = _ascii_dates(str(century))
+        if ascii_century:
+            parts.append(f"({ascii_century})")
     return _cap_description(" ".join(parts))
 
 

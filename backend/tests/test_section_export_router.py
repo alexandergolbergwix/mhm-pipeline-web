@@ -251,3 +251,28 @@ class TestWikibaseExport:
         _assert_attachment(r, ".csv")
         rows = _parse_csv(r.content)
         assert len(rows) >= 1
+
+
+def test_wikidata_section_csv_row_preserves_review_and_source_evidence() -> None:
+    from app.routers.section_export import _wikidata_csv_row
+
+    row = _wikidata_csv_row({
+        "local_id": "work:1",
+        "entity_type": "work",
+        "existing_qid": "Q123",
+        "approved": None,
+        "ai_verdict": {"overall": "partial", "reasoning": "needs author"},
+        "labels": {"he": "ספר"},
+        "descriptions": {"en": "Hebrew work"},
+        "records": ["9901"],
+        "statements": [{"property_id": "P2093", "value": "מחבר"}],
+        "validation_issues": [{"code": "LABEL_QUOTE_NOISE", "severity": "warning"}],
+        "authority_evidence": [],
+        "work_candidate_evidence": [{"source_field": "505", "reason": "named_work_in_505"}],
+    })
+
+    assert row["approved"] is None
+    assert row["ai_verdict_overall"] == "partial"
+    assert "needs author" in row["ai_verdict_json"]
+    assert '"P2093"' in row["statements_json"]
+    assert '"named_work_in_505"' in row["work_candidate_evidence_json"]

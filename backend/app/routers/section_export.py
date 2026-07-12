@@ -21,6 +21,7 @@ alongside them.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import uuid
@@ -380,8 +381,13 @@ async def export_wikibase(
 # ── Wikidata Studio ───────────────────────────────────────────────────
 
 _WIKIDATA_CSV_FIELDS = [
-    "local_id", "qid", "label_en", "label_he", "description_en",
-    "instance_of_qid", "manuscript_cn", "claims_count",
+    "local_id", "qid", "entity_type", "existing_qid", "approved",
+    "ai_verdict_overall", "ai_verdict_reasoning", "ai_verdict_json",
+    "label_en", "label_he", "description_en", "description_he",
+    "instance_of_qid", "manuscript_cn", "records_json",
+    "statements_json", "validation_issues_json",
+    "authority_evidence_json", "work_candidate_evidence_json",
+    "claims_count",
 ]
 
 _WIKIDATA_BASE_URI = "http://www.wikidata.org/entity/"
@@ -391,20 +397,60 @@ def _wikidata_csv_row(item: dict[str, Any]) -> dict[str, Any]:
     labels = item.get("labels") or {}
     descs = item.get("descriptions") or {}
     claims = item.get("claims") or item.get("statements") or []
+    verdict = item.get("ai_verdict") if isinstance(item.get("ai_verdict"), dict) else {}
     p31 = next(
-        (c.get("value") or "" for c in claims if (c.get("property") or "").lstrip("P") == "31"),
+        (c.get("value") or c.get("value_id") or "" for c in claims
+         if (c.get("property") or c.get("property_id") or "").lstrip("P") == "31"),
         "",
     )
+
+    def _json_cell(value: Any) -> str:
+        if value in (None, "", {}, []):
+            return ""
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
     return {
         "local_id": item.get("id") or item.get("local_id") or "",
         "qid": item.get("qid") or "",
+        "entity_type": item.get("entity_type") or "",
+        "existing_qid": item.get("existing_qid") or "",
+        "approved": item.get("approved"),
+        "ai_verdict_overall": verdict.get("overall"),
+        "ai_verdict_reasoning": verdict.get("reasoning"),
+        "ai_verdict_json": _json_cell(verdict),
         "label_en": labels.get("en", ""),
         "label_he": labels.get("he", ""),
         "description_en": descs.get("en", ""),
+        "description_he": descs.get("he", ""),
         "instance_of_qid": p31,
         "manuscript_cn": item.get("manuscript_cn") or item.get("control_number") or "",
+        "records_json": _json_cell(item.get("records") or item.get("record_ids")),
+        "statements_json": _json_cell(claims),
+        "validation_issues_json": _json_cell(item.get("validation_issues")),
+        "authority_evidence_json": _json_cell(item.get("authority_evidence")),
+        "work_candidate_evidence_json": _json_cell(item.get("work_candidate_evidence")),
         "claims_count": len(claims),
     }
+
+
+def _attach_item_review_metadata(
+    items: list[dict[str, Any]],
+    override_rows: list[WikidataItemOverride],
+) -> list[dict[str, Any]]:
+    """Expose item approval/verdict fields without changing authority filtering."""
+    by_local_id = {row.local_id: row for row in override_rows}
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        row = dict(item)
+        local_id = str(row.get("local_id") or row.get("id") or "")
+        override = by_local_id.get(local_id)
+        row["approved"] = override.approved if override else None
+        row["ai_verdict"] = override.ai_verdict if override else None
+        row["ai_verdict_at"] = (
+            override.ai_verdict_at.isoformat() if override and override.ai_verdict_at else None
+        )
+        enriched.append(row)
+    return enriched
 
 
 async def _get_wikidata_items(
@@ -449,7 +495,7 @@ async def _get_wikidata_items(
     ).scalar_one_or_none()
 
     if cached is not None and cached.input_fingerprint == fingerprint:
-        return cached.result_items
+        return _attach_item_review_metadata(cached.result_items, override_rows)
 
     # Cache miss — full build
     matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
@@ -493,7 +539,7 @@ async def _get_wikidata_items(
             "statement_edits": r.statement_edits,
         } for r in override_rows},
     )
-    return result.get("items", [])
+    return _attach_item_review_metadata(result.get("items", []), override_rows)
 
 
 @router.get("/{run_id}/wikidata-studio/export", response_model=None)
@@ -513,7 +559,12 @@ async def export_wikidata_studio(
     if format == "json":
         filename = f"run-{run_id}-wikidata-{suffix}.json"
         return StreamingResponse(
-            json_stream({"run_id": str(run_id), "approved_only": approved_only, "items": items}),
+            json_stream({
+                "run_id": str(run_id),
+                "approved_only": approved_only,
+                "approval_scope": "authority_matches_and_ner",
+                "items": items,
+            }),
             media_type="application/json",
             headers=_attachment(filename),
         )

@@ -13,6 +13,7 @@
 | Touch Wikibase Cloud items/schema | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) — schema AI verify: eval-agent [R17](blocks/eval-agent/rules.md), Rule W-47 |
 | Add an AI-verify surface | [eval-agent](blocks/eval-agent/README.md) |
 | Analyze partial/fail AI verdicts with Codex | [eval-agent](blocks/eval-agent/README.md) |
+| Audit Wikidata export quality/failure counts | [wikidata-studio](blocks/wikidata-studio/README.md) — run `check_wikidata_export_quality.py` |
 | Add caching or an external API call | [caching](blocks/caching/README.md) |
 | Add a curator-mutable field | [versioning-export](blocks/versioning-export/README.md) |
 | Add an endpoint (esp. unauthenticated) | [platform-security](blocks/platform-security/README.md) |

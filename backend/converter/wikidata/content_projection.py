@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from converter.wikidata.item_builder import (
-    KNOWN_WORK_QIDS,
+    _QUOTE_CHARS,
     P_BASED_ON_HEURISTIC,
     P_EXEMPLAR_OF,
     P_GENRE,
@@ -14,12 +14,12 @@ from converter.wikidata.item_builder import (
     Q_PRESUMABLY,
     WikidataItem,
     WikidataStatement,
-    _QUOTE_CHARS,
     _clean_work_title,
     _get_genre_classifier,
     _is_noise_work_title,
     _person_key,
     _split_work_title_author,
+    known_work_qid_for_title,
 )
 from converter.wikidata.work_candidates import assess_work_candidate
 
@@ -51,7 +51,7 @@ class ContentProjectionMixin:
             raw_title = str(entry.get("title") or "").strip()
             candidate_title, embedded_author = _split_work_title_author(raw_title)
             cleaned = _clean_work_title(candidate_title)
-            work_qid = KNOWN_WORK_QIDS.get(cleaned) or KNOWN_WORK_QIDS.get(raw_title)
+            work_qid = known_work_qid_for_title(cleaned) or known_work_qid_for_title(raw_title)
             approved = cleaned.casefold() in approved_work_titles
             decision = assess_work_candidate(
                 candidate_title,
@@ -118,7 +118,7 @@ class ContentProjectionMixin:
             raw = str(work.get("text") or "").strip().strip(_QUOTE_CHARS + ".")
             work_title, embedded_author = _split_work_title_author(raw)
             work_title = _clean_work_title(work_title)
-            work_qid = KNOWN_WORK_QIDS.get(work_title)
+            work_qid = known_work_qid_for_title(work_title)
             decision = assess_work_candidate(
                 work_title,
                 source_field="contents_ner",
@@ -225,7 +225,9 @@ class ContentProjectionMixin:
 
         for genre in marc_genres:
             if isinstance(genre, dict):
-                from converter.transformer.subject_records import normalize_genre_entry  # noqa: PLC0415
+                from converter.transformer.subject_records import (
+                    normalize_genre_entry,  # noqa: PLC0415
+                )
 
                 norm = normalize_genre_entry(genre)
                 label = norm["term"] if norm else ""

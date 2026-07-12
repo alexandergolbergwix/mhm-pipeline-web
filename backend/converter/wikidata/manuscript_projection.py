@@ -5,10 +5,9 @@ from __future__ import annotations
 import re
 
 from converter.wikidata.item_builder import (
+    _QUOTE_CHARS,
+    _SOURCE_FILENAME_RE,
     CONDITION_TO_QID,
-    KNOWN_WORK_QIDS,
-    PRECISION_CENTURY,
-    PRECISION_YEAR,
     P_BASED_ON_HEURISTIC,
     P_CATALOG_CODE,
     P_COLLECTION,
@@ -35,6 +34,8 @@ from converter.wikidata.item_builder import (
     P_SIGNIFICANT_PLACE,
     P_SOURCING_CIRCUMSTANCES,
     P_TITLE,
+    PRECISION_CENTURY,
+    PRECISION_YEAR,
     Q_CIRCA,
     Q_COLOPHON,
     Q_CORRECTION,
@@ -46,16 +47,16 @@ from converter.wikidata.item_builder import (
     SCRIPT_TYPE_TO_QID,
     WikidataItem,
     WikidataStatement,
-    _QUOTE_CHARS,
-    _SOURCE_FILENAME_RE,
     _associate_item_with_source_record,
     _extract_inception_year,
     _is_catalog_note_placeholder,
     _marc_entry_label,
+    _normalise_label,
     date_to_wikidata,
     extract_wikidata_qid,
     hmo_wikibase_entity_url,
     hmo_wikibase_page_url,
+    known_work_qid_for_title,
     nli_j9u_id,
     nli_reference,
 )
@@ -237,7 +238,7 @@ class ManuscriptProjectionMixin:
             item.statements.append(
                 WikidataStatement(
                     property_id=P_TITLE,
-                    value=title,
+                    value=_normalise_label(title),
                     value_type="monolingualtext",
                     language="he",
                     references=ref,
@@ -746,7 +747,7 @@ class ManuscriptProjectionMixin:
             rw_title = rw_title.strip().strip(_QUOTE_CHARS + ".")
             if not rw_title:
                 continue
-            rw_qid = KNOWN_WORK_QIDS.get(rw_title)
+            rw_qid = known_work_qid_for_title(rw_title)
             if rw_qid:
                 item.statements.append(
                     WikidataStatement(

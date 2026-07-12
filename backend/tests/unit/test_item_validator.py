@@ -476,6 +476,18 @@ class TestPersonNameQualifierStripping:
             f"pref_lat {pref_lat!r} should reduce to 'Moses Gaster', got {cleaned!r}"
         )
 
+    def test_terminal_hebrew_geresh_is_not_quote_noise(self) -> None:
+        from converter.wikidata.item_validator import validate_item
+
+        item = _Item(
+            entity_type="manuscript",
+            labels={"he": "נר ה'"},
+            descriptions={"en": "Hebrew manuscript"},
+        )
+        assert not any(
+            issue.code == "LABEL_QUOTE_NOISE" for issue in validate_item(item)
+        )
+
     def test_validator_clean_after_pref_lat_fix(self) -> None:
         """After the pref_lat fix the built label is 'Moses Gaster' — the
         validator must produce zero INVERTED_NAME_LABEL / INSTITUTION_AS_PERSON

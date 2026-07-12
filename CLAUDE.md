@@ -1993,3 +1993,22 @@ A measurement-only rebuild of run `48ba6c13-115c-4763-bff1-c08b9031b518` with th
   source of every safety guard listed above).
 - The eval-agent CLAUDE.md at
   `/Users/alexandergo/Documents/Doctorat/eval-agent/CLAUDE.md`.
+
+### Rule W-69 — Work identity, author evidence, and export fields MUST remain complete (added 2026-07-12)
+
+The approved section export for run `48ba6c13-115c-4763-bff1-c08b9031b518`
+exposed four independent quality defects: all 52 work rows had no existing QID,
+all extracted work authors lacked P50/P2093, 20 English descriptions copied Hebrew
+author names, and 8 labels lost internal Hebrew abbreviation marks. The legacy
+section export also omitted item-level `approved` and `ai_verdict`, while its
+`approved_only` flag only filtered authority/NER inputs.
+
+The web projection now uses only exact, verified work aliases; exact approved
+author authority matches produce P50 before the person pass; unresolved extracted
+authors are retained as a local P50 target or P2093; English descriptions remain
+English; and normalization preserves Hebrew gershayim while cleaning P1476. The
+section export stamps explicit item-review fields and complete source/verdict JSON,
+and `backend/scripts/check_wikidata_export_quality.py` reports compact,
+source-grounded failures. Do not add fuzzy QID guesses or treat `approved_only`
+as item approval/AI success. Tests: `test_wikidata_studio_works.py`,
+`test_wikidata_export_quality_checker.py`, `test_section_export_router.py`.

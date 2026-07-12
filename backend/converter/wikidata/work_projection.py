@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
+
 from converter.wikidata.item_builder import (
     LANG_TO_QID,
     P_AUTHOR,
+    P_AUTHOR_NAME_STRING,
     P_INSTANCE_OF,
     P_LANGUAGE,
     P_TITLE,
@@ -20,9 +23,40 @@ from converter.wikidata.item_builder import (
     _strip_name_quotes,
     _work_key,
     english_label_for_hebrew,
+    known_work_qid_for_title,
     logger,
     nli_reference,
 )
+
+
+def _match_text(value: object) -> str:
+    return re.sub(r"\s+", " ", _normalise_label(str(value or ""))).strip().casefold()
+
+
+def _find_work_author_match(
+    author_name: str, source_record: dict[str, object]
+) -> dict[str, object] | None:
+    """Find an exact approved author authority row for a work candidate."""
+    target = _match_text(author_name)
+    if not target:
+        return None
+    for raw_match in source_record.get("marc_authority_matches") or []:
+        if not isinstance(raw_match, dict):
+            continue
+        if raw_match.get("approved") is False:
+            continue
+        role = str(raw_match.get("role") or "").strip().casefold()
+        if role and role not in {"author", "attributed author", "presumed author"}:
+            continue
+        names = (
+            raw_match.get("name"),
+            raw_match.get("entity_text"),
+            raw_match.get("matched_name"),
+            raw_match.get("preferred_name_heb"),
+        )
+        if any(_match_text(candidate) == target for candidate in names):
+            return raw_match
+    return None
 
 
 class WorkProjectionMixin:
@@ -57,8 +91,8 @@ class WorkProjectionMixin:
         # reconcile_work_by_label_and_author() also rejects matches whose
         # P50 author conflicts with our proposed author (cross-verification
         # pattern reused from person reconciliation).
-        existing_qid: str | None = None
-        if self._reconciler is not None:
+        existing_qid: str | None = known_work_qid_for_title(title)
+        if existing_qid is None and self._reconciler is not None:
             try:
                 # Resolve author QID from cache when available so the
                 # reconciler can perform author-conflict rejection.
@@ -169,28 +203,83 @@ class WorkProjectionMixin:
                     )
                 )
 
-        # Link to author if available
+        # Link to the extracted author before the manuscript's person pass.
+        # Works are projected from contents before `_add_person_claims` runs,
+        # so resolve an exact authority match here and proactively materialise
+        # an identifier-backed person. If no safe item exists, preserve the
+        # author as P2093 instead of silently dropping the signal.
         if author_name and author_name.strip():
             author_key = _person_key(author_name, None, None)
             person = self._person_items.get(author_key)
-            if person:
-                resolved_qid = self._person_qids.get(author_key) or person.existing_qid
-                if resolved_qid:
-                    work.statements.append(
-                        WikidataStatement(
-                            property_id=P_AUTHOR,
-                            value=resolved_qid,
-                            value_type="item",
+            resolved_qid = self._person_qids.get(author_key)
+            if person is not None:
+                resolved_qid = resolved_qid or person.existing_qid
+
+            if not resolved_qid:
+                author_match = _find_work_author_match(author_name, source_record)
+                if author_match:
+                    match_name = str(
+                        author_match.get("name")
+                        or author_match.get("entity_text")
+                        or author_name
+                    ).strip()
+                    match_viaf = str(
+                        author_match.get("viaf_uri")
+                        or author_match.get("viaf_id")
+                        or ""
+                    ).strip()
+                    if match_viaf.isdigit():
+                        match_viaf = f"https://viaf.org/viaf/{match_viaf}"
+                    match_mazal = str(
+                        author_match.get("mazal_id")
+                        or author_match.get("j9u_id")
+                        or ""
+                    ).strip()
+                    payload = author_match.get("payload")
+                    payload_qid = payload.get("wikidata_qid") if isinstance(payload, dict) else ""
+                    direct_qid = str(
+                        author_match.get("wikidata_qid") or payload_qid or ""
+                    ).strip()
+                    if direct_qid and not re.fullmatch(r"Q\d+", direct_qid):
+                        direct_qid = ""
+                    if direct_qid:
+                        resolved_qid = direct_qid
+                    else:
+                        person = self._get_or_create_person(
+                            match_name,
+                            match_viaf or None,
+                            match_mazal or None,
+                            "author",
+                            source_record,
                         )
+                        resolved_qid = person.existing_qid
+                        author_key = person.local_id if person.local_id else author_key
+                        resolved_qid = resolved_qid or self._person_qids.get(author_key)
+
+            if resolved_qid:
+                work.statements.append(
+                    WikidataStatement(
+                        property_id=P_AUTHOR,
+                        value=resolved_qid,
+                        value_type="item",
                     )
-                else:
-                    work.statements.append(
-                        WikidataStatement(
-                            property_id=P_AUTHOR,
-                            value=f"__LOCAL:{person.local_id}",
-                            value_type="item",
-                        )
+                )
+            elif person is not None and person.labels:
+                work.statements.append(
+                    WikidataStatement(
+                        property_id=P_AUTHOR,
+                        value=f"__LOCAL:{person.local_id}",
+                        value_type="item",
                     )
+                )
+            else:
+                work.statements.append(
+                    WikidataStatement(
+                        property_id=P_AUTHOR_NAME_STRING,
+                        value=_normalise_label(author_name),
+                        value_type="string",
+                    )
+                )
 
         # Bug fix 2026-04-16 (deeper audit Fix #2): attach a P248 reference
         # to every work statement. Use the parent manuscript's NLI catalog

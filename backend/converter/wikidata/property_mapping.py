@@ -33,6 +33,9 @@ P_EXEMPLAR_OF = "P1574"
 P_INCEPTION = "P571"
 P_LOCATION_OF_CREATION = "P1071"
 P_AUTHOR = "P50"
+# Author name string (used when an extracted author cannot be safely linked to
+# a notable Wikidata person item).
+P_AUTHOR_NAME_STRING = "P2093"
 P_TRANSCRIBED_BY = "P11603"
 P_COMMISSIONED_BY = "P88"
 
@@ -354,6 +357,44 @@ KNOWN_WORK_QIDS: dict[str, str] = {
     "Mishneh Torah": "Q201029",
     "משנה תורה": "Q201029",
 }
+
+# Exact, verified aliases for common Hebrew work labels emitted by NLI MARC
+# records. Keep this list deliberately small: an uncertain QID is worse than
+# a new, source-backed work item. The parenthetical-prefix rules below cover
+# editions/chapters of the same canonical work.
+KNOWN_WORK_TITLE_ALIASES: dict[str, str] = {
+    "יוסיפון": "Q1561132",                  # Josippon
+    "פרוש המשנה לרמבם": "Q6124976",         # Pirush Hamishnayot
+    "פירוש המשנה לרמבם": "Q6124976",
+}
+
+
+def known_work_qid_for_title(title: str) -> str | None:
+    """Return a verified QID for an exact or edition-qualified work title.
+
+    Hebrew gershayim are punctuation in the canonical aliases (``רמב"ם``),
+    so matching removes only internal quote marks and normalises whitespace.
+    No fuzzy matching is performed: ambiguous titles must remain local work
+    candidates and go through the normal reconcile-before-upload guard.
+    """
+    clean = re.sub(r"\s+", " ", str(title or "").strip())
+    clean = clean.rstrip(" .,;:/-")
+    if not clean:
+        return None
+    direct = KNOWN_WORK_QIDS.get(clean) or KNOWN_WORK_TITLE_ALIASES.get(clean)
+    if direct:
+        return direct
+    canonical = clean.replace('"', "").replace("׳", "").replace("״", "")
+    direct = KNOWN_WORK_QIDS.get(canonical) or KNOWN_WORK_TITLE_ALIASES.get(canonical)
+    if direct:
+        return direct
+    if canonical.startswith("משנה תורה ("):
+        return KNOWN_WORK_QIDS["משנה תורה"]
+    if canonical.startswith("פרוש המשנה לרמבם ("):
+        return KNOWN_WORK_TITLE_ALIASES["פרוש המשנה לרמבם"]
+    if canonical.startswith("פירוש המשנה לרמבם ("):
+        return KNOWN_WORK_TITLE_ALIASES["פירוש המשנה לרמבם"]
+    return None
 
 # Bible books → Wikidata QIDs (for P921 main subject from canonical_references)
 BIBLE_BOOK_TO_QID: dict[str, str] = {

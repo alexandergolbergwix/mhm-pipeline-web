@@ -87,3 +87,14 @@ fail-closed.
 ### Modular builder boundary
 
 `item_builder.py` preserves the public `WikidataItemBuilder` API and owns only shared state, orchestration, reconciliation, and compatibility exports. Projection behavior is split by entity concern: manuscript core, manuscript metadata, contents/subjects, person linking, person construction, and work construction. The extracted mixins call the same helpers and emit the same `WikidataItem`/`WikidataStatement` models, so the cache, validator, QuickStatements exporter, uploader, and web serialization contract remain unchanged.
+
+### Export contracts and work identity
+
+The legacy section export (`/wikidata-studio/export`) rebuilds the same source
+items but now stamps each row with item-level `approved`, `ai_verdict`, and
+`ai_verdict_at` from `WikidataItemOverride`; its root `approved_only` remains
+the authority/NER input filter and `approval_scope` states that explicitly. CSV
+rows retain records, statements, validation issues, authority evidence, work
+candidate evidence, and complete verdict JSON. Work projection resolves only
+exact verified aliases, exact authority author QIDs, or safe P2093/local-person
+fallbacks; it never fuzzy-matches a title.
