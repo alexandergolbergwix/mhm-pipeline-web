@@ -1,0 +1,22 @@
+# eval-agent subprocess output — traces, stats, failures only.
+
+[filter]
+strip_ansi = true
+mode = "line"
+max_output_lines = 500
+
+skip_patterns = [
+  "^\\s*DEBUG",
+  "cache hit",
+]
+
+keep_patterns = [
+  "\\[TRACE\\]",
+  "\\[STATS\\]",
+  "\\[STEP\\]",
+  "(?i)error",
+  "(?i)fail",
+  "agent\\.verdict",
+  "Traceback",
+  "Exception",
+]

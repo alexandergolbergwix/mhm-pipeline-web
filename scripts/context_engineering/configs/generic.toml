@@ -1,0 +1,17 @@
+# Generic verbose output — drop debug noise, keep everything else.
+
+[filter]
+strip_ansi = true
+mode = "line"
+max_output_lines = 250
+
+skip_patterns = [
+  "^\\s*DEBUG",
+  "^\\s*DeprecationWarning:",
+  "Downloading\\s+",
+  "Collecting\\s+",
+  "━━━+",
+  "Already satisfied",
+]
+
+keep_patterns = []

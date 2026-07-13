@@ -159,6 +159,20 @@ of run 48ba6c13 with W-68 yields 183 clean items and zero validator errors.
 
 **Work/export quality boundary (Rule W-69):** work aliases use only exact verified QIDs; extracted authors become P50, a local target, or P2093; English descriptions never embed Hebrew names; internal Hebrew gershayim and normalized P1476 are preserved. The section export labels authority/NER `approved_only` separately from item approval and carries complete verdict/source JSON. Use `backend/scripts/check_wikidata_export_quality.py` for a compact read-only audit.
 
+## Context engineering (log / CLI pre-filter)
+
+Large logs and verbose command output must be **deterministically compressed**
+before entering the model context (grep/awk presets + TOML filter). Do not
+`Read` multi-megabyte log files or paste raw `pytest -v` / `heroku logs` into
+reasoning turns.
+
+- Skill: [`.codex/skills/context-engineering/SKILL.md`](.codex/skills/context-engineering/SKILL.md)
+  (Cursor: [`.cursor/skills/context-engineering/SKILL.md`](.cursor/skills/context-engineering/SKILL.md))
+- Scripts: [`scripts/context_engineering/`](scripts/context_engineering/) —
+  `agent_output_filter.py` (ANSI strip, skip/keep patterns, pytest failure
+  blocks), `log_extract.sh` (Heroku / eval-trace / pytest presets),
+  `run_with_filter.sh` (run command → filtered output + exit code)
+
 ## Local measurement re-verify (offline curator ops)
 
 To measure the true post-fix baseline of a Studio build/label/rubric change

@@ -1,0 +1,23 @@
+# Frontend yarn / vitest / tsc — TypeScript and build failures.
+
+[filter]
+strip_ansi = true
+mode = "line"
+max_output_lines = 200
+
+skip_patterns = [
+  "^\\s*Done in ",
+  "^\\s*\\$ ",
+  "warning\\s+..\\d+m",
+]
+
+keep_patterns = [
+  "error TS",
+  "✘",
+  "(?i)failed",
+  "ELIFECYCLE",
+  "Cannot find module",
+  "Module not found",
+  "FAIL\\s+",
+  "AssertionError",
+]

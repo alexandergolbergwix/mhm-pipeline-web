@@ -1,0 +1,9 @@
+# Pytest — preserve failure blocks + short summary; drop passing noise.
+
+[filter]
+strip_ansi = true
+mode = "pytest"
+max_output_lines = 400
+
+skip_patterns = []
+keep_patterns = []

@@ -1,0 +1,24 @@
+# Heroku logs — keep errors, router pain, worker crashes.
+
+[filter]
+strip_ansi = true
+mode = "line"
+max_output_lines = 350
+
+skip_patterns = [
+  " (200|204|304) ",
+  "^\\s*DEBUG",
+]
+
+keep_patterns = [
+  "(?i)error",
+  "(?i)exception",
+  "Traceback",
+  "H1[0-9]",
+  "R1[0-9]",
+  "(?i)timeout",
+  "(?i)crashed",
+  "Memory quota",
+  "SIGKILL",
+  "service=[0-9]{4,}ms",
+]
