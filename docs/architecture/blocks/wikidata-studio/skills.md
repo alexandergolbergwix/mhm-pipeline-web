@@ -96,8 +96,5 @@
 
 ### Skill: verify enriched work metadata
 
-1. Force-rebuild after changing approved authority/NER rows; the builder consumes
-   content `author`/`work_author` and `wikidata_id`/`wikidata_qid` only at build time.
-2. In the diagnostic export, author-bearing works need P50/local/P2093 and approved
-   matches need P1574 to the validated QID. Legacy files without `ai_verdict_json`
-   must be re-exported and re-verified before running both audit scripts.
+1. Force-rebuild after changing approved authority/NER rows; the builder consumes content `author`/`work_author` and `wikidata_id`/`wikidata_qid` only at build time.
+2. Diagnostic exports need P50/local/P2093 for author-bearing works and P1574 for approved matches; legacy files without `ai_verdict_json` must be re-exported and re-verified.
