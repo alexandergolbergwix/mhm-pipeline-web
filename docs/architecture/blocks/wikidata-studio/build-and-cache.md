@@ -96,5 +96,7 @@ items but now stamps each row with item-level `approved`, `ai_verdict`, and
 the authority/NER input filter and `approval_scope` states that explicitly. CSV
 rows retain records, statements, validation issues, authority evidence, work
 candidate evidence, and complete verdict JSON. Work projection resolves only
-exact verified aliases, exact authority author QIDs, or safe P2093/local-person
-fallbacks; it never fuzzy-matches a title.
+exact verified aliases, approved content-level work QIDs, exact authority author
+QIDs, or safe P2093/local-person fallbacks; it never fuzzy-matches a title.
+Contents-NER `author`/`work_author` metadata is consumed before title splitting
+so source-backed authors cannot disappear between enrichment and item construction.

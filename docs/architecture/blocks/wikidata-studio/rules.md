@@ -97,3 +97,9 @@
 23. **R23 — Work identity, author evidence, and export review fields MUST be explicit.**
     Exact aliases may reuse a QID; extracted authors become P50, local P50, or P2093; Hebrew names stay out of English descriptions; gershayim/P1476 survive.
     Exports distinguish authority/NER `approved_only` from item `approved` and retain verdict JSON. *Why:* the export showed 52 null work QIDs, 20 Hebrew descriptions, 8 lost marks, and no review fields.*
+
+24. **R24 — Content-level work metadata MUST be consumed.** The work projection
+    reads approved content `wikidata_id`/`wikidata_qid` values and the
+    contents-NER `author`/`work_author` fields, validates QIDs, and carries an
+    unresolved author as P50/local/P2093. *Why:* enrichment already persisted
+    these fields, but ignoring them produced authorless duplicate work items.

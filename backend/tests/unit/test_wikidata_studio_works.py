@@ -393,6 +393,65 @@ async def test_structured_505_author_suffix_is_not_part_of_work_label() -> None:
 
 
 @pytest.mark.asyncio
+async def test_contents_author_field_becomes_p2093_and_stays_out_of_description() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "contents": [{
+            "title": 'תשב"ץ',
+            "author": "שמשון בן צדוק",
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[],
+        entities_by_cn={},
+        return_native=False,
+    )
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert any(
+        stmt["property_id"] == "P2093"
+        and stmt["value"] == "שמשון בן צדוק"
+        for stmt in work["statements"]
+    )
+    assert not any("שמשון" in value for value in work["descriptions"].values())
+
+
+@pytest.mark.asyncio
+async def test_approved_work_qid_on_content_is_reused() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "contents": [{
+            "title": "תלמוד בבלי",
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[{
+            "control_number": "1",
+            "entity_text": "תלמוד בבלי",
+            "entity_kind": "work",
+            "role": "contained_work",
+            "wikidata_qid": "Q192043",
+            "approved": True,
+        }],
+        entities_by_cn={},
+        return_native=False,
+    )
+    manuscript = next(
+        item for item in result["items"] if item["entity_type"] == "manuscript"
+    )
+    assert any(
+        stmt["property_id"] == "P1574" and stmt["value"] == "Q192043"
+        for stmt in manuscript["statements"]
+    )
+    assert result["summary"]["works"] == 0
+
+
+@pytest.mark.asyncio
 async def test_title_phrase_starting_lamed_is_not_misread_as_author() -> None:
     rec = {
         **_fake_marc_record(),

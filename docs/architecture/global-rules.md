@@ -13,7 +13,7 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   incident fix or extracted module must be documented, regression-tested, and
   ported upstream before the next full sync; never let a sync silently erase
   it. *Why:* the desktop repo remains the shared source of truth, while the
-  modular web builder currently has documented W-43/W-68/W-69 divergences.
+  modular web builder currently has documented W-43/W-68/W-69/W-70 divergences.
 - **G3 — No external inference call bypasses `cache_lookup_or_call`.**
   *Why:* cost, latency, and rate-limit protection are enforced in one place.
 - **G4 — Nothing durable lives only on dyno disk.** Any on-disk build result
@@ -35,4 +35,4 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   behaviour extends its pinning test suite. *Why:* tests are the regression
   contract; docs describe, tests enforce.
 
-Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-69).
+Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-70).

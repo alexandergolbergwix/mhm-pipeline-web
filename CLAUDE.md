@@ -2012,3 +2012,14 @@ and `backend/scripts/check_wikidata_export_quality.py` reports compact,
 source-grounded failures. Do not add fuzzy QID guesses or treat `approved_only`
 as item approval/AI success. Tests: `test_wikidata_studio_works.py`,
 `test_wikidata_export_quality_checker.py`, `test_section_export_router.py`.
+
+### Rule W-70 — Work projection MUST consume enriched content metadata (added 2026-07-14)
+
+The post-W-69 audit showed that the source records already carried contents-NER
+`author` values and approved work authority rows already carried Wikidata QIDs,
+but `content_projection` read neither field. The result was authorless local work
+items and avoidable duplicate work candidates even when an approved work match
+existed. The projection now reads `author`/`author_name`/`work_author`, validates
+content and approved-match QIDs as `Q\d+`, and emits direct P1574 references for
+approved existing works. Unknown titles remain fail-closed and never receive fuzzy
+QID guesses. Tests: `test_wikidata_studio_works.py`.

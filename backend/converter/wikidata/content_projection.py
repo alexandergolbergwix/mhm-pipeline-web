@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from converter.wikidata.item_builder import (
     _QUOTE_CHARS,
     P_BASED_ON_HEURISTIC,
@@ -24,6 +26,36 @@ from converter.wikidata.item_builder import (
 from converter.wikidata.work_candidates import assess_work_candidate
 
 
+_QID_RE = re.compile(r"^Q\d+$")
+
+
+def _safe_work_qid(value: object) -> str | None:
+    candidate = str(value or "").strip()
+    return candidate if _QID_RE.fullmatch(candidate) else None
+
+
+def _work_title_key(value: object) -> str:
+    title, _author = _split_work_title_author(_clean_work_title(str(value or "")))
+    return title.casefold()
+
+
+def _entry_author(entry: dict[str, object]) -> str | None:
+    """Read an author attached by the contents-NER enrichment pass."""
+    for key in ("author", "author_name", "work_author"):
+        value = entry.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _entry_work_qid(entry: dict[str, object]) -> str | None:
+    for key in ("wikidata_id", "wikidata_qid", "existing_qid"):
+        qid = _safe_work_qid(entry.get(key))
+        if qid:
+            return qid
+    return None
+
+
 class ContentProjectionMixin:
     def _add_contents(
         self,
@@ -33,14 +65,30 @@ class ContentProjectionMixin:
     ) -> None:
         """Add P1574 only for source-backed, identifiable contained works."""
         seen_works: set[str] = set()
-        approved_work_titles = {
-            _clean_work_title(str(match.get("name") or match.get("matched_name") or "")).casefold()
-            for match in (record.get("marc_authority_matches") or [])
-            if isinstance(match, dict)
-            and bool(match.get("approved", True))
-            and str(match.get("role") or "").strip().lower()
-            in {"contained work", "work", "exemplar of", "related work"}
-        }
+        approved_work_titles: set[str] = set()
+        approved_work_qids: dict[str, str] = {}
+        for match in record.get("marc_authority_matches") or []:
+            if not isinstance(match, dict):
+                continue
+            if not bool(match.get("approved", True)):
+                continue
+            match_role = str(match.get("role") or "").strip().lower().replace("_", " ")
+            if match_role not in {
+                "contained work", "work", "exemplar of", "related work",
+            }:
+                continue
+            match_title = _work_title_key(
+                match.get("name") or match.get("matched_name") or ""
+            )
+            if not match_title:
+                continue
+            approved_work_titles.add(match_title)
+            qid = _safe_work_qid(
+                match.get("wikidata_qid")
+                or (match.get("payload") or {}).get("wikidata_qid")
+            )
+            if qid:
+                approved_work_qids[match_title] = qid
 
         def remember_evidence(target: WikidataItem, evidence: dict[str, object]) -> None:
             if evidence not in target.work_candidate_evidence:
@@ -50,9 +98,16 @@ class ContentProjectionMixin:
             entry = content if isinstance(content, dict) else {"title": str(content)}
             raw_title = str(entry.get("title") or "").strip()
             candidate_title, embedded_author = _split_work_title_author(raw_title)
+            embedded_author = embedded_author or _entry_author(entry)
             cleaned = _clean_work_title(candidate_title)
-            work_qid = known_work_qid_for_title(cleaned) or known_work_qid_for_title(raw_title)
-            approved = cleaned.casefold() in approved_work_titles
+            work_key = _work_title_key(cleaned)
+            work_qid = (
+                _entry_work_qid(entry)
+                or approved_work_qids.get(work_key)
+                or known_work_qid_for_title(cleaned)
+                or known_work_qid_for_title(raw_title)
+            )
+            approved = work_key in approved_work_titles
             decision = assess_work_candidate(
                 candidate_title,
                 source_field=entry.get("source_field") or "505",
@@ -118,7 +173,10 @@ class ContentProjectionMixin:
             raw = str(work.get("text") or "").strip().strip(_QUOTE_CHARS + ".")
             work_title, embedded_author = _split_work_title_author(raw)
             work_title = _clean_work_title(work_title)
-            work_qid = known_work_qid_for_title(work_title)
+            work_qid = (
+                known_work_qid_for_title(work_title)
+                or approved_work_qids.get(_work_title_key(work_title))
+            )
             decision = assess_work_candidate(
                 work_title,
                 source_field="contents_ner",
