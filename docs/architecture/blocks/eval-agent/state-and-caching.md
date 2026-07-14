@@ -79,4 +79,4 @@ runs. Modals auto-load the last session on open via the sessions endpoints.
 `mhm.entities.refreshed` so inline `AiVerdictPill`s update without a reload.
 
 
-Wikidata item verdict payloads include `authority_evidence` and `local_reference_targets` alongside labels, statements, validation issues, and the exact MARC slice. These fields are part of `wikidata_verdict_query_summary`, so changing authority context or local-target resolution invalidates old inference-cache verdicts. The CSV export exposes both as compact JSON columns for offline triage.
+Wikidata item verdict payloads include `authority_evidence`, `work_candidate_evidence`, and `local_reference_targets` alongside labels, statements, validation issues, and the exact MARC slice. `wikidata_verdict_query_summary` also fingerprints statement/property labels, qualifiers, and references. Both verify and merged-read paths attach local targets before computing `w71_v1` / `records_marc_v5`, so changed evidence invalidates stale cache entries without hiding a matching persisted verdict. Diagnostic exports expose the evidence as compact JSON for offline triage.

@@ -28,6 +28,20 @@ Evidence handling:
   preferred names, birth/death years, VIAF/NLI identifiers, and existing QIDs.
   Do not mark those claims unsupported merely because the compact MARC slice
   does not repeat the authority record.
+- Treat `work_candidate_evidence` as first-class evidence for a work label,
+  source wording, and an author-name-string (P2093). Do not call those claims
+  invented merely because the compact MARC slice does not repeat the 505/500
+  text from which the candidate was extracted.
+- Catalog authority names may be inverted as `Surname, Given`. A clean
+  natural-order label derived as `Given Surname` is correct; the inverted form
+  may remain as an alias or native-name value.
+- A role-specific description such as `Hebrew manuscript author` or `scribe`
+  is supported when the same role appears in `authority_evidence`.
+- For item-valued statements, use the supplied `value_label` and source
+  evidence. Do not replace it with a guessed identity from model memory; a
+  missing label is a reason for caution, not permission to invent one.
+- An exact controlled MARC 650 mapping can support P921. Broad headings such as
+  `Jews` remain too generic unless the record makes them its primary subject.
 - A Wikidata year value such as `+1950-00-00T00:00:00Z` with `precision=9`
   is a valid year-level date. Do not call it invalid precision or impossible
   unless the years are chronologically contradictory or the authority

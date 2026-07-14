@@ -6,7 +6,6 @@ from typing import Any
 
 from app.pipeline.ai_verdict_cache_common import (
     normalise_shacl_issues,
-    normalise_statement_rows,
     sanitise_stored_verdict,
 )
 from app.pipeline.inference_cache import canonical_hash
@@ -15,8 +14,35 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-WIKIDATA_VERDICT_SCHEMA = "w68_v1"
-WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v4"
+WIKIDATA_VERDICT_SCHEMA = "w71_v1"
+WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v5"
+
+
+def _normalise_prompt_statements(statements: Any) -> list[dict[str, Any]]:
+    """Keep every statement field that is rendered into the judge prompt."""
+    if not isinstance(statements, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for statement in statements:
+        if not isinstance(statement, dict):
+            continue
+        rows.append({
+            "property": str(
+                statement.get("property") or statement.get("property_id") or ""
+            ),
+            "property_label": str(statement.get("property_label") or ""),
+            "value_type": str(
+                statement.get("value_type") or statement.get("datatype") or ""
+            ),
+            "value": statement.get("value"),
+            "value_label": str(statement.get("value_label") or ""),
+            "qualifiers": statement.get("qualifiers") or [],
+            "references": statement.get("references") or [],
+        })
+    return sorted(
+        rows,
+        key=lambda row: (row["property"], row["value_type"], str(row["value"])),
+    )
 
 
 def record_ids_for_wikidata_item(item: dict[str, Any]) -> list[str]:
@@ -50,6 +76,44 @@ def record_ids_for_wikidata_item(item: dict[str, Any]) -> list[str]:
 
 def _record_ids(item: dict[str, Any]) -> list[str]:
     return record_ids_for_wikidata_item(item)
+
+
+def attach_local_reference_targets(items: list[dict[str, Any]]) -> None:
+    """Attach evidence for every ``__LOCAL`` statement target in one item set."""
+    by_local_id = {
+        str(item.get("_local_id") or item.get("local_id") or ""): item
+        for item in items
+    }
+    for item in items:
+        targets: dict[str, dict[str, Any]] = {}
+        for statement in item.get("statements") or []:
+            if not isinstance(statement, dict):
+                continue
+            values: list[Any] = [statement.get("value"), statement.get("value_id")]
+            values.extend(
+                qualifier.get("value")
+                for qualifier in statement.get("qualifiers") or []
+                if isinstance(qualifier, dict)
+            )
+            for value in values:
+                text = str(value or "")
+                if not text.startswith("__LOCAL:"):
+                    continue
+                target_id = text.removeprefix("__LOCAL:")
+                target = by_local_id.get(target_id)
+                if target is None:
+                    continue
+                labels = target.get("labels")
+                targets[target_id] = {
+                    "entity_type": target.get("entity_type"),
+                    "labels": labels if isinstance(labels, dict) else {},
+                    "existing_qid": target.get("existing_qid"),
+                    "authority_evidence": target.get("authority_evidence") or [],
+                }
+        if targets:
+            item["local_reference_targets"] = targets
+        else:
+            item.pop("local_reference_targets", None)
 
 
 def marc_context_for_wikidata_item(
@@ -91,10 +155,11 @@ def wikidata_verdict_query_summary(
         "labels": item.get("labels") or {},
         "descriptions": item.get("descriptions") or {},
         "aliases": item.get("aliases") or {},
-        "statements": normalise_statement_rows(item.get("statements") or []),
+        "statements": _normalise_prompt_statements(item.get("statements") or []),
         "existing_qid": item.get("existing_qid"),
         "validation_issues": normalise_shacl_issues(item.get("validation_issues") or []),
         "authority_evidence": item.get("authority_evidence") or [],
+        "work_candidate_evidence": item.get("work_candidate_evidence") or {},
         "local_reference_targets": item.get("local_reference_targets") or {},
         "marc_context": marc_slice,
         "judge_model": judge_model,

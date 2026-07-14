@@ -46,7 +46,7 @@ FastAPI on Heroku dynos (multi-dyno; slug FS read-only, /tmp writable)
 Two hard **trust boundaries** recur everywhere: Modal and the eval-agent are
 reached only over HTTPS / subprocess I/O — the backend never imports their
 Python. Shared `backend/converter/` logic is upstream-owned and normally synced from
-the desktop repo. Documented web-side incident modules (currently W-43/W-68/W-69/W-70)
+the desktop repo. Documented web-side incident modules (currently W-43/W-68/W-69/W-70/W-71)
 remain explicit divergences until they are ported upstream, so a sync may not
 silently erase them.
 
@@ -87,5 +87,5 @@ Shared by all five stages; understand these first:
 - [End-to-end data flow](data-flow.md) — MARC upload → published linked data.
 - [Task index](task-index.md) — "you are asked to X → read Y first".
 
-The incident-annotated rule history (W-1…W-70) lives in the repo root
+The incident-annotated rule history (W-1…W-71) lives in the repo root
 [CLAUDE.md](../../CLAUDE.md); block docs restate the ones that matter locally.

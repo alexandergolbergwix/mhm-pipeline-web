@@ -8,7 +8,7 @@
 | `backend/app/pipeline/wikidata_item_views.py` | Merged read model: cache + overrides + ledger QID + upload audit + stale-sanitized AI verdict |
 | `backend/app/pipeline/wikidata_item_merge.py` | Apply curator overrides onto serialised item dicts |
 | `backend/app/pipeline/wikidata_item_verify.py` | Persist AI verdicts to `WikidataItemOverride` after verify streams |
-| `backend/app/pipeline/wikidata_verdict_cache.py` | Canonical Wikidata record-ID/MARC-context cache keys and stale-verdict sanitisation |
+| `backend/app/pipeline/wikidata_verdict_cache.py` | Canonical record/MARC/local-target evidence, prompt-complete cache keys, and stale-verdict sanitisation |
 | `backend/app/pipeline/wikidata_qid_ledger.py` | Global `wikibase_entity_mappings` ledger (`wikidata:` keys) — adopt + idempotent upload |
 | `backend/app/pipeline/wikidata_export_quality_gate.py` | Build-time ERROR-only export quality gate before cache upsert |
 | `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, and export-field failures |
@@ -28,7 +28,8 @@
 | `backend/converter/wikidata/person_linking.py`, `person_projection.py` | Role-safe manuscript links and authority-backed person construction |
 | `backend/converter/wikidata/work_projection.py` | Work creation, labels, deduplication, and author links |
 | `backend/converter/wikidata/work_candidates.py` | Source-aware MARC 500/505/NER eligibility decisions and compact evidence |
-| `backend/converter/wikidata/property_mapping.py` | All P/Q constants (byte-parity with desktop; live-verified — Rule W-26) |
+| `backend/converter/wikidata/property_mapping.py` | P/Q constants and fail-closed static genre/subject crosswalk (Rules W-26/W-71) |
+| `backend/converter/wikidata/property_labels.py` | Verified human labels for static QIDs rendered into review/evaluator statements |
 | `backend/converter/wikidata/item_validator.py` | The moat layer: ~20 checks, ERROR-severity issues block approval and writes |
 | `backend/converter/wikidata/reconciler.py` | SPARQL dedup lookups; `ReconciliationUnavailableError` fail-closed contract |
 | `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` (wikibaseintegrator) — 4 Rule-38 guards + moratorium enforcement |

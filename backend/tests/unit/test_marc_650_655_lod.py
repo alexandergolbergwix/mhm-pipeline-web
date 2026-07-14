@@ -60,3 +60,16 @@ class TestMarc650655Wikidata:
         p136 = [s for s in item.statements if s.property_id == "P136"]
         assert any(s.value == "Q1845" for s in p921)
         assert any(s.value == "Q1749541" for s in p136)
+
+    def test_generic_jews_heading_is_not_promoted_to_main_subject(self) -> None:
+        rec = prepare_record_for_pipeline({
+            "_control_number": "BROAD",
+            "245$a": "כתב יד",
+            "650$a": "Jews",
+        })
+        item = WikidataItemBuilder(reconciler=None).build_manuscript_item(rec)
+        assert all(
+            s.value != "Q7325"
+            for s in item.statements
+            if s.property_id == "P921"
+        )

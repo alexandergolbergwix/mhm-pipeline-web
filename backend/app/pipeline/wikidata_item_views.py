@@ -19,6 +19,7 @@ from app.pipeline.wikidata_qid_ledger import (
     lookup_ledger_qid,
 )
 from app.pipeline.wikidata_verdict_cache import (
+    attach_local_reference_targets,
     marc_context_for_wikidata_item,
     sanitise_stale_wikidata_verdict,
 )
@@ -105,16 +106,20 @@ async def fetch_merged_wikidata_items(
                 last_write.created_at.isoformat() if last_write else None
             ),
         }
-        if ai_verdict:
+        items.append(row)
+
+    attach_local_reference_targets(items)
+    for row in items:
+        stored_verdict = row.get("ai_verdict")
+        if stored_verdict:
             marc_ctx = marc_context_for_wikidata_item(row, marc_records)
             row["ai_verdict"] = sanitise_stale_wikidata_verdict(
                 row,
-                ai_verdict,
+                stored_verdict,
                 marc_context=marc_ctx,
             )
             if row["ai_verdict"] is None:
                 row["ai_verdict_at"] = None
-        items.append(row)
     return items
 
 

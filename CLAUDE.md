@@ -2023,3 +2023,18 @@ existed. The projection now reads `author`/`author_name`/`work_author`, validate
 content and approved-match QIDs as `Q\d+`, and emits direct P1574 references for
 approved existing works. Unknown titles remain fail-closed and never receive fuzzy
 QID guesses. Tests: `test_wikidata_studio_works.py`.
+
+### Rule W-71 — Verdict evidence, cache keys, and static QIDs MUST share one verified contract (added 2026-07-14)
+
+The third 180-item verification export showed 80 partials and one failure in
+the modal, while the exported current-item rows showed only 47 partials and 34
+missing verdicts. Thirty-three rows contained `__LOCAL:` statements: verification
+attached `local_reference_targets`, but the merged read model did not, so it
+recomputed a different fingerprint and hid valid persisted verdicts. Work-source
+evidence was present in build artifacts but absent from the evaluator prompt,
+statement labels/qualifiers/references were absent from cache keys, and a live
+audit found static genre/subject mappings whose QIDs named unrelated entities.
+The canonical helper now enriches both verify and read paths; prompt-relevant
+evidence participates in `w71_v1`/`records_marc_v5` fingerprints; work evidence
+reaches the rubric; and every emitted static QID has a verified label. Ambiguous
+crosswalk entries fail closed and broad `Jews` headings do not become P921.

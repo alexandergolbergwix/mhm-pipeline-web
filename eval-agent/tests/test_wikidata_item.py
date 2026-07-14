@@ -61,6 +61,10 @@ def test_wikidata_item_evaluator_emits_local_id_keyed_candidate():
         ],
         "authority_evidence": [{"source": "NLI", "birth_year": 1500}],
         "local_reference_targets": {"person::1": {"entity_type": "person", "labels": {"en": "Jane Doe"}}},
+        "work_candidate_evidence": {
+            "source_text": "דברי הימים למשה רבינו",
+            "author": "משה רבינו",
+        },
     }
     marc = {
         "_control_number": "12345",
@@ -84,6 +88,9 @@ def test_wikidata_item_evaluator_emits_local_id_keyed_candidate():
     assert candidate.payload["validation_issues"][0]["code"] == "missing_reference"
     assert candidate.payload["authority_evidence"][0]["source"] == "NLI"
     assert "person::1" in candidate.payload["local_reference_targets"]
+    assert candidate.payload["work_candidate_evidence"]["author"] == "משה רבינו"
+    prompt = evaluator.build_prompt(candidate)
+    assert "דברי הימים למשה רבינו" in prompt
     assert candidate.marc_context["title"] == "Sefer ha-refu'ot"
     assert "Sefer ha-refuot" in candidate.marc_context["contents"]
     assert "505" in candidate.marc_context["catalog_references"]

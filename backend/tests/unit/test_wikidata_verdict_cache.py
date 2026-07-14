@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.pipeline.wikidata_verdict_cache import (
     WIKIDATA_VERDICT_SCHEMA,
+    attach_local_reference_targets,
     sanitise_stale_wikidata_verdict,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
@@ -116,3 +117,53 @@ def test_query_summary_changes_when_verifier_evidence_changes() -> None:
     item["authority_evidence"] = [{"source": "NLI", "birth_year": 1951}]
     b = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
     assert a != b
+
+
+def test_query_summary_changes_when_work_candidate_evidence_changes() -> None:
+    item = {
+        "_local_id": "work:test",
+        "entity_type": "work",
+        "statements": [],
+        "work_candidate_evidence": {"source_text": "Work by Author A"},
+    }
+    before = wikidata_verdict_input_fingerprint(item)
+    item["work_candidate_evidence"] = {"source_text": "Work by Author B"}
+    assert wikidata_verdict_input_fingerprint(item) != before
+
+
+def test_query_summary_changes_when_statement_labels_change() -> None:
+    item = {
+        "_local_id": "manuscript:1",
+        "statements": [{
+            "property": "P921",
+            "property_label": "main subject",
+            "value": "Q107427",
+            "value_label": "Halakha",
+        }],
+    }
+    before = wikidata_verdict_input_fingerprint(item)
+    item["statements"][0]["value_label"] = "incorrect label"
+    assert wikidata_verdict_input_fingerprint(item) != before
+
+
+def test_attach_local_reference_targets_uses_full_item_set() -> None:
+    person = {
+        "local_id": "person:1",
+        "entity_type": "person",
+        "labels": {"en": "Jane Doe"},
+        "authority_evidence": [{"source": "NLI", "role": "author"}],
+    }
+    manuscript = {
+        "local_id": "manuscript:1",
+        "entity_type": "manuscript",
+        "statements": [{"property": "P50", "value": "__LOCAL:person:1"}],
+    }
+
+    attach_local_reference_targets([manuscript, person])
+
+    assert manuscript["local_reference_targets"]["person:1"] == {
+        "entity_type": "person",
+        "labels": {"en": "Jane Doe"},
+        "existing_qid": None,
+        "authority_evidence": [{"source": "NLI", "role": "author"}],
+    }

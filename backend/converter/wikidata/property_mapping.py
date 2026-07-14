@@ -302,43 +302,35 @@ GENRE_TO_QID: dict[str, str] = {
     "GrammaticalText": "Q8091",  # grammar
     # MARC genre/form strings (from NLI catalog data)
     "Poetry": "Q482",  # poetry
-    "Piyyutim": "Q1377011",  # piyyut (Hebrew liturgical poetry)
+    "Piyyutim": "Q781402",  # piyyut (Hebrew liturgical poetry)
     "Illustrated works (Manuscript)": "Q48498",  # illuminated manuscript
-    "Approbations (Rabbinical literature)": "Q3089066",  # haskama
     "Personal correspondence": "Q133492",  # letter
-    "Mezuzot": "Q177038",  # mezuzah
+    "Mezuzot": "Q247034",  # mezuzah
     "Legislation (Jewish law)": "Q107427",  # Halakha
-    "Gittin": "Q752001",  # get (Jewish divorce document)
     "Drama": "Q25372",  # drama
-    "Calendars": "Q12132",  # calendar
-    "Pinkasim": "Q7197095",  # pinkas (communal record book)
-    "Censored manuscripts": "Q49100005",  # banned book (censored)
+    "Pinkasim": "Q2095829",  # pinkas (communal record book)
     "Family records": "Q485228",  # family register
     "Registers of births, etc.": "Q18562479",  # vital record
     "Autograph manuscripts": "Q9026959",  # autograph (handwritten by author)
     "Bibliographies": "Q1631107",  # bibliography
     "Tales": "Q49084",  # short story / tale
     "Negotiable instruments": "Q3359388",  # negotiable instrument
-    "Riddles": "Q189539",  # riddle
+    "Riddles": "Q47054",  # riddle
     "Death registers": "Q3348095",  # register of deaths
-    "Account books": "Q192907",  # ledger / account book
     "Business records (Manuscript)": "Q804154",  # business record
     "Licenses": "Q79719",  # license
     "Records (Documents)": "Q49848",  # document
-    "Community records (Manuscript)": "Q7197095",  # pinkas (communal record)
+    "Community records (Manuscript)": "Q2095829",  # pinkas (communal record)
     "Literature (Miscellaneous, in manuscript)": "Q8242",  # literature
     "Biographies (Manuscript)": "Q36279",  # biography
-    "Parodies": "Q12378",  # parody
-    "Ketubbot": "Q207128",  # ketubah (marriage contract)
-    "Forms (Jewish law)": "Q11028",  # legal document / form
-    "Prayer books": "Q3412432",  # prayer book / siddur
-    "Sermons": "Q861911",  # sermon
+    "Parodies": "Q170539",  # parody
+    "Ketubbot": "Q1543943",  # ketubah (marriage contract)
+    "Prayer books": "Q471894",  # Siddur (Jewish prayerbook)
+    "Sermons": "Q60797",  # sermon
     "Commentaries": "Q1749541",  # commentary
-    "Responsa (Jewish law)": "Q2112559",  # responsa
-    "Deeds": "Q40621",  # deed (legal document)
+    "Responsa (Jewish law)": "Q3427762",  # Rabbinic responsa
     "Manuscripts, Hebrew": "Q87167",  # Hebrew manuscript
-    "Wills": "Q179157",  # will / testament
-    "Contracts": "Q386724",  # contract
+    "Wills": "Q25538572",  # will / testament
     "Letters": "Q133492",  # letter
 }
 
@@ -433,43 +425,41 @@ TALMUD_TRACTATE_TO_QID: dict[str, str] = {
 
 # LCSH subject terms → Wikidata QIDs (for P921 main subject)
 SUBJECT_TO_QID: dict[str, str] = {
-    "Eretz Israel": "Q1207",  # Land of Israel
+    "Eretz Israel": "Q155321",  # Land of Israel
     "Jews": "Q7325",  # Jews
-    "Karaites": "Q173579",  # Karaites
+    "Karaites": "Q208398",  # Karaite Judaism
     "Jewish law": "Q107427",  # Halakha
     "Cabala": "Q123006",  # Kabbalah
-    "Religious disputations": "Q841408",  # religious debate
     "Astronomy": "Q333",  # astronomy
-    "Responsa": "Q2112559",  # responsa
+    "Responsa": "Q3427762",  # Rabbinic responsa
     "Philosophy": "Q5891",  # philosophy
-    "Jewish philosophy": "Q131748",  # Jewish philosophy
-    "Shehitah": "Q328079",  # shechita (kosher slaughter)
+    "Jewish philosophy": "Q837795",  # Jewish philosophy
+    "Shehitah": "Q861258",  # shechita (kosher slaughter)
     "Christianity": "Q5043",  # Christianity
-    "Jewish sermons, Hebrew": "Q861911",  # sermon
-    "Jewish calendar": "Q217535",  # Hebrew calendar
+    "Jewish sermons, Hebrew": "Q60797",  # sermon
+    "Jewish calendar": "Q44722",  # Hebrew calendar
     "Hebrew language": "Q9288",  # Hebrew language
     "Dreams": "Q36348",  # dream
     "Earthquakes": "Q7944",  # earthquake
     "Medicine": "Q11190",  # medicine
     "Astrology": "Q34362",  # astrology
-    "Phlebotomy": "Q575696",  # phlebotomy
-    "Berit milah": "Q204819",  # circumcision
+    "Phlebotomy": "Q3595842",  # phlebotomy
+    "Berit milah": "Q848599",  # brit milah
     "Bar mitzvah": "Q28807008",  # Bar Mitzvah (Jewish ceremony)
-    "Gematria": "Q168529",  # gematria
-    "Purim": "Q132834",  # Purim
-    "Apostasy": "Q179723",  # apostasy
+    "Gematria": "Q840378",  # gematria
+    "Purim": "Q180115",  # Purim
+    "Apostasy": "Q223681",  # apostasy
     "Liturgy": "Q172331",  # liturgy
     "Prayer": "Q40953",  # prayer
     "Bible": "Q1845",  # Bible
     "Talmud": "Q43290",  # Talmud
-    "Torah scrolls": "Q37602",  # Torah
+    "Torah scrolls": "Q2350579",  # Sefer Torah
     "Sepulchral monuments": "Q56055312",  # sepulchral monument
     "Christian converts from Judaism": "Q814999",  # conversion to Christianity
     "Devil": "Q6674",  # devil
     "Tombs": "Q381885",  # tomb
-    "Jewish converts": "Q814999",  # conversion to Christianity
     "Abbreviations, Hebrew": "Q102786",  # abbreviation
-    "Sheluhe de-rabanan": "Q6867684",  # Shadarim (emissaries)
+    "Sheluhe de-rabanan": "Q7487201",  # Shaliah (Jewish legal emissary)
     # Hebrew topical headings (MARC 650)
     "מקרא": "Q1845",  # Bible
     "תורה": "Q34990",  # Torah

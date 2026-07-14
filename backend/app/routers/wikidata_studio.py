@@ -63,6 +63,7 @@ from app.pipeline.wikidata_item_views import (
     fetch_validation_error_items,
 )
 from app.pipeline.wikidata_verdict_cache import (
+    attach_local_reference_targets,
     attach_wikidata_marc_context,
     marc_context_for_wikidata_item,
     record_ids_for_wikidata_item,
@@ -2065,45 +2066,8 @@ async def _fetch_wikidata_verify_items(
             if control_number in run_record_ids
         ]
         items.append(item)
-    _attach_local_reference_targets(items)
+    attach_local_reference_targets(items)
     return items, [dict(r.marc or {"_control_number": r.control_number}) for r in records]
-
-
-
-def _attach_local_reference_targets(items: list[dict[str, Any]]) -> None:
-    """Annotate local statement targets so the evaluator can resolve them."""
-    by_local_id = {
-        str(item.get("_local_id") or item.get("local_id") or ""): item
-        for item in items
-    }
-    for item in items:
-        targets: dict[str, dict[str, Any]] = {}
-        for statement in item.get("statements") or []:
-            if not isinstance(statement, dict):
-                continue
-            values: list[Any] = [statement.get("value"), statement.get("value_id")]
-            values.extend(
-                qualifier.get("value")
-                for qualifier in statement.get("qualifiers") or []
-                if isinstance(qualifier, dict)
-            )
-            for value in values:
-                text = str(value or "")
-                if not text.startswith("__LOCAL:"):
-                    continue
-                target_id = text.removeprefix("__LOCAL:")
-                target = by_local_id.get(target_id)
-                if target is None:
-                    continue
-                labels = target.get("labels")
-                targets[target_id] = {
-                    "entity_type": target.get("entity_type"),
-                    "labels": labels if isinstance(labels, dict) else {},
-                    "existing_qid": target.get("existing_qid"),
-                    "authority_evidence": target.get("authority_evidence") or [],
-                }
-        if targets:
-            item["local_reference_targets"] = targets
 
 _WIKIDATA_VERIFY_CHANNEL = "wikidata-verify-sessions"
 

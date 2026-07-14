@@ -49,6 +49,7 @@ class WikidataItemEvaluator(Evaluator):
             "existing_qid": ner_record.get("existing_qid"),
             "validation_issues": ner_record.get("validation_issues") or [],
             "authority_evidence": ner_record.get("authority_evidence") or [],
+            "work_candidate_evidence": ner_record.get("work_candidate_evidence") or {},
             "local_reference_targets": ner_record.get("local_reference_targets") or {},
         }
         control_number = wikidata_items.control_number(ner_record)
@@ -74,6 +75,11 @@ class WikidataItemEvaluator(Evaluator):
             p.get("validation_issues") or [], ensure_ascii=False, indent=2
         )
         authority_json = json.dumps(p.get("authority_evidence") or [], ensure_ascii=False, indent=2)
+        work_evidence_json = json.dumps(
+            p.get("work_candidate_evidence") or {},
+            ensure_ascii=False,
+            indent=2,
+        )
         local_targets_json = json.dumps(
             p.get("local_reference_targets") or {},
             ensure_ascii=False,
@@ -93,6 +99,7 @@ class WikidataItemEvaluator(Evaluator):
             f"  statements sample:\n{statements_json}\n"
             f"  validation issues:\n{issues_json}\n"
             f"  authority evidence:\n{authority_json}\n"
+            f"  work candidate evidence:\n{work_evidence_json}\n"
             f"  local reference targets:\n{local_targets_json}\n"
         )
         return self.render_prompt(candidate, prediction_block=block)

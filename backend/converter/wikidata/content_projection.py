@@ -27,6 +27,7 @@ from converter.wikidata.work_candidates import assess_work_candidate
 
 
 _QID_RE = re.compile(r"^Q\d+$")
+_BROAD_MAIN_SUBJECT_TERMS = {"jews"}
 
 
 def _safe_work_qid(value: object) -> str | None:
@@ -393,6 +394,8 @@ class ContentProjectionMixin:
                 continue
             term = subject_term(subj)
             if not term:
+                continue
+            if term.casefold() in _BROAD_MAIN_SUBJECT_TERMS:
                 continue
             if stype == "topic":
                 qid = resolve_subject_qid(subj, allow_network=False)
