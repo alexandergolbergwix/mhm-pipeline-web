@@ -71,7 +71,6 @@ UI badges) and as a **hard gate inside the upload path**.
 
 The builder keeps catalog identifiers in P3959/source metadata rather than public labels, and each person item records compact `authority_evidence` (VIAF/NLI identity, preferred names, and dates). `_fetch_wikidata_verify_items` retains exact `record_ids` and annotates any resolvable `__LOCAL:<id>` statement with `local_reference_targets`; this is internal two-pass upload syntax, not a malformed Wikidata QID. The build schema marker is bumped when these fields change so a Rebuild cannot serve stale item shapes. Work items and source manuscripts also carry `work_candidate_evidence`; a new work without accepted evidence fails validation. The evaluator context also includes contents, work mentions, genres, catalog fields, and related works; cache schema/version salts change whenever this evidence contract changes.
 
-
 ### Semantic projection safety
 
 Work projection uses `work_candidates.assess_work_candidate`: clean Hebrew
@@ -87,7 +86,6 @@ fail-closed.
 ### Modular builder boundary
 
 `item_builder.py` preserves the public `WikidataItemBuilder` API and owns only shared state, orchestration, reconciliation, and compatibility exports. Projection behavior is split by entity concern: manuscript core, manuscript metadata, contents/subjects, person linking, person construction, and work construction. The extracted mixins call the same helpers and emit the same `WikidataItem`/`WikidataStatement` models, so the cache, validator, QuickStatements exporter, uploader, and web serialization contract remain unchanged.
-
 ### Export contracts and work identity
 
 The legacy section export (`/wikidata-studio/export`) rebuilds the same source
