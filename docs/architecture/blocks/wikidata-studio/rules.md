@@ -6,7 +6,7 @@
    projection logic lives in focused modules under `backend/converter/wikidata/`;
    routers and pipeline glue only shape inputs and persist outputs. Shared
    converter changes must be ported upstream before a full desktop sync; the
-   source-aware work and quality modules are explicit web-side divergences (Rules W-68/W-69).
+   source-aware work and quality modules are explicit web-side divergences (Rules W-68/W-69/W-70).
    *Why:* one projection boundary prevents router drift while keeping the
    modular web implementation safe from destructive syncs.
 2. **R2 — The reconcile that matters runs INSIDE `upload_items`.** The
@@ -95,11 +95,5 @@
     gate cut 228 items to 131, while the real defects were catalogue prose
     emitted by the old broad 500 regex.
 23. **R23 — Work identity, author evidence, and export review fields MUST be explicit.**
-    Exact aliases may reuse a QID; extracted authors become P50, local P50, or P2093; Hebrew names stay out of English descriptions; gershayim/P1476 survive.
-    Exports distinguish authority/NER `approved_only` from item `approved` and retain verdict JSON. *Why:* the export showed 52 null work QIDs, 20 Hebrew descriptions, 8 lost marks, and no review fields.*
-
-24. **R24 — Content-level work metadata MUST be consumed.** The work projection
-    reads approved content `wikidata_id`/`wikidata_qid` values and the
-    contents-NER `author`/`work_author` fields, validates QIDs, and carries an
-    unresolved author as P50/local/P2093. *Why:* enrichment already persisted
-    these fields, but ignoring them produced authorless duplicate work items.
+    Exact aliases preserve QIDs; authors become P50/local/P2093; Hebrew names stay out of English descriptions; gershayim/P1476 survive. Exports distinguish `approved_only` from item approval and retain verdict JSON. *Why:* the export showed 52 null QIDs, 20 Hebrew descriptions, 8 lost marks, and no review fields.*
+24. **R24 — Content-level work metadata MUST be consumed.** Projection reads approved content QIDs and contents-NER author fields, validates QIDs, and carries unresolved authors as P50/local/P2093. *Why:* enrichment already persisted these fields, but ignoring them produced authorless duplicate work items.
