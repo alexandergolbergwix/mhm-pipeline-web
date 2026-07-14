@@ -93,3 +93,16 @@
 3. For AI partial/fail rows, use `scripts/analyze_wikidata_verdicts.py`; pass the
    modern diagnostic export so complete `ai_verdict_json` and MARC context are
    available to the Codex CLI.
+
+### Skill: verify enriched work metadata
+
+1. Force-rebuild the Studio after changing approved authority or NER rows; the
+   builder consumes content-level `author`/`work_author` and
+   `wikidata_id`/`wikidata_qid` fields only at build time.
+2. Inspect the modern diagnostic export: author-bearing works must contain P50,
+   a local P50 target, or P2093; approved work matches should emit P1574 to the
+   validated QID rather than a duplicate local work.
+3. If the downloaded file predates the rebuild or lacks `ai_verdict_json`, treat
+   its quality counts as a legacy-export diagnostic. Re-export, run AI verify,
+   then use `check_wikidata_export_quality.py` and
+   `analyze_wikidata_verdicts.py`.
