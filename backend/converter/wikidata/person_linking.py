@@ -60,7 +60,11 @@ class PersonLinkingMixin:
                 return
 
             # Normalize role for lookup (case-insensitive, strip whitespace)
-            role_norm = role.strip().lower()
+            role_norm = role.strip().lower().replace("_", " ")
+            if role_norm in {"former owner", "seller", "censor", "former_owner"}:
+                logger.info("Skipping non-current ownership role %r for %r", role, name)
+                seen_person_keys.add(key)
+                return
             pid = ROLE_TO_PID.get(role_norm) or ROLE_TO_PID.get(role.upper())
             if pid is None:
                 logger.warning("Skipping unsupported MARC/NER role %r for %r", role, name)

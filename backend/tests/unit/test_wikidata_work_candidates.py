@@ -81,3 +81,14 @@ def test_catalogue_prose_and_dedications_are_rejected() -> None:
         )
         assert not decision.accepted, title
         assert decision.reason == "catalogue_prose"
+
+
+def test_doubled_marc_quotes_preserve_hebrew_abbreviation_marks() -> None:
+    for raw, expected in (
+        ('""תרגום רס""ג לתורה""', 'תרגום רס"ג לתורה'),
+        ('""פרוש רש""י""', 'פרוש רש"י'),
+        ('""תשב""ץ""', 'תשב"ץ'),
+        ('""מאמרי חז""ל""', 'מאמרי חז"ל'),
+    ):
+        decision = assess_work_candidate(raw, source_field="500", candidate_kind="named_work")
+        assert decision.title == expected

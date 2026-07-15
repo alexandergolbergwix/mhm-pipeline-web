@@ -40,6 +40,71 @@ _MAX_LABEL_LEN = 200
 _CACHE_VERSION = 1
 _CACHE_FILENAME = "wikidata_label_qid_cache.json"
 
+# These MARC labels are often cataloger shorthand rather than proof of the
+# Wikidata concept.  They require an explicit record-level assertion/evidence.
+_EVIDENCE_REQUIRED_GENRES = {
+    "illustrated works (manuscript)",
+    "autograph manuscripts",
+    "licenses",
+    "negotiable instruments",
+    "family records",
+    "pinkasim",
+    "community records (manuscript)",
+}
+
+
+def genre_projection_supported(
+    label: str,
+    record: dict[str, object] | None = None,
+    genre_entry: dict[str, object] | None = None,
+) -> bool:
+    """Return whether a specific MARC genre has enough evidence for P136/P31."""
+    normalized = clean_marc_label(label).casefold()
+    if normalized not in _EVIDENCE_REQUIRED_GENRES:
+        return True
+    entry = genre_entry or {}
+    for key in ("supported", "confirmed", "evidence_supported"):
+        value = entry.get(key)
+        if value is True or (
+            isinstance(value, str)
+            and value.strip().casefold() in {"true", "yes", "1"}
+        ):
+            return True
+    source = record or {}
+    flags = {
+        "is_license": "licenses",
+        "is_negotiable_instrument": "negotiable instruments",
+        "is_family_register": "family records",
+        "is_pinkas": "pinkasim",
+        "is_community_record": "community records (manuscript)",
+        "autograph_confirmed": "autograph manuscripts",
+    }
+    for key, expected in flags.items():
+        value = source.get(key)
+        if expected == normalized and (
+            value is True
+            or (
+                isinstance(value, str)
+                and value.strip().casefold() in {"true", "yes", "1"}
+            )
+        ):
+            return True
+    if normalized == "illustrated works (manuscript)":
+        evidence_text = " ".join(
+            str(source.get(key) or "")
+            for key in (
+                "title", "summary", "notes", "physical_description",
+                "decoration_evidence", "genre_evidence",
+            )
+        ).casefold()
+        return bool(
+            re.search(
+                r"illuminat|illumination|miniature|illustrat|ציורים|איורים|מיניאטור",
+                evidence_text,
+            )
+        )
+    return False
+
 # 655 labels that imply additional P31 classes (WikiProject Manuscripts).
 GENRE_LABEL_TO_INSTANCE_QID: dict[str, str] = {
     "Illustrated works (Manuscript)": Q_ILLUMINATED_MANUSCRIPT,

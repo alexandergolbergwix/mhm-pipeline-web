@@ -8,7 +8,7 @@
 | `backend/app/pipeline/rdf_build_job.py` | Background job (`kind="rdf_build"`, dispatched by `run_job_service.py:340`): loads approved rows, builds, write-throughs `RdfArtifact`, busts caches |
 | `backend/app/pipeline/rdf_enrichment.py` | Merges approved authority + NER + ML genres + KIMA places into flat MARC dicts before mapping |
 | `backend/app/pipeline/graph_index.py` | Graph catalog + SQLite index + viewport payloads for scalable visualization |
-| `backend/converter/rdf/rdf_helpers.py` | `clean_marc_label`, `parse_contents_entry` (505 split — Rule W-50) |
+| `backend/converter/rdf/rdf_helpers.py` | `clean_marc_label`, gershayim-safe MARC quote normalization, and `parse_contents_entry` (505 split — Rules W-50/W-72) |
 | `backend/converter/rdf/graph_builder.py` | Vendored desktop `GraphBuilder` — HMO/CIDOC triple emitter; `_stamp_wikibase_comment` + CU metadata for Wikibase descriptions (Rule W-48); genre/material/script comments (W-50); `_add_provenance_events` (line 730) |
 | `backend/converter/rdf/ontology_coverage.py` | HMO ontology class/property coverage report |
 | `backend/converter/wikidata/projection_coverage.py` | `rdf_projection_coverage.json` writer (which RDF classes project to Wikidata) |

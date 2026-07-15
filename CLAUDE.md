@@ -2034,7 +2034,24 @@ recomputed a different fingerprint and hid valid persisted verdicts. Work-source
 evidence was present in build artifacts but absent from the evaluator prompt,
 statement labels/qualifiers/references were absent from cache keys, and a live
 audit found static genre/subject mappings whose QIDs named unrelated entities.
-The canonical helper now enriches both verify and read paths; prompt-relevant
+The canonical helper now enriches both verify and read paths, preserving durable
+local-target evidence while merging statement-derived targets; prompt-relevant
 evidence participates in `w71_v1`/`records_marc_v5` fingerprints; work evidence
 reaches the rubric; and every emitted static QID has a verified label. Ambiguous
 crosswalk entries fail closed and broad `Jews` headings do not become P921.
+
+
+### Rule W-72 — Public Wikidata semantic claims MUST be evidence-gated (added 2026-07-15)
+
+The Phase 1 audit of run `48ba6c13-115c-4763-bff1-c08b9031b518` found
+false-positive P921 topics, over-specific P136 genres, historical owners and
+censors projected as P127, catalog workflow text projected as P1684, and
+external 710 institutions replaced by a default NLI collection. It also found
+MARC wrapper cleanup deleting legitimate Hebrew gershayim. The public projection
+now protects Hebrew abbreviation marks, filters explicit catalog-note markers,
+requires canonical/primary subject evidence, gates unsafe genre/P31 mappings,
+keeps non-current roles out of P127, and emits P195 only from a verified current
+holder QID (with an evidence-based description fallback). Rejected candidates
+remain in source/evidence fields for curator reconciliation. Tests:
+`test_wikidata_phase1_projection.py`, `test_marc_650_655_lod.py`, and
+`test_wikidata_work_candidates.py`.

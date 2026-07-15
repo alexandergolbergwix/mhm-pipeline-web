@@ -537,7 +537,7 @@ ROLE_TO_PID: dict[str, str] = {
     "AUTHOR": P_AUTHOR,
     "TRANSCRIBER": P_TRANSCRIBED_BY,
     "OWNER": P_OWNED_BY,
-    "CENSOR": P_OWNED_BY,  # No specific censor property; model as association
+    # Censor identity is retained in source evidence; it is not ownership.
     # Fix 2026-04-15 third audit Fix #15: translators belong on P655, not P50
     # (author). Commentators belong on P9046 (commentary by). Using P50 for
     # these roles produces constraint violations and misleading author links.
@@ -547,8 +547,6 @@ ROLE_TO_PID: dict[str, str] = {
     "author": P_AUTHOR,
     "scribe": P_TRANSCRIBED_BY,
     "copyist": P_TRANSCRIBED_BY,
-    "former owner": P_OWNED_BY,
-    "בעלים קודמים": P_OWNED_BY,
     "illuminator": P_ILLUSTRATOR,
     "translator": "P655",
     "commentator": "P9046",
@@ -562,7 +560,6 @@ ROLE_TO_PID: dict[str, str] = {
     "בעל": P_OWNED_BY,
     "(ממנו)": P_OWNED_BY,
     "owner": P_OWNED_BY,
-    "former_owner": P_OWNED_BY,
     "transcriber": P_TRANSCRIBED_BY,
 }
 

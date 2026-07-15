@@ -75,8 +75,11 @@ def parse_contents_entry(raw: str) -> dict[str, Any]:
 
 
 def _normalize_marc_isbd_quotes(text: str) -> str:
-    """Collapse MARC ISBD ``"title :" "subtitle"`` quote nesting."""
+    """Collapse MARC ISBD quote wrappers while preserving Hebrew gershayim."""
     out = text.replace('""', '"')
+    # Protect legitimate Hebrew abbreviation marks before wrapper stripping;
+    # otherwise the first quote in רס"ג looks like a title-closing quote.
+    out = _GERSHAYIM_RE.sub(_GERSHAYIM_SENTINEL, out)
 
     def _merge_quoted_pair(match: re.Match[str]) -> str:
         left = match.group(1).strip()
@@ -97,7 +100,7 @@ def _normalize_marc_isbd_quotes(text: str) -> str:
     out = out.replace('""', '"')
     out = re.sub(r'\\+', "", out)
     out = re.sub(r"\s{2,}", " ", out).strip()
-    return out
+    return out.replace(_GERSHAYIM_SENTINEL, '"')
 
 
 _DESCRIPTIVE_CONTENT_PREFIXES: tuple[str, ...] = (

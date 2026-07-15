@@ -31,6 +31,11 @@ def test_clean_marc_label_preserves_hebrew_abbreviation_gershayim() -> None:
     assert "אברהם היכיני" in cleaned
 
 
+def test_clean_marc_label_preserves_doubled_gershayim_marks() -> None:
+    assert clean_marc_label('""תרגום רס""ג לתורה""') == 'תרגום רס"ג לתורה'
+    assert clean_marc_label('""פרוש רש""י""') == 'פרוש רש"י'
+
+
 def test_is_descriptive_content_title_rejects_gam_prefix() -> None:
     assert is_descriptive_content_title("גם תרגום לטיני באותיות לטיניות")
     assert not is_descriptive_content_title("שיר השירים")

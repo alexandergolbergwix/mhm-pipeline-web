@@ -86,6 +86,15 @@ def attach_local_reference_targets(items: list[dict[str, Any]]) -> None:
     }
     for item in items:
         targets: dict[str, dict[str, Any]] = {}
+        existing = item.get("local_reference_targets")
+        if isinstance(existing, dict):
+            targets.update(
+                {
+                    str(key): value
+                    for key, value in existing.items()
+                    if isinstance(value, dict)
+                }
+            )
         for statement in item.get("statements") or []:
             if not isinstance(statement, dict):
                 continue

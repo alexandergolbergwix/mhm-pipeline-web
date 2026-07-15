@@ -111,7 +111,11 @@ class ManuscriptMetadataMixin:
         HMO fidelity, 2026-05-17).
         """
         qids: list[str] = []
-        if record.get("has_decoration"):
+        from converter.wikidata.marc_subject_resolve import genre_projection_supported  # noqa: PLC0415
+
+        if record.get("has_decoration") and genre_projection_supported(
+            "Illustrated works (Manuscript)", record
+        ):
             qids.append(Q_ILLUMINATED_MANUSCRIPT)
         if record.get("is_multi_volume") or record.get("is_anthology"):
             qids.append(Q_CODEX)
@@ -121,7 +125,17 @@ class ManuscriptMetadataMixin:
             qids.append(Q_PALIMPSEST)
         from converter.wikidata.marc_subject_resolve import instance_qids_from_genre_labels  # noqa: PLC0415
 
-        for qid in instance_qids_from_genre_labels(list(record.get("genres") or [])):
+        supported_genres = [
+            genre for genre in list(record.get("genres") or [])
+            if genre_projection_supported(
+                str(genre.get("term") or genre.get("name") or "")
+                if isinstance(genre, dict)
+                else str(genre),
+                record,
+                genre if isinstance(genre, dict) else None,
+            )
+        ]
+        for qid in instance_qids_from_genre_labels(supported_genres):
             if qid not in qids:
                 qids.append(qid)
         qids.append(Q_MANUSCRIPT)  # base type always last
@@ -269,6 +283,11 @@ class ManuscriptMetadataMixin:
         seen_owners: set[str] = set()
         for owner in owners:
             owner_name = str(owner.get("text", "")).strip().strip(_QUOTE_CHARS + ".")
+            owner_role = str(owner.get("role") or "").casefold().replace("_", " ").strip()
+            if owner_role in {"former owner", "seller", "censor"}:
+                # Historical/sale/censor mentions remain in provenance evidence;
+                # P127 is reserved for a supported current ownership assertion.
+                continue
             if not owner_name or owner_name in seen_owners:
                 continue
             seen_owners.add(owner_name)

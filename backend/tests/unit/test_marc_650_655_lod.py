@@ -53,13 +53,25 @@ class TestMarc650655Wikidata:
         prepared = prepare_record_for_pipeline(rec)
         assert prepared.get("genres") == []
 
-    def test_p921_and_p136_from_marc(self) -> None:
+    def test_secondary_marc_subject_is_not_promoted_to_p921(self) -> None:
         rec = prepare_record_for_pipeline(_sample_record())
         item = WikidataItemBuilder(reconciler=None).build_manuscript_item(rec)
         p921 = [s for s in item.statements if s.property_id == "P921"]
         p136 = [s for s in item.statements if s.property_id == "P136"]
-        assert any(s.value == "Q1845" for s in p921)
+        assert p921 == []
         assert any(s.value == "Q1749541" for s in p136)
+
+    def test_explicit_primary_subject_is_projected_to_p921(self) -> None:
+        rec = prepare_record_for_pipeline({
+            "_control_number": "PRIMARY650",
+            "title": "פירוש",
+            "subjects": [{"term": "מקרא", "type": "topic", "field": "650", "primary": True}],
+        })
+        item = WikidataItemBuilder(reconciler=None).build_manuscript_item(rec)
+        assert any(
+            s.property_id == "P921" and s.value == "Q1845"
+            for s in item.statements
+        )
 
     def test_generic_jews_heading_is_not_promoted_to_main_subject(self) -> None:
         rec = prepare_record_for_pipeline({

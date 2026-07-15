@@ -1,0 +1,51 @@
+# Wikidata Studio — Phase 1 projection quality
+
+> Up: [Wikidata Studio](README.md) · [Rules](rules.md)
+
+Phase 1 makes the public Wikidata projection conservative when the MARC/RDF
+record contains evidence but not a sufficiently specific semantic assertion.
+Rejected candidates remain in the source record, work-candidate evidence, or
+curator review context; they are not silently rewritten as stronger claims.
+
+## Deterministic guards
+
+- `rdf_helpers._normalize_marc_isbd_quotes` protects Hebrew gershayim before
+  removing ISBD wrappers. Doubled forms such as `רס""ג` become `רס"ג`; wrapper
+  quotes are removed.
+- `_is_catalog_note_placeholder` rejects explicit catalog/workflow markers
+  before P1684 inscription projection. Actual colophon, gloss, correction, and
+  marginalia text remains eligible.
+- `content_projection._is_primary_subject` requires a canonical or explicit
+  primary marker before a MARC 650/600 topic becomes P921. Broad headings such
+  as `Jews` remain excluded.
+- `marc_subject_resolve.genre_projection_supported` gates over-specific 655
+  labels (illustrated, autograph, license, negotiable instrument, family
+  record, pinkas) on an explicit record assertion or matching evidence. The
+  same predicate controls the implied illuminated-manuscript P31.
+- `ROLE_TO_PID` and provenance projection do not treat former owners, sellers,
+  or censors as current P127 ownership. Those roles remain source evidence.
+- Current-owner 710 contributors are checked for a verified organization QID.
+  P195 uses that QID; an external institution without a QID is not silently
+  replaced by the NLI default, and the English description names the holder.
+
+## Source and module boundary
+
+The guards live in the focused Wikidata projection modules and shared RDF label
+helper, behind the `WikidataItemBuilder` facade (R1). They do not mutate MARC
+records or HMO staging data, so curators can still inspect rejected evidence and
+reconcile it later. The validator and upload gates remain unchanged.
+
+## Regression checks
+
+Run the focused suite from `backend/`:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/unit/test_wikidata_phase1_projection.py \
+  tests/unit/test_wikidata_work_candidates.py \
+  tests/unit/test_marc_650_655_lod.py -q
+```
+
+The fixtures cover Hebrew abbreviation marks, catalog-note suppression,
+secondary versus primary subjects, unsafe genre/P31 suppression, role-safe
+P127, and external holding-institution descriptions/P195.

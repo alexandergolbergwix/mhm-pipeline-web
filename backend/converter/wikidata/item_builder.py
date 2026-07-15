@@ -190,6 +190,9 @@ def _normalise_label(s: str) -> str:
     # Preserve an internal ASCII gershayim between Hebrew letters (רס"ג,
     # רש"י, רמב"ם); only remove wrapper/noise quotes.
     s = s.replace('\\"', '"')
+    # A doubled MARC quote between Hebrew letters is one gershayim mark,
+    # not two characters to delete (e.g. רס""ג → רס"ג).
+    s = re.sub(r'(?<=[\u0590-\u05ff])"{2,}(?=[\u0590-\u05ff])', '"', s)
     protected = re.sub(r'(?<=[\u0590-\u05ff])"(?=[\u0590-\u05ff])', "\ue002", s)
     s = protected.replace('"', "").replace("\ue002", '"')
     s = _MARC_RELATOR_RE.sub("", s).strip()
@@ -603,8 +606,45 @@ _ROLE_TO_LABEL: dict[str, str] = {
 
 
 def _is_catalog_note_placeholder(value: object) -> bool:
+    """Return whether text is catalog/workflow metadata, not manuscript text.
+
+    These values can arrive in ``colophon_text`` or ``scribal_interventions``
+    after the shared MARC/NER merge. Keeping them in source evidence is useful,
+    but projecting them as P1684 would make a false scholarly claim.
+    """
     text = _normalise_label(str(value or ""))
-    return text.lower() in {"רשומה זמנית", "temporary record", "temporary entry", "תאור זמני"}
+    if not text:
+        return False
+    folded = text.casefold()
+    if folded in {
+        "רשומה זמנית",
+        "temporary record",
+        "temporary entry",
+        "תאור זמני",
+    }:
+        return True
+    return bool(
+        re.match(r"^(?:נושא נוסף|additional subject|catalog(?:ue|ing)? note)\s*[:：]", folded)
+        or "book suggested to google" in folded
+        or ("catalog" in folded and "rejected" in folded)
+    )
+
+
+def _holding_institution_name(record: dict[str, object]) -> str:
+    """Return the current holding institution supported by the MARC record."""
+    for contributor in record.get("contributors") or []:
+        if not isinstance(contributor, dict):
+            continue
+        role = str(contributor.get("role") or "").casefold().replace("_", " ")
+        if "current owner" not in role:
+            continue
+        name = _normalise_label(str(contributor.get("name") or ""))
+        if name and _is_institutional_name(name):
+            return name
+    holding = _normalise_label(str(record.get("holding_institution") or ""))
+    if holding and _is_institutional_name(holding):
+        return holding
+    return "National Library of Israel"
 
 
 def _is_placeholder_title(title: str | None) -> bool:
@@ -803,7 +843,7 @@ def _build_manuscript_description(record: dict[str, object]) -> str:
         if mat_label:
             parts.append(mat_label)
 
-    parts.append("National Library of Israel")
+    parts.append(_holding_institution_name(record))
     desc = _cap_description(", ".join(parts))
     from converter.wikidata.marc_subject_resolve import unresolved_topic_labels  # noqa: PLC0415
 

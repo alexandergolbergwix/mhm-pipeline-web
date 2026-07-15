@@ -50,6 +50,7 @@ from converter.wikidata.item_builder import (
     _associate_item_with_source_record,
     _extract_inception_year,
     _is_catalog_note_placeholder,
+    _is_institutional_name,
     _marc_entry_label,
     _normalise_label,
     date_to_wikidata,
@@ -60,6 +61,57 @@ from converter.wikidata.item_builder import (
     nli_j9u_id,
     nli_reference,
 )
+
+
+_QID_RE = re.compile(r"^Q\d+$")
+
+
+def _current_holder_names(record: dict[str, object]) -> list[str]:
+    names: list[str] = []
+    for contributor in record.get("contributors") or []:
+        if not isinstance(contributor, dict):
+            continue
+        role = str(contributor.get("role") or "").casefold().replace("_", " ")
+        if "current owner" not in role:
+            continue
+        name = _normalise_label(str(contributor.get("name") or ""))
+        if name and name not in names:
+            names.append(name)
+    holding = _normalise_label(str(record.get("holding_institution") or ""))
+    if holding and holding not in names:
+        names.append(holding)
+    return names
+
+
+def _current_holder_qid(record: dict[str, object], holder_names: list[str]) -> str | None:
+    """Resolve a current 710 holder to a verified institution QID, if present."""
+    wanted = {name.casefold() for name in holder_names}
+    for contributor in record.get("contributors") or []:
+        if not isinstance(contributor, dict):
+            continue
+        role = str(contributor.get("role") or "").casefold().replace("_", " ")
+        name = _normalise_label(str(contributor.get("name") or ""))
+        if "current owner" not in role or name.casefold() not in wanted:
+            continue
+        for key in ("wikidata_qid", "existing_qid", "qid"):
+            qid = extract_wikidata_qid(str(contributor.get(key) or ""))
+            if qid and _QID_RE.fullmatch(qid):
+                return qid
+    for match in record.get("marc_authority_matches") or []:
+        if not isinstance(match, dict):
+            continue
+        role = str(match.get("role") or "").casefold().replace("_", " ")
+        name = _normalise_label(str(match.get("name") or match.get("entity_text") or ""))
+        if "current owner" not in role or not _is_institutional_name(name):
+            continue
+        if wanted and name.casefold() not in wanted:
+            continue
+        qid = extract_wikidata_qid(
+            str(match.get("wikidata_qid") or (match.get("payload") or {}).get("wikidata_qid") or "")
+        )
+        if qid and _QID_RE.fullmatch(qid):
+            return qid
+    return None
 
 
 class ManuscriptProjectionMixin:
@@ -141,12 +193,7 @@ class ManuscriptProjectionMixin:
                 )
             )
 
-        current_owner_names = [
-            str(contributor.get("name") or "").strip().strip(_QUOTE_CHARS)
-            for contributor in (record.get("contributors") or [])
-            if isinstance(contributor, dict)
-            and "current owner" in str(contributor.get("role") or "").lower()
-        ]
+        current_owner_names = _current_holder_names(record)
         has_external_current_owner = any(
             name
             and "national library of israel" not in name.casefold()
@@ -154,7 +201,9 @@ class ManuscriptProjectionMixin:
             and "הספריה הלאומית" not in name
             for name in current_owner_names
         )
-        collection_qid = None if has_external_current_owner else Q_NLI
+        collection_qid = _current_holder_qid(record, current_owner_names)
+        if not has_external_current_owner and collection_qid is None:
+            collection_qid = Q_NLI
         if collection_qid:
             item.statements.append(
                 WikidataStatement(

@@ -30,6 +30,25 @@ _QID_RE = re.compile(r"^Q\d+$")
 _BROAD_MAIN_SUBJECT_TERMS = {"jews"}
 
 
+_PRIMARY_SUBJECT_KEYS = ("primary", "is_primary", "main_subject", "is_main_subject")
+
+
+def _is_primary_subject(subject: dict[str, object]) -> bool:
+    """Require an explicit primary marker before promoting a 6XX topic to P921."""
+    for key in _PRIMARY_SUBJECT_KEYS:
+        value = subject.get(key)
+        if value is True or (
+            isinstance(value, str)
+            and value.strip().casefold() in {"true", "yes", "1"}
+        ):
+            return True
+    source = str(subject.get("source") or "").casefold().replace("_", " ")
+    role = str(subject.get("role") or "").casefold().replace("_", " ")
+    return source in {"canonical", "canonical reference", "primary subject"} or role in {
+        "primary subject", "main subject", "canonical subject",
+    }
+
+
 def _safe_work_qid(value: object) -> str | None:
     candidate = str(value or "").strip()
     return candidate if _QID_RE.fullmatch(candidate) else None
@@ -255,7 +274,10 @@ class ContentProjectionMixin:
         title: str,
     ) -> None:
         """Emit P136 from MARC 655 (WikiProject Manuscripts content properties)."""
-        from converter.wikidata.marc_subject_resolve import resolve_genre_qid  # noqa: PLC0415
+        from converter.wikidata.marc_subject_resolve import (
+            genre_projection_supported,
+            resolve_genre_qid,
+        )  # noqa: PLC0415
 
         marc_genres = list(record.get("genres") or [])
         genre_entries = list(record.get("genre_entries") or [])
@@ -294,7 +316,10 @@ class ContentProjectionMixin:
                 label = str(genre).strip()
             if not label:
                 continue
-            qid = resolve_genre_qid(label, genre_entry=entry_by_term.get(label))
+            genre_entry = entry_by_term.get(label)
+            if not genre_projection_supported(label, record, genre_entry):
+                continue
+            qid = resolve_genre_qid(label, genre_entry=genre_entry)
             if qid:
                 _append_genre(qid)
 
@@ -334,6 +359,8 @@ class ContentProjectionMixin:
         ]
         for ge in ner_genre_ents:
             genre_text = str(ge.get("text", "")).strip()
+            if not genre_projection_supported(genre_text, record, ge):
+                continue
             qid = resolve_genre_qid(genre_text)
             if qid:
                 _append_genre(
@@ -396,6 +423,11 @@ class ContentProjectionMixin:
             if not term:
                 continue
             if term.casefold() in _BROAD_MAIN_SUBJECT_TERMS:
+                continue
+            if not _is_primary_subject(subj):
+                # MARC 650 is a secondary topical index by default. Keep it in
+                # source evidence, but do not assert that every topic is the
+                # manuscript's Wikidata main subject.
                 continue
             if stype == "topic":
                 qid = resolve_subject_qid(subj, allow_network=False)
