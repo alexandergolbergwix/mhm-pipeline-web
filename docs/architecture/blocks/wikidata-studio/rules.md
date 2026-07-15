@@ -130,3 +130,10 @@ author plus real 245 title may create a P1574 work chain; explicit printed
 facsimile wording may use the printed-book P31. Provenance/photo-credit text
 and ambiguous roles remain evidence only. *Why:* the fifth export exposed both
 lossy omission and one manuscript/facsimile type failure.
+
+32. **R32 — Placeholder institutions and authority forms MUST remain explicit.**
+Unknown-library catalog placeholders are omitted from public descriptions,
+authority names retain inverted and Latin forms as aliases, and partial or
+chapter-qualified work titles never inherit a canonical QID unless the exact
+title is verified. *Why:* the sixth verdict export still contained placeholder
+institution text, incomplete person names, and an unsafe Mishneh Torah match.

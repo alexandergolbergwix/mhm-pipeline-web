@@ -239,9 +239,13 @@ class PersonProjectionMixin:
         person.labels[label_lang] = _normalise_label(
             _strip_person_name_qualifiers(_to_natural_name_order(clean_name))
         )
+        original_name = _normalise_label(_strip_person_name_qualifiers(clean_name))
+        if original_name and original_name != person.labels[label_lang]:
+            person.aliases.setdefault(label_lang, []).append(original_name)
 
         pref_lat = str(match_info.get("preferred_name_lat") or "").strip()
         if pref_lat:
+            original_lat = _normalise_label(_strip_person_name_qualifiers(pref_lat))
             normalized_lat = _normalise_label(
                 _strip_person_name_qualifiers(_to_natural_name_order(pref_lat))
             )
@@ -250,12 +254,17 @@ class PersonProjectionMixin:
                     person.labels["he"] = normalized_lat
             else:
                 person.labels["en"] = normalized_lat
+            if original_lat and original_lat != normalized_lat:
+                person.aliases.setdefault("en", []).append(original_lat)
 
         pref_heb = str(match_info.get("preferred_name_heb") or "").strip()
         if pref_heb:
-            person.labels["he"] = _normalise_label(
+            normalized_heb = _normalise_label(
                 _strip_person_name_qualifiers(_to_natural_name_order(pref_heb))
             )
+            if normalized_heb and normalized_heb != person.labels.get("he"):
+                person.aliases.setdefault("he", []).append(normalized_heb)
+            person.labels["he"] = normalized_heb
 
         # P31 = human (or organization) — uses the shared institutional
         # keyword list (see _is_institutional_name above).

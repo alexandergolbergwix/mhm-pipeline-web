@@ -157,3 +157,31 @@ def test_marc_author_and_title_create_exemplar_work_chain() -> None:
     manuscript = next(item for item in items if item.entity_type == "manuscript")
     assert any(statement.property_id == "P50" or statement.property_id == "P2093" for statement in work.statements)
     assert any(statement.property_id == "P1574" for statement in manuscript.statements)
+
+
+def test_placeholder_holder_is_omitted_from_description() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "UNKNOWN-HOLDER",
+        "title": "הגדה של פסח",
+        "holding_institution": "Unknown Library",
+    })
+    assert "Unknown Library" not in item.descriptions["en"]
+
+
+def test_person_authority_preserves_inverted_and_latin_aliases() -> None:
+    items = WikidataItemBuilder().build_all([{
+        "_control_number": "PERSON-ALIASES",
+        "title": "כתב יד",
+        "marc_authority_matches": [{
+            "name": "אליהו-קאולי, דליה",
+            "mazal_id": "987007453092705171",
+            "preferred_name_lat": "Eliyahu-Kauli, Dalia",
+            "preferred_name_heb": "אליהו-קאולי, דליה",
+            "name_type": "personal",
+            "role": "scribe",
+        }],
+    }])
+    item = next(item for item in items if item.entity_type == "person")
+    assert item.labels["he"] == "דליה אליהו-קאולי"
+    assert "אליהו-קאולי, דליה" in item.aliases["he"]
+    assert "Eliyahu-Kauli, Dalia" in item.aliases["en"]

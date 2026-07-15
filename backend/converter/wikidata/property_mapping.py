@@ -380,8 +380,6 @@ def known_work_qid_for_title(title: str) -> str | None:
     direct = KNOWN_WORK_QIDS.get(canonical) or KNOWN_WORK_TITLE_ALIASES.get(canonical)
     if direct:
         return direct
-    if canonical.startswith("משנה תורה ("):
-        return KNOWN_WORK_QIDS["משנה תורה"]
     if canonical.startswith("פרוש המשנה לרמבם ("):
         return KNOWN_WORK_TITLE_ALIASES["פרוש המשנה לרמבם"]
     if canonical.startswith("פירוש המשנה לרמבם ("):

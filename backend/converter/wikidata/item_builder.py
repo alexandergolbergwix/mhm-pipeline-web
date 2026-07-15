@@ -633,6 +633,13 @@ def _is_catalog_note_placeholder(value: object) -> bool:
 
 def _holding_institution_name(record: dict[str, object]) -> str:
     """Return the current holding institution supported by the MARC record."""
+    placeholder_names = {
+        "unknown library",
+        "unknown institution",
+        "unknown holder",
+        "לא ידוע",
+        "ספריה לא ידועה",
+    }
     for contributor in record.get("contributors") or []:
         if not isinstance(contributor, dict):
             continue
@@ -640,12 +647,12 @@ def _holding_institution_name(record: dict[str, object]) -> str:
         if "current owner" not in role:
             continue
         name = _normalise_label(str(contributor.get("name") or ""))
-        if name and _is_institutional_name(name):
+        if name and name.casefold() not in placeholder_names and _is_institutional_name(name):
             return name
     holding = _normalise_label(str(record.get("holding_institution") or ""))
-    if holding and _is_institutional_name(holding):
+    if holding and holding.casefold() not in placeholder_names and _is_institutional_name(holding):
         return holding
-    return "National Library of Israel"
+    return ""
 
 
 def _is_placeholder_title(title: str | None) -> bool:
@@ -861,7 +868,9 @@ def _build_manuscript_description(record: dict[str, object]) -> str:
         if mat_label:
             parts.append(mat_label)
 
-    parts.append(_holding_institution_name(record))
+    holding_name = _holding_institution_name(record)
+    if holding_name:
+        parts.append(holding_name)
     desc = _cap_description(", ".join(parts))
     from converter.wikidata.marc_subject_resolve import unresolved_topic_labels  # noqa: PLC0415
 

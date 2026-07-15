@@ -504,5 +504,6 @@ def test_known_work_title_aliases_are_exact_and_not_fuzzy() -> None:
 
     assert known_work_qid_for_title("יוסיפון") == "Q1561132"
     assert known_work_qid_for_title('פרוש המשנה לרמב"ם (פרק חלק)') == "Q6124976"
-    assert known_work_qid_for_title("משנה תורה (ספר זמנים)") == "Q201029"
+    assert known_work_qid_for_title("משנה תורה") == "Q201029"
+    assert known_work_qid_for_title("משנה תורה (ספר זמנים)") is None
     assert known_work_qid_for_title("יצירה דומה") is None

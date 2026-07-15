@@ -2109,3 +2109,13 @@ uses verified canonical mappings, a source-backed manuscript→P1574→work auth
 fallback, explicit facsimile detection, and a verified Masorah P921 mapping.
 Ambiguous provenance and free-text signals remain excluded. Tests:
 `test_wikidata_phase1_projection.py`.
+
+
+### Rule W-78 — Exported authority and work identity MUST stay precise (added 2026-07-15)
+
+The sixth Wikidata Studio verdict export retained placeholder `Unknown Library`
+descriptions, incomplete Latin/inverted authority names, and an existing
+canonical Mishneh Torah QID on a partial-books work. The projection now omits
+known placeholder institutions, preserves authority forms as aliases, and
+requires exact work-title matches before using hardcoded canonical QIDs. Tests:
+`test_wikidata_phase1_projection.py` and `test_wikidata_studio_works.py`.
