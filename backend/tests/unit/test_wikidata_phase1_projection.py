@@ -106,3 +106,11 @@ def test_external_current_holder_without_qid_is_not_defaulted_to_nli() -> None:
     })
     assert _statements(item, "P195") == []
     assert "Russian State Library" in item.descriptions["en"]
+
+
+def test_missing_holder_qid_does_not_default_to_nli_collection() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "NLI-NO-FALLBACK",
+        "title": "כתב יד",
+    })
+    assert _statements(item, "P195") == []

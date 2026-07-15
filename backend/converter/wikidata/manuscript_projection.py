@@ -194,16 +194,10 @@ class ManuscriptProjectionMixin:
             )
 
         current_owner_names = _current_holder_names(record)
-        has_external_current_owner = any(
-            name
-            and "national library of israel" not in name.casefold()
-            and "הספרייה הלאומית" not in name
-            and "הספריה הלאומית" not in name
-            for name in current_owner_names
-        )
         collection_qid = _current_holder_qid(record, current_owner_names)
-        if not has_external_current_owner and collection_qid is None:
-            collection_qid = Q_NLI
+        # Do not infer the NLI collection from the absence of another holder.
+        # P195 is a collection claim and requires a verified current-holder
+        # QID; the description may still name the catalogued institution.
         if collection_qid:
             item.statements.append(
                 WikidataStatement(

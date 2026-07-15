@@ -112,3 +112,9 @@ geresh/gershayim in MARC 260/264 dates MUST be treated as punctuation, and a
 malformed century token MUST fall through to year parsing rather than aborting
 the record or batch. *Why:* the full 123,621-record corpus exposed 5,129
 normalization crashes from tokens such as `כ'` being parsed as 20,000.
+
+29. **R29 — P195 requires verified current-holder evidence.** A manuscript MUST
+NOT receive the NLI collection QID merely because no other holder was resolved;
+P195 requires a current-owner/holding-institution match with a verified
+organization QID. *Why:* 43 production partials carried an unsupported default
+collection claim.

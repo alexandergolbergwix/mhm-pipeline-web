@@ -2078,3 +2078,13 @@ other fields could be prepared. The parser now strips geresh/gershayim before
 gematria, rejects values outside the century range, and falls through to the
 ordinary Hebrew-year parser for mixed catalogue prose. Tests: `test_hebrew_date_parse.py`;
 full-corpus scan: 123,621 records, zero normalization errors.
+
+
+### Rule W-75 — P195 MUST NOT default to the NLI collection (added 2026-07-15)
+
+The fourth Wikidata Studio export contained 43 partial manuscripts with
+`P195=Q188915` even though no verified current-holder collection evidence was
+present. The manuscript projection now emits P195 only when a current holder has
+a verified organization QID; absence of an external holder no longer implies
+the National Library of Israel collection. The description may still name the
+source institution. Tests: `test_wikidata_phase1_projection.py`.
