@@ -111,10 +111,36 @@ class ManuscriptMetadataMixin:
         HMO fidelity, 2026-05-17).
         """
         qids: list[str] = []
-        from converter.wikidata.marc_subject_resolve import genre_projection_supported  # noqa: PLC0415
+        from converter.wikidata.marc_subject_resolve import (  # noqa: PLC0415
+            genre_projection_supported,
+            illuminated_instance_supported,
+        )
 
-        if record.get("has_decoration") and genre_projection_supported(
-            "Illustrated works (Manuscript)", record
+        illustrated_entries = [
+            genre
+            for genre in (
+                list(record.get("genres") or [])
+                + list(record.get("genre_entries") or [])
+            )
+            if isinstance(genre, dict)
+            and str(genre.get("term") or genre.get("name") or "").strip().casefold()
+            == "illustrated works (manuscript)"
+        ]
+        has_illustrated_genre = any(
+            (str(genre.get("term") or genre.get("name") or "")
+             if isinstance(genre, dict) else str(genre)).strip().casefold()
+            == "illustrated works (manuscript)"
+            for genre in (
+                list(record.get("genres") or [])
+                + list(record.get("genre_entries") or [])
+            )
+        )
+        if has_illustrated_genre and (
+            illuminated_instance_supported(record)
+            or any(
+                illuminated_instance_supported(record, entry)
+                for entry in illustrated_entries
+            )
         ):
             qids.append(Q_ILLUMINATED_MANUSCRIPT)
         if record.get("is_multi_volume") or record.get("is_anthology"):

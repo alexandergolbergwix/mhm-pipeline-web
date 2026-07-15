@@ -19,6 +19,37 @@ def test_unsupported_genre_does_not_create_p136_or_illuminated_p31() -> None:
     assert all(statement.value != "Q48498" for statement in _statements(item, "P31"))
 
 
+def test_illustration_words_in_catalog_notes_do_not_prove_illumination() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "GENRE-NOTE-GUARD",
+        "title": "שער שברי לוחות",
+        "genres": ["Illustrated works (Manuscript)"],
+        "notes": ["ציורים ועטורים; שער מעוטר בדיו"],
+        "has_decoration": True,
+    })
+    assert [statement.value for statement in _statements(item, "P136")] == []
+    assert all(statement.value != "Q48498" for statement in _statements(item, "P31"))
+
+
+def test_explicit_decoration_evidence_allows_illuminated_instance() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "GENRE-CONFIRMED",
+        "title": "כתב יד מעוטר",
+        "genres": [{
+            "term": "Illustrated works (Manuscript)",
+            "wikidata_id": "Q48498",
+            "evidence_supported": True,
+        }],
+        "genre_entries": [{
+            "term": "Illustrated works (Manuscript)",
+            "wikidata_id": "Q48498",
+            "evidence_supported": True,
+        }],
+    })
+    assert [statement.value for statement in _statements(item, "P136")] == ["Q48498"]
+    assert [statement.value for statement in _statements(item, "P31")] == ["Q48498", "Q87167"]
+
+
 def test_catalog_workflow_text_does_not_become_p1684() -> None:
     item = WikidataItemBuilder().build_manuscript_item({
         "_control_number": "NOTE-GUARD",

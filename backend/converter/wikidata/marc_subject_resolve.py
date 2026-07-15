@@ -42,6 +42,9 @@ _CACHE_FILENAME = "wikidata_label_qid_cache.json"
 
 # These MARC labels are often cataloger shorthand rather than proof of the
 # Wikidata concept.  They require an explicit record-level assertion/evidence.
+_ILLUSTRATED_GENRE = "illustrated works (manuscript)"
+_TRUE_VALUES = {"true", "yes", "1"}
+
 _EVIDENCE_REQUIRED_GENRES = {
     "illustrated works (manuscript)",
     "autograph manuscripts",
@@ -58,7 +61,7 @@ def genre_projection_supported(
     record: dict[str, object] | None = None,
     genre_entry: dict[str, object] | None = None,
 ) -> bool:
-    """Return whether a specific MARC genre has enough evidence for P136/P31."""
+    """Return whether a specific MARC genre has enough evidence for P136."""
     normalized = clean_marc_label(label).casefold()
     if normalized not in _EVIDENCE_REQUIRED_GENRES:
         return True
@@ -66,8 +69,7 @@ def genre_projection_supported(
     for key in ("supported", "confirmed", "evidence_supported"):
         value = entry.get(key)
         if value is True or (
-            isinstance(value, str)
-            and value.strip().casefold() in {"true", "yes", "1"}
+            isinstance(value, str) and value.strip().casefold() in _TRUE_VALUES
         ):
             return True
     source = record or {}
@@ -84,31 +86,44 @@ def genre_projection_supported(
         if expected == normalized and (
             value is True
             or (
-                isinstance(value, str)
-                and value.strip().casefold() in {"true", "yes", "1"}
+                isinstance(value, str) and value.strip().casefold() in _TRUE_VALUES
             )
         ):
             return True
-    if normalized == "illustrated works (manuscript)":
-        evidence_text = " ".join(
-            str(source.get(key) or "")
-            for key in (
-                "title", "summary", "notes", "physical_description",
-                "decoration_evidence", "genre_evidence",
-            )
-        ).casefold()
-        return bool(
-            re.search(
-                r"illuminat|illumination|miniature|illustrat|ציורים|איורים|מיניאטור",
-                evidence_text,
-            )
+    return False
+
+
+def illuminated_instance_supported(
+    record: dict[str, object] | None = None,
+    genre_entry: dict[str, object] | None = None,
+) -> bool:
+    """Require explicit structured evidence before emitting P31=Q48498.
+
+    A MARC 655 ``Illustrated works (Manuscript)`` heading is a genre label,
+    not proof that the object is an illuminated manuscript. Free-text notes
+    are intentionally ignored because catalogues routinely mention
+    illustrations in titles, editions, or negative descriptions.
+    """
+    entry = genre_entry or {}
+    qid = str(entry.get("wikidata_id") or "").strip()
+    if qid == Q_ILLUMINATED_MANUSCRIPT and genre_projection_supported(
+        _ILLUSTRATED_GENRE, record, entry
+    ):
+        return True
+    evidence = (record or {}).get("decoration_evidence")
+    if isinstance(evidence, dict):
+        return bool(evidence.get("confirmed") is True and evidence.get("type"))
+    if isinstance(evidence, list):
+        return any(
+            isinstance(row, dict)
+            and row.get("confirmed") is True
+            and row.get("type")
+            for row in evidence
         )
     return False
 
 # 655 labels that imply additional P31 classes (WikiProject Manuscripts).
 GENRE_LABEL_TO_INSTANCE_QID: dict[str, str] = {
-    "Illustrated works (Manuscript)": Q_ILLUMINATED_MANUSCRIPT,
-    "illuminated manuscript": Q_ILLUMINATED_MANUSCRIPT,
     "Palimpsests": Q_PALIMPSEST,
     "palimpsest": Q_PALIMPSEST,
     "Manuscript fragments": Q_MANUSCRIPT_FRAGMENT,

@@ -19,9 +19,12 @@ curator review context; they are not silently rewritten as stronger claims.
   primary marker before a MARC 650/600 topic becomes P921. Broad headings such
   as `Jews` remain excluded.
 - `marc_subject_resolve.genre_projection_supported` gates over-specific 655
-  labels (illustrated, autograph, license, negotiable instrument, family
-  record, pinkas) on an explicit record assertion or matching evidence. The
-  same predicate controls the implied illuminated-manuscript P31.
+  labels (autograph, license, negotiable instrument, family record, pinkas)
+  on an explicit record assertion or matching evidence. `Illustrated works
+  (Manuscript)` is not statically mapped to `Q48498`: it is a genre label, not
+  proof of an illuminated manuscript. `illuminated_instance_supported`
+  requires an authority-stamped QID or structured confirmed decoration evidence
+  before P31=Q48498. Free-text notes and `has_decoration` alone are ignored.
 - `ROLE_TO_PID` and provenance projection do not treat former owners, sellers,
   or censors as current P127 ownership. Those roles remain source evidence.
 - Current-owner 710 contributors are checked for a verified organization QID.
@@ -47,5 +50,6 @@ Run the focused suite from `backend/`:
 ```
 
 The fixtures cover Hebrew abbreviation marks, catalog-note suppression,
-secondary versus primary subjects, unsafe genre/P31 suppression, role-safe
-P127, and external holding-institution descriptions/P195.
+secondary versus primary subjects, unsafe genre/P31 suppression, explicit
+illumination evidence, role-safe P127, and external holding-institution
+descriptions/P195.

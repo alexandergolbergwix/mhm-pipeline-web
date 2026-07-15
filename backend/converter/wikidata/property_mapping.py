@@ -303,7 +303,6 @@ GENRE_TO_QID: dict[str, str] = {
     # MARC genre/form strings (from NLI catalog data)
     "Poetry": "Q482",  # poetry
     "Piyyutim": "Q781402",  # piyyut (Hebrew liturgical poetry)
-    "Illustrated works (Manuscript)": "Q48498",  # illuminated manuscript
     "Personal correspondence": "Q133492",  # letter
     "Mezuzot": "Q247034",  # mezuzah
     "Legislation (Jewish law)": "Q107427",  # Halakha

@@ -2055,3 +2055,15 @@ holder QID (with an evidence-based description fallback). Rejected candidates
 remain in source/evidence fields for curator reconciliation. Tests:
 `test_wikidata_phase1_projection.py`, `test_marc_650_655_lod.py`, and
 `test_wikidata_work_candidates.py`.
+
+
+### Rule W-73 — Illustrated genre MUST NOT imply illuminated manuscript (added 2026-07-15)
+
+The second Wikidata Studio verdict audit found 44 manuscripts marked partial
+because MARC 655 `Illustrated works (Manuscript)` and catalog prose mentioning
+illustrations were projected as P136/P31 `Q48498` (illuminated manuscript). The
+projection now separates genre support from instance typing: that MARC label is
+not statically mapped to Q48498, free-text notes and `has_decoration` are not
+sufficient, and P31=Q48498 requires an authority-stamped QID or structured
+confirmed decoration evidence. Rejected genre evidence remains available for
+review. Tests: `test_wikidata_phase1_projection.py`.

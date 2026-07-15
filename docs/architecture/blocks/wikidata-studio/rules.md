@@ -98,3 +98,11 @@
 25. **R25 — Static QIDs and verdict evidence fail closed (Rule W-71).** Every static genre/subject QID has a live-verified label; uncertain mappings and broad P921 headings are omitted. Verify/read paths attach identical local targets, and cache keys include every prompt-relevant evidence field. *Why:* unrelated QIDs caused false claims while fingerprint drift hid 33 valid verdicts.
 
 26. **R26 — Public semantic claims are evidence-gated.** P921, P136, P127, P1684, and P195 are emitted only when their MARC/authority evidence supports the exact Wikidata meaning; rejected candidates remain review evidence. *Why:* Phase 1 audit rows were dominated by secondary subjects, over-specific genres, historical-role misuse, catalog notes, and defaulted institutions. See [projection-quality.md](projection-quality.md).
+
+27. **R27 — Illustrated genre and illuminated instance claims are separate.**
+`Illustrated works (Manuscript)` MUST NOT resolve through a static crosswalk to
+`Q48498` or imply P31=Q48498 from free-text notes/`has_decoration`; the specific
+instance requires an authority-stamped QID or structured confirmed decoration
+evidence. *Why:* 44 production manuscripts were judged partial because catalog
+illustration wording was promoted to an unsupported illuminated-manuscript
+claim.
