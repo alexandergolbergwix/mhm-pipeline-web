@@ -599,7 +599,15 @@ def _check_label_hygiene(
                 "Label carries ISBD quote noise or an (in MS …) scope suffix.",
                 _REF_HELP_LABEL,
             ))
-        if '""' in label or (label.count('"') % 2 == 1):
+        # A single ASCII quote between Hebrew letters is a legitimate
+        # gershayim abbreviation mark (e.g. פע"ח or רס"ג), not an ISBD
+        # wrapper. Remove those marks before checking wrapper balance.
+        wrapper_text = re.sub(
+            r'(?<=[\u0590-\u05ff])"(?=[\u0590-\u05ff])',
+            "",
+            label,
+        )
+        if '""' in wrapper_text or (wrapper_text.count('"') % 2 == 1):
             issues.append(ValidationIssue(
                 "warning", "LABEL_QUOTE_NOISE",
                 "Label has unbalanced or doubled ISBD quote wrappers.",

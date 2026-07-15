@@ -2088,3 +2088,12 @@ present. The manuscript projection now emits P195 only when a current holder has
 a verified organization QID; absence of an external holder no longer implies
 the National Library of Israel collection. The description may still name the
 source institution. Tests: `test_wikidata_phase1_projection.py`.
+
+
+### Rule W-76 — Hebrew gershayim MUST NOT trigger quote-noise warnings (added 2026-07-15)
+
+The fourth Wikidata Studio export retained five partial work items because
+legitimate internal Hebrew abbreviation marks such as `פע"ח` were counted as
+unbalanced ISBD wrapper quotes. The validator now removes quote characters
+between Hebrew letters before checking wrapper balance, while still flagging
+surrounding and doubled wrapper noise. Test: `test_item_validator.py`.

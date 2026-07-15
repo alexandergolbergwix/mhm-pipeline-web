@@ -34,4 +34,5 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_studio_fingerprint.py` — MARC JSON changes invalidate the durable Studio build cache.
 - `backend/tests/unit/test_wikidata_phase1_projection.py` — Phase 1 evidence gates for P136/P31, explicit-versus-free-text illumination evidence, P1684, P921, P127, and current-holder P195/description projection.
 - `backend/tests/unit/test_hebrew_date_parse.py` — Hebrew geresh/gershayim century parsing and mixed century/year fallback; malformed date tokens must not abort a record.
+- `backend/tests/unit/test_item_validator.py` — legitimate internal Hebrew gershayim are not reported as LABEL_QUOTE_NOISE.
 - `backend/scripts/audit_marc_tsv_scale.py` — streaming full-corpus normalization plus bounded deterministic builder smoke test.

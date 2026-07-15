@@ -118,3 +118,8 @@ NOT receive the NLI collection QID merely because no other holder was resolved;
 P195 requires a current-owner/holding-institution match with a verified
 organization QID. *Why:* 43 production partials carried an unsupported default
 collection claim.
+
+30. **R30 — Hebrew gershayim are label content, not wrapper noise.** Validation
+MUST ignore a quote between Hebrew letters when checking ISBD wrapper balance,
+while continuing to flag surrounding/doubled wrapper quotes. *Why:* five work
+partials were caused by legitimate abbreviation marks such as `פע"ח`.

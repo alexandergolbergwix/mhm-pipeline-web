@@ -476,6 +476,13 @@ class TestPersonNameQualifierStripping:
             f"pref_lat {pref_lat!r} should reduce to 'Moses Gaster', got {cleaned!r}"
         )
 
+    def test_internal_hebrew_gershayim_is_not_quote_noise(self) -> None:
+        item = _Item(
+            entity_type="work",
+            labels={"he": "ענף הג' פע\"ח והוא תיקוני עוונות"},
+        )
+        assert "LABEL_QUOTE_NOISE" not in _codes(validate_item(item))
+
     def test_terminal_hebrew_geresh_is_not_quote_noise(self) -> None:
         from converter.wikidata.item_validator import validate_item
 
