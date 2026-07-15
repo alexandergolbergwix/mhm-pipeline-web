@@ -28,6 +28,7 @@ from converter.wikidata.work_candidates import assess_work_candidate
 
 _QID_RE = re.compile(r"^Q\d+$")
 _BROAD_MAIN_SUBJECT_TERMS = {"jews"}
+_VERIFIED_PRIMARY_SUBJECT_TERMS = {"masorah"}
 
 
 _PRIMARY_SUBJECT_KEYS = ("primary", "is_primary", "main_subject", "is_main_subject")
@@ -266,6 +267,54 @@ class ContentProjectionMixin:
                 )
             )
 
+        # A MARC 100 author plus a real 245 title is sufficient evidence for
+        # a work candidate when the catalogue has no 505 contents list. Keep
+        # the author on the work (P50/P2093), and connect the manuscript via
+        # P1574 instead of placing P50 directly on the manuscript.
+        if not seen_works and not list(record.get("contents") or []):
+            title = _clean_work_title(str(record.get("title") or ""))
+            author_name = next(
+                (
+                    str(author.get("name") or "").strip()
+                    for author in (record.get("authors") or [])
+                    if isinstance(author, dict)
+                    and str(author.get("name") or "").strip()
+                    and str(author.get("role") or "author").casefold()
+                    in {"author", "attributed author", "presumed author"}
+                ),
+                "",
+            )
+            if title and author_name and not _is_noise_work_title(title):
+                decision = assess_work_candidate(
+                    title,
+                    source_field="100/245",
+                    approved=True,
+                    candidate_kind="marc_title_author",
+                    source_text=f"{title} — {author_name}",
+                )
+                evidence = decision.evidence()
+                remember_evidence(item, evidence)
+                if decision.accepted and decision.title:
+                    work_item = self._get_or_create_work(
+                        decision.title, author_name, record
+                    )
+                    remember_evidence(work_item, evidence)
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id=P_EXEMPLAR_OF,
+                            value=f"__LOCAL:{work_item.local_id}",
+                            value_type="item",
+                            qualifiers=[
+                                {
+                                    "property": P_SOURCING_CIRCUMSTANCES,
+                                    "value": Q_PRESUMABLY,
+                                    "type": "item",
+                                }
+                            ],
+                            references=ref,
+                        )
+                    )
+
     def _add_marc_genres(
         self,
         item: WikidataItem,
@@ -374,6 +423,7 @@ class ContentProjectionMixin:
                     ],
                 )
 
+
     def _add_canonical_subjects(
         self,
         item: WikidataItem,
@@ -424,7 +474,10 @@ class ContentProjectionMixin:
                 continue
             if term.casefold() in _BROAD_MAIN_SUBJECT_TERMS:
                 continue
-            if not _is_primary_subject(subj):
+            if (
+                not _is_primary_subject(subj)
+                and term.casefold() not in _VERIFIED_PRIMARY_SUBJECT_TERMS
+            ):
                 # MARC 650 is a secondary topical index by default. Keep it in
                 # source evidence, but do not assert that every topic is the
                 # manuscript's Wikidata main subject.

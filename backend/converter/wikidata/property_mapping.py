@@ -227,6 +227,7 @@ def hmo_wikibase_entity_url(
 
 # Type classifications
 Q_MANUSCRIPT = "Q87167"
+Q_PRINTED_BOOK = "Q571"  # book; used for explicit printed facsimile editions
 Q_CODEX = "Q213924"
 Q_ILLUMINATED_MANUSCRIPT = "Q48498"
 Q_MANUSCRIPT_FRAGMENT = "Q30103158"
@@ -446,6 +447,7 @@ SUBJECT_TO_QID: dict[str, str] = {
     "Berit milah": "Q848599",  # brit milah
     "Bar mitzvah": "Q28807008",  # Bar Mitzvah (Jewish ceremony)
     "Gematria": "Q840378",  # gematria
+    "Masorah": "Q3850835",  # verified Masorah concept
     "Purim": "Q180115",  # Purim
     "Apostasy": "Q223681",  # apostasy
     "Liturgy": "Q172331",  # liturgy

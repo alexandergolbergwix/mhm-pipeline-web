@@ -123,3 +123,10 @@ collection claim.
 MUST ignore a quote between Hebrew letters when checking ISBD wrapper balance,
 while continuing to flag surrounding/doubled wrapper quotes. *Why:* five work
 partials were caused by legitimate abbreviation marks such as `פע"ח`.
+
+31. **R31 — Explicit catalog semantics must be retained without broad inference.**
+Verified canonical holders/subjects may project directly; an explicit MARC 100
+author plus real 245 title may create a P1574 work chain; explicit printed
+facsimile wording may use the printed-book P31. Provenance/photo-credit text
+and ambiguous roles remain evidence only. *Why:* the fifth export exposed both
+lossy omission and one manuscript/facsimile type failure.

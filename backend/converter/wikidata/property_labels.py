@@ -204,6 +204,7 @@ QID_LABELS: dict[str, str] = {
     "Q8242": "literature",
     "Q837795": "Jewish philosophy",
     "Q840378": "gematria",
+    "Q3850835": "Masorah",
     "Q848599": "brit milah",
     "Q861258": "shechita",
     "Q9026959": "autograph",

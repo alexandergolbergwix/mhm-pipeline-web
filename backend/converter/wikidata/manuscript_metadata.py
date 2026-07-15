@@ -22,6 +22,7 @@ from converter.wikidata.item_builder import (
     Q_ILLUMINATED_MANUSCRIPT,
     Q_LEAF_UNIT,
     Q_MANUSCRIPT,
+    Q_PRINTED_BOOK,
     Q_PALIMPSEST,
     WikidataItem,
     WikidataStatement,
@@ -29,6 +30,7 @@ from converter.wikidata.item_builder import (
     _build_manuscript_description,
     _has_hebrew_script,
     _is_placeholder_title,
+    _is_printed_facsimile_record,
     _normalise_label,
     _person_key,
 )
@@ -111,6 +113,8 @@ class ManuscriptMetadataMixin:
         HMO fidelity, 2026-05-17).
         """
         qids: list[str] = []
+        if _is_printed_facsimile_record(record):
+            return [Q_PRINTED_BOOK]
         from converter.wikidata.marc_subject_resolve import (  # noqa: PLC0415
             genre_projection_supported,
             illuminated_instance_supported,

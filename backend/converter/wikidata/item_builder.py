@@ -100,6 +100,7 @@ from converter.wikidata.property_mapping import (
     Q_NLI,
     Q_ORGANIZATION,
     Q_PALIMPSEST,
+    Q_PRINTED_BOOK,
     Q_POSSIBLY,
     Q_PRESUMABLY,
     Q_SCRIBE,
@@ -789,6 +790,20 @@ _MATERIAL_LABELS: dict[str, str] = {
 }
 
 
+_FACSIMILE_RE = re.compile(
+    r"דפוס\s+צלום|פקסימיל|photographic\s+(?:print|facsimile)|printed\s+facsimile|facsimile\s+edition",
+    re.IGNORECASE,
+)
+
+
+def _is_printed_facsimile_record(record: dict[str, object]) -> bool:
+    text = " ".join(
+        str(record.get(key) or "")
+        for key in ("title", "summary", "notes", "physical_description")
+    )
+    return bool(_FACSIMILE_RE.search(text))
+
+
 def _build_manuscript_description(record: dict[str, object]) -> str:
     """Build a rich, disambiguating English description for a manuscript item.
 
@@ -808,7 +823,10 @@ def _build_manuscript_description(record: dict[str, object]) -> str:
     primary_lang = str(langs[0]) if langs else "heb"
     lang_str = _LANG_CODE_TO_ENGLISH.get(primary_lang, "Hebrew")
 
-    parts: list[str] = [f"{lang_str} manuscript"]
+    if _is_printed_facsimile_record(record):
+        parts: list[str] = [f"{lang_str} printed facsimile edition"]
+    else:
+        parts = [f"{lang_str} manuscript"]
 
     # Date — prefer a readable century string; fall back to exact year.
     # Handles ranges like "12th–13th century" or "15th-16th century".

@@ -114,3 +114,46 @@ def test_missing_holder_qid_does_not_default_to_nli_collection() -> None:
         "title": "כתב יד",
     })
     assert _statements(item, "P195") == []
+
+
+def test_canonical_nli_current_holder_emits_verified_collection() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "NLI-CANONICAL",
+        "title": "כתב יד",
+        "contributors": [{
+            "name": "The National Library of Israel",
+            "role": "current owner",
+        }],
+    })
+    assert [statement.value for statement in _statements(item, "P195")] == ["Q188915"]
+
+
+def test_masorah_subject_is_promoted_from_verified_exact_term() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "MASORAH-SUBJECT",
+        "title": "כתב יד",
+        "subjects": [{"term": "Masorah", "type": "topic"}],
+    })
+    assert [statement.value for statement in _statements(item, "P921")] == ["Q3850835"]
+
+
+def test_printed_facsimile_is_not_typed_as_manuscript() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "FACSIMILE",
+        "title": "פנקס המדינה",
+        "notes": ["דפוס צלום של הוצאת ברלין, תרפ\"ה"],
+    })
+    assert [statement.value for statement in _statements(item, "P31")] == ["Q571"]
+    assert "printed facsimile edition" in item.descriptions["en"]
+
+
+def test_marc_author_and_title_create_exemplar_work_chain() -> None:
+    items = WikidataItemBuilder().build_all([{
+        "_control_number": "AUTHOR-WORK-FALLBACK",
+        "title": "שער שברי לוחות",
+        "authors": [{"name": "אליהו בן אשר", "role": "author"}],
+    }])
+    work = next(item for item in items if item.entity_type == "work")
+    manuscript = next(item for item in items if item.entity_type == "manuscript")
+    assert any(statement.property_id == "P50" or statement.property_id == "P2093" for statement in work.statements)
+    assert any(statement.property_id == "P1574" for statement in manuscript.statements)

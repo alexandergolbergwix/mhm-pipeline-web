@@ -2097,3 +2097,15 @@ legitimate internal Hebrew abbreviation marks such as `פע"ח` were counted as
 unbalanced ISBD wrapper quotes. The validator now removes quote characters
 between Hebrew letters before checking wrapper balance, while still flagging
 surrounding and doubled wrapper noise. Test: `test_item_validator.py`.
+
+
+### Rule W-77 — Explicit catalog semantics MUST survive projection (added 2026-07-15)
+
+The fifth Wikidata Studio export showed that conservative Phase 1 guards had
+become too lossy: canonical NLI current-holder evidence was omitted, exact
+Masorah subjects were not projected, MARC-100 author/title records had no work
+chain, and a printed facsimile was typed as a manuscript. The projection now
+uses verified canonical mappings, a source-backed manuscript→P1574→work author
+fallback, explicit facsimile detection, and a verified Masorah P921 mapping.
+Ambiguous provenance and free-text signals remain excluded. Tests:
+`test_wikidata_phase1_projection.py`.

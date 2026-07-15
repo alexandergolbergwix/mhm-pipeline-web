@@ -93,6 +93,14 @@ def _current_holder_qid(record: dict[str, object], holder_names: list[str]) -> s
         name = _normalise_label(str(contributor.get("name") or ""))
         if "current owner" not in role or name.casefold() not in wanted:
             continue
+        normalized_name = name.casefold().strip()
+        if normalized_name in {
+            "the national library of israel",
+            "national library of israel",
+            "הספרייה הלאומית",
+            "הספריה הלאומית",
+        }:
+            return Q_NLI
         for key in ("wikidata_qid", "existing_qid", "qid"):
             qid = extract_wikidata_qid(str(contributor.get(key) or ""))
             if qid and _QID_RE.fullmatch(qid):
