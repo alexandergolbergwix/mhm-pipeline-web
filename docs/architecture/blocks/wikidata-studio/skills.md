@@ -98,3 +98,14 @@
 
 1. Force-rebuild after changing approved authority/NER rows; the builder consumes content `author`/`work_author` and `wikidata_id`/`wikidata_qid` only at build time.
 2. Diagnostic exports need P50/local/P2093 for author-bearing works and P1574 for approved matches; legacy files without `ai_verdict_json` must be re-exported and re-verified.
+
+
+### Skill: audit a large MARC TSV before a Studio build
+
+1. Run the streaming audit; it normalizes every record but retains only a
+   bounded deterministic build sample:
+   `cd backend && .venv/bin/python -m scripts.audit_marc_tsv_scale`
+   `/path/manuscripts.tsv --sample-build 1000 --json /tmp/marc-scale.json`.
+2. Require `normalization_errors=0` and `build_errors=0` before a large run.
+3. Review only aggregate signal counts and bounded examples; the script never
+   loads the full TSV into memory or emits the corpus to logs.
