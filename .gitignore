@@ -178,3 +178,6 @@ snapshots/*.json
 
 # dev-3.0 local config
 .dev3/config.local.json
+
+# Local verdict analysis reports — keep generated evidence out of Git.
+reports/
