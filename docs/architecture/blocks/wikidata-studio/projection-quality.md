@@ -30,6 +30,10 @@ curator review context; they are not silently rewritten as stronger claims.
 - Current-owner 710 contributors are checked for a verified organization QID.
   P195 uses that QID; an external institution without a QID is not silently
   replaced by the NLI default, and the English description names the holder.
+- Hebrew date normalization treats geresh/gershayim as punctuation in century
+  tokens and fails closed to the ordinary year parser for mixed century/year
+  catalogue prose. A malformed date token MUST NOT abort normalization of the
+  entire record.
 
 ## Source and module boundary
 

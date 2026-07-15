@@ -29,6 +29,15 @@ class TestHebrewCenturyParsing:
         assert parsed["year_end"] == -100
         assert manuscript_production_year({"dates": parsed}) == -199
 
+    def test_geresh_is_punctuation_in_century_tokens(self) -> None:
+        parsed = FieldHandlers._parse_date_string("מאה ד'.")
+        assert parsed["year_start"] == 301
+        assert parsed["year_end"] == 400
+
+    def test_hebrew_year_after_century_word_does_not_abort_record(self) -> None:
+        parsed = FieldHandlers._parse_date_string('מאה י"ט-תרפ"ד (1924).')
+        assert parsed["year"] == 1924
+
 
 class TestStandaloneHebrewYear:
     def test_tashkaz_doubled_quotes(self) -> None:

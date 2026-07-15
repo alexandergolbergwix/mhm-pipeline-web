@@ -2067,3 +2067,14 @@ not statically mapped to Q48498, free-text notes and `has_decoration` are not
 sufficient, and P31=Q48498 requires an authority-stamped QID or structured
 confirmed decoration evidence. Rejected genre evidence remains available for
 review. Tests: `test_wikidata_phase1_projection.py`.
+
+
+### Rule W-74 — Hebrew date punctuation MUST NOT abort record normalization (added 2026-07-15)
+
+A full-corpus scan of 123,621 filtered manuscript records found 5,129 MARC
+normalization crashes. The Hebrew date parser treated geresh punctuation in
+century tokens such as `כ'` as a thousands marker (`20,000`) and raised before
+other fields could be prepared. The parser now strips geresh/gershayim before
+gematria, rejects values outside the century range, and falls through to the
+ordinary Hebrew-year parser for mixed catalogue prose. Tests: `test_hebrew_date_parse.py`;
+full-corpus scan: 123,621 records, zero normalization errors.

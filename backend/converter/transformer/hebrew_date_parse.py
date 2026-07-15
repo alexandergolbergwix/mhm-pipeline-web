@@ -48,7 +48,11 @@ def hebrew_gematria(token: str) -> int | None:
     ordinal = _ORDINAL_CENTURY.get(bare)
     if ordinal is not None:
         return ordinal
-    return _gematria_letters_to_value(cleaned)
+    # Geresh/gershayim are Hebrew punctuation, not thousands markers in
+    # century notation. Passing them through makes ``כ'`` parse as 20,000
+    # and aborts the entire MARC record instead of allowing the normal year
+    # parser to continue.
+    return _gematria_letters_to_value(bare)
 
 
 def hebrew_year_token_to_gregorian(token: str) -> int | None:
@@ -83,6 +87,11 @@ def parse_hebrew_century(date_str: str) -> dict[str, Any] | None:
         return None
     c2_raw = m.group("c2")
     c2 = hebrew_gematria(c2_raw) if c2_raw else None
+    # A Hebrew year (e.g. תרפ"ד) can follow ``מאה`` in catalogue prose.
+    # It is not a century token; leave it to the year parser rather than
+    # raising from century_to_year_range.
+    if c1 > 99 or (c2 is not None and c2 > 99):
+        return None
     start_century = min(c1, c2) if c2 else c1
     end_century = max(c1, c2) if c2 else c1
     year_start, _ = century_to_year_range(start_century, bce=bce)

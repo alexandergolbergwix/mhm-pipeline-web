@@ -106,3 +106,9 @@ instance requires an authority-stamped QID or structured confirmed decoration
 evidence. *Why:* 44 production manuscripts were judged partial because catalog
 illustration wording was promoted to an unsupported illuminated-manuscript
 claim.
+
+28. **R28 — Date parsing is record-isolated and punctuation-aware.** Hebrew
+geresh/gershayim in MARC 260/264 dates MUST be treated as punctuation, and a
+malformed century token MUST fall through to year parsing rather than aborting
+the record or batch. *Why:* the full 123,621-record corpus exposed 5,129
+normalization crashes from tokens such as `כ'` being parsed as 20,000.
