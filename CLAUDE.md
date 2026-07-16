@@ -2119,3 +2119,16 @@ canonical Mishneh Torah QID on a partial-books work. The projection now omits
 known placeholder institutions, preserves authority forms as aliases, and
 requires exact work-title matches before using hardcoded canonical QIDs. Tests:
 `test_wikidata_phase1_projection.py` and `test_wikidata_studio_works.py`.
+
+
+### Rule W-79 — Verification context MUST distinguish semantic subtypes (added 2026-07-16)
+
+The seventh Wikidata Studio export showed that a printed facsimile was correctly
+projected with P31=Q571 but still judged as a manuscript because the stable
+entity type lacked a semantic refinement. It also exposed an unverified Israel
+Museum holder and under-specified `__LOCAL` author targets. Studio items now
+carry a `printed_facsimile` semantic subtype, the verified Israel Museum QID
+(Q46815), and richer local-target context; incomplete one-token English
+author labels are omitted rather than presented as misleading names. Tests:
+`test_wikidata_phase1_projection.py`, `test_wikidata_verdict_cache.py`, and
+`eval-agent/tests/test_wikidata_item.py`.

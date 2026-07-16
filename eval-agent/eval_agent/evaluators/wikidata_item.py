@@ -41,6 +41,7 @@ class WikidataItemEvaluator(Evaluator):
         payload = {
             "_local_id": local_id,
             "entity_type": ner_record.get("entity_type") or "item",
+            "semantic_type": ner_record.get("semantic_type") or "",
             "labels": ner_record.get("labels") or {},
             "descriptions": ner_record.get("descriptions") or {},
             "aliases": ner_record.get("aliases") or {},
@@ -90,6 +91,7 @@ class WikidataItemEvaluator(Evaluator):
             "Prediction:\n"
             f"  local id:          {p.get('_local_id', '')}\n"
             f"  entity type:       {p.get('entity_type', '')}\n"
+            f"  semantic subtype:  {p.get('semantic_type') or '(none)'}\n"
             f"  labels:            {json.dumps(p.get('labels') or {}, ensure_ascii=False)}\n"
             "  descriptions:      "
             f"{json.dumps(p.get('descriptions') or {}, ensure_ascii=False)}\n"

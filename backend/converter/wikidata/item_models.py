@@ -32,6 +32,9 @@ class WikidataItem:
     statements: list[WikidataStatement] = field(default_factory=list)
     existing_qid: str | None = None
     entity_type: str = ""
+    # Optional semantic refinement retained for evaluator/export context.
+    # Keep entity_type stable for existing upload/reconcile paths.
+    semantic_type: str = ""
     local_id: str = ""
     records: list[str] = field(default_factory=list)
     authority_evidence: list[dict[str, object]] = field(default_factory=list)

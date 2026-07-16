@@ -42,6 +42,7 @@ from converter.wikidata.item_builder import (
     Q_GLOSS,
     Q_MANUSCRIPT,
     Q_MARGINALIA,
+    Q_ISRAEL_MUSEUM,
     Q_NLI,
     Q_WIKIPROJECT_MANUSCRIPTS,
     SCRIPT_TYPE_TO_QID,
@@ -51,6 +52,7 @@ from converter.wikidata.item_builder import (
     _extract_inception_year,
     _is_catalog_note_placeholder,
     _is_institutional_name,
+    _is_printed_facsimile_record,
     _marc_entry_label,
     _normalise_label,
     date_to_wikidata,
@@ -101,6 +103,14 @@ def _current_holder_qid(record: dict[str, object], holder_names: list[str]) -> s
             "הספריה הלאומית",
         }:
             return Q_NLI
+        if normalized_name in {
+            "the israel museum",
+            "israel museum",
+            "the israel museum, jerusalem",
+            "israel museum, jerusalem",
+            "מוזיאון ישראל",
+        }:
+            return Q_ISRAEL_MUSEUM
         for key in ("wikidata_qid", "existing_qid", "qid"):
             qid = extract_wikidata_qid(str(contributor.get(key) or ""))
             if qid and _QID_RE.fullmatch(qid):
@@ -136,6 +146,8 @@ class ManuscriptProjectionMixin:
         ref = nli_reference(control_number)
 
         item = WikidataItem(entity_type="manuscript", local_id=control_number)
+        if _is_printed_facsimile_record(record):
+            item.semantic_type = "printed_facsimile"
         _associate_item_with_source_record(item, record)
 
         # ── Labels & descriptions ────────────────────────────────

@@ -166,4 +166,8 @@ def test_attach_local_reference_targets_uses_full_item_set() -> None:
         "labels": {"en": "Jane Doe"},
         "existing_qid": None,
         "authority_evidence": [{"source": "NLI", "role": "author"}],
+        "semantic_type": "",
+        "descriptions": {},
+        "aliases": {},
+        "records": [],
     }

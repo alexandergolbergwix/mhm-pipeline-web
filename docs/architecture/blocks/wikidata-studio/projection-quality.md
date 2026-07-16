@@ -35,7 +35,9 @@ curator review context; they are not silently rewritten as stronger claims.
   245 title creates a source-backed manuscript→P1574→work chain when no 505
   contents list exists. Explicit `דפוס צלום`/facsimile wording produces a
   printed-facsimile description and printed-book P31 rather than Q87167.
-- Placeholder institutions such as `Unknown Library` are omitted from English
+- Printed facsimiles retain `entity_type=manuscript` for stable upload/reconcile
+  behavior but expose `semantic_type=printed_facsimile` to verification.
+  Placeholder institutions such as `Unknown Library` are omitted from English
   descriptions; verified holders remain supported by P195/evidence. Authority
   persons keep natural-order labels plus inverted and Latin aliases. Exact work
   QID aliases do not cover partial/parenthetical titles unless independently

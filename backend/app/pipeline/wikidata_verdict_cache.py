@@ -113,9 +113,15 @@ def attach_local_reference_targets(items: list[dict[str, Any]]) -> None:
                 if target is None:
                     continue
                 labels = target.get("labels")
+                target_descriptions = target.get("descriptions")
+                target_aliases = target.get("aliases")
                 targets[target_id] = {
                     "entity_type": target.get("entity_type"),
+                    "semantic_type": target.get("semantic_type") or "",
                     "labels": labels if isinstance(labels, dict) else {},
+                    "descriptions": target_descriptions if isinstance(target_descriptions, dict) else {},
+                    "aliases": target_aliases if isinstance(target_aliases, dict) else {},
+                    "records": target.get("records") or target.get("record_ids") or [],
                     "existing_qid": target.get("existing_qid"),
                     "authority_evidence": target.get("authority_evidence") or [],
                 }

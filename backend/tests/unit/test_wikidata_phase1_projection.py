@@ -185,3 +185,22 @@ def test_person_authority_preserves_inverted_and_latin_aliases() -> None:
     assert item.labels["he"] == "דליה אליהו-קאולי"
     assert "אליהו-קאולי, דליה" in item.aliases["he"]
     assert "Eliyahu-Kauli, Dalia" in item.aliases["en"]
+
+
+def test_israel_museum_holder_uses_verified_collection_qid() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "ISRAEL-MUSEUM",
+        "title": "כתב יד",
+        "contributors": [{"name": "The Israel Museum", "role": "current owner"}],
+    })
+    assert [statement.value for statement in _statements(item, "P195")] == ["Q46815"]
+
+
+def test_printed_facsimile_exposes_semantic_subtype() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "FACSIMILE-SUBTYPE",
+        "title": "פנקס",
+        "notes": ["דפוס צלום של הוצאת ברלין"],
+    })
+    assert item.entity_type == "manuscript"
+    assert item.semantic_type == "printed_facsimile"

@@ -253,8 +253,11 @@ class PersonProjectionMixin:
                 if "he" not in person.labels:
                     person.labels["he"] = normalized_lat
             else:
-                person.labels["en"] = normalized_lat
-            if original_lat and original_lat != normalized_lat:
+                hebrew_token_count = len(_has_hebrew_script(clean_name) and clean_name.split() or [])
+                latin_token_count = len(normalized_lat.split())
+                if not (hebrew_token_count >= 3 and latin_token_count <= 1):
+                    person.labels["en"] = normalized_lat
+            if original_lat and original_lat != normalized_lat and person.labels.get("en"):
                 person.aliases.setdefault("en", []).append(original_lat)
 
         pref_heb = str(match_info.get("preferred_name_heb") or "").strip()

@@ -137,3 +137,11 @@ authority names retain inverted and Latin forms as aliases, and partial or
 chapter-qualified work titles never inherit a canonical QID unless the exact
 title is verified. *Why:* the sixth verdict export still contained placeholder
 institution text, incomplete person names, and an unsafe Mishneh Torah match.
+
+33. **R33 — Verification exports MUST expose semantic refinements and local-target context.**
+Printed facsimiles retain the stable manuscript entity type for upload but
+expose a `printed_facsimile` semantic subtype; verified institution mappings
+may emit P195; and `__LOCAL` targets include descriptions, aliases, records,
+and authority evidence. *Why:* the seventh verdict export still reported a
+facsimile type contradiction, an unresolved Israel Museum holder, and an
+under-specified local author target.

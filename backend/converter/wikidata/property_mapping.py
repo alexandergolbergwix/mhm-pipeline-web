@@ -236,6 +236,7 @@ Q_PALIMPSEST = "Q274076"              # manuscript reused after scraping (Q17980
 Q_HUMAN = "Q5"
 Q_WRITTEN_WORK = "Q47461344"
 Q_ORGANIZATION = "Q43229"
+Q_ISRAEL_MUSEUM = "Q46815"  # verified Israel Museum, Jerusalem
 
 # Collections / institutions
 Q_NLI = "Q188915"
