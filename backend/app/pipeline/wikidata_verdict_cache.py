@@ -112,7 +112,14 @@ def attach_local_reference_targets(items: list[dict[str, Any]]) -> None:
                 target = by_local_id.get(target_id)
                 if target is None:
                     continue
-                labels = target.get("labels")
+                target_labels = target.get("labels")
+                target_label = (
+                    target_labels.get("en") or target_labels.get("he")
+                    if isinstance(target_labels, dict) else ""
+                )
+                if statement.get("value") == text and target_label:
+                    statement["value_label"] = target_label
+                labels = target_labels
                 target_descriptions = target.get("descriptions")
                 target_aliases = target.get("aliases")
                 targets[target_id] = {

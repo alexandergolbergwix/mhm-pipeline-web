@@ -145,3 +145,11 @@ may emit P195; and `__LOCAL` targets include descriptions, aliases, records,
 and authority evidence. *Why:* the seventh verdict export still reported a
 facsimile type contradiction, an unresolved Israel Museum holder, and an
 under-specified local author target.
+
+34. **R34 — Diagnostic statements MUST carry display labels.** Static labels
+cover every emitted property and verified institution QID, and local target
+values receive a deterministic `value_label`; unsupported correspondence and
+catalog-provenance holder claims remain omitted without explicit evidence.
+*Why:* post-deploy verdicts were semantically correct but still partial because
+null P195/P3959 labels, unresolved local display values, and a provenance
+placeholder were visible to the judge.

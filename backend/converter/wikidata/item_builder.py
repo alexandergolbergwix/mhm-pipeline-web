@@ -640,6 +640,8 @@ def _holding_institution_name(record: dict[str, object]) -> str:
         "unknown holder",
         "לא ידוע",
         "ספריה לא ידועה",
+        "library of the admor",
+        "ha-rav shochet",
     }
     for contributor in record.get("contributors") or []:
         if not isinstance(contributor, dict):
@@ -648,10 +650,16 @@ def _holding_institution_name(record: dict[str, object]) -> str:
         if "current owner" not in role:
             continue
         name = _normalise_label(str(contributor.get("name") or ""))
-        if name and name.casefold() not in placeholder_names and _is_institutional_name(name):
+        folded_name = name.casefold()
+        if (name and folded_name not in placeholder_names
+                and not any(token in folded_name for token in placeholder_names if len(token) > 5)
+                and _is_institutional_name(name)):
             return name
     holding = _normalise_label(str(record.get("holding_institution") or ""))
-    if holding and holding.casefold() not in placeholder_names and _is_institutional_name(holding):
+    folded_holding = holding.casefold()
+    if (holding and folded_holding not in placeholder_names
+            and not any(token in folded_holding for token in placeholder_names if len(token) > 5)
+            and _is_institutional_name(holding)):
         return holding
     return ""
 

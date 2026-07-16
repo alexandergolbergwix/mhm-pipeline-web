@@ -2132,3 +2132,15 @@ carry a `printed_facsimile` semantic subtype, the verified Israel Museum QID
 author labels are omitted rather than presented as misleading names. Tests:
 `test_wikidata_phase1_projection.py`, `test_wikidata_verdict_cache.py`, and
 `eval-agent/tests/test_wikidata_item.py`.
+
+
+### Rule W-80 — Diagnostic display labels MUST be complete (added 2026-07-16)
+
+The post-deploy run still judged semantically correct items partial because
+P195/P3959 display labels were null, `__LOCAL` claims lacked `value_label`, and
+a catalog provenance phrase was promoted into a public description. The export
+now supplies static labels for emitted properties and verified institutions,
+backfills local statement value labels from target items, gates personal
+correspondence genres on explicit evidence, and suppresses catalog-only holder
+phrases. Tests: `test_wikidata_phase1_projection.py` and
+`test_wikidata_verdict_cache.py`.

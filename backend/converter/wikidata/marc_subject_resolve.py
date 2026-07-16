@@ -53,6 +53,7 @@ _EVIDENCE_REQUIRED_GENRES = {
     "family records",
     "pinkasim",
     "community records (manuscript)",
+    "personal correspondence",
 }
 
 
@@ -80,6 +81,7 @@ def genre_projection_supported(
         "is_pinkas": "pinkasim",
         "is_community_record": "community records (manuscript)",
         "autograph_confirmed": "autograph manuscripts",
+        "is_correspondence": "personal correspondence",
     }
     for key, expected in flags.items():
         value = source.get(key)

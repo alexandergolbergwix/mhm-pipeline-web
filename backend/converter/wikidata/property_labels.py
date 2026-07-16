@@ -15,6 +15,7 @@ PROPERTY_LABELS: dict[str, str] = {
     "P31":  "instance of",
     "P195": "collection",
     "P217": "inventory number",
+    "P3959": "NNL catalog ID",
     "P279": "subclass of",
     # Terms / titles
     "P1476": "title",
@@ -112,6 +113,8 @@ PROPERTY_LABELS: dict[str, str] = {
 # mappings, hardcoded country/city, calendar models, etc.).
 
 QID_LABELS: dict[str, str] = {
+    "Q188915": "National Library of Israel",
+    "Q46815": "Israel Museum",
     # Top-level classes
     "Q5":       "human",
     "Q43229":   "organization",

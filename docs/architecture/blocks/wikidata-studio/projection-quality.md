@@ -37,11 +37,16 @@ curator review context; they are not silently rewritten as stronger claims.
   printed-facsimile description and printed-book P31 rather than Q87167.
 - Printed facsimiles retain `entity_type=manuscript` for stable upload/reconcile
   behavior but expose `semantic_type=printed_facsimile` to verification.
+  Diagnostic statements always include display labels, and local author targets
+  receive a deterministic `value_label` so two-pass references are judgeable.
   Placeholder institutions such as `Unknown Library` are omitted from English
   descriptions; verified holders remain supported by P195/evidence. Authority
   persons keep natural-order labels plus inverted and Latin aliases. Exact work
   QID aliases do not cover partial/parenthetical titles unless independently
   verified.
+- Personal-correspondence genre labels require explicit correspondence evidence
+  before projecting the letter genre; catalog-only holder/provenance phrases are
+  omitted from public descriptions.
 - Hebrew date normalization treats geresh/gershayim as punctuation in century
   tokens and fails closed to the ordinary year parser for mixed century/year
   catalogue prose. A malformed date token MUST NOT abort normalization of the
