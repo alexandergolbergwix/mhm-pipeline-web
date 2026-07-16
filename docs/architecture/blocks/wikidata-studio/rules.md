@@ -153,3 +153,7 @@ catalog-provenance holder claims remain omitted without explicit evidence.
 *Why:* post-deploy verdicts were semantically correct but still partial because
 null P195/P3959 labels, unresolved local display values, and a provenance
 placeholder were visible to the judge.
+
+26. **R26 — Manuscript shelfmark labels use the current holder when known.**
+   Ktiv/NLI catalog provenance is distinct from MARC 710 current ownership;
+   quote wrappers are removed before both labels and P217.

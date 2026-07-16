@@ -2154,3 +2154,11 @@ values such as RDA carrier terms, alternate titles, edition notes, and local
 shelfmarks reach RDF/Wikibase review. Evidence-only fields must not be turned
 into speculative Wikidata claims, but they must remain inspectable. This closes
 the silent-drop boundary between MARC ingestion and all downstream mappers.
+
+### Rule W-82 — Manuscript labels MUST reflect the physical holder (added 2026-07-16)
+
+A Ktiv/NLI catalog record does not imply that the manuscript is physically held
+by NLI. When MARC identifies a current owner, the English shelfmark label and
+P195 description must not claim Jerusalem/NLI ownership. Shelfmarks and P217
+values must pass the shared MARC label normalizer so catalog quote wrappers
+cannot reach Wikidata.

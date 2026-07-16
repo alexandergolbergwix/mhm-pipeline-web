@@ -53,7 +53,9 @@ class ManuscriptMetadataMixin:
         an alias slot, falling back to a shelfmark-based label.
         """
         is_placeholder = _is_placeholder_title(title)
-        shelfmark = record.get("shelfmark")
+        shelfmark = _normalise_label(str(record.get("shelfmark") or ""))
+        from converter.wikidata.item_builder import _holding_institution_name
+        holding = _holding_institution_name(record)
         title_clean = _normalise_label(title) if title else ""
         title_has_hebrew = _has_hebrew_script(title_clean)
         if title_clean and not is_placeholder:
@@ -79,7 +81,11 @@ class ManuscriptMetadataMixin:
             item.aliases.setdefault("he", []).append(_normalise_label(title))
 
         if shelfmark:
-            item.labels["en"] = f"Jerusalem, NLI, {shelfmark}"
+            # The catalog is NLI, but the physical holder may be a library or
+            # archive named in MARC 710. Never claim Jerusalem/NLI ownership
+            # when the record explicitly identifies another current holder.
+            label_prefix = holding or "Jerusalem, NLI"
+            item.labels["en"] = f"{label_prefix}, {shelfmark}"
             if title_clean and not is_placeholder and title_has_hebrew:
                 item.aliases.setdefault("he", []).append(title_clean)
             # When the title was a placeholder OR Latin-only AND we have a

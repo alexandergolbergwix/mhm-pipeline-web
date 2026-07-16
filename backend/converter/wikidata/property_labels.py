@@ -61,6 +61,7 @@ PROPERTY_LABELS: dict[str, str] = {
     "P7535": "scope and content",
     # Digital access
     "P973":  "described at URL",
+    "P2888": "exact match",
     "P6108": "manifest URL",
     "P953":  "full work available at URL",
     "P18":   "image",
@@ -113,6 +114,8 @@ PROPERTY_LABELS: dict[str, str] = {
 # mappings, hardcoded country/city, calendar models, etc.).
 
 QID_LABELS: dict[str, str] = {
+    "Q33513": "Hebrew alphabet",
+    "Q9190": "Jews",
     "Q188915": "National Library of Israel",
     "Q46815": "Israel Museum",
     # Top-level classes

@@ -7,6 +7,7 @@ import re
 from converter.wikidata.item_builder import (
     _QUOTE_CHARS,
     _SOURCE_FILENAME_RE,
+    _normalise_label,
     CONDITION_TO_QID,
     P_BASED_ON_HEURISTIC,
     P_CATALOG_CODE,
@@ -246,7 +247,7 @@ class ManuscriptProjectionMixin:
             )
         )
 
-        shelfmark = record.get("shelfmark")
+        shelfmark = _normalise_label(str(record.get("shelfmark") or ""))
         if shelfmark:
             item.statements.append(
                 WikidataStatement(

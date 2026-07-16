@@ -109,3 +109,10 @@
 2. Require `normalization_errors=0` and `build_errors=0` before a large run.
 3. Review only aggregate signal counts and bounded examples; the script never
    loads the full TSV into memory or emits the corpus to logs.
+
+### Skill: inspect export label regressions
+
+For a fresh export, group partial/fail verdicts by `entity_type` and inspect
+English labels, P217, P195, and `property_label`/`value_label` nulls first.
+Re-run the build after mapper changes because old JSON exports retain the old
+labels and cannot validate the new projection.
