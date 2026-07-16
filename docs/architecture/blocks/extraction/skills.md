@@ -57,3 +57,19 @@
    30–60 s — the UI surfaces this via the `extraction.step` warming event.
 4. Cached empty results? Re-run with `skip_cache=true`.
 5. Missing HF token → the route 400s with a Settings → Credentials pointer.
+
+### Skill: audit full MARC mapping coverage
+
+Run the streaming audit against the production-scale TSV before changing
+projection code:
+
+```bash
+cd backend
+.venv/bin/python -m scripts.audit_mapping_coverage \
+  /path/to/filtered_manuscripts.tsv --sample-build 1000 \
+  --json /tmp/marc-mapping-coverage.json
+```
+
+The gate requires zero normalization errors and zero `unmapped_tags`. Tags
+reported as `evidence_only` remain available to catalog review but are not
+promoted to speculative public Wikidata claims.

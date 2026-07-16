@@ -51,6 +51,9 @@ class ExtractedData:
     width_mm: int | None = None
     materials: list[str] = None
     languages: list[str] = None
+    content_types: list[str] = None
+    media_types: list[str] = None
+    carrier_types: list[str] = None
     script_type: str | None = None
     script_mode: str | None = None
     notes: list[str] = None
@@ -140,6 +143,12 @@ class ExtractedData:
             self.materials = []
         if self.languages is None:
             self.languages = []
+        if self.content_types is None:
+            self.content_types = []
+        if self.media_types is None:
+            self.media_types = []
+        if self.carrier_types is None:
+            self.carrier_types = []
         if self.notes is None:
             self.notes = []
         if self.contents is None:
@@ -1452,7 +1461,7 @@ class FieldHandlers:
             Number of folios or None
         """
         match = re.search(
-            r"\[?(\d+)\]?\s*(?:leaves?|ff?\.?|folios?|דפים)", extent_str, re.IGNORECASE
+            r"\[?(\d+)\]?\s*(?:leaves?|ff?\.?|folios?|דף|דפים)", extent_str, re.IGNORECASE
         )
         if match:
             return int(match.group(1))
@@ -1591,6 +1600,14 @@ def extract_all_data(record: MarcRecord) -> ExtractedData:
         for lang in langs:
             if lang not in data.languages:
                 data.languages.append(lang)
+
+    # RDA carrier metadata. These fields are deliberately kept as evidence
+    # rather than projected as speculative public Wikidata claims.
+    for tag, target in (("336", data.content_types), ("337", data.media_types), ("338", data.carrier_types)):
+        for field in record.get_fields(tag):
+            for value in field.get_all_subfields("a"):
+                if value and value not in target:
+                    target.append(value)
 
     for field in record.get_fields("100"):
         author = handlers.handle_100(field)

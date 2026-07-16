@@ -2144,3 +2144,13 @@ backfills local statement value labels from target items, gates personal
 correspondence genres on explicit evidence, and suppresses catalog-only holder
 phrases. Tests: `test_wikidata_phase1_projection.py` and
 `test_wikidata_verdict_cache.py`.
+
+### Rule W-81 — MARC coverage MUST be loss-aware (added 2026-07-16)
+
+Every non-empty MARC tag in a supported upload must be either normalized into a
+canonical extraction field or explicitly classified as evidence-only by the
+streaming coverage audit. TSV/JSON ingestion reuses the desktop handlers so
+values such as RDA carrier terms, alternate titles, edition notes, and local
+shelfmarks reach RDF/Wikibase review. Evidence-only fields must not be turned
+into speculative Wikidata claims, but they must remain inspectable. This closes
+the silent-drop boundary between MARC ingestion and all downstream mappers.

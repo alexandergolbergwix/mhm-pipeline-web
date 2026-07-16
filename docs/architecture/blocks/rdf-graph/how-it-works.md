@@ -61,3 +61,10 @@
    the desktop repo. Before a full sync, reconcile the documented W-43/W-68
    web-side exceptions upstream and run both suites; never let the sync delete
    a focused projection module or reintroduce an incident bug.
+
+### MARC coverage
+
+TSV/JSON ingestion runs the canonical desktop handlers before graph
+construction. RDA carrier terms (336/337/338) remain RDF catalog evidence,
+while Wikidata stays conservative. Run `scripts.audit_mapping_coverage` to
+prove that no non-empty tag is silently dropped.

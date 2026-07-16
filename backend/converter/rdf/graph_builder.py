@@ -694,6 +694,17 @@ class GraphBuilder:
         for note in data.notes:
             graph.add((ms_uri, RDFS.comment, Literal(note, lang="he")))
 
+        # Preserve RDA carrier metadata as catalog evidence. Wikidata
+        # projection remains conservative, but RDF/Wikibase consumers can
+        # still inspect the original content, media, and carrier terms.
+        for label, values in (
+            ("MARC 336 content type", data.content_types),
+            ("MARC 337 media type", data.media_types),
+            ("MARC 338 carrier type", data.carrier_types),
+        ):
+            for value in values:
+                graph.add((ms_uri, RDFS.comment, Literal(f"{label}: {value}", lang="en")))
+
         details = [f"NLI control number {control_number}"]
         if data.shelfmark:
             details.append(f"shelfmark {data.shelfmark}")

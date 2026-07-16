@@ -241,6 +241,161 @@ def _dates_from_260_264(record: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+
+def _has_value(value: Any) -> bool:
+    if value is None or value == "":
+        return False
+    if isinstance(value, str):
+        return bool(value.strip().strip('"'))
+    return bool(value)
+
+
+def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
+    """Fill structured gaps using the canonical desktop MARC handlers.
+
+    TSV/JSON uploads carry flattened ``tag$subfield`` columns, while the RDF
+    mapper receives ``MarcRecord`` objects. Building a lightweight MarcRecord
+    here keeps both paths on the same handler implementation and prevents
+    common fields (041, 300, 540, 856, 852, 730, etc.) from disappearing before
+    RDF/Wikibase/Wikidata projection. Existing web-specific derivations win;
+    desktop values only fill empty slots or extend list/dict fields.
+    """
+    from converter.parser.marc_reader import MarcField, MarcRecord  # noqa: PLC0415
+    from converter.transformer.field_handlers import extract_all_data  # noqa: PLC0415
+
+    fields: dict[str, dict[str, list[str]]] = {}
+    control_data: dict[str, str] = {}
+    for key, raw_value in record.items():
+        if not _has_value(raw_value):
+            continue
+        clean_key = str(key).lstrip("\ufeff")
+        if "$" not in clean_key:
+            if clean_key.isdigit() and len(clean_key) == 3:
+                control_data[clean_key] = str(raw_value).strip().strip('"')
+            continue
+        tag, code = clean_key.split("$", 1)
+        if not tag.isdigit() or len(tag) != 3:
+            continue
+        values = _split_multi(str(raw_value).strip())
+        if values:
+            fields.setdefault(tag, {}).setdefault(code, []).extend(values)
+    marc_fields: dict[str, list[MarcField]] = {}
+    for tag, subfields in fields.items():
+        marc_fields[tag] = [MarcField(tag=tag, subfields=subfields)]
+    for tag, value in control_data.items():
+        marc_fields[tag] = [MarcField(tag=tag, data=value)]
+    if not marc_fields:
+        return
+    extracted = extract_all_data(
+        MarcRecord(
+            control_number=str(record.get("_control_number") or control_data.get("001") or ""),
+            fields=marc_fields,
+            leader=control_data.get("000", ""),
+        )
+    )
+    for field_name, incoming in vars(extracted).items():
+        if field_name.startswith("_") or field_name == "control_number":
+            continue
+        if not _has_value(incoming):
+            continue
+        current = record.get(field_name)
+        if isinstance(current, list) and isinstance(incoming, list):
+            for value in incoming:
+                if value not in current:
+                    current.append(value)
+        elif isinstance(current, dict) and isinstance(incoming, dict):
+            for key, value in incoming.items():
+                current.setdefault(key, value)
+        elif isinstance(incoming, bool):
+            record[field_name] = bool(current) or incoming
+        elif not _has_value(current):
+            record[field_name] = incoming
+
+    if not _has_value(record.get("extent")):
+        extent_raw = record.get("300$a")
+        if _has_value(extent_raw):
+            match = _re.search(
+                r"(\d+)\s*(?:דף|דפים|leaves?|folios?|ff?\.?)",
+                str(extent_raw),
+                _re.IGNORECASE,
+            )
+            if match:
+                record["extent"] = int(match.group(1))
+
+    carrier_fields = {
+        "content_types": "336$a",
+        "media_types": "337$a",
+        "carrier_types": "338$a",
+    }
+    for target, source_key in carrier_fields.items():
+        values = _split_multi(str(record.get(source_key, "")))
+        if values:
+            current = record.setdefault(target, [])
+            if not isinstance(current, list):
+                current = [current]
+                record[target] = current
+            for value in values:
+                if value not in current:
+                    current.append(value)
+
+    # Less common title/edition fields still carry real bibliographic data.
+    # Fold them into the same fields used by the RDF and item builders.
+    for source_key in ("130$a", "240$a"):
+        value = _first(record.get(source_key))
+        if value and not _has_value(record.get("title")):
+            record["title"] = value
+    for source_key in ("247$a",):
+        value = _first(record.get(source_key))
+        if value:
+            variants = record.setdefault("variant_titles", [])
+            if not isinstance(variants, list):
+                variants = [variants]
+                record["variant_titles"] = variants
+            if value not in variants:
+                variants.append(value)
+
+    contents = record.get("contents")
+    if isinstance(contents, list):
+        deduped: list[Any] = []
+        by_source: dict[str, dict[str, Any]] = {}
+        has_source_evidence = any(
+            item.get("source_field") or item.get("source_text")
+            for item in contents
+            if isinstance(item, dict)
+        )
+        for entry in contents:
+            if not isinstance(entry, dict):
+                continue
+            if has_source_evidence and not (
+                entry.get("source_field") or entry.get("source_text")
+            ):
+                continue
+            source = str(entry.get("source_text") or "")
+            previous = by_source.get(source)
+            score = int(entry.get("candidate_kind") == "named_work") * 2 + int(bool(entry.get("folio_range")))
+            previous_score = (
+                int(previous.get("candidate_kind") == "named_work") * 2
+                + int(bool(previous.get("folio_range")))
+                if previous
+                else -1
+            )
+            if previous is None or score > previous_score:
+                by_source[source] = entry
+        deduped.extend(by_source.values())
+        record["contents"] = deduped
+    for source_key in ("562$a", "250$a"):
+        value = _first(record.get(source_key))
+        if value:
+            notes = record.setdefault("notes", [])
+            if not isinstance(notes, list):
+                notes = [notes]
+                record["notes"] = notes
+            if value not in notes:
+                notes.append(value)
+    shelfmark = _first(record.get("094$a"))
+    if shelfmark and not _has_value(record.get("shelfmark")):
+        record["shelfmark"] = shelfmark
+
 def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     """In-place normalisation: collapses raw ``<tag>$<sub>`` subfield
     columns (typical of NLI-style TSV / JSON exports) into the flat
@@ -541,6 +696,10 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
 
     # ── Provenance events (movement map) — 541 $b acquisition, 583 $j action ─
     _extract_provenance_events(record)
+
+    # Final parity pass: fill any remaining structured gaps from the canonical
+    # desktop handlers without overwriting web-specific derivations above.
+    _merge_desktop_extracted_fields(record)
 
 
 def _first(v: Any) -> str | None:

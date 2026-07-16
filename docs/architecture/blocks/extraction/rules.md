@@ -56,3 +56,4 @@
     incidents (React #185).
 
 15. **R15 — MARC 500 work mentions are derived, source-aware data (Rule W-68).** Recompute them from raw 500$a on every preparation; triggers must begin a note or follow a manuscript noun; prefer quoted titles and otherwise split only at semicolons or recognised title heads. Remove older 500-derived contents before merging fresh results. *Why:* the old כולל substring, comma, and Hebrew-vav splitter minted geography, people, citations, and catalogue prose as works.
+16. **R16 — Every non-empty MARC tag must be structured or explicitly classified as evidence-only.** The full-corpus coverage audit (`scripts.audit_mapping_coverage`) is a release check; flattened TSV/JSON uploads reuse the canonical desktop handlers and retain uncommon title, note, shelfmark, and RDA carrier values. *Why:* a tag that disappears before RDF cannot be recovered by Wikibase or Wikidata reconciliation.
