@@ -113,3 +113,11 @@ as a public Wikidata identifier.
 HMO item links must use `https://mhm-hmo.wikibase.cloud/wiki/Item:<local QID>`.
 The `w3id.org/mhm/ontology#…` source URI is provenance metadata and must not be
 rendered as the live entity link.
+
+### Skill: inspect persisted authority enrichment
+
+Open an item drawer and inspect **Authority enrichment**. It lists only
+accepted claims already attached to the HMO item, grouped by Mazal, KIMA,
+VIAF, and Wikidata, with external links where available. Candidate matches
+that were ambiguous or failed the false-positive guard are intentionally not
+shown; use the Authority review surface to investigate those candidates.

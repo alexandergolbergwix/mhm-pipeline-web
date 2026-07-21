@@ -8,6 +8,7 @@ import {HmoItemAiVerdictBadge} from "@/components/hmo/HmoItemAiVerdictBadge";
 import {HmoItemMappingBadge} from "@/components/hmo/HmoItemMappingBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
+import {HmoAuthorityEvidence} from "@/components/hmo/HmoAuthorityEvidence";
 
 const HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud";
 
@@ -237,6 +238,8 @@ export function HmoItemDetailDrawer({
       {pushMsg && <p className="text-xs muted">Push result: {pushMsg}</p>}
 
       <AiVerdictReasoningCard verdict={item.ai_verdict} />
+
+      <HmoAuthorityEvidence claims={item.claims} />
 
       {item.upload_outcome && (
         <p className="text-xs muted">
