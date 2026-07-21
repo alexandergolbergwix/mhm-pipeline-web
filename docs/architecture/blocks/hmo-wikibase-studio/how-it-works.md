@@ -39,6 +39,8 @@ truncates labels/descriptions to 250 chars and string/monolingualtext claim
 values to 400 chars (`hmo_exporter.py:155,197-198`) so long free-text titles no
 longer trigger `ModificationFailed`.
 
+The canonical-state boundary is implemented by the hmo_canonical module. Live Wikibase read-backs are normalized into a revision-independent fingerprinted entity shape; RDF and Wikidata projections must consume that shape rather than raw authority matches or pre-Wikibase RDF.
+
 **Review.** `fetch_merged_hmo_items` (`hmo_item_views.py:22`) merges the cached
 build with `HmoStudioItemOverride` rows (label/description/alias edits,
 `statement_edits`, `remove_statements`, `add_statements`, `approved`), joins
