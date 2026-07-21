@@ -637,7 +637,19 @@ async def _load_run_instance_mappings(
             )
         )
     ).all()
-    return {uri: wikibase_id for uri, wikibase_id in rows}
+    # A corrupted/replayed upload can leave one live QID attached to multiple
+    # source URIs. Never trust an ambiguous mapping: doing so updates the
+    # wrong live item (e.g. Jerusalem resolving to an unrelated Q1389). Drop
+    # every colliding QID so source-URI reconciliation can recover correctly.
+    by_qid: dict[str, str] = {}
+    collisions: set[str] = set()
+    for uri, qid in rows:
+        previous_uri = by_qid.get(qid)
+        if previous_uri is not None and previous_uri != uri:
+            collisions.add(qid)
+        else:
+            by_qid[qid] = uri
+    return {uri: qid for uri, qid in rows if qid not in collisions}
 
 
 async def _record_instance_mapping(
