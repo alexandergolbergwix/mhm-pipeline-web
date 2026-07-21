@@ -52,6 +52,7 @@ from app.pipeline.hmo_item_shacl_gate import (
     sanitize_wikibase_labels,
 )
 from app.services.wikibase_audit import record_wikibase_write
+from app.pipeline.hmo_canonical import canonical_entity_fingerprint
 from converter.wikibase.resolved_models import ResolvedClaim, ResolvedWikibaseEntity
 
 if TYPE_CHECKING:
@@ -162,6 +163,9 @@ async def upload_items_for_run(
     )
     known_qids = {**existing, **created_this_call}
 
+    if not dry_run and writer is not None and known_qids:
+        await _persist_live_canonical_state(db, cache_row, entities, known_qids, writer)
+
     link_outcomes: list[HmoDeferredLinkOutcome] = []
     linked = link_failed = unresolved = 0
     if not cancelled:
@@ -186,6 +190,36 @@ async def upload_items_for_run(
         cancelled=cancelled,
         updated=updated,
     )
+
+
+async def _persist_live_canonical_state(db: AsyncSession, cache_row: HmoStudioItemCache, entities: list[ResolvedWikibaseEntity], known_qids: dict[str, str], writer: Any) -> None:
+    snapshots: dict[str, dict[str, Any]] = {}
+    for entity in entities:
+        qid = known_qids.get(entity.local_id)
+        if not qid:
+            continue
+        live = await asyncio.to_thread(writer.get_entity, qid)
+        if not live:
+            continue
+        snapshot = {
+            'local_id': entity.local_id, 'source_uri': entity.source_uri,
+            'wikibase_id': qid, 'labels': dict(live.get('labels') or {}),
+            'descriptions': dict(live.get('descriptions') or {}),
+            'aliases': dict(live.get('aliases') or {}),
+            'claims': list(live.get('claims') or []),
+            'authority_evidence': list(entity.authority_evidence),
+            'canonical_source': 'wikibase',
+        }
+        snapshot['source_fingerprint'] = canonical_entity_fingerprint(snapshot)
+        snapshots[entity.local_id] = snapshot
+    if not snapshots:
+        return
+    cache_row.resolved_entities = [
+        {**raw, 'canonical_live': snapshots[str(raw.get('local_id') or '')]}
+        if str(raw.get('local_id') or '') in snapshots else raw
+        for raw in cache_row.resolved_entities
+    ]
+    await db.flush()
 
 
 async def _pass_one_create(
