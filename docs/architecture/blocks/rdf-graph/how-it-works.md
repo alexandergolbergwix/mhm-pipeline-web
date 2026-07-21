@@ -62,6 +62,10 @@
    web-side exceptions upstream and run both suites; never let the sync delete
    a focused projection module or reintroduce an incident bug.
 
+### Canonical HMO projection
+
+ provides the deterministic Wikibase-snapshot → RDF boundary. It accepts only normalized canonical HMO entities, preserves source URIs and labels, validates every claim shape, and rejects malformed or duplicate state. The legacy MARC/authority build remains available during shadow comparison; canonical projection is the intended cutover source.
+
 ### MARC coverage
 
 TSV/JSON ingestion runs the canonical desktop handlers before graph
