@@ -30,6 +30,7 @@ from typing import Any
 
 import rdflib
 from rdflib import RDF, RDFS, Graph, Literal, URIRef
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -963,3 +964,25 @@ def normalise_matches(matches: Iterable[Any]) -> list[dict[str, Any]]:
         d["payload"] = _read(m, "payload", None) or {}
         out.append(d)
     return out
+
+
+async def build_rdf_from_hmo_canonical_cache(db: AsyncSession, run_id: uuid.UUID, output_path: Path) -> RdfBuildResult:
+    """Project the durable live HMO read-back cache to RDF."""
+    from app.models.hmo_studio_item_cache import HmoStudioItemCache
+    from app.pipeline.hmo_canonical import normalize_live_entity
+    from app.pipeline.hmo_canonical_rdf import graph_from_canonical_entities
+    row = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
+    if row is None:
+        raise ValueError(f'no HMO canonical cache for run {run_id}')
+    entities = []
+    for raw in row.resolved_entities:
+        live = raw.get('canonical_live')
+        if live:
+            entities.append(normalize_live_entity(live))
+    if not entities:
+        raise ValueError(f'no live HMO read-back entities for run {run_id}')
+    graph = graph_from_canonical_entities(entities)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    graph.serialize(destination=str(output_path), format='turtle')
+    now = datetime.now(timezone.utc)
+    return RdfBuildResult(triples_count=len(graph), manuscripts_count=0, output_path=output_path, started_at=now, finished_at=now)
