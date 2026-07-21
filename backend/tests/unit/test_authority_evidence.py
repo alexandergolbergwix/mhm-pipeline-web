@@ -38,3 +38,22 @@ def test_matching_duplicate_forms_are_accepted_once() -> None:
         ("viaf", "12345678", True),
         ("wikidata", "Q1218", True),
     ]
+
+
+def test_explicit_kima_and_mazal_ids_are_supported() -> None:
+    result = evidence_from_values(
+        [
+            ("kima_id", "42"),
+            ("external_uri_nli", "https://www.nli.org.il/en/authorities/987007414776605171"),
+        ]
+    )
+    assert [(item.kind, item.identifier, item.accepted) for item in result] == [
+        ("kima", "42", True),
+        ("mazal", "987007414776605171", True),
+    ]
+
+
+def test_numeric_literals_without_authority_predicate_are_ignored() -> None:
+    assert evidence_from_values(
+        [("latitude", "42"), ("date", "987007414776605171"), ("external_uri_nli", "123456")]
+    ) == []

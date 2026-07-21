@@ -14,6 +14,8 @@ from typing import Iterable
 
 _WIKIDATA_QID_RE = re.compile(r"^Q[1-9][0-9]*$", re.IGNORECASE)
 _VIAF_ID_RE = re.compile(r"^[0-9]{4,15}$")
+_AUTHORITY_ID_RE = re.compile(r"^[1-9][0-9]{0,19}$")
+_MAZAL_ID_RE = re.compile(r"^987[0-9]{6,17}$")
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,12 @@ def normalize_viaf_id(value: object) -> str | None:
     if "/viaf/" in text.lower():
         text = text.rsplit("/", 1)[-1]
     return text if _VIAF_ID_RE.fullmatch(text) else None
+
+
+def normalize_authority_id(value: object) -> str | None:
+    """Return a positive numeric local authority identifier."""
+    text = str(value or "").strip().rstrip("/").rsplit("/", 1)[-1]
+    return text if _AUTHORITY_ID_RE.fullmatch(text) else None
 
 
 def gate_candidates(candidates: Iterable[AuthorityEvidence]) -> list[AuthorityEvidence]:
@@ -102,6 +110,22 @@ def evidence_from_values(
         viaf = normalize_viaf_id(raw)
         if viaf and ("viaf" in source.lower() or "sameas" in source.lower()):
             candidates.append(AuthorityEvidence(source, viaf, "viaf", True))
+            continue
+
+        source_key = source.lower().replace("-", "_")
+        authority_id = normalize_authority_id(raw)
+        if authority_id and "kima" in source_key:
+            candidates.append(AuthorityEvidence(source, authority_id, "kima", True))
+            continue
+        if authority_id and "mazal" in source_key:
+            candidates.append(AuthorityEvidence(source, authority_id, "mazal", True))
+            continue
+        if authority_id and source_key in {"external_uri_nli", "authority_id"}:
+            # GraphBuilder historically stores Mazal references in these
+            # generic fields.  The 987... namespace is the only safe
+            # discriminator; arbitrary NLI/control numbers must abstain.
+            if _MAZAL_ID_RE.fullmatch(authority_id):
+                candidates.append(AuthorityEvidence(source, authority_id, "mazal", True))
     return gate_candidates(candidates)
 
 

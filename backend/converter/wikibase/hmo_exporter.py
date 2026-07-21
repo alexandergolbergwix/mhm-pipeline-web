@@ -151,7 +151,16 @@ def _control_numbers_in_uri(uri: str) -> set[str]:
 
 def _authority_evidence_for_node(graph: Graph, subject: URIRef | BNode) -> list[dict[str, object]]:
     """Persist normalized, fail-closed external authority evidence."""
-    predicates = {HM.external_wikidata_uri, HM.viaf_id, OWL.sameAs}
+    predicates = {
+        HM.external_wikidata_uri,
+        HM.wikidata_id,
+        HM.viaf_id,
+        HM.external_uri_nli,
+        HM.authority_id,
+        HM.mazal_id,
+        HM.kima_id,
+        OWL.sameAs,
+    }
     values = [(local_name(predicate), value) for predicate, value in graph.predicate_objects(subject) if predicate in predicates]
     return [evidence.to_dict() for evidence in evidence_from_values(values)]
 

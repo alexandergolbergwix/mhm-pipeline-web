@@ -12,7 +12,15 @@ network-free.
 
 `HmoWikibaseExporter` stores the normalized list on every draft and resolved
 entity as `authority_evidence`; the build cache and review API therefore expose
-the same accepted/withheld evidence without another network lookup.
+the same accepted/withheld evidence without another network lookup.  It reads
+the canonical RDF predicates `hm:wikidata_id`, `hm:external_wikidata_uri`,
+`hm:viaf_id`, `hm:kima_id`, `hm:mazal_id`, `hm:external_uri_nli`,
+`hm:authority_id`, and `owl:sameAs`.
+
+KIMA and Mazal identifiers are never inferred from arbitrary numbers.  KIMA
+requires an explicit `kima_id` source.  Legacy `external_uri_nli`/
+`authority_id` values are treated as Mazal only for the validated `987…`
+namespace; ordinary NLI/control numbers are ignored.
 
 `backend/scripts/audit_hmo_authority_consistency.py` audits an exported run for
 missing external links, duplicate local-QID assignments, and malformed authority

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from rdflib import BNode, Graph, Literal, URIRef
-from rdflib.namespace import RDF, RDFS
+from rdflib.namespace import OWL, RDF, RDFS
 
 from converter.config.namespaces import HM, LRMOO
 from converter.wikibase.hmo_export_quality import audit_entity_draft, audit_entity_drafts
@@ -47,6 +47,30 @@ def test_exporter_drops_hebrew_duplicated_en_label() -> None:
     assert drafts[0].labels.get("he") == "ספר תהילים"
     assert "en" not in drafts[0].labels
     assert audit_entity_drafts(drafts) == []
+
+
+def test_exporter_projects_authority_evidence_and_abstains_conflicts() -> None:
+    graph = Graph()
+    person = URIRef(f"{HM}Person_authority")
+    graph.add((person, RDF.type, HM.Person))
+    graph.add((person, RDFS.label, Literal("Person", lang="en")))
+    graph.add((person, HM.wikidata_id, Literal("Q1218")))
+    graph.add((person, OWL.sameAs, URIRef("https://www.wikidata.org/entity/Q1370")))
+    graph.add((person, HM.viaf_id, Literal("12345678")))
+    graph.add((person, HM.kima_id, Literal("42")))
+    graph.add((person, HM.external_uri_nli, Literal("123456")))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    assert len(drafts) == 1
+    evidence = drafts[0].authority_evidence
+    assert {(row["kind"], row["identifier"]) for row in evidence} == {
+        ("wikidata", "Q1218"),
+        ("wikidata", "Q1370"),
+        ("viaf", "12345678"),
+        ("kima", "42"),
+    }
+    assert all(row["accepted"] for row in evidence if row["kind"] != "wikidata")
+    assert all(not row["accepted"] for row in evidence if row["kind"] == "wikidata")
 
 
 def _draft(entity_type: str, labels: dict[str, str], **kw) -> WikibaseEntityDraft:
