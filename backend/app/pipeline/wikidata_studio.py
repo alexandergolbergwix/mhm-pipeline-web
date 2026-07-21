@@ -64,6 +64,9 @@ async def hmo_instance_qids_for_run(
         ENTITY_KIND_INSTANCE,
         WikibaseEntityMapping,
     )
+    from app.pipeline.hmo_wikidata_projection import (  # noqa: PLC0415
+        canonical_hmo_instance_qids,
+    )
 
     if not control_numbers:
         return {}
@@ -82,7 +85,10 @@ async def hmo_instance_qids_for_run(
             )
         )
     ).all()
-    return {uri_to_cn[uri]: qid for uri, qid in rows if uri in uri_to_cn}
+    return canonical_hmo_instance_qids(
+        rows,
+        {control_number: uri for uri, control_number in uri_to_cn.items()},
+    )
 
 
 def compute_build_fingerprint(
