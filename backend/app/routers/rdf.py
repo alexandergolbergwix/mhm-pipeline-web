@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import json
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
@@ -75,6 +75,7 @@ class RdfBuildResponse(BaseModel):
 
 
 class RdfBuildRequest(BaseModel):
+    source: Literal["legacy", "canonical"] = "legacy"
     add_epistemological_status: bool = True
     add_cataloging_view: bool = True
     add_philological_overlay: bool = True
@@ -254,6 +255,24 @@ async def build(
     < 10 s for a 100-MS run on a laptop).
     """
     await _lookup_run_with_access(db, run_id, auth, write=True)
+
+    if (body or RdfBuildRequest()).source == "canonical":
+        from app.pipeline.rdf_build import build_rdf_from_hmo_canonical_cache
+        out_path = rdf_output_path_for_run(str(run_id))
+        try:
+            result = await build_rdf_from_hmo_canonical_cache(db, run_id, out_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        ttl_text = out_path.read_text(encoding="utf-8")
+        artifact = await db.get(RdfArtifact, run_id)
+        if artifact is None:
+            db.add(RdfArtifact(run_id=run_id, ttl_content=ttl_text, triples_count=result.triples_count, manuscripts_count=result.manuscripts_count))
+        else:
+            artifact.ttl_content = ttl_text
+            artifact.triples_count = result.triples_count
+            artifact.manuscripts_count = result.manuscripts_count
+        await db.commit()
+        return RdfBuildResponse(**result.to_dict())
 
     records = (
         await db.execute(
