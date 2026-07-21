@@ -124,6 +124,9 @@ class ExtractedData:
     production_place_lat: float | None = None
     production_place_lon: float | None = None
     production_place_wikidata_id: str | None = None
+    production_place_kima_id: str | None = None
+    production_place_viaf_id: str | None = None
+    production_place_mazal_id: str | None = None
     related_place_coords: dict[str, dict[str, Any]] = None
 
     # Golden ontology corpus driver (Phase 0 fixture)

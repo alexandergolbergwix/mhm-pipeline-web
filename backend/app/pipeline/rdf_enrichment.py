@@ -360,7 +360,10 @@ def _merge_kima_place(
     kima_lat = payload.get("kima_lat")
     kima_lon = payload.get("kima_lon")
     kima_geo = payload.get("kima_geonames")
-    wikidata_qid = match.get("wikidata_qid")
+    wikidata_qid = match.get("wikidata_qid") or payload.get("wikidata_id") or payload.get("wikidata_qid")
+    kima_id = payload.get("kima_id")
+    viaf_id = match.get("viaf_id") or payload.get("viaf_id") or payload.get("kima_viaf_id")
+    mazal_id = match.get("mazal_id") or payload.get("mazal_id") or payload.get("mazal_nli_id")
 
     for subj in rec.get("subjects") or []:
         term = subject_term(subj) if isinstance(subj, dict) else ""
@@ -373,6 +376,23 @@ def _merge_kima_place(
                 subj["lon"] = kima_lon
             if wikidata_qid and "wikidata_id" not in subj:
                 subj["wikidata_id"] = wikidata_qid
+            if kima_id and "kima_id" not in subj:
+                subj["kima_id"] = str(kima_id)
+            if viaf_id and "viaf_id" not in subj:
+                subj["viaf_id"] = str(viaf_id)
+            if mazal_id and "mazal_id" not in subj:
+                subj["mazal_id"] = str(mazal_id)
+
+    prod_place = clean_marc_label(str(rec.get("place") or ""))
+    if prod_place and names_overlap(prod_place, entity_text):
+        if wikidata_qid:
+            rec.setdefault("production_place_wikidata_id", str(wikidata_qid))
+        if kima_id:
+            rec.setdefault("production_place_kima_id", str(kima_id))
+        if viaf_id:
+            rec.setdefault("production_place_viaf_id", str(viaf_id))
+        if mazal_id:
+            rec.setdefault("production_place_mazal_id", str(mazal_id))
 
     if kima_lat is not None and kima_lon is not None:
         prod_place = clean_marc_label(str(rec.get("place") or ""))

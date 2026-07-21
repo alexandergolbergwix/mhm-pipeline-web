@@ -29,4 +29,4 @@
   dangling `בן`/`אבן` strip, 505 `parse_contents_entry` (Rule W-50/W-52)
 
 - Place authority regression coverage verifies `kima_places` propagates to
-  production-place `owl:sameAs` and `hm:external_wikidata_uri` triples.
+  production-place `owl:sameAs` and `hm:external_wikidata_uri` triples. A QID-only approved KIMA match is also covered, ensuring identifier enrichment is not gated on coordinates.

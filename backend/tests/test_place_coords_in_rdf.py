@@ -64,6 +64,14 @@ class TestMergeAuthorityIdsProductionPlace:
         _merge_authority_ids(rec, [_kima_match("Fez", 34.03, -5.00, qid="Q83751")])
         assert rec["production_place_wikidata_id"] == "Q83751"
 
+    def test_qid_propagates_without_coordinates(self) -> None:
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
+
+        rec = _rec(place="Jerusalem")
+        _merge_authority_ids(rec, [{"entity_text": "Jerusalem", "entity_kind": "place", "wikidata_qid": "", "payload": {"kima_id": "691", "wikidata_id": "Q1218"}}])
+        assert rec["production_place_wikidata_id"] == "Q1218"
+        assert rec["production_place_kima_id"] == "691"
+
     def test_fill_only_if_absent_for_production_place(self) -> None:
         from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
@@ -145,6 +153,15 @@ class TestGraphBuilderProductionPlaceCoords:
         g = self._build_graph("Fez", 34.03, -5.00, qid="Q83751")
         same_as = list(g.objects(None, OWL.sameAs))
         assert URIRef("https://www.wikidata.org/entity/Q83751") in same_as
+
+    def test_explicit_authority_ids_emitted_without_coordinates(self) -> None:
+        from converter.config.namespaces import HM
+        from converter.rdf.graph_builder import GraphBuilder as ManuscriptGraphBuilder
+        g = Graph()
+        ManuscriptGraphBuilder._emit_place_coords(g, URIRef("https://example.org/place"), None, None, "Q83751", "691", "131280745", "987007507434105171")
+        assert str(next(g.objects(None, HM.kima_id))) == "691"
+        assert str(next(g.objects(None, HM.viaf_id))) == "131280745"
+        assert str(next(g.objects(None, HM.mazal_id))) == "987007507434105171"
 
     def test_no_wgs84_when_coords_absent(self) -> None:
         g = self._build_graph("Fez", None, None)

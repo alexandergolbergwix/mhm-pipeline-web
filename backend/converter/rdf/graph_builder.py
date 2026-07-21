@@ -926,6 +926,9 @@ class GraphBuilder:
                 getattr(data, "production_place_lat", None),
                 getattr(data, "production_place_lon", None),
                 getattr(data, "production_place_wikidata_id", None),
+                getattr(data, "production_place_kima_id", None),
+                getattr(data, "production_place_viaf_id", None),
+                getattr(data, "production_place_mazal_id", None),
             )
 
         if data.dates:
@@ -1303,6 +1306,9 @@ class GraphBuilder:
         lat: float | int | str | None,
         lon: float | int | str | None,
         wikidata_id: str | None = None,
+        kima_id: str | None = None,
+        viaf_id: str | None = None,
+        mazal_id: str | None = None,
     ) -> None:
         if is_plausible_coords(lat, lon):
             graph.add((place_uri, _WGS84_LAT, Literal(str(lat))))
@@ -1321,6 +1327,13 @@ class GraphBuilder:
                     datatype=XSD.anyURI,
                 ),
             ))
+
+        if kima_id:
+            graph.add((place_uri, HM.kima_id, Literal(str(kima_id), datatype=XSD.string)))
+        if viaf_id:
+            graph.add((place_uri, HM.viaf_id, Literal(str(viaf_id), datatype=XSD.string)))
+        if mazal_id:
+            graph.add((place_uri, HM.mazal_id, Literal(str(mazal_id), datatype=XSD.string)))
 
     @staticmethod
     def _is_http_uri(value: str) -> bool:
@@ -1800,6 +1813,9 @@ class GraphBuilder:
                 subject.get("lat"),
                 subject.get("lon"),
                 subject.get("wikidata_id"),
+                subject.get("kima_id"),
+                subject.get("viaf_id"),
+                subject.get("mazal_id") or subject.get("authority_id"),
             )
             if subject.get("geonames_id"):
                 graph.add((
@@ -2252,6 +2268,9 @@ class GraphBuilder:
                     coord_entry.get("lat"),
                     coord_entry.get("lon"),
                     coord_entry.get("wikidata_id"),
+                    coord_entry.get("kima_id"),
+                    coord_entry.get("viaf_id"),
+                    coord_entry.get("mazal_id"),
                 )
             graph.add((ms_uri, HM.mentions_place, place_uri))
 

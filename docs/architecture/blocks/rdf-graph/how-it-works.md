@@ -22,7 +22,7 @@
    topic/work/corporate; stamps VIAF/Wikidata/Mazal IDs, preferred names,
    cluster IDs), and `merge_kima_places_dict`. KIMA coords are written back
    onto matching `provenance_events` entries (`_merge_kima_place`,
-   `rdf_enrichment.py:396` — explicit `None` checks, not `setdefault`).
+   `rdf_enrichment.py:396` — explicit `None` checks, not `setdefault`). Validated place QIDs and KIMA/VIAF/Mazal IDs are propagated even when coordinates are absent; payload URI/QID forms are normalized before storage.
 3. **Mapping** — an `ExtractedData` is built per record and passed to the
    vendored `GraphBuilder`, constructed with the three `RdfBuildOptions`
    toggles (`add_epistemological_status`, `add_cataloging_view`,
