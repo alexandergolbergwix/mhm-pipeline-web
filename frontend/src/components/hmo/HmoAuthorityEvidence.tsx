@@ -15,13 +15,16 @@ function claimValue(value: unknown): string | null {
   return null;
 }
 
-function authorityKind(property: string): AuthorityKind | null {
+function authorityKind(property: string, value: string): AuthorityKind | null {
   const normalized = property.toLowerCase();
+  const valueLower = value.toLowerCase();
   if (normalized.includes("wikidata")) return "Wikidata";
   if (normalized.includes("viaf")) return "VIAF";
   if (normalized.includes("mazal")) return "Mazal";
   if (normalized.includes("kima")) return "KIMA";
   if (normalized.includes("authority")) return "Authority";
+  if (valueLower.includes("wikidata.org/entity/q")) return "Wikidata";
+  if (valueLower.includes("viaf.org/viaf/")) return "VIAF";
   return null;
 }
 
@@ -42,7 +45,7 @@ function authorityClaims(claims: HmoResolvedClaim[]): AuthorityClaim[] {
   const result: AuthorityClaim[] = [];
   for (const claim of claims) {
     const property = claim.property_id.trim();
-    const kind = authorityKind(property);
+    const kind = authorityKind(property, value ?? "");
     const value = claimValue(claim.value);
     if (!kind || !value) continue;
     const key = `${kind}:${value}`;
