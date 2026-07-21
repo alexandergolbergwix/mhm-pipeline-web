@@ -1391,6 +1391,16 @@ class DesktopMatcher(AuthorityMatcher):
                             wikidata_qid, db_session=db_session, user_id=user_id,
                             skip_cache=skip_cache,
                         )
+                        if _wd_enrich and viaf_id and _wd_enrich.get("viaf_id"):
+                            from converter.authority.evidence import normalize_viaf_id  # noqa: PLC0415
+                            source_viaf = normalize_viaf_id(viaf_id)
+                            qid_viaf = normalize_viaf_id(_wd_enrich.get("viaf_id"))
+                            if source_viaf and qid_viaf and source_viaf != qid_viaf:
+                                reasoning_parts.append(
+                                    f"Wikidata {wikidata_qid} rejected: VIAF mismatch "
+                                    f"({source_viaf} != {qid_viaf}).",
+                                )
+                                wikidata_qid = ""
                         if _wd_enrich and not viaf_id:
                             wd_viaf = (_wd_enrich.get("viaf_id") or "").strip()
                             if wd_viaf:

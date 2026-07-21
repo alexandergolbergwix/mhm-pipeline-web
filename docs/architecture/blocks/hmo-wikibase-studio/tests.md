@@ -2,8 +2,9 @@
 
 > Up: [HMO Wikibase Studio](README.md)
 
-- `backend/tests/unit/test_hmo_export_quality.py` — export quality gate,
-  incl. Rule W-52 codes (`production_missing_label`, `timespan_bare_label`,
+- `backend/tests/unit/test_hmo_export_quality.py` — export quality and
+  fail-closed authority gates (per-entity conflicts plus global duplicate
+  Wikidata/VIAF/KIMA/Mazal identifiers), incl. Rule W-52 codes (`production_missing_label`, `timespan_bare_label`,
   `latin_label_in_he`, `unbalanced_label_quotes`, `witness_unusable_title`)
 - `backend/tests/unit/test_hmo_exporter_resolution.py` /
   `test_hmo_exporter_descriptions.py` — no Hebrew-in-`en`, comment→`en`

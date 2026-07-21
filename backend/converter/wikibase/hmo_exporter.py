@@ -203,18 +203,19 @@ def _gate_global_authority_collisions(drafts: list[WikibaseEntityDraft]) -> list
 def _statement_authority_key(statement: WikibaseStatementDraft) -> tuple[str, str] | None:
     value = statement.value
     property_name = statement.property_name.lower()
-    if not isinstance(value, str):
+    authority_properties = {"sameas", "external_wikidata_uri", "wikidata_id", "viaf_id", "kima_id", "mazal_id", "authority_id", "external_uri_nli"}
+    if property_name not in authority_properties:
         return None
     qid = normalize_wikidata_qid(value)
     if qid and ("wikidata" in property_name or "sameas" in property_name):
         return ("wikidata", qid)
     viaf = normalize_viaf_id(value)
-    if viaf and ("viaf" in property_name or "sameas" in property_name):
+    if viaf and ("viaf" in property_name or (property_name == "sameas" and "viaf" in str(value).lower())):
         return ("viaf", viaf)
     identifier = normalize_authority_id(value)
     if identifier and "kima" in property_name:
         return ("kima", identifier)
-    if identifier and ("mazal" in property_name or property_name in {"authority_id", "external_uri_nli"}):
+    if identifier and ("mazal" in property_name or property_name in {"authority_id", "external_uri_nli"}) and identifier.startswith("987"):
         return ("mazal", identifier)
     return None
 

@@ -2184,3 +2184,13 @@ from external authority IDs.
 Ontology source URIs are provenance identifiers, not browsable Wikibase pages.
 When an HMO item has a mapped local QID, curator links must target the project
 Wikibase `/wiki/Item:Q…` page; source URIs remain metadata only.
+
+### Rule W-86 — Authority identifiers MUST be unique across HMO entities (added 2026-07-21)
+
+A Wikidata QID, VIAF cluster, KIMA ID, or Mazal ID must not be accepted for
+multiple distinct HMO source entities. The HMO exporter performs a global
+collision gate after per-entity ambiguity checks: every colliding evidence row
+is retained as `accepted: false` with a reason, and the corresponding external
+claim is removed before caching or upload. Cross-source VIAF disagreement also
+withholds the Wikidata candidate. This prevents a plausible label match from
+creating a false-positive identity link.

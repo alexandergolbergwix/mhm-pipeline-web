@@ -86,6 +86,25 @@ def test_exporter_withholds_duplicate_external_qids_globally() -> None:
     assert all(draft.authority_evidence[0]["reason"] == "identifier assigned to multiple HMO entities" for draft in drafts)
 
 
+def test_exporter_withholds_duplicate_viaf_kima_and_mazal_ids() -> None:
+    graph = Graph()
+    values = {
+        "viaf_id": Literal("12345678"),
+        "kima_id": Literal("42"),
+        "mazal_id": Literal("987000001234567890"),
+    }
+    for name in ("First", "Second"):
+        node = URIRef(f"{HM}Place_{name}")
+        graph.add((node, RDF.type, HM.Place))
+        graph.add((node, RDFS.label, Literal(name, lang="en")))
+        for predicate, value in values.items():
+            graph.add((node, getattr(HM, predicate), value))
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    for draft in drafts:
+        assert all(row["accepted"] is False for row in draft.authority_evidence)
+        assert not any(statement.property_name.endswith(("viaf_id", "kima_id", "mazal_id")) for statement in draft.statements)
+
+
 def _draft(entity_type: str, labels: dict[str, str], **kw) -> WikibaseEntityDraft:
     return WikibaseEntityDraft(
         local_id=kw.get("local_id", "QDraft_test"),

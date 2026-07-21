@@ -21,8 +21,8 @@ graph, HMO Wikibase Studio, and Wikidata Studio downstream.
 - [How it works — guards](guards.md) — the hardening stack and the full guard-flag table
 - [How it works — payload, backends, caching](payload-and-backends.md) — payload completeness contract, the three backends, cache tiers, dedup keys
 - [How it works — review & re-enrich](review-and-reenrich.md) — re-enrich surfaces, curator review UI, auto-approve, provenance-event places
-- [Rules](rules.md) — the 16 invariants (R1–R16) this block enforces
-- [Skills](skills.md) — playbooks: add a guard, re-import Mazal/KIMA, re-enrich after deploy, resolve a homonym, add an authority source
+- [Rules](rules.md) — the 17 invariants (R1–R17) this block enforces
+- [Skills](skills.md) — playbooks: add a guard, re-import Mazal/KIMA, re-enrich after deploy, resolve a homonym, add an authority source, validate VIAF/Wikidata cross-source agreement
 - [Tests](tests.md) — the test suites pinning this block
 
 ## Related blocks
