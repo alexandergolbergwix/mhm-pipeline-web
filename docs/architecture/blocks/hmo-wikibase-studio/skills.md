@@ -105,3 +105,7 @@ to the wiki; 503 means the SPARQL endpoint is down (fail closed, retry later).
 When a place looks mislinked, inspect `wikibase_id` separately from RDF
 `hm:external_wikidata_uri`. Normalize the MARC label, verify the KIMA row's
 Wikidata URI, and rebuild the HMO items before judging the export.
+
+The table labels `Wikibase QID (local)` explicitly. External Wikidata/VIAF
+links are shown in a separate authority column; never interpret the local QID
+as a public Wikidata identifier.

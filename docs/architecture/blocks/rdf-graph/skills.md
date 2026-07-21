@@ -79,3 +79,13 @@ Nothing to do manually — any `GET /rdf/*` read calls `ensure_ttl_on_disk`
 If reads still 404, no build ever succeeded for the run: rebuild. Note the
 graph index and coverage JSONs are re-derived lazily (`ensure_index`) but
 coverage reports require a rebuild.
+
+### Skill: audit KIMA false positives
+
+From `backend/`, sample 200 production-scale place headings and verify that
+ambiguous homonyms abstain rather than selecting an arbitrary Wikidata QID:
+
+```bash
+.venv/bin/python -m scripts.audit_kima_false_positives \
+  /path/to/filtered_manuscripts_after_906a.tsv --sample 200
+```

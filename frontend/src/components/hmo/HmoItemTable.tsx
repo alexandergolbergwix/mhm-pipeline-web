@@ -19,6 +19,17 @@ function itemLabel(item: HmoStudioItem): string {
   return item.labels?.en || item.labels?.he || item.local_id;
 }
 
+function authorityLinks(item: HmoStudioItem): string[] {
+  const links = new Set<string>();
+  for (const claim of item.claims ?? []) {
+    if (typeof claim.value !== "string") continue;
+    if (claim.value.includes("wikidata.org/entity/Q") || claim.value.includes("viaf.org/viaf/")) {
+      links.add(claim.value);
+    }
+  }
+  return [...links];
+}
+
 function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
   if (col === "validation") {
     if (item.has_blocking_shacl) return ["blocked"];
@@ -145,7 +156,8 @@ export function HmoItemTable({
                 ["class_qid", "Class", false],
                 ["source_uri", "Source URI", false],
                 ["data_status", "Data status", false],
-                ["wikibase_id", "QID", false],
+                ["wikibase_id", "Wikibase QID (local)", false],
+                ["authority", "External authority", false],
                 ["upload_outcome", "Last push", false],
                 ["validation", "Validation", false],
                 ["ai_verdict", "AI verdict", false],
@@ -186,7 +198,18 @@ export function HmoItemTable({
                 <td className="px-3 py-2" data-testid={`hmo-item-data-status-${item.local_id}`}>
                   <HmoItemDataStatusBadge item={item} />
                 </td>
-                <td className="px-3 py-2 font-mono text-xs">{item.wikibase_id ?? "—"}</td>
+                <td className="px-3 py-2 font-mono text-xs" title="Project Wikibase Cloud identifier; not a Wikidata QID">
+                  {item.wikibase_id ?? "—"}
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  {authorityLinks(item).length
+                    ? authorityLinks(item).map((link) => (
+                      <a key={link} href={link} target="_blank" rel="noreferrer" className="block underline truncate max-w-[180px]">
+                        {link.includes("wikidata.org") ? `Wikidata ${link.split("/entity/")[1]}` : `VIAF ${link.split("/viaf/")[1]}`}
+                      </a>
+                    ))
+                    : "—"}
+                </td>
                 <td className="px-3 py-2" data-testid={`hmo-item-upload-outcome-${item.local_id}`}>
                   <HmoItemUploadOutcomeBadge
                     outcome={item.upload_outcome}
@@ -219,7 +242,7 @@ export function HmoItemTable({
             ))}
             {pageItems.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-3 py-6 text-center muted">No items match.</td>
+                <td colSpan={12} className="px-3 py-6 text-center muted">No items match.</td>
               </tr>
             )}
           </tbody>

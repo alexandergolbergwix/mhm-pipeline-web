@@ -2171,3 +2171,10 @@ Wikidata place URIs are retained separately as HMO `external_wikidata_uri`
 claims. Person `viaf_id`/Wikidata identifiers likewise remain explicit
 authority claims so HMO entities can enrich without conflating identifier
 spaces.
+
+### Rule W-84 — Ambiguous KIMA names MUST abstain (added 2026-07-21)
+
+A normalized place name may resolve to multiple KIMA rows. If those rows carry
+conflicting Wikidata IDs, matching must abstain unless one exact primary name
+uniquely disambiguates it; the UI must display local Wikibase IDs separately
+from external authority IDs.

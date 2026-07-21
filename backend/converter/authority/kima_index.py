@@ -169,12 +169,27 @@ class KimaIndex:
             FROM name_index n
             JOIN places p ON n.kima_id = p.kima_id
             WHERE n.normalized_name = ?
-            LIMIT 1
             """,
             (normalized,),
         )
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        rows = [dict(row) for row in cursor.fetchall()]
+        if not rows:
+            return None
+        # Name variants can point at homonymous places. Never choose an
+        # arbitrary first row when the authorities disagree on Wikidata.
+        qids = {str(row.get("wikidata_id") or "") for row in rows}
+        qids.discard("")
+        if len(qids) > 1:
+            exact = [
+                row for row in rows
+                if self.normalize_name(str(row.get("primary_heb") or "")) == normalized
+            ]
+            exact_qids = {str(row.get("wikidata_id") or "") for row in exact}
+            exact_qids.discard("")
+            if len(exact_qids) == 1:
+                return exact[0]
+            return None
+        return rows[0]
 
     def stats(self) -> dict:
         """Return row counts for monitoring."""

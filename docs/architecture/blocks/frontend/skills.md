@@ -40,3 +40,9 @@ Variants set radius/bezel/thickness presets (`Glass.tsx:52`); override per-prop 
 
 ### Skill: add a fast/slow-poll entity surface
 Follow `useApprovalStore`: content fingerprint before `setState`, ETag/If-None-Match revalidation, `active ? 2000 : 30000` interval via chained `setTimeout` (not `setInterval`), an `inFlight` ref for backpressure, and a `window.addEventListener` on the feature's refresh CustomEvent.
+
+### Skill: distinguish HMO and public QIDs
+
+HMO Studio tables label project identifiers as `Wikibase QID (local)` and show
+Wikidata/VIAF links in a separate authority column. Keep these namespaces
+separate in filters, exports, and curator explanations.
