@@ -1283,6 +1283,13 @@ class GraphBuilder:
             if not qid_match:
                 continue
             qid = qid_match.group(1)
+            production_place = clean_marc_label(str(data.place or ""))
+            if (
+                production_place
+                and names_overlap(production_place, place_name)
+                and not data.production_place_wikidata_id
+            ):
+                data.production_place_wikidata_id = qid
             for subj in data.subjects:
                 if str(subj.get("type") or "") == "place" and names_overlap(
                     str(subj.get("term") or ""), place_name,

@@ -27,3 +27,6 @@
   labels not mirrored into `en` (Rule W-45/W-51/W-52)
 - `backend/tests/unit/test_rdf_helpers.py` — gershayim-safe title sanitization,
   dangling `בן`/`אבן` strip, 505 `parse_contents_entry` (Rule W-50/W-52)
+
+- Place authority regression coverage verifies `kima_places` propagates to
+  production-place `owl:sameAs` and `hm:external_wikidata_uri` triples.
