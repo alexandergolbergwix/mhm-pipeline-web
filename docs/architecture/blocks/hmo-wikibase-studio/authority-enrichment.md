@@ -5,7 +5,7 @@ or Wikidata candidates, but a candidate is a public authority claim only when
 its identifier is valid and there is one unambiguous identifier for that
 authority kind.  Conflicting QIDs remain in `authority_evidence` with
 `accepted: false` so curators can inspect them without risking a false
-positive Wikibase claim.
+positive Wikibase claim. The exporter also rejects an accepted external identifier reused by multiple distinct HMO source URIs and removes the corresponding claims.
 
 The pure helpers in `backend/converter/authority/evidence.py` are intentionally
 network-free.

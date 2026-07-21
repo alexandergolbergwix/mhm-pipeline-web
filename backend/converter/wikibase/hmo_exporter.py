@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-import re
 from collections import defaultdict
+from dataclasses import replace
+import re
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,12 @@ from rdflib.namespace import OWL, RDF, RDFS
 from rdflib.term import Node
 
 from converter.config.namespaces import CIDOC, HM, LRMOO
-from converter.authority.evidence import evidence_from_values
+from converter.authority.evidence import (
+    evidence_from_values,
+    normalize_authority_id,
+    normalize_viaf_id,
+    normalize_wikidata_qid,
+)
 from converter.rdf.rdf_helpers import label_language_for_text
 from converter.wikibase._ids import local_name, safe_local_id
 from converter.wikibase.label_sanitize import sanitize_monolingual_map
@@ -110,7 +116,7 @@ class HmoWikibaseExporter:
                 )
             )
 
-        return sorted(drafts, key=lambda draft: draft.local_id)
+        return _gate_global_authority_collisions(sorted(drafts, key=lambda draft: draft.local_id))
 
     def export_json(self, entities: list[WikibaseEntityDraft]) -> str:
         """Serialise entity drafts as deterministic UTF-8 JSON text."""
@@ -125,6 +131,7 @@ class HmoWikibaseExporter:
         """Write entity drafts to a JSON file and return the output path."""
         output_path.write_text(self.export_json(entities), encoding="utf-8")
         return output_path
+
 
 
 def _typed_instance_nodes(graph: Graph) -> list[URIRef | BNode]:
@@ -163,6 +170,53 @@ def _authority_evidence_for_node(graph: Graph, subject: URIRef | BNode) -> list[
     }
     values = [(local_name(predicate), value) for predicate, value in graph.predicate_objects(subject) if predicate in predicates]
     return [evidence.to_dict() for evidence in evidence_from_values(values)]
+
+
+def _gate_global_authority_collisions(drafts: list[WikibaseEntityDraft]) -> list[WikibaseEntityDraft]:
+    """Withhold external IDs reused by multiple distinct HMO entities."""
+    owners: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for draft in drafts:
+        for evidence in draft.authority_evidence:
+            if evidence.get("accepted"):
+                owners[(str(evidence.get("kind") or ""), str(evidence.get("identifier") or ""))].add(draft.source_uri)
+    collisions = {key for key, sources in owners.items() if len(sources) > 1}
+    if not collisions:
+        return drafts
+    gated: list[WikibaseEntityDraft] = []
+    for draft in drafts:
+        evidence_rows: list[dict[str, object]] = []
+        blocked: set[tuple[str, str]] = set()
+        for raw in draft.authority_evidence:
+            row = dict(raw)
+            key = (str(row.get("kind") or ""), str(row.get("identifier") or ""))
+            if key in collisions or row.get("accepted") is not True:
+                if key in collisions:
+                    row["accepted"] = False
+                    row["reason"] = "identifier assigned to multiple HMO entities"
+                blocked.add(key)
+            evidence_rows.append(row)
+        statements = [statement for statement in draft.statements if _statement_authority_key(statement) not in blocked]
+        gated.append(replace(draft, statements=statements, authority_evidence=evidence_rows))
+    return gated
+
+
+def _statement_authority_key(statement: WikibaseStatementDraft) -> tuple[str, str] | None:
+    value = statement.value
+    property_name = statement.property_name.lower()
+    if not isinstance(value, str):
+        return None
+    qid = normalize_wikidata_qid(value)
+    if qid and ("wikidata" in property_name or "sameas" in property_name):
+        return ("wikidata", qid)
+    viaf = normalize_viaf_id(value)
+    if viaf and ("viaf" in property_name or "sameas" in property_name):
+        return ("viaf", viaf)
+    identifier = normalize_authority_id(value)
+    if identifier and "kima" in property_name:
+        return ("kima", identifier)
+    if identifier and ("mazal" in property_name or property_name in {"authority_id", "external_uri_nli"}):
+        return ("mazal", identifier)
+    return None
 
 
 def _index_manuscript_uris(graph: Graph) -> dict[str, str]:

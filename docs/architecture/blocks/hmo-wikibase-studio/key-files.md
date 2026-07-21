@@ -29,6 +29,7 @@
 | `backend/converter/wikibase/cloud_client.py` | `WikibaseCloudClient` (read-only) + `WikibaseCloudWriter` (OAuth2/bot; wikibaseintegrator entity writes; retry/backoff) |
 | `backend/converter/wikibase/hmo_exporter.py` | TTL → entity drafts; RDF incoming-edge BFS stamps `control_numbers` per item; comment→`en` normalization + sentence dedup; label/description truncation (250) and string claim truncation (400) |
 | `backend/converter/wikibase/hmo_export_quality.py` | `audit_entity_drafts` — label/description hygiene checks (Rule W-52 codes: production/timespan/latin-in-he/unbalanced-quotes/witness) |
+| `backend/tests/unit/test_hmo_export_quality.py` | Authority evidence and global duplicate-QID withholding regressions |
 | `backend/app/pipeline/hmo_export_quality_gate.py` | `assert_export_quality` — hard block: raises before caching on any export quality issue |
 | `backend/scripts/hmo_item_verify_fixup_loop.py` | Qubrid/Kimi fixup loop: eval → diagnose → (rebuild) → re-eval per entity; `--persist-verdicts` |
 | `backend/converter/wikibase/resolved_models.py` | `ResolvedWikibaseEntity` incl. `entity_type` + `control_numbers` persisted in `HmoStudioItemCache` |

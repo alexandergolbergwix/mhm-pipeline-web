@@ -73,6 +73,19 @@ def test_exporter_projects_authority_evidence_and_abstains_conflicts() -> None:
     assert all(not row["accepted"] for row in evidence if row["kind"] == "wikidata")
 
 
+def test_exporter_withholds_duplicate_external_qids_globally() -> None:
+    graph = Graph()
+    for name in ("First", "Second"):
+        node = URIRef(f"{HM}Person_{name}")
+        graph.add((node, RDF.type, HM.Person))
+        graph.add((node, RDFS.label, Literal(name, lang="en")))
+        graph.add((node, OWL.sameAs, URIRef("https://www.wikidata.org/entity/Q12345")))
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    assert all(not draft.statements for draft in drafts)
+    assert all(draft.authority_evidence[0]["accepted"] is False for draft in drafts)
+    assert all(draft.authority_evidence[0]["reason"] == "identifier assigned to multiple HMO entities" for draft in drafts)
+
+
 def _draft(entity_type: str, labels: dict[str, str], **kw) -> WikibaseEntityDraft:
     return WikibaseEntityDraft(
         local_id=kw.get("local_id", "QDraft_test"),
