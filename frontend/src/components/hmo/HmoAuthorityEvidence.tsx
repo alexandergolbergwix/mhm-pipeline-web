@@ -45,8 +45,8 @@ function authorityClaims(claims: HmoResolvedClaim[]): AuthorityClaim[] {
   const result: AuthorityClaim[] = [];
   for (const claim of claims) {
     const property = claim.property_id.trim();
-    const kind = authorityKind(property, value ?? "");
     const value = claimValue(claim.value);
+    const kind = authorityKind(property, value ?? "");
     if (!kind || !value) continue;
     const key = `${kind}:${value}`;
     if (seen.has(key)) continue;
