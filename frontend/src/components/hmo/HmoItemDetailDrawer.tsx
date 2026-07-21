@@ -9,6 +9,8 @@ import {HmoItemMappingBadge} from "@/components/hmo/HmoItemMappingBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
 
+const HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud";
+
 function AiVerdictReasoningCard({verdict}: {verdict: HmoStudioItem["ai_verdict"]}) {
   if (!verdict) return null;
   const reasoning = verdict.reasoning?.trim();
@@ -170,7 +172,18 @@ export function HmoItemDetailDrawer({
         <div>
           <div className="kicker">HMO Wikibase item</div>
           <h3 className="text-lg font-medium">{labels.en || labels.he || item.local_id}</h3>
-          <p className="muted text-xs font-mono mt-1">{item.source_uri}</p>
+          <p className="muted text-xs font-mono mt-1">
+            {item.wikibase_id ? (
+              <a
+                href={`${HMO_WIKIBASE_BASE_URL}/wiki/Item:${item.wikibase_id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                Open project Wikibase entity {item.wikibase_id} ↗
+              </a>
+            ) : item.source_uri}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs muted flex items-center gap-1">

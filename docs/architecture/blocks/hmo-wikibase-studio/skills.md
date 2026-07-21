@@ -109,3 +109,7 @@ Wikidata URI, and rebuild the HMO items before judging the export.
 The table labels `Wikibase QID (local)` explicitly. External Wikidata/VIAF
 links are shown in a separate authority column; never interpret the local QID
 as a public Wikidata identifier.
+
+HMO item links must use `https://mhm-hmo.wikibase.cloud/wiki/Item:<local QID>`.
+The `w3id.org/mhm/ontology#…` source URI is provenance metadata and must not be
+rendered as the live entity link.

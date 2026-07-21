@@ -2178,3 +2178,9 @@ A normalized place name may resolve to multiple KIMA rows. If those rows carry
 conflicting Wikidata IDs, matching must abstain unless one exact primary name
 uniquely disambiguates it; the UI must display local Wikibase IDs separately
 from external authority IDs.
+
+### Rule W-85 — HMO entity links MUST use the live project Wikibase URL (added 2026-07-21)
+
+Ontology source URIs are provenance identifiers, not browsable Wikibase pages.
+When an HMO item has a mapped local QID, curator links must target the project
+Wikibase `/wiki/Item:Q…` page; source URIs remain metadata only.

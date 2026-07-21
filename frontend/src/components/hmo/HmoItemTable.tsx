@@ -12,6 +12,7 @@ import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
 import {resolveHmoItemDataStatus} from "@/utils/hmoItemDataStatus";
 
 const PAGE_SIZE = 25;
+const HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud";
 
 type ColKey = "class_qid" | "data_status" | "upload_outcome" | "validation" | "ai_verdict" | "approved";
 
@@ -194,7 +195,18 @@ export function HmoItemTable({
                 <td className="px-3 py-2">{itemLabel(item)}</td>
                 <td className="px-3 py-2 font-mono text-xs">{item.local_id}</td>
                 <td className="px-3 py-2 font-mono text-xs">{item.class_qid}</td>
-                <td className="px-3 py-2 text-xs truncate max-w-[200px]" title={item.source_uri}>{item.source_uri}</td>
+                <td className="px-3 py-2 text-xs truncate max-w-[200px]" title={item.source_uri}>
+                  {item.wikibase_id ? (
+                    <a
+                      href={`${HMO_WIKIBASE_BASE_URL}/wiki/Item:${item.wikibase_id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      Open Wikibase entity ↗
+                    </a>
+                  ) : item.source_uri}
+                </td>
                 <td className="px-3 py-2" data-testid={`hmo-item-data-status-${item.local_id}`}>
                   <HmoItemDataStatusBadge item={item} />
                 </td>

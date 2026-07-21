@@ -46,3 +46,7 @@ Follow `useApprovalStore`: content fingerprint before `setState`, ETag/If-None-M
 HMO Studio tables label project identifiers as `Wikibase QID (local)` and show
 Wikidata/VIAF links in a separate authority column. Keep these namespaces
 separate in filters, exports, and curator explanations.
+
+In HMO Studio, link mapped items to the project Wikibase `/wiki/Item:Q…` URL.
+Display ontology source URIs as metadata only; they may resolve to repository or
+Git-LFS content rather than a live entity.
