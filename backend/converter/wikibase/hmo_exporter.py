@@ -13,6 +13,7 @@ from rdflib.namespace import OWL, RDF, RDFS
 from rdflib.term import Node
 
 from converter.config.namespaces import CIDOC, HM, LRMOO
+from converter.authority.evidence import evidence_from_values
 from converter.rdf.rdf_helpers import label_language_for_text
 from converter.wikibase._ids import local_name, safe_local_id
 from converter.wikibase.label_sanitize import sanitize_monolingual_map
@@ -105,6 +106,7 @@ class HmoWikibaseExporter:
                     source_uri=str(subject),
                     statements=statements,
                     control_numbers=_control_numbers_for_node(graph, subject),
+                    authority_evidence=_authority_evidence_for_node(graph, subject),
                 )
             )
 
@@ -145,6 +147,13 @@ def _typed_instance_nodes(graph: Graph) -> list[URIRef | BNode]:
 
 def _control_numbers_in_uri(uri: str) -> set[str]:
     return set(_CONTROL_NUMBER_RE.findall(uri))
+
+
+def _authority_evidence_for_node(graph: Graph, subject: URIRef | BNode) -> list[dict[str, object]]:
+    """Persist normalized, fail-closed external authority evidence."""
+    predicates = {HM.external_wikidata_uri, HM.viaf_id, OWL.sameAs}
+    values = [(local_name(predicate), value) for predicate, value in graph.predicate_objects(subject) if predicate in predicates]
+    return [evidence.to_dict() for evidence in evidence_from_values(values)]
 
 
 def _index_manuscript_uris(graph: Graph) -> dict[str, str]:
@@ -492,6 +501,7 @@ def resolve_against_mappings(
                 source_uri=draft.source_uri,
                 entity_type=draft.entity_type,
                 control_numbers=list(draft.control_numbers),
+                authority_evidence=list(draft.authority_evidence),
                 claims=claims,
                 deferred_links=deferred,
                 skipped_statements=skipped,

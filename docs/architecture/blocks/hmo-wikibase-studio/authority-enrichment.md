@@ -8,9 +8,15 @@ authority kind.  Conflicting QIDs remain in `authority_evidence` with
 positive Wikibase claim.
 
 The pure helpers in `backend/converter/authority/evidence.py` are intentionally
-network-free.  Callers should pass source/value pairs from the canonical RDF
-graph or approved authority payload, then persist the returned evidence next
-to the HMO draft.  A Wikidata QID is always normalized to the external
+network-free.
+
+`HmoWikibaseExporter` stores the normalized list on every draft and resolved
+entity as `authority_evidence`; the build cache and review API therefore expose
+the same accepted/withheld evidence without another network lookup.
+
+`backend/scripts/audit_hmo_authority_consistency.py` audits an exported run for
+missing external links, duplicate local-QID assignments, and malformed authority
+URLs. Run it against large exports before changing reconciliation policy. Callers should pass source/value pairs from the canonical RDF graph or approved authority payload, then persist the returned evidence next to the HMO draft.  A Wikidata QID is always normalized to the external
 Wikidata namespace and must never be used as a local Wikibase QID.
 
 Required checks before upload:

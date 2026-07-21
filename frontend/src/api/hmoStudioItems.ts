@@ -17,6 +17,14 @@ export interface HmoStudioItem {
   claims: HmoResolvedClaim[];
   deferred_links?: Array<{source_local_id: string; property_id: string; target_local_id: string}>;
   skipped_statements?: string[];
+  authority_evidence?: Array<{
+    source: string;
+    identifier: string;
+    kind: string;
+    accepted: boolean;
+    reason?: string;
+    details?: Record<string, string>;
+  }>;
   status: string;
   wikibase_id: string | null;
   approved: boolean | null;
