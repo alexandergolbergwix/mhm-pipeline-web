@@ -125,3 +125,8 @@
     RDF-rebuilt, and items must NOT be re-uploaded until source URIs are
     migrated (duplicate-creation risk, Rule W-30/W-42). Desktop mirror needs the
     same swap before `/sync-from-desktop`.
+
+10. **R10 — Place authority namespaces remain distinct.** Normalize bracketed
+    MARC place labels before KIMA matching, emit Wikidata place URIs through
+    `hm:external_wikidata_uri`, and never interpret a project Wikibase QID as a
+    Wikidata QID.

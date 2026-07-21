@@ -68,3 +68,10 @@ TSV/JSON ingestion runs the canonical desktop handlers before graph
 construction. RDA carrier terms (336/337/338) remain RDF catalog evidence,
 while Wikidata stays conservative. Run `scripts.audit_mapping_coverage` to
 prove that no non-empty tag is silently dropped.
+
+### Authority enrichment
+
+Place nodes retain resolved Wikidata URIs as `hm:external_wikidata_uri` in
+addition to RDF `owl:sameAs`; person nodes retain `hm:wikidata_id` and
+`hm:viaf_id`. This keeps HMO Wikibase enrichment useful while preserving the
+separate identifier namespaces of the project Wikibase and Wikidata.

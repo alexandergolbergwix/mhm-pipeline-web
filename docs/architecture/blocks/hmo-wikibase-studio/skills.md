@@ -99,3 +99,9 @@ to the wiki; 503 means the SPARQL endpoint is down (fail closed, retry later).
    (`rate_limit_rpm`: 60 audit / 30 autofix) — safe to leave on for routine
    uploads of a few dozen items; for a multi-thousand-item corpus consider
    running "before" only, and "after" as a separate scoped follow-up.
+
+### Skill: verify place authority links
+
+When a place looks mislinked, inspect `wikibase_id` separately from RDF
+`hm:external_wikidata_uri`. Normalize the MARC label, verify the KIMA row's
+Wikidata URI, and rebuild the HMO items before judging the export.

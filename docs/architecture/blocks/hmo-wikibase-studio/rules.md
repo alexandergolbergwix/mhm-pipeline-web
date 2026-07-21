@@ -139,3 +139,7 @@
     dry-run-first migrator swaps the prod `wikibase_entity_mappings` (required)
     + live wiki `hmo_source_uri` (optional after R27). *Why:* the migration
     audit found reconcile had silently never matched (failing open to create).
+
+27. **R27 — Wikibase QIDs and Wikidata QIDs are different namespaces.** HMO
+    item `wikibase_id` values are local project identifiers; external Wikidata
+    and VIAF authority values must be carried as explicit claims/identifiers.

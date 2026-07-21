@@ -2162,3 +2162,12 @@ by NLI. When MARC identifies a current owner, the English shelfmark label and
 P195 description must not claim Jerusalem/NLI ownership. Shelfmarks and P217
 values must pass the shared MARC label normalizer so catalog quote wrappers
 cannot reach Wikidata.
+
+### Rule W-83 — Place authority identifiers MUST preserve their namespace (added 2026-07-21)
+
+A project Wikibase QID (for example `Q1370`) is not a Wikidata QID. MARC
+bracket notation must be removed before KIMA/name-overlap matching; resolved
+Wikidata place URIs are retained separately as HMO `external_wikidata_uri`
+claims. Person `viaf_id`/Wikidata identifiers likewise remain explicit
+authority claims so HMO entities can enrich without conflating identifier
+spaces.

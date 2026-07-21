@@ -1306,6 +1306,14 @@ class GraphBuilder:
                 OWL.sameAs,
                 URIRef(f"https://www.wikidata.org/entity/{wikidata_id}"),
             ))
+            graph.add((
+                place_uri,
+                HM.external_wikidata_uri,
+                Literal(
+                    f"https://www.wikidata.org/entity/{wikidata_id}",
+                    datatype=XSD.anyURI,
+                ),
+            ))
 
     @staticmethod
     def _is_http_uri(value: str) -> bool:

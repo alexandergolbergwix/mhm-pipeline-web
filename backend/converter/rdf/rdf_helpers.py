@@ -272,6 +272,11 @@ def clean_marc_label(
     if strip_enum_prefix:
         cleaned = _ENUM_PREFIX_RE.sub("", cleaned).strip()
     cleaned = cleaned.strip("\"'").strip()
+    # NLI/MARC place headings are sometimes exported as ``[ירושלים]``.
+    # Brackets are catalog notation, not part of the authority label; keeping
+    # them prevents KIMA name-overlap matching and loses the Wikidata QID.
+    if len(cleaned) > 2 and cleaned.startswith("[") and cleaned.endswith("]"):
+        cleaned = cleaned[1:-1].strip()
     cleaned = re.sub(r"[,;:]+\s*$", "", cleaned).strip()
     if cleaned.endswith(".") and not cleaned.endswith(".."):
         cleaned = cleaned[:-1].strip()
