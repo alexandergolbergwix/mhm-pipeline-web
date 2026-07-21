@@ -221,7 +221,6 @@ async def build_manifests(
     ``iiif_manifests/`` directory. Overwrites any existing manifests —
     the builder is deterministic, so re-running on the same TTL is safe.
     """
-    await _lookup_run_with_access(db, run_id, auth, write=True)
     ttl_path = rdf_output_path_for_run(str(run_id))
     await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():
@@ -426,6 +425,7 @@ async def coverage(
 async def build_items(
     run_id: uuid.UUID,
     force_rebuild: bool = Query(False, description="Bypass HmoStudioItemCache and re-export from RDF"),
+    refresh_authority: bool = Query(False, description="Run authority enrichment as part of HMO entity creation"),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> HmoItemBuildResponse:
@@ -436,7 +436,15 @@ async def build_items(
     (``/api/hmo-wikibase-schema/bootstrap``) — a 409 here means the
     ontology grew since the last bootstrap; re-run it and retry.
     """
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    if refresh_authority:
+        from app.pipeline import authority as authority_pipeline
+        from app.pipeline.authority_re_enrich import re_enrich_run
+        from app.models.run import AuthorityMatch, RunRecord
+        records = (await db.execute(select(RunRecord).where(RunRecord.run_id == run_id))).scalars().all()
+        matches = (await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))).scalars().all()
+        await re_enrich_run(db, run, authority_pipeline.get_default_matcher(), skip_cache=True, records=list(records), existing_rows=list(matches))
+        await db.commit()
     ttl_path = rdf_output_path_for_run(str(run_id))
     await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():
