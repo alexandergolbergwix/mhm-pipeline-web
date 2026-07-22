@@ -24,7 +24,7 @@
 | `backend/app/pipeline/hmo_coverage_job.py` | Background coverage build (9–14 min: parses TTL twice via rdflib) |
 | `backend/app/routers/hmo_studio.py` | `/runs/{id}/hmo-studio/*`: build/upload manifests, coverage, build-items, upload-items, status |
 | `backend/app/routers/hmo_studio_items.py` | Per-item review API: list, override PATCH, reconcile, export/import, AI verify, AI-fix apply, single-item live `POST .../{local_id}/push` |
-| `backend/app/routers/hmo_wikibase_schema.py` | Global `/hmo-wikibase-schema/*`: status, verify, bootstrap, last-report, schema AI verify |
+| `backend/app/routers/hmo_wikibase_schema.py` | Global `/hmo-wikibase-schema/*`: status, mirror-report, verify, bootstrap, last-report, schema AI verify |
 | `backend/app/routers/wikibase_writes.py` | Read APIs for the audit log (project editor + admin views) |
 | `backend/converter/wikibase/cloud_client.py` | `WikibaseCloudClient` (read-only) + `WikibaseCloudWriter` (OAuth2/bot; wikibaseintegrator entity writes; retry/backoff) |
 | `backend/converter/wikibase/hmo_exporter.py` | TTL → entity drafts; RDF incoming-edge BFS stamps `control_numbers` per item; comment→`en` normalization + sentence dedup; label/description truncation (250) and string claim truncation (400) |
