@@ -126,3 +126,8 @@ shown; use the Authority review surface to investigate those candidates.
 ### Skill: audit/backfill canonical entities
 
 Run `backend/.venv/bin/python backend/scripts/backfill_hmo_canonical_entities.py` for a read-only report. It scans persisted live read-backs, rejects malformed or duplicate snapshots, and writes nothing by default. After reviewing the report, rerun with `--apply` (optionally `--run-id <uuid>`) to idempotently replace that run's canonical rows.
+
+
+### Skill: enforce the canonical gate
+
+Run `backend/.venv/bin/python backend/scripts/check_hmo_canonical_gate.py --run-id <uuid>` before enabling canonical RDF or Wikidata projections. The command exits non-zero unless every built entity has a valid durable canonical row and no duplicates or missing read-backs exist.
