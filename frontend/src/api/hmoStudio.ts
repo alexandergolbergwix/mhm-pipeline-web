@@ -205,11 +205,16 @@ export const HmoStudio = {
   status: (runId: string) =>
     api.get<HmoStudioStatus>(`/runs/${runId}/hmo-studio/status`),
 
-  buildItems: (runId: string, forceRebuild = false) =>
-    api.post<HmoItemBuildResult>(
-      `/runs/${runId}/hmo-studio/build-items${forceRebuild ? "?force_rebuild=true" : ""}`,
+  buildItems: (runId: string, forceRebuild = false, refreshAuthority = true) => {
+    const params = new URLSearchParams();
+    if (forceRebuild) params.set("force_rebuild", "true");
+    if (refreshAuthority) params.set("refresh_authority", "true");
+    const query = params.toString();
+    return api.post<HmoItemBuildResult>(
+      `/runs/${runId}/hmo-studio/build-items${query ? `?${query}` : ""}`,
       {},
-    ),
+    );
+  },
 
   /**
    * Dry run returns the preview result inline. A live upload makes

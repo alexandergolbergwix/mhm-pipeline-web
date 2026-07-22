@@ -425,7 +425,7 @@ async def coverage(
 async def build_items(
     run_id: uuid.UUID,
     force_rebuild: bool = Query(False, description="Bypass HmoStudioItemCache and re-export from RDF"),
-    refresh_authority: bool = Query(False, description="Run authority enrichment as part of HMO entity creation"),
+    refresh_authority: bool = Query(True, description="Refresh authority evidence as part of every HMO entity build"),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> HmoItemBuildResponse:
