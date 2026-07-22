@@ -79,3 +79,6 @@ Place nodes retain resolved Wikidata URIs as `hm:external_wikidata_uri` in
 addition to RDF `owl:sameAs`; person nodes retain `hm:wikidata_id` and
 `hm:viaf_id`. This keeps HMO Wikibase enrichment useful while preserving the
 separate identifier namespaces of the project Wikibase and Wikidata.
+
+
+Canonical HMO projection: `build_rdf_from_hmo_canonical_cache` reads durable `hmo_canonical_entities` first and falls back to the cache read model only for migration compatibility.
