@@ -36,7 +36,7 @@ from app.models.base import Base, _new_uuid
 class WikidataStudioCache(Base):
     __tablename__ = "wikidata_studio_cache"
     __table_args__ = (
-        UniqueConstraint("run_id", "approved_only", name="uq_wikidata_studio_cache_run_mode"),
+        UniqueConstraint("run_id", "approved_only", "source", name="uq_wikidata_studio_cache_run_mode"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -47,6 +47,7 @@ class WikidataStudioCache(Base):
         UUID(as_uuid=True), nullable=False, index=True,
     )
     approved_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="legacy")
 
     # SHA-256 of the canonical JSON of all build inputs.
     input_fingerprint: Mapped[str] = mapped_column(CHAR(64), nullable=False)
