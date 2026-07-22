@@ -192,9 +192,14 @@ export default function HmoStudioRoute() {
             <span className="muted">/</span>
             <h1 className="text-lg font-semibold">HMO Wikibase Studio</h1>
           </div>
-          <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${statePill.tone}`}>
-            {statePill.label}
-          </GlassPill>
+          <div className="flex items-center gap-2">
+            <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${statePill.tone}`}>
+              {statePill.label}
+            </GlassPill>
+            <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${status?.canonical_ready ? "text-emerald-300" : "text-warn"}`} title="Canonical means every built item has a live Wikibase read-back">
+              {status ? `canonical ${status.canonical_live_count}/${build?.entity_count ?? status.canonical_live_count}` : "canonical loading…"}
+            </GlassPill>
+          </div>
         </Glass>
 
         {error && (
