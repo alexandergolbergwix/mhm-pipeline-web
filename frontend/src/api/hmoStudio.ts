@@ -80,6 +80,8 @@ export interface HmoStudioStatus {
   last_upload_at: string | null;
   last_upload: HmoUploadResult | null;
   wikibase_configured: boolean;
+  canonical_live_count: number;
+  canonical_ready: boolean;
 }
 
 // ── Phase 4/5: full item export + upload ──────────────────────────────
