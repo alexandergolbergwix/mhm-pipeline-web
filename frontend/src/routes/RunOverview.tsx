@@ -153,7 +153,7 @@ export default function RunOverview() {
             to={`/runs/${runId}`}
             kicker="Auth"
             title="Authority"
-            description="Mazal · VIAF · Wikidata · KIMA"
+            description="Mazal · VIAF · Wikidata · KIMA · reviewed with HMO entities"
             statePill={
               <Pill tone="muted">
                 {authorityCounts.total > 0 ? `${authorityCounts.total} matches` : "no matches"}
