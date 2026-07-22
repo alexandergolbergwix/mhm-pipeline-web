@@ -56,15 +56,21 @@ function authorityClaims(claims: HmoResolvedClaim[]): AuthorityClaim[] {
   return result;
 }
 
-export function HmoAuthorityEvidence({claims}: {claims: HmoResolvedClaim[]}) {
+type AuthorityEvidence = NonNullable<import("@/api/hmoStudioItems").HmoStudioItem["authority_evidence"]>[number];
+
+export function HmoAuthorityEvidence({claims, evidence = []}: {claims: HmoResolvedClaim[]; evidence?: AuthorityEvidence[]}) {
   const entries = authorityClaims(claims);
+  const acceptedEvidence = evidence.filter((entry) => entry.accepted && entry.identifier.trim());
   return (
     <section className="space-y-2 border-t border-white/5 pt-3" data-testid="hmo-authority-evidence">
       <div>
         <h4 className="text-sm font-medium">Authority enrichment</h4>
         <p className="text-xs muted">Only persisted, accepted claims are shown. Ambiguous candidates are intentionally withheld.</p>
       </div>
-      {entries.length === 0 ? (
+      {acceptedEvidence.length > 0 && (
+        <p className="text-xs text-emerald-300">{acceptedEvidence.length} accepted authority match(es) persisted in the canonical HMO entity.</p>
+      )}
+      {entries.length === 0 && acceptedEvidence.length === 0 ? (
         <p className="text-sm muted">No Mazal, KIMA, VIAF, or Wikidata claims are attached.</p>
       ) : (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">

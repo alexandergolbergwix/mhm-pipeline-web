@@ -239,7 +239,7 @@ export function HmoItemDetailDrawer({
 
       <AiVerdictReasoningCard verdict={item.ai_verdict} />
 
-      <HmoAuthorityEvidence claims={item.claims} />
+      <HmoAuthorityEvidence claims={item.claims} evidence={item.authority_evidence ?? []} />
 
       {item.upload_outcome && (
         <p className="text-xs muted">
