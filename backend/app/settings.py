@@ -70,6 +70,9 @@ class Settings(BaseSettings):
             and self.wikibase_cloud_oauth_client_secret.strip()
         )
 
+    # Canonical HMO rollout: keep disabled until backfill and shadow checks pass.
+    hmo_canonical_first: bool = Field(default=False)
+
     # ── Registration / spam protection ────────────────────────────────
     resend_api_key: str = Field(default="")
     resend_from_email: str = Field(default="MHM Pipeline <noreply@example.org>")

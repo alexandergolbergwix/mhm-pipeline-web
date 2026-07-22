@@ -41,6 +41,7 @@ from app.models.run_job import JOB_KIND_WIKIDATA_STUDIO_BUILD, JOB_KIND_WIKIDATA
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
+from app.settings import get_settings
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.hmo_canonical import normalize_live_entity
@@ -954,6 +955,8 @@ async def reconcile_against_wikidata(
             live_entities = [raw["canonical_live"] for raw in (cache.resolved_entities if cache else []) if raw.get("canonical_live")]
         if not live_entities:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no canonical HMO entities for run")
+        if get_settings().hmo_canonical_first and not canonical_rows:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="canonical-first rollout requires durable HMO rows; run the backfill gate")
         outcomes: list[ReconcileOutcomeDto] = []
         for live in live_entities:
             accepted = [e for e in live.get("authority_evidence") or [] if e.get("accepted") is True and str(e.get("kind") or "").lower() == "wikidata"]
