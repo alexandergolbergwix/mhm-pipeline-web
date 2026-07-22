@@ -1,6 +1,8 @@
 """Audit/backfill durable canonical HMO rows from live read-back snapshots."""
 from __future__ import annotations
-import argparse, asyncio, json, uuid
+import argparse, asyncio, json, uuid, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import delete, select
 from app.db import SessionLocal
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
