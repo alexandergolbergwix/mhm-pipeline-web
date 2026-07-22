@@ -39,6 +39,8 @@ request).
 
 Before grouping build inputs, `build_items_for_run` runs every MARC record, approved authority match, and approved NER entity key through `canonical_control_number`. This makes harmless storage formatting such as surrounding quotes or whitespace equivalent to the record’s clean 001. The normalisation is a build-boundary requirement: grouping any one source by its raw control number can silently remove its authority/person or NER/work projection.
 
+Canonical source mode reads durable `hmo_canonical_entities` rows first; the per-run HMO cache is only a migration fallback. This keeps Wikidata Studio projections independent of cache retention.
+
 The HMO-to-Wikidata boundary is deliberately narrow. `hmo_instance_qids_for_run`
 reads the run upload ledger, and `hmo_wikidata_projection` accepts a link only
 when the ontology URI exactly matches the canonical `MS_<control-number>` URI
