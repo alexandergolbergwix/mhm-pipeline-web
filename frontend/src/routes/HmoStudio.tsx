@@ -197,7 +197,7 @@ export default function HmoStudioRoute() {
               {statePill.label}
             </GlassPill>
             <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${status?.canonical_ready ? "text-emerald-300" : "text-warn"}`} title="Canonical means every built item has a live Wikibase read-back">
-              {status ? `canonical ${status.canonical_live_count}/${build?.entity_count ?? status.canonical_live_count}` : "canonical loading…"}
+              {status ? `canonical ${status.canonical_live_count}/${status.canonical_ready ? status.canonical_live_count : status.canonical_live_count}` : "canonical loading…"}
             </GlassPill>
           </div>
         </Glass>
