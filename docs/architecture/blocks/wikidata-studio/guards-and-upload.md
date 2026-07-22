@@ -66,3 +66,6 @@ manual apply. The diagnostic `GET …/items/export?format=csv` preserves the
 item fields, linked MARC slice, validation issues, upload state, flattened
 rubric fields, and complete `ai_verdict_json`, so non-passing rows can be
 grouped into safe builder or rubric fixes without reconstructing the prompt.
+
+
+Canonical reconciliation reads durable HMO entity rows first and only falls back to the legacy cache during migration.
