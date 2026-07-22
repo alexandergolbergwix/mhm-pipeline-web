@@ -83,7 +83,7 @@ function studioBuildProgressMessage(job: RunJobSnapshot): string {
 /** Wait for an in-flight job, or start one when the API returns 409. */
 export async function waitForStudioBuild(
   runId: string,
-  params: {approvedOnly: boolean; forceRebuild: boolean},
+  params: {approvedOnly: boolean; forceRebuild: boolean; source?: "legacy" | "canonical"},
 ): Promise<void> {
   const active = await findActiveRunJob(runId, "wikidata_studio_build");
   if (active && isJobActive(active.status)) {
@@ -94,6 +94,7 @@ export async function waitForStudioBuild(
     const job = await ensureRunJob(runId, "wikidata_studio_build", {
       approved_only: params.approvedOnly,
       force_rebuild: true,
+      source: params.source || "legacy",
     });
     await waitForRunJob(runId, job.id);
   }

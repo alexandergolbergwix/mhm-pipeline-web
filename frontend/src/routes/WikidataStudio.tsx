@@ -138,7 +138,7 @@ export default function WikidataStudio() {
     try {
       if (force) {
         setBuildProgress("Starting fresh build…");
-        await waitForStudioBuild(runId, {approvedOnly: flag, forceRebuild: true});
+        await waitForStudioBuild(runId, {approvedOnly: flag, forceRebuild: true, source: projectionSource});
       }
       const fetchPage = () => Studio.build(runId, {
         source: projectionSource,
