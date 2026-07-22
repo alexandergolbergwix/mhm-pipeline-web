@@ -121,3 +121,8 @@ accepted claims already attached to the HMO item, grouped by Mazal, KIMA,
 VIAF, and Wikidata, with external links where available. Candidate matches
 that were ambiguous or failed the false-positive guard are intentionally not
 shown; use the Authority review surface to investigate those candidates.
+
+
+### Skill: audit/backfill canonical entities
+
+Run `backend/.venv/bin/python backend/scripts/backfill_hmo_canonical_entities.py` for a read-only report. It scans persisted live read-backs, rejects malformed or duplicate snapshots, and writes nothing by default. After reviewing the report, rerun with `--apply` (optionally `--run-id <uuid>`) to idempotently replace that run's canonical rows.
