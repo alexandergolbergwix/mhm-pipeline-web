@@ -337,6 +337,11 @@ export default function RunDetail() {
           {run.error && <p className="text-danger text-sm">{run.error}</p>}
         </Glass>
 
+        <Glass as="section" className="p-4 text-sm text-warn">
+          Authority review is now integrated into HMO Studio. Use the HMO Studio link to create canonical entities; this compatibility view remains for historical matches.
+          <Link to={`/runs/${run.id}/hmo-studio`} className="ml-2 underline">Open HMO Studio →</Link>
+        </Glass>
+
         <Glass as="section" className="p-6 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
