@@ -97,6 +97,7 @@ async def studio_items_for_project(
             select(WikidataStudioCache).where(
                 WikidataStudioCache.run_id.in_([uuid.UUID(r) for r in run_ids]),
                 WikidataStudioCache.approved_only == approved_only,
+                WikidataStudioCache.source == source,
             )
         )
     ).scalars().all()
@@ -454,6 +455,7 @@ async def _get_studio_cache_row(
     db: AsyncSession,
     run_id: uuid.UUID,
     approved_only: bool,
+    source: str = "legacy",
 ) -> WikidataStudioCache | None:
     return (
         await db.execute(
@@ -472,6 +474,7 @@ async def execute_studio_build(
     approved_only: bool,
     force_rebuild: bool,
     run_user_id: uuid.UUID | None,
+    source: str = "legacy",
 ) -> WikidataStudioCache:
     """Run the full item builder and upsert the Postgres cache.
 
@@ -488,7 +491,7 @@ async def execute_studio_build(
         records, all_matches, entity_rows, override_rows, approved_only,
         hmo_instance_qids,
     )
-    cached = await _get_studio_cache_row(db, run_id, approved_only)
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
 
     if not force_rebuild and cached is not None and cached.input_fingerprint == fingerprint:
         return cached
@@ -561,7 +564,7 @@ async def execute_studio_build(
 
     summary_dict = result["summary"]
     await _upsert_studio_cache(
-        db, run_id=run_id, approved_only=approved_only,
+        db, run_id=run_id, approved_only=approved_only, source=source,
         fingerprint=fingerprint,
         items=result["items"],
         quickstatements=result["quickstatements"],
@@ -573,7 +576,7 @@ async def execute_studio_build(
         existing=cached,
     )
     await db.commit()
-    row = await _get_studio_cache_row(db, run_id, approved_only)
+    row = await _get_studio_cache_row(db, run_id, approved_only, source)
     if row is None:
         raise RuntimeError(f"studio cache missing after build for run {run_id}")
     return row
@@ -670,6 +673,7 @@ def _studio_response_from_cache(
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
 async def build_studio(
     run_id: uuid.UUID,
+    source: str = Query(default="legacy", pattern="^(legacy|canonical)$"),
     approved_only: bool = Query(
         default=True,
         description="When true (default), only approved authority matches "
@@ -729,7 +733,7 @@ async def build_studio(
         hmo_instance_qids,
     )
 
-    cached = await _get_studio_cache_row(db, run_id, approved_only)
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
 
     if not force_rebuild and cached is not None:
         if cached.input_fingerprint == fingerprint:
@@ -2479,6 +2483,7 @@ async def _upsert_studio_cache(
     *,
     run_id: uuid.UUID,
     approved_only: bool,
+    source: str = "legacy",
     fingerprint: str,
     items: list[dict[str, Any]],
     quickstatements: str,
@@ -2498,6 +2503,7 @@ async def _upsert_studio_cache(
             row = WikidataStudioCache(
                 run_id=run_id,
                 approved_only=approved_only,
+                source=source,
                 input_fingerprint=fingerprint,
                 result_items=items,
                 quickstatements=quickstatements,

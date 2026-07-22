@@ -53,6 +53,7 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
                 approved_only=approved_only,
                 force_rebuild=force_rebuild,
                 run_user_id=run_user_id,
+                source=str(params.get("source") or "legacy"),
             )
     except Exception as exc:  # noqa: BLE001
         logger.exception("wikidata studio build job failed for %s", run_id)
