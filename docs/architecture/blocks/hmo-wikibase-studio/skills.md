@@ -131,3 +131,8 @@ Run `backend/.venv/bin/python backend/scripts/backfill_hmo_canonical_entities.py
 ### Skill: enforce the canonical gate
 
 Run `backend/.venv/bin/python backend/scripts/check_hmo_canonical_gate.py --run-id <uuid>` before enabling canonical RDF or Wikidata projections. The command exits non-zero unless every built entity has a valid durable canonical row and no duplicates or missing read-backs exist.
+
+
+### Skill: staged canonical-first rollout
+
+Set `HMO_CANONICAL_FIRST=true` only after running the backfill and canonical gate for the target runs. Canonical reconciliation then refuses cache-only fallback and requires durable HMO rows. Leave it false during migration and shadow comparison.
