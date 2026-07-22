@@ -813,6 +813,7 @@ async def build_studio(
 @router.get("/{run_id}/wikidata-studio/quickstatements.txt", response_class=PlainTextResponse)
 async def download_quickstatements(
     run_id: uuid.UUID,
+    source: str = Query(default="legacy", pattern="^(legacy|canonical)$"),
     approved_only: bool = Query(default=True),
     item_approved_only: bool = Query(
         default=False,
@@ -830,6 +831,12 @@ async def download_quickstatements(
 ) -> PlainTextResponse:
     """Plain-text QuickStatements TSV — paste into
     https://quickstatements.toolforge.org."""
+    if source == "canonical":
+        cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+        if cached is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="canonical Wikidata Studio build is not ready")
+        return PlainTextResponse(cached.quickstatements)
+
     if not gated:
         if ack != "raw":
             raise HTTPException(

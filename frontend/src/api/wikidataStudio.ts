@@ -243,8 +243,8 @@ export const Studio = {
     return api.get<StudioBuild>(`/runs/${runId}/wikidata-studio?${qs.toString()}`);
   },
 
-  qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false, gated = true) =>
-    `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}${uploadApprovedOnly ? "&upload_approved_only=true" : ""}&gated=${gated ? "true" : "false"}`,
+  qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false, gated = true, source: "legacy" | "canonical" = "legacy") =>
+    `/api/runs/${runId}/wikidata-studio/quickstatements.txt?source=${source}&approved_only=${approvedOnly ? "true" : "false"}${uploadApprovedOnly ? "&upload_approved_only=true" : ""}&gated=${gated ? "true" : "false"}`,
 
   reconcile: (runId: string, approvedOnly = true, source: "legacy" | "canonical" = "legacy") =>
     api.post<ReconcileResponse>(

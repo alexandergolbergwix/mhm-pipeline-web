@@ -476,7 +476,7 @@ export default function WikidataStudio() {
             <button onClick={() => doUpload(false)} disabled={!!busy} className="button-ghost text-sm text-warn">
               {busy === "live" ? "Uploading…" : "Live upload"}
             </button>
-            <a href={Studio.qsUrl(runId!, approvedOnly, uploadApprovedOnly)} download className="button-ghost text-sm">
+            <a href={Studio.qsUrl(runId!, approvedOnly, uploadApprovedOnly, true, projectionSource)} download className="button-ghost text-sm">
               Download QuickStatements.txt
             </a>
             {runId && (
