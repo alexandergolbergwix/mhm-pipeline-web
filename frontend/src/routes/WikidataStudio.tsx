@@ -181,6 +181,7 @@ export default function WikidataStudio() {
 
   async function reconcile() {
     if (!runId) return;
+    if (projectionSource === "canonical") { setError("Canonical HMO projection is review-only until native Wikidata claim mapping is enabled."); return; }
     setBusy("reconcile"); setError(null);
     try {
       const r = await Studio.reconcile(runId, approvedOnly);
@@ -194,6 +195,7 @@ export default function WikidataStudio() {
 
   async function doUpload(dry: boolean) {
     if (!runId) return;
+    if (projectionSource === "canonical") { setError("Canonical HMO projection is review-only; upload is disabled until claim mapping is verified."); return; }
     setBusy(dry ? "dry" : "live"); setError(null);
     try {
       const job = await RunJobs.start(runId, "wikidata_upload", {
