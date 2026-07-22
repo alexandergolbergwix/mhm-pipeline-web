@@ -947,14 +947,15 @@ async def reconcile_against_wikidata(
     here cannot leave a half-reconciled item eligible for accidental
     creation."""
     if source == "canonical":
-        cache = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
-        if cache is None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no HMO canonical cache for run")
+        canonical_rows = (await db.execute(select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id))).scalars().all()
+        live_entities = [row.snapshot for row in canonical_rows]
+        if not live_entities:
+            cache = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
+            live_entities = [raw["canonical_live"] for raw in (cache.resolved_entities if cache else []) if raw.get("canonical_live")]
+        if not live_entities:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no canonical HMO entities for run")
         outcomes: list[ReconcileOutcomeDto] = []
-        for raw in cache.resolved_entities:
-            live = raw.get("canonical_live")
-            if not live:
-                continue
+        for live in live_entities:
             accepted = [e for e in live.get("authority_evidence") or [] if e.get("accepted") is True and str(e.get("kind") or "").lower() == "wikidata"]
             qids = {str(e.get("value") or e.get("wikidata_qid") or "").strip() for e in accepted}
             qids.discard("")
