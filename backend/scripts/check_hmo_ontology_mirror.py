@@ -15,7 +15,12 @@ def main() -> int:
     parser.add_argument("ontology", type=Path, help="JSON list of ontology URIs")
     parser.add_argument("mapping", type=Path, help="JSON list or {ontology_uri: wikibase_id}")
     args = parser.parse_args()
-    ontology = json.loads(args.ontology.read_text(encoding="utf-8"))
+    if args.ontology.suffix.lower() == ".ttl":
+        from converter.wikibase.ontology_schema_reader import read_hmo_schema
+        schema = read_hmo_schema(args.ontology)
+        ontology = [entry.uri for entry in (*schema.classes, *schema.properties)]
+    else:
+        ontology = json.loads(args.ontology.read_text(encoding="utf-8"))
     mapping = json.loads(args.mapping.read_text(encoding="utf-8"))
     mapped = list(mapping.keys()) if isinstance(mapping, dict) else mapping
     print(json.dumps(compare_ontology_mirror(ontology, mapped), ensure_ascii=False, indent=2))
