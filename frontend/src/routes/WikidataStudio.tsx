@@ -184,7 +184,7 @@ export default function WikidataStudio() {
     if (projectionSource === "canonical") { setError("Canonical HMO projection is review-only until native Wikidata claim mapping is enabled."); return; }
     setBusy("reconcile"); setError(null);
     try {
-      const r = await Studio.reconcile(runId, approvedOnly);
+      const r = await Studio.reconcile(runId, approvedOnly, projectionSource);
       const map: Record<string, ReconcileOutcome> = {};
       r.outcomes.forEach((o, i) => { map[`${o.entity_type}:${i}`] = o; });
       setReconcileMap(map);

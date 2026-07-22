@@ -246,9 +246,9 @@ export const Studio = {
   qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false, gated = true) =>
     `/api/runs/${runId}/wikidata-studio/quickstatements.txt?approved_only=${approvedOnly ? "true" : "false"}${uploadApprovedOnly ? "&upload_approved_only=true" : ""}&gated=${gated ? "true" : "false"}`,
 
-  reconcile: (runId: string, approvedOnly = true) =>
+  reconcile: (runId: string, approvedOnly = true, source: "legacy" | "canonical" = "legacy") =>
     api.post<ReconcileResponse>(
-      `/runs/${runId}/wikidata-studio/reconcile?approved_only=${approvedOnly ? "true" : "false"}`,
+      `/runs/${runId}/wikidata-studio/reconcile?source=${source}&approved_only=${approvedOnly ? "true" : "false"}`,
       {},
     ),
 
