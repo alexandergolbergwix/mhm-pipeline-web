@@ -987,6 +987,7 @@ class UploadResponse(BaseModel):
 @router.post("/{run_id}/wikidata-studio/upload", response_model=UploadResponse)
 async def upload_to_wikidata(
     run_id: uuid.UUID,
+    source: str = Query(default="legacy", pattern="^(legacy|canonical)$"),
     dry_run: bool = Query(
         default=True,
         description="Default True — describe what would happen without "
@@ -1013,6 +1014,8 @@ async def upload_to_wikidata(
     hard gate (any ERROR-severity issue blocks the write). Dry-run reports the
     same create/update/BLOCKED decision the live run would take."""
     import os  # noqa: PLC0415
+    if source == "canonical":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="canonical HMO projection is review-only; native Wikidata upload is not enabled")
 
     run = await _lookup_run_with_access(db, run_id, auth, write=not dry_run)
 
