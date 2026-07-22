@@ -43,7 +43,7 @@ from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.hmo_canonical import normalize_live_entity
-from app.pipeline.hmo_canonical_wikidata import canonical_wikidata_fingerprint
+from app.pipeline.hmo_canonical_wikidata import canonical_wikidata_fingerprint, native_wikidata_claims
 from app.pipeline.agent_runner import (
     AgentEvent,
     list_verify_sessions,
@@ -508,7 +508,7 @@ async def execute_studio_build(
         if not canonical:
             raise ValueError(f"no live HMO read-back entities for run {run_id}")
         canonical_fp = canonical_wikidata_fingerprint(canonical)
-        items = [{"local_id": e.local_id, "source_uri": e.source_uri, "hmo_wikibase_id": e.wikibase_id, "labels": e.labels, "descriptions": e.descriptions, "aliases": e.aliases, "claims": e.claims, "authority_evidence": [x for x in e.authority_evidence if x.get("accepted") is True], "projection_source": "hmo_wikibase", "source_fingerprint": e.source_fingerprint} for e in canonical]
+        items = [{"local_id": e.local_id, "source_uri": e.source_uri, "hmo_wikibase_id": e.wikibase_id, "labels": e.labels, "descriptions": e.descriptions, "aliases": e.aliases, "claims": e.claims, "wikidata_claims": native_wikidata_claims(e), "authority_evidence": [x for x in e.authority_evidence if x.get("accepted") is True], "projection_source": "hmo_wikibase", "source_fingerprint": e.source_fingerprint} for e in canonical]
         summary = {"total_items": len(items), "manuscripts": 0, "persons": 0, "works": 0, "statements": sum(len(i["claims"]) for i in items)}
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements="", summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
         row = await _get_studio_cache_row(db, run_id, approved_only, source)
