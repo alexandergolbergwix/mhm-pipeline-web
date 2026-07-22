@@ -59,6 +59,7 @@ export interface StudioBuild {
   pending_match_count: number;
   used_match_count: number;
   approved_only: boolean;
+  source: "legacy" | "canonical";
   record_count: number;
   // Server-side slicing
   total: number;
@@ -176,6 +177,7 @@ export interface WikidataCompareResult {
 }
 
 export interface StudioBuildParams {
+  source?: "legacy" | "canonical";
   approvedOnly?: boolean;
   forceRebuild?: boolean;
   entityType?: string | null;
@@ -216,6 +218,7 @@ export async function fetchAllStudioItems(
 export const Studio = {
   build: (runId: string, params: StudioBuildParams = {}) => {
     const {
+      source = "legacy",
       approvedOnly = true,
       forceRebuild = false,
       entityType,
@@ -227,6 +230,7 @@ export const Studio = {
       uploadOutcome,
     } = params;
     const qs = new URLSearchParams();
+    qs.set("source", source);
     qs.set("approved_only", approvedOnly ? "true" : "false");
     if (forceRebuild) qs.set("force_rebuild", "true");
     if (entityType && entityType !== "all") qs.set("entity_type", entityType);
