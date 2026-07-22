@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.wikibase_cloud_write import (
     OPERATION_ADOPT,
@@ -214,6 +215,12 @@ async def _persist_live_canonical_state(db: AsyncSession, cache_row: HmoStudioIt
         snapshots[entity.local_id] = snapshot
     if not snapshots:
         return
+    existing = (await db.execute(select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == cache_row.run_id))).scalars().all()
+    for row in existing:
+        await db.delete(row)
+    for snapshot in snapshots.values():
+        db.add(HmoCanonicalEntity(run_id=cache_row.run_id, local_id=str(snapshot["local_id"]), wikibase_id=str(snapshot["wikibase_id"]), source_fingerprint=str(snapshot["source_fingerprint"]), snapshot=snapshot))
+
     cache_row.resolved_entities = [
         {**raw, 'canonical_live': snapshots[str(raw.get('local_id') or '')]}
         if str(raw.get('local_id') or '') in snapshots else raw
