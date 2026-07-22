@@ -152,6 +152,7 @@ class StudioBuildResponse(BaseModel):
     pending_match_count: int      # how many are still pending review
     used_match_count: int         # what we actually fed the builder
     approved_only: bool           # which mode was used
+    source: str                   # legacy or canonical HMO source
     record_count: int
     # Server-side slicing metadata
     total: int                    # total items matching current slice params
@@ -678,6 +679,7 @@ def _studio_response_from_cache(
         pending_match_count=cached.pending_match_count,
         used_match_count=cached.used_match_count,
         approved_only=approved_only,
+        source=cached.source,
         record_count=cached.record_count,
         total=total,
         page=page,
