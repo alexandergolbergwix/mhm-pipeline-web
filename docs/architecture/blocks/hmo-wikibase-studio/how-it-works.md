@@ -41,7 +41,7 @@ longer trigger `ModificationFailed`.
 
 The canonical-state boundary is implemented by the hmo_canonical module. Live Wikibase read-backs are normalized into a revision-independent fingerprinted entity shape; RDF and Wikidata projections must consume that shape rather than raw authority matches or pre-Wikibase RDF.
 
-The item-build endpoint accepts  to run the existing matcher/re-enrichment service inside the HMO creation workflow; this is the migration bridge away from a standalone Authority action. The normal default remains cache-safe, while an explicit refresh performs fresh external lookups before the build.
+The item-build endpoint runs the matcher/re-enrichment service inside the HMO creation workflow by default (`refresh_authority=true`). This makes accepted authority evidence part of the canonical HMO build rather than a separate Authority UI action; callers may explicitly disable it for offline/cache-only diagnostics.
 
 **Review.** `fetch_merged_hmo_items` (`hmo_item_views.py:22`) merges the cached
 build with `HmoStudioItemOverride` rows (label/description/alias edits,
