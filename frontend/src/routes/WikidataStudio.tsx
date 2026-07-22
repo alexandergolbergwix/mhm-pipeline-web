@@ -54,6 +54,7 @@ export default function WikidataStudio() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [approvedOnly, setApprovedOnly] = useState(true);
+  const [projectionSource, setProjectionSource] = useState<"legacy" | "canonical">("legacy");
 
   // Project id is needed for the per-item-card "📜 View edit history"
   // affordance (HistoryTimeline is keyed by (project, entity_type,
@@ -140,6 +141,7 @@ export default function WikidataStudio() {
         await waitForStudioBuild(runId, {approvedOnly: flag, forceRebuild: true});
       }
       const fetchPage = () => Studio.build(runId, {
+        source: projectionSource,
         approvedOnly: flag,
         forceRebuild: false,
         entityType: entityFilter !== "all" ? entityFilter : null,
@@ -168,7 +170,7 @@ export default function WikidataStudio() {
     setPage(1);
     void refresh({nextPage: 1});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, approvedOnly, entityFilter, debouncedQuery, sortKey, sortDesc]);
+  }, [runId, approvedOnly, projectionSource, entityFilter, debouncedQuery, sortKey, sortDesc]);
 
   // Page > 1 only — page 1 is covered by the effect above (avoids double fetch on mount).
   useEffect(() => {
@@ -277,6 +279,8 @@ export default function WikidataStudio() {
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="text-2xl font-semibold">Items ready to upload</h2>
               <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
+              <button type="button" onClick={() => { setProjectionSource("legacy"); }} className={projectionSource === "legacy" ? "px-3 py-1 rounded-full bg-white/12 text-ink" : "px-3 py-1 rounded-full muted"}>Legacy</button>
+              <button type="button" onClick={() => { setProjectionSource("canonical"); }} className={projectionSource === "canonical" ? "px-3 py-1 rounded-full bg-biu-sky/20 text-ink" : "px-3 py-1 rounded-full muted"}>HMO canonical</button>
                 <button
                   type="button"
                   onClick={() => setReviewMode("modern")}
@@ -368,6 +372,7 @@ export default function WikidataStudio() {
           </p>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
+            <div className="col-span-full text-xs uppercase tracking-[0.18em] text-biu-sky">Source: {build.source === "canonical" ? "HMO Wikibase canonical entities" : "legacy MARC + authority pipeline"}</div>
             <Stat label="Records" value={build.record_count} />
             <Stat label="Matches fed" value={build.used_match_count}
                   sub={`${build.approved_match_count} approved · ${build.pending_match_count} pending`} />
