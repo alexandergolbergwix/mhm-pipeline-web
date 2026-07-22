@@ -332,6 +332,15 @@ async def get_schema_verify_session(
     return data
 
 
+@router.get("/mirror-report")
+async def get_schema_mirror_report(
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    """Compare the ontology vocabulary with persisted Wikibase mappings."""
+    return await pipeline.schema_mirror_report(db)
+
+
 @router.get("/status", response_model=SchemaStatusResponse)
 async def get_schema_status(
     auth: AuthContext = Depends(current_auth),

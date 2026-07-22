@@ -224,6 +224,15 @@ async def bootstrap_schema(
     )
 
 
+async def schema_mirror_report(db: AsyncSession) -> dict[str, object]:
+    from converter.wikibase.ontology_schema_reader import read_hmo_schema
+    from app.pipeline.hmo_ontology_mirror import compare_ontology_mirror
+    schema = await asyncio.to_thread(read_hmo_schema)
+    existing = await _load_schema_mappings(db)
+    expected = [entry.uri for entry in (*schema.classes, *schema.properties)]
+    return compare_ontology_mirror(expected, existing.keys())
+
+
 async def schema_status(db: AsyncSession) -> SchemaStatusResult:
     """Ontology class/property counts vs. how many already have a live mapping."""
     from converter.wikibase.ontology_schema_reader import read_hmo_schema  # noqa: PLC0415
