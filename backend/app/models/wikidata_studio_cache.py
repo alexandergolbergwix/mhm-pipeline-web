@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
-    Boolean, CHAR, DateTime, Integer, Text, UniqueConstraint, func,
+    Boolean, CHAR, DateTime, Integer, String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
