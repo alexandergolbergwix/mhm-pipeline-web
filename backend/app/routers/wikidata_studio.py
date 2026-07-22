@@ -40,6 +40,7 @@ from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import JOB_KIND_WIKIDATA_STUDIO_BUILD, JOB_KIND_WIKIDATA_VERIFY
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
 from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.hmo_canonical import normalize_live_entity
@@ -501,10 +502,13 @@ async def execute_studio_build(
         return cached
 
     if source == "canonical":
-        hmo_cache = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
-        if hmo_cache is None:
-            raise ValueError(f"no HMO canonical cache for run {run_id}")
-        canonical = [normalize_live_entity(raw["canonical_live"]) for raw in hmo_cache.resolved_entities if raw.get("canonical_live")]
+        canonical_rows = (await db.execute(select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id))).scalars().all()
+        canonical = [normalize_live_entity(row.snapshot) for row in canonical_rows]
+        if not canonical:
+            hmo_cache = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
+            if hmo_cache is None:
+                raise ValueError(f"no HMO canonical cache for run {run_id}")
+            canonical = [normalize_live_entity(raw["canonical_live"]) for raw in hmo_cache.resolved_entities if raw.get("canonical_live")]
         if not canonical:
             raise ValueError(f"no live HMO read-back entities for run {run_id}")
         canonical_fp = canonical_wikidata_fingerprint(canonical)
