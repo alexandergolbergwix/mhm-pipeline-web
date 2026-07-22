@@ -22,6 +22,8 @@ item instead of the static slug), then computes
 - **No cache row** → enqueue a `wikidata_studio_build` run-job and 409 with
   `{code: "studio_build_in_progress", job_id}`; the frontend attaches to the job.
 
+The cache is source-scoped (`legacy` or `canonical`). The source is included in the `wikidata_studio_build` job parameters, so a forced canonical rebuild cannot silently execute the legacy builder; old cache rows with a null source are treated as legacy for compatibility.
+
 `execute_studio_build` (`wikidata_studio.py:448`, also called by the job)
 prewarms Hebrew transliterations (network disabled inside the sync builder),
 runs `build_items_for_run` in a threadpool, applies curator overrides *before*

@@ -476,9 +476,9 @@ async def execute_studio_build(
     *,
     run_id: uuid.UUID,
     approved_only: bool,
+    source: str,
     force_rebuild: bool,
     run_user_id: uuid.UUID | None,
-    source: str = "legacy",
 ) -> WikidataStudioCache:
     """Run the full item builder and upsert the Postgres cache.
 
@@ -608,6 +608,7 @@ async def _enqueue_studio_build_job(
     project_id: uuid.UUID,
     run_id: uuid.UUID,
     approved_only: bool,
+    source: str,
     force_rebuild: bool,
     user_id: uuid.UUID,
 ) -> uuid.UUID:
@@ -630,6 +631,7 @@ async def _enqueue_studio_build_job(
             kind=JOB_KIND_WIKIDATA_STUDIO_BUILD,
             params={
                 "approved_only": approved_only,
+                "source": source,
                 "force_rebuild": force_rebuild,
             },
             created_by=user_id,
@@ -679,7 +681,7 @@ def _studio_response_from_cache(
         pending_match_count=cached.pending_match_count,
         used_match_count=cached.used_match_count,
         approved_only=approved_only,
-        source=cached.source,
+        source=cached.source or "legacy",
         record_count=cached.record_count,
         total=total,
         page=page,
@@ -801,6 +803,7 @@ async def build_studio(
         project_id=run.project_id,
         run_id=run_id,
         approved_only=approved_only,
+        source=source,
         force_rebuild=force_rebuild,
         user_id=auth.user.id,
     )
@@ -2097,6 +2100,7 @@ async def _fetch_wikidata_verify_items(
         approved_only=approved_only,
         force_rebuild=False,
         run_user_id=auth.user.id,
+        source="legacy",
     )
     scoped_items = list(cached.result_items or [])
     run_record_ids = {str(r.control_number) for r in records}
