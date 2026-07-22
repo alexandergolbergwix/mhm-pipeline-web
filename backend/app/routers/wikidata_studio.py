@@ -917,6 +917,7 @@ class ReconcileResponse(BaseModel):
 )
 async def reconcile_against_wikidata(
     run_id: uuid.UUID,
+    source: str = Query(default="legacy", pattern="^(legacy|canonical)$"),
     approved_only: bool = Query(default=True),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
@@ -931,6 +932,22 @@ async def reconcile_against_wikidata(
     decision can never drift from a stale preview, and so a lookup that fails
     here cannot leave a half-reconciled item eligible for accidental
     creation."""
+    if source == "canonical":
+        cache = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
+        if cache is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no HMO canonical cache for run")
+        outcomes: list[ReconcileOutcomeDto] = []
+        for raw in cache.resolved_entities:
+            live = raw.get("canonical_live")
+            if not live:
+                continue
+            accepted = [e for e in live.get("authority_evidence") or [] if e.get("accepted") is True and str(e.get("kind") or "").lower() == "wikidata"]
+            qids = {str(e.get("value") or e.get("wikidata_qid") or "").strip() for e in accepted}
+            qids.discard("")
+            qid = next(iter(qids)) if len(qids) == 1 else None
+            outcomes.append(ReconcileOutcomeDto(local_id=str(live.get("local_id") or ""), label=str((live.get("labels") or {}).get("en") or (live.get("labels") or {}).get("he") or ""), entity_type="", existing_qid=qid, method="accepted_hmo_evidence" if qid else "abstain", message="Accepted HMO Wikibase evidence" if qid else "No unique accepted Wikidata evidence"))
+        return ReconcileResponse(reconciled=len(outcomes), matched=sum(1 for o in outcomes if o.existing_qid), outcomes=outcomes)
+
     native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
     outcomes = await wikidata_upload.reconcile_items(native)
     return ReconcileResponse(
