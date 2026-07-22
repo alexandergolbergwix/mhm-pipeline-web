@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any
+import hashlib
+import json
 
 from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
 
@@ -37,3 +39,9 @@ def wikidata_candidates_from_hmo(
         }
         for entity in materialized
     ]
+
+
+def canonical_wikidata_fingerprint(entities: Iterable[CanonicalHmoEntity]) -> str:
+    candidates = wikidata_candidates_from_hmo(entities)
+    payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(("hmo-wikidata-v1:" + payload).encode()).hexdigest()
