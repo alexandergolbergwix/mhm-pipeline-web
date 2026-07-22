@@ -62,3 +62,17 @@ def native_wikidata_claims(entity: CanonicalHmoEntity) -> list[dict[str, str]]:
             continue
         native.append({"property": property_id, "value": raw})
     return native
+
+
+def quickstatements_from_canonical(entities: Iterable[CanonicalHmoEntity]) -> str:
+    lines: list[str] = []
+    for entity in entities:
+        lines.append("CREATE")
+        for lang, label in sorted(entity.labels.items()):
+            safe = str(label).replace(chr(34), chr(92) + chr(34))
+            lines.append("LAST\tL" + lang + "\t\"" + safe + "\"")
+        for claim in native_wikidata_claims(entity):
+            value = claim["value"]
+            encoded = value if _QID.fullmatch(value) else chr(34) + value.replace(chr(34), chr(92) + chr(34)) + chr(34)
+            lines.append("LAST\t" + claim["property"] + "\t" + encoded)
+    return "\n".join(lines) + ("\n" if lines else "")
