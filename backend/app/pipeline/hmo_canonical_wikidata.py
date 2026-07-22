@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any
 import hashlib
 import json
+import re
 
 from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
 
@@ -45,3 +46,19 @@ def canonical_wikidata_fingerprint(entities: Iterable[CanonicalHmoEntity]) -> st
     candidates = wikidata_candidates_from_hmo(entities)
     payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha256(("hmo-wikidata-v1:" + payload).encode()).hexdigest()
+
+
+_PROPERTY_ID = re.compile(r"^P[1-9][0-9]*$")
+_QID = re.compile(r"^Q[1-9][0-9]*$")
+
+def native_wikidata_claims(entity: CanonicalHmoEntity) -> list[dict[str, str]]:
+    native: list[dict[str, str]] = []
+    for claim in entity.claims:
+        property_id = str(claim.get("wikidata_property") or "").strip()
+        if not _PROPERTY_ID.fullmatch(property_id):
+            continue
+        raw = str(claim.get("wikidata_value") or claim.get("value") or claim.get("target_qid") or "").strip()
+        if not raw or (claim.get("value_type") == "wikibase-item" and not _QID.fullmatch(raw)):
+            continue
+        native.append({"property": property_id, "value": raw})
+    return native
