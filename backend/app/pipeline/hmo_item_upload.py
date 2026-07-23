@@ -212,6 +212,8 @@ async def _persist_live_canonical_state(db: AsyncSession, cache_row: HmoStudioIt
             'canonical_source': 'wikibase',
         }
         snapshot['source_fingerprint'] = canonical_entity_fingerprint(snapshot)
+        snapshot['entity_type'] = entity.entity_type
+        snapshot['control_numbers'] = list(entity.control_numbers)
         snapshots[entity.local_id] = snapshot
     if not snapshots:
         return
@@ -219,7 +221,22 @@ async def _persist_live_canonical_state(db: AsyncSession, cache_row: HmoStudioIt
     for row in existing:
         await db.delete(row)
     for snapshot in snapshots.values():
-        db.add(HmoCanonicalEntity(run_id=cache_row.run_id, local_id=str(snapshot["local_id"]), wikibase_id=str(snapshot["wikibase_id"]), source_fingerprint=str(snapshot["source_fingerprint"]), snapshot=snapshot))
+        db.add(HmoCanonicalEntity(
+            run_id=cache_row.run_id,
+            local_id=str(snapshot["local_id"]),
+            source_uri=str(snapshot.get("source_uri") or ""),
+            entity_type=str(snapshot.get("entity_type") or ""),
+            wikibase_id=str(snapshot["wikibase_id"]),
+            source_fingerprint=str(snapshot["source_fingerprint"]),
+            labels=dict(snapshot.get("labels") or {}),
+            descriptions=dict(snapshot.get("descriptions") or {}),
+            aliases=dict(snapshot.get("aliases") or {}),
+            claims=list(snapshot.get("claims") or []),
+            authority_evidence=list(snapshot.get("authority_evidence") or []),
+            provenance={"control_numbers": list(snapshot.get("control_numbers") or []), "canonical_source": "wikibase"},
+            status="live",
+            snapshot=snapshot,
+        ))
 
     cache_row.resolved_entities = [
         {**raw, 'canonical_live': snapshots[str(raw.get('local_id') or '')]}
