@@ -123,6 +123,14 @@ that were ambiguous or failed the false-positive guard are intentionally not
 shown; use the Authority review surface to investigate those candidates.
 
 
+### Skill: rebuild, upload, and read back a production run
+
+For an explicitly authorized migration of an existing run, use
+`backend/.venv/bin/python -m scripts.rebuild_run_rdf_and_items <run-id> --upload`
+from `backend/`. The command rebuilds RDF and HMO drafts, updates existing
+Wikibase items, reads each live item back, and persists the canonical snapshots.
+Without `--upload` it remains a local rebuild only.
+
 ### Skill: audit/backfill canonical entities
 
 Run `backend/.venv/bin/python backend/scripts/backfill_hmo_canonical_entities.py` for a read-only report. It scans persisted live read-backs, rejects malformed or duplicate snapshots, and writes nothing by default. After reviewing the report, rerun with `--apply` (optionally `--run-id <uuid>`) to idempotently replace that run's canonical rows.
