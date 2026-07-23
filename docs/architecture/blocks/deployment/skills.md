@@ -53,3 +53,8 @@ then ask the user for push permission. See **Rule W-49** in `CLAUDE.md`.
 - `backend/tests/test_snapshot_prune_jobs.py` — scheduler job logic (~8 cases)
 - `backend/tests/unit/test_wikidata_upload_guards.py` — moratorium / fail-closed upload path
 - Smoke: `cd backend && .venv/bin/python -c "from app.main import app; print(len(app.routes))"` (router registration)
+
+
+### Skill: canonical-first rollout preflight
+
+Run `backend/.venv/bin/python backend/scripts/check_hmo_rollout.py --run-id <uuid>` before enabling `HMO_CANONICAL_FIRST`. Add `--legacy` and `--canonical` TTL paths to require identical shadow projections. The command is read-only and exits non-zero until all gates pass.
