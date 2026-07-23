@@ -32,6 +32,7 @@
 | `backend/tests/unit/test_hmo_export_quality.py` | Authority evidence and global duplicate-QID withholding regressions |
 | `backend/app/pipeline/hmo_export_quality_gate.py` | `assert_export_quality` — hard block: raises before caching on any export quality issue |
 | `backend/scripts/hmo_item_verify_fixup_loop.py` | Qubrid/Kimi fixup loop: eval → diagnose → (rebuild) → re-eval per entity; `--persist-verdicts` |
+| `backend/scripts/rebuild_run_rdf_and_items.py` | Controlled production rebuild with explicit `--upload` update/read-back and canonical persistence |
 | `backend/converter/wikibase/resolved_models.py` | `ResolvedWikibaseEntity` incl. `entity_type` + `control_numbers` persisted in `HmoStudioItemCache` |
 | `backend/scripts/audit_hmo_authority_consistency.py` | Deterministic export audit for authority coverage, malformed links, and duplicate local-QID mappings |
 | `backend/app/services/wikibase_credentials.py` | Server-held OAuth config → verified `WikibaseCloudWriter` (checks the session is the expected write user) |

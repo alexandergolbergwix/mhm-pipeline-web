@@ -7,7 +7,7 @@
 | `Procfile` | `release: bash scripts/release.sh` · `web: bash scripts/start.sh` |
 | `scripts/start.sh` | Web entrypoint: exports `EVAL_AGENT_ROOT`/`EVAL_AGENT_STATE_DIR`, `cd backend`, `uvicorn app.main:app` with `--proxy-headers --forwarded-allow-ips='*'`, `$PORT`, `WEB_CONCURRENCY` workers |
 | `scripts/release.sh` | Release phase: fail-fast eval-agent bundle check (`locate_eval_agent()`), then `alembic upgrade head` |
-| `backend/alembic.ini` + `backend/app/migrations/` | Alembic config (`script_location = app/migrations`); versions `0001`…`0032_hmo_coverage_cache` |
+| `backend/alembic.ini` + `backend/app/migrations/` | Alembic config (`script_location = app/migrations`); versions `0001`…`0036_hmo_canonical_contract` |
 | `backend/app/settings.py` | Pydantic settings: env vars / `.env`; normalises Heroku `postgres://` → `postgresql+asyncpg://` (`settings.py:82`) |
 | `backend/app/db.py` | Engine: forced SSL on managed Postgres, `pool_size=5 + max_overflow=10`, 120 s `idle_in_transaction_session_timeout` |
 | `backend/app/main.py` | Lifespan starts `run_job_maintenance_loop()` task, tears down `close_redis()` |
