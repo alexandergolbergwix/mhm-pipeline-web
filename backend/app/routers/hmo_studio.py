@@ -223,6 +223,11 @@ async def build_manifests(
     ``iiif_manifests/`` directory. Overwrites any existing manifests —
     the builder is deterministic, so re-running on the same TTL is safe.
     """
+    refreshed_matches = (await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))).scalars().all()
+    from app.pipeline.hmo_authority_gate import validate_authority_rows
+    authority_gate = validate_authority_rows(refreshed_matches)
+    if not authority_gate["ready"]:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Authority conflicts must be resolved before HMO creation", "authority_gate": authority_gate})
     ttl_path = rdf_output_path_for_run(str(run_id))
     await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():
@@ -447,11 +452,6 @@ async def build_items(
         matches = (await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))).scalars().all()
         await re_enrich_run(db, run, authority_pipeline.get_default_matcher(), skip_cache=True, records=list(records), existing_rows=list(matches))
         await db.commit()
-        refreshed_matches = (await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))).scalars().all()
-        from app.pipeline.hmo_authority_gate import validate_authority_rows
-        authority_gate = validate_authority_rows(refreshed_matches)
-        if not authority_gate["ready"]:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Authority conflicts must be resolved before HMO creation", "authority_gate": authority_gate})
     ttl_path = rdf_output_path_for_run(str(run_id))
     await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():
