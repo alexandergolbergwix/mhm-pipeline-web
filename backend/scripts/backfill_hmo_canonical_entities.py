@@ -37,7 +37,23 @@ async def run(run_id: uuid.UUID | None, apply: bool) -> dict[str, object]:
             if apply and snapshots:
                 await db.execute(delete(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == cache.run_id))
                 for entity in snapshots:
-                    db.add(HmoCanonicalEntity(run_id=cache.run_id, local_id=entity.local_id, wikibase_id=entity.wikibase_id or "", source_fingerprint=entity.source_fingerprint, snapshot=entity.to_dict()))
+                    snapshot = entity.to_dict()
+                    db.add(HmoCanonicalEntity(
+                        run_id=cache.run_id,
+                        local_id=entity.local_id,
+                        source_uri=entity.source_uri,
+                        entity_type=str(snapshot.get("entity_type") or ""),
+                        wikibase_id=entity.wikibase_id or "",
+                        source_fingerprint=entity.source_fingerprint,
+                        labels=entity.labels,
+                        descriptions=entity.descriptions,
+                        aliases=entity.aliases,
+                        claims=entity.claims,
+                        authority_evidence=entity.authority_evidence,
+                        provenance={"control_numbers": list(snapshot.get("control_numbers") or []), "canonical_source": "wikibase"},
+                        status="live",
+                        snapshot=snapshot,
+                    ))
                 report["written"] += len(snapshots)
         if apply:
             await db.commit()
