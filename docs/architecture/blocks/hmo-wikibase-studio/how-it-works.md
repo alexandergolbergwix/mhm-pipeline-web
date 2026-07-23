@@ -123,3 +123,6 @@ Phase 1 canonical contract: `hmo_canonical_entities` stores explicit identity (`
 
 
 Phase 2 HMO creation runs authority enrichment internally and applies `hmo_authority_gate.validate_authority_rows` before resolving RDF entities. Approved external identifiers reused by different headings, or NLI/Mazal identifiers misclassified as VIAF, block creation with a structured conflict report.
+
+
+Phase 3 HMO-first entry: when no RDF artifact exists, `POST .../hmo-studio/build-items` internally builds the source graph from MARC, approved authority matches, and approved extraction entities, then immediately resolves HMO items. Curators no longer need to visit the RDF screen first.
