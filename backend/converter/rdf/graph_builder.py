@@ -53,7 +53,7 @@ def _clean_url_value(value: str | None) -> str:
     cleaned = str(value or "").strip()
     while len(cleaned) >= 2 and cleaned[0] in {"\"", "'"} and cleaned[-1] == cleaned[0]:
         cleaned = cleaned[1:-1].strip()
-    return cleaned
+    return cleaned.strip("\"'")
 
 
 class GraphBuilder:

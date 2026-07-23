@@ -315,12 +315,20 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
         and label_language_for_text(labels["he"]) == "he"
     ):
         labels.pop("en", None)
-    return sanitize_monolingual_map(
+    sanitized = sanitize_monolingual_map(
         {
             lang: _truncate(sanitize_work_title(text), _MAX_LABEL_LENGTH)
             for lang, text in labels.items()
         }
     )
+    # Some MARC/RDF producers attach ``@he`` to an English title. Re-route
+    # only text that is unambiguously Latin so the quality gate stays strict
+    # without changing mixed-script or Hebrew labels.
+    for lang, text in list(sanitized.items()):
+        if lang == "he" and label_language_for_text(text) == "en":
+            sanitized.setdefault("en", text)
+            del sanitized[lang]
+    return sanitized
 
 
 def _enrich_description_with_control_numbers(

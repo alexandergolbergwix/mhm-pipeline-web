@@ -216,7 +216,7 @@ def test_digital_urls_strip_marc_quote_wrappers() -> None:
     from rdflib.namespace import XSD
     data = ExtractedData(
         title="ספר תהילים",
-        digital_url='"https://example.org/manuscript"',
+        digital_url='"https://example.org/manuscript',
         iiif_manifest_url="'https://example.org/manifest'",
     )
     graph = GraphBuilder().build_graph(data, "990001800310205171")

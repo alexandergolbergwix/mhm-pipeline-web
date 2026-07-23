@@ -70,3 +70,12 @@ def test_labels_preserve_hebrew_gershayim() -> None:
     graph.add((person, RDFS.label, Literal('שד"ל', lang="he")))
     labels = _labels_for_node(graph, person)
     assert labels["he"] == 'שד"ל'
+
+
+def test_latin_label_tagged_he_is_rerouted_to_en() -> None:
+    graph = Graph()
+    work = URIRef(f"{HM}Work_bible")
+    graph.add((work, RDF.type, LRMOO.F1_Work))
+    graph.add((work, RDFS.label, Literal("Bible", lang="he")))
+    labels = _labels_for_node(graph, work)
+    assert labels == {"en": "Bible"}
