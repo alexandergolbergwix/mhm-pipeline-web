@@ -82,3 +82,6 @@ separate identifier namespaces of the project Wikibase and Wikidata.
 
 
 Canonical HMO projection: `build_rdf_from_hmo_canonical_cache` reads durable `hmo_canonical_entities` first and falls back to the cache read model only for migration compatibility.
+
+
+When `HMO_CANONICAL_FIRST=true`, RDF build requests that omit an explicit source are routed to the durable canonical HMO projection; explicit canonical requests always use it.

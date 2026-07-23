@@ -110,3 +110,6 @@ verified aliases, approved content-level work QIDs, exact authority author QIDs,
 or safe P2093/local-person fallbacks; it never fuzzy-matches a title. Contents-NER
 `author`/`work_author` metadata is consumed before title splitting so source-backed
 authors cannot disappear between enrichment and item construction.
+
+
+When `HMO_CANONICAL_FIRST=true`, the Wikidata Studio build route defaults legacy requests to the durable canonical HMO projection. The flag is the rollout boundary; explicit legacy mode remains available while it is disabled.
