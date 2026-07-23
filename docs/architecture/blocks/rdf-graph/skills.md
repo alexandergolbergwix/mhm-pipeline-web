@@ -89,3 +89,8 @@ ambiguous homonyms abstain rather than selecting an arbitrary Wikidata QID:
 .venv/bin/python -m scripts.audit_kima_false_positives \
   /path/to/filtered_manuscripts_after_906a.tsv --sample 200
 ```
+
+
+### Skill: promote canonical RDF safely
+
+Run `backend/.venv/bin/python backend/scripts/verify_hmo_projection_gate.py legacy.ttl canonical.ttl`. It exits non-zero when triples differ, preventing an unreviewed canonical promotion. Use `--allow-difference` only after recording an explicit migration review.

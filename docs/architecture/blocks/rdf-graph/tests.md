@@ -30,3 +30,5 @@
 
 - Place authority regression coverage verifies `kima_places` propagates to
   production-place `owl:sameAs` and `hm:external_wikidata_uri` triples. A QID-only approved KIMA match is also covered, ensuring identifier enrichment is not gated on coordinates.
+
+- `backend/scripts/verify_hmo_projection_gate.py` — fail-closed legacy/canonical RDF promotion gate.
