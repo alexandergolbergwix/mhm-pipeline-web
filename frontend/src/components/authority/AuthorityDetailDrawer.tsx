@@ -315,7 +315,7 @@ function MatchCard({
         )}
         {match.viaf_id && (
           <LabeledValue label="VIAF" value={match.viaf_id} mono
-            href={`https://viaf.org/viaf/${match.viaf_id}`} />
+            href={match.viaf_id.startsWith("987007") ? `https://www.nli.org.il/he/authorities/${match.viaf_id}` : `https://viaf.org/viaf/${match.viaf_id}`} />
         )}
         {match.wikidata_qid && (
           <LabeledValue label="Wikidata" value={match.wikidata_qid} mono

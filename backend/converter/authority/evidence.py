@@ -54,6 +54,9 @@ def normalize_viaf_id(value: object) -> str | None:
     text = str(value or "").strip().rstrip("/")
     if "/viaf/" in text.lower():
         text = text.rsplit("/", 1)[-1]
+    # 987007… values are NLI/Mazal authority identifiers, not VIAF clusters.
+    if text.startswith("987007"):
+        return None
     return text if _VIAF_ID_RE.fullmatch(text) else None
 
 

@@ -36,7 +36,7 @@ function TypeBadge({ type }: { type: string }) {
 // ── identifier links ───────────────────────────────────────────────────────
 
 const IDENTIFIER_URL: Record<string, (id: string) => string> = {
-  viaf:     (id) => `https://viaf.org/viaf/${id}`,
+  viaf:     (id) => id.startsWith("987007") ? `https://www.nli.org.il/he/authorities/${id}` : `https://viaf.org/viaf/${id}`,
   wikidata: (id) => `https://www.wikidata.org/wiki/${id}`,
 };
 
