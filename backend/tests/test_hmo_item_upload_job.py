@@ -42,6 +42,15 @@ class _FakeWriter:
     def add_claim(self, entity_id, claim):
         return _FakeOutcome(entity_id=entity_id, status="updated")
 
+    def get_entity(self, entity_id):
+        return {
+            "id": entity_id,
+            "labels": {"en": f"Live {entity_id}"},
+            "descriptions": {},
+            "aliases": {},
+            "claims": {},
+        }
+
     def update_item(self, entity_id, **kwargs):
         return _FakeOutcome(entity_id=entity_id, status="updated")
 

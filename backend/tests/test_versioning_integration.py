@@ -216,12 +216,7 @@ class TestAuthorityPatchEmitsAuthorityEvent:
     async def test_authority_patch_emits_authority_match_event(
         self, db_session, sample_run,
     ) -> None:
-        from app.models.event import (
-            ENTITY_TYPE_AUTHORITY_MATCH,
-            OP_CREATE,
-            OP_PATCH,
-            ProjectEvent,
-        )
+        from app.models.event import ENTITY_TYPE_AUTHORITY_MATCH, ProjectEvent
 
         client = sample_run["client"]
         run_id = sample_run["run_id"]
@@ -231,8 +226,8 @@ class TestAuthorityPatchEmitsAuthorityEvent:
             f"/api/runs/{run_id}/matches/{match_id}",
             json={"approved": True},
         )
-        assert r.status_code == 200, r.text
-        assert r.json()["approved"] is True
+        assert r.status_code == 410, r.text
+        assert "retired" in r.json()["detail"].lower()
 
         events = (
             await db_session.execute(
@@ -242,22 +237,7 @@ class TestAuthorityPatchEmitsAuthorityEvent:
                 )
             )
         ).scalars().all()
-
-        assert len(events) >= 1, (
-            "expected at least one authority_match event after PATCH"
-        )
-        ops = {ev.op for ev in events}
-        assert ops & {OP_CREATE, OP_PATCH}, (
-            f"expected op create or patch, got ops={ops}"
-        )
-
-        # The CREATE event carries full state — find it and assert
-        # approved propagated. (Subsequent PATCHes carry only a diff.)
-        create_evs = [ev for ev in events if ev.op == OP_CREATE]
-        assert create_evs, "expected one create event in the history"
-        latest_create = create_evs[-1]
-        assert latest_create.state is not None
-        assert latest_create.state.get("approved") is True
+        assert events == []
 
 
 # ── 4. Revert round-trip on an ExtractionApproval ─────────────────────

@@ -24,10 +24,8 @@ async def test_start_job_via_api(db_session, sample_run) -> None:
         f"/api/runs/{run_id}/jobs",
         json={"kind": JOB_KIND_AUTHORITY_RE_ENRICH, "params": {"skip_cache": True}},
     )
-    assert r.status_code == 201
-    body = r.json()
-    assert body["kind"] == JOB_KIND_AUTHORITY_RE_ENRICH
-    assert body["status"] in ("queued", "running", "succeeded", "failed")
+    assert r.status_code == 410
+    assert "retired" in r.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
@@ -52,7 +50,7 @@ async def test_duplicate_active_job_returns_409(db_session, sample_run) -> None:
         f"/api/runs/{run_id}/jobs",
         json={"kind": JOB_KIND_AUTHORITY_RE_ENRICH, "params": {}},
     )
-    assert r.status_code == 409
+    assert r.status_code == 410
 
 
 @pytest.mark.asyncio

@@ -212,6 +212,10 @@ async def _persist_live_canonical_state(
     known_qids: dict[str, str],
     writer: Any,
 ) -> None:
+    # Audit writes commit/rollback on the shared session. Refresh the cache
+    # after that boundary before reading ORM attributes, because a rollback
+    # can expire an otherwise non-expiring instance.
+    await db.refresh(cache_row, attribute_names=["id", "run_id", "resolved_entities"])
     property_rows = (
         await db.execute(
             select(WikibaseEntityMapping).where(

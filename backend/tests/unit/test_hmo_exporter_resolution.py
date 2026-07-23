@@ -182,10 +182,10 @@ def test_draft_label_is_truncated_to_wikibase_limit() -> None:
     graph.add((node, RDFS.label, Literal(long_label, lang="he")))
 
     drafts = HmoWikibaseExporter().from_graph(graph)
-    label = drafts[0].labels["he"]
+    label = drafts[0].labels["en"]
     assert len(label) == 250
     assert label.endswith("…")
-    assert len(drafts[0].labels["en"]) == 250
+    assert "he" not in drafts[0].labels
 
 
 def test_paradigm_bridge_nodes_are_not_exported_as_items() -> None:

@@ -49,6 +49,7 @@ from app.pipeline.rdf_build import (
     validate_with_shacl,
 )
 from app.routers.runs import _lookup_run_with_access
+from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
