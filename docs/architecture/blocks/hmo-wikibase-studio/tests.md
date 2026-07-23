@@ -61,3 +61,5 @@
   the "Last upload" column (badge content + column-filter popup) and
   upload-lifecycle AI verification (checkboxes, successful/failed pre-verify,
   the fail-confirm banner's "review" vs "upload anyway" paths).
+
+- `backend/tests/unit/test_hmo_authority_gate.py` — approved identifier conflicts and NLI/VIAF misclassification fail closed before HMO creation.

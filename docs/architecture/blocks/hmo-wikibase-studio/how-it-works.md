@@ -120,3 +120,6 @@ The HMO review table's External authority column now shows accepted persisted en
 
 
 Phase 1 canonical contract: `hmo_canonical_entities` stores explicit identity (`source_uri`, local QID, entity type), labels/descriptions/aliases, claims, accepted/rejected authority evidence, provenance, lifecycle status, and a revision-independent fingerprint. The full JSON snapshot remains for forward-compatible fields.
+
+
+Phase 2 HMO creation runs authority enrichment internally and applies `hmo_authority_gate.validate_authority_rows` before resolving RDF entities. Approved external identifiers reused by different headings, or NLI/Mazal identifiers misclassified as VIAF, block creation with a structured conflict report.
