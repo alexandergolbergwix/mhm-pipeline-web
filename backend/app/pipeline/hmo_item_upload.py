@@ -584,7 +584,7 @@ async def push_single_item(
             entity=entity,
             original=result,
         )
-    if result.entity_id is None:
+    if result.entity_id is None or result.status == "failed":
         if audit_ctx is not None:
             await record_wikibase_write(
                 db, audit_ctx,
@@ -739,10 +739,6 @@ def _string_compatible_claim(claim: ResolvedClaim) -> ResolvedClaim:
     return ResolvedClaim(claim.property_id, "string", value)
 
 
-def _string_compatible_claims(entity: ResolvedWikibaseEntity) -> list[Any]:
-    return [_build_wbi_claim(_string_compatible_claim(claim)) for claim in entity.claims]
-
-
 async def _retry_with_string_compatible_claims(
     writer: Any,
     entity_id: str,
@@ -752,15 +748,35 @@ async def _retry_with_string_compatible_claims(
     entity: ResolvedWikibaseEntity,
     original: EntityEditOutcome,
 ) -> EntityEditOutcome:
+    """Retry an invalid merge one claim at a time.
+
+    A whole-item string fallback is unsafe when one legacy property is a
+    string but another is genuinely monolingualtext. Isolating claims lets
+    the original datatype pass where it is valid and serializes only the
+    property that explicitly reports a scalar mismatch.
+    """
     if not _is_string_datatype_failure(original.message):
         return original
-    return await _bounded_writer_call(
-        writer.update_item,
-        entity_id,
-        labels=labels,
-        descriptions=descriptions,
-        claims=_string_compatible_claims(entity),
-    )
+    last = original
+    for claim in entity.claims:
+        last = await _bounded_writer_call(
+            writer.update_item,
+            entity_id,
+            labels=labels,
+            descriptions=descriptions,
+            claims=[_build_wbi_claim(claim)],
+        )
+        if last.status == "failed" and _is_string_datatype_failure(last.message):
+            last = await _bounded_writer_call(
+                writer.update_item,
+                entity_id,
+                labels=labels,
+                descriptions=descriptions,
+                claims=[_build_wbi_claim(_string_compatible_claim(claim))],
+            )
+        if last.status == "failed":
+            return last
+    return EntityEditOutcome(entity_id, "updated", "ok", original.page_url)
 
 
 async def _retry_create_with_string_compatible_claims(
@@ -771,13 +787,35 @@ async def _retry_create_with_string_compatible_claims(
     entity: ResolvedWikibaseEntity,
     original: EntityEditOutcome,
 ) -> EntityEditOutcome:
+    """Create a claim-less item, then add claims with per-property fallback."""
     if not _is_string_datatype_failure(original.message):
         return original
-    return await _bounded_writer_call(
+    created = await _bounded_writer_call(
         writer.create_item,
         labels=labels,
         descriptions=descriptions,
-        claims=_string_compatible_claims(entity),
+        claims=[],
+    )
+    if created.status == "failed" or not created.entity_id:
+        return created
+    for claim in entity.claims:
+        result = await _bounded_writer_call(
+            writer.add_claim,
+            created.entity_id,
+            _build_wbi_claim(claim),
+        )
+        if result.status == "failed" and _is_string_datatype_failure(result.message):
+            result = await _bounded_writer_call(
+                writer.add_claim,
+                created.entity_id,
+                _build_wbi_claim(_string_compatible_claim(claim)),
+            )
+        if result.status == "failed":
+            return EntityEditOutcome(
+                created.entity_id, "failed", result.message, created.page_url,
+            )
+    return EntityEditOutcome(
+        created.entity_id, "created", "ok", created.page_url,
     )
 
 
