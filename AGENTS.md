@@ -100,6 +100,10 @@ any gaps. Do not push with doc drift — even if docs were updated mid-session,
 re-verify against the full diff. User permission for each push is still required
 separately.
 
+## Claude/Codex skill parity
+
+Use [docs/agent-skill-parity.md](docs/agent-skill-parity.md) to route Claude global workflows to their Codex equivalents. The shared `.claude/commands` and `.codex/commands` catalogs are kept in parity.
+
 ## AI verification — tier-1 judge
 
 Every verify modal (authority, NER, Wikidata Studio, HMO items, HMO schema) and
