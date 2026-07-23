@@ -9,6 +9,7 @@ config, no lazy-loading indirection. Public pages (`/login`,
 `/runs/:runId/{overview,extraction,rdf,wikidata-studio,hmo-studio,linked-data-explorer}`;
 project pages under `/projects/:projectId{,/history,/entity}`; admin under
 `/admin/*`. Adding a page = one file in `src/routes/` + one line in `App.tsx`.
+**New Workflow.** The `RunOverview` page provides a comprehensive overview of the run status and next steps for professors.
 
 **API clients.** All HTTP goes through `api/client.ts:138`'s `api` object:
 same-origin `/api` prefix, `credentials: "include"` (HTTP-only session

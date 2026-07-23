@@ -67,6 +67,25 @@ async function installMocks(page: Page) {
     });
   });
 
+    // HMO status (for overview workflow and recommended next step)
+    await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/status`, async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "built",
+          rdf_present: true,
+          manifest_count: 68,
+          coverage_present: false,
+          last_upload_at: null,
+          last_upload: null,
+          wikibase_configured: true,
+          canonical_live_count: 0,
+          canonical_ready: false,
+        }),
+      });
+    });
+
   // Wikidata studio build
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/build*`, async (route) => {
     await route.fulfill({
@@ -123,6 +142,8 @@ test.describe("Linked Data Explorer", () => {
     await expect(
       page.getByRole("link", { name: /linked data explorer/i }),
     ).toBeVisible({ timeout: 8000 });
+      await expect(page.getByRole("heading", { name: /review hmo catalogue entries/i })).toBeVisible();
+      await expect(page.getByText("ready for review").first()).toBeVisible();
   });
 
   test("tile links to /runs/:id/linked-data-explorer", async ({ page }) => {
