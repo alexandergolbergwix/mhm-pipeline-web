@@ -2207,3 +2207,12 @@ while preserving Hebrew gershayim; an English-only label incorrectly tagged
 fail-closed without discarding legitimate abbreviation marks. Tests:
 `test_graph_builder_codicological_labels.py` and
 `test_hmo_exporter_descriptions.py`.
+
+
+### Rule W-88 — GraphBuilder MUST emit only ontology-declared properties (added 2026-07-23)
+
+The production migration found that anthology records still emitted the removed
+`has_anthology_structure` and `number_of_works` predicates, so the schema
+bootstrap could not resolve the generated HMO claims. Anthology manuscripts now
+receive the declared `hm:AnthologyStructure` type and per-expression anthology
+positions; removed predicates are not minted. Test: `test_graph_builder_codicological_labels.py`.

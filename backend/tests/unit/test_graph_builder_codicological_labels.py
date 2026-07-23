@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rdflib import RDF, RDFS
+from rdflib import RDF, RDFS, URIRef
 
 from converter.config.namespaces import HM, LRMOO
 from converter.rdf.graph_builder import GraphBuilder
@@ -226,3 +226,19 @@ def test_digital_urls_strip_marc_quote_wrappers() -> None:
     assert str(graph.value(digital, HM.digital_access_url)) == "https://example.org/manuscript"
     assert graph.value(digital, HM.digital_access_url).datatype == XSD.anyURI
     assert str(graph.value(digital, HM.iiif_manifest_url)) == "https://example.org/manifest"
+
+
+def test_anthology_uses_canonical_structure_type() -> None:
+    data = ExtractedData(
+        title="ספר תהילים",
+        is_anthology=True,
+        contents=[
+            {"title": "שיר ראשון", "sequence": 1},
+            {"title": "שיר שני", "sequence": 2},
+        ],
+    )
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    ms = URIRef("https://w3id.org/mhm/ontology#MS_990001800310205171")
+    assert (ms, RDF.type, HM.AnthologyStructure) in graph
+    assert not any(str(predicate).endswith("has_anthology_structure") for _, predicate, _ in graph)
+    assert not any(str(predicate).endswith("number_of_works") for _, predicate, _ in graph)

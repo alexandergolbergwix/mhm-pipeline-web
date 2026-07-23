@@ -92,3 +92,9 @@ before `xsd:anyURI` literals are created. HMO labels receive the shared
 work-title sanitizer as a final pass, preserving Hebrew abbreviation marks while
 removing unmatched catalog punctuation before the export-quality gate. An
 English-only label mis-tagged as Hebrew is rerouted to the English slot.
+
+
+Anthology manuscripts are represented by the ontology-declared
+`hm:AnthologyStructure` type on the manuscript; expression position nodes use
+`hm:has_anthology_position`. Removed legacy structure/count predicates are not
+emitted, so schema mapping remains complete.

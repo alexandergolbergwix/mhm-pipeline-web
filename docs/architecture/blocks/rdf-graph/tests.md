@@ -37,3 +37,6 @@
   digital URL normalization and `xsd:anyURI` emission (R20).
 - `backend/tests/unit/test_hmo_exporter_descriptions.py` — unmatched label
   punctuation is removed while Hebrew gershayim are preserved (R20).
+
+- `backend/tests/unit/test_graph_builder_codicological_labels.py` — anthology
+  records use the canonical structure type and emit no removed predicates (R21).

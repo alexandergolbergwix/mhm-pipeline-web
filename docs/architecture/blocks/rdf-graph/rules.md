@@ -137,3 +137,9 @@
    quotes/parentheses cannot block HMO export; Hebrew gershayim remain intact.
    *Why:* the production run rebuild exposed 11 invalid URL literals and 21
    export-quality failures before any live canonical read-back could start.
+
+21. **R21 — GraphBuilder MUST emit only ontology-declared properties.**
+    Anthology records are typed `hm:AnthologyStructure` and their expressions
+    carry `hm:has_anthology_position`; removed legacy predicates are never
+    emitted. *Why:* unsupported triples cannot be mapped or uploaded by HMO
+    Studio and must fail before canonical migration.

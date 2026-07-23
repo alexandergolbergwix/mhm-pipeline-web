@@ -1762,23 +1762,15 @@ class GraphBuilder:
     def _add_anthology_structure(
         self, graph: Graph, ms_uri: URIRef, control_number: str, works_count: int
     ):
-        """Add AnthologyStructure for manuscripts containing multiple works."""
-        anthology_uri = self.uri_gen.anthology_structure_uri(control_number)
-        graph.add((anthology_uri, RDF.type, HM.AnthologyStructure))
-        graph.add(
-            (
-                anthology_uri,
-                RDFS.label,
-                Literal(f"Anthology structure of MS {control_number}", lang="en"),
-            )
-        )
-        graph.add((ms_uri, HM.has_anthology_structure, anthology_uri))
-        graph.add((anthology_uri, HM.number_of_works, Literal(works_count, datatype=XSD.integer)))
-        for pos in range(1, min(works_count, 3) + 1):
-            pos_uri = URIRef(f"{HM}AnthologyPos_{control_number}_{pos:02d}")
-            graph.add((pos_uri, RDF.type, HM.AnthologyPosition))
-            graph.add((pos_uri, HM.anthology_order, Literal(pos, datatype=XSD.integer)))
-            graph.add((anthology_uri, HM.has_anthology_position, pos_uri))
+        """Type an anthology manuscript using the canonical ontology contract.
+
+        The ontology models ``AnthologyStructure`` as a specialization of the
+        manuscript itself. Per-expression ``has_anthology_position`` nodes are
+        emitted by ``_add_content_work``; the former helper minted unsupported
+        ``has_anthology_structure``/``number_of_works`` properties.
+        """
+        del control_number, works_count
+        graph.add((ms_uri, RDF.type, HM.AnthologyStructure))
 
     def _add_subject(
         self,
