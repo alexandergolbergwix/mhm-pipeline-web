@@ -23,6 +23,7 @@
 | `frontend/src/cache/extractionCache.ts` | User-scoped SWR entity cache + `EXTRACTION_ENTITIES_REFRESH_EVENT = "mhm.entities.refreshed"` |
 | `frontend/src/components/glass/` | Design system: `Glass`, `GlassPill`, `LiquidGlassCanvas`, `LiquidGlassSurface`, `liquidGlassMath`, `glassMapCache` |
 | `frontend/src/components/extraction/`, `authority/`, `wikidata/`, `hmo/` | Feature component families (Rule W-16 / W-31 review surfaces) |
+| `frontend/src/components/hmo/HmoPublishConfirmationDialog.tsx` | Shared accessible confirmation gate before a single HMO entry is published or updated |
 | `frontend/e2e/fixtures/*.ts` | Deterministic `page.route()` backend mocks per feature |
 | `frontend/vite.config.ts` | `@` → `src/` alias; dev proxy `/api` → `localhost:8000` |
 | `frontend/vitest.config.ts` | jsdom env, `tests/setup.ts` shims, excludes `e2e/**` |

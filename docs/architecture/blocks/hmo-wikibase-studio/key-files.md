@@ -44,13 +44,14 @@
 | `backend/app/models/hmo_studio_item_cache.py` | Per-run build cache (unique on `run_id`, fingerprinted) |
 | `backend/app/models/hmo_coverage_cache.py` | Durable Postgres coverage cache (Rule W-39) |
 | `backend/app/models/hmo_studio_item_override.py` | Curator override rows (labels/descriptions/aliases/statement edits/approved/ai_verdict) |
-| `frontend/src/routes/HmoStudio.tsx` | Studio page: schema bootstrap panel, manifest build/upload; `HmoItemsPanel` merges item build/upload lifecycle bar + review table |
+| `frontend/src/routes/HmoStudio.tsx` | Studio page: four-step professor-facing workflow, truthful canonical status, advanced schema/config disclosures, and item review |
 | `frontend/src/components/hmo/HmoItemDataStatusBadge.tsx` | Data status pill: new / will update existing / updated |
 | `frontend/src/utils/hmoItemDataStatus.ts` | `resolveHmoItemDataStatus` — derives data status from mapping + last push |
 | `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: lifecycle bar (`ItemBuildPanel`/`ItemUploadPanel` compact) + `HmoItemTable` |
 | `frontend/src/components/hmo/SchemaBootstrapPanel.tsx` | Schema class/property mapping status, dry-run/live bootstrap controls, report results, and schema AI verification |
 | `frontend/src/components/hmo/ItemBuildPanel.tsx` | RDF-backed item build/rebuild controls and build-status summary |
 | `frontend/src/components/hmo/ItemUploadPanel.tsx` | Dry-run-first item upload controls, SHACL override, background-job progress, and upload outcomes |
+| `frontend/src/components/hmo/HmoPublishConfirmationDialog.tsx` | Accessible confirmation gate for single-entry publication and updates |
 | `frontend/src/api/hmoWikibaseSchema.ts` | Typed schema status/bootstrap/report client, including live bootstrap job detection |
 | `frontend/src/api/hmoStudio.ts` | Typed item build, upload, status, and upload-job result helpers |
 | `frontend/src/components/hmo/*` | Review UI: `HmoItemTable`, `HmoItemDetailDrawer`, `HmoAuthorityEvidence` (persisted Mazal/KIMA/VIAF/Wikidata claims), `HmoItemAiVerdictBadge` (click pill → full reasoning popover), `HmoItemVerificationModal` (`useVerifyJob`), `ItemUploadPanel` (pre/post-upload AI verify), schema panels |

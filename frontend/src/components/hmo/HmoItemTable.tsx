@@ -14,7 +14,7 @@ import {resolveHmoItemDataStatus} from "@/utils/hmoItemDataStatus";
 const PAGE_SIZE = 25;
 const HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud";
 
-type ColKey = "class_qid" | "data_status" | "upload_outcome" | "validation" | "ai_verdict" | "approved";
+type ColKey = "type" | "data_status" | "upload_outcome" | "validation" | "ai_verdict" | "approved" | "class_qid" | "source_uri" | "wikibase_id" | "authority";
 
 function itemLabel(item: HmoStudioItem): string {
   return item.labels?.en || item.labels?.he || item.local_id;
@@ -47,6 +47,7 @@ function enrichmentSummary(item: HmoStudioItem): Array<{kind: string; count: num
 }
 
 function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
+  if (col === "type") return [item.class_qid];
   if (col === "validation") {
     if (item.has_blocking_shacl) return ["blocked"];
     const n = item.shacl_issues?.length ?? 0;
@@ -60,7 +61,8 @@ function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
     if (item.approved === false) return ["rejected"];
     return ["pending"];
   }
-  const v = item[col];
+  const v = col === "authority" ? enrichmentSummary(item).map((entry) => entry.kind) : item[col];
+  if (Array.isArray(v)) return v;
   return v == null ? [] : [String(v)];
 }
 
@@ -68,7 +70,7 @@ export interface HmoItemTableProps {
   items: HmoStudioItem[];
   onOpenItem: (item: HmoStudioItem) => void;
   onFilteredChange?: (ids: string[]) => void;
-  onToggleApproved?: (item: HmoStudioItem, next: boolean) => void;
+  onToggleApproved?: (item: HmoStudioItem, next: boolean | null) => void;
 }
 
 export function HmoItemTable({
@@ -83,6 +85,7 @@ export function HmoItemTable({
   const [page, setPage] = useState(1);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, Set<string>>>>({});
   const [popup, setPopup] = useState<{col: ColKey; x: number; y: number} | null>(null);
+  const [showTechnical, setShowTechnical] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -99,6 +102,18 @@ export function HmoItemTable({
       return true;
     });
   }, [items, search, colFilters]);
+
+  const activeFilters = Object.entries(colFilters).flatMap(([col, values]) =>
+    [...(values ?? [])].map((value) => ({col: col as ColKey, value})),
+  );
+
+  const removeFilter = useCallback((col: ColKey, value: string) => {
+    setColFilters((prev) => {
+      const next = new Set(prev[col] ?? []);
+      next.delete(value);
+      return {...prev, [col]: next};
+    });
+  }, []);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -157,29 +172,57 @@ export function HmoItemTable({
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search label, local ID, source URI…"
+        placeholder="Search title, shelfmark, author, place, or record number…"
         className="input-glass text-sm w-full max-w-md"
         data-testid="hmo-item-search"
       />
+
+      <div className="flex flex-wrap items-center gap-2" aria-label="Table filters">
+        <span className="text-xs muted">Filters:</span>
+        {(["approved", "validation", "data_status", "ai_verdict"] as ColKey[]).map((col) => (
+          <button
+            key={col}
+            type="button"
+            className="button-ghost text-xs"
+            onClick={(e) => setPopup({col, x: e.clientX, y: e.clientY})}
+          >
+            {col === "approved" ? "Review status" : col === "validation" ? "Data quality" : col === "data_status" ? "Publication status" : "AI review"}
+          </button>
+        ))}
+        {activeFilters.map(({col, value}) => (
+          <button key={`${col}-${value}`} type="button" className="rounded-full border border-white/15 px-2 py-1 text-xs" onClick={() => removeFilter(col, value)}>
+            {value} ×
+          </button>
+        ))}
+        {activeFilters.length > 0 && (
+          <button type="button" className="button-ghost text-xs" onClick={() => setColFilters({})}>Clear all</button>
+        )}
+        <button type="button" className="button-ghost text-xs" onClick={() => setShowTechnical((value) => !value)}>
+          {showTechnical ? "Hide technical columns" : "Show technical columns"}
+        </button>
+      </div>
 
       <CuratorTableScroll data-testid="hmo-item-table-scroll">
         <table className="w-full text-sm" data-testid="hmo-item-table">
           <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0 z-10 table-head">
             <tr>
               {([
-                ["label", "Label", true],
-                ["local_id", "Local ID", true],
-                ["class_qid", "Class", false],
-                ["source_uri", "Source URI", false],
-                ["data_status", "Data status", false],
-                ["wikibase_id", "Wikibase QID (local)", false],
-                ["authority", "External authority", false],
-                ["upload_outcome", "Last push", false],
-                ["validation", "Validation", false],
-                ["ai_verdict", "AI verdict", false],
-                ["approved", "Approved", false],
+                ["label", "Title / shelfmark", true],
+                ["type", "Type", false],
+                ["approved", "Review status", false],
+                ["validation", "Data quality", false],
+                ["data_status", "Publication status", false],
+                ["ai_verdict", "AI review", false],
+                ...(showTechnical ? [
+                  ["local_id", "Record ID", true],
+                  ["class_qid", "Technical class", false],
+                  ["source_uri", "Source URI", false],
+                  ["wikibase_id", "HMO record ID", false],
+                  ["authority", "External authority", false],
+                  ["upload_outcome", "Last publication", false],
+                ] : []),
               ] as const).map(([key, label, sortable]) => (
-                <th key={key} className="text-left px-3 py-2">
+                <th key={String(key)} className="text-left px-3 py-2">
                   {sortable ? (
                     <button type="button" className="hover:text-ink" onClick={() => toggleSort(key === "label" ? "label" : "local_id")}>
                       {label}
@@ -208,9 +251,18 @@ export function HmoItemTable({
             {pageItems.map((item) => (
               <tr key={item.local_id} className="border-t border-white/5" data-testid={`hmo-item-row-${item.local_id}`}>
                 <td className="px-3 py-2">{itemLabel(item)}</td>
-                <td className="px-3 py-2 font-mono text-xs">{item.local_id}</td>
-                <td className="px-3 py-2 font-mono text-xs">{item.class_qid}</td>
-                <td className="px-3 py-2 text-xs truncate max-w-[200px]" title={item.source_uri}>
+                <td className="px-3 py-2">{item.class_qid}</td>
+                <td className="px-3 py-2">
+                  {item.approved === null ? "Pending review" : item.approved ? "Approved" : "Rejected"}
+                </td>
+                <td className="px-3 py-2">
+                  <HmoItemShaclBadge issues={item.shacl_issues ?? []} localId={item.local_id} />
+                </td>
+                <td className="px-3 py-2"><HmoItemDataStatusBadge item={item} /></td>
+                <td className="px-3 py-2"><HmoItemAiVerdictBadge verdict={item.ai_verdict} localId={item.local_id} /></td>
+                {showTechnical && <td className="px-3 py-2 font-mono text-xs">{item.local_id}</td>}
+                {showTechnical && <td className="px-3 py-2 font-mono text-xs">{item.class_qid}</td>}
+                {showTechnical && <td className="px-3 py-2 text-xs truncate max-w-[200px]" title={item.source_uri}>
                   {item.wikibase_id ? (
                     <a
                       href={`${HMO_WIKIBASE_BASE_URL}/wiki/Item:${item.wikibase_id}`}
@@ -221,14 +273,11 @@ export function HmoItemTable({
                       Open Wikibase entity ↗
                     </a>
                   ) : item.source_uri}
-                </td>
-                <td className="px-3 py-2" data-testid={`hmo-item-data-status-${item.local_id}`}>
-                  <HmoItemDataStatusBadge item={item} />
-                </td>
-                <td className="px-3 py-2 font-mono text-xs" title="Project Wikibase Cloud identifier; not a Wikidata QID">
+                </td>}
+                {showTechnical && <td className="px-3 py-2 font-mono text-xs" title="Project HMO record identifier">
                   {item.wikibase_id ?? "—"}
-                </td>
-                <td className="px-3 py-2 text-xs">
+                </td>}
+                {showTechnical && <td className="px-3 py-2 text-xs">
                   {enrichmentSummary(item).length ? (
                     <div className="flex flex-wrap gap-1" title="Accepted external authority evidence persisted on this HMO entity">
                       {enrichmentSummary(item).map(({kind, count}) => (
@@ -236,8 +285,8 @@ export function HmoItemTable({
                       ))}
                     </div>
                   ) : <span className="muted">None</span>}
-                </td>
-                <td className="px-3 py-2" data-testid={`hmo-item-upload-outcome-${item.local_id}`}>
+                </td>}
+                {showTechnical && <td className="px-3 py-2" data-testid={`hmo-item-upload-outcome-${item.local_id}`}>
                   <HmoItemUploadOutcomeBadge
                     outcome={item.upload_outcome}
                     message={item.upload_message}
@@ -245,31 +294,30 @@ export function HmoItemTable({
                     localId={item.local_id}
                     showDetail
                   />
-                </td>
+                </td>}
                 <td className="px-3 py-2">
-                  <HmoItemShaclBadge issues={item.shacl_issues ?? []} localId={item.local_id} />
-                </td>
-                <td className="px-3 py-2">
-                  <HmoItemAiVerdictBadge verdict={item.ai_verdict} localId={item.local_id} />
-                </td>
-                <td className="px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={item.approved === true}
-                    onChange={(e) => onToggleApproved?.(item, e.target.checked)}
+                  <select
+                    value={item.approved === null ? "pending" : item.approved ? "approved" : "rejected"}
+                    onChange={(e) => onToggleApproved?.(item, e.target.value === "pending" ? null : e.target.value === "approved")}
+                    aria-label={`Review status for ${itemLabel(item)}`}
                     data-testid={`hmo-item-approved-${item.local_id}`}
-                  />
+                    className="input-glass text-xs"
+                  >
+                    <option value="pending">Pending review</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
                 </td>
                 <td className="px-3 py-2">
                   <button type="button" className="button-ghost text-xs" onClick={() => onOpenItem(item)}>
-                    Open
+                    Review entry
                   </button>
                 </td>
               </tr>
             ))}
             {pageItems.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-3 py-6 text-center muted">No items match.</td>
+                <td colSpan={showTechnical ? 14 : 8} className="px-3 py-6 text-center muted">No entries match.</td>
               </tr>
             )}
           </tbody>

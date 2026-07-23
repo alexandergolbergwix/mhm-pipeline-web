@@ -64,7 +64,10 @@
   the fail-confirm banner's "review" vs "upload anyway" paths).
 - `frontend/e2e/hmo-wikibase-studio.spec.ts` — Phase 7 acceptance coverage:
   schema class/property counts, dry-run bootstrap defaults, item-build gating,
-  and the item-upload request payload/result summary.
+  item-upload request payload/result summary, and the advanced schema disclosure.
+- `frontend/e2e/hmo-wikibase-items.spec.ts` — review-table filters, tri-state
+  editorial decisions, publish confirmation, technical-column disclosure, and
+  upload-lifecycle verification paths.
 
 - `backend/tests/unit/test_hmo_authority_gate.py` — approved identifier conflicts and NLI/VIAF misclassification fail closed before HMO creation.
 

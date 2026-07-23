@@ -33,6 +33,7 @@ test.describe("HMO Wikibase Studio lifecycle", () => {
 
     await gotoHmoBuildUploadTab(page);
 
+    await page.getByText("Advanced: catalogue schema maintenance").click();
     await expect(page.getByRole("heading", {name: /10\/10 classes/})).toBeVisible();
     await expect(page.getByRole("heading", {name: /20 properties mapped/})).toBeVisible();
     await expect(page.getByTestId("hmo-upload-dry-run")).toBeChecked();
@@ -82,6 +83,6 @@ test.describe("HMO Wikibase Studio lifecycle", () => {
       update_existing: false,
       allow_shacl_errors: false,
     });
-    await expect(page.getByText(/Would create:/)).toBeVisible();
+    await expect(page.getByTestId("hmo-item-upload-actions").getByText("Would create:")).toBeVisible();
   });
 });

@@ -227,7 +227,7 @@ export function ItemUploadPanel({
   const controls = (
     <>
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-1 text-sm muted">
+        <label className="flex items-center gap-1 text-sm muted" title="Show the entries that would be published without changing the live catalogue.">
           <input
             type="checkbox"
             checked={dryRun}
@@ -235,11 +235,11 @@ export function ItemUploadPanel({
             disabled={busy || jobRunning || preVerifyRunning}
             data-testid="hmo-upload-dry-run"
           />
-          Dry run
+          Preview only
         </label>
         <label
           className="flex items-center gap-1 text-sm muted"
-          title="Refresh labels, descriptions, and new claims on items that already have a live Wikibase QID"
+          title="Update entries that have already been published in the HMO catalogue."
         >
           <input
             type="checkbox"
@@ -248,21 +248,21 @@ export function ItemUploadPanel({
             disabled={busy || jobRunning || preVerifyRunning}
             data-testid="hmo-upload-update-existing"
           />
-          Reupload (update existing)
+          Update published entries
         </label>
-        <label
-          className="flex items-center gap-1 text-sm muted"
-          title="When off, items with SHACL Violation/Error issues are skipped (dry-run: would block). Rebuild items after RDF fixes to clear validation errors."
-        >
-          <input
-            type="checkbox"
-            checked={allowShaclErrors}
-            onChange={(e) => setAllowShaclErrors(e.target.checked)}
-            disabled={busy || jobRunning || preVerifyRunning}
-            data-testid="hmo-upload-allow-shacl-checkbox"
-          />
-          Upload items with validation errors
-        </label>
+        <details className="text-sm muted">
+          <summary className="cursor-pointer">Advanced publication checks</summary>
+          <label className="mt-2 flex items-center gap-1" title="When enabled, entries with blocking validation errors can still be sent to the live catalogue.">
+            <input
+              type="checkbox"
+              checked={allowShaclErrors}
+              onChange={(e) => setAllowShaclErrors(e.target.checked)}
+              disabled={busy || jobRunning || preVerifyRunning}
+              data-testid="hmo-upload-allow-shacl-checkbox"
+            />
+            Allow entries with blocking validation errors
+          </label>
+        </details>
         <button
           onClick={handleUploadClick}
           disabled={busy || jobRunning || preVerifyRunning || !canUpload || (!dryRun && !wikibaseConfigured)}
@@ -274,10 +274,10 @@ export function ItemUploadPanel({
               ? "Verifying with AI…"
               : dryRun
                 ? "Previewing…"
-                : "Uploading…"
+                : "Publishing…"
             : dryRun
               ? "Preview upload"
-              : "Upload items"}
+              : "Publish approved entries"}
         </button>
         {!dryRun && !wikibaseConfigured && (
           <span className="text-xs text-warn">

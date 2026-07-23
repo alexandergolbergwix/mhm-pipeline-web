@@ -38,6 +38,7 @@ export function HmoItemsPanel({
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [verifyIds, setVerifyIds] = useState<string[] | undefined>(undefined);
   const [verifyActionId, setVerifyActionId] = useState<string | undefined>(undefined);
+  const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
 
   const autofixItemIds = useMemo(() => {
     const visible = new Set(filteredIds);
@@ -70,9 +71,15 @@ export function HmoItemsPanel({
     void load();
   }, [load, refreshToken]);
 
-  const handleToggleApproved = useCallback(async (item: HmoStudioItem, next: boolean) => {
-    await HmoStudioItems.patchOverride(runId, item.local_id, {approved: next});
-    await load();
+  const handleToggleApproved = useCallback(async (item: HmoStudioItem, next: boolean | null) => {
+    setDecisionFeedback(null);
+    try {
+      await HmoStudioItems.patchOverride(runId, item.local_id, {approved: next});
+      await load();
+      setDecisionFeedback(next === true ? "Entry marked approved." : next === false ? "Entry marked rejected." : "Entry returned to pending review.");
+    } catch (e) {
+      setDecisionFeedback(e instanceof ApiError ? e.detail : "We could not save this decision. Nothing was changed.");
+    }
   }, [load, runId]);
 
   return (
@@ -131,6 +138,8 @@ export function HmoItemsPanel({
           onUploaded={onLifecycleChange}
         />
       </div>
+
+      {decisionFeedback && <p className="text-sm text-biu-sky" role="status">{decisionFeedback}</p>}
 
       {!buildPresent && (
         <p className="muted text-sm">Build items above before the review table loads.</p>

@@ -26,7 +26,19 @@
   defaults, and upload gating. The focused Playwright spec passes. Frontend
   unit test infrastructure (`yarn test:unit`) remains separately broken
   repo-wide because of a missing `@testing-library/dom` peer dependency.
-- **Phase 8: read-only sweep verified; live pass remains explicitly gated.**
+
+  **Professor-facing review UI: implemented and browser-tested.** `HmoStudio`
+  now leads with a four-step Prepare → Review → Preview → Publish workflow,
+  uses truthful canonical confirmation wording, and places schema/server
+  maintenance behind advanced disclosures. The item table defaults to
+  title/type/review status/data quality/publication status/AI review, exposes
+  visible search and filter chips, supports Pending/Approved/Rejected decisions
+  with save feedback, and keeps technical identifiers in an opt-in disclosure.
+  Single-entry publication/update actions require the accessible
+  `HmoPublishConfirmationDialog`; bulk publication remains preview-first.
+  `yarn tsc --noEmit`, `git diff --check`, and the focused 3-test HMO Playwright
+  suite pass after the change.
+**Phase 8: read-only sweep verified; live pass remains explicitly gated.**
   `backend/scripts/run_hmo_phase8.py` runs the focused backend/frontend sweep
   and, with `--live`, enforces the ordered schema → item build → dry-run upload
   → live upload → repeat/idempotency workflow. Live writes require both

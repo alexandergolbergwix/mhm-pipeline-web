@@ -54,7 +54,7 @@ The canonical-state boundary is implemented by the hmo_canonical module. Live Wi
 
 The item-build endpoint runs the matcher/re-enrichment service inside the HMO creation workflow by default (`refresh_authority=true`). This makes accepted authority evidence part of the canonical HMO build rather than a separate Authority UI action; callers may explicitly disable it for offline/cache-only diagnostics.
 
-The HMO Studio lifecycle bar displays the same readiness counters, so curators can distinguish a dry-run/build preview from a canonical live-backed state before opening downstream projections.
+The HMO Studio lifecycle bar displays the same readiness counters, so curators can distinguish a dry-run/build preview from a canonical live-backed state before opening downstream projections. The route presents a four-step **Prepare → Review → Preview → Publish** workflow in plain language; schema maintenance and server connection details are behind advanced disclosures. The canonical badge says `not yet confirmed`, `N entries confirmed`, or `all entries confirmed` rather than fabricating a denominator when no expected total is available.
 
 The status endpoint also reports `canonical_live_count` and `canonical_ready`; readiness is true only when every built entity has a persisted live Wikibase read-back, preventing downstream projections from treating a dry-run preview as canonical.
 
@@ -128,6 +128,8 @@ versioning events before the network call (`_audit_manifest_upload_intent`,
 
 
 The HMO review table's External authority column now shows accepted persisted enrichment as source/count badges (Wikidata, VIAF, Mazal/NLI), while the Wikibase QID column remains explicitly local.
+
+The default review table is aimed at library editors: title/shelfmark, type, review status, data quality, publication status, and AI review are visible first. Approval is tri-state (`Pending review`, `Approved`, `Rejected`) and saves with a status message; search and filter chips are visible without opening a technical menu. Record IDs, source URIs, local QIDs, authority evidence, and upload audit details are available through `Show technical columns`. Single-entry publish/update actions in `HmoItemDetailDrawer` always pass through `HmoPublishConfirmationDialog`; bulk publication remains preview-first and places the validation-error override under `Advanced: publication checks`.
 
 **Phase 9 hardening.** `schema_mirror_report` exposes label/datatype drift. The
 server writer reads `WIKIBASE_CLOUD_MIN_WRITE_INTERVAL_SECONDS` and throttles

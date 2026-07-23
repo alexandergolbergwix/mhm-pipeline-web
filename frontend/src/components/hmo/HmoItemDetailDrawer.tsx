@@ -9,6 +9,7 @@ import {HmoItemMappingBadge} from "@/components/hmo/HmoItemMappingBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
 import {HmoAuthorityEvidence} from "@/components/hmo/HmoAuthorityEvidence";
+import {HmoPublishConfirmationDialog} from "@/components/hmo/HmoPublishConfirmationDialog";
 
 const HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud";
 
@@ -66,6 +67,7 @@ export function HmoItemDetailDrawer({
   const [sparqlLabel, setSparqlLabel] = useState("");
   const [pushing, setPushing] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
+  const [publishAction, setPublishAction] = useState<"publish" | "update" | null>(null);
 
   useEffect(() => {
     if (pinned) return;
@@ -167,12 +169,15 @@ export function HmoItemDetailDrawer({
     <Glass
       variant="drawer"
       className="fixed right-0 top-0 bottom-0 z-40 w-full max-w-[640px] p-5 overflow-y-auto space-y-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="hmo-item-drawer-title"
       data-testid="hmo-item-detail-drawer"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="kicker">HMO Wikibase item</div>
-          <h3 className="text-lg font-medium">{labels.en || labels.he || item.local_id}</h3>
+          <h3 id="hmo-item-drawer-title" className="text-lg font-medium">{labels.en || labels.he || item.local_id}</h3>
           <p className="muted text-xs font-mono mt-1">
             {item.wikibase_id ? (
               <a
@@ -192,11 +197,11 @@ export function HmoItemDetailDrawer({
             Pin
           </label>
           {item.override_id && projectId && (
-            <button type="button" className="button-ghost text-xs" onClick={() => setShowHistory((v) => !v)}>
-              📜
+              <button type="button" className="button-ghost text-xs" aria-label="Toggle publication history" onClick={() => setShowHistory((v) => !v)}>
+              History
             </button>
           )}
-          <button type="button" className="button-ghost text-xs" onClick={onClose}>Close</button>
+          <button type="button" className="button-ghost text-xs" aria-label="Close entry review" onClick={onClose}>Close</button>
         </div>
       </div>
 
@@ -224,13 +229,13 @@ export function HmoItemDetailDrawer({
             <button type="button" className="button-primary text-xs" onClick={() => void applyAutofix()} disabled={saving}>
               Apply AI fix
             </button>
-            <button type="button" className="button-primary text-xs" onClick={() => void applyAutofixAndPush()} disabled={saving || pushing}>
-              Apply fix &amp; push
+            <button type="button" className="button-primary text-xs" onClick={() => setPublishAction(item.wikibase_id ? "update" : "publish")} disabled={saving || pushing}>
+              Apply fix &amp; publish
             </button>
           </>
         ) : null}
-        <button type="button" className="button-ghost text-xs" onClick={() => void pushToWikibase()} disabled={pushing}>
-          {pushing ? "Pushing…" : "Push to Wikibase now"}
+        <button type="button" className="button-ghost text-xs" onClick={() => setPublishAction(item.wikibase_id ? "update" : "publish")} disabled={pushing}>
+          {pushing ? "Publishing…" : item.wikibase_id ? "Update published entry" : "Publish this entry"}
         </button>
       </div>
 
@@ -331,6 +336,23 @@ export function HmoItemDetailDrawer({
           projectId={projectId}
           entityType="hmo_item_override"
           entityId={item.override_id}
+        />
+      )}
+
+      {publishAction && (
+        <HmoPublishConfirmationDialog
+          itemLabel={labels.en || labels.he || item.local_id}
+          action={publishAction}
+          busy={pushing || saving}
+          onCancel={() => setPublishAction(null)}
+          onConfirm={() => {
+            setPublishAction(null);
+            if (publishAction === "update" && (item.ai_verdict as {suggested_fixes?: unknown[]} | null)?.suggested_fixes?.length) {
+              void applyAutofixAndPush();
+            } else {
+              void pushToWikibase();
+            }
+          }}
         />
       )}
     </Glass>

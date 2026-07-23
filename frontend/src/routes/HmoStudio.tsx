@@ -175,6 +175,7 @@ export default function HmoStudioRoute() {
   }, [status]);
 
   const wikibaseConfigured = !!status?.wikibase_configured;
+  const canonicalStatus = getCanonicalStatus(status);
 
   return (
     <Layout>
@@ -196,8 +197,8 @@ export default function HmoStudioRoute() {
             <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${statePill.tone}`}>
               {statePill.label}
             </GlassPill>
-            <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${status?.canonical_ready ? "text-emerald-300" : "text-warn"}`} title="Canonical means every built item has a live Wikibase read-back">
-              {status ? `canonical ${status.canonical_live_count}/${status.canonical_ready ? status.canonical_live_count : status.canonical_live_count}` : "canonical loading…"}
+            <GlassPill className={`px-3 py-0.5 text-[10px] kicker ${canonicalStatus.tone}`} title={canonicalStatus.detail}>
+              {canonicalStatus.label}
             </GlassPill>
           </div>
         </Glass>
@@ -209,8 +210,34 @@ export default function HmoStudioRoute() {
         {/* Corpus RDF graph overview — same stats as the RDF Graph tab */}
         {runId && <GraphOverviewSummary runId={runId} />}
 
-        {/* Ontology schema bootstrap (global, shared across every run) */}
-        <SchemaBootstrapPanel runId={runId} />
+        <Glass as="section" className="p-6 space-y-4" aria-labelledby="hmo-workflow-heading">
+          <div>
+            <div className="kicker">Your review workflow</div>
+            <h2 id="hmo-workflow-heading" className="text-lg font-medium">Prepare, review, preview, publish</h2>
+            <p className="muted text-sm mt-1">
+              Follow these four steps to check catalogue entries before they are published.
+            </p>
+          </div>
+          <ol className="grid gap-3 md:grid-cols-4">
+            {[
+              ["Prepare", "Prepare catalogue data and generated HMO entries."],
+              ["Review", "Check entries, quality, and editorial decisions."],
+              ["Preview", "See what will change before publishing."],
+              ["Publish", "Publish approved entries to the HMO catalogue."],
+            ].map(([title, description], index) => (
+              <li key={title} className="border border-white/10 rounded-lg p-3 space-y-2">
+                <span className="kicker">{index + 1}</span>
+                <h3 className="font-medium">{title}</h3>
+                <p className="muted text-xs leading-relaxed">{description}</p>
+              </li>
+            ))}
+          </ol>
+        </Glass>
+
+        <details className="space-y-3">
+          <summary className="cursor-pointer text-sm font-medium">Advanced: catalogue schema maintenance</summary>
+          <SchemaBootstrapPanel runId={runId} />
+        </details>
 
         {/* Coverage */}
         <Glass as="section" className="p-6 space-y-3">
@@ -384,15 +411,14 @@ export default function HmoStudioRoute() {
           )}
         </Glass>
 
-        {/* Wikibase Cloud server config */}
-        <Glass as="section" className="p-6 space-y-2">
-          <div className="kicker">Wikibase Cloud</div>
-          <h3 className="text-lg font-medium">Live-upload prerequisite</h3>
-          <p className="muted text-sm leading-relaxed">
-            Live writes to <code className="text-xs">mhm-hmo.wikibase.cloud</code>
-            {" "}use server-held OAuth credentials configured by the deployment
-            admin. Dry-run previews work without them.
-          </p>
+        <details className="space-y-3">
+          <summary className="cursor-pointer text-sm font-medium">Advanced: server connection</summary>
+          <Glass as="section" className="p-6 space-y-2">
+            <div className="kicker">HMO catalogue connection</div>
+            <h3 className="text-lg font-medium">Live publication prerequisite</h3>
+            <p className="muted text-sm leading-relaxed">
+              Publishing uses the project&apos;s secure server connection. Previewing changes does not require a live connection.
+            </p>
           <GlassPill
             className={`inline-block px-3 py-0.5 text-[10px] kicker ${
               wikibaseConfigured ? "text-biu-sky" : "text-warn"
@@ -400,7 +426,8 @@ export default function HmoStudioRoute() {
           >
             {wikibaseConfigured ? "✓ server configured" : "⚠ not configured — contact admin"}
           </GlassPill>
-        </Glass>
+          </Glass>
+        </details>
       </div>
 
       {editCn && runId && (
@@ -412,6 +439,40 @@ export default function HmoStudioRoute() {
       )}
     </Layout>
   );
+}
+
+
+function getCanonicalStatus(status: HmoStudioStatus | null): {
+  label: string;
+  detail: string;
+  tone: string;
+} {
+  if (!status) {
+    return {
+      label: "confirmation loading",
+      detail: "Checking whether the published catalogue entries have been confirmed.",
+      tone: "muted",
+    };
+  }
+  if (!status.canonical_live_count) {
+    return {
+      label: "not yet confirmed",
+      detail: "No published catalogue entries have been confirmed yet.",
+      tone: "text-warn",
+    };
+  }
+  if (status.canonical_ready) {
+    return {
+      label: "all entries confirmed",
+      detail: "Every built entry has a confirmed live HMO catalogue copy.",
+      tone: "text-emerald-300",
+    };
+  }
+  return {
+    label: `${status.canonical_live_count} entries confirmed`,
+    detail: "Some entries have a confirmed live copy, but the complete set is not ready.",
+    tone: "text-warn",
+  };
 }
 
 
