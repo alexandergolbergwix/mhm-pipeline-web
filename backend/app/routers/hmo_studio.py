@@ -664,9 +664,6 @@ async def studio_status(
         state = "idle"
 
     wikibase_configured = get_settings().wikibase_cloud_configured
-    from app.models.extraction_approval import ExtractionApproval
-from app.models.hmo_studio_item_cache import HmoStudioItemCache
-from app.models.run import AuthorityMatch, RunRecord
     cache_row = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
     canonical_live_count = sum(1 for item in (cache_row.resolved_entities if cache_row else []) if item.get("canonical_live"))
     canonical_ready = bool(cache_row and cache_row.resolved_entities and canonical_live_count == len(cache_row.resolved_entities))
