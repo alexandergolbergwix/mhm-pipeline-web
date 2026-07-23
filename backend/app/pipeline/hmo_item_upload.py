@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
+from app.models.run import AuthorityMatch
 from app.models.wikibase_cloud_write import (
     OPERATION_ADOPT,
     OPERATION_CREATE,
@@ -55,6 +56,8 @@ from app.pipeline.hmo_item_shacl_gate import (
 )
 from app.services.wikibase_audit import record_wikibase_write
 from app.pipeline.hmo_canonical import canonical_snapshot_from_wikibase
+from app.pipeline.hmo_canonical import assert_canonical_entities, normalize_live_entity
+from app.pipeline.hmo_authority_gate import validate_authority_rows
 from converter.wikibase.cloud_client import EntityEditOutcome
 from converter.wikibase.resolved_models import ResolvedClaim, ResolvedWikibaseEntity
 
@@ -142,9 +145,20 @@ async def upload_items_for_run(
     if cache_row is None:
         raise ItemBuildMissingError(run_id)
 
+    authority_rows = (
+        await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))
+    ).scalars().all()
+    authority_gate = validate_authority_rows(authority_rows)
+    authority_failures = [*authority_gate["conflicts"], *authority_gate["invalid"]]
+    if authority_failures:
+        raise RuntimeError(
+            "HMO authority gate blocked item creation: "
+            f"{len(authority_failures)} conflict(s) or invalid identifier(s)"
+        )
+
     entities = [ResolvedWikibaseEntity.from_dict(e) for e in cache_row.resolved_entities]
     shacl_by_local_id = cache_row.shacl_report or {}
-    existing = await _load_run_instance_mappings(db, run_id)
+    existing = await _load_run_instance_mappings(db, run_id, include_global=True)
     local_id_to_source_uri = {e.local_id: e.source_uri for e in entities}
     total = len(entities) + sum(len(e.deferred_links) for e in entities)
 
@@ -169,16 +183,6 @@ async def upload_items_for_run(
     )
     known_qids = {**existing, **created_this_call}
 
-    if (
-        not dry_run
-        and writer is not None
-        and known_qids
-        and not cancelled
-        and failed == 0
-        and blocked == 0
-    ):
-        await _persist_live_canonical_state(db, cache_row, entities, known_qids, writer)
-
     link_outcomes: list[HmoDeferredLinkOutcome] = []
     linked = link_failed = unresolved = 0
     if not cancelled:
@@ -189,6 +193,22 @@ async def upload_items_for_run(
             on_progress=on_progress, should_cancel=should_cancel,
             total=total, processed_offset=len(entities),
         )
+
+    # Canonical state must describe the complete two-pass upload. Persist only
+    # after deferred links have been written successfully; unresolved or
+    # failed pass-2 links leave the build non-canonical rather than publishing
+    # a snapshot that silently omits item-to-item relationships.
+    if (
+        not dry_run
+        and writer is not None
+        and known_qids
+        and not cancelled
+        and failed == 0
+        and blocked == 0
+        and link_failed == 0
+        and unresolved == 0
+    ):
+        await _persist_live_canonical_state(db, cache_row, entities, known_qids, writer)
 
     return HmoItemUploadResult(
         dry_run=dry_run,
@@ -227,6 +247,18 @@ async def _persist_live_canonical_state(
     property_uris = {row.wikibase_id: row.ontology_uri for row in property_rows}
     target_uris = {qid: source_uri for source_uri, qid in known_qids.items() if qid and qid != "Q_PENDING"}
     snapshots: dict[str, dict[str, Any]] = {}
+    local_ids = [entity.local_id for entity in entities]
+    duplicate_local_ids = sorted({local_id for local_id in local_ids if local_ids.count(local_id) > 1})
+    if duplicate_local_ids:
+        raise ValueError(
+            "duplicate canonical HMO local_id: " + ", ".join(duplicate_local_ids[:10])
+        )
+    source_uris = [entity.source_uri for entity in entities]
+    duplicate_source_uris = sorted({source_uri for source_uri in source_uris if source_uris.count(source_uri) > 1})
+    if duplicate_source_uris:
+        raise ValueError(
+            "duplicate canonical HMO source_uri: " + ", ".join(duplicate_source_uris[:10])
+        )
     missing_local_ids: list[str] = []
     for entity in entities:
         # Upload mappings are keyed by source URI, not the local display id.
@@ -244,6 +276,12 @@ async def _persist_live_canonical_state(
             logger.warning("canonical HMO read-back missing for %s (%s)", entity.local_id, qid)
             missing_local_ids.append(entity.local_id)
             continue
+        live_id = str(live.get("id") or "").strip()
+        if live_id and live_id != qid:
+            raise RuntimeError(
+                f"HMO canonical read-back identity mismatch for {entity.local_id}: "
+                f"mapped {qid}, received {live_id}"
+            )
         snapshot = canonical_snapshot_from_wikibase(
             live,
             local_id=entity.local_id,
@@ -265,6 +303,8 @@ async def _persist_live_canonical_state(
         )
     if len(snapshots) != len(entities):
         raise RuntimeError("HMO canonical read-back count does not match the build")
+    canonical_entities = [normalize_live_entity(snapshot) for snapshot in snapshots.values()]
+    assert_canonical_entities(canonical_entities)
     await db.execute(
         delete(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == cache_row.run_id)
     )
@@ -651,7 +691,7 @@ async def _pass_two_link(
                     processed_offset + seen_links, total,
                     f"{seen_links}/{total_links} item links added",
                 )
-            target_source_uri = local_id_to_source_uri.get(link.target_local_id)
+            target_source_uri = link.target_source_uri or local_id_to_source_uri.get(link.target_local_id)
             target_qid = known_qids.get(target_source_uri) if target_source_uri else None
 
             if source_qid is None or target_qid is None:
@@ -920,7 +960,7 @@ def _build_wbi_claim(claim: ResolvedClaim) -> Any:
 
 
 async def _load_run_instance_mappings(
-    db: AsyncSession, run_id: uuid.UUID,
+    db: AsyncSession, run_id: uuid.UUID, *, include_global: bool = False,
 ) -> dict[str, str]:
     """source_uri -> live Wikibase id for this run's already-uploaded instances."""
     rows = (
@@ -928,8 +968,10 @@ async def _load_run_instance_mappings(
             select(
                 WikibaseEntityMapping.ontology_uri, WikibaseEntityMapping.wikibase_id,
             ).where(
-                WikibaseEntityMapping.run_id == run_id,
                 WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+                WikibaseEntityMapping.run_id == run_id
+                if not include_global
+                else WikibaseEntityMapping.run_id.is_not(None),
             )
         )
     ).all()

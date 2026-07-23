@@ -7,9 +7,8 @@ Endpoints (RBAC notes):
 * ``GET    /runs/{id}``                     — viewer+ (project-scoped via lookup)
 * ``GET    /runs/{id}/matches``             — viewer+
 * ``GET    /runs/{id}/records/{cn}``        — viewer+ (popup with full MARC)
-* ``PATCH  /runs/{id}/matches/{mid}``       — editor+ (toggle approval)
-* ``POST   /runs/{id}/matches/bulk-approve``— editor+
-* ``POST   /runs/{id}/authority/re-enrich`` — editor+ (re-run full matching, skip_cache param)
+* Legacy Authority mutation routes are retired by default and return HTTP 410.
+    They remain listed in the implementation for controlled rollback only.
 """
 
 from __future__ import annotations
@@ -75,11 +74,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["runs"])
 
 
-def _ensure_legacy_authority_mutations_enabled() -> None:
+def _ensure_legacy_authority_mutations_enabled(
+    *, run_id: uuid.UUID | None = None, actor_id: uuid.UUID | None = None,
+) -> None:
     """Fail closed for the retired standalone Authority editor surface."""
     if get_settings().legacy_authority_mutations_enabled:
         return
-    logger.warning("legacy_authority_mutation_retired", extra={"surface": "runs"})
+    logger.warning(
+        "legacy_authority_mutation_retired",
+        extra={
+            "event_name": "legacy_authority_mutation_retired",
+            "surface": "runs",
+            "route_family": "/runs/{run_id}",
+            "run_id": str(run_id) if run_id else None,
+            "actor_id": str(actor_id) if actor_id else None,
+            "status_code": status.HTTP_410_GONE,
+        },
+    )
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
         detail="Standalone Authority mutations are retired; use HMO Wikibase Studio.",
@@ -276,7 +287,7 @@ async def update_approval(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> AuthorityMatchResponse:
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     await _lookup_run_with_access(db, run_id, auth, write=True)
     m = (
         await db.execute(
@@ -305,7 +316,7 @@ async def bulk_approve(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> list[AuthorityMatchResponse]:
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     await _lookup_run_with_access(db, run_id, auth, write=True)
     if not payload.match_ids:
         return []
@@ -341,7 +352,7 @@ async def preview_authority_auto_approve(
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """Return how many matches the rule would approve without changing data."""
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     await _lookup_run_with_access(db, run_id, auth, write=False)
     rows = (
         await db.execute(
@@ -360,7 +371,7 @@ async def apply_authority_auto_approve(
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """Approve all matches satisfying the rule. Returns count approved."""
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     rows = (
         await db.execute(
@@ -462,7 +473,7 @@ async def backfill_dates(
 
     Returns how many rows were updated and how many years were filled.
     """
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     await _lookup_run_with_access(db, run_id, auth, write=True)
 
     # Lazy-import so this endpoint doesn't pull the converter tree on
@@ -580,7 +591,7 @@ async def rebuild_authority_guards(
 
     Returns counts: ``checked``, ``downgraded``, ``flags_added``.
     """
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     await _lookup_run_with_access(db, run_id, auth, write=True)
 
     from app.pipeline import authority_hardening  # noqa: PLC0415
@@ -714,7 +725,7 @@ async def re_enrich_authority(
 
     Returns: ``checked``, ``updated``, ``newly_matched``, ``skip_cache``.
     """
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     from app.pipeline import authority as auth_pipeline  # noqa: PLC0415
@@ -783,7 +794,7 @@ async def re_enrich_authority_stream(
         authority.done       { checked, updated, newly_matched, skip_cache }
         authority.error      { message }
     """
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     from app.pipeline import authority as auth_pipeline  # noqa: PLC0415
@@ -990,7 +1001,7 @@ async def edit_match(
     in the Match Detail dialog (matched_name, IDs, confidence, role,
     entity_text). Approval state is *not* touched here — use
     :func:`update_approval` for that."""
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     await _lookup_run_with_access(db, run_id, auth, write=True)
     m = (
         await db.execute(
@@ -1070,7 +1081,7 @@ async def pick_match_candidate(
     db: AsyncSession = Depends(get_session),
 ) -> AuthorityMatchResponse:
     """Apply curator homonym pick — sets mazal_id and clears abstain flags."""
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     await _lookup_run_with_access(db, run_id, auth, write=True)
     m = (
         await db.execute(
@@ -1186,7 +1197,7 @@ async def ai_verify_match(
     """Ask Gemini (or the heuristic fallback) whether this candidate is
     the correct authority match. Stores the verdict in payload[ai_verdict]
     and returns it inline."""
-    _ensure_legacy_authority_mutations_enabled()
+    _ensure_legacy_authority_mutations_enabled(run_id=run_id, actor_id=auth.user.id)
     await _lookup_run_with_access(db, run_id, auth, write=True)
     m = (
         await db.execute(

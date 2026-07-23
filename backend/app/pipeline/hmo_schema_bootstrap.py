@@ -228,9 +228,26 @@ async def schema_mirror_report(db: AsyncSession) -> dict[str, object]:
     from converter.wikibase.ontology_schema_reader import read_hmo_schema
     from app.pipeline.hmo_ontology_mirror import compare_ontology_mirror
     schema = await asyncio.to_thread(read_hmo_schema)
-    existing = await _load_schema_mappings(db)
-    expected = [entry.uri for entry in (*schema.classes, *schema.properties)]
-    return compare_ontology_mirror(expected, existing.keys())
+    existing = await _load_schema_mapping_rows(db)
+    expected_entries = (*schema.classes, *schema.properties)
+    expected = [entry.uri for entry in expected_entries]
+    expected_metadata = {
+        entry.uri: {
+            "label": entry.label,
+            "datatype": getattr(entry, "datatype", None),
+        }
+        for entry in expected_entries
+    }
+    mapped_metadata = {
+        row.ontology_uri: {"label": row.label, "datatype": row.datatype}
+        for row in existing
+    }
+    return compare_ontology_mirror(
+        expected,
+        (row.ontology_uri for row in existing),
+        expected_metadata=expected_metadata,
+        mapped_metadata=mapped_metadata,
+    )
 
 
 async def schema_status(db: AsyncSession) -> SchemaStatusResult:
@@ -340,6 +357,19 @@ async def _load_schema_mappings(db: AsyncSession) -> dict[str, str]:
         )
     ).all()
     return {uri: wikibase_id for uri, wikibase_id in rows}
+
+
+async def _load_schema_mapping_rows(db: AsyncSession) -> list[WikibaseEntityMapping]:
+    """Load complete schema rows for drift reporting."""
+    return list(
+        (
+            await db.execute(
+                select(WikibaseEntityMapping).where(
+                    WikibaseEntityMapping.run_id.is_(None),
+                )
+            )
+        ).scalars().all()
+    )
 
 
 async def _sync_schema_mapping_datatype(

@@ -62,6 +62,9 @@
   the "Last upload" column (badge content + column-filter popup) and
   upload-lifecycle AI verification (checkboxes, successful/failed pre-verify,
   the fail-confirm banner's "review" vs "upload anyway" paths).
+- `frontend/e2e/hmo-wikibase-studio.spec.ts` — Phase 7 acceptance coverage:
+  schema class/property counts, dry-run bootstrap defaults, item-build gating,
+  and the item-upload request payload/result summary.
 
 - `backend/tests/unit/test_hmo_authority_gate.py` — approved identifier conflicts and NLI/VIAF misclassification fail closed before HMO creation.
 
@@ -71,3 +74,17 @@
   percentage, and global canonical-first cohorts.
 
 - `backend/tests/unit/test_hmo_canonical_readback.py` — nested MediaWiki JSON normalization and source-URI/QID read-back contract (Rule W-90)
+- `backend/tests/unit/test_projection_shadow_compare.py` — RDF and structured
+  item shadow comparisons, difference classifications, and fail-closed
+  promotion readiness.
+- `backend/tests/unit/test_hmo_canonical_readiness_contract.py` — shared
+  readiness integrity fields and fail-closed promotion behavior.
+- `backend/tests/test_hmo_item_upload.py` — authority-gated creation,
+  all-or-nothing read-back, reconciliation, duplicate live-identity guards,
+  and canonical persistence only after successful deferred-link writes.
+- `backend/tests/unit/test_run_hmo_phase8.py` — Phase 8 coordinator safety
+  gates and fail-fast test-sweep behavior.
+- `backend/tests/unit/test_hmo_ontology_mirror.py` — schema label/datatype
+  drift reporting (R40).
+- `backend/tests/unit/test_hmo_exporter_resolution.py` — deterministic typed
+  blank-node IDs and cross-run-capable deferred target serialization (R42/R43).

@@ -969,21 +969,12 @@ def normalise_matches(matches: Iterable[Any]) -> list[dict[str, Any]]:
 async def build_rdf_from_hmo_canonical_cache(db: AsyncSession, run_id: uuid.UUID, output_path: Path) -> RdfBuildResult:
     """Project the durable live HMO read-back cache to RDF."""
     from app.models.hmo_canonical_entity import HmoCanonicalEntity
-    from app.models.hmo_studio_item_cache import HmoStudioItemCache
     from app.pipeline.hmo_canonical import normalize_live_entity
     from app.pipeline.hmo_canonical_rdf import graph_from_canonical_entities
     canonical_rows = (await db.execute(select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id))).scalars().all()
     entities = [normalize_live_entity(row.snapshot) for row in canonical_rows]
     if not entities:
-        row = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
-        if row is None:
-            raise ValueError("no HMO canonical cache for run " + str(run_id))
-        for raw in row.resolved_entities:
-            live = raw.get("canonical_live")
-            if live:
-                entities.append(normalize_live_entity(live))
-    if not entities:
-        raise ValueError(f'no live HMO read-back entities for run {run_id}')
+        raise ValueError(f"no durable HMO canonical entities for run {run_id}")
     graph = graph_from_canonical_entities(entities)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     graph.serialize(destination=str(output_path), format='turtle')

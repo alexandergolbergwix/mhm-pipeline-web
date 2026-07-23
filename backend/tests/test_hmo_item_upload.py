@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
+from app.models.run import AuthorityMatch
 from app.models.wikibase_cloud_write import (
     CHANNEL_ITEM_UPLOAD,
     OPERATION_ADOPT,
@@ -45,21 +46,25 @@ class _FakeWriter:
         self.create_calls: list[dict] = []
         self.claim_calls: list[tuple[str, object]] = []
         self.update_calls: list[dict] = []
+        self.call_order: list[str] = []
         self._next_q = 1
         self._fail_updates = fail_updates
         self._missing_readbacks = missing_readbacks or set()
 
     def create_item(self, **kwargs):
+        self.call_order.append("create_item")
         self.create_calls.append(kwargs)
         qid = f"Q{self._next_q}"
         self._next_q += 1
         return _FakeOutcome(entity_id=qid)
 
     def add_claim(self, entity_id, claim):
+        self.call_order.append("add_claim")
         self.claim_calls.append((entity_id, claim))
         return _FakeOutcome(entity_id=entity_id, status="updated")
 
     def get_entity(self, entity_id):
+        self.call_order.append("get_entity")
         if entity_id in self._missing_readbacks:
             return None
         return {
@@ -163,9 +168,10 @@ async def test_live_upload_creates_items_then_links_them(db_session) -> None:
 async def test_live_upload_persists_canonical_rows_from_source_uri_mappings(db_session) -> None:
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())
+    writer = _FakeWriter()
 
     result = await pipeline.upload_items_for_run(
-        db_session, run_id, writer=_FakeWriter(), dry_run=False,
+        db_session, run_id, writer=writer, dry_run=False,
     )
 
     assert result.failed == 0
@@ -177,6 +183,8 @@ async def test_live_upload_persists_canonical_rows_from_source_uri_mappings(db_s
     assert {row.local_id for row in rows} == {"QDraft_MS1", "QDraft_Person1"}
     assert {row.wikibase_id for row in rows} == {"Q1", "Q2"}
     assert all(row.snapshot["canonical_source"] == "wikibase" for row in rows)
+    assert writer.call_order.index("add_claim") < len(writer.call_order) - 1
+    assert writer.call_order[-1] == "get_entity"
 
 
 @pytest.mark.asyncio
@@ -189,6 +197,78 @@ async def test_missing_live_readback_fails_closed_without_partial_canonical_rows
             db_session, run_id,
             writer=_FakeWriter(missing_readbacks={"Q1"}),
             dry_run=False,
+        )
+
+    rows = (
+        await db_session.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )
+    ).scalars().all()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_authority_conflict_blocks_hmo_creation_before_external_writes(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    db_session.add_all([
+        AuthorityMatch(
+            run_id=run_id, control_number="1", entity_text="Person A",
+            entity_kind="person", role="author", approved=True,
+            wikidata_qid="Q42", confidence="high", source="test",
+        ),
+        AuthorityMatch(
+            run_id=run_id, control_number="2", entity_text="Person B",
+            entity_kind="person", role="author", approved=True,
+            wikidata_qid="Q42", confidence="high", source="test",
+        ),
+    ])
+    await db_session.commit()
+    writer = _FakeWriter()
+
+    with pytest.raises(RuntimeError, match="authority gate blocked"):
+        await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    assert writer.create_calls == []
+
+
+@pytest.mark.asyncio
+async def test_duplicate_readback_qid_blocks_canonical_replacement(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    writer = _FakeWriter()
+
+    async def _same_qid(_db, source_uri: str, *, pid: str | None = None) -> ReconcileOutcome:
+        return ReconcileOutcome(found=True, wikibase_id="Q999", message="same live item")
+
+    with patch.object(pipeline, "reconcile_item", AsyncMock(side_effect=_same_qid)):
+        with pytest.raises(ValueError, match="duplicate canonical HMO wikibase_id"):
+            await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    rows = (
+        await db_session.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )
+    ).scalars().all()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_duplicate_local_id_blocks_canonical_replacement(db_session) -> None:
+    run_id = uuid.uuid4()
+    entities = _ms_and_person()
+    duplicate = ResolvedWikibaseEntity(
+        local_id=entities[1].local_id,
+        labels={"en": "Second person"},
+        descriptions={"en": "another person"},
+        class_qid="Q2",
+        source_uri="http://example.org#Person2",
+    )
+    await _seed_cache(db_session, run_id, [*entities, duplicate])
+
+    with pytest.raises(ValueError, match="duplicate canonical HMO local_id"):
+        await pipeline.upload_items_for_run(
+            db_session, run_id, writer=_FakeWriter(), dry_run=False,
         )
 
     rows = (
@@ -543,6 +623,12 @@ async def test_unresolved_link_reported_when_target_never_created(db_session) ->
 
     assert result.unresolved_links == 1
     assert result.link_outcomes[0].status == "unresolved"
+    rows = (
+        await db_session.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )
+    ).scalars().all()
+    assert rows == []
 
 
 @pytest.mark.asyncio

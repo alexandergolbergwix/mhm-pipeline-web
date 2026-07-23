@@ -2255,3 +2255,59 @@ serializes boolean claims as explicit strings before the first remote call;
 time and monolingual-text values remain native and only use the narrow scalar
 fallback when the server explicitly reports a mismatch. Test:
 `test_unsupported_boolean_claims_are_serialized_before_live_write`.
+
+### Rule W-92 — Canonical projections MUST fail closed on transient cache fallback (added 2026-07-23)
+
+Canonical RDF and Wikidata/QuickStatements projections read only durable
+`hmo_canonical_entities` rows produced by complete live Wikibase read-back.
+They MUST reject missing, malformed, incomplete, or duplicate rows rather than
+falling back to `HmoStudioItemCache.canonical_live`, MARC, AuthorityMatch, or
+NER inputs. The projection shadow report classifies item and RDF differences;
+blocking or unclassified differences cannot report promotion readiness. The
+`verify_hmo_projection_gate.py --allow-difference` option is diagnostic-only.
+Tests: `test_projection_shadow_compare.py` and the canonical RDF/Wikidata
+projection suites.
+
+### Rule W-93 — Retired Authority mutations MUST remain fail-closed and observable (added 2026-07-23)
+
+Standalone Authority mutation routes return HTTP 410 while
+`legacy_authority_mutations_enabled` is false. The retirement guard emits
+structured `legacy_authority_mutation_retired` telemetry containing the route
+family, run, actor, and status code. The legacy `/runs/:runId` frontend route
+shows a deprecation notice and directs the curator to HMO Wikibase Studio;
+stale Authority navigation is removed from active run/project surfaces.
+Test: `backend/tests/unit/test_authority_retirement.py`.
+
+### Rule W-94 — Canonical readiness MUST be integrity-based, not count-based (added 2026-07-23)
+
+The canonical HMO database gate, projection gate, and production E2E audit
+share `app.pipeline.hmo_canonical_readiness.CanonicalReadiness`. Readiness
+requires exact expected/durable coverage and zero missing or malformed rows,
+duplicate local IDs/source URIs/QIDs, authority conflicts, stale or missing
+fingerprints, and live read-back failures. A row-count match alone MUST NOT
+promote a canonical cohort. Test: `test_hmo_canonical_readiness_contract.py`.
+
+### Rule W-95 — HMO creation MUST gate authority and live identity before canonical replacement (added 2026-07-23)
+
+`upload_items_for_run` runs `validate_authority_rows` over approved
+`AuthorityMatch` rows before any external Wikibase write. Every mapped item is
+read back and must retain the mapped QID; duplicate local IDs, source URIs, or
+Wikibase QIDs abort before replacing durable `hmo_canonical_entities` rows.
+Read-back failure remains all-or-nothing. Tests:
+`backend/tests/test_hmo_item_upload.py`.
+
+### Rule W-96 — HMO item builds MUST reject unmapped reconciliation predicates (added 2026-07-23)
+
+`resolve_against_mappings` must require schema mappings for the item class,
+every RDF predicate, and `hmo_source_uri` before writing
+`HmoStudioItemCache`. Missing mappings raise `UnmappedOntologyUriError` and
+the build is not cached. A skipped source-URI claim would create an item that
+cannot be safely reconciled on upload and would hide ontology drift.
+Test: `backend/tests/unit/test_hmo_exporter_resolution.py`.
+
+### Rule W-97 — HMO canonical read-back MUST follow deferred-link writes (added 2026-07-23)
+
+`upload_items_for_run` must complete pass 2 and reject unresolved or failed
+links before reading back live entities into `hmo_canonical_entities`. A
+pass-1-only snapshot is not canonical because it omits item-to-item claims
+that the upload may add in pass 2. Test: `backend/tests/test_hmo_item_upload.py`.

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -309,6 +310,7 @@ class WikibaseCloudWriter:
         *,
         session: requests.Session | None = None,
         timeout: float = 30.0,
+        min_write_interval_seconds: float = 0.0,
         user_agent: str = "MHMPipeline/1.0 (https://github.com/alexandergolbergwix/pipeline)",
     ) -> None:
         self._config = config
@@ -316,6 +318,11 @@ class WikibaseCloudWriter:
         self._session = session or requests.Session()
         self._session.headers["User-Agent"] = user_agent
         self._timeout = timeout
+        if min_write_interval_seconds < 0:
+            raise ValueError("min_write_interval_seconds must be non-negative")
+        self._min_write_interval_seconds = min_write_interval_seconds
+        self._write_throttle_lock = threading.Lock()
+        self._last_entity_write_at = 0.0
         self._user_agent = user_agent
         self._csrf_token: str | None = None
         self._logged_in = False
@@ -802,6 +809,7 @@ class WikibaseCloudWriter:
     def _write_entity(
         self, entity: Any, claims: Sequence[Any] | None, summary: str
     ) -> EntityEditOutcome:
+        self._wait_for_entity_write_slot()
         if claims:
             for claim in claims:
                 entity.claims.add(claim)
@@ -836,6 +844,7 @@ class WikibaseCloudWriter:
     ) -> EntityEditOutcome:
         """Add one already-built claim to an existing item or property."""
         try:
+            self._wait_for_entity_write_slot()
             entity = self._get_wbi_entity(entity_id)
             entity.claims.add(claim)
             write_kwargs: dict[str, Any] = {
@@ -859,6 +868,16 @@ class WikibaseCloudWriter:
             message="ok",
             page_url=self.page_url(_entity_page_title(written.id)),
         )
+
+    def _wait_for_entity_write_slot(self) -> None:
+        """Throttle entity writes without delaying read-only API calls."""
+        with self._write_throttle_lock:
+            now = time.monotonic()
+            wait = self._min_write_interval_seconds - (now - self._last_entity_write_at)
+            if wait > 0:
+                time.sleep(wait)
+                now = time.monotonic()
+            self._last_entity_write_at = now
 
     def get_entity(self, entity_id: str) -> Mapping[str, Any] | None:
         """Fetch an entity by QID/PID. Verification only, never used for writes."""

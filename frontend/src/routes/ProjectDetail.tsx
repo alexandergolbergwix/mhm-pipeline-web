@@ -254,7 +254,7 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
       <div className="flex items-center justify-between">
         <div>
           <div className="kicker">Pipeline runs</div>
-          <h3 className="text-lg font-medium">MARC uploads &amp; authority matching</h3>
+          <h3 className="text-lg font-medium">MARC uploads &amp; curator review</h3>
         </div>
         {canUpload && (
           <>
@@ -304,7 +304,6 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
               {/* Quick access to each sub-section of the run */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
                 <StageTile to={`/runs/${r.id}/extraction`}             label="AI Extraction"        hint="NER + genre" />
-                <StageTile to={`/runs/${r.id}`}                        label="Authority"            hint="Mazal · VIAF · Wikidata · KIMA" />
                 <StageTile to={`/runs/${r.id}/rdf`}                    label="RDF Graph"            hint="HMO ontology" />
                 <StageTile to={`/runs/${r.id}/hmo-studio`}             label="HMO Wikibase"         hint="IIIF + crosswalk" />
                 <StageTile to={`/runs/${r.id}/wikidata-studio`}        label="Wikidata Studio"      hint="QuickStatements" />

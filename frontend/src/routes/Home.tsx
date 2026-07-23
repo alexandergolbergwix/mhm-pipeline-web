@@ -43,8 +43,8 @@ export default function Home() {
           />
           <RoadmapCard
             tag="Phase 4–5"
-            title="MARC upload + Authority review"
-            body="Drop in a MARC export, see authority matches in a structured-filter table, approve them collaboratively."
+            title="MARC upload + curator review"
+            body="Drop in a MARC export, review extracted entities and canonical HMO results, and approve changes collaboratively."
           />
           <RoadmapCard
             tag="Phase 6"

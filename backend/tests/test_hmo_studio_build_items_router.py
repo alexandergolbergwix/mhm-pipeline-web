@@ -71,6 +71,14 @@ async def test_build_items_succeeds_once_schema_is_mapped(sample_run, db_session
                 label="has date of creation",
                 datatype="time",
             ),
+            WikibaseEntityMapping(
+                ontology_uri="https://w3id.org/mhm/ontology#hmo_source_uri",
+                entity_kind="property",
+                wikibase_id="P99",
+                run_id=None,
+                label="HMO source URI",
+                datatype="string",
+            ),
         ]
     )
     await db_session.commit()

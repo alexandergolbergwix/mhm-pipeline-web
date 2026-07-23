@@ -35,6 +35,7 @@
 | `backend/scripts/rebuild_run_rdf_and_items.py` | Controlled production rebuild with explicit `--upload` update/read-back and canonical persistence |
 | `backend/scripts/backfill_hmo_canonical_entities.py` | Snapshot audit/backfill for persisted live read-backs |
 | `backend/scripts/run_hmo_production_e2e.py` | Read-only production E2E audit for live read-back, exact Studio/QuickStatements diffs, canonical RDF, and false-positive rejection |
+| `backend/scripts/run_hmo_phase8.py` | Guarded Phase 8 backend/frontend sweep plus ordered live bootstrap/upload idempotency report |
 | `backend/converter/wikibase/resolved_models.py` | `ResolvedWikibaseEntity` incl. `entity_type` + `control_numbers` persisted in `HmoStudioItemCache` |
 | `backend/scripts/audit_hmo_authority_consistency.py` | Deterministic export audit for authority coverage, malformed links, and duplicate local-QID mappings |
 | `backend/app/services/wikibase_credentials.py` | Server-held OAuth config → verified `WikibaseCloudWriter` (checks the session is the expected write user) |
@@ -43,10 +44,15 @@
 | `backend/app/models/hmo_studio_item_cache.py` | Per-run build cache (unique on `run_id`, fingerprinted) |
 | `backend/app/models/hmo_coverage_cache.py` | Durable Postgres coverage cache (Rule W-39) |
 | `backend/app/models/hmo_studio_item_override.py` | Curator override rows (labels/descriptions/aliases/statement edits/approved/ai_verdict) |
-| `frontend/src/routes/HmoStudio.tsx` | Studio page: schema panel, manifest build/upload; `HmoItemsPanel` merges build/upload lifecycle bar + review table |
+| `frontend/src/routes/HmoStudio.tsx` | Studio page: schema bootstrap panel, manifest build/upload; `HmoItemsPanel` merges item build/upload lifecycle bar + review table |
 | `frontend/src/components/hmo/HmoItemDataStatusBadge.tsx` | Data status pill: new / will update existing / updated |
 | `frontend/src/utils/hmoItemDataStatus.ts` | `resolveHmoItemDataStatus` — derives data status from mapping + last push |
 | `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: lifecycle bar (`ItemBuildPanel`/`ItemUploadPanel` compact) + `HmoItemTable` |
+| `frontend/src/components/hmo/SchemaBootstrapPanel.tsx` | Schema class/property mapping status, dry-run/live bootstrap controls, report results, and schema AI verification |
+| `frontend/src/components/hmo/ItemBuildPanel.tsx` | RDF-backed item build/rebuild controls and build-status summary |
+| `frontend/src/components/hmo/ItemUploadPanel.tsx` | Dry-run-first item upload controls, SHACL override, background-job progress, and upload outcomes |
+| `frontend/src/api/hmoWikibaseSchema.ts` | Typed schema status/bootstrap/report client, including live bootstrap job detection |
+| `frontend/src/api/hmoStudio.ts` | Typed item build, upload, status, and upload-job result helpers |
 | `frontend/src/components/hmo/*` | Review UI: `HmoItemTable`, `HmoItemDetailDrawer`, `HmoAuthorityEvidence` (persisted Mazal/KIMA/VIAF/Wikidata claims), `HmoItemAiVerdictBadge` (click pill → full reasoning popover), `HmoItemVerificationModal` (`useVerifyJob`), `ItemUploadPanel` (pre/post-upload AI verify), schema panels |
 | `dev-docs/hmo-wikibase-studio-plan.md` | The 8-phase buildout plan + status |
 

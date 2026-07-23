@@ -185,6 +185,7 @@ HMO_NS_TEMPLATE = "https://w3id.org/mhm/ontology#MS_{control_number}"
 # controlled; Phase 3 (HMO Wikibase upload) creates a `#REDIRECT [[Item:Q<n>]]`
 # page at this slug so the URL resolves to the canonical Wikibase item.
 HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud"
+_HMO_QID_RE = re.compile(r"^Q[1-9][0-9]*$")
 
 
 def hmo_wikibase_page_url(control_number: str) -> str:
@@ -218,8 +219,8 @@ def hmo_wikibase_entity_url(
     """
     if not instance_qids:
         return None
-    qid = instance_qids.get((control_number or "").strip())
-    if not qid:
+    qid = str(instance_qids.get((control_number or "").strip()) or "").strip()
+    if not _HMO_QID_RE.fullmatch(qid):
         return None
     return f"{HMO_WIKIBASE_BASE_URL}/wiki/Item:{qid}"
 

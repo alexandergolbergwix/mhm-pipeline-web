@@ -46,6 +46,14 @@ async def _seed_schema_mappings(db_session) -> None:
                 label="has date of creation",
                 datatype="time",
             ),
+            WikibaseEntityMapping(
+                ontology_uri="https://w3id.org/mhm/ontology#hmo_source_uri",
+                entity_kind="property",
+                wikibase_id="P99",
+                run_id=None,
+                label="HMO source URI",
+                datatype="string",
+            ),
         ]
     )
     await db_session.commit()

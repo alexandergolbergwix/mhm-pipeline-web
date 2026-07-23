@@ -45,3 +45,23 @@ async def test_maps_control_number_to_qid_for_uploaded_manuscript(db_session) ->
     result = await wikidata_studio.hmo_instance_qids_for_run(db_session, run_id, [cn, "990002"])
 
     assert result == {cn: "Q42"}
+
+
+@pytest.mark.asyncio
+async def test_canonicalises_quoted_control_numbers_before_uri_lookup(db_session) -> None:
+    run_id = uuid.uuid4()
+    cn = "990000000000000001"
+    uri = str(UriGenerator(namespace=str(HM)).manuscript_uri(cn))
+    db_session.add(
+        WikibaseEntityMapping(
+            ontology_uri=uri, entity_kind="instance", wikibase_id="Q42",
+            run_id=run_id, label="Test MS",
+        )
+    )
+    await db_session.commit()
+
+    result = await wikidata_studio.hmo_instance_qids_for_run(
+        db_session, run_id, [f'"{cn}"'],
+    )
+
+    assert result == {cn: "Q42"}

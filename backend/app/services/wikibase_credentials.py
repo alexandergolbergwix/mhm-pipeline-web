@@ -62,6 +62,7 @@ def build_server_wikibase_writer() -> WikibaseCloudWriter:
     writer = WikibaseCloudWriter(
         server_wikibase_endpoint_config(),
         auth,
+        min_write_interval_seconds=settings.wikibase_cloud_min_write_interval_seconds,
         user_agent=f"{write_user}/1.0 (MHM Pipeline Web)",
     )
     try:

@@ -38,10 +38,19 @@ surfaces as a 409 telling the curator to re-run the bootstrap. The exporter
 truncates labels/descriptions to 250 chars and string/monolingualtext claim
 values to 400 chars (`hmo_exporter.py:155,197-198`) so long free-text titles no
 longer trigger `ModificationFailed`.
+The class URI, every RDF predicate, and the `hmo_source_uri` reconciliation
+predicate are mandatory schema mappings; any missing URI raises
+`UnmappedOntologyUriError` before the cache is written.
 
 Live canonical snapshots are also persisted one-per-entity in `hmo_canonical_entities` (migration `0035_hmo_canonical_entities`); the cache JSON remains a compatibility/read-model copy. The source-URI mapping is the only QID lookup key. Every successful write must be read back; a missing/timeout read-back or any partial write blocks canonical persistence rather than replacing durable rows with a partial set. Downstream readiness and backfill tooling can therefore query durable canonical rows without depending on cache retention.
 
-The canonical-state boundary is implemented by the hmo_canonical module. Live Wikibase read-backs are normalized into a revision-independent fingerprinted entity shape; RDF and Wikidata projections must consume that shape rather than raw authority matches or pre-Wikibase RDF.
+Readiness is evaluated by `hmo_canonical_readiness.evaluate`, not by row count
+alone. The shared result records expected/durable coverage, missing or malformed
+snapshots, duplicate local IDs/source URIs/QIDs, authority conflicts, stale or
+missing fingerprints, and live read-back failures. The canonical database gate,
+projection shadow gate, and production E2E audit all consume this result.
+
+The canonical-state boundary is implemented by the hmo_canonical module. Live Wikibase read-backs are normalized into a revision-independent fingerprinted entity shape; RDF and Wikidata projections consume durable `hmo_canonical_entities` rows rather than raw authority matches, transient item-cache snapshots, or pre-Wikibase RDF. Missing or incomplete durable rows fail closed.
 
 The item-build endpoint runs the matcher/re-enrichment service inside the HMO creation workflow by default (`refresh_authority=true`). This makes accepted authority evidence part of the canonical HMO build rather than a separate Authority UI action; callers may explicitly disable it for offline/cache-only diagnostics.
 
@@ -83,6 +92,8 @@ per-entity create-or-update body is the shared `push_single_item` helper —
 see [upload outcomes + verify](upload-outcomes-and-verify.md) for the
 single-item push endpoint and the opt-in pre/post-upload AI verification
 that also build on this pass.
+Canonical read-back runs only after both passes complete with no failed or
+unresolved links, so durable HMO state never represents a pass-1-only upload.
 
 **Writer.** `WikibaseCloudWriter` (`cloud_client.py:296`) wraps
 `wikibaseintegrator` for entity writes (`create_item`/`create_property`/
@@ -118,11 +129,25 @@ versioning events before the network call (`_audit_manifest_upload_intent`,
 
 The HMO review table's External authority column now shows accepted persisted enrichment as source/count badges (Wikidata, VIAF, Mazal/NLI), while the Wikibase QID column remains explicitly local.
 
+**Phase 9 hardening.** `schema_mirror_report` exposes label/datatype drift. The
+server writer reads `WIKIBASE_CLOUD_MIN_WRITE_INTERVAL_SECONDS` and throttles
+entity writes only. Typed blank nodes receive deterministic graph-derived IDs.
+Deferred object-property links retain an external source URI and pass two
+resolves it against mappings from all completed runs, while unresolved targets
+remain visible.
+The existing Wikidata P2888/P973 manuscript links remain the only emitted HMO
+cross-links until an approved per-statement Wikidata property exists.
+
 
 Phase 1 canonical contract: `hmo_canonical_entities` stores explicit identity (`source_uri`, local QID, entity type), labels/descriptions/aliases, claims, accepted/rejected authority evidence, provenance, lifecycle status, and a revision-independent fingerprint. The full JSON snapshot remains for forward-compatible fields.
 
 
-Phase 2 HMO creation runs authority enrichment internally and applies `hmo_authority_gate.validate_authority_rows` before resolving RDF entities. Approved external identifiers reused by different headings, or NLI/Mazal identifiers misclassified as VIAF, block creation with a structured conflict report.
+Phase 3 HMO creation runs authority enrichment internally and applies
+`hmo_authority_gate.validate_authority_rows` before any Wikibase write.
+Approved external identifiers reused by different headings, or NLI/Mazal
+identifiers misclassified as VIAF, block creation with a structured conflict
+report. Every live read-back is checked for the mapped QID and duplicate local,
+source, or QID identities before durable canonical rows are replaced.
 
 
 Phase 3 HMO-first entry: when no RDF artifact exists, `POST .../hmo-studio/build-items` internally builds the source graph from MARC, approved authority matches, and approved extraction entities, then immediately resolves HMO items. Curators no longer need to visit the RDF screen first.

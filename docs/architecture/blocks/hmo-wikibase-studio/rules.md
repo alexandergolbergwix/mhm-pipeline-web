@@ -143,6 +143,20 @@
 27. **R27 — Wikibase QIDs and Wikidata QIDs are different namespaces.** HMO
     item `wikibase_id` values are local project identifiers; external Wikidata
     and VIAF authority values must be carried as explicit claims/identifiers.
+28. **R28 — Item builds fail closed on every unmapped ontology URI.** The
+ exporter MUST resolve the class URI, every statement predicate, and the
+ `hmo_source_uri` reconciliation predicate against a schema-level mapping
+ before caching any item build. Missing mappings raise
+ `UnmappedOntologyUriError`; they must never become skipped claims. *Why:*
+ omitting the source-URI predicate produces items that cannot be reconciled
+ safely and hides ontology/schema drift until upload time.
+29. **R29 — Canonical persistence follows both upload passes.** The upload
+ pipeline MUST write and validate deferred item links before reading back or
+ replacing durable canonical entities. Any unresolved, failed, or cancelled
+ pass-2 operation leaves the run non-canonical; it must not publish a
+ pass-1-only snapshot. *Why:* persisting before pass 2 silently omits
+ relationships that were added moments later and can promote incomplete HMO
+ state to downstream projections.
 
 
 35. **R35 — Canonical persistence is all-or-nothing after live read-back.**
@@ -162,3 +176,47 @@ remote writer, while preserving valid time and monolingual-text claims. *Why:*
 the first production retry still sent a doomed whole-item boolean request for
 every item, producing thousands of avoidable API errors and extending the
 migration window.
+
+37. **R37 — Canonical projections use durable live read-back only.** Canonical
+ RDF and Wikidata/QuickStatements builders MUST read `hmo_canonical_entities`
+ and MUST fail closed when rows are missing, malformed, incomplete, or
+ duplicated. `HmoStudioItemCache.canonical_live` is a compatibility/read-model
+ copy, never a source-of-truth fallback. Shadow differences must be classified;
+ blocking or unclassified differences cannot promote a projection. *Why:* a
+ transient cache snapshot can outlive or diverge from the all-or-nothing live
+ Wikibase read-back and would silently reintroduce pre-canonical data.
+
+38. **R38 — Canonical readiness is one integrity contract.** The durable gate,
+projection gate, and production E2E audit MUST use the shared readiness result,
+which reports expected and durable counts, missing/malformed rows, duplicate
+local IDs/source URIs/QIDs, authority conflicts, stale or missing fingerprints,
+and live read-back failures. A matching row count alone MUST NOT promote a
+canonical cohort. *Why:* count-only checks can certify a corrupted or stale
+read-back set as canonical.
+
+39. **R39 — HMO creation must pass authority and read-back identity gates before
+replacement.** Uploads MUST run the approved-row authority gate before any
+external write. Every mapped live item MUST read back with the same QID, and
+duplicate local IDs, source URIs, or Wikibase QIDs MUST abort before replacing
+`hmo_canonical_entities`. *Why:* an authority collision or mismatched live
+identity can otherwise create an irreversible false link while leaving a
+plausible canonical row behind.
+
+40. **R40 — Schema drift is observable and fail-closed.** The schema mirror
+report MUST expose label and datatype drift; a changed property datatype is a
+migration signal, not permission to mutate the live property in place. *Why:*
+Wikibase rejects datatype mutation and silently refreshing the local row hides
+an unsafe schema mismatch.
+41. **R41 — Entity writes are throttled by configuration.** The writer MUST
+apply the configured minimum interval to item/property/claim writes while
+leaving reads unaffected. *Why:* retry backoff handles failures after they
+occur; it does not protect a large sequential batch from rate-limit bursts.
+42. **R42 — Blank-node IDs are graph-derived.** Typed blank nodes exported as
+items MUST use a deterministic graph fingerprint, never rdflib's parse-local
+blank-node identifier. *Why:* re-parsing or reordering a graph must not mint a
+different local identity for the same described node.
+43. **R43 — Deferred links may cross run boundaries.** Pass two MUST preserve
+external target source URIs and consult all non-null-run instance mappings;
+unmapped targets remain explicit `unresolved` outcomes. *Why:* a person or
+work shared by two runs must not lose its relationship because it was absent
+from the current build batch.

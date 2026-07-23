@@ -68,11 +68,18 @@ async def hmo_instance_qids_for_run(
         canonical_hmo_instance_qids,
     )
 
-    if not control_numbers:
+    canonical_control_numbers = sorted({
+        canonical_control_number(control_number)
+        for control_number in control_numbers
+        if canonical_control_number(control_number)
+    })
+    if not canonical_control_numbers:
         return {}
 
     uri_gen = UriGenerator(namespace=str(HM))
-    uri_to_cn = {str(uri_gen.manuscript_uri(cn)): cn for cn in control_numbers}
+    uri_to_cn = {
+        str(uri_gen.manuscript_uri(cn)): cn for cn in canonical_control_numbers
+    }
 
     rows = (
         await db.execute(

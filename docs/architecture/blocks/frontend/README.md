@@ -5,8 +5,8 @@
 ## What this block does
 
 The React 18 + TypeScript SPA under `frontend/` is the curator-facing UI for
-every pipeline surface: projects, runs, AI Extraction review, Authority
-review, RDF, HMO Wikibase Studio, Wikidata Studio, and the Linked Data
+every pipeline surface: projects, runs, AI Extraction review, historical
+Authority provenance, RDF, HMO Wikibase Studio, Wikidata Studio, and the Linked Data
 Explorer. It is built with Vite, styled with Tailwind + the in-house
 liquid-glass design system, holds client state in three small Zustand stores
 plus per-feature hooks, and talks to the FastAPI backend exclusively through

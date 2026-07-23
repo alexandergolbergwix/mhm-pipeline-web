@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import pytest
-from rdflib import Graph, Literal, RDF, RDFS
+from rdflib import BNode, Graph, Literal, RDF, RDFS
 
 from converter.config.namespaces import CIDOC, HM, LRMOO
 from converter.wikibase.hmo_exporter import (
@@ -59,10 +59,8 @@ def test_resolve_builds_string_and_time_claims_and_defers_entity_links() -> None
     assert source_uri_claim.value == ms_entity.source_uri
 
 
-def test_resolve_skips_source_uri_claim_gracefully_when_unmapped() -> None:
-    """A database that hasn't run the schema bootstrap since
-    ``hmo_source_uri`` was added must not fail the whole batch — it's a
-    graceful skip, unlike an unmapped class/statement property URI."""
+def test_resolve_raises_when_source_uri_property_is_unmapped() -> None:
+    """Source-URI reconciliation metadata is mandatory for every item."""
     graph = Graph()
     ms = HM.MS1
     graph.add((ms, RDF.type, HM.Codicological_Unit))
@@ -70,10 +68,9 @@ def test_resolve_skips_source_uri_claim_gracefully_when_unmapped() -> None:
     drafts = HmoWikibaseExporter().from_graph(graph)
     mappings = {str(HM.Codicological_Unit): SchemaMappingEntry("Q1")}
 
-    resolved = resolve_against_mappings(drafts, mappings)
-
-    assert resolved[0].claims == []
-    assert any("hmo_source_uri" in note for note in resolved[0].skipped_statements)
+    with pytest.raises(UnmappedOntologyUriError) as excinfo:
+        resolve_against_mappings(drafts, mappings)
+    assert HMO_SOURCE_URI in excinfo.value.missing_uris
 
 
 def test_resolve_raises_on_unmapped_property_uri() -> None:
@@ -198,6 +195,22 @@ def test_paradigm_bridge_nodes_are_not_exported_as_items() -> None:
     assert drafts == []
 
 
+def test_typed_blank_node_gets_stable_draft_id() -> None:
+    first = Graph()
+    first_node = BNode()
+    first.add((first_node, RDF.type, HM.Codicological_Unit))
+    first.add((first_node, RDFS.label, Literal("Stable unit", lang="en")))
+
+    second = Graph()
+    second_node = BNode()
+    second.add((second_node, RDF.type, HM.Codicological_Unit))
+    second.add((second_node, RDFS.label, Literal("Stable unit", lang="en")))
+
+    first_draft = HmoWikibaseExporter().from_graph(first)[0]
+    second_draft = HmoWikibaseExporter().from_graph(second)[0]
+    assert first_draft.local_id == second_draft.local_id
+
+
 def test_labels_never_use_und_language_code() -> None:
     graph = Graph()
     node = HM.MS1
@@ -258,5 +271,5 @@ def test_resolve_skips_object_property_pointing_at_external_uri() -> None:
     resolved = resolve_against_mappings(drafts, mappings)
 
     assert resolved[0].claims[0].property_id == "P99"
-    assert resolved[0].deferred_links == []
-    assert len(resolved[0].skipped_statements) == 1
+    assert len(resolved[0].deferred_links) == 1
+    assert resolved[0].deferred_links[0].target_source_uri == str(external)

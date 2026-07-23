@@ -77,6 +77,20 @@ def test_create_item_sets_labels_descriptions_and_returns_created(
     assert captured["bot"] is True
 
 
+def test_entity_write_throttle_waits_between_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = _writer()
+    writer._min_write_interval_seconds = 2.0
+    writer._last_entity_write_at = 10.0
+    monotonic_values = iter((11.0, 13.0))
+    sleeps: list[float] = []
+    monkeypatch.setattr("converter.wikibase.cloud_client.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr("converter.wikibase.cloud_client.time.sleep", sleeps.append)
+
+    writer._wait_for_entity_write_slot()
+
+    assert sleeps == [1.0]
+
+
 def test_create_property_sets_datatype(monkeypatch: pytest.MonkeyPatch) -> None:
     writer = _writer()
     _stub_wbi(writer, monkeypatch)

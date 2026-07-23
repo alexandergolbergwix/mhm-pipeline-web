@@ -25,6 +25,11 @@ def test_entity_url_builds_real_item_link_when_mapped() -> None:
     assert url == f"{HMO_WIKIBASE_BASE_URL}/wiki/Item:Q42"
 
 
+def test_entity_url_rejects_malformed_qid() -> None:
+    assert hmo_wikibase_entity_url("990001", {"990001": "MS_1"}) is None
+    assert hmo_wikibase_entity_url("990001", {"990001": "Q0"}) is None
+
+
 def test_page_url_slug_fallback_unchanged() -> None:
     assert hmo_wikibase_page_url("990001") == f"{HMO_WIKIBASE_BASE_URL}/wiki/MS_990001"
     assert hmo_wikibase_page_url("") == ""

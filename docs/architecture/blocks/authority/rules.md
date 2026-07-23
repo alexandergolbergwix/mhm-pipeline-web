@@ -19,3 +19,10 @@
 15. **R15 — `AUTHORITY_MODE=postgres` is production; Postgres normalization mirrors the SQLite matchers exactly**, and Postgres failures fall back to the local backend, never to silent empty results. *Why:* Rule W-28 — the `normalized_name` columns are only compatible if normalization is byte-identical.
 16. **R16 — `stage3_guards.py` edits MUST be synced to the desktop `converter/authority/`** (and vice versa via `sync_converter_to_web.sh`). *Why:* the vendored tree is a byte-identical mirror; divergence makes desktop and web disagree on the same records (Rule W-37).
 17. **R17 — Independent VIAF and Wikidata candidates must agree on the live P214 cross-reference.** If a Wikidata QID's P214 differs from the independently matched VIAF cluster, the QID is cleared and the candidate remains review-only. *Why:* label matches can attach a plausible but different scholar; cross-source disagreement is a hard false-positive signal.
+18. **R18 — Retired Authority mutations fail closed and are observable.** The
+legacy mutation routes MUST return HTTP 410 by default and emit structured
+`legacy_authority_mutation_retired` telemetry containing the route family,
+run, actor, and status. The legacy run bookmark MUST explain the move to HMO
+Wikibase Studio before redirecting. *Why:* silent compatibility behavior would
+make it impossible to prove that the standalone curator surface is unused or
+to investigate stale clients.

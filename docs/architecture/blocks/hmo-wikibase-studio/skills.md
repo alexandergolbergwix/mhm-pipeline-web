@@ -38,7 +38,9 @@
 ### Skill: run an item upload for a run
 1. Build the RDF graph first (RDF Graph section), then
    `POST /runs/{id}/hmo-studio/build-items` (409 → schema bootstrap is behind
-   the ontology; re-run it).
+   the ontology; re-run it). This includes the `hmo_source_uri` property:
+   every class, predicate, and reconciliation URI must be mapped before an
+   item cache is created.
 2. Review in the HMO Studio items panel; fix labels/statements via overrides,
    approve items, run the AI audit if desired.
 3. Preview: `POST /runs/{id}/hmo-studio/upload-items` with `{"dry_run": true}`.
@@ -143,7 +145,7 @@ Run `backend/.venv/bin/python backend/scripts/backfill_hmo_canonical_entities.py
 
 ### Skill: enforce the canonical gate and staged rollout
 
-Run `backend/.venv/bin/python backend/scripts/check_hmo_canonical_gate.py --run-id <uuid>` before enabling canonical RDF or Wikidata projections. The command exits non-zero unless every built entity has a valid durable canonical row and no duplicates or missing read-backs exist.
+Run `backend/.venv/bin/python backend/scripts/check_hmo_canonical_gate.py --run-id <uuid>` before enabling canonical RDF or Wikidata projections. The command exits non-zero unless every built entity has a valid durable canonical row and the shared readiness result has no missing/malformed rows, duplicate identities, authority conflicts, stale/missing fingerprints, or live read-back failures. Pass its JSON output to `verify_hmo_projection_gate.py --canonical-readiness <path>` when checking an RDF shadow pair.
 
 Keep `HMO_CANONICAL_FIRST=false` during migration. Add the verified run UUID to
 `HMO_CANONICAL_FIRST_RUN_IDS` for the first cohort, then increase
@@ -154,5 +156,35 @@ canonical gate; canonical routes fail closed when durable read-backs are absent.
 Run the complete read-only production audit with:
 `backend/.venv/bin/python -m scripts.run_hmo_production_e2e <run-id>`.
 It reports HMO→RDF and HMO→Wikidata outputs, false-positive conflicts, and
-exact item-ID and QuickStatements differences plus sampled RDF differences. A non-empty shadow diff is review data,
-not permission to bypass the canonical gate.
+classified item-ID, field, claims, QuickStatements, and sampled RDF differences.
+Canonical RDF/Wikidata builders fail when durable canonical rows are absent.
+A non-empty or unclassified shadow diff is review data that blocks promotion;
+the projection gate's `--allow-difference` option is diagnostic-only and never
+marks a projection ready.
+
+### Skill: execute the Phase 8 test and live idempotency pass
+
+Run the read-only sweep first:
+
+```bash
+cd backend
+.venv/bin/python -m scripts.run_hmo_phase8 \
+   --report ../state/hmo-phase8.json
+```
+
+For a small, explicitly authorized run, the live command requires two
+independent confirmations and performs schema dry-run → schema live → status
+→ item build → item upload dry-run → item upload live → mapping/item summary →
+repeat schema/upload. It fails closed unless the repeat pass creates or
+updates nothing unexpectedly:
+
+```bash
+HMO_PHASE8_LIVE_WRITES=1 .venv/bin/python -m scripts.run_hmo_phase8 \
+   --run-id <run-uuid> --live --confirm-live-writes \
+   --report ../state/hmo-phase8-live.json
+```
+
+The JSON report contains schema and instance mapping counts plus sample
+QIDs/PIDs. Review the report and spot-check the run in the browser before
+claiming the live pass complete. Never commit credentials or generated reports
+containing sensitive operational data.

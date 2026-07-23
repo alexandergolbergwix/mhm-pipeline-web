@@ -44,10 +44,11 @@ Canonical source mode reads durable `hmo_canonical_entities` rows first; the per
 The HMO-to-Wikidata boundary is deliberately narrow. `hmo_instance_qids_for_run`
 reads the run upload ledger, and `hmo_wikidata_projection` accepts a link only
 when the ontology URI exactly matches the canonical `MS_<control-number>` URI
-and the local QID is syntactically valid. Conflicting QIDs for one manuscript
-are omitted. The builder emits the real HMO Wikibase `/wiki/Item:Q<n>` URL; it
-never treats a local QID as a global Wikidata QID and falls back to the stable
-slug when no safe HMO mapping exists.
+and the local QID is syntactically valid. Control numbers are canonicalised at
+this lookup boundary, including MARC values stored with surrounding quotes.
+Conflicting QIDs for one manuscript are omitted. The builder emits the real
+HMO Wikibase `/wiki/Item:Q<n>` URL; it never treats a local QID as a global
+Wikidata QID and falls back to the stable slug when no safe HMO mapping exists.
 
 ### Item overrides, approval, statement exclude
 

@@ -26,7 +26,7 @@ from app.models.rdf_artifact import RdfArtifact
 from app.models.run import AuthorityMatch
 from app.pipeline.hmo_authority_gate import validate_authority_rows
 from app.pipeline.rdf_build import build_rdf_from_hmo_canonical_cache
-from app.pipeline.projection_shadow_compare import compare_rdf_projections
+from app.pipeline.projection_shadow_compare import compare_item_projections, compare_rdf_projections
 from app.routers.wikidata_studio import execute_studio_build
 from scripts.check_hmo_canonical_gate import inspect as inspect_canonical
 
@@ -46,23 +46,7 @@ def _studio_summary(row: Any) -> dict[str, Any]:
 
 def _studio_shadow_diff(legacy: Any, canonical: Any) -> dict[str, Any]:
     """Compare item payloads and QuickStatements, not just row counts."""
-    legacy_items = {str(item.get("local_id") or ""): item for item in (legacy.result_items or [])}
-    canonical_items = {str(item.get("local_id") or ""): item for item in (canonical.result_items or [])}
-    legacy_ids = set(legacy_items)
-    canonical_ids = set(canonical_items)
-    changed: list[dict[str, Any]] = []
-    compared_fields = (
-        "source_uri", "hmo_wikibase_id", "labels", "descriptions", "aliases",
-        "claims", "wikidata_claims", "authority_evidence", "projection_source",
-    )
-    for local_id in sorted(legacy_ids & canonical_ids):
-        fields = {
-            field: {"legacy": legacy_items[local_id].get(field), "canonical": canonical_items[local_id].get(field)}
-            for field in compared_fields
-            if legacy_items[local_id].get(field) != canonical_items[local_id].get(field)
-        }
-        if fields:
-            changed.append({"local_id": local_id, "fields": fields})
+    item_shadow = compare_item_projections(legacy.result_items or [], canonical.result_items or [])
 
     def lines(value: Any) -> set[str]:
         return {line.strip() for line in str(value or "").splitlines() if line.strip()}
@@ -72,15 +56,9 @@ def _studio_shadow_diff(legacy: Any, canonical: Any) -> dict[str, Any]:
     only_legacy_qs = sorted(legacy_qs - canonical_qs)
     only_canonical_qs = sorted(canonical_qs - legacy_qs)
     return {
-        "identical": not (legacy_ids - canonical_ids or canonical_ids - legacy_ids or changed or only_legacy_qs or only_canonical_qs),
-        "items": {
-            "legacy": len(legacy_items),
-            "canonical": len(canonical_items),
-            "only_legacy": sorted(legacy_ids - canonical_ids),
-            "only_canonical": sorted(canonical_ids - legacy_ids),
-            "changed_count": len(changed),
-            "changed_sample": changed[:50],
-        },
+        "identical": item_shadow["identical"] and not only_legacy_qs and not only_canonical_qs,
+        "promotion_ready": item_shadow["promotion_ready"] and not only_legacy_qs and not only_canonical_qs,
+        "items": item_shadow,
         "quickstatements": {
             "legacy": len(legacy_qs),
             "canonical": len(canonical_qs),
@@ -96,6 +74,7 @@ async def audit(run_id: uuid.UUID) -> dict[str, Any]:
     result: dict[str, Any] = {
         "run_id": str(run_id),
         "canonical_gate": gate,
+        "canonical_readiness": gate,
         "authority_false_positive_gate": None,
         "rdf": None,
         "rdf_shadow": None,

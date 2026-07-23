@@ -19,23 +19,23 @@
   `hmo_instance_qids` so a manuscript getting uploaded to HMO Wikibase
   invalidates the Wikidata Studio build cache (otherwise P2888/P973
   would keep pointing at the stale slug URL).
-- **Phase 7: backend-verified, UI never opened in a browser.** The three
-  panels (`frontend/src/components/hmo/{SchemaBootstrapPanel,
-  ItemBuildPanel,ItemUploadPanel}.tsx`) exist and pass `tsc --noEmit`,
-  but no e2e spec was written and the dev server was never started to
-  visually confirm them — `frontend/e2e/hmo-wikibase-studio.spec.ts`
-  from the plan below is still outstanding. Frontend unit test infra
-  (`yarn test:unit`) is separately broken repo-wide (missing
-  `@testing-library/dom` peer dep, pre-existing, unrelated to this work).
-- **Phase 8: automated sweep done, live pass NOT done.** Full pytest
-  (938 passed, 17 pre-existing unrelated failures, same before and after
-  this session's changes) and the eval-agent suite (40/40) are green.
-  The live-credential integration pass against the real
-  `mhm-hmo.wikibase.cloud` (dry-run → live bootstrap creating ~380 real
-  entities → idempotency re-run) was explicitly deferred pending user
-  go-ahead, since it's a real write to a shared external system. Bot
-  credentials are in the local, gitignored `.env`
-  (`WIKIBASE_CLOUD_BOT_*`) — **never commit these**.
+- **Phase 7: implemented and browser-tested.** The three panels
+  (`frontend/src/components/hmo/{SchemaBootstrapPanel,
+  ItemBuildPanel,ItemUploadPanel}.tsx`) pass `tsc --noEmit`, and
+  `frontend/e2e/hmo-wikibase-studio.spec.ts` covers schema counts, dry-run
+  defaults, and upload gating. The focused Playwright spec passes. Frontend
+  unit test infrastructure (`yarn test:unit`) remains separately broken
+  repo-wide because of a missing `@testing-library/dom` peer dependency.
+- **Phase 8: read-only sweep verified; live pass remains explicitly gated.**
+  `backend/scripts/run_hmo_phase8.py` runs the focused backend/frontend sweep
+  and, with `--live`, enforces the ordered schema → item build → dry-run upload
+  → live upload → repeat/idempotency workflow. Live writes require both
+  `--confirm-live-writes` and `HMO_PHASE8_LIVE_WRITES=1`; the command records
+  mapping counts and representative QIDs/PIDs in its JSON report. The real
+  `mhm-hmo.wikibase.cloud` write pass is not run automatically because it
+  mutates a shared external system. Credentials remain local and gitignored;
+  **never commit them**. The read-only coordinator sweep is green: 208
+  backend HMO tests and 3 Phase 7 Playwright tests pass.
 - **New, not in the original 8-phase plan:** an `eval-agent` extension —
   a `hmo_wikibase_schema` evaluator (rubric, ingest reader, evaluator
   class) that judges schema-bootstrap output against the HMO ontology and
@@ -364,6 +364,26 @@ check each panel state visually.
 
 ## Phase 8 — Full test sweep + live-credential integration pass
 
+The repeatable coordinator is:
+
+```bash
+cd backend
+.venv/bin/python -m scripts.run_hmo_phase8 --report ../state/hmo-phase8.json
+```
+
+This runs the HMO backend tests and the Phase 7 browser spec. For an
+explicitly authorized small run, add both live-write confirmations:
+
+```bash
+HMO_PHASE8_LIVE_WRITES=1 .venv/bin/python -m scripts.run_hmo_phase8 \
+  --run-id <run-uuid> --live --confirm-live-writes \
+  --report ../state/hmo-phase8-live.json
+```
+
+The live report is the record of schema/item mapping counts, sample QIDs/PIDs,
+upload outcomes, and the second-pass zero-write idempotency check. It should
+be attached to the PR or release record; do not paste credentials into it.
+
 - `pytest backend/tests/converter/wikibase backend/tests/app/pipeline
   backend/tests/app/routers -k hmo` + the new e2e spec.
 - One coordinated live run in strict order: schema status → bootstrap
@@ -375,30 +395,35 @@ check each panel state visually.
 
 ---
 
+## Phase 9 — Hardening and cross-run safety
+
+Phase 9 closes the five deferred operational risks from Phase 8:
+
+- schema mirror reports label/datatype drift instead of silently presenting a
+  mapping as current; datatype changes remain fail-closed and require a new
+  property plus a migration plan because Wikibase cannot mutate a property's
+  datatype in place;
+- `WikibaseCloudWriter` accepts `WIKIBASE_CLOUD_MIN_WRITE_INTERVAL_SECONDS`
+  and throttles entity/property/claim writes without delaying reads;
+- typed RDF blank nodes receive deterministic graph-derived draft IDs;
+- deferred object-property targets retain their source URI and pass two
+  resolves against instance mappings from all completed runs;
+- manuscript Wikidata cross-links continue to use the existing P2888/P973
+  contract, including real HMO item URLs after upload. Per-statement links for
+  HMO-only properties remain intentionally excluded until a Wikidata property
+  slot is approved; no speculative claims are emitted.
+
+Focused regression coverage is in the HMO exporter, schema mirror, writer,
+and upload suites. The Phase 8 coordinator remains the integration pass.
+
 ## Residual Risks / Explicitly Deferred
 
-1. **No edit-in-place / schema evolution.** TTL label/description/datatype
-   changes after bootstrap are silently masked by the mapping table (row
-   exists → skip). Datatype changes are especially hard: Wikibase forbids
-   changing a property's datatype post-creation, so a real fix needs a new
-   property + bulk statement rewrite. Future task.
-2. **No per-statement Wikidata cross-link** for HMO-only properties (phase 6
-   ships manuscript-item-level only) — needs a product decision on the
-   Wikidata slot to carry it.
-3. **Rate limiting at scale**: schema entities + per-run instance items mean
-   hundreds of sequential `wbeditentity` calls. Phase 1's backoff/retry
-   covers transient 429/5xx but there's no client-side throttle; watch the
-   first live bootstrap and add a delay between calls if Wikibase Cloud's
-   cap proves stricter than expected.
-4. **Blank-node instances** get synthetic IDs not stable across TTL
-   re-parses — instance idempotency is weaker for these than for
-   URI-identified nodes; a regenerated graph with reordered blank nodes
-   could create duplicate items. Not fixed here.
-5. **Two-pass upload (phase 5) assumes cross-run link resolution** works via
-   the globally-queried mapping table, but this needs a dedicated
-   multi-run test case (person referenced by two different runs' items)
-   before being trusted in production — single-run tests aren't sufficient
-   proof.
+1. **Schema migrations remain explicit.** A detected datatype drift needs a
+  new Wikibase property and a controlled statement migration; Phase 9 does
+  not attempt an unsafe in-place datatype mutation.
+2. **Per-statement Wikidata cross-links** still require an approved Wikidata
+  property slot and editorial semantics; the implementation remains
+  fail-closed rather than inventing a claim.
 
 ## Critical files
 

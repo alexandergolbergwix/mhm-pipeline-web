@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     wikibase_cloud_oauth_access_token: str = Field(default="")
     # Prefix for every edit summary / revision attribution on the wiki.
     wikibase_cloud_write_user: str = Field(default="mhm-pipeline-web")
+    wikibase_cloud_min_write_interval_seconds: float = Field(default=0.0, ge=0.0)
     # When true, login/invite-accept attempts to create a matching wiki account
     # via the server OAuth session (best-effort; app auth still succeeds on failure).
     wikibase_auto_provision_wiki_accounts: bool = Field(default=True)

@@ -51,8 +51,8 @@ export default function ProjectsList() {
             </button>
           </div>
           <p className="muted text-sm">
-            Each project is its own workspace — MARC uploads, authority
-            matches, approvals, history, and the people you've invited to
+            Each project is its own workspace — MARC uploads, curator review,
+            approvals, history, and the people you've invited to
             collaborate on it.
           </p>
         </Glass>

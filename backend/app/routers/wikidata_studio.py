@@ -507,12 +507,7 @@ async def execute_studio_build(
         canonical_rows = (await db.execute(select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id))).scalars().all()
         canonical = [normalize_live_entity(row.snapshot) for row in canonical_rows]
         if not canonical:
-            hmo_cache = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
-            if hmo_cache is None:
-                raise ValueError(f"no HMO canonical cache for run {run_id}")
-            canonical = [normalize_live_entity(raw["canonical_live"]) for raw in hmo_cache.resolved_entities if raw.get("canonical_live")]
-        if not canonical:
-            raise ValueError(f"no live HMO read-back entities for run {run_id}")
+            raise ValueError(f"no durable HMO canonical entities for run {run_id}")
         canonical_fp = canonical_wikidata_fingerprint(canonical)
         items = [{"local_id": e.local_id, "source_uri": e.source_uri, "hmo_wikibase_id": e.wikibase_id, "labels": e.labels, "descriptions": e.descriptions, "aliases": e.aliases, "claims": e.claims, "wikidata_claims": native_wikidata_claims(e), "authority_evidence": [x for x in e.authority_evidence if x.get("accepted") is True], "projection_source": "hmo_wikibase", "source_fingerprint": e.source_fingerprint} for e in canonical]
         summary = {"total_items": len(items), "manuscripts": 0, "persons": 0, "works": 0, "statements": sum(len(i["claims"]) for i in items)}

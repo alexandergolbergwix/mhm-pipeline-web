@@ -2,6 +2,9 @@
 
 > Up: [Authority Enrichment](README.md)
 
+- `backend/tests/unit/test_authority_retirement.py` — retired mutation 410
+	behavior, structured telemetry, and explicit rollback configuration.
+
 - `backend/tests/unit/test_authority_routing.py` — matcher routing by kind (person/place/work), KIMA→Mazal backfill
 - `backend/tests/unit/test_authority_supervisor_examples.py` — Gilla's 2026-06 real-record regression examples
 - `backend/tests/unit/test_authority_hardening.py` — guard verdicts, flag accumulation, ID stripping, idempotency

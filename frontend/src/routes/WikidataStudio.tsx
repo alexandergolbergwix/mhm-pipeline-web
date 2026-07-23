@@ -374,7 +374,7 @@ export default function WikidataStudio() {
           </p>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
-            <div className="col-span-full text-xs uppercase tracking-[0.18em] text-biu-sky">Source: {build.source === "canonical" ? "HMO Wikibase canonical entities" : "legacy MARC + authority pipeline"}</div>
+            <div className="col-span-full text-xs uppercase tracking-[0.18em] text-biu-sky">Source: {build.source === "canonical" ? "HMO Wikibase canonical entities" : "legacy MARC enrichment"}</div>
             <Stat label="Records" value={build.record_count} />
             <Stat label="Matches fed" value={build.used_match_count}
                   sub={`${build.approved_match_count} approved · ${build.pending_match_count} pending`} />

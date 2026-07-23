@@ -26,13 +26,14 @@ def test_audit_flags_work_without_manuscript_scope() -> None:
     assert any(i.code == "work_missing_manuscript_scope" for i in issues)
 
 
-def test_exporter_skips_blank_nodes() -> None:
+def test_exporter_exports_typed_blank_nodes_with_stable_id() -> None:
     graph = Graph()
     bnode = BNode()
     graph.add((bnode, RDF.type, HM.Evidence))
     graph.add((bnode, RDFS.label, Literal("BlankNode n1011", lang="en")))
     drafts = HmoWikibaseExporter().from_graph(graph)
-    assert drafts == []
+    assert len(drafts) == 1
+    assert drafts[0].local_id.startswith("QDraft_BlankNode_")
 
 
 def test_exporter_drops_hebrew_duplicated_en_label() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from collections import defaultdict
 from dataclasses import replace
 import re
@@ -89,7 +90,7 @@ class HmoWikibaseExporter:
     def from_graph(self, graph: Graph) -> list[WikibaseEntityDraft]:
         """Convert typed RDF nodes into full scholarly Wikibase drafts."""
         typed_nodes = _typed_instance_nodes(graph)
-        local_ids = _local_ids_for_nodes(typed_nodes)
+        local_ids = _local_ids_for_nodes(graph, typed_nodes)
 
         drafts: list[WikibaseEntityDraft] = []
         for subject in typed_nodes:
@@ -138,8 +139,6 @@ def _typed_instance_nodes(graph: Graph) -> list[URIRef | BNode]:
     """Return typed data nodes while skipping ontology/schema declarations."""
     nodes: set[URIRef | BNode] = set()
     for subject, class_uri in graph.subject_objects(RDF.type):
-        if isinstance(subject, BNode):
-            continue
         if not isinstance(subject, URIRef | BNode):
             continue
         if not isinstance(class_uri, URIRef):
@@ -265,12 +264,14 @@ def _control_numbers_for_node(graph: Graph, subject: URIRef | BNode) -> list[str
     return sorted(found)
 
 
-def _local_ids_for_nodes(nodes: list[URIRef | BNode]) -> dict[URIRef | BNode, str]:
+def _local_ids_for_nodes(
+    graph: Graph, nodes: list[URIRef | BNode],
+) -> dict[URIRef | BNode, str]:
     """Create stable local Wikibase draft IDs for RDF resources."""
     seen: defaultdict[str, int] = defaultdict(int)
     local_ids: dict[URIRef | BNode, str] = {}
     for node in nodes:
-        base = safe_local_id(_node_local_name(node))
+        base = safe_local_id(_node_local_name(graph, node))
         seen[base] += 1
         suffix = "" if seen[base] == 1 else f"_{seen[base]}"
         local_ids[node] = f"QDraft_{base}{suffix}"
@@ -304,7 +305,7 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
         language = label.language or "en"
         labels.setdefault(language, str(label))
     if not labels:
-        labels = {"en": _node_local_name(subject).replace("_", " ")}
+        labels = {"en": _node_local_name(graph, subject).replace("_", " ")}
     elif "en" not in labels:
         fallback = labels.get("he") or next(iter(labels.values()))
         if label_language_for_text(fallback) == "en":
@@ -486,11 +487,28 @@ def _literal_value(literal: Literal) -> tuple[StatementValue, str | None]:
     return str(value), datatype
 
 
-def _node_local_name(node: URIRef | BNode) -> str:
+def _node_local_name(graph: Graph, node: URIRef | BNode) -> str:
     """Return a readable local name for a URI or blank node."""
     if isinstance(node, BNode):
-        return f"BlankNode_{node}"
+        return f"BlankNode_{_blank_node_fingerprint(graph, node)}"
     return local_name(node)
+
+
+def _blank_node_fingerprint(graph: Graph, node: BNode) -> str:
+    """Fingerprint a blank node from its sorted immediate RDF description."""
+    parts: list[str] = []
+    for predicate, obj in sorted(
+        graph.predicate_objects(node), key=lambda pair: (str(pair[0]), str(pair[1]))
+    ):
+        object_value = "_:blank" if isinstance(obj, BNode) else str(obj)
+        parts.append(f"{predicate}|{object_value}")
+    for subject, predicate in sorted(
+        graph.subject_predicates(node), key=lambda pair: (str(pair[0]), str(pair[1]))
+    ):
+        subject_value = "_:blank" if isinstance(subject, BNode) else str(subject)
+        parts.append(f"{subject_value}|{predicate}")
+    digest = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
+    return digest
 
 
 # ── Phase 4: resolve drafts against the live schema ─────────────────────
@@ -544,6 +562,17 @@ def resolve_against_mappings(
                 )
                 continue
 
+            if stmt.value_type == "uri" and prop_entry.datatype == "wikibase-item":
+                deferred.append(
+                    DeferredItemLink(
+                        source_local_id=draft.local_id,
+                        property_id=prop_entry.wikibase_id,
+                        target_local_id="",
+                        target_source_uri=str(stmt.value),
+                    )
+                )
+                continue
+
             claim = _build_claim_spec(prop_entry, stmt)
             if claim is None:
                 skipped.append(
@@ -555,13 +584,7 @@ def resolve_against_mappings(
 
         source_uri_entry = schema_mappings.get(HMO_SOURCE_URI)
         if source_uri_entry is None:
-            # Bootstrap ordering: an old database may not have this new
-            # property mapped yet — skip gracefully instead of failing
-            # the whole batch the way an unmapped ontology URI does.
-            skipped.append(
-                "hmo_source_uri: no live schema mapping yet — run the "
-                "schema bootstrap to enable live-Wikibase reconciliation"
-            )
+            missing_uris.add(HMO_SOURCE_URI)
         else:
             claims.append(
                 ResolvedClaim(source_uri_entry.wikibase_id, "string", draft.source_uri)

@@ -62,12 +62,14 @@ class DeferredItemLink:
     source_local_id: str
     property_id: str
     target_local_id: str
+    target_source_uri: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "source_local_id": self.source_local_id,
             "property_id": self.property_id,
             "target_local_id": self.target_local_id,
+            "target_source_uri": self.target_source_uri,
         }
 
     @staticmethod
@@ -76,6 +78,7 @@ class DeferredItemLink:
             source_local_id=data["source_local_id"],
             property_id=data["property_id"],
             target_local_id=data["target_local_id"],
+            target_source_uri=data.get("target_source_uri"),
         )
 
 

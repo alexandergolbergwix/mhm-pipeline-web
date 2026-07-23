@@ -801,7 +801,7 @@ export default function StageRdf() {
 
           {graph && graph.nodes.length > 0 && (
             <p className="muted text-xs">
-              Built from approved AI extraction + authority enrichment data
+              Built from approved AI extraction and canonical HMO enrichment data
             </p>
           )}
 
@@ -1157,7 +1157,7 @@ function ListView({
         <span className="text-xs muted">Click a node to expand its triples · ✏ to edit literal values</span>
       </div>
       <p className="text-xs muted">
-        Built from <strong className="text-green-400">approved AI extraction</strong> + <strong className="text-blue-400">authority enrichment</strong> data.
+        Built from <strong className="text-green-400">approved AI extraction</strong> + <strong className="text-blue-400">canonical HMO enrichment</strong> data.
         Edits below override literal values in the next rebuild.
       </p>
 

@@ -36,4 +36,10 @@ AuthorityMatch rows remain read-only for provenance and migration audits.
 - [wikidata-studio](../wikidata-studio/README.md) — consumes `cluster_ids`, QIDs, preferred names for item building
 
 
-The former Authority review page and its mutation endpoints are retired. Enrichment runs internally during HMO Studio creation; compatibility mutation calls return HTTP 410 and emit `legacy_authority_mutation_retired` telemetry. Read-only AuthorityMatch data remains available for provenance, historical exports, and shadow audits.
+The former Authority review page and its mutation endpoints are retired. The
+legacy `/runs/:runId` bookmark route shows a deprecation notice and redirects
+to HMO Wikibase Studio; compatibility mutation calls return HTTP 410 and emit
+structured `legacy_authority_mutation_retired` telemetry with route, run, actor,
+and status metadata. Enrichment runs internally during HMO Studio creation.
+Read-only AuthorityMatch data remains available for provenance, historical
+exports, and shadow audits.
