@@ -40,7 +40,7 @@ def test_full_canonical_chain_has_no_legacy_authority_dependency() -> None:
             {"kind": "mazal", "identifier": "987007270341205171", "accepted": True},
         ],
         "claims": [
-            {"wikidata_property": "P31", "value_type": "wikibase-item", "target_qid": "Q515"},
+            {"property_uri": "https://w3id.org/mhm/ontology#instance_of", "wikidata_property": "P31", "value_type": "wikibase-item", "target_qid": "Q515"},
         ],
     })
     graph = graph_from_canonical_entities([entity])
