@@ -46,3 +46,6 @@
 | `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: lifecycle bar (`ItemBuildPanel`/`ItemUploadPanel` compact) + `HmoItemTable` |
 | `frontend/src/components/hmo/*` | Review UI: `HmoItemTable`, `HmoItemDetailDrawer`, `HmoAuthorityEvidence` (persisted Mazal/KIMA/VIAF/Wikidata claims), `HmoItemAiVerdictBadge` (click pill → full reasoning popover), `HmoItemVerificationModal` (`useVerifyJob`), `ItemUploadPanel` (pre/post-upload AI verify), schema panels |
 | `dev-docs/hmo-wikibase-studio-plan.md` | The 8-phase buildout plan + status |
+
+| `backend/app/models/hmo_canonical_entity.py` | Durable canonical HMO entity contract and projection source |
+| `backend/app/migrations/versions/0036_hmo_canonical_contract.py` | Adds explicit canonical identity, claims, evidence, provenance, and status fields |
