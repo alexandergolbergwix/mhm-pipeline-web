@@ -39,3 +39,6 @@ role-priority merge. Run insert (`run.py:66-97`):
 Re-enrich upsert uses the identical `match_key` (`authority_re_enrich.py:22`)
 — duplicates collapse to the first row, and rows whose key no longer appears
 in extraction are purged as orphans.
+
+
+Identifier URL safety: `987007…` identifiers are NLI/Mazal authority numbers, not VIAF clusters. They must link to the NLI authority page; only validated VIAF cluster IDs may use `viaf.org/viaf/`.
