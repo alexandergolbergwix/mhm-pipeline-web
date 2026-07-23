@@ -41,3 +41,6 @@ the KIMA→gazetteer chain like production places; `owner_place` /
 `institution_place` in `research_geo_enrich.py` resolve owner residences and
 institutional seats via SPARQL (P159→P276→P131→P625, abstaining on humans) for
 the maps layer.
+
+
+Place matches with independent Mazal and Wikidata/KIMA identifiers are auto-approved only when both identifiers are present and the matcher reports at least two sources. This prevents a place-type AI role mismatch from discarding strong geographic evidence while remaining fail-closed for single-source or fuzzy matches.
