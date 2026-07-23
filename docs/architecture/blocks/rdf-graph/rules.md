@@ -130,3 +130,10 @@
     MARC place labels before KIMA matching, emit Wikidata place URIs through
     `hm:external_wikidata_uri`, and never interpret a project Wikibase QID as a
     Wikidata QID.
+
+20. **R20 — URI and label literals MUST be normalized before export.**
+   MARC quote wrappers around digital URLs are stripped before `xsd:anyURI`
+   emission, and RDF labels pass `sanitize_work_title` so unmatched catalog
+   quotes/parentheses cannot block HMO export; Hebrew gershayim remain intact.
+   *Why:* the production run rebuild exposed 11 invalid URL literals and 21
+   export-quality failures before any live canonical read-back could start.

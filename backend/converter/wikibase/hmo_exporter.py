@@ -20,7 +20,7 @@ from converter.authority.evidence import (
     normalize_viaf_id,
     normalize_wikidata_qid,
 )
-from converter.rdf.rdf_helpers import label_language_for_text
+from converter.rdf.rdf_helpers import label_language_for_text, sanitize_work_title
 from converter.wikibase._ids import local_name, safe_local_id
 from converter.wikibase.label_sanitize import sanitize_monolingual_map
 from converter.wikibase.models import (
@@ -316,7 +316,10 @@ def _labels_for_node(graph: Graph, subject: URIRef | BNode) -> dict[str, str]:
     ):
         labels.pop("en", None)
     return sanitize_monolingual_map(
-        {lang: _truncate(text, _MAX_LABEL_LENGTH) for lang, text in labels.items()}
+        {
+            lang: _truncate(sanitize_work_title(text), _MAX_LABEL_LENGTH)
+            for lang, text in labels.items()
+        }
     )
 
 

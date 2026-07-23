@@ -32,3 +32,8 @@
   production-place `owl:sameAs` and `hm:external_wikidata_uri` triples. A QID-only approved KIMA match is also covered, ensuring identifier enrichment is not gated on coordinates.
 
 - `backend/scripts/verify_hmo_projection_gate.py` — fail-closed legacy/canonical RDF promotion gate.
+
+- `backend/tests/unit/test_graph_builder_codicological_labels.py` — quoted
+  digital URL normalization and `xsd:anyURI` emission (R20).
+- `backend/tests/unit/test_hmo_exporter_descriptions.py` — unmatched label
+  punctuation is removed while Hebrew gershayim are preserved (R20).

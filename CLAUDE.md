@@ -2194,3 +2194,15 @@ is retained as `accepted: false` with a reason, and the corresponding external
 claim is removed before caching or upload. Cross-source VIAF disagreement also
 withholds the Wikidata candidate. This prevents a plausible label match from
 creating a false-positive identity link.
+
+
+### Rule W-87 — HMO RDF literals MUST be export-safe (added 2026-07-23)
+
+The first production canonical migration attempt was blocked before upload by
+21 unmatched label quote/parenthesis artifacts and 11 digital URLs serialized
+with MARC quote wrappers. GraphBuilder now strips balanced outer quotes before
+emitting `xsd:anyURI` values, and HMO labels pass the shared title sanitizer
+while preserving Hebrew gershayim. This keeps SHACL and the HMO export-quality
+gate fail-closed without discarding legitimate abbreviation marks. Tests:
+`test_graph_builder_codicological_labels.py` and
+`test_hmo_exporter_descriptions.py`.

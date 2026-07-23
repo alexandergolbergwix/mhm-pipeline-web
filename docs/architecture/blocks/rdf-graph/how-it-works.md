@@ -85,3 +85,9 @@ Canonical HMO projection: `build_rdf_from_hmo_canonical_cache` reads durable `hm
 
 
 When `HMO_CANONICAL_FIRST=true`, RDF build requests that omit an explicit source are routed to the durable canonical HMO projection; explicit canonical requests always use it.
+
+
+Digital URLs are normalized at graph emission: MARC quote wrappers are removed
+before `xsd:anyURI` literals are created. HMO labels receive the shared
+work-title sanitizer as a final pass, preserving Hebrew abbreviation marks while
+removing unmatched catalog punctuation before the export-quality gate.

@@ -52,3 +52,21 @@ def test_descriptions_merge_multiple_rdfs_comments() -> None:
     desc = _descriptions_for_node(graph, work, LRMOO.F1_Work)
     assert "990001" in desc["en"]
     assert "990002" in desc["en"]
+
+
+def test_labels_drop_unmatched_catalog_parenthesis() -> None:
+    graph = Graph()
+    work = URIRef(f"{HM}Work_quoted")
+    graph.add((work, RDF.type, LRMOO.F1_Work))
+    graph.add((work, RDFS.label, Literal('ספר הקבלה לאברהם בן דוד (הראב"ד', lang="he")))
+    labels = _labels_for_node(graph, work)
+    assert labels["he"] == "ספר הקבלה לאברהם בן דוד"
+
+
+def test_labels_preserve_hebrew_gershayim() -> None:
+    graph = Graph()
+    person = URIRef(f"{HM}Person_gershayim")
+    graph.add((person, RDF.type, HM.E21_Person))
+    graph.add((person, RDFS.label, Literal('שד"ל', lang="he")))
+    labels = _labels_for_node(graph, person)
+    assert labels["he"] == 'שד"ל'

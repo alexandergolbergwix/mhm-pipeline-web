@@ -209,3 +209,20 @@ def test_long_isbd_work_label_uses_precolon_head() -> None:
     label = work.labels.get("he") or work.labels.get("en")
     assert label == "שער שברי לוחות"
     assert "שער שברי לוחות" in work.descriptions["en"]
+
+
+def test_digital_urls_strip_marc_quote_wrappers() -> None:
+    from rdflib import URIRef
+    from rdflib.namespace import XSD
+    data = ExtractedData(
+        title="ספר תהילים",
+        digital_url='"https://example.org/manuscript"',
+        iiif_manifest_url="'https://example.org/manifest'",
+    )
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    ms = URIRef("https://w3id.org/mhm/ontology#MS_990001800310205171")
+    assert str(graph.value(ms, HM.has_digital_representation_url)) == "https://example.org/manuscript"
+    digital = next(graph.subjects(RDF.type, HM.DigitalAccess))
+    assert str(graph.value(digital, HM.digital_access_url)) == "https://example.org/manuscript"
+    assert graph.value(digital, HM.digital_access_url).datatype == XSD.anyURI
+    assert str(graph.value(digital, HM.iiif_manifest_url)) == "https://example.org/manifest"
