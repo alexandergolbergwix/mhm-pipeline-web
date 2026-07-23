@@ -30,3 +30,6 @@ specs with fully mocked backends ("every click is a test").
 - [wikidata-studio](../wikidata-studio/README.md) — Studio build/override/upload UI.
 - [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — HMO items review + upload UI.
 - [research](../research/README.md) — maps, SPARQL console, Linked Data Explorer panels.
+
+
+The legacy `/runs/:runId` Authority route now redirects to HMO Studio. Authority mutation/review is no longer a standalone frontend surface.

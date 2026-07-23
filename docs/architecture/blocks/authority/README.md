@@ -34,3 +34,6 @@ graph, HMO Wikibase Studio, and Wikidata Studio downstream.
 - [job-service](../job-service/README.md) — background re-enrich job claiming/heartbeat
 - [frontend](../frontend/README.md) — glass components, render-stability rules the authority UI obeys
 - [wikidata-studio](../wikidata-studio/README.md) — consumes `cluster_ids`, QIDs, preferred names for item building
+
+
+The former Authority review page is retired; enrichment runs internally during HMO Studio creation. Backend matcher services remain for enrichment and audit only.
