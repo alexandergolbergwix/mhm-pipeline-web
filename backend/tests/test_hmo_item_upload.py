@@ -289,6 +289,10 @@ async def test_unsupported_boolean_claims_are_serialized_before_live_write() -> 
         claims=[ResolvedClaim("P1", "boolean", True)],
     )
 
+    live_claim = pipeline._build_live_wbi_claims(entity)[0]
+    assert live_claim.mainsnak.datatype == "string"
+    assert live_claim.mainsnak.datavalue["value"] == "true"
+
     update = await pipeline._update_claims_with_string_fallback(
         writer,
         "Q1",
