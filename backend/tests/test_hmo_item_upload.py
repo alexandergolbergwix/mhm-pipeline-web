@@ -277,6 +277,44 @@ async def test_update_existing_reports_failed_writes(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_unsupported_boolean_claims_are_serialized_before_live_write() -> None:
+    """Wikibase Cloud has no boolean snak type, so never send one remotely."""
+    writer = _FakeWriter()
+    entity = ResolvedWikibaseEntity(
+        local_id="QDraft_MS1",
+        labels={"en": "Test MS"},
+        descriptions={"en": "a manuscript"},
+        class_qid="Q1",
+        source_uri="http://example.org#MS1",
+        claims=[ResolvedClaim("P1", "boolean", True)],
+    )
+
+    update = await pipeline._update_claims_with_string_fallback(
+        writer,
+        "Q1",
+        labels=entity.labels,
+        descriptions=entity.descriptions,
+        entity=entity,
+    )
+    assert update.status == "updated"
+    update_claim = writer.update_calls[0]["claims"][0]
+    assert update_claim.mainsnak.datatype == "string"
+    assert update_claim.mainsnak.datavalue["value"] == "true"
+
+    create_writer = _FakeWriter()
+    create = await pipeline._create_claims_with_string_fallback(
+        create_writer,
+        labels=entity.labels,
+        descriptions=entity.descriptions,
+        entity=entity,
+    )
+    assert create.status == "created"
+    create_claim = create_writer.claim_calls[0][1]
+    assert create_claim.mainsnak.datatype == "string"
+    assert create_claim.mainsnak.datavalue["value"] == "true"
+
+
+@pytest.mark.asyncio
 async def test_live_upload_adopts_a_reconciled_found_item_instead_of_creating(db_session) -> None:
     """Pass 1 must not create a duplicate for an item that already exists
     live on the Wikibase Cloud — it should adopt the found QID instead."""

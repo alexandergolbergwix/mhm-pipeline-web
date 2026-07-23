@@ -2243,3 +2243,15 @@ values and claims in nested MediaWiki shapes. Read-back now resolves QIDs by
 to ontology property URIs, and persists only the canonical contract. The
 canonical gate remains blocked when any live item cannot be read back. Test:
 `test_hmo_canonical_readback.py`.
+
+
+### Rule W-91 — Unsupported Wikibase scalar datatypes MUST be normalized before writes (added 2026-07-23)
+
+The first corrected production migration still sent a boolean snak in the
+whole-item update before attempting its per-claim fallback. wikibase.cloud
+rejects the boolean datatype, so a large run generated one avoidable failed API
+call per item and exceeded the safe migration window. HMO create/update now
+serializes boolean claims as explicit strings before the first remote call;
+time and monolingual-text values remain native and only use the narrow scalar
+fallback when the server explicitly reports a mismatch. Test:
+`test_unsupported_boolean_claims_are_serialized_before_live_write`.

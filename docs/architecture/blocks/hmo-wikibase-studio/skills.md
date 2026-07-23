@@ -131,6 +131,11 @@ from `backend/`. The command rebuilds RDF and HMO drafts, updates existing
 Wikibase items, reads each live item back, and persists the canonical snapshots.
 Without `--upload` it remains a local rebuild only.
 
+The uploader serializes boolean claims as `"true"`/`"false"` strings before
+calling wikibase.cloud; this is intentional because the service does not
+support boolean snaks. Other scalar datatypes are preserved unless the live
+API returns an explicit legacy string-property mismatch.
+
 ### Skill: audit/backfill canonical entities
 
 Run `backend/.venv/bin/python backend/scripts/backfill_hmo_canonical_entities.py` for a read-only report. It scans persisted live read-backs, rejects malformed or duplicate snapshots, and writes nothing by default. The controlled `rebuild_run_rdf_and_items <uuid> --upload` command is the live-readback path: it updates/adopts the mapped items, reads every item back, and refuses to persist a partial canonical set. Use `--apply` only for already-persisted snapshots.

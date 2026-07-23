@@ -113,7 +113,7 @@ job id. The job write-throughs both caches on success (`hmo_coverage_job.py:64-7
 IIIF manifests are built deterministically from the TTL (`MS_<shelfmark>.json`)
 and uploaded under the `IIIF:` namespace, with per-manifest *intent* audited as
 versioning events before the network call (`_audit_manifest_upload_intent`,
-`routers/hmo_studio.py:649`). The upload path reads each successful live item back and stores the normalized canonical snapshot in both the durable HMO table and the compatibility cache. Wikibase calls are bounded; known legacy string-property datatype errors retry with serialized scalar values, while timeouts and unknown errors remain failed.
+`routers/hmo_studio.py:649`). The upload path reads each successful live item back and stores the normalized canonical snapshot in both the durable HMO table and the compatibility cache. Wikibase calls are bounded; known legacy string-property datatype errors retry with serialized scalar values, while timeouts and unknown errors remain failed. Because wikibase.cloud does not expose a boolean snak type, boolean claims are converted to explicit `"true"`/`"false"` string claims before the first live call; time and monolingual-text claims retain their declared datatypes and only fall back when the server explicitly reports a scalar mismatch.
 
 
 The HMO review table's External authority column now shows accepted persisted enrichment as source/count badges (Wikidata, VIAF, Mazal/NLI), while the Wikibase QID column remains explicitly local.

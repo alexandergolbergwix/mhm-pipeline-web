@@ -19,6 +19,7 @@
 - `backend/tests/test_hmo_item_build.py`, `test_hmo_studio_build_items_router.py` —
   build + cache fingerprint.
 - `backend/tests/test_hmo_item_upload.py` (incl.
+  `test_unsupported_boolean_claims_are_serialized_before_live_write`,
   `test_live_upload_resolves_reconcile_pid_once_not_per_entity`,
   `test_dry_run_never_resolves_reconcile_pid`,
   `test_live_upload_records_operation_adopt_in_audit_log`,

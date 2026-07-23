@@ -154,3 +154,11 @@ are limited to explicit legacy string-property errors; remote timeouts are not
 blindly retried. *Why:* the first production migration silently produced zero
 canonical rows and then hung on a Wikibase call, so a partial projection could
 never become the source of truth.
+
+36. **R36 — Serialize unsupported boolean claims before the live call.**
+`wikibase.cloud` has no boolean snak type. Item create/update paths MUST route
+boolean claims through the explicit string representation before calling the
+remote writer, while preserving valid time and monolingual-text claims. *Why:*
+the first production retry still sent a doomed whole-item boolean request for
+every item, producing thousands of avoidable API errors and extending the
+migration window.

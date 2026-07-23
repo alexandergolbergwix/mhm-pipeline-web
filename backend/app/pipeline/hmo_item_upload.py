@@ -492,23 +492,34 @@ async def push_single_item(
                 entity.local_id, entity.source_uri, "skipped", existing_qid,
             )
 
-        wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
-        result = await _bounded_writer_call(
-            writer.update_item,
-            existing_qid,
-            labels=labels,
-            descriptions=descriptions,
-            claims=wbi_claims,
-        )
-        if result.status == "failed":
-            result = await _retry_with_string_compatible_claims(
+        if _has_unsupported_boolean_claim(entity):
+            # Wikibase Cloud does not accept the boolean snak type. Avoid the
+            # doomed whole-item write and isolate fallback to each property.
+            result = await _update_claims_with_string_fallback(
                 writer,
                 existing_qid,
                 labels=labels,
                 descriptions=descriptions,
                 entity=entity,
-                original=result,
             )
+        else:
+            wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
+            result = await _bounded_writer_call(
+                writer.update_item,
+                existing_qid,
+                labels=labels,
+                descriptions=descriptions,
+                claims=wbi_claims,
+            )
+            if result.status == "failed":
+                result = await _retry_with_string_compatible_claims(
+                    writer,
+                    existing_qid,
+                    labels=labels,
+                    descriptions=descriptions,
+                    entity=entity,
+                    original=result,
+                )
         if result.entity_id is None or result.status == "failed":
             if audit_ctx is not None:
                 await record_wikibase_write(
@@ -569,21 +580,29 @@ async def push_single_item(
             message=reconcile.message,
         )
 
-    wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
-    result = await _bounded_writer_call(
-        writer.create_item,
-        labels=labels,
-        descriptions=descriptions,
-        claims=wbi_claims,
-    )
-    if result.status == "failed":
-        result = await _retry_create_with_string_compatible_claims(
+    if _has_unsupported_boolean_claim(entity):
+        result = await _create_claims_with_string_fallback(
             writer,
             labels=labels,
             descriptions=descriptions,
             entity=entity,
-            original=result,
         )
+    else:
+        wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
+        result = await _bounded_writer_call(
+            writer.create_item,
+            labels=labels,
+            descriptions=descriptions,
+            claims=wbi_claims,
+        )
+        if result.status == "failed":
+            result = await _retry_create_with_string_compatible_claims(
+                writer,
+                labels=labels,
+                descriptions=descriptions,
+                entity=entity,
+                original=result,
+            )
     if result.entity_id is None or result.status == "failed":
         if audit_ctx is not None:
             await record_wikibase_write(
@@ -757,14 +776,39 @@ async def _retry_with_string_compatible_claims(
     """
     if not _is_string_datatype_failure(original.message):
         return original
-    last = original
+    return await _update_claims_with_string_fallback(
+        writer,
+        entity_id,
+        labels=labels,
+        descriptions=descriptions,
+        entity=entity,
+        original=original,
+    )
+
+
+async def _update_claims_with_string_fallback(
+    writer: Any,
+    entity_id: str,
+    *,
+    labels: dict[str, str],
+    descriptions: dict[str, str],
+    entity: ResolvedWikibaseEntity,
+    original: EntityEditOutcome | None = None,
+) -> EntityEditOutcome:
+    page_url = original.page_url if original is not None else None
+    last = original or EntityEditOutcome(entity_id, "updated", "ok", page_url)
     for claim in entity.claims:
+        claim_to_send = (
+            _string_compatible_claim(claim)
+            if claim.datatype == "boolean"
+            else claim
+        )
         last = await _bounded_writer_call(
             writer.update_item,
             entity_id,
             labels=labels,
             descriptions=descriptions,
-            claims=[_build_wbi_claim(claim)],
+            claims=[_build_wbi_claim(claim_to_send)],
         )
         if last.status == "failed" and _is_string_datatype_failure(last.message):
             last = await _bounded_writer_call(
@@ -776,7 +820,7 @@ async def _retry_with_string_compatible_claims(
             )
         if last.status == "failed":
             return last
-    return EntityEditOutcome(entity_id, "updated", "ok", original.page_url)
+    return EntityEditOutcome(entity_id, "updated", "ok", page_url or last.page_url)
 
 
 async def _retry_create_with_string_compatible_claims(
@@ -790,6 +834,21 @@ async def _retry_create_with_string_compatible_claims(
     """Create a claim-less item, then add claims with per-property fallback."""
     if not _is_string_datatype_failure(original.message):
         return original
+    return await _create_claims_with_string_fallback(
+        writer,
+        labels=labels,
+        descriptions=descriptions,
+        entity=entity,
+    )
+
+
+async def _create_claims_with_string_fallback(
+    writer: Any,
+    *,
+    labels: dict[str, str],
+    descriptions: dict[str, str],
+    entity: ResolvedWikibaseEntity,
+) -> EntityEditOutcome:
     created = await _bounded_writer_call(
         writer.create_item,
         labels=labels,
@@ -799,10 +858,15 @@ async def _retry_create_with_string_compatible_claims(
     if created.status == "failed" or not created.entity_id:
         return created
     for claim in entity.claims:
+        claim_to_send = (
+            _string_compatible_claim(claim)
+            if claim.datatype == "boolean"
+            else claim
+        )
         result = await _bounded_writer_call(
             writer.add_claim,
             created.entity_id,
-            _build_wbi_claim(claim),
+            _build_wbi_claim(claim_to_send),
         )
         if result.status == "failed" and _is_string_datatype_failure(result.message):
             result = await _bounded_writer_call(
@@ -817,6 +881,10 @@ async def _retry_create_with_string_compatible_claims(
     return EntityEditOutcome(
         created.entity_id, "created", "ok", created.page_url,
     )
+
+
+def _has_unsupported_boolean_claim(entity: ResolvedWikibaseEntity) -> bool:
+    return any(claim.datatype == "boolean" for claim in entity.claims)
 
 
 def _is_string_datatype_failure(message: str) -> bool:
