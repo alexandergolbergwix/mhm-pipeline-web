@@ -164,6 +164,8 @@ async def run_authority_re_enrich_job(job_id: uuid.UUID) -> None:
                     m.confidence = c.confidence
                     m.source = c.source
                     m.payload = c.payload
+                    if kind == "place" and c.wikidata_qid and c.mazal_id and int((c.payload or {}).get("source_count") or 0) >= 2:
+                        m.approved = True
                     updated += 1
                 else:
                     row = AuthorityMatch(
@@ -179,6 +181,7 @@ async def run_authority_re_enrich_job(job_id: uuid.UUID) -> None:
                         confidence=c.confidence,
                         source=c.source,
                         payload=c.payload,
+                        approved=(kind == "place" and bool(c.wikidata_qid and c.mazal_id) and int((c.payload or {}).get("source_count") or 0) >= 2),
                     )
                     db.add(row)
                     await db.flush()
