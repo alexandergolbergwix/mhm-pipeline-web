@@ -2202,7 +2202,8 @@ The first production canonical migration attempt was blocked before upload by
 21 unmatched label quote/parenthesis artifacts and 11 digital URLs serialized
 with MARC quote wrappers. GraphBuilder now strips balanced outer quotes before
 emitting `xsd:anyURI` values, and HMO labels pass the shared title sanitizer
-while preserving Hebrew gershayim. This keeps SHACL and the HMO export-quality
-gate fail-closed without discarding legitimate abbreviation marks. Tests:
+while preserving Hebrew gershayim; an English-only label incorrectly tagged
+`@he` is rerouted to `@en`. This keeps SHACL and the HMO export-quality gate
+fail-closed without discarding legitimate abbreviation marks. Tests:
 `test_graph_builder_codicological_labels.py` and
 `test_hmo_exporter_descriptions.py`.

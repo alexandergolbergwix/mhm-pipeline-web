@@ -90,4 +90,5 @@ When `HMO_CANONICAL_FIRST=true`, RDF build requests that omit an explicit source
 Digital URLs are normalized at graph emission: MARC quote wrappers are removed
 before `xsd:anyURI` literals are created. HMO labels receive the shared
 work-title sanitizer as a final pass, preserving Hebrew abbreviation marks while
-removing unmatched catalog punctuation before the export-quality gate.
+removing unmatched catalog punctuation before the export-quality gate. An
+English-only label mis-tagged as Hebrew is rerouted to the English slot.
