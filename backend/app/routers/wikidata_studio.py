@@ -748,6 +748,8 @@ async def build_studio(
     db: AsyncSession = Depends(get_session),
 ) -> StudioBuildResponse:
     run = await _lookup_run_with_access(db, run_id, auth)
+    if source == "legacy" and get_settings().hmo_canonical_first:
+        source = "canonical"
 
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
         db, run_id,

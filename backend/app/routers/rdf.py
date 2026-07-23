@@ -255,8 +255,10 @@ async def build(
     < 10 s for a 100-MS run on a laptop).
     """
     await _lookup_run_with_access(db, run_id, auth, write=True)
+    requested_source = (body or RdfBuildRequest()).source
+    source = "canonical" if requested_source == "canonical" or get_settings().hmo_canonical_first else "legacy"
 
-    if (body or RdfBuildRequest()).source == "canonical":
+    if source == "canonical":
         from app.pipeline.rdf_build import build_rdf_from_hmo_canonical_cache
         out_path = rdf_output_path_for_run(str(run_id))
         try:
