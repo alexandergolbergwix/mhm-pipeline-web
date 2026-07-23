@@ -117,6 +117,8 @@ async def re_enrich_run(
                 primary.confidence = c.confidence
                 primary.source = c.source
                 primary.payload = c.payload
+                if kind == "place" and c.wikidata_qid and c.mazal_id and int((c.payload or {}).get("source_count") or 0) >= 2:
+                    primary.approved = True
                 updated += 1
             else:
                 row = AuthorityMatch(
@@ -132,6 +134,7 @@ async def re_enrich_run(
                     confidence=c.confidence,
                     source=c.source,
                     payload=c.payload,
+                    approved=(kind == "place" and bool(c.wikidata_qid and c.mazal_id) and int((c.payload or {}).get("source_count") or 0) >= 2),
                 )
                 db.add(row)
                 await db.flush()
