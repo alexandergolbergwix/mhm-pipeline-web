@@ -31,6 +31,21 @@ function authorityLinks(item: HmoStudioItem): string[] {
   return [...links];
 }
 
+
+function enrichmentSummary(item: HmoStudioItem): Array<{kind: string; count: number}> {
+  const counts = new Map<string, number>();
+  for (const evidence of item.authority_evidence ?? []) {
+    if (!evidence.accepted) continue;
+    const kind = evidence.kind || evidence.source || "authority";
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  for (const link of authorityLinks(item)) {
+    const kind = link.includes("wikidata.org") ? "Wikidata" : link.includes("nli.org.il") ? "Mazal/NLI" : "VIAF";
+    if (!counts.has(kind)) counts.set(kind, 1);
+  }
+  return [...counts.entries()].map(([kind, count]) => ({kind, count}));
+}
+
 function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
   if (col === "validation") {
     if (item.has_blocking_shacl) return ["blocked"];
@@ -214,13 +229,13 @@ export function HmoItemTable({
                   {item.wikibase_id ?? "—"}
                 </td>
                 <td className="px-3 py-2 text-xs">
-                  {authorityLinks(item).length
-                    ? authorityLinks(item).map((link) => (
-                      <a key={link} href={link} target="_blank" rel="noreferrer" className="block underline truncate max-w-[180px]">
-                        {link.includes("wikidata.org") ? `Wikidata ${link.split("/entity/")[1]}` : `VIAF ${link.split("/viaf/")[1]}`}
-                      </a>
-                    ))
-                    : "—"}
+                  {enrichmentSummary(item).length ? (
+                    <div className="flex flex-wrap gap-1" title="Accepted external authority evidence persisted on this HMO entity">
+                      {enrichmentSummary(item).map(({kind, count}) => (
+                        <span key={kind} className="rounded border border-emerald-400/30 px-1.5 py-0.5 text-emerald-200">{kind} ×{count}</span>
+                      ))}
+                    </div>
+                  ) : <span className="muted">None</span>}
                 </td>
                 <td className="px-3 py-2" data-testid={`hmo-item-upload-outcome-${item.local_id}`}>
                   <HmoItemUploadOutcomeBadge
