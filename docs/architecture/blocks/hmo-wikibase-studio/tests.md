@@ -63,3 +63,5 @@
   the fail-confirm banner's "review" vs "upload anyway" paths).
 
 - `backend/tests/unit/test_hmo_authority_gate.py` — approved identifier conflicts and NLI/VIAF misclassification fail closed before HMO creation.
+
+- `backend/tests/unit/test_hmo_canonical_wikidata.py::test_full_canonical_chain_has_no_legacy_authority_dependency` — one enriched HMO entity projects consistently to RDF and Wikidata/QuickStatements.
