@@ -26,7 +26,7 @@ specs with fully mocked backends ("every click is a test").
 
 - [job-service](../job-service/README.md) — the backend claiming/heartbeat model the `useRunJobs` poll consumes.
 - [extraction](../extraction/README.md) — the Stage-2 review surface (EntityTable et al., Rule W-16).
-- [authority](../authority/README.md) — the Authority review surface (Rule W-31).
+- [authority](../authority/README.md) — read-only historical Authority provenance (the mutation surface is retired; Rule W-31).
 - [wikidata-studio](../wikidata-studio/README.md) — Studio build/override/upload UI.
 - [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — HMO items review + upload UI.
 - [research](../research/README.md) — maps, SPARQL console, Linked Data Explorer panels.

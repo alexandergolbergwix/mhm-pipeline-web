@@ -5,7 +5,7 @@
 ## Background jobs and session snapshots
 
 Four of the five channels can run headless via `POST /runs/{id}/jobs`
-(kinds `authority_verify` / `ner_verify` / `wikidata_verify` /
+(legacy `authority_verify`; live kinds `ner_verify` / `wikidata_verify` /
 `hmo_item_verify`; the HMO schema channel is SSE-only). `run_verify_job`
 (`verify_job.py:52`) re-opens the same channel generator, folds events into
 `run_jobs.progress`, honours cancel requests, and on every streamed event also

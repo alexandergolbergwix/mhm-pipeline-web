@@ -39,7 +39,7 @@ open clients see updates without waiting for the next poll tick.
 
 - [eval-agent](../eval-agent/README.md) — verify jobs stream from the eval-agent subprocess
 - [extraction](../extraction/README.md) — `extraction` + `ner_verify` job surfaces
-- [authority](../authority/README.md) — `authority_re_enrich` + `authority_verify`
+- [authority](../authority/README.md) — canonical HMO enrichment; legacy Authority jobs are retired fail-closed
 - [rdf-graph](../rdf-graph/README.md) — `rdf_build` and the `RdfArtifact` write-through
 - [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — `hmo_coverage`, `hmo_schema_bootstrap`, `hmo_item_upload`, `hmo_item_verify`
 - [wikidata-studio](../wikidata-studio/README.md) — `wikidata_studio_build`, `wikidata_upload`, `wikidata_verify`
