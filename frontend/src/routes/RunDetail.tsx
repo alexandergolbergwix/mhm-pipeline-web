@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
@@ -39,6 +39,7 @@ function toNumberRecord(value: unknown): Record<string, number> {
 
 export default function RunDetail() {
   const { runId } = useParams<{ runId: string }>();
+  if (runId) return <Navigate to={`/runs/${runId}/hmo-studio`} replace />;
   const [run, setRun] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   // openDrawerMatch: drives AuthorityDetailDrawer (replaces MatchDetailDialog)
