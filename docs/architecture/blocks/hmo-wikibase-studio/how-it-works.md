@@ -114,3 +114,6 @@ IIIF manifests are built deterministically from the TTL (`MS_<shelfmark>.json`)
 and uploaded under the `IIIF:` namespace, with per-manifest *intent* audited as
 versioning events before the network call (`_audit_manifest_upload_intent`,
 `routers/hmo_studio.py:649`). The upload path now reads each successful live item back and stores the canonical snapshot in the durable HMO build cache.
+
+
+The HMO review table's External authority column now shows accepted persisted enrichment as source/count badges (Wikidata, VIAF, Mazal/NLI), while the Wikibase QID column remains explicitly local.
