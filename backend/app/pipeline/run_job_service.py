@@ -327,6 +327,16 @@ async def _execute_job(job_id: uuid.UUID) -> None:
             if not await _try_claim_job(db, job_id):
                 return
 
+        if kind in (JOB_KIND_AUTHORITY_RE_ENRICH, JOB_KIND_AUTHORITY_VERIFY):
+            from app.settings import get_settings  # noqa: PLC0415
+            if not get_settings().legacy_authority_mutations_enabled:
+                logger.warning("legacy_authority_job_retired", extra={"job_id": str(job_id), "kind": kind})
+                await _fail_job(
+                    job_id,
+                    "standalone Authority jobs are retired; rebuild or verify canonical HMO entities",
+                )
+                return
+
         if kind == JOB_KIND_AUTHORITY_RE_ENRICH:
             from app.pipeline.authority_re_enrich_job import (  # noqa: PLC0415
                 run_authority_re_enrich_job,

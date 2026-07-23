@@ -2,6 +2,8 @@
 
 > Up: [Authority Enrichment](README.md)
 
+Standalone Authority UI and mutation playbooks below are historical only. Use HMO Studio creation and the canonical E2E audit for live work.
+
 ### Skill: add a new guard
 1. Write the pure predicate in `converter/authority/stage3_guards.py` if it is source-agnostic (sync to desktop!), or directly in `authority_hardening.py` if web-only.
 2. Add a `guard_*` function returning `GuardVerdict(fired, new_confidence, reason, flag)`.
@@ -23,11 +25,11 @@ The Mazal script auto-detects whether the source SQLite carries
 `0020_mazal_heading_metadata` ran first. One corrupt ~900 KB KIMA name-index
 blob is skipped by design.
 
-### Skill: run re-enrich after a deploy that changes matching
-1. `POST /api/runs/{run_id}/authority/re-enrich?skip_cache=true` (run detail → Authority tab → "Re-enrich"), or start the background job for large runs.
-2. `skip_cache=true` forces fresh upstream calls; the refresh re-populates both cache tiers.
-3. Afterwards, `POST .../authority/rebuild` is unnecessary (re-enrich already runs `finalize_authority_matches` with sibling context).
-4. Approvals on rows whose key is unchanged are preserved (upsert-in-place); orphan rows are deleted.
+### Skill: refresh enrichment through canonical HMO creation
+1. Open HMO Wikibase Studio and use **Rebuild** with `refresh_authority=true`; this is the only supported live enrichment entrypoint.
+2. The HMO builder runs Mazal, KIMA, VIAF, and Wikidata matching, applies fail-closed guards, and persists accepted evidence on the HMO item.
+3. Upload with **Update existing**, read every item back, and run `check_hmo_canonical_gate.py` before enabling canonical projections.
+4. The former Authority mutation routes and `authority_re_enrich` job return HTTP 410 by default. Read-only match data remains for provenance and migration audits; set `LEGACY_AUTHORITY_MUTATIONS_ENABLED=true` only for an emergency rollback.
 
 ### Skill: resolve a homonym as curator
 1. Filter the AuthorityTable Guards column to `homonym_unresolved` (or spot the ⚠ chip).

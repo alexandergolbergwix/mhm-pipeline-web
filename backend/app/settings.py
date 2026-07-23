@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from functools import lru_cache
+from uuid import UUID
 from pathlib import Path
 
 from pydantic import Field, field_validator
@@ -71,7 +73,32 @@ class Settings(BaseSettings):
         )
 
     # Canonical HMO rollout: keep disabled until backfill and shadow checks pass.
+    # Explicit run IDs are the safest first stage; percentage is deterministic
+    # by run UUID so a rollout never changes cohort between dynos.
     hmo_canonical_first: bool = Field(default=False)
+    hmo_canonical_first_run_ids: str = Field(default="")
+    hmo_canonical_first_percentage: int = Field(default=0, ge=0, le=100)
+    # The standalone Authority editor is retired once the HMO canonical
+    # migration is live. Keep the switch explicit so a rollback can reopen
+    # compatibility mutations without a code deploy.
+    legacy_authority_mutations_enabled: bool = Field(default=False)
+
+    def canonical_first_for_run(self, run_id: UUID | str) -> bool:
+        """Return whether this run is in the canonical-first rollout cohort."""
+        if self.hmo_canonical_first:
+            return True
+        run_text = str(run_id).strip()
+        explicit = {
+            token.strip().lower()
+            for token in self.hmo_canonical_first_run_ids.split(",")
+            if token.strip()
+        }
+        if run_text.lower() in explicit:
+            return True
+        if self.hmo_canonical_first_percentage <= 0:
+            return False
+        bucket = int(hashlib.sha256(run_text.encode("utf-8")).hexdigest()[:8], 16) % 100
+        return bucket < self.hmo_canonical_first_percentage
 
     # ── Registration / spam protection ────────────────────────────────
     resend_api_key: str = Field(default="")

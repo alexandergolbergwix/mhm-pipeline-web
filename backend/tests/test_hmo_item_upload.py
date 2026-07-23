@@ -16,6 +16,7 @@ import pytest
 from sqlalchemy import select
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
+from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.wikibase_cloud_write import (
     CHANNEL_ITEM_UPLOAD,
     OPERATION_ADOPT,
@@ -40,12 +41,13 @@ class _FakeOutcome:
 
 
 class _FakeWriter:
-    def __init__(self, *, fail_updates: bool = False) -> None:
+    def __init__(self, *, fail_updates: bool = False, missing_readbacks: set[str] | None = None) -> None:
         self.create_calls: list[dict] = []
         self.claim_calls: list[tuple[str, object]] = []
         self.update_calls: list[dict] = []
         self._next_q = 1
         self._fail_updates = fail_updates
+        self._missing_readbacks = missing_readbacks or set()
 
     def create_item(self, **kwargs):
         self.create_calls.append(kwargs)
@@ -56,6 +58,16 @@ class _FakeWriter:
     def add_claim(self, entity_id, claim):
         self.claim_calls.append((entity_id, claim))
         return _FakeOutcome(entity_id=entity_id, status="updated")
+
+    def get_entity(self, entity_id):
+        if entity_id in self._missing_readbacks:
+            return None
+        return {
+            "labels": {"en": f"Live {entity_id}"},
+            "descriptions": {"en": "live item"},
+            "aliases": {},
+            "claims": [],
+        }
 
     def update_item(self, entity_id, **kwargs):
         self.update_calls.append({"entity_id": entity_id, **kwargs})
@@ -145,6 +157,46 @@ async def test_live_upload_creates_items_then_links_them(db_session) -> None:
     entity_id, claim = writer.claim_calls[0]
     assert entity_id in {"Q1", "Q2"}  # whichever QID create_item assigned to MS1
     assert claim.mainsnak.property_number == "P2"
+
+
+@pytest.mark.asyncio
+async def test_live_upload_persists_canonical_rows_from_source_uri_mappings(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=_FakeWriter(), dry_run=False,
+    )
+
+    assert result.failed == 0
+    rows = (
+        await db_session.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )
+    ).scalars().all()
+    assert {row.local_id for row in rows} == {"QDraft_MS1", "QDraft_Person1"}
+    assert {row.wikibase_id for row in rows} == {"Q1", "Q2"}
+    assert all(row.snapshot["canonical_source"] == "wikibase" for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_missing_live_readback_fails_closed_without_partial_canonical_rows(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+
+    with pytest.raises(RuntimeError, match="read-back incomplete"):
+        await pipeline.upload_items_for_run(
+            db_session, run_id,
+            writer=_FakeWriter(missing_readbacks={"Q1"}),
+            dry_run=False,
+        )
+
+    rows = (
+        await db_session.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )
+    ).scalars().all()
+    assert rows == []
 
 
 @pytest.mark.asyncio

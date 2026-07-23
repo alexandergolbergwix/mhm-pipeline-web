@@ -7,13 +7,12 @@
  *
  * Tiles:
  *   1. AI Extraction      → /runs/:id/extraction
- *   2. Authority Enrichment · Authority          → /runs/:id   (legacy RunDetail)
- *   3. RDF Graph          → /runs/:id/rdf
- *   4. HMO Wikibase Studio          → /runs/:id/hmo-studio  (not wired yet)
- *   5. Wikidata Studio              → /runs/:id/wikidata-studio
+ *   2. RDF Graph          → /runs/:id/rdf
+ *   3. HMO Wikibase Studio          → /runs/:id/hmo-studio
+ *   4. Wikidata Studio              → /runs/:id/wikidata-studio
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Layout } from "@/components/Layout";
@@ -93,13 +92,7 @@ export default function RunOverview() {
     return () => { cancelled = true; };
   }, [runId]);
 
-  const authorityCounts = useMemo(() => {
-    if (!run) return { total: 0, approved: 0 };
-    return {
-      total:    run.matches.length,
-      approved: run.matches.filter((m) => m.approved).length,
-    };
-  }, [run]);
+
 
   if (runError) {
     return (
@@ -145,27 +138,6 @@ export default function RunOverview() {
                 {extractionStats(extraction)}
                 {activeJobs.includes("extraction") && (
                   <span className="text-warn ml-2">· job running</span>
-                )}
-              </>
-            }
-          />
-          <StageTile
-            to={`/runs/${runId}`}
-            kicker="Auth"
-            title="Authority"
-            description="Mazal · VIAF · Wikidata · KIMA · reviewed with HMO entities"
-            statePill={
-              <Pill tone="muted">
-                {authorityCounts.total > 0 ? `${authorityCounts.total} matches` : "no matches"}
-              </Pill>
-            }
-            stats={
-              <>
-                {authorityCounts.total > 0
-                  ? `${authorityCounts.approved} approved of ${authorityCounts.total}`
-                  : "Run authority matching from AI Extraction output"}
-                {activeJobs.includes("authority_re_enrich") && (
-                  <span className="text-warn ml-2">· re-enrich running</span>
                 )}
               </>
             }

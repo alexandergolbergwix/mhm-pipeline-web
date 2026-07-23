@@ -468,6 +468,7 @@ async def _get_studio_cache_row(
             select(WikidataStudioCache).where(
                 WikidataStudioCache.run_id == run_id,
                 WikidataStudioCache.approved_only == approved_only,
+                WikidataStudioCache.source == source,
             )
         )
     ).scalar_one_or_none()
@@ -748,7 +749,7 @@ async def build_studio(
     db: AsyncSession = Depends(get_session),
 ) -> StudioBuildResponse:
     run = await _lookup_run_with_access(db, run_id, auth)
-    if source == "legacy" and get_settings().hmo_canonical_first:
+    if source == "legacy" and get_settings().canonical_first_for_run(run_id):
         source = "canonical"
 
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
@@ -957,7 +958,7 @@ async def reconcile_against_wikidata(
             live_entities = [raw["canonical_live"] for raw in (cache.resolved_entities if cache else []) if raw.get("canonical_live")]
         if not live_entities:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no canonical HMO entities for run")
-        if get_settings().hmo_canonical_first and not canonical_rows:
+        if get_settings().canonical_first_for_run(run_id) and not canonical_rows:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="canonical-first rollout requires durable HMO rows; run the backfill gate")
         outcomes: list[ReconcileOutcomeDto] = []
         for live in live_entities:

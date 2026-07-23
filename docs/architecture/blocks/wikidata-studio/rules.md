@@ -157,3 +157,11 @@ placeholder were visible to the judge.
 26. **R26 — Manuscript shelfmark labels use the current holder when known.**
    Ktiv/NLI catalog provenance is distinct from MARC 710 current ownership;
    quote wrappers are removed before both labels and P217.
+
+
+35. **R35 — Legacy and canonical Studio caches are disjoint.** Cache reads,
+fingerprints, and writes MUST include the projection source (`legacy` or
+`canonical`). A canonical shadow build must never reuse a legacy row, and
+QuickStatements must be compared as part of the rollout audit. *Why:* a
+source-blind lookup could make a supposedly canonical comparison display the
+legacy payload and hide projection drift.

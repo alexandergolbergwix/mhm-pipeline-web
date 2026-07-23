@@ -44,7 +44,7 @@ then ask the user for push permission. See **Rule W-49** in `CLAUDE.md`.
 ### Skill: rebuild authority data in production
 1. Ensure `AUTHORITY_MODE=postgres` is set.
 2. Locally: `cd backend && DATABASE_URL=<heroku url> KIMA_DB_PATH=backend/data/kima/kima_index.db .venv/bin/python -m scripts.import_kima_to_postgres` (~15 s) and the Mazal equivalent with `MAZAL_DB_PATH` (~10 min).
-3. Re-enrich reviewed runs afterwards: `POST /api/runs/{run_id}/authority/re-enrich?skip_cache=true` (Rule W-33 playbook).
+3. Rebuild HMO Studio with `refresh_authority=true`, upload/update items, and run the canonical production E2E audit; standalone Authority re-enrichment is retired (HTTP 410).
 
 ## Tests pinning this block
 

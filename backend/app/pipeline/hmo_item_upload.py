@@ -21,12 +21,13 @@ Two-pass, create-or-update:
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
@@ -53,8 +54,12 @@ from app.pipeline.hmo_item_shacl_gate import (
     sanitize_wikibase_labels,
 )
 from app.services.wikibase_audit import record_wikibase_write
-from app.pipeline.hmo_canonical import canonical_entity_fingerprint
+from app.pipeline.hmo_canonical import canonical_snapshot_from_wikibase
+from converter.wikibase.cloud_client import EntityEditOutcome
 from converter.wikibase.resolved_models import ResolvedClaim, ResolvedWikibaseEntity
+
+logger = logging.getLogger(__name__)
+
 
 if TYPE_CHECKING:
     from app.services.wikibase_audit import WikibaseAuditContext
@@ -164,7 +169,14 @@ async def upload_items_for_run(
     )
     known_qids = {**existing, **created_this_call}
 
-    if not dry_run and writer is not None and known_qids:
+    if (
+        not dry_run
+        and writer is not None
+        and known_qids
+        and not cancelled
+        and failed == 0
+        and blocked == 0
+    ):
         await _persist_live_canonical_state(db, cache_row, entities, known_qids, writer)
 
     link_outcomes: list[HmoDeferredLinkOutcome] = []
@@ -193,38 +205,71 @@ async def upload_items_for_run(
     )
 
 
-async def _persist_live_canonical_state(db: AsyncSession, cache_row: HmoStudioItemCache, entities: list[ResolvedWikibaseEntity], known_qids: dict[str, str], writer: Any) -> None:
+async def _persist_live_canonical_state(
+    db: AsyncSession,
+    cache_row: HmoStudioItemCache,
+    entities: list[ResolvedWikibaseEntity],
+    known_qids: dict[str, str],
+    writer: Any,
+) -> None:
+    property_rows = (
+        await db.execute(
+            select(WikibaseEntityMapping).where(
+                WikibaseEntityMapping.entity_kind == "property",
+                WikibaseEntityMapping.run_id.is_(None),
+            )
+        )
+    ).scalars().all()
+    property_uris = {row.wikibase_id: row.ontology_uri for row in property_rows}
+    target_uris = {qid: source_uri for source_uri, qid in known_qids.items() if qid and qid != "Q_PENDING"}
     snapshots: dict[str, dict[str, Any]] = {}
+    missing_local_ids: list[str] = []
     for entity in entities:
-        qid = known_qids.get(entity.local_id)
-        if not qid:
+        # Upload mappings are keyed by source URI, not the local display id.
+        qid = known_qids.get(entity.source_uri)
+        if not qid or qid == "Q_PENDING":
+            missing_local_ids.append(entity.local_id)
             continue
-        live = await asyncio.to_thread(writer.get_entity, qid)
+        try:
+            live = await asyncio.wait_for(
+                asyncio.to_thread(writer.get_entity, qid), timeout=90.0,
+            )
+        except asyncio.TimeoutError:
+            live = None
         if not live:
+            logger.warning("canonical HMO read-back missing for %s (%s)", entity.local_id, qid)
+            missing_local_ids.append(entity.local_id)
             continue
-        snapshot = {
-            'local_id': entity.local_id, 'source_uri': entity.source_uri,
-            'wikibase_id': qid, 'labels': dict(live.get('labels') or {}),
-            'descriptions': dict(live.get('descriptions') or {}),
-            'aliases': dict(live.get('aliases') or {}),
-            'claims': list(live.get('claims') or []),
-            'authority_evidence': list(entity.authority_evidence),
-            'canonical_source': 'wikibase',
-        }
-        snapshot['source_fingerprint'] = canonical_entity_fingerprint(snapshot)
-        snapshot['entity_type'] = entity.entity_type
-        snapshot['control_numbers'] = list(entity.control_numbers)
+        snapshot = canonical_snapshot_from_wikibase(
+            live,
+            local_id=entity.local_id,
+            source_uri=entity.source_uri,
+            authority_evidence=list(entity.authority_evidence),
+            entity_type=entity.entity_type,
+            control_numbers=list(entity.control_numbers),
+            property_uris=property_uris,
+            target_uris=target_uris,
+        )
+        snapshot["wikibase_id"] = qid
         snapshots[entity.local_id] = snapshot
-    if not snapshots:
-        return
-    existing = (await db.execute(select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == cache_row.run_id))).scalars().all()
-    for row in existing:
-        await db.delete(row)
+    if missing_local_ids:
+        examples = ", ".join(missing_local_ids[:10])
+        suffix = "" if len(missing_local_ids) <= 10 else f" (+{len(missing_local_ids) - 10} more)"
+        raise RuntimeError(
+            "HMO canonical read-back incomplete; refusing to persist a partial "
+            f"projection ({len(missing_local_ids)} missing: {examples}{suffix})"
+        )
+    if len(snapshots) != len(entities):
+        raise RuntimeError("HMO canonical read-back count does not match the build")
+    await db.execute(
+        delete(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == cache_row.run_id)
+    )
+    await db.flush()
     for snapshot in snapshots.values():
         db.add(HmoCanonicalEntity(
             run_id=cache_row.run_id,
             local_id=str(snapshot["local_id"]),
-            source_uri=str(snapshot.get("source_uri") or ""),
+            source_uri=str(snapshot["source_uri"]),
             entity_type=str(snapshot.get("entity_type") or ""),
             wikibase_id=str(snapshot["wikibase_id"]),
             source_fingerprint=str(snapshot["source_fingerprint"]),
@@ -239,8 +284,8 @@ async def _persist_live_canonical_state(db: AsyncSession, cache_row: HmoStudioIt
         ))
 
     cache_row.resolved_entities = [
-        {**raw, 'canonical_live': snapshots[str(raw.get('local_id') or '')]}
-        if str(raw.get('local_id') or '') in snapshots else raw
+        {**raw, "canonical_live": snapshots[str(raw.get("local_id") or "")]}
+        if str(raw.get("local_id") or "") in snapshots else raw
         for raw in cache_row.resolved_entities
     ]
     await db.flush()
@@ -444,13 +489,22 @@ async def push_single_item(
             )
 
         wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
-        result = await asyncio.to_thread(
+        result = await _bounded_writer_call(
             writer.update_item,
             existing_qid,
             labels=labels,
             descriptions=descriptions,
             claims=wbi_claims,
         )
+        if result.status == "failed":
+            result = await _retry_with_string_compatible_claims(
+                writer,
+                existing_qid,
+                labels=labels,
+                descriptions=descriptions,
+                entity=entity,
+                original=result,
+            )
         if result.entity_id is None or result.status == "failed":
             if audit_ctx is not None:
                 await record_wikibase_write(
@@ -512,12 +566,20 @@ async def push_single_item(
         )
 
     wbi_claims = [_build_wbi_claim(c) for c in entity.claims]
-    result = await asyncio.to_thread(
+    result = await _bounded_writer_call(
         writer.create_item,
         labels=labels,
         descriptions=descriptions,
         claims=wbi_claims,
     )
+    if result.status == "failed":
+        result = await _retry_create_with_string_compatible_claims(
+            writer,
+            labels=labels,
+            descriptions=descriptions,
+            entity=entity,
+            original=result,
+        )
     if result.entity_id is None:
         if audit_ctx is not None:
             await record_wikibase_write(
@@ -609,7 +671,7 @@ async def _pass_two_link(
                 continue
 
             claim = _build_wbi_claim(ResolvedClaim(link.property_id, "wikibase-item", target_qid))
-            result = await asyncio.to_thread(writer.add_claim, source_qid, claim)
+            result = await _bounded_writer_call(writer.add_claim, source_qid, claim)
             if result.status == "failed":
                 outcomes.append(
                     HmoDeferredLinkOutcome(
@@ -643,6 +705,83 @@ async def _pass_two_link(
                 )
 
     return outcomes, linked, failed, unresolved, cancelled
+
+
+async def _bounded_writer_call(method: Callable[..., Any], *args: Any, **kwargs: Any) -> EntityEditOutcome:
+    """Bound one Wikibase Integrator call so a stuck remote request cannot halt a run."""
+    try:
+        result = await asyncio.wait_for(asyncio.to_thread(method, *args, **kwargs), timeout=90.0)
+    except asyncio.TimeoutError:
+        return EntityEditOutcome(None, "failed", "Wikibase call timed out after 90 seconds", None)
+    if isinstance(result, EntityEditOutcome):
+        return result
+    entity_id = getattr(result, "entity_id", None)
+    status = getattr(result, "status", None)
+    message = getattr(result, "message", "")
+    if isinstance(status, str) and isinstance(message, str):
+        return EntityEditOutcome(entity_id, status, message, getattr(result, "page_url", None))
+    return EntityEditOutcome(None, "failed", f"unexpected Wikibase result: {result!r}", None)
+
+
+def _string_compatible_claim(claim: ResolvedClaim) -> ResolvedClaim:
+    if claim.datatype == "boolean":
+        value = "true" if bool(claim.value) else "false"
+    elif claim.datatype == "time" and isinstance(claim.value, dict):
+        value = str(claim.value.get("time") or "")
+    elif claim.datatype == "monolingualtext" and isinstance(claim.value, dict):
+        value = str(claim.value.get("text") or "")
+    else:
+        return claim
+    return ResolvedClaim(claim.property_id, "string", value)
+
+
+def _string_compatible_claims(entity: ResolvedWikibaseEntity) -> list[Any]:
+    return [_build_wbi_claim(_string_compatible_claim(claim)) for claim in entity.claims]
+
+
+async def _retry_with_string_compatible_claims(
+    writer: Any,
+    entity_id: str,
+    *,
+    labels: dict[str, str],
+    descriptions: dict[str, str],
+    entity: ResolvedWikibaseEntity,
+    original: EntityEditOutcome,
+) -> EntityEditOutcome:
+    if not _is_string_datatype_failure(original.message):
+        return original
+    return await _bounded_writer_call(
+        writer.update_item,
+        entity_id,
+        labels=labels,
+        descriptions=descriptions,
+        claims=_string_compatible_claims(entity),
+    )
+
+
+async def _retry_create_with_string_compatible_claims(
+    writer: Any,
+    *,
+    labels: dict[str, str],
+    descriptions: dict[str, str],
+    entity: ResolvedWikibaseEntity,
+    original: EntityEditOutcome,
+) -> EntityEditOutcome:
+    if not _is_string_datatype_failure(original.message):
+        return original
+    return await _bounded_writer_call(
+        writer.create_item,
+        labels=labels,
+        descriptions=descriptions,
+        claims=_string_compatible_claims(entity),
+    )
+
+
+def _is_string_datatype_failure(message: str) -> bool:
+    lowered = message.lower()
+    return (
+        "expected string" in lowered or "unsupported" in lowered
+    ) and any(token in lowered for token in ("boolean", "time", "monolingualtext"))
 
 
 def _build_wbi_claim(claim: ResolvedClaim) -> Any:

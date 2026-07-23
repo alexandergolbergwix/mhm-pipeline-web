@@ -45,6 +45,17 @@ async def prepare_job_params(
 
     merged = dict(params)
 
+    if kind in (JOB_KIND_AUTHORITY_RE_ENRICH, JOB_KIND_AUTHORITY_VERIFY):
+        from app.settings import get_settings  # noqa: PLC0415
+        if not get_settings().legacy_authority_mutations_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail=(
+                    "Standalone Authority jobs are retired; "
+                    "rebuild or verify canonical HMO entities instead."
+                ),
+            )
+
     if kind == JOB_KIND_EXTRACTION:
         from app.routers.extraction import _unwrap_user_huggingface_key  # noqa: PLC0415
 
@@ -132,6 +143,15 @@ async def prepare_job_params(
         merged.setdefault("force_rebuild", False)
 
     if kind == JOB_KIND_AUTHORITY_RE_ENRICH:
+        from app.settings import get_settings  # noqa: PLC0415
+        if not get_settings().legacy_authority_mutations_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail=(
+                    "Standalone Authority re-enrichment is retired; "
+                    "rebuild HMO canonical entities instead."
+                ),
+            )
         merged.setdefault("skip_cache", False)
 
     return merged

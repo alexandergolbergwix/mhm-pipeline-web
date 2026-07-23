@@ -2,8 +2,8 @@
  * NerVerificationModal — opens from the entity table's
  * "Verify selected with AI" / "Verify all filtered with AI" buttons.
  *
- * Sibling of {@link "@/components/AiVerificationModal"}; same outer
- * shell, same auto-load-last-session pattern, same override-cache
+ * Uses the shared verification shell, auto-load-last-session pattern, and
+ * override-cache
  * toggle, same {@link AgentFlowDiagram} + {@link VerdictsTable}
  * composition. The differences:
  *

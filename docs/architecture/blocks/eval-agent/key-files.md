@@ -36,5 +36,5 @@
 | `backend/app/routers/judge_models.py` | `GET /api/judge-models` — tier-1 picker for verify modals |
 | `frontend/src/components/Tier1ModelSelect.tsx` | Shared tier-1 judge dropdown (`useTier1Model` hook) |
 | `frontend/src/components/extraction/NerVerificationModal.tsx`, `wikidata/WikidataVerificationModal.tsx`, `hmo/HmoItemVerificationModal.tsx`, `hmo/HmoSchemaVerificationModal.tsx` | Per-channel modals (NER + HMO items use `useVerifyJob`; schema still SSE) |
-| `frontend/src/components/AiVerificationModal.tsx`, `AgentFlowDiagram.tsx`, `VerdictsTable.tsx` | Shared modal chrome, live flow diagram, verdict table (evaluator-agnostic) |
+| `frontend/src/components/AgentFlowDiagram.tsx`, `VerdictsTable.tsx` | Shared live flow diagram and verdict table (evaluator-agnostic); Authority-specific modal removed |
 | `frontend/src/api/aiVerify.ts` (+ `nerVerify.ts`, `wikidataVerify.ts`, `hmoItemVerify.ts`, `hmoSchemaVerify.ts`, `judgeModels.ts`) | SSE session clients + tier-1 model list; job-backed modals hydrate via `fetchVerifySessionWithJobFallback` |

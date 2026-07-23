@@ -12,6 +12,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any, Iterable
+from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -95,3 +96,105 @@ def assert_canonical_entities(entities: Iterable[CanonicalHmoEntity]) -> None:
             if value in seen[field]:
                 raise ValueError(f"duplicate canonical HMO {field}: {value}")
             seen[field].add(value)
+
+
+def _language_values(raw: Any) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not isinstance(raw, Mapping):
+        return out
+    for language, value in raw.items():
+        if isinstance(value, Mapping):
+            text = value.get("value")
+        else:
+            text = value
+        if text is not None and str(text).strip():
+            out[str(language)] = str(text)
+    return out
+
+
+def _alias_values(raw: Any) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    if not isinstance(raw, Mapping):
+        return out
+    for language, values in raw.items():
+        if not isinstance(values, list):
+            values = [values]
+        normalized: list[str] = []
+        for value in values:
+            text = value.get("value") if isinstance(value, Mapping) else value
+            if text is not None and str(text).strip():
+                normalized.append(str(text))
+        if normalized:
+            out[str(language)] = normalized
+    return out
+
+
+def _wikibase_value(raw: Any) -> tuple[Any, str | None]:
+    if not isinstance(raw, Mapping):
+        return raw, None
+    data_type = str(raw.get("type") or "")
+    if data_type == "wikibase-entityid":
+        value = raw.get("value") if isinstance(raw.get("value"), Mapping) else raw
+        qid = str(value.get("id") or "").strip()
+        if not qid and value.get("numeric-id") is not None:
+            qid = "Q" + str(value["numeric-id"])
+        return qid, "wikibase-item"
+    if data_type == "monolingualtext":
+        return {"text": str(raw.get("text") or ""), "language": str(raw.get("language") or "")}, "monolingualtext"
+    if data_type == "time":
+        return dict(raw), "time"
+    if data_type == "quantity":
+        return dict(raw), "quantity"
+    return raw.get("value", raw), None
+
+
+def canonical_snapshot_from_wikibase(
+    raw: Mapping[str, Any],
+    *,
+    local_id: str,
+    source_uri: str,
+    authority_evidence: list[dict[str, Any]],
+    entity_type: str,
+    control_numbers: list[str],
+    property_uris: Mapping[str, str],
+    target_uris: Mapping[str, str],
+) -> dict[str, Any]:
+    """Convert raw WikibaseIntegrator JSON to the canonical HMO contract."""
+    claims: list[dict[str, Any]] = []
+    raw_claims = raw.get("claims") or {}
+    if isinstance(raw_claims, Mapping):
+        for property_id, statements in raw_claims.items():
+            property_id = str(property_id)
+            property_uri = str(property_uris.get(property_id) or "").strip()
+            if not property_uri:
+                continue
+            if not isinstance(statements, list):
+                statements = [statements]
+            for statement in statements:
+                if not isinstance(statement, Mapping):
+                    continue
+                snak = statement.get("mainsnak")
+                if not isinstance(snak, Mapping) or snak.get("snaktype") != "value":
+                    continue
+                value, datatype = _wikibase_value(snak.get("datavalue"))
+                if datatype == "wikibase-item":
+                    target_uri = str(target_uris.get(str(value)) or "").strip()
+                    if target_uri:
+                        claims.append({"property_uri": property_uri, "target_uri": target_uri, "property_id": property_id})
+                    continue
+                claims.append({"property_uri": property_uri, "property_id": property_id, "datatype": datatype or str(snak.get("datatype") or "string"), "value": value})
+    snapshot = {
+        "local_id": local_id,
+        "source_uri": source_uri,
+        "wikibase_id": str(raw.get("id") or ""),
+        "labels": _language_values(raw.get("labels")),
+        "descriptions": _language_values(raw.get("descriptions")),
+        "aliases": _alias_values(raw.get("aliases")),
+        "claims": claims,
+        "authority_evidence": list(authority_evidence),
+        "entity_type": entity_type,
+        "control_numbers": list(control_numbers),
+        "canonical_source": "wikibase",
+    }
+    snapshot["source_fingerprint"] = canonical_entity_fingerprint(snapshot)
+    return snapshot

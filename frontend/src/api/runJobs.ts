@@ -8,10 +8,8 @@ export type RunJobStatus =
   | "cancelled";
 
 export type RunJobKind =
-  | "authority_re_enrich"
   | "extraction"
   | "ner_verify"
-  | "authority_verify"
   | "wikidata_verify"
   | "rdf_build"
   | "wikidata_studio_build"
@@ -62,10 +60,8 @@ export interface RunJobSnapshot {
 }
 
 export const JOB_KIND_LABELS: Record<string, string> = {
-  authority_re_enrich:      "Authority re-enrich",
   extraction:               "AI Extraction",
   ner_verify:               "NER AI verify",
-  authority_verify:         "Authority AI verify",
   wikidata_verify:          "Wikidata AI verify",
   rdf_build:                "RDF build",
   wikidata_studio_build:    "Wikidata Studio build",
@@ -78,9 +74,6 @@ export const JOB_KIND_LABELS: Record<string, string> = {
 
 export function jobRunHref(job: RunJobSnapshot): string {
   switch (job.kind) {
-    case "authority_re_enrich":
-    case "authority_verify":
-      return `/runs/${job.run_id}`;
     case "extraction":
     case "ner_verify":
       return `/runs/${job.run_id}/extraction`;

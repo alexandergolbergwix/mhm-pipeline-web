@@ -120,7 +120,7 @@ Open an item drawer and inspect **Authority enrichment**. It lists only
 accepted claims already attached to the HMO item, grouped by Mazal, KIMA,
 VIAF, and Wikidata, with external links where available. Candidate matches
 that were ambiguous or failed the false-positive guard are intentionally not
-shown; use the Authority review surface to investigate those candidates.
+shown; use the read-only historical Authority data or the production E2E report to investigate those candidates.
 
 
 ### Skill: rebuild, upload, and read back a production run
@@ -133,14 +133,21 @@ Without `--upload` it remains a local rebuild only.
 
 ### Skill: audit/backfill canonical entities
 
-Run `backend/.venv/bin/python backend/scripts/backfill_hmo_canonical_entities.py` for a read-only report. It scans persisted live read-backs, rejects malformed or duplicate snapshots, and writes nothing by default. After reviewing the report, rerun with `--apply` (optionally `--run-id <uuid>`) to idempotently replace that run's canonical rows.
+Run `backend/.venv/bin/python backend/scripts/backfill_hmo_canonical_entities.py` for a read-only report. It scans persisted live read-backs, rejects malformed or duplicate snapshots, and writes nothing by default. The controlled `rebuild_run_rdf_and_items <uuid> --upload` command is the live-readback path: it updates/adopts the mapped items, reads every item back, and refuses to persist a partial canonical set. Use `--apply` only for already-persisted snapshots.
 
 
-### Skill: enforce the canonical gate
+### Skill: enforce the canonical gate and staged rollout
 
 Run `backend/.venv/bin/python backend/scripts/check_hmo_canonical_gate.py --run-id <uuid>` before enabling canonical RDF or Wikidata projections. The command exits non-zero unless every built entity has a valid durable canonical row and no duplicates or missing read-backs exist.
 
+Keep `HMO_CANONICAL_FIRST=false` during migration. Add the verified run UUID to
+`HMO_CANONICAL_FIRST_RUN_IDS` for the first cohort, then increase
+`HMO_CANONICAL_FIRST_PERCENTAGE` deterministically (0–100) after each readiness
+and shadow gate. Set the global flag only after every production run passes the
+canonical gate; canonical routes fail closed when durable read-backs are absent.
 
-### Skill: staged canonical-first rollout
-
-Set `HMO_CANONICAL_FIRST=true` only after running the backfill and canonical gate for the target runs. Canonical reconciliation then refuses cache-only fallback and requires durable HMO rows. Leave it false during migration and shadow comparison.
+Run the complete read-only production audit with:
+`backend/.venv/bin/python -m scripts.run_hmo_production_e2e <run-id>`.
+It reports HMO→RDF and HMO→Wikidata outputs, false-positive conflicts, and
+exact item-ID and QuickStatements differences plus sampled RDF differences. A non-empty shadow diff is review data,
+not permission to bypass the canonical gate.

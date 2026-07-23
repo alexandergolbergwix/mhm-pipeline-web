@@ -256,7 +256,7 @@ async def build(
     """
     await _lookup_run_with_access(db, run_id, auth, write=True)
     requested_source = (body or RdfBuildRequest()).source
-    source = "canonical" if requested_source == "canonical" or get_settings().hmo_canonical_first else "legacy"
+    source = "canonical" if requested_source == "canonical" or get_settings().canonical_first_for_run(run_id) else "legacy"
 
     if source == "canonical":
         from app.pipeline.rdf_build import build_rdf_from_hmo_canonical_cache

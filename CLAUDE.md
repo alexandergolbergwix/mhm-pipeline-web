@@ -84,7 +84,7 @@ each owned by one component under `frontend/src/components/extraction/`:
    secondary highlights on the record's other entities. Esc-to-close
    + pin checkbox. Reads `/marc-source/{cn}`.
 8. **NER AI verification modal** (`NerVerificationModal.tsx`):
-   structural sibling of `AiVerificationModal` pinned to
+   structural sibling of the shared verification shell pinned to
    `/extraction/ai-verify`. Reuses `AgentFlowDiagram` + `VerdictsTable`
    evaluator-agnostically. Auto-loads last session on open.
 9. **AI verdict pill** (`AiVerdictPill.tsx`): 5-state inline pill
@@ -567,9 +567,11 @@ this (or document the manual-review requirement) before any bulk QS import.
 
 ### Rule W-31 — Authority Enrichment review surface parity with extraction (added 2026-06-09)
 
-The Authority candidates page surfaces a rich entity-review UI that mirrors
-the extraction EntityTable layout. Five independent capabilities owned by
-`frontend/src/components/authority/`:
+The Authority candidates page historically surfaced a rich entity-review UI that mirrored
+the extraction EntityTable layout. This is now a migration-history record only:
+the standalone route and Authority mutations are retired (HTTP 410 by default),
+while the matcher and read-only rows remain for HMO creation, provenance, and
+audit. The former five capabilities (removed after migration telemetry confirmed no live use) were:
 
 1. **9-column candidates table** (`AuthorityTable.tsx`): Record · Entity ·
    Role · Source · Conf. · Guards · AI verdict · Approved · Edit. Sortable
@@ -710,11 +712,11 @@ Five invariants established during the authority-enrichment fix session
 - Re-import command after migration:
   `cd backend && DATABASE_URL=... MAZAL_DB_PATH=... .venv/bin/python -m scripts.import_mazal_to_postgres`
 
-**Curator re-enrich playbook:**
-After deploying this change, run Authority re-enrich on reviewed runs to refresh
-matches without re-uploading MARC files:
-`POST /api/runs/{run_id}/authority/re-enrich?skip_cache=true`
-(Available via the run detail page → Authority tab → "Re-enrich" button.)
+**Canonical enrichment playbook:**
+Authority refresh now happens inside HMO Studio creation. Rebuild with
+`refresh_authority=true`, upload/update the HMO items, read them back, and run
+`backend/scripts/run_hmo_production_e2e.py` plus the canonical gate. The former
+standalone re-enrich routes/jobs are retired by default and return HTTP 410.
 
 Tests pinning the contract:
 `backend/tests/unit/test_authority_routing.py` (11),
@@ -1284,9 +1286,8 @@ Tests: `backend/tests/unit/test_hmo_exporter_control_numbers.py`,
 | `backend/app/auth/` | Session cookies + RBAC |
 | `backend/converter/` | Byte-identical mirror of desktop converter tree |
 | `backend/ontology/` | hebrew-manuscripts.ttl + shacl-shapes.ttl (HMO ontology) |
-| `frontend/src/routes/` | One page per route (RunDetail, StageExtraction, StageRdf, HmoStudio, WikidataStudio, …) |
-| `frontend/src/components/` | Shared widgets (AiVerificationModal, AgentFlowDiagram, SelectAllVisible, …) |
-| `frontend/src/components/authority/` | Authority review components: `AuthorityTable`, `AuthorityDetailDrawer`, `AuthorityAutoApproveRuleBuilder` |
+| `frontend/src/routes/` | One page per route (RunDetail compatibility redirect, StageExtraction, StageRdf, HmoStudio, WikidataStudio, …) |
+| `frontend/src/components/` | Shared widgets (AgentFlowDiagram, SelectAllVisible, …) |
 | `frontend/src/components/wikidata/` | Studio-specific components: `ItemValidatorBadge`, `ItemApprovalBadge` |
 | `frontend/src/api/` | Per-resource API clients |
 | `frontend/tests/` | Vitest unit tests |
@@ -2216,3 +2217,29 @@ The production migration found that anthology records still emitted the removed
 bootstrap could not resolve the generated HMO claims. Anthology manuscripts now
 receive the declared `hm:AnthologyStructure` type and per-expression anthology
 positions; removed predicates are not minted. Test: `test_graph_builder_codicological_labels.py`.
+
+
+### Rule W-89 — Canonical rollout and Authority retirement MUST be fail-closed (added 2026-07-23)
+
+HMO Wikibase live read-back is the source of truth for both downstream
+projections. Canonical-first therefore rolls out by explicit run UUID or a
+deterministic percentage only after the durable canonical gate and a real
+HMO→RDF/HMO→Wikidata shadow audit pass. The global flag remains disabled when
+any read-back, duplicate identifier, false-positive authority conflict, or
+projection build is unresolved. The former standalone Authority mutation
+surface returns HTTP 410 and logs telemetry by default; its matcher remains
+internal to HMO creation and read-only historical AuthorityMatch data remains
+for provenance and migration audits. Test: `test_canonical_rollout.py` and
+`run_hmo_production_e2e.py`.
+
+
+### Rule W-90 — Live HMO read-back MUST use source-URI mappings and normalize Wikibase JSON (added 2026-07-23)
+
+The first completed production upload wrote more than 100,000 Wikibase claims
+but produced zero canonical rows because upload mappings are keyed by RDF source
+URI, not local display ID. Raw Wikibase Integrator JSON also stores language
+values and claims in nested MediaWiki shapes. Read-back now resolves QIDs by
+`source_uri`, decodes labels/descriptions/aliases/claims, maps schema PIDs back
+to ontology property URIs, and persists only the canonical contract. The
+canonical gate remains blocked when any live item cannot be read back. Test:
+`test_hmo_canonical_readback.py`.

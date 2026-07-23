@@ -10,9 +10,9 @@ authority sources — **Mazal** (NLI authority file), **KIMA** (Hebrew place
 gazetteer with coordinates + QIDs), **VIAF**, and **Wikidata** — and persists
 one `AuthorityMatch` row per `(record, entity, kind, role)` with a confidence
 bucket, source attribution, a rich JSONB payload, and a stack of hardening
-guard flags. Curators review, edit, approve, homonym-pick, AI-verify, and
-auto-approve matches in the Authority tab; approved matches feed the RDF
-graph, HMO Wikibase Studio, and Wikidata Studio downstream.
+guard flags. The matcher now runs inside HMO Studio creation; accepted evidence
+feeds the canonical HMO item and its RDF/Wikidata projections. Historical
+AuthorityMatch rows remain read-only for provenance and migration audits.
 
 ## Contents
 
@@ -36,4 +36,4 @@ graph, HMO Wikibase Studio, and Wikidata Studio downstream.
 - [wikidata-studio](../wikidata-studio/README.md) — consumes `cluster_ids`, QIDs, preferred names for item building
 
 
-The former Authority review page is retired; enrichment runs internally during HMO Studio creation. Backend matcher services remain for enrichment and audit only.
+The former Authority review page and its mutation endpoints are retired. Enrichment runs internally during HMO Studio creation; compatibility mutation calls return HTTP 410 and emit `legacy_authority_mutation_retired` telemetry. Read-only AuthorityMatch data remains available for provenance, historical exports, and shadow audits.

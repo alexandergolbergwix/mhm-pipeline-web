@@ -39,7 +39,7 @@ truncates labels/descriptions to 250 chars and string/monolingualtext claim
 values to 400 chars (`hmo_exporter.py:155,197-198`) so long free-text titles no
 longer trigger `ModificationFailed`.
 
-Live canonical snapshots are also persisted one-per-entity in `hmo_canonical_entities` (migration `0035_hmo_canonical_entities`); the cache JSON remains a compatibility/read-model copy. Downstream readiness and backfill tooling can therefore query durable canonical rows without depending on cache retention.
+Live canonical snapshots are also persisted one-per-entity in `hmo_canonical_entities` (migration `0035_hmo_canonical_entities`); the cache JSON remains a compatibility/read-model copy. The source-URI mapping is the only QID lookup key. Every successful write must be read back; a missing/timeout read-back or any partial write blocks canonical persistence rather than replacing durable rows with a partial set. Downstream readiness and backfill tooling can therefore query durable canonical rows without depending on cache retention.
 
 The canonical-state boundary is implemented by the hmo_canonical module. Live Wikibase read-backs are normalized into a revision-independent fingerprinted entity shape; RDF and Wikidata projections must consume that shape rather than raw authority matches or pre-Wikibase RDF.
 
@@ -113,7 +113,7 @@ job id. The job write-throughs both caches on success (`hmo_coverage_job.py:64-7
 IIIF manifests are built deterministically from the TTL (`MS_<shelfmark>.json`)
 and uploaded under the `IIIF:` namespace, with per-manifest *intent* audited as
 versioning events before the network call (`_audit_manifest_upload_intent`,
-`routers/hmo_studio.py:649`). The upload path now reads each successful live item back and stores the canonical snapshot in the durable HMO build cache.
+`routers/hmo_studio.py:649`). The upload path reads each successful live item back and stores the normalized canonical snapshot in both the durable HMO table and the compatibility cache. Wikibase calls are bounded; known legacy string-property datatype errors retry with serialized scalar values, while timeouts and unknown errors remain failed.
 
 
 The HMO review table's External authority column now shows accepted persisted enrichment as source/count badges (Wikidata, VIAF, Mazal/NLI), while the Wikibase QID column remains explicitly local.

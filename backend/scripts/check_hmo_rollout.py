@@ -1,14 +1,17 @@
 """Preflight gate for enabling canonical-first HMO projections."""
 from __future__ import annotations
-import argparse, asyncio, json, os, sys, uuid
+import argparse, asyncio, json, sys, uuid
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.pipeline.projection_shadow_compare import compare_rdf_projections
+from app.settings import Settings
 from scripts.check_hmo_canonical_gate import inspect as inspect_canonical
 
 async def main_async(args: argparse.Namespace) -> int:
     canonical = await inspect_canonical(args.run_id)
-    result = {"canonical": canonical, "shadow": None, "rollout_flag": os.getenv("HMO_CANONICAL_FIRST", "false").lower() == "true", "ready": bool(canonical["ready"])}
+    settings = Settings()
+    rollout_enabled = bool(args.run_id and settings.canonical_first_for_run(args.run_id))
+    result = {"canonical": canonical, "shadow": None, "rollout_enabled": rollout_enabled, "ready": bool(canonical["ready"])}
     if args.legacy and args.canonical:
         shadow = compare_rdf_projections(args.legacy, args.canonical)
         result["shadow"] = shadow

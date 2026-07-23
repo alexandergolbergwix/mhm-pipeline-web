@@ -9,7 +9,7 @@ import {shouldLoadVerifySession} from "@/utils/verifySession";
 
 interface UseVerifyJobOptions {
   runId: string;
-  kind: "ner_verify" | "authority_verify" | "wikidata_verify" | "hmo_item_verify";
+  kind: "ner_verify" | "wikidata_verify" | "hmo_item_verify";
   loadSession: (sessionId: string, job?: RunJobSnapshot) => Promise<void>;
   onFailed?: (message: string) => void;
   onComplete?: () => void;

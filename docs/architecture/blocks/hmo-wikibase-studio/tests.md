@@ -65,3 +65,8 @@
 - `backend/tests/unit/test_hmo_authority_gate.py` — approved identifier conflicts and NLI/VIAF misclassification fail closed before HMO creation.
 
 - `backend/tests/unit/test_hmo_canonical_wikidata.py::test_full_canonical_chain_has_no_legacy_authority_dependency` — one enriched HMO entity projects consistently to RDF and Wikidata/QuickStatements.
+
+- `backend/tests/unit/test_canonical_rollout.py` — explicit run, deterministic
+  percentage, and global canonical-first cohorts.
+
+- `backend/tests/unit/test_hmo_canonical_readback.py` — nested MediaWiki JSON normalization and source-URI/QID read-back contract (Rule W-90)

@@ -143,3 +143,14 @@
 27. **R27 — Wikibase QIDs and Wikidata QIDs are different namespaces.** HMO
     item `wikibase_id` values are local project identifiers; external Wikidata
     and VIAF authority values must be carried as explicit claims/identifiers.
+
+
+35. **R35 — Canonical persistence is all-or-nothing after live read-back.**
+Upload mappings are keyed by source URI; every successful item must be read back
+and normalized before any `hmo_canonical_entities` replacement. Missing QIDs,
+read-back timeouts, failed/blocked writes, and duplicate identities keep the
+canonical table unchanged and block the readiness gate. Scalar datatype retries
+are limited to explicit legacy string-property errors; remote timeouts are not
+blindly retried. *Why:* the first production migration silently produced zero
+canonical rows and then hung on a Wikibase call, so a partial projection could
+never become the source of truth.
