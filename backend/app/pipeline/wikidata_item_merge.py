@@ -68,6 +68,9 @@ def override_row_to_dict(row: Any) -> dict[str, Any]:
         "remove_statements": list(row.remove_statements or []),
         "statement_edits": dict(row.statement_edits or {}),
         "approved": row.approved,
+        "accept_foreign_modify": bool(row.accept_foreign_modify)
+        if row.accept_foreign_modify is not None else False,
+        "accepted_foreign_qid": row.accepted_foreign_qid,
         "ai_verdict": row.ai_verdict,
         "ai_verdict_at": row.ai_verdict_at.isoformat() if row.ai_verdict_at else None,
     }

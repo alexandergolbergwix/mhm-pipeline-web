@@ -35,9 +35,13 @@ PROPERTY_LABELS: dict[str, str] = {
     "P1071": "location of creation",
     "P50":   "author",
     "P11603": "transcribed by",
+    "P11105": "annotator",
     "P88":   "commissioned by",
     "P110":  "illustrator",
     "P655":  "translator",
+    "P1780": "school of",
+    "P1774": "workshop of",
+    "P12095": "fonds",
     "P9046": "commentary by",
     # Provenance
     "P127":  "owned by",

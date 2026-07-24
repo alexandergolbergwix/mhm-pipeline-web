@@ -52,7 +52,13 @@ from app.pipeline import hmo_item_upload
 from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.run_job_params import prepare_job_params
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
-from app.pipeline.rdf_build import build_rdf_graph, ensure_ttl_on_disk, normalise_matches, rdf_output_path_for_run
+from app.pipeline.rdf_build import (
+    build_rdf_graph,
+    ensure_ttl_on_disk,
+    normalise_matches,
+    rdf_output_path_for_run,
+    upsert_rdf_artifact,
+)
 from app.routers.runs import _lookup_run_with_access
 from app.services.wikibase_audit import WikibaseAuditContext
 from app.services.wikibase_credentials import build_server_wikibase_writer
@@ -446,6 +452,8 @@ async def build_items(
     ontology grew since the last bootstrap; re-run it and retry.
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    ttl_path = rdf_output_path_for_run(str(run_id))
+    force_rdf_rebuild = False
     if refresh_authority:
         from app.pipeline import authority as authority_pipeline
         from app.pipeline.authority_re_enrich import re_enrich_run
@@ -453,9 +461,12 @@ async def build_items(
         matches = (await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))).scalars().all()
         await re_enrich_run(db, run, authority_pipeline.get_default_matcher(), skip_cache=True, records=list(records), existing_rows=list(matches))
         await db.commit()
-    ttl_path = rdf_output_path_for_run(str(run_id))
-    await ensure_ttl_on_disk(ttl_path, run_id, db)
-    if not ttl_path.exists():
+        # Fresh Mazal/KIMA/VIAF/Wikidata matches must reach the RDF graph
+        # before HMO export — never reuse a stale on-disk or RdfArtifact TTL.
+        force_rdf_rebuild = True
+    if not force_rdf_rebuild:
+        await ensure_ttl_on_disk(ttl_path, run_id, db)
+    if force_rdf_rebuild or not ttl_path.exists():
         records = (await db.execute(select(RunRecord).where(RunRecord.run_id == run_id).order_by(RunRecord.control_number.asc()))).scalars().all()
         if not records:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Run has no MARC records; ingest records before HMO creation.")
@@ -465,13 +476,21 @@ async def build_items(
         for row in ner_rows:
             entities_by_cn.setdefault(row.control_number, []).append({"text": row.override_text or row.text, "type": (row.override_type or row.type or "").upper(), "role": (row.override_role or row.role or "").upper(), "source": row.source, "start": int(row.start or 0), "end": int(row.end or 0), "confidence": row.confidence, "model_confidence": row.model_confidence})
         try:
-            await build_rdf_graph(marc_records=[dict(row.marc) for row in records], authority_matches=normalise_matches(approved_matches), entities_by_cn=entities_by_cn, output_path=ttl_path)
+            rdf_result = await build_rdf_graph(marc_records=[dict(row.marc) for row in records], authority_matches=normalise_matches(approved_matches), entities_by_cn=entities_by_cn, output_path=ttl_path)
+            await upsert_rdf_artifact(
+                db,
+                run_id,
+                ttl_path.read_text(encoding="utf-8"),
+                triples_count=rdf_result.triples_count,
+                manuscripts_count=rdf_result.manuscripts_count,
+            )
+            await db.commit()
         except Exception as exc:
             logger.exception("Internal HMO RDF source build failed for run %s", run_id)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="HMO internal source build failed") from exc
     try:
         result = await hmo_item_build.build_items_for_run(
-            db, run_id, ttl_path, force_rebuild=force_rebuild,
+            db, run_id, ttl_path, force_rebuild=force_rebuild or force_rdf_rebuild,
         )
     except UnmappedOntologyUriError as exc:
         raise HTTPException(

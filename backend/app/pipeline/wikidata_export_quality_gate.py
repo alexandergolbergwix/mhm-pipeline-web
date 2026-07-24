@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from converter.wikidata.item_validator import _KNOWN_BAD_P31_QIDS
+from converter.wikidata.item_validator import validate_item
 
 
 def _label_text(item: Any) -> str:
@@ -16,27 +16,21 @@ def _label_text(item: Any) -> str:
     return ""
 
 
-def _stmt_values(item: Any, pid: str) -> list[str]:
-    out: list[str] = []
-    for s in getattr(item, "statements", []) or []:
-        prop = getattr(s, "property_id", None) or getattr(s, "property", None)
-        if prop == pid:
-            out.append(str(getattr(s, "value", "") or ""))
-    return out
-
-
 def assert_wikidata_export_quality(items: list[Any]) -> None:
-    """Raise when built items have ERROR-severity issues that indicate a build bug."""
+    """Raise when built items have ERROR-severity issues that indicate a build bug.
+
+    Uses the full ``validate_item`` ERROR set so a bad projection cannot be
+    cached or handed to the curator as clean Studio output.
+    """
     errors: list[str] = []
     for item in items:
         local_id = str(getattr(item, "local_id", "") or "")
         if not _label_text(item):
             errors.append(f"MISSING_LABEL {local_id}: item has no label")
-        for p31 in _stmt_values(item, "P31"):
-            if p31 in _KNOWN_BAD_P31_QIDS:
-                errors.append(
-                    f"P31_WRONG_QID {local_id}: {p31} ({_KNOWN_BAD_P31_QIDS[p31]})",
-                )
+        for issue in validate_item(item):
+            if issue.severity != "error":
+                continue
+            errors.append(f"{issue.code} {local_id}: {issue.message}")
     if not errors:
         return
     sample = errors[:12]

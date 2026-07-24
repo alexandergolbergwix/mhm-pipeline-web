@@ -83,12 +83,38 @@ def test_native_claims_map_hmo_properties_and_control_numbers() -> None:
     manuscript = _manuscript_entity(
         claims=[
             {"property_uri": "https://w3id.org/mhm/ontology#shelfmark", "value": "Heb. 4"},
+            {
+                "property_uri": "https://w3id.org/mhm/ontology#has_author",
+                "wikidata_value": "https://www.wikidata.org/entity/Q42",
+                "value_type": "wikibase-item",
+            },
+            {
+                "property_id": "P12",
+                "target_qid": "Q1252",
+                "value_type": "wikibase-item",
+            },
         ],
     )
     claims = native_wikidata_claims(manuscript)
     assert {"property": "P3959", "value": "990001"} in claims
     assert {"property": "P217", "value": "Heb. 4"} in claims
     assert {"property": "P31", "value": "Q87167"} in claims
+    # Manuscript must never emit P50; bare project QIDs must never leak.
+    assert not any(c["property"] == "P50" for c in claims)
+    assert not any(c["value"] == "Q1252" for c in claims)
+
+
+def test_native_claims_map_project_pid_via_ontology_ledger() -> None:
+    manuscript = _manuscript_entity(
+        claims=[{"property_id": "P7", "value": "Ms. Or. 12"}],
+    )
+    claims = native_wikidata_claims(
+        manuscript,
+        ontology_uri_by_project_pid={
+            "P7": "https://w3id.org/mhm/ontology#shelfmark",
+        },
+    )
+    assert {"property": "P217", "value": "Ms. Or. 12"} in claims
 
 
 def test_existing_qid_reads_identifier_field_from_evidence() -> None:

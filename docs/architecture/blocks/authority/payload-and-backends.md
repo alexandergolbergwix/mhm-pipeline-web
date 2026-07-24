@@ -20,9 +20,11 @@ Rule W-28) queries `mazal_*`/`kima_*` tables directly over a lazily-reopened
 autocommit psycopg2 connection, with normalization mirroring the SQLite
 matchers byte-for-byte and a trigram `%%`-similarity fuzzy fallback
 (`FUZZY_MIN_SIM=0.45`); it wraps a `LocalAuthorityBackend` as exception
-fallback. `local` uses the vendored SQLite matchers via `asyncio.to_thread`;
-`modal` is the legacy HTTPS app (no work/corporate/subject/personality
-endpoints — returns None).
+fallback. KIMA place lookup fetches **all** exact (and top fuzzy) rows and
+runs `kima_disambiguate.pick_kima_place_row` — conflicting Wikidata QIDs
+abstain (Rules W-84 / W-101), never an arbitrary `LIMIT 1`. `local` uses the
+vendored SQLite matchers via `asyncio.to_thread`; `modal` is the legacy HTTPS
+app (no work/corporate/subject/personality endpoints — returns None).
 
 **Caching tiers above the backend.** Every external lookup routes through
 `DesktopMatcher._cached` → `inference_cache.cache_lookup_or_call` (Redis L1 →

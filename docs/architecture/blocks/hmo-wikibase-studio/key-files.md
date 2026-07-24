@@ -22,7 +22,7 @@
 | `backend/app/pipeline/hmo_wikibase_live_enrich.py` | Fetches live entities (max 5 concurrent) and attaches compare snapshots for autofix |
 | `backend/app/pipeline/hmo_studio.py` | IIIF manifest build/upload, coverage report, on-disk + durable Postgres coverage cache |
 | `backend/app/pipeline/hmo_coverage_job.py` | Background coverage build (9–14 min: parses TTL twice via rdflib) |
-| `backend/app/routers/hmo_studio.py` | `/runs/{id}/hmo-studio/*`: build/upload manifests, coverage, build-items, upload-items, status |
+| `backend/app/routers/hmo_studio.py` | `/runs/{id}/hmo-studio/*`: build/upload manifests, coverage, build-items (authority refresh → RDF rebuild → item export), upload-items, status |
 | `backend/app/routers/hmo_studio_items.py` | Per-item review API: list, override PATCH, reconcile, export/import, AI verify, AI-fix apply, single-item live `POST .../{local_id}/push` |
 | `backend/app/routers/hmo_wikibase_schema.py` | Global `/hmo-wikibase-schema/*`: status, mirror-report, verify, bootstrap, last-report, schema AI verify |
 | `backend/app/routers/wikibase_writes.py` | Read APIs for the audit log (project editor + admin views) |
@@ -59,5 +59,8 @@
 
 | `backend/app/models/hmo_canonical_entity.py` | Durable canonical HMO entity contract and projection source |
 | `backend/app/migrations/versions/0036_hmo_canonical_contract.py` | Adds explicit canonical identity, claims, evidence, provenance, and status fields |
+| `backend/app/migrations/versions/0037_wikidata_accept_foreign.py` | Wikidata Studio override: `accept_foreign_modify` + `accepted_foreign_qid` (Rule W-99) |
 
 | `backend/app/pipeline/hmo_canonical.py` | Canonical entity contract plus raw Wikibase read-back normalization (labels, aliases, claims, ontology property URIs) |
+| `backend/app/pipeline/hmo_canonical_wikidata.py` | Canonical HMO → Wikidata Studio native items (uses PQ mapper) |
+| `backend/converter/wikidata/hmo_wikidata_pq_mapper.py` | Project Wikibase / ontology → public Wikidata P/Q (Rule W-100); shared with Wikidata Studio |

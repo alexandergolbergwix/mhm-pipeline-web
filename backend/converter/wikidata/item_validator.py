@@ -98,6 +98,14 @@ _KNOWN_BAD_P31_QIDS: dict[str, str] = {
     "Q179808": "Palme d'Or (Cannes film award) — correct palimpsest QID is Q274076",
 }
 
+# WikiProject Manuscripts discourages these as manuscript P31 values.
+_DISCOURAGED_MANUSCRIPT_P31: dict[str, str] = {
+    "Q213924": "codex — use Q87167 (manuscript) or Q33308141 (composite) instead",
+    "Q113016548": "discouraged manuscript subclass — use Q87167",
+    "Q95065857": "discouraged manuscript subclass — use Q87167",
+    "Q284465": "lectionary — emit as P136 genre, not P31",
+}
+
 # QIDs that are NEVER valid as qualifier/property values anywhere in this project
 # because they are wrong entities entirely. Keyed by QID, value is explanation.
 # Detected by the 2026-06-04 property audit.
@@ -487,6 +495,21 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                     "Check property_mapping.py Q_MANUSCRIPT constant.",
                     _REF_DATA_MODEL,
                 ))
+            if p31_val in _DISCOURAGED_MANUSCRIPT_P31:
+                issues.append(ValidationIssue(
+                    "error", "DISCOURAGED_P31",
+                    f"Manuscript P31={p31_val!r} is discouraged by WikiProject "
+                    f"Manuscripts: {_DISCOURAGED_MANUSCRIPT_P31[p31_val]}.",
+                    _REF_DATA_MODEL,
+                ))
+        # Location claims without explicit evidence invent holder geography.
+        if _stmt_values(item, "P17") or _stmt_values(item, "P131"):
+            issues.append(ValidationIssue(
+                "error", "LOCATION_WITHOUT_GEO_EVIDENCE",
+                "Manuscript carries P17/P131. Do not infer country/admin location "
+                "from catalog institution alone; keep holder evidence on P195.",
+                _REF_DATA_MODEL,
+            ))
 
     # 16c. New work items require explicit accepted candidate evidence.
     if etype == "work" and not getattr(item, "existing_qid", None):
@@ -522,19 +545,16 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                 "https://www.wikidata.org/wiki/Property_talk:P8189/Duplicates/humans",
             ))
 
-    # 17b. Manuscript missing P3959 (NNL item ID / MARC 001).
-    #     Every manuscript item must carry the NLI catalog control number as a
-    #     direct, queryable statement so the source MARC record is traceable.
-    #     Without P3959 the item is unlinked from the catalogue and SPARQL
-    #     cannot recover it via the identifier.
+    # 17b. Manuscript missing P3959 (NNL item ID / MARC 001) — hard ERROR.
+    #     P3959 is the primary reconcile key for manuscripts (Rule W-30).
     if etype == "manuscript":
         if not _stmt_values(item, "P3959"):
             issues.append(ValidationIssue(
-                "warning", "MISSING_P3959",
+                "error", "MISSING_P3959",
                 "Manuscript item has no P3959 (NNL item ID / MARC 001 field). "
                 "Every manuscript must carry the NLI catalog control number so "
-                "the source record is queryable via SPARQL. Rebuild via the "
-                "Wikidata Studio to populate this statement.",
+                "reconcile-before-create can deduplicate and SPARQL can recover "
+                "the source record.",
                 "https://www.wikidata.org/wiki/Property:P3959",
             ))
 

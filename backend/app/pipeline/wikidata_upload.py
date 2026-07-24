@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -88,6 +89,14 @@ class ReconcileOutcome:
 
 
 @dataclass
+class ForeignAccept:
+    """Per-item curator accept to modify a foreign Wikidata QID."""
+
+    accept_foreign_modify: bool = False
+    accepted_foreign_qid: str | None = None
+
+
+@dataclass
 class PreparedItem:
     """An item after reconciliation + validation, ready for an upload decision."""
 
@@ -102,9 +111,99 @@ class PreparedItem:
     block_message: str
     had_builder_qid: bool = False
     adopt_candidate: bool = False
+    ownership: str = "absent"  # own | foreign | unknown | absent
+    allow_foreign_modify: bool = False
 
 
-# ── Shared reconcile + validation core ──────────────────────────────────
+def _apply_existence_and_ownership(
+    prepared: PreparedItem,
+    *,
+    accept: ForeignAccept | None,
+    ownership_checker: Any | None,
+    is_test: bool,
+) -> PreparedItem:
+    """Confirm QID alive + enforce create-or-own / explicit-foreign-accept policy."""
+    from app.pipeline.wikidata_existence import (  # noqa: PLC0415
+        accept_allows_foreign_modify,
+        classify_ownership_with_uploader,
+        confirm_qid_alive,
+    )
+
+    if prepared.blocked:
+        return prepared
+    qid = prepared.existing_qid
+    if not qid:
+        prepared.ownership = "absent"
+        return prepared
+
+    alive = confirm_qid_alive(qid, is_test=is_test)
+    if alive is False:
+        # Stale ledger/reconcile hit — clear QID so we do not UPDATE a ghost,
+        # but BLOCK CREATE until the curator re-reconciles (fail closed).
+        prepared.blocked = True
+        prepared.block_status = "blocked"
+        prepared.block_message = (
+            f"Reconciled QID {qid} is missing on Wikidata (wbgetentities). "
+            "Refusing CREATE/UPDATE until reconcile is re-run."
+        )
+        prepared.ownership = "unknown"
+        return prepared
+    if alive is None:
+        prepared.blocked = True
+        prepared.block_status = "blocked"
+        prepared.block_message = (
+            f"Could not confirm that {qid} still exists (Action API unavailable). "
+            "Fail-closed: refusing write until the entity can be verified."
+        )
+        prepared.ownership = "unknown"
+        return prepared
+
+    acc = accept or ForeignAccept()
+    if accept_allows_foreign_modify(
+        existing_qid=qid,
+        accept_foreign_modify=bool(acc.accept_foreign_modify),
+        accepted_foreign_qid=acc.accepted_foreign_qid,
+    ):
+        # Explicit per-QID accept is sufficient even without a live ownership
+        # classify (e.g. dry-run before token unwrap). Still fail-closed on
+        # missing/ghost QIDs above.
+        prepared.ownership = "foreign"
+        prepared.allow_foreign_modify = True
+        return prepared
+
+    if ownership_checker is None:
+        prepared.ownership = "unknown"
+        prepared.blocked = True
+        prepared.block_status = "blocked"
+        prepared.block_message = (
+            f"Existing item {qid} matched via {prepared.method}, but no Wikidata "
+            "token is available to verify ownership. Default policy: only CREATE "
+            "new items or UPDATE items you created — provide a token, or set "
+            "accept_foreign_modify bound to this QID after review."
+        )
+        return prepared
+
+    ownership = classify_ownership_with_uploader(ownership_checker, qid)
+    prepared.ownership = ownership
+    if ownership == "own":
+        return prepared
+
+    prepared.blocked = True
+    prepared.block_status = "skipped"
+    if ownership == "foreign":
+        prepared.block_message = (
+            f"Existing Wikidata item {qid} was not created by your account. "
+            "Default policy forbids modifying community items. To proceed, "
+            "open the item and explicitly accept modification of this QID "
+            f"(accept_foreign_modify + accepted_foreign_qid={qid}). "
+            "A duplicate CREATE is also refused."
+        )
+    else:
+        prepared.block_message = (
+            f"Could not prove ownership of {qid}. Fail-closed: refusing "
+            "UPDATE/CREATE. Retry with a valid token or accept foreign modify."
+        )
+    return prepared
 
 
 def _make_reconciler() -> Any:
@@ -163,6 +262,10 @@ def _prepare_for_upload(
     *,
     ledger: dict[str, str] | None = None,
     ledger_ns: str | None = None,
+    accept_by_local_id: dict[str, ForeignAccept] | None = None,
+    ownership_checker: Any | None = None,
+    is_test: bool = False,
+    enforce_ownership: bool = False,
 ) -> list[PreparedItem]:
     from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
     from converter.wikidata.reconciler import (  # noqa: PLC0415
@@ -170,6 +273,7 @@ def _prepare_for_upload(
     )
 
     ns = ledger_ns or ledger_namespace()
+    accepts = accept_by_local_id or {}
     prepared: list[PreparedItem] = []
     for i, item in enumerate(items):
         local_id = _local_id(item, i)
@@ -216,7 +320,7 @@ def _prepare_for_upload(
         ]
         if errors:
             codes = ", ".join(sorted({getattr(e, "code", "") for e in errors}))
-            prepared.append(PreparedItem(
+            row = PreparedItem(
                 item=item, local_id=local_id, label=label, entity_type=et,
                 existing_qid=existing, method=method, blocked=True,
                 block_status="blocked",
@@ -227,16 +331,26 @@ def _prepare_for_upload(
                 ),
                 had_builder_qid=had_builder_qid,
                 adopt_candidate=adopt_candidate,
-            ))
+            )
+            prepared.append(row)
             continue
 
-        prepared.append(PreparedItem(
+        row = PreparedItem(
             item=item, local_id=local_id, label=label, entity_type=et,
             existing_qid=existing, method=method, blocked=False,
             block_status="", block_message="",
             had_builder_qid=had_builder_qid,
             adopt_candidate=adopt_candidate,
-        ))
+            ownership="absent" if not existing else "unknown",
+        )
+        if enforce_ownership:
+            row = _apply_existence_and_ownership(
+                row,
+                accept=accepts.get(local_id),
+                ownership_checker=ownership_checker,
+                is_test=is_test,
+            )
+        prepared.append(row)
     return prepared
 
 
@@ -346,8 +460,6 @@ def _reconcile_sync_with_ledger(
             ))
         except ReconciliationUnavailableError:
             raise
-        except ReconciliationUnavailableError:
-            raise
         except Exception as exc:  # noqa: BLE001
             out.append(ReconcileOutcome(
                 local_id=local_id, label=label, entity_type=et,
@@ -363,6 +475,32 @@ async def load_ledger_for_prepare(db: AsyncSession) -> dict[str, str]:
     return await load_global_ledger(db)
 
 
+async def load_foreign_accept_map(
+    db: AsyncSession, run_id: uuid.UUID,
+) -> dict[str, ForeignAccept]:
+    """Load per-item foreign-modify accepts from WikidataItemOverride rows."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.item_override import WikidataItemOverride  # noqa: PLC0415
+
+    rows = (
+        await db.execute(
+            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+        )
+    ).scalars().all()
+    out: dict[str, ForeignAccept] = {}
+    for row in rows:
+        out[str(row.local_id)] = ForeignAccept(
+            accept_foreign_modify=bool(row.accept_foreign_modify),
+            accepted_foreign_qid=(
+                str(row.accepted_foreign_qid).strip()
+                if row.accepted_foreign_qid else None
+            ),
+        )
+    return out
+
+
+
 async def upload_items(
     items: list[Any], *,
     token: str,
@@ -370,12 +508,16 @@ async def upload_items(
     audit_ctx: WikibaseAuditContext | None = None,
     db: AsyncSession | None = None,
     ledger: dict[str, str] | None = None,
+    accept_by_local_id: dict[str, ForeignAccept] | None = None,
+    run_id: uuid.UUID | None = None,
 ) -> list[UploadOutcome]:
     if ledger is None and db is not None:
         ledger = await load_ledger_for_prepare(db)
+    if accept_by_local_id is None and db is not None and run_id is not None:
+        accept_by_local_id = await load_foreign_accept_map(db, run_id)
     ns = ledger_namespace()
     outcomes = await run_in_threadpool(
-        _upload_sync, items, token, dry_run, ledger or {}, ns,
+        _upload_sync, items, token, dry_run, ledger or {}, ns, accept_by_local_id or {},
     )
     if db is not None and audit_ctx is not None and not dry_run:
         for outcome in outcomes:
@@ -402,12 +544,15 @@ async def push_single_item(
     *,
     token: str,
     audit_ctx: WikibaseAuditContext | None = None,
+    run_id: uuid.UUID | None = None,
 ) -> UploadOutcome:
     """Live create-or-update for exactly one native WikidataItem."""
     ledger = await load_ledger_for_prepare(db)
+    rid = run_id or (audit_ctx.run_id if audit_ctx is not None else None)
     outcomes = await upload_items(
         [item], token=token, dry_run=False,
         audit_ctx=audit_ctx, db=db, ledger=ledger,
+        run_id=rid,
     )
     return outcomes[0]
 
@@ -418,6 +563,7 @@ def _upload_sync(
     dry_run: bool,
     ledger: dict[str, str],
     ledger_ns: str,
+    accept_by_local_id: dict[str, ForeignAccept] | None = None,
 ) -> list[UploadOutcome]:
     from converter.wikidata.uploader import (  # noqa: PLC0415
         UnauthorisedModificationError,
@@ -428,9 +574,27 @@ def _upload_sync(
     moratorium_lifted = (
         os.environ.get("MORATORIUM_LIFTED", "").lower() == "true"
     )
+    accepts = accept_by_local_id or {}
+
+    # Ownership classification needs an authenticated uploader whenever a token
+    # is present — including dry-run — so the preview matches live policy.
+    ownership_checker: Any | None = None
+    if token:
+        try:
+            ownership_checker = WikidataUploader(
+                token=token, is_test=is_test, batch_mode=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not init WikidataUploader for ownership: %s", exc)
+            ownership_checker = None
 
     if dry_run:
-        return _dry_run(items, ledger, ledger_ns)
+        return _dry_run(
+            items, ledger, ledger_ns,
+            accept_by_local_id=accepts,
+            ownership_checker=ownership_checker,
+            is_test=is_test,
+        )
 
     if not is_test and not moratorium_lifted:
         return [
@@ -451,20 +615,37 @@ def _upload_sync(
         ]
 
     reconciler = _make_reconciler()
-    prepared = _prepare_for_upload(items, reconciler, ledger=ledger, ledger_ns=ledger_ns)
+    prepared = _prepare_for_upload(
+        items, reconciler, ledger=ledger, ledger_ns=ledger_ns,
+        accept_by_local_id=accepts,
+        ownership_checker=ownership_checker,
+        is_test=is_test,
+        enforce_ownership=True,
+    )
 
-    uploader = WikidataUploader(token=token, is_test=is_test, batch_mode=True)
+    uploader = ownership_checker or WikidataUploader(
+        token=token, is_test=is_test, batch_mode=True,
+    )
 
     out: list[UploadOutcome] = []
     for p in prepared:
         if p.blocked:
             out.append(UploadOutcome(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
-                qid=p.existing_qid, status=p.block_status,
+                qid=p.existing_qid, status=p.block_status or "blocked",
                 message=p.block_message, added_properties=[],
             ))
             continue
         try:
+            if p.allow_foreign_modify and p.existing_qid:
+                # Audited Rule-38 exception: curator explicitly accepted this QID.
+                logger.warning(
+                    "FOREIGN_MODIFY_ACCEPTED local_id=%s qid=%s — curator override",
+                    p.local_id, p.existing_qid,
+                )
+                cache = getattr(uploader, "_is_our_item_cache", None)
+                if isinstance(cache, dict):
+                    cache[p.existing_qid] = True
             result = uploader.upload_item(p.item)
             status = result.status
             if p.adopt_candidate and status == "updated":
@@ -504,9 +685,19 @@ def _dry_run(
     items: list[Any],
     ledger: dict[str, str],
     ledger_ns: str,
+    *,
+    accept_by_local_id: dict[str, ForeignAccept] | None = None,
+    ownership_checker: Any | None = None,
+    is_test: bool = False,
 ) -> list[UploadOutcome]:
     reconciler = _make_reconciler()
-    prepared = _prepare_for_upload(items, reconciler, ledger=ledger, ledger_ns=ledger_ns)
+    prepared = _prepare_for_upload(
+        items, reconciler, ledger=ledger, ledger_ns=ledger_ns,
+        accept_by_local_id=accept_by_local_id or {},
+        ownership_checker=ownership_checker,
+        is_test=is_test,
+        enforce_ownership=True,
+    )
 
     out: list[UploadOutcome] = []
     for p in prepared:
@@ -514,28 +705,40 @@ def _dry_run(
         if p.blocked:
             out.append(UploadOutcome(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
-                qid=p.existing_qid, status="blocked",
-                message=f"Dry-run: would be BLOCKED — {p.block_message}",
+                qid=p.existing_qid, status=p.block_status or "blocked",
+                message=f"Dry-run: would be {p.block_status or 'BLOCKED'} — {p.block_message}",
                 added_properties=[],
             ))
             continue
-        if p.adopt_candidate and p.existing_qid:
+        if p.ownership == "own" and p.existing_qid:
+            status = "exists"
+            message = (
+                f"Dry-run: would UPDATE {p.existing_qid} "
+                f"(owned by your account; matched via {p.method})"
+            )
+        elif p.allow_foreign_modify and p.existing_qid:
+            status = "would_adopt"
+            message = (
+                f"Dry-run: would UPDATE foreign {p.existing_qid} "
+                f"(explicit accept_foreign_modify; matched via {p.method})"
+            )
+        elif p.adopt_candidate and p.existing_qid:
             status = "would_adopt"
             message = (
                 f"Dry-run: would ADOPT {p.existing_qid} "
-                f"(matched via {p.method}; Rule-38 guards run live)"
+                f"(matched via {p.method}; ownership={p.ownership})"
             )
         elif p.existing_qid:
             status = "exists"
             message = (
                 f"Dry-run: would UPDATE {p.existing_qid} "
-                f"(matched via {p.method}; Rule-38 guards run live)"
+                f"(matched via {p.method}; ownership={p.ownership})"
             )
         else:
             status = "success"
             message = (
                 f"Dry-run: would CREATE with {len(stmts)} statement(s) "
-                "(reconciliation found no existing item)"
+                "(smart reconcile found no existing item)"
             )
         out.append(
             UploadOutcome(

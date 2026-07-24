@@ -29,10 +29,35 @@
 
 1. UI: Wikidata Studio page → "Dry run" (starts a `wikidata_upload` job with
    `dry_run: true`). API: `POST /api/runs/{id}/wikidata-studio/upload?dry_run=true`.
-2. Read per-item outcomes: `exists` (would UPDATE via method), `success`
-   (would CREATE), `blocked` (reconcile outage or validator ERROR — message
-   says which). The dry-run reconciles and validates exactly like live.
-3. No token, no moratorium flag, and no writes are involved in dry-run.
+2. Prefer having a Wikidata token in Settings so ownership (own vs foreign) is
+   classified the same as live (Rule W-99). Without a token, existing QIDs
+   block unless a QID-bound foreign accept is set.
+3. Read per-item outcomes: `exists` (would UPDATE own item), `would_adopt`
+   (ledger/reconcile match or accepted foreign), `success` (would CREATE),
+   `skipped`/`blocked` (foreign without accept, ownership unknown, reconcile
+   outage, or validator ERROR — message says which).
+4. No live writes in dry-run; moratorium still does not apply to dry-run.
+
+### Skill: accept modifying a foreign Wikidata QID
+
+1. Open the item drawer when `existing_qid` is set.
+2. Tick **I accept modifying Q… even if I did not create it** — PATCHes
+   `accept_foreign_modify=true` + `accepted_foreign_qid=<that QID>`.
+3. Re-run dry-run/upload. Accept must match the reconciled QID at write time;
+   a different QID still skips. Duplicate CREATE remains forbidden.
+4. Contract: `docs/wikidata-data-access.md` + Rule W-99.
+
+### Skill: map HMO / project Wikibase claims to public Wikidata P/Q
+
+1. Edit only `backend/converter/wikidata/hmo_wikidata_pq_mapper.py` allowlists
+   (`HMO_LOCAL_NAME_TO_WIKIDATA_PID`, `HMO_CLASS_TO_WIKIDATA_QID`) — keep WPM
+   alignment (`P9302` script, `P1104` folios, no MS P50).
+2. Never map a bare project Cloud `P…`/`Q…` by numeric identity; project PIDs
+   need the schema ledger ontology URI.
+3. Sync ontology `owl:equivalentProperty` in `hebrew-manuscripts.ttl` when
+   changing a mapped PID.
+4. Extend `backend/tests/unit/test_hmo_wikidata_pq_mapper.py` (+ canonical
+   claim cases in `test_hmo_canonical_wikidata.py`). Rule W-100 / studio R38.
 
 ### Skill: force-rebuild the Studio
 
@@ -52,9 +77,10 @@
    the label override — then Rebuild and re-run the dry-run.
 2. **Reconciliation unavailable**: WDQS outage/429 — nothing to fix locally;
    retry when WDQS is reachable. Never work around by hand-creating the item.
-3. **Rule-38 skip** (`refusing to modify QXXX`): the existing item wasn't
-   authored by this user — edit it manually on Wikidata or leave it; the
-   pipeline will not touch community items.
+3. **Rule-38 / foreign skip** (`refusing to modify QXXX` / not created by your
+   account): default policy forbids community UPDATE. Either leave the item,
+   or use the drawer foreign-accept checkbox bound to that QID (Rule W-99),
+   then re-dry-run. Never CREATE a duplicate.
 
 ### Skill: load all items in the modern review panel
 

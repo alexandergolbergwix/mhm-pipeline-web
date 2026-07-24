@@ -95,7 +95,7 @@ async def test_build_items_restores_ttl_from_postgres(
     monkeypatch.setattr(hmo_item_build, "build_items_for_run", _fake_build)
 
     response = await sample_run["client"].post(
-        f"/api/runs/{run_id}/hmo-studio/build-items",
+        f"/api/runs/{run_id}/hmo-studio/build-items?refresh_authority=false",
     )
     assert response.status_code == 200, response.text
 

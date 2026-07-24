@@ -15,7 +15,9 @@ project pages under `/projects/:projectId{,/history,/entity}`; admin under
 reviewed HMO Wikibase read-back and carries the selected source through build,
 refresh, verification, and upload-job parameters. The page presents review,
 approval, preview, and public publication as separate steps; technical legacy
-projection remains available as an explicit alternate source.
+projection remains available as an explicit alternate source. The item drawer
+exposes a QID-bound **accept foreign modify** checkbox when `existing_qid` is
+set (Rule W-99); uploads load those accepts from `WikidataItemOverride`.
 
 **API clients.** All HTTP goes through `api/client.ts:138`'s `api` object:
 same-origin `/api` prefix, `credentials: "include"` (HTTP-only session

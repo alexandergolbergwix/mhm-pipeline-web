@@ -219,6 +219,10 @@ def test_work_reconciles_by_label_and_author():
 def test_upload_sync_never_writes_blocked_items(monkeypatch):
     monkeypatch.setenv("WIKIDATA_TEST_MODE", "true")
     monkeypatch.delenv("MORATORIUM_LIFTED", raising=False)
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False: True,
+    )
 
     good = _manuscript("990000001")            # matches → update
     outage = _manuscript("990000002")          # lookup fails → blocked
@@ -239,6 +243,10 @@ def test_upload_sync_never_writes_blocked_items(monkeypatch):
     class _FakeUploader:
         def __init__(self, token, is_test, batch_mode):
             assert is_test is True
+            self._is_our_item_cache = {}
+
+        def _is_our_item(self, qid: str) -> bool:
+            return True
 
         def upload_item(self, item):
             written.append(item)
@@ -261,6 +269,10 @@ def test_dry_run_reports_update_create_and_block(monkeypatch):
     update_item = _manuscript("990000010")
     create_item = _manuscript("990000011")
     block_item = _manuscript("990000012")
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False: True,
+    )
 
     class _Rec(_FakeReconciler):
         def reconcile_manuscript_by_identifiers(self, nnl_id, shelfmark):
@@ -270,16 +282,88 @@ def test_dry_run_reports_update_create_and_block(monkeypatch):
 
     monkeypatch.setattr(wu, "_make_reconciler", lambda: _Rec())
 
+    class _FakeUploader:
+        def __init__(self, token, is_test, batch_mode):
+            self._is_our_item_cache = {}
+
+        def _is_our_item(self, qid: str) -> bool:
+            return True
+
+    monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _FakeUploader)
+
     outcomes = wu._upload_sync(
-        [update_item, create_item, block_item], token="", dry_run=True,
+        [update_item, create_item, block_item],
+        token="User@Bot:deadbeef", dry_run=True,
         ledger={}, ledger_ns="wikidata",
     )
     by_id = {o.local_id: o for o in outcomes}
 
-    assert by_id["990000010"].status == "would_adopt"
+    assert by_id["990000010"].status == "exists"
     assert by_id["990000010"].qid == "Q10"
+    assert "owned by your account" in by_id["990000010"].message
     assert by_id["990000011"].status == "success"
     assert by_id["990000012"].status == "blocked"
+
+
+def test_dry_run_skips_foreign_without_accept(monkeypatch):
+    item = _manuscript("990000020")
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False: True,
+    )
+    monkeypatch.setattr(
+        wu, "_make_reconciler",
+        lambda: _FakeReconciler(ms_map={"990000020": "Q20"}),
+    )
+
+    class _ForeignUploader:
+        def __init__(self, token, is_test, batch_mode):
+            self._is_our_item_cache = {}
+
+        def _is_our_item(self, qid: str) -> bool:
+            return False
+
+    monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _ForeignUploader)
+
+    outcomes = wu._upload_sync(
+        [item], token="User@Bot:deadbeef", dry_run=True,
+        ledger={}, ledger_ns="wikidata",
+    )
+    assert outcomes[0].status == "skipped"
+    assert "not created by your account" in outcomes[0].message
+
+
+def test_dry_run_allows_foreign_with_accept(monkeypatch):
+    item = _manuscript("990000021")
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False: True,
+    )
+    monkeypatch.setattr(
+        wu, "_make_reconciler",
+        lambda: _FakeReconciler(ms_map={"990000021": "Q21"}),
+    )
+
+    class _ForeignUploader:
+        def __init__(self, token, is_test, batch_mode):
+            self._is_our_item_cache = {}
+
+        def _is_our_item(self, qid: str) -> bool:
+            return False
+
+    monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _ForeignUploader)
+
+    outcomes = wu._upload_sync(
+        [item], token="User@Bot:deadbeef", dry_run=True,
+        ledger={}, ledger_ns="wikidata",
+        accept_by_local_id={
+            "990000021": wu.ForeignAccept(
+                accept_foreign_modify=True, accepted_foreign_qid="Q21",
+            ),
+        },
+    )
+    assert outcomes[0].status == "would_adopt"
+    assert "explicit accept_foreign_modify" in outcomes[0].message
 
 
 def test_reconcile_preview_marks_outage_as_error(monkeypatch):
@@ -358,6 +442,10 @@ async def test_live_upload_records_audit_rows(db_session, sample_run, monkeypatc
     from app.services.wikibase_audit import WikibaseAuditContext
 
     monkeypatch.setenv("WIKIDATA_TEST_MODE", "true")
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False: True,
+    )
 
     good = _manuscript("990000001")
     block_item = _Item(entity_type="person", labels={"en": "Winter"}, statements=[], local_id="winter")
@@ -371,7 +459,10 @@ async def test_live_upload_records_audit_rows(db_session, sample_run, monkeypatc
 
     class _FakeUploader:
         def __init__(self, token, is_test, batch_mode):
-            pass
+            self._is_our_item_cache = {}
+
+        def _is_our_item(self, qid: str) -> bool:
+            return True
 
         def upload_item(self, item):
             return _FakeResult(qid="Q1", status="updated", message="Updated Q1")

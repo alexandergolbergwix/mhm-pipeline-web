@@ -222,6 +222,12 @@ def _fill_person_authority(
         person["wikidata_id"] = match["wikidata_qid"]
     if match.get("mazal_id") and "authority_id" not in person:
         person["authority_id"] = str(match["mazal_id"])
+    if match.get("mazal_id") and "mazal_id" not in person:
+        person["mazal_id"] = str(match["mazal_id"])
+    if payload.get("mazal_aleph_id") and "mazal_id" not in person:
+        person["mazal_id"] = str(payload["mazal_aleph_id"])
+        if "authority_id" not in person:
+            person["authority_id"] = str(payload["mazal_aleph_id"])
     if payload.get("birth_year") is not None and "birth_year" not in person:
         person["birth_year"] = payload["birth_year"]
     if payload.get("death_year") is not None and "death_year" not in person:
@@ -393,6 +399,8 @@ def _merge_kima_place(
             rec.setdefault("production_place_viaf_id", str(viaf_id))
         if mazal_id:
             rec.setdefault("production_place_mazal_id", str(mazal_id))
+        if kima_geo:
+            rec.setdefault("production_place_geonames_id", str(kima_geo))
 
     if kima_lat is not None and kima_lon is not None:
         prod_place = clean_marc_label(str(rec.get("place") or ""))
@@ -411,6 +419,14 @@ def _merge_kima_place(
                 entry.setdefault("lon", kima_lon)
                 if wikidata_qid:
                     entry.setdefault("wikidata_id", wikidata_qid)
+                if kima_id:
+                    entry.setdefault("kima_id", str(kima_id))
+                if viaf_id:
+                    entry.setdefault("viaf_id", str(viaf_id))
+                if mazal_id:
+                    entry.setdefault("mazal_id", str(mazal_id))
+                if kima_geo:
+                    entry.setdefault("geonames_id", str(kima_geo))
                 break
 
         for ev in rec.get("provenance_events") or []:

@@ -11,6 +11,20 @@ works…) — as native entities on the self-hosted Wikibase Cloud instance
 own ontology, and a **separate trust boundary from wikidata.org**: Rule 25's
 moratorium gate does not apply here (desktop Rule 45).
 
+## Four pillars (Rule W-102)
+
+1. **Wikibase root** — after live upload + read-back, durable
+   `hmo_canonical_entities` are the source of truth for RDF and Wikidata Studio
+   (`source=canonical`); first publish may still bootstrap from MARC→RDF.
+2. **Wikidata mapper** — public P/Q only via ontology
+   `owl:equivalentProperty`/`equivalentClass` + `hmo_wikidata_pq_mapper`
+   (never project-Q-as-Wikidata).
+3. **Ontology 1:1** — Wikibase schema/items mirror
+   `backend/ontology/hebrew-manuscripts.ttl`; GraphBuilder emits only declared
+   `hm:` terms.
+4. **Richest enrichment** — Mazal / KIMA / VIAF / Wikidata at HMO build time,
+   fail-closed (Rule W-101).
+
 Pipeline stages, in order:
 
 1. **Schema bootstrap** — create every ontology class/property as a live

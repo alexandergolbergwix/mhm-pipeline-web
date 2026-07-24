@@ -11,9 +11,11 @@ from converter.wikidata.item_builder import (
     P_GENRE,
     P_MAIN_SUBJECT,
     P_NATURE_OF_STATEMENT,
+    P_OBJECT_NAMED_AS,
     P_SOURCING_CIRCUMSTANCES,
     Q_HYPOTHESIS,
     Q_PRESUMABLY,
+    Q_UNKNOWN_TEXT,
     WikidataItem,
     WikidataStatement,
     _clean_work_title,
@@ -75,6 +77,33 @@ def _entry_work_qid(entry: dict[str, object]) -> str | None:
         if qid:
             return qid
     return None
+
+
+def _exemplar_qualifiers(
+    *,
+    catalog_title: str,
+    folio_range: str = "",
+    presumably: bool = False,
+) -> list[dict[str, object]]:
+    """Build P1574 qualifiers: catalog form (P1932) + optional folio/section."""
+    quals: list[dict[str, object]] = []
+    titled = str(catalog_title or "").strip()
+    if titled:
+        quals.append({
+            "property": P_OBJECT_NAMED_AS,
+            "value": titled,
+            "type": "string",
+        })
+    folio = str(folio_range or "").strip()
+    if folio:
+        quals.append({"property": "P958", "value": folio, "type": "string"})
+    if presumably:
+        quals.append({
+            "property": P_SOURCING_CIRCUMSTANCES,
+            "value": Q_PRESUMABLY,
+            "type": "item",
+        })
+    return quals
 
 
 class ContentProjectionMixin:
@@ -147,40 +176,55 @@ class ContentProjectionMixin:
                 continue
             seen_works.add(key)
 
-            qualifiers: list[dict[str, object]] = []
-            if decision.folio_range:
-                qualifiers.append(
-                    {"property": "P958", "value": decision.folio_range, "type": "string"}
-                )
-
+            named_as = work_title or cleaned or raw_title
             if work_qid:
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_EXEMPLAR_OF,
                         value=work_qid,
                         value_type="item",
-                        qualifiers=qualifiers,
+                        qualifiers=_exemplar_qualifiers(
+                            catalog_title=named_as,
+                            folio_range=str(decision.folio_range or ""),
+                        ),
                         references=ref,
                     )
                 )
                 continue
 
-            work_item = self._get_or_create_work(work_title, embedded_author, record)
-            remember_evidence(work_item, evidence)
-            item.statements.append(
-                WikidataStatement(
-                    property_id=P_EXEMPLAR_OF,
-                    value=f"__LOCAL:{work_item.local_id}",
-                    value_type="item",
-                    qualifiers=qualifiers
-                    + [{
-                        "property": P_SOURCING_CIRCUMSTANCES,
-                        "value": Q_PRESUMABLY,
-                        "type": "item",
-                    }],
-                    references=ref,
+            # Prefer a local work item when we have enough identity; otherwise
+            # fall back to DS unknown-text (Q234460) + P1932 rather than invent
+            # a fuzzy work QID.
+            if embedded_author or approved or len(work_title) >= 8:
+                work_item = self._get_or_create_work(work_title, embedded_author, record)
+                remember_evidence(work_item, evidence)
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=f"__LOCAL:{work_item.local_id}",
+                        value_type="item",
+                        qualifiers=_exemplar_qualifiers(
+                            catalog_title=named_as,
+                            folio_range=str(decision.folio_range or ""),
+                            presumably=True,
+                        ),
+                        references=ref,
+                    )
                 )
-            )
+            else:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=Q_UNKNOWN_TEXT,
+                        value_type="item",
+                        qualifiers=_exemplar_qualifiers(
+                            catalog_title=named_as,
+                            folio_range=str(decision.folio_range or ""),
+                            presumably=True,
+                        ),
+                        references=ref,
+                    )
+                )
 
         entities = record.get("entities") or []
         cont_entities = [
@@ -218,23 +262,23 @@ class ContentProjectionMixin:
                 continue
             seen_works.add(key)
 
-            qualifiers: list[dict[str, object]] = []
+            folio_range = ""
             for folio in folios:
                 if abs(int(folio.get("end") or 0) - int(work.get("start") or 0)) < 3:
-                    qualifiers.append({
-                        "property": "P958",
-                        "value": str(folio.get("text") or "").strip(":"),
-                        "type": "string",
-                    })
+                    folio_range = str(folio.get("text") or "").strip(":")
                     break
 
+            named_as = decision.title or work_title or raw
             if work_qid:
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_EXEMPLAR_OF,
                         value=work_qid,
                         value_type="item",
-                        qualifiers=qualifiers,
+                        qualifiers=_exemplar_qualifiers(
+                            catalog_title=named_as,
+                            folio_range=folio_range,
+                        ),
                         references=ref,
                     )
                 )
@@ -257,12 +301,11 @@ class ContentProjectionMixin:
                     property_id=P_EXEMPLAR_OF,
                     value=f"__LOCAL:{work_item.local_id}",
                     value_type="item",
-                    qualifiers=qualifiers
-                    + [{
-                        "property": P_SOURCING_CIRCUMSTANCES,
-                        "value": Q_PRESUMABLY,
-                        "type": "item",
-                    }],
+                    qualifiers=_exemplar_qualifiers(
+                        catalog_title=named_as,
+                        folio_range=folio_range,
+                        presumably=True,
+                    ),
                     references=ref,
                 )
             )
@@ -304,13 +347,10 @@ class ContentProjectionMixin:
                             property_id=P_EXEMPLAR_OF,
                             value=f"__LOCAL:{work_item.local_id}",
                             value_type="item",
-                            qualifiers=[
-                                {
-                                    "property": P_SOURCING_CIRCUMSTANCES,
-                                    "value": Q_PRESUMABLY,
-                                    "type": "item",
-                                }
-                            ],
+                            qualifiers=_exemplar_qualifiers(
+                                catalog_title=decision.title,
+                                presumably=True,
+                            ),
                             references=ref,
                         )
                     )

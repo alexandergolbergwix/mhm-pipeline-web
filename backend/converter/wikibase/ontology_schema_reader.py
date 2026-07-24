@@ -63,6 +63,9 @@ _EXTERNAL_ID_LOCAL_NAMES = frozenset({
     "has_VIAF_ID",
     "wikidata_id",
     "sfardata_id",
+    "mazal_id",
+    "kima_id",
+    "authority_id",
 })
 
 # Datatype properties whose xsd:string range stores a URI value — Wikibase ``url``.

@@ -25,6 +25,8 @@ transaction so event + read-model land atomically.
 Entity types (`event.py:58`): `marc_record`, `extraction_entity`,
 `authority_match`, `wikidata_override`, `wikibase_item`, and
 `hmo_item_override` (added after Rule W-21 was written — code wins).
+`wikidata_override` state includes curator diff fields plus `approved` and
+(Rule W-99) `accept_foreign_modify` / `accepted_foreign_qid`.
 
 State reads fold the log: find the latest `state`-bearing event
 (create/snapshot/revert), then replay later patches (`core.py:108-135`).

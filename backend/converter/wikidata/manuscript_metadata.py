@@ -16,7 +16,6 @@ from converter.wikidata.item_builder import (
     P_START_TIME,
     P_WIDTH,
     P_WRITING_SYSTEM,
-    Q_CODEX,
     Q_COMPOSITE_MANUSCRIPT,
     Q_HEBREW_ALPHABET,
     Q_ILLUMINATED_MANUSCRIPT,
@@ -33,6 +32,11 @@ from converter.wikidata.item_builder import (
     _is_printed_facsimile_record,
     _normalise_label,
     _person_key,
+)
+from converter.wikidata.property_mapping import (
+    DISCOURAGED_MANUSCRIPT_P31,
+    FRAGMENT_CONDITION_KEYWORDS,
+    Q_MANUSCRIPT_FRAGMENT,
 )
 
 
@@ -111,12 +115,10 @@ class ManuscriptMetadataMixin:
     def _determine_instance_type(self, record: dict[str, object]) -> list[str]:
         """Return all applicable P31 QIDs, most-specific first.
 
-        HMO models manuscripts as multiple intersecting classes (illuminated +
-        composite + palimpsest + codex etc.). The Wikidata equivalent is
-        multiple P31 statements. We always emit at least Q87167 (manuscript)
-        as the base type, placed last. WikiProject Manuscripts endorses
-        multi-P31 when no pair is in a subclass relation (Rule 42, Phase 1
-        HMO fidelity, 2026-05-17).
+        Always emit at least Q87167 (manuscript) as the base type, placed last.
+        WikiProject Manuscripts endorses multi-P31 when classes are not in a
+        subclass tangle, but discourages Q213924 (codex) as a primary class —
+        multi-volume / anthology strata use Q_COMPOSITE_MANUSCRIPT instead.
         """
         qids: list[str] = []
         if _is_printed_facsimile_record(record):
@@ -153,12 +155,17 @@ class ManuscriptMetadataMixin:
             )
         ):
             qids.append(Q_ILLUMINATED_MANUSCRIPT)
-        if record.get("is_multi_volume") or record.get("is_anthology"):
-            qids.append(Q_CODEX)
-        if record.get("is_composite"):
+        if (
+            record.get("is_multi_volume")
+            or record.get("is_anthology")
+            or record.get("is_composite")
+        ):
             qids.append(Q_COMPOSITE_MANUSCRIPT)
         if record.get("is_palimpsest"):
             qids.append(Q_PALIMPSEST)
+        cond_blob = " ".join(str(c) for c in (record.get("condition_notes") or [])).casefold()
+        if any(kw in cond_blob for kw in FRAGMENT_CONDITION_KEYWORDS):
+            qids.append(Q_MANUSCRIPT_FRAGMENT)
         from converter.wikidata.marc_subject_resolve import instance_qids_from_genre_labels  # noqa: PLC0415
 
         supported_genres = [
@@ -172,12 +179,16 @@ class ManuscriptMetadataMixin:
             )
         ]
         for qid in instance_qids_from_genre_labels(supported_genres):
+            if qid in DISCOURAGED_MANUSCRIPT_P31:
+                continue
             if qid not in qids:
                 qids.append(qid)
         qids.append(Q_MANUSCRIPT)  # base type always last
         seen: set[str] = set()
         ordered: list[str] = []
         for qid in qids:
+            if qid in DISCOURAGED_MANUSCRIPT_P31:
+                continue
             if qid not in seen:
                 seen.add(qid)
                 ordered.append(qid)

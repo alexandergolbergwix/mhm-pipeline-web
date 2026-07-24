@@ -7,6 +7,15 @@ authority kind.  Conflicting QIDs remain in `authority_evidence` with
 `accepted: false` so curators can inspect them without risking a false
 positive Wikibase claim. The exporter also rejects an accepted external identifier reused by multiple distinct HMO source URIs and removes the corresponding claims.
 
+**Richness without guessing (Rule W-101).** Approved matches should mint the
+full accepted identifier surface into RDF before HMO export: Mazal
+(`hm:mazal_id`), KIMA (`hm:kima_id` + coords + `hm:geonames_id`), VIAF
+(`hm:viaf_id` + cluster `owl:sameAs`), and Wikidata (`hm:wikidata_id` /
+`hm:external_wikidata_uri`). Postgres KIMA matching abstains on multi-QID
+conflicts exactly like SQLite. `POST …/build-items?refresh_authority=true`
+rebuilds RDF + upserts `RdfArtifact` so refreshed matches are not trapped
+behind a stale TTL.
+
 The pure helpers in `backend/converter/authority/evidence.py` are intentionally
 network-free.
 

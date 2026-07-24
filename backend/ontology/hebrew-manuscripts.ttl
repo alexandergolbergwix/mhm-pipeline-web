@@ -1064,6 +1064,25 @@ hm:wikidata_id rdf:type owl:DatatypeProperty ;
     rdfs:label "Wikidata ID"@en ,
                "מזהה ויקידאטה"@he .
 
+hm:mazal_id rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:label "Mazal / NLI authority ID"@en ,
+               "מזהה מזל / ספרייה לאומית"@he ;
+    rdfs:comment "NLI Mazal authority system number (987…). Distinct from manuscript control numbers (MARC 001 / hm:external_identifier_nli on manuscripts)."@en .
+
+hm:kima_id rdf:type owl:DatatypeProperty ;
+    rdfs:domain cidoc-crm:E53_Place ;
+    rdfs:range xsd:string ;
+    rdfs:label "KIMA place ID"@en ,
+               "מזהה קימה"@he ;
+    rdfs:comment "Identifier in the KIMA Hebrew place gazetteer. Project-local; not a Wikidata property."@en .
+
+hm:authority_id rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:string ;
+    rdfs:label "authority identifier"@en ,
+               "מזהה רשות"@he ;
+    rdfs:comment "Generic authority-record identifier when the source namespace is Mazal/NLI (987…). Prefer hm:mazal_id when the source is known."@en .
+
 ### NEW Data Properties (Added in v1.1)
 
 hm:has_incipit rdf:type owl:DatatypeProperty ;
@@ -3345,15 +3364,44 @@ hm:PDF rdf:type owl:NamedIndividual , hm:DigitalAccessType ;
 
 #################################################################
 #    v1.9 - LOD Alignment (Canonical Properties Only)
+#    Public Wikidata P/Q bridge — keep in sync with
+#    converter/wikidata/hmo_wikidata_pq_mapper.py (Rule W-100 / W-102).
 #################################################################
 
 hm:has_material owl:equivalentProperty <http://www.wikidata.org/prop/direct/P186> .
-
-hm:has_script_type owl:equivalentProperty <http://www.wikidata.org/prop/direct/P6573> .
-
+hm:has_script_type owl:equivalentProperty <http://www.wikidata.org/prop/direct/P9302> .
+hm:has_script_mode owl:equivalentProperty <http://www.wikidata.org/prop/direct/P9302> .
 hm:external_identifier_nli owl:equivalentProperty <http://www.wikidata.org/prop/direct/P8189> .
+hm:external_uri_nli owl:equivalentProperty <http://www.wikidata.org/prop/direct/P8189> .
+hm:mazal_id owl:equivalentProperty <http://www.wikidata.org/prop/direct/P8189> .
+hm:authority_id owl:equivalentProperty <http://www.wikidata.org/prop/direct/P8189> .
+hm:has_number_of_folios owl:equivalentProperty <http://www.wikidata.org/prop/direct/P1104> .
+hm:viaf_id owl:equivalentProperty <http://www.wikidata.org/prop/direct/P214> .
+hm:geonames_id owl:equivalentProperty <http://www.wikidata.org/prop/direct/P1566> .
+hm:external_wikidata_uri owl:equivalentProperty <http://www.wikidata.org/prop/direct/P2888> .
+hm:hmo_source_uri owl:equivalentProperty <http://www.wikidata.org/prop/direct/P2888> .
+hm:has_title owl:equivalentProperty <http://www.wikidata.org/prop/direct/P1476> .
+hm:has_genre owl:equivalentProperty <http://www.wikidata.org/prop/direct/P136> .
+hm:has_work owl:equivalentProperty <http://www.wikidata.org/prop/direct/P1574> .
+hm:has_date_of_creation owl:equivalentProperty <http://www.wikidata.org/prop/direct/P571> .
+hm:has_height_mm owl:equivalentProperty <http://www.wikidata.org/prop/direct/P2048> .
+hm:has_width_mm owl:equivalentProperty <http://www.wikidata.org/prop/direct/P2049> .
+hm:has_author owl:equivalentProperty <http://www.wikidata.org/prop/direct/P50> .
+hm:has_scribe owl:equivalentProperty <http://www.wikidata.org/prop/direct/P11603> .
+hm:mentions_scribe owl:equivalentProperty <http://www.wikidata.org/prop/direct/P11603> .
+hm:former_owner owl:equivalentProperty <http://www.wikidata.org/prop/direct/P127> .
+hm:has_owner owl:equivalentProperty <http://www.wikidata.org/prop/direct/P127> .
+hm:holding_institution owl:equivalentProperty <http://www.wikidata.org/prop/direct/P195> .
+hm:has_holding_institution owl:equivalentProperty <http://www.wikidata.org/prop/direct/P195> .
+hm:colophon_text owl:equivalentProperty <http://www.wikidata.org/prop/direct/P1684> .
+hm:shelfmark owl:equivalentProperty <http://www.wikidata.org/prop/direct/P217> .
+hm:has_digital_representation_url owl:equivalentProperty <http://www.wikidata.org/prop/direct/P953> .
+hm:P44_has_condition owl:equivalentProperty <http://www.wikidata.org/prop/direct/P5816> .
 
-hm:has_number_of_folios owl:equivalentProperty <http://www.wikidata.org/prop/direct/P792> .
+hm:F4_Manifestation_Singleton owl:equivalentClass <http://www.wikidata.org/entity/Q87167> .
+hm:F1_Work owl:equivalentClass <http://www.wikidata.org/entity/Q47461344> .
+hm:E21_Person owl:equivalentClass <http://www.wikidata.org/entity/Q5> .
+hm:E74_Group owl:equivalentClass <http://www.wikidata.org/entity/Q43229> .
 
 #################################################################
 #    v1.9 - Compatibility Properties for Query Interoperability

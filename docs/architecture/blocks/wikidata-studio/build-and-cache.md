@@ -39,7 +39,7 @@ request).
 
 Before grouping build inputs, `build_items_for_run` runs every MARC record, approved authority match, and approved NER entity key through `canonical_control_number`. This makes harmless storage formatting such as surrounding quotes or whitespace equivalent to the record’s clean 001. The normalisation is a build-boundary requirement: grouping any one source by its raw control number can silently remove its authority/person or NER/work projection.
 
-Canonical source mode reads durable `hmo_canonical_entities` rows first; the per-run HMO cache is only a migration fallback. This keeps Wikidata Studio projections independent of cache retention.
+Canonical source mode reads durable `hmo_canonical_entities` rows first; the per-run HMO cache is only a migration fallback. This keeps Wikidata Studio projections independent of cache retention. Claim predicates and item values are translated to public Wikidata P/Q only through `hmo_wikidata_pq_mapper` (ontology local-name / ledger URI → allowlist; bare project Cloud QIDs never become Wikidata values — Rule W-100).
 
 The HMO-to-Wikidata boundary is deliberately narrow. `hmo_instance_qids_for_run`
 reads the run upload ledger, and `hmo_wikidata_projection` accepts a link only
@@ -55,12 +55,15 @@ Wikidata QID and falls back to the stable slug when no safe HMO mapping exists.
 `WikidataItemOverride` stores a sparse curator diff per `(run_id, local_id)`:
 `labels` / `descriptions` / `aliases` (null clears a key), `add_statements`,
 `remove_statements` (indices into builder output), `statement_edits`
-(`{"<idx>": partial}`), and item-level `approved` (`None` = unreviewed).
+(`{"<idx>": partial}`), item-level `approved` (`None` = unreviewed), and
+optional `accept_foreign_modify` + `accepted_foreign_qid` (Rule W-99 —
+explicit per-QID permission to UPDATE a community Wikidata item).
 `PATCH /items/{local_id}` merges partially and emits a versioning event
 (`wikidata_override` entity type, Rule W-21). Overrides are re-applied at every
-rebuild by `_apply_override` (`pipeline/wikidata_studio.py:482`) — edits first,
+rebuild by `_apply_override` (`pipeline/wikidata_studio.py`) — edits first,
 then removals, then appended statements. The inline ✗ Exclude button in the UI
-just PATCHes `remove_statements` (Rule W-27). `local_id_for_item` gives the
+just PATCHes `remove_statements` (Rule W-27). The drawer foreign-accept
+checkbox PATCHes the accept pair. `local_id_for_item` gives the
 stable handle: `item.local_id`/`id`, else `entity_type::<first external id or label>`.
 
 ### Validator moat layer

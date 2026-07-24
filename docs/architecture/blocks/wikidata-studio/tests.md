@@ -2,12 +2,18 @@
 
 > Up: [Wikidata Studio](README.md)
 
-- `backend/tests/unit/test_item_validator.py` — every check incl. label-hygiene warnings + `TestP50OnManuscript`, `TestP7416AsQuantity`, `TestP31WrongQid`.
+- `backend/tests/unit/test_wikidata_wpm_guards.py` — WPM/DS alignment: no MS P50,
+  composite not codex, fragment P31 from condition notes, P1574+P1932, role map.
+- `backend/tests/unit/test_item_validator.py` — every check incl. label-hygiene warnings + `TestP50OnManuscript`, `TestP7416AsQuantity`, `TestP31WrongQid`, `MISSING_P3959` ERROR, `DISCOURAGED_P31`, `LOCATION_WITHOUT_GEO_EVIDENCE`.
+- `backend/tests/test_wikidata_export_quality.py` — build gate runs full validator ERROR set (incl. missing P3959 / bad P31).
 - `backend/tests/test_wikidata_items_export_import.py` — override export/import round-trip and diagnostic CSV coverage (item fields, MARC context, and full AI verdict).
 - `backend/tests/test_wikidata_export_quality_checker.py` — compact JSON/CSV audit reports only actionable failures and distinguishes authority-approved-only from diagnostic exports.
 - `backend/tests/test_section_export_router.py` — section CSV retains item approval, verdict JSON, source records, validation, authority, and work-candidate evidence.
 - `backend/tests/test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`, and `unit/test_wikidata_verdict_cache.py` pin build `records` ↔ verify `record_ids`, MARC/local-target fingerprint parity, prompt-visible statement/work evidence, and safe stale-key display; `unit/test_marc_subject_resolve.py` and `test_marc_650_655_lod.py` pin verified static QIDs/labels and broad-P921 omission.
-- `backend/tests/unit/test_wikidata_upload_guards.py` (~17+) — reconcile-before-create per type, fail-closed outage, validator hard gate, blocked-never-written, audit trail, ledger/adopt, dry-run truthfulness.
+- `backend/tests/unit/test_hmo_wikidata_pq_mapper.py` — ontology/local-PID → public P/Q allowlist; bare project QID rejected; MS P50 forbidden.
+- `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical claim mapping uses the PQ mapper; control numbers; no local-Q leak.
+- `backend/tests/unit/test_wikidata_upload_guards.py` (~20+) — reconcile-before-create per type, fail-closed outage, validator hard gate, blocked-never-written, audit trail, ledger/adopt, dry-run truthfulness, foreign skip / accept-allow.
+- `backend/tests/unit/test_wikidata_existence.py` — `wbgetentities` alive parse, ownership classify, QID-bound foreign accept gate.
 - `backend/tests/unit/test_rdf_build.py` — clean raw 505 and flat contents create evidence-backed works.
 - `backend/tests/unit/test_wikidata_studio_slicing.py`, `test_wikidata_studio_works.py`, `test_wikidata_manuscript_labels.py`, `test_wikidata_matcher_backfill.py` — build/serialisation behaviour. `test_wikidata_studio_works.py` also pins source evidence, folio qualifiers, embedded-author cleanup, Latin-heading rejection, non-inherited work P407, and exact per-item `records`; it also pins contents-level author fields and
 approved work-QID reuse so enrichment metadata cannot be dropped.

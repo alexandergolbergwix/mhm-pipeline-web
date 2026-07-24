@@ -220,3 +220,14 @@ external target source URIs and consult all non-null-run instance mappings;
 unmapped targets remain explicit `unresolved` outcomes. *Why:* a person or
 work shared by two runs must not lose its relationship because it was absent
 from the current build batch.
+44. **R44 — Authority refresh on build-items MUST rebuild RDF (Rule W-101).**
+When `refresh_authority=true`, the router re-enriches matches, rebuilds the
+TTL from approved rows, upserts `RdfArtifact`, and force-rebuilds the item
+cache. *Why:* otherwise Mazal/KIMA/VIAF/Wikidata payload updates stay invisible
+behind a stale on-disk or Postgres TTL.
+45. **R45 — Four HMO pillars (Rule W-102).** (1) Canonical live Wikibase entities
+are the post-upload root for RDF/Wikidata projections. (2) Public Wikidata P/Q
+map only through ontology equivalents + `hmo_wikidata_pq_mapper`. (3) Schema and
+emitted `hm:` terms stay 1:1 with `hebrew-manuscripts.ttl`. (4) Entities are
+enriched from Mazal/KIMA/VIAF/Wikidata under fail-closed matching. *Why:* these
+four constraints are the scholarly contract of the browser deployment.

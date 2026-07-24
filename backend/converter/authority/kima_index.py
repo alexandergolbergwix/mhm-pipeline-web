@@ -175,21 +175,13 @@ class KimaIndex:
         rows = [dict(row) for row in cursor.fetchall()]
         if not rows:
             return None
-        # Name variants can point at homonymous places. Never choose an
-        # arbitrary first row when the authorities disagree on Wikidata.
-        qids = {str(row.get("wikidata_id") or "") for row in rows}
-        qids.discard("")
-        if len(qids) > 1:
-            exact = [
-                row for row in rows
-                if self.normalize_name(str(row.get("primary_heb") or "")) == normalized
-            ]
-            exact_qids = {str(row.get("wikidata_id") or "") for row in exact}
-            exact_qids.discard("")
-            if len(exact_qids) == 1:
-                return exact[0]
-            return None
-        return rows[0]
+        from converter.authority.kima_disambiguate import pick_kima_place_row  # noqa: PLC0415
+
+        return pick_kima_place_row(
+            rows,
+            normalized,
+            normalize_primary=self.normalize_name,
+        )
 
     def stats(self) -> dict:
         """Return row counts for monitoring."""

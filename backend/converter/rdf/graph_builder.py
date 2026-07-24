@@ -937,6 +937,7 @@ class GraphBuilder:
                 getattr(data, "production_place_kima_id", None),
                 getattr(data, "production_place_viaf_id", None),
                 getattr(data, "production_place_mazal_id", None),
+                getattr(data, "production_place_geonames_id", None),
             )
 
         if data.dates:
@@ -1317,6 +1318,7 @@ class GraphBuilder:
         kima_id: str | None = None,
         viaf_id: str | None = None,
         mazal_id: str | None = None,
+        geonames_id: str | None = None,
     ) -> None:
         if is_plausible_coords(lat, lon):
             graph.add((place_uri, _WGS84_LAT, Literal(str(lat))))
@@ -1342,13 +1344,22 @@ class GraphBuilder:
             graph.add((place_uri, HM.viaf_id, Literal(str(viaf_id), datatype=XSD.string)))
         if mazal_id:
             graph.add((place_uri, HM.mazal_id, Literal(str(mazal_id), datatype=XSD.string)))
+        if geonames_id:
+            gid = str(geonames_id).strip()
+            if gid:
+                graph.add((place_uri, HM.geonames_id, Literal(gid, datatype=XSD.string)))
+                graph.add((
+                    place_uri,
+                    OWL.sameAs,
+                    URIRef(f"https://www.geonames.org/{gid}/"),
+                ))
 
     @staticmethod
     def _is_http_uri(value: str) -> bool:
         return bool(re.match(r"^https?://\S+$", value.strip(), re.IGNORECASE))
 
     def _extract_authority_identifiers(self, raw_values: list[str]) -> dict[str, Any]:
-        result: dict[str, Any] = {"same_as_uris": []}
+        result: dict[str, Any] = {"same_as_uris": [], "mazal_id": None}
 
         def add_same_as(uri: str) -> None:
             if uri not in result["same_as_uris"]:
@@ -1365,7 +1376,11 @@ class GraphBuilder:
                 r"https?://(?:www\.)?viaf\.org/viaf/(\d+)", value, re.IGNORECASE
             )
             viaf_id_match = re.search(r"\(VIAF\)\s*(\d+)", value, re.IGNORECASE)
-            viaf_plain_match = re.fullmatch(r"\d{5,}", value)
+            # Mazal / NLI authority system numbers (987…) before bare-digit VIAF.
+            mazal_match = re.fullmatch(r"987\d+", value)
+            viaf_plain_match = re.fullmatch(r"\d{5,}", value) if not mazal_match else None
+            if mazal_match and not result.get("mazal_id"):
+                result["mazal_id"] = value
             if viaf_uri_match:
                 viaf_id = viaf_uri_match.group(1)
                 result["viaf_id"] = viaf_id
@@ -1496,10 +1511,23 @@ class GraphBuilder:
             raw_authority_values.append(str(person_data["wikidata_id"]))
         if person_data.get("viaf_uri"):
             raw_authority_values.append(str(person_data["viaf_uri"]))
-        for id_key in ("gnd", "lc", "isni", "bnf", "j9u"):
-            if person_data.get(id_key):
-                raw_authority_values.append(str(person_data[id_key]))
+        # Cluster ids (gnd/lc/isni/…) must not enter bare-digit VIAF parsing —
+        # mint owl:sameAs URIs via cluster_authority_same_as_uris instead.
         raw_authority_values.extend(person_data.get("same_as_uris", []))
+
+        from converter.authority.kima_disambiguate import (  # noqa: PLC0415
+            cluster_authority_same_as_uris,
+        )
+
+        cluster_uris = cluster_authority_same_as_uris(
+            {
+                "gnd": person_data.get("gnd"),
+                "lc": person_data.get("lc"),
+                "isni": person_data.get("isni"),
+                "bnf": person_data.get("bnf"),
+                "j9u": person_data.get("j9u"),
+            }
+        )
 
         auth_data = self._extract_authority_identifiers(raw_authority_values)
         if auth_data.get("external_uri_nli"):
@@ -1510,6 +1538,9 @@ class GraphBuilder:
                     Literal(auth_data["external_uri_nli"], datatype=XSD.anyURI),
                 )
             )
+        mazal_id = auth_data.get("mazal_id") or person_data.get("mazal_id")
+        if mazal_id:
+            graph.add((person_uri, HM.mazal_id, Literal(str(mazal_id), datatype=XSD.string)))
         if auth_data.get("viaf_id"):
             graph.add((person_uri, HM.viaf_id, Literal(auth_data["viaf_id"], datatype=XSD.string)))
         if auth_data.get("wikidata_id"):
@@ -1519,6 +1550,9 @@ class GraphBuilder:
         for same_as_uri in auth_data.get("same_as_uris", []):
             if self._is_http_uri(same_as_uri):
                 graph.add((person_uri, OWL.sameAs, URIRef(same_as_uri)))
+        for cluster_uri in cluster_uris:
+            if self._is_http_uri(cluster_uri):
+                graph.add((person_uri, OWL.sameAs, URIRef(cluster_uri)))
 
         if related_uri and role == "author" and related_work_title:
             creation_uri = self.uri_gen.work_creation_event_uri(
@@ -1816,13 +1850,8 @@ class GraphBuilder:
                 subject.get("kima_id"),
                 subject.get("viaf_id"),
                 subject.get("mazal_id") or subject.get("authority_id"),
+                subject.get("geonames_id"),
             )
-            if subject.get("geonames_id"):
-                graph.add((
-                    subject_uri,
-                    OWL.sameAs,
-                    URIRef(f"https://www.geonames.org/{subject['geonames_id']}/"),
-                ))
         else:
             subject_uri = self.uri_gen.subject_uri(subject["term"])
             graph.add((subject_uri, RDF.type, HM.SubjectType))
@@ -2275,6 +2304,7 @@ class GraphBuilder:
                     coord_entry.get("kima_id"),
                     coord_entry.get("viaf_id"),
                     coord_entry.get("mazal_id"),
+                    coord_entry.get("geonames_id"),
                 )
             graph.add((ms_uri, HM.mentions_place, place_uri))
 
@@ -2284,8 +2314,7 @@ class GraphBuilder:
         """Emit condition observation linked via CIDOC P44."""
         if not condition_notes:
             return
-        cond_uri = HM.Good_condition
-        graph.add((cond_uri, RDF.type, HM.ConditionType))
+        cond_uri = HM.Good
         graph.add((ms_uri, HM.P44_has_condition, cond_uri))
         graph.add((ms_uri, RDFS.comment, Literal(condition_notes[0], lang="en")))
 

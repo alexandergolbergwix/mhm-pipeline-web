@@ -4,7 +4,7 @@
 
 | File | Purpose |
 |---|---|
-| `backend/app/pipeline/rdf_build.py` | Async wrapper around the mapper: `build_rdf_graph`, `RdfBuildOptions`, SHACL validation, Cytoscape JSON, `rdf_output_path_for_run`, `ensure_ttl_on_disk`, `normalise_matches` |
+| `backend/app/pipeline/rdf_build.py` | Async wrapper around the mapper: `build_rdf_graph`, `RdfBuildOptions`, SHACL validation, Cytoscape JSON, `rdf_output_path_for_run`, `ensure_ttl_on_disk`, `upsert_rdf_artifact`, `normalise_matches` |
 | `backend/app/pipeline/rdf_build_job.py` | Background job (`kind="rdf_build"`, dispatched by `run_job_service.py:340`): loads approved rows, builds, write-throughs `RdfArtifact`, busts caches |
 | `backend/app/pipeline/rdf_enrichment.py` | Merges approved authority + NER + ML genres + KIMA places into flat MARC dicts before mapping |
 | `backend/app/pipeline/graph_index.py` | Graph catalog + SQLite index + viewport payloads for scalable visualization |

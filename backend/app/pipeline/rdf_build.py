@@ -904,6 +904,33 @@ def rdf_output_path_for_run(run_id: str) -> Path:
     return _STATE_ROOT / run_id / "manuscripts.ttl"
 
 
+async def upsert_rdf_artifact(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    ttl_text: str,
+    *,
+    triples_count: int,
+    manuscripts_count: int,
+) -> None:
+    """Persist the durable Postgres copy of a run's TTL (Rule W-39 / W-101)."""
+    from app.models.rdf_artifact import RdfArtifact  # noqa: PLC0415
+
+    existing = await db.get(RdfArtifact, run_id)
+    if existing is None:
+        db.add(
+            RdfArtifact(
+                run_id=run_id,
+                ttl_content=ttl_text,
+                triples_count=triples_count,
+                manuscripts_count=manuscripts_count,
+            )
+        )
+        return
+    existing.ttl_content = ttl_text
+    existing.triples_count = triples_count
+    existing.manuscripts_count = manuscripts_count
+
+
 async def ensure_ttl_on_disk(
     ttl_path: Path, run_id: uuid.UUID | str, db: AsyncSession,
 ) -> None:

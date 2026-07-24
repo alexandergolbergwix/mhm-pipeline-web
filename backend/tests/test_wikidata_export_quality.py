@@ -31,13 +31,31 @@ def test_missing_label_raises() -> None:
 def test_known_bad_p31_raises() -> None:
     item = _Item(
         labels={"en": "Palimpsest MS"},
-        statements=[_Stmt("P31", "Q179808")],
+        statements=[
+            _Stmt("P31", "Q179808"),
+            _Stmt("P3959", "990000403370205171"),
+        ],
     )
     with pytest.raises(ValueError, match="P31_WRONG_QID"):
         assert_wikidata_export_quality([item])
 
 
+def test_missing_p3959_raises() -> None:
+    item = _Item(
+        labels={"en": "Hebrew manuscript, NLI, MS 1"},
+        statements=[_Stmt("P31", "Q87167")],
+    )
+    with pytest.raises(ValueError, match="MISSING_P3959"):
+        assert_wikidata_export_quality([item])
+
+
 def test_clean_item_passes() -> None:
     assert_wikidata_export_quality([
-        _Item(labels={"en": "Hebrew manuscript, NLI, MS 1"}, statements=[_Stmt("P31", "Q87167")]),
+        _Item(
+            labels={"en": "Hebrew manuscript, NLI, MS 1"},
+            statements=[
+                _Stmt("P31", "Q87167"),
+                _Stmt("P3959", "990000403370205171"),
+            ],
+        ),
     ]) is None

@@ -387,6 +387,8 @@ class LocalAuthorityBackend:
             idx = self._kima.index
             if idx is None or not hasattr(idx, "lookup_place"):
                 return None
+            from converter.authority.kima_disambiguate import pick_kima_place_row  # noqa: PLC0415
+
             row = idx.lookup_place(text) or {}
             fuzzy = False
             if not row:
@@ -404,14 +406,21 @@ class LocalAuthorityBackend:
                        OR ? LIKE '%' || n.normalized_name || '%'
                     ORDER BY abs(length(n.normalized_name) - length(?)),
                              length(n.normalized_name)
-                    LIMIT 1
+                    LIMIT 12
                     """,
                     (f"%{norm}%", norm, norm),
                 )
-                hit = cur.fetchone()
-                if hit is None:
+                hits = [dict(h) for h in cur.fetchall()]
+                if not hits:
                     return None
-                row = dict(hit)
+                picked = pick_kima_place_row(
+                    hits,
+                    norm,
+                    normalize_primary=idx.normalize_name,
+                )
+                if picked is None:
+                    return None
+                row = dict(picked)
                 fuzzy = True
             wd = row.get("wikidata_id")
             if not wd:
@@ -981,7 +990,38 @@ class PostgresAuthorityBackend:
     async def match_place(self, text: str) -> dict[str, Any] | None:
         import asyncio  # noqa: PLC0415
 
+        from converter.authority.kima_disambiguate import pick_kima_place_row  # noqa: PLC0415
+
         FUZZY_MIN_SIM = 0.45
+        FUZZY_CANDIDATE_LIMIT = 12
+
+        def _row_dict(row: tuple[Any, ...]) -> dict[str, Any]:
+            return {
+                "kima_id": row[0],
+                "primary_heb": row[1],
+                "primary_rom": row[2],
+                "wikidata_id": row[3],
+                "viaf_id": row[4],
+                "geonames_id": row[5],
+                "mazal_nli_id": row[6],
+                "lat": row[7],
+                "lon": row[8],
+            }
+
+        def _accepted(row: dict[str, Any], *, fuzzy: bool = False, sim: float | None = None) -> dict[str, Any] | None:
+            wd = str(row.get("wikidata_id") or "").strip()
+            if not wd:
+                return None
+            out = {
+                "wikidata_uri": f"https://www.wikidata.org/entity/{wd}",
+                **row,
+                "wikidata_id": wd,
+            }
+            if fuzzy:
+                out["_fuzzy"] = True
+                if sim is not None:
+                    out["_fuzzy_sim"] = sim
+            return out
 
         def _sync() -> dict[str, Any] | None:
             norm = self._normalize_kima(text)
@@ -990,7 +1030,7 @@ class PostgresAuthorityBackend:
             conn = self._get_conn()
             cur = conn.cursor()
             try:
-                # 1. Exact
+                # 1. Exact — all rows; abstain on conflicting Wikidata QIDs (W-84).
                 cur.execute(
                     """
                     SELECT p.kima_id, p.primary_heb, p.primary_rom,
@@ -999,29 +1039,22 @@ class PostgresAuthorityBackend:
                     FROM kima_name_index n
                     JOIN kima_places p ON n.kima_id = p.kima_id
                     WHERE n.normalized_name = %s
-                    LIMIT 1
                     """,
                     (norm,),
                 )
-                row = cur.fetchone()
-                if row:
-                    wd = row[3]
-                    if not wd:
-                        return None
-                    return {
-                        "wikidata_uri": f"https://www.wikidata.org/entity/{wd}",
-                        "kima_id": row[0],
-                        "primary_heb": row[1],
-                        "primary_rom": row[2],
-                        "wikidata_id": wd,
-                        "viaf_id": row[4],
-                        "geonames_id": row[5],
-                        "mazal_nli_id": row[6],
-                        "lat": row[7],
-                        "lon": row[8],
-                    }
+                exact_rows = [_row_dict(r) for r in cur.fetchall()]
+                picked = pick_kima_place_row(
+                    exact_rows,
+                    norm,
+                    normalize_primary=self._normalize_kima,
+                )
+                if picked is not None:
+                    return _accepted(picked)
+                if exact_rows:
+                    # Conflicting QIDs with no unique primary-name disambiguation.
+                    return None
 
-                # 2. Fuzzy trigram fallback (proximity for Hebrew place-name variants).
+                # 2. Fuzzy trigram fallback — top candidates, same QID abstain.
                 try:
                     cur.execute(
                         """
@@ -1033,30 +1066,43 @@ class PostgresAuthorityBackend:
                         JOIN kima_places p ON n.kima_id = p.kima_id
                         WHERE n.normalized_name %% %s
                         ORDER BY sim DESC
-                        LIMIT 1
+                        LIMIT %s
                         """,
-                        (norm, norm),
+                        (norm, norm, FUZZY_CANDIDATE_LIMIT),
                     )
-                    row = cur.fetchone()
-                    if row and row[9] is not None and float(row[9]) >= FUZZY_MIN_SIM:
-                        wd = row[3]
-                        if not wd:
-                            return None
-                        res = {
-                            "wikidata_uri": f"https://www.wikidata.org/entity/{wd}",
-                            "kima_id": row[0],
-                            "primary_heb": row[1],
-                            "primary_rom": row[2],
-                            "wikidata_id": wd,
-                            "viaf_id": row[4],
-                            "geonames_id": row[5],
-                            "mazal_nli_id": row[6],
-                            "lat": row[7],
-                            "lon": row[8],
-                            "_fuzzy": True,
-                            "_fuzzy_sim": float(row[9]),
-                        }
-                        return res
+                    fuzzy_hits: list[dict[str, Any]] = []
+                    best_sim: float | None = None
+                    for r in cur.fetchall():
+                        if r[9] is None or float(r[9]) < FUZZY_MIN_SIM:
+                            continue
+                        sim = float(r[9])
+                        if best_sim is None:
+                            best_sim = sim
+                        entry = _row_dict(r)
+                        entry["_sim"] = sim
+                        fuzzy_hits.append(entry)
+                    if not fuzzy_hits:
+                        return None
+                    # Deduplicate by kima_id keeping highest similarity.
+                    by_kima: dict[Any, dict[str, Any]] = {}
+                    for hit in fuzzy_hits:
+                        kid = hit.get("kima_id")
+                        prev = by_kima.get(kid)
+                        if prev is None or float(hit.get("_sim") or 0) > float(prev.get("_sim") or 0):
+                            by_kima[kid] = hit
+                    candidates = list(by_kima.values())
+                    picked_fuzzy = pick_kima_place_row(
+                        candidates,
+                        norm,
+                        normalize_primary=self._normalize_kima,
+                    )
+                    if picked_fuzzy is None:
+                        return None
+                    return _accepted(
+                        {k: v for k, v in picked_fuzzy.items() if k != "_sim"},
+                        fuzzy=True,
+                        sim=float(picked_fuzzy.get("_sim") or best_sim or 0),
+                    )
                 except Exception:  # noqa: BLE001
                     pass
                 return None

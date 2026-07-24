@@ -39,6 +39,8 @@ export interface StudioItem {
   local_id?: string;
   validation_issues?: ValidationIssue[];
   approved?: boolean | null;
+  accept_foreign_modify?: boolean | null;
+  accepted_foreign_qid?: string | null;
   upload_outcome?: string | null;
   upload_message?: string | null;
   upload_at?: string | null;
@@ -116,6 +118,8 @@ export interface ItemOverridePayload {
   remove_statements?: number[];
   statement_edits?: Record<string, Record<string, unknown>>;
   approved?: boolean;
+  accept_foreign_modify?: boolean;
+  accepted_foreign_qid?: string | null;
 }
 
 export interface ItemOverrideResponse {
@@ -128,6 +132,8 @@ export interface ItemOverrideResponse {
   remove_statements: number[];
   statement_edits: Record<string, unknown>;
   approved?: boolean | null;
+  accept_foreign_modify?: boolean | null;
+  accepted_foreign_qid?: string | null;
 }
 
 export interface WikidataItemPushResult {

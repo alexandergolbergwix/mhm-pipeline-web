@@ -542,14 +542,15 @@ class TestP3959MarcControlNumber:
       - MUST NOT appear as a main statement on person or work items.
     """
 
-    def test_manuscript_without_p3959_warns(self) -> None:
+    def test_manuscript_without_p3959_is_error(self) -> None:
         item = _Item(
             entity_type="manuscript",
             labels={"en": "Jerusalem, NLI, Ms. Heb. 4°1"},
             statements=[_Stmt("P31", "Q87167")],
         )
-        codes = [i.code for i in validate_item(item)]
-        assert "MISSING_P3959" in codes
+        issues = validate_item(item)
+        assert "MISSING_P3959" in _codes(issues)
+        assert any(i.severity == "error" for i in issues if i.code == "MISSING_P3959")
 
     def test_manuscript_with_p3959_is_clean(self) -> None:
         item = _Item(
@@ -562,6 +563,45 @@ class TestP3959MarcControlNumber:
         )
         codes = [i.code for i in validate_item(item)]
         assert "MISSING_P3959" not in codes
+
+    def test_discouraged_codex_p31_is_error(self) -> None:
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Hebrew manuscript, NLI, MS 1"},
+            statements=[
+                _Stmt("P31", "Q213924"),
+                _Stmt("P31", "Q87167"),
+                _Stmt("P3959", "990000403370205171", "external-id"),
+            ],
+        )
+        issues = validate_item(item)
+        assert "DISCOURAGED_P31" in _codes(issues)
+        assert any(i.severity == "error" for i in issues if i.code == "DISCOURAGED_P31")
+
+    def test_p17_p131_without_geo_evidence_is_error(self) -> None:
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Hebrew manuscript, NLI, MS 1"},
+            statements=[
+                _Stmt("P31", "Q87167"),
+                _Stmt("P3959", "990000403370205171", "external-id"),
+                _Stmt("P17", "Q801"),
+                _Stmt("P131", "Q1218"),
+            ],
+        )
+        assert "LOCATION_WITHOUT_GEO_EVIDENCE" in _codes(validate_item(item))
+
+    def test_p50_somevalue_on_manuscript_is_error(self) -> None:
+        item = _Item(
+            entity_type="manuscript",
+            labels={"en": "Hebrew manuscript, NLI, MS 1"},
+            statements=[
+                _Stmt("P31", "Q87167"),
+                _Stmt("P3959", "990000403370205171", "external-id"),
+                _Stmt("P50", None, "somevalue"),
+            ],
+        )
+        assert "P50_ON_MANUSCRIPT" in _codes(validate_item(item))
 
     def test_p3959_on_person_item_is_error(self) -> None:
         item = _Item(

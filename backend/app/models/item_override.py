@@ -60,6 +60,15 @@ class WikidataItemOverride(Base):
     # None = not reviewed; True = approved for export; False = explicitly rejected.
     approved: Mapped[bool | None] = mapped_column(Boolean(), nullable=True, default=None)
 
+    # Explicit per-entity accept to UPDATE a foreign Wikidata QID (not created
+    # by the acting user's token). Must match the reconciled QID at upload time.
+    accept_foreign_modify: Mapped[bool | None] = mapped_column(
+        Boolean(), nullable=True, default=None,
+    )
+    accepted_foreign_qid: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, default=None,
+    )
+
     ai_verdict: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     ai_verdict_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,

@@ -8,18 +8,22 @@ Wikidata Studio turns a run's curated data (MARC records + *approved* authority
 matches + *approved* NER entities + curator item overrides) into real Wikidata
 items — manuscripts, persons, works — using the shared `WikidataItemBuilder`
 compatibility facade, then lets a curator review, edit, approve, reconcile,
-and export/upload them. The web pipeline reshapes DB rows into builder input.
-Projection code is split into focused modules, including the web-side
-source-aware work-candidate boundary; shared fixes need an explicit upstream
-port before the next desktop sync. Callers keep importing the same facade.
+and export/upload them. Canonical-source builds adapt durable
+`hmo_canonical_entities` through `hmo_wikidata_pq_mapper` (ontology / project
+Wikibase → public P/Q; never ID identity). The web pipeline reshapes DB rows
+into builder input. Projection code is split into focused modules, including
+the web-side source-aware work-candidate boundary; shared fixes need an
+explicit upstream port before the next desktop sync. Callers keep importing
+the same facade.
 
 The block exists in the shadow of two real 2026-04 incidents: a mass-merge
 disaster (902+ wrong merges) and a mass-duplicate/non-notable-creation
 bulk-deletion request (~5,948 items). Its whole write path is therefore
 **fail-closed**: reconcile-before-create with hard errors on lookup failure, a
 validator moat that blocks any ERROR-severity item, four modification guards
-inside the uploader, and a production moratorium gate (`MORATORIUM_LIFTED`)
-that refuses live wikidata.org writes by default.
+inside the uploader, smart existence + own-or-accept modify (Rule W-99), and a
+production moratorium gate (`MORATORIUM_LIFTED`) that refuses live wikidata.org
+writes by default.
 
 ## Contents
 
@@ -27,12 +31,13 @@ that refuses live wikidata.org writes by default.
 - [How it works: build and cache](build-and-cache.md) — build pipeline +
   fingerprint cache, item overrides/approval/statement exclude, validator moat.
 - [How it works: guards and upload](guards-and-upload.md) —
-  reconcile-before-create, upload job + moratorium + QS download, AI review +
-  autofix.
-- [Rules](rules.md) — the 26 invariants (R1–R26) this block enforces.
+  reconcile-before-create, existence/ownership, upload job + moratorium + QS,
+  AI review + autofix.
+- [Rules](rules.md) — the invariants (R1–R38) this block enforces.
 - [Phase 1 projection quality](projection-quality.md) — evidence gates for labels, notes, subjects, genres, roles, and current institutions.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
-  dry-runs, force-rebuild, blocked items, local quality audit, AI autofixes.
+  dry-runs, force-rebuild, blocked items, local quality audit, AI autofixes,
+  foreign-modify accept, HMO→Wikidata PQ mapping.
 - [Local quality audit](quality-audit.md) — read-only measurement, count
   interpretation, and safe remediation order.
 - [Tests](tests.md) — the test suites pinning this block.

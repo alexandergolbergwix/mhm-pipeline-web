@@ -25,22 +25,29 @@ live upload, so the dry-run preview is truthful. Per entity type
 network/429/5xx (`reconciler.py:147`) — never returns `[]` for an outage. The
 item is then `blocked`, never created. After reconcile, `validate_item` runs;
 any ERROR blocks the write regardless of create-vs-update or approval state.
-`POST /reconcile` is a **preview only** — the authoritative reconcile always
-re-runs inside `upload_items`.
+Then (live + dry-run with `enforce_ownership`) `wikidata_existence` confirms
+the QID via Action API `wbgetentities` and classifies ownership with the
+curator token: **own → UPDATE**, **foreign without accept → skip**, **foreign
+with QID-bound `accept_foreign_modify` → UPDATE (audited)**, **unknown →
+block**. `POST /reconcile` is a **preview only** — the authoritative reconcile
+always re-runs inside `upload_items`. Contract: `docs/wikidata-data-access.md`
+(Rule W-99).
 
 ### Upload job, moratorium, QS download
 
 `POST /upload` (or the `wikidata_upload` run-job, which uploads item-by-item
 with progress + cancel) builds native items fresh, optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
-token, and calls `wikidata_upload.upload_items`. Live mode with neither
+token (also for dry-run when present, so ownership preview is truthful),
+loads per-item foreign accepts from `WikidataItemOverride`, and calls
+`wikidata_upload.upload_items`. Live mode with neither
 `WIKIDATA_TEST_MODE=true` nor `MORATORIUM_LIFTED=true` returns every item as
-`skipped` (`wikidata_upload.py:327`); the uploader itself independently
+`skipped`; the uploader itself independently
 re-enforces the moratorium (`uploader.py:111`). All four desktop Rule-38
 modification guards stay intact (`_is_our_item`, `_assert_modifiable` in
 `_build_wbi_item`, `_would_create_identity_conflict` per statement, pre-write
-`_assert_modifiable`).
-
+`_assert_modifiable`); foreign accept may prime `_is_our_item_cache` for one
+audited QID.
 The default source is the durable HMO Wikibase read-back. `native_items_from_hmo`
 adapts normalized HMO labels, descriptions, aliases, accepted authority
 evidence, and explicitly mapped Wikidata claims into the shared native item

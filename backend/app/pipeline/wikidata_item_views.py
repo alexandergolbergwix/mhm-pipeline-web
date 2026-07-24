@@ -93,6 +93,14 @@ async def fetch_merged_wikidata_items(
             "existing_qid": existing_qid,
             "on_wikidata": on_wikidata,
             "approved": ov_row.approved if ov_row else merged.get("approved"),
+            "accept_foreign_modify": (
+                bool(ov_row.accept_foreign_modify)
+                if ov_row and ov_row.accept_foreign_modify is not None
+                else False
+            ),
+            "accepted_foreign_qid": (
+                ov_row.accepted_foreign_qid if ov_row else None
+            ),
             "validation_issues": validation_issues,
             "has_blocking_validation": item_has_blocking_validation(validation_issues),
             "ai_verdict": ai_verdict,

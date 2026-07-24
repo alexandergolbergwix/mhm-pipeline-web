@@ -12,10 +12,14 @@ MARC upload (.mrc / TSV / JSON)
   └─ RDF build job → TTL + coverage (durable)          [rdf-graph]
        ├─ Research maps / graphs / queries             [research]
        ├─ HMO Studio items → Wikibase Cloud            [hmo-wikibase-studio]
-       └─ Wikidata Studio items → guarded upload       [wikidata-studio]
+       └─ Wikidata Studio (PQ mapper + own/accept) → guarded upload  [wikidata-studio]
   every curator mutation → project_events              [versioning-export]
   every external inference → cache tiers               [caching]
 ```
+
+Canonical HMO → Wikidata uses `hmo_wikidata_pq_mapper` (Rule W-100). Live
+writes also run smart existence + own-or-accept modify (Rule W-99;
+`docs/wikidata-data-access.md`).
 
 Block links: [extraction](blocks/extraction/README.md) ·
 [job-service](blocks/job-service/README.md) ·

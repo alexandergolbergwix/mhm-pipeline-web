@@ -26,3 +26,13 @@ run, actor, and status. The legacy run bookmark MUST explain the move to HMO
 Wikibase Studio before redirecting. *Why:* silent compatibility behavior would
 make it impossible to prove that the standalone curator surface is unused or
 to investigate stale clients.
+19. **R19 — Postgres KIMA matching MUST use multi-row QID abstain (W-84 / W-101).**
+    `PostgresAuthorityBackend.match_place` fetches all exact (and top fuzzy)
+    hits and runs `pick_kima_place_row`; never `LIMIT 1` when Wikidata QIDs
+    conflict. *Why:* production used to pick an arbitrary first row while
+    SQLite already abstained — that silently attached the wrong place QID.
+20. **R20 — Enrichment richness is fail-closed.** Accepted Mazal / KIMA /
+    VIAF / Wikidata payload fields (preferred names, cluster ids, geonames,
+    coords) MUST flow into RDF/HMO claims, but ambiguous matches stay withheld
+    in evidence. *Why:* richest entities without smart matching recreate the
+    mass-false-positive failure mode.

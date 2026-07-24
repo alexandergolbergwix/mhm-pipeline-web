@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** for the full incident-annotated
-architectural rules (Rules W-1…W-97). Each rule records a real production
+architectural rules (Rules W-1…W-102). Each rule records a real production
 incident plus the invariant that closes it — check it before touching RDF
 build/SHACL, Wikidata Studio writes, HMO Wikibase uploads, auth/rate-limit
 surfaces, or the job/cache/versioning plumbing. This `AGENTS.md` is the
@@ -58,7 +58,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-97) stay in [CLAUDE.md](CLAUDE.md).
+(W-1…W-102) stay in [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -128,10 +128,14 @@ eval-agent **R17**). After changing datatype inference or ontology comments,
 re-run schema AI verify with **override cache** (or a fresh session) and compare
 exports. Rubric: `eval-agent/config/rubrics/hmo_wikibase_schema.md`.
 
-## HMO Wikibase Items — curator surface
+HMO Wikibase Studio Items — curator surface
 
 On **HMO Wikibase Studio** (`HmoStudio`), item **build**, **upload**, and
-**review** share one page: a lifecycle bar directly above the review table
+**review** share one page. Four pillars (Rule **W-102**): Wikibase is the
+post-upload root for RDF/Wikidata; ontology↔Wikidata P/Q mapping is
+allowlisted; schema/items mirror `hebrew-manuscripts.ttl`; entities are
+enriched from Mazal/KIMA/VIAF/Wikidata under fail-closed matching.
+A lifecycle bar directly above the review table
 always exposes **Rebuild (skip cache)** and **Reupload (update existing)**.
 The toolbar also exposes **Verify with AI** (pre-upload audit) and
 **Autofix with AI** (live-QID compare; scoped to rows that already have a
@@ -152,6 +156,13 @@ is the default (legacy sidebar toggle preserved). Bulk item loads paginate at
 `useProjectEvents` → `upsertJob` on `run_job_update` (parity with HMO Studio),
 and `useVerifyJob` upserts on start/poll (block **R15**). Deep dive:
 [docs/architecture/blocks/wikidata-studio/](docs/architecture/blocks/wikidata-studio/README.md).
+
+**WPM projection + write policy (Rules W-98…W-100):** manuscripts follow the
+WikiProject Manuscripts contract (`docs/wikidata-manuscripts-data-model.md`);
+upload runs smart existence + own-or-accept modify
+(`docs/wikidata-data-access.md`); HMO/project Wikibase claims map to public
+P/Q only via `hmo_wikidata_pq_mapper` (never by numeric ID identity). Foreign
+existing QIDs need the drawer accept checkbox bound to that QID.
 
 **Source-aware work boundary (Rule W-68):** clean Hebrew MARC 505 titles are
 structural contents evidence; MARC 500 work rows must come from the anchored

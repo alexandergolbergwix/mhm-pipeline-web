@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 # Instance / classification
 P_INSTANCE_OF = "P31"
 P_COLLECTION = "P195"
+P_FONDS = "P12095"  # WikiProject Manuscripts housing property
 P_INVENTORY_NUMBER = "P217"
 
 # Content
@@ -37,7 +38,10 @@ P_AUTHOR = "P50"
 # a notable Wikidata person item).
 P_AUTHOR_NAME_STRING = "P2093"
 P_TRANSCRIBED_BY = "P11603"
+P_ANNOTATOR = "P11105"  # WikiProject Manuscripts creation property
 P_COMMISSIONED_BY = "P88"
+P_SCHOOL_OF = "P1780"  # artistic attribution qualifier (DS paper)
+P_WORKSHOP_OF = "P1774"  # artistic attribution qualifier (DS paper)
 
 # Provenance
 P_OWNED_BY = "P127"
@@ -229,15 +233,28 @@ def hmo_wikibase_entity_url(
 # Type classifications
 Q_MANUSCRIPT = "Q87167"
 Q_PRINTED_BOOK = "Q571"  # book; used for explicit printed facsimile editions
-Q_CODEX = "Q213924"
+Q_CODEX = "Q213924"  # WPM-discouraged as primary P31 — prefer Q87167 / Q_COMPOSITE_MANUSCRIPT
 Q_ILLUMINATED_MANUSCRIPT = "Q48498"
 Q_MANUSCRIPT_FRAGMENT = "Q30103158"
-Q_COMPOSITE_MANUSCRIPT = "Q33308141"  # multi-text codex with distinct production strata
+Q_COMPOSITE_MANUSCRIPT = "Q33308141"  # multi-text / multi-volume / anthology strata
 Q_PALIMPSEST = "Q274076"              # manuscript reused after scraping (Q179808 = Palme d'Or — WRONG)
+Q_PALM_LEAF_MANUSCRIPT = "Q1641020"
+Q_CHAINED_BOOK = "Q19602268"  # optional additive P31 (WPM)
+Q_UNKNOWN_TEXT = "Q234460"  # DS fallback when no suitable work item exists (P1574 + P1932)
+Q_LOWER_SCRIPT = "Q122901270"  # palimpsest layer qualifier via P518
+Q_UPPER_SCRIPT = "Q122901275"  # palimpsest layer qualifier via P518
 Q_HUMAN = "Q5"
 Q_WRITTEN_WORK = "Q47461344"
 Q_ORGANIZATION = "Q43229"
 Q_ISRAEL_MUSEUM = "Q46815"  # verified Israel Museum, Jerusalem
+
+# WPM discourages these as primary manuscript P31 values (prefer Q87167 + genre).
+DISCOURAGED_MANUSCRIPT_P31: frozenset[str] = frozenset({
+    Q_CODEX,
+    "Q113016548",
+    "Q95065857",
+    "Q284465",  # lectionary — use P136, not P31
+})
 
 # Collections / institutions
 Q_NLI = "Q188915"
@@ -256,12 +273,18 @@ Q_DUBIOUS = "Q104378399"    # dubious — used as P5102 value for contested clai
 # WikiProject
 Q_WIKIPROJECT_MANUSCRIPTS = "Q123078816"
 
-# Condition states
+# Condition states (WikiProject Manuscripts P5816 vocabulary)
 Q_GOOD_CONDITION = "Q56557591"  # preserved
+Q_NOT_COMPLETED = "Q20734200"
+Q_MILDLY_DAMAGED = "Q107531416"
 Q_DAMAGED = "Q106379705"  # damaged
-Q_FRAGMENT = "Q3749265"  # fragment
+Q_DEMOLISHED_OR_DESTROYED = "Q56556915"
+Q_UNLOCATED_PROBABLY_DESTROYED = "Q106959824"
+Q_UNKNOWN_PRESERVATION = "Q66890153"
+Q_DISASSEMBLED = "Q61962974"
+Q_FRAGMENT = "Q3749265"  # fragment (object) — NOT a P5816 value; use Q_MANUSCRIPT_FRAGMENT as P31
 Q_RESTORED = "Q75505084"  # restored
-Q_POOR_CONDITION = "Q136350185"  # poor
+Q_POOR_CONDITION = "Q136350185"  # poor (project extension; prefer WPM damaged/mildly damaged)
 
 # Inscription roles (colophon, gloss, correction, marginalia)
 Q_COLOPHON = "Q372474"
@@ -517,27 +540,45 @@ MATERIAL_TO_QID: dict[str, str] = {
 }
 
 # ── Condition keyword → QID mapping ─────────────────────────────────
+# "fragment" is intentionally absent: it is a P31 class (Q_MANUSCRIPT_FRAGMENT),
+# not a conservation-status value (WPM Data Model).
 
 CONDITION_TO_QID: dict[str, str] = {
     "good": Q_GOOD_CONDITION,
+    "preserved": Q_GOOD_CONDITION,
     "טוב": Q_GOOD_CONDITION,
+    "mildly damaged": Q_MILDLY_DAMAGED,
     "damaged": Q_DAMAGED,
     "פגום": Q_DAMAGED,
-    "fragment": Q_FRAGMENT,
-    "קטע": Q_FRAGMENT,
+    "not completed": Q_NOT_COMPLETED,
+    "incomplete": Q_NOT_COMPLETED,
+    "destroyed": Q_DEMOLISHED_OR_DESTROYED,
+    "demolished": Q_DEMOLISHED_OR_DESTROYED,
+    "unlocated": Q_UNLOCATED_PROBABLY_DESTROYED,
+    "disassembled": Q_DISASSEMBLED,
+    "unknown": Q_UNKNOWN_PRESERVATION,
     "restored": Q_RESTORED,
     "repaired": Q_RESTORED,
     "משוקם": Q_RESTORED,
-    "poor": Q_POOR_CONDITION,
+    "poor": Q_DAMAGED,  # map poor → WPM damaged rather than a non-WPM QID
 }
 
+# Keywords that force P31=manuscript fragment instead of P5816.
+FRAGMENT_CONDITION_KEYWORDS: tuple[str, ...] = ("fragment", "קטע")
+
 # ── NER/MARC role → Wikidata PID mapping ─────────────────────────────
+# Manuscript-side roles only. Author/editor/contributor authorship belongs on
+# the WORK (MS → P1574 → work → P50), never as P50 on the manuscript.
+# Unsupported roles are omitted so the linker skips them fail-closed.
 
 ROLE_TO_PID: dict[str, str] = {
     # NER roles (uppercase)
-    "AUTHOR": P_AUTHOR,
+    "AUTHOR": P_AUTHOR,  # creates/links person; never emitted as MS P50
     "TRANSCRIBER": P_TRANSCRIBED_BY,
     "OWNER": P_OWNED_BY,
+    "ANNOTATOR": P_ANNOTATOR,
+    "COMMISSIONER": P_COMMISSIONED_BY,
+    "ILLUMINATOR": P_ILLUSTRATOR,
     # Censor identity is retained in source evidence; it is not ownership.
     # Fix 2026-04-15 third audit Fix #15: translators belong on P655, not P50
     # (author). Commentators belong on P9046 (commentary by). Using P50 for
@@ -549,11 +590,12 @@ ROLE_TO_PID: dict[str, str] = {
     "scribe": P_TRANSCRIBED_BY,
     "copyist": P_TRANSCRIBED_BY,
     "illuminator": P_ILLUSTRATOR,
+    "annotator": P_ANNOTATOR,
+    "commissioned by": P_COMMISSIONED_BY,
+    "commissioner": P_COMMISSIONED_BY,
+    "patron": P_COMMISSIONED_BY,
     "translator": "P655",
     "commentator": "P9046",
-    "editor": P_AUTHOR,
-    "compiler": P_AUTHOR,
-    "contributor": P_AUTHOR,
     # Hebrew role variants
     "סופר": P_TRANSCRIBED_BY,
     "מעתיק": P_TRANSCRIBED_BY,

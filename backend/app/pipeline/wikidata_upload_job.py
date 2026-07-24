@@ -106,6 +106,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 batch_outcomes = await wikidata_upload.upload_items(
                     [item], token=token or "", dry_run=dry_run,
                     audit_ctx=audit_ctx, db=db, ledger=ledger,
+                    run_id=run_id,
                 )
             outcomes.extend(batch_outcomes)
             await update_job_progress(job_id, {

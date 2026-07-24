@@ -2,6 +2,8 @@
 
 > Up: [HMO Wikibase Studio](README.md)
 
+- `backend/tests/unit/test_hmo_ontology_graphbuilder_parity.py` — GraphBuilder
+  `hm:` terms ⊆ ontology; mapper ↔ `owl:equivalentProperty` sync (W-102).
 - `backend/tests/unit/test_hmo_export_quality.py` — export quality and
   fail-closed authority gates (per-entity conflicts plus global duplicate
   Wikidata/VIAF/KIMA/Mazal identifiers), incl. Rule W-52 codes (`production_missing_label`, `timespan_bare_label`,
@@ -17,7 +19,9 @@
 - `backend/tests/unit/test_hmo_exporter_resolution.py` (incl. truncation cases),
   `backend/tests/unit/test_hmo_exporter_control_numbers.py` — build + CN graph walk.
 - `backend/tests/test_hmo_item_build.py`, `test_hmo_studio_build_items_router.py` —
-  build + cache fingerprint.
+  build + cache fingerprint; authority-refresh forces RDF rebuild (W-101).
+- `backend/tests/unit/test_kima_disambiguate.py`, `test_place_coords_in_rdf.py` —
+  multi-source place/person enrichment claims.
 - `backend/tests/test_hmo_item_upload.py` (incl.
   `test_unsupported_boolean_claims_are_serialized_before_live_write`,
   `test_live_upload_resolves_reconcile_pid_once_not_per_entity`,

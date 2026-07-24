@@ -1094,8 +1094,8 @@ async def upload_to_wikidata(
         native = [it for it in native if wikidata_studio.local_id_for_item(it) in approved_ids]
 
     token: str | None = None
-    if not dry_run:
-        token = await _unwrap_user_secret(db, auth, "wikidata")
+    # Dry-run also needs the token so ownership (own vs foreign) is truthful.
+    token = await _unwrap_user_secret(db, auth, "wikidata")
 
     if not dry_run and not token:
         raise_msg = (
@@ -1118,7 +1118,8 @@ async def upload_to_wikidata(
             project_id=run.project_id,
             run_id=run_id,
         ) if not dry_run else None,
-        db=db if not dry_run else None,
+        db=db,
+        run_id=run_id,
     )
     return UploadResponse(
         dry_run=dry_run,
@@ -1390,6 +1391,7 @@ async def push_wikidata_item(
             project_id=run.project_id,
             run_id=run_id,
         ),
+        run_id=run_id,
     )
     return WikidataItemPushResponse(
         local_id=outcome.local_id,
@@ -1464,6 +1466,9 @@ class ItemOverridePayload(BaseModel):
     remove_statements: list[int] | None = None
     statement_edits:   dict[str, dict[str, Any]] | None = None
     approved:          bool | None = None
+    # Explicit accept to UPDATE a foreign Wikidata QID (must match reconcile).
+    accept_foreign_modify: bool | None = None
+    accepted_foreign_qid: str | None = None
 
 
 class ItemOverrideResponse(BaseModel):
@@ -1476,6 +1481,8 @@ class ItemOverrideResponse(BaseModel):
     remove_statements: list[int]
     statement_edits: dict[str, Any]
     approved: bool | None = None
+    accept_foreign_modify: bool | None = None
+    accepted_foreign_qid: str | None = None
 
 
 @router.patch(
@@ -1546,6 +1553,15 @@ async def patch_item_override(
         row.statement_edits = new_edits
     if payload.approved is not None:
         row.approved = payload.approved
+    if payload.accept_foreign_modify is not None:
+        row.accept_foreign_modify = payload.accept_foreign_modify
+        if not payload.accept_foreign_modify:
+            row.accepted_foreign_qid = None
+    if payload.accepted_foreign_qid is not None:
+        q = str(payload.accepted_foreign_qid).strip()
+        row.accepted_foreign_qid = q or None
+        if row.accepted_foreign_qid and row.accept_foreign_modify is None:
+            row.accept_foreign_modify = True
 
     row.updated_by = auth.user.id
 
@@ -1572,6 +1588,8 @@ async def patch_item_override(
             "remove_statements": list(row.remove_statements or []),
             "statement_edits":   dict(row.statement_edits or {}),
             "approved":          row.approved,
+            "accept_foreign_modify": row.accept_foreign_modify,
+            "accepted_foreign_qid": row.accepted_foreign_qid,
         }
         await apply_event(
             db,
@@ -1596,6 +1614,8 @@ async def patch_item_override(
         remove_statements=row.remove_statements or [],
         statement_edits=row.statement_edits or {},
         approved=row.approved,
+        accept_foreign_modify=row.accept_foreign_modify,
+        accepted_foreign_qid=row.accepted_foreign_qid,
     )
 
 

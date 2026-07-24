@@ -16,7 +16,8 @@
 | `backend/app/pipeline/entity_normalize.py` | `normalize_entity_text/key`, `normalize_role/role_key`, `MAZAL_PERSONALITY_PREFER_ROLE_KEYS` |
 | `backend/app/pipeline/entity_kind_infer.py` | `infer_entity_kind(name, tag)` — person/corporate/meeting routing for 7xx headings |
 | `backend/app/pipeline/date_entity_normalize.py` | Provenance DATE-span → 4-digit Gregorian year (gematria, `[=1826]`, NLI `7[5]16` brackets) |
-| `backend/converter/authority/` | Vendored desktop matchers: `mazal_matcher`, `kima_matcher`, `viaf_matcher`, `wikidata_matcher`, `wikidata_crosscheck`, `stage3_guards`, `biodata_enrich` |
+| `backend/converter/authority/` | Vendored desktop matchers: `mazal_matcher`, `kima_matcher`, `viaf_matcher`, `wikidata_matcher`, `wikidata_crosscheck`, `stage3_guards`, `biodata_enrich`, `kima_disambiguate` |
+| `backend/converter/authority/kima_disambiguate.py` | Shared W-84 place picker + VIAF-cluster `owl:sameAs` URI minting used by SQLite and Postgres backends |
 | `backend/converter/authority/stage3_guards.py` | Shared guard primitives: `is_placeholder_name`, `is_short_name_homonym`, `evaluate_date_conflict`, `HARD_REJECT_GUARD_FLAGS`, `authority_payload_blocked` |
 | `backend/app/routers/runs.py` | Read-only match/candidate records plus retired compatibility mutations (HTTP 410 by default); canonical HMO Studio owns enrichment mutations |
 | `backend/app/models/run.py:77` | `AuthorityMatch` model (JSONB `payload`, `approved` triple) |

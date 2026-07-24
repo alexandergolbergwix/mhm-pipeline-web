@@ -26,7 +26,10 @@ and streams verdicts to `inference_cache` (no per-row DB column). The judge prom
 must include `description` + OWL context (Rule W-47 / eval-agent R17).
 
 **Item build (per run).** `POST /runs/{id}/hmo-studio/build-items` →
-`build_items_for_run` (`hmo_item_build.py:88`). Fingerprint = SHA-256 over the
+`build_items_for_run` (`hmo_item_build.py:88`). By default
+`refresh_authority=true` re-runs the matcher, then **forces an RDF rebuild**
+from approved matches (and upserts `RdfArtifact`) so Mazal/KIMA/VIAF/Wikidata
+payloads reach the TTL before export (Rule W-101). Fingerprint = SHA-256 over the
 TTL bytes **and** the schema-mapping version (count + max `created_at` of
 schema rows), so a bootstrap invalidates every run's cached build. On a miss it
 runs `HmoWikibaseExporter().from_ttl` + `resolve_against_mappings`, computes the
@@ -50,7 +53,7 @@ snapshots, duplicate local IDs/source URIs/QIDs, authority conflicts, stale or
 missing fingerprints, and live read-back failures. The canonical database gate,
 projection shadow gate, and production E2E audit all consume this result.
 
-The canonical-state boundary is implemented by the hmo_canonical module. Live Wikibase read-backs are normalized into a revision-independent fingerprinted entity shape; RDF and Wikidata projections consume durable `hmo_canonical_entities` rows rather than raw authority matches, transient item-cache snapshots, or pre-Wikibase RDF. Missing or incomplete durable rows fail closed.
+The canonical-state boundary is implemented by the hmo_canonical module. Live Wikibase read-backs are normalized into a revision-independent fingerprinted entity shape; RDF and Wikidata projections consume durable `hmo_canonical_entities` rows rather than raw authority matches, transient item-cache snapshots, or pre-Wikibase RDF. Missing or incomplete durable rows fail closed. Wikidata claim projection uses `hmo_wikidata_pq_mapper` so project Cloud P/Q IDs never become public Wikidata identities by numeric coincidence (Rule W-100; see Wikidata Studio R38).
 
 The item-build endpoint runs the matcher/re-enrichment service inside the HMO creation workflow by default (`refresh_authority=true`). This makes accepted authority evidence part of the canonical HMO build rather than a separate Authority UI action; callers may explicitly disable it for offline/cache-only diagnostics.
 

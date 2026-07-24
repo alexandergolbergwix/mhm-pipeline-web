@@ -9,8 +9,12 @@
 | Change matching, guards, or authority data | [authority](blocks/authority/README.md) |
 | Change ontology output or graph build | [rdf-graph](blocks/rdf-graph/README.md) |
 | Touch anything that writes to Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) — read its `rules.md` **before** coding |
+| Map HMO / project Wikibase P/Q → public Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) R38 + `hmo_wikidata_pq_mapper.py` + [docs/wikidata-data-access.md](../wikidata-data-access.md) |
+| Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |
+| Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |
 | Change MARC 500/505 work candidates or Studio item counts | [extraction ingest](blocks/extraction/ingest.md) + [Wikidata Studio R22](blocks/wikidata-studio/rules.md) |
 | Touch Wikibase Cloud items/schema | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) — schema AI verify: eval-agent [R17](blocks/eval-agent/rules.md), Rule W-47 |
+| Enforce four HMO pillars (Wikibase root / WD map / ontology 1:1 / enrichment) | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) R45 + Rule W-102 |
 | Add an AI-verify surface | [eval-agent](blocks/eval-agent/README.md) |
 | Analyze partial/fail AI verdicts with Codex | [eval-agent](blocks/eval-agent/README.md) + [Wikidata Studio R25](blocks/wikidata-studio/rules.md) for item/QID evidence |
 | Audit Wikidata export quality/failure counts | [wikidata-studio](blocks/wikidata-studio/README.md) — run `check_wikidata_export_quality.py` |

@@ -165,3 +165,26 @@ fingerprints, and writes MUST include the projection source (`legacy` or
 QuickStatements must be compared as part of the rollout audit. *Why:* a
 source-blind lookup could make a supposedly canonical comparison display the
 legacy payload and hide projection drift.
+
+36. **R36 — Projection follows the WikiProject Manuscripts data model fail-closed (Rule W-98).**
+No manuscript-side P50 (including somevalue); no discouraged P31 (e.g. codex);
+required P3959; no invented P17/P131; P1574 carries P1932 catalog title form;
+annotator/commissioner use P11105/P88; export quality gate runs full
+`validate_item` ERRORS. Contract: `docs/wikidata-manuscripts-data-model.md`.
+*Why:* DS/WPM modelling gaps and prior MS-side author claims produced
+non-conformant entities that the upload moat had to catch late.
+
+37. **R37 — Smart existence + own-or-accept modify (Rule W-99).** Upload
+prepare confirms reconciled QIDs via Action API `wbgetentities`, classifies
+ownership with the curator token, and by default only CREATE or UPDATE own
+items. Foreign QIDs require per-item `accept_foreign_modify` bound to
+`accepted_foreign_qid`. Contract: `docs/wikidata-data-access.md`.
+*Why:* silent community UPDATE and duplicate CREATE are the two April failure
+modes; Rule-38 alone does not surface an explicit curator accept for rare
+legitimate foreign edits.
+
+38. **R38 — Project Wikibase P/Q map through ontology, never by numeric identity (Rule W-100).**
+`hmo_wikidata_pq_mapper` is the only bridge from HMO Cloud / ontology claims
+to public Wikidata PIDs/QIDs. Local `P…`/`Q…` without an ontology URI or
+explicit Wikidata evidence are dropped. *Why:* conflating namespaces minted
+false public identities (Rule W-83 class).

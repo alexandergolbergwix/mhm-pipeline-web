@@ -226,26 +226,12 @@ class ManuscriptProjectionMixin:
                     value=collection_qid,
                     value_type="item",
                     references=ref,
+                    rank="preferred",
                 )
             )
-        # P17 = country (Israel — all NLI manuscripts are held in Israel)
-        item.statements.append(
-            WikidataStatement(
-                property_id="P17",
-                value="Q801",
-                value_type="item",
-                references=ref,
-            )
-        )
-        # P131 = located in administrative entity (Jerusalem)
-        item.statements.append(
-            WikidataStatement(
-                property_id="P131",
-                value="Q1218",
-                value_type="item",
-                references=ref,
-            )
-        )
+        # Do NOT emit P17/P131 country/admin location from catalog institution
+        # alone (Rules W-82 / W-75). Holder evidence stays on P195; location
+        # claims require explicit geographic evidence, not NLI-catalog default.
 
         shelfmark = _normalise_label(str(record.get("shelfmark") or ""))
         if shelfmark:
@@ -843,12 +829,11 @@ class ManuscriptProjectionMixin:
 
         # P7535 is scoped to archival collections, not arbitrary manuscript
         # catalog notes; P5008 is administrative and adds no notability.
-        # Remove both from manuscript exports until a source-backed structured
-        # mapping exists.
+        # P17/P131 must never be reintroduced without explicit geo evidence.
         item.statements = [
             statement
             for statement in item.statements
-            if statement.property_id not in {"P7535", "P5008", "P17", "P131"}
+            if statement.property_id not in {"P7535", "P5008", "P17", "P131", "P50"}
         ]
 
         return item

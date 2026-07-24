@@ -108,16 +108,19 @@ async def prepare_job_params(
         await _validate_verify_params(db, run_id, kind, merged, auth)
         return merged
 
-    if kind == JOB_KIND_WIKIDATA_UPLOAD and not merged.get("dry_run", True):
+    if kind == JOB_KIND_WIKIDATA_UPLOAD:
         from app.routers.wikidata_studio import _unwrap_user_secret  # noqa: PLC0415
 
         token = await _unwrap_user_secret(db, auth, "wikidata")
-        if not token:
+        if not merged.get("dry_run", True) and not token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Live upload requires a Wikidata token in Settings.",
             )
-        merged["_wikidata_token"] = token
+        # Dry-run also carries the token when present so ownership classify
+        # (own vs foreign) matches live policy (Rule W-99).
+        if token:
+            merged["_wikidata_token"] = token
 
     if kind == JOB_KIND_HMO_ITEM_UPLOAD or (
         kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP and not merged.get("dry_run", True)

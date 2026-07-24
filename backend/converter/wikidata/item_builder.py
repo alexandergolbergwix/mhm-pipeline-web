@@ -106,6 +106,7 @@ from converter.wikidata.property_mapping import (
     Q_PRESUMABLY,
     Q_SCRIBE,
     Q_TRANSLATOR_OCCUPATION,
+    Q_UNKNOWN_TEXT,
     Q_WIKIPROJECT_MANUSCRIPTS,
     Q_WRITTEN_WORK,
     ROLE_TO_PID,

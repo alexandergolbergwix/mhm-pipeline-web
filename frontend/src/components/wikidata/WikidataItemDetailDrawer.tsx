@@ -78,11 +78,16 @@ export function WikidataItemDetailDrawer({
   const [compareOpen, setCompareOpen] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
+  const [acceptForeign, setAcceptForeign] = useState(Boolean(item.accept_foreign_modify));
   const labelStore = useLabelStore();
 
   const statements = item.statements ?? [];
   const wikidataQid = item.existing_qid || null;
   const historyId = item.local_id ?? "";
+
+  useEffect(() => {
+    setAcceptForeign(Boolean(item.accept_foreign_modify));
+  }, [item.accept_foreign_modify, item.local_id, item.existing_qid]);
 
   useEffect(() => {
     if (pinned) return;
@@ -198,6 +203,16 @@ export function WikidataItemDetailDrawer({
     }
   }, [item.ai_verdict, item.local_id, pushToWikidata, runId]);
 
+  const toggleAcceptForeign = useCallback(async () => {
+    if (!item.local_id || !wikidataQid) return;
+    const next = !acceptForeign;
+    setAcceptForeign(next);
+    await save({
+      accept_foreign_modify: next,
+      accepted_foreign_qid: next ? wikidataQid : null,
+    });
+  }, [acceptForeign, item.local_id, save, wikidataQid]);
+
   const clearOverride = useCallback(async () => {
     if (!item.local_id) return;
     setSaving(true);
@@ -302,6 +317,34 @@ export function WikidataItemDetailDrawer({
 
         {error && <p className="text-danger text-sm">{error}</p>}
         {pushMsg && <p className="text-xs muted">Push result: {pushMsg}</p>}
+
+        {wikidataQid && (
+          <section
+            className="space-y-2 border border-amber-500/30 rounded-md p-3 bg-amber-500/5"
+            data-testid="wikidata-foreign-accept"
+          >
+            <h4 className="text-sm font-medium">Existing Wikidata item {wikidataQid}</h4>
+            <p className="text-xs muted leading-relaxed">
+              By default you may only CREATE new items (after dedup) or UPDATE items
+              your Wikidata token created. To modify this QID if it is community-owned,
+              explicitly accept below — a duplicate CREATE is never allowed.
+            </p>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={acceptForeign}
+                disabled={saving}
+                onChange={() => void toggleAcceptForeign()}
+                data-testid="wikidata-accept-foreign-modify"
+              />
+              <span>
+                I accept modifying <span className="font-mono">{wikidataQid}</span> even
+                if I did not create it
+              </span>
+            </label>
+          </section>
+        )}
 
         <AiVerdictReasoningCard verdict={item.ai_verdict} />
 

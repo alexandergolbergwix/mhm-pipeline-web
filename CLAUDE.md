@@ -2311,3 +2311,101 @@ Test: `backend/tests/unit/test_hmo_exporter_resolution.py`.
 links before reading back live entities into `hmo_canonical_entities`. A
 pass-1-only snapshot is not canonical because it omits item-to-item claims
 that the upload may add in pass 2. Test: `backend/tests/test_hmo_item_upload.py`.
+
+### Rule W-98 — Wikidata projection MUST follow the WikiProject Manuscripts data model fail-closed (added 2026-07-24)
+
+Manuscript items are physical carriers. Contained texts attach only via
+`P1574` (exemplar of); **P50 never appears on a manuscript** (including
+anonymous `somevalue`). Folio counts use `P1104` + leaf unit, never
+`P7416` as quantity. Preferred `P31` values are `Q87167` /
+`Q48498` / `Q274076` / `Q30103158` / `Q33308141`; discouraged classes such as
+`Q213924` (codex) are errors. Catalog control number `P3959` is required
+(ERROR). `P17`/`P131` are not inferred from holder/catalog alone. Content
+links carry catalog title form as `P1932`; thin unidentified titles may use
+`Q234460` (*text*) rather than a fuzzy work QID. Annotator/commissioner roles
+map to `P11105`/`P88`; editorial roles stay off the manuscript. The build
+export-quality gate runs the full `validate_item` ERROR set before cache
+write. Contract: `docs/wikidata-manuscripts-data-model.md`. Tests:
+`test_wikidata_wpm_guards.py`, `test_item_validator.py`,
+`test_wikidata_export_quality.py`.
+
+### Rule W-99 — Wikidata write path MUST smart-check existence and own-or-accept modify (added 2026-07-24)
+
+Every CREATE/UPDATE (live and dry-run) runs the access map in
+`docs/wikidata-data-access.md`: ledger → type-aware SPARQL reconcile →
+Action API `wbgetentities` alive check → ownership via first-revision /
+token (Rule-38 channels). Defaults: **CREATE** only when no live QID;
+**UPDATE** only when the acting Wikidata token created the item. A
+foreign existing QID is **skipped/blocked** (never duplicate-CREATED)
+unless the curator sets per-entity `accept_foreign_modify` +
+`accepted_foreign_qid` matching that QID on `WikidataItemOverride`.
+Accept primes an audited Rule-38 bypass for that QID only. Upload jobs
+and sync upload load accepts from overrides; the drawer exposes the
+checkbox. Tests: `test_wikidata_existence.py`,
+`test_wikidata_upload_guards.py`.
+
+### Rule W-100 — Project Wikibase P/Q MUST map to public Wikidata via ontology, never by ID identity (added 2026-07-24)
+
+Local IDs on `mhm-hmo.wikibase.cloud` are a different namespace from
+wikidata.org. Canonical HMO→Wikidata projection uses
+`converter/wikidata/hmo_wikidata_pq_mapper.py`: ontology local-name/URI
+→ public PID/QID allowlist (WPM-aligned: script `P9302`, folios
+`P1104`); project PID → public PID only through the schema ledger
+ontology URI; item values accept Wikidata URIs / class URIs / explicit
+`wikidata_property` claims — never a bare project QID. Manuscripts
+still forbid P50. Ontology `owl:equivalentProperty` lines match the
+runtime map. Tests: `test_hmo_wikidata_pq_mapper.py`,
+`test_hmo_canonical_wikidata.py`.
+
+### Rule W-101 — HMO entities MUST be multi-source enriched through fail-closed matching (added 2026-07-24)
+
+HMO Wikibase items should carry the richest *accepted* evidence from
+Mazal, KIMA, VIAF, and Wikidata — but enrichment richness never
+overrides matcher fail-closed policy. Postgres production
+`match_place` uses the same multi-row KIMA disambiguation as SQLite
+(`converter/authority/kima_disambiguate.pick_kima_place_row`): conflicting
+Wikidata QIDs abstain unless one exact primary name uniquely wins
+(Rule W-84 parity). Fuzzy KIMA candidates are likewise multi-row +
+QID-abstain, never `LIMIT 1`.
+
+When HMO `build-items` runs with `refresh_authority=true` (the default),
+the router MUST rebuild RDF from the refreshed approved
+`AuthorityMatch` rows, upsert `RdfArtifact`, and force the item-cache
+rebuild — a stale TTL must not hide new Mazal/KIMA/VIAF/Wikidata
+payloads. GraphBuilder mints person `hm:mazal_id` + VIAF-cluster
+`owl:sameAs` (GND/LC/ISNI/BnF/J9U) and place `hm:geonames_id` from
+accepted evidence only; bare cluster digits are never mis-parsed as
+VIAF. Collision gates (Rule W-86) and upload authority validation
+(Rule W-95) remain hard blocks.
+
+Tests: `test_kima_disambiguate.py`, `test_place_coords_in_rdf.py`.
+
+### Rule W-102 — Four HMO pillars: Wikibase root, Wikidata map, ontology mirror, multi-source richness (added 2026-07-24)
+
+The scholarly spine of the browser deployment is the project HMO Wikibase
+(`mhm-hmo.wikibase.cloud`). Four invariants:
+
+1. **Wikibase is the root.** After a successful live upload + read-back,
+   durable `hmo_canonical_entities` are the source of truth for RDF rebuilds
+   and Wikidata Studio (`source=canonical`). First publish may still mint
+   items from MARC→RDF→export; once canonical rows exist and readiness
+   passes, downstream projections MUST NOT silently fall back to MARC /
+   AuthorityMatch / item-cache drafts (Rule W-92).
+2. **Perfect Wikidata mapper.** Public Wikidata P/Q come only from
+   `hmo_wikidata_pq_mapper` + ontology `owl:equivalentProperty` /
+   `owl:equivalentClass`. Never treat a project `P`/`Q` as a Wikidata ID
+   (Rule W-100). Mapper local-names that become Wikibase claims MUST be
+   declared in `hebrew-manuscripts.ttl`.
+3. **1:1 ontology mirror.** Schema bootstrap + item resolve cover every
+   `owl:Class` / property in `backend/ontology/hebrew-manuscripts.ttl`.
+   GraphBuilder MUST NOT emit undeclared `hm:` predicates or individuals
+   (`mazal_id`, `kima_id`, `authority_id` declared; condition uses
+   `hm:Good`, not a synthetic `Good_condition`). Unmapped URIs fail the
+   build (Rule W-96 / W-88).
+4. **Richest fail-closed enrichment.** HMO entities are enriched from
+   Mazal, KIMA, VIAF, and Wikidata at build time (`refresh_authority` →
+   RDF rebuild — Rule W-101). Ambiguous matches abstain; accepted IDs
+   mint the full safe claim surface.
+
+Tests: `test_hmo_ontology_graphbuilder_parity.py`,
+`test_hmo_wikidata_pq_mapper.py` (TTL equivalent sync).

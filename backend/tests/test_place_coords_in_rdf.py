@@ -72,6 +72,13 @@ class TestMergeAuthorityIdsProductionPlace:
         assert rec["production_place_wikidata_id"] == "Q1218"
         assert rec["production_place_kima_id"] == "691"
 
+    def test_writes_geonames_for_production_place(self) -> None:
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
+
+        rec = _rec(place="Fez")
+        _merge_authority_ids(rec, [_kima_match("Fez", 34.03, -5.00)])
+        assert rec["production_place_geonames_id"] == "987654"
+
     def test_fill_only_if_absent_for_production_place(self) -> None:
         from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
 
@@ -158,10 +165,48 @@ class TestGraphBuilderProductionPlaceCoords:
         from converter.config.namespaces import HM
         from converter.rdf.graph_builder import GraphBuilder as ManuscriptGraphBuilder
         g = Graph()
-        ManuscriptGraphBuilder._emit_place_coords(g, URIRef("https://example.org/place"), None, None, "Q83751", "691", "131280745", "987007507434105171")
+        ManuscriptGraphBuilder._emit_place_coords(
+            g, URIRef("https://example.org/place"), None, None,
+            "Q83751", "691", "131280745", "987007507434105171", "293397",
+        )
         assert str(next(g.objects(None, HM.kima_id))) == "691"
         assert str(next(g.objects(None, HM.viaf_id))) == "131280745"
         assert str(next(g.objects(None, HM.mazal_id))) == "987007507434105171"
+        assert str(next(g.objects(None, HM.geonames_id))) == "293397"
+        assert URIRef("https://www.geonames.org/293397/") in list(g.objects(None, OWL.sameAs))
+
+    def test_person_mints_mazal_and_cluster_same_as(self) -> None:
+        from converter.config.namespaces import HM
+        from converter.rdf.graph_builder import GraphBuilder as ManuscriptGraphBuilder
+        from converter.transformer.field_handlers import ExtractedData
+
+        data = ExtractedData()
+        data.authors = [{
+            "name": "Maimonides",
+            "authority_id": "987007264657005171",
+            "mazal_id": "987007264657005171",
+            "viaf_id": "100189066",
+            "wikidata_id": "Q49373",
+            "gnd": "118576390",
+            "preferred_name_lat": "Maimonides",
+        }]
+        g = ManuscriptGraphBuilder().build_graph(data, "TEST_PERSON_AUTH")
+        assert "987007264657005171" in {str(o) for o in g.objects(None, HM.mazal_id)}
+        assert "100189066" in {str(o) for o in g.objects(None, HM.viaf_id)}
+        assert "Q49373" in {str(o) for o in g.objects(None, HM.wikidata_id)}
+        same_as = {str(o) for o in g.objects(None, OWL.sameAs)}
+        assert "https://d-nb.info/gnd/118576390" in same_as
+        assert "https://viaf.org/viaf/100189066" in same_as
+        assert "https://www.wikidata.org/entity/Q49373" in same_as
+
+    def test_mazal_id_not_parsed_as_viaf(self) -> None:
+        from converter.rdf.graph_builder import GraphBuilder as ManuscriptGraphBuilder
+        auth = ManuscriptGraphBuilder()._extract_authority_identifiers(
+            ["987007264657005171", "Q49373"],
+        )
+        assert auth.get("mazal_id") == "987007264657005171"
+        assert auth.get("viaf_id") is None
+        assert auth.get("wikidata_id") == "Q49373"
 
     def test_no_wgs84_when_coords_absent(self) -> None:
         g = self._build_graph("Fez", None, None)

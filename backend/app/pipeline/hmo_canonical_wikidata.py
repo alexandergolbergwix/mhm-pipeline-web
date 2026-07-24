@@ -13,6 +13,12 @@ import re
 from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
 from app.pipeline.marc_verify_context import canonical_control_number
 from converter.authority.evidence import normalize_authority_id, normalize_viaf_id, normalize_wikidata_qid
+from converter.wikidata.hmo_wikidata_pq_mapper import (
+    HMO_CLASS_TO_WIKIDATA_QID,
+    map_hmo_claim_to_wikidata,
+    map_local_name_to_wikidata_pid,
+    ontology_local_name,
+)
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from converter.wikidata.projection_coverage import STRATEGY_BY_LOCAL_NAME
 from converter.wikidata.property_mapping import (
@@ -29,7 +35,6 @@ from converter.wikidata.property_mapping import (
 
 logger = logging.getLogger(__name__)
 
-_PROPERTY_ID = re.compile(r"^P[1-9][0-9]*$")
 _QID = re.compile(r"^Q[1-9][0-9]*$")
 _MAX_DESCRIPTION_LENGTH = 250
 
@@ -46,44 +51,23 @@ _BOILERPLATE_DESCRIPTION = (
     re.compile(r"^Work preserved in a Hebrew manuscript\.?$", re.I),
 )
 
-_HMO_PROPERTY_TO_WIKIDATA_PID: dict[str, str] = {
-    "viaf_id": "P214",
-    "external_identifier_nli": "P8189",
-    "external_uri_nli": "P8189",
-    "authority_id": "P8189",
-    "mazal_id": "P8189",
-    "shelfmark": "P217",
-    "inventory_number": "P217",
-    "has_language": "P407",
-    "has_script_type": "P9302",
-    "has_material": "P186",
-    "has_number_of_folios": "P1104",
-    "has_title": "P1476",
-    "has_genre": "P136",
-    "has_main_subject": "P921",
-    "has_iiif_manifest_url": "P6108",
-    "has_described_at_url": "P973",
-    "has_full_work_url": "P953",
-    "has_copyright_status": "P6216",
-    "has_condition": "P5816",
-    "has_date_of_creation": "P571",
-    "has_location_of_creation": "P1071",
-    "has_occupation": "P106",
-    "has_date_of_birth": "P569",
-    "has_date_of_death": "P570",
-    "has_native_name": "P1559",
-}
-
-_INSTANCE_QIDS: dict[str, str] = {
-    "F4_Manifestation_Singleton": Q_MANUSCRIPT,
-    "Manuscript": Q_MANUSCRIPT,
-    "F1_Work": Q_WRITTEN_WORK,
-    "Work": Q_WRITTEN_WORK,
-    "E21_Person": Q_HUMAN,
-    "Person": Q_HUMAN,
-}
-
 _PERSON_IDENTIFIER_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P268"})
+
+# Backward-compatible aliases — prefer ``hmo_wikidata_pq_mapper``.
+_HMO_PROPERTY_TO_WIKIDATA_PID = {
+    name: pid for name, pid in (
+        (k, map_local_name_to_wikidata_pid(k)) for k in (
+            "viaf_id", "external_identifier_nli", "external_uri_nli", "authority_id",
+            "mazal_id", "shelfmark", "inventory_number", "has_language", "has_script_type",
+            "has_material", "has_number_of_folios", "has_title", "has_genre",
+            "has_main_subject", "has_iiif_manifest_url", "has_described_at_url",
+            "has_full_work_url", "has_copyright_status", "has_condition",
+            "has_date_of_creation", "has_location_of_creation", "has_occupation",
+            "has_date_of_birth", "has_date_of_death", "has_native_name",
+        )
+    ) if pid
+}
+_INSTANCE_QIDS = dict(HMO_CLASS_TO_WIKIDATA_QID)
 
 
 @dataclass
@@ -191,33 +175,26 @@ def uploadable_entities_from_hmo(
     return uploadable
 
 
-def native_wikidata_claims(entity: CanonicalHmoEntity) -> list[dict[str, str]]:
+def native_wikidata_claims(
+    entity: CanonicalHmoEntity,
+    *,
+    ontology_uri_by_project_pid: Mapping[str, str] | None = None,
+) -> list[dict[str, str]]:
     native: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     wd_type = _wikidata_entity_type(entity) or ""
 
     for claim in entity.claims:
-        property_id = str(claim.get("wikidata_property") or "").strip()
-        if not _PROPERTY_ID.fullmatch(property_id):
-            property_name = _property_local_name(str(claim.get("property_uri") or ""))
-            property_id = _HMO_PROPERTY_TO_WIKIDATA_PID.get(property_name, "")
-        if not _PROPERTY_ID.fullmatch(property_id):
+        mapped = map_hmo_claim_to_wikidata(
+            claim,
+            entity_type=wd_type,
+            ontology_uri_by_project_pid=ontology_uri_by_project_pid,
+            project_item_qid=entity.wikibase_id,
+        )
+        if mapped is None:
             continue
-
-        raw = _claim_scalar_value(claim)
-        if claim.get("value_type") == "wikibase-item" or claim.get("target_uri"):
-            raw = str(claim.get("target_qid") or claim.get("wikidata_value") or raw).strip()
-            if not _QID.fullmatch(raw):
-                target_name = _property_local_name(str(claim.get("target_uri") or ""))
-                raw = _INSTANCE_QIDS.get(target_name, "")
-        if not raw:
-            continue
-        if property_id == "P214" and wd_type != "person":
-            continue
-        if property_id == "P8189" and wd_type != "person":
-            continue
-        if property_id == P_NLI_CATALOG_ID and wd_type != "manuscript":
-            continue
+        property_id = mapped.property_id
+        raw = mapped.value
         if property_id == "P8189" and not str(raw).startswith("9870"):
             if wd_type == "manuscript" and str(raw).startswith("990"):
                 property_id = P_NLI_CATALOG_ID
@@ -394,10 +371,7 @@ def _default_instance_qid(entity_type: str) -> str:
 
 
 def _property_local_name(property_uri: str) -> str:
-    text = str(property_uri or "").strip()
-    if "#" in text:
-        return text.rsplit("#", 1)[-1]
-    return text.rstrip("/").rsplit("/", 1)[-1]
+    return ontology_local_name(property_uri)
 
 
 def _claim_scalar_value(claim: dict[str, Any]) -> str:
