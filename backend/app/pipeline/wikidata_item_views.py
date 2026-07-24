@@ -40,12 +40,14 @@ async def fetch_merged_wikidata_items(
     run_id: uuid.UUID,
     *,
     approved_only: bool = True,
+    source: str = "legacy",
 ) -> list[dict[str, Any]]:
     cache_row = (
         await db.execute(
             select(WikidataStudioCache).where(
                 WikidataStudioCache.run_id == run_id,
                 WikidataStudioCache.approved_only == approved_only,
+                WikidataStudioCache.source == source,
             )
         )
     ).scalar_one_or_none()
@@ -128,9 +130,12 @@ async def fetch_validation_error_items(
     run_id: uuid.UUID,
     *,
     approved_only: bool = True,
+    source: str = "legacy",
     on_wikidata_only: bool = False,
 ) -> list[dict[str, Any]]:
-    items = await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only)
+    items = await fetch_merged_wikidata_items(
+        db, run_id, approved_only=approved_only, source=source,
+    )
     blocked = [i for i in items if i.get("has_blocking_validation")]
     if on_wikidata_only:
         blocked = [i for i in blocked if i.get("on_wikidata")]

@@ -87,6 +87,7 @@ router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 
 async def studio_items_for_project(
     run_ids: list[str], db: AsyncSession, *, approved_only: bool = True,
+    source: str = "legacy",
 ) -> list[dict[str, Any]]:
     """All built Wikidata Studio item dicts cached across a project's runs.
 
@@ -523,7 +524,7 @@ async def execute_studio_build(
             "manuscripts": sum(1 for e in canonical if e.entity_type == "manuscript"),
             "persons": sum(1 for e in canonical if e.entity_type == "person"),
             "works": sum(1 for e in canonical if e.entity_type == "work"),
-            "statements": sum(len(item.statements) for item in native_items),
+            "statements": sum(len(i.get("claims") or []) for i in items),
         }
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=quickstatements_from_canonical(canonical), summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
         row = await _get_studio_cache_row(db, run_id, approved_only, source)
@@ -778,7 +779,9 @@ async def build_studio(
     if not force_rebuild and cached is not None:
         if cached.input_fingerprint == fingerprint:
             logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
-            merged = await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only)
+            merged = await fetch_merged_wikidata_items(
+                db, run_id, approved_only=approved_only, source=source,
+            )
             return _studio_response_from_cache(
                 cached,
                 merged,
@@ -802,7 +805,9 @@ async def build_studio(
         )
         return _studio_response_from_cache(
             cached,
-            await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only),
+            await fetch_merged_wikidata_items(
+                db, run_id, approved_only=approved_only, source=source,
+            ),
             approved_only=approved_only,
             entity_type=entity_type,
             q=q,
@@ -1096,6 +1101,7 @@ async def get_cached_wikidata_item_verdicts(
     run_id: uuid.UUID,
     tier_model: str | None = Query(default=None),
     approved_only: bool = Query(default=True),
+    source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, dict[str, Any]]:
@@ -1104,7 +1110,9 @@ async def get_cached_wikidata_item_verdicts(
 
     judge_model = tier_model or GEMINI_MODEL
     try:
-        items = await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only)
+        items = await fetch_merged_wikidata_items(
+            db, run_id, approved_only=approved_only, source=source,
+        )
     except StudioBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     attach_wikidata_marc_context(items, await _load_marc_records_for_run(db, run_id))
@@ -1141,6 +1149,7 @@ async def get_cached_wikidata_item_verdicts(
 async def list_validation_errors(
     run_id: uuid.UUID,
     approved_only: bool = Query(default=True),
+    source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     on_wikidata_only: bool = Query(default=False),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
@@ -1148,7 +1157,8 @@ async def list_validation_errors(
     await _lookup_run_with_access(db, run_id, auth, write=False)
     try:
         return await fetch_validation_error_items(
-            db, run_id, approved_only=approved_only, on_wikidata_only=on_wikidata_only,
+            db, run_id, approved_only=approved_only, source=source,
+            on_wikidata_only=on_wikidata_only,
         )
     except StudioBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -1159,12 +1169,15 @@ async def export_wikidata_items(
     run_id: uuid.UUID,
     format: Literal["json", "csv"] = Query(default="json"),
     approved_only: bool = Query(default=True),
+    source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
     await _lookup_run_with_access(db, run_id, auth)
     try:
-        items = await fetch_merged_wikidata_items(db, run_id, approved_only=approved_only)
+        items = await fetch_merged_wikidata_items(
+            db, run_id, approved_only=approved_only, source=source,
+        )
     except StudioBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
@@ -1251,7 +1264,7 @@ async def import_wikidata_items(
     try:
         known = {
             str(i.get("local_id") or "")
-            for i in await fetch_merged_wikidata_items(db, run_id)
+            for i in await fetch_merged_wikidata_items(db, run_id, source="canonical")
         }
     except StudioBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -1306,7 +1319,7 @@ async def push_wikidata_item(
 ) -> WikidataItemPushResponse:
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     try:
-        await fetch_merged_wikidata_items(db, run_id)
+        await fetch_merged_wikidata_items(db, run_id, source="canonical")
     except StudioBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
@@ -1551,8 +1564,9 @@ async def _studio_item_from_cache(
     local_id: str,
     *,
     approved_only: bool,
+    source: str = "canonical",
 ) -> dict[str, Any] | None:
-    cached = await _get_studio_cache_row(db, run_id, approved_only)
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
     if cached is None:
         return None
     for it in cached.result_items or []:
@@ -1573,6 +1587,7 @@ async def compare_studio_item_with_wikidata(
                     "existing_qid or a reconcile hit supplied separately.",
     ),
     approved_only: bool = Query(default=True),
+    source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
@@ -1584,7 +1599,7 @@ async def compare_studio_item_with_wikidata(
 
     await _lookup_run_with_access(db, run_id, auth, write=False)
     studio_item = await _studio_item_from_cache(
-        db, run_id, local_id, approved_only=approved_only,
+        db, run_id, local_id, approved_only=approved_only, source=source,
     )
     if studio_item is None:
         raise HTTPException(status_code=404, detail="Studio item not found in cache")
@@ -1611,6 +1626,7 @@ class WikidataCompareApplyRequest(BaseModel):
     choices: list[dict[str, Any]] = Field(default_factory=list)
     qid: str | None = None
     approved_only: bool = True
+    source: str = "canonical"
 
 
 @router.post(
@@ -1633,7 +1649,7 @@ async def apply_wikidata_compare(
 
     await _lookup_run_with_access(db, run_id, auth, write=True)
     studio_item = await _studio_item_from_cache(
-        db, run_id, local_id, approved_only=body.approved_only,
+        db, run_id, local_id, approved_only=body.approved_only, source=body.source,
     )
     if studio_item is None:
         raise HTTPException(status_code=404, detail="Studio item not found in cache")

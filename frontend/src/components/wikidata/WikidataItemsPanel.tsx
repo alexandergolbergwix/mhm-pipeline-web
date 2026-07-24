@@ -97,7 +97,7 @@ export function WikidataItemsPanel({
 
   useEffect(() => {
     void refresh();
-  }, [runId, approvedOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [runId, approvedOnly, source]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openVerify = useCallback((itemIds: string[], actionId?: string) => {
     setVerifyIds(itemIds);
@@ -300,7 +300,11 @@ export function WikidataItemsPanel({
         />
       )}
       {!buildPresent && !loading && (
-        <p className="muted text-sm">No items yet — rebuild after approving authority matches.</p>
+        <p className="muted text-sm">
+          {source === "canonical"
+            ? "No HMO canonical records yet — complete the HMO upload read-back first."
+            : "No items yet — rebuild after approving authority matches."}
+        </p>
       )}
 
       {openItem && (
