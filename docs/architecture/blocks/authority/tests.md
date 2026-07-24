@@ -17,6 +17,7 @@
 - `backend/tests/test_place_coords_in_rdf.py` — KIMA geo + person Mazal/VIAF/WD cluster claims in RDF
 - `backend/tests/unit/test_colophon_structured.py`, `test_notes_work_extraction.py` — note-sourced entities feeding this block
 - `backend/tests/test_provenance_events_ingest.py`, `test_institution_place.py`, `test_ashkenazi_gazetteer.py` — place chain
-- `frontend/e2e/authority-homonym-picker.spec.ts`, `authority-biodata.spec.ts`, `authority-grouping.spec.ts` — curator UI click paths
+- `frontend/e2e/authority-homonym-picker.spec.ts`, `authority-biodata.spec.ts`, `authority-grouping.spec.ts` — curator UI click paths (legacy Authority surface; mutations retired)
+- `frontend/e2e/hmo-wikibase-items.spec.ts` — bare `/runs/:runId` bookmark immediately lands on HMO Studio (no Authority interstitial)
 
 - `backend/scripts/run_hmo_production_e2e.py` — read-only production audit for enrichment false-positive guards, live HMO read-back, canonical RDF, canonical Wikidata Studio, and legacy/canonical shadow differences

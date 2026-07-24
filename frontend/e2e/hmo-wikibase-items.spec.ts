@@ -16,6 +16,16 @@ test.describe("HMO Wikibase Items review UI", () => {
     await installHmoItemsMocks(page, makeHmoItemsState());
   });
 
+  test("legacy /runs/:runId bookmark lands on HMO Studio", async ({page}) => {
+    await page.context().addCookies([
+      {name: "session", value: "test-session", url: "http://localhost:5173"},
+    ]).catch(() => undefined);
+    await page.goto(`/runs/${TEST_RUN_ID}`);
+    await expect(page).toHaveURL(new RegExp(`/runs/${TEST_RUN_ID}/hmo-studio`));
+    await expect(page.getByRole("heading", {name: "HMO Wikibase Studio"})).toBeVisible();
+    await expect(page.getByText("Authority editor retired")).toHaveCount(0);
+  });
+
   test("shows item table on Wikibase Items tab", async ({page}) => {
     await gotoHmoItemsTab(page);
     await expect(page.getByTestId("hmo-items-panel")).toBeVisible();

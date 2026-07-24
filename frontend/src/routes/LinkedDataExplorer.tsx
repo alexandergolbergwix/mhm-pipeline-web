@@ -104,7 +104,7 @@ export default function LinkedDataExplorer() {
             <span className="text-muted">← Project</span>
           )}
           {" · "}
-          <Link to={`/runs/${runId}`} className="hover:text-ink underline">Run</Link>
+          <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">Run</Link>
           {" · "}
           <Link to={`/runs/${runId}/wikidata-studio`} className="hover:text-ink underline">Wikidata Studio</Link>
           {" · "}

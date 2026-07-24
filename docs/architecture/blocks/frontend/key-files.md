@@ -6,7 +6,7 @@
 |---|---|
 | `frontend/src/main.tsx` | Entry: QueryClientProvider, BrowserRouter, `initTheme()`, mounts `LiquidGlassCanvas` once behind the UI |
 | `frontend/src/App.tsx` | Flat route table — public routes + `<ProtectedRoute>`-wrapped authenticated routes; calls `useAuth((s) => s.bootstrap)` on mount |
-| `frontend/src/routes/` | One page component per route (`RunDetail` compatibility redirect, `StageExtraction`, `StageRdf`, `HmoStudio`, `WikidataStudio`, `LinkedDataExplorer`, `admin/*`, …) |
+| `frontend/src/routes/` | One page component per route (`RunDetail` immediate redirect to HMO Studio, `StageExtraction`, `StageRdf`, `HmoStudio`, `WikidataStudio`, `LinkedDataExplorer`, `admin/*`, …) |
 | `frontend/src/routes/RunOverview.tsx` | Professor-facing run landing page: truthful stage status, recommended next step, workflow grouping, and separate research tools |
 | `frontend/src/api/client.ts` | The only fetch wrapper: `api.get/post/put/patch/del`, `ApiError`, CSRF double-submit header, HTML-fallback → login redirect |
 | `frontend/src/api/*.ts` | One typed client per backend resource, exported as a namespace object (`RunJobs`, `Extraction`, …) |

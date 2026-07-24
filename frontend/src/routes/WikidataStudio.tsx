@@ -275,7 +275,7 @@ export default function WikidataStudio() {
         <div className="space-y-6">
           <Glass as="section" className="p-6 space-y-2">
             <div className="kicker">
-              Wikidata Studio · <Link to={`/runs/${runId}`} className="hover:text-ink underline">back to run</Link>
+              Wikidata Studio · <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">back to run</Link>
             </div>
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>
@@ -345,7 +345,7 @@ export default function WikidataStudio() {
       <div className="space-y-6">
         <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">
-            Wikidata Studio · <Link to={`/runs/${runId}`} className="hover:text-ink underline">back to run</Link>
+            Wikidata Studio · <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">back to run</Link>
           </div>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <h2 className="text-2xl font-semibold">Items ready to upload</h2>
@@ -530,7 +530,7 @@ export default function WikidataStudio() {
             {build.used_match_count === 0 && approvedOnly
               ? <>No approved matches yet. Either click <b className="text-ink">All matches</b> above
                   to preview, or approve rows on the{" "}
-                  <Link to={`/runs/${runId}`} className="text-biu-sky hover:underline">Review</Link> page.</>
+                  <Link to={`/runs/${runId}/hmo-studio`} className="text-biu-sky hover:underline">HMO Wikibase Studio</Link> page.</>
               : <>No items yet. Upload a MARC file via the project page first.</>}
           </Glass>
         ) : (

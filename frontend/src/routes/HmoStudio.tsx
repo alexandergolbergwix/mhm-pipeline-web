@@ -186,7 +186,7 @@ export default function HmoStudioRoute() {
             <Link to="/" className="muted hover:text-ink text-sm">Projects</Link>
             <span className="muted">/</span>
             {runId && (
-              <Link to={`/runs/${runId}`} className="muted hover:text-ink text-sm">
+              <Link to={`/runs/${runId}/overview`} className="muted hover:text-ink text-sm">
                 Run {runId.slice(0, 8)}
               </Link>
             )}

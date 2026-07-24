@@ -2274,7 +2274,7 @@ Standalone Authority mutation routes return HTTP 410 while
 `legacy_authority_mutations_enabled` is false. The retirement guard emits
 structured `legacy_authority_mutation_retired` telemetry containing the route
 family, run, actor, and status code. The legacy `/runs/:runId` frontend route
-shows a deprecation notice and directs the curator to HMO Wikibase Studio;
+immediately replaces with `/runs/:runId/hmo-studio` (no deprecation interstitial);
 stale Authority navigation is removed from active run/project surfaces.
 Test: `backend/tests/unit/test_authority_retirement.py`.
 

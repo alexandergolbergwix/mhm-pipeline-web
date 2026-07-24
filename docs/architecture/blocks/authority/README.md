@@ -37,8 +37,8 @@ AuthorityMatch rows remain read-only for provenance and migration audits.
 
 
 The former Authority review page and its mutation endpoints are retired. The
-legacy `/runs/:runId` bookmark route shows a deprecation notice and redirects
-to HMO Wikibase Studio; compatibility mutation calls return HTTP 410 and emit
+legacy `/runs/:runId` bookmark route immediately replaces with HMO Wikibase
+Studio; compatibility mutation calls return HTTP 410 and emit
 structured `legacy_authority_mutation_retired` telemetry with route, run, actor,
 and status metadata. Enrichment runs internally during HMO Studio creation.
 Read-only AuthorityMatch data remains available for provenance, historical

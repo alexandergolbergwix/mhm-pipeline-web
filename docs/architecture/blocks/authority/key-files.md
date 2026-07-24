@@ -24,4 +24,4 @@
 | `backend/app/migrations/versions/0018_authority_pg_tables.py` | Creates `mazal_authorities`, `mazal_name_index`, `kima_places`, `kima_name_index` (hash indexes on `normalized_name`) |
 | `backend/app/migrations/versions/0020_mazal_heading_metadata.py` | Adds `mazal_authorities.main_marc_tag` + btree `(entity_type, normalized_name)` |
 | `backend/scripts/import_mazal_to_postgres.py`, `import_kima_to_postgres.py` | Idempotent TRUNCATE + re-import from desktop SQLite (~10 min / ~15 s) |
-| `frontend/src/routes/RunDetail.tsx` | Compatibility redirect to HMO Studio; the former Authority editor is no longer reachable |
+| `frontend/src/routes/RunDetail.tsx` | Immediate `<Navigate replace>` from `/runs/:runId` → `/runs/:runId/hmo-studio` (no interstitial); former Authority editor is unreachable |
