@@ -55,6 +55,8 @@ research tool; not user-facing.
 | Wikidata Studio — per-item override editor | `ItemOverridePayload` + `ItemOverrideDialog` | ✓ shipped + extended 2026-06-04 | none |
 | Wikidata Studio — item approval | n/a | ✓ shipped 2026-06-04 | `approved` field; approve-only QS/upload filter |
 | Wikidata Studio — inline statement exclude | n/a | ✓ shipped 2026-06-04 | ✗/Undo per statement row; `remove_statements` PATCH |
+| Wikidata Studio — foreign-modify accept | n/a | ✓ shipped 2026-07-24 | drawer checkbox; `accept_foreign_modify` + QID bind (W-99) |
+| Wikidata Studio — HMO→public P/Q mapper | `hmo_wikidata_pq_mapper.py` | ✓ shipped 2026-07-24 | ontology/ledger only; never local-ID identity (W-100) |
 | Wikidata Studio — validator badge | `item_validator.py` | ✓ shipped 2026-06-04 | `validation_issues` in build response; inline red/yellow badge |
 | Wikidata Studio — force-rebuild toggle | `WikidataStudioCache` | ✓ shipped 2026-06-04 | `?force_rebuild=true` bypasses fingerprint |
 | Wikidata Studio backend | `controller/workers.py::WikidataUploadWorker` | ✓ already wrapped | none |
