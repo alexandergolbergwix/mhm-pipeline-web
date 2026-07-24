@@ -46,6 +46,7 @@ from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikid
 from app.pipeline.hmo_canonical import normalize_live_entity
 from app.pipeline.hmo_canonical_wikidata import (
     build_canonical_studio_result,
+    canonical_studio_context,
     canonical_wikidata_fingerprint,
     native_items_from_hmo,
 )
@@ -86,6 +87,24 @@ from app.versioning import apply_event
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
+
+
+async def _canonical_entities_for_run(
+    db: AsyncSession, run_id: uuid.UUID,
+) -> list[Any]:
+    rows = (
+        await db.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id),
+        )
+    ).scalars().all()
+    return [normalize_live_entity(row.snapshot) for row in rows]
+
+
+async def _canonical_cache_fingerprint(
+    db: AsyncSession, run_id: uuid.UUID,
+) -> str:
+    canonical = await _canonical_entities_for_run(db, run_id)
+    return canonical_wikidata_fingerprint(canonical) if canonical else ""
 
 
 async def studio_items_for_project(
@@ -504,15 +523,17 @@ async def execute_studio_build(
     )
     cached = await _get_studio_cache_row(db, run_id, approved_only, source)
 
-    if not force_rebuild and cached is not None and cached.input_fingerprint == fingerprint:
-        return cached
-
     if source == "canonical":
-        canonical_rows = (await db.execute(select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id))).scalars().all()
-        canonical = [normalize_live_entity(row.snapshot) for row in canonical_rows]
+        canonical = await _canonical_entities_for_run(db, run_id)
         if not canonical:
             raise ValueError(f"no durable HMO canonical entities for run {run_id}")
         canonical_fp = canonical_wikidata_fingerprint(canonical)
+        if not force_rebuild and cached is not None and cached.input_fingerprint == canonical_fp:
+            return cached
+    elif not force_rebuild and cached is not None and cached.input_fingerprint == fingerprint:
+        return cached
+
+    if source == "canonical":
         overrides = {
             r.local_id: {
                 "labels":            r.labels,
@@ -524,7 +545,24 @@ async def execute_studio_build(
             }
             for r in override_rows
         }
-        result = build_canonical_studio_result(canonical, overrides=overrides)
+        approved_matches = [
+            {
+                "entity_text": m.entity_text,
+                "matched_name": m.matched_name,
+                "role": m.role,
+                "entity_kind": m.entity_kind,
+                "viaf_id": m.viaf_id,
+                "mazal_id": m.mazal_id,
+                "wikidata_qid": m.wikidata_qid,
+                "payload": m.payload or {},
+            }
+            for m in (m for m in all_matches if m.approved)
+        ]
+        context = canonical_studio_context(
+            marc_records=[dict(r.marc) for r in records],
+            approved_matches=approved_matches,
+        )
+        result = build_canonical_studio_result(canonical, overrides=overrides, context=context)
         items = result["items"]
         summary = result["summary"]
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=result["quickstatements"], summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
@@ -777,8 +815,14 @@ async def build_studio(
 
     cached = await _get_studio_cache_row(db, run_id, approved_only, source)
 
+    cache_fingerprint = (
+        await _canonical_cache_fingerprint(db, run_id)
+        if source == "canonical"
+        else fingerprint
+    )
+
     if not force_rebuild and cached is not None:
-        if cached.input_fingerprint == fingerprint:
+        if cached.input_fingerprint == cache_fingerprint:
             logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
             merged = await fetch_merged_wikidata_items(
                 db, run_id, approved_only=approved_only, source=source,
@@ -802,7 +846,7 @@ async def build_studio(
             "wikidata-studio stale cache for run %s (cached=%s current=%s)",
             run_id,
             (cached.input_fingerprint or "")[:8],
-            fingerprint[:8],
+            cache_fingerprint[:8],
         )
         return _studio_response_from_cache(
             cached,

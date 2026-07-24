@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import Any
 import hashlib
 import json
@@ -10,6 +11,7 @@ import logging
 import re
 
 from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
+from app.pipeline.marc_verify_context import canonical_control_number
 from converter.authority.evidence import normalize_authority_id, normalize_viaf_id, normalize_wikidata_qid
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from converter.wikidata.projection_coverage import STRATEGY_BY_LOCAL_NAME
@@ -37,6 +39,11 @@ _BOILERPLATE_DESCRIPTION = (
     re.compile(r" linked to manuscript \d+\.?$", re.I),
     re.compile(r" in the Hebrew manuscripts corpus\.?$", re.I),
     re.compile(r"^(F\d+_|E\d+_)[A-Za-z_ ]+\.?"),
+    re.compile(r"^[A-Za-z][A-Za-z0-9_ ]+ linked to manuscript \d+\.?$"),
+    re.compile(r"^Literary work '.*' in manuscript \d+\.?$"),
+    re.compile(r"^Author linked to manuscript\.?$"),
+    re.compile(r"^person associated with Hebrew manuscripts\.?$", re.I),
+    re.compile(r"^Work preserved in a Hebrew manuscript\.?$", re.I),
 )
 
 _HMO_PROPERTY_TO_WIKIDATA_PID: dict[str, str] = {
@@ -79,6 +86,58 @@ _INSTANCE_QIDS: dict[str, str] = {
 _PERSON_IDENTIFIER_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P268"})
 
 
+@dataclass
+class CanonicalStudioContext:
+    """Optional MARC + authority context for production-grade descriptions."""
+
+    marc_by_cn: dict[str, dict[str, Any]] = field(default_factory=dict)
+    matches_by_viaf: dict[str, dict[str, Any]] = field(default_factory=dict)
+    matches_by_mazal: dict[str, dict[str, Any]] = field(default_factory=dict)
+    matches_by_qid: dict[str, dict[str, Any]] = field(default_factory=dict)
+    matches_by_name: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+def canonical_studio_context(
+    marc_records: Iterable[Mapping[str, Any]] | None = None,
+    approved_matches: Iterable[Mapping[str, Any]] | None = None,
+) -> CanonicalStudioContext:
+    marc_by_cn: dict[str, dict[str, Any]] = {}
+    for raw in marc_records or []:
+        record = dict(raw)
+        cn = canonical_control_number(
+            str(record.get("_control_number") or record.get("control_number") or ""),
+        )
+        if cn:
+            marc_by_cn[cn] = record
+
+    matches_by_viaf: dict[str, dict[str, Any]] = {}
+    matches_by_mazal: dict[str, dict[str, Any]] = {}
+    matches_by_qid: dict[str, dict[str, Any]] = {}
+    matches_by_name: dict[str, dict[str, Any]] = {}
+    for raw in approved_matches or []:
+        match = dict(raw)
+        viaf = normalize_viaf_id(match.get("viaf_id"))
+        if viaf:
+            matches_by_viaf[viaf] = match
+        mazal = normalize_authority_id(match.get("mazal_id"))
+        if mazal:
+            matches_by_mazal[mazal] = match
+        qid = normalize_wikidata_qid(match.get("wikidata_qid"))
+        if qid:
+            matches_by_qid[qid] = match
+        for key in ("entity_text", "matched_name"):
+            name = str(match.get(key) or "").strip().casefold()
+            if name:
+                matches_by_name[name] = match
+    return CanonicalStudioContext(
+        marc_by_cn=marc_by_cn,
+        matches_by_viaf=matches_by_viaf,
+        matches_by_mazal=matches_by_mazal,
+        matches_by_qid=matches_by_qid,
+        matches_by_name=matches_by_name,
+    )
+
+
 def wikidata_candidates_from_hmo(
     entities: Iterable[CanonicalHmoEntity],
 ) -> list[dict[str, Any]]:
@@ -110,7 +169,7 @@ def wikidata_candidates_from_hmo(
 def canonical_wikidata_fingerprint(entities: Iterable[CanonicalHmoEntity]) -> str:
     candidates = wikidata_candidates_from_hmo(entities)
     payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
-    return hashlib.sha256(("hmo-wikidata-v2:" + payload).encode()).hexdigest()
+    return hashlib.sha256(("hmo-wikidata-v3:" + payload).encode()).hexdigest()
 
 
 def uploadable_entities_from_hmo(
@@ -206,7 +265,11 @@ def native_wikidata_claims(entity: CanonicalHmoEntity) -> list[dict[str, str]]:
     return native
 
 
-def native_items_from_hmo(entities: Iterable[CanonicalHmoEntity]) -> list[WikidataItem]:
+def native_items_from_hmo(
+    entities: Iterable[CanonicalHmoEntity],
+    *,
+    context: CanonicalStudioContext | None = None,
+) -> list[WikidataItem]:
     """Adapt live HMO snapshots to the guarded Wikidata upload model."""
     materialized = uploadable_entities_from_hmo(entities)
     assert_canonical_entities(materialized)
@@ -225,7 +288,7 @@ def native_items_from_hmo(entities: Iterable[CanonicalHmoEntity]) -> list[Wikida
         _append_manuscript_bridge_statements(entity, wd_type, statements)
         items.append(WikidataItem(
             labels=_upload_labels(entity),
-            descriptions=_upload_descriptions(entity, wd_type),
+            descriptions=_upload_descriptions(entity, wd_type, context=context),
             aliases=dict(entity.aliases),
             statements=statements,
             existing_qid=existing_qid,
@@ -246,6 +309,7 @@ def build_canonical_studio_result(
     overrides: dict[str, dict[str, Any]] | None = None,
     return_native: bool = False,
     reconcile: bool = True,
+    context: CanonicalStudioContext | None = None,
 ) -> dict[str, Any]:
     """Build serialised Wikidata Studio items from durable HMO snapshots."""
     from app.pipeline import wikidata_studio  # noqa: PLC0415
@@ -255,7 +319,7 @@ def build_canonical_studio_result(
 
     materialized = list(entities)
     uploadable = uploadable_entities_from_hmo(materialized)
-    native_items = native_items_from_hmo(uploadable)
+    native_items = native_items_from_hmo(uploadable, context=context)
 
     if overrides:
         for item in native_items:
@@ -416,7 +480,12 @@ def _upload_labels(entity: CanonicalHmoEntity) -> dict[str, str]:
     return {"en": entity.local_id.replace("QDraft_", "").replace("_", " ")}
 
 
-def _upload_descriptions(entity: CanonicalHmoEntity, entity_type: str) -> dict[str, str]:
+def _upload_descriptions(
+    entity: CanonicalHmoEntity,
+    entity_type: str,
+    *,
+    context: CanonicalStudioContext | None = None,
+) -> dict[str, str]:
     cleaned: dict[str, str] = {}
     for lang, value in entity.descriptions.items():
         text = str(value or "").strip()
@@ -425,6 +494,11 @@ def _upload_descriptions(entity: CanonicalHmoEntity, entity_type: str) -> dict[s
     if cleaned:
         return cleaned
 
+    if context is not None:
+        enriched = _enriched_description(entity, entity_type, context)
+        if enriched:
+            return enriched
+
     if entity_type == "manuscript":
         return {"en": _truncate_description("Hebrew manuscript, National Library of Israel")}
     if entity_type == "person":
@@ -432,6 +506,115 @@ def _upload_descriptions(entity: CanonicalHmoEntity, entity_type: str) -> dict[s
     if entity_type == "work":
         return {"en": _truncate_description("Work preserved in a Hebrew manuscript")}
     return {}
+
+
+def _enriched_description(
+    entity: CanonicalHmoEntity,
+    entity_type: str,
+    context: CanonicalStudioContext,
+) -> dict[str, str]:
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _build_manuscript_description,
+        _build_person_description,
+        _build_work_description,
+    )
+
+    if entity_type == "manuscript":
+        for cn in entity.control_numbers:
+            record = context.marc_by_cn.get(str(cn).strip())
+            if not record:
+                continue
+            marc = dict(record)
+            marc["_control_number"] = str(cn).strip()
+            return {"en": _truncate_description(_build_manuscript_description(marc))}
+
+    if entity_type == "person":
+        match = _authority_match_for_entity(entity, context)
+        if match:
+            payload = match.get("payload") or {}
+            role = str(match.get("role") or "").strip()
+            birth = payload.get("birth_year")
+            death = payload.get("death_year")
+            dates = ""
+            if birth or death:
+                dates = f"{birth or '?'}-{death or '?'}"
+            return {
+                "en": _truncate_description(
+                    _build_person_description(
+                        role=role,
+                        dates_str=dates,
+                        is_org=str(match.get("entity_kind") or "").lower() == "organization",
+                    ),
+                ),
+            }
+
+    if entity_type == "work":
+        title = entity.labels.get("he") or entity.labels.get("en") or ""
+        for cn in entity.control_numbers:
+            record = context.marc_by_cn.get(str(cn).strip())
+            if not record:
+                continue
+            marc = dict(record)
+            marc["_control_number"] = str(cn).strip()
+            century = _century_hint_from_record(marc)
+            return {
+                "en": _truncate_description(
+                    _build_work_description(author_name=None, century=century),
+                ),
+            }
+        if title:
+            return {
+                "en": _truncate_description(
+                    _build_work_description(author_name=None, century=None),
+                ),
+            }
+    return {}
+
+
+def _authority_match_for_entity(
+    entity: CanonicalHmoEntity,
+    context: CanonicalStudioContext,
+) -> dict[str, Any] | None:
+    for evidence in entity.authority_evidence:
+        if evidence.get("accepted") is not True:
+            continue
+        kind = str(evidence.get("kind") or "").lower()
+        identifier = _evidence_identifier(evidence)
+        if kind == "wikidata":
+            qid = normalize_wikidata_qid(identifier)
+            if qid and qid in context.matches_by_qid:
+                return context.matches_by_qid[qid]
+        if kind == "viaf":
+            viaf = normalize_viaf_id(identifier)
+            if viaf and viaf in context.matches_by_viaf:
+                return context.matches_by_viaf[viaf]
+        if kind == "mazal" and identifier in context.matches_by_mazal:
+            return context.matches_by_mazal[identifier]
+    for claim in entity.claims:
+        property_name = _property_local_name(str(claim.get("property_uri") or ""))
+        value = _claim_scalar_value(claim)
+        if property_name == "viaf_id":
+            viaf = normalize_viaf_id(value)
+            if viaf and viaf in context.matches_by_viaf:
+                return context.matches_by_viaf[viaf]
+        if property_name in {"external_identifier_nli", "external_uri_nli", "authority_id", "mazal_id"}:
+            mazal = normalize_authority_id(value)
+            if mazal and mazal in context.matches_by_mazal:
+                return context.matches_by_mazal[mazal]
+    for label in entity.labels.values():
+        key = str(label or "").strip().casefold()
+        if key and key in context.matches_by_name:
+            return context.matches_by_name[key]
+    return None
+
+
+def _century_hint_from_record(record: Mapping[str, Any]) -> str | None:
+    dates = record.get("dates") or {}
+    if not isinstance(dates, Mapping):
+        return None
+    original = str(dates.get("original_string") or "").strip()
+    match = re.search(r"\d{1,2}(?:th|st|nd|rd)\s*century", original, re.IGNORECASE)
+    return match.group(0).lower() if match else None
 
 
 def _append_manuscript_bridge_statements(

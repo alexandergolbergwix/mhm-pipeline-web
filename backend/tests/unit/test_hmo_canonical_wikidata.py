@@ -1,5 +1,6 @@
 from app.pipeline.hmo_canonical import normalize_live_entity
 from app.pipeline.hmo_canonical_wikidata import (
+    canonical_studio_context,
     canonical_wikidata_fingerprint,
     native_items_from_hmo,
     native_wikidata_claims,
@@ -100,10 +101,24 @@ def test_existing_qid_reads_identifier_field_from_evidence() -> None:
     assert items[0].entity_type == "person"
 
 
-def test_descriptions_drop_offline_boilerplate() -> None:
+def test_descriptions_drop_offline_boilerplate_and_use_marc_when_available() -> None:
     manuscript = _manuscript_entity()
-    items = native_items_from_hmo([manuscript])
-    assert items[0].descriptions["en"] == "Hebrew manuscript, National Library of Israel"
+    context = canonical_studio_context(
+        marc_records=[{
+            "_control_number": "990001",
+            "languages": ["heb"],
+            "dates": {"original_string": "16th century"},
+            "script_type": "sephardi",
+            "materials": ["parchment"],
+        }],
+    )
+    items = native_items_from_hmo([manuscript], context=context)
+    description = items[0].descriptions["en"]
+    assert "Offline" not in description
+    assert "draft" not in description.lower()
+    assert "16th century" in description
+    assert "parchment" in description
+    assert description.startswith("Hebrew manuscript")
 
 
 def test_full_canonical_chain_has_no_legacy_authority_dependency() -> None:
