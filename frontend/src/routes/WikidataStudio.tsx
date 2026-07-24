@@ -54,7 +54,7 @@ export default function WikidataStudio() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [approvedOnly, setApprovedOnly] = useState(true);
-  const [projectionSource, setProjectionSource] = useState<"legacy" | "canonical">("legacy");
+  const [projectionSource, setProjectionSource] = useState<"legacy" | "canonical">("canonical");
 
   // Project id is needed for the per-item-card "📜 View edit history"
   // affordance (HistoryTimeline is keyed by (project, entity_type,
@@ -181,7 +181,6 @@ export default function WikidataStudio() {
 
   async function reconcile() {
     if (!runId) return;
-    if (projectionSource === "canonical") { setError("Canonical HMO projection is review-only until native Wikidata claim mapping is enabled."); return; }
     setBusy("reconcile"); setError(null);
     try {
       const r = await Studio.reconcile(runId, approvedOnly, projectionSource);
@@ -195,12 +194,12 @@ export default function WikidataStudio() {
 
   async function doUpload(dry: boolean) {
     if (!runId) return;
-    if (projectionSource === "canonical") { setError("Canonical HMO projection is review-only; upload is disabled until claim mapping is verified."); return; }
     setBusy(dry ? "dry" : "live"); setError(null);
     try {
       const job = await RunJobs.start(runId, "wikidata_upload", {
         dry_run: dry,
         approved_only: approvedOnly,
+        source: projectionSource,
         item_approved_only: uploadApprovedOnly,
       }).catch(async (e) => {
         if (e instanceof ApiError && e.status === 409) {
@@ -279,10 +278,13 @@ export default function WikidataStudio() {
               Wikidata Studio · <Link to={`/runs/${runId}`} className="hover:text-ink underline">back to run</Link>
             </div>
             <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="text-2xl font-semibold">Items ready to upload</h2>
+              <div>
+                <h2 className="text-2xl font-semibold">Review records for Wikidata</h2>
+                <p className="muted text-sm mt-1">Prepared from the reviewed HMO Wikibase records. Nothing is published until you choose a public upload.</p>
+              </div>
               <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
               <button type="button" onClick={() => { setProjectionSource("legacy"); }} className={projectionSource === "legacy" ? "px-3 py-1 rounded-full bg-white/12 text-ink" : "px-3 py-1 rounded-full muted"}>Legacy</button>
-              <button type="button" onClick={() => { setProjectionSource("canonical"); }} className={projectionSource === "canonical" ? "px-3 py-1 rounded-full bg-biu-sky/20 text-ink" : "px-3 py-1 rounded-full muted"}>HMO canonical</button>
+              <button type="button" onClick={() => { setProjectionSource("canonical"); }} className={projectionSource === "canonical" ? "px-3 py-1 rounded-full bg-biu-sky/20 text-ink" : "px-3 py-1 rounded-full muted"}>Reviewed HMO records</button>
                 <button
                   type="button"
                   onClick={() => setReviewMode("modern")}
@@ -303,6 +305,7 @@ export default function WikidataStudio() {
 
           <WikidataItemsPanel
             runId={runId}
+            source={projectionSource}
             projectId={projectId}
             approvedOnly={approvedOnly}
             uploadApprovedOnly={uploadApprovedOnly}

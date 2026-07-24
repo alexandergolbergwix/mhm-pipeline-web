@@ -45,7 +45,7 @@ from app.settings import get_settings
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.hmo_canonical import normalize_live_entity
-from app.pipeline.hmo_canonical_wikidata import canonical_wikidata_fingerprint, native_wikidata_claims, quickstatements_from_canonical
+from app.pipeline.hmo_canonical_wikidata import canonical_wikidata_fingerprint, native_items_from_hmo, native_wikidata_claims, quickstatements_from_canonical
 from app.pipeline.agent_runner import (
     AgentEvent,
     list_verify_sessions,
@@ -509,8 +509,22 @@ async def execute_studio_build(
         if not canonical:
             raise ValueError(f"no durable HMO canonical entities for run {run_id}")
         canonical_fp = canonical_wikidata_fingerprint(canonical)
-        items = [{"local_id": e.local_id, "source_uri": e.source_uri, "hmo_wikibase_id": e.wikibase_id, "labels": e.labels, "descriptions": e.descriptions, "aliases": e.aliases, "claims": e.claims, "wikidata_claims": native_wikidata_claims(e), "authority_evidence": [x for x in e.authority_evidence if x.get("accepted") is True], "projection_source": "hmo_wikibase", "source_fingerprint": e.source_fingerprint} for e in canonical]
-        summary = {"total_items": len(items), "manuscripts": 0, "persons": 0, "works": 0, "statements": sum(len(i["claims"]) for i in items)}
+        native_items = native_items_from_hmo(canonical)
+        items = [wikidata_studio._serialise_item(item) for item in native_items]
+        for item, entity in zip(items, canonical, strict=True):
+            item.update({
+                "source_uri": entity.source_uri,
+                "hmo_wikibase_id": entity.wikibase_id,
+                "projection_source": "hmo_wikibase",
+                "source_fingerprint": entity.source_fingerprint,
+            })
+        summary = {
+            "total_items": len(items),
+            "manuscripts": sum(1 for e in canonical if e.entity_type == "manuscript"),
+            "persons": sum(1 for e in canonical if e.entity_type == "person"),
+            "works": sum(1 for e in canonical if e.entity_type == "work"),
+            "statements": sum(len(item.statements) for item in native_items),
+        }
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=quickstatements_from_canonical(canonical), summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
         row = await _get_studio_cache_row(db, run_id, approved_only, source)
         if row is None:
@@ -697,7 +711,7 @@ def _studio_response_from_cache(
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
 async def build_studio(
     run_id: uuid.UUID,
-    source: str = Query(default="legacy", pattern="^(legacy|canonical)$"),
+    source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     approved_only: bool = Query(
         default=True,
         description="When true (default), only approved authority matches "
@@ -837,12 +851,6 @@ async def download_quickstatements(
 ) -> PlainTextResponse:
     """Plain-text QuickStatements TSV — paste into
     https://quickstatements.toolforge.org."""
-    if source == "canonical":
-        cached = await _get_studio_cache_row(db, run_id, approved_only, source)
-        if cached is None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="canonical Wikidata Studio build is not ready")
-        return PlainTextResponse(cached.quickstatements)
-
     if not gated:
         if ack != "raw":
             raise HTTPException(
@@ -851,7 +859,9 @@ async def download_quickstatements(
             )
         logger.warning("wikidata QS ungated export for run %s by user %s", run_id, auth.user.id)
 
-    native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
+    native = await _build_native_items(
+        db, run_id, auth, approved_only=approved_only, source=source,
+    )
     if item_approved_only:
         override_rows = (
             await db.execute(
@@ -885,7 +895,7 @@ async def download_quickstatements(
     elif item_approved_only or approved_only:
         qs_text = await wikidata_studio.quickstatements_for_items(native)
     else:
-        cached = await _get_studio_cache_row(db, run_id, approved_only)
+        cached = await _get_studio_cache_row(db, run_id, approved_only, source)
         if cached is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -996,7 +1006,7 @@ class UploadResponse(BaseModel):
 @router.post("/{run_id}/wikidata-studio/upload", response_model=UploadResponse)
 async def upload_to_wikidata(
     run_id: uuid.UUID,
-    source: str = Query(default="legacy", pattern="^(legacy|canonical)$"),
+    source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     dry_run: bool = Query(
         default=True,
         description="Default True — describe what would happen without "
@@ -1023,13 +1033,10 @@ async def upload_to_wikidata(
     hard gate (any ERROR-severity issue blocks the write). Dry-run reports the
     same create/update/BLOCKED decision the live run would take."""
     import os  # noqa: PLC0415
-    if source == "canonical":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="canonical HMO projection is review-only; native Wikidata upload is not enabled")
-
     run = await _lookup_run_with_access(db, run_id, auth, write=not dry_run)
 
     # Build the items first (with the latest approval state).
-    native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
+    native = await _build_native_items(db, run_id, auth, approved_only=approved_only, source=source)
 
     if item_approved_only:
         override_rows = (
@@ -2016,7 +2023,7 @@ def _slice_items(
 
 async def _build_native_items(
     db: AsyncSession, run_id: uuid.UUID, auth: AuthContext,
-    *, approved_only: bool,
+    *, approved_only: bool, source: str = "canonical",
 ) -> list[Any]:
     """Re-run the builder and return the *native* WikidataItem objects
     (not the JSON dicts) so reconcile/upload can mutate them in place."""
@@ -2040,6 +2047,17 @@ async def _build_native_items(
             select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
         )
     ).scalars().all()
+    if source == "canonical":
+        canonical_rows = (await db.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )).scalars().all()
+        canonical = [normalize_live_entity(row.snapshot) for row in canonical_rows]
+        if not canonical:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="HMO Wikibase records are not ready for Wikidata projection; complete HMO read-back first.",
+            )
+        return native_items_from_hmo(canonical)
     matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
 
     overrides = {

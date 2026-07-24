@@ -41,10 +41,17 @@ modification guards stay intact (`_is_our_item`, `_assert_modifiable` in
 `_build_wbi_item`, `_would_create_identity_conflict` per statement, pre-write
 `_assert_modifiable`).
 
-`GET /quickstatements.txt` serves the cached QS blob (or an item-approved
-filtered re-export). **Known residual gap**: QS lines carry raw CREATE
-commands with *no* reconcile/validate gate — pasting into the QuickStatements
-tool bypasses every guard above. `item_approved_only` is the only control.
+The default source is the durable HMO Wikibase read-back. `native_items_from_hmo`
+adapts normalized HMO labels, descriptions, aliases, accepted authority
+evidence, and explicitly mapped Wikidata claims into the shared native item
+model; direct uploads and `wikidata_upload` jobs preserve the selected source
+before entering the same guarded uploader. Canonical QuickStatements are also
+rebuilt through `prepare_items_for_export`, so export cannot bypass
+reconciliation or validator blocking.
+
+`GET /quickstatements.txt` serves a gated, source-scoped re-export by default;
+blocked items are listed in the download header. An explicitly acknowledged
+raw export remains available only with `gated=false&ack=raw`.
 
 ### AI review + autofix
 

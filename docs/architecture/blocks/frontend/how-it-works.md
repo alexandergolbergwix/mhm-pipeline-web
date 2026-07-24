@@ -11,6 +11,12 @@ project pages under `/projects/:projectId{,/history,/entity}`; admin under
 `/admin/*`. Adding a page = one file in `src/routes/` + one line in `App.tsx`.
 **New Workflow.** The `RunOverview` page provides a comprehensive overview of the run status and next steps for professors.
 
+**Wikidata Studio workflow.** The modern review surface defaults to the
+reviewed HMO Wikibase read-back and carries the selected source through build,
+refresh, verification, and upload-job parameters. The page presents review,
+approval, preview, and public publication as separate steps; technical legacy
+projection remains available as an explicit alternate source.
+
 **API clients.** All HTTP goes through `api/client.ts:138`'s `api` object:
 same-origin `/api` prefix, `credentials: "include"` (HTTP-only session
 cookie), `cache: "no-store"`, and a CSRF double-submit header

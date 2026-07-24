@@ -44,6 +44,10 @@ export interface StudioItem {
   upload_at?: string | null;
   ai_verdict?: AiVerdict | null;
   ai_verdict_at?: string | null;
+  source_uri?: string | null;
+  hmo_wikibase_id?: string | null;
+  projection_source?: "hmo_wikibase" | "legacy" | string | null;
+  source_fingerprint?: string | null;
 }
 
 export interface PropertyInfo {
@@ -218,7 +222,7 @@ export async function fetchAllStudioItems(
 export const Studio = {
   build: (runId: string, params: StudioBuildParams = {}) => {
     const {
-      source = "legacy",
+      source = "canonical",
       approvedOnly = true,
       forceRebuild = false,
       entityType,
@@ -243,16 +247,16 @@ export const Studio = {
     return api.get<StudioBuild>(`/runs/${runId}/wikidata-studio?${qs.toString()}`);
   },
 
-  qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false, gated = true, source: "legacy" | "canonical" = "legacy") =>
+  qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false, gated = true, source: "legacy" | "canonical" = "canonical") =>
     `/api/runs/${runId}/wikidata-studio/quickstatements.txt?source=${source}&approved_only=${approvedOnly ? "true" : "false"}${uploadApprovedOnly ? "&upload_approved_only=true" : ""}&gated=${gated ? "true" : "false"}`,
 
-  reconcile: (runId: string, approvedOnly = true, source: "legacy" | "canonical" = "legacy") =>
+  reconcile: (runId: string, approvedOnly = true, source: "legacy" | "canonical" = "canonical") =>
     api.post<ReconcileResponse>(
       `/runs/${runId}/wikidata-studio/reconcile?source=${source}&approved_only=${approvedOnly ? "true" : "false"}`,
       {},
     ),
 
-  upload: (runId: string, opts: { dry_run: boolean; approved_only: boolean; upload_approved_only?: boolean }) =>
+  upload: (runId: string, opts: { dry_run: boolean; approved_only: boolean; upload_approved_only?: boolean; source?: "legacy" | "canonical" }) =>
     api.post<UploadResponse>(
       `/runs/${runId}/wikidata-studio/upload?dry_run=${opts.dry_run ? "true" : "false"}&approved_only=${opts.approved_only ? "true" : "false"}${opts.upload_approved_only ? "&upload_approved_only=true" : ""}`,
       {},

@@ -22,6 +22,7 @@ import {hydrateVerifySession, mergeFlowWithJobProgress} from "@/utils/verifySess
 
 export interface WikidataUploadPanelProps {
   runId: string;
+  source: "legacy" | "canonical";
   approvedOnly: boolean;
   uploadApprovedOnly: boolean;
   buildPresent: boolean;
@@ -42,6 +43,7 @@ function verdictLocalId(row: Record<string, unknown>): string {
 
 export function WikidataUploadPanel({
   runId,
+  source,
   approvedOnly,
   uploadApprovedOnly,
   buildPresent,
@@ -99,6 +101,7 @@ export function WikidataUploadPanel({
       const started = await RunJobs.start(runId, "wikidata_upload", {
         dry_run: dryRun,
         approved_only: approvedOnly,
+        source,
         item_approved_only: uploadApprovedOnly,
         update_existing: updateExisting,
       }).catch(async (e) => {
@@ -116,7 +119,7 @@ export function WikidataUploadPanel({
       setError(e instanceof ApiError ? e.detail : String(e));
       setBusy(false);
     }
-  }, [runId, dryRun, approvedOnly, uploadApprovedOnly, updateExisting]);
+  }, [runId, dryRun, approvedOnly, uploadApprovedOnly, updateExisting, source]);
 
   const {activeJob, setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
@@ -247,7 +250,7 @@ export function WikidataUploadPanel({
             disabled={busy || jobRunning || preVerifyRunning}
             data-testid="wikidata-upload-dry-run"
           />
-          Dry run
+          Preview only (no public changes)
         </label>
         <label className="flex items-center gap-1 text-sm muted" title="Update items that already have a Wikidata QID">
           <input
@@ -257,7 +260,7 @@ export function WikidataUploadPanel({
             disabled={busy || jobRunning || preVerifyRunning}
             data-testid="wikidata-upload-update-existing"
           />
-          Update existing
+          Update records already on Wikidata
         </label>
         <button
           onClick={handleUploadClick}

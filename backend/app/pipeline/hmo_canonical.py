@@ -27,6 +27,7 @@ class CanonicalHmoEntity:
     claims: list[dict[str, Any]]
     authority_evidence: list[dict[str, Any]]
     source_fingerprint: str
+    entity_type: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -40,6 +41,7 @@ class CanonicalHmoEntity:
             "claims": self.claims,
             "authority_evidence": self.authority_evidence,
             "source_fingerprint": self.source_fingerprint,
+            "entity_type": self.entity_type,
         }
 
 
@@ -84,6 +86,7 @@ def normalize_live_entity(raw: dict[str, Any]) -> CanonicalHmoEntity:
         claims=normalized["claims"],
         authority_evidence=normalized["authority_evidence"],
         source_fingerprint=normalized["source_fingerprint"],
+        entity_type=str(normalized.get("entity_type") or ""),
     )
 
 

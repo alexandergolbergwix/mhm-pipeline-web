@@ -19,6 +19,7 @@ import {useLabelStore} from "@/api/wikidataLabels";
 
 export interface WikidataItemsPanelProps {
   runId: string;
+  source: "legacy" | "canonical";
   projectId?: string;
   approvedOnly: boolean;
   uploadApprovedOnly: boolean;
@@ -31,6 +32,7 @@ export interface WikidataItemsPanelProps {
 
 export function WikidataItemsPanel({
   runId,
+  source,
   projectId,
   approvedOnly,
   uploadApprovedOnly,
@@ -70,10 +72,11 @@ export function WikidataItemsPanel({
     try {
       if (force) {
         setBuildProgress("Starting fresh build…");
-        await waitForStudioBuild(runId, {approvedOnly, forceRebuild: true});
+        await waitForStudioBuild(runId, {approvedOnly, forceRebuild: true, source});
       }
       const fetchPage = () => fetchAllStudioItems(runId, {
         approvedOnly,
+        source,
         forceRebuild: false,
       });
       setBuildProgress(force ? "Loading items…" : "Checking cache…");
@@ -90,7 +93,7 @@ export function WikidataItemsPanel({
       setLoading(false);
       setBuildProgress(null);
     }
-  }, [approvedOnly, forceRebuild, labelStore, onBuildLoaded, runId]);
+  }, [approvedOnly, forceRebuild, labelStore, onBuildLoaded, runId, source]);
 
   useEffect(() => {
     void refresh();
@@ -138,8 +141,8 @@ export function WikidataItemsPanel({
             {build?.summary.total_items ?? 0} item{(build?.summary.total_items ?? 0) === 1 ? "" : "s"}
           </h3>
           <p className="muted text-sm mt-1">
-            Review table for this run&apos;s Wikidata build. Open a row for overrides, compare, reconcile,
-            AI verify, and single-item push.
+            These records come from the reviewed HMO Wikibase catalogue. Review, approve, preview the
+            Wikidata changes, then publish only when the result is ready.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -274,6 +277,7 @@ export function WikidataItemsPanel({
 
       <WikidataUploadPanel
         runId={runId}
+        source={source}
         approvedOnly={approvedOnly}
         uploadApprovedOnly={uploadApprovedOnly}
         buildPresent={buildPresent}

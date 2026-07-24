@@ -9,6 +9,7 @@ import json
 import re
 
 from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
+from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
 
 def wikidata_candidates_from_hmo(
@@ -37,6 +38,7 @@ def wikidata_candidates_from_hmo(
             ],
             "projection_source": "hmo_wikibase",
             "source_fingerprint": entity.source_fingerprint,
+            "entity_type": entity.entity_type,
         }
         for entity in materialized
     ]
@@ -62,6 +64,44 @@ def native_wikidata_claims(entity: CanonicalHmoEntity) -> list[dict[str, str]]:
             continue
         native.append({"property": property_id, "value": raw})
     return native
+
+
+def native_items_from_hmo(entities: Iterable[CanonicalHmoEntity]) -> list[WikidataItem]:
+    """Adapt live HMO snapshots to the guarded Wikidata upload model."""
+    materialized = list(entities)
+    assert_canonical_entities(materialized)
+    items: list[WikidataItem] = []
+    for entity in materialized:
+        accepted_qids = {
+            str(evidence.get("value") or evidence.get("wikidata_qid") or "").strip()
+            for evidence in entity.authority_evidence
+            if evidence.get("accepted") is True
+            and str(evidence.get("kind") or "").lower() == "wikidata"
+        }
+        accepted_qids.discard("")
+        existing_qid = next(iter(accepted_qids)) if len(accepted_qids) == 1 else None
+        statements = [
+            WikidataStatement(
+                property_id=claim["property"],
+                value=claim["value"],
+                value_type="wikibase-item" if _QID.fullmatch(claim["value"]) else "string",
+            )
+            for claim in native_wikidata_claims(entity)
+        ]
+        items.append(WikidataItem(
+            labels=dict(entity.labels),
+            descriptions=dict(entity.descriptions),
+            aliases=dict(entity.aliases),
+            statements=statements,
+            existing_qid=existing_qid,
+            entity_type=entity.entity_type,
+            local_id=entity.local_id,
+            authority_evidence=[
+                evidence for evidence in entity.authority_evidence
+                if evidence.get("accepted") is True
+            ],
+        ))
+    return items
 
 
 def quickstatements_from_canonical(entities: Iterable[CanonicalHmoEntity]) -> str:

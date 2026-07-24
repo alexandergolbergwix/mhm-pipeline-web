@@ -40,6 +40,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         params = job.params or {}
         dry_run = bool(params.get("dry_run", True))
         approved_only = bool(params.get("approved_only", True))
+        source = str(params.get("source") or "canonical")
         item_approved_only = bool(params.get("item_approved_only", False))
         token = str(params.get("_wikidata_token") or "")
         auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by))
@@ -47,7 +48,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         from app.routers.wikidata_studio import _build_native_items  # noqa: PLC0415
 
         native = await _build_native_items(
-            db, run_id, auth, approved_only=approved_only,
+            db, run_id, auth, approved_only=approved_only, source=source,
         )
         if item_approved_only:
             override_rows = (
