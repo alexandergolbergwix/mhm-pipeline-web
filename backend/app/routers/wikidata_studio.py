@@ -42,10 +42,13 @@ from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.settings import get_settings
-from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.hmo_canonical import normalize_live_entity
-from app.pipeline.hmo_canonical_wikidata import canonical_wikidata_fingerprint, native_items_from_hmo, native_wikidata_claims, quickstatements_from_canonical
+from app.pipeline.hmo_canonical_wikidata import (
+    build_canonical_studio_result,
+    canonical_wikidata_fingerprint,
+    native_items_from_hmo,
+)
 from app.pipeline.agent_runner import (
     AgentEvent,
     list_verify_sessions,
@@ -510,23 +513,21 @@ async def execute_studio_build(
         if not canonical:
             raise ValueError(f"no durable HMO canonical entities for run {run_id}")
         canonical_fp = canonical_wikidata_fingerprint(canonical)
-        native_items = native_items_from_hmo(canonical)
-        items = [wikidata_studio._serialise_item(item) for item in native_items]
-        for item, entity in zip(items, canonical, strict=True):
-            item.update({
-                "source_uri": entity.source_uri,
-                "hmo_wikibase_id": entity.wikibase_id,
-                "projection_source": "hmo_wikibase",
-                "source_fingerprint": entity.source_fingerprint,
-            })
-        summary = {
-            "total_items": len(items),
-            "manuscripts": sum(1 for e in canonical if e.entity_type == "manuscript"),
-            "persons": sum(1 for e in canonical if e.entity_type == "person"),
-            "works": sum(1 for e in canonical if e.entity_type == "work"),
-            "statements": sum(len(i.get("claims") or []) for i in items),
+        overrides = {
+            r.local_id: {
+                "labels":            r.labels,
+                "descriptions":      r.descriptions,
+                "aliases":           r.aliases,
+                "add_statements":    r.add_statements,
+                "remove_statements": r.remove_statements,
+                "statement_edits":   r.statement_edits,
+            }
+            for r in override_rows
         }
-        await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=quickstatements_from_canonical(canonical), summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
+        result = build_canonical_studio_result(canonical, overrides=overrides)
+        items = result["items"]
+        summary = result["summary"]
+        await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=result["quickstatements"], summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
         row = await _get_studio_cache_row(db, run_id, approved_only, source)
         if row is None:
             raise RuntimeError(f"canonical Studio cache missing after build for run {run_id}")
@@ -962,22 +963,18 @@ async def reconcile_against_wikidata(
     creation."""
     if source == "canonical":
         canonical_rows = (await db.execute(select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id))).scalars().all()
-        live_entities = [row.snapshot for row in canonical_rows]
-        if not live_entities:
-            cache = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
-            live_entities = [raw["canonical_live"] for raw in (cache.resolved_entities if cache else []) if raw.get("canonical_live")]
-        if not live_entities:
+        canonical = [normalize_live_entity(row.snapshot) for row in canonical_rows]
+        if not canonical:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no canonical HMO entities for run")
         if get_settings().canonical_first_for_run(run_id) and not canonical_rows:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="canonical-first rollout requires durable HMO rows; run the backfill gate")
-        outcomes: list[ReconcileOutcomeDto] = []
-        for live in live_entities:
-            accepted = [e for e in live.get("authority_evidence") or [] if e.get("accepted") is True and str(e.get("kind") or "").lower() == "wikidata"]
-            qids = {str(e.get("value") or e.get("wikidata_qid") or "").strip() for e in accepted}
-            qids.discard("")
-            qid = next(iter(qids)) if len(qids) == 1 else None
-            outcomes.append(ReconcileOutcomeDto(local_id=str(live.get("local_id") or ""), label=str((live.get("labels") or {}).get("en") or (live.get("labels") or {}).get("he") or ""), entity_type="", existing_qid=qid, method="accepted_hmo_evidence" if qid else "abstain", message="Accepted HMO Wikibase evidence" if qid else "No unique accepted Wikidata evidence"))
-        return ReconcileResponse(reconciled=len(outcomes), matched=sum(1 for o in outcomes if o.existing_qid), outcomes=outcomes)
+        native = native_items_from_hmo(canonical)
+        outcomes = await wikidata_upload.reconcile_items(native)
+        return ReconcileResponse(
+            reconciled=len(outcomes),
+            matched=sum(1 for o in outcomes if o.existing_qid),
+            outcomes=[ReconcileOutcomeDto(**o.__dict__) for o in outcomes],
+        )
 
     native = await _build_native_items(db, run_id, auth, approved_only=approved_only)
     outcomes = await wikidata_upload.reconcile_items(native)
@@ -2073,7 +2070,23 @@ async def _build_native_items(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="HMO Wikibase records are not ready for Wikidata projection; complete HMO read-back first.",
             )
-        return native_items_from_hmo(canonical)
+        overrides = {
+            r.local_id: {
+                "labels":            r.labels,
+                "descriptions":      r.descriptions,
+                "aliases":           r.aliases,
+                "add_statements":    r.add_statements,
+                "remove_statements": r.remove_statements,
+                "statement_edits":   r.statement_edits,
+            }
+            for r in override_rows
+        }
+        native = native_items_from_hmo(canonical)
+        for item in native:
+            ov = overrides.get(item.local_id)
+            if ov:
+                wikidata_studio._apply_override(item, ov)
+        return native
     matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
 
     overrides = {

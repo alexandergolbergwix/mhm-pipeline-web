@@ -1,51 +1,133 @@
 from app.pipeline.hmo_canonical import normalize_live_entity
-from app.pipeline.hmo_canonical_wikidata import canonical_wikidata_fingerprint, wikidata_candidates_from_hmo
+from app.pipeline.hmo_canonical_wikidata import (
+    canonical_wikidata_fingerprint,
+    native_items_from_hmo,
+    native_wikidata_claims,
+    quickstatements_from_canonical,
+    uploadable_entities_from_hmo,
+    wikidata_candidates_from_hmo,
+)
 
 
-def test_wikidata_projection_is_grounded_in_hmo_and_filters_unaccepted_evidence() -> None:
-    entity = normalize_live_entity({
+def _person_entity(**extra: object):
+    base = {
         "local_id": "Person_A",
         "source_uri": "https://w3id.org/mhm/ontology#Person_A",
         "wikibase_id": "Q1252",
-        "labels": {"en": "A"},
+        "entity_type": "E21_Person",
+        "labels": {"en": "A Person"},
         "authority_evidence": [
-            {"kind": "wikidata", "value": "Q42", "accepted": True},
-            {"kind": "wikidata", "value": "Q43", "accepted": False},
+            {"kind": "viaf", "identifier": "123456789", "accepted": True},
         ],
-    })
+    }
+    base.update(extra)
+    return normalize_live_entity(base)
+
+
+def _manuscript_entity(**extra: object):
+    base = {
+        "local_id": "QDraft_MS_990001",
+        "source_uri": "https://w3id.org/mhm/ontology#MS_990001",
+        "wikibase_id": "Q9001",
+        "entity_type": "F4_Manifestation_Singleton",
+        "labels": {"he": "כתב יד"},
+        "control_numbers": ["990001"],
+        "descriptions": {"en": "Offline HMO Wikibase draft for F4_Manifestation_Singleton"},
+    }
+    base.update(extra)
+    return normalize_live_entity(base)
+
+
+def test_wikidata_projection_filters_unaccepted_evidence_and_maps_entity_type() -> None:
+    entity = _person_entity(
+        authority_evidence=[
+            {"kind": "wikidata", "identifier": "Q42", "accepted": True},
+            {"kind": "wikidata", "identifier": "Q43", "accepted": False},
+        ],
+    )
     result = wikidata_candidates_from_hmo([entity])
+    assert len(result) == 1
     assert result[0]["projection_source"] == "hmo_wikibase"
-    assert result[0]["hmo_wikibase_id"] == "Q1252"
-    assert [row["value"] for row in result[0]["authority_evidence"]] == ["Q42"]
+    assert result[0]["entity_type"] == "person"
+    assert [row["identifier"] for row in result[0]["authority_evidence"]] == ["Q42"]
 
 
 def test_canonical_wikidata_fingerprint_changes_with_live_claims() -> None:
-    base = normalize_live_entity({"local_id": "Person_A", "source_uri": "https://w3id.org/mhm/ontology#Person_A", "wikibase_id": "Q1252"})
-    changed = normalize_live_entity({"local_id": "Person_A", "source_uri": "https://w3id.org/mhm/ontology#Person_A", "wikibase_id": "Q1252", "claims": [{"property_uri": "https://w3id.org/mhm/ontology#viaf_id", "value": "123"}]})
+    base = _person_entity()
+    changed = _person_entity(claims=[{"property_uri": "https://w3id.org/mhm/ontology#viaf_id", "value": "999888777"}])
     assert canonical_wikidata_fingerprint([base]) != canonical_wikidata_fingerprint([changed])
+
+
+def test_uploadable_filter_excludes_internal_graph_nodes_and_unidentified_persons() -> None:
+    manuscript = _manuscript_entity()
+    person = _person_entity()
+    codicological = normalize_live_entity({
+        "local_id": "CU_1",
+        "source_uri": "https://w3id.org/mhm/ontology#CU_1",
+        "wikibase_id": "Q77",
+        "entity_type": "Codicological_Unit",
+    })
+    unidentified = normalize_live_entity({
+        "local_id": "Person_unknown",
+        "source_uri": "https://w3id.org/mhm/ontology#Person_unknown",
+        "wikibase_id": "Q88",
+        "entity_type": "E21_Person",
+        "labels": {"en": "Unknown"},
+    })
+    uploadable = uploadable_entities_from_hmo([manuscript, person, codicological, unidentified])
+    assert [entity.local_id for entity in uploadable] == ["QDraft_MS_990001", "Person_A"]
+
+
+def test_native_claims_map_hmo_properties_and_control_numbers() -> None:
+    manuscript = _manuscript_entity(
+        claims=[
+            {"property_uri": "https://w3id.org/mhm/ontology#shelfmark", "value": "Heb. 4"},
+        ],
+    )
+    claims = native_wikidata_claims(manuscript)
+    assert {"property": "P3959", "value": "990001"} in claims
+    assert {"property": "P217", "value": "Heb. 4"} in claims
+    assert {"property": "P31", "value": "Q87167"} in claims
+
+
+def test_existing_qid_reads_identifier_field_from_evidence() -> None:
+    person = _person_entity(
+        authority_evidence=[{"kind": "wikidata", "identifier": "Q1218", "accepted": True}],
+    )
+    items = native_items_from_hmo([person])
+    assert len(items) == 1
+    assert items[0].existing_qid == "Q1218"
+    assert items[0].entity_type == "person"
+
+
+def test_descriptions_drop_offline_boilerplate() -> None:
+    manuscript = _manuscript_entity()
+    items = native_items_from_hmo([manuscript])
+    assert items[0].descriptions["en"] == "Hebrew manuscript, National Library of Israel"
 
 
 def test_full_canonical_chain_has_no_legacy_authority_dependency() -> None:
     from app.pipeline.hmo_canonical_rdf import graph_from_canonical_entities
-    from app.pipeline.hmo_canonical_wikidata import native_wikidata_claims, quickstatements_from_canonical
 
-    entity = normalize_live_entity({
-        "local_id": "Place_Jerusalem",
-        "source_uri": "https://w3id.org/mhm/ontology#Place_Jerusalem",
-        "wikibase_id": "Q1389",
-        "labels": {"en": "Jerusalem", "he": "ירושלים"},
-        "descriptions": {"en": "Historic place"},
-        "authority_evidence": [
-            {"kind": "wikidata", "identifier": "Q1218", "accepted": True},
+    entity = _person_entity(
+        labels={"en": "Jerusalem", "he": "ירושלים"},
+        descriptions={"en": "Historic place"},
+        authority_evidence=[
             {"kind": "mazal", "identifier": "987007270341205171", "accepted": True},
         ],
-        "claims": [
-            {"property_uri": "https://w3id.org/mhm/ontology#instance_of", "wikidata_property": "P31", "value_type": "wikibase-item", "target_qid": "Q515", "value": "Q515"},
+        claims=[
+            {
+                "property_uri": "https://w3id.org/mhm/ontology#instance_of",
+                "wikidata_property": "P31",
+                "value_type": "wikibase-item",
+                "target_qid": "Q515",
+                "value": "Q515",
+            },
         ],
-    })
+    )
     graph = graph_from_canonical_entities([entity])
     candidates = wikidata_candidates_from_hmo([entity])
     assert len(graph) > 0
-    assert candidates[0]["hmo_wikibase_id"] == "Q1389"
-    assert len(native_wikidata_claims(entity)) == 1
-    assert "P31\tQ515" in quickstatements_from_canonical([entity])
+    assert candidates[0]["hmo_wikibase_id"] == "Q1252"
+    assert {"property": "P31", "value": "Q515"} in native_wikidata_claims(entity)
+    assert 'LAST\tP31\t"Q515"' in quickstatements_from_canonical([entity])

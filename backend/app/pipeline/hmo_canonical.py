@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable
 from collections.abc import Mapping
 
@@ -28,6 +28,7 @@ class CanonicalHmoEntity:
     authority_evidence: list[dict[str, Any]]
     source_fingerprint: str
     entity_type: str = ""
+    control_numbers: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,6 +43,7 @@ class CanonicalHmoEntity:
             "authority_evidence": self.authority_evidence,
             "source_fingerprint": self.source_fingerprint,
             "entity_type": self.entity_type,
+            "control_numbers": list(self.control_numbers),
         }
 
 
@@ -51,7 +53,7 @@ def canonical_entity_fingerprint(entity: dict[str, Any]) -> str:
         key: entity.get(key)
         for key in (
             "local_id", "source_uri", "wikibase_id", "labels", "descriptions",
-            "aliases", "claims", "authority_evidence",
+            "aliases", "claims", "authority_evidence", "control_numbers",
         )
     }
     return hashlib.sha256(
@@ -87,6 +89,7 @@ def normalize_live_entity(raw: dict[str, Any]) -> CanonicalHmoEntity:
         authority_evidence=normalized["authority_evidence"],
         source_fingerprint=normalized["source_fingerprint"],
         entity_type=str(normalized.get("entity_type") or ""),
+        control_numbers=[str(cn) for cn in (raw.get("control_numbers") or []) if str(cn).strip()],
     )
 
 
