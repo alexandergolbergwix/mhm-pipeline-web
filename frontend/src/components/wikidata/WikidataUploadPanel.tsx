@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 
 import {ApiError} from "@/api/client";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
@@ -18,8 +18,12 @@ import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
-import {useRunJobs} from "@/stores/runJobs";
+import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
+import {
+  createThrottledProgressRefresh,
+  jobProcessedCount,
+} from "@/utils/throttledProgressRefresh";
 import {hydrateVerifySession, mergeFlowWithJobProgress} from "@/utils/verifySessionHydrate";
 
 export interface WikidataUploadPanelProps {
@@ -132,12 +136,27 @@ export function WikidataUploadPanel({
   });
 
   const upsertJob = useRunJobs((s) => s.upsertJob);
+  const tableRefreshRef = useRef(createThrottledProgressRefresh());
 
   const {activeJob, setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
     "wikidata_upload",
     (j) => {
       setJob(j);
+      const dry = Boolean(
+        (j.params as {dry_run?: unknown} | null)?.dry_run
+        || (j.params as {upload_target?: unknown} | null)?.upload_target === "dry_run",
+      );
+      if (isJobActive(j.status)) {
+        setBusy(true);
+        if (!dry && tableRefreshRef.current.shouldRefresh(jobProcessedCount(j))) {
+          onUploaded?.({
+            upload_target: uploadTarget,
+            moratorium_lifted: true,
+            test_mode: uploadTarget === "test",
+          });
+        }
+      }
       if (j.status === "succeeded" && j.result) {
         const outcomes = (j.result.outcomes as UploadOutcome[]) ?? [];
         const target = (String(
@@ -181,6 +200,11 @@ export function WikidataUploadPanel({
       }
       if (j.status === "failed" || j.status === "cancelled") {
         setBusy(false);
+        onUploaded?.({
+          upload_target: uploadTarget,
+          moratorium_lifted: true,
+          test_mode: uploadTarget === "test",
+        });
       }
     },
   );
@@ -196,6 +220,7 @@ export function WikidataUploadPanel({
     setBusy(true);
     setError(null);
     try {
+      tableRefreshRef.current.reset();
       const started = await RunJobs.start(runId, "wikidata_upload", {
         upload_target: uploadTarget,
         dry_run: uploadTarget === "dry_run",

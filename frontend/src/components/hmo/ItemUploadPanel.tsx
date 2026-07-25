@@ -24,6 +24,10 @@ import { useVerifyJob } from "@/hooks/useVerifyJob";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import { fetchVerifySessionWithJobFallback } from "@/utils/fetchVerifySession";
 import { hydrateVerifySession, mergeFlowWithJobProgress } from "@/utils/verifySessionHydrate";
+import {
+  createThrottledProgressRefresh,
+  jobProcessedCount,
+} from "@/utils/throttledProgressRefresh";
 
 interface ItemUploadPanelProps {
   runId: string;
@@ -81,6 +85,7 @@ export function ItemUploadPanel({
   const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
   const upsertJob = useRunJobs((s) => s.upsertJob);
   const notifiedSuccessIdRef = useRef<string | null>(null);
+  const tableRefreshRef = useRef(createThrottledProgressRefresh());
 
   const refresh = useCallback(async () => {
     try {
@@ -121,12 +126,18 @@ export function ItemUploadPanel({
     "hmo_item_upload",
     (j) => {
       setJob(j);
+      const dry = Boolean((j.params as {dry_run?: unknown} | null)?.dry_run);
+      if (isJobActive(j.status)) {
+        setBusy(true);
+        if (!dry && tableRefreshRef.current.shouldRefresh(jobProcessedCount(j))) {
+          onUploaded?.();
+        }
+      }
       if (j.status === "succeeded") {
         const fromJob = itemUploadResultFromJob(j);
         if (fromJob) setResult(fromJob);
         void refresh();
         setBusy(false);
-        // Notify once per job so the items table reloads Publication status.
         if (notifiedSuccessIdRef.current !== j.id) {
           notifiedSuccessIdRef.current = j.id;
           onUploaded?.();
@@ -153,6 +164,7 @@ export function ItemUploadPanel({
       if (j.status === "failed" || j.status === "cancelled") {
         void refresh();
         setBusy(false);
+        onUploaded?.();
       }
     },
   );
@@ -170,6 +182,7 @@ export function ItemUploadPanel({
       );
       if (isItemUploadJob(r)) {
         notifiedSuccessIdRef.current = null;
+        tableRefreshRef.current.reset();
         upsertJob(r);
         setJob(r);
         setTrackedJobId(r.id);

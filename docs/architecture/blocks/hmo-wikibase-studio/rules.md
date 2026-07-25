@@ -257,3 +257,12 @@ publish with no curator path after Authority retirement.
 drafts; pass 2 still links deferred claims that touch the scope. The UI
 **Retry N failed** button uses this. *Why:* a full re-walk of thousands of
 already-mapped items is unnecessary after a SPARQL/transient failure.
+51. **R51 — Live upload progress MUST refresh the review table; quantity→string
+snak mismatches MUST fall back.** `ItemUploadPanel` reloads items from job
+progress while `hmo_item_upload` is running (throttled via
+`createThrottledProgressRefresh`). The same helper mid-reloads during
+`hmo_item_bulk_approve` and `hmo_item_verify`. Publication status shows
+**failed** when `upload_outcome === failed`. `max_nesting_depth` exports as
+string to match live P224; any remaining ``expected string`` scalar failure
+retries via `_string_compatible_claim`. *Why:* curators saw stale “will update”
+during publish, and Hierarchy creates failed on quantity snaks.

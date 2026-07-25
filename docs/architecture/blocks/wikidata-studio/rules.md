@@ -202,3 +202,12 @@ Wikidata item/autofix judges receive the curated
 Verdict salt `WIKIDATA_VERDICT_SCHEMA=w104_v1`. *Why:* builders already
 followed WPM; judges must evaluate toward the same public-item contract,
 especially for HMO→Wikidata readiness.
+
+40. **R40 — Review tables MUST mid-reload during live upload / bulk approve / verify.**
+`WikidataUploadPanel`, bulk-approve, and `WikidataVerificationModal` use
+`createThrottledProgressRefresh` so QID / upload_outcome / approved / AI pills
+move while the job is still running (parity with HMO R51 / frontend R14).
+Studio **build** still refreshes only at finish (cache written at end).
+*Why:* curators otherwise see stale “will update” / pending approve until the
+job tray flips to done.
+

@@ -49,6 +49,13 @@ _YEAR_AS_TIME_LOCAL_NAMES = frozenset({
     "P82b_end_of_the_end",
 })
 
+# Live Wikibase Cloud minted these as ``string`` before quantity export
+# existed; property datatype cannot change after create. Keep the exporter
+# aligned so CodicologicalHierarchy ``max_nesting_depth`` writes succeed.
+_FORCE_STRING_LOCAL_NAMES = frozenset({
+    "max_nesting_depth",
+})
+
 # Catalog / authority identifiers stored as xsd:string in RDF but modeled as
 # Wikibase external-id properties in the schema bootstrap.
 _EXTERNAL_ID_LOCAL_NAMES = frozenset({
@@ -392,6 +399,8 @@ def _infer_datatype(
     if range_value in _QUANTITY_RANGES:
         if local_name in _YEAR_AS_TIME_LOCAL_NAMES:
             return "time"
+        if local_name in _FORCE_STRING_LOCAL_NAMES:
+            return "string"
         return "quantity"
     if str(range_value).startswith(str(XSD)):
         if local_name in _EXTERNAL_ID_LOCAL_NAMES:

@@ -146,12 +146,136 @@ test.describe("HMO Wikibase Items review UI", () => {
           wikibase_id: "Q9002",
           upload_outcome: "update",
         }),
+        makeHmoStudioItem({
+          local_id: "QFailed",
+          status: "would_create",
+          upload_outcome: "failed",
+          upload_message: "Bad value type quantity, expected string",
+        }),
       ],
     }));
     await gotoHmoItemsTab(page);
     await expect(page.getByTestId("hmo-item-data-status-QNew")).toContainText("new (not uploaded)");
     await expect(page.getByTestId("hmo-item-data-status-QWillUpdate")).toContainText("will update existing");
     await expect(page.getByTestId("hmo-item-data-status-QUpdated")).toContainText("updated");
+    await expect(page.getByTestId("hmo-item-data-status-QFailed")).toContainText("failed");
+  });
+
+  test("items table reloads while an upload job is still running", async ({page}) => {
+    let itemsListCalls = 0;
+    let uploadStarted = false;
+    const jobId = "job-live-upload-refresh";
+    await installHmoItemsMocks(page, makeHmoItemsState({
+      items: [
+        makeHmoStudioItem({
+          local_id: "QDraft_Pending",
+          status: "would_create",
+          upload_outcome: null,
+        }),
+      ],
+    }));
+
+    await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/items`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      itemsListCalls += 1;
+      const showCreated = uploadStarted && itemsListCalls >= 2;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run_id: TEST_RUN_ID,
+          items: [
+            makeHmoStudioItem({
+              local_id: "QDraft_Pending",
+              status: showCreated ? "created" : "would_create",
+              wikibase_id: showCreated ? "Q5001" : null,
+              upload_outcome: showCreated ? "create" : null,
+            }),
+          ],
+        }),
+      });
+    });
+
+    let pollN = 0;
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/${jobId}`, async (route) => {
+      pollN += 1;
+      const processed = Math.min(Math.max(pollN, 1), 6);
+      const done = pollN >= 4;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: jobId,
+          run_id: TEST_RUN_ID,
+          kind: "hmo_item_upload",
+          status: done ? "succeeded" : "running",
+          params: {dry_run: false, update_existing: false, allow_shacl_errors: false},
+          progress: {
+            phase: done ? "done" : "running",
+            processed,
+            total: 6,
+            message: done ? "Upload complete" : `${processed}/6 items uploaded`,
+          },
+          result: done
+            ? {
+                dry_run: false,
+                created: 1,
+                updated: 0,
+                skipped: 0,
+                failed: 0,
+                blocked: 0,
+                linked: 0,
+                unresolved_links: 0,
+                outcomes: [{
+                  local_id: "QDraft_Pending",
+                  source_uri: "http://example.org#Pending",
+                  status: "created",
+                  wikibase_id: "Q5001",
+                  message: "ok",
+                }],
+                link_outcomes: [],
+              }
+            : null,
+          error: null,
+          created_at: "2026-07-25T00:00:00Z",
+          updated_at: "2026-07-25T00:00:00Z",
+        }),
+      });
+    });
+
+    await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/upload-items`, async (route) => {
+      uploadStarted = true;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: jobId,
+          run_id: TEST_RUN_ID,
+          kind: "hmo_item_upload",
+          status: "running",
+          params: {dry_run: false, update_existing: false, allow_shacl_errors: false},
+          progress: {phase: "running", processed: 1, total: 6, message: "1/6 items uploaded"},
+          result: null,
+          error: null,
+          created_at: "2026-07-25T00:00:00Z",
+          updated_at: "2026-07-25T00:00:00Z",
+        }),
+      });
+    });
+
+    await gotoHmoItemsTab(page);
+    const before = itemsListCalls;
+    await page.getByTestId("hmo-upload-dry-run").uncheck();
+    await page.getByTestId("hmo-upload-submit").click();
+
+    await expect.poll(() => itemsListCalls, {timeout: 15000}).toBeGreaterThan(before);
+    await expect(page.getByTestId("hmo-item-data-status-QDraft_Pending")).toContainText(
+      "will update existing",
+      {timeout: 15000},
+    );
   });
 
   test("global search filters rows", async ({page}) => {

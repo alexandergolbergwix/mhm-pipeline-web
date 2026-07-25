@@ -23,7 +23,7 @@
 
 ## Tests pinning this block
 
-- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `useVerifyJob.spec.ts` — R1–R4, R11, R13–R14 (including rejected-enqueue recovery and terminal job fingerprints).
+- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `useVerifyJob.spec.ts`, `throttledProgressRefresh.spec.ts` — R1–R4, R11, R13–R14 (including rejected-enqueue recovery, terminal job fingerprints, and mid-run table-refresh throttle).
 - `frontend/tests/unit/liquidGlassMath.spec.ts`, `glassMapCache.spec.ts` — glass math + map memoisation.
 - `frontend/tests/unit/clientCache.spec.ts`, `entityApi.test.ts`, `verifySession.spec.ts`, `waitForRunJob.spec.ts` — cache tiers, API mapping, job/session lifecycles.
 - `frontend/e2e/extraction-review.spec.ts`, `authority-*.spec.ts`, `wikidata-studio.spec.ts`, `hmo-wikibase-items.spec.ts`, `history-timeline.spec.ts`, `stage-rdf.spec.ts`, `access-request.spec.ts`, `admin-panel.spec.ts`, `linked-data-explorer.spec.ts`, `smoke.spec.ts` — the R8/R9 click-path layer.

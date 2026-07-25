@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
 import {HmoItemVerify} from "@/api/hmoItemVerify";
 import type {AgentActionMeta, AgentEvent} from "@/api/wikidataVerify";
@@ -13,6 +13,10 @@ import {Glass} from "@/components/glass";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
 import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
+import {
+  createThrottledProgressRefresh,
+  jobProcessedCount,
+} from "@/utils/throttledProgressRefresh";
 import {hydrateVerifySession, mergeFlowWithJobProgress} from "@/utils/verifySessionHydrate";
 
 function verdictLocalId(row: Record<string, unknown>): string {
@@ -73,6 +77,8 @@ export function HmoItemVerificationModal({
     onVerdictsLanded?.();
   }, [onVerdictsLanded]);
 
+  const tableRefreshRef = useRef(createThrottledProgressRefresh());
+
   const {running, start: startVerifyJob, stop, progress} = useVerifyJob({
     runId,
     kind: "hmo_item_verify",
@@ -80,6 +86,13 @@ export function HmoItemVerificationModal({
     onFailed: handleVerifyFailed,
     onComplete: handleVerifyComplete,
   });
+
+  useEffect(() => {
+    if (!running || !progress) return;
+    if (tableRefreshRef.current.shouldRefresh(jobProcessedCount({progress}))) {
+      onVerdictsLanded?.();
+    }
+  }, [running, progress, onVerdictsLanded]);
 
   useEffect(() => {
     if (!runId) return;
@@ -112,6 +125,7 @@ export function HmoItemVerificationModal({
     setEvents([]);
     setVerdicts({});
     setFlow(makeInitialFlowState());
+    tableRefreshRef.current.reset();
     try {
       await startVerifyJob({
         action_id: actionId,

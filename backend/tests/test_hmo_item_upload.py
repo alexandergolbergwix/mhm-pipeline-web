@@ -27,6 +27,7 @@ from app.models.wikibase_cloud_write import (
 from app.pipeline import hmo_item_upload as pipeline
 from app.pipeline.hmo_item_reconcile import ReconcileOutcome, ReconciliationUnavailableError
 from app.services.wikibase_audit import WikibaseAuditContext
+from converter.wikibase.cloud_client import EntityEditOutcome
 from converter.wikibase.resolved_models import (
     DeferredItemLink,
     ResolvedClaim,
@@ -396,6 +397,73 @@ async def test_unsupported_boolean_claims_are_serialized_before_live_write() -> 
     create_claim = create_writer.claim_calls[0][1]
     assert create_claim.mainsnak.datatype == "string"
     assert create_claim.mainsnak.datavalue["value"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_quantity_string_mismatch_retries_as_string() -> None:
+    """Live P224 (max_nesting_depth) is string; ontology maps integer→quantity."""
+    writer = _FakeWriter()
+    entity = ResolvedWikibaseEntity(
+        local_id="QDraft_Hierarchy_1",
+        labels={"en": "Hierarchy 1"},
+        descriptions={"en": "codicological hierarchy"},
+        class_qid="Q44",
+        source_uri="http://example.org#Hierarchy_1",
+        claims=[ResolvedClaim("P224", "quantity", {"amount": 1.0})],
+    )
+
+    coerced = pipeline._string_compatible_claim(entity.claims[0])
+    assert coerced.datatype == "string"
+    assert coerced.value == "1"
+
+    assert pipeline._is_string_datatype_failure(
+        "code=modification-failed; info=Bad value type quantity, expected string"
+    )
+
+    # First claim write fails as quantity; fallback coerces to string.
+    class _QuantityThenOkWriter(_FakeWriter):
+        def __init__(self) -> None:
+            super().__init__()
+            self._add_n = 0
+
+        def create_item(self, **kwargs):
+            from types import SimpleNamespace
+            self.create_calls.append(kwargs)
+            return SimpleNamespace(
+                entity_id="Q99", status="created", message="ok", page_url=None,
+            )
+
+        def add_claim(self, entity_id, claim):
+            from types import SimpleNamespace
+            self._add_n += 1
+            self.claim_calls.append((entity_id, claim))
+            if self._add_n == 1:
+                return SimpleNamespace(
+                    entity_id=entity_id, status="failed",
+                    message="code=modification-failed; info=Bad value type quantity, expected string",
+                    page_url=None,
+                )
+            return SimpleNamespace(
+                entity_id=entity_id, status="updated", message="ok", page_url=None,
+            )
+
+    w = _QuantityThenOkWriter()
+    created = await pipeline._retry_create_with_string_compatible_claims(
+        w,
+        labels=entity.labels,
+        descriptions=entity.descriptions,
+        entity=entity,
+        original=EntityEditOutcome(
+            None, "failed",
+            "code=modification-failed; info=Bad value type quantity, expected string",
+            None,
+        ),
+    )
+    assert created.status == "created"
+    assert created.entity_id == "Q99"
+    assert len(w.claim_calls) == 2
+    assert w.claim_calls[1][1].mainsnak.datatype == "string"
+    assert w.claim_calls[1][1].mainsnak.datavalue["value"] == "1"
 
 
 @pytest.mark.asyncio

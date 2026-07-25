@@ -248,6 +248,13 @@ def test_book_name_maps_to_monolingualtext_datatype() -> None:
     assert prop.datatype == "monolingualtext"
 
 
+def test_max_nesting_depth_maps_to_string_for_live_wikibase() -> None:
+    """P224 was minted as string; keep exporter aligned (quantity write fails)."""
+    schema = read_hmo_schema()
+    prop = next(p for p in schema.properties if p.local_name == "max_nesting_depth")
+    assert prop.datatype == "string"
+
+
 def test_property_entries_carry_owl_kind_and_range() -> None:
     schema = read_hmo_schema()
     prop = next(p for p in schema.properties if p.local_name == "has_date_of_creation")

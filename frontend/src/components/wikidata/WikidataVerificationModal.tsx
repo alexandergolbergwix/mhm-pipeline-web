@@ -4,7 +4,7 @@
  * `item_ids` and keys verdicts by item `local_id`.
  */
 
-import {useCallback, useEffect, useMemo, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
 import {applyWikidataFixes, type WikidataSuggestedFix} from "@/utils/wikidataAutofix";
 import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
@@ -13,6 +13,10 @@ import {
   mergeFlowWithJobProgress,
 } from "@/utils/verifySessionHydrate";
 import {jobFingerprint} from "@/utils/renderStable";
+import {
+  createThrottledProgressRefresh,
+  jobProcessedCount,
+} from "@/utils/throttledProgressRefresh";
 import {selectActiveJob, useRunJobs} from "@/stores/runJobs";
 import {
   WikidataVerify,
@@ -75,6 +79,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
 
   const handleVerifyFailed = useCallback((msg: string) => setError(msg), []);
   const handleVerifyComplete = useCallback(() => onVerdictsLanded?.(), [onVerdictsLanded]);
+  const tableRefreshRef = useRef(createThrottledProgressRefresh());
 
   const jobsRecord = useRunJobs((s) => s.jobs);
   const verifyJob = useMemo(
@@ -95,6 +100,13 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
     if (!running || !progress) return;
     setFlow((prev) => mergeFlowWithJobProgress(prev, progress));
   }, [running, progress, verifyJobKey]);
+
+  useEffect(() => {
+    if (!running || !progress) return;
+    if (tableRefreshRef.current.shouldRefresh(jobProcessedCount({progress}))) {
+      onVerdictsLanded?.();
+    }
+  }, [running, progress, onVerdictsLanded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +180,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
     setVerdicts({});
     setFlow(makeInitialFlowState());
     setShowingHistorical(false);
+    tableRefreshRef.current.reset();
     try {
       await startVerifyJob({
         action_id: actionId,

@@ -19,6 +19,10 @@ import {WikidataUploadPanel} from "@/components/wikidata/WikidataUploadPanel";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {
+  createThrottledProgressRefresh,
+  jobProcessedCount,
+} from "@/utils/throttledProgressRefresh";
 import {ensureRunJob, loadStudioBuild} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 
@@ -107,11 +111,15 @@ export function WikidataItemsPanel({
     }
   }, [approvedOnly, labelStore, onBuildLoaded, runId, source]);
 
+  const approveTableRefreshRef = useRef(createThrottledProgressRefresh());
+
   const {
     setTrackedJobId: setStudioBuildTrackedId,
     ensureJobPolling: ensureStudioBuildPolling,
   } = useRunJobAttachment(runId, "wikidata_studio_build", (j) => {
     setStudioBuildJob(j);
+    // Build caches the full corpus only at finish — mid-run reload would
+    // re-fetch the previous build. Refresh on terminal states below.
     if (j.status === "succeeded") {
       void loadItems();
     }
@@ -167,6 +175,11 @@ export function WikidataItemsPanel({
     "wikidata_item_bulk_approve",
     (j) => {
       setApproveJob(j);
+      if (isJobActive(j.status)) {
+        if (approveTableRefreshRef.current.shouldRefresh(jobProcessedCount(j))) {
+          void refresh();
+        }
+      }
       if (j.status === "succeeded") {
         const approved = Number(j.result?.approved ?? 0);
         const unchanged = Number(j.result?.unchanged ?? 0);
@@ -181,6 +194,7 @@ export function WikidataItemsPanel({
         setApprovingVisible(false);
       }
       if (j.status === "failed" || j.status === "cancelled") {
+        void refresh();
         setApproveFeedback(
           j.status === "cancelled"
             ? "Bulk approve cancelled."
@@ -210,6 +224,7 @@ export function WikidataItemsPanel({
         local_ids: pendingVisibleIds,
         approved: true,
       });
+      approveTableRefreshRef.current.reset();
       upsertJob(started);
       setApproveJob(started);
       setTrackedJobId(started.id);

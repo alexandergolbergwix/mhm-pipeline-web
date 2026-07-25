@@ -803,6 +803,14 @@ def _string_compatible_claim(claim: ResolvedClaim) -> ResolvedClaim:
         value = str(claim.value.get("time") or "")
     elif claim.datatype == "monolingualtext" and isinstance(claim.value, dict):
         value = str(claim.value.get("text") or "")
+    elif claim.datatype == "quantity":
+        raw = claim.value.get("amount") if isinstance(claim.value, dict) else claim.value
+        try:
+            amount = float(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            value = str(raw if raw is not None else "")
+        else:
+            value = str(int(amount)) if amount.is_integer() else str(amount)
     else:
         return claim
     return ResolvedClaim(claim.property_id, "string", value)
@@ -946,10 +954,20 @@ def _build_live_wbi_claims(entity: ResolvedWikibaseEntity) -> list[Any]:
 
 
 def _is_string_datatype_failure(message: str) -> bool:
+    """True when Wikibase rejected a scalar snak that we can coerce to string.
+
+    Live properties may be ``string`` even when the ontology/bootstrap mapping
+    says quantity/boolean/time/monolingualtext (e.g. ``max_nesting_depth`` →
+    P224). Match any ``expected string`` / unsupported-scalar report so the
+    per-claim string fallback can retry (Rule W-91 class).
+    """
     lowered = message.lower()
-    return (
-        "expected string" in lowered or "unsupported" in lowered
-    ) and any(token in lowered for token in ("boolean", "time", "monolingualtext"))
+    if "expected string" in lowered:
+        return True
+    return "unsupported" in lowered and any(
+        token in lowered
+        for token in ("boolean", "time", "monolingualtext", "quantity")
+    )
 
 
 def _build_wbi_claim(claim: ResolvedClaim) -> Any:

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
 import {ApiError} from "@/api/client";
 import {HmoStudioItems, type HmoStudioItem} from "@/api/hmoStudioItems";
@@ -15,6 +15,10 @@ import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
 import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {
+  createThrottledProgressRefresh,
+  jobProcessedCount,
+} from "@/utils/throttledProgressRefresh";
 import {ensureRunJob} from "@/utils/waitForRunJob";
 
 export interface HmoItemsPanelProps {
@@ -97,11 +101,18 @@ export function HmoItemsPanel({
     onLifecycleChange?.();
   }, [load, onLifecycleChange]);
 
+  const approveTableRefreshRef = useRef(createThrottledProgressRefresh());
+
   const {setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
     "hmo_item_bulk_approve",
     (j) => {
       setApproveJob(j);
+      if (isJobActive(j.status)) {
+        if (approveTableRefreshRef.current.shouldRefresh(jobProcessedCount(j))) {
+          void load();
+        }
+      }
       if (j.status === "succeeded") {
         const approved = Number(j.result?.approved ?? 0);
         const unchanged = Number(j.result?.unchanged ?? 0);
@@ -116,6 +127,7 @@ export function HmoItemsPanel({
         setApprovingVisible(false);
       }
       if (j.status === "failed" || j.status === "cancelled") {
+        void load();
         setDecisionFeedback(
           j.status === "cancelled"
             ? "Bulk approve cancelled."
@@ -150,6 +162,7 @@ export function HmoItemsPanel({
         local_ids: pendingVisibleIds,
         approved: true,
       });
+      approveTableRefreshRef.current.reset();
       upsertJob(started);
       setApproveJob(started);
       setTrackedJobId(started.id);
