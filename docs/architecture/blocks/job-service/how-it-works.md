@@ -54,6 +54,7 @@ that scope and records an invalid/empty scope as a failed job. This keeps the
 | `hmo_coverage` | `hmo_coverage_job.py` | 9-14 min coverage report; write-throughs `HmoCoverageCache` (Rule W-39) |
 | `hmo_schema_bootstrap` | `hmo_schema_bootstrap_job.py` | Sequential `wbeditentity` per missing ontology class/property on Wikibase Cloud |
 | `hmo_item_upload` | `hmo_item_upload_job.py` | Live per-item Wikibase Cloud writes + deferred links, with audit context |
+| `hmo_item_bulk_approve` / `wikidata_item_bulk_approve` | `studio_item_bulk_approve_job.py` | Background approve of filtered Studio override rows (Rule W-105) |
 
 Dispatch is the `if/elif` chain in `run_job_service.py::_execute_job` (L318-368);
 kinds are declared in `models/run_job.py` (`SUPPORTED_JOB_KINDS`).

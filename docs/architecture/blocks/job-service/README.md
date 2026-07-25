@@ -8,7 +8,8 @@ The run-job service is the single mechanism for anything a curator triggers that
 cannot finish inside Heroku's 30-second HTTP router timeout: NER extraction over a
 whole run, authority re-enrichment, RDF builds, AI-verify sessions (NER / authority /
 Wikidata / HMO item), Wikidata Studio builds and uploads, HMO coverage reports, HMO
-Wikibase schema bootstrap, and HMO item uploads. A router POST creates a `run_jobs` row and
+Wikibase schema bootstrap, HMO item uploads, and Studio bulk-approve of filtered
+item overrides. A router POST creates a `run_jobs` row and
 returns immediately; an in-process `asyncio` task does the work; the frontend polls
 (and receives WebSocket pushes) until the row reaches a terminal status.
 
@@ -32,7 +33,7 @@ open clients see updates without waiting for the next poll tick.
 
 - [Key files](key-files.md) — every module, model, migration, hook, and test that makes up the service
 - [How it works](how-it-works.md) — lifecycle, job kinds and owners, frontend attachment
-- [Rules](rules.md) — R1–R16 invariants (claiming, staleness, secrets, cancellation, UI)
+- [Rules](rules.md) — R1–R17 invariants (claiming, staleness, secrets, cancellation, UI)
 - [Skills & tests](skills-and-tests.md) — add a job kind, debug a stuck job, attach UI; tests pinning this block
 
 ## Related blocks
@@ -41,8 +42,8 @@ open clients see updates without waiting for the next poll tick.
 - [extraction](../extraction/README.md) — `extraction` + `ner_verify` job surfaces
 - [authority](../authority/README.md) — canonical HMO enrichment; legacy Authority jobs are retired fail-closed
 - [rdf-graph](../rdf-graph/README.md) — `rdf_build` and the `RdfArtifact` write-through
-- [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — `hmo_coverage`, `hmo_schema_bootstrap`, `hmo_item_upload`, `hmo_item_verify`
-- [wikidata-studio](../wikidata-studio/README.md) — `wikidata_studio_build`, `wikidata_upload`, `wikidata_verify`
+- [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — `hmo_coverage`, `hmo_schema_bootstrap`, `hmo_item_upload`, `hmo_item_verify`, `hmo_item_bulk_approve`
+- [wikidata-studio](../wikidata-studio/README.md) — `wikidata_studio_build`, `wikidata_upload`, `wikidata_verify`, `wikidata_item_bulk_approve`
 - [caching](../caching/README.md) — durable Postgres counterparts for job outputs (Rules W-26/W-39)
 - [frontend](../frontend/README.md) — `runJobs` store, attachment hooks, render-stability rules
 - [deployment](../deployment/README.md) — dyno restarts, `WORKER_ID`, Heroku 30 s router timeout

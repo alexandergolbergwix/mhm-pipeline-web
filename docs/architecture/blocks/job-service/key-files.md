@@ -20,6 +20,8 @@
 | `backend/app/pipeline/hmo_coverage_job.py` | `hmo_coverage` worker |
 | `backend/app/pipeline/hmo_schema_bootstrap_job.py` | `hmo_schema_bootstrap` worker |
 | `backend/app/pipeline/hmo_item_upload_job.py` | `hmo_item_upload` worker |
+| `backend/app/pipeline/studio_item_bulk_approve.py` | Core bulk approve (HMO + Wikidata overrides + versioning) |
+| `backend/app/pipeline/studio_item_bulk_approve_job.py` | `hmo_item_bulk_approve` / `wikidata_item_bulk_approve` worker |
 | `frontend/src/stores/runJobs.ts` | Zustand store: 2 s poll of `/jobs/mine?active=true`, out-of-order response guard, `upsertJob` for WS pushes |
 | `frontend/src/hooks/useRunJobAttachment.ts` | Generic attach-to-active-job hook (fingerprint-guarded `sync` callback) |
 | `frontend/src/hooks/useVerifyJob.ts` | Verify job lifecycle (three live verify kinds; Authority verify is retired): poll/attach, upserts into `useRunJobs` for the global tray, hydrate from `progress.session_snapshot`, and roll back optimistic state when an enqueue request rejects |

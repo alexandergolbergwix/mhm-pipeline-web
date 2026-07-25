@@ -4,6 +4,7 @@ import {
   installStudioMocks,
   makeBuildResponse,
   makeStudioItem,
+  TEST_PROJECT_ID,
   TEST_RUN_ID,
 } from "./fixtures/wikidata-fixtures";
 
@@ -121,8 +122,8 @@ test.describe("Wikidata item review table", () => {
     await expect(checkboxList.locator("label", {hasText: "new"})).toContainText("(2)");
   });
 
-  test("Approve all visible patches pending filtered rows", async ({page}) => {
-    const patched: string[] = [];
+  test("Approve all visible starts a bulk-approve job for pending filtered rows", async ({page}) => {
+    let jobStartBody: Record<string, unknown> | null = null;
     await installStudioMocks(page, makeBuildResponse({
       items: [
         makeStudioItem({local_id: "manuscript::A", approved: false}),
@@ -131,27 +132,31 @@ test.describe("Wikidata item review table", () => {
       ],
       total: 3,
     }));
-    await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, async (route) => {
-      if (route.request().method() !== "PATCH") {
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, async (route) => {
+      if (route.request().method() !== "POST") {
         await route.fallback();
         return;
       }
-      const url = route.request().url();
-      const match = /items\/([^/?]+)/.exec(url);
-      if (match) patched.push(decodeURIComponent(match[1]));
+      jobStartBody = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
+          id: "job-wd-approve-1",
+          project_id: TEST_PROJECT_ID,
           run_id: TEST_RUN_ID,
-          local_id: match?.[1],
-          approved: true,
-          labels: {},
-          descriptions: {},
-          aliases: {},
-          add_statements: [],
-          remove_statements: [],
-          statement_edits: {},
+          kind: "wikidata_item_bulk_approve",
+          status: "succeeded",
+          progress: {phase: "done", processed: 2, total: 2, message: "Done"},
+          params: jobStartBody?.params ?? {},
+          result: {channel: "wikidata", total: 2, approved: 2, unchanged: 0, failed: 0, cancelled: false},
+          error: null,
+          created_by: null,
+          started_at: null,
+          finished_at: null,
+          cancel_requested_at: null,
+          created_at: null,
+          updated_at: null,
         }),
       });
     });
@@ -160,6 +165,9 @@ test.describe("Wikidata item review table", () => {
     const btn = page.getByTestId("wikidata-items-approve-visible");
     await expect(btn).toContainText("Approve all visible (2)");
     await btn.click();
-    await expect.poll(() => patched.sort()).toEqual(["manuscript::A", "person::C"]);
+    await expect.poll(() => jobStartBody).not.toBeNull();
+    expect((jobStartBody as {kind?: string} | null)?.kind).toBe("wikidata_item_bulk_approve");
+    const ids = ((jobStartBody as {params?: {local_ids?: string[]}} | null)?.params?.local_ids ?? []).slice().sort();
+    expect(ids).toEqual(["manuscript::A", "person::C"]);
   });
 });

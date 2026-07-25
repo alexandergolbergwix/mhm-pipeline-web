@@ -70,9 +70,10 @@
   schema class/property counts, dry-run bootstrap defaults, item-build gating,
   item-upload request payload/result summary, and the advanced schema disclosure.
 - `frontend/e2e/hmo-wikibase-items.spec.ts` — review-table filters (real value
-  counts), Approve all visible, tri-state editorial decisions, publish
+  counts), Approve all visible (`hmo_item_bulk_approve` job), tri-state editorial decisions, publish
   confirmation, technical-column disclosure, and upload-lifecycle verification
   paths.
+- `backend/tests/test_studio_item_bulk_approve.py` — bulk-approve params + worker.
 
 - `backend/tests/test_hmo_studio_ttl_restore.py` — TTL restore for status/build-manifests/build-items; IIIF build ignores authority conflicts
 - `backend/tests/unit/test_hmo_authority_gate.py` — approved identifier conflicts and NLI/VIAF misclassification fail closed before HMO **item** creation.

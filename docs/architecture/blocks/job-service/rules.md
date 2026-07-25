@@ -64,3 +64,5 @@
 
 
 16. **R16 — Verify-job progress counts unique candidate identities only.** `agent.stats` is advisory and streamed/replayed `agent.verdict` events may repeat; `verify_job.py` MUST derive `processed` from the deduplicated candidate local IDs and cap it at `scope_size`. *Why:* a 294-item Wikidata verify displayed 395/294 while still running (Rule W-64).
+
+17. **R17 — Studio “Approve all visible” MUST be a `run_jobs` kind, never a browser PATCH storm.** `hmo_item_bulk_approve` / `wikidata_item_bulk_approve` take `local_ids`, version via `apply_event`, report progress, and honour cancel. *Why:* thousands of sequential override PATCHes hung the curator UI and did nothing useful (Rule W-105).

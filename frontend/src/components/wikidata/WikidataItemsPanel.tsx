@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
 import {ApiError} from "@/api/client";
+import {type RunJobSnapshot} from "@/api/runJobs";
 import {
   Studio,
   fetchAllStudioItems,
@@ -10,12 +11,15 @@ import {
 } from "@/api/wikidataStudio";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {Glass, GlassPill} from "@/components/glass";
+import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {LoadingOverlay} from "@/components/LoadingOverlay";
 import {WikidataItemDetailDrawer} from "@/components/wikidata/WikidataItemDetailDrawer";
 import {WikidataItemTable} from "@/components/wikidata/WikidataItemTable";
 import {WikidataUploadPanel} from "@/components/wikidata/WikidataUploadPanel";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
-import {loadStudioBuild, waitForStudioBuild} from "@/utils/waitForRunJob";
+import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
+import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {ensureRunJob, loadStudioBuild, waitForStudioBuild} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 
 export interface WikidataItemsPanelProps {
@@ -57,8 +61,11 @@ export function WikidataItemsPanel({
   const [testMode, setTestMode] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [approvingVisible, setApprovingVisible] = useState(false);
+  const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
+  const [approveFeedback, setApproveFeedback] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const labelStore = useLabelStore();
+  const upsertJob = useRunJobs((s) => s.upsertJob);
 
   const autofixItemIds = useMemo(() => {
     const visible = new Set(filteredIds);
@@ -115,6 +122,35 @@ export function WikidataItemsPanel({
     setVerifyOpen(true);
   }, []);
 
+  const {setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
+    runId,
+    "wikidata_item_bulk_approve",
+    (j) => {
+      setApproveJob(j);
+      if (j.status === "succeeded") {
+        const approved = Number(j.result?.approved ?? 0);
+        const unchanged = Number(j.result?.unchanged ?? 0);
+        const failed = Number(j.result?.failed ?? 0);
+        void refresh();
+        setApproveFeedback(
+          failed > 0
+            ? `Approved ${approved}, already approved ${unchanged}, failed ${failed}.`
+            : `Approved ${approved} item${approved === 1 ? "" : "s"}`
+              + (unchanged ? ` (${unchanged} already approved).` : "."),
+        );
+        setApprovingVisible(false);
+      }
+      if (j.status === "failed" || j.status === "cancelled") {
+        setApproveFeedback(
+          j.status === "cancelled"
+            ? "Bulk approve cancelled."
+            : (j.error ?? "Bulk approve failed. Refresh and retry."),
+        );
+        setApprovingVisible(false);
+      }
+    },
+  );
+
   const handleToggleApproved = useCallback(async (item: StudioItem, next: boolean) => {
     if (!item.local_id) return;
     await Studio.patchItemOverride(runId, item.local_id, {approved: next});
@@ -128,19 +164,26 @@ export function WikidataItemsPanel({
     );
     if (!ok) return;
     setApprovingVisible(true);
+    setApproveFeedback(null);
     try {
-      const chunk = 25;
-      for (let i = 0; i < pendingVisibleIds.length; i += chunk) {
-        const batch = pendingVisibleIds.slice(i, i + chunk);
-        await Promise.all(
-          batch.map((id) => Studio.patchItemOverride(runId, id, {approved: true})),
-        );
+      const started = await ensureRunJob(runId, "wikidata_item_bulk_approve", {
+        local_ids: pendingVisibleIds,
+        approved: true,
+      });
+      upsertJob(started);
+      setApproveJob(started);
+      setTrackedJobId(started.id);
+      ensureJobPolling();
+      if (!isJobActive(started.status)) {
+        setApprovingVisible(false);
       }
-      await refresh();
-    } finally {
+    } catch (e) {
+      setApproveFeedback(e instanceof ApiError ? e.detail : "Bulk approve failed. Refresh and retry.");
       setApprovingVisible(false);
     }
-  }, [pendingVisibleIds, refresh, runId]);
+  }, [ensureJobPolling, pendingVisibleIds, runId, setTrackedJobId, upsertJob]);
+
+  const approveBusy = approvingVisible || (approveJob != null && isJobActive(approveJob.status));
 
   const handleImport = useCallback(async (file: File) => {
     await Studio.importItems(runId, file);
@@ -227,12 +270,12 @@ export function WikidataItemsPanel({
           <button
             type="button"
             className="button-primary text-xs"
-            disabled={!pendingVisibleIds.length || approvingVisible}
+            disabled={!pendingVisibleIds.length || approveBusy}
             data-testid="wikidata-items-approve-visible"
-            title="Approve every currently filtered row that is not already approved."
+            title="Approve every currently filtered row that is not already approved (runs as a background job)."
             onClick={() => void approveAllVisible()}
           >
-            {approvingVisible
+            {approveBusy
               ? "Approving…"
               : `Approve all visible (${pendingVisibleIds.length})`}
           </button>
@@ -318,6 +361,18 @@ export function WikidataItemsPanel({
       />
 
       {error && <p className="text-danger text-sm">{error}</p>}
+      {approveFeedback && <p className="text-sm text-biu-sky" role="status">{approveFeedback}</p>}
+      {approveJob && (
+        <JobProgressInline
+          job={approveJob}
+          labels={{
+            running: "Approving visible items…",
+            succeeded: "Approve complete:",
+            failed: "Approve failed:",
+            cancelled: "Approve cancelled:",
+          }}
+        />
+      )}
       {buildPresent && !loading && (
         <WikidataItemTable
           items={build?.items ?? []}

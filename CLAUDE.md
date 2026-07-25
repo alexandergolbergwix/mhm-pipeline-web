@@ -2459,3 +2459,27 @@ Invariant:
    bump to `w104_v1` so old pills miss after deploy (Rule W-51).
 
 Tests: `eval-agent/tests/test_wikidata_manuscripts_skill.py`.
+
+### Rule W-105 — Studio “Approve all visible” MUST run as a background job (added 2026-07-25)
+
+Clicking **Approve all visible** on a large HMO/Wikidata Studio filter (often
+1k–2k rows) used to fire sequential browser `PATCH …/override` chunks. That
+blocked the UI for a long time, risked Heroku H12 / browser aborts, and left
+curators with no job-tray progress — often looking like “it did nothing”.
+
+Invariant:
+
+1. New `run_jobs` kinds `hmo_item_bulk_approve` and
+   `wikidata_item_bulk_approve` (separate kinds so the active-job unique index
+   is per channel).
+2. Params: non-empty `local_ids` (deduped, capped at 5000) validated in
+   `prepare_job_params`; worker upserts override rows with `approved=true`,
+   emits `apply_event` (Rule W-21), commits in batches, reports progress, and
+   honours `is_cancel_requested`.
+3. Studio panels (`HmoItemsPanel`, `WikidataItemsPanel`) start the job via
+   `ensureRunJob` + `useRunJobAttachment` / job tray; single-row approve stays
+   a synchronous PATCH.
+
+Tests: `backend/tests/test_studio_item_bulk_approve.py`,
+`frontend/e2e/hmo-wikibase-items.spec.ts`,
+`frontend/e2e/wikidata-item-table.spec.ts`.

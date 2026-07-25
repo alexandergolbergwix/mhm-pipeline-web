@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 
 import {ApiError} from "@/api/client";
 import {HmoStudioItems, type HmoStudioItem} from "@/api/hmoStudioItems";
+import {type RunJobSnapshot} from "@/api/runJobs";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {Glass} from "@/components/glass";
@@ -10,6 +11,10 @@ import {HmoItemTable} from "@/components/hmo/HmoItemTable";
 import {HmoItemVerificationModal} from "@/components/hmo/HmoItemVerificationModal";
 import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
 import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
+import {JobProgressInline} from "@/components/jobs/JobProgressInline";
+import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
+import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {ensureRunJob} from "@/utils/waitForRunJob";
 
 export interface HmoItemsPanelProps {
   runId: string;
@@ -40,6 +45,8 @@ export function HmoItemsPanel({
   const [verifyActionId, setVerifyActionId] = useState<string | undefined>(undefined);
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
   const [approvingVisible, setApprovingVisible] = useState(false);
+  const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
+  const upsertJob = useRunJobs((s) => s.upsertJob);
 
   const autofixItemIds = useMemo(() => {
     const visible = new Set(filteredIds);
@@ -79,6 +86,35 @@ export function HmoItemsPanel({
     void load();
   }, [load, refreshToken]);
 
+  const {setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
+    runId,
+    "hmo_item_bulk_approve",
+    (j) => {
+      setApproveJob(j);
+      if (j.status === "succeeded") {
+        const approved = Number(j.result?.approved ?? 0);
+        const unchanged = Number(j.result?.unchanged ?? 0);
+        const failed = Number(j.result?.failed ?? 0);
+        void load();
+        setDecisionFeedback(
+          failed > 0
+            ? `Approved ${approved}, already approved ${unchanged}, failed ${failed}.`
+            : `Approved ${approved} entr${approved === 1 ? "y" : "ies"}`
+              + (unchanged ? ` (${unchanged} already approved).` : "."),
+        );
+        setApprovingVisible(false);
+      }
+      if (j.status === "failed" || j.status === "cancelled") {
+        setDecisionFeedback(
+          j.status === "cancelled"
+            ? "Bulk approve cancelled."
+            : (j.error ?? "Bulk approve failed. Refresh and retry."),
+        );
+        setApprovingVisible(false);
+      }
+    },
+  );
+
   const handleToggleApproved = useCallback(async (item: HmoStudioItem, next: boolean | null) => {
     setDecisionFeedback(null);
     try {
@@ -99,21 +135,24 @@ export function HmoItemsPanel({
     setApprovingVisible(true);
     setDecisionFeedback(null);
     try {
-      const chunk = 25;
-      for (let i = 0; i < pendingVisibleIds.length; i += chunk) {
-        const batch = pendingVisibleIds.slice(i, i + chunk);
-        await Promise.all(
-          batch.map((id) => HmoStudioItems.patchOverride(runId, id, {approved: true})),
-        );
+      const started = await ensureRunJob(runId, "hmo_item_bulk_approve", {
+        local_ids: pendingVisibleIds,
+        approved: true,
+      });
+      upsertJob(started);
+      setApproveJob(started);
+      setTrackedJobId(started.id);
+      ensureJobPolling();
+      if (!isJobActive(started.status)) {
+        setApprovingVisible(false);
       }
-      await load();
-      setDecisionFeedback(`Approved ${pendingVisibleIds.length} visible entr${pendingVisibleIds.length === 1 ? "y" : "ies"}.`);
     } catch (e) {
       setDecisionFeedback(e instanceof ApiError ? e.detail : "Bulk approve failed. Refresh and retry.");
-    } finally {
       setApprovingVisible(false);
     }
-  }, [load, pendingVisibleIds, runId]);
+  }, [ensureJobPolling, pendingVisibleIds, runId, setTrackedJobId, upsertJob]);
+
+  const approveBusy = approvingVisible || (approveJob != null && isJobActive(approveJob.status));
 
   return (
     <Glass as="section" className="p-6 space-y-4" data-testid="hmo-items-panel">
@@ -156,12 +195,12 @@ export function HmoItemsPanel({
           <button
             type="button"
             className="button-primary text-xs"
-            disabled={!pendingVisibleIds.length || approvingVisible}
-            title="Approve every currently filtered row that is not already approved."
+            disabled={!pendingVisibleIds.length || approveBusy}
+            title="Approve every currently filtered row that is not already approved (runs as a background job)."
             data-testid="hmo-items-approve-visible"
             onClick={() => void approveAllVisible()}
           >
-            {approvingVisible
+            {approveBusy
               ? "Approving…"
               : `Approve all visible (${pendingVisibleIds.length})`}
           </button>
@@ -185,6 +224,17 @@ export function HmoItemsPanel({
       </div>
 
       {decisionFeedback && <p className="text-sm text-biu-sky" role="status">{decisionFeedback}</p>}
+      {approveJob && (
+        <JobProgressInline
+          job={approveJob}
+          labels={{
+            running: "Approving visible items…",
+            succeeded: "Approve complete:",
+            failed: "Approve failed:",
+            cancelled: "Approve cancelled:",
+          }}
+        />
+      )}
 
       {!buildPresent && (
         <p className="muted text-sm">Build items above before the review table loads.</p>

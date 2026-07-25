@@ -14,16 +14,19 @@ from app.models.run_job import (
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_EXTRACTION,
+    JOB_KIND_HMO_ITEM_BULK_APPROVE,
     JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_HMO_ITEM_VERIFY,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
+    JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE,
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_VERIFY,
     SUPPORTED_JOB_KINDS,
 )
+from app.pipeline.studio_item_bulk_approve import MAX_BULK_APPROVE_IDS
 from app.pipeline.agent_runner import new_session_id
 
 logger = logging.getLogger(__name__)
@@ -173,6 +176,37 @@ async def prepare_job_params(
     if kind == JOB_KIND_WIKIDATA_STUDIO_BUILD:
         merged.setdefault("approved_only", True)
         merged.setdefault("force_rebuild", False)
+
+    if kind in (JOB_KIND_HMO_ITEM_BULK_APPROVE, JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE):
+        raw_ids = merged.get("local_ids")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="local_ids is required and must be a non-empty list",
+            )
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for raw in raw_ids:
+            lid = str(raw).strip()
+            if not lid or lid in seen:
+                continue
+            seen.add(lid)
+            cleaned.append(lid)
+        if not cleaned:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="local_ids is required and must be a non-empty list",
+            )
+        if len(cleaned) > MAX_BULK_APPROVE_IDS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"local_ids exceeds max of {MAX_BULK_APPROVE_IDS} "
+                    f"(got {len(cleaned)})"
+                ),
+            )
+        merged["local_ids"] = cleaned
+        merged["approved"] = True
 
     if kind == JOB_KIND_AUTHORITY_RE_ENRICH:
         from app.settings import get_settings  # noqa: PLC0415
