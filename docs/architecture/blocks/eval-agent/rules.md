@@ -86,7 +86,9 @@
   `eval-agent/config/tier1_models.yaml` (backend reads via `locate_eval_agent()`).
   Every verify surface sends `tier_model`; `run_job_params` validates per-provider
   credentials. Non-Gemini models force linear judging (`supports_agentic: false`).
-  *Why:* Qubrid Kimi has no Gemini tool-loop; cache keys already include
+  Qubrid OpenAI-compat entries today: `moonshotai/Kimi-K2.5`,
+  `deepseek-ai/DeepSeek-V4-Flash` (shared `QUBRID_API_KEY`).
+  *Why:* Qubrid models have no Gemini tool-loop; cache keys already include
   `judge_model` (R7) (Rule W-46).
 - **R17 — HMO schema verify prompts MUST include full ontology context.** The
   `hmo_wikibase_schema` evaluator passes `description`, `aliases`, `property_kind`,

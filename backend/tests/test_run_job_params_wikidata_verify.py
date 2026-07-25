@@ -56,4 +56,5 @@ async def test_wikidata_verify_worker_reports_empty_scope(db_session) -> None:
 
 def test_qubrid_tier_does_not_require_a_gemini_key() -> None:
     assert _requires_gemini_key("moonshotai/Kimi-K2.5") is False
+    assert _requires_gemini_key("deepseek-ai/DeepSeek-V4-Flash") is False
     assert _requires_gemini_key("gemini-3.5-flash") is True

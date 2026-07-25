@@ -1,4 +1,4 @@
-"""OpenAI-compatible chat-completions judge (Qubrid / Kimi K2.5, etc.)."""
+"""OpenAI-compatible chat-completions judge (Qubrid Kimi / DeepSeek, etc.)."""
 
 from __future__ import annotations
 

@@ -111,9 +111,9 @@ the HMO upload pre/post-verify checkboxes expose a **Tier-1 judge** dropdown.
 Models are listed by `GET /api/judge-models` from
 `eval-agent/config/tier1_models.yaml`. Job/SSE params carry `tier_model`.
 Gemini uses the curator's Settings key (or server `GEMINI_API_KEY`); Qubrid
-Kimi uses server `QUBRID_API_KEY` only. Non-Gemini models run linear judging
-(no agentic tool-loop). See eval-agent block **R16** and **Rule W-46** in
-[CLAUDE.md](CLAUDE.md).
+models (Kimi K2.5, DeepSeek V4 Flash) use server `QUBRID_API_KEY` only.
+Non-Gemini models run linear judging (no agentic tool-loop). See eval-agent
+block **R16** and **Rule W-46** in [CLAUDE.md](CLAUDE.md).
 
 ## HMO Wikibase Schema — AI verify
 

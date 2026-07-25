@@ -1173,8 +1173,10 @@ Curators can pick the tier-1 judge per verify run from a server registry
 instead of always defaulting to `gemini-3.5-flash`:
 
 - **Registry:** `eval-agent/config/tier1_models.yaml` — today
-  `gemini-3.5-flash` (Gemini, agentic-capable) and
-  `moonshotai/Kimi-K2.5` (Qubrid OpenAI-compat, linear-only).
+  `gemini-3.5-flash` (Gemini, agentic-capable) plus Qubrid OpenAI-compat
+  linear judges `moonshotai/Kimi-K2.5` and
+  `deepseek-ai/DeepSeek-V4-Flash`
+  ([Qubrid model card](https://platform.qubrid.com/model/deepseek-v4-flash)).
   Backend mirrors via `app/pipeline/judge_models.py` (no Python import
   across the subprocess boundary).
 - **Eval-agent:** `OpenAICompatJudge` in

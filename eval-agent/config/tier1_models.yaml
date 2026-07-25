@@ -19,3 +19,10 @@ models:
     supports_agentic: false
     extra_body:
       thinking: false
+
+  deepseek-ai/DeepSeek-V4-Flash:
+    label: DeepSeek V4 Flash (Qubrid)
+    provider: openai_compat
+    api_key_env: QUBRID_API_KEY
+    base_url: https://platform.qubrid.com/v1
+    supports_agentic: false
