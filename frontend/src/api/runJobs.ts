@@ -29,6 +29,8 @@ export interface RunJobProgress {
   processed?: number;
   total?: number;
   message?: string;
+  /** Optional counter unit for the tray/inline UI (e.g. ``steps``, ``items``). */
+  unit?: string;
   current_entity?: string;
   current_control_number?: string;
   current_source?: string | null;

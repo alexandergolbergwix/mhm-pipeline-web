@@ -2626,3 +2626,20 @@ Invariant:
 Tests: `test_graph_builder_codicological_labels.py`
 (`test_restriction_url_strips_marc_quote_wrappers`),
 `test_hmo_item_upload.py` (`test_url_claims_strip_marc_quote_wrappers_before_wbi`).
+
+### Rule W-112 — Pipeline job progress MUST use 1-based steps with a unit label (added 2026-07-25)
+
+HMO **Rebuild (skip cache)** showed `0 / 3` for the whole authority-refresh
+phase. That counter is three pipeline steps (authority → RDF → export), but
+progress was written as `processed=0` while step 1 was actively running, so
+the tray looked stuck / impossible for a ~2k-item corpus.
+
+Invariant:
+
+1. An in-progress pipeline step reports its 1-based index (`1/3`, `2/3`,
+   `3/3`), never `0/N` while work is underway.
+2. Progress carries `unit` (e.g. `steps`) plus a "Step N of M: …" message.
+3. Job tray / inline progress show `N / M steps · message`, not a bare
+   fraction that reads like item counts.
+
+Tests: `backend/tests/unit/test_hmo_item_build_progress.py`.

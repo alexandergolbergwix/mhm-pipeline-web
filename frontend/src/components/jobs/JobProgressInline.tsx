@@ -1,4 +1,4 @@
-import type { RunJobSnapshot } from "@/api/runJobs";
+import type {RunJobSnapshot} from "@/api/runJobs";
 
 interface JobProgressInlineProps {
   job: RunJobSnapshot;
@@ -15,10 +15,11 @@ interface JobProgressInlineProps {
  * Inline progress line + bar for a background run job, rendered inside the
  * panel that started it (the JobTray shows the same job globally).
  */
-export function JobProgressInline({ job, labels }: JobProgressInlineProps) {
-  const { processed, total, message } = job.progress;
+export function JobProgressInline({job, labels}: JobProgressInlineProps) {
+  const {processed, total, message, unit} = job.progress;
   const pct = total && total > 0 ? Math.round(((processed ?? 0) / total) * 100) : 0;
   const done = job.status === "succeeded" || job.status === "failed" || job.status === "cancelled";
+  const unitSuffix = unit ? ` ${unit}` : "";
 
   return (
     <div className="border-t border-white/5 pt-3 space-y-2">
@@ -33,14 +34,14 @@ export function JobProgressInline({ job, labels }: JobProgressInlineProps) {
           {message && <span className="text-ink">{message}</span>}
         </p>
         {!done && total ? (
-          <span className="muted text-xs">{processed ?? 0} / {total}</span>
+          <span className="muted text-xs">{processed ?? 0} / {total}{unitSuffix}</span>
         ) : null}
       </div>
       {!done && (
         <div className="h-1.5 w-full rounded-full bg-white/8 overflow-hidden">
           <div
             className="h-full bg-biu-sky transition-[width] duration-300"
-            style={{ width: `${Math.min(100, Math.max(pct, total ? 2 : 100))}%` }}
+            style={{width: `${Math.min(100, Math.max(pct, total ? 2 : 100))}%`}}
           />
         </div>
       )}

@@ -275,3 +275,8 @@ cleaned via `clean_url_value` at RDF emit, HMO export, and `_build_live_wbi_clai
 so a cached dirty build can still **Retry failed** without waiting on RDF
 rebuild. *Why:* WBI rejects `Invalid URL "http://…"` when 540/939 `$u` wrappers
 reach `datatypes.URL`.
+53. **R53 — HMO item build progress MUST use 1-based pipeline steps (Rule W-112).**
+`execute_hmo_item_build` reports `1/3` authority → `2/3` RDF → `3/3` export
+with `unit=steps` and "Step N of 3" messages. Never leave an active step at
+`0/3`. Job tray/inline UI show the unit + message. *Why:* skip-cache rebuild
+looked stuck at `0/3` during the long authority refresh.

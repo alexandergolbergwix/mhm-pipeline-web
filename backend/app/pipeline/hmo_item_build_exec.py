@@ -77,7 +77,7 @@ async def execute_hmo_item_build(
     refreshed_authority = False
 
     if refresh_authority:
-        await progress("authority", 0, 3, "Refreshing authority evidence…")
+        await progress("authority", 1, 3, "Step 1 of 3: Refreshing authority evidence…")
         if await cancelled():
             raise HmoItemBuildError("cancelled", conflict=False)
         from app.pipeline import authority as authority_pipeline  # noqa: PLC0415
@@ -106,7 +106,7 @@ async def execute_hmo_item_build(
 
     rebuilt_rdf = False
     if force_rdf_rebuild or not Path(ttl_path).exists():
-        await progress("rdf", 1, 3, "Rebuilding RDF graph from MARC + approvals…")
+        await progress("rdf", 2, 3, "Step 2 of 3: Rebuilding RDF graph from MARC + approvals…")
         if await cancelled():
             raise HmoItemBuildError("cancelled", conflict=False)
         records = (
@@ -179,7 +179,7 @@ async def execute_hmo_item_build(
             conflict=True,
         )
 
-    await progress("export", 2, 3, "Exporting Wikibase item drafts…")
+    await progress("export", 3, 3, "Step 3 of 3: Exporting Wikibase item drafts…")
     if await cancelled():
         raise HmoItemBuildError("cancelled", conflict=False)
 

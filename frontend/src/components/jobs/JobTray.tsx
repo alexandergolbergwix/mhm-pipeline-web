@@ -28,8 +28,12 @@ function progressLabel(job: RunJobSnapshot): string {
   const p = job.progress ?? {};
   const total = Number(p.total ?? 0);
   const processed = Number(p.processed ?? 0);
-  if (total > 0) return `${processed} / ${total}`;
-  const msg = typeof p.message === "string" ? p.message : "";
+  const msg = typeof p.message === "string" ? p.message.trim() : "";
+  const unit = typeof p.unit === "string" && p.unit.trim() ? ` ${p.unit.trim()}` : "";
+  if (total > 0) {
+    const frac = `${processed} / ${total}${unit}`;
+    return msg ? `${frac} · ${msg}` : frac;
+  }
   return msg || job.status;
 }
 

@@ -32,7 +32,8 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
         "phase": "starting",
         "processed": 0,
         "total": 3,
-        "message": "Starting HMO item build…",
+        "unit": "steps",
+        "message": "Starting HMO item build (3 steps)…",
     })
 
     async def on_progress(phase: str, processed: int, total: int, message: str) -> None:
@@ -40,6 +41,7 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
             "phase": phase,
             "processed": processed,
             "total": total,
+            "unit": "steps",
             "message": message,
         })
 
@@ -86,6 +88,7 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
             "phase": "done",
             "processed": 3,
             "total": 3,
+            "unit": "steps",
             "message": (
                 f"Built {result.entity_count} entities"
                 + (" (cached)" if result.from_cache else "")
