@@ -16,7 +16,7 @@
 
 ### Skill: attach a long-running job UI
 1. Backend job kinds live in `api/runJobs.ts` (`RunJobKind`) — extend the union + `JOB_KIND_LABELS` first.
-2. In the page: `const {activeJob, setTrackedJobId} = useRunJobAttachment(runId, "my_kind", sync)` where `sync` is `useCallback`-stable (or rely on the hook's internal `useLatestRef`).
+2. In the page: `const {activeJob, setTrackedJobId} = useRunJobAttachment(runId, "my_kind", sync)` where `sync` is `useCallback`-stable (or rely on the hook's internal `useLatestRef`). On start: `upsertJob(started); setTrackedJobId(started.id); ensureJobPolling()`. On succeed in `sync`, reload the review table (do not rely on active-only job polls alone — Rule W-108).
 3. After POSTing the job-start endpoint, call `setTrackedJobId(job.id)` and `ensureJobPolling()`.
 4. For verify modals specifically, use `useVerifyJob` (handles session loading + early-404 tolerance).
 5. Never read `s.jobForRun(...)` inside a selector (R1); render progress from `activeJob.progress`.

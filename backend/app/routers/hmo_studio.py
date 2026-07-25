@@ -8,13 +8,13 @@ Wikidata itself (see :mod:`app.pipeline.hmo_studio` for the rationale).
 
 Endpoints, all under ``/api/runs/{run_id}/hmo-studio/``::
 
-    POST /build-manifests   →  generate manifests from manuscripts.ttl
-    POST /upload-manifests  →  publish to wikibase.cloud (dry-run by default)
+    POST /build-manifests   →  enqueue ``hmo_manifest_build`` job (201)
+    POST /upload-manifests  →  enqueue ``hmo_manifest_upload`` job (201)
     GET  /coverage          →  HMO class → Wikidata projection report
     GET  /status            →  idle | built | uploaded | error + counts
-    POST /build-items       →  resolve RDF instances against the live
-                                schema (Phase 4) into real-PID/QID-shaped
-                                item drafts, cached per-run
+    POST /build-items       →  enqueue ``hmo_item_build`` job (201): resolve
+                                RDF instances against the live schema into
+                                real-PID/QID-shaped item drafts, cached per-run
 
 Bot credentials are no longer per-user — the server holds OAuth config
 (Heroku env vars). Live writes require ``wikibase_cloud_configured`` on
@@ -42,29 +42,25 @@ from app.models.event import (
     OP_PATCH,
     ProjectEvent,
 )
-from app.models.extraction_approval import ExtractionApproval
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
-from app.models.run import AuthorityMatch, RunRecord
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
-from app.models.run_job import JOB_KIND_HMO_ITEM_UPLOAD
-from app.pipeline import hmo_item_build
-from app.pipeline import hmo_item_upload
+from app.models.run_job import (
+    JOB_KIND_HMO_ITEM_BUILD,
+    JOB_KIND_HMO_ITEM_UPLOAD,
+    JOB_KIND_HMO_MANIFEST_BUILD,
+    JOB_KIND_HMO_MANIFEST_UPLOAD,
+)
 from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.run_job_params import prepare_job_params
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.pipeline.rdf_build import (
-    build_rdf_graph,
     ensure_ttl_on_disk,
-    normalise_matches,
     rdf_output_path_for_run,
-    upsert_rdf_artifact,
 )
 from app.routers.runs import _lookup_run_with_access
 from app.services.wikibase_audit import WikibaseAuditContext
-from app.services.wikibase_credentials import build_server_wikibase_writer
 from app.settings import get_settings
 from app.versioning import apply_event
-from converter.wikibase.resolved_models import UnmappedOntologyUriError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["hmo-studio"])
@@ -218,14 +214,14 @@ class HmoItemStatusResponse(BaseModel):
 
 @router.post(
     "/{run_id}/hmo-studio/build-manifests",
-    response_model=HmoBuildResponse,
 )
 async def build_manifests(
     run_id: uuid.UUID,
+    response: Response,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> HmoBuildResponse:
-    """Generate IIIF manifests for every manuscript in the run's RDF graph.
+) -> dict[str, Any]:
+    """Enqueue IIIF manifest generation as a background job.
 
     Writes one ``MS_<shelfmark>.json`` per manuscript into the run's
     ``iiif_manifests/`` directory. Overwrites any existing manifests —
@@ -234,7 +230,7 @@ async def build_manifests(
     Authority-identifier conflicts (Rule W-95) gate Wikibase *item*
     upload, not local IIIF JSON generation from RDF.
     """
-    await _lookup_run_with_access(db, run_id, auth, write=True)
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
     ttl_path = rdf_output_path_for_run(str(run_id))
     await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():
@@ -245,16 +241,28 @@ async def build_manifests(
                 "before generating IIIF manifests."
             ),
         )
-    manifest_dir = hmo_pipeline.manifest_dir_for_run(str(run_id))
+    params = await prepare_job_params(
+        db, auth, run_id=run_id, kind=JOB_KIND_HMO_MANIFEST_BUILD, params={},
+    )
     try:
-        result = await hmo_pipeline.build_manifests_for_run(
-            ttl_path=ttl_path, manifest_dir=manifest_dir,
+        job = await create_job(
+            db,
+            project_id=run.project_id,
+            run_id=run_id,
+            kind=JOB_KIND_HMO_MANIFEST_BUILD,
+            params=params,
+            created_by=auth.user.id,
         )
-    except FileNotFoundError as exc:
+    except ActiveJobError as exc:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc),
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "a manifest build job is already running",
+                "job_id": str(exc.job_id),
+            },
         ) from exc
-    return HmoBuildResponse(**result.__dict__)
+    response.status_code = status.HTTP_201_CREATED
+    return serialise_job(job)
 
 
 # ── Upload ─────────────────────────────────────────────────────────────
@@ -262,18 +270,19 @@ async def build_manifests(
 
 @router.post(
     "/{run_id}/hmo-studio/upload-manifests",
-    response_model=HmoUploadResponse,
 )
 async def upload_manifests(
     run_id: uuid.UUID,
     payload: HmoUploadRequest,
+    response: Response,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> HmoUploadResponse:
-    """Upload generated manifests to the HMO Wikibase Cloud.
+) -> dict[str, Any]:
+    """Enqueue IIIF manifest upload / dry-run as a background job.
 
-    Live writes require server-held Wikibase Cloud OAuth. Dry-run is
-    allowed without credentials (handy for previewing what would be sent).
+    Live writes require server-held Wikibase Cloud OAuth (validated in
+    ``prepare_job_params``). Dry-run previews need no credentials but still
+    run as a job so large corpora get progress + cancel (Rule W-107).
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
@@ -287,51 +296,29 @@ async def upload_manifests(
             ),
         )
 
-    writer = None
-    if not payload.dry_run:
-        writer = build_server_wikibase_writer()
-
-    # Audit upload intent BEFORE the network call — one versioning event
-    # per manifest the pipeline will try to write. We persist the audit
-    # trail even if the remote write later fails (or never happens, in
-    # dry-run mode). Failure of the audit must NEVER 500 the upload.
-    await _audit_manifest_upload_intent(
-        db,
-        project_id=run.project_id,
-        actor_id=auth.user.id,
-        manifest_dir=manifest_dir,
-        dry_run=payload.dry_run,
+    params = await prepare_job_params(
+        db, auth, run_id=run_id, kind=JOB_KIND_HMO_MANIFEST_UPLOAD,
+        params={"dry_run": payload.dry_run},
     )
-
-    audit_ctx = None
-    if not payload.dry_run:
-        from app.models.wikibase_cloud_write import CHANNEL_MANIFEST_UPLOAD  # noqa: PLC0415
-
-        audit_ctx = WikibaseAuditContext(
-            actor_user_id=auth.user.id,
+    try:
+        job = await create_job(
+            db,
             project_id=run.project_id,
             run_id=run_id,
-            channel=CHANNEL_MANIFEST_UPLOAD,
+            kind=JOB_KIND_HMO_MANIFEST_UPLOAD,
+            params=params,
+            created_by=auth.user.id,
         )
-
-    result = await hmo_pipeline.upload_manifests_for_run(
-        manifest_dir=manifest_dir,
-        writer=writer,
-        dry_run=payload.dry_run,
-        db=db,
-        audit_ctx=audit_ctx,
-    )
-
-    # Cache the report on disk so /status can surface "last upload" info.
-    hmo_pipeline.cache_upload_report(str(run_id), result)
-
-    return HmoUploadResponse(
-        dry_run=result.dry_run,
-        uploaded=result.uploaded,
-        unchanged=result.unchanged,
-        failed=result.failed,
-        outcomes=[HmoUploadOutcomeDto(**o.__dict__) for o in result.outcomes],
-    )
+    except ActiveJobError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "a manifest upload job is already running",
+                "job_id": str(exc.job_id),
+            },
+        ) from exc
+    response.status_code = status.HTTP_201_CREATED
+    return serialise_job(job)
 
 
 # ── Coverage report ────────────────────────────────────────────────────
@@ -434,91 +421,62 @@ async def coverage(
 
 @router.post(
     "/{run_id}/hmo-studio/build-items",
-    response_model=HmoItemBuildResponse,
 )
 async def build_items(
     run_id: uuid.UUID,
+    response: Response,
     force_rebuild: bool = Query(False, description="Bypass HmoStudioItemCache and re-export from RDF"),
     refresh_authority: bool = Query(True, description="Refresh authority evidence as part of every HMO entity build"),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> HmoItemBuildResponse:
-    """Resolve the run's RDF instances against the live schema mapping.
+) -> dict[str, Any]:
+    """Enqueue HMO Wikibase item build as a background job.
 
-    Every class/property referenced by the RDF graph must already have
-    a live Wikibase id from the schema bootstrap
-    (``/api/hmo-wikibase-schema/bootstrap``) — a 409 here means the
-    ontology grew since the last bootstrap; re-run it and retry.
+    Authority refresh + RDF rebuild + item export routinely exceed Heroku's
+    30s HTTP timeout, so this endpoint always returns a ``run_jobs`` snapshot
+    (poll ``GET /runs/{run_id}/jobs/{job_id}``). Every class/property
+    referenced by the RDF graph must already have a live Wikibase id from
+    the schema bootstrap — the worker fails closed with that message if not.
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
-    ttl_path = rdf_output_path_for_run(str(run_id))
-    force_rdf_rebuild = False
-    if refresh_authority:
-        from app.pipeline import authority as authority_pipeline
-        from app.pipeline.authority_re_enrich import re_enrich_run
-        records = (await db.execute(select(RunRecord).where(RunRecord.run_id == run_id))).scalars().all()
-        matches = (await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))).scalars().all()
-        await re_enrich_run(db, run, authority_pipeline.get_default_matcher(), skip_cache=True, records=list(records), existing_rows=list(matches))
-        await db.commit()
-        # Fresh Mazal/KIMA/VIAF/Wikidata matches must reach the RDF graph
-        # before HMO export — never reuse a stale on-disk or RdfArtifact TTL.
-        force_rdf_rebuild = True
-    if not force_rdf_rebuild:
+    if not refresh_authority:
+        ttl_path = rdf_output_path_for_run(str(run_id))
         await ensure_ttl_on_disk(ttl_path, run_id, db)
-    if force_rdf_rebuild or not ttl_path.exists():
-        records = (await db.execute(select(RunRecord).where(RunRecord.run_id == run_id).order_by(RunRecord.control_number.asc()))).scalars().all()
-        if not records:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Run has no MARC records; ingest records before HMO creation.")
-        approved_matches = (await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id, AuthorityMatch.approved.is_(True)))).scalars().all()
-        ner_rows = (await db.execute(select(ExtractionApproval).where(ExtractionApproval.run_id == run_id, ExtractionApproval.approved.is_(True)))).scalars().all()
-        entities_by_cn: dict[str, list[dict[str, Any]]] = {}
-        for row in ner_rows:
-            entities_by_cn.setdefault(row.control_number, []).append({"text": row.override_text or row.text, "type": (row.override_type or row.type or "").upper(), "role": (row.override_role or row.role or "").upper(), "source": row.source, "start": int(row.start or 0), "end": int(row.end or 0), "confidence": row.confidence, "model_confidence": row.model_confidence})
-        try:
-            rdf_result = await build_rdf_graph(marc_records=[dict(row.marc) for row in records], authority_matches=normalise_matches(approved_matches), entities_by_cn=entities_by_cn, output_path=ttl_path)
-            await upsert_rdf_artifact(
-                db,
-                run_id,
-                ttl_path.read_text(encoding="utf-8"),
-                triples_count=rdf_result.triples_count,
-                manuscripts_count=rdf_result.manuscripts_count,
+        if not ttl_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "No RDF graph for this run yet. Build the RDF (RDF Graph) "
+                    "before building HMO Wikibase items."
+                ),
             )
-            await db.commit()
-        except Exception as exc:
-            logger.exception("Internal HMO RDF source build failed for run %s", run_id)
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="HMO internal source build failed") from exc
+
+    params = await prepare_job_params(
+        db, auth, run_id=run_id, kind=JOB_KIND_HMO_ITEM_BUILD,
+        params={
+            "force_rebuild": force_rebuild,
+            "refresh_authority": refresh_authority,
+        },
+    )
     try:
-        result = await hmo_item_build.build_items_for_run(
-            db, run_id, ttl_path, force_rebuild=force_rebuild or force_rdf_rebuild,
+        job = await create_job(
+            db,
+            project_id=run.project_id,
+            run_id=run_id,
+            kind=JOB_KIND_HMO_ITEM_BUILD,
+            params=params,
+            created_by=auth.user.id,
         )
-    except UnmappedOntologyUriError as exc:
+    except ActiveJobError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "The RDF graph references ontology classes/properties with "
-                "no live Wikibase mapping yet. Run the schema bootstrap "
-                f"first. Missing: {', '.join(exc.missing_uris[:10])}"
-            ),
+            detail={
+                "message": "an HMO item build job is already running",
+                "job_id": str(exc.job_id),
+            },
         ) from exc
-    return HmoItemBuildResponse(
-        from_cache=result.from_cache,
-        entity_count=result.entity_count,
-        deferred_link_count=result.deferred_link_count,
-        skipped_statement_count=result.skipped_statement_count,
-        entities=[
-            HmoResolvedEntityDto(
-                local_id=e.local_id,
-                labels=e.labels,
-                descriptions=e.descriptions,
-                class_qid=e.class_qid,
-                source_uri=e.source_uri,
-                claims=[HmoResolvedClaimDto(**c.to_dict()) for c in e.claims],
-                deferred_links=[HmoDeferredLinkDto(**d.to_dict()) for d in e.deferred_links],
-                skipped_statements=e.skipped_statements,
-            )
-            for e in result.entities
-        ],
-    )
+    response.status_code = status.HTTP_201_CREATED
+    return serialise_job(job)
 
 
 # ── Upload items (Phase 5) ───────────────────────────────────────────────
@@ -531,72 +489,56 @@ async def upload_items(
     response: Response,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> dict[str, Any] | HmoItemUploadResponse:
-    """Upload the run's most recent item build (create-or-update, two-pass).
+) -> dict[str, Any]:
+    """Enqueue HMO item upload / dry-run as a background job.
 
-    Requires ``build-items`` to have run first. Dry-run (the default) is a
-    fast, no-network preview and stays synchronous. A live upload makes
-    one sequential Wikibase Cloud write per item + deferred link —
-    thousands of calls, far over Heroku's 30s HTTP timeout — so it spawns
-    a ``run_jobs`` background job and returns the job snapshot right away;
-    poll ``GET /runs/{run_id}/jobs/{job_id}`` for progress.
+    Requires ``build-items`` to have run first. Dry-run and live both run
+    as ``hmo_item_upload`` so large corpora get progress + cancel (Rule
+    W-107). Live writes require server-held Wikibase Cloud OAuth.
 
     An already-uploaded item is skipped unless ``update_existing=True``,
     in which case its labels/descriptions/claims are refreshed in place.
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
-    if not payload.dry_run:
-        params = await prepare_job_params(
-            db, auth, run_id=run_id, kind=JOB_KIND_HMO_ITEM_UPLOAD,
-            params={
-                "update_existing": payload.update_existing,
-                "allow_shacl_errors": payload.allow_shacl_errors,
-            },
-        )
-        try:
-            job = await create_job(
-                db,
-                project_id=run.project_id,
-                run_id=run_id,
-                kind=JOB_KIND_HMO_ITEM_UPLOAD,
-                params=params,
-                created_by=auth.user.id,
-            )
-        except ActiveJobError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "message": "an item upload job is already running",
-                    "job_id": str(exc.job_id),
-                },
-            ) from exc
-        response.status_code = status.HTTP_201_CREATED
-        return serialise_job(job)
-
-    try:
-        result = await hmo_item_upload.upload_items_for_run(
-            db, run_id, writer=None, dry_run=True,
-            update_existing=payload.update_existing,
-            allow_shacl_errors=payload.allow_shacl_errors,
-        )
-    except hmo_item_upload.ItemBuildMissingError as exc:
+    cache_row = (
+        await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))
+    ).scalar_one_or_none()
+    if cache_row is None:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc),
-        ) from exc
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"No item build exists for run {run_id}. Call build-items first."
+            ),
+        )
 
-    return HmoItemUploadResponse(
-        dry_run=result.dry_run,
-        created=result.created,
-        updated=result.updated,
-        skipped=result.skipped,
-        failed=result.failed,
-        blocked=result.blocked,
-        linked=result.linked,
-        unresolved_links=result.unresolved_links,
-        outcomes=[HmoItemUploadOutcomeDto(**o.__dict__) for o in result.outcomes],
-        link_outcomes=[HmoDeferredLinkOutcomeDto(**o.__dict__) for o in result.link_outcomes],
+    params = await prepare_job_params(
+        db, auth, run_id=run_id, kind=JOB_KIND_HMO_ITEM_UPLOAD,
+        params={
+            "dry_run": payload.dry_run,
+            "update_existing": payload.update_existing,
+            "allow_shacl_errors": payload.allow_shacl_errors,
+        },
     )
+    try:
+        job = await create_job(
+            db,
+            project_id=run.project_id,
+            run_id=run_id,
+            kind=JOB_KIND_HMO_ITEM_UPLOAD,
+            params=params,
+            created_by=auth.user.id,
+        )
+    except ActiveJobError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "an item upload job is already running",
+                "job_id": str(exc.job_id),
+            },
+        ) from exc
+    response.status_code = status.HTTP_201_CREATED
+    return serialise_job(job)
 
 
 @router.get("/{run_id}/hmo-studio/item-status", response_model=HmoItemStatusResponse)

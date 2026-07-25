@@ -93,12 +93,15 @@ async def _seed_cache(db_session, sample_run, entities) -> None:
 
 
 async def _seed_job(db_session, sample_run, *, params: dict | None = None) -> uuid.UUID:
+    merged = {"dry_run": False}
+    if params:
+        merged.update(params)
     job = RunJob(
         project_id=sample_run["project_id"],
         run_id=sample_run["run_id"],
         kind="hmo_item_upload",
         status="queued",
-        params=params or {},
+        params=merged,
         progress={},
     )
     db_session.add(job)
@@ -136,7 +139,7 @@ async def test_job_fails_cleanly_when_no_build_exists(sample_run, db_session, mo
         run_id=sample_run["run_id"],
         kind="hmo_item_upload",
         status="queued",
-        params={},
+        params={"dry_run": False},
         progress={},
     )
     db_session.add(job)

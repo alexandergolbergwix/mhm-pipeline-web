@@ -17,8 +17,8 @@
    immediately, and re-runs MUST skip already-mapped URIs.
    *Why:* resuming after a crash mid-batch must never re-create a live entity.
 4. **R4 — Live batches run as `run_jobs` background jobs.** Schema bootstrap
-   (~380 writes) and item upload (~7800 writes) MUST NOT run inline in a request;
-   dry-runs (no network) stay synchronous. *Why:* Heroku's 30s router timeout,
+   (~380 writes), item upload (dry-run + live), and IIIF manifest upload MUST
+   NOT run inline in a request (Rule W-107). *Why:* Heroku's 30s router timeout,
    plus jobs give progress, dedup (409-attach), and cancellation.
 5. **R5 — Update is a merge, never a wipe.** `update_item` uses
    `ActionIfExists.APPEND_OR_REPLACE`; a curator-added statement on the wiki
@@ -221,10 +221,11 @@ unmapped targets remain explicit `unresolved` outcomes. *Why:* a person or
 work shared by two runs must not lose its relationship because it was absent
 from the current build batch.
 44. **R44 — Authority refresh on build-items MUST rebuild RDF (Rule W-101).**
-When `refresh_authority=true`, the router re-enriches matches, rebuilds the
-TTL from approved rows, upserts `RdfArtifact`, and force-rebuilds the item
-cache. *Why:* otherwise Mazal/KIMA/VIAF/Wikidata payload updates stay invisible
-behind a stale on-disk or Postgres TTL.
+When `refresh_authority=true`, the `hmo_item_build` worker
+(`execute_hmo_item_build`) re-enriches matches, rebuilds the TTL from approved
+rows, upserts `RdfArtifact`, and force-rebuilds the item cache. *Why:* otherwise
+Mazal/KIMA/VIAF/Wikidata payload updates stay invisible behind a stale on-disk
+or Postgres TTL.
 45. **R45 — Four HMO pillars (Rule W-102).** (1) Canonical live Wikibase entities
 are the post-upload root for RDF/Wikidata projections. (2) Public Wikidata P/Q
 map only through ontology equivalents + `hmo_wikidata_pq_mapper`. (3) Schema and
@@ -236,3 +237,13 @@ four constraints are the scholarly contract of the browser deployment.
 explicit projection checklist; structural entities stay HMO-only. Salt
 `HMO_ITEM_VERDICT_SCHEMA=w104_v1`. *Why:* the goal is Wikibase items that
 project to the best possible public Wikidata items under WikiProject Manuscripts.
+47. **R47 — Item and manifest builds are background jobs (Rule W-106).**
+`POST …/build-items` and `POST …/build-manifests` MUST enqueue
+`hmo_item_build` / `hmo_manifest_build` and return immediately; live progress
+uses `JobProgressInline`. *Why:* authority+RDF+export and IIIF generation
+exceed Heroku's 30s router budget.
+48. **R48 — Item and manifest uploads are background jobs (Rule W-107).**
+`POST …/upload-items` and `POST …/upload-manifests` MUST enqueue
+`hmo_item_upload` / `hmo_manifest_upload` for dry-run and live; missing item
+build → 409 before enqueue. *Why:* sequential Wikibase writes and large
+dry-run walks exceed the router budget.

@@ -189,16 +189,50 @@ export function itemUploadResultFromJob(job: RunJobSnapshot): HmoItemUploadResul
   };
 }
 
+/** A build-items / build-manifests call returns a background job snapshot. */
+export function isHmoBuildJob(
+  r: HmoItemBuildResult | HmoBuildResult | RunJobSnapshot,
+): r is RunJobSnapshot {
+  return "kind" in r && (r.kind === "hmo_item_build" || r.kind === "hmo_manifest_build");
+}
+
+export function manifestBuildResultFromJob(job: RunJobSnapshot): HmoBuildResult | null {
+  const raw = job.result;
+  if (!raw || typeof raw !== "object") return null;
+  const manifests = (raw as {manifests?: unknown}).manifests;
+  return {
+    manifest_count: Number((raw as {manifest_count?: unknown}).manifest_count ?? 0),
+    total_canvases: Number((raw as {total_canvases?: unknown}).total_canvases ?? 0),
+    total_ranges: Number((raw as {total_ranges?: unknown}).total_ranges ?? 0),
+    total_annotations: Number((raw as {total_annotations?: unknown}).total_annotations ?? 0),
+    manifest_dir: String((raw as {manifest_dir?: unknown}).manifest_dir ?? ""),
+    manifests: Array.isArray(manifests) ? (manifests as HmoManifestSummary[]) : [],
+  };
+}
+
+export function manifestUploadResultFromJob(job: RunJobSnapshot): HmoUploadResult | null {
+  const raw = job.result;
+  if (!raw || typeof raw !== "object") return null;
+  const outcomes = (raw as {outcomes?: unknown}).outcomes;
+  return {
+    dry_run: Boolean((raw as {dry_run?: unknown}).dry_run),
+    uploaded: Number((raw as {uploaded?: unknown}).uploaded ?? 0),
+    unchanged: Number((raw as {unchanged?: unknown}).unchanged ?? 0),
+    failed: Number((raw as {failed?: unknown}).failed ?? 0),
+    outcomes: Array.isArray(outcomes) ? (outcomes as HmoUploadOutcome[]) : [],
+  };
+}
+
 export const HmoStudio = {
   buildManifests: (runId: string) =>
-    api.post<HmoBuildResult>(
+    api.post<RunJobSnapshot>(
       `/runs/${runId}/hmo-studio/build-manifests`, {},
     ),
 
   uploadManifests: (runId: string, dryRun: boolean) =>
-    api.post<HmoUploadResult>(
+    api.post<RunJobSnapshot>(
       `/runs/${runId}/hmo-studio/upload-manifests`,
-      { dry_run: dryRun },
+      {dry_run: dryRun},
     ),
 
   coverage: (runId: string) =>
@@ -211,19 +245,17 @@ export const HmoStudio = {
     const params = new URLSearchParams();
     if (forceRebuild) params.set("force_rebuild", "true");
     if (refreshAuthority) params.set("refresh_authority", "true");
+    else params.set("refresh_authority", "false");
     const query = params.toString();
-    return api.post<HmoItemBuildResult>(
+    return api.post<RunJobSnapshot>(
       `/runs/${runId}/hmo-studio/build-items${query ? `?${query}` : ""}`,
       {},
     );
   },
 
   /**
-   * Dry run returns the preview result inline. A live upload makes
-   * thousands of sequential Wikibase Cloud writes — too slow for one HTTP
-   * request — so the backend spawns a `run_jobs` background job and
-   * returns its snapshot immediately; track `job.id` (e.g. via
-   * `useRunJobAttachment`) for progress.
+   * Dry-run and live uploads both enqueue ``hmo_item_upload`` (Rule W-107).
+   * Track ``job.id`` via ``useRunJobAttachment`` for progress.
    *
    * `updateExisting` refreshes labels/descriptions and merges in any new
    * claims on already-uploaded items instead of skipping them.
@@ -234,7 +266,7 @@ export const HmoStudio = {
     updateExisting = false,
     allowShaclErrors = false,
   ) =>
-    api.post<HmoItemUploadResult | RunJobSnapshot>(
+    api.post<RunJobSnapshot>(
       `/runs/${runId}/hmo-studio/upload-items`,
       {
         dry_run: dryRun,

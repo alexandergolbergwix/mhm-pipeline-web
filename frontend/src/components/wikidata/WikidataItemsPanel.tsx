@@ -19,7 +19,7 @@ import {WikidataUploadPanel} from "@/components/wikidata/WikidataUploadPanel";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
-import {ensureRunJob, loadStudioBuild, waitForStudioBuild} from "@/utils/waitForRunJob";
+import {ensureRunJob, loadStudioBuild} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 
 export interface WikidataItemsPanelProps {
@@ -63,6 +63,7 @@ export function WikidataItemsPanel({
   const [approvingVisible, setApprovingVisible] = useState(false);
   const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
   const [approveFeedback, setApproveFeedback] = useState<string | null>(null);
+  const [studioBuildJob, setStudioBuildJob] = useState<RunJobSnapshot | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const labelStore = useLabelStore();
   const upsertJob = useRunJobs((s) => s.upsertJob);
@@ -81,22 +82,16 @@ export function WikidataItemsPanel({
       .map((item) => item.local_id as string);
   }, [build?.items, filteredIds]);
 
-  const refresh = useCallback(async (opts?: {nextForceRebuild?: boolean}) => {
+  const loadItems = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setBuildProgress(null);
-    const force = opts?.nextForceRebuild ?? forceRebuild;
+    setBuildProgress("Loading items…");
     try {
-      if (force) {
-        setBuildProgress("Starting fresh build…");
-        await waitForStudioBuild(runId, {approvedOnly, forceRebuild: true, source});
-      }
       const fetchPage = () => fetchAllStudioItems(runId, {
         approvedOnly,
         source,
         forceRebuild: false,
       });
-      setBuildProgress(force ? "Loading items…" : "Checking cache…");
       const result = await loadStudioBuild(runId, fetchPage, {
         onProgress: (message) => { setBuildProgress(message); },
       }) as StudioBuild;
@@ -110,7 +105,52 @@ export function WikidataItemsPanel({
       setLoading(false);
       setBuildProgress(null);
     }
-  }, [approvedOnly, forceRebuild, labelStore, onBuildLoaded, runId, source]);
+  }, [approvedOnly, labelStore, onBuildLoaded, runId, source]);
+
+  const {
+    setTrackedJobId: setStudioBuildTrackedId,
+    ensureJobPolling: ensureStudioBuildPolling,
+  } = useRunJobAttachment(runId, "wikidata_studio_build", (j) => {
+    setStudioBuildJob(j);
+    if (j.status === "succeeded") {
+      void loadItems();
+    }
+    if (j.status === "failed" || j.status === "cancelled") {
+      setError(j.error ?? (j.status === "cancelled" ? "Build cancelled." : "Build failed."));
+      setLoading(false);
+    }
+  });
+
+  const refresh = useCallback(async (opts?: {nextForceRebuild?: boolean}) => {
+    const force = opts?.nextForceRebuild ?? forceRebuild;
+    if (force) {
+      setError(null);
+      setBuildProgress("Starting fresh build…");
+      try {
+        const job = await ensureRunJob(runId, "wikidata_studio_build", {
+          approved_only: approvedOnly,
+          force_rebuild: true,
+          source,
+        });
+        upsertJob(job);
+        setStudioBuildJob(job);
+        setStudioBuildTrackedId(job.id);
+        ensureStudioBuildPolling();
+        if (isJobActive(job.status)) {
+          setBuildProgress(null);
+          return;
+        }
+      } catch (e) {
+        setError(e instanceof ApiError ? e.detail : String(e));
+        setBuildProgress(null);
+        return;
+      }
+    }
+    await loadItems();
+  }, [
+    approvedOnly, ensureStudioBuildPolling, forceRebuild, loadItems, runId,
+    setStudioBuildTrackedId, source, upsertJob,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -302,10 +342,12 @@ export function WikidataItemsPanel({
         <button
           type="button"
           className="button-ghost text-sm"
-          disabled={loading}
+          disabled={loading || (studioBuildJob != null && isJobActive(studioBuildJob.status))}
           onClick={() => void refresh({nextForceRebuild: forceRebuild})}
         >
-          {loading ? "Rebuilding…" : "Rebuild"}
+          {loading || (studioBuildJob != null && isJobActive(studioBuildJob.status))
+            ? "Rebuilding…"
+            : "Rebuild"}
         </button>
         <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
           <input
@@ -362,6 +404,17 @@ export function WikidataItemsPanel({
 
       {error && <p className="text-danger text-sm">{error}</p>}
       {approveFeedback && <p className="text-sm text-biu-sky" role="status">{approveFeedback}</p>}
+      {studioBuildJob && (
+        <JobProgressInline
+          job={studioBuildJob}
+          labels={{
+            running: "Building Wikidata items…",
+            succeeded: "Build complete:",
+            failed: "Build failed:",
+            cancelled: "Build cancelled:",
+          }}
+        />
+      )}
       {approveJob && (
         <JobProgressInline
           job={approveJob}

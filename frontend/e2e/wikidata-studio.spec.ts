@@ -14,7 +14,7 @@
  * - inline statement exclude (✗ Exclude button) sends PATCH remove_statements
  * - validator badge renders when validation_issues present
  * - table view toggle
- * - force-rebuild checkbox sends force_rebuild=true
+ * - force-rebuild checkbox starts wikidata_studio_build with force_rebuild=true
  * - W-27: approved-items-only gate shows approved_item_count from server
  */
 
@@ -374,33 +374,54 @@ test.describe("view mode toggle", () => {
   });
 });
 
-// ── force-rebuild checkbox (W-27) ────────────────────────────────────────
+// ── force-rebuild checkbox (W-27 / W-106) ────────────────────────────────
 
 test.describe("force-rebuild", () => {
-  test("rebuild button with force checkbox sends force_rebuild=true", async ({page}) => {
+  test("rebuild button with force checkbox starts wikidata_studio_build job", async ({page}) => {
     const build = makeBuildResponse();
-    const requests: string[] = [];
+    const jobBodies: Array<{kind?: string; params?: Record<string, unknown>}> = [];
 
     await installStudioMocks(page, build);
-    await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio*`, (route) => {
-      if (route.request().method() === "GET") {
-        requests.push(route.request().url());
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
       }
-      route.fulfill({
-        status: 200, contentType: "application/json",
-        body: JSON.stringify(makeBuildResponse()),
+      const body = route.request().postDataJSON() as {
+        kind?: string;
+        params?: Record<string, unknown>;
+      };
+      jobBodies.push(body);
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "job-wd-studio-build",
+          project_id: "44444444-4444-4444-4444-444444444444",
+          run_id: TEST_RUN_ID,
+          kind: body.kind ?? "wikidata_studio_build",
+          status: "succeeded",
+          progress: {phase: "done", message: "Build complete"},
+          params: body.params ?? {},
+          result: {},
+          error: null,
+          created_by: null,
+          started_at: null,
+          finished_at: null,
+          cancel_requested_at: null,
+          created_at: null,
+          updated_at: null,
+        }),
       });
     });
 
     await gotoStudio(page, "modern");
-    // Check the force-rebuild checkbox
     await page.getByTestId("wikidata-rebuild-skip-cache").check();
-    // Click Rebuild
     await page.getByRole("button", {name: /^Rebuild$/i}).click();
-    await page.waitForLoadState("networkidle");
 
-    const forceRequests = requests.filter((u) => u.includes("force_rebuild=true"));
-    expect(forceRequests.length).toBeGreaterThan(0);
+    await expect.poll(() => jobBodies.length).toBeGreaterThan(0);
+    const buildJob = jobBodies.find((b) => b.kind === "wikidata_studio_build");
+    expect(buildJob?.params).toMatchObject({force_rebuild: true});
   });
 });
 

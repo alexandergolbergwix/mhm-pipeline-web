@@ -2483,3 +2483,77 @@ Invariant:
 Tests: `backend/tests/test_studio_item_bulk_approve.py`,
 `frontend/e2e/hmo-wikibase-items.spec.ts`,
 `frontend/e2e/wikidata-item-table.spec.ts`.
+
+### Rule W-106 — All Studio / RDF builds MUST run as `run_jobs` with inline progress (added 2026-07-25)
+
+Authority refresh + RDF rebuild + HMO item export (and IIIF manifest generation)
+routinely exceed Heroku's 30s HTTP timeout. Keeping **Build / Rebuild** on the
+request path either H12'd or blocked the curator UI with only a spinner.
+
+Invariant:
+
+1. New kinds `hmo_item_build` and `hmo_manifest_build` join the existing
+   `rdf_build` and `wikidata_studio_build` kinds. `POST …/build-items` and
+   `POST …/build-manifests` always enqueue and return **201** `serialise_job`
+   (409-attach when an active job of that kind exists).
+2. Workers live in `hmo_item_build_job.py` / `hmo_manifest_build_job.py`;
+   item builds call `execute_hmo_item_build` (authority → RDF → export) with
+   progress callbacks. Generic `POST /runs/{id}/jobs` with the same kinds is
+   equivalent.
+3. Curator UI (`ItemBuildPanel`, HMO Studio manifests, Wikidata force-rebuild,
+   RDF Graph) uses `ensureRunJob` + `useRunJobAttachment` + `JobProgressInline`
+   — never a synchronous browser wait on the heavy build body.
+
+Tests: `backend/tests/test_hmo_studio_build_items_router.py`,
+`test_hmo_studio_ttl_restore.py`, `frontend/e2e/wikidata-studio.spec.ts`
+(force-rebuild starts `wikidata_studio_build`).
+
+### Rule W-107 — All Studio publish/upload paths MUST run as `run_jobs` (added 2026-07-25)
+
+IIIF manifest upload and HMO item dry-run still ran inline on the HTTP
+request. Live Wikidata ``POST …/wikidata-studio/upload`` was a parallel
+sync landmine next to the job-backed UI. Large corpora H12'd or blocked
+the curator with only a busy spinner.
+
+Invariant:
+
+1. ``hmo_manifest_upload`` — dry-run and live enqueue from
+   ``POST …/upload-manifests`` (201); worker audits intent, uploads with
+   per-manifest progress, caches the report.
+2. ``hmo_item_upload`` — dry-run **and** live enqueue from
+   ``POST …/upload-items`` (live still requires Wikibase Cloud config;
+   dry-run does not). Missing item build → 409 before enqueue.
+3. ``POST …/wikidata-studio/upload`` enqueues ``wikidata_upload`` (same as
+   ``POST /jobs``); never runs ``upload_items`` on the request path.
+4. Curator UI uses ``ensureRunJob`` + ``JobProgressInline`` for manifest
+   upload (parity with item upload / Wikidata upload panels).
+
+Remaining long tasks still sync (not publish): gated QuickStatements GET,
+bulk Wikidata reconcile preview, MARC ``create_run``, RDF ``POST /build``
+legacy sync body, single-item push, SHACL validate, section import.
+
+Tests: `test_hmo_studio_upload_manifests_router.py`,
+`test_hmo_studio_upload_items_router.py`, `test_hmo_item_upload_job.py`.
+
+### Rule W-108 — Job-backed publish MUST refresh curator tables on terminal success (added 2026-07-25)
+
+After HMO/Wikidata upload jobs moved off the request path (Rule W-107), the
+progress bar could finish while **Publication status** stayed on
+`NEW (NOT UPLOADED)` until a manual reload. Root cause: `useRunJobAttachment`
+derived only from `selectActiveJob`, which drops terminal rows, and the
+shared `/jobs/mine?active=true` poll never delivered the final snapshot —
+so `onUploaded` / table `load()` never ran.
+
+Invariant:
+
+1. `useRunJobAttachment` prefers the explicitly tracked job id (including
+   succeeded/failed/cancelled) while that id is set; the per-job poll
+   `upsertJob`s every snapshot (including terminal) before clearing the id.
+2. `jobFingerprint` includes result/error presence so a terminal body is
+   distinct from the last running progress tick.
+3. Upload panels `upsertJob` on start and call `onUploaded` once per job id
+   on succeed; HMO `HmoItemsPanel` reloads the items list immediately
+   (`handleLifecycleRefresh`) so Publication status reflects
+   `status` / `upload_outcome` without a page refresh.
+
+Tests: `frontend/tests/unit/renderStable.spec.ts` (terminal fingerprint).

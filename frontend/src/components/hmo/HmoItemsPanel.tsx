@@ -86,6 +86,11 @@ export function HmoItemsPanel({
     void load();
   }, [load, refreshToken]);
 
+  const handleLifecycleRefresh = useCallback(() => {
+    void load();
+    onLifecycleChange?.();
+  }, [load, onLifecycleChange]);
+
   const {setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
     "hmo_item_bulk_approve",
@@ -212,14 +217,14 @@ export function HmoItemsPanel({
           runId={runId}
           rdfPresent={rdfPresent}
           compact
-          onBuilt={onLifecycleChange}
+          onBuilt={handleLifecycleRefresh}
         />
         <ItemUploadPanel
           runId={runId}
           wikibaseConfigured={wikibaseConfigured}
           refreshToken={refreshToken}
           compact
-          onUploaded={onLifecycleChange}
+          onUploaded={handleLifecycleRefresh}
         />
       </div>
 

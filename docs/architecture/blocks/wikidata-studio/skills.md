@@ -61,8 +61,10 @@
 
 ### Skill: force-rebuild the Studio
 
-1. UI: tick "Skip cache (force fresh build)" → Rebuild; or
-   `GET …/wikidata-studio?force_rebuild=true`.
+1. UI: tick "Skip cache (force fresh build)" → Rebuild — starts
+   `wikidata_studio_build` with `force_rebuild=true` and shows
+   `JobProgressInline` (Rule W-106). Or enqueue the same kind via
+   `POST /runs/{id}/jobs`.
 2. This bypasses only the fingerprint cache — the inference cache
    (VIAF/authority/labels) is untouched. The fresh result is written back to
    `wikidata_studio_cache` so the next normal GET is fast.

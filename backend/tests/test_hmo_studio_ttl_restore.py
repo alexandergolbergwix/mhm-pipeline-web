@@ -60,12 +60,10 @@ async def test_build_manifests_restores_ttl_from_postgres(sample_run, db_session
     response = await sample_run["client"].post(
         f"/api/runs/{run_id}/hmo-studio/build-manifests",
     )
-    # A 409 here would mean the TTL was never restored from Postgres —
-    # the fixture graph has no Manuscript node so manifest_count itself
-    # is expected to stay 0, but the endpoint must not treat that as
-    # "no RDF graph".
-    assert response.status_code == 200, response.text
-    assert "manifest_count" in response.json()
+    # A 409 here would mean the TTL was never restored from Postgres.
+    # Manifest build now enqueues a background job (201).
+    assert response.status_code == 201, response.text
+    assert response.json()["kind"] == "hmo_manifest_build"
 
     from app.pipeline import hmo_studio as hmo_pipeline
 
@@ -76,10 +74,15 @@ async def test_build_manifests_restores_ttl_from_postgres(sample_run, db_session
 
 
 @pytest.mark.asyncio
-async def test_build_manifests_ignores_authority_conflicts(sample_run, db_session) -> None:
+async def test_build_manifests_ignores_authority_conflicts(
+    sample_run, db_session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """IIIF build is RDF-only; Rule W-95 authority gate is for Wikibase item upload."""
+    import uuid as uuid_mod
+
     from app.models.run import AuthorityMatch
     from app.pipeline import hmo_studio as hmo_pipeline
+    from app.pipeline.hmo_manifest_build_job import run_hmo_manifest_build_job
 
     run_id = sample_run["run_id"]
     ttl = """
@@ -115,14 +118,19 @@ hm:MS_990001234 a lrmoo:F4_Manifestation_Singleton, hm:Bibliographic_Unit ;
         ))
     await db_session.commit()
 
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda *_a, **_k: None)
+
     response = await sample_run["client"].post(
         f"/api/runs/{run_id}/hmo-studio/build-manifests",
     )
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["manifest_count"] >= 1
+    assert response.status_code == 201, response.text
+    job_id = uuid_mod.UUID(response.json()["id"])
+    await run_hmo_manifest_build_job(job_id)
 
-    for f in hmo_pipeline.manifest_dir_for_run(str(run_id)).glob("MS_*.json"):
+    manifests = list(hmo_pipeline.manifest_dir_for_run(str(run_id)).glob("MS_*.json"))
+    assert len(manifests) >= 1
+
+    for f in manifests:
         f.unlink()
     path = rdf_output_path_for_run(str(run_id))
     if path.exists():
@@ -138,20 +146,13 @@ async def test_build_items_restores_ttl_from_postgres(
     run_id = sample_run["run_id"]
     await _seed_artifact_only(db_session, run_id)
 
-    from app.pipeline import hmo_item_build
-
-    async def _fake_build(*_args, **_kwargs):
-        return hmo_item_build.HmoItemBuildResult(
-            entities=[], entity_count=0, deferred_link_count=0,
-            skipped_statement_count=0, from_cache=False,
-        )
-
-    monkeypatch.setattr(hmo_item_build, "build_items_for_run", _fake_build)
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda *_a, **_k: None)
 
     response = await sample_run["client"].post(
         f"/api/runs/{run_id}/hmo-studio/build-items?refresh_authority=false",
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201, response.text
+    assert response.json()["kind"] == "hmo_item_build"
 
     rdf_output_path_for_run(str(run_id)).unlink()
 

@@ -15,8 +15,11 @@ from app.models.run_job import (
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_EXTRACTION,
     JOB_KIND_HMO_ITEM_BULK_APPROVE,
+    JOB_KIND_HMO_ITEM_BUILD,
     JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_HMO_ITEM_VERIFY,
+    JOB_KIND_HMO_MANIFEST_BUILD,
+    JOB_KIND_HMO_MANIFEST_UPLOAD,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
@@ -154,8 +157,18 @@ async def prepare_job_params(
         if token:
             merged["_wikidata_token"] = token
 
-    if kind == JOB_KIND_HMO_ITEM_UPLOAD or (
-        kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP and not merged.get("dry_run", True)
+    if kind == JOB_KIND_HMO_ITEM_UPLOAD:
+        merged.setdefault("dry_run", True)
+        merged.setdefault("update_existing", False)
+        merged.setdefault("allow_shacl_errors", False)
+
+    if kind == JOB_KIND_HMO_MANIFEST_UPLOAD:
+        merged.setdefault("dry_run", True)
+
+    if (
+        (kind == JOB_KIND_HMO_ITEM_UPLOAD and not merged.get("dry_run", True))
+        or (kind == JOB_KIND_HMO_MANIFEST_UPLOAD and not merged.get("dry_run", True))
+        or (kind == JOB_KIND_HMO_SCHEMA_BOOTSTRAP and not merged.get("dry_run", True))
     ):
         from app.settings import get_settings  # noqa: PLC0415
 
@@ -176,6 +189,14 @@ async def prepare_job_params(
     if kind == JOB_KIND_WIKIDATA_STUDIO_BUILD:
         merged.setdefault("approved_only", True)
         merged.setdefault("force_rebuild", False)
+
+    if kind == JOB_KIND_HMO_ITEM_BUILD:
+        merged.setdefault("force_rebuild", False)
+        merged.setdefault("refresh_authority", True)
+
+    if kind == JOB_KIND_HMO_MANIFEST_BUILD:
+        # No params required — build always regenerates from the run TTL.
+        pass
 
     if kind in (JOB_KIND_HMO_ITEM_BULK_APPROVE, JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE):
         raw_ids = merged.get("local_ids")

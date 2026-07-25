@@ -38,7 +38,10 @@ hmoItemDataStatus.ts`) derives a curator-facing posture from `status` +
 the latest audit row is `update`; `will update existing` when a mapping
 exists but the last push was not an update (reupload with **Reupload (update
 existing)** would refresh the live item). `HmoItemDataStatusBadge.tsx`
-renders the pill; the column is filterable like **Last push**.
+renders the pill; the column is filterable like **Last push**. After a
+job-backed publish finishes, `ItemUploadPanel` calls `onUploaded` once and
+`HmoItemsPanel` reloads the list so **Publication status** updates without
+a manual refresh (Rule W-108).
 
 **SHACL upload gate.** `upload_items_for_run` / `push_single_item` block
 create/update when `shacl_report[local_id]` contains `Violation` or `Error`

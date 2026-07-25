@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 
 import { ApiError } from "@/api/client";
 import {
@@ -21,6 +21,7 @@ import { JobProgressInline } from "@/components/jobs/JobProgressInline";
 import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
 import { useVerifyJob } from "@/hooks/useVerifyJob";
+import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import { fetchVerifySessionWithJobFallback } from "@/utils/fetchVerifySession";
 import { hydrateVerifySession, mergeFlowWithJobProgress } from "@/utils/verifySessionHydrate";
 
@@ -75,6 +76,8 @@ export function ItemUploadPanel({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewIds, setReviewIds] = useState<string[]>([]);
   const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
+  const upsertJob = useRunJobs((s) => s.upsertJob);
+  const notifiedSuccessIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -110,29 +113,7 @@ export function ItemUploadPanel({
     onFailed: handleVerifyFailed,
   });
 
-  const doUpload = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await HmoStudio.uploadItems(runId, dryRun, updateExisting, allowShaclErrors);
-      if (isItemUploadJob(r)) {
-        setJob(r);
-        setTrackedJobId(r.id);
-        ensureJobPolling();
-      } else {
-        setResult(r);
-        await refresh();
-        onUploaded?.();
-      }
-    } catch (e) {
-      setError(e instanceof ApiError ? e.detail : String(e));
-    } finally {
-      setBusy(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, dryRun, updateExisting, allowShaclErrors, refresh]);
-
-  const { activeJob, setTrackedJobId, ensureJobPolling } = useRunJobAttachment(
+  const {activeJob, setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
     "hmo_item_upload",
     (j) => {
@@ -141,11 +122,16 @@ export function ItemUploadPanel({
         const fromJob = itemUploadResultFromJob(j);
         if (fromJob) setResult(fromJob);
         void refresh();
-        onUploaded?.();
-        if (postVerify) {
-          const scopeIds = fromJob?.outcomes
+        setBusy(false);
+        // Notify once per job so the items table reloads Publication status.
+        if (notifiedSuccessIdRef.current !== j.id) {
+          notifiedSuccessIdRef.current = j.id;
+          onUploaded?.();
+        }
+        if (postVerify && fromJob && !fromJob.dry_run) {
+          const scopeIds = fromJob.outcomes
             .filter((o) => o.status === "created" || o.status === "updated" || o.status === "adopted")
-            .map((o) => o.local_id) ?? [];
+            .map((o) => o.local_id);
           if (scopeIds.length > 0) {
             setVerifyError(null);
             setVerifyEvents([]);
@@ -163,9 +149,39 @@ export function ItemUploadPanel({
       }
       if (j.status === "failed" || j.status === "cancelled") {
         void refresh();
+        setBusy(false);
       }
     },
   );
+
+  const doUpload = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await HmoStudio.uploadItems(runId, dryRun, updateExisting, allowShaclErrors);
+      if (isItemUploadJob(r)) {
+        notifiedSuccessIdRef.current = null;
+        upsertJob(r);
+        setJob(r);
+        setTrackedJobId(r.id);
+        ensureJobPolling();
+        if (!isJobActive(r.status)) {
+          setBusy(false);
+        }
+      } else {
+        setResult(r);
+        await refresh();
+        onUploaded?.();
+        setBusy(false);
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+      setBusy(false);
+    }
+  }, [
+    runId, dryRun, updateExisting, allowShaclErrors, refresh, upsertJob,
+    setTrackedJobId, ensureJobPolling, onUploaded,
+  ]);
 
   useEffect(() => {
     if (verifyPhase !== "pre" || verifyRunning) return;

@@ -5,23 +5,28 @@ import {Layout} from "@/components/Layout";
 import {ApiError} from "@/api/client";
 import {MarcFieldEditorDialog} from "@/components/MarcFieldEditorDialog";
 import {Runs} from "@/api/runs";
-import {
-  HmoStudio,
-  type HmoBuildResult,
-  type HmoCoverageReport,
-  type HmoStudioStatus,
-  type HmoUploadResult,
-} from "@/api/hmoStudio";
-import {loadHmoCoverage} from "@/utils/waitForRunJob";
+import {loadHmoCoverage, ensureRunJob} from "@/utils/waitForRunJob";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {Glass, GlassPill} from "@/components/glass";
+import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {SchemaBootstrapPanel} from "@/components/hmo/SchemaBootstrapPanel";
 import {HmoItemsPanel} from "@/components/hmo/HmoItemsPanel";
 import {GraphOverviewSummary} from "@/components/rdf/GraphOverviewSummary";
 import {useProjectEvents} from "@/api/realtime";
-import {useRunJobs} from "@/stores/runJobs";
+import {type RunJobSnapshot} from "@/api/runJobs";
+import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
+import {
+  HmoStudio,
+  manifestBuildResultFromJob,
+  manifestUploadResultFromJob,
+  type HmoBuildResult,
+  type HmoCoverageReport,
+  type HmoStudioStatus,
+  type HmoUploadResult,
+} from "@/api/hmoStudio";
 
 
 type Busy = null | "build" | "upload" | "coverage";
@@ -47,6 +52,9 @@ export default function HmoStudioRoute() {
   const [itemBuildToken, setItemBuildToken] = useState(0);
   const [itemBuildPresent, setItemBuildPresent] = useState(false);
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
+  const [manifestJob, setManifestJob] = useState<RunJobSnapshot | null>(null);
+  const [manifestUploadJob, setManifestUploadJob] = useState<RunJobSnapshot | null>(null);
+  const upsertJob = useRunJobs((s) => s.upsertJob);
 
   // ── refreshers ─────────────────────────────────────────────────────────
 
@@ -134,31 +142,72 @@ export default function HmoStudioRoute() {
     }
   }, [status, coverage, busy, loadCoverage]);
 
+  const {setTrackedJobId: setManifestTrackedId, ensureJobPolling: ensureManifestPolling} =
+    useRunJobAttachment(runId, "hmo_manifest_build", (j) => {
+      setManifestJob(j);
+      if (j.status === "succeeded") {
+        const fromJob = manifestBuildResultFromJob(j);
+        if (fromJob) setBuild(fromJob);
+        void refreshStatus();
+        setBusy((b) => (b === "build" ? null : b));
+      }
+      if (j.status === "failed" || j.status === "cancelled") {
+        setError(j.error ?? (j.status === "cancelled" ? "Manifest build cancelled." : "Manifest build failed."));
+        setBusy((b) => (b === "build" ? null : b));
+      }
+    });
+
+  const {setTrackedJobId: setManifestUploadTrackedId, ensureJobPolling: ensureManifestUploadPolling} =
+    useRunJobAttachment(runId, "hmo_manifest_upload", (j) => {
+      setManifestUploadJob(j);
+      if (j.status === "succeeded") {
+        const fromJob = manifestUploadResultFromJob(j);
+        if (fromJob) setUpload(fromJob);
+        void refreshStatus();
+        setBusy((b) => (b === "upload" ? null : b));
+      }
+      if (j.status === "failed" || j.status === "cancelled") {
+        setError(j.error ?? (j.status === "cancelled" ? "Manifest upload cancelled." : "Manifest upload failed."));
+        setBusy((b) => (b === "upload" ? null : b));
+      }
+    });
+
   // ── actions ────────────────────────────────────────────────────────────
 
   async function doBuild() {
     if (!runId) return;
     setBusy("build"); setError(null);
     try {
-      const result = await HmoStudio.buildManifests(runId);
-      setBuild(result);
-      // Coverage may now reflect different counts; refresh both.
-      await refreshStatus();
+      const started = await ensureRunJob(runId, "hmo_manifest_build", {});
+      upsertJob(started);
+      setManifestJob(started);
+      setManifestTrackedId(started.id);
+      ensureManifestPolling();
+      if (!isJobActive(started.status)) {
+        setBusy(null);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
-    } finally { setBusy(null); }
+      setBusy(null);
+    }
   }
 
   async function doUpload() {
     if (!runId) return;
     setBusy("upload"); setError(null);
     try {
-      const result = await HmoStudio.uploadManifests(runId, dryRun);
-      setUpload(result);
-      await refreshStatus();
+      const started = await ensureRunJob(runId, "hmo_manifest_upload", {dry_run: dryRun});
+      upsertJob(started);
+      setManifestUploadJob(started);
+      setManifestUploadTrackedId(started.id);
+      ensureManifestUploadPolling();
+      if (!isJobActive(started.status)) {
+        setBusy(null);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
-    } finally { setBusy(null); }
+      setBusy(null);
+    }
   }
 
   // ── derived ────────────────────────────────────────────────────────────
@@ -298,9 +347,11 @@ export default function HmoStudioRoute() {
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button onClick={doBuild}
-                    disabled={busy !== null || !status?.rdf_present}
+                    disabled={busy !== null || !status?.rdf_present || (manifestJob != null && isJobActive(manifestJob.status))}
                     className="button-primary text-sm">
-              {busy === "build" ? "Building…" : "Build manifests"}
+              {busy === "build" || (manifestJob != null && isJobActive(manifestJob.status))
+                ? "Building…"
+                : "Build manifests"}
             </button>
             {runId && (
               <SectionExportMenu
@@ -335,6 +386,29 @@ export default function HmoStudioRoute() {
               </button>
             </div>
           </div>
+
+          {manifestJob && (
+            <JobProgressInline
+              job={manifestJob}
+              labels={{
+                running: "Building manifests…",
+                succeeded: "Manifest build complete:",
+                failed: "Manifest build failed:",
+                cancelled: "Manifest build cancelled:",
+              }}
+            />
+          )}
+          {manifestUploadJob && (
+            <JobProgressInline
+              job={manifestUploadJob}
+              labels={{
+                running: dryRun ? "Previewing manifest upload…" : "Uploading manifests…",
+                succeeded: dryRun ? "Manifest preview complete:" : "Manifest upload complete:",
+                failed: "Manifest upload failed:",
+                cancelled: "Manifest upload cancelled:",
+              }}
+            />
+          )}
 
           {build && (
             <p className="text-xs muted pt-1">

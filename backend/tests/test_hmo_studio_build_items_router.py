@@ -1,12 +1,10 @@
-"""Router test for POST /runs/{run_id}/hmo-studio/build-items (Phase 4
-— see dev-docs/hmo-wikibase-studio-plan.md).
-"""
+"""Router tests for POST /hmo-studio/build-items (background job)."""
 
 from __future__ import annotations
 
 import pytest
 
-from app.models.wikibase_entity_mapping import WikibaseEntityMapping
+from app.models.run_job import JOB_KIND_HMO_ITEM_BUILD, JOB_STATUS_SUCCEEDED, RunJob
 from app.pipeline.rdf_build import rdf_output_path_for_run
 
 _TTL = """
@@ -32,7 +30,7 @@ async def test_build_items_requires_rdf_first(sample_run) -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_items_409_when_schema_not_bootstrapped(sample_run) -> None:
+async def test_build_items_enqueues_job(sample_run, db_session) -> None:
     run_id = sample_run["run_id"]
     ttl_path = rdf_output_path_for_run(str(run_id))
     ttl_path.parent.mkdir(parents=True, exist_ok=True)
@@ -41,131 +39,93 @@ async def test_build_items_409_when_schema_not_bootstrapped(sample_run) -> None:
     response = await sample_run["client"].post(
         f"/api/runs/{run_id}/hmo-studio/build-items?refresh_authority=false"
     )
-    assert response.status_code == 409
-    assert "schema bootstrap" in response.json()["detail"]
+    assert response.status_code == 201
+    body = response.json()
+    assert body["kind"] == JOB_KIND_HMO_ITEM_BUILD
+    assert body["status"] in ("queued", "running", "succeeded", "failed")
+    assert body["params"]["refresh_authority"] is False
 
-    ttl_path.unlink()
+    ttl_path.unlink(missing_ok=True)
 
 
 @pytest.mark.asyncio
-async def test_build_items_succeeds_once_schema_is_mapped(sample_run, db_session) -> None:
+async def test_build_items_409_when_active_job_exists(sample_run, db_session) -> None:
     run_id = sample_run["run_id"]
+    project_id = sample_run["project_id"]
+    user_id = sample_run["user_id"]
     ttl_path = rdf_output_path_for_run(str(run_id))
     ttl_path.parent.mkdir(parents=True, exist_ok=True)
     ttl_path.write_text(_TTL, encoding="utf-8")
 
-    db_session.add_all(
-        [
-            WikibaseEntityMapping(
-                ontology_uri="https://w3id.org/mhm/ontology#Codicological_Unit",
-                entity_kind="class",
-                wikibase_id="Q1",
-                run_id=None,
-                label="Codicological Unit",
-            ),
-            WikibaseEntityMapping(
-                ontology_uri="https://w3id.org/mhm/ontology#has_date_of_creation",
-                entity_kind="property",
-                wikibase_id="P1",
-                run_id=None,
-                label="has date of creation",
-                datatype="time",
-            ),
-            WikibaseEntityMapping(
-                ontology_uri="https://w3id.org/mhm/ontology#hmo_source_uri",
-                entity_kind="property",
-                wikibase_id="P99",
-                run_id=None,
-                label="HMO source URI",
-                datatype="string",
-            ),
-        ]
-    )
+    db_session.add(RunJob(
+        project_id=project_id,
+        run_id=run_id,
+        kind=JOB_KIND_HMO_ITEM_BUILD,
+        status="running",
+        params={"force_rebuild": False, "refresh_authority": False},
+        created_by=user_id,
+        progress={},
+    ))
     await db_session.commit()
 
     response = await sample_run["client"].post(
         f"/api/runs/{run_id}/hmo-studio/build-items?refresh_authority=false"
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["from_cache"] is False
-    assert body["entity_count"] == 1
-    assert body["entities"][0]["class_qid"] == "Q1"
-
-    # Second call is a cache hit.
-    response2 = await sample_run["client"].post(
-        f"/api/runs/{run_id}/hmo-studio/build-items?refresh_authority=false"
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert "already running" in str(detail).lower() or (
+        isinstance(detail, dict) and "job_id" in detail
     )
-    assert response2.json()["from_cache"] is True
 
-    response3 = await sample_run["client"].post(
-        f"/api/runs/{run_id}/hmo-studio/build-items?force_rebuild=true&refresh_authority=false",
-    )
-    assert response3.status_code == 200
-    assert response3.json()["from_cache"] is False
-
-    ttl_path.unlink()
+    ttl_path.unlink(missing_ok=True)
 
 
 @pytest.mark.asyncio
-async def test_build_items_refresh_authority_rebuilds_rdf(
-    sample_run, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """refresh_authority=true must rebuild RDF even when a TTL already exists."""
+async def test_hmo_item_build_job_worker(sample_run, db_session, monkeypatch) -> None:
+    from app.pipeline import hmo_item_build_job as job_module
+    from app.pipeline.hmo_item_build_exec import HmoItemBuildJobResult
+
     run_id = sample_run["run_id"]
-    ttl_path = rdf_output_path_for_run(str(run_id))
-    ttl_path.parent.mkdir(parents=True, exist_ok=True)
-    ttl_path.write_text(_TTL, encoding="utf-8")
+    project_id = sample_run["project_id"]
+    user_id = sample_run["user_id"]
 
-    calls: list[str] = []
+    job = RunJob(
+        project_id=project_id,
+        run_id=run_id,
+        kind=JOB_KIND_HMO_ITEM_BUILD,
+        status="running",
+        params={"force_rebuild": True, "refresh_authority": False},
+        created_by=user_id,
+        progress={},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    job_id = job.id
 
-    async def _fake_re_enrich(*_a, **_k):
-        calls.append("re_enrich")
-        return {"updated": 0}
-
-    async def _fake_build_rdf(**_kwargs):
-        calls.append("rdf")
-        from datetime import datetime, timezone
-
-        from app.pipeline.rdf_build import RdfBuildResult
-
-        now = datetime.now(timezone.utc)
-        ttl_path.write_text(_TTL, encoding="utf-8")
-        return RdfBuildResult(
-            triples_count=3,
-            manuscripts_count=1,
-            output_path=ttl_path,
-            started_at=now,
-            finished_at=now,
-        )
-
-    async def _fake_build_items(*_a, **kwargs):
-        calls.append(f"items:{kwargs.get('force_rebuild')}")
-        from app.pipeline import hmo_item_build
-
-        return hmo_item_build.HmoItemBuildResult(
-            entities=[],
-            entity_count=0,
-            deferred_link_count=0,
-            skipped_statement_count=0,
+    async def _fake_exec(*_a, **_k):
+        return HmoItemBuildJobResult(
             from_cache=False,
+            entity_count=3,
+            deferred_link_count=1,
+            skipped_statement_count=0,
+            refreshed_authority=False,
+            rebuilt_rdf=False,
         )
 
-    monkeypatch.setattr("app.pipeline.authority_re_enrich.re_enrich_run", _fake_re_enrich)
-    monkeypatch.setattr(
-        "app.pipeline.authority.get_default_matcher",
-        lambda: object(),
-    )
-    monkeypatch.setattr("app.routers.hmo_studio.build_rdf_graph", _fake_build_rdf)
-    monkeypatch.setattr(
-        "app.pipeline.hmo_item_build.build_items_for_run",
-        _fake_build_items,
-    )
+    async def _noop(*_a, **_k):
+        return None
 
-    response = await sample_run["client"].post(
-        f"/api/runs/{run_id}/hmo-studio/build-items?refresh_authority=true",
-    )
-    assert response.status_code == 200, response.text
-    assert calls == ["re_enrich", "rdf", "items:True"]
+    async def _never(_jid):
+        return False
 
-    ttl_path.unlink(missing_ok=True)
+    monkeypatch.setattr(job_module, "execute_hmo_item_build", _fake_exec)
+    monkeypatch.setattr(job_module, "update_job_progress", _noop)
+    monkeypatch.setattr(job_module, "is_cancel_requested", _never)
+
+    await job_module.run_hmo_item_build_job(job_id)
+
+    db_session.expire_all()
+    refreshed = await db_session.get(RunJob, job_id)
+    assert refreshed is not None
+    assert refreshed.status == JOB_STATUS_SUCCEEDED
+    assert refreshed.result["entity_count"] == 3

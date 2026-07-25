@@ -55,8 +55,12 @@ that scope and records an invalid/empty scope as a failed job. This keeps the
 | `hmo_schema_bootstrap` | `hmo_schema_bootstrap_job.py` | Sequential `wbeditentity` per missing ontology class/property on Wikibase Cloud |
 | `hmo_item_upload` | `hmo_item_upload_job.py` | Live per-item Wikibase Cloud writes + deferred links, with audit context |
 | `hmo_item_bulk_approve` / `wikidata_item_bulk_approve` | `studio_item_bulk_approve_job.py` | Background approve of filtered Studio override rows (Rule W-105) |
+| `hmo_item_build` | `hmo_item_build_job.py` | Authority refresh → RDF rebuild → HMO item export (`execute_hmo_item_build`; Rule W-106) |
+| `hmo_manifest_build` | `hmo_manifest_build_job.py` | IIIF manifests from the run TTL (Rule W-106) |
+| `hmo_manifest_upload` | `hmo_manifest_upload_job.py` | IIIF manifest dry-run / live upload (Rule W-107) |
+| `hmo_item_upload` | `hmo_item_upload_job.py` | HMO item dry-run **and** live upload (Rule W-107) |
 
-Dispatch is the `if/elif` chain in `run_job_service.py::_execute_job` (L318-368);
+Dispatch is the `if/elif` chain in `run_job_service.py::_execute_job`;
 kinds are declared in `models/run_job.py` (`SUPPORTED_JOB_KINDS`).
 
 ## Frontend attachment
@@ -67,7 +71,9 @@ monotonic `refreshSeq`, and accepts WebSocket `run_job_update` pushes via
 `upsertJob`. Components never call `jobForRun`/`activeJobs` inside a selector —
 they select `s.jobs` and derive with `selectActiveJob(...)` in `useMemo` (Rule W-36).
 `useRunJobAttachment(runId, kind, sync)` re-attaches to an already-running job on
-mount and fingerprint-guards the `sync` callback; `useVerifyJob` layers verify-session
+mount, prefers the tracked job id through the terminal snapshot (upserts it into
+the store before clearing — Rule W-108), and fingerprint-guards the `sync`
+callback; `useVerifyJob` layers verify-session
 loading (from `progress.session_snapshot` while running, disk/`result` at finish)
 and partial-result messaging on top. Its optimistic start state is rolled back
 when the enqueue HTTP request rejects, so a request that never created a job is

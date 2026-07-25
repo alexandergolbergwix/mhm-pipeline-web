@@ -41,8 +41,11 @@ polling hooks below.
 inside `useRunJobs(selector)`" because each call allocates a fresh
 reference. Derivation happens outside the selector:
 `selectActiveJob(jobsRecord, runId, kind)` inside `useMemo`
-(`useRunJobAttachment.ts:27-30`), change detection via
-`jobFingerprint(job)` (`renderStable.ts:9`).
+(`useRunJobAttachment.ts`), preferring an explicitly tracked job id
+(including terminal rows — Rule W-108) before the active-only fallback;
+change detection via `jobFingerprint(job)` (`renderStable.ts`) which
+includes result/error presence so succeed callbacks fire after the last
+progress tick.
 
 **Stable callbacks and child→parent reporting.** Tables never do bare
 `useEffect(() => onChange(newArray))` — they use `useReportDerivedIds` /

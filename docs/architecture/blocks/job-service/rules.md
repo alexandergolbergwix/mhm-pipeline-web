@@ -49,7 +49,7 @@
 12. **R12 — A worker that interleaves DB work with slow/retrying external I/O must commit before the slow call** (Rule W-40), and any on-disk build result it caches needs a Postgres write-through (Rule W-39).
     *Why:* the 2-minute idle-in-transaction timeout kills connections held across retry backoff; local-disk caches evaporate on every deploy.
 
-13. **R13 — Frontend: select primitives from `useRunJobs`, derive with `selectActiveJob` in `useMemo`, fingerprint-guard `sync`/`onComplete` callbacks** (Rule W-36); use `useRunJobAttachment`/`useVerifyJob`, never hand-rolled poll effects.
+13. **R13 — Frontend: select primitives from `useRunJobs`, derive with `selectActiveJob` in `useMemo`, fingerprint-guard `sync`/`onComplete` callbacks** (Rule W-36); use `useRunJobAttachment`/`useVerifyJob`, never hand-rolled poll effects. Tracked jobs MUST still sync on terminal success (Rule W-108) so review tables reload Publication status.
     *Why:* store-method selectors and unguarded effect callbacks caused three production blank-UI incidents (React #185).
 
 14. **R14 — On start, a UI that receives a 409 MUST attach to the returned `job_id` rather than error out.**
@@ -66,3 +66,7 @@
 16. **R16 — Verify-job progress counts unique candidate identities only.** `agent.stats` is advisory and streamed/replayed `agent.verdict` events may repeat; `verify_job.py` MUST derive `processed` from the deduplicated candidate local IDs and cap it at `scope_size`. *Why:* a 294-item Wikidata verify displayed 395/294 while still running (Rule W-64).
 
 17. **R17 — Studio “Approve all visible” MUST be a `run_jobs` kind, never a browser PATCH storm.** `hmo_item_bulk_approve` / `wikidata_item_bulk_approve` take `local_ids`, version via `apply_event`, report progress, and honour cancel. *Why:* thousands of sequential override PATCHes hung the curator UI and did nothing useful (Rule W-105).
+
+18. **R18 — Studio / RDF builds MUST be `run_jobs` with inline progress (Rule W-106).** `hmo_item_build`, `hmo_manifest_build`, `rdf_build`, and `wikidata_studio_build` own heavy build/rebuild work; HTTP handlers enqueue and return immediately; the UI attaches via `JobProgressInline`. *Why:* authority+RDF+export and large Studio rebuilds exceed Heroku’s 30s router budget and must not block the curator with a bare spinner.
+
+19. **R19 — Studio publish/upload MUST be `run_jobs` (Rule W-107).** `hmo_item_upload` (dry-run + live), `hmo_manifest_upload`, and `wikidata_upload` (including the legacy `POST …/wikidata-studio/upload` alias) enqueue; never run sequential Wikibase/Wikidata writes on the request path. *Why:* thousands of sequential writes H12; dry-run over ~2k items also exceeds the router budget.

@@ -109,6 +109,7 @@ class HmoUploadResult:
     unchanged: int
     failed: int
     outcomes: list[HmoUploadOutcome] = field(default_factory=list)
+    cancelled: bool = False
 
 
 # ── Build manifests ────────────────────────────────────────────────────
@@ -197,6 +198,8 @@ async def upload_manifests_for_run(
     dry_run: bool = True,
     db: Any | None = None,
     audit_ctx: Any | None = None,
+    on_progress: Any | None = None,
+    should_cancel: Any | None = None,
 ) -> HmoUploadResult:
     """Upload every ``MS_*.json`` manifest from *manifest_dir* to the
     Wikibase Cloud under the ``IIIF:`` namespace.
@@ -204,9 +207,48 @@ async def upload_manifests_for_run(
     ``dry_run=True`` (the default) skips the network call entirely and
     reports what would be sent — same shape as a live upload.
     """
-    result = await asyncio.to_thread(
-        _upload_manifests_sync,
-        manifest_dir, writer, dry_run,
+    if not manifest_dir.exists():
+        raise FileNotFoundError(
+            f"Manifest directory missing: {manifest_dir}. Build manifests first.",
+        )
+
+    paths = sorted(manifest_dir.glob("MS_*.json"))
+    total = len(paths)
+    outcomes: list[HmoUploadOutcome] = []
+    uploaded = 0
+    unchanged = 0
+    failed = 0
+    cancelled = False
+
+    for index, manifest_path in enumerate(paths, start=1):
+        if should_cancel is not None and await should_cancel():
+            cancelled = True
+            break
+        outcome = await asyncio.to_thread(
+            _upload_one_manifest_sync, manifest_path, writer, dry_run,
+        )
+        outcomes.append(outcome)
+        if outcome.status in ("created", "updated", "dry_run"):
+            uploaded += 1
+        elif outcome.status == "unchanged":
+            unchanged += 1
+        else:
+            failed += 1
+        if on_progress is not None:
+            await on_progress(
+                index,
+                total,
+                f"{'Previewed' if dry_run else 'Uploaded'} {outcome.shelfmark} "
+                f"({index}/{total})",
+            )
+
+    result = HmoUploadResult(
+        dry_run=dry_run,
+        uploaded=uploaded,
+        unchanged=unchanged,
+        failed=failed,
+        outcomes=outcomes,
+        cancelled=cancelled,
     )
     if audit_ctx is not None and db is not None and not dry_run:
         from app.models.wikibase_cloud_write import (  # noqa: PLC0415
@@ -236,95 +278,92 @@ async def upload_manifests_for_run(
     return result
 
 
+def _upload_one_manifest_sync(
+    manifest_path: Path,
+    writer: Any,
+    dry_run: bool,
+) -> HmoUploadOutcome:
+    from converter.wikidata.iiif_manifest_builder import BuildStats  # noqa: PLC0415
+    from converter.wikidata.iiif_uploader import IiifManifestUploader  # noqa: PLC0415
+
+    shelfmark = manifest_path.stem[len("MS_"):]
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("Skipping unreadable manifest %s: %s", manifest_path, exc)
+        return HmoUploadOutcome(
+            shelfmark=shelfmark,
+            page_url="",
+            status="failed",
+            message=f"Could not read manifest: {exc}",
+            edit_id=None, new_revid=None,
+            canvas_count=0, range_count=0, annotation_count=0,
+        )
+
+    canvas_count = len(payload.get("items") or [])
+    range_count = len(payload.get("structures") or [])
+    annotation_count = sum(
+        len((page or {}).get("items") or [])
+        for page in (payload.get("annotations") or [])
+    )
+    stats = BuildStats(
+        canvas_count=canvas_count,
+        range_count=range_count,
+        annotation_count=annotation_count,
+        seealso_count=len(payload.get("seeAlso") or []),
+    )
+    uploader = IiifManifestUploader(writer, dry_run=dry_run)
+    try:
+        result = uploader.upload(shelfmark, payload, stats)
+    except Exception as exc:  # noqa: BLE001 - never let one bad manifest kill the batch
+        logger.warning("Upload failed for %s: %s", shelfmark, exc)
+        return HmoUploadOutcome(
+            shelfmark=shelfmark,
+            page_url="",
+            status="failed",
+            message=str(exc),
+            edit_id=None, new_revid=None,
+            canvas_count=canvas_count,
+            range_count=range_count,
+            annotation_count=annotation_count,
+        )
+
+    return HmoUploadOutcome(
+        shelfmark=result.shelfmark,
+        page_url=result.page_url,
+        status=result.status,
+        message=result.message,
+        edit_id=result.edit_id,
+        new_revid=result.new_revid,
+        canvas_count=result.canvas_count,
+        range_count=result.range_count,
+        annotation_count=result.annotation_count,
+    )
+
+
 def _upload_manifests_sync(
     manifest_dir: Path,
     writer: Any,
     dry_run: bool,
 ) -> HmoUploadResult:
-    from converter.wikidata.iiif_manifest_builder import BuildStats  # noqa: PLC0415
-    from converter.wikidata.iiif_uploader import IiifManifestUploader  # noqa: PLC0415
-
+    """Synchronous batch helper kept for unit tests / scripts."""
     if not manifest_dir.exists():
         raise FileNotFoundError(
             f"Manifest directory missing: {manifest_dir}. Build manifests first.",
         )
-
-    uploader = IiifManifestUploader(writer, dry_run=dry_run)
-
     outcomes: list[HmoUploadOutcome] = []
     uploaded = 0
     unchanged = 0
     failed = 0
-
     for manifest_path in sorted(manifest_dir.glob("MS_*.json")):
-        shelfmark = manifest_path.stem[len("MS_"):]
-        try:
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            logger.warning("Skipping unreadable manifest %s: %s", manifest_path, exc)
-            failed += 1
-            outcomes.append(HmoUploadOutcome(
-                shelfmark=shelfmark,
-                page_url="",
-                status="failed",
-                message=f"Could not read manifest: {exc}",
-                edit_id=None, new_revid=None,
-                canvas_count=0, range_count=0, annotation_count=0,
-            ))
-            continue
-
-        # Reconstruct stats from the manifest body. canvas_count = len(items);
-        # range_count = len(structures); annotation_count = sum over annotation
-        # pages. seealso_count is not needed here (already on disk).
-        canvas_count = len(payload.get("items") or [])
-        range_count = len(payload.get("structures") or [])
-        annotation_count = sum(
-            len((page or {}).get("items") or [])
-            for page in (payload.get("annotations") or [])
-        )
-        stats = BuildStats(
-            canvas_count=canvas_count,
-            range_count=range_count,
-            annotation_count=annotation_count,
-            seealso_count=len(payload.get("seeAlso") or []),
-        )
-
-        try:
-            result = uploader.upload(shelfmark, payload, stats)
-        except Exception as exc:  # noqa: BLE001 - never let one bad manifest kill the batch
-            logger.warning("Upload failed for %s: %s", shelfmark, exc)
-            failed += 1
-            outcomes.append(HmoUploadOutcome(
-                shelfmark=shelfmark,
-                page_url="",
-                status="failed",
-                message=str(exc),
-                edit_id=None, new_revid=None,
-                canvas_count=canvas_count,
-                range_count=range_count,
-                annotation_count=annotation_count,
-            ))
-            continue
-
-        outcome = HmoUploadOutcome(
-            shelfmark=result.shelfmark,
-            page_url=result.page_url,
-            status=result.status,
-            message=result.message,
-            edit_id=result.edit_id,
-            new_revid=result.new_revid,
-            canvas_count=result.canvas_count,
-            range_count=result.range_count,
-            annotation_count=result.annotation_count,
-        )
+        outcome = _upload_one_manifest_sync(manifest_path, writer, dry_run)
         outcomes.append(outcome)
-        if result.status in ("created", "updated", "dry_run"):
+        if outcome.status in ("created", "updated", "dry_run"):
             uploaded += 1
-        elif result.status == "unchanged":
+        elif outcome.status == "unchanged":
             unchanged += 1
         else:
             failed += 1
-
     return HmoUploadResult(
         dry_run=dry_run,
         uploaded=uploaded,

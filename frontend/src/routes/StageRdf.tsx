@@ -26,6 +26,7 @@ import { Layout } from "@/components/Layout";
 import { ApiError } from "@/api/client";
 import { NodeDetailPanel } from "@/components/NodeDetailPanel";
 import { GraphFilters } from "@/components/rdf/GraphFilters";
+import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {
   emptyFilterState,
   useGraphFilters,
@@ -700,6 +701,19 @@ export default function StageRdf() {
                 <button type="button" onClick={cancelBuild} className="button-ghost text-sm text-warn">
                   Cancel
                 </button>
+              )}
+              {activeJob && (busy === "build" || activeJob.kind === "rdf_build") && (
+                <div className="w-full max-w-xl">
+                  <JobProgressInline
+                    job={activeJob}
+                    labels={{
+                      running: "Building RDF…",
+                      succeeded: "RDF build complete:",
+                      failed: "RDF build failed:",
+                      cancelled: "RDF build cancelled:",
+                    }}
+                  />
+                </div>
               )}
               <button onClick={validate}
                       disabled={busy !== null || statusLabel === "idle"}

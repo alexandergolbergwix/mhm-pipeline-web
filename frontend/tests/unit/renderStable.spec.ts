@@ -50,4 +50,10 @@ describe("jobFingerprint", () => {
     const b = makeJob({progress: {processed: 2, total: 10}});
     expect(jobFingerprint(a)).not.toBe(jobFingerprint(b));
   });
+
+  it("changes when a terminal result appears", () => {
+    const running = makeJob({status: "succeeded", result: null});
+    const done = makeJob({status: "succeeded", result: {outcomes: []}});
+    expect(jobFingerprint(running)).not.toBe(jobFingerprint(done));
+  });
 });

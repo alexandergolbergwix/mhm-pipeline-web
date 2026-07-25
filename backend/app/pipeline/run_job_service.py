@@ -23,8 +23,11 @@ from app.models.run_job import (
     JOB_KIND_EXTRACTION,
     JOB_KIND_HMO_COVERAGE,
     JOB_KIND_HMO_ITEM_BULK_APPROVE,
+    JOB_KIND_HMO_ITEM_BUILD,
     JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_HMO_ITEM_VERIFY,
+    JOB_KIND_HMO_MANIFEST_BUILD,
+    JOB_KIND_HMO_MANIFEST_UPLOAD,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE,
     JOB_KIND_NER_VERIFY,
@@ -377,6 +380,21 @@ async def _execute_job(job_id: uuid.UUID) -> None:
                 run_hmo_item_upload_job,
             )
             await run_hmo_item_upload_job(job_id)
+        elif kind == JOB_KIND_HMO_ITEM_BUILD:
+            from app.pipeline.hmo_item_build_job import (  # noqa: PLC0415
+                run_hmo_item_build_job,
+            )
+            await run_hmo_item_build_job(job_id)
+        elif kind == JOB_KIND_HMO_MANIFEST_BUILD:
+            from app.pipeline.hmo_manifest_build_job import (  # noqa: PLC0415
+                run_hmo_manifest_build_job,
+            )
+            await run_hmo_manifest_build_job(job_id)
+        elif kind == JOB_KIND_HMO_MANIFEST_UPLOAD:
+            from app.pipeline.hmo_manifest_upload_job import (  # noqa: PLC0415
+                run_hmo_manifest_upload_job,
+            )
+            await run_hmo_manifest_upload_job(job_id)
         elif kind in (JOB_KIND_HMO_ITEM_BULK_APPROVE, JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE):
             from app.pipeline.studio_item_bulk_approve_job import (  # noqa: PLC0415
                 run_studio_item_bulk_approve_job,

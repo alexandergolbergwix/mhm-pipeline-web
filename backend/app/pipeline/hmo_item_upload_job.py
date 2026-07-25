@@ -1,10 +1,9 @@
-"""Background job wrapper for the live HMO item upload.
+"""Background job wrapper for the HMO item upload (dry-run or live).
 
-A live upload makes one sequential Wikibase Cloud write per item plus one
-per deferred link (thousands for a full run) — far over Heroku's 30s HTTP
-request timeout, so it must run as a ``run_jobs`` background task
-(mirrors ``hmo_schema_bootstrap_job.py``'s shape). Dry-run previews stay
-synchronous in the router: they make no network calls.
+Live uploads make one sequential Wikibase Cloud write per item plus one
+per deferred link — far over Heroku's 30s HTTP timeout. Dry-run walks the
+same corpus with SHACL gates and must also stay off the request path for
+large runs (Rule W-107).
 """
 
 from __future__ import annotations
@@ -48,31 +47,37 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         actor_user_id = job.created_by
         project_id = job.project_id
         run_id = job.run_id
-        update_existing = bool((job.params or {}).get("update_existing", False))
-        allow_shacl_errors = bool((job.params or {}).get("allow_shacl_errors", False))
+        params = job.params or {}
+        dry_run = bool(params.get("dry_run", True))
+        update_existing = bool(params.get("update_existing", False))
+        allow_shacl_errors = bool(params.get("allow_shacl_errors", False))
 
-    try:
-        writer = build_server_wikibase_writer()
-    except Exception as exc:  # noqa: BLE001
-        await finish_job(
-            job_id, status=JOB_STATUS_FAILED,
-            error=str(getattr(exc, "detail", exc)),
-        )
-        return
+    writer = None
+    if not dry_run:
+        try:
+            writer = build_server_wikibase_writer()
+        except Exception as exc:  # noqa: BLE001
+            await finish_job(
+                job_id, status=JOB_STATUS_FAILED,
+                error=str(getattr(exc, "detail", exc)),
+            )
+            return
 
     await update_job_progress(job_id, {
         "phase": "running", "processed": 0, "total": 0,
-        "message": "Loading item build…",
+        "message": "Loading item build…" if not dry_run else "Previewing item upload…",
     })
 
     last_seen_total = 0
-    audit_ctx = WikibaseAuditContext(
-        actor_user_id=actor_user_id,
-        project_id=project_id,
-        run_id=run_id,
-        job_id=job_id,
-        channel=CHANNEL_ITEM_UPLOAD,
-    )
+    audit_ctx = None
+    if not dry_run:
+        audit_ctx = WikibaseAuditContext(
+            actor_user_id=actor_user_id,
+            project_id=project_id,
+            run_id=run_id,
+            job_id=job_id,
+            channel=CHANNEL_ITEM_UPLOAD,
+        )
 
     async def on_progress(processed: int, total: int, message: str) -> None:
         nonlocal last_seen_total
@@ -89,16 +94,13 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
     async with session_scope() as db:
         try:
             result = await pipeline.upload_items_for_run(
-                db, run_id, writer=writer, dry_run=False,
+                db, run_id, writer=writer, dry_run=dry_run,
                 update_existing=update_existing,
                 allow_shacl_errors=allow_shacl_errors,
                 audit_ctx=audit_ctx,
                 on_progress=on_progress, should_cancel=should_cancel,
             )
         except pipeline.ItemBuildMissingError as exc:
-            # Defer finish_job until the session closes — nesting a second
-            # session_scope inside this one deadlocks the single shared
-            # SQLite test connection.
             build_missing = str(exc)
     if build_missing is not None:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=build_missing)
@@ -116,6 +118,9 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
             "phase": "cancelled" if result.cancelled else "done",
             "processed": processed_count,
             "total": last_seen_total or processed_count,
-            "message": "Cancelled by user" if result.cancelled else "Upload complete",
+            "message": (
+                "Cancelled by user" if result.cancelled
+                else ("Preview complete" if dry_run else "Upload complete")
+            ),
         },
     )

@@ -18,6 +18,7 @@ import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
+import {useRunJobs} from "@/stores/runJobs";
 import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
 import {hydrateVerifySession, mergeFlowWithJobProgress} from "@/utils/verifySessionHydrate";
 
@@ -130,40 +131,7 @@ export function WikidataUploadPanel({
     onFailed: handleVerifyFailed,
   });
 
-  const doUpload = useCallback(async () => {
-    if (uploadTarget === "live") {
-      const ok = window.confirm(
-        "Upload to live wikidata.org?\n\n"
-        + "This writes real public items. Prefer dry-run or test.wikidata.org first.",
-      );
-      if (!ok) return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const started = await RunJobs.start(runId, "wikidata_upload", {
-        upload_target: uploadTarget,
-        dry_run: uploadTarget === "dry_run",
-        approved_only: approvedOnly,
-        source,
-        item_approved_only: uploadApprovedOnly,
-        update_existing: updateExisting,
-      }).catch(async (e) => {
-        if (e instanceof ApiError && e.status === 409) {
-          const {jobs} = await RunJobs.listForRun(runId, true);
-          const active = jobs.find((j) => j.kind === "wikidata_upload");
-          if (active) return active;
-        }
-        throw e;
-      });
-      setJob(started);
-      setTrackedJobId(started.id);
-      ensureJobPolling();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.detail : String(e));
-      setBusy(false);
-    }
-  }, [runId, uploadTarget, approvedOnly, uploadApprovedOnly, updateExisting, source]);
+  const upsertJob = useRunJobs((s) => s.upsertJob);
 
   const {activeJob, setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
@@ -216,6 +184,45 @@ export function WikidataUploadPanel({
       }
     },
   );
+
+  const doUpload = useCallback(async () => {
+    if (uploadTarget === "live") {
+      const ok = window.confirm(
+        "Upload to live wikidata.org?\n\n"
+        + "This writes real public items. Prefer dry-run or test.wikidata.org first.",
+      );
+      if (!ok) return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const started = await RunJobs.start(runId, "wikidata_upload", {
+        upload_target: uploadTarget,
+        dry_run: uploadTarget === "dry_run",
+        approved_only: approvedOnly,
+        source,
+        item_approved_only: uploadApprovedOnly,
+        update_existing: updateExisting,
+      }).catch(async (e) => {
+        if (e instanceof ApiError && e.status === 409) {
+          const {jobs} = await RunJobs.listForRun(runId, true);
+          const active = jobs.find((j) => j.kind === "wikidata_upload");
+          if (active) return active;
+        }
+        throw e;
+      });
+      upsertJob(started);
+      setJob(started);
+      setTrackedJobId(started.id);
+      ensureJobPolling();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+      setBusy(false);
+    }
+  }, [
+    runId, uploadTarget, approvedOnly, uploadApprovedOnly, updateExisting, source,
+    ensureJobPolling, setTrackedJobId, upsertJob,
+  ]);
 
   useEffect(() => {
     setResult(null);

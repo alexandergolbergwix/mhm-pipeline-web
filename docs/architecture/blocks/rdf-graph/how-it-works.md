@@ -2,10 +2,10 @@
 
 > Up: [RDF / HMO-Ontology Graph Build](README.md)
 
-1. **Trigger** — `POST /runs/{run_id}/rdf/build` (`rdf.py:243`, synchronous,
-   bounded wait) or the background `rdf_build` run-job
-   (`rdf_build_job.py::run_rdf_build_job`, claimed/heartbeated per Rule W-38).
-   Both load identical inputs:
+1. **Trigger** — the curator UI always enqueues the background `rdf_build`
+   run-job (`rdf_build_job.py::run_rdf_build_job`, claimed/heartbeated per
+   Rule W-38) and shows `JobProgressInline` (Rule W-106). `POST /runs/{run_id}/rdf/build`
+   remains as a compatibility enqueue path. Both load identical inputs:
    - `RunRecord.marc` rows (all records for the run),
    - `AuthorityMatch` rows **where `approved IS TRUE`** only,
    - `ExtractionApproval` rows **where `approved IS TRUE`** only, with curator

@@ -40,11 +40,16 @@
     requires `gated=false&ack=raw` and is logged. *Why:* raw QS CREATE lines
     bypass reconcile, validator, moratorium, and Rule-38 guards (Rule W-30 residual).
 11. **R11 — The build never runs inside an HTTP request when there is no cache
-    row** — it goes through the `wikidata_studio_build` run-job (409 + attach).
+    row, and force-rebuild always starts `wikidata_studio_build`** — cache miss
+    → 409 + attach; Rebuild with skip-cache → `ensureRunJob` + `JobProgressInline`
+    (Rule W-106).
     A stale cache is served with `cache_stale=true`, not silently rebuilt.
     *Why:* Heroku's 30 s router timeout, and passive page loads must not spawn surprise job-tray banners.
 12. **R12 — Live uploads use the curator's own encrypted Wikidata token**
-    (Settings → `_unwrap_user_secret`), never a shared credential. *Why:* attribution and the `_is_our_item` authorship check both depend on the acting user.
+    (Settings → `_unwrap_user_secret`), never a shared credential. Both
+    `POST /jobs` (`wikidata_upload`) and `POST …/wikidata-studio/upload`
+    enqueue only — never run `upload_items` on the request path (Rule W-107).
+    *Why:* attribution / authorship plus Heroku H12 on sequential writes.
 13. **R13 — Wikidata Studio parity with HMO review surface (Rule W-57).**
     Merged read model (`fetch_merged_wikidata_items`), durable
     `wikidata_upload` audit rows, global QID ledger + adopt semantics,

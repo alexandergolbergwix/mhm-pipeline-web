@@ -8,6 +8,11 @@
 | `backend/app/pipeline/hmo_schema_bootstrap.py` | Ontology-driven schema bootstrap; label de-dup; per-create commit; report cache for eval-agent |
 | `backend/app/pipeline/hmo_schema_bootstrap_job.py` | Background job wrapper for the live bootstrap (~380 writes) |
 | `backend/app/pipeline/hmo_item_build.py` | RDF → resolved items, cached in `HmoStudioItemCache` keyed by TTL hash + schema-mapping version |
+| `backend/app/pipeline/hmo_item_build_exec.py` | Orchestrates authority → RDF → export for `hmo_item_build` jobs (Rule W-106) |
+| `backend/app/pipeline/hmo_item_build_job.py` | Worker for `hmo_item_build` |
+| `backend/app/pipeline/hmo_manifest_build_job.py` | Worker for `hmo_manifest_build` (IIIF from TTL) |
+| `backend/app/pipeline/hmo_manifest_upload_job.py` | Worker for `hmo_manifest_upload` (IIIF publish; Rule W-107) |
+| `backend/app/pipeline/hmo_item_upload_job.py` | Worker for `hmo_item_upload` (dry-run + live; Rule W-107) |
 | `backend/app/pipeline/hmo_item_shacl.py` | Runs SHACL once, buckets violations by item `local_id` (signal, not gate) |
 | `backend/app/pipeline/hmo_item_merge.py` | Applies curator override rows onto built entities |
 | `backend/app/pipeline/hmo_item_views.py` | `fetch_merged_hmo_items` — build cache + overrides + QID mappings + SHACL + AI verdicts, merged for the UI |

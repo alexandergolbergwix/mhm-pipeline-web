@@ -72,6 +72,10 @@
 | `backend/tests/unit/test_run_job_recovery.py` | Startup respawn; queued-row claim; fresh-foreign-row rejection; unowned/own-dyno/stale reclaim; heartbeat bumps only live+owned+running rows; tick order (heartbeat → reap → respawn); create-race → `ActiveJobError` with the winner's id |
 | `backend/tests/test_hmo_item_upload.py` | `hmo_item_upload` worker behaviour incl. once-per-run reconcile-PID resolution (Rule W-40) |
 | `backend/tests/test_studio_item_bulk_approve.py` | `hmo_item_bulk_approve` / `wikidata_item_bulk_approve` params + worker (Rule W-105) |
+| `backend/tests/test_hmo_studio_build_items_router.py` | `hmo_item_build` enqueue / 409-active / worker result (Rule W-106) |
+| `backend/tests/test_hmo_studio_ttl_restore.py` | `hmo_manifest_build` / `hmo_item_build` enqueue when TTL is Postgres-only |
+| `backend/tests/test_hmo_studio_upload_manifests_router.py` | `hmo_manifest_upload` enqueue + worker (Rule W-107) |
+| `backend/tests/test_hmo_studio_upload_items_router.py` | `hmo_item_upload` dry-run + live enqueue (Rule W-107) |
 | `backend/tests/unit/test_hmo_item_reconcile.py` | No open transaction across the SPARQL reconcile call (R12) |
 | `backend/tests/test_hmo_studio_coverage_router.py` | Coverage 409-attach + durable-cache restore around the `hmo_coverage` job (Rule W-39) |
 | `backend/tests/unit/test_wikidata_upload_guards.py` | The fail-closed gate the `wikidata_upload` job routes through (Rule W-30) |

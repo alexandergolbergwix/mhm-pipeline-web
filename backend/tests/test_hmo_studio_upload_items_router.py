@@ -9,7 +9,7 @@ import uuid
 import pytest
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
-from app.models.run_job import RunJob
+from app.models.run_job import JOB_STATUS_SUCCEEDED, RunJob
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from converter.wikibase.resolved_models import ResolvedWikibaseEntity
 
@@ -36,7 +36,13 @@ async def test_upload_items_requires_a_build_first(sample_run) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dry_run_upload_needs_no_credentials(sample_run, db_session) -> None:
+async def test_dry_run_upload_needs_no_credentials(
+    sample_run, db_session, monkeypatch,
+) -> None:
+    from app.pipeline.hmo_item_upload_job import run_hmo_item_upload_job
+
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda *_a, **_k: None)
+
     run_id = sample_run["run_id"]
     entity = ResolvedWikibaseEntity(
         local_id="QDraft_MS1",
@@ -58,18 +64,29 @@ async def test_dry_run_upload_needs_no_credentials(sample_run, db_session) -> No
     response = await sample_run["client"].post(
         f"/api/runs/{run_id}/hmo-studio/upload-items", json={"dry_run": True}
     )
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
-    assert body["dry_run"] is True
-    assert body["outcomes"][0]["status"] == "would_create"
-    # Regression: the "Would create: N" headline the frontend renders
-    # comes straight off this field — it must count would_create
-    # outcomes, not just live writes (see hmo_item_upload.py).
-    assert body["created"] == 1
+    assert body["kind"] == "hmo_item_upload"
+    assert body["params"]["dry_run"] is True
+
+    await run_hmo_item_upload_job(uuid.UUID(body["id"]))
+    db_session.expire_all()
+    job = await db_session.get(RunJob, uuid.UUID(body["id"]))
+    assert job is not None
+    assert job.status == JOB_STATUS_SUCCEEDED
+    assert job.result["dry_run"] is True
+    assert job.result["outcomes"][0]["status"] == "would_create"
+    assert job.result["created"] == 1
 
 
 @pytest.mark.asyncio
-async def test_dry_run_update_existing_reports_would_update(sample_run, db_session) -> None:
+async def test_dry_run_update_existing_reports_would_update(
+    sample_run, db_session, monkeypatch,
+) -> None:
+    from app.pipeline.hmo_item_upload_job import run_hmo_item_upload_job
+
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda *_a, **_k: None)
+
     run_id = sample_run["run_id"]
     entity = ResolvedWikibaseEntity(
         local_id="QDraft_MS1",
@@ -101,13 +118,18 @@ async def test_dry_run_update_existing_reports_would_update(sample_run, db_sessi
         f"/api/runs/{run_id}/hmo-studio/upload-items",
         json={"dry_run": True, "update_existing": True},
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["outcomes"][0]["status"] == "would_update"
-    assert body["outcomes"][0]["wikibase_id"] == "Q42"
-    assert body["updated"] == 1
-    assert body["created"] == 0
-    assert body["skipped"] == 0
+    assert response.status_code == 201
+    job_id = uuid.UUID(response.json()["id"])
+    await run_hmo_item_upload_job(job_id)
+    db_session.expire_all()
+    job = await db_session.get(RunJob, job_id)
+    assert job is not None
+    assert job.status == JOB_STATUS_SUCCEEDED
+    assert job.result["outcomes"][0]["status"] == "would_update"
+    assert job.result["outcomes"][0]["wikibase_id"] == "Q42"
+    assert job.result["updated"] == 1
+    assert job.result["created"] == 0
+    assert job.result["skipped"] == 0
 
 
 @pytest.mark.asyncio
@@ -137,8 +159,6 @@ async def test_live_upload_spawns_background_job(
     from app.settings import get_settings
 
     get_settings.cache_clear()
-    # Keep the job row queued — this test pins the router contract, not
-    # the worker (covered by test_hmo_item_upload_job.py).
     monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda job_id: None)
 
     run_id = sample_run["run_id"]
@@ -161,6 +181,7 @@ async def test_live_upload_spawns_background_job(
     job_row = await db_session.get(RunJob, uuid.UUID(body["id"]))
     assert job_row is not None
     assert job_row.params.get("update_existing") is True
+    assert job_row.params.get("dry_run") is False
 
     second = await sample_run["client"].post(
         f"/api/runs/{run_id}/hmo-studio/upload-items", json={"dry_run": False}

@@ -7,7 +7,10 @@ export const EMPTY_STRING_SET: Set<string> = new Set();
 export const EMPTY_SET: ReadonlySet<string> = EMPTY_STRING_SET;
 
 export function jobFingerprint(job: RunJobSnapshot): string {
-  return `${job.id}:${job.status}:${JSON.stringify(job.progress ?? {})}`;
+  // Include result/error so a terminal snapshot (with outcomes) is distinct
+  // from the last running progress tick — panels reload table state on succeed.
+  const resultKey = job.result == null ? "0" : "1";
+  return `${job.id}:${job.status}:${JSON.stringify(job.progress ?? {})}:${resultKey}:${job.error ?? ""}`;
 }
 
 export function idsFingerprint(ids: readonly string[]): string {

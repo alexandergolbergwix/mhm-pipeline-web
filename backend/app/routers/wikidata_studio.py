@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -37,7 +37,11 @@ from app.models.event import (
 from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, RunRecord
-from app.models.run_job import JOB_KIND_WIKIDATA_STUDIO_BUILD, JOB_KIND_WIKIDATA_VERIFY
+from app.models.run_job import (
+    JOB_KIND_WIKIDATA_STUDIO_BUILD,
+    JOB_KIND_WIKIDATA_UPLOAD,
+    JOB_KIND_WIKIDATA_VERIFY,
+)
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
@@ -1050,9 +1054,10 @@ class UploadResponse(BaseModel):
     outcomes: list[UploadOutcomeDto]
 
 
-@router.post("/{run_id}/wikidata-studio/upload", response_model=UploadResponse)
+@router.post("/{run_id}/wikidata-studio/upload")
 async def upload_to_wikidata(
     run_id: uuid.UUID,
+    response: Response,
     source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     upload_target: str = Query(
         default="dry_run",
@@ -1074,69 +1079,52 @@ async def upload_to_wikidata(
     ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
-) -> UploadResponse:
-    """Live uploads ALWAYS use the user's own Wikidata token (stored
-    encrypted via the Settings page) and route through the real
-    ``WikidataUploader`` with all four modification guards intact.
+) -> dict[str, Any]:
+    """Enqueue Wikidata upload / dry-run as ``wikidata_upload`` (Rule W-107).
 
-    Before any write, ``upload_items`` reconciles each item against live
-    Wikidata (fail-closed: a lookup that cannot be completed BLOCKS creation,
-    never mints a duplicate) and runs ``item_validator.validate_item`` as a
-    hard gate (any ERROR-severity issue blocks the write). Dry-run reports the
-    same create/update/BLOCKED decision the live run would take."""
+    Prefer ``POST /runs/{id}/jobs`` with the same kind; this route remains
+    as a convenience alias so older clients do not run the upload inline
+    (Heroku H12 landmine). Live writes still require the curator's
+    Settings Wikidata token (validated in ``prepare_job_params``).
+    """
+    from app.pipeline.run_job_params import prepare_job_params  # noqa: PLC0415
+    from app.pipeline.run_job_service import (  # noqa: PLC0415
+        ActiveJobError,
+        create_job,
+        serialise_job,
+    )
+
     mode = wikidata_upload.resolve_upload_mode(upload_target, dry_run=dry_run)
     run = await _lookup_run_with_access(db, run_id, auth, write=not mode.dry_run)
-
-    # Build the items first (with the latest approval state).
-    native = await _build_native_items(db, run_id, auth, approved_only=approved_only, source=source)
-
-    if item_approved_only:
-        override_rows = (
-            await db.execute(
-                select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
-            )
-        ).scalars().all()
-        approved_ids = {r.local_id for r in override_rows if r.approved}
-        native = [it for it in native if wikidata_studio.local_id_for_item(it) in approved_ids]
-
-    token: str | None = None
-    # Dry-run also needs the token so ownership (own vs foreign) is truthful.
-    token = await _unwrap_user_secret(db, auth, "wikidata")
-
-    if not mode.dry_run and not token:
-        raise_msg = (
-            "Live upload requires a Wikidata token in Settings. "
-            "Add one (User@Bot:hex or OAuth secret) and retry."
-        )
-        return UploadResponse(
-            dry_run=False,
-            upload_target=mode.target,
-            moratorium_lifted=mode.moratorium_lifted,
-            test_mode=mode.test_mode,
-            outcomes=[UploadOutcomeDto(
-                local_id="*", label="(token missing)", entity_type="",
-                qid=None, status="failed", message=raise_msg, added_properties=[],
-            )],
-        )
-
-    outcomes = await wikidata_upload.upload_items(
-        native, token=token or "", mode=mode,
-        audit_ctx=WikibaseAuditContext(
-            actor_user_id=auth.user.id,
-            channel=CHANNEL_WIKIDATA_UPLOAD,
+    params = await prepare_job_params(
+        db, auth, run_id=run_id, kind=JOB_KIND_WIKIDATA_UPLOAD,
+        params={
+            "upload_target": mode.target,
+            "dry_run": mode.dry_run,
+            "approved_only": approved_only,
+            "item_approved_only": item_approved_only,
+            "source": source,
+        },
+    )
+    try:
+        job = await create_job(
+            db,
             project_id=run.project_id,
             run_id=run_id,
-        ) if not mode.dry_run else None,
-        db=db,
-        run_id=run_id,
-    )
-    return UploadResponse(
-        dry_run=mode.dry_run,
-        upload_target=mode.target,
-        moratorium_lifted=mode.moratorium_lifted,
-        test_mode=mode.test_mode,
-        outcomes=[UploadOutcomeDto(**o.__dict__) for o in outcomes],
-    )
+            kind=JOB_KIND_WIKIDATA_UPLOAD,
+            params=params,
+            created_by=auth.user.id,
+        )
+    except ActiveJobError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "a Wikidata upload job is already running",
+                "job_id": str(exc.job_id),
+            },
+        ) from exc
+    response.status_code = status.HTTP_201_CREATED
+    return serialise_job(job)
 
 
 class WikidataItemPushResponse(BaseModel):

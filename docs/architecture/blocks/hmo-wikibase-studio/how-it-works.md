@@ -25,8 +25,12 @@ enriches each row with OWL metadata, writes only uncached rows to the fixture,
 and streams verdicts to `inference_cache` (no per-row DB column). The judge prompt
 must include `description` + OWL context (Rule W-47 / eval-agent R17).
 
-**Item build (per run).** `POST /runs/{id}/hmo-studio/build-items` →
-`build_items_for_run` (`hmo_item_build.py:88`). By default
+**Item build (per run).** `POST /runs/{id}/hmo-studio/build-items` (and
+`POST /jobs` with `kind=hmo_item_build`) always enqueues a background job and
+returns **201** (Rule W-106). The worker
+(`hmo_item_build_job.py` → `execute_hmo_item_build`) runs authority refresh →
+RDF rebuild → `build_items_for_run` (`hmo_item_build.py:88`) with progress
+updates; the UI attaches via `JobProgressInline`. By default
 `refresh_authority=true` re-runs the matcher, then **forces an RDF rebuild**
 from approved matches (and upserts `RdfArtifact`) so Mazal/KIMA/VIAF/Wikidata
 payloads reach the TTL before export (Rule W-101). Fingerprint = SHA-256 over the
@@ -37,7 +41,8 @@ SHACL report, and upserts `HmoStudioItemCache`. Each resolved entity carries
 `entity_type` and `control_numbers` (RDF incoming-edge BFS — Rule W-48 / R23)
 so the eval-agent can join parent MARC even when `source_uri` has no embedded
 8+ digit id (e.g. shared `Person_*` nodes). An `UnmappedOntologyUriError`
-surfaces as a 409 telling the curator to re-run the bootstrap. The exporter
+fails the job (and the dedicated POST returns 409 only for “no RDF yet” when
+`refresh_authority=false`). The exporter
 truncates labels/descriptions to 250 chars and string/monolingualtext claim
 values to 400 chars (`hmo_exporter.py:155,197-198`) so long free-text titles no
 longer trigger `ModificationFailed`.
