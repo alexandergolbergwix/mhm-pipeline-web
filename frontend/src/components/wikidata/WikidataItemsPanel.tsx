@@ -23,6 +23,7 @@ import {
   createThrottledProgressRefresh,
   jobProcessedCount,
 } from "@/utils/throttledProgressRefresh";
+import {patchWikidataItemsFromUploadOutcomes} from "@/utils/studioUploadProgress";
 import {ensureRunJob, loadStudioBuild} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 
@@ -86,10 +87,13 @@ export function WikidataItemsPanel({
       .map((item) => item.local_id as string);
   }, [build?.items, filteredIds]);
 
-  const loadItems = useCallback(async () => {
-    setLoading(true);
+  const loadItems = useCallback(async (opts?: {silent?: boolean}) => {
+    const silent = Boolean(opts?.silent);
+    if (!silent) {
+      setLoading(true);
+      setBuildProgress("Loading items…");
+    }
     setError(null);
-    setBuildProgress("Loading items…");
     try {
       const fetchPage = () => fetchAllStudioItems(runId, {
         approvedOnly,
@@ -97,7 +101,9 @@ export function WikidataItemsPanel({
         forceRebuild: false,
       });
       const result = await loadStudioBuild(runId, fetchPage, {
-        onProgress: (message) => { setBuildProgress(message); },
+        onProgress: (message) => {
+          if (!silent) setBuildProgress(message);
+        },
       }) as StudioBuild;
       setBuild(result);
       if (result.property_labels) labelStore.seed(result.property_labels);
@@ -106,8 +112,10 @@ export function WikidataItemsPanel({
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
-      setLoading(false);
-      setBuildProgress(null);
+      if (!silent) {
+        setLoading(false);
+        setBuildProgress(null);
+      }
     }
   }, [approvedOnly, labelStore, onBuildLoaded, runId, source]);
 
@@ -177,14 +185,14 @@ export function WikidataItemsPanel({
       setApproveJob(j);
       if (isJobActive(j.status)) {
         if (approveTableRefreshRef.current.shouldRefresh(jobProcessedCount(j))) {
-          void refresh();
+          void loadItems({silent: true});
         }
       }
       if (j.status === "succeeded") {
         const approved = Number(j.result?.approved ?? 0);
         const unchanged = Number(j.result?.unchanged ?? 0);
         const failed = Number(j.result?.failed ?? 0);
-        void refresh();
+        void loadItems({silent: true});
         setApproveFeedback(
           failed > 0
             ? `Approved ${approved}, already approved ${unchanged}, failed ${failed}.`
@@ -194,7 +202,7 @@ export function WikidataItemsPanel({
         setApprovingVisible(false);
       }
       if (j.status === "failed" || j.status === "cancelled") {
-        void refresh();
+        void loadItems({silent: true});
         setApproveFeedback(
           j.status === "cancelled"
             ? "Bulk approve cancelled."
@@ -204,6 +212,20 @@ export function WikidataItemsPanel({
       }
     },
   );
+
+  const applyUploadOutcomes = useCallback((outcomes: Parameters<typeof patchWikidataItemsFromUploadOutcomes>[1]) => {
+    if (!outcomes.length) return;
+    setBuild((prev) => {
+      if (!prev) return prev;
+      const items = patchWikidataItemsFromUploadOutcomes(prev.items, outcomes);
+      if (items === prev.items) return prev;
+      return {...prev, items};
+    });
+    setOpenItem((prev) => {
+      if (!prev) return prev;
+      return patchWikidataItemsFromUploadOutcomes([prev], outcomes)[0] ?? prev;
+    });
+  }, []);
 
   const handleToggleApproved = useCallback(async (item: StudioItem, next: boolean) => {
     if (!item.local_id) return;
@@ -413,8 +435,9 @@ export function WikidataItemsPanel({
           setUploadTarget(meta.upload_target);
           setMoratoriumLifted(meta.moratorium_lifted);
           setTestMode(meta.test_mode);
-          void refresh();
+          void loadItems({silent: true});
         }}
+        onUploadOutcomes={applyUploadOutcomes}
       />
 
       {error && <p className="text-danger text-sm">{error}</p>}
@@ -441,7 +464,7 @@ export function WikidataItemsPanel({
           }}
         />
       )}
-      {buildPresent && !loading && (
+      {buildPresent && (Boolean(build?.items?.length) || !loading) && (
         <WikidataItemTable
           items={build?.items ?? []}
           onFilteredChange={setFilteredIds}
@@ -467,7 +490,7 @@ export function WikidataItemsPanel({
           testMode={testMode}
           uploadTarget={uploadTarget === "dry_run" ? "test" : uploadTarget}
           onClose={() => setOpenItem(null)}
-          onSaved={() => void refresh()}
+          onSaved={() => void loadItems({silent: true})}
           onVerify={() => openVerify([openItem.local_id ?? ""], "audit_wikidata_item")}
           onAutofix={
             openItem.existing_qid?.trim()
@@ -484,7 +507,7 @@ export function WikidataItemsPanel({
           itemIds={verifyIds}
           scopeLabel={verifyIds?.length === 1 ? `Item ${verifyIds[0]}` : `${verifyIds?.length ?? 0} items`}
           initialActionId={verifyActionId}
-          onVerdictsLanded={() => void refresh()}
+          onVerdictsLanded={() => void loadItems({silent: true})}
           onClose={() => {
             setVerifyOpen(false);
             setVerifyActionId(undefined);

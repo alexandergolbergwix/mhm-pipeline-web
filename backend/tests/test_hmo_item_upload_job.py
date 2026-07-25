@@ -174,6 +174,36 @@ async def test_job_reports_progress_and_succeeds(sample_run, db_session, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_job_progress_includes_per_item_outcomes(sample_run, db_session, monkeypatch):
+    monkeypatch.setattr(job_module, "build_server_wikibase_writer", lambda: _FakeWriter())
+    job_id = await _seed(db_session, sample_run, _entities(2))
+    ticks: list[dict] = []
+
+    async def capture_progress(jid, progress):
+        ticks.append(dict(progress))
+        job = await db_session.get(RunJob, jid)
+        assert job is not None
+        job.progress = progress
+        await db_session.commit()
+
+    monkeypatch.setattr(job_module, "update_job_progress", capture_progress)
+
+    await job_module.run_hmo_item_upload_job(job_id)
+
+    item_ticks = [t for t in ticks if t.get("item_outcome")]
+    assert item_ticks, "pass-1 progress must stream item_outcome after each write"
+    assert all(t["item_outcome"].get("local_id") for t in item_ticks)
+    assert all(t["item_outcome"].get("status") for t in item_ticks)
+    last_with_recent = next(
+        t for t in reversed(ticks) if t.get("recent_item_outcomes")
+    )
+    assert len(last_with_recent["recent_item_outcomes"]) >= 1
+    assert last_with_recent["recent_item_outcomes"][-1]["local_id"] == (
+        last_with_recent["item_outcome"]["local_id"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_job_updates_existing_items_when_requested(sample_run, db_session, monkeypatch):
     monkeypatch.setattr(job_module, "build_server_wikibase_writer", lambda: _FakeWriter())
     job_id = await _seed(db_session, sample_run, _entities(3))

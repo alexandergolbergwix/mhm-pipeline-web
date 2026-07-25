@@ -71,6 +71,7 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
     })
 
     last_seen_total = 0
+    recent_item_outcomes: list[dict] = []
     audit_ctx = None
     if not dry_run:
         audit_ctx = WikibaseAuditContext(
@@ -81,13 +82,26 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
             channel=CHANNEL_ITEM_UPLOAD,
         )
 
-    async def on_progress(processed: int, total: int, message: str) -> None:
+    async def on_progress(
+        processed: int,
+        total: int,
+        message: str,
+        *,
+        item_outcome: dict | None = None,
+    ) -> None:
         nonlocal last_seen_total
         last_seen_total = total
-        await update_job_progress(job_id, {
+        progress: dict = {
             "phase": "running", "processed": processed, "total": total,
             "message": message,
-        })
+        }
+        if item_outcome is not None:
+            recent_item_outcomes.append(item_outcome)
+            progress["item_outcome"] = item_outcome
+            # Rolling window so a missed poll can still catch up without
+            # rewriting thousands of outcomes into every progress row.
+            progress["recent_item_outcomes"] = recent_item_outcomes[-200:]
+        await update_job_progress(job_id, progress)
 
     async def should_cancel() -> bool:
         return await is_cancel_requested(job_id)

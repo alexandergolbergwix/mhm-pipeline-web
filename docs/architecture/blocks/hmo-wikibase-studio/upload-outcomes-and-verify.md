@@ -38,10 +38,10 @@ hmoItemDataStatus.ts`) derives a curator-facing posture from `status` +
 the latest audit row is `update`; `will update existing` when a mapping
 exists but the last push was not an update (reupload with **Reupload (update
 existing)** would refresh the live item). `HmoItemDataStatusBadge.tsx`
-renders the pill; the column is filterable like **Last push**. After a
-job-backed publish finishes, `ItemUploadPanel` calls `onUploaded` once and
-`HmoItemsPanel` reloads the list so **Publication status** updates without
-a manual refresh (Rule W-108).
+renders the pill; the column is filterable like **Last push**. While a live
+upload runs, progress streams per-item outcomes and the table patches only
+those rows (Rule W-110); on terminal succeed `ItemUploadPanel` calls
+`onUploaded` once for a silent full reconcile (Rule W-108).
 
 **Authority conflict resolver (Rule W-109).** When approved matches share a
 Mazal/Wikidata/VIAF ID across different `entity_text` values, upload fails

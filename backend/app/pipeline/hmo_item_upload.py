@@ -122,7 +122,7 @@ async def upload_items_for_run(
     allow_shacl_errors: bool = False,
     local_ids: list[str] | None = None,
     audit_ctx: WikibaseAuditContext | None = None,
-    on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+    on_progress: Callable[..., Awaitable[None]] | None = None,
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
 ) -> HmoItemUploadResult:
     """Upload the run's most recent item build. Raises
@@ -136,11 +136,12 @@ async def upload_items_for_run(
     still considers deferred links that touch the scoped ids so newly
     created targets can be linked from already-mapped sources.
 
-    ``on_progress(processed, total, message)`` is awaited after every
-    item create/update (pass 1) and deferred-link write (pass 2), with
-    ``total`` covering both passes. ``should_cancel()`` is polled before
-    each write for cooperative cancellation — a partial result with
-    ``cancelled=True`` is returned, never an exception.
+    ``on_progress(processed, total, message, *, item_outcome=None)`` is
+    awaited after every pass-1 item outcome (and after deferred-link
+    writes in pass 2, without ``item_outcome``). ``total`` covers both
+    passes. ``should_cancel()`` is polled before each write for
+    cooperative cancellation — a partial result with ``cancelled=True``
+    is returned, never an exception.
     """
     cache_row = (
         await db.execute(
@@ -370,7 +371,7 @@ async def _pass_one_create(
     allow_shacl_errors: bool = False,
     shacl_by_local_id: dict[str, list[dict[str, Any]]] | None = None,
     audit_ctx: WikibaseAuditContext | None = None,
-    on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+    on_progress: Callable[..., Awaitable[None]] | None = None,
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
     total: int = 0,
     reconcile_pid: str | None = None,
@@ -381,12 +382,27 @@ async def _pass_one_create(
     cancelled = False
     shacl_index = shacl_by_local_id or {}
 
-    for idx, entity in enumerate(entities):
+    async def _emit_item_progress(outcome: HmoItemUploadOutcome) -> None:
+        if dry_run or on_progress is None:
+            return
+        await on_progress(
+            len(outcomes),
+            total,
+            f"{len(outcomes)}/{len(entities)} items uploaded",
+            item_outcome={
+                "local_id": outcome.local_id,
+                "source_uri": outcome.source_uri,
+                "status": outcome.status,
+                "wikibase_id": outcome.wikibase_id,
+                "message": outcome.message,
+            },
+        )
+
+    for entity in entities:
         if not dry_run and should_cancel is not None and await should_cancel():
             cancelled = True
             break
-        if not dry_run and on_progress is not None:
-            await on_progress(idx + 1, total, f"{idx + 1}/{len(entities)} items uploaded")
+        before_len = len(outcomes)
 
         block_issues = blocking_shacl_issues(shacl_index.get(entity.local_id))
         if block_issues and not allow_shacl_errors:
@@ -407,9 +423,7 @@ async def _pass_one_create(
                     target_key=entity.source_uri,
                     outcome_message=block_message,
                 )
-            continue
-
-        if entity.source_uri in existing:
+        elif entity.source_uri in existing:
             existing_qid = existing[entity.source_uri]
             if not update_existing:
                 outcomes.append(
@@ -426,36 +440,31 @@ async def _pass_one_create(
                         target_key=entity.source_uri,
                         wikibase_id=existing_qid,
                     )
-                continue
-
-            if dry_run:
+            elif dry_run:
                 outcomes.append(
                     HmoItemUploadOutcome(
                         entity.local_id, entity.source_uri, "would_update", existing_qid,
                     )
                 )
                 updated += 1
-                continue
-
-            outcome = await push_single_item(
-                db, run_id, entity,
-                writer=writer, audit_ctx=audit_ctx,
-                update_existing=update_existing,
-                reconcile_pid=reconcile_pid,
-                existing_qid=existing_qid,
-                allow_shacl_errors=allow_shacl_errors,
-                shacl_issues=shacl_index.get(entity.local_id),
-            )
-            outcomes.append(outcome)
-            if outcome.status == "updated":
-                updated += 1
-            elif outcome.status == "failed":
-                failed += 1
-            elif outcome.status == "blocked":
-                blocked += 1
-            continue
-
-        if dry_run:
+            else:
+                outcome = await push_single_item(
+                    db, run_id, entity,
+                    writer=writer, audit_ctx=audit_ctx,
+                    update_existing=update_existing,
+                    reconcile_pid=reconcile_pid,
+                    existing_qid=existing_qid,
+                    allow_shacl_errors=allow_shacl_errors,
+                    shacl_issues=shacl_index.get(entity.local_id),
+                )
+                outcomes.append(outcome)
+                if outcome.status == "updated":
+                    updated += 1
+                elif outcome.status == "failed":
+                    failed += 1
+                elif outcome.status == "blocked":
+                    blocked += 1
+        elif dry_run:
             outcomes.append(
                 HmoItemUploadOutcome(entity.local_id, entity.source_uri, "would_create")
             )
@@ -464,26 +473,28 @@ async def _pass_one_create(
             # value itself is never used for a real write in dry-run.
             created_this_call[entity.source_uri] = "Q_PENDING"
             created += 1
-            continue
+        else:
+            outcome = await push_single_item(
+                db, run_id, entity,
+                writer=writer, audit_ctx=audit_ctx,
+                update_existing=update_existing,
+                reconcile_pid=reconcile_pid,
+                existing_qid=None,
+                allow_shacl_errors=allow_shacl_errors,
+                shacl_issues=shacl_index.get(entity.local_id),
+            )
+            outcomes.append(outcome)
+            if outcome.status in ("created", "adopted"):
+                created += 1
+                if outcome.wikibase_id:
+                    created_this_call[entity.source_uri] = outcome.wikibase_id
+            elif outcome.status == "failed":
+                failed += 1
+            elif outcome.status == "blocked":
+                blocked += 1
 
-        outcome = await push_single_item(
-            db, run_id, entity,
-            writer=writer, audit_ctx=audit_ctx,
-            update_existing=update_existing,
-            reconcile_pid=reconcile_pid,
-            existing_qid=None,
-            allow_shacl_errors=allow_shacl_errors,
-            shacl_issues=shacl_index.get(entity.local_id),
-        )
-        outcomes.append(outcome)
-        if outcome.status in ("created", "adopted"):
-            created += 1
-            if outcome.wikibase_id:
-                created_this_call[entity.source_uri] = outcome.wikibase_id
-        elif outcome.status == "failed":
-            failed += 1
-        elif outcome.status == "blocked":
-            blocked += 1
+        if len(outcomes) > before_len:
+            await _emit_item_progress(outcomes[-1])
 
     return outcomes, created_this_call, created, skipped, failed, blocked, updated, cancelled
 
@@ -689,7 +700,7 @@ async def _pass_two_link(
     writer: Any | None,
     dry_run: bool,
     audit_ctx: WikibaseAuditContext | None = None,
-    on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+    on_progress: Callable[..., Awaitable[None]] | None = None,
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
     total: int = 0,
     processed_offset: int = 0,

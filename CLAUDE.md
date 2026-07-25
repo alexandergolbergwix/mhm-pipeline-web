@@ -2579,3 +2579,24 @@ Invariant:
 
 Tests: `test_hmo_authority_gate.py`, `test_hmo_authority_conflicts_router.py`,
 `frontend/e2e/hmo-wikibase-items.spec.ts` (conflict panel).
+
+### Rule W-110 — Live Studio upload MUST patch changed rows, not flicker the table (added 2026-07-25)
+
+Mid-run Publication status updates after Rule W-108 still **unmounted** the
+HMO/Wikidata review table: `ItemUploadPanel` called `onUploaded` →
+`load()` → `setLoading(true)` while the UI gated the table on `!loading`.
+
+Invariant:
+
+1. Pass-1 upload progress includes `item_outcome` and a rolling
+   `recent_item_outcomes` window **after** each item write (not before).
+2. The curator panel patches matching rows by `local_id` via
+   `frontend/src/utils/studioUploadProgress.ts` — no mid-run full list
+   reload and no loading gate that hides an already-populated table.
+3. Terminal succeed/fail MAY silent-reload from the API to reconcile with
+   durable mappings/audit rows; the table stays mounted when items exist.
+4. Bulk approve / verify may still throttle silent reloads, but MUST NOT
+   flicker by unmounting the table.
+
+Tests: `test_hmo_item_upload_job.py` (progress item outcomes),
+`frontend/tests/unit/studioUploadProgress.spec.ts`.

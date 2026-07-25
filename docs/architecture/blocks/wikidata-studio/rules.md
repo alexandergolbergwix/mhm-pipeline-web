@@ -203,11 +203,12 @@ Verdict salt `WIKIDATA_VERDICT_SCHEMA=w104_v1`. *Why:* builders already
 followed WPM; judges must evaluate toward the same public-item contract,
 especially for HMO→Wikidata readiness.
 
-40. **R40 — Review tables MUST mid-reload during live upload / bulk approve / verify.**
-`WikidataUploadPanel`, bulk-approve, and `WikidataVerificationModal` use
-`createThrottledProgressRefresh` so QID / upload_outcome / approved / AI pills
-move while the job is still running (parity with HMO R51 / frontend R14).
+40. **R40 — Review tables MUST update mid-run without full-table flicker.**
+Live Wikidata upload streams `item_outcome` / `recent_item_outcomes`; the panel
+patches matching rows via `studioUploadProgress` (parity with HMO R51 /
+frontend R14 / Rule W-110). Bulk-approve and verify may silent-reload
+(throttled) but MUST keep the table mounted when items are already loaded.
 Studio **build** still refreshes only at finish (cache written at end).
-*Why:* curators otherwise see stale “will update” / pending approve until the
-job tray flips to done.
+*Why:* mid-run `setLoading(true)` unmounted the table and flickered Publication
+status during publish.
 

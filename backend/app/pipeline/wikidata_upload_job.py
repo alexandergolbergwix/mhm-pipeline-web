@@ -119,13 +119,37 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     run_id=run_id,
                 )
             outcomes.extend(batch_outcomes)
-            await update_job_progress(job_id, {
+            item_outcome = None
+            if batch_outcomes:
+                last = batch_outcomes[-1]
+                item_outcome = {
+                    "local_id": last.local_id,
+                    "status": last.status,
+                    "qid": last.qid,
+                    "wikibase_id": last.qid,
+                    "message": last.message,
+                }
+            progress: dict = {
                 "phase": "uploading",
                 "processed": idx + 1,
                 "total": total,
                 "message": f"Item {idx + 1} / {total}",
                 "upload_target": mode.target,
-            })
+            }
+            if item_outcome is not None:
+                recent = [
+                    {
+                        "local_id": o.local_id,
+                        "status": o.status,
+                        "qid": o.qid,
+                        "wikibase_id": o.qid,
+                        "message": o.message,
+                    }
+                    for o in outcomes[-200:]
+                ]
+                progress["item_outcome"] = item_outcome
+                progress["recent_item_outcomes"] = recent
+            await update_job_progress(job_id, progress)
     except Exception as exc:  # noqa: BLE001
         logger.exception("wikidata upload job failed for %s", run_id)
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))

@@ -22,7 +22,8 @@
 | `frontend/src/utils/fetchVerifySession.ts` | Job-row snapshot fallback for multi-dyno session hydration |
 | `frontend/src/hooks/useReportDerivedIds.ts` | `useReportDerivedIds` / `useReportFilteredEntities` — fingerprint-guarded child→parent reporting |
 | `frontend/src/utils/renderStable.ts` | `jobFingerprint`, `idsFingerprint`, `useLatestRef`, `EMPTY_SET` — the render-stability toolkit |
-| `frontend/src/utils/throttledProgressRefresh.ts` | Throttle review-table reloads during long `run_jobs` (upload / bulk approve / verify) |
+| `frontend/src/utils/throttledProgressRefresh.ts` | Throttle silent mid-run reloads for bulk approve / verify |
+| `frontend/src/utils/studioUploadProgress.ts` | Patch review-table rows from live upload `item_outcome` / `recent_item_outcomes` (no full-table flicker) |
 | `frontend/src/cache/extractionCache.ts` | User-scoped SWR entity cache + `EXTRACTION_ENTITIES_REFRESH_EVENT = "mhm.entities.refreshed"` |
 | `frontend/src/components/glass/` | Design system: `Glass`, `GlassPill`, `LiquidGlassCanvas`, `LiquidGlassSurface`, `liquidGlassMath`, `glassMapCache` |
 | `frontend/src/components/extraction/`, `authority/`, `wikidata/`, `hmo/` | Feature component families (Rule W-16 / W-31 review surfaces) |

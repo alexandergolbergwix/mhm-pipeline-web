@@ -38,6 +38,24 @@ export interface RunJobProgress {
   session_id?: string;
   last_event_type?: string;
   mode?: string;
+  /** Latest per-item upload outcome (HMO / Wikidata live upload). */
+  item_outcome?: {
+    local_id?: string;
+    status?: string;
+    wikibase_id?: string | null;
+    qid?: string | null;
+    message?: string | null;
+    source_uri?: string;
+  };
+  /** Rolling window of recent item outcomes for mid-run table patches. */
+  recent_item_outcomes?: Array<{
+    local_id?: string;
+    status?: string;
+    wikibase_id?: string | null;
+    qid?: string | null;
+    message?: string | null;
+    source_uri?: string;
+  }>;
   session_snapshot?: {
     session_id?: string;
     run_id?: string;

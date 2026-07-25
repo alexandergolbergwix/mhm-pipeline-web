@@ -23,11 +23,11 @@ import { useRunJobAttachment } from "@/hooks/useRunJobAttachment";
 import { useVerifyJob } from "@/hooks/useVerifyJob";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import { fetchVerifySessionWithJobFallback } from "@/utils/fetchVerifySession";
-import { hydrateVerifySession, mergeFlowWithJobProgress } from "@/utils/verifySessionHydrate";
 import {
-  createThrottledProgressRefresh,
-  jobProcessedCount,
-} from "@/utils/throttledProgressRefresh";
+  collectNewProgressOutcomes,
+  type StudioUploadProgressOutcome,
+} from "@/utils/studioUploadProgress";
+import { hydrateVerifySession, mergeFlowWithJobProgress } from "@/utils/verifySessionHydrate";
 
 interface ItemUploadPanelProps {
   runId: string;
@@ -38,7 +38,10 @@ interface ItemUploadPanelProps {
   compact?: boolean;
   /** local_ids with Last push = failed (survives refresh when result panel is cleared). */
   failedLocalIds?: string[];
+  /** Full reload after terminal upload (or non-job sync path). */
   onUploaded?: () => void;
+  /** Patch only the rows that just finished uploading (mid-run, no flicker). */
+  onUploadOutcomes?: (outcomes: StudioUploadProgressOutcome[]) => void;
 }
 
 function verdictOverall(ev: AgentEvent): string {
@@ -62,6 +65,7 @@ export function ItemUploadPanel({
   compact = false,
   failedLocalIds = [],
   onUploaded,
+  onUploadOutcomes,
 }: ItemUploadPanelProps) {
   const [status, setStatus] = useState<HmoItemStatus | null>(null);
   const [result, setResult] = useState<HmoItemUploadResult | null>(null);
@@ -85,7 +89,7 @@ export function ItemUploadPanel({
   const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
   const upsertJob = useRunJobs((s) => s.upsertJob);
   const notifiedSuccessIdRef = useRef<string | null>(null);
-  const tableRefreshRef = useRef(createThrottledProgressRefresh());
+  const seenOutcomeIdsRef = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     try {
@@ -129,8 +133,9 @@ export function ItemUploadPanel({
       const dry = Boolean((j.params as {dry_run?: unknown} | null)?.dry_run);
       if (isJobActive(j.status)) {
         setBusy(true);
-        if (!dry && tableRefreshRef.current.shouldRefresh(jobProcessedCount(j))) {
-          onUploaded?.();
+        if (!dry) {
+          const fresh = collectNewProgressOutcomes(j.progress, seenOutcomeIdsRef.current);
+          if (fresh.length) onUploadOutcomes?.(fresh);
         }
       }
       if (j.status === "succeeded") {
@@ -182,7 +187,7 @@ export function ItemUploadPanel({
       );
       if (isItemUploadJob(r)) {
         notifiedSuccessIdRef.current = null;
-        tableRefreshRef.current.reset();
+        seenOutcomeIdsRef.current = new Set();
         upsertJob(r);
         setJob(r);
         setTrackedJobId(r.id);

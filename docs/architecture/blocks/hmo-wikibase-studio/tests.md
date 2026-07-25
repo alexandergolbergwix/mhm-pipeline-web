@@ -23,7 +23,8 @@
   worker (W-106); authority-refresh forces RDF rebuild (W-101).
 - `backend/tests/test_hmo_studio_upload_manifests_router.py`,
   `test_hmo_studio_upload_items_router.py`, `test_hmo_item_upload_job.py` —
-  publish jobs (W-107).
+  publish jobs (W-107); per-item progress outcomes for mid-run table patches
+  (W-110).
 - `backend/tests/unit/test_hmo_authority_gate.py`,
   `test_hmo_authority_conflicts_router.py` — conflict report + keep-one
   resolve (W-109).

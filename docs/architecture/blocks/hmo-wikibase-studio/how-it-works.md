@@ -88,10 +88,11 @@ override via `POST .../ai-fixes/apply`. It also joins the latest
 Optional `local_ids` scopes pass 1 to those drafts (UI **Retry N failed**);
 pass 2 still writes deferred links that touch the scope. Full-corpus uploads
 still persist live canonical state; scoped retries do not.
-While a live `hmo_item_upload` job runs, `ItemUploadPanel` throttles review-table
-reloads from job progress so Publication status / Last publication move during
-the run (not only at finish). `upload_outcome === failed` surfaces as
-Publication status **failed**.
+While a live `hmo_item_upload` job runs, pass-1 progress carries
+`item_outcome` / `recent_item_outcomes`; `ItemUploadPanel` patches only those
+rows in the review table so Publication status / Last publication move during
+the run without unmounting the table. Terminal succeed still silent-reloads.
+`upload_outcome === failed` surfaces as Publication status **failed**.
 Scalar snak mismatches that Wikibase reports as ``expected string`` (including
 quantity→string drift on `max_nesting_depth` / P224) retry per-claim via the
 string-compatible fallback (Rule W-91 class).

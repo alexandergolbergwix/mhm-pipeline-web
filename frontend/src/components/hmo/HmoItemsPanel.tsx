@@ -19,6 +19,7 @@ import {
   createThrottledProgressRefresh,
   jobProcessedCount,
 } from "@/utils/throttledProgressRefresh";
+import {patchHmoItemsFromUploadOutcomes} from "@/utils/studioUploadProgress";
 import {ensureRunJob} from "@/utils/waitForRunJob";
 
 export interface HmoItemsPanelProps {
@@ -78,17 +79,22 @@ export function HmoItemsPanel({
     setVerifyOpen(true);
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: {silent?: boolean}) => {
     if (!buildPresent) return;
-    setLoading(true);
+    const silent = Boolean(opts?.silent);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await HmoStudioItems.list(runId);
       setItems(res.items);
+      setOpenItem((prev) => {
+        if (!prev) return prev;
+        return res.items.find((i) => i.local_id === prev.local_id) ?? prev;
+      });
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [buildPresent, runId]);
 
@@ -97,9 +103,19 @@ export function HmoItemsPanel({
   }, [load, refreshToken]);
 
   const handleLifecycleRefresh = useCallback(() => {
-    void load();
+    void load({silent: items.length > 0});
     onLifecycleChange?.();
-  }, [load, onLifecycleChange]);
+  }, [items.length, load, onLifecycleChange]);
+
+  const applyUploadOutcomes = useCallback((outcomes: Parameters<typeof patchHmoItemsFromUploadOutcomes>[1]) => {
+    if (!outcomes.length) return;
+    setItems((prev) => patchHmoItemsFromUploadOutcomes(prev, outcomes));
+    setOpenItem((prev) => {
+      if (!prev) return prev;
+      const patched = patchHmoItemsFromUploadOutcomes([prev], outcomes);
+      return patched[0] ?? prev;
+    });
+  }, []);
 
   const approveTableRefreshRef = useRef(createThrottledProgressRefresh());
 
@@ -110,14 +126,14 @@ export function HmoItemsPanel({
       setApproveJob(j);
       if (isJobActive(j.status)) {
         if (approveTableRefreshRef.current.shouldRefresh(jobProcessedCount(j))) {
-          void load();
+          void load({silent: true});
         }
       }
       if (j.status === "succeeded") {
         const approved = Number(j.result?.approved ?? 0);
         const unchanged = Number(j.result?.unchanged ?? 0);
         const failed = Number(j.result?.failed ?? 0);
-        void load();
+        void load({silent: true});
         setDecisionFeedback(
           failed > 0
             ? `Approved ${approved}, already approved ${unchanged}, failed ${failed}.`
@@ -127,7 +143,7 @@ export function HmoItemsPanel({
         setApprovingVisible(false);
       }
       if (j.status === "failed" || j.status === "cancelled") {
-        void load();
+        void load({silent: true});
         setDecisionFeedback(
           j.status === "cancelled"
             ? "Bulk approve cancelled."
@@ -142,7 +158,7 @@ export function HmoItemsPanel({
     setDecisionFeedback(null);
     try {
       await HmoStudioItems.patchOverride(runId, item.local_id, {approved: next});
-      await load();
+      await load({silent: true});
       setDecisionFeedback(next === true ? "Entry marked approved." : next === false ? "Entry marked rejected." : "Entry returned to pending review.");
     } catch (e) {
       setDecisionFeedback(e instanceof ApiError ? e.detail : "We could not save this decision. Nothing was changed.");
@@ -177,6 +193,7 @@ export function HmoItemsPanel({
   }, [ensureJobPolling, pendingVisibleIds, runId, setTrackedJobId, upsertJob]);
 
   const approveBusy = approvingVisible || (approveJob != null && isJobActive(approveJob.status));
+  const showTable = buildPresent && (items.length > 0 || !loading);
 
   return (
     <Glass as="section" className="p-6 space-y-4" data-testid="hmo-items-panel">
@@ -251,6 +268,7 @@ export function HmoItemsPanel({
           compact
           failedLocalIds={failedLocalIds}
           onUploaded={handleLifecycleRefresh}
+          onUploadOutcomes={applyUploadOutcomes}
         />
       </div>
 
@@ -271,7 +289,7 @@ export function HmoItemsPanel({
         <p className="muted text-sm">Build items above before the review table loads.</p>
       )}
       {error && <p className="text-danger text-sm">{error}</p>}
-      {buildPresent && !loading && (
+      {showTable && (
         <HmoItemTable
           items={items}
           onFilteredChange={setFilteredIds}
@@ -279,7 +297,7 @@ export function HmoItemsPanel({
           onToggleApproved={(item, next) => void handleToggleApproved(item, next)}
         />
       )}
-      {loading && <p className="muted text-sm">Loading items…</p>}
+      {loading && items.length === 0 && <p className="muted text-sm">Loading items…</p>}
 
       {openItem && (
         <HmoItemDetailDrawer
@@ -288,7 +306,7 @@ export function HmoItemsPanel({
           item={openItem}
           allItems={items}
           onClose={() => setOpenItem(null)}
-          onSaved={() => void load()}
+          onSaved={() => void load({silent: true})}
           onVerify={() => openVerify([openItem.local_id], "audit_hmo_wikibase_item")}
           onAutofix={
             openItem.wikibase_id?.trim()
@@ -304,7 +322,7 @@ export function HmoItemsPanel({
           scopeLabel={verifyIds?.length === 1 ? `Item ${verifyIds[0]}` : `${verifyIds?.length ?? 0} items`}
           itemIds={verifyIds}
           initialActionId={verifyActionId}
-          onVerdictsLanded={() => void load()}
+          onVerdictsLanded={() => void load({silent: true})}
           onClose={() => {
             setVerifyOpen(false);
             setVerifyActionId(undefined);
