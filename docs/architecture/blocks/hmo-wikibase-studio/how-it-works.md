@@ -65,7 +65,7 @@ The canonical-state boundary is implemented by the hmo_canonical module. Live Wi
 
 The item-build endpoint runs the matcher/re-enrichment service inside the HMO creation workflow by default (`refresh_authority=true`). This makes accepted authority evidence part of the canonical HMO build rather than a separate Authority UI action; callers may explicitly disable it for offline/cache-only diagnostics.
 
-The HMO Studio lifecycle bar displays the same readiness counters, so curators can distinguish a dry-run/build preview from a canonical live-backed state before opening downstream projections. The route presents a four-step **Prepare → Review → Preview → Publish** workflow in plain language; schema maintenance and server connection details are behind advanced disclosures. The canonical badge says `not yet confirmed`, `N entries confirmed`, or `all entries confirmed` rather than fabricating a denominator when no expected total is available.
+The HMO Studio lifecycle bar displays the same readiness counters, so curators can distinguish a dry-run/build preview from a canonical live-backed state before opening downstream projections. The route presents a four-step **Prepare → Review → Preview → Publish** workflow in plain language on the default **Items** sub-tab; schema maintenance and server connection details are behind advanced disclosures. Additional sub-tabs host **Wikidata coverage** (projection table), **RDF graph** (embedded `RdfGraphExplorer` with filters/canvas), and **Manifests** (build/upload + JSON preview via `GET …/manifests`). The canonical badge says `not yet confirmed`, `N entries confirmed`, or `all entries confirmed` rather than fabricating a denominator when no expected total is available.
 
 The status endpoint also reports `canonical_live_count` and `canonical_ready`; readiness is true only when every built entity has a persisted live Wikibase read-back, preventing downstream projections from treating a dry-run preview as canonical.
 
@@ -143,8 +143,13 @@ else falls back to the durable `HmoCoverageCache` row (fingerprint = SHA-256 of
 TTL bytes) and re-seeds the disk file; only a genuine miss enqueues a
 `JOB_KIND_HMO_COVERAGE` job and returns 409 `hmo_coverage_in_progress` with the
 job id. The job write-throughs both caches on success (`hmo_coverage_job.py:64-73`).
+Each coverage class row already carries `wikidata_representation` + `notes` from
+`projection_coverage.STRATEGY_BY_LOCAL_NAME`; the Studio table exposes those on
+**hover** (native tooltip) and **click** (`CoverageClassRow` +
+`ClickDetailPopover`, with Wikidata property links).
 IIIF manifests are built deterministically from the TTL (`MS_<shelfmark>.json`)
-and uploaded under the `IIIF:` namespace, with per-manifest *intent* audited as
+and listed/previewed via `GET …/hmo-studio/manifests` (+ `…/manifests/{shelfmark}`).
+They are uploaded under the `IIIF:` namespace, with per-manifest *intent* audited as
 versioning events before the network call (`_audit_manifest_upload_intent`,
 `routers/hmo_studio.py:649`). The upload path reads each successful live item back and stores the normalized canonical snapshot in both the durable HMO table and the compatibility cache. Wikibase calls are bounded; known legacy string-property datatype errors retry with serialized scalar values, while timeouts and unknown errors remain failed. Because wikibase.cloud does not expose a boolean snak type, boolean claims are converted to explicit `"true"`/`"false"` string claims before the first live call; time and monolingual-text claims retain their declared datatypes and only fall back when the server explicitly reports a scalar mismatch.
 

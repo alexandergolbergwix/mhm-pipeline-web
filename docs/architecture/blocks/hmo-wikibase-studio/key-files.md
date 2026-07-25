@@ -52,12 +52,15 @@
 | `backend/app/models/hmo_studio_item_cache.py` | Per-run build cache (unique on `run_id`, fingerprinted) |
 | `backend/app/models/hmo_coverage_cache.py` | Durable Postgres coverage cache (Rule W-39) |
 | `backend/app/models/hmo_studio_item_override.py` | Curator override rows (labels/descriptions/aliases/statement edits/approved/ai_verdict) |
-| `frontend/src/routes/HmoStudio.tsx` | Studio page: four-step professor-facing workflow, truthful canonical status, advanced schema/config disclosures, and item review |
+| `frontend/src/routes/HmoStudio.tsx` | HMO Studio page: Items-default sub-tabs (coverage / RDF / Manifests), workflow + item review, advanced schema/config |
 | `frontend/src/components/hmo/HmoItemDataStatusBadge.tsx` | Data status pill: new / will update existing / updated |
 | `frontend/src/utils/hmoItemDataStatus.ts` | `resolveHmoItemDataStatus` — derives data status from mapping + last push |
 | `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: authority-conflict resolver + lifecycle bar + `HmoItemTable`; **Approve all visible** → `hmo_item_bulk_approve` job |
 | `frontend/src/components/hmo/HmoAuthorityConflictPanel.tsx` | Keep-one / unapprove-rest UI for shared Mazal/Wikidata/VIAF IDs (Rule W-109) |
 | `frontend/src/components/hmo/SchemaBootstrapPanel.tsx` | Schema class/property mapping status, dry-run/live bootstrap controls, report results, and schema AI verification |
+| `frontend/src/components/rdf/RdfGraphExplorer.tsx` | Embeddable RDF viewport + GraphFilters + canvas/list (no build chrome) |
+| `frontend/src/components/hmo/CoverageClassRow.tsx` | Coverage table row: hover summary + click detail popover for projection strategy |
+| `frontend/src/utils/hmoCoverageExplain.ts` | Hover/click explanation text and Wikidata property labels for coverage rows |
 | `frontend/src/components/hmo/ItemBuildPanel.tsx` | RDF-backed item build/rebuild controls and build-status summary |
 | `frontend/src/components/hmo/ItemUploadPanel.tsx` | Dry-run-first item upload controls, SHACL override, background-job progress, upload outcomes, **Retry N failed** (`local_ids` scope) |
 | `frontend/src/components/hmo/HmoPublishConfirmationDialog.tsx` | Accessible confirmation gate for single-entry publication and updates |

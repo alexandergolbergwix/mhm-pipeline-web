@@ -13,7 +13,12 @@ import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {SchemaBootstrapPanel} from "@/components/hmo/SchemaBootstrapPanel";
 import {HmoItemsPanel} from "@/components/hmo/HmoItemsPanel";
-import {GraphOverviewSummary} from "@/components/rdf/GraphOverviewSummary";
+import {
+  CoverageClassDetailPopover,
+  CoverageClassRow,
+  useCoverageExplainPopover,
+} from "@/components/hmo/CoverageClassRow";
+import {RdfGraphExplorer} from "@/components/rdf/RdfGraphExplorer";
 import {useProjectEvents} from "@/api/realtime";
 import {type RunJobSnapshot} from "@/api/runJobs";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
@@ -24,12 +29,21 @@ import {
   manifestUploadResultFromJob,
   type HmoBuildResult,
   type HmoCoverageReport,
+  type HmoManifestSummary,
   type HmoStudioStatus,
   type HmoUploadResult,
 } from "@/api/hmoStudio";
 
 
 type Busy = null | "build" | "upload" | "coverage";
+type StudioTab = "items" | "coverage" | "rdf" | "manifests";
+
+const STUDIO_TABS: Array<{id: StudioTab; label: string}> = [
+  {id: "items", label: "Items"},
+  {id: "coverage", label: "Wikidata coverage"},
+  {id: "rdf", label: "RDF graph"},
+  {id: "manifests", label: "Manifests"},
+];
 
 
 export default function HmoStudioRoute() {
@@ -55,6 +69,14 @@ export default function HmoStudioRoute() {
   const [manifestJob, setManifestJob] = useState<RunJobSnapshot | null>(null);
   const [manifestUploadJob, setManifestUploadJob] = useState<RunJobSnapshot | null>(null);
   const upsertJob = useRunJobs((s) => s.upsertJob);
+  const [studioTab, setStudioTab] = useState<StudioTab>("items");
+  const [manifestList, setManifestList] = useState<HmoManifestSummary[]>([]);
+  const [manifestPreview, setManifestPreview] = useState<{
+    shelfmark: string;
+    json: string;
+  } | null>(null);
+  const [manifestListBusy, setManifestListBusy] = useState(false);
+
 
   // ── refreshers ─────────────────────────────────────────────────────────
 
@@ -128,26 +150,59 @@ export default function HmoStudioRoute() {
     }
   });
 
-  // Auto-load coverage once when the RDF is present. Guarded by a ref
-  // (not just `coverage === null`) so a failed attempt — including one
-  // whose background job errored out — does not retry in a tight loop;
-  // the user can still retry manually via the "Refresh" button.
+  // Load coverage when the coverage tab is opened (once per session unless Refresh).
   useEffect(() => {
     if (
-      status?.rdf_present && coverage === null && busy !== "coverage"
+      studioTab === "coverage"
+      && status?.rdf_present && coverage === null && busy !== "coverage"
       && !coverageAttemptedRef.current
     ) {
       coverageAttemptedRef.current = true;
       void loadCoverage();
     }
-  }, [status, coverage, busy, loadCoverage]);
+  }, [studioTab, status, coverage, busy, loadCoverage]);
+
+  const refreshManifestList = useCallback(async () => {
+    if (!runId) return;
+    setManifestListBusy(true);
+    try {
+      const res = await HmoStudio.listManifests(runId);
+      setManifestList(res.manifests);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+    } finally {
+      setManifestListBusy(false);
+    }
+  }, [runId]);
+
+  useEffect(() => {
+    if (studioTab !== "manifests" || !runId) return;
+    void refreshManifestList();
+  }, [studioTab, runId, refreshManifestList, status?.manifest_count]);
+
+  async function openManifestPreview(shelfmark: string) {
+    if (!runId) return;
+    setError(null);
+    try {
+      const raw = await HmoStudio.getManifest(runId, shelfmark);
+      setManifestPreview({
+        shelfmark,
+        json: JSON.stringify(raw, null, 2),
+      });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : String(e));
+    }
+  }
 
   const {setTrackedJobId: setManifestTrackedId, ensureJobPolling: ensureManifestPolling} =
     useRunJobAttachment(runId, "hmo_manifest_build", (j) => {
       setManifestJob(j);
       if (j.status === "succeeded") {
         const fromJob = manifestBuildResultFromJob(j);
-        if (fromJob) setBuild(fromJob);
+        if (fromJob) {
+          setBuild(fromJob);
+          setManifestList(fromJob.manifests ?? []);
+        }
         void refreshStatus();
         setBusy((b) => (b === "build" ? null : b));
       }
@@ -256,252 +311,354 @@ export default function HmoStudioRoute() {
           <Glass as="p" variant="compact" className="p-3 text-sm text-danger">{error}</Glass>
         )}
 
-        {/* Corpus RDF graph overview — same stats as the RDF Graph tab */}
-        {runId && <GraphOverviewSummary runId={runId} />}
-
-        <Glass as="section" className="p-6 space-y-4" aria-labelledby="hmo-workflow-heading">
-          <div>
-            <div className="kicker">Your review workflow</div>
-            <h2 id="hmo-workflow-heading" className="text-lg font-medium">Prepare, review, preview, publish</h2>
-            <p className="muted text-sm mt-1">
-              Follow these four steps to check catalogue entries before they are published.
-            </p>
-          </div>
-          <ol className="grid gap-3 md:grid-cols-4">
-            {[
-              ["Prepare", "Prepare catalogue data and generated HMO entries."],
-              ["Review", "Check entries, quality, and editorial decisions."],
-              ["Preview", "See what will change before publishing."],
-              ["Publish", "Publish approved entries to the HMO catalogue."],
-            ].map(([title, description], index) => (
-              <li key={title} className="border border-white/10 rounded-lg p-3 space-y-2">
-                <span className="kicker">{index + 1}</span>
-                <h3 className="font-medium">{title}</h3>
-                <p className="muted text-xs leading-relaxed">{description}</p>
-              </li>
-            ))}
-          </ol>
-        </Glass>
-
-        <details className="space-y-3">
-          <summary className="cursor-pointer text-sm font-medium">Advanced: catalogue schema maintenance</summary>
-          <SchemaBootstrapPanel runId={runId} />
-        </details>
-
-        {/* Coverage */}
-        <Glass as="section" className="p-6 space-y-3">
-          <div className="flex justify-between items-baseline gap-3">
-            <div>
-              <div className="kicker">HMO → Wikidata projection coverage</div>
-              <h3 className="text-lg font-medium">
-                {coverage
-                  ? `${coverage.rdf_class_count} RDF classes · ${coverage.wikidata_item_count} projected items`
-                  : "Coverage report"}
-              </h3>
-            </div>
-            <button onClick={loadCoverage}
-                    disabled={busy !== null || !status?.rdf_present}
-                    className="button-ghost text-xs">
-              {busy === "coverage" ? "Loading…" : "Refresh"}
+        <nav
+          className="flex flex-wrap gap-1 border-b border-white/10 pb-2"
+          role="tablist"
+          aria-label="HMO Studio sections"
+          data-testid="hmo-studio-tabs"
+        >
+          {STUDIO_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={studioTab === t.id}
+              data-testid={`hmo-studio-tab-${t.id}`}
+              onClick={() => setStudioTab(t.id)}
+              className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
+                studioTab === t.id
+                  ? "bg-biu-sky/15 text-biu-sky border border-biu-sky/30"
+                  : "muted hover:text-ink hover:bg-white/5 border border-transparent"
+              }`}
+            >
+              {t.label}
             </button>
-          </div>
+          ))}
+        </nav>
 
-          {busy === "coverage" && coverageProgress && (
-            <p className="muted text-xs">{coverageProgress}</p>
-          )}
+        {studioTab === "items" && (
+          <div className="space-y-6" role="tabpanel" data-testid="hmo-studio-panel-items">
+            <Glass as="section" className="p-6 space-y-4" aria-labelledby="hmo-workflow-heading">
+              <div>
+                <div className="kicker">Your review workflow</div>
+                <h2 id="hmo-workflow-heading" className="text-lg font-medium">Prepare, review, preview, publish</h2>
+                <p className="muted text-sm mt-1">
+                  Follow these four steps to check catalogue entries before they are published.
+                </p>
+              </div>
+              <ol className="grid gap-3 md:grid-cols-4">
+                {[
+                  ["Prepare", "Prepare catalogue data and generated HMO entries."],
+                  ["Review", "Check entries, quality, and editorial decisions."],
+                  ["Preview", "See what will change before publishing."],
+                  ["Publish", "Publish approved entries to the HMO catalogue."],
+                ].map(([title, description], index) => (
+                  <li key={title} className="border border-white/10 rounded-lg p-3 space-y-2">
+                    <span className="kicker">{index + 1}</span>
+                    <h3 className="font-medium">{title}</h3>
+                    <p className="muted text-xs leading-relaxed">{description}</p>
+                  </li>
+                ))}
+              </ol>
+            </Glass>
 
-          {!status?.rdf_present && (
-            <p className="muted text-sm">
-              No RDF graph for this run yet. Build the RDF Graph on the{" "}
-              <Link to={`/runs/${runId ?? ""}`} className="text-biu-sky hover:underline">
-                Run page
-              </Link>{" "}
-              before viewing coverage.
-            </p>
-          )}
-
-          {coverage && (
-            <CoverageTable report={coverage} />
-          )}
-        </Glass>
-
-        {/* Manifests */}
-        <Glass as="section" className="p-6 space-y-3">
-          <div>
-            <div className="kicker">IIIF manifests</div>
-            <h3 className="text-lg font-medium">
-              {status?.manifest_count ?? 0} manifest
-              {(status?.manifest_count ?? 0) === 1 ? "" : "s"} generated
-            </h3>
-            <p className="muted text-sm leading-relaxed mt-1">
-              Each manuscript produces one IIIF Presentation API 3.0 manifest
-              carrying the HMO scholarly overlay (folio-granular Codicological
-              Units → Ranges, scribal interventions → AnnotationCollections,
-              <code className="text-xs"> seeAlso</code> to the HMO graph node).
-              Manifests sit under
-              <code className="text-xs"> IIIF:MS_&lt;shelfmark&gt;/manifest.json</code>
-              {" "}on the project Wikibase Cloud and are referenced via
-              <code className="text-xs"> P6108</code> on the Wikidata item.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button onClick={doBuild}
-                    disabled={busy !== null || !status?.rdf_present || (manifestJob != null && isJobActive(manifestJob.status))}
-                    className="button-primary text-sm">
-              {busy === "build" || (manifestJob != null && isJobActive(manifestJob.status))
-                ? "Building…"
-                : "Build manifests"}
-            </button>
             {runId && (
-              <SectionExportMenu
-                section="wikibase"
+              <HmoItemsPanel
                 runId={runId}
-                availableFormats={["json", "csv", "ttl"]}
-              />
-            )}
-            {runId && (
-              <SectionImportButton
-                section="wikibase"
-                runId={runId}
-                accept=".json"
+                projectId={projectId}
+                buildPresent={itemBuildPresent}
+                refreshToken={itemBuildToken}
+                rdfPresent={!!status?.rdf_present}
+                wikibaseConfigured={wikibaseConfigured}
+                onLifecycleChange={() => {
+                  setItemBuildToken((t) => t + 1);
+                  setItemBuildPresent(true);
+                }}
               />
             )}
 
-            <div className="flex items-center gap-2 text-sm muted">
-              <label className="flex items-center gap-1">
-                <input type="checkbox"
-                       checked={dryRun}
-                       onChange={(e) => setDryRun(e.target.checked)}
-                       disabled={busy !== null} />
-                Dry run
-              </label>
-              <button onClick={doUpload}
-                      disabled={busy !== null || (status?.manifest_count ?? 0) === 0
-                                              || (!dryRun && !wikibaseConfigured)}
-                      className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}>
-                {busy === "upload"
-                  ? (dryRun ? "Previewing…" : "Uploading…")
-                  : (dryRun ? "Preview upload" : "Upload manifests")}
-              </button>
-            </div>
+            <details className="space-y-3">
+              <summary className="cursor-pointer text-sm font-medium">Advanced: catalogue schema maintenance</summary>
+              <SchemaBootstrapPanel runId={runId} />
+            </details>
+
+            <Glass as="section" className="p-6 space-y-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <div className="kicker">MARC records</div>
+                  <h3 className="text-lg font-medium">Edit source catalog data</h3>
+                  <p className="muted text-sm mt-1">
+                    Hand-edit MARC fields before rebuilding the RDF graph and manifests.
+                  </p>
+                </div>
+                <button type="button" onClick={() => setShowRecordPicker((v) => !v)}
+                        data-testid="hmo-edit-records-toggle"
+                        className="button-ghost text-sm">
+                  {showRecordPicker ? "Hide records" : "Edit records…"}
+                </button>
+              </div>
+              {showRecordPicker && (
+                <div className="space-y-2">
+                  <input value={recordQuery} onChange={(e) => setRecordQuery(e.target.value)}
+                         placeholder="Search control number…"
+                         className="input-glass text-sm w-full max-w-md" />
+                  <ul className="max-h-48 overflow-auto border border-white/5 rounded-lg text-sm">
+                    {recordCns
+                      .filter((cn) => !recordQuery || cn.includes(recordQuery))
+                      .slice(0, 200)
+                      .map((cn) => (
+                        <li key={cn} className="border-b border-white/5 px-3 py-1.5 flex justify-between">
+                          <span className="font-mono text-xs">{cn}</span>
+                          <button type="button" onClick={() => setEditCn(cn)}
+                                  data-testid={`hmo-edit-marc-${cn}`}
+                                  className="button-ghost text-xs">
+                            Edit MARC
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+            </Glass>
+
+            <details className="space-y-3">
+              <summary className="cursor-pointer text-sm font-medium">Advanced: server connection</summary>
+              <Glass as="section" className="p-6 space-y-2">
+                <div className="kicker">HMO catalogue connection</div>
+                <h3 className="text-lg font-medium">Live publication prerequisite</h3>
+                <p className="muted text-sm leading-relaxed">
+                  Publishing uses the project&apos;s secure server connection. Previewing changes does not require a live connection.
+                </p>
+                <GlassPill
+                  className={`inline-block px-3 py-0.5 text-[10px] kicker ${
+                    wikibaseConfigured ? "text-biu-sky" : "text-warn"
+                  }`}
+                >
+                  {wikibaseConfigured ? "✓ server configured" : "⚠ not configured — contact admin"}
+                </GlassPill>
+              </Glass>
+            </details>
           </div>
-
-          {manifestJob && (
-            <JobProgressInline
-              job={manifestJob}
-              labels={{
-                running: "Building manifests…",
-                succeeded: "Manifest build complete:",
-                failed: "Manifest build failed:",
-                cancelled: "Manifest build cancelled:",
-              }}
-            />
-          )}
-          {manifestUploadJob && (
-            <JobProgressInline
-              job={manifestUploadJob}
-              labels={{
-                running: dryRun ? "Previewing manifest upload…" : "Uploading manifests…",
-                succeeded: dryRun ? "Manifest preview complete:" : "Manifest upload complete:",
-                failed: "Manifest upload failed:",
-                cancelled: "Manifest upload cancelled:",
-              }}
-            />
-          )}
-
-          {build && (
-            <p className="text-xs muted pt-1">
-              Last build: {build.manifest_count} manifests · {build.total_canvases} canvases ·
-              {" "}{build.total_ranges} CU ranges · {build.total_annotations} annotations
-            </p>
-          )}
-
-          {upload && (
-            <UploadReportPanel report={upload} />
-          )}
-
-          {!upload && status?.last_upload && (
-            <UploadReportPanel
-              report={status.last_upload}
-              cachedAt={status.last_upload_at}
-            />
-          )}
-        </Glass>
-
-        {/* Wikibase items (build, upload, review on one page) */}
-        {runId && (
-          <HmoItemsPanel
-            runId={runId}
-            projectId={projectId}
-            buildPresent={itemBuildPresent}
-            refreshToken={itemBuildToken}
-            rdfPresent={!!status?.rdf_present}
-            wikibaseConfigured={wikibaseConfigured}
-            onLifecycleChange={() => {
-              setItemBuildToken((t) => t + 1);
-              setItemBuildPresent(true);
-            }}
-          />
         )}
 
-        {/* MARC record editor */}
-        <Glass as="section" className="p-6 space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
+        {studioTab === "coverage" && (
+          <Glass as="section" className="p-6 space-y-3" role="tabpanel" data-testid="hmo-studio-panel-coverage">
+            <div className="flex justify-between items-baseline gap-3">
+              <div>
+                <div className="kicker">HMO → Wikidata projection coverage</div>
+                <h3 className="text-lg font-medium">
+                  {coverage
+                    ? `${coverage.rdf_class_count} RDF classes · ${coverage.wikidata_item_count} projected items`
+                    : "Coverage report"}
+                </h3>
+              </div>
+              <button onClick={loadCoverage}
+                      disabled={busy !== null || !status?.rdf_present}
+                      className="button-ghost text-xs">
+                {busy === "coverage" ? "Loading…" : "Refresh"}
+              </button>
+            </div>
+
+            {busy === "coverage" && coverageProgress && (
+              <p className="muted text-xs">{coverageProgress}</p>
+            )}
+
+            {!status?.rdf_present && (
+              <p className="muted text-sm">
+                No RDF graph for this run yet. Build the RDF Graph on the{" "}
+                <Link to={`/runs/${runId ?? ""}/rdf`} className="text-biu-sky hover:underline">
+                  RDF Graph page
+                </Link>{" "}
+                before viewing coverage.
+              </p>
+            )}
+
+            {coverage && (
+              <CoverageTable report={coverage} />
+            )}
+          </Glass>
+        )}
+
+        {studioTab === "rdf" && runId && (
+          <Glass as="section" className="p-6" role="tabpanel" data-testid="hmo-studio-panel-rdf">
+            <RdfGraphExplorer runId={runId} height={520} />
+          </Glass>
+        )}
+
+        {studioTab === "manifests" && (
+          <Glass as="section" className="p-6 space-y-4" role="tabpanel" data-testid="hmo-studio-panel-manifests">
             <div>
-              <div className="kicker">MARC records</div>
-              <h3 className="text-lg font-medium">Edit source catalog data</h3>
-              <p className="muted text-sm mt-1">
-                Hand-edit MARC fields before rebuilding the RDF graph and manifests.
+              <div className="kicker">IIIF manifests</div>
+              <h3 className="text-lg font-medium">
+                {status?.manifest_count ?? manifestList.length} manifest
+                {(status?.manifest_count ?? manifestList.length) === 1 ? "" : "s"} generated
+              </h3>
+              <p className="muted text-sm leading-relaxed mt-1">
+                Each manuscript produces one IIIF Presentation API 3.0 manifest
+                with the HMO scholarly overlay. Click a row to preview the JSON.
               </p>
             </div>
-            <button type="button" onClick={() => setShowRecordPicker((v) => !v)}
-                    data-testid="hmo-edit-records-toggle"
-                    className="button-ghost text-sm">
-              {showRecordPicker ? "Hide records" : "Edit records…"}
-            </button>
-          </div>
-          {showRecordPicker && (
-            <div className="space-y-2">
-              <input value={recordQuery} onChange={(e) => setRecordQuery(e.target.value)}
-                     placeholder="Search control number…"
-                     className="input-glass text-sm w-full max-w-md" />
-              <ul className="max-h-48 overflow-auto border border-white/5 rounded-lg text-sm">
-                {recordCns
-                  .filter((cn) => !recordQuery || cn.includes(recordQuery))
-                  .slice(0, 200)
-                  .map((cn) => (
-                    <li key={cn} className="border-b border-white/5 px-3 py-1.5 flex justify-between">
-                      <span className="font-mono text-xs">{cn}</span>
-                      <button type="button" onClick={() => setEditCn(cn)}
-                              data-testid={`hmo-edit-marc-${cn}`}
-                              className="button-ghost text-xs">
-                        Edit MARC
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          )}
-        </Glass>
 
-        <details className="space-y-3">
-          <summary className="cursor-pointer text-sm font-medium">Advanced: server connection</summary>
-          <Glass as="section" className="p-6 space-y-2">
-            <div className="kicker">HMO catalogue connection</div>
-            <h3 className="text-lg font-medium">Live publication prerequisite</h3>
-            <p className="muted text-sm leading-relaxed">
-              Publishing uses the project&apos;s secure server connection. Previewing changes does not require a live connection.
-            </p>
-          <GlassPill
-            className={`inline-block px-3 py-0.5 text-[10px] kicker ${
-              wikibaseConfigured ? "text-biu-sky" : "text-warn"
-            }`}
-          >
-            {wikibaseConfigured ? "✓ server configured" : "⚠ not configured — contact admin"}
-          </GlassPill>
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button onClick={doBuild}
+                      disabled={busy !== null || !status?.rdf_present || (manifestJob != null && isJobActive(manifestJob.status))}
+                      className="button-primary text-sm">
+                {busy === "build" || (manifestJob != null && isJobActive(manifestJob.status))
+                  ? "Building…"
+                  : "Build manifests"}
+              </button>
+              {runId && (
+                <SectionExportMenu
+                  section="wikibase"
+                  runId={runId}
+                  availableFormats={["json", "csv", "ttl"]}
+                />
+              )}
+              {runId && (
+                <SectionImportButton
+                  section="wikibase"
+                  runId={runId}
+                  accept=".json"
+                />
+              )}
+
+              <div className="flex items-center gap-2 text-sm muted">
+                <label className="flex items-center gap-1">
+                  <input type="checkbox"
+                         checked={dryRun}
+                         onChange={(e) => setDryRun(e.target.checked)}
+                         disabled={busy !== null} />
+                  Dry run
+                </label>
+                <button onClick={doUpload}
+                        disabled={busy !== null || (status?.manifest_count ?? 0) === 0
+                                                || (!dryRun && !wikibaseConfigured)}
+                        className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}>
+                  {busy === "upload"
+                    ? (dryRun ? "Previewing…" : "Uploading…")
+                    : (dryRun ? "Preview upload" : "Upload manifests")}
+                </button>
+              </div>
+              <button
+                type="button"
+                className="button-ghost text-xs"
+                disabled={manifestListBusy}
+                onClick={() => void refreshManifestList()}
+              >
+                {manifestListBusy ? "Refreshing…" : "Refresh list"}
+              </button>
+            </div>
+
+            {manifestJob && (
+              <JobProgressInline
+                job={manifestJob}
+                labels={{
+                  running: "Building manifests…",
+                  succeeded: "Manifest build complete:",
+                  failed: "Manifest build failed:",
+                  cancelled: "Manifest build cancelled:",
+                }}
+              />
+            )}
+            {manifestUploadJob && (
+              <JobProgressInline
+                job={manifestUploadJob}
+                labels={{
+                  running: dryRun ? "Previewing manifest upload…" : "Uploading manifests…",
+                  succeeded: dryRun ? "Manifest preview complete:" : "Manifest upload complete:",
+                  failed: "Manifest upload failed:",
+                  cancelled: "Manifest upload cancelled:",
+                }}
+              />
+            )}
+
+            {build && (
+              <p className="text-xs muted pt-1">
+                Last build: {build.manifest_count} manifests · {build.total_canvases} canvases ·
+                {" "}{build.total_ranges} CU ranges · {build.total_annotations} annotations
+              </p>
+            )}
+
+            {manifestList.length > 0 ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <CuratorTableScroll>
+                  <table className="w-full text-sm">
+                    <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0 z-10 table-head">
+                      <tr>
+                        <th className="text-left px-3 py-2">Shelfmark</th>
+                        <th className="text-right px-3 py-2">Canvases</th>
+                        <th className="text-right px-3 py-2">Ranges</th>
+                        <th className="text-right px-3 py-2">Annotations</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {manifestList.map((m) => (
+                        <tr
+                          key={m.file}
+                          className={`border-t border-white/5 cursor-pointer hover:bg-white/5 ${
+                            manifestPreview?.shelfmark === m.shelfmark ? "bg-biu-sky/10" : ""
+                          }`}
+                          data-testid={`hmo-manifest-row-${m.shelfmark.replace(/[^A-Za-z0-9_-]+/g, "_")}`}
+                          onClick={() => { void openManifestPreview(m.shelfmark); }}
+                        >
+                          <td className="px-3 py-2 font-mono text-xs">{m.shelfmark}</td>
+                          <td className="px-3 py-2 text-right font-mono text-xs">{m.canvas_count}</td>
+                          <td className="px-3 py-2 text-right font-mono text-xs">{m.range_count}</td>
+                          <td className="px-3 py-2 text-right font-mono text-xs">{m.annotation_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CuratorTableScroll>
+                <Glass variant="compact" className="p-3 space-y-2 min-h-[16rem]">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h4 className="text-sm font-medium">
+                      {manifestPreview
+                        ? `Preview · ${manifestPreview.shelfmark}`
+                        : "Manifest preview"}
+                    </h4>
+                    {manifestPreview && (
+                      <button
+                        type="button"
+                        className="button-ghost text-xs"
+                        onClick={() => setManifestPreview(null)}
+                      >
+                        Close
+                      </button>
+                    )}
+                  </div>
+                  {manifestPreview ? (
+                    <pre
+                      className="text-[11px] font-mono overflow-auto max-h-[28rem] whitespace-pre-wrap break-all"
+                      data-testid="hmo-manifest-preview"
+                    >
+                      {manifestPreview.json}
+                    </pre>
+                  ) : (
+                    <p className="muted text-sm">Select a manifest row to inspect its IIIF JSON.</p>
+                  )}
+                </Glass>
+              </div>
+            ) : (
+              <p className="muted text-sm">
+                {(status?.manifest_count ?? 0) > 0
+                  ? "Loading manifest list…"
+                  : "No manifests yet — build them from the RDF graph."}
+              </p>
+            )}
+
+            {upload && (
+              <UploadReportPanel report={upload} />
+            )}
+
+            {!upload && status?.last_upload && (
+              <UploadReportPanel
+                report={status.last_upload}
+                cachedAt={status.last_upload_at}
+              />
+            )}
           </Glass>
-        </details>
+        )}
       </div>
 
       {editCn && runId && (
@@ -553,9 +710,9 @@ function getCanonicalStatus(status: HmoStudioStatus | null): {
 // ── CoverageTable ────────────────────────────────────────────────────────
 
 
-function CoverageTable({ report }: { report: HmoCoverageReport }) {
+function CoverageTable({report}: {report: HmoCoverageReport}) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
-
+  const {anchor, open, close} = useCoverageExplainPopover();
   const filtered = useMemo(() => {
     if (statusFilter === "all") return report.classes;
     return report.classes.filter((c) => c.projection_status === statusFilter);
@@ -571,28 +728,31 @@ function CoverageTable({ report }: { report: HmoCoverageReport }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5 text-xs">
-        {(
-          [
-            ["all", "All"],
-            ["direct_wikidata_item", "Direct"],
-            ["summarized_in_wikidata", "Summarised"],
-            ["hmo_or_wikibase_only", "HMO-only"],
-            ["unknown", "Unknown"],
-          ] as const
-        ).map(([key, label]) => {
-          const n = key === "all" ? report.classes.length : summary[key] || 0;
-          const active = statusFilter === key;
-          return (
-            <button key={key}
-                    onClick={() => setStatusFilter(key)}
-                    className={`px-2.5 py-1 rounded-full transition ${
-                      active ? "bg-white/12 text-ink" : "muted hover:text-ink"
-                    }`}>
-              {label} · {n}
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5 text-xs">
+          {(
+            [
+              ["all", "All"],
+              ["direct_wikidata_item", "Direct"],
+              ["summarized_in_wikidata", "Summarised"],
+              ["hmo_or_wikibase_only", "HMO-only"],
+              ["unknown", "Unknown"],
+            ] as const
+          ).map(([key, label]) => {
+            const n = key === "all" ? report.classes.length : summary[key] || 0;
+            const active = statusFilter === key;
+            return (
+              <button key={key}
+                      onClick={() => setStatusFilter(key)}
+                      className={`px-2.5 py-1 rounded-full transition ${
+                        active ? "bg-white/12 text-ink" : "muted hover:text-ink"
+                      }`}>
+                {label} · {n}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] muted">Hover for a summary · click a row for the full projection note</p>
       </div>
 
       <CuratorTableScroll>
@@ -608,28 +768,11 @@ function CoverageTable({ report }: { report: HmoCoverageReport }) {
           </thead>
           <tbody>
             {filtered.map((row) => (
-              <tr key={row.class_uri} className="border-t border-white/5">
-                <td className="px-3 py-2">
-                  <span className="font-mono text-xs">{row.class_local_name}</span>
-                  {row.class_label && row.class_label !== row.class_local_name && (
-                    <span className="muted text-xs"> · {row.class_label}</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <ProjectionPill status={row.projection_status} />
-                </td>
-                <td className="px-3 py-2 text-right font-mono text-xs">
-                  {row.hmo_node_count}
-                </td>
-                <td className="px-3 py-2 text-right font-mono text-xs">
-                  {row.projected_item_count}
-                </td>
-                <td className="px-3 py-2 text-xs muted">
-                  {row.wikidata_properties.length > 0
-                    ? row.wikidata_properties.join(" · ")
-                    : "—"}
-                </td>
-              </tr>
+              <CoverageClassRow
+                key={row.class_uri}
+                row={row}
+                onExplain={open}
+              />
             ))}
             {filtered.length === 0 && (
               <tr>
@@ -641,26 +784,15 @@ function CoverageTable({ report }: { report: HmoCoverageReport }) {
           </tbody>
         </table>
       </CuratorTableScroll>
+      {anchor && (
+        <CoverageClassDetailPopover
+          row={anchor.row}
+          x={anchor.x}
+          y={anchor.y}
+          onClose={close}
+        />
+      )}
     </div>
-  );
-}
-
-
-function ProjectionPill({ status }: { status: string }) {
-  const tone =
-    status === "direct_wikidata_item"   ? "text-biu-sky" :
-    status === "summarized_in_wikidata" ? "text-warn" :
-    status === "hmo_or_wikibase_only"   ? "muted" :
-                                          "text-danger";
-  const label =
-    status === "direct_wikidata_item"   ? "direct" :
-    status === "summarized_in_wikidata" ? "summarised" :
-    status === "hmo_or_wikibase_only"   ? "HMO-only" :
-                                          "unknown";
-  return (
-    <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}`}>
-      {label}
-    </GlassPill>
   );
 }
 

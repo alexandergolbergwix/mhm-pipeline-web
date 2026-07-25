@@ -281,6 +281,18 @@ export const HmoStudio = {
   coverage: (runId: string) =>
     api.get<HmoCoverageReport>(`/runs/${runId}/hmo-studio/coverage`),
 
+  listManifests: (runId: string) =>
+    api.get<{
+      manifest_count: number;
+      manifest_dir: string;
+      manifests: HmoManifestSummary[];
+    }>(`/runs/${runId}/hmo-studio/manifests`),
+
+  getManifest: (runId: string, shelfmark: string) =>
+    api.get<Record<string, unknown>>(
+      `/runs/${runId}/hmo-studio/manifests/${encodeURIComponent(shelfmark)}`,
+    ),
+
   status: (runId: string) =>
     api.get<HmoStudioStatus>(`/runs/${runId}/hmo-studio/status`),
 

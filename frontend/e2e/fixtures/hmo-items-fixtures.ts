@@ -217,11 +217,41 @@ export async function installHmoItemsMocks(
         ttl_path: "/tmp/coverage.ttl",
         strategy_source: "mock",
         rdf_class_count: 1,
-        wikidata_item_count: 1,
-        wikidata_item_counts_by_type: {manuscript: 1},
-        classes: [],
+        wikidata_item_count: 0,
+        wikidata_item_counts_by_type: {},
+        classes: [{
+          class_uri: "https://w3id.org/mhm/ontology#Codicological_Unit",
+          class_local_name: "Codicological_Unit",
+          class_label: "Codicological unit",
+          hmo_node_count: 131,
+          projection_status: "summarized_in_wikidata",
+          wikidata_representation:
+            "Manuscript-level part count and content/folio qualifiers",
+          wikidata_properties: ["P2635", "P7535", "P1574", "P958"],
+          projected_item_count: 0,
+          notes:
+            "CU nodes remain in HMO; Wikidata uses summary claims unless a part is independently notable.",
+        }],
       }),
     });
+  });
+
+  await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/manifests`, async (route: Route) => {
+    const url = route.request().url();
+    // Exact list endpoint only — not …/manifests/{shelfmark}
+    if (/\/hmo-studio\/manifests\/?(\?|$)/.test(url)) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          manifest_count: 0,
+          manifest_dir: "/tmp",
+          manifests: [],
+        }),
+      });
+      return;
+    }
+    await route.continue();
   });
 
   await page.route("**/api/hmo-wikibase-schema/**", async (route: Route) => {

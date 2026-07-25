@@ -15,6 +15,8 @@
 | `backend/ontology/hebrew-manuscripts.ttl` | Canonical HMO ontology (copied from desktop at sync time) |
 | `backend/ontology/shacl-shapes.ttl` | SHACL shapes used by `POST /rdf/validate` |
 | `backend/app/routers/rdf.py` | All `/runs/{run_id}/rdf/*` endpoints (build, coverage, ontology-coverage, catalog, viewport, ego, graph, node, ontology-usage, download.ttl, validate, triple overrides, status) |
+| `frontend/src/components/rdf/RdfGraphExplorer.tsx` | Embeddable viewport + GraphFilters + Cytoscape/list (HMO Studio RDF tab; no build chrome) |
+| `frontend/src/components/rdf/GraphFilters.tsx` | Chip-row type/predicate/search filters for the graph explorer |
 | `backend/app/routers/linked_data_explorer.py` | Project-level SPARQL over the merged run graphs (`/projects/{id}/research/sparql[...]`); restores missing TTLs before querying |
 | `backend/app/models/rdf_artifact.py` | `rdf_artifacts` table — durable TTL per run (PK `run_id`, `ttl_content`, counts) |
 | `pipeline/scripts/sync_converter_to_web.sh` | Upstream sync of `converter/{rdf,transformer,config}` + `projection_coverage.py` + both ontology TTLs |

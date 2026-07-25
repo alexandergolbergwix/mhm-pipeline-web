@@ -373,6 +373,50 @@ def _upload_manifests_sync(
     )
 
 
+def list_manifest_summaries(run_id: str) -> list[dict[str, Any]]:
+    """Return ``HmoManifestSummary``-shaped dicts for every on-disk IIIF file."""
+    manifest_dir = manifest_dir_for_run(run_id)
+    if not manifest_dir.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for path in sorted(manifest_dir.glob("MS_*.json")):
+        shelfmark = path.stem[len("MS_"):]
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("Skipping unreadable manifest %s: %s", path, exc)
+            continue
+        canvas_count = len(payload.get("items") or [])
+        range_count = len(payload.get("structures") or [])
+        annotation_count = sum(
+            len((page or {}).get("items") or [])
+            for page in (payload.get("annotations") or [])
+        )
+        out.append({
+            "shelfmark": shelfmark,
+            "file": path.name,
+            "canvas_count": canvas_count,
+            "range_count": range_count,
+            "annotation_count": annotation_count,
+            "seealso_count": len(payload.get("seeAlso") or []),
+        })
+    return out
+
+
+def manifest_path_for_shelfmark(run_id: str, shelfmark: str) -> Path:
+    """Resolve ``MS_{shelfmark}.json``; reject path-traversal shelfmarks."""
+    cleaned = (shelfmark or "").strip()
+    if (
+        not cleaned
+        or cleaned in {".", ".."}
+        or "/" in cleaned
+        or "\\" in cleaned
+        or "\x00" in cleaned
+    ):
+        raise ValueError("invalid shelfmark")
+    return manifest_dir_for_run(run_id) / f"MS_{cleaned}.json"
+
+
 def cache_upload_report(run_id: str, result: HmoUploadResult) -> Path:
     """Persist the upload-report JSON next to the run's other artefacts."""
     path = upload_report_path_for_run(run_id)

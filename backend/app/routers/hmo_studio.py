@@ -10,6 +10,8 @@ Endpoints, all under ``/api/runs/{run_id}/hmo-studio/``::
 
     POST /build-manifests   →  enqueue ``hmo_manifest_build`` job (201)
     POST /upload-manifests  →  enqueue ``hmo_manifest_upload`` job (201)
+    GET  /manifests         →  list on-disk IIIF manifest summaries
+    GET  /manifests/{sm}    →  raw IIIF Presentation 3.0 JSON for one shelfmark
     GET  /coverage          →  HMO class → Wikidata projection report
     GET  /status            →  idle | built | uploaded | error + counts
     POST /build-items       →  enqueue ``hmo_item_build`` job (201)
@@ -76,6 +78,21 @@ router = APIRouter(prefix="/runs", tags=["hmo-studio"])
 
 
 # ── Response models ────────────────────────────────────────────────────
+
+
+class HmoManifestSummaryDto(BaseModel):
+    shelfmark: str
+    file: str
+    canvas_count: int
+    range_count: int
+    annotation_count: int
+    seealso_count: int
+
+
+class HmoManifestListResponse(BaseModel):
+    manifest_count: int
+    manifest_dir: str
+    manifests: list[HmoManifestSummaryDto]
 
 
 class HmoBuildResponse(BaseModel):
@@ -378,6 +395,62 @@ async def upload_manifests(
         ) from exc
     response.status_code = status.HTTP_201_CREATED
     return serialise_job(job)
+
+
+# ── Manifest list / preview ────────────────────────────────────────────
+
+
+@router.get(
+    "/{run_id}/hmo-studio/manifests",
+    response_model=HmoManifestListResponse,
+)
+async def list_manifests(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> HmoManifestListResponse:
+    """List on-disk IIIF manifest summaries for the run."""
+    await _lookup_run_with_access(db, run_id, auth)
+    manifests = [
+        HmoManifestSummaryDto(**row)
+        for row in hmo_pipeline.list_manifest_summaries(str(run_id))
+    ]
+    return HmoManifestListResponse(
+        manifest_count=len(manifests),
+        manifest_dir=str(hmo_pipeline.manifest_dir_for_run(str(run_id))),
+        manifests=manifests,
+    )
+
+
+@router.get("/{run_id}/hmo-studio/manifests/{shelfmark}")
+async def get_manifest(
+    run_id: uuid.UUID,
+    shelfmark: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Return one Presentation API 3.0 manifest JSON by shelfmark."""
+    await _lookup_run_with_access(db, run_id, auth)
+    try:
+        path = hmo_pipeline.manifest_path_for_shelfmark(str(run_id), shelfmark)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No IIIF manifest for shelfmark {shelfmark!r}.",
+        )
+    try:
+        body = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not read manifest: {exc}",
+        ) from exc
+    return Response(content=body, media_type="application/json")
 
 
 # ── Coverage report ────────────────────────────────────────────────────

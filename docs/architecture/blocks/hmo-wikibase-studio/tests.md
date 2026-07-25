@@ -84,7 +84,13 @@
   shows `failed` when `upload_outcome` is failed.
 - `frontend/e2e/hmo-wikibase-studio.spec.ts` — Phase 7 acceptance coverage:
   schema class/property counts, dry-run bootstrap defaults, item-build gating,
-  item-upload request payload/result summary, and the advanced schema disclosure.
+  item-upload request payload/result summary, the advanced schema disclosure,
+  coverage row hover/click explanation, and HMO Studio sub-tabs
+  (Items / coverage / RDF / Manifests + JSON preview).
+- `frontend/tests/unit/hmoCoverageExplain.spec.ts` — coverage hover blurb +
+  property labels.
+- `backend/tests/test_hmo_studio_manifests_router.py` — list + get IIIF
+  manifest JSON endpoints.
 - `frontend/e2e/hmo-wikibase-items.spec.ts` — review-table filters (real value
   counts), Approve all visible (`hmo_item_bulk_approve` job), tri-state editorial decisions, publish
   confirmation, technical-column disclosure, and upload-lifecycle verification
