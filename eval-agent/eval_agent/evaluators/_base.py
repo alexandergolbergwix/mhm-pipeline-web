@@ -354,6 +354,14 @@ class Evaluator(ABC):
                 lines.append(f"    … +{len(candidate.exists_in) - 8} more")
         return "\n".join(lines)
 
+    def skill_context(self, candidate: Candidate) -> str:
+        """Optional domain skill block (WikiProject Manuscripts, …).
+
+        Override in Studio evaluators. Empty by default so NER/authority
+        prompts stay unchanged.
+        """
+        return ""
+
     def render_prompt(
         self,
         candidate: Candidate,
@@ -369,11 +377,14 @@ class Evaluator(ABC):
         only has to reason about *whether the deterministic finding
         agrees with the prediction*. Reduces judge variance dramatically.
         """
+        skill = (self.skill_context(candidate) or "").strip()
+        skill_block = f"\n\n{skill}\n" if skill else ""
         return (
             self.rubric_text()
             + "\n\n────────────────────────────────────────\n"
             + f"Record ID: {candidate.record_id}\n\n"
             + prediction_block
+            + skill_block
             + f"\nRelevant MARC fields for this record:\n"
             + f"{self.format_marc(candidate.marc_context)}\n"
             + "\nDeterministic MARC-grounding signal (from the pipeline's "

@@ -12,11 +12,9 @@ from app.pipeline.ai_verdict_cache_common import (
 
 from app.pipeline.inference_cache import canonical_hash
 
-# Bumped to w53_v1 with Rule W-53 (empty-production grounding, PU/place/subject
-# descriptions, Ibn/710 person fixes, second-pass label hygiene, rubric 3d/3f/3g):
-# the rubric and RDF build fields changed, so old verdicts must miss the cache
-# automatically without an override_cache pass.
-HMO_ITEM_VERDICT_SCHEMA = "w53_v1"
+# Bumped to w104_v1 with Rule W-104 (WikiProject Manuscripts skill injection
+# into HMO + Wikidata Studio AI verify). Prior salt w53_v1 (Rule W-53).
+HMO_ITEM_VERDICT_SCHEMA = "w104_v1"
 
 
 def _sorted_control_numbers(item: dict[str, Any]) -> list[str]:

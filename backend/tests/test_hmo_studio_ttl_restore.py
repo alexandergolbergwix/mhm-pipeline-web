@@ -76,6 +76,60 @@ async def test_build_manifests_restores_ttl_from_postgres(sample_run, db_session
 
 
 @pytest.mark.asyncio
+async def test_build_manifests_ignores_authority_conflicts(sample_run, db_session) -> None:
+    """IIIF build is RDF-only; Rule W-95 authority gate is for Wikibase item upload."""
+    from app.models.run import AuthorityMatch
+    from app.pipeline import hmo_studio as hmo_pipeline
+
+    run_id = sample_run["run_id"]
+    ttl = """
+@prefix hm: <https://w3id.org/mhm/ontology#> .
+@prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+hm:MS_990001234 a lrmoo:F4_Manifestation_Singleton, hm:Bibliographic_Unit ;
+    rdfs:label "Test manuscript"@en ;
+    hm:external_identifier_nli "990001234"^^xsd:string .
+"""
+    db_session.add(RdfArtifact(
+        run_id=run_id, ttl_content=ttl, triples_count=4, manuscripts_count=1,
+    ))
+    # Colliding approved Mazal IDs would 409 item upload — must not block IIIF.
+    for text in ("Person A", "Person B"):
+        db_session.add(AuthorityMatch(
+            run_id=run_id,
+            control_number="MS1",
+            entity_text=text,
+            entity_kind="person",
+            role="author",
+            matched_name=text,
+            approved=True,
+            mazal_id="987007111111105171",
+            wikidata_qid="",
+            viaf_id="",
+            confidence="high",
+            source="mazal",
+            payload={"sources": ["mazal"]},
+        ))
+    await db_session.commit()
+
+    response = await sample_run["client"].post(
+        f"/api/runs/{run_id}/hmo-studio/build-manifests",
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["manifest_count"] >= 1
+
+    for f in hmo_pipeline.manifest_dir_for_run(str(run_id)).glob("MS_*.json"):
+        f.unlink()
+    path = rdf_output_path_for_run(str(run_id))
+    if path.exists():
+        path.unlink()
+
+
+@pytest.mark.asyncio
 async def test_build_items_restores_ttl_from_postgres(
     sample_run, db_session, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

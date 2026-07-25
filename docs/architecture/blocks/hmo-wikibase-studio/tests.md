@@ -73,7 +73,8 @@
   editorial decisions, publish confirmation, technical-column disclosure, and
   upload-lifecycle verification paths.
 
-- `backend/tests/unit/test_hmo_authority_gate.py` — approved identifier conflicts and NLI/VIAF misclassification fail closed before HMO creation.
+- `backend/tests/test_hmo_studio_ttl_restore.py` — TTL restore for status/build-manifests/build-items; IIIF build ignores authority conflicts
+- `backend/tests/unit/test_hmo_authority_gate.py` — approved identifier conflicts and NLI/VIAF misclassification fail closed before HMO **item** creation.
 
 - `backend/tests/unit/test_hmo_canonical_wikidata.py::test_full_canonical_chain_has_no_legacy_authority_dependency` — one enriched HMO entity projects consistently to RDF and Wikidata/QuickStatements.
 

@@ -14,7 +14,8 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-WIKIDATA_VERDICT_SCHEMA = "w71_v1"
+# Bumped to w104_v1 with Rule W-104 (WPM skill injection). Prior: w71_v1.
+WIKIDATA_VERDICT_SCHEMA = "w104_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v5"
 
 

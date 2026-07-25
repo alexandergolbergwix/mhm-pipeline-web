@@ -135,3 +135,19 @@ Tiebreaker: prefer `fail` over `partial` when both apply.
 
 Be conservative on **claims** (do not invent P/Q statements), but do not
 require every derived entity label to be a MARC substring.
+
+## WikiProject Manuscripts + HMO→Wikidata skill (injected below)
+
+Every prompt includes a compact **SKILL** block from
+[WikiProject Manuscripts](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts)
+/ [Data Model](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model)
+plus an **HMO → public Wikidata** projection checklist.
+
+- `class_qid` remains a **project Wikibase** id — never interpret it as
+  wikidata.org.
+- For manuscript / person / work / place entities, also ask: *would this
+  item project cleanly to public Wikidata under WPM?* Fail or partial when
+  claims would imply P50-on-manuscript, wrong illuminated/palimpsest P31,
+  folio counts as P7416, or treating a project Q-number as a Wikidata QID.
+- Structural / epistemology entities stay HMO-only; do not demand WPM
+  manuscript fingerprint completeness for them.

@@ -11,3 +11,7 @@ Each fix object must include:
 - `reasoning`
 
 Return the standard verdict keys plus `suggested_fixes` when fixes apply.
+
+Prefer fixes that keep HMO items **Wikidata-projection-ready** under the
+injected WikiProject Manuscripts skill (no manuscript P50 semantics,
+correct scribe/holder roles, no project-QID-as-Wikidata confusion).

@@ -11,6 +11,7 @@ from typing import Any, Iterable
 
 from eval_agent.evaluators._base import Candidate, Evaluator
 from eval_agent.ingest import marc_extract, wikidata_items
+from eval_agent.skills.wikidata_manuscripts import skill_context_from_payload
 
 
 class WikidataItemEvaluator(Evaluator):
@@ -105,3 +106,9 @@ class WikidataItemEvaluator(Evaluator):
             f"  local reference targets:\n{local_targets_json}\n"
         )
         return self.render_prompt(candidate, prediction_block=block)
+
+    def skill_context(self, candidate: Candidate) -> str:
+        return skill_context_from_payload(
+            channel="wikidata",
+            payload=candidate.payload,
+        )

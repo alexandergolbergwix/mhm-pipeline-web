@@ -190,3 +190,10 @@ legitimate foreign edits.
 to public Wikidata PIDs/QIDs. Local `P…`/`Q…` without an ontology URI or
 explicit Wikidata evidence are dropped. *Why:* conflating namespaces minted
 false public identities (Rule W-83 class).
+
+39. **R39 — AI verify injects WikiProject Manuscripts skill context (Rule W-104).**
+Wikidata item/autofix judges receive the curated
+`eval-agent/config/skills/wikidata_manuscripts/` pack (entity + claim-aware).
+Verdict salt `WIKIDATA_VERDICT_SCHEMA=w104_v1`. *Why:* builders already
+followed WPM; judges must evaluate toward the same public-item contract,
+especially for HMO→Wikidata readiness.

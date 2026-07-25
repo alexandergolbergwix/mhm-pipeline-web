@@ -62,3 +62,16 @@ Evidence handling:
 - P11603 identifies a human who transcribed a written work; P195 identifies
   the actual holding institution. Do not accept a building or institution as
   a person or scribe.
+
+## WikiProject Manuscripts skill (injected below)
+
+Every prompt includes a compact **SKILL** block distilled from
+[WikiProject Manuscripts](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts)
+and its [Data Model](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model).
+Treat that block as authoritative community practice for public Wikidata
+items. Entity-specific slices and claim-triggered checks (P50-on-MS,
+P7416-as-count, P195 evidence, …) are selected for *this* candidate —
+apply them before inventing additional criteria.
+
+Primary evaluation goal: the proposed item must be safe as a **public
+Wikidata** manuscript / person / work item under that data model.

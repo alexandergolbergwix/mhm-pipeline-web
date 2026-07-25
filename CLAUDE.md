@@ -2294,8 +2294,12 @@ promote a canonical cohort. Test: `test_hmo_canonical_readiness_contract.py`.
 `AuthorityMatch` rows before any external Wikibase write. Every mapped item is
 read back and must retain the mapped QID; duplicate local IDs, source URIs, or
 Wikibase QIDs abort before replacing durable `hmo_canonical_entities` rows.
-Read-back failure remains all-or-nothing. Tests:
-`backend/tests/test_hmo_item_upload.py`.
+Read-back failure remains all-or-nothing. Local IIIF manifest generation
+(`POST …/hmo-studio/build-manifests`) is RDF-only and MUST NOT apply this
+authority gate. Tests:
+`backend/tests/test_hmo_item_upload.py`,
+`backend/tests/test_hmo_studio_ttl_restore.py`
+(`test_build_manifests_ignores_authority_conflicts`).
 
 ### Rule W-96 — HMO item builds MUST reject unmapped reconciliation predicates (added 2026-07-23)
 
@@ -2427,3 +2431,29 @@ callers only pass `dry_run=false`. Single-item push accepts `test|live`
 (default `test`). Tests: `test_wikidata_upload_guards.py`
 (`test_resolve_upload_mode_*`, `test_ui_live_target_bypasses_env_moratorium`);
 `frontend/e2e/wikidata-upload-panel.spec.ts`.
+
+### Rule W-104 — Studio AI verify MUST inject WikiProject Manuscripts skill context (added 2026-07-25)
+
+Wikidata Studio and HMO Wikibase item/autofix judges previously saw only a
+condensed rubric + candidate payload. They did **not** carry the community
+[WikiProject Manuscripts](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts)
+/[Data Model](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model)
+contract that builders already follow (`docs/wikidata-manuscripts-data-model.md`),
+so verdicts could miss P50-on-manuscript, folio/P7416 misuse, or
+project-QID-as-Wikidata mistakes that block a clean **HMO → public Wikidata**
+projection.
+
+Invariant:
+
+1. Durable skill pack at
+   `eval-agent/config/skills/wikidata_manuscripts/skill.json` (sources in
+   `SOURCES.md`) — curated slices, never full wiki HTML in the prompt.
+2. `eval_agent.skills.wikidata_manuscripts.skill_context_for` selects
+   always-rules + entity slice + claim-triggered checks + (for HMO) the
+   HMO→Wikidata projection checklist.
+3. `Evaluator.render_prompt` injects `skill_context()`; Wikidata and HMO
+   item evaluators (autofix inherits) override it.
+4. Verdict cache salts `WIKIDATA_VERDICT_SCHEMA` / `HMO_ITEM_VERDICT_SCHEMA`
+   bump to `w104_v1` so old pills miss after deploy (Rule W-51).
+
+Tests: `eval-agent/tests/test_wikidata_manuscripts_skill.py`.

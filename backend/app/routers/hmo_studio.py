@@ -230,12 +230,11 @@ async def build_manifests(
     Writes one ``MS_<shelfmark>.json`` per manuscript into the run's
     ``iiif_manifests/`` directory. Overwrites any existing manifests —
     the builder is deterministic, so re-running on the same TTL is safe.
+
+    Authority-identifier conflicts (Rule W-95) gate Wikibase *item*
+    upload, not local IIIF JSON generation from RDF.
     """
-    refreshed_matches = (await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))).scalars().all()
-    from app.pipeline.hmo_authority_gate import validate_authority_rows
-    authority_gate = validate_authority_rows(refreshed_matches)
-    if not authority_gate["ready"]:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Authority conflicts must be resolved before HMO creation", "authority_gate": authority_gate})
+    await _lookup_run_with_access(db, run_id, auth, write=True)
     ttl_path = rdf_output_path_for_run(str(run_id))
     await ensure_ttl_on_disk(ttl_path, run_id, db)
     if not ttl_path.exists():

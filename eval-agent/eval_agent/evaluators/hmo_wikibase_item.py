@@ -8,6 +8,7 @@ from typing import Any, Iterable
 from eval_agent.evaluators._base import Candidate, Evaluator
 from eval_agent.ingest import hmo_wikibase_items, marc_extract
 from eval_agent.ingest.shacl_gate import blocking_shacl_issues
+from eval_agent.skills.wikidata_manuscripts import skill_context_from_payload
 
 _STRUCTURAL_ENTITY_TYPES = frozenset({
     "CatalogStep",
@@ -117,6 +118,12 @@ class HmoWikibaseItemEvaluator(Evaluator):
             f"  SHACL issues:\n{issues_json}\n"
         )
         return self.render_prompt(candidate, prediction_block=block)
+
+    def skill_context(self, candidate: Candidate) -> str:
+        return skill_context_from_payload(
+            channel="hmo",
+            payload=candidate.payload,
+        )
 
     def format_grounding(self, candidate: Candidate) -> str:
         entity_type = str(candidate.payload.get("entity_type") or "")

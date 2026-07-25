@@ -109,8 +109,10 @@ function stringifyValidationError(d: unknown): string {
   if (typeof d === "string") return d;
   if (typeof d !== "object") return String(d);
   const r = d as Record<string, unknown>;
+  const message = typeof r.message === "string" ? r.message : "";
   const msg = typeof r.msg === "string" ? r.msg : "";
   const loc = Array.isArray(r.loc) ? r.loc.join(".") : "";
+  if (message) return message;
   if (msg && loc) return `${loc}: ${msg}`;
   if (msg)        return msg;
   if (loc)        return loc;

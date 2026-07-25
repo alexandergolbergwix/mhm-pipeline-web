@@ -147,12 +147,14 @@ cross-links until an approved per-statement Wikidata property exists.
 Phase 1 canonical contract: `hmo_canonical_entities` stores explicit identity (`source_uri`, local QID, entity type), labels/descriptions/aliases, claims, accepted/rejected authority evidence, provenance, lifecycle status, and a revision-independent fingerprint. The full JSON snapshot remains for forward-compatible fields.
 
 
-Phase 3 HMO creation runs authority enrichment internally and applies
+Phase 3 HMO **item upload** runs authority enrichment internally and applies
 `hmo_authority_gate.validate_authority_rows` before any Wikibase write.
 Approved external identifiers reused by different headings, or NLI/Mazal
 identifiers misclassified as VIAF, block creation with a structured conflict
-report. Every live read-back is checked for the mapped QID and duplicate local,
-source, or QID identities before durable canonical rows are replaced.
+report. Local IIIF **manifest build** (`POST …/build-manifests`) is RDF-only
+and is not blocked by that gate. Every live read-back is checked for the mapped
+QID and duplicate local, source, or QID identities before durable canonical
+rows are replaced.
 
 
 Phase 3 HMO-first entry: when no RDF artifact exists, `POST .../hmo-studio/build-items` internally builds the source graph from MARC, approved authority matches, and approved extraction entities, then immediately resolves HMO items. Curators no longer need to visit the RDF screen first.

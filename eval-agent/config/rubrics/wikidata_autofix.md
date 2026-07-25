@@ -15,6 +15,10 @@ evidence supports the Studio version.
 - `wikidata_live.rows`: diff rows with `status` ∈ `same` | `conflict` | `wikidata_only` | `studio_only`
 - MARC context (when present)
 
+Also apply the injected **WikiProject Manuscripts skill** block (same as
+`wikidata_item`): prefer fixes that move the Studio item toward a WPM-safe
+public item (P1574 chain, no P50 on manuscript, evidenced P195, etc.).
+
 ## Verdict JSON
 
 ```json

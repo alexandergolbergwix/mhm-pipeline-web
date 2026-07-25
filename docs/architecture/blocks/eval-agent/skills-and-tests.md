@@ -144,3 +144,20 @@ python backend/scripts/analyze_wikidata_verdicts.py \
 
 - The Wikidata evaluator fixture carries `authority_evidence`, `work_candidate_evidence`, and resolved `local_reference_targets`; its rubric accepts source-backed natural-order names, work authors, year precision 9, clean Hebrew-only labels, and valid internal `__LOCAL:` links.
 - The Wikidata CSV diagnostic export includes authority/work/local-target evidence JSON; use these fields and the statement `value_label`s when clustering partial/fail rows.
+
+## Skill: refresh WikiProject Manuscripts judge context (Rule W-104)
+
+1. Re-fetch
+   [Data Model](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model)
+   (+ hub / Tasks if property tables changed).
+2. Update `eval-agent/config/skills/wikidata_manuscripts/skill.json` slices /
+   claim triggers — keep prompts compact; update `SOURCES.md` scrape date.
+3. Bump `skill.json` `version` and both Studio verdict salts
+   (`WIKIDATA_VERDICT_SCHEMA`, `HMO_ITEM_VERDICT_SCHEMA`).
+4. Extend `eval-agent/tests/test_wikidata_manuscripts_skill.py`.
+5. Align `docs/wikidata-manuscripts-data-model.md` + mapper if builders change.
+
+## Tests (W-104)
+
+- `eval-agent/tests/test_wikidata_manuscripts_skill.py` — pack load, entity
+  slices, claim triggers, prompt injection for Wikidata + HMO evaluators.
