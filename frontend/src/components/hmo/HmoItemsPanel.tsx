@@ -39,11 +39,19 @@ export function HmoItemsPanel({
   const [verifyIds, setVerifyIds] = useState<string[] | undefined>(undefined);
   const [verifyActionId, setVerifyActionId] = useState<string | undefined>(undefined);
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
+  const [approvingVisible, setApprovingVisible] = useState(false);
 
   const autofixItemIds = useMemo(() => {
     const visible = new Set(filteredIds);
     return items
       .filter((item) => visible.has(item.local_id) && Boolean(item.wikibase_id?.trim()))
+      .map((item) => item.local_id);
+  }, [filteredIds, items]);
+
+  const pendingVisibleIds = useMemo(() => {
+    const visible = new Set(filteredIds);
+    return items
+      .filter((item) => visible.has(item.local_id) && item.approved !== true)
       .map((item) => item.local_id);
   }, [filteredIds, items]);
 
@@ -82,6 +90,31 @@ export function HmoItemsPanel({
     }
   }, [load, runId]);
 
+  const approveAllVisible = useCallback(async () => {
+    if (!pendingVisibleIds.length) return;
+    const ok = window.confirm(
+      `Approve all ${pendingVisibleIds.length} visible entr${pendingVisibleIds.length === 1 ? "y" : "ies"} that are not already approved?`,
+    );
+    if (!ok) return;
+    setApprovingVisible(true);
+    setDecisionFeedback(null);
+    try {
+      const chunk = 25;
+      for (let i = 0; i < pendingVisibleIds.length; i += chunk) {
+        const batch = pendingVisibleIds.slice(i, i + chunk);
+        await Promise.all(
+          batch.map((id) => HmoStudioItems.patchOverride(runId, id, {approved: true})),
+        );
+      }
+      await load();
+      setDecisionFeedback(`Approved ${pendingVisibleIds.length} visible entr${pendingVisibleIds.length === 1 ? "y" : "ies"}.`);
+    } catch (e) {
+      setDecisionFeedback(e instanceof ApiError ? e.detail : "Bulk approve failed. Refresh and retry.");
+    } finally {
+      setApprovingVisible(false);
+    }
+  }, [load, pendingVisibleIds, runId]);
+
   return (
     <Glass as="section" className="p-6 space-y-4" data-testid="hmo-items-panel">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -119,6 +152,18 @@ export function HmoItemsPanel({
             onClick={() => openVerify(autofixItemIds, "autofix_hmo_wikibase_item")}
           >
             Autofix with AI ({autofixItemIds.length})
+          </button>
+          <button
+            type="button"
+            className="button-primary text-xs"
+            disabled={!pendingVisibleIds.length || approvingVisible}
+            title="Approve every currently filtered row that is not already approved."
+            data-testid="hmo-items-approve-visible"
+            onClick={() => void approveAllVisible()}
+          >
+            {approvingVisible
+              ? "Approving…"
+              : `Approve all visible (${pendingVisibleIds.length})`}
           </button>
         </div>
       </div>

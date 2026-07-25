@@ -132,7 +132,7 @@ versioning events before the network call (`_audit_manifest_upload_intent`,
 
 The HMO review table's External authority column now shows accepted persisted enrichment as source/count badges (Wikidata, VIAF, Mazal/NLI), while the Wikibase QID column remains explicitly local.
 
-The default review table is aimed at library editors: title/shelfmark, type, review status, data quality, publication status, and AI review are visible first. Approval is tri-state (`Pending review`, `Approved`, `Rejected`) and saves with a status message; search and filter chips are visible without opening a technical menu. Record IDs, source URIs, local QIDs, authority evidence, and upload audit details are available through `Show technical columns`. Single-entry publish/update actions in `HmoItemDetailDrawer` always pass through `HmoPublishConfirmationDialog`; bulk publication remains preview-first and places the validation-error override under `Advanced: publication checks`.
+The default review table is aimed at library editors: title/shelfmark, type, review status, data quality, publication status, and AI review are visible first. Approval is tri-state (`Pending review`, `Approved`, `Rejected`) and saves with a status message; **Approve all visible** bulk-approves every currently filtered row that is not already approved. Column filter popups pass real per-value row counts (not distinct-only fake `(1)`s). Search and filter chips are visible without opening a technical menu. Record IDs, source URIs, local QIDs, authority evidence, and upload audit details are available through `Show technical columns`. Single-entry publish/update actions in `HmoItemDetailDrawer` always pass through `HmoPublishConfirmationDialog`; bulk publication remains preview-first and places the validation-error override under `Advanced: publication checks`.
 
 **Phase 9 hardening.** `schema_mirror_report` exposes label/datatype drift. The
 server writer reads `WIKIBASE_CLOUD_MIN_WRITE_INTERVAL_SECONDS` and throttles
@@ -150,8 +150,10 @@ Phase 1 canonical contract: `hmo_canonical_entities` stores explicit identity (`
 Phase 3 HMO **item upload** runs authority enrichment internally and applies
 `hmo_authority_gate.validate_authority_rows` before any Wikibase write.
 Approved external identifiers reused by different headings, or NLI/Mazal
-identifiers misclassified as VIAF, block creation with a structured conflict
-report. Local IIIF **manifest build** (`POST …/build-manifests`) is RDF-only
+identifiers misclassified as VIAF, block creation; `format_authority_gate_error`
+lists the colliding ids/owners in the job error so Publish can be unblocked
+by unapproving or correcting those AuthorityMatch rows. Local IIIF
+**manifest build** (`POST …/build-manifests`) is RDF-only
 and is not blocked by that gate. Every live read-back is checked for the mapped
 QID and duplicate local, source, or QID identities before durable canonical
 rows are replaced.

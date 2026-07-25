@@ -97,10 +97,11 @@ export function ColumnFilterPopup({
 
   const valueCounts = useMemo(() => {
     if (valueCountsProp) return valueCountsProp;
-    const counts: Record<string, number> = {};
-    for (const v of values) counts[v] = (counts[v] ?? 0) + 1;
-    return counts;
-  }, [values, valueCountsProp]);
+    // Callers that pass already-distinct `values` without row totals would
+    // otherwise show a fake "(1)" for every option. Prefer an empty map so
+    // the count badge is omitted until real counts are supplied.
+    return {} as Record<string, number>;
+  }, [valueCountsProp]);
 
   const style = useMemo<CSSProperties>(() => {
     const maxX = typeof window !== "undefined" ? window.innerWidth - 340 : x;
@@ -168,7 +169,9 @@ export function ColumnFilterPopup({
                   className="h-3 w-3 accent-biu-sky"
                 />
                 <span className="flex-1 truncate" title={value}>{value || "(blank)"}</span>
-                <span className="muted">({valueCounts[value] ?? 0})</span>
+                {typeof valueCounts[value] === "number" && (
+                  <span className="muted">({valueCounts[value]})</span>
+                )}
               </label>
             ))
           )}

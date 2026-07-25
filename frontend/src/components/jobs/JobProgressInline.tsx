@@ -45,7 +45,7 @@ export function JobProgressInline({ job, labels }: JobProgressInlineProps) {
         </div>
       )}
       {job.status === "failed" && job.error && (
-        <p className="text-xs text-danger">{job.error}</p>
+        <p className="text-xs text-danger whitespace-pre-wrap">{job.error}</p>
       )}
     </div>
   );

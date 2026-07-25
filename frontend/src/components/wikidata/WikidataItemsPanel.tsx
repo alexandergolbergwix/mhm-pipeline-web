@@ -56,6 +56,7 @@ export function WikidataItemsPanel({
   const [moratoriumLifted, setMoratoriumLifted] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [approvingVisible, setApprovingVisible] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const labelStore = useLabelStore();
 
@@ -63,6 +64,13 @@ export function WikidataItemsPanel({
     const visible = new Set(filteredIds);
     return (build?.items ?? [])
       .filter((item) => item.local_id && visible.has(item.local_id) && Boolean(item.existing_qid?.trim()))
+      .map((item) => item.local_id as string);
+  }, [build?.items, filteredIds]);
+
+  const pendingVisibleIds = useMemo(() => {
+    const visible = new Set(filteredIds);
+    return (build?.items ?? [])
+      .filter((item) => item.local_id && visible.has(item.local_id) && item.approved !== true)
       .map((item) => item.local_id as string);
   }, [build?.items, filteredIds]);
 
@@ -114,14 +122,25 @@ export function WikidataItemsPanel({
   }, [refresh, runId]);
 
   const approveAllVisible = useCallback(async () => {
-    if (!filteredIds.length) return;
-    const ok = window.confirm(`Approve all ${filteredIds.length} visible items?`);
+    if (!pendingVisibleIds.length) return;
+    const ok = window.confirm(
+      `Approve all ${pendingVisibleIds.length} visible item${pendingVisibleIds.length === 1 ? "" : "s"} that are not already approved?`,
+    );
     if (!ok) return;
-    for (const id of filteredIds) {
-      await Studio.patchItemOverride(runId, id, {approved: true});
+    setApprovingVisible(true);
+    try {
+      const chunk = 25;
+      for (let i = 0; i < pendingVisibleIds.length; i += chunk) {
+        const batch = pendingVisibleIds.slice(i, i + chunk);
+        await Promise.all(
+          batch.map((id) => Studio.patchItemOverride(runId, id, {approved: true})),
+        );
+      }
+      await refresh();
+    } finally {
+      setApprovingVisible(false);
     }
-    await refresh();
-  }, [filteredIds, refresh, runId]);
+  }, [pendingVisibleIds, refresh, runId]);
 
   const handleImport = useCallback(async (file: File) => {
     await Studio.importItems(runId, file);
@@ -207,12 +226,15 @@ export function WikidataItemsPanel({
           </button>
           <button
             type="button"
-            className="button-ghost text-xs"
-            disabled={!filteredIds.length}
+            className="button-primary text-xs"
+            disabled={!pendingVisibleIds.length || approvingVisible}
             data-testid="wikidata-items-approve-visible"
+            title="Approve every currently filtered row that is not already approved."
             onClick={() => void approveAllVisible()}
           >
-            Approve all visible ({filteredIds.length})
+            {approvingVisible
+              ? "Approving…"
+              : `Approve all visible (${pendingVisibleIds.length})`}
           </button>
         </div>
       </div>

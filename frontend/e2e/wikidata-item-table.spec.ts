@@ -93,10 +93,73 @@ test.describe("Wikidata item review table", () => {
 
     await page.getByTestId("wikidata-item-col-upload_outcome").click();
     const checkboxList = page.getByTestId("filter-mode-checkbox");
+    await expect(checkboxList.locator("label", {hasText: "create"})).toContainText("(1)");
+    await expect(checkboxList.locator("label", {hasText: "failed"})).toContainText("(1)");
     await checkboxList.locator("label", {hasText: "failed"}).locator('input[type="checkbox"]').check();
     await page.getByRole("button", {name: "Apply"}).click();
 
     await expect(page.getByTestId("wikidata-item-row-manuscript::B")).toBeVisible();
     await expect(page.getByTestId("wikidata-item-row-manuscript::A")).toHaveCount(0);
+  });
+
+  test("data-status filter shows real row counts for shared values", async ({page}) => {
+    await installStudioMocks(page, makeBuildResponse({
+      items: [
+        makeStudioItem({local_id: "manuscript::A"}),
+        makeStudioItem({local_id: "manuscript::B"}),
+        makeStudioItem({
+          local_id: "person::C",
+          entity_type: "person",
+          existing_qid: "Q1",
+        }),
+      ],
+      total: 3,
+    }));
+    await gotoModernStudio(page);
+    await page.getByTestId("wikidata-item-col-data_status").click();
+    const checkboxList = page.getByTestId("filter-mode-checkbox");
+    await expect(checkboxList.locator("label", {hasText: "new"})).toContainText("(2)");
+  });
+
+  test("Approve all visible patches pending filtered rows", async ({page}) => {
+    const patched: string[] = [];
+    await installStudioMocks(page, makeBuildResponse({
+      items: [
+        makeStudioItem({local_id: "manuscript::A", approved: false}),
+        makeStudioItem({local_id: "manuscript::B", approved: true}),
+        makeStudioItem({local_id: "person::C", approved: false, entity_type: "person"}),
+      ],
+      total: 3,
+    }));
+    await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, async (route) => {
+      if (route.request().method() !== "PATCH") {
+        await route.fallback();
+        return;
+      }
+      const url = route.request().url();
+      const match = /items\/([^/?]+)/.exec(url);
+      if (match) patched.push(decodeURIComponent(match[1]));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run_id: TEST_RUN_ID,
+          local_id: match?.[1],
+          approved: true,
+          labels: {},
+          descriptions: {},
+          aliases: {},
+          add_statements: [],
+          remove_statements: [],
+          statement_edits: {},
+        }),
+      });
+    });
+    page.on("dialog", (dialog) => void dialog.accept());
+    await gotoModernStudio(page);
+    const btn = page.getByTestId("wikidata-items-approve-visible");
+    await expect(btn).toContainText("Approve all visible (2)");
+    await btn.click();
+    await expect.poll(() => patched.sort()).toEqual(["manuscript::A", "person::C"]);
   });
 });

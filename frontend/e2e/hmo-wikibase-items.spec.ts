@@ -198,11 +198,65 @@ test.describe("HMO Wikibase Items — Last upload column", () => {
     await page.getByTestId("hmo-item-col-upload_outcome").click();
     const checkboxList = page.getByTestId("filter-mode-checkbox");
     await expect(checkboxList).toBeVisible();
+    await expect(checkboxList.locator("label", {hasText: "create"})).toContainText("(1)");
+    await expect(checkboxList.locator("label", {hasText: "failed"})).toContainText("(1)");
     await checkboxList.locator("label", {hasText: "failed"}).locator('input[type="checkbox"]').check();
     await page.getByRole("button", {name: "Apply"}).click();
 
     await expect(page.getByTestId("hmo-item-row-QDraft_B")).toBeVisible();
     await expect(page.getByTestId("hmo-item-row-QDraft_A")).toHaveCount(0);
+  });
+
+  test("publication-status filter shows real row counts", async ({page}) => {
+    await installHmoItemsMocks(page, makeHmoItemsState({
+      items: [
+        makeHmoStudioItem({local_id: "QDraft_A", status: "would_create", wikibase_id: null}),
+        makeHmoStudioItem({local_id: "QDraft_B", status: "would_create", wikibase_id: null}),
+        makeHmoStudioItem({
+          local_id: "QDraft_C",
+          status: "created",
+          wikibase_id: "Q100",
+          upload_outcome: "create",
+        }),
+      ],
+    }));
+    await gotoHmoItemsTab(page);
+    await page.getByTestId("hmo-item-col-data_status").click();
+    const checkboxList = page.getByTestId("filter-mode-checkbox");
+    await expect(checkboxList).toBeVisible();
+    // Two new items share the same data_status → count must be 2, not 1.
+    await expect(checkboxList.locator("label", {hasText: "new"})).toContainText("(2)");
+  });
+
+  test("Approve all visible patches pending filtered rows", async ({page}) => {
+    const patched: string[] = [];
+    await installHmoItemsMocks(page, makeHmoItemsState({
+      items: [
+        makeHmoStudioItem({local_id: "QDraft_A", approved: null}),
+        makeHmoStudioItem({local_id: "QDraft_B", approved: true}),
+        makeHmoStudioItem({local_id: "QDraft_C", approved: null}),
+      ],
+    }));
+    await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/items/**/override`, async (route) => {
+      if (route.request().method() !== "PATCH") {
+        await route.fallback();
+        return;
+      }
+      const url = route.request().url();
+      const match = /items\/([^/]+)\/override/.exec(url);
+      if (match) patched.push(decodeURIComponent(match[1]));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({run_id: TEST_RUN_ID, local_id: match?.[1], approved: true}),
+      });
+    });
+    page.on("dialog", (dialog) => void dialog.accept());
+    await gotoHmoItemsTab(page);
+    const btn = page.getByTestId("hmo-items-approve-visible");
+    await expect(btn).toContainText("Approve all visible (2)");
+    await btn.click();
+    await expect.poll(() => patched.sort()).toEqual(["QDraft_A", "QDraft_C"]);
   });
 });
 

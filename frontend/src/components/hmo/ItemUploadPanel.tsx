@@ -402,7 +402,7 @@ export function ItemUploadPanel({
   if (compact) {
     return (
       <div className="space-y-3" data-testid="hmo-item-upload-actions">
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <p className="text-sm text-danger whitespace-pre-wrap">{error}</p>}
         {!canUpload && (
           <p className="text-sm muted">Build items before uploading.</p>
         )}

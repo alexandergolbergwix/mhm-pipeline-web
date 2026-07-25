@@ -57,7 +57,7 @@ from app.pipeline.hmo_item_shacl_gate import (
 from app.services.wikibase_audit import record_wikibase_write
 from app.pipeline.hmo_canonical import canonical_snapshot_from_wikibase
 from app.pipeline.hmo_canonical import assert_canonical_entities, normalize_live_entity
-from app.pipeline.hmo_authority_gate import validate_authority_rows
+from app.pipeline.hmo_authority_gate import format_authority_gate_error, validate_authority_rows
 from converter.wikibase.cloud_client import EntityEditOutcome
 from converter.wikibase.resolved_models import ResolvedClaim, ResolvedWikibaseEntity
 
@@ -149,12 +149,8 @@ async def upload_items_for_run(
         await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))
     ).scalars().all()
     authority_gate = validate_authority_rows(authority_rows)
-    authority_failures = [*authority_gate["conflicts"], *authority_gate["invalid"]]
-    if authority_failures:
-        raise RuntimeError(
-            "HMO authority gate blocked item creation: "
-            f"{len(authority_failures)} conflict(s) or invalid identifier(s)"
-        )
+    if not authority_gate["ready"]:
+        raise RuntimeError(format_authority_gate_error(authority_gate))
 
     entities = [ResolvedWikibaseEntity.from_dict(e) for e in cache_row.resolved_entities]
     shacl_by_local_id = cache_row.shacl_report or {}

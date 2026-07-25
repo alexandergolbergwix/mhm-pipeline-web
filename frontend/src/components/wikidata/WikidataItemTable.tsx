@@ -126,6 +126,16 @@ export function WikidataItemTable({
     return [...seen].sort();
   }, [items]);
 
+  const countsForCol = useCallback((col: ColKey): Record<string, number> => {
+    const counts: Record<string, number> = {};
+    for (const item of items) {
+      for (const v of cellFilterValues(item, col)) {
+        counts[v] = (counts[v] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [items]);
+
   return (
     <div className="space-y-3">
       <input
@@ -246,6 +256,7 @@ export function WikidataItemTable({
         <ColumnFilterPopup
           columnLabel={popup.col}
           values={distinctForCol(popup.col)}
+          valueCounts={countsForCol(popup.col)}
           selected={colFilters[popup.col] ?? new Set()}
           x={popup.x}
           y={popup.y}
