@@ -308,6 +308,7 @@ export const HmoStudio = {
     dryRun: boolean,
     updateExisting = false,
     allowShaclErrors = false,
+    localIds?: string[],
   ) =>
     api.post<RunJobSnapshot>(
       `/runs/${runId}/hmo-studio/upload-items`,
@@ -315,6 +316,7 @@ export const HmoStudio = {
         dry_run: dryRun,
         update_existing: updateExisting,
         allow_shacl_errors: allowShaclErrors,
+        ...(localIds && localIds.length > 0 ? {local_ids: localIds} : {}),
       },
     ),
 

@@ -212,3 +212,36 @@ async def test_item_status_before_and_after_build(sample_run, db_session) -> Non
     assert body["entity_count"] == 3
     assert body["deferred_link_count"] == 1
     assert body["uploaded_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_upload_items_accepts_local_ids_scope(
+    sample_run, db_session, monkeypatch,
+) -> None:
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda *_a, **_k: None)
+    run_id = sample_run["run_id"]
+    entity = ResolvedWikibaseEntity(
+        local_id="QDraft_MS1",
+        labels={"en": "Test MS"},
+        descriptions={"en": "a manuscript"},
+        class_qid="Q1",
+        source_uri="http://example.org#MS1",
+    )
+    db_session.add(
+        HmoStudioItemCache(
+            run_id=run_id,
+            input_fingerprint="0" * 64,
+            resolved_entities=[entity.to_dict()],
+            entity_count=1,
+        )
+    )
+    await db_session.commit()
+
+    response = await sample_run["client"].post(
+        f"/api/runs/{run_id}/hmo-studio/upload-items",
+        json={"dry_run": True, "local_ids": ["QDraft_MS1"]},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["kind"] == "hmo_item_upload"
+    assert body["params"]["local_ids"] == ["QDraft_MS1"]

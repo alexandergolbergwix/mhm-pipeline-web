@@ -73,6 +73,7 @@
   the "Last upload" column (badge content + column-filter popup) and
   upload-lifecycle AI verification (checkboxes, successful/failed pre-verify,
   the fail-confirm banner's "review" vs "upload anyway" paths).
+  Retry-failed button posts `local_ids` for last-push failures.
 - `frontend/e2e/hmo-wikibase-studio.spec.ts` — Phase 7 acceptance coverage:
   schema class/property counts, dry-run bootstrap defaults, item-build gating,
   item-upload request payload/result summary, and the advanced schema disclosure.

@@ -53,6 +53,9 @@
    `N/M items uploaded` then `N/M item links added`. Cancellation returns a
    partial result. Failures per item appear in `outcomes`/`link_outcomes` and
    the audit log.
+6. After a partial failure, use **Retry N failed** (sends `local_ids` of the
+   failed outcomes / Last-push=failed rows). Pass 1 only uploads that scope;
+   pass 2 writes deferred links that touch those ids.
 
 ### Skill: debug a stuck or repeating coverage report
 1. A 409 `hmo_coverage_in_progress` is normal for up to ~15 minutes — poll the

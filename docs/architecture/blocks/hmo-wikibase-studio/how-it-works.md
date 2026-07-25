@@ -84,7 +84,10 @@ override via `POST .../ai-fixes/apply`. It also joins the latest
 `wikibase_cloud_writes` row per item (`upload_outcome`/`upload_message`/
 `upload_at`) — see [upload outcomes + verify](upload-outcomes-and-verify.md).
 
-**Upload (two-pass).** `upload_items_for_run` (`hmo_item_upload.py:96`).
+**Upload (two-pass).** `upload_items_for_run` (`hmo_item_upload.py`).
+Optional `local_ids` scopes pass 1 to those drafts (UI **Retry N failed**);
+pass 2 still writes deferred links that touch the scope. Full-corpus uploads
+still persist live canonical state; scoped retries do not.
 Pass 1: for each entity — already mapped → skip (or `update_item` merge when
 `update_existing=True`); unmapped → SPARQL reconcile by `hmo_source_uri`; a hit
 is **adopted** (mapping row recorded, no create); a miss → `create_item`. Every

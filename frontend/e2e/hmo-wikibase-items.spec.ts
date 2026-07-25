@@ -533,4 +533,52 @@ test.describe("HMO Wikibase Items — upload-lifecycle AI verification", () => {
     await page.getByTestId("hmo-upload-failconfirm-anyway").click();
     await expect.poll(() => uploadCalled).toBe(true);
   });
+
+  test("retry failed posts local_ids for Last-push=failed rows", async ({page}) => {
+    await installHmoItemsMocks(page, makeHmoItemsState({
+      items: [
+        makeHmoStudioItem({local_id: "QDraft_Ok", upload_outcome: "create"}),
+        makeHmoStudioItem({
+          local_id: "QDraft_FailA",
+          upload_outcome: "failed",
+          upload_message: "reconcile unavailable",
+        }),
+        makeHmoStudioItem({
+          local_id: "QDraft_FailB",
+          upload_outcome: "failed",
+          upload_message: "reconcile unavailable",
+        }),
+      ],
+    }));
+
+    let uploadBody: Record<string, unknown> | null = null;
+    await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/upload-items`, async (route) => {
+      uploadBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "job-retry-failed",
+          run_id: TEST_RUN_ID,
+          kind: "hmo_item_upload",
+          status: "queued",
+          params: uploadBody,
+          progress: null,
+          result: null,
+          error: null,
+          created_at: "2026-07-25T00:00:00Z",
+          updated_at: "2026-07-25T00:00:00Z",
+        }),
+      });
+    });
+
+    await gotoHmoItemsTab(page);
+    await expect(page.getByTestId("hmo-upload-retry-failed-banner")).toBeVisible();
+    await page.getByTestId("hmo-upload-retry-failed").click();
+
+    await expect.poll(() => uploadBody).not.toBeNull();
+    expect(uploadBody?.dry_run).toBe(false);
+    const ids = ((uploadBody?.local_ids as string[] | undefined) ?? []).slice().sort();
+    expect(ids).toEqual(["QDraft_FailA", "QDraft_FailB"]);
+  });
 });

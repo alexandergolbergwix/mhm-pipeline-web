@@ -252,3 +252,8 @@ dry-run walks exceed the router budget.
 Mazal/Wikidata/VIAF collisions with versioned unapprove; do **not** reopen
 retired Authority mutation routes (W-93). *Why:* upload gate (W-95) blocked
 publish with no curator path after Authority retirement.
+50. **R50 — Failed-item retry MAY scope upload via `local_ids`.**
+`POST …/upload-items` accepts optional `local_ids`; pass 1 uploads only those
+drafts; pass 2 still links deferred claims that touch the scope. The UI
+**Retry N failed** button uses this. *Why:* a full re-walk of thousands of
+already-mapped items is unnecessary after a SPARQL/transient failure.

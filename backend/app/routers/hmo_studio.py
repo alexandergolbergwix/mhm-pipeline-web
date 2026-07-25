@@ -175,6 +175,12 @@ class HmoItemUploadRequest(BaseModel):
         default=False,
         description="When True, allow upload of items with SHACL Violation/Error.",
     )
+    local_ids: list[str] | None = Field(
+        default=None,
+        description="Optional scope: only these local_ids are uploaded in "
+                    "pass 1; pass 2 still writes deferred links that touch "
+                    "the scoped ids (retry-failed path).",
+    )
 
 
 class AuthorityConflictOwnerDto(BaseModel):
@@ -667,6 +673,7 @@ async def upload_items(
             "dry_run": payload.dry_run,
             "update_existing": payload.update_existing,
             "allow_shacl_errors": payload.allow_shacl_errors,
+            **({"local_ids": payload.local_ids} if payload.local_ids else {}),
         },
     )
     try:

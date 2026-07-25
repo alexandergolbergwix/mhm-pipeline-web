@@ -58,7 +58,7 @@
 | `frontend/src/components/hmo/HmoAuthorityConflictPanel.tsx` | Keep-one / unapprove-rest UI for shared Mazal/Wikidata/VIAF IDs (Rule W-109) |
 | `frontend/src/components/hmo/SchemaBootstrapPanel.tsx` | Schema class/property mapping status, dry-run/live bootstrap controls, report results, and schema AI verification |
 | `frontend/src/components/hmo/ItemBuildPanel.tsx` | RDF-backed item build/rebuild controls and build-status summary |
-| `frontend/src/components/hmo/ItemUploadPanel.tsx` | Dry-run-first item upload controls, SHACL override, background-job progress, and upload outcomes |
+| `frontend/src/components/hmo/ItemUploadPanel.tsx` | Dry-run-first item upload controls, SHACL override, background-job progress, upload outcomes, **Retry N failed** (`local_ids` scope) |
 | `frontend/src/components/hmo/HmoPublishConfirmationDialog.tsx` | Accessible confirmation gate for single-entry publication and updates |
 | `frontend/src/api/hmoWikibaseSchema.ts` | Typed schema status/bootstrap/report client, including live bootstrap job detection |
 | `frontend/src/api/hmoStudio.ts` | Typed item build, upload, status, and upload-job result helpers |

@@ -120,6 +120,7 @@ async def upload_items_for_run(
     dry_run: bool = True,
     update_existing: bool = False,
     allow_shacl_errors: bool = False,
+    local_ids: list[str] | None = None,
     audit_ctx: WikibaseAuditContext | None = None,
     on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
@@ -130,6 +131,10 @@ async def upload_items_for_run(
     An already-mapped instance is skipped by default; pass
     ``update_existing=True`` to instead refresh its labels/descriptions
     and merge in any new claims (see :func:`_pass_one_create`).
+
+    ``local_ids`` scopes pass 1 to those draft ids (retry-failed). Pass 2
+    still considers deferred links that touch the scoped ids so newly
+    created targets can be linked from already-mapped sources.
 
     ``on_progress(processed, total, message)`` is awaited after every
     item create/update (pass 1) and deferred-link write (pass 2), with
@@ -152,11 +157,30 @@ async def upload_items_for_run(
     if not authority_gate["ready"]:
         raise RuntimeError(format_authority_gate_error(authority_gate))
 
-    entities = [ResolvedWikibaseEntity.from_dict(e) for e in cache_row.resolved_entities]
+    all_entities = [ResolvedWikibaseEntity.from_dict(e) for e in cache_row.resolved_entities]
+    scope: set[str] | None = None
+    if local_ids is not None:
+        scope = {str(x).strip() for x in local_ids if str(x).strip()}
+        entities = [e for e in all_entities if e.local_id in scope]
+        if not entities:
+            raise ValueError(
+                "local_ids did not match any entities in the current item build"
+            )
+    else:
+        entities = all_entities
+
     shacl_by_local_id = cache_row.shacl_report or {}
     existing = await _load_run_instance_mappings(db, run_id, include_global=True)
-    local_id_to_source_uri = {e.local_id: e.source_uri for e in entities}
-    total = len(entities) + sum(len(e.deferred_links) for e in entities)
+    local_id_to_source_uri = {e.local_id: e.source_uri for e in all_entities}
+
+    deferred_for_progress = 0
+    for e in all_entities:
+        for link in e.deferred_links:
+            if scope is None or (
+                link.source_local_id in scope or link.target_local_id in scope
+            ):
+                deferred_for_progress += 1
+    total = len(entities) + deferred_for_progress
 
     # Resolved once, not once per entity: the property id is schema-level
     # and constant for the whole run, so re-querying it per item (up to
@@ -183,17 +207,19 @@ async def upload_items_for_run(
     linked = link_failed = unresolved = 0
     if not cancelled:
         link_outcomes, linked, link_failed, unresolved, cancelled = await _pass_two_link(
-            db, entities, local_id_to_source_uri, known_qids,
+            db, all_entities, local_id_to_source_uri, known_qids,
             writer=writer, dry_run=dry_run,
             audit_ctx=audit_ctx,
             on_progress=on_progress, should_cancel=should_cancel,
             total=total, processed_offset=len(entities),
+            link_scope_local_ids=scope,
         )
 
     # Canonical state must describe the complete two-pass upload. Persist only
     # after deferred links have been written successfully; unresolved or
     # failed pass-2 links leave the build non-canonical rather than publishing
     # a snapshot that silently omits item-to-item relationships.
+    # Scoped retries never replace the full canonical set.
     if (
         not dry_run
         and writer is not None
@@ -203,8 +229,9 @@ async def upload_items_for_run(
         and blocked == 0
         and link_failed == 0
         and unresolved == 0
+        and scope is None
     ):
-        await _persist_live_canonical_state(db, cache_row, entities, known_qids, writer)
+        await _persist_live_canonical_state(db, cache_row, all_entities, known_qids, writer)
 
     return HmoItemUploadResult(
         dry_run=dry_run,
@@ -666,6 +693,7 @@ async def _pass_two_link(
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
     total: int = 0,
     processed_offset: int = 0,
+    link_scope_local_ids: set[str] | None = None,
 ) -> tuple[list[HmoDeferredLinkOutcome], int, int, int, bool]:
     outcomes: list[HmoDeferredLinkOutcome] = []
     linked = failed = unresolved = 0
@@ -678,6 +706,11 @@ async def _pass_two_link(
             break
         source_qid = known_qids.get(entity.source_uri)
         for link in entity.deferred_links:
+            if link_scope_local_ids is not None and (
+                link.source_local_id not in link_scope_local_ids
+                and link.target_local_id not in link_scope_local_ids
+            ):
+                continue
             if not dry_run and should_cancel is not None and await should_cancel():
                 cancelled = True
                 break

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
 import { ApiError } from "@/api/client";
 import {
@@ -32,6 +32,8 @@ interface ItemUploadPanelProps {
   refreshToken?: unknown;
   /** Toolbar row for the review panel; upload progress/results still render below. */
   compact?: boolean;
+  /** local_ids with Last push = failed (survives refresh when result panel is cleared). */
+  failedLocalIds?: string[];
   onUploaded?: () => void;
 }
 
@@ -54,6 +56,7 @@ export function ItemUploadPanel({
   wikibaseConfigured,
   refreshToken,
   compact = false,
+  failedLocalIds = [],
   onUploaded,
 }: ItemUploadPanelProps) {
   const [status, setStatus] = useState<HmoItemStatus | null>(null);
@@ -154,11 +157,17 @@ export function ItemUploadPanel({
     },
   );
 
-  const doUpload = useCallback(async () => {
+  const doUpload = useCallback(async (
+    localIds?: string[],
+    opts?: {dryRun?: boolean},
+  ) => {
+    const useDryRun = opts?.dryRun ?? dryRun;
     setBusy(true);
     setError(null);
     try {
-      const r = await HmoStudio.uploadItems(runId, dryRun, updateExisting, allowShaclErrors);
+      const r = await HmoStudio.uploadItems(
+        runId, useDryRun, updateExisting, allowShaclErrors, localIds,
+      );
       if (isItemUploadJob(r)) {
         notifiedSuccessIdRef.current = null;
         upsertJob(r);
@@ -182,6 +191,22 @@ export function ItemUploadPanel({
     runId, dryRun, updateExisting, allowShaclErrors, refresh, upsertJob,
     setTrackedJobId, ensureJobPolling, onUploaded,
   ]);
+
+  const retryFailedIds = useMemo(() => {
+    const fromResult = (result?.outcomes ?? [])
+      .filter((o) => o.status === "failed")
+      .map((o) => o.local_id)
+      .filter(Boolean);
+    if (fromResult.length > 0) return fromResult;
+    return failedLocalIds;
+  }, [result, failedLocalIds]);
+
+  const handleRetryFailed = useCallback(() => {
+    if (!retryFailedIds.length) return;
+    // Failures only come from live writes — always retry live.
+    setDryRun(false);
+    void doUpload(retryFailedIds, {dryRun: false});
+  }, [doUpload, retryFailedIds]);
 
   useEffect(() => {
     if (verifyPhase !== "pre" || verifyRunning) return;
@@ -402,7 +427,30 @@ export function ItemUploadPanel({
         />
       )}
 
-      {result && <UploadResultSummary result={result} />}
+      {result && (
+        <UploadResultSummary
+          result={result}
+          retryFailedCount={retryFailedIds.length}
+          onRetryFailed={handleRetryFailed}
+          retryDisabled={busy || jobRunning || preVerifyRunning || (!dryRun && !wikibaseConfigured)}
+        />
+      )}
+      {!result && retryFailedIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="hmo-upload-retry-failed-banner">
+          <span className="text-danger">
+            {retryFailedIds.length} item{retryFailedIds.length === 1 ? "" : "s"} failed on the last push.
+          </span>
+          <button
+            type="button"
+            className="button-primary text-xs"
+            disabled={busy || jobRunning || preVerifyRunning || (!dryRun && !wikibaseConfigured)}
+            data-testid="hmo-upload-retry-failed"
+            onClick={handleRetryFailed}
+          >
+            Retry {retryFailedIds.length} failed
+          </button>
+        </div>
+      )}
 
       {reviewOpen && (
         <HmoItemVerificationModal
@@ -456,10 +504,20 @@ export function ItemUploadPanel({
   );
 }
 
-function UploadResultSummary({result}: {result: HmoItemUploadResult}) {
+function UploadResultSummary({
+  result,
+  retryFailedCount = 0,
+  onRetryFailed,
+  retryDisabled = false,
+}: {
+  result: HmoItemUploadResult;
+  retryFailedCount?: number;
+  onRetryFailed?: () => void;
+  retryDisabled?: boolean;
+}) {
   const [expand, setExpand] = useState(false);
   return (
-    <div className="border-t border-white/5 pt-3 space-y-2">
+    <div className="border-t border-white/5 pt-3 space-y-2" data-testid="hmo-upload-result">
       <div className="flex items-baseline justify-between flex-wrap gap-2">
         <p className="text-sm">
           <span className="muted">{result.dry_run ? "Would create:" : "Created:"}</span>{" "}
@@ -497,9 +555,23 @@ function UploadResultSummary({result}: {result: HmoItemUploadResult}) {
             </>
           )}
         </p>
-        <button onClick={() => setExpand((v) => !v)} className="button-ghost text-xs">
-          {expand ? "Hide details" : "Show details"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {retryFailedCount > 0 && onRetryFailed && (
+            <button
+              type="button"
+              className="button-primary text-xs"
+              disabled={retryDisabled}
+              data-testid="hmo-upload-retry-failed"
+              title="Upload only the items that failed on this run (plus deferred links that touch them)."
+              onClick={onRetryFailed}
+            >
+              Retry {retryFailedCount} failed
+            </button>
+          )}
+          <button onClick={() => setExpand((v) => !v)} className="button-ghost text-xs">
+            {expand ? "Hide details" : "Show details"}
+          </button>
+        </div>
       </div>
       {expand && (
         <div className="space-y-3">

@@ -51,6 +51,8 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         dry_run = bool(params.get("dry_run", True))
         update_existing = bool(params.get("update_existing", False))
         allow_shacl_errors = bool(params.get("allow_shacl_errors", False))
+        raw_ids = params.get("local_ids")
+        local_ids = [str(x) for x in raw_ids] if isinstance(raw_ids, list) and raw_ids else None
 
     writer = None
     if not dry_run:
@@ -97,6 +99,7 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
                 db, run_id, writer=writer, dry_run=dry_run,
                 update_existing=update_existing,
                 allow_shacl_errors=allow_shacl_errors,
+                local_ids=local_ids,
                 audit_ctx=audit_ctx,
                 on_progress=on_progress, should_cancel=should_cancel,
             )

@@ -721,3 +721,32 @@ async def test_push_single_item_never_emits_und_labels(db_session, sample_run) -
             reconcile_pid=None, existing_qid=None,
         )
     assert "und" not in writer.create_calls[0]["labels"]
+
+
+@pytest.mark.asyncio
+async def test_local_ids_scopes_pass_one_and_related_links(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=None, dry_run=True,
+        local_ids=["QDraft_Person1"],
+    )
+
+    assert result.created == 1
+    assert {o.local_id for o in result.outcomes} == {"QDraft_Person1"}
+    # Deferred MS→Person link touches the scoped person target.
+    assert len(result.link_outcomes) == 1
+    assert result.link_outcomes[0].target_local_id == "QDraft_Person1"
+    assert result.link_outcomes[0].status == "unresolved"  # source MS not in scope / no QID
+
+
+@pytest.mark.asyncio
+async def test_local_ids_unknown_raises(db_session) -> None:
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    with pytest.raises(ValueError, match="local_ids did not match"):
+        await pipeline.upload_items_for_run(
+            db_session, run_id, writer=None, dry_run=True,
+            local_ids=["QDraft_Missing"],
+        )

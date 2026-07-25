@@ -63,6 +63,11 @@ export function HmoItemsPanel({
       .map((item) => item.local_id);
   }, [filteredIds, items]);
 
+  const failedLocalIds = useMemo(
+    () => items.filter((i) => i.upload_outcome === "failed").map((i) => i.local_id),
+    [items],
+  );
+
   const openVerify = useCallback((itemIds: string[], actionId?: string) => {
     setVerifyIds(itemIds);
     setVerifyActionId(actionId);
@@ -231,6 +236,7 @@ export function HmoItemsPanel({
           wikibaseConfigured={wikibaseConfigured}
           refreshToken={refreshToken}
           compact
+          failedLocalIds={failedLocalIds}
           onUploaded={handleLifecycleRefresh}
         />
       </div>

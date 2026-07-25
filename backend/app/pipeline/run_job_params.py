@@ -161,6 +161,35 @@ async def prepare_job_params(
         merged.setdefault("dry_run", True)
         merged.setdefault("update_existing", False)
         merged.setdefault("allow_shacl_errors", False)
+        raw_scope = merged.get("local_ids")
+        if raw_scope is not None:
+            if not isinstance(raw_scope, list) or not raw_scope:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="local_ids must be a non-empty list when provided",
+                )
+            cleaned_scope: list[str] = []
+            seen_scope: set[str] = set()
+            for raw in raw_scope:
+                lid = str(raw).strip()
+                if not lid or lid in seen_scope:
+                    continue
+                seen_scope.add(lid)
+                cleaned_scope.append(lid)
+            if not cleaned_scope:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="local_ids must be a non-empty list when provided",
+                )
+            if len(cleaned_scope) > MAX_BULK_APPROVE_IDS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"local_ids exceeds max of {MAX_BULK_APPROVE_IDS} "
+                        f"(got {len(cleaned_scope)})"
+                    ),
+                )
+            merged["local_ids"] = cleaned_scope
 
     if kind == JOB_KIND_HMO_MANIFEST_UPLOAD:
         merged.setdefault("dry_run", True)
