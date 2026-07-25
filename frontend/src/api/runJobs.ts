@@ -19,6 +19,9 @@ export type RunJobKind =
   | "hmo_item_upload"
   | "hmo_item_verify"
   | "hmo_item_bulk_approve"
+  | "hmo_item_build"
+  | "hmo_manifest_build"
+  | "hmo_manifest_upload"
   | "wikidata_item_bulk_approve";
 
 export interface RunJobProgress {
@@ -73,6 +76,9 @@ export const JOB_KIND_LABELS: Record<string, string> = {
   hmo_item_upload:          "HMO item upload",
   hmo_item_verify:          "HMO item AI verify",
   hmo_item_bulk_approve:    "HMO approve visible",
+  hmo_item_build:           "HMO item build",
+  hmo_manifest_build:       "HMO manifest build",
+  hmo_manifest_upload:      "HMO manifest upload",
   wikidata_item_bulk_approve: "Wikidata approve visible",
 };
 
@@ -93,6 +99,9 @@ export function jobRunHref(job: RunJobSnapshot): string {
     case "hmo_item_upload":
     case "hmo_item_verify":
     case "hmo_item_bulk_approve":
+    case "hmo_item_build":
+    case "hmo_manifest_build":
+    case "hmo_manifest_upload":
       return `/runs/${job.run_id}/hmo-studio`;
     default:
       return `/runs/${job.run_id}/overview`;
