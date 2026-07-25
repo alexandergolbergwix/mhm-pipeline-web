@@ -24,6 +24,9 @@
 - `backend/tests/test_hmo_studio_upload_manifests_router.py`,
   `test_hmo_studio_upload_items_router.py`, `test_hmo_item_upload_job.py` —
   publish jobs (W-107).
+- `backend/tests/unit/test_hmo_authority_gate.py`,
+  `test_hmo_authority_conflicts_router.py` — conflict report + keep-one
+  resolve (W-109).
 - `backend/tests/unit/test_kima_disambiguate.py`, `test_place_coords_in_rdf.py` —
   multi-source place/person enrichment claims.
 - `backend/tests/test_hmo_item_upload.py` (incl.

@@ -43,6 +43,13 @@ job-backed publish finishes, `ItemUploadPanel` calls `onUploaded` once and
 `HmoItemsPanel` reloads the list so **Publication status** updates without
 a manual refresh (Rule W-108).
 
+**Authority conflict resolver (Rule W-109).** When approved matches share a
+Mazal/Wikidata/VIAF ID across different `entity_text` values, upload fails
+closed. `HmoAuthorityConflictPanel` (above the lifecycle bar) loads
+`GET …/authority-conflicts`, lets the curator keep one row per ID, and
+`POST …/authority-conflicts/resolve` unapproves the rest (versioned). Rebuild
+items afterward if RDF still carries the old identity claims.
+
 **SHACL upload gate.** `upload_items_for_run` / `push_single_item` block
 create/update when `shacl_report[local_id]` contains `Violation` or `Error`
 unless `allow_shacl_errors=true` (UI: "Upload items with validation errors").

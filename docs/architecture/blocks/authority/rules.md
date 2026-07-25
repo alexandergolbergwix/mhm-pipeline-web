@@ -25,7 +25,9 @@ legacy mutation routes MUST return HTTP 410 by default and emit structured
 run, actor, and status. The legacy run bookmark MUST explain the move to HMO
 Wikibase Studio before redirecting. *Why:* silent compatibility behavior would
 make it impossible to prove that the standalone curator surface is unused or
-to investigate stale clients.
+to investigate stale clients. HMO Studio
+`…/authority-conflicts/resolve` is the allowed versioned unapprove path for
+upload-gate collisions (Rule W-109) — it MUST NOT call the 410 guard.
 19. **R19 — Postgres KIMA matching MUST use multi-row QID abstain (W-84 / W-101).**
     `PostgresAuthorityBackend.match_place` fetches all exact (and top fuzzy)
     hits and runs `pick_kima_place_row`; never `LIMIT 1` when Wikidata QIDs

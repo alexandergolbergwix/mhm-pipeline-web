@@ -41,10 +41,14 @@
    the ontology; re-run it). This includes the `hmo_source_uri` property:
    every class, predicate, and reconciliation URI must be mapped before an
    item cache is created.
-2. Review in the HMO Studio items panel; fix labels/statements via overrides,
+2. If the amber **Authority conflicts** banner appears (or upload fails the
+   W-95 gate), keep one match per shared Mazal/Wikidata/VIAF ID in
+   `HmoAuthorityConflictPanel` → `POST …/authority-conflicts/resolve`
+   (Rule W-109). Rebuild items if RDF still carries old identity claims.
+3. Review in the HMO Studio items panel; fix labels/statements via overrides,
    approve items, run the AI audit if desired.
-3. Preview: `POST /runs/{id}/hmo-studio/upload-items` with `{"dry_run": true}`.
-4. Live: `{"dry_run": false}` (add `"update_existing": true` to refresh
+4. Preview: `POST /runs/{id}/hmo-studio/upload-items` with `{"dry_run": true}`.
+5. Live: `{"dry_run": false}` (add `"update_existing": true` to refresh
    already-uploaded items) → background job; progress shows
    `N/M items uploaded` then `N/M item links added`. Cancellation returns a
    partial result. Failures per item appear in `outcomes`/`link_outcomes` and

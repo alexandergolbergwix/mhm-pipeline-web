@@ -2557,3 +2557,25 @@ Invariant:
    `status` / `upload_outcome` without a page refresh.
 
 Tests: `frontend/tests/unit/renderStable.spec.ts` (terminal fingerprint).
+
+### Rule W-109 — HMO Studio MUST resolve AuthorityMatch ID collisions in-place (added 2026-07-25)
+
+Upload fail-closed on shared Mazal/Wikidata/VIAF IDs among approved matches
+(Rules W-86 / W-95), but the standalone Authority mutation UI is retired
+(HTTP 410, Rule W-93). Curators had no path to unapprove colliding rows
+without flipping `legacy_authority_mutations_enabled`.
+
+Invariant:
+
+1. `GET /runs/{id}/hmo-studio/authority-conflicts` returns conflict groups
+   with match ids, roles, CNs, and invalid VIAF rows (rich report from
+   `build_authority_conflict_report`).
+2. `POST …/authority-conflicts/resolve` accepts `keep_match_ids` /
+   `unapprove_match_ids`, unapproves siblings via `_apply_approval` +
+   `_record_match_event` (Rule W-21), and does **not** reopen legacy
+   Authority routes.
+3. HMO Studio shows `HmoAuthorityConflictPanel` above the lifecycle bar:
+   pick one keep per shared ID → unapprove the rest → rebuild/retry upload.
+
+Tests: `test_hmo_authority_gate.py`, `test_hmo_authority_conflicts_router.py`,
+`frontend/e2e/hmo-wikibase-items.spec.ts` (conflict panel).

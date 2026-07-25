@@ -161,6 +161,49 @@ export interface HmoItemStatus {
   built_at: string | null;
 }
 
+export interface HmoAuthorityConflictOwner {
+  match_id: string;
+  entity_text: string;
+  matched_name: string;
+  control_number: string;
+  entity_kind: string;
+  role: string;
+  confidence: string;
+  source: string;
+  mazal_id: string;
+  viaf_id: string;
+  wikidata_qid: string;
+  approved: boolean;
+}
+
+export interface HmoAuthorityConflictGroup {
+  kind: string;
+  identifier: string;
+  owners: HmoAuthorityConflictOwner[];
+}
+
+export interface HmoAuthorityInvalidRow {
+  match_id: string;
+  entity_text: string;
+  kind: string;
+  identifier: string;
+  reason: string;
+  matched_name: string;
+  control_number: string;
+  role: string;
+  approved: boolean;
+}
+
+export interface HmoAuthorityConflictsReport {
+  ready: boolean;
+  conflict_count: number;
+  invalid_count: number;
+  conflicts: HmoAuthorityConflictGroup[];
+  invalid: HmoAuthorityInvalidRow[];
+  unapproved_match_ids: string[];
+  message: string;
+}
+
 /** A live upload spawns a background run job; a dry run returns the result inline. */
 export function isItemUploadJob(
   r: HmoItemUploadResult | RunJobSnapshot,
@@ -277,4 +320,18 @@ export const HmoStudio = {
 
   itemStatus: (runId: string) =>
     api.get<HmoItemStatus>(`/runs/${runId}/hmo-studio/item-status`),
+
+  authorityConflicts: (runId: string) =>
+    api.get<HmoAuthorityConflictsReport>(
+      `/runs/${runId}/hmo-studio/authority-conflicts`,
+    ),
+
+  resolveAuthorityConflicts: (
+    runId: string,
+    body: {keep_match_ids: string[]; unapprove_match_ids: string[]},
+  ) =>
+    api.post<HmoAuthorityConflictsReport>(
+      `/runs/${runId}/hmo-studio/authority-conflicts/resolve`,
+      body,
+    ),
 };

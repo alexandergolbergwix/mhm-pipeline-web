@@ -247,3 +247,8 @@ exceed Heroku's 30s router budget.
 `hmo_item_upload` / `hmo_manifest_upload` for dry-run and live; missing item
 build → 409 before enqueue. *Why:* sequential Wikibase writes and large
 dry-run walks exceed the router budget.
+49. **R49 — Authority ID collisions resolve in HMO Studio (Rule W-109).**
+`GET/POST …/hmo-studio/authority-conflicts` lists and resolves approved
+Mazal/Wikidata/VIAF collisions with versioned unapprove; do **not** reopen
+retired Authority mutation routes (W-93). *Why:* upload gate (W-95) blocked
+publish with no curator path after Authority retirement.

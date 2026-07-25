@@ -176,6 +176,38 @@ export async function installHmoItemsMocks(
     });
   });
 
+  await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/authority-conflicts**`, async (route: Route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ready: true,
+          conflict_count: 0,
+          invalid_count: 0,
+          conflicts: [],
+          invalid: [],
+          unapproved_match_ids: [],
+          message: "Unapproved colliding matches (mock).",
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ready: true,
+        conflict_count: 0,
+        invalid_count: 0,
+        conflicts: [],
+        invalid: [],
+        unapproved_match_ids: [],
+        message: "",
+      }),
+    });
+  });
+
   await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/coverage`, async (route: Route) => {
     await route.fulfill({
       status: 200,

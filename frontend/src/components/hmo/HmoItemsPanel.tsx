@@ -6,6 +6,7 @@ import {type RunJobSnapshot} from "@/api/runJobs";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {Glass} from "@/components/glass";
+import {HmoAuthorityConflictPanel} from "@/components/hmo/HmoAuthorityConflictPanel";
 import {HmoItemDetailDrawer} from "@/components/hmo/HmoItemDetailDrawer";
 import {HmoItemTable} from "@/components/hmo/HmoItemTable";
 import {HmoItemVerificationModal} from "@/components/hmo/HmoItemVerificationModal";
@@ -211,6 +212,12 @@ export function HmoItemsPanel({
           </button>
         </div>
       </div>
+
+      <HmoAuthorityConflictPanel
+        runId={runId}
+        refreshToken={refreshToken}
+        onResolved={handleLifecycleRefresh}
+      />
 
       <div className="space-y-3 border-b border-white/5 pb-4" data-testid="hmo-item-lifecycle-bar">
         <ItemBuildPanel

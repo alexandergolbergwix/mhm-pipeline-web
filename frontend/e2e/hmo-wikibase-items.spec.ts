@@ -38,6 +38,89 @@ test.describe("HMO Wikibase Items review UI", () => {
     await expect(page.getByTestId("hmo-item-row-QDraft_MS_123")).toBeVisible();
   });
 
+  test("authority conflict panel keeps one match and unapproves the rest", async ({page}) => {
+    const keepId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const dropId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    let resolveBody: unknown = null;
+
+    await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/authority-conflicts**`, async (route) => {
+      if (route.request().method() === "POST") {
+        resolveBody = route.request().postDataJSON();
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ready: true,
+            conflict_count: 0,
+            invalid_count: 0,
+            conflicts: [],
+            invalid: [],
+            unapproved_match_ids: [dropId],
+            message: "Unapproved 1 colliding match(es).",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ready: false,
+          conflict_count: 1,
+          invalid_count: 0,
+          conflicts: [{
+            kind: "mazal",
+            identifier: "987007111",
+            owners: [
+              {
+                match_id: keepId,
+                entity_text: "נאמן, משה בן שמואל",
+                matched_name: "נאמן, משה בן שמואל",
+                control_number: "990001",
+                entity_kind: "person",
+                role: "author",
+                confidence: "high",
+                source: "mazal",
+                mazal_id: "987007111",
+                viaf_id: "",
+                wikidata_qid: "",
+                approved: true,
+              },
+              {
+                match_id: dropId,
+                entity_text: "קזני, משה בן שמואל",
+                matched_name: "קזני, משה בן שמואל",
+                control_number: "990002",
+                entity_kind: "person",
+                role: "author",
+                confidence: "low",
+                source: "mazal",
+                mazal_id: "987007111",
+                viaf_id: "",
+                wikidata_qid: "",
+                approved: true,
+              },
+            ],
+          }],
+          invalid: [],
+          unapproved_match_ids: [],
+          message: "",
+        }),
+      });
+    });
+
+    await gotoHmoItemsTab(page);
+    await expect(page.getByTestId("hmo-authority-conflicts")).toBeVisible();
+    await expect(page.getByText("Authority conflicts block upload")).toBeVisible();
+    await page.getByTestId(`hmo-authority-keep-${keepId}`).check();
+    await page.getByTestId("hmo-authority-conflicts-resolve").click();
+    await expect(page.getByTestId("hmo-authority-conflicts-status")).toContainText("Unapproved");
+    expect(resolveBody).toEqual({
+      keep_match_ids: [keepId],
+      unapprove_match_ids: [],
+    });
+  });
+
   test("build and upload controls stay visible above the review table", async ({page}) => {
     await gotoHmoItemsTab(page);
     await expect(page.getByTestId("hmo-item-lifecycle-bar")).toBeVisible();

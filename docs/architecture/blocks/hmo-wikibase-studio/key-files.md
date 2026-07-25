@@ -13,6 +13,8 @@
 | `backend/app/pipeline/hmo_manifest_build_job.py` | Worker for `hmo_manifest_build` (IIIF from TTL) |
 | `backend/app/pipeline/hmo_manifest_upload_job.py` | Worker for `hmo_manifest_upload` (IIIF publish; Rule W-107) |
 | `backend/app/pipeline/hmo_item_upload_job.py` | Worker for `hmo_item_upload` (dry-run + live; Rule W-107) |
+| `backend/app/pipeline/hmo_authority_gate.py` | Fail-closed approved-ID uniqueness + rich conflict report |
+| `backend/app/pipeline/hmo_authority_conflict_resolve.py` | Keep-one / unapprove-rest planner for HMO Studio (Rule W-109) |
 | `backend/app/pipeline/hmo_item_shacl.py` | Runs SHACL once, buckets violations by item `local_id` (signal, not gate) |
 | `backend/app/pipeline/hmo_item_merge.py` | Applies curator override rows onto built entities |
 | `backend/app/pipeline/hmo_item_views.py` | `fetch_merged_hmo_items` — build cache + overrides + QID mappings + SHACL + AI verdicts, merged for the UI |
@@ -52,7 +54,8 @@
 | `frontend/src/routes/HmoStudio.tsx` | Studio page: four-step professor-facing workflow, truthful canonical status, advanced schema/config disclosures, and item review |
 | `frontend/src/components/hmo/HmoItemDataStatusBadge.tsx` | Data status pill: new / will update existing / updated |
 | `frontend/src/utils/hmoItemDataStatus.ts` | `resolveHmoItemDataStatus` — derives data status from mapping + last push |
-| `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: lifecycle bar (`ItemBuildPanel`/`ItemUploadPanel` compact) + `HmoItemTable`; **Approve all visible** → `hmo_item_bulk_approve` job |
+| `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: authority-conflict resolver + lifecycle bar + `HmoItemTable`; **Approve all visible** → `hmo_item_bulk_approve` job |
+| `frontend/src/components/hmo/HmoAuthorityConflictPanel.tsx` | Keep-one / unapprove-rest UI for shared Mazal/Wikidata/VIAF IDs (Rule W-109) |
 | `frontend/src/components/hmo/SchemaBootstrapPanel.tsx` | Schema class/property mapping status, dry-run/live bootstrap controls, report results, and schema AI verification |
 | `frontend/src/components/hmo/ItemBuildPanel.tsx` | RDF-backed item build/rebuild controls and build-status summary |
 | `frontend/src/components/hmo/ItemUploadPanel.tsx` | Dry-run-first item upload controls, SHACL override, background-job progress, and upload outcomes |

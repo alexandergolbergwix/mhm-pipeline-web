@@ -12,9 +12,9 @@ Endpoints, all under ``/api/runs/{run_id}/hmo-studio/``::
     POST /upload-manifests  →  enqueue ``hmo_manifest_upload`` job (201)
     GET  /coverage          →  HMO class → Wikidata projection report
     GET  /status            →  idle | built | uploaded | error + counts
-    POST /build-items       →  enqueue ``hmo_item_build`` job (201): resolve
-                                RDF instances against the live schema into
-                                real-PID/QID-shaped item drafts, cached per-run
+    POST /build-items       →  enqueue ``hmo_item_build`` job (201)
+    GET  /authority-conflicts → approved AuthorityMatch ID collisions
+    POST /authority-conflicts/resolve → keep one / unapprove rest (W-109)
 
 Bot credentials are no longer per-user — the server holds OAuth config
 (Heroku env vars). Live writes require ``wikibase_cloud_configured`` on
@@ -51,13 +51,22 @@ from app.models.run_job import (
     JOB_KIND_HMO_MANIFEST_UPLOAD,
 )
 from app.pipeline import hmo_studio as hmo_pipeline
+from app.pipeline.hmo_authority_conflict_resolve import (
+    load_run_authority_matches,
+    resolve_authority_conflicts,
+)
+from app.pipeline.hmo_authority_gate import build_authority_conflict_report
 from app.pipeline.run_job_params import prepare_job_params
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.pipeline.rdf_build import (
     ensure_ttl_on_disk,
     rdf_output_path_for_run,
 )
-from app.routers.runs import _lookup_run_with_access
+from app.routers.runs import (
+    _apply_approval,
+    _lookup_run_with_access,
+    _record_match_event,
+)
 from app.services.wikibase_audit import WikibaseAuditContext
 from app.settings import get_settings
 from app.versioning import apply_event
@@ -159,17 +168,61 @@ class HmoItemUploadRequest(BaseModel):
     )
     update_existing: bool = Field(
         default=False,
-        description="Default False — an already-uploaded item is skipped. "
-                    "Set True to also refresh labels/descriptions and merge "
-                    "in any new claims on already-uploaded items (a "
-                    "curator-added statement not present in the current "
-                    "build is never removed).",
+        description="When True, refresh labels/descriptions and merge new "
+                    "claims on already-mapped items instead of skipping them.",
     )
     allow_shacl_errors: bool = Field(
         default=False,
-        description="Default False — items with SHACL Violation/Error issues "
-                    "are blocked from create/update. Set True to upload anyway.",
+        description="When True, allow upload of items with SHACL Violation/Error.",
     )
+
+
+class AuthorityConflictOwnerDto(BaseModel):
+    match_id: str
+    entity_text: str
+    matched_name: str = ""
+    control_number: str = ""
+    entity_kind: str = ""
+    role: str = ""
+    confidence: str = ""
+    source: str = ""
+    mazal_id: str = ""
+    viaf_id: str = ""
+    wikidata_qid: str = ""
+    approved: bool = True
+
+
+class AuthorityConflictGroupDto(BaseModel):
+    kind: str
+    identifier: str
+    owners: list[AuthorityConflictOwnerDto]
+
+
+class AuthorityInvalidDto(BaseModel):
+    match_id: str
+    entity_text: str
+    kind: str
+    identifier: str
+    reason: str
+    matched_name: str = ""
+    control_number: str = ""
+    role: str = ""
+    approved: bool = True
+
+
+class AuthorityConflictsResponse(BaseModel):
+    ready: bool
+    conflict_count: int = 0
+    invalid_count: int = 0
+    conflicts: list[AuthorityConflictGroupDto]
+    invalid: list[AuthorityInvalidDto]
+    unapproved_match_ids: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class AuthorityConflictsResolveRequest(BaseModel):
+    keep_match_ids: list[uuid.UUID] = Field(default_factory=list)
+    unapprove_match_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class HmoItemUploadOutcomeDto(BaseModel):
@@ -414,6 +467,102 @@ async def coverage(
         status_code=status.HTTP_409_CONFLICT,
         detail=_coverage_in_progress_detail(job_id),
     )
+
+
+# ── Authority conflicts (HMO upload gate) ────────────────────────────────
+
+
+def _authority_conflicts_response(payload: dict[str, Any]) -> AuthorityConflictsResponse:
+    return AuthorityConflictsResponse(
+        ready=bool(payload.get("ready")),
+        conflict_count=int(payload.get("conflict_count") or 0),
+        invalid_count=int(payload.get("invalid_count") or 0),
+        conflicts=[
+            AuthorityConflictGroupDto(
+                kind=str(c.get("kind") or ""),
+                identifier=str(c.get("identifier") or ""),
+                owners=[AuthorityConflictOwnerDto(**o) for o in (c.get("owners") or [])],
+            )
+            for c in (payload.get("conflicts") or [])
+        ],
+        invalid=[
+            AuthorityInvalidDto(
+                match_id=str(i.get("match_id") or ""),
+                entity_text=str(i.get("entity_text") or ""),
+                kind=str(i.get("kind") or ""),
+                identifier=str(i.get("identifier") or ""),
+                reason=str(i.get("reason") or ""),
+                matched_name=str(i.get("matched_name") or ""),
+                control_number=str(i.get("control_number") or ""),
+                role=str(i.get("role") or ""),
+                approved=bool(i.get("approved", True)),
+            )
+            for i in (payload.get("invalid") or [])
+        ],
+        unapproved_match_ids=[str(x) for x in (payload.get("unapproved_match_ids") or [])],
+        message=str(payload.get("message") or ""),
+    )
+
+
+@router.get(
+    "/{run_id}/hmo-studio/authority-conflicts",
+    response_model=AuthorityConflictsResponse,
+)
+async def get_authority_conflicts(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> AuthorityConflictsResponse:
+    """List approved AuthorityMatch identifier collisions for this run.
+
+    Read-only; does not reopen the retired standalone Authority mutation UI
+    (Rule W-93). Used by the HMO Studio conflict resolver before upload.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    rows = await load_run_authority_matches(db, run_id)
+    return _authority_conflicts_response(build_authority_conflict_report(rows))
+
+
+@router.post(
+    "/{run_id}/hmo-studio/authority-conflicts/resolve",
+    response_model=AuthorityConflictsResponse,
+)
+async def resolve_hmo_authority_conflicts(
+    run_id: uuid.UUID,
+    payload: AuthorityConflictsResolveRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> AuthorityConflictsResponse:
+    """Keep selected matches and unapprove the rest of each collision group.
+
+    HMO-scoped escape hatch for Rule W-95 upload blocking — versioned
+    unapprove via the same ``authority_match`` event path as legacy approve,
+    without enabling ``legacy_authority_mutations_enabled``.
+    """
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    if not payload.keep_match_ids and not payload.unapprove_match_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide keep_match_ids and/or unapprove_match_ids.",
+        )
+    try:
+        result = await resolve_authority_conflicts(
+            db,
+            run_id=run_id,
+            project_id=run.project_id,
+            actor_id=auth.user.id,
+            keep_match_ids=list(payload.keep_match_ids),
+            unapprove_match_ids=list(payload.unapprove_match_ids),
+            apply_approval=_apply_approval,
+            record_event=_record_match_event,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    await db.commit()
+    return _authority_conflicts_response(result)
 
 
 # ── Build items (Phase 4) ────────────────────────────────────────────────
