@@ -27,6 +27,7 @@ from ..transformer.uri_generator import UriGenerator
 from .rdf_helpers import (
     clean_marc_label,
     clean_person_display_name,
+    clean_url_value,
     disambiguate_person_label,
     disambiguate_work_label,
     infer_person_type,
@@ -46,14 +47,6 @@ from .rdf_helpers import (
 # WGS84 geo-positioning predicates for place coordinates (Rule 60).
 _WGS84_LAT = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#lat")
 _WGS84_LONG = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#long")
-
-
-def _clean_url_value(value: str | None) -> str:
-    """Remove MARC quote wrappers before emitting an ``xsd:anyURI``."""
-    cleaned = str(value or "").strip()
-    while len(cleaned) >= 2 and cleaned[0] in {"\"", "'"} and cleaned[-1] == cleaned[0]:
-        cleaned = cleaned[1:-1].strip()
-    return cleaned.strip("\"'")
 
 
 class GraphBuilder:
@@ -692,7 +685,7 @@ class GraphBuilder:
                 (
                     ms_uri,
                     HM.has_digital_representation_url,
-                    Literal(_clean_url_value(data.digital_url), datatype=XSD.anyURI),
+                    Literal(clean_url_value(data.digital_url), datatype=XSD.anyURI),
                 )
             )
 
@@ -2096,11 +2089,11 @@ class GraphBuilder:
             (da_uri, RDFS.label, Literal(f"Digital access for MS {control_number}", lang="en"))
         )
         graph.add(
-            (da_uri, HM.digital_access_url, Literal(_clean_url_value(digital_url), datatype=XSD.anyURI))
+            (da_uri, HM.digital_access_url, Literal(clean_url_value(digital_url), datatype=XSD.anyURI))
         )
         if iiif_url:
             graph.add(
-                (da_uri, HM.iiif_manifest_url, Literal(_clean_url_value(iiif_url), datatype=XSD.anyURI))
+                (da_uri, HM.iiif_manifest_url, Literal(clean_url_value(iiif_url), datatype=XSD.anyURI))
             )
             graph.add((da_uri, HM.digital_access_type, Literal("IIIF", datatype=XSD.string)))
         graph.add((ms_uri, HM.has_digital_access, da_uri))
@@ -2147,9 +2140,15 @@ class GraphBuilder:
             )
             graph.add((ur_uri, HM.restriction_type, Literal("On_site_only", datatype=XSD.string)))
             if restriction_url:
-                graph.add(
-                    (ur_uri, HM.restriction_url, Literal(restriction_url, datatype=XSD.anyURI))
-                )
+                cleaned_restriction_url = clean_url_value(restriction_url)
+                if cleaned_restriction_url:
+                    graph.add(
+                        (
+                            ur_uri,
+                            HM.restriction_url,
+                            Literal(cleaned_restriction_url, datatype=XSD.anyURI),
+                        )
+                    )
             graph.add((ms_uri, HM.has_usage_restriction, ur_uri))
             graph.add((ur_uri, HM.is_usage_restriction_of, ms_uri))
 

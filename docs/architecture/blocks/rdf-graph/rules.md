@@ -132,11 +132,13 @@
     Wikidata QID.
 
 20. **R20 — URI and label literals MUST be normalized before export.**
-   MARC quote wrappers around digital URLs are stripped before `xsd:anyURI`
-   emission, and RDF labels pass `sanitize_work_title` so unmatched catalog
-   quotes/parentheses cannot block HMO export; Hebrew gershayim remain intact.
-   *Why:* the production run rebuild exposed 11 invalid URL literals and 21
-   export-quality failures before any live canonical read-back could start.
+   MARC quote wrappers around **all** URL-typed fields (`digital_*`,
+   `restriction_url`, and any other `xsd:anyURI`) are stripped before emission
+   (`clean_url_value` in `rdf_helpers.py`). RDF labels pass `sanitize_work_title`
+   so unmatched catalog quotes/parentheses cannot block HMO export; Hebrew
+   gershayim remain intact. *Why:* production uploads failed with WBI
+   `Invalid URL "http://…"` when 540/939 `$u` wrappers reached Wikibase URL
+   claims (Rule W-87 / W-111).
 
 21. **R21 — GraphBuilder MUST emit only ontology-declared properties.**
     Anthology records are typed `hm:AnthologyStructure` and their expressions

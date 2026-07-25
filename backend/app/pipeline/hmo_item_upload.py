@@ -954,14 +954,32 @@ async def _create_claims_with_string_fallback(
 
 def _build_live_wbi_claims(entity: ResolvedWikibaseEntity) -> list[Any]:
     """Build a complete live payload without wikibase.cloud boolean snaks."""
-    return [
-        _build_wbi_claim(
+    out: list[Any] = []
+    for claim in entity.claims:
+        prepared = (
             _string_compatible_claim(claim)
             if claim.datatype == "boolean"
             else claim
         )
-        for claim in entity.claims
-    ]
+        prepared = _sanitize_url_claim(prepared)
+        if prepared is None:
+            continue
+        out.append(_build_wbi_claim(prepared))
+    return out
+
+
+def _sanitize_url_claim(claim: ResolvedClaim) -> ResolvedClaim | None:
+    """Strip MARC quote wrappers from URL claims; drop empty values."""
+    if claim.datatype != "url":
+        return claim
+    from converter.rdf.rdf_helpers import clean_url_value  # noqa: PLC0415
+
+    cleaned = clean_url_value(str(claim.value or ""))
+    if not cleaned:
+        return None
+    if cleaned == claim.value:
+        return claim
+    return ResolvedClaim(claim.property_id, claim.datatype, cleaned)
 
 
 def _is_string_datatype_failure(message: str) -> bool:
@@ -991,7 +1009,10 @@ def _build_wbi_claim(claim: ResolvedClaim) -> Any:
     if claim.datatype == "string":
         return datatypes.String(prop_nr=claim.property_id, value=claim.value)
     if claim.datatype == "url":
-        return datatypes.URL(prop_nr=claim.property_id, value=claim.value)
+        sanitized = _sanitize_url_claim(claim)
+        if sanitized is None:
+            raise ValueError(f"empty url claim for {claim.property_id}")
+        return datatypes.URL(prop_nr=sanitized.property_id, value=sanitized.value)
     if claim.datatype == "external-id":
         return datatypes.ExternalID(prop_nr=claim.property_id, value=claim.value)
     if claim.datatype == "monolingualtext":

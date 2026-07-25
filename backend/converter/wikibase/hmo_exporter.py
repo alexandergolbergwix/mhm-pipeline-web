@@ -21,7 +21,7 @@ from converter.authority.evidence import (
     normalize_viaf_id,
     normalize_wikidata_qid,
 )
-from converter.rdf.rdf_helpers import label_language_for_text, sanitize_work_title
+from converter.rdf.rdf_helpers import clean_url_value, label_language_for_text, sanitize_work_title
 from converter.wikibase._ids import local_name, safe_local_id
 from converter.wikibase.label_sanitize import sanitize_monolingual_map
 from converter.wikibase.models import (
@@ -640,9 +640,14 @@ def _build_claim_spec(
             },
         )
     if datatype in ("string", "url", "external-id"):
+        text = str(stmt.value)
+        if datatype == "url":
+            text = clean_url_value(text)
+            if not text:
+                return None
         return ResolvedClaim(
             prop_entry.wikibase_id, datatype,
-            _truncate(str(stmt.value), _MAX_STRING_VALUE_LENGTH),
+            _truncate(text, _MAX_STRING_VALUE_LENGTH),
         )
     if datatype == "quantity":
         try:

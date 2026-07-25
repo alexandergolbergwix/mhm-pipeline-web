@@ -228,6 +228,29 @@ def test_digital_urls_strip_marc_quote_wrappers() -> None:
     assert str(graph.value(digital, HM.iiif_manifest_url)) == "https://example.org/manifest"
 
 
+def test_restriction_url_strips_marc_quote_wrappers() -> None:
+    from rdflib.namespace import XSD
+    dirty = (
+        '"http://web.nli.org.il/sites/NLI/Hebrew/library/'
+        'items-terms-of-use/Pages/nli-public-domain.aspx"'
+    )
+    data = ExtractedData(
+        title="ספר תהילים",
+        rights_statement="Public domain",
+        usage_restriction="Public domain",
+        restriction_url=dirty,
+    )
+    graph = GraphBuilder().build_graph(data, "990001800310205171")
+    ur = next(graph.subjects(RDF.type, HM.UsageRestriction))
+    cleaned = str(graph.value(ur, HM.restriction_url))
+    assert cleaned == (
+        "http://web.nli.org.il/sites/NLI/Hebrew/library/"
+        "items-terms-of-use/Pages/nli-public-domain.aspx"
+    )
+    assert cleaned[0] != '"'
+    assert graph.value(ur, HM.restriction_url).datatype == XSD.anyURI
+
+
 def test_anthology_uses_canonical_structure_type() -> None:
     data = ExtractedData(
         title="ספר תהילים",

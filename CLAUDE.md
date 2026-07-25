@@ -2212,6 +2212,11 @@ fail-closed without discarding legitimate abbreviation marks. Tests:
 `test_graph_builder_codicological_labels.py` and
 `test_hmo_exporter_descriptions.py`.
 
+**Follow-up (Rule W-111):** `hm:restriction_url` was still emitted raw from
+MARC 540/939 `$u`, so live uploads failed with WBI `Invalid URL "http://…"`.
+All URL-typed paths now share `clean_url_value`, including export + upload
+write sanitization so cached builds can retry without an RDF rebuild.
+
 
 ### Rule W-88 — GraphBuilder MUST emit only ontology-declared properties (added 2026-07-23)
 
@@ -2600,3 +2605,24 @@ Invariant:
 
 Tests: `test_hmo_item_upload_job.py` (progress item outcomes),
 `frontend/tests/unit/studioUploadProgress.spec.ts`.
+
+### Rule W-111 — All HMO URL claims MUST strip MARC quote wrappers (added 2026-07-25)
+
+Live HMO upload stopped mid-corpus with WBI
+`Invalid URL "http://web.nli.org.il/…nli-public-domain.aspx"` — the quotes are
+part of the rejected value. Rule W-87 cleaned `digital_access_url` /
+`iiif_manifest_url`, but `hm:restriction_url` from MARC 540/939 `$u` was still
+emitted raw into the item cache.
+
+Invariant:
+
+1. `clean_url_value` in `converter/rdf/rdf_helpers.py` is the shared stripper
+   for every `xsd:anyURI` / Wikibase `url` path.
+2. GraphBuilder cleans `restriction_url` before RDF emit.
+3. `hmo_exporter` cleans `url` datatype claims at resolve time.
+4. `_sanitize_url_claim` / `_build_live_wbi_claims` clean again on write so a
+   stale cached build can **Retry N failed** without an RDF rebuild.
+
+Tests: `test_graph_builder_codicological_labels.py`
+(`test_restriction_url_strips_marc_quote_wrappers`),
+`test_hmo_item_upload.py` (`test_url_claims_strip_marc_quote_wrappers_before_wbi`).

@@ -399,6 +399,34 @@ async def test_unsupported_boolean_claims_are_serialized_before_live_write() -> 
     assert create_claim.mainsnak.datavalue["value"] == "true"
 
 
+def test_url_claims_strip_marc_quote_wrappers_before_wbi() -> None:
+    dirty = (
+        '"http://web.nli.org.il/sites/NLI/Hebrew/library/'
+        'items-terms-of-use/Pages/nli-public-domain.aspx"'
+    )
+    cleaned = (
+        "http://web.nli.org.il/sites/NLI/Hebrew/library/"
+        "items-terms-of-use/Pages/nli-public-domain.aspx"
+    )
+    claim = ResolvedClaim("P99", "url", dirty)
+    sanitized = pipeline._sanitize_url_claim(claim)
+    assert sanitized is not None
+    assert sanitized.value == cleaned
+    wbi = pipeline._build_wbi_claim(claim)
+    assert wbi.mainsnak.datavalue["value"] == cleaned
+    entity = ResolvedWikibaseEntity(
+        local_id="QDraft_UR_1",
+        labels={"en": "Usage restriction"},
+        descriptions={"en": "note"},
+        class_qid="Q1",
+        source_uri="http://example.org#UR_1",
+        claims=[claim],
+    )
+    live = pipeline._build_live_wbi_claims(entity)
+    assert len(live) == 1
+    assert live[0].mainsnak.datavalue["value"] == cleaned
+
+
 @pytest.mark.asyncio
 async def test_quantity_string_mismatch_retries_as_string() -> None:
     """Live P224 (max_nesting_depth) is string; ontology maps integer→quantity."""

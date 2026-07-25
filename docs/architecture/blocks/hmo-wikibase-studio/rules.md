@@ -269,3 +269,9 @@ string to match live P224; any remaining ``expected string`` scalar failure
 retries via `_string_compatible_claim`. *Why:* full-table reload flickered
 Publication status during publish (Rule W-110), and Hierarchy creates failed
 on quantity snaks.
+52. **R52 — URL claims MUST strip MARC quote wrappers before Wikibase write
+(Rule W-111).** `restriction_url` (and every other `url` datatype claim) is
+cleaned via `clean_url_value` at RDF emit, HMO export, and `_build_live_wbi_claims`
+so a cached dirty build can still **Retry failed** without waiting on RDF
+rebuild. *Why:* WBI rejects `Invalid URL "http://…"` when 540/939 `$u` wrappers
+reach `datatypes.URL`.

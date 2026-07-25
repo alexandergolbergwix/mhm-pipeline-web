@@ -48,6 +48,14 @@ _NUMBERED_CONTENTS_RE = re.compile(
 )
 
 
+def clean_url_value(value: str | None) -> str:
+    """Strip MARC quote wrappers / whitespace before ``xsd:anyURI`` / Wikibase URL."""
+    cleaned = str(value or "").strip()
+    while len(cleaned) >= 2 and cleaned[0] in {"\"", "'"} and cleaned[-1] == cleaned[0]:
+        cleaned = cleaned[1:-1].strip()
+    return cleaned.strip("\"'")
+
+
 def parse_contents_entry(raw: str) -> dict[str, Any]:
     """Split a MARC 505 row into sequence, folio range, and scholarly title."""
     text = str(raw or "").strip()
