@@ -24,7 +24,7 @@ approved work-QID reuse so enrichment metadata cannot be dropped.
 - `frontend/e2e/wikidata-studio.spec.ts` — page (modern + legacy), AI verification, filters, sort, approval, force-rebuild.
 - `frontend/e2e/wikidata-item-table.spec.ts` — review table columns, data status, search, approval PATCH, upload-outcome filter.
 - `frontend/e2e/wikidata-item-drawer.spec.ts` — drawer apply-fix, push, reconcile API shapes.
-- `frontend/e2e/wikidata-upload-panel.spec.ts` — upload controls, moratorium pill, pre-verify fail confirm gate.
+- `frontend/e2e/wikidata-upload-panel.spec.ts` — upload target radios (default dry-run), pill, pre-verify fail confirm gate.
 - `frontend/tests/unit/useVerifyJob.spec.ts` — verify jobs upsert into the global job tray on start and reset the modal state when enqueue rejects.
 
 Any new external-write path or reconcile change MUST extend

@@ -1044,6 +1044,7 @@ class UploadOutcomeDto(BaseModel):
 
 class UploadResponse(BaseModel):
     dry_run: bool
+    upload_target: str = "dry_run"
     moratorium_lifted: bool
     test_mode: bool
     outcomes: list[UploadOutcomeDto]
@@ -1053,12 +1054,17 @@ class UploadResponse(BaseModel):
 async def upload_to_wikidata(
     run_id: uuid.UUID,
     source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
-    dry_run: bool = Query(
-        default=True,
-        description="Default True — describe what would happen without "
-                    "writing. Set False for live; live also requires the "
-                    "user to have a stored Wikidata token (Settings) AND "
-                    "MORATORIUM_LIFTED=true in the env (or WIKIDATA_TEST_MODE=true).",
+    upload_target: str = Query(
+        default="dry_run",
+        pattern="^(dry_run|test|live)$",
+        description=(
+            "Curator upload target: dry_run (default, no writes), "
+            "test (test.wikidata.org), or live (wikidata.org)."
+        ),
+    ),
+    dry_run: bool | None = Query(
+        default=None,
+        description="Deprecated — prefer upload_target. Kept for compatibility.",
     ),
     approved_only: bool = Query(default=True),
     item_approved_only: bool = Query(
@@ -1078,8 +1084,8 @@ async def upload_to_wikidata(
     never mints a duplicate) and runs ``item_validator.validate_item`` as a
     hard gate (any ERROR-severity issue blocks the write). Dry-run reports the
     same create/update/BLOCKED decision the live run would take."""
-    import os  # noqa: PLC0415
-    run = await _lookup_run_with_access(db, run_id, auth, write=not dry_run)
+    mode = wikidata_upload.resolve_upload_mode(upload_target, dry_run=dry_run)
+    run = await _lookup_run_with_access(db, run_id, auth, write=not mode.dry_run)
 
     # Build the items first (with the latest approval state).
     native = await _build_native_items(db, run_id, auth, approved_only=approved_only, source=source)
@@ -1097,13 +1103,16 @@ async def upload_to_wikidata(
     # Dry-run also needs the token so ownership (own vs foreign) is truthful.
     token = await _unwrap_user_secret(db, auth, "wikidata")
 
-    if not dry_run and not token:
+    if not mode.dry_run and not token:
         raise_msg = (
             "Live upload requires a Wikidata token in Settings. "
             "Add one (User@Bot:hex or OAuth secret) and retry."
         )
         return UploadResponse(
-            dry_run=False, moratorium_lifted=False, test_mode=False,
+            dry_run=False,
+            upload_target=mode.target,
+            moratorium_lifted=mode.moratorium_lifted,
+            test_mode=mode.test_mode,
             outcomes=[UploadOutcomeDto(
                 local_id="*", label="(token missing)", entity_type="",
                 qid=None, status="failed", message=raise_msg, added_properties=[],
@@ -1111,20 +1120,21 @@ async def upload_to_wikidata(
         )
 
     outcomes = await wikidata_upload.upload_items(
-        native, token=token or "", dry_run=dry_run,
+        native, token=token or "", mode=mode,
         audit_ctx=WikibaseAuditContext(
             actor_user_id=auth.user.id,
             channel=CHANNEL_WIKIDATA_UPLOAD,
             project_id=run.project_id,
             run_id=run_id,
-        ) if not dry_run else None,
+        ) if not mode.dry_run else None,
         db=db,
         run_id=run_id,
     )
     return UploadResponse(
-        dry_run=dry_run,
-        moratorium_lifted=os.environ.get("MORATORIUM_LIFTED", "").lower() == "true",
-        test_mode=os.environ.get("WIKIDATA_TEST_MODE", "").lower() == "true",
+        dry_run=mode.dry_run,
+        upload_target=mode.target,
+        moratorium_lifted=mode.moratorium_lifted,
+        test_mode=mode.test_mode,
         outcomes=[UploadOutcomeDto(**o.__dict__) for o in outcomes],
     )
 
@@ -1356,6 +1366,11 @@ async def import_wikidata_items(
 async def push_wikidata_item(
     run_id: uuid.UUID,
     local_id: str,
+    upload_target: str = Query(
+        default="test",
+        pattern="^(test|live)$",
+        description="Single-item push target: test (default) or live.",
+    ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> WikidataItemPushResponse:
@@ -1392,6 +1407,7 @@ async def push_wikidata_item(
             run_id=run_id,
         ),
         run_id=run_id,
+        upload_target=upload_target,
     )
     return WikidataItemPushResponse(
         local_id=outcome.local_id,

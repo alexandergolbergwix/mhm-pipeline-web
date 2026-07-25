@@ -1979,7 +1979,8 @@ A measurement-only rebuild of run `48ba6c13-115c-4763-bff1-c08b9031b518` with th
 - Run the eval-agent orchestrator (planner) as a user-facing surface.
   The planner is internal research tooling; only the per-candidate
   `ai-verify` modal is exposed.
-- Live Wikidata writes without `MORATORIUM_LIFTED=true` (Rule 25).
+- Live Wikidata writes without curator `upload_target=live` (or legacy
+  `MORATORIUM_LIFTED=true`) — default remains dry-run (Rule W-103 / Rule 25).
 - Auto-approve AI verdicts (curator always confirms; verdicts surface
   as a `✨ AI says pass` pill).
 
@@ -2409,3 +2410,20 @@ The scholarly spine of the browser deployment is the project HMO Wikibase
 
 Tests: `test_hmo_ontology_graphbuilder_parity.py`,
 `test_hmo_wikidata_pq_mapper.py` (TTL equivalent sync).
+
+### Rule W-103 — Wikidata upload target is curator-chosen; default dry-run (added 2026-07-25)
+
+The production moratorium is no longer only an env flag. Wikidata Studio
+exposes three **upload targets** (job param `upload_target`):
+
+1. **`dry_run`** (default) — moratorium active; reconcile + validator preview only.
+2. **`test`** — write to `test.wikidata.org` (bypasses production moratorium).
+3. **`live`** — write to `wikidata.org` after an explicit UI confirm; sets
+   `allow_live` on `WikidataUploader` (same effect as legacy
+   `MORATORIUM_LIFTED=true` for that request).
+
+Env `MORATORIUM_LIFTED` / `WIKIDATA_TEST_MODE` remain as legacy overrides when
+callers only pass `dry_run=false`. Single-item push accepts `test|live`
+(default `test`). Tests: `test_wikidata_upload_guards.py`
+(`test_resolve_upload_mode_*`, `test_ui_live_target_bypasses_env_moratorium`);
+`frontend/e2e/wikidata-upload-panel.spec.ts`.

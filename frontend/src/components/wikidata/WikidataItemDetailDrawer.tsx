@@ -41,6 +41,7 @@ export interface WikidataItemDetailDrawerProps {
   approvedOnly: boolean;
   moratoriumLifted?: boolean;
   testMode?: boolean;
+  uploadTarget?: "test" | "live";
   onClose: () => void;
   onSaved: () => void;
   onVerify?: () => void;
@@ -59,6 +60,7 @@ export function WikidataItemDetailDrawer({
   approvedOnly,
   moratoriumLifted = false,
   testMode = false,
+  uploadTarget = "test",
   onClose,
   onSaved,
   onVerify,
@@ -175,10 +177,16 @@ export function WikidataItemDetailDrawer({
 
   const pushToWikidata = useCallback(async () => {
     if (!item.local_id) return;
+    if (uploadTarget === "live") {
+      const ok = window.confirm(
+        "Push this item to live wikidata.org?\n\nPrefer test.wikidata.org first.",
+      );
+      if (!ok) return;
+    }
     setPushing(true);
     setPushMsg(null);
     try {
-      const res = await Studio.pushItem(runId, item.local_id);
+      const res = await Studio.pushItem(runId, item.local_id, uploadTarget);
       setPushMsg(`${res.status}${res.qid ? ` → ${res.qid}` : ""}${res.message ? `: ${res.message}` : ""}`);
       onSaved();
     } catch (e) {
@@ -186,7 +194,7 @@ export function WikidataItemDetailDrawer({
     } finally {
       setPushing(false);
     }
-  }, [item.local_id, onSaved, runId]);
+  }, [item.local_id, onSaved, runId, uploadTarget]);
 
   const applyAutofixAndPush = useCallback(async () => {
     const fixes = (item.ai_verdict as {suggested_fixes?: Array<Record<string, unknown>>} | null)?.suggested_fixes;
@@ -226,11 +234,11 @@ export function WikidataItemDetailDrawer({
     }
   }, [item.local_id, onSaved, runId]);
 
-  const pushLabel = !moratoriumLifted && !testMode
-    ? "Push (moratorium active)"
-    : testMode
-      ? "Push to test.wikidata.org"
-      : "Push to Wikidata now";
+  const pushLabel = uploadTarget === "test" || testMode
+    ? "Push to test.wikidata.org"
+    : uploadTarget === "live" || moratoriumLifted
+      ? "Push to Wikidata now"
+      : "Push to test.wikidata.org";
 
   return (
     <>
@@ -308,7 +316,7 @@ export function WikidataItemDetailDrawer({
             type="button"
             className="button-ghost text-xs"
             onClick={() => void pushToWikidata()}
-            disabled={pushing || (!moratoriumLifted && !testMode)}
+            disabled={pushing}
             data-testid="wikidata-item-push-btn"
           >
             {pushing ? "Pushing…" : pushLabel}

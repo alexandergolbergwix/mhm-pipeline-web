@@ -84,22 +84,32 @@ class WikidataUploader:
         results = uploader.upload_all(items)
     """
 
-    def __init__(self, token: str, is_test: bool = False, batch_mode: bool = False) -> None:
+    def __init__(
+        self,
+        token: str,
+        is_test: bool = False,
+        batch_mode: bool = False,
+        *,
+        allow_live: bool = False,
+    ) -> None:
         """Initialize the uploader.
 
         Args:
             token: OAuth bearer token or bot password for Wikidata API.
             is_test: If True, use test.wikidata.org instead of production.
             batch_mode: If True, pause 60s every 45 items to stay under rate limits.
+            allow_live: If True, curator explicitly chose live wikidata.org
+                (UI upload target). Same effect as ``MORATORIUM_LIFTED=true``.
 
         Raises:
             RuntimeError: If the Wikidata moratorium (CLAUDE.md rule 25) is in
-                effect and `MORATORIUM_LIFTED=true` is not set in the
-                environment. Test mode (``is_test=True``) bypasses the check.
+                effect and neither ``allow_live`` nor ``MORATORIUM_LIFTED=true``
+                is set. Test mode (``is_test=True``) bypasses the check.
         """
         self._token = token
         self._is_test = is_test
         self._batch_mode = batch_mode
+        self._allow_live = allow_live
         self._wbi = None
         self._last_edit_time: float = 0.0
         self._authenticated_user: str | None = None  # Set after first auth
@@ -132,6 +142,8 @@ class WikidataUploader:
 
         if self._is_test:
             return
+        if self._allow_live:
+            return
         if os.environ.get("MORATORIUM_LIFTED", "").lower() == "true":
             return
         raise RuntimeError(
@@ -139,7 +151,7 @@ class WikidataUploader:
             "All bulk Wikidata operations are blocked until pipeline bugs "
             "#1-#4 are fixed and verified, 20+ manual edits have been made, "
             "and a notice has been posted on Wikidata:Project chat. "
-            "To override (only after the conditions are satisfied), set "
+            "To override, choose live upload in Wikidata Studio or set "
             "MORATORIUM_LIFTED=true in the environment. "
             "See User talk:Alexander Goldberg IL § 'Please stop your edits' "
             "(Geagea, 2026-04-14)."

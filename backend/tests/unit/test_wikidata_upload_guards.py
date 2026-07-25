@@ -241,7 +241,7 @@ def test_upload_sync_never_writes_blocked_items(monkeypatch):
     written: list = []
 
     class _FakeUploader:
-        def __init__(self, token, is_test, batch_mode):
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
             assert is_test is True
             self._is_our_item_cache = {}
 
@@ -283,7 +283,7 @@ def test_dry_run_reports_update_create_and_block(monkeypatch):
     monkeypatch.setattr(wu, "_make_reconciler", lambda: _Rec())
 
     class _FakeUploader:
-        def __init__(self, token, is_test, batch_mode):
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
             self._is_our_item_cache = {}
 
         def _is_our_item(self, qid: str) -> bool:
@@ -317,7 +317,7 @@ def test_dry_run_skips_foreign_without_accept(monkeypatch):
     )
 
     class _ForeignUploader:
-        def __init__(self, token, is_test, batch_mode):
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
             self._is_our_item_cache = {}
 
         def _is_our_item(self, qid: str) -> bool:
@@ -345,7 +345,7 @@ def test_dry_run_allows_foreign_with_accept(monkeypatch):
     )
 
     class _ForeignUploader:
-        def __init__(self, token, is_test, batch_mode):
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
             self._is_our_item_cache = {}
 
         def _is_our_item(self, qid: str) -> bool:
@@ -458,7 +458,7 @@ async def test_live_upload_records_audit_rows(db_session, sample_run, monkeypatc
     monkeypatch.setattr(wu, "_make_reconciler", lambda: _Rec())
 
     class _FakeUploader:
-        def __init__(self, token, is_test, batch_mode):
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
             self._is_our_item_cache = {}
 
         def _is_our_item(self, qid: str) -> bool:
@@ -523,3 +523,59 @@ async def test_dry_run_writes_no_audit_rows(db_session, sample_run, monkeypatch)
         )
     ).scalars().all()
     assert count == []
+
+
+def test_resolve_upload_mode_defaults_to_dry_run():
+    mode = wu.resolve_upload_mode(None)
+    assert mode.target == "dry_run"
+    assert mode.dry_run is True
+    assert mode.is_test is False
+    assert mode.allow_live is False
+
+
+def test_resolve_upload_mode_test_and_live():
+    test = wu.resolve_upload_mode("test")
+    assert test.target == "test"
+    assert test.dry_run is False
+    assert test.is_test is True
+    assert test.allow_live is False
+    assert test.moratorium_lifted is True
+
+    live = wu.resolve_upload_mode("live")
+    assert live.target == "live"
+    assert live.dry_run is False
+    assert live.is_test is False
+    assert live.allow_live is True
+    assert live.moratorium_lifted is True
+
+
+def test_ui_live_target_bypasses_env_moratorium(monkeypatch):
+    monkeypatch.delenv("MORATORIUM_LIFTED", raising=False)
+    monkeypatch.delenv("WIKIDATA_TEST_MODE", raising=False)
+    monkeypatch.setattr(wu, "_make_reconciler", lambda: _FakeReconciler(
+        ms_map={"990000001": None},
+    ))
+    written: list = []
+
+    class _FakeUploader:
+        def __init__(self, token, is_test, batch_mode, **kwargs):
+            assert is_test is False
+            assert kwargs.get("allow_live") is True
+            self._is_our_item_cache = {}
+
+        def upload_item(self, item):
+            written.append(item)
+            return _FakeResult(qid="Q77", status="success", message="Created Q77")
+
+    monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _FakeUploader)
+    outcomes = wu._upload_sync(
+        [_manuscript("990000001")],
+        token="User@Bot:deadbeef",
+        dry_run=False,
+        ledger={},
+        ledger_ns="wikidata",
+        is_test=False,
+        allow_live=True,
+    )
+    assert len(written) == 1
+    assert outcomes[0].status == "created"

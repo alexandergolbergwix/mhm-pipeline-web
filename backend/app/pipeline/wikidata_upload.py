@@ -26,10 +26,11 @@ B. **Validator hard gate.** Every item is run through
    the write. The moat now sits IN the upload path, not just as an
    advisory build-time badge.
 
-The moratorium (Rule 25) is also respected: live writes to
-``wikidata.org`` refuse to run unless ``MORATORIUM_LIFTED=true`` is set
-in the environment. Set ``WIKIDATA_TEST_MODE=true`` to point at
-test.wikidata.org instead — that bypasses the moratorium.
+The default upload target is dry-run (moratorium active). Curators pick
+``upload_target`` in Wikidata Studio: ``dry_run`` | ``test`` | ``live``.
+Live writes to ``wikidata.org`` require an explicit ``live`` choice (or
+legacy ``MORATORIUM_LIFTED=true``). ``test`` points at test.wikidata.org
+and bypasses the production moratorium.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,6 +65,60 @@ if TYPE_CHECKING:
     from app.services.wikibase_audit import WikibaseAuditContext
 
 logger = logging.getLogger(__name__)
+
+UPLOAD_TARGET_DRY_RUN = "dry_run"
+UPLOAD_TARGET_TEST = "test"
+UPLOAD_TARGET_LIVE = "live"
+UploadTarget = Literal["dry_run", "test", "live"]
+VALID_UPLOAD_TARGETS = frozenset({
+    UPLOAD_TARGET_DRY_RUN, UPLOAD_TARGET_TEST, UPLOAD_TARGET_LIVE,
+})
+
+
+@dataclass(frozen=True)
+class UploadMode:
+    target: UploadTarget
+    dry_run: bool
+    is_test: bool
+    allow_live: bool
+
+    @property
+    def moratorium_lifted(self) -> bool:
+        return self.allow_live or self.is_test
+
+    @property
+    def test_mode(self) -> bool:
+        return self.is_test
+
+
+def resolve_upload_mode(
+    upload_target: str | None = None,
+    *,
+    dry_run: bool | None = None,
+) -> UploadMode:
+    """Resolve curator/job upload mode.
+
+    Prefer explicit ``upload_target``. Legacy callers that only pass
+    ``dry_run`` keep env-based live/test gating when ``dry_run=False``.
+    """
+    raw = (upload_target or "").strip().lower()
+    if raw in VALID_UPLOAD_TARGETS:
+        if raw == UPLOAD_TARGET_DRY_RUN:
+            return UploadMode(UPLOAD_TARGET_DRY_RUN, True, False, False)
+        if raw == UPLOAD_TARGET_TEST:
+            return UploadMode(UPLOAD_TARGET_TEST, False, True, False)
+        return UploadMode(UPLOAD_TARGET_LIVE, False, False, True)
+
+    use_dry = True if dry_run is None else bool(dry_run)
+    if use_dry:
+        return UploadMode(UPLOAD_TARGET_DRY_RUN, True, False, False)
+    is_test = os.environ.get("WIKIDATA_TEST_MODE", "").lower() == "true"
+    allow_live = os.environ.get("MORATORIUM_LIFTED", "").lower() == "true"
+    if is_test:
+        return UploadMode(UPLOAD_TARGET_TEST, False, True, False)
+    if allow_live:
+        return UploadMode(UPLOAD_TARGET_LIVE, False, False, True)
+    return UploadMode(UPLOAD_TARGET_LIVE, False, False, False)
 
 
 @dataclass
@@ -469,10 +524,12 @@ def _reconcile_sync_with_ledger(
     return out
 
 
-async def load_ledger_for_prepare(db: AsyncSession) -> dict[str, str]:
+async def load_ledger_for_prepare(
+    db: AsyncSession, *, is_test: bool | None = None,
+) -> dict[str, str]:
     from app.pipeline.wikidata_qid_ledger import load_global_ledger  # noqa: PLC0415
 
-    return await load_global_ledger(db)
+    return await load_global_ledger(db, is_test=is_test)
 
 
 async def load_foreign_accept_map(
@@ -504,22 +561,33 @@ async def load_foreign_accept_map(
 async def upload_items(
     items: list[Any], *,
     token: str,
-    dry_run: bool,
+    dry_run: bool | None = None,
     audit_ctx: WikibaseAuditContext | None = None,
     db: AsyncSession | None = None,
     ledger: dict[str, str] | None = None,
     accept_by_local_id: dict[str, ForeignAccept] | None = None,
     run_id: uuid.UUID | None = None,
+    upload_target: str | None = None,
+    mode: UploadMode | None = None,
 ) -> list[UploadOutcome]:
+    resolved = mode or resolve_upload_mode(upload_target, dry_run=dry_run)
     if ledger is None and db is not None:
-        ledger = await load_ledger_for_prepare(db)
+        ledger = await load_ledger_for_prepare(db, is_test=resolved.is_test)
     if accept_by_local_id is None and db is not None and run_id is not None:
         accept_by_local_id = await load_foreign_accept_map(db, run_id)
-    ns = ledger_namespace()
+    ns = ledger_namespace(is_test=resolved.is_test)
     outcomes = await run_in_threadpool(
-        _upload_sync, items, token, dry_run, ledger or {}, ns, accept_by_local_id or {},
+        _upload_sync,
+        items,
+        token,
+        resolved.dry_run,
+        ledger or {},
+        ns,
+        accept_by_local_id or {},
+        resolved.is_test,
+        resolved.allow_live,
     )
-    if db is not None and audit_ctx is not None and not dry_run:
+    if db is not None and audit_ctx is not None and not resolved.dry_run:
         for outcome in outcomes:
             await _record_outcome_audit(db, audit_ctx, outcome)
             if outcome.qid and outcome.status in ("created", "adopted"):
@@ -545,12 +613,16 @@ async def push_single_item(
     token: str,
     audit_ctx: WikibaseAuditContext | None = None,
     run_id: uuid.UUID | None = None,
+    upload_target: str = UPLOAD_TARGET_TEST,
 ) -> UploadOutcome:
     """Live create-or-update for exactly one native WikidataItem."""
-    ledger = await load_ledger_for_prepare(db)
+    mode = resolve_upload_mode(upload_target, dry_run=False)
+    if mode.dry_run:
+        mode = resolve_upload_mode(UPLOAD_TARGET_TEST)
+    ledger = await load_ledger_for_prepare(db, is_test=mode.is_test)
     rid = run_id or (audit_ctx.run_id if audit_ctx is not None else None)
     outcomes = await upload_items(
-        [item], token=token, dry_run=False,
+        [item], token=token, mode=mode,
         audit_ctx=audit_ctx, db=db, ledger=ledger,
         run_id=rid,
     )
@@ -564,16 +636,18 @@ def _upload_sync(
     ledger: dict[str, str],
     ledger_ns: str,
     accept_by_local_id: dict[str, ForeignAccept] | None = None,
+    is_test: bool | None = None,
+    allow_live: bool = False,
 ) -> list[UploadOutcome]:
     from converter.wikidata.uploader import (  # noqa: PLC0415
         UnauthorisedModificationError,
         WikidataUploader,
     )
 
-    is_test = os.environ.get("WIKIDATA_TEST_MODE", "").lower() == "true"
-    moratorium_lifted = (
-        os.environ.get("MORATORIUM_LIFTED", "").lower() == "true"
-    )
+    if is_test is None:
+        is_test = os.environ.get("WIKIDATA_TEST_MODE", "").lower() == "true"
+    if not allow_live:
+        allow_live = os.environ.get("MORATORIUM_LIFTED", "").lower() == "true"
     accepts = accept_by_local_id or {}
 
     # Ownership classification needs an authenticated uploader whenever a token
@@ -582,7 +656,10 @@ def _upload_sync(
     if token:
         try:
             ownership_checker = WikidataUploader(
-                token=token, is_test=is_test, batch_mode=True,
+                token=token,
+                is_test=is_test,
+                batch_mode=True,
+                allow_live=allow_live,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not init WikidataUploader for ownership: %s", exc)
@@ -596,7 +673,7 @@ def _upload_sync(
             is_test=is_test,
         )
 
-    if not is_test and not moratorium_lifted:
+    if not is_test and not allow_live:
         return [
             UploadOutcome(
                 local_id=_local_id(it, i),
@@ -605,9 +682,9 @@ def _upload_sync(
                 qid=getattr(it, "existing_qid", None),
                 status="skipped",
                 message=(
-                    "Live upload refused — set MORATORIUM_LIFTED=true in "
-                    "the environment to enable production writes, or "
-                    "WIKIDATA_TEST_MODE=true to point at test.wikidata.org."
+                    "Live upload refused — choose upload target "
+                    "'test' (test.wikidata.org) or 'live' (wikidata.org) "
+                    "in Wikidata Studio, or set MORATORIUM_LIFTED=true."
                 ),
                 added_properties=[],
             )
@@ -624,7 +701,7 @@ def _upload_sync(
     )
 
     uploader = ownership_checker or WikidataUploader(
-        token=token, is_test=is_test, batch_mode=True,
+        token=token, is_test=is_test, batch_mode=True, allow_live=allow_live,
     )
 
     out: list[UploadOutcome] = []

@@ -6,6 +6,7 @@ import {
   fetchAllStudioItems,
   type StudioBuild,
   type StudioItem,
+  type WikidataUploadTarget,
 } from "@/api/wikidataStudio";
 import {SectionExportMenu} from "@/components/export/SectionExportMenu";
 import {Glass, GlassPill} from "@/components/glass";
@@ -51,6 +52,7 @@ export function WikidataItemsPanel({
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [verifyIds, setVerifyIds] = useState<string[] | undefined>(undefined);
   const [verifyActionId, setVerifyActionId] = useState<string | undefined>(undefined);
+  const [uploadTarget, setUploadTarget] = useState<WikidataUploadTarget>("dry_run");
   const [moratoriumLifted, setMoratoriumLifted] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -283,7 +285,10 @@ export function WikidataItemsPanel({
         buildPresent={buildPresent}
         refreshToken={refreshToken}
         compact
+        uploadTarget={uploadTarget}
+        onUploadTargetChange={setUploadTarget}
         onUploaded={(meta) => {
+          setUploadTarget(meta.upload_target);
           setMoratoriumLifted(meta.moratorium_lifted);
           setTestMode(meta.test_mode);
           void refresh();
@@ -315,6 +320,7 @@ export function WikidataItemsPanel({
           approvedOnly={approvedOnly}
           moratoriumLifted={moratoriumLifted}
           testMode={testMode}
+          uploadTarget={uploadTarget === "dry_run" ? "test" : uploadTarget}
           onClose={() => setOpenItem(null)}
           onSaved={() => void refresh()}
           onVerify={() => openVerify([openItem.local_id ?? ""], "audit_wikidata_item")}

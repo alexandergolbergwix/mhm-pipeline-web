@@ -109,10 +109,39 @@ async def prepare_job_params(
         return merged
 
     if kind == JOB_KIND_WIKIDATA_UPLOAD:
+        from app.pipeline.wikidata_upload import (  # noqa: PLC0415
+            VALID_UPLOAD_TARGETS,
+            resolve_upload_mode,
+        )
         from app.routers.wikidata_studio import _unwrap_user_secret  # noqa: PLC0415
 
+        raw_target = merged.get("upload_target")
+        if raw_target is not None and str(raw_target).strip():
+            target = str(raw_target).strip().lower()
+            if target not in VALID_UPLOAD_TARGETS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "upload_target must be one of: dry_run, test, live"
+                    ),
+                )
+            merged["upload_target"] = target
+        else:
+            # Legacy dry_run bool → canonical target; default dry_run.
+            mode_legacy = resolve_upload_mode(
+                None, dry_run=merged.get("dry_run", True),
+            )
+            merged["upload_target"] = mode_legacy.target
+
+        mode = resolve_upload_mode(
+            merged.get("upload_target"),
+            dry_run=merged.get("dry_run"),
+        )
+        merged["dry_run"] = mode.dry_run
+        merged["upload_target"] = mode.target
+
         token = await _unwrap_user_secret(db, auth, "wikidata")
-        if not merged.get("dry_run", True) and not token:
+        if not mode.dry_run and not token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Live upload requires a Wikidata token in Settings.",

@@ -14,7 +14,7 @@
 | `AUTHORITY_MODE` | `pipeline/authority_backend.py` (10 sites) | `postgres` (production, Rule W-28) / `local` SQLite / `modal` legacy |
 | `EVAL_AGENT_ROOT`, `EVAL_AGENT_STATE_DIR` | `agent_runner.py` | Bundle location + writable verify state dir |
 | `DYNO` | `agent_runner.py`, `run_job_service.py` | Heroku detection: `/tmp` state default + `WORKER_ID` prefix |
-| `MORATORIUM_LIFTED`, `WIKIDATA_TEST_MODE` | `wikidata_upload.py:321`, `wikidata_studio.py:930` | Live wikidata.org writes are refused unless `MORATORIUM_LIFTED=true` |
+| `MORATORIUM_LIFTED`, `WIKIDATA_TEST_MODE` | `wikidata_upload.py` (legacy), `uploader.py` | Legacy env overrides. Prefer curator `upload_target` in Wikidata Studio (Rule W-103): `dry_run` \| `test` \| `live` |
 | `WEB_CONCURRENCY`, `PORT` | `start.sh` | uvicorn workers / bind port |
 | `ENV`, `COOKIE_SECURE`, `FRONTEND_ORIGIN`, `SESSION_TTL_HOURS` | `settings.py` | Prod flags, cookie policy, link bases |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_NOTIFICATION_EMAIL`, `TURNSTILE_SECRET_KEY`/`SITE_KEY` | email/turnstile services | Unset → log-only mail / Turnstile bypass (dev) |

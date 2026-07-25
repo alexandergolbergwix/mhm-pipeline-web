@@ -21,25 +21,31 @@ test.describe("Wikidata upload panel", () => {
     await gotoModernStudio(page);
   });
 
-  test("upload controls render in lifecycle bar", async ({page}) => {
+  test("upload target radios default to dry-run", async ({page}) => {
     await expect(page.getByTestId("wikidata-item-upload-actions")).toBeVisible();
-    await expect(page.getByTestId("wikidata-upload-dry-run")).toBeVisible();
+    await expect(page.getByTestId("wikidata-upload-target-dry_run")).toBeChecked();
     await expect(page.getByTestId("wikidata-upload-update-existing")).toBeVisible();
     await expect(page.getByTestId("wikidata-upload-submit")).toBeVisible();
+    await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("moratorium active");
   });
 
   test("pre/post-upload verify checkboxes are toggleable", async ({page}) => {
     const pre = page.getByTestId("wikidata-upload-preverify-checkbox");
     const post = page.getByTestId("wikidata-upload-postverify-checkbox");
     await pre.check();
-    await post.check();
     await expect(pre).toBeChecked();
+    // post-verify stays disabled while dry-run is selected
+    await expect(post).toBeDisabled();
+    await page.getByTestId("wikidata-upload-target-test").check();
+    await post.check();
     await expect(post).toBeChecked();
   });
 
-  test("moratorium pill shows TEST MODE after upload result", async ({page}) => {
-    await page.getByTestId("wikidata-upload-submit").click();
-    await expect(page.getByText("TEST MODE (test.wikidata.org)")).toBeVisible({timeout: 8000});
+  test("pill follows selected upload target", async ({page}) => {
+    await page.getByTestId("wikidata-upload-target-test").check();
+    await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("TEST MODE");
+    await page.getByTestId("wikidata-upload-target-live").check();
+    await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("LIVE");
   });
 
   test("pre-upload verify fail shows confirm gate", async ({page}) => {

@@ -40,10 +40,11 @@ with progress + cancel) builds native items fresh, optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
 loads per-item foreign accepts from `WikidataItemOverride`, and calls
-`wikidata_upload.upload_items`. Live mode with neither
-`WIKIDATA_TEST_MODE=true` nor `MORATORIUM_LIFTED=true` returns every item as
-`skipped`; the uploader itself independently
-re-enforces the moratorium (`uploader.py:111`). All four desktop Rule-38
+`wikidata_upload.upload_items`. The curator picks `upload_target` in the UI
+(`dry_run` default | `test` | `live`). Live mode without `upload_target=live`
+(and without legacy `MORATORIUM_LIFTED=true`) returns every item as `skipped`;
+the uploader independently re-enforces via `allow_live` / env
+(`uploader.py`). All four desktop Rule-38
 modification guards stay intact (`_is_our_item`, `_assert_modifiable` in
 `_build_wbi_item`, `_would_create_identity_conflict` per statement, pre-write
 `_assert_modifiable`); foreign accept may prime `_is_our_item_cache` for one

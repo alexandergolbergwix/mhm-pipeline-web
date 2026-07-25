@@ -41,7 +41,7 @@ async def test_push_single_item_records_audit(db_session, sample_run, monkeypatc
     monkeypatch.setenv("WIKIDATA_TEST_MODE", "true")
 
     class _FakeUploader:
-        def __init__(self, token, is_test, batch_mode):
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
             self._is_our_item_cache = {}
 
         def _is_our_item(self, qid: str) -> bool:

@@ -22,8 +22,9 @@ bulk-deletion request (~5,948 items). Its whole write path is therefore
 **fail-closed**: reconcile-before-create with hard errors on lookup failure, a
 validator moat that blocks any ERROR-severity item, four modification guards
 inside the uploader, smart existence + own-or-accept modify (Rule W-99), and a
-production moratorium gate (`MORATORIUM_LIFTED`) that refuses live wikidata.org
-writes by default.
+production upload-target gate (default `dry_run`; curator may choose `test` or
+`live` — Rule W-103) that refuses live wikidata.org writes unless explicitly
+selected.
 
 ## Contents
 

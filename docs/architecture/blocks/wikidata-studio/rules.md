@@ -19,9 +19,11 @@
 5. **R5 — `validate_item` is a hard gate in the write path**, not just a build
    badge. Any ERROR-severity issue blocks create AND update, regardless of
    curator approval. *Why:* the moat closest to the write is the one that must never miss.
-6. **R6 — Live wikidata.org writes NEVER run without `MORATORIUM_LIFTED=true`**
-   (or `WIKIDATA_TEST_MODE=true` → test.wikidata.org). Enforced twice: web
-   layer and uploader. *Why:* desktop Rule 25 — the moratorium is the standing consequence of the 2026-04 incidents.
+6. **R6 — Live wikidata.org writes require an explicit curator `upload_target=live`**
+   (or legacy `MORATORIUM_LIFTED=true`). Default is `dry_run`. `upload_target=test`
+   writes to test.wikidata.org. Enforced in the web layer and `WikidataUploader`
+   (`allow_live`). *Why:* Rule W-103 — UI choice with dry-run default replaces
+   env-only moratorium while keeping fail-closed defaults.
 7. **R7 — Never modify items we didn't create.** The uploader's four Rule-38
    guards (`_is_our_item` + three `_assert_modifiable`/conflict checks) MUST
    stay intact in `wikidata_upload.py`; `uploader.py` stays byte-identical to

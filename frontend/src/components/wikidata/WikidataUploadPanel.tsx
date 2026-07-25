@@ -6,6 +6,7 @@ import {
   fetchAllStudioItems,
   type UploadOutcome,
   type UploadResponse,
+  type WikidataUploadTarget,
 } from "@/api/wikidataStudio";
 import {WikidataVerify, type AgentEvent} from "@/api/wikidataVerify";
 import {AgentFlowDiagram, makeInitialFlowState, type FlowState} from "@/components/AgentFlowDiagram";
@@ -28,7 +29,13 @@ export interface WikidataUploadPanelProps {
   buildPresent: boolean;
   refreshToken?: unknown;
   compact?: boolean;
-  onUploaded?: (meta: {moratorium_lifted: boolean; test_mode: boolean}) => void;
+  uploadTarget?: WikidataUploadTarget;
+  onUploadTargetChange?: (target: WikidataUploadTarget) => void;
+  onUploaded?: (meta: {
+    upload_target: WikidataUploadTarget;
+    moratorium_lifted: boolean;
+    test_mode: boolean;
+  }) => void;
 }
 
 function verdictOverall(ev: AgentEvent): string {
@@ -41,6 +48,28 @@ function verdictLocalId(row: Record<string, unknown>): string {
   return String(cand._item_id ?? cand._local_id ?? cand.local_id ?? "");
 }
 
+const TARGET_OPTIONS: Array<{
+  value: WikidataUploadTarget;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "dry_run",
+    label: "Moratorium active (dry-run)",
+    hint: "Preview only — no public writes",
+  },
+  {
+    value: "test",
+    label: "Wikidata test",
+    hint: "Write to test.wikidata.org",
+  },
+  {
+    value: "live",
+    label: "Live Wikidata",
+    hint: "Write to wikidata.org",
+  },
+];
+
 export function WikidataUploadPanel({
   runId,
   source,
@@ -49,16 +78,23 @@ export function WikidataUploadPanel({
   buildPresent,
   refreshToken,
   compact = false,
+  uploadTarget: uploadTargetProp,
+  onUploadTargetChange,
   onUploaded,
 }: WikidataUploadPanelProps) {
-  const [dryRun, setDryRun] = useState(true);
+  const [uploadTargetLocal, setUploadTargetLocal] = useState<WikidataUploadTarget>("dry_run");
+  const uploadTarget = uploadTargetProp ?? uploadTargetLocal;
+  const setUploadTarget = (next: WikidataUploadTarget) => {
+    if (onUploadTargetChange) onUploadTargetChange(next);
+    else setUploadTargetLocal(next);
+  };
+  const dryRun = uploadTarget === "dry_run";
   const [updateExisting, setUpdateExisting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UploadResponse | null>(null);
   const [job, setJob] = useState<RunJobSnapshot | null>(null);
-  const [moratoriumLifted, setMoratoriumLifted] = useState(false);
-  const [testMode, setTestMode] = useState(false);
+  const [lastTarget, setLastTarget] = useState<WikidataUploadTarget>("dry_run");
 
   const [preVerify, setPreVerify] = useState(false);
   const [postVerify, setPostVerify] = useState(false);
@@ -95,11 +131,19 @@ export function WikidataUploadPanel({
   });
 
   const doUpload = useCallback(async () => {
+    if (uploadTarget === "live") {
+      const ok = window.confirm(
+        "Upload to live wikidata.org?\n\n"
+        + "This writes real public items. Prefer dry-run or test.wikidata.org first.",
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     setError(null);
     try {
       const started = await RunJobs.start(runId, "wikidata_upload", {
-        dry_run: dryRun,
+        upload_target: uploadTarget,
+        dry_run: uploadTarget === "dry_run",
         approved_only: approvedOnly,
         source,
         item_approved_only: uploadApprovedOnly,
@@ -119,7 +163,7 @@ export function WikidataUploadPanel({
       setError(e instanceof ApiError ? e.detail : String(e));
       setBusy(false);
     }
-  }, [runId, dryRun, approvedOnly, uploadApprovedOnly, updateExisting, source]);
+  }, [runId, uploadTarget, approvedOnly, uploadApprovedOnly, updateExisting, source]);
 
   const {activeJob, setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
@@ -128,17 +172,22 @@ export function WikidataUploadPanel({
       setJob(j);
       if (j.status === "succeeded" && j.result) {
         const outcomes = (j.result.outcomes as UploadOutcome[]) ?? [];
+        const target = (String(
+          j.result.upload_target
+          || (j.result.test_mode ? "test" : j.result.dry_run ? "dry_run" : "live"),
+        )) as WikidataUploadTarget;
         const uploadResult: UploadResponse = {
           dry_run: Boolean(j.result.dry_run),
+          upload_target: target,
           moratorium_lifted: Boolean(j.result.moratorium_lifted),
           test_mode: Boolean(j.result.test_mode),
           outcomes,
         };
         setResult(uploadResult);
-        setMoratoriumLifted(uploadResult.moratorium_lifted);
-        setTestMode(uploadResult.test_mode);
+        setLastTarget(target);
         setBusy(false);
         onUploaded?.({
+          upload_target: target,
           moratorium_lifted: uploadResult.moratorium_lifted,
           test_mode: uploadResult.test_mode,
         });
@@ -232,26 +281,53 @@ export function WikidataUploadPanel({
   const preVerifyRunning = verifyPhase === "pre" && verifyRunning;
   const canUpload = buildPresent;
 
-  const moratoriumPill = !moratoriumLifted && !testMode
-    ? <GlassPill className="px-2 py-0.5 text-[10px] kicker text-warn">moratorium active</GlassPill>
-    : testMode
-      ? <GlassPill className="px-2 py-0.5 text-[10px] kicker text-biu-sky">TEST MODE (test.wikidata.org)</GlassPill>
-      : <GlassPill className="px-2 py-0.5 text-[10px] kicker text-biu-sky">LIVE</GlassPill>;
+  const pillTarget = result ? lastTarget : uploadTarget;
+  const moratoriumPill = pillTarget === "dry_run"
+    ? <GlassPill className="px-2 py-0.5 text-[10px] kicker text-warn" data-testid="wikidata-upload-target-pill">moratorium active (dry-run)</GlassPill>
+    : pillTarget === "test"
+      ? <GlassPill className="px-2 py-0.5 text-[10px] kicker text-biu-sky" data-testid="wikidata-upload-target-pill">TEST MODE (test.wikidata.org)</GlassPill>
+      : <GlassPill className="px-2 py-0.5 text-[10px] kicker text-danger" data-testid="wikidata-upload-target-pill">LIVE (wikidata.org)</GlassPill>;
+
+  const submitLabel = dryRun
+    ? "Preview upload"
+    : uploadTarget === "test"
+      ? "Upload to test Wikidata"
+      : "Upload to live Wikidata";
 
   const controls = (
     <>
       <div className="flex flex-wrap items-center gap-3">
         {moratoriumPill}
-        <label className="flex items-center gap-1 text-sm muted">
-          <input
-            type="checkbox"
-            checked={dryRun}
-            onChange={(e) => setDryRun(e.target.checked)}
-            disabled={busy || jobRunning || preVerifyRunning}
-            data-testid="wikidata-upload-dry-run"
-          />
-          Preview only (no public changes)
-        </label>
+      </div>
+      <fieldset
+        className="flex flex-wrap gap-3 text-sm"
+        disabled={busy || jobRunning || preVerifyRunning}
+        data-testid="wikidata-upload-target"
+      >
+        <legend className="sr-only">Wikidata upload target</legend>
+        {TARGET_OPTIONS.map((opt) => (
+          <label
+            key={opt.value}
+            className="flex items-start gap-2 muted cursor-pointer max-w-xs"
+            title={opt.hint}
+          >
+            <input
+              type="radio"
+              name="wikidata-upload-target"
+              value={opt.value}
+              checked={uploadTarget === opt.value}
+              onChange={() => setUploadTarget(opt.value)}
+              data-testid={`wikidata-upload-target-${opt.value}`}
+              className="mt-1"
+            />
+            <span>
+              <span className="text-ink">{opt.label}</span>
+              <span className="block text-xs muted">{opt.hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-1 text-sm muted" title="Update items that already have a Wikidata QID">
           <input
             type="checkbox"
@@ -265,7 +341,7 @@ export function WikidataUploadPanel({
         <button
           onClick={handleUploadClick}
           disabled={busy || jobRunning || preVerifyRunning || !canUpload}
-          className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}
+          className={dryRun ? "button-ghost text-sm" : uploadTarget === "live" ? "button-primary text-sm" : "button-ghost text-sm"}
           data-testid="wikidata-upload-submit"
         >
           {busy || jobRunning || preVerifyRunning
@@ -274,9 +350,7 @@ export function WikidataUploadPanel({
               : dryRun
                 ? "Previewing…"
                 : "Uploading…"
-            : dryRun
-              ? "Preview upload"
-              : "Live upload"}
+            : submitLabel}
         </button>
       </div>
 
@@ -300,12 +374,12 @@ export function WikidataUploadPanel({
           />
           Verify with AI before upload
         </label>
-        <label className="flex items-center gap-1" title="After live upload, runs autofix_from_wikidata on written items">
+        <label className="flex items-center gap-1" title="After live/test upload, runs autofix_from_wikidata on written items">
           <input
             type="checkbox"
             checked={postVerify}
             onChange={(e) => setPostVerify(e.target.checked)}
-            disabled={busy || jobRunning || preVerifyRunning}
+            disabled={busy || jobRunning || preVerifyRunning || dryRun}
             data-testid="wikidata-upload-postverify-checkbox"
           />
           Verify with AI after upload (autofix)
@@ -405,8 +479,7 @@ export function WikidataUploadPanel({
         <div className="kicker">Upload to Wikidata</div>
         <h3 className="text-lg font-medium">Reconcile-before-create upload</h3>
         <p className="muted text-sm leading-relaxed mt-1">
-          Dry-run previews outcomes with reconcile + validator gates. Live upload respects the moratorium
-          and test-mode settings on this server.
+          Default is dry-run (moratorium active). Choose Wikidata test or live when you are ready to write.
         </p>
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}

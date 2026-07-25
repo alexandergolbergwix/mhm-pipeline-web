@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 
 
-def ledger_namespace() -> str:
-    if os.environ.get("WIKIDATA_TEST_MODE", "").lower() == "true":
+def ledger_namespace(*, is_test: bool | None = None) -> str:
+    if is_test is None:
+        is_test = os.environ.get("WIKIDATA_TEST_MODE", "").lower() == "true"
+    if is_test:
         return "wikidata-test"
     return "wikidata"
 
@@ -57,8 +59,11 @@ def lookup_ledger_qid(ledger: dict[str, str], key: str) -> str | None:
     return str(qid) if qid else None
 
 
-async def load_global_ledger(db: AsyncSession) -> dict[str, str]:
-    """All global Wikidata Studio instance mappings (``run_id IS NULL``)."""
+async def load_global_ledger(
+    db: AsyncSession, *, is_test: bool | None = None,
+) -> dict[str, str]:
+    """Global Wikidata Studio instance mappings (``run_id IS NULL``)."""
+    prefix = f"{ledger_namespace(is_test=is_test)}:"
     rows = (
         await db.execute(
             select(
@@ -67,7 +72,7 @@ async def load_global_ledger(db: AsyncSession) -> dict[str, str]:
             ).where(
                 WikibaseEntityMapping.run_id.is_(None),
                 WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
-                WikibaseEntityMapping.ontology_uri.like("wikidata%"),
+                WikibaseEntityMapping.ontology_uri.like(f"{prefix}%"),
             )
         )
     ).all()

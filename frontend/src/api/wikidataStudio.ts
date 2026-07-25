@@ -103,8 +103,11 @@ export interface UploadOutcome {
   added_properties: string[];
 }
 
+export type WikidataUploadTarget = "dry_run" | "test" | "live";
+
 export interface UploadResponse {
   dry_run: boolean;
+  upload_target?: WikidataUploadTarget;
   moratorium_lifted: boolean;
   test_mode: boolean;
   outcomes: UploadOutcome[];
@@ -262,11 +265,24 @@ export const Studio = {
       {},
     ),
 
-  upload: (runId: string, opts: { dry_run: boolean; approved_only: boolean; upload_approved_only?: boolean; source?: "legacy" | "canonical" }) =>
-    api.post<UploadResponse>(
-      `/runs/${runId}/wikidata-studio/upload?dry_run=${opts.dry_run ? "true" : "false"}&approved_only=${opts.approved_only ? "true" : "false"}${opts.upload_approved_only ? "&upload_approved_only=true" : ""}`,
+  upload: (runId: string, opts: {
+    dry_run?: boolean;
+    upload_target?: WikidataUploadTarget;
+    approved_only: boolean;
+    upload_approved_only?: boolean;
+    source?: "legacy" | "canonical";
+  }) => {
+    const qs = new URLSearchParams();
+    qs.set("approved_only", opts.approved_only ? "true" : "false");
+    if (opts.upload_target) qs.set("upload_target", opts.upload_target);
+    else if (opts.dry_run != null) qs.set("dry_run", opts.dry_run ? "true" : "false");
+    if (opts.upload_approved_only) qs.set("upload_approved_only", "true");
+    if (opts.source) qs.set("source", opts.source);
+    return api.post<UploadResponse>(
+      `/runs/${runId}/wikidata-studio/upload?${qs.toString()}`,
       {},
-    ),
+    );
+  },
 
   patchItemOverride: (runId: string, localId: string, payload: ItemOverridePayload) =>
     api.patch<ItemOverrideResponse>(
@@ -303,9 +319,13 @@ export const Studio = {
       body,
     ),
 
-  pushItem(runId: string, localId: string): Promise<WikidataItemPushResult> {
+  pushItem(
+    runId: string,
+    localId: string,
+    uploadTarget: "test" | "live" = "test",
+  ): Promise<WikidataItemPushResult> {
     return api.post(
-      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}/push`,
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}/push?upload_target=${uploadTarget}`,
       {},
     );
   },

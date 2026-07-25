@@ -365,8 +365,9 @@ export async function installStudioMocks(
         params: body,
         result: {
           dry_run: true,
+          upload_target: "dry_run",
           moratorium_lifted: false,
-          test_mode: true,
+          test_mode: false,
           outcomes: [{
             local_id: "manuscript::Hebrew Manuscript",
             label: "Hebrew Manuscript",
