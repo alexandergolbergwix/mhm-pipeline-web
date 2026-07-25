@@ -30,7 +30,9 @@ must include `description` + OWL context (Rule W-47 / eval-agent R17).
 returns **201** (Rule W-106). The worker
 (`hmo_item_build_job.py` → `execute_hmo_item_build`) runs authority refresh →
 RDF rebuild → `build_items_for_run` (`hmo_item_build.py:88`) with **1-based
-step progress** (`1/3`…`3/3`, `unit=steps`, Rule W-112); the UI attaches via
+step progress** (`1/3`…`3/3`, `unit=steps`, Rule W-112) plus **nested
+sub-progress** on long steps (`sub_unit=entities` during authority,
+`sub_unit=records` during RDF — Rule W-113); the UI attaches via
 `JobProgressInline` / job tray. By default
 `refresh_authority=true` re-runs the matcher, then **forces an RDF rebuild**
 from approved matches (and upserts `RdfArtifact`) so Mazal/KIMA/VIAF/Wikidata

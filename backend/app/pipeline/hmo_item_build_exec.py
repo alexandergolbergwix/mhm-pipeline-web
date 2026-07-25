@@ -29,7 +29,7 @@ from converter.wikibase.resolved_models import UnmappedOntologyUriError
 
 logger = logging.getLogger(__name__)
 
-ProgressCb = Callable[[str, int, int, str], Awaitable[None]]
+ProgressCb = Callable[..., Awaitable[None]]
 CancelCb = Callable[[], Awaitable[bool]]
 
 
@@ -65,9 +65,28 @@ async def execute_hmo_item_build(
     if run is None:
         raise HmoItemBuildError(f"run {run_id} not found", conflict=True)
 
-    async def progress(phase: str, processed: int, total: int, message: str) -> None:
+    async def progress(
+        phase: str,
+        processed: int,
+        total: int,
+        message: str,
+        *,
+        sub_processed: int | None = None,
+        sub_total: int | None = None,
+        sub_unit: str | None = None,
+        sub_message: str | None = None,
+    ) -> None:
         if on_progress:
-            await on_progress(phase, processed, total, message)
+            await on_progress(
+                phase,
+                processed,
+                total,
+                message,
+                sub_processed=sub_processed,
+                sub_total=sub_total,
+                sub_unit=sub_unit,
+                sub_message=sub_message,
+            )
 
     async def cancelled() -> bool:
         return bool(should_cancel and await should_cancel())
@@ -89,6 +108,19 @@ async def execute_hmo_item_build(
         matches = (
             await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))
         ).scalars().all()
+
+        async def authority_sub(processed: int, total: int, message: str) -> None:
+            await progress(
+                "authority",
+                1,
+                3,
+                "Step 1 of 3: Refreshing authority evidence…",
+                sub_processed=processed,
+                sub_total=total,
+                sub_unit="entities",
+                sub_message=message,
+            )
+
         await re_enrich_run(
             db,
             run,
@@ -96,6 +128,7 @@ async def execute_hmo_item_build(
             skip_cache=True,
             records=list(records),
             existing_rows=list(matches),
+            on_progress=authority_sub,
         )
         await db.commit()
         force_rdf_rebuild = True
@@ -149,12 +182,26 @@ async def execute_hmo_item_build(
                 "confidence": row.confidence,
                 "model_confidence": row.model_confidence,
             })
+
+        async def rdf_sub(payload: dict[str, Any]) -> None:
+            await progress(
+                "rdf",
+                2,
+                3,
+                "Step 2 of 3: Rebuilding RDF graph from MARC + approvals…",
+                sub_processed=int(payload.get("processed") or 0),
+                sub_total=int(payload.get("total") or 0),
+                sub_unit="records",
+                sub_message=str(payload.get("message") or payload.get("current_control_number") or ""),
+            )
+
         try:
             rdf_result = await build_rdf_graph(
                 marc_records=[dict(row.marc) for row in records],
                 authority_matches=normalise_matches(approved_matches),
                 entities_by_cn=entities_by_cn,
                 output_path=ttl_path,
+                on_progress=rdf_sub,
             )
             await upsert_rdf_artifact(
                 db,

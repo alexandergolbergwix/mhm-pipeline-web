@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from sqlalchemy import func, select
@@ -17,6 +19,8 @@ from app.pipeline.entity_normalize import (
 from app.pipeline.marc_ingest import extract_named_entities, prepare_record_for_pipeline
 
 logger = logging.getLogger(__name__)
+
+ProgressCb = Callable[[int, int, str], Awaitable[None]]
 
 
 def match_key(
@@ -41,8 +45,13 @@ async def re_enrich_run(
     skip_cache: bool,
     records: list[RunRecord],
     existing_rows: list[AuthorityMatch],
+    on_progress: ProgressCb | None = None,
 ) -> dict[str, int]:
-    """Re-match every entity; upsert by normalised key; purge orphan rows."""
+    """Re-match every entity; upsert by normalised key; purge orphan rows.
+
+    ``on_progress(processed, total, message)`` is throttled (~1s) and reports
+    per-entity work so long HMO rebuilds can show a sub-progress bar.
+    """
     run_id = run.id
     user_id = run.created_by
 
@@ -67,79 +76,101 @@ async def re_enrich_run(
             prepare_record_for_pipeline(dict(rec.marc or {})),
         ))
 
+    work: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+    for control_number, marc in record_rows:
+        for entity in extract_named_entities(marc):
+            work.append((control_number, marc, entity))
+
     produced_keys: set[tuple[str, str, str, str]] = set()
     checked = 0
     updated = 0
     newly_matched = 0
     orphans_removed = 0
+    total = len(work)
+    last_emit = 0.0
 
-    for control_number, marc in record_rows:
-        for entity in extract_named_entities(marc):
-            checked += 1
-            clean_text = normalize_entity_text(entity.get("text", ""))
-            clean_role = normalize_role(entity.get("role", ""))
-            kind = entity.get("kind", "person")
-            key = match_key(control_number, clean_text, kind, clean_role)
-            produced_keys.add(key)
+    async def _maybe_progress(processed: int, control_number: str, text: str) -> None:
+        nonlocal last_emit
+        if on_progress is None or total <= 0:
+            return
+        now = time.monotonic()
+        if processed not in (1, total) and (now - last_emit) < 1.0:
+            return
+        last_emit = now
+        label = (text or "").strip()
+        if len(label) > 48:
+            label = label[:45] + "…"
+        message = f"{control_number}: {label}" if label else control_number
+        await on_progress(processed, total, message)
 
-            try:
-                candidates = await matcher.match(
-                    entity, marc,
-                    db_session=db,
-                    user_id=user_id,
-                    skip_cache=skip_cache,
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception(
-                    "re-enrich: authority match failed for %r", entity.get("text"),
-                )
-                candidates = []
+    for control_number, marc, entity in work:
+        checked += 1
+        clean_text = normalize_entity_text(entity.get("text", ""))
+        clean_role = normalize_role(entity.get("role", ""))
+        kind = entity.get("kind", "person")
+        key = match_key(control_number, clean_text, kind, clean_role)
+        produced_keys.add(key)
 
-            if not candidates:
-                continue
+        try:
+            candidates = await matcher.match(
+                entity, marc,
+                db_session=db,
+                user_id=user_id,
+                skip_cache=skip_cache,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "re-enrich: authority match failed for %r", entity.get("text"),
+            )
+            candidates = []
 
-            c = candidates[0]
+        await _maybe_progress(checked, control_number, clean_text)
 
-            if key in existing_idx:
-                matches = existing_idx[key]
-                primary = matches[0]
-                for dup in matches[1:]:
-                    await db.delete(dup)
-                    orphans_removed += 1
-                existing_idx[key] = [primary]
-                primary.entity_text = clean_text
-                primary.role = clean_role
-                primary.entity_kind = kind
-                primary.matched_name = c.matched_name
-                primary.mazal_id = c.mazal_id
-                primary.viaf_id = c.viaf_id
-                primary.wikidata_qid = c.wikidata_qid
-                primary.confidence = c.confidence
-                primary.source = c.source
-                primary.payload = c.payload
-                if kind == "place" and c.wikidata_qid and c.mazal_id and int((c.payload or {}).get("source_count") or 0) >= 2:
-                    primary.approved = True
-                updated += 1
-            else:
-                row = AuthorityMatch(
-                    run_id=run_id,
-                    control_number=control_number,
-                    entity_text=clean_text,
-                    entity_kind=kind,
-                    role=clean_role,
-                    matched_name=c.matched_name,
-                    mazal_id=c.mazal_id,
-                    viaf_id=c.viaf_id,
-                    wikidata_qid=c.wikidata_qid,
-                    confidence=c.confidence,
-                    source=c.source,
-                    payload=c.payload,
-                    approved=(kind == "place" and bool(c.wikidata_qid and c.mazal_id) and int((c.payload or {}).get("source_count") or 0) >= 2),
-                )
-                db.add(row)
-                await db.flush()
-                existing_idx[key] = [row]
-                newly_matched += 1
+        if not candidates:
+            continue
+
+        c = candidates[0]
+
+        if key in existing_idx:
+            matches = existing_idx[key]
+            primary = matches[0]
+            for dup in matches[1:]:
+                await db.delete(dup)
+                orphans_removed += 1
+            existing_idx[key] = [primary]
+            primary.entity_text = clean_text
+            primary.role = clean_role
+            primary.entity_kind = kind
+            primary.matched_name = c.matched_name
+            primary.mazal_id = c.mazal_id
+            primary.viaf_id = c.viaf_id
+            primary.wikidata_qid = c.wikidata_qid
+            primary.confidence = c.confidence
+            primary.source = c.source
+            primary.payload = c.payload
+            if kind == "place" and c.wikidata_qid and c.mazal_id and int((c.payload or {}).get("source_count") or 0) >= 2:
+                primary.approved = True
+            updated += 1
+        else:
+            row = AuthorityMatch(
+                run_id=run_id,
+                control_number=control_number,
+                entity_text=clean_text,
+                entity_kind=kind,
+                role=clean_role,
+                matched_name=c.matched_name,
+                mazal_id=c.mazal_id,
+                viaf_id=c.viaf_id,
+                wikidata_qid=c.wikidata_qid,
+                confidence=c.confidence,
+                source=c.source,
+                payload=c.payload,
+                approved=(kind == "place" and bool(c.wikidata_qid and c.mazal_id) and int((c.payload or {}).get("source_count") or 0) >= 2),
+            )
+            db.add(row)
+            await db.flush()
+            existing_idx[key] = [row]
+            newly_matched += 1
 
     for m, key in orphan_pairs:
         if key not in produced_keys:

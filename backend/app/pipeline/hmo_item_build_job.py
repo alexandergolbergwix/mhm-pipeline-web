@@ -36,14 +36,33 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
         "message": "Starting HMO item build (3 steps)…",
     })
 
-    async def on_progress(phase: str, processed: int, total: int, message: str) -> None:
-        await update_job_progress(job_id, {
+    async def on_progress(
+        phase: str,
+        processed: int,
+        total: int,
+        message: str,
+        *,
+        sub_processed: int | None = None,
+        sub_total: int | None = None,
+        sub_unit: str | None = None,
+        sub_message: str | None = None,
+    ) -> None:
+        progress: dict = {
             "phase": phase,
             "processed": processed,
             "total": total,
             "unit": "steps",
             "message": message,
-        })
+        }
+        if sub_processed is not None:
+            progress["sub_processed"] = sub_processed
+        if sub_total is not None:
+            progress["sub_total"] = sub_total
+        if sub_unit:
+            progress["sub_unit"] = sub_unit
+        if sub_message:
+            progress["sub_message"] = sub_message
+        await update_job_progress(job_id, progress)
 
     async def should_cancel() -> bool:
         return await is_cancel_requested(job_id)

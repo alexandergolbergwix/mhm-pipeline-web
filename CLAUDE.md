@@ -2643,3 +2643,23 @@ Invariant:
    fraction that reads like item counts.
 
 Tests: `backend/tests/unit/test_hmo_item_build_progress.py`.
+
+### Rule W-113 — Long pipeline steps MUST report nested sub-progress (added 2026-07-25)
+
+HMO **Rebuild (skip cache)** still looked stuck after W-112: the outer bar
+showed `1 / 3 steps` for the entire authority refresh of a ~2k-entity corpus,
+with no indication of how far through entities (or RDF records) the worker
+was. Curators could not tell a hung job from a slow match.
+
+Invariant:
+
+1. Outer progress remains 1-based pipeline steps (`unit=steps`, Rule W-112).
+2. Long steps also write nested fields on the same progress blob:
+   `sub_processed`, `sub_total`, `sub_unit`, `sub_message`.
+3. Authority refresh reports `sub_unit=entities` (throttled ~1s from
+   `re_enrich_run`); RDF rebuild reports `sub_unit=records`.
+4. `JobProgressInline` and the job tray render a second, thinner bar when
+   `sub_total > 0`, and include the sub-fraction in the tray label.
+
+Tests: `backend/tests/unit/test_hmo_item_build_progress.py`,
+`backend/tests/unit/test_authority_re_enrich_progress.py`.

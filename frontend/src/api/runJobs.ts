@@ -31,6 +31,11 @@ export interface RunJobProgress {
   message?: string;
   /** Optional counter unit for the tray/inline UI (e.g. ``steps``, ``items``). */
   unit?: string;
+  /** Nested progress within the current outer step (authority entities, RDF records, …). */
+  sub_processed?: number;
+  sub_total?: number;
+  sub_unit?: string;
+  sub_message?: string;
   current_entity?: string;
   current_control_number?: string;
   current_source?: string | null;

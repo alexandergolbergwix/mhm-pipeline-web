@@ -54,7 +54,8 @@
 2. Start with `RunJobs.start(runId, kind, params)` (`frontend/src/api/runJobs.ts`);
    catch `ApiError` 409 and read `detail.job_id` to attach (R14).
 3. Render progress with `JobProgressInline` (`frontend/src/components/jobs/JobProgressInline.tsx`)
-   using `job.progress.{processed,total,message,phase}`.
+   using `job.progress.{processed,total,message,phase,unit}` and, for long steps,
+   nested `sub_processed`/`sub_total`/`sub_unit`/`sub_message` (Rules W-112 / W-113).
 4. For verify modals use `useVerifyJob({runId, kind, loadSession, onFailed, onComplete})` —
    it loads the eval-agent session from `progress.session_snapshot` while the job
    runs (then disk/`result` at finish), keyed off `progress.session_id`, and phrases

@@ -30,8 +30,19 @@ function progressLabel(job: RunJobSnapshot): string {
   const processed = Number(p.processed ?? 0);
   const msg = typeof p.message === "string" ? p.message.trim() : "";
   const unit = typeof p.unit === "string" && p.unit.trim() ? ` ${p.unit.trim()}` : "";
+  const subTotal = Number(p.sub_total ?? 0);
+  const subProcessed = Number(p.sub_processed ?? 0);
+  const subUnit = typeof p.sub_unit === "string" && p.sub_unit.trim()
+    ? ` ${p.sub_unit.trim()}`
+    : "";
+  const subMsg = typeof p.sub_message === "string" ? p.sub_message.trim() : "";
   if (total > 0) {
     const frac = `${processed} / ${total}${unit}`;
+    if (subTotal > 0) {
+      const sub = `${subProcessed} / ${subTotal}${subUnit}`;
+      const detail = subMsg || msg;
+      return detail ? `${frac} · ${sub} · ${detail}` : `${frac} · ${sub}`;
+    }
     return msg ? `${frac} · ${msg}` : frac;
   }
   return msg || job.status;
@@ -56,6 +67,10 @@ export function JobTray() {
         const total = Number(job.progress?.total ?? 0);
         const processed = Number(job.progress?.processed ?? 0);
         const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+        const subTotal = Number(job.progress?.sub_total ?? 0);
+        const subProcessed = Number(job.progress?.sub_processed ?? 0);
+        const subPct =
+          subTotal > 0 ? Math.min(100, Math.round((subProcessed / subTotal) * 100)) : 0;
         const label = JOB_KIND_LABELS[job.kind] ?? job.kind;
 
         return (
@@ -74,6 +89,14 @@ export function JobTray() {
                 <div
                   className="h-full bg-[var(--accent)] transition-all duration-300"
                   style={{width: `${pct}%`}}
+                />
+              </div>
+            )}
+            {subTotal > 0 && (
+              <div className="h-1 rounded-full bg-black/10 overflow-hidden" aria-hidden>
+                <div
+                  className="h-full bg-[var(--accent)]/70 transition-all duration-300"
+                  style={{width: `${Math.max(2, subPct)}%`}}
                 />
               </div>
             )}

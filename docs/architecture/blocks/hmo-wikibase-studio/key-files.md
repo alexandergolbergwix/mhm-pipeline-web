@@ -7,9 +7,10 @@
 | `backend/converter/wikibase/ontology_schema_reader.py` | TTL → class/property entries, Wikibase datatype inference, `schema_entry_metadata_by_uri()` for schema AI verify |
 | `backend/app/pipeline/hmo_schema_bootstrap.py` | Ontology-driven schema bootstrap; label de-dup; per-create commit; report cache for eval-agent |
 | `backend/app/pipeline/hmo_schema_bootstrap_job.py` | Background job wrapper for the live bootstrap (~380 writes) |
+| `backend/app/pipeline/authority_re_enrich.py` | Shared re-enrich; optional throttled `on_progress` for build sub-bar (Rule W-113) |
 | `backend/app/pipeline/hmo_item_build.py` | RDF → resolved items, cached in `HmoStudioItemCache` keyed by TTL hash + schema-mapping version |
-| `backend/app/pipeline/hmo_item_build_exec.py` | Orchestrates authority → RDF → export for `hmo_item_build` jobs (Rule W-106) |
-| `backend/app/pipeline/hmo_item_build_job.py` | Worker for `hmo_item_build` |
+| `backend/app/pipeline/hmo_item_build_exec.py` | Orchestrates authority → RDF → export for `hmo_item_build` jobs; nests `sub_*` progress (Rules W-106 / W-113) |
+| `backend/app/pipeline/hmo_item_build_job.py` | Worker for `hmo_item_build`; forwards outer + nested progress |
 | `backend/app/pipeline/hmo_manifest_build_job.py` | Worker for `hmo_manifest_build` (IIIF from TTL) |
 | `backend/app/pipeline/hmo_manifest_upload_job.py` | Worker for `hmo_manifest_upload` (IIIF publish; Rule W-107) |
 | `backend/app/pipeline/hmo_item_upload_job.py` | Worker for `hmo_item_upload` (dry-run + live; Rule W-107) |

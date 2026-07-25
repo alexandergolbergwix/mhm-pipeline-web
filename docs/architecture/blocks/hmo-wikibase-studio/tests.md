@@ -22,7 +22,9 @@
   `test_hmo_studio_ttl_restore.py` — build + cache fingerprint; job enqueue /
   worker (W-106); authority-refresh forces RDF rebuild (W-101).
 - `backend/tests/unit/test_hmo_item_build_progress.py` — 1-based step progress
-  `1/3→2/3→3/3` with `unit=steps` (W-112).
+  `1/3→2/3→3/3` with `unit=steps` (W-112) and nested `sub_*` fields (W-113).
+- `backend/tests/unit/test_authority_re_enrich_progress.py` — throttled
+  per-entity `on_progress` for the authority sub-bar (W-113).
 - `backend/tests/test_hmo_studio_upload_manifests_router.py`,
   `test_hmo_studio_upload_items_router.py`, `test_hmo_item_upload_job.py` —
   publish jobs (W-107); per-item progress outcomes for mid-run table patches

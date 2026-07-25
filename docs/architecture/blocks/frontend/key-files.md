@@ -15,7 +15,8 @@
 | `frontend/src/stores/theme.ts` | `useTheme` — color scheme, `initTheme()` |
 | `frontend/src/hooks/useApprovalStore.ts` | Polling entity store for AI Extraction (fast/slow poll + ETag + `mhm.entities.refreshed` listener) |
 | `frontend/src/hooks/useRunJobAttachment.ts` | Attach a page to an in-flight background job (attach-on-mount, fingerprint-guarded sync) |
-| `frontend/src/components/jobs/JobProgressInline.tsx` | Compact progress bar for build/verify/upload jobs (Rule W-106) |
+| `frontend/src/components/jobs/JobProgressInline.tsx` | Outer + nested progress bars for build/verify/upload jobs (Rules W-106 / W-113) |
+| `frontend/src/components/jobs/JobTray.tsx` | Global tray; shows nested sub-bar when `sub_total > 0` (Rule W-113) |
 | `frontend/src/hooks/useVerifyJob.ts` | Verify-job lifecycle: attach/poll/session hydration, global-tray upsert, and rollback of optimistic running state when enqueue rejects |
 | `frontend/src/api/judgeModels.ts` | `GET /api/judge-models` — tier-1 judge list for verify modals |
 | `frontend/src/components/Tier1ModelSelect.tsx` | Shared tier-1 judge dropdown + `useTier1Model` hook |
