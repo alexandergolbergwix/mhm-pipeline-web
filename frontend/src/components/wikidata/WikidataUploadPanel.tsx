@@ -191,6 +191,8 @@ export function WikidataUploadPanel({
             void startVerifyJob({
               action_id: "autofix_from_wikidata",
               item_ids: scopeIds,
+              approved_only: approvedOnly,
+              source,
               override_cache: false,
               tier_model: tierModel,
             });
@@ -288,6 +290,8 @@ export function WikidataUploadPanel({
       await startVerifyJob({
         action_id: "audit_wikidata_item",
         item_ids: scopeIds,
+        approved_only: approvedOnly,
+        source,
         override_cache: false,
         tier_model: tierModel,
       });
@@ -295,7 +299,7 @@ export function WikidataUploadPanel({
       setVerifyError(e instanceof ApiError ? e.detail : String(e));
       setVerifyPhase(null);
     }
-  }, [approvedOnly, doUpload, runId, startVerifyJob, tierModel, updateExisting]);
+  }, [approvedOnly, doUpload, runId, source, startVerifyJob, tierModel, updateExisting]);
 
   const handleUploadClick = useCallback(() => {
     setError(null);
@@ -487,6 +491,8 @@ export function WikidataUploadPanel({
           scopeKind="selection"
           itemIds={reviewIds}
           scopeLabel={`${reviewIds.length} flagged item${reviewIds.length === 1 ? "" : "s"}`}
+          source={source}
+          approvedOnly={approvedOnly}
           onClose={() => setReviewOpen(false)}
         />
       )}

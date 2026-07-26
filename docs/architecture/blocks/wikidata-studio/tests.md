@@ -29,6 +29,9 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `frontend/e2e/wikidata-item-drawer.spec.ts` — drawer apply-fix, push, reconcile API shapes.
 - `frontend/e2e/wikidata-upload-panel.spec.ts` — upload target radios (default dry-run), pill, pre-verify fail confirm gate.
 - `frontend/tests/unit/useVerifyJob.spec.ts` — verify jobs upsert into the global job tray on start and reset the modal state when enqueue rejects.
+- `backend/tests/test_run_job_params_wikidata_verify.py` — enqueue skips scope
+  build (W-59); Gemini key only for Gemini tiers (W-60); worker passes Studio
+  `source`/`approved_only` into `_fetch_wikidata_verify_items` (W-115 / R42).
 
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).

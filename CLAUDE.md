@@ -2688,3 +2688,22 @@ Tests: `backend/tests/unit/test_wikidata_studio_works.py`
 (`test_related_works_known_qid_links_without_local_work`,
 `test_related_works_curator_approved_stamps_evidence_on_local_work`,
 extended `test_dict_related_works_title`).
+
+### Rule W-115 — Wikidata AI verify MUST use the same Studio source as the review table (added 2026-07-26)
+
+After W-114, Verify with AI still failed with **no Wikidata Studio items in
+scope** while the modal header showed ~1608 items. The modern Studio UI
+defaults to **canonical** HMO projection and passes those `local_id`s as
+`item_ids`, but `_fetch_wikidata_verify_items` hard-coded `source="legacy"`.
+Legacy and canonical builds use different local IDs, so the intersection was
+empty and the worker aborted before any judge call.
+
+Invariant:
+
+1. Wikidata verify jobs / start-stream accept `source` (`legacy`|`canonical`,
+   default `canonical`) and `approved_only`, matching the Studio toggles.
+2. The worker loads the Studio cache via `execute_studio_build(..., source=…)`.
+3. Frontend verify modals / upload pre-verify pass the active projection
+   `source` and `approvedOnly` with `item_ids`.
+
+Tests: `backend/tests/test_run_job_params_wikidata_verify.py`.

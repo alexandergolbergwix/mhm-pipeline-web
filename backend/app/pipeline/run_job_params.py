@@ -331,6 +331,14 @@ async def _validate_verify_params(
         action = wikidata_actions.get_action(action_id)
         if action is None:
             raise HTTPException(status_code=400, detail=f"unknown action_id {action_id!r}")
+        source = str(params.get("source") or "canonical").strip().lower()
+        if source not in ("legacy", "canonical"):
+            raise HTTPException(
+                status_code=400,
+                detail="source must be 'legacy' or 'canonical'",
+            )
+        params["source"] = source
+        params.setdefault("approved_only", False)
         # Building the Studio scope can exceed Heroku’s 30-second request limit.
         # The claimed worker validates the scope after this request commits the job.
         return

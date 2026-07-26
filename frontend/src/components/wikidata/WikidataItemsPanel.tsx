@@ -507,6 +507,8 @@ export function WikidataItemsPanel({
           itemIds={verifyIds}
           scopeLabel={verifyIds?.length === 1 ? `Item ${verifyIds[0]}` : `${verifyIds?.length ?? 0} items`}
           initialActionId={verifyActionId}
+          source={source}
+          approvedOnly={approvedOnly}
           onVerdictsLanded={() => void loadItems({silent: true})}
           onClose={() => {
             setVerifyOpen(false);

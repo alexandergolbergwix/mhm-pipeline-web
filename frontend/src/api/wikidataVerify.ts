@@ -49,6 +49,8 @@ export interface VerifySession {
 export interface StartRequest {
   action_id: string;
   item_ids?: string[];
+  approved_only?: boolean;
+  source?: "legacy" | "canonical";
   override_cache?: boolean;
   tier_model?: string;
 }

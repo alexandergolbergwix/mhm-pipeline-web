@@ -198,6 +198,10 @@ class VerifyStartRequest(BaseModel):
     action_id: str = Field(..., min_length=1, max_length=64)
     item_ids: list[str] | None = None
     approved_only: bool = False  # AI verification audits all items, not just approved-match ones
+    # Must match the Studio projection toggle (canonical vs legacy). Hardcoding
+    # legacy while the UI defaults to canonical yields "no items in scope"
+    # because local_ids never intersect (Rule W-115).
+    source: Literal["legacy", "canonical"] = "canonical"
     override_cache: bool = False
     tier_model: str | None = Field(default=None, max_length=64)
 
@@ -236,6 +240,7 @@ async def start_verify_stream(
         db, run_id, auth,
         item_ids=payload.item_ids,
         approved_only=payload.approved_only,
+        source=payload.source,
     )
     items = await _prepare_wikidata_verify_scope(action, items)
     if not items:
@@ -2207,8 +2212,15 @@ async def _fetch_wikidata_verify_items(
     *,
     item_ids: list[str] | None,
     approved_only: bool,
+    source: str = "canonical",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Build Studio items and return the scoped serialised candidates."""
+    """Build Studio items and return the scoped serialised candidates.
+
+    ``source`` MUST match the curator Studio projection (canonical vs legacy)
+    so ``item_ids`` from the review table intersect the build cache.
+    """
+    if source not in ("legacy", "canonical"):
+        source = "canonical"
     records = (
         await db.execute(
             select(RunRecord).where(RunRecord.run_id == run_id)
@@ -2221,12 +2233,12 @@ async def _fetch_wikidata_verify_items(
         approved_only=approved_only,
         force_rebuild=False,
         run_user_id=auth.user.id,
-        source="legacy",
+        source=source,
     )
     scoped_items = list(cached.result_items or [])
     run_record_ids = {str(r.control_number) for r in records}
 
-    wanted = set(item_ids or [])
+    wanted = {str(i).strip() for i in (item_ids or []) if str(i).strip()}
     items: list[dict[str, Any]] = []
     for raw in scoped_items:
         item = dict(raw)

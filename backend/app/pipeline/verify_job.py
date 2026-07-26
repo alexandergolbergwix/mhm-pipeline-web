@@ -309,16 +309,22 @@ async def _open_verify_stream(
                 db, run_id,
                 auth,
                 item_ids=params.get("item_ids"),
-                approved_only=bool(params.get("approved_only", True)),
+                approved_only=bool(params.get("approved_only", False)),
+                source=str(params.get("source") or "canonical"),
             )
             from app.routers.wikidata_studio import _prepare_wikidata_verify_scope  # noqa: PLC0415
 
             items = await _prepare_wikidata_verify_scope(action, items)
             if not items:
+                wanted = params.get("item_ids") or []
                 detail = (
                     "no Wikidata Studio items with an existing QID in scope"
                     if action.id == "autofix_from_wikidata"
-                    else "no Wikidata Studio items in scope"
+                    else (
+                        "no Wikidata Studio items in scope "
+                        f"(source={params.get('source') or 'canonical'!r}, "
+                        f"requested={len(wanted) if isinstance(wanted, list) else 0})"
+                    )
                 )
                 raise ValueError(detail)
             if len(items) < action.min_candidates:

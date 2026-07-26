@@ -41,13 +41,20 @@ export interface WikidataVerificationModalProps {
   itemIds?: string[];
   scopeLabel: string;
   initialActionId?: string;
+  /** Must match the Studio projection toggle that produced ``itemIds``. */
+  source?: "legacy" | "canonical";
+  approvedOnly?: boolean;
   onClose: () => void;
   onVerdictsLanded?: () => void;
 }
 
 
 export function WikidataVerificationModal(props: WikidataVerificationModalProps) {
-  const {runId, scopeKind, itemIds, scopeLabel, initialActionId, onClose, onVerdictsLanded} = props;
+  const {
+    runId, scopeKind, itemIds, scopeLabel, initialActionId, onClose, onVerdictsLanded,
+    source = "canonical",
+    approvedOnly = false,
+  } = props;
 
   const [actions, setActions] = useState<AgentActionMeta[]>([]);
   const [actionId, setActionId] = useState("audit_wikidata_item");
@@ -185,6 +192,8 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
       await startVerifyJob({
         action_id: actionId,
         item_ids: itemIds,
+        approved_only: approvedOnly,
+        source,
         override_cache: overrideCache,
         tier_model: tierModel,
       });

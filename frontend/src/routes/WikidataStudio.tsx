@@ -757,6 +757,8 @@ export default function WikidataStudio() {
           scopeKind={verifyScope.scopeKind}
           itemIds={verifyScope.itemIds}
           scopeLabel={verifyScope.label}
+          source={projectionSource}
+          approvedOnly={approvedOnly}
           onClose={() => setVerifyScope(null)}
           onVerdictsLanded={() => { void refresh({nextForceRebuild: true}); }}
         />

@@ -91,6 +91,7 @@ class TestWikidataVerifyStartStream:
             json={
                 "action_id": "audit_wikidata_item",
                 "item_ids": ["missing::local-id"],
+                "source": "legacy",
             },
         )
 

@@ -219,3 +219,9 @@ stamped evidence). Bare titles MUST NOT mint `__LOCAL:work:…` CREATE items.
 *Why:* Bible/Tanakh/Haggadah/Tikkun Chatzot related-works rows blocked Studio
 rebuild and AI verify via `WORK_WITHOUT_SOURCE_EVIDENCE`.
 
+42. **R42 — AI verify MUST load the same Studio `source` as the table (Rule W-115).**
+Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
+`item_ids`; the worker MUST NOT hard-code legacy while the UI shows canonical.
+*Why:* mismatched local IDs produced “no Wikidata Studio items in scope” for
+1608 visible rows.
+
