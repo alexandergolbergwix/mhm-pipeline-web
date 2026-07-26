@@ -92,3 +92,49 @@ async def test_merged_view_joins_upload_audit_and_ledger(db_session) -> None:
     assert row["upload_at"] is not None
     assert row["existing_qid"] == "Q88"
     assert row["on_wikidata"] is True
+
+
+@pytest.mark.asyncio
+async def test_merged_view_excludes_non_public_entity_types(db_session) -> None:
+    run_id = uuid.uuid4()
+    db_session.add(
+        WikidataStudioCache(
+            run_id=run_id,
+            approved_only=True,
+            source="canonical",
+            input_fingerprint="f" * 64,
+            result_items=[
+                {
+                    "local_id": "990001234",
+                    "entity_type": "manuscript",
+                    "labels": {"en": "MS 1234"},
+                    "statements": [],
+                    "validation_issues": [],
+                },
+                {
+                    "local_id": "QDraft_CU_1",
+                    "entity_type": "Codicological_Unit",
+                    "labels": {"en": "CU"},
+                    "statements": [],
+                    "validation_issues": [],
+                },
+                {
+                    "local_id": "QDraft_Person_1",
+                    "entity_type": "E21_Person",
+                    "labels": {"en": "Person"},
+                    "statements": [],
+                    "validation_issues": [],
+                },
+            ],
+            quickstatements="",
+            summary={"total_items": 3},
+            approved_match_count=0,
+            pending_match_count=0,
+            used_match_count=0,
+            record_count=3,
+        )
+    )
+    await db_session.commit()
+
+    items = await fetch_merged_wikidata_items(db_session, run_id, source="canonical")
+    assert [row["local_id"] for row in items] == ["990001234"]

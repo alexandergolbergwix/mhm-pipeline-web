@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.item_override import WikidataItemOverride
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD, TARGET_ITEM
 from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.pipeline.hmo_canonical_wikidata import filter_public_wikidata_items
 from app.pipeline.marc_verify_context import load_run_marc_records
 from app.pipeline.wikidata_item_merge import apply_wikidata_item_override, override_row_to_dict
 from app.pipeline.wikidata_qid_ledger import (
@@ -71,7 +72,10 @@ async def fetch_merged_wikidata_items(
         marc_records = await load_run_marc_records(db, run_id)
 
     items: list[dict[str, Any]] = []
-    for raw in cache_row.result_items or []:
+    for raw in filter_public_wikidata_items(
+        cache_row.result_items or [],
+        source=source,
+    ):
         entity = dict(raw)
         local_id = str(entity.get("local_id") or "")
         ov_row = overrides_by_id.get(local_id)

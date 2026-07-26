@@ -42,7 +42,7 @@ async def test_merged_view_lookup_is_source_scoped(db_session) -> None:
         "run_id": run_id,
         "approved_only": True,
         "input_fingerprint": "a" * 64,
-        "result_items": [{"local_id": "legacy-only"}],
+        "result_items": [{"local_id": "legacy-only", "entity_type": "manuscript"}],
         "quickstatements": "",
         "summary": {"total_items": 1},
         "approved_match_count": 0,
@@ -51,7 +51,11 @@ async def test_merged_view_lookup_is_source_scoped(db_session) -> None:
         "record_count": 1,
     }
     db_session.add(WikidataStudioCache(**common, source="legacy"))
-    canonical_row = {**common, "source": "canonical", "result_items": [{"local_id": "canonical-only"}]}
+    canonical_row = {
+        **common,
+        "source": "canonical",
+        "result_items": [{"local_id": "canonical-only", "entity_type": "manuscript"}],
+    }
     db_session.add(WikidataStudioCache(**canonical_row))
     await db_session.commit()
 

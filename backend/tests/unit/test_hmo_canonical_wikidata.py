@@ -4,9 +4,11 @@ from app.pipeline.hmo_canonical_wikidata import (
     build_canonical_studio_result,
     canonical_studio_context,
     canonical_wikidata_fingerprint,
+    filter_public_wikidata_items,
     native_items_from_hmo,
     native_wikidata_claims,
     quickstatements_from_canonical,
+    studio_cache_has_non_public_items,
     uploadable_entities_from_hmo,
     wikidata_candidates_from_hmo,
 )
@@ -248,6 +250,26 @@ def test_build_summary_reports_rollup_counts() -> None:
         item["entity_type"] in PUBLIC_WIKIDATA_ENTITY_TYPES
         for item in result["items"]
     )
+
+
+def test_filter_public_wikidata_items_drops_hmo_classes() -> None:
+    rows = [
+        {"local_id": "ms1", "entity_type": "manuscript"},
+        {"local_id": "cu1", "entity_type": "Codicological_Unit"},
+        {"local_id": "p1", "entity_type": "E21_Person"},
+        {"local_id": "w1", "entity_type": "work"},
+    ]
+    filtered = filter_public_wikidata_items(rows, source="canonical")
+    assert [row["local_id"] for row in filtered] == ["ms1", "w1"]
+
+
+def test_studio_cache_has_non_public_items_detects_stale_canonical_cache() -> None:
+    rows = [
+        {"local_id": "ms1", "entity_type": "manuscript"},
+        {"local_id": "view1", "entity_type": "PhilologicalView"},
+    ]
+    assert studio_cache_has_non_public_items(rows, source="canonical") is True
+    assert studio_cache_has_non_public_items(rows, source="legacy") is False
 
 
 def test_full_canonical_chain_has_no_legacy_authority_dependency() -> None:

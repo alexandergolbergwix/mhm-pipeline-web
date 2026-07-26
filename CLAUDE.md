@@ -2756,3 +2756,30 @@ Invariant:
 
 Tests: `backend/tests/unit/test_hmo_canonical_wikidata.py`,
 `backend/tests/unit/test_wikidata_verify_scope_cache.py`.
+
+### Rule W-118 — Wikidata Studio read paths MUST filter HMO ontology rows from stale cache (added 2026-07-26)
+
+Rule W-117 stopped **new** canonical builds from emitting HMO-class items, but a
+1608-item verify export still showed 92.9% `fail` because **stale Postgres cache
+rows** (pre-W-117) and the **merged read model** continued to surface
+`Codicological_Unit`, `PhilologicalView`, `E21_Person`, etc. to verify, export,
+and the review table. Verify scope filtered non-public types; export and
+`fetch_merged_wikidata_items` did not.
+
+Invariant:
+
+1. **Single read gate:** `filter_public_wikidata_items` /
+   `is_public_wikidata_studio_item` in `hmo_canonical_wikidata.py` — only
+   `manuscript` | `person` | `work` reach verify, export, cached-verdicts, and
+   the merged UI read model. HMO class names (`E21_Person`, `F4_…`, …) are
+   never public even when they look “person-like”.
+2. **Stale canonical cache rejection:** `studio_cache_has_non_public_items` —
+   `execute_studio_build` refuses a canonical cache hit and rebuilds when any
+   cached row has a non-public `entity_type`. Passive GET marks `cache_stale`
+   so curators know to **Rebuild (skip cache)**.
+3. **MARC join normalization:** the filter stamps `record_ids` from `records` /
+   P3959 references so export and verify share the same control-number slice.
+
+Tests: `test_wikidata_item_views.py`,
+`test_wikidata_items_export_import.py`, `test_hmo_canonical_wikidata.py`
+(filter/stale-shape cases).

@@ -239,3 +239,14 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `rolled_up_entities` and `summarized_hmo_nodes`. *Why:* a 1608-item verify
     export judged HMO ontology classes (`Codicological_Unit`, views, …) with the
     Wikidata rubric — 93% fail from channel mismatch, not projection defects.
+
+45. **R45 — Merged Studio read paths MUST filter public items; stale canonical
+    caches rebuild (Rule W-118).** `filter_public_wikidata_items` /
+    `is_public_wikidata_studio_item` in `hmo_canonical_wikidata.py` is the
+    single gate for `fetch_merged_wikidata_items`, verify scope, and export.
+    Pre-W-117 canonical cache rows whose `entity_type` is an HMO class name
+    (`Codicological_Unit`, `E21_Person`, …) are dropped at read time;
+    `execute_studio_build` refuses a canonical cache hit when
+    `studio_cache_has_non_public_items` is true. GET marks `cache_stale` so
+    curators force-rebuild. *Why:* verify alone was not enough — export and the
+    review table still served 1204+ HMO rows from stale Postgres cache.

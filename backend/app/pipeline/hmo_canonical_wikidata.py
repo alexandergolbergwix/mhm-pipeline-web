@@ -55,6 +55,56 @@ _PERSON_IDENTIFIER_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P
 
 PUBLIC_WIKIDATA_ENTITY_TYPES = frozenset({"manuscript", "person", "work"})
 
+
+def is_public_wikidata_studio_item(
+    item: Mapping[str, Any],
+    *,
+    source: str = "canonical",
+) -> bool:
+    """True when a cached Studio row is a public WPM item (manuscript/person/work)."""
+    entity_type = str(item.get("entity_type") or "")
+    if entity_type in PUBLIC_WIKIDATA_ENTITY_TYPES:
+        return True
+    if entity_type:
+        return False
+    return source == "legacy"
+
+
+def filter_public_wikidata_items(
+    items: Iterable[Mapping[str, Any]],
+    *,
+    source: str = "canonical",
+) -> list[dict[str, Any]]:
+    """Drop HMO ontology rows that must never reach verify/export/UI."""
+    from app.pipeline.wikidata_verdict_cache import record_ids_for_wikidata_item  # noqa: PLC0415
+
+    filtered: list[dict[str, Any]] = []
+    for raw in items:
+        if not is_public_wikidata_studio_item(raw, source=source):
+            continue
+        item = dict(raw)
+        record_ids = record_ids_for_wikidata_item(item)
+        if record_ids:
+            item["record_ids"] = record_ids
+            if not item.get("records"):
+                item["records"] = list(record_ids)
+        filtered.append(item)
+    return filtered
+
+
+def studio_cache_has_non_public_items(
+    items: Iterable[Mapping[str, Any]] | None,
+    *,
+    source: str = "canonical",
+) -> bool:
+    """Detect pre-W-117 canonical caches that still store HMO class entity_type values."""
+    if source != "canonical" or not items:
+        return False
+    return any(
+        not is_public_wikidata_studio_item(item, source=source)
+        for item in items
+    )
+
 # HMO classes whose summarized claims roll onto work items (not manuscripts).
 _WORK_ROLLUP_ENTITY_TYPES = frozenset({"F27_Work_Creation", "Work_Creation"})
 

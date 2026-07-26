@@ -49,7 +49,8 @@ from app.settings import get_settings
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.hmo_canonical import normalize_live_entity
 from app.pipeline.hmo_canonical_wikidata import (
-    PUBLIC_WIKIDATA_ENTITY_TYPES,
+    filter_public_wikidata_items,
+    studio_cache_has_non_public_items,
     build_canonical_studio_result,
     canonical_studio_context,
     canonical_wikidata_fingerprint,
@@ -541,7 +542,14 @@ async def execute_studio_build(
         if not canonical:
             raise ValueError(f"no durable HMO canonical entities for run {run_id}")
         canonical_fp = canonical_wikidata_fingerprint(canonical)
-        if not force_rebuild and cached is not None and cached.input_fingerprint == canonical_fp:
+        if (
+            not force_rebuild
+            and cached is not None
+            and cached.input_fingerprint == canonical_fp
+            and not studio_cache_has_non_public_items(
+                cached.result_items, source="canonical",
+            )
+        ):
             return cached
     elif not force_rebuild and cached is not None and cached.input_fingerprint == fingerprint:
         return cached
@@ -842,6 +850,9 @@ async def build_studio(
             merged = await fetch_merged_wikidata_items(
                 db, run_id, approved_only=approved_only, source=source,
             )
+            cache_shape_stale = studio_cache_has_non_public_items(
+                cached.result_items, source=source,
+            )
             return _studio_response_from_cache(
                 cached,
                 merged,
@@ -853,6 +864,7 @@ async def build_studio(
                 sort_dir=sort_dir,
                 page=page,
                 page_size=page_size,
+                cache_stale=cache_shape_stale,
             )
         # Stale cache: serve the last good build immediately. Do not auto-start
         # a background job — passive page loads should not surface a job-tray
@@ -2252,16 +2264,16 @@ async def _fetch_wikidata_verify_items(
                 source=source,
                 reconcile=False,
             )
-    scoped_items = list(cached.result_items or [])
+    scoped_items = filter_public_wikidata_items(
+        cached.result_items or [],
+        source=source,
+    )
     run_record_ids = {str(r.control_number) for r in records}
 
     wanted = {str(i).strip() for i in (item_ids or []) if str(i).strip()}
     items: list[dict[str, Any]] = []
-    for raw in scoped_items:
-        item = dict(raw)
+    for item in scoped_items:
         local_id = str(item.get("local_id") or "")
-        if str(item.get("entity_type") or "") not in PUBLIC_WIKIDATA_ENTITY_TYPES:
-            continue
         if wanted and local_id not in wanted:
             continue
         item["_local_id"] = local_id

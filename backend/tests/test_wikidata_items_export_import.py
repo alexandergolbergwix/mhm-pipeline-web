@@ -21,6 +21,7 @@ async def test_export_import_override_round_trip(sample_run, db_session) -> None
         WikidataStudioCache(
             run_id=run_id,
             approved_only=True,
+            source="canonical",
             input_fingerprint="fp-test",
             result_items=[
                 {
@@ -97,6 +98,7 @@ async def test_csv_export_includes_prompt_context_and_full_verdict(sample_run, d
     db_session.add(WikidataStudioCache(
         run_id=run_id,
         approved_only=True,
+        source="canonical",
         input_fingerprint="fp-csv",
         result_items=[{
             "local_id": "csv-item",
@@ -147,3 +149,47 @@ async def test_csv_export_includes_prompt_context_and_full_verdict(sample_run, d
     assert "MARC title" in row["marc_context_json"]
     assert json.loads(row["ai_verdict_json"])["reasoning"] == "Statement needs evidence"
     assert row["ai_verdict_overall"] == "partial"
+
+
+@pytest.mark.asyncio
+async def test_json_export_excludes_non_public_entity_types(sample_run, db_session) -> None:
+    client = sample_run["client"]
+    run_id = sample_run["run_id"]
+    db_session.add(
+        WikidataStudioCache(
+            run_id=run_id,
+            approved_only=True,
+            source="canonical",
+            input_fingerprint="fp-export-filter",
+            result_items=[
+                {
+                    "local_id": "990001234",
+                    "entity_type": "manuscript",
+                    "labels": {"en": "MS 1234"},
+                    "statements": [],
+                    "validation_issues": [],
+                },
+                {
+                    "local_id": "QDraft_CU_1",
+                    "entity_type": "Codicological_Unit",
+                    "labels": {"en": "CU"},
+                    "statements": [],
+                    "validation_issues": [],
+                },
+            ],
+            quickstatements="",
+            summary={"total_items": 2},
+            approved_match_count=0,
+            pending_match_count=0,
+            used_match_count=0,
+            record_count=2,
+        )
+    )
+    await db_session.commit()
+
+    export = await client.get(
+        f"/api/runs/{run_id}/wikidata-studio/items/export?format=json&source=canonical",
+    )
+    assert export.status_code == 200
+    payload = json.loads(export.content)
+    assert [item["local_id"] for item in payload["items"]] == ["990001234"]
