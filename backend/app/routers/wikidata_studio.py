@@ -514,11 +514,14 @@ async def execute_studio_build(
     source: str,
     force_rebuild: bool,
     run_user_id: uuid.UUID | None,
+    reconcile: bool = True,
 ) -> WikidataStudioCache:
     """Run the full item builder and upsert the Postgres cache.
 
     Background jobs call this directly so the work never runs inside a
     Heroku HTTP request (30 s router timeout).
+
+    ``reconcile=False`` skips live WDQS lookups (verify scope materialisation).
     """
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
         db, run_id,
@@ -571,7 +574,9 @@ async def execute_studio_build(
             marc_records=[dict(r.marc) for r in records],
             approved_matches=approved_matches,
         )
-        result = build_canonical_studio_result(canonical, overrides=overrides, context=context)
+        result = build_canonical_studio_result(
+            canonical, overrides=overrides, context=context, reconcile=reconcile,
+        )
         items = result["items"]
         summary = result["summary"]
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=result["quickstatements"], summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
@@ -2214,10 +2219,11 @@ async def _fetch_wikidata_verify_items(
     approved_only: bool,
     source: str = "canonical",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Build Studio items and return the scoped serialised candidates.
+    """Load Studio items for verify — prefer the curator-visible cache.
 
-    ``source`` MUST match the curator Studio projection (canonical vs legacy)
-    so ``item_ids`` from the review table intersect the build cache.
+    Never SPARQL-reconcile ~N items on the verify path: a cache miss that
+    rebuilt with ``reconcile=True`` hammered WDQS (429 / timeouts) and left
+    the job looking stuck on QUEUED/running with no progress (Rule W-116).
     """
     if source not in ("legacy", "canonical"):
         source = "canonical"
@@ -2227,14 +2233,24 @@ async def _fetch_wikidata_verify_items(
             .order_by(RunRecord.control_number.asc())
         )
     ).scalars().all()
-    cached = await execute_studio_build(
-        db,
-        run_id=run_id,
-        approved_only=approved_only,
-        force_rebuild=False,
-        run_user_id=auth.user.id,
-        source=source,
-    )
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+    if cached is None or not (cached.result_items or []):
+        # Fall back to the other approved_only cache for the same source when
+        # the exact mode is empty — verify must still see the table the curator
+        # already loaded (canonical pages often use approved_only=true).
+        alt = await _get_studio_cache_row(db, run_id, not approved_only, source)
+        if alt is not None and (alt.result_items or []):
+            cached = alt
+        else:
+            cached = await execute_studio_build(
+                db,
+                run_id=run_id,
+                approved_only=approved_only,
+                force_rebuild=False,
+                run_user_id=auth.user.id,
+                source=source,
+                reconcile=False,
+            )
     scoped_items = list(cached.result_items or [])
     run_record_ids = {str(r.control_number) for r in records}
 

@@ -2707,3 +2707,23 @@ Invariant:
    `source` and `approvedOnly` with `item_ids`.
 
 Tests: `backend/tests/test_run_job_params_wikidata_verify.py`.
+
+### Rule W-116 — Wikidata AI verify MUST NOT SPARQL-reconcile the Studio corpus (added 2026-07-26)
+
+A 1608-item Verify job stayed on **QUEUED/running** with no verdicts while
+`_fetch_wikidata_verify_items` → `execute_studio_build` rebuilt the canonical
+Studio cache with ``reconcile=True``. Each item hit WDQS (P3959/P214); the
+endpoint returned **429 / read timeouts**, so the job never reached the judge
+and the tray looked stuck.
+
+Invariant:
+
+1. Verify scope loads the existing Studio cache for the active
+   ``source`` / ``approved_only`` (fallback to the sibling approved_only row
+   when the exact mode is empty).
+2. Cache miss rebuilds with ``reconcile=False`` — never live WDQS on the
+   verify path.
+3. The worker writes ``phase=preparing`` / “Loading Studio scope…” before
+   materialising scope so the tray is not frozen on bare QUEUED.
+
+Tests: `backend/tests/unit/test_wikidata_verify_scope_cache.py`.

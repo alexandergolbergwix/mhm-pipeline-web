@@ -225,3 +225,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 *Why:* mismatched local IDs produced “no Wikidata Studio items in scope” for
 1608 visible rows.
 
+43. **R43 — Verify scope MUST use the Studio cache and skip WDQS reconcile (Rule W-116).**
+`_fetch_wikidata_verify_items` reads the existing cache first; rebuilds use
+`reconcile=False`. *Why:* a 1608-item verify rebuilt with SPARQL reconcile and
+stalled on WDQS 429/timeouts with no progress.
+

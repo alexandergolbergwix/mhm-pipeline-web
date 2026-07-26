@@ -113,6 +113,13 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     session_summary: dict[str, Any] = {}
     collected_events: list[dict[str, Any]] = []
     judged_candidate_ids: set[str] = set()
+    await update_job_progress(job_id, {
+        "phase": "preparing",
+        "processed": 0,
+        "total": 0,
+        "message": "Loading Studio scope…",
+        "session_id": session_id,
+    })
     try:
         stream = await _open_verify_stream(
             kind=kind,

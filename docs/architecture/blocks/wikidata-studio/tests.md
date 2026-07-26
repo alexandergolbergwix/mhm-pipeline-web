@@ -32,6 +32,8 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `backend/tests/test_run_job_params_wikidata_verify.py` — enqueue skips scope
   build (W-59); Gemini key only for Gemini tiers (W-60); worker passes Studio
   `source`/`approved_only` into `_fetch_wikidata_verify_items` (W-115 / R42).
+- `backend/tests/unit/test_wikidata_verify_scope_cache.py` — verify prefers
+  existing Studio cache and rebuilds with `reconcile=False` (W-116 / R43).
 
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).
