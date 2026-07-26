@@ -28,13 +28,13 @@
 | `backend/app/pipeline/work_title_match.py` | Work-title normalization / variants for Mazal work matching |
 | `backend/converter/wikidata/item_builder.py` | Public compatibility facade: orchestration, reconciliation, and legacy exports only |
 | `backend/converter/wikidata/item_models.py` | Shared `WikidataItem` / `WikidataStatement` data structures |
-| `backend/converter/wikidata/manuscript_projection.py` | Manuscript identity, catalog, digital-access, note, and relationship projection |
+| `backend/converter/wikidata/manuscript_projection.py` | Manuscript identity, catalog, digital-access, note, and evidence-gated related_works → P1574 (Rule W-114) |
 | `backend/converter/wikidata/manuscript_metadata.py` | Labels, instance types, language, physical description, and provenance projection |
 | `backend/converter/wikidata/content_projection.py` | Contents, genre, and canonical-subject projection |
 | `backend/converter/wikidata/person_linking.py`, `person_projection.py` | Role-safe manuscript links and authority-backed person construction |
 | `backend/converter/wikidata/work_projection.py` | Work creation, labels, deduplication, and author links |
 | `backend/converter/wikidata/work_candidates.py` | Source-aware MARC 500/505/NER eligibility decisions and compact evidence |
-| `backend/converter/wikidata/property_mapping.py` | P/Q constants, WPM role map, discouraged P31 set, condition/fragment vocabulary (Rules W-26/W-71/W-98) |
+| `backend/converter/wikidata/property_mapping.py` | P/Q constants, WPM role map, discouraged P31 set, condition/fragment vocabulary, verified KNOWN_WORK_QIDS (Rules W-26/W-71/W-98/W-114) |
 | `docs/wikidata-manuscripts-data-model.md` | Code contract from WikiProject Manuscripts + DS paper |
 | `backend/converter/wikidata/property_labels.py` | Verified human labels for static QIDs rendered into review/evaluator statements |
 | `backend/converter/wikidata/item_validator.py` | The moat layer: ~20 checks, ERROR-severity issues block approval and writes |

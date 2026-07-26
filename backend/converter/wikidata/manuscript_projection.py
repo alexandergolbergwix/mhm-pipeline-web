@@ -791,13 +791,42 @@ class ManuscriptProjectionMixin:
                 )
             )
 
-        # ── Related works → P1574 via work items ────────────────
+        # ── Related works → P1574 only with accepted evidence (W-68 / W-114)
+        # Bare related_works titles must not mint local CREATE works without
+        # MARC 505/500 / approved NER / authority / known-QID evidence — that
+        # path produced WORK_WITHOUT_SOURCE_EVIDENCE and blocked Studio rebuild.
+        from converter.wikidata.work_candidates import assess_work_candidate  # noqa: PLC0415
+
         for rw in record.get("related_works") or []:
-            rw_title = str(rw.get("title", "")) if isinstance(rw, dict) else str(rw)
-            rw_title = rw_title.strip().strip(_QUOTE_CHARS + ".")
+            rw_dict = rw if isinstance(rw, dict) else {"title": str(rw)}
+            rw_title = str(rw_dict.get("title") or "").strip().strip(_QUOTE_CHARS + ".")
             if not rw_title:
                 continue
-            rw_qid = known_work_qid_for_title(rw_title)
+            source_field = str(
+                rw_dict.get("source_field") or rw_dict.get("field") or "related_works"
+            ).strip() or "related_works"
+            explicit_qid = str(
+                rw_dict.get("wikidata_qid")
+                or rw_dict.get("wikidata_id")
+                or "",
+            ).strip()
+            if not _QID_RE.match(explicit_qid):
+                explicit_qid = ""
+            rw_qid = explicit_qid or known_work_qid_for_title(rw_title)
+            approved = bool(rw_dict.get("approved")) or bool(rw_qid)
+            decision = assess_work_candidate(
+                rw_title,
+                source_field=source_field,
+                approved=approved,
+                known_qid=rw_qid or None,
+                candidate_kind=rw_dict.get("candidate_kind") or "related_work",
+                source_text=str(rw_dict.get("source_text") or rw_title),
+            )
+            evidence = decision.evidence()
+            if evidence not in item.work_candidate_evidence:
+                item.work_candidate_evidence.append(evidence)
+            if not decision.accepted or not decision.title:
+                continue
             if rw_qid:
                 item.statements.append(
                     WikidataStatement(
@@ -807,16 +836,20 @@ class ManuscriptProjectionMixin:
                         references=ref,
                     )
                 )
-            else:
-                rw_item = self._get_or_create_work(rw_title, None, record)
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_EXEMPLAR_OF,
-                        value=f"__LOCAL:{rw_item.local_id}",
-                        value_type="item",
-                        references=ref,
-                    )
+                continue
+            # Accepted without a known QID only when curator-approved on the
+            # related-work row — still stamp evidence on the local work.
+            rw_item = self._get_or_create_work(decision.title, None, record)
+            if evidence not in rw_item.work_candidate_evidence:
+                rw_item.work_candidate_evidence.append(evidence)
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_EXEMPLAR_OF,
+                    value=f"__LOCAL:{rw_item.local_id}",
+                    value_type="item",
+                    references=ref,
                 )
+            )
 
         # ── WikiProject Manuscripts ──────────────────────────────
         item.statements.append(

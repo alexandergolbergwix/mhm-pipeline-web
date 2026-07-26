@@ -179,6 +179,17 @@ class TestMarcDictEntriesDoNotCrashBuild:
             return_native=False,
         )
         assert result["summary"]["manuscripts"] >= 1
+        # Bare related_works without known QID / approval must not mint works.
+        assert result["summary"]["works"] == 0
+        manuscript = next(
+            item for item in result["items"] if item["entity_type"] == "manuscript"
+        )
+        evidence = manuscript.get("work_candidate_evidence") or []
+        assert any(
+            row.get("accepted") is False and row.get("source_text") == "עת שערי רצון"
+            for row in evidence
+            if isinstance(row, dict)
+        )
 
     @pytest.mark.asyncio
     async def test_empty_genre_dict_shells_do_not_crash_build(self) -> None:
@@ -507,3 +518,74 @@ def test_known_work_title_aliases_are_exact_and_not_fuzzy() -> None:
     assert known_work_qid_for_title("משנה תורה") == "Q201029"
     assert known_work_qid_for_title("משנה תורה (ספר זמנים)") is None
     assert known_work_qid_for_title("יצירה דומה") is None
+    assert known_work_qid_for_title("Bible") == "Q1845"
+    assert known_work_qid_for_title('תנ"ך') == "Q83367"
+    assert known_work_qid_for_title("Tanakh") == "Q83367"
+    assert known_work_qid_for_title("הגדה של פסח") == "Q623354"
+    assert known_work_qid_for_title("Passover Haggadah") == "Q623354"
+    assert known_work_qid_for_title("תיקון חצות") == "Q2740944"
+    assert known_work_qid_for_title("Tikkun Chatzot") == "Q2740944"
+
+
+@pytest.mark.asyncio
+async def test_related_works_known_qid_links_without_local_work() -> None:
+    """Known related works emit P1574 to the live QID — no evidence-less CREATE."""
+    from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
+
+    rec = {
+        **_fake_marc_record(),
+        "related_works": [
+            {"title": "Bible"},
+            {"title": 'תנ"ך'},
+            {"title": "תיקון חצות"},
+            {"title": "הגדה של פסח"},
+        ],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[],
+        entities_by_cn=None,
+        return_native=True,
+    )
+    assert result["summary"]["works"] == 0
+    manuscript = next(
+        item for item in result["native_items"] if item.entity_type == "manuscript"
+    )
+    exemplar_values = [
+        stmt.value for stmt in manuscript.statements if stmt.property_id == "P1574"
+    ]
+    assert set(exemplar_values) >= {"Q1845", "Q83367", "Q2740944", "Q623354"}
+    assert all(not str(v).startswith("__LOCAL:") for v in exemplar_values)
+    accepted = [
+        row for row in manuscript.work_candidate_evidence
+        if isinstance(row, dict) and row.get("accepted") is True
+    ]
+    assert len(accepted) >= 4
+    assert_wikidata_export_quality(result["native_items"])
+
+
+@pytest.mark.asyncio
+async def test_related_works_curator_approved_stamps_evidence_on_local_work() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "related_works": [{
+            "title": "עת שערי רצון",
+            "approved": True,
+            "source_field": "787",
+        }],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[],
+        entities_by_cn=None,
+        return_native=True,
+    )
+    assert result["summary"]["works"] == 1
+    work = next(item for item in result["native_items"] if item.entity_type == "work")
+    assert any(
+        isinstance(row, dict) and row.get("accepted") is True
+        for row in work.work_candidate_evidence
+    )
+    from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
+
+    assert_wikidata_export_quality(result["native_items"])

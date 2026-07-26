@@ -359,7 +359,7 @@ GENRE_TO_QID: dict[str, str] = {
     "Letters": "Q133492",  # letter
 }
 
-# Well-known works that already exist on Wikidata
+# Well-known works that already exist on Wikidata (labels verified live 2026-07-26)
 KNOWN_WORK_QIDS: dict[str, str] = {
     "Torah": "Q34990",
     "תורה": "Q34990",
@@ -373,6 +373,24 @@ KNOWN_WORK_QIDS: dict[str, str] = {
     "שלחן ערוך": "Q822206",
     "Mishneh Torah": "Q201029",
     "משנה תורה": "Q201029",
+    # Q1845 — Bible (collection of sacred books in Judaism and Christianity)
+    "Bible": "Q1845",
+    # Q83367 — Tanakh / Hebrew Bible
+    "Tanakh": "Q83367",
+    "Tanach": "Q83367",
+    "Hebrew Bible": "Q83367",
+    'תנ"ך': "Q83367",
+    "תנך": "Q83367",
+    # Q623354 — Haggadah / Passover Haggadah (הגדה של פסח)
+    "Haggadah": "Q623354",
+    "Passover Haggadah": "Q623354",
+    "הגדה של פסח": "Q623354",
+    "הגדה": "Q623354",
+    # Q2740944 — Tikkun Chatzot (תיקון חצות)
+    "Tikkun Chatzot": "Q2740944",
+    "Tikun Chatzot": "Q2740944",
+    "תיקון חצות": "Q2740944",
+    "תקון חצות": "Q2740944",
 }
 
 # Exact, verified aliases for common Hebrew work labels emitted by NLI MARC

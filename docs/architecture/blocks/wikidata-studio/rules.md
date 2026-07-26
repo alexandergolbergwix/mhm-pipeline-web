@@ -212,3 +212,10 @@ Studio **build** still refreshes only at finish (cache written at end).
 *Why:* mid-run `setLoading(true)` unmounted the table and flickered Publication
 status during publish.
 
+41. **R41 — Related works are evidence-gated (Rule W-114).** Manuscript
+`related_works` MUST run `assess_work_candidate`, retain rejected evidence, and
+emit P1574 to a verified known QID (or a curator-approved local work with
+stamped evidence). Bare titles MUST NOT mint `__LOCAL:work:…` CREATE items.
+*Why:* Bible/Tanakh/Haggadah/Tikkun Chatzot related-works rows blocked Studio
+rebuild and AI verify via `WORK_WITHOUT_SOURCE_EVIDENCE`.
+

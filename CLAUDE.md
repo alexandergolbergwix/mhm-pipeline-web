@@ -2663,3 +2663,28 @@ Invariant:
 
 Tests: `backend/tests/unit/test_hmo_item_build_progress.py`,
 `backend/tests/unit/test_authority_re_enrich_progress.py`.
+
+### Rule W-114 — Related works MUST NOT mint evidence-less Wikidata CREATE items (added 2026-07-26)
+
+Wikidata Studio AI verify failed before any judge call: refreshing the Studio
+build hit `WORK_WITHOUT_SOURCE_EVIDENCE` on four local works
+(`work:bible`, `work:ת_נ"ך`, `work:תיקון_חצות`, `work:הגדה_של_פסח`). The
+manuscript `related_works` path called `_get_or_create_work` without
+`work_candidate_evidence`, violating Rule W-68's source-aware work boundary
+and the hard export quality gate.
+
+Invariant:
+
+1. `related_works` projection runs `assess_work_candidate` and retains rejected
+   evidence on the manuscript for review.
+2. P1574 to an existing Wikidata work is allowed only with a verified known QID
+   (or an explicit curator-approved related-work row). Live-verified additions
+   include Bible (`Q1845`), Tanakh (`Q83367`), Haggadah (`Q623354`), and
+   Tikkun Chatzot (`Q2740944`).
+3. Local CREATE work items from related works require accepted evidence stamped
+   on the work item — never a bare title → `__LOCAL:work:…` mint.
+
+Tests: `backend/tests/unit/test_wikidata_studio_works.py`
+(`test_related_works_known_qid_links_without_local_work`,
+`test_related_works_curator_approved_stamps_evidence_on_local_work`,
+extended `test_dict_related_works_title`).
