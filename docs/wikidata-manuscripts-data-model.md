@@ -355,6 +355,31 @@ Fail-closed (validator / upload guards):
 - No `P31=Q48498` from weak illustration prose alone
 - Block ERROR-severity `validate_item` issues before write
 
+### HMO Wikibase → public Wikidata rollup (Rule W-117)
+
+Canonical Studio (`source=canonical`) emits **only** three public item types:
+`manuscript`, `person`, `work`. HMO graph classes marked
+`summarized_in_wikidata` in `projection_coverage.py` (Production,
+Codicological_Unit, Expression, Colophon, Place, Group, DigitalAccess, …)
+**never** become separate Studio rows. Their allowlisted claims fold onto the
+parent manuscript (or work for `F27_Work_Creation`) when they share a MARC
+control number.
+
+| HMO class | Rolls onto | Example public PIDs |
+|---|---|---|
+| `E12_Production` | manuscript | `P571`, `P1071`, `P11603`, `P88` |
+| `Codicological_Unit` | manuscript | `P1104`, `P1574`, `P958`, `P2635` |
+| `F2_Expression` | manuscript | `P1574`, `P407` |
+| `Paleographical_Unit` / `Colophon` | manuscript | `P9302`, `P1684` |
+| `E8_Acquisition` / `E74_Group` | manuscript | `P127`, `P195` (verified QIDs only) |
+| `DigitalAccess` | manuscript | `P6108`, `P953`, `P973` |
+| `F27_Work_Creation` | work | `P571`, `P1071`, `P50` |
+
+Every manuscript with a live HMO Wikibase QID also carries **`P2888` exact
+match** + **`P973` described at URL** to the project wiki item. Mapping runs
+through `hmo_wikidata_pq_mapper` only; project Cloud QIDs never become
+statement values. Build fingerprint salt: `hmo-wikidata-v4`.
+
 ---
 
 ## 10. Code mapping checklist (`property_mapping.py`)

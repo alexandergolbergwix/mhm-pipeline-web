@@ -1,5 +1,7 @@
 from app.pipeline.hmo_canonical import normalize_live_entity
 from app.pipeline.hmo_canonical_wikidata import (
+    PUBLIC_WIKIDATA_ENTITY_TYPES,
+    build_canonical_studio_result,
     canonical_studio_context,
     canonical_wikidata_fingerprint,
     native_items_from_hmo,
@@ -145,6 +147,107 @@ def test_descriptions_drop_offline_boilerplate_and_use_marc_when_available() -> 
     assert "16th century" in description
     assert "parchment" in description
     assert description.startswith("Hebrew manuscript")
+
+
+def test_summarized_production_rolls_onto_manuscript_claims() -> None:
+    manuscript = _manuscript_entity()
+    production = normalize_live_entity({
+        "local_id": "Prod_1",
+        "source_uri": "https://w3id.org/mhm/ontology#Prod_1",
+        "wikibase_id": "Q7001",
+        "entity_type": "E12_Production",
+        "control_numbers": ["990001"],
+        "claims": [
+            {
+                "property_uri": "https://w3id.org/mhm/ontology#has_date_of_creation",
+                "value": "1600",
+            },
+            {
+                "property_uri": "https://w3id.org/mhm/ontology#has_location_of_creation",
+                "wikidata_value": "https://www.wikidata.org/entity/Q1218",
+                "value_type": "wikibase-item",
+            },
+            {
+                "property_uri": "https://w3id.org/mhm/ontology#has_scribe",
+                "wikidata_value": "https://www.wikidata.org/entity/Q42",
+                "value_type": "wikibase-item",
+            },
+        ],
+    })
+    claims = native_wikidata_claims(manuscript, rollup_sources=[production])
+    assert {"property": "P571", "value": "1600"} in claims
+    assert {"property": "P1071", "value": "Q1218"} in claims
+    assert {"property": "P11603", "value": "Q42"} in claims
+    assert not any(c["property"] == "P50" for c in claims)
+
+
+def test_codicological_unit_alone_is_not_a_studio_item() -> None:
+    cu = normalize_live_entity({
+        "local_id": "CU_rollup",
+        "source_uri": "https://w3id.org/mhm/ontology#CU_rollup",
+        "wikibase_id": "Q77",
+        "entity_type": "Codicological_Unit",
+        "control_numbers": ["990001"],
+        "claims": [
+            {
+                "property_uri": "https://w3id.org/mhm/ontology#has_number_of_folios",
+                "value": "120",
+            },
+        ],
+    })
+    manuscript = _manuscript_entity()
+    uploadable = uploadable_entities_from_hmo([manuscript, cu])
+    assert [entity.local_id for entity in uploadable] == ["QDraft_MS_990001"]
+    items = native_items_from_hmo([manuscript, cu])
+    folio_claims = [s for s in items[0].statements if s.property_id == "P1104"]
+    assert folio_claims
+    assert folio_claims[0].value == "120"
+
+
+def test_fingerprint_changes_when_rolled_up_claim_changes() -> None:
+    manuscript = _manuscript_entity()
+    production = normalize_live_entity({
+        "local_id": "Prod_fp",
+        "source_uri": "https://w3id.org/mhm/ontology#Prod_fp",
+        "wikibase_id": "Q7002",
+        "entity_type": "E12_Production",
+        "control_numbers": ["990001"],
+        "claims": [
+            {
+                "property_uri": "https://w3id.org/mhm/ontology#has_date_of_creation",
+                "value": "1700",
+            },
+        ],
+    })
+    without = canonical_wikidata_fingerprint([manuscript])
+    with_prod = canonical_wikidata_fingerprint([manuscript, production])
+    assert without != with_prod
+
+
+def test_manuscript_bridge_statements_include_p2888_and_p973() -> None:
+    items = native_items_from_hmo([_manuscript_entity()])
+    props = {stmt.property_id for stmt in items[0].statements}
+    assert "P2888" in props
+    assert "P973" in props
+
+
+def test_build_summary_reports_rollup_counts() -> None:
+    manuscript = _manuscript_entity()
+    production = normalize_live_entity({
+        "local_id": "Prod_sum",
+        "source_uri": "https://w3id.org/mhm/ontology#Prod_sum",
+        "wikibase_id": "Q7003",
+        "entity_type": "E12_Production",
+        "control_numbers": ["990001"],
+        "claims": [],
+    })
+    result = build_canonical_studio_result([manuscript, production], reconcile=False)
+    assert result["summary"]["rolled_up_entities"] == 1
+    assert result["summary"]["summarized_hmo_nodes"] == 1
+    assert all(
+        item["entity_type"] in PUBLIC_WIKIDATA_ENTITY_TYPES
+        for item in result["items"]
+    )
 
 
 def test_full_canonical_chain_has_no_legacy_authority_dependency() -> None:

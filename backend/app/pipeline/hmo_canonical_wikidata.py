@@ -20,7 +20,7 @@ from converter.wikidata.hmo_wikidata_pq_mapper import (
     ontology_local_name,
 )
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
-from converter.wikidata.projection_coverage import STRATEGY_BY_LOCAL_NAME
+from converter.wikidata.projection_coverage import STRATEGY_BY_LOCAL_NAME, ProjectionStrategy
 from converter.wikidata.property_mapping import (
     P_DESCRIBED_AT_URL,
     P_EXACT_MATCH,
@@ -52,6 +52,11 @@ _BOILERPLATE_DESCRIPTION = (
 )
 
 _PERSON_IDENTIFIER_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P268"})
+
+PUBLIC_WIKIDATA_ENTITY_TYPES = frozenset({"manuscript", "person", "work"})
+
+# HMO classes whose summarized claims roll onto work items (not manuscripts).
+_WORK_ROLLUP_ENTITY_TYPES = frozenset({"F27_Work_Creation", "Work_Creation"})
 
 # Backward-compatible aliases — prefer ``hmo_wikidata_pq_mapper``.
 _HMO_PROPERTY_TO_WIKIDATA_PID = {
@@ -126,8 +131,10 @@ def wikidata_candidates_from_hmo(
     entities: Iterable[CanonicalHmoEntity],
 ) -> list[dict[str, Any]]:
     """Return projection records grounded exclusively in HMO state."""
-    materialized = uploadable_entities_from_hmo(entities)
+    all_entities = list(entities)
+    materialized = uploadable_entities_from_hmo(all_entities)
     assert_canonical_entities(materialized)
+    entities_by_cn = _index_entities_by_control_number(all_entities)
     return [
         {
             "local_id": entity.local_id,
@@ -136,7 +143,15 @@ def wikidata_candidates_from_hmo(
             "labels": dict(entity.labels),
             "descriptions": dict(entity.descriptions),
             "aliases": dict(entity.aliases),
-            "claims": list(entity.claims),
+            "claims": native_wikidata_claims(
+                entity,
+                rollup_sources=_rollup_sources_for(
+                    entity,
+                    _wikidata_entity_type(entity) or "",
+                    all_entities,
+                    entities_by_cn,
+                ),
+            ),
             "authority_evidence": [
                 evidence for evidence in entity.authority_evidence
                 if evidence.get("accepted") is True
@@ -153,7 +168,7 @@ def wikidata_candidates_from_hmo(
 def canonical_wikidata_fingerprint(entities: Iterable[CanonicalHmoEntity]) -> str:
     candidates = wikidata_candidates_from_hmo(entities)
     payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
-    return hashlib.sha256(("hmo-wikidata-v3:" + payload).encode()).hexdigest()
+    return hashlib.sha256(("hmo-wikidata-v4:" + payload).encode()).hexdigest()
 
 
 def uploadable_entities_from_hmo(
@@ -179,10 +194,18 @@ def native_wikidata_claims(
     entity: CanonicalHmoEntity,
     *,
     ontology_uri_by_project_pid: Mapping[str, str] | None = None,
+    rollup_sources: Iterable[CanonicalHmoEntity] | None = None,
 ) -> list[dict[str, str]]:
     native: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     wd_type = _wikidata_entity_type(entity) or ""
+
+    def _append_mapped(claim_dict: dict[str, str]) -> None:
+        key = (claim_dict["property"], claim_dict["value"])
+        if key in seen:
+            return
+        seen.add(key)
+        native.append(claim_dict)
 
     for claim in entity.claims:
         mapped = map_hmo_claim_to_wikidata(
@@ -200,11 +223,29 @@ def native_wikidata_claims(
                 property_id = P_NLI_CATALOG_ID
             else:
                 continue
-        key = (property_id, str(raw))
-        if key in seen:
+        _append_mapped({"property": property_id, "value": str(raw)})
+
+    for source in rollup_sources or ():
+        allowed_pids = _allowed_rollup_pids(source)
+        if not allowed_pids:
             continue
-        seen.add(key)
-        native.append({"property": property_id, "value": str(raw)})
+        for claim in source.claims:
+            mapped = map_hmo_claim_to_wikidata(
+                claim,
+                entity_type=wd_type,
+                ontology_uri_by_project_pid=ontology_uri_by_project_pid,
+                project_item_qid=source.wikibase_id,
+            )
+            if mapped is None or mapped.property_id not in allowed_pids:
+                continue
+            property_id = mapped.property_id
+            raw = mapped.value
+            if property_id == "P8189" and not str(raw).startswith("9870"):
+                if wd_type == "manuscript" and str(raw).startswith("990"):
+                    property_id = P_NLI_CATALOG_ID
+                else:
+                    continue
+            _append_mapped({"property": property_id, "value": str(raw)})
 
     for cn in entity.control_numbers:
         cn = str(cn).strip()
@@ -248,19 +289,23 @@ def native_items_from_hmo(
     context: CanonicalStudioContext | None = None,
 ) -> list[WikidataItem]:
     """Adapt live HMO snapshots to the guarded Wikidata upload model."""
-    materialized = uploadable_entities_from_hmo(entities)
+    all_entities = list(entities)
+    materialized = uploadable_entities_from_hmo(all_entities)
     assert_canonical_entities(materialized)
+    entities_by_cn = _index_entities_by_control_number(all_entities)
     items: list[WikidataItem] = []
     for entity in materialized:
         wd_type = _wikidata_entity_type(entity) or ""
+        assert wd_type in PUBLIC_WIKIDATA_ENTITY_TYPES
         existing_qid = _accepted_wikidata_qid(entity)
+        rollup_sources = _rollup_sources_for(entity, wd_type, all_entities, entities_by_cn)
         statements = [
             WikidataStatement(
                 property_id=claim["property"],
                 value=claim["value"],
                 value_type="wikibase-item" if _QID.fullmatch(claim["value"]) else "string",
             )
-            for claim in native_wikidata_claims(entity)
+            for claim in native_wikidata_claims(entity, rollup_sources=rollup_sources)
         ]
         _append_manuscript_bridge_statements(entity, wd_type, statements)
         items.append(WikidataItem(
@@ -296,7 +341,8 @@ def build_canonical_studio_result(
 
     materialized = list(entities)
     uploadable = uploadable_entities_from_hmo(materialized)
-    native_items = native_items_from_hmo(uploadable, context=context)
+    rollup_stats = _rollup_summary_stats(materialized, uploadable)
+    native_items = native_items_from_hmo(materialized, context=context)
 
     if overrides:
         for item in native_items:
@@ -323,6 +369,11 @@ def build_canonical_studio_result(
 
     serialised = [wikidata_studio._serialise_item(item) for item in native_items]
     for item_dict, entity, issues in zip(serialised, uploadable, per_item_issues, strict=True):
+        public_type = str(item_dict.get("entity_type") or "")
+        if public_type not in PUBLIC_WIKIDATA_ENTITY_TYPES:
+            raise ValueError(
+                f"Wikidata Studio item {entity.local_id} has non-public entity_type: {public_type}",
+            )
         item_dict.update({
             "source_uri": entity.source_uri,
             "hmo_wikibase_id": entity.wikibase_id,
@@ -343,6 +394,8 @@ def build_canonical_studio_result(
             "works": sum(1 for item in native_items if item.entity_type == "work"),
             "statements": sum(len(item.statements) for item in native_items),
             "skipped_entities": max(0, len(materialized) - len(uploadable)),
+            "rolled_up_entities": rollup_stats["rolled_up_entities"],
+            "summarized_hmo_nodes": rollup_stats["summarized_hmo_nodes"],
         },
     }
 
@@ -358,6 +411,98 @@ def _wikidata_entity_type(entity: CanonicalHmoEntity) -> str:
     if strategy and strategy.projection_status == "direct_wikidata_item":
         return strategy.item_entity_type
     return ""
+
+
+def _projection_strategy(entity: CanonicalHmoEntity) -> ProjectionStrategy | None:
+    return STRATEGY_BY_LOCAL_NAME.get(entity.entity_type or "")
+
+
+def _index_entities_by_control_number(
+    entities: Iterable[CanonicalHmoEntity],
+) -> dict[str, list[CanonicalHmoEntity]]:
+    by_cn: dict[str, list[CanonicalHmoEntity]] = {}
+    for entity in entities:
+        for raw_cn in entity.control_numbers:
+            cn = canonical_control_number(str(raw_cn))
+            if not cn:
+                continue
+            bucket = by_cn.setdefault(cn, [])
+            if entity not in bucket:
+                bucket.append(entity)
+    return by_cn
+
+
+def _allowed_rollup_pids(entity: CanonicalHmoEntity) -> frozenset[str]:
+    strategy = _projection_strategy(entity)
+    if strategy is None or strategy.projection_status != "summarized_in_wikidata":
+        return frozenset()
+    return frozenset(strategy.wikidata_properties)
+
+
+def _rollup_sources_for(
+    target: CanonicalHmoEntity,
+    target_wd_type: str,
+    all_entities: list[CanonicalHmoEntity],
+    entities_by_cn: dict[str, list[CanonicalHmoEntity]],
+) -> list[CanonicalHmoEntity]:
+    """Collect summarized HMO nodes whose claims fold onto a public Wikidata item."""
+    if target_wd_type not in PUBLIC_WIKIDATA_ENTITY_TYPES:
+        return []
+    target_cns = {
+        canonical_control_number(str(cn))
+        for cn in target.control_numbers
+        if canonical_control_number(str(cn))
+    }
+    if not target_cns:
+        return []
+
+    uploadable_ids = {
+        entity.local_id
+        for entity in all_entities
+        if _wikidata_entity_type(entity)
+    }
+    related: list[CanonicalHmoEntity] = []
+    seen_local_ids: set[str] = set()
+
+    for cn in target_cns:
+        for entity in entities_by_cn.get(cn, ()):
+            if entity.local_id == target.local_id:
+                continue
+            if entity.local_id in seen_local_ids:
+                continue
+            if entity.local_id in uploadable_ids:
+                continue
+            strategy = _projection_strategy(entity)
+            if strategy is None or strategy.projection_status != "summarized_in_wikidata":
+                continue
+            if target_wd_type == "work" and entity.entity_type not in _WORK_ROLLUP_ENTITY_TYPES:
+                continue
+            if target_wd_type == "manuscript" and entity.entity_type in _WORK_ROLLUP_ENTITY_TYPES:
+                continue
+            seen_local_ids.add(entity.local_id)
+            related.append(entity)
+    return related
+
+
+def _rollup_summary_stats(
+    materialized: list[CanonicalHmoEntity],
+    uploadable: list[CanonicalHmoEntity],
+) -> dict[str, int]:
+    entities_by_cn = _index_entities_by_control_number(materialized)
+    rolled_up_ids: set[str] = set()
+    summarized_nodes = 0
+    for entity in materialized:
+        strategy = _projection_strategy(entity)
+        if strategy and strategy.projection_status == "summarized_in_wikidata":
+            summarized_nodes += 1
+    for entity in uploadable:
+        wd_type = _wikidata_entity_type(entity) or ""
+        for source in _rollup_sources_for(entity, wd_type, materialized, entities_by_cn):
+            rolled_up_ids.add(source.local_id)
+    return {
+        "rolled_up_entities": len(rolled_up_ids),
+        "summarized_hmo_nodes": summarized_nodes,
+    }
 
 
 def _default_instance_qid(entity_type: str) -> str:

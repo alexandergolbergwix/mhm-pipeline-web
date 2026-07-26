@@ -70,6 +70,53 @@ async def test_verify_fetch_uses_existing_cache_without_rebuild() -> None:
 
 
 @pytest.mark.asyncio
+async def test_verify_fetch_skips_non_public_entity_types() -> None:
+    run_id = uuid.uuid4()
+    cached = SimpleNamespace(
+        result_items=[
+            {"local_id": "QDraft_Person_a", "entity_type": "person", "records": []},
+            {
+                "local_id": "QDraft_CU_1",
+                "entity_type": "Codicological_Unit",
+                "records": ["990000000000000001"],
+            },
+        ],
+    )
+    db = MagicMock()
+    auth = SimpleNamespace(user=SimpleNamespace(id=uuid.uuid4()))
+
+    with (
+        patch("app.routers.wikidata_studio.select", return_value=MagicMock()),
+        patch.object(
+            db, "execute", new=AsyncMock(return_value=MagicMock(
+                scalars=lambda: MagicMock(all=lambda: []),
+            )),
+        ),
+        patch(
+            "app.routers.wikidata_studio._get_studio_cache_row",
+            new=AsyncMock(return_value=cached),
+        ),
+        patch(
+            "app.routers.wikidata_studio.attach_local_reference_targets",
+            lambda items: items,
+        ),
+        patch(
+            "app.routers.wikidata_studio.record_ids_for_wikidata_item",
+            return_value=[],
+        ),
+    ):
+        items, _marc = await _fetch_wikidata_verify_items(
+            db, run_id, auth,
+            item_ids=None,
+            approved_only=True,
+            source="canonical",
+        )
+
+    assert len(items) == 1
+    assert items[0]["entity_type"] == "person"
+
+
+@pytest.mark.asyncio
 async def test_verify_fetch_rebuilds_without_reconcile_when_cache_empty() -> None:
     run_id = uuid.uuid4()
     built = SimpleNamespace(result_items=[{"local_id": "ms:1", "entity_type": "manuscript"}])

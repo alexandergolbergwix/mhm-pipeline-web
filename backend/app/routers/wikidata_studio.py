@@ -49,6 +49,7 @@ from app.settings import get_settings
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.hmo_canonical import normalize_live_entity
 from app.pipeline.hmo_canonical_wikidata import (
+    PUBLIC_WIKIDATA_ENTITY_TYPES,
     build_canonical_studio_result,
     canonical_studio_context,
     canonical_wikidata_fingerprint,
@@ -2259,6 +2260,8 @@ async def _fetch_wikidata_verify_items(
     for raw in scoped_items:
         item = dict(raw)
         local_id = str(item.get("local_id") or "")
+        if str(item.get("entity_type") or "") not in PUBLIC_WIKIDATA_ENTITY_TYPES:
+            continue
         if wanted and local_id not in wanted:
             continue
         item["_local_id"] = local_id

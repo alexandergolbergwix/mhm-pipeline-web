@@ -11,7 +11,7 @@
 - `backend/tests/test_section_export_router.py` — section CSV retains item approval, verdict JSON, source records, validation, authority, and work-candidate evidence.
 - `backend/tests/test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`, and `unit/test_wikidata_verdict_cache.py` pin build `records` ↔ verify `record_ids`, MARC/local-target fingerprint parity, prompt-visible statement/work evidence, and safe stale-key display; `unit/test_marc_subject_resolve.py` and `test_marc_650_655_lod.py` pin verified static QIDs/labels and broad-P921 omission.
 - `backend/tests/unit/test_hmo_wikidata_pq_mapper.py` — ontology/local-PID → public P/Q allowlist; bare project QID rejected; MS P50 forbidden.
-- `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical claim mapping uses the PQ mapper; control numbers; no local-Q leak.
+- `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical claim mapping uses the PQ mapper; control numbers; no local-Q leak; summarized Production/CU rollup; P2888/P973 bridge; rollup summary counts (Rule W-117).
 - `backend/tests/unit/test_wikidata_upload_guards.py` (~20+) — reconcile-before-create per type, fail-closed outage, validator hard gate, blocked-never-written, audit trail, ledger/adopt, dry-run truthfulness, foreign skip / accept-allow.
 - `backend/tests/unit/test_wikidata_existence.py` — `wbgetentities` alive parse, ownership classify, QID-bound foreign accept gate.
 - `backend/tests/unit/test_rdf_build.py` — clean raw 505 and flat contents create evidence-backed works.
@@ -33,7 +33,8 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
   build (W-59); Gemini key only for Gemini tiers (W-60); worker passes Studio
   `source`/`approved_only` into `_fetch_wikidata_verify_items` (W-115 / R42).
 - `backend/tests/unit/test_wikidata_verify_scope_cache.py` — verify prefers
-  existing Studio cache and rebuilds with `reconcile=False` (W-116 / R43).
+  existing Studio cache and rebuilds with `reconcile=False` (W-116 / R43); skips
+  non-public `entity_type` rows (W-117 / R44).
 
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).

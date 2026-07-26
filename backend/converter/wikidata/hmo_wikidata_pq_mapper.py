@@ -23,6 +23,7 @@ from converter.authority.evidence import normalize_wikidata_qid
 from converter.wikidata.property_mapping import (
     P_ANNOTATOR,
     P_AUTHOR,
+    P_CATALOG_CODE,
     P_COLLECTION,
     P_COMMISSIONED_BY,
     P_CONDITION,
@@ -30,12 +31,16 @@ from converter.wikidata.property_mapping import (
     P_DATE_OF_BIRTH,
     P_DATE_OF_DEATH,
     P_DESCRIBED_AT_URL,
+    P_END_TIME,
     P_EXACT_MATCH,
     P_EXEMPLAR_OF,
+    P_FOLIO,
+    P_FONDS,
     P_FULL_WORK_URL,
     P_GENRE,
     P_GEONAMES_ID,
     P_HEIGHT,
+    P_ILLUSTRATOR,
     P_IIIF_MANIFEST,
     P_INCEPTION,
     P_INSCRIPTION,
@@ -51,6 +56,7 @@ from converter.wikidata.property_mapping import (
     P_OCCUPATION,
     P_OWNED_BY,
     P_SCRIPT_STYLE,
+    P_START_TIME,
     P_TITLE,
     P_TRANSCRIBED_BY,
     P_VIAF_ID,
@@ -125,6 +131,18 @@ HMO_LOCAL_NAME_TO_WIKIDATA_PID: dict[str, str] = {
     "owned_by": P_OWNED_BY,
     "holding_institution": P_COLLECTION,
     "has_holding_institution": P_COLLECTION,
+    "has_fonds": P_FONDS,
+    "fonds": P_FONDS,
+    "catalog_code": P_CATALOG_CODE,
+    "has_catalog_code": P_CATALOG_CODE,
+    "has_illuminator": P_ILLUSTRATOR,
+    "illuminator": P_ILLUSTRATOR,
+    "section": P_FOLIO,
+    "folio_reference": P_FOLIO,
+    "has_folio": P_FOLIO,
+    "has_start_time": P_START_TIME,
+    "has_end_time": P_END_TIME,
+    "number_of_parts": "P2635",
     "colophon_text": P_INSCRIPTION,
     # Person biography
     "has_occupation": P_OCCUPATION,
@@ -170,6 +188,7 @@ MANUSCRIPT_ONLY_WIKIDATA_PIDS = frozenset({
     P_TRANSCRIBED_BY,
     P_ANNOTATOR,
     P_COMMISSIONED_BY,
+    P_ILLUSTRATOR,
     P_SCRIPT_STYLE,
     P_MATERIAL,
     P_NUMBER_OF_PAGES,
@@ -178,6 +197,11 @@ MANUSCRIPT_ONLY_WIKIDATA_PIDS = frozenset({
     P_CONDITION,
     P_IIIF_MANIFEST,
     P_COLLECTION,
+    P_OWNED_BY,
+    P_FONDS,
+    P_CATALOG_CODE,
+    P_FOLIO,
+    "P2635",
 })
 
 
@@ -375,6 +399,9 @@ def map_hmo_claim_to_wikidata(
     # external_wikidata_uri / exact-match URLs
     if property_id in {P_EXACT_MATCH, P_DESCRIBED_AT_URL, P_FULL_WORK_URL, P_IIIF_MANIFEST}:
         return MappedWikidataClaim(property_id=property_id, value=text, value_type="url")
+
+    if property_id in {P_START_TIME, P_END_TIME}:
+        return MappedWikidataClaim(property_id=property_id, value=text, value_type="time")
 
     qid = extract_wikidata_qid(text)
     if qid and property_id == P_EXACT_MATCH:

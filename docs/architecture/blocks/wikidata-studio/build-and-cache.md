@@ -41,6 +41,13 @@ Before grouping build inputs, `build_items_for_run` runs every MARC record, appr
 
 Canonical source mode reads durable `hmo_canonical_entities` rows first; the per-run HMO cache is only a migration fallback. This keeps Wikidata Studio projections independent of cache retention. Claim predicates and item values are translated to public Wikidata P/Q only through `hmo_wikidata_pq_mapper` (ontology local-name / ledger URI → allowlist; bare project Cloud QIDs never become Wikidata values — Rule W-100).
 
+**Canonical rollup (Rule W-117):** only `manuscript` / `person` / `work` become
+Studio items. HMO classes with `summarized_in_wikidata` strategy contribute
+allowlisted claims onto the parent item when they share a control number
+(`hmo_canonical_wikidata._rollup_sources_for`). Build summary reports
+`rolled_up_entities` and `summarized_hmo_nodes`. Fingerprint salt:
+`hmo-wikidata-v4`.
+
 The HMO-to-Wikidata boundary is deliberately narrow. `hmo_instance_qids_for_run`
 reads the run upload ledger, and `hmo_wikidata_projection` accepts a link only
 when the ontology URI exactly matches the canonical `MS_<control-number>` URI

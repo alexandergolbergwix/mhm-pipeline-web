@@ -2727,3 +2727,32 @@ Invariant:
    materialising scope so the tray is not frozen on bare QUEUED.
 
 Tests: `backend/tests/unit/test_wikidata_verify_scope_cache.py`.
+
+### Rule W-117 — Wikidata Studio emits only WPM public items; summarized HMO nodes roll up (added 2026-07-26)
+
+A 1608-item canonical verify export showed 93% `fail` because HMO ontology
+classes (`Codicological_Unit`, `PhilologicalView`, `EvidenceChain`, …) were
+judged as Wikidata items. Canonical Studio already gated `direct_wikidata_item`
+rows to `manuscript` / `person` / `work`, but `summarized_in_wikidata`
+classes were skipped entirely — manuscripts only carried claims already on the
+`F4` node, not Production/CU/Expression facts stored on related HMO entities.
+
+Invariant:
+
+1. **Public item types only:** Studio `entity_type` MUST be
+   `manuscript` | `person` | `work`. Verify scope skips any other
+   `entity_type` (`PUBLIC_WIKIDATA_ENTITY_TYPES`).
+2. **Rollup, not separate items:** HMO classes with
+   `projection_status=summarized_in_wikidata` fold allowlisted claims onto the
+   parent manuscript (or work for `F27_Work_Creation`) when they share a MARC
+   control number. Mapping runs through `hmo_wikidata_pq_mapper` restricted to
+   each strategy's `wikidata_properties`.
+3. **Wikibase bridge:** every manuscript with a live HMO QID carries `P2888` +
+   `P973` to the project wiki item URL.
+4. **Never leak project QIDs** as statement values; never emit `P50` on
+   manuscripts.
+5. Build summary exposes `rolled_up_entities` and `summarized_hmo_nodes`.
+   Fingerprint salt: `hmo-wikidata-v4`.
+
+Tests: `backend/tests/unit/test_hmo_canonical_wikidata.py`,
+`backend/tests/unit/test_wikidata_verify_scope_cache.py`.

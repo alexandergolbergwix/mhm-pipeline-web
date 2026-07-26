@@ -124,7 +124,7 @@ STRATEGY_BY_LOCAL_NAME: dict[str, ProjectionStrategy] = {
     "Codicological_Unit": ProjectionStrategy(
         projection_status="summarized_in_wikidata",
         wikidata_representation="Manuscript-level part count and content/folio qualifiers",
-        wikidata_properties=("P2635", "P7535", "P1574", "P958"),
+        wikidata_properties=("P1104", "P2635", "P7535", "P1574", "P958"),
         notes="CU nodes remain in HMO; Wikidata uses summary claims unless a part is independently notable.",
     ),
     "Paleographical_Unit": ProjectionStrategy(

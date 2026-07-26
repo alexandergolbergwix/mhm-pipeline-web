@@ -226,7 +226,16 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 1608 visible rows.
 
 43. **R43 — Verify scope MUST use the Studio cache and skip WDQS reconcile (Rule W-116).**
-`_fetch_wikidata_verify_items` reads the existing cache first; rebuilds use
-`reconcile=False`. *Why:* a 1608-item verify rebuilt with SPARQL reconcile and
-stalled on WDQS 429/timeouts with no progress.
+    `_fetch_wikidata_verify_items` prefers the cached Studio corpus and rebuilds
+    with `reconcile=False` on miss. *Why:* 1608-item verify hammered WDQS and
+    looked stuck with zero verdicts.
 
+44. **R44 — Canonical Studio emits only WPM public item types; summarized HMO
+    nodes roll up (Rule W-117).** `uploadable_entities_from_hmo` keeps
+    `manuscript` / `person` / `work` only. `summarized_in_wikidata` classes
+    (Production, CU, Expression, …) contribute claims onto the parent item by
+    shared control number via `hmo_wikidata_pq_mapper` + strategy allowlists.
+    Verify/export MUST skip non-public `entity_type` rows. Build summary exposes
+    `rolled_up_entities` and `summarized_hmo_nodes`. *Why:* a 1608-item verify
+    export judged HMO ontology classes (`Codicological_Unit`, views, …) with the
+    Wikidata rubric — 93% fail from channel mismatch, not projection defects.
