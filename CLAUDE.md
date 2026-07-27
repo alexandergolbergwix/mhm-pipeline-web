@@ -2803,3 +2803,24 @@ Invariant:
    web dyno.
 
 Tests: `backend/tests/unit/test_wikidata_studio_build_job.py`.
+
+### Rule W-120 — Canonical Wikidata labels and work evidence MUST match legacy hygiene (added 2026-07-27)
+
+Export (11) on run `48ba6c13` after W-117–W-119 still had **237/258** blocking
+validation errors: Hebrew in `en` labels, MARC-inverted person names, Latin in
+`he`, and every CREATE work missing `work_candidate_evidence`. The canonical
+adapter had been copying live HMO labels verbatim and never stamping W-68
+evidence — legacy `WikidataItemBuilder` already fixed these.
+
+Invariant:
+
+1. **`_wikidata_labels_and_aliases`** in `hmo_canonical_wikidata.py` applies
+   legacy rules: manuscripts get shelfmark-based `en` (`Jerusalem, NLI, …`);
+   persons use `_to_natural_name_order` with inverted form kept as alias;
+   works route Hebrew→`he` and Latin→`en` only.
+2. **CREATE works** must stamp accepted `work_candidate_evidence` via
+   `assess_work_candidate` joined from MARC 505/500/related_works or approved
+   authority; unevidenced CREATE works are dropped (existing QID may remain).
+3. Fingerprint salt **`hmo-wikidata-v5`** so pre-hygiene Studio caches miss.
+
+Tests: `backend/tests/unit/test_hmo_canonical_wikidata.py` (label + evidence cases).

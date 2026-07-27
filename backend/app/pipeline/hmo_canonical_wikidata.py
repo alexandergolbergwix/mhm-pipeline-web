@@ -218,7 +218,7 @@ def wikidata_candidates_from_hmo(
 def canonical_wikidata_fingerprint(entities: Iterable[CanonicalHmoEntity]) -> str:
     candidates = wikidata_candidates_from_hmo(entities)
     payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
-    return hashlib.sha256(("hmo-wikidata-v4:" + payload).encode()).hexdigest()
+    return hashlib.sha256(("hmo-wikidata-v5:" + payload).encode()).hexdigest()
 
 
 def uploadable_entities_from_hmo(
@@ -358,10 +358,24 @@ def native_items_from_hmo(
             for claim in native_wikidata_claims(entity, rollup_sources=rollup_sources)
         ]
         _append_manuscript_bridge_statements(entity, wd_type, statements)
+        labels, aliases = _wikidata_labels_and_aliases(entity, wd_type, context=context)
+        work_evidence = (
+            _work_candidate_evidence_for(entity, context=context)
+            if wd_type == "work"
+            else []
+        )
+        # Fail closed: never emit a CREATE work without accepted source evidence
+        # (Rule W-68 / WORK_WITHOUT_SOURCE_EVIDENCE). Existing QIDs may UPDATE.
+        if (
+            wd_type == "work"
+            and not existing_qid
+            and not any(row.get("accepted") is True for row in work_evidence)
+        ):
+            continue
         items.append(WikidataItem(
-            labels=_upload_labels(entity),
+            labels=labels,
             descriptions=_upload_descriptions(entity, wd_type, context=context),
-            aliases=dict(entity.aliases),
+            aliases=aliases,
             statements=statements,
             existing_qid=existing_qid,
             entity_type=wd_type,
@@ -371,6 +385,7 @@ def native_items_from_hmo(
                 evidence for evidence in entity.authority_evidence
                 if evidence.get("accepted") is True
             ],
+            work_candidate_evidence=work_evidence,
         ))
     return items
 
@@ -393,6 +408,7 @@ def build_canonical_studio_result(
     uploadable = uploadable_entities_from_hmo(materialized)
     rollup_stats = _rollup_summary_stats(materialized, uploadable)
     native_items = native_items_from_hmo(materialized, context=context)
+    entities_by_local_id = {entity.local_id: entity for entity in materialized}
 
     if overrides:
         for item in native_items:
@@ -418,17 +434,18 @@ def build_canonical_studio_result(
         per_item_issues.append(issue_dicts)
 
     serialised = [wikidata_studio._serialise_item(item) for item in native_items]
-    for item_dict, entity, issues in zip(serialised, uploadable, per_item_issues, strict=True):
+    for item_dict, item, issues in zip(serialised, native_items, per_item_issues, strict=True):
         public_type = str(item_dict.get("entity_type") or "")
         if public_type not in PUBLIC_WIKIDATA_ENTITY_TYPES:
             raise ValueError(
-                f"Wikidata Studio item {entity.local_id} has non-public entity_type: {public_type}",
+                f"Wikidata Studio item {item.local_id} has non-public entity_type: {public_type}",
             )
+        entity = entities_by_local_id.get(item.local_id)
         item_dict.update({
-            "source_uri": entity.source_uri,
-            "hmo_wikibase_id": entity.wikibase_id,
+            "source_uri": entity.source_uri if entity else None,
+            "hmo_wikibase_id": entity.wikibase_id if entity else None,
             "projection_source": "hmo_wikibase",
-            "source_fingerprint": entity.source_fingerprint,
+            "source_fingerprint": entity.source_fingerprint if entity else None,
             "validation_issues": issues,
         })
 
@@ -443,7 +460,7 @@ def build_canonical_studio_result(
             "persons": sum(1 for item in native_items if item.entity_type == "person"),
             "works": sum(1 for item in native_items if item.entity_type == "work"),
             "statements": sum(len(item.statements) for item in native_items),
-            "skipped_entities": max(0, len(materialized) - len(uploadable)),
+            "skipped_entities": max(0, len(materialized) - len(native_items)),
             "rolled_up_entities": rollup_stats["rolled_up_entities"],
             "summarized_hmo_nodes": rollup_stats["summarized_hmo_nodes"],
         },
@@ -641,12 +658,417 @@ def _truncate_description(text: str) -> str:
 
 
 def _upload_labels(entity: CanonicalHmoEntity) -> dict[str, str]:
-    labels = {lang: str(value).strip() for lang, value in entity.labels.items() if str(value).strip()}
-    if labels:
-        return labels
+    """Backward-compatible label fallback (no type/context). Prefer
+    ``_wikidata_labels_and_aliases``.
+    """
+    labels, _aliases = _wikidata_labels_and_aliases(entity, _wikidata_entity_type(entity) or "")
+    return labels
+
+
+def _wikidata_labels_and_aliases(
+    entity: CanonicalHmoEntity,
+    entity_type: str,
+    *,
+    context: CanonicalStudioContext | None = None,
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Public Wikidata labels: script-correct slots, natural person order, MS shelfmark en."""
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _has_hebrew_script,
+        _holding_institution_name,
+        _is_placeholder_title,
+        _normalise_label,
+        _strip_person_name_qualifiers,
+        _to_natural_name_order,
+    )
+
+    raw_labels = {
+        str(lang): str(value).strip()
+        for lang, value in (entity.labels or {}).items()
+        if str(value).strip()
+    }
+    aliases: dict[str, list[str]] = {
+        str(lang): [str(v).strip() for v in values if str(v).strip()]
+        for lang, values in (entity.aliases or {}).items()
+        if isinstance(values, list)
+    }
+
+    if entity_type == "manuscript":
+        return _manuscript_labels_and_aliases(
+            entity,
+            raw_labels,
+            aliases,
+            context=context,
+            normalise=_normalise_label,
+            has_hebrew=_has_hebrew_script,
+            is_placeholder=_is_placeholder_title,
+            holding_name=_holding_institution_name,
+        )
+    if entity_type == "person":
+        return _person_labels_and_aliases(
+            entity,
+            raw_labels,
+            aliases,
+            context=context,
+            normalise=_normalise_label,
+            has_hebrew=_has_hebrew_script,
+            strip_qualifiers=_strip_person_name_qualifiers,
+            to_natural=_to_natural_name_order,
+        )
+    if entity_type == "work":
+        return _work_labels_and_aliases(
+            raw_labels,
+            aliases,
+            normalise=_normalise_label,
+            has_hebrew=_has_hebrew_script,
+        )
+
+    if raw_labels:
+        return _route_labels_by_script(raw_labels, has_hebrew=_has_hebrew_script), aliases
     if entity.control_numbers:
-        return {"en": f"NLI manuscript {entity.control_numbers[0]}"}
-    return {"en": entity.local_id.replace("QDraft_", "").replace("_", " ")}
+        return {"en": f"NLI manuscript {entity.control_numbers[0]}"}, aliases
+    return {"en": entity.local_id.replace("QDraft_", "").replace("_", " ")}, aliases
+
+
+def _route_labels_by_script(
+    raw_labels: Mapping[str, str],
+    *,
+    has_hebrew,
+) -> dict[str, str]:
+    """Never leave Hebrew-only text in ``en`` or Latin-only text in ``he``."""
+    out: dict[str, str] = {}
+    for lang, value in raw_labels.items():
+        text = str(value).strip()
+        if not text:
+            continue
+        hebrew = has_hebrew(text)
+        if lang == "en" and hebrew and not re.search(r"[A-Za-z]", text):
+            out.setdefault("he", text)
+            continue
+        if lang == "he" and not hebrew and re.search(r"[A-Za-z]", text):
+            out.setdefault("en", text)
+            continue
+        out[str(lang)] = text
+    return out
+
+
+def _manuscript_labels_and_aliases(
+    entity: CanonicalHmoEntity,
+    raw_labels: Mapping[str, str],
+    aliases: dict[str, list[str]],
+    *,
+    context: CanonicalStudioContext | None,
+    normalise,
+    has_hebrew,
+    is_placeholder,
+    holding_name,
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    labels: dict[str, str] = {}
+    record = _marc_record_for_entity(entity, context)
+    title = ""
+    if record:
+        title = str(record.get("title") or "").strip()
+    if not title:
+        title = str(raw_labels.get("he") or raw_labels.get("en") or "").strip()
+    title_clean = normalise(title) if title else ""
+    title_has_hebrew = has_hebrew(title_clean)
+    placeholder = is_placeholder(title_clean) if title_clean else False
+
+    if title_clean and not placeholder:
+        if title_has_hebrew:
+            labels["he"] = title_clean
+        else:
+            labels["en"] = title_clean
+            aliases.setdefault("en", []).append(title_clean)
+    elif title_clean:
+        aliases.setdefault("he", []).append(title_clean)
+
+    shelfmark = ""
+    if record:
+        shelfmark = normalise(str(record.get("shelfmark") or ""))
+    if not shelfmark:
+        shelfmark = _shelfmark_from_claims(entity)
+    if shelfmark:
+        holding = holding_name(record) if record else ""
+        labels["en"] = f"{holding or 'Jerusalem, NLI'}, {shelfmark}"
+        if title_clean and not placeholder and title_has_hebrew:
+            aliases.setdefault("he", []).append(title_clean)
+        if "he" not in labels and (placeholder or not title_has_hebrew):
+            labels["he"] = f"כתב יד עברי, ספרייה לאומית, {shelfmark}"
+
+    if "en" not in labels and "he" not in labels:
+        cn = ""
+        if record:
+            cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
+        if not cn and entity.control_numbers:
+            cn = str(entity.control_numbers[0]).strip()
+        if cn:
+            labels["en"] = f"Jerusalem, NLI, {cn}"
+            labels["he"] = f"כתב יד עברי, ספרייה לאומית, {cn}"
+        else:
+            labels = _route_labels_by_script(raw_labels, has_hebrew=has_hebrew) or {
+                "en": entity.local_id.replace("QDraft_", "").replace("_", " "),
+            }
+
+    return labels, _dedupe_aliases(aliases, labels)
+
+
+def _person_labels_and_aliases(
+    entity: CanonicalHmoEntity,
+    raw_labels: Mapping[str, str],
+    aliases: dict[str, list[str]],
+    *,
+    context: CanonicalStudioContext | None,
+    normalise,
+    has_hebrew,
+    strip_qualifiers,
+    to_natural,
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    labels: dict[str, str] = {}
+
+    def _place(name: str, *, as_alias: bool = False) -> None:
+        cleaned = normalise(strip_qualifiers(name))
+        if not cleaned:
+            return
+        natural = normalise(strip_qualifiers(to_natural(cleaned)))
+        lang = "he" if has_hebrew(natural) else "en"
+        if as_alias or (lang in labels and labels[lang] != natural):
+            if natural and natural not in (aliases.get(lang) or []):
+                aliases.setdefault(lang, []).append(natural)
+            return
+        labels[lang] = natural
+        if cleaned != natural and cleaned not in (aliases.get(lang) or []):
+            aliases.setdefault(lang, []).append(cleaned)
+
+    primary = str(raw_labels.get("he") or raw_labels.get("en") or "").strip()
+    if primary:
+        _place(primary)
+
+    for lang, value in raw_labels.items():
+        text = str(value).strip()
+        if text and text != primary:
+            _place(text, as_alias=lang in labels)
+
+    if context is not None:
+        match = _authority_match_for_entity(entity, context)
+        if match:
+            for key in ("preferred_name_heb", "preferred_name_lat", "matched_name", "entity_text"):
+                pref = str(match.get(key) or "").strip()
+                if pref:
+                    _place(pref, as_alias=True)
+
+    if not labels:
+        labels = _route_labels_by_script(raw_labels, has_hebrew=has_hebrew)
+    if not labels:
+        labels = {"en": entity.local_id.replace("QDraft_", "").replace("_", " ")}
+    return labels, _dedupe_aliases(aliases, labels)
+
+
+def _work_labels_and_aliases(
+    raw_labels: Mapping[str, str],
+    aliases: dict[str, list[str]],
+    *,
+    normalise,
+    has_hebrew,
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    labels: dict[str, str] = {}
+    for lang, value in raw_labels.items():
+        title = normalise(str(value).strip())
+        if not title:
+            continue
+        if has_hebrew(title):
+            labels.setdefault("he", title)
+        else:
+            labels.setdefault("en", title)
+            if title not in (aliases.get("en") or []):
+                aliases.setdefault("en", []).append(title)
+    if not labels:
+        labels = _route_labels_by_script(raw_labels, has_hebrew=has_hebrew)
+    return labels, _dedupe_aliases(aliases, labels)
+
+
+def _dedupe_aliases(
+    aliases: Mapping[str, list[str]],
+    labels: Mapping[str, str],
+) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for lang, values in aliases.items():
+        seen: set[str] = set()
+        label = str(labels.get(lang) or "").strip()
+        cleaned: list[str] = []
+        for value in values:
+            text = str(value).strip()
+            if not text or text == label or text in seen:
+                continue
+            seen.add(text)
+            cleaned.append(text)
+        if cleaned:
+            out[str(lang)] = cleaned
+    return out
+
+
+def _marc_record_for_entity(
+    entity: CanonicalHmoEntity,
+    context: CanonicalStudioContext | None,
+) -> dict[str, Any] | None:
+    if context is None:
+        return None
+    for raw_cn in entity.control_numbers:
+        cn = canonical_control_number(str(raw_cn))
+        record = context.marc_by_cn.get(cn) if cn else None
+        if record:
+            return dict(record)
+    return None
+
+
+def _shelfmark_from_claims(entity: CanonicalHmoEntity) -> str:
+    from converter.wikidata.item_builder import _normalise_label  # noqa: PLC0415
+
+    for claim in entity.claims:
+        local = ontology_local_name(str(claim.get("property_uri") or ""))
+        pid = str(claim.get("property_id") or claim.get("wikidata_property") or "")
+        if local == "shelfmark" or pid in {"P217", "inventory_number"}:
+            value = str(claim.get("value") or "").strip()
+            if value:
+                return _normalise_label(value)
+    return ""
+
+
+def _work_candidate_evidence_for(
+    entity: CanonicalHmoEntity,
+    *,
+    context: CanonicalStudioContext | None,
+) -> list[dict[str, object]]:
+    """Stamp accepted W-68 evidence for a CREATE work, or leave empty to drop."""
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+    from converter.wikidata.work_candidates import assess_work_candidate  # noqa: PLC0415
+
+    title = sanitize_work_title(
+        str(
+            (entity.labels or {}).get("he")
+            or (entity.labels or {}).get("en")
+            or ""
+        ).strip()
+    )
+    if not title:
+        return []
+
+    known_qid = _accepted_wikidata_qid(entity)
+
+    if context is not None:
+        match = context.matches_by_name.get(title.casefold())
+        if match and str(match.get("entity_kind") or match.get("role") or "").lower() in {
+            "work", "contained_work", "subject",
+        }:
+            # matches_by_name only holds approved matches from the build path
+            decision = assess_work_candidate(
+                title,
+                source_field="AUTHORITY",
+                approved=True,
+                known_qid=normalize_wikidata_qid(match.get("wikidata_qid")) or known_qid,
+                source_text=str(match.get("entity_text") or match.get("matched_name") or title),
+            )
+            if decision.accepted:
+                return [decision.evidence()]
+
+        for raw_cn in entity.control_numbers:
+            record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)) or "")
+            if not record:
+                continue
+            for content in record.get("contents") or []:
+                if isinstance(content, dict):
+                    content_title = str(
+                        content.get("title") or content.get("text") or ""
+                    ).strip()
+                    folio = str(content.get("folio") or content.get("folio_range") or "")
+                    sequence = content.get("sequence") or content.get("seq")
+                    source_text = str(content.get("raw") or content.get("source_text") or content_title)
+                else:
+                    content_title = str(content).strip()
+                    folio = ""
+                    sequence = None
+                    source_text = content_title
+                if not _titles_match(title, content_title):
+                    continue
+                decision = assess_work_candidate(
+                    content_title or title,
+                    source_field="505",
+                    known_qid=known_qid,
+                    folio_range=folio,
+                    sequence=sequence,
+                    source_text=source_text,
+                )
+                if decision.accepted:
+                    return [decision.evidence()]
+
+            for mention in record.get("work_mentions") or []:
+                if isinstance(mention, dict):
+                    mention_title = str(
+                        mention.get("title") or mention.get("text") or ""
+                    ).strip()
+                    kind = str(mention.get("kind") or mention.get("candidate_kind") or "named_work")
+                    source_text = str(mention.get("source_text") or mention_title)
+                else:
+                    mention_title = str(mention).strip()
+                    kind = "named_work"
+                    source_text = mention_title
+                if not _titles_match(title, mention_title):
+                    continue
+                decision = assess_work_candidate(
+                    mention_title or title,
+                    source_field="500",
+                    known_qid=known_qid,
+                    candidate_kind=kind,
+                    source_text=source_text,
+                )
+                if decision.accepted:
+                    return [decision.evidence()]
+
+            for related in record.get("related_works") or []:
+                if isinstance(related, dict):
+                    related_title = str(
+                        related.get("title") or related.get("text") or ""
+                    ).strip()
+                    related_qid = normalize_wikidata_qid(
+                        related.get("wikidata_qid") or related.get("qid")
+                    )
+                    source_text = str(related.get("source_text") or related_title)
+                else:
+                    related_title = str(related).strip()
+                    related_qid = None
+                    source_text = related_title
+                if not _titles_match(title, related_title):
+                    continue
+                decision = assess_work_candidate(
+                    related_title or title,
+                    source_field="RELATED",
+                    known_qid=related_qid or known_qid,
+                    approved=bool(related_qid),
+                    source_text=source_text,
+                )
+                if decision.accepted:
+                    return [decision.evidence()]
+
+    if known_qid:
+        decision = assess_work_candidate(
+            title,
+            source_field="HMO",
+            known_qid=known_qid,
+            source_text=title,
+        )
+        if decision.accepted:
+            return [decision.evidence()]
+
+    return []
+
+
+def _titles_match(left: str, right: str) -> bool:
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+
+    a = sanitize_work_title(str(left or "")).casefold().strip(" .,;:/-\"'")
+    b = sanitize_work_title(str(right or "")).casefold().strip(" .,;:/-\"'")
+    if not a or not b:
+        return False
+    return a == b or a in b or b in a
 
 
 def _upload_descriptions(

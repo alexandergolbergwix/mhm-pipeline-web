@@ -378,7 +378,7 @@ control number.
 Every manuscript with a live HMO Wikibase QID also carries **`P2888` exact
 match** + **`P973` described at URL** to the project wiki item. Mapping runs
 through `hmo_wikidata_pq_mapper` only; project Cloud QIDs never become
-statement values. Build fingerprint salt: `hmo-wikidata-v4`.
+statement values. Build fingerprint salt: `hmo-wikidata-v5` (W-120 label/evidence hygiene).
 
 ---
 

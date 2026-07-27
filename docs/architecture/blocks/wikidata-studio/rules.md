@@ -257,3 +257,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     reconcile stays on upload / gated QS / preview only. *Why:* force-rebuild
     hammered WDQS, blocked the web dyno (H12 job polls), and tripped asyncpg
     while holding an open DB session.
+
+47. **R47 — Canonical labels + work evidence match legacy hygiene (Rule W-120).**
+    `_wikidata_labels_and_aliases` uninverts person names, shelves Hebrew out of
+    `en`, and stamps `work_candidate_evidence` for CREATE works (or drops them).
+    Fingerprint salt `hmo-wikidata-v5`. *Why:* export (11) had 237/258 blocking
+    validator errors after public-type filtering alone.
