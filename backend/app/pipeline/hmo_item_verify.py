@@ -173,7 +173,10 @@ async def hmo_item_verify_event_stream(
     pipeline_output = session_dir / "pipeline-output"
     session_dir.mkdir(parents=True, exist_ok=True)
     eval_agent_error: str | None = None
+    streamed_fresh_verdicts: list[dict[str, Any]] = []
     streamed_fresh_verdict_keys: set[str] = set()
+    runner_error: str | None = None
+    runner_exit_code: int | None = None
 
     if uncached_items:
         try:
@@ -237,16 +240,36 @@ async def hmo_item_verify_event_stream(
                 persist_session_event(session_dir, ev)
                 yield ev
                 if ev.type == "agent.verdict":
-                    cand = (ev.payload or {}).get("candidate")
-                    if isinstance(cand, dict):
-                        local_id = str(
-                            cand.get("_local_id") or cand.get("local_id") or "",
-                        )
-                        if local_id:
-                            streamed_fresh_verdict_keys.add(local_id)
+                    from app.pipeline.verify_outcome import (  # noqa: PLC0415
+                        verdict_candidate_local_id,
+                    )
+
+                    payload = dict(ev.payload or {})
+                    local_id = verdict_candidate_local_id(payload)
+                    if local_id:
+                        streamed_fresh_verdict_keys.add(local_id)
+                        streamed_fresh_verdicts.append(payload)
+                elif ev.type == "runner.error":
+                    runner_error = str((ev.payload or {}).get("message") or "verify failed")
+                elif ev.type == "runner.exit":
+                    raw_rc = (ev.payload or {}).get("return_code")
+                    try:
+                        runner_exit_code = int(raw_rc) if raw_rc is not None else None
+                    except (TypeError, ValueError):
+                        runner_exit_code = None
     finally:
+        from app.pipeline.verify_outcome import (  # noqa: PLC0415
+            merge_fresh_verdicts,
+            resolve_verify_session_outcome,
+            verdict_candidate_local_id,
+        )
+
         on_disk_verdicts = (
             read_run_verdicts(state_dir) if (uncached_items and not eval_agent_error) else []
+        )
+        fresh_verdicts = merge_fresh_verdicts(
+            streamed=streamed_fresh_verdicts,
+            on_disk=on_disk_verdicts,
         )
         items_by_id = {
             str(i.get("_local_id") or i.get("local_id") or ""): i
@@ -256,13 +279,10 @@ async def hmo_item_verify_event_stream(
             cached_hmo_item_verdict_event(item, cached_payload)
             for item, cached_payload in pre_cached
         ]
-        for v in on_disk_verdicts:
+        for v in fresh_verdicts:
             cand = v.get("candidate") if isinstance(v.get("candidate"), dict) else None
-            local_id = ""
+            local_id = verdict_candidate_local_id(v)
             if isinstance(cand, dict):
-                local_id = str(
-                    cand.get("_local_id") or cand.get("local_id") or "",
-                )
                 item = items_by_id.get(local_id)
                 if item is not None and not cand.get("label"):
                     from app.pipeline.hmo_item_views import item_label  # noqa: PLC0415
@@ -285,15 +305,25 @@ async def hmo_item_verify_event_stream(
             except Exception:  # noqa: BLE001
                 logger.exception("failed to persist HMO item verdicts")
 
+        outcome = resolve_verify_session_outcome(
+            eval_agent_unavailable=bool(eval_agent_error),
+            uncached_count=len(uncached_items),
+            fresh_verdict_count=len(fresh_verdicts),
+            scope_size=len(items),
+            cache_hits=len(pre_cached),
+            runner_error=runner_error,
+            runner_exit_code=runner_exit_code,
+        )
         end_ev = AgentEvent(
             type="session.end",
             payload={
                 "session_id": session_id,
                 "scope_size": len(items),
                 "cache_hits": len(pre_cached),
-                "fresh_verdicts": len(on_disk_verdicts),
+                "fresh_verdicts": len(fresh_verdicts),
                 "uncached_skipped": len(uncached_items) if eval_agent_error else 0,
-                "outcome": "partial" if eval_agent_error else "complete",
+                "outcome": outcome,
+                "runner_error": runner_error,
             },
         )
         persist_session_event(session_dir, end_ev)

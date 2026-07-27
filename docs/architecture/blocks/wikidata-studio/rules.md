@@ -293,3 +293,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `hmo-wikidata-v9`. Provenance events, P106, and P1680 participate.
     *Why:* PhD RQ2/RQ4 need research-grade claims; canonical-only emit was
     an identity shell.
+
+52. **R52 — Incomplete Wikidata AI verify is partial, not complete (Rule W-126).**
+    `_wikidata_verify_event_stream` merges TRACE + checkpoint verdicts, sets
+    `outcome` via `verify_outcome.resolve_verify_session_outcome`, and
+    write-throughs fresh TRACE rows when `results.jsonl` is missing.
+    *Why:* a hung DeepSeek run reported 54/313 as a successful complete pass.

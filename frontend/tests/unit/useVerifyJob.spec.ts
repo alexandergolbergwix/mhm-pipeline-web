@@ -72,4 +72,39 @@ describe("useVerifyJob", () => {
     expect(result.current.running).toBe(false);
   });
 
+  it("reports incomplete scope without blaming a generic eval-agent error", async () => {
+    const onFailed = vi.fn();
+    const loadSession = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(RunJobs, "listForRun").mockResolvedValue({jobs: []});
+    const running = verifyJob({status: "running"});
+    const done = verifyJob({
+      status: "succeeded",
+      result: {
+        judged: 54,
+        total: 313,
+        outcome: "partial",
+        session_id: "sess-1",
+      },
+    });
+    vi.spyOn(RunJobs, "start").mockResolvedValue(running);
+    vi.spyOn(RunJobs, "get").mockResolvedValue(done);
+
+    const {result} = renderHook(() => useVerifyJob({
+      runId: "r1",
+      kind: "wikidata_verify",
+      loadSession,
+      onFailed,
+    }));
+
+    await act(async () => {
+      await result.current.start({action_id: "audit_wikidata_item"});
+    });
+
+    await waitFor(() => {
+      expect(onFailed).toHaveBeenCalled();
+    });
+    expect(String(onFailed.mock.calls[0]?.[0])).toContain("judge stopped early");
+    expect(String(onFailed.mock.calls[0]?.[0])).not.toContain("eval-agent error");
+  });
+
 });

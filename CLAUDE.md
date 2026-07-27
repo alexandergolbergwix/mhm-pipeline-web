@@ -2968,3 +2968,33 @@ then re-verify.
 
 Tests: `test_wikidata_canonical_enrichment.py`,
 `test_hmo_canonical_wikidata.py` (merge + fingerprint).
+
+### Rule W-126 — Incomplete AI verify MUST report partial and keep TRACE verdicts (added 2026-07-27)
+
+Incident: Wikidata verify job `341a976e` (DeepSeek V4 Flash, scope 313)
+streamed **54** TRACE verdicts then stopped without writing
+`results.jsonl`. The UI showed
+`Verified 54 of 313 — some candidates could not be judged (eval-agent error)`
+while the job row was `succeeded` with `outcome=complete` and
+`fresh_verdicts=0` — so overrides/cache never received the 54 judgements,
+and the message blamed a typed eval-agent error that never occurred.
+
+Invariant:
+
+1. **`session.end.outcome=partial`** when judged (cache + fresh) `< scope`,
+   subprocess exit ≠ 0, or `runner.error` — never `complete` solely because
+   `locate_eval_agent()` succeeded (`verify_outcome.resolve_verify_session_outcome`).
+2. **Persist TRACE verdicts** when the checkpoint is missing: merge streamed
+   `agent.verdict` payloads with `results.jsonl` (disk wins) before override +
+   inference-cache write-through (Wikidata + HMO item streams).
+3. **Verify workers drain to `session.end`** after `runner.error` (do not
+   fail-closed mid-stream and drop the finally block's partial framing).
+4. **Judge retry sleeps emit `[STEP]` keepalives** (capped ≤90 s) so the
+   180 s idle-kill does not fire during silent 429 backoff.
+5. **`spawn_eval_agent_run` kills the child on GeneratorExit/aclose**, not
+   only on `CancelledError` — otherwise a closed parent leaves a judging
+   orphan while the job already looks finished.
+6. Curator UI copy must describe an early stop / incomplete scope, not a
+   generic “eval-agent error”, and may surface `runner_error` when present.
+
+Tests: `test_verify_outcome.py`, `frontend/tests/unit/useVerifyJob.spec.ts`.

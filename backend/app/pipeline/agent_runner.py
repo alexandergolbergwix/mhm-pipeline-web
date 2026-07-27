@@ -256,6 +256,21 @@ async def spawn_eval_agent_run(
             stderr_chunks.append(chunk.decode("utf-8", errors="replace"))
 
     stderr_task = asyncio.create_task(_drain_stderr())
+
+    async def _kill_child() -> None:
+        if proc.returncode is not None:
+            return
+        try:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=2.0)
+        except (asyncio.TimeoutError, ProcessLookupError):
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except ProcessLookupError:
+                    pass
+
     try:
         try:
             async for ev in _read_subprocess_stream(proc.stdout):
@@ -270,9 +285,7 @@ async def spawn_eval_agent_run(
             # start_stream's docstring) — killing the subprocess here is
             # the fix at the source rather than relying on the DB-side
             # backstop alone.
-            if proc.returncode is None:
-                proc.kill()
-                await proc.wait()
+            await _kill_child()
             logger.error(
                 "eval-agent produced no output for %ss — killed as hung",
                 _SUBPROCESS_IDLE_TIMEOUT_S,
@@ -283,7 +296,7 @@ async def spawn_eval_agent_run(
                     "message": (
                         "Verification subprocess produced no output for "
                         f"{_SUBPROCESS_IDLE_TIMEOUT_S}s and was terminated "
-                        "as hung. This usually means the Gemini API call "
+                        "as hung. This usually means the judge API call "
                         "itself stalled — retry, or check the API key/quota."
                     ),
                     "return_code": proc.returncode,
@@ -310,16 +323,17 @@ async def spawn_eval_agent_run(
             )
         yield AgentEvent(type="runner.exit", payload={"return_code": rc})
     except asyncio.CancelledError:
-        if proc.returncode is None:
-            try:
-                proc.terminate()
-                await asyncio.wait_for(proc.wait(), timeout=2.0)
-            except (asyncio.TimeoutError, ProcessLookupError):
-                if proc.returncode is None:
-                    proc.kill()
-                    await proc.wait()
+        await _kill_child()
         raise
     finally:
+        # GeneratorExit (consumer break/aclose) is not CancelledError — without
+        # this the child keeps judging after the parent already emitted
+        # session.end and marked the job complete (Rule W-126).
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
         if not stderr_task.done():
             stderr_task.cancel()
 

@@ -103,9 +103,14 @@ export function useVerifyJob({
         || outcome === "partial"
         || (scopeTotal > 0 && judged < scopeTotal)
       ) {
+        const runnerHint = typeof result.runner_error === "string" && result.runner_error.trim()
+          ? result.runner_error.trim()
+          : "";
         const partialHint = kind === "ner_verify"
           ? "some entities may have been below the confidence threshold or errored"
-          : "some candidates could not be judged (eval-agent error)";
+          : runnerHint
+            ? runnerHint
+            : "the judge stopped early before finishing the full scope — retry the remaining items";
         const msg = skipped > 0
           ? `Verified ${judged} of ${scopeTotal || judged}. ${skipped} were skipped because the eval-agent could not run on this server.`
           : `Verified ${judged} of ${scopeTotal} — ${partialHint}.`;

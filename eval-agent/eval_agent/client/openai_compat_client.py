@@ -116,14 +116,31 @@ class OpenAICompatJudge:
                     exc.code, attempt + 1, truncate(body_text, 300),
                 )
                 if exc.code == 429 and attempt < self._max_retries - 1:
-                    wait = self._retry_base_seconds * (2 ** attempt)
+                    wait = min(
+                        self._retry_base_seconds * (2 ** attempt),
+                        90,
+                    )
+                    print(
+                        f"[STEP] judge retry after HTTP 429 "
+                        f"(wait {wait}s, attempt {attempt + 1})",
+                        flush=True,
+                    )
                     time.sleep(wait)
                     last_err = RuntimeError(f"HTTP 429 (retried after {wait}s): {body_text[:200]}")
                     continue
                 raise RuntimeError(f"HTTP {exc.code}: {body_text[:500]}") from exc
             except (urllib.error.URLError, TimeoutError) as exc:
                 if attempt < self._max_retries - 1:
-                    time.sleep(self._retry_base_seconds * (2 ** attempt))
+                    wait = min(
+                        self._retry_base_seconds * (2 ** attempt),
+                        90,
+                    )
+                    print(
+                        f"[STEP] judge retry after network error "
+                        f"(wait {wait}s, attempt {attempt + 1})",
+                        flush=True,
+                    )
+                    time.sleep(wait)
                     last_err = RuntimeError(f"transient network: {exc}")
                     continue
                 raise RuntimeError(f"network error: {exc}") from exc

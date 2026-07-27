@@ -167,8 +167,10 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             if ev.type == "session.start":
                 total = int((ev.payload or {}).get("scope_size") or total)
             if ev.type == "runner.error":
+                # Keep draining until session.end so TRACE verdicts + partial
+                # outcome are recorded (Rule W-126). Only fail hard when the
+                # stream dies without a session.end framing event.
                 error_message = str((ev.payload or {}).get("message") or "verify failed")
-                break
             if ev.type == "agent.verdict":
                 candidate_id = _verdict_identity(ev)
                 if candidate_id is not None:
@@ -196,7 +198,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
         return
 
-    if error_message:
+    if error_message and not session_summary:
         await finish_job(
             job_id,
             status=JOB_STATUS_FAILED,
@@ -223,6 +225,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             "fresh_verdicts": session_summary.get("fresh_verdicts"),
             "uncached_skipped": session_summary.get("uncached_skipped"),
             "unverifiable_no_id": session_summary.get("unverifiable_no_id"),
+            "runner_error": session_summary.get("runner_error"),
             "session_snapshot": session_snapshot,
         },
         progress={

@@ -7,6 +7,7 @@
 | `backend/app/pipeline/agent_runner.py` | Core runner: `locate_eval_agent`, `resolve_verify_state_dir/-session_dir`, `spawn_eval_agent_run`, `sse_stream`, trace persistence + session listing/reading (both layouts) |
 | `backend/scripts/analyze_wikidata_verdicts.py` | Token-minimal, read-only Codex CLI analysis of only `partial`/`fail` rows from Wikidata CSV/JSON exports |
 | `backend/app/pipeline/verify_job.py` | Background-job wrapper (`run_verify_job`) for the four job-backed channels; embeds partial `session_snapshot` in `run_jobs.progress` (live) and full snapshot in `run_jobs.result` (terminal) |
+| `backend/app/pipeline/verify_outcome.py` | Honest `complete`/`partial` outcome + TRACE/checkpoint verdict merge (Rule W-126) |
 | `backend/app/pipeline/verify_session_store.py` | `load_verify_session`: disk trace OR job-row `session_snapshot` fallback (Heroku multi-dyno) |
 | `backend/app/pipeline/ner_verdict_cache.py` | NER `ai_verdict` cache keys, content fingerprints, `sanitise_stale_ai_verdict` |
 | `backend/app/pipeline/run_job_params.py` | Validates verify job params; resolves tier-1 credentials before spawn |

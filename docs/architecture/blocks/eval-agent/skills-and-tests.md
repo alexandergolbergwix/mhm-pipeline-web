@@ -111,6 +111,8 @@ python backend/scripts/analyze_wikidata_verdicts.py \
   precedence.
 - `backend/tests/unit/test_verify_job_progress.py` — partial `session_snapshot`
   in `progress`.
+- `backend/tests/unit/test_verify_outcome.py` — incomplete scope → `partial`,
+  TRACE/checkpoint merge (Rule W-126).
 - `backend/tests/test_extraction_verify_router.py`,
   `test_extraction_verify_suggested_fix.py` — NER channel routes, threshold
   sentinel, verdict persistence + suggested_fix.
