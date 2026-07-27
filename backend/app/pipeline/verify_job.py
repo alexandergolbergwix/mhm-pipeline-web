@@ -23,7 +23,10 @@ from app.pipeline.run_job_service import (
     is_cancel_requested,
     update_job_progress,
 )
-from app.pipeline.verify_session_store import snapshot_from_collected_events
+from app.pipeline.verify_session_store import (
+    slim_job_session_snapshot,
+    snapshot_from_collected_events,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +71,58 @@ def _progress_from_event(
     }
 
 
-# Writing the full TRACE blob on every verdict ballooned to >1 MB and
-# starved the web dyno's event loop / Postgres (Rule W-127). Live UI only
-# needs periodic verdict hydration; terminal result still carries everything.
-_PROGRESS_SNAPSHOT_INTERVAL_S = 5.0
-_PROGRESS_SNAPSHOT_EVERY_N_VERDICTS = 10
+# Mid-run progress MUST stay counter-only on the 512 MB web dyno (Rule W-128).
+# Embedding even throttled snapshots + full TRACE still R14'd (job ecfdcf29:
+# H12 on job polls, then a ~1.8 MB terminal GET). Terminal result gets a slim
+# verdicts-only snapshot; full evidence stays on disk / overrides / cache.
+_PROGRESS_WRITE_INTERVAL_S = 2.0
+_KEEP_COLLECTED_EVENT_TYPES = frozenset({
+    "session.start",
+    "session.end",
+    "agent.verdict",
+    "runner.error",
+    "runner.warning",
+    "runner.exit",
+})
 
 
+def _should_collect_event(ev: AgentEvent) -> bool:
+    return ev.type in _KEEP_COLLECTED_EVENT_TYPES
+
+
+def _progress_counters(
+    ev: AgentEvent,
+    *,
+    total: int,
+    judged: int,
+    session_id: str,
+) -> dict[str, Any]:
+    return _progress_from_event(
+        ev, total=total, judged=judged, session_id=session_id,
+    )
+
+
+def _should_write_progress(
+    ev: AgentEvent,
+    *,
+    last_write_at: list[float],
+) -> bool:
+    """Throttle mid-run DB progress writes; always flush framing events."""
+    import time  # noqa: PLC0415
+
+    if ev.type in (
+        "session.start", "session.end", "runner.error", "runner.exit",
+    ):
+        last_write_at[0] = time.monotonic()
+        return True
+    now = time.monotonic()
+    if (now - last_write_at[0]) >= _PROGRESS_WRITE_INTERVAL_S:
+        last_write_at[0] = now
+        return True
+    return False
+
+
+# Back-compat name used by unit tests (W-127 → W-128: mid-run never snapshots).
 def _progress_with_snapshot(
     ev: AgentEvent,
     *,
@@ -86,52 +134,26 @@ def _progress_with_snapshot(
     force_snapshot: bool = False,
     last_snapshot_at: list[float] | None = None,
 ) -> dict[str, Any]:
-    """Progress row for Postgres — throttled partial session_snapshot."""
-    import time  # noqa: PLC0415
-
-    progress = _progress_from_event(
+    """Progress row for Postgres — counters only mid-run (Rule W-128)."""
+    progress = _progress_counters(
         ev, total=total, judged=judged, session_id=session_id,
     )
+    is_terminal = ev.type in ("session.end", "runner.error")
+    if not (force_snapshot and is_terminal) and not is_terminal:
+        return progress
     if not collected_events:
         return progress
-
-    now = time.monotonic()
-    prev = last_snapshot_at[0] if last_snapshot_at else 0.0
-    is_terminal = ev.type in ("session.end", "runner.error")
-    is_milestone = (
-        ev.type == "agent.verdict"
-        and judged > 0
-        and judged % _PROGRESS_SNAPSHOT_EVERY_N_VERDICTS == 0
+    snap = slim_job_session_snapshot(
+        snapshot_from_collected_events(
+            run_id=str(run_id),
+            session_id=session_id,
+            events=collected_events,
+        ),
     )
-    due = (now - prev) >= _PROGRESS_SNAPSHOT_INTERVAL_S
-    if not (force_snapshot or is_terminal or is_milestone or due):
-        return progress
-
-    snap = snapshot_from_collected_events(
-        run_id=str(run_id),
-        session_id=session_id,
-        events=collected_events,
-    )
-    if not is_terminal:
-        # Mid-run: keep verdicts for the live table; drop bulky TRACE noise.
-        snap = {
-            "session_id": snap.get("session_id"),
-            "run_id": snap.get("run_id"),
-            "verdicts": snap.get("verdicts") or [],
-            "events": [
-                e for e in (snap.get("events") or [])
-                if e.get("type") in (
-                    "session.start",
-                    "agent.verdict",
-                    "agent.stats",
-                    "runner.error",
-                    "runner.warning",
-                )
-            ],
-        }
     progress["session_snapshot"] = snap
     if last_snapshot_at is not None:
-        last_snapshot_at[0] = now
+        import time  # noqa: PLC0415
+        last_snapshot_at[0] = time.monotonic()
     return progress
 
 
@@ -159,6 +181,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     collected_events: list[dict[str, Any]] = []
     judged_candidate_ids: set[str] = set()
     last_snapshot_at: list[float] = [0.0]
+    last_write_at: list[float] = [0.0]
     await update_job_progress(job_id, {
         "phase": "preparing",
         "processed": 0,
@@ -193,7 +216,8 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
 
     try:
         async for ev in stream:
-            collected_events.append({"type": ev.type, **(ev.payload or {})})
+            if _should_collect_event(ev):
+                collected_events.append({"type": ev.type, **(ev.payload or {})})
             if await is_cancel_requested(job_id):
                 await stream.aclose()
                 await finish_job(
@@ -224,19 +248,19 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                     candidate_count = len(judged_candidate_ids)
                     judged = min(candidate_count, total) if total else candidate_count
 
-            await update_job_progress(
-                job_id,
-                _progress_with_snapshot(
-                    ev,
-                    total=total,
-                    judged=judged,
-                    session_id=session_id,
-                    run_id=run_id,
-                    collected_events=collected_events,
-                    force_snapshot=ev.type == "session.start",
-                    last_snapshot_at=last_snapshot_at,
-                ),
-            )
+            if _should_write_progress(ev, last_write_at=last_write_at):
+                await update_job_progress(
+                    job_id,
+                    _progress_with_snapshot(
+                        ev,
+                        total=total,
+                        judged=judged,
+                        session_id=session_id,
+                        run_id=run_id,
+                        collected_events=collected_events,
+                        last_snapshot_at=last_snapshot_at,
+                    ),
+                )
 
             if ev.type == "session.end":
                 session_summary = dict(ev.payload or {})
@@ -255,10 +279,12 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
         )
         return
 
-    session_snapshot = snapshot_from_collected_events(
-        run_id=str(run_id),
-        session_id=session_id,
-        events=collected_events,
+    session_snapshot = slim_job_session_snapshot(
+        snapshot_from_collected_events(
+            run_id=str(run_id),
+            session_id=session_id,
+            events=collected_events,
+        ),
     )
 
     await finish_job(

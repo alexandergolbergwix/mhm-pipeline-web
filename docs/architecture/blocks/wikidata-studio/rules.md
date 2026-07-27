@@ -305,3 +305,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `runner.exit` never arrives; rely on throttled job snapshots + mid-HTTP
     `[STEP]` heartbeats + incremental `results.jsonl`.
     *Why:* job 06b44db0 stopped at 52/313 with no exit/checkpoint.
+
+54. **R54 — Wikidata verify job polls MUST stay light (Rule W-128).**
+    Mid-run counters only; slim terminal `session_snapshot`; UI hydrates the
+    VerdictsTable from the job result when polls starved mid-run.
+    *Why:* job ecfdcf29 looked stuck at 53/313 with VERDICTS (0) after R14/H12.

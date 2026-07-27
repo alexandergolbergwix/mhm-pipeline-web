@@ -7,7 +7,8 @@
 | `backend/app/pipeline/agent_runner.py` | Core runner: `locate_eval_agent`, `resolve_verify_state_dir/-session_dir`, `spawn_eval_agent_run`, `sse_stream`, trace persistence + session listing/reading (both layouts) |
 | `backend/scripts/analyze_wikidata_verdicts.py` | Token-minimal, read-only Codex CLI analysis of only `partial`/`fail` rows from Wikidata CSV/JSON exports |
 | `backend/app/pipeline/verify_outcome.py` | Honest `complete`/`partial` outcome + TRACE/checkpoint verdict merge (Rule W-126) + synthesize missing `runner.exit` (Rule W-127) |
-| `backend/app/pipeline/verify_job.py` | Background-job wrapper (`run_verify_job`) for the four job-backed channels; throttled partial `session_snapshot` in `run_jobs.progress` (Rule W-127) and full snapshot in `run_jobs.result` (terminal) |
+| `backend/app/pipeline/verify_job.py` | Background-job wrapper (`run_verify_job`); mid-run counters-only progress + slim terminal snapshot (Rule W-128) |
+| `backend/app/pipeline/verify_session_store.py` | Disk vs job-row session load; `slim_job_session_snapshot` for wire-safe payloads (Rule W-128) |
 | `eval-agent/eval_agent/client/step_heartbeat.py` | Mid-HTTP `[STEP]` keepalive thread so parent idle-kill does not fire during long judge calls (Rule W-127) |
 | `backend/app/pipeline/verify_session_store.py` | `load_verify_session`: disk trace OR job-row `session_snapshot` fallback (Heroku multi-dyno) |
 | `backend/app/pipeline/ner_verdict_cache.py` | NER `ai_verdict` cache keys, content fingerprints, `sanitise_stale_ai_verdict` |

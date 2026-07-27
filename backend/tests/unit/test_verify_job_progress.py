@@ -1,4 +1,4 @@
-"""Verify jobs embed a partial session_snapshot in progress for live UI."""
+"""Verify job progress counters + terminal slim snapshot (Rule W-128)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from app.pipeline.agent_runner import AgentEvent
 from app.pipeline.verify_job import _progress_with_snapshot, _verdict_identity
 
 
-def test_progress_with_snapshot_includes_verdicts() -> None:
+def test_mid_run_progress_is_counters_only() -> None:
     run_id = uuid.uuid4()
     session_id = "sess-live"
     events = [
@@ -28,13 +28,34 @@ def test_progress_with_snapshot_includes_verdicts() -> None:
         run_id=run_id,
         collected_events=events,
     )
-    snap = progress.get("session_snapshot")
-    assert isinstance(snap, dict)
-    assert snap["session_id"] == session_id
-    assert snap["run_id"] == str(run_id)
-    assert len(snap.get("verdicts") or []) == 1
+    assert "session_snapshot" not in progress
     assert progress["processed"] == 1
     assert progress["session_id"] == session_id
+
+
+def test_terminal_progress_includes_slim_verdicts() -> None:
+    run_id = uuid.uuid4()
+    session_id = "sess-end"
+    events = [
+        {"type": "session.start", "scope_size": 1},
+        {
+            "type": "agent.verdict",
+            "candidate": {"_local_id": "QDraft_A"},
+            "verdict": {"overall": "pass", "reasoning": "ok"},
+        },
+    ]
+    progress = _progress_with_snapshot(
+        AgentEvent(type="session.end", payload={"outcome": "partial"}),
+        total=1,
+        judged=1,
+        session_id=session_id,
+        run_id=run_id,
+        collected_events=events,
+    )
+    snap = progress.get("session_snapshot")
+    assert isinstance(snap, dict)
+    assert snap["events"] == []
+    assert len(snap.get("verdicts") or []) == 1
 
 
 def test_progress_without_events_omits_snapshot() -> None:
@@ -47,7 +68,6 @@ def test_progress_without_events_omits_snapshot() -> None:
         collected_events=[],
     )
     assert "session_snapshot" not in progress
-
 
 
 def test_replayed_verdict_has_the_same_progress_identity() -> None:

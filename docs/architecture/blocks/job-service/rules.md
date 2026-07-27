@@ -73,4 +73,4 @@
 
 19. **R19 — Studio publish/upload MUST be `run_jobs` (Rule W-107).** `hmo_item_upload` (dry-run + live), `hmo_manifest_upload`, and `wikidata_upload` (including the legacy `POST …/wikidata-studio/upload` alias) enqueue; never run sequential Wikibase/Wikidata writes on the request path. *Why:* thousands of sequential writes H12; dry-run over ~2k items also exceeds the router budget.
 
-20. **R20 — Live verify `session_snapshot` MUST be throttled (Rule W-127).** Write a slim snapshot ~every 5 s / every 10 verdicts / on terminal — never on every TRACE event. Mid-run keep verdicts; drop bulky events. *Why:* megabyte progress blobs on each of ~50 DeepSeek verdicts starved the web dyno event loop and contributed to silent early stops (job 06b44db0).
+20. **R20 — Live verify `session_snapshot` MUST be throttled / slim (Rules W-127 / W-128).** Mid-run progress is **counters only** (no snapshot). Progress DB writes ~every 2 s. Terminal `result.session_snapshot` is compact verdicts + empty events; `serialise_job` re-slims. *Why:* job ecfdcf29 R14'd + H12'd job polls while the modal showed VERDICTS (0) on a finished partial job.

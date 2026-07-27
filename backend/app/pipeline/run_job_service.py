@@ -523,15 +523,36 @@ def _public_params(params: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def serialise_job(job: RunJob) -> dict[str, Any]:
+    progress = job.progress or {}
+    result = job.result
+    # Never ship TRACE events on the wire — job polls H12'd at ~1.8 MB (W-128).
+    if isinstance(result, dict) and isinstance(result.get("session_snapshot"), dict):
+        from app.pipeline.verify_session_store import (  # noqa: PLC0415
+            slim_job_session_snapshot,
+        )
+
+        result = {
+            **result,
+            "session_snapshot": slim_job_session_snapshot(result["session_snapshot"]),
+        }
+    if isinstance(progress, dict) and isinstance(progress.get("session_snapshot"), dict):
+        from app.pipeline.verify_session_store import (  # noqa: PLC0415
+            slim_job_session_snapshot,
+        )
+
+        progress = {
+            **progress,
+            "session_snapshot": slim_job_session_snapshot(progress["session_snapshot"]),
+        }
     return {
         "id":              str(job.id),
         "project_id":      str(job.project_id),
         "run_id":          str(job.run_id),
         "kind":            job.kind,
         "status":          job.status,
-        "progress":        job.progress or {},
+        "progress":        progress,
         "params":          _public_params(job.params),
-        "result":          job.result,
+        "result":          result,
         "error":           job.error,
         "created_by":      str(job.created_by) if job.created_by else None,
         "started_at":      job.started_at.isoformat() if job.started_at else None,

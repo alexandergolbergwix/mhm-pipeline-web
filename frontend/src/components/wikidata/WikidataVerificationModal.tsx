@@ -336,6 +336,14 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
             )}
           </div>
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} variant="wikidata" />
+          {running
+            && Number(progress?.processed ?? 0) > 0
+            && Object.keys(verdicts).length === 0 && (
+            <p className="text-xs muted mt-2">
+              Live verdict rows fill when the job finishes (or from a slim
+              snapshot) — progress above is still updating.
+            </p>
+          )}
         </Glass>
 
         <VerdictsTable

@@ -3034,3 +3034,37 @@ Invariant:
 
 Tests: `test_verify_job_progress_throttle.py`, `test_verify_outcome.py`
 (synthesize / missing exit), `eval-agent/tests/test_step_heartbeat.py`.
+
+### Rule W-128 — Verify job polls MUST stay light on the web dyno (added 2026-07-27)
+
+Incident: after W-127, Wikidata verify job `ecfdcf29` (DeepSeek, scope 313)
+climbed to **53/313** (52 cache hits + 1 fresh) then the **512 MB** web dyno
+hit **R14 (Memory quota exceeded)** and job polls **H12**'d. The modal
+stayed on RUNNING with **VERDICTS (0)** while the tray still showed 53/313.
+The job had already finished `outcome=partial` with a clear
+`runner_error`; the UI never hydrated because mid-run/terminal
+`session_snapshot` payloads (~0.5–1.8 MB with full TRACE + evidence)
+starved the event loop and the browser poll.
+
+Invariant:
+
+1. **Mid-run progress is counters only** — no `session_snapshot` in
+   `run_jobs.progress` while judging (Rule W-127 throttle was not enough).
+2. **Throttle progress DB writes** (~2 s) except framing events
+   (`session.start` / `session.end` / `runner.*`).
+3. **Collect only framing + verdict events** into the worker's in-memory
+   list (drop STEP/STATS TRACE noise).
+4. **Terminal `result.session_snapshot` is slim** — compact verdicts
+   (label / overall / truncated reasoning), **empty `events`**. Full
+   evidence remains on disk TRACE, overrides, and inference cache.
+5. **`serialise_job` re-slims** any legacy fat snapshot before the wire.
+6. Curator UI may show an empty VerdictsTable mid-run while the counter
+   advances; on terminal success it MUST hydrate from the slim job
+   snapshot / session GET.
+
+**Curator ops:** Close and reopen the verify modal (or refresh) if the
+UI looks stuck after a partial finish. Prefer Gemini/Kimi for large
+override-cache scopes on the current dyno size — DeepSeek + full
+evidence still OOMs around the first uncached batch after warm hits.
+
+Tests: `test_verify_job_progress.py`, `test_verify_job_progress_throttle.py`.

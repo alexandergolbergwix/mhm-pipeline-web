@@ -66,7 +66,11 @@ export function useVerifyJob({
       job.progress?.session_id ?? job.params?.session_id ?? "",
     );
     const hasInlineSnapshot = Boolean(jobVerifySessionSnapshot(job)?.verdicts?.length);
-    if (sessionId && (shouldLoadVerifySession(job) || hasInlineSnapshot)) {
+    const terminalWithSnapshot = (
+      !isJobActive(job.status)
+      && Boolean(jobVerifySessionSnapshot(job)?.verdicts?.length)
+    );
+    if (sessionId && (shouldLoadVerifySession(job) || hasInlineSnapshot || terminalWithSnapshot)) {
       try {
         await loadSessionRef.current(sessionId, job);
       } catch (e) {
