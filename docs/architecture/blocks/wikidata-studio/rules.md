@@ -285,3 +285,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     pack as first-class and accept browseable HMO Item:Q bridges.
     *Why:* export (12) failed with “No MARC context” while authority/HMO
     evidence was present but invisible to the judge.
+
+51. **R51 — Canonical Studio merges full MARC/authority enrichment (Rule W-125).**
+    `execute_studio_build(source=canonical)` merges legacy
+    `build_items_for_run` claims onto HMO-rooted items via
+    `wikidata_canonical_enrichment.merge_legacy_into_canonical`. Fingerprint
+    `hmo-wikidata-v9`. Provenance events, P106, and P1680 participate.
+    *Why:* PhD RQ2/RQ4 need research-grade claims; canonical-only emit was
+    an identity shell.

@@ -295,13 +295,89 @@ class ManuscriptMetadataMixin:
         record: dict[str, object],
         ref: list[dict[str, str]],
     ) -> None:
-        """Add provenance claims from NER-extracted MARC 561 entities.
+        """Add provenance claims from NER-extracted MARC 561 entities and
+        structured ``provenance_events`` (541/583 — Rule W-32 / W-125).
 
         OWNER → P127 (owned by) with optional P580/P582 date qualifiers.
+        Acquisition / exhibition / conservation events → P7153
+        (significant place) when a place Wikidata QID is known — never invent
+        event-class QIDs for P793. Otherwise retain named-as evidence on P127
+        only for ownership agents.
         COLLECTION → noted via P1932 (named as) qualifier on P195.
         """
         entities = record.get("entities") or []
         prov_entities = [e for e in entities if e.get("source") == "provenance_ner"]
+
+        # Promote structured custody events into the same owner/date channels
+        # the NER path already understands (Rule W-125).
+        for event in record.get("provenance_events") or []:
+            if not isinstance(event, dict):
+                continue
+            event_type = str(event.get("type") or "").strip().lower()
+            agent = str(event.get("agent_name") or "").strip()
+            place = str(event.get("place_text") or "").strip()
+            year = event.get("year") or event.get("year_earliest")
+            if year:
+                prov_entities.append({
+                    "source": "provenance_ner",
+                    "type": "DATE",
+                    "text": str(year),
+                })
+            if agent and event_type in {"acquisition", "ownership", "owner"}:
+                role = "former owner" if event_type != "ownership" else "owner"
+                prov_entities.append({
+                    "source": "provenance_ner",
+                    "type": "OWNER",
+                    "text": agent,
+                    "role": role,
+                    "viaf_uri": event.get("viaf_uri"),
+                    "mazal_id": event.get("mazal_id"),
+                })
+            # Significant place from structured custody events (Rule W-125).
+            # Avoid inventing unverified event-class QIDs for P793.
+            place_qid = str(event.get("wikidata_id") or "").strip()
+            if place_qid and not place_qid.upper().startswith("Q"):
+                place_qid = f"Q{place_qid}"
+            if place_qid and event_type in {
+                "exhibition", "conservation", "acquisition", "owner_place",
+            }:
+                from converter.wikidata.property_mapping import (  # noqa: PLC0415
+                    P_SIGNIFICANT_PLACE,
+                    P_START_TIME,
+                )
+                qualifiers: list[dict[str, object]] = []
+                if year:
+                    try:
+                        y = int(str(year)[:4])
+                        qualifiers.append({
+                            "property": P_START_TIME,
+                            "value": f"+{y:04d}-00-00T00:00:00Z",
+                            "type": "time",
+                        })
+                    except ValueError:
+                        pass
+                if event_type:
+                    qualifiers.append({
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": f"{event_type}: {place}" if place else event_type,
+                        "type": "string",
+                    })
+                elif place:
+                    qualifiers.append({
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": place,
+                        "type": "string",
+                    })
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_SIGNIFICANT_PLACE,
+                        value=place_qid,
+                        value_type="item",
+                        qualifiers=qualifiers,
+                        references=ref,
+                    )
+                )
+
         if not prov_entities:
             return
 

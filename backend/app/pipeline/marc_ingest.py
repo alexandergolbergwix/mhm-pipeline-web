@@ -434,6 +434,8 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     title_b = _str(record.get("245$b"))
     if title_a and not record.get("title"):
         record["title"] = (title_a + (f" {title_b}" if title_b else "")).strip(" :./,")
+    if title_b and not record.get("subtitle"):
+        record["subtitle"] = title_b.strip(" :./,")
 
     # ── Authors (MARC 100, 110, 111) ────────────────────────────────
     authors = list(record.get("authors") or [])

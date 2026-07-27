@@ -2939,3 +2939,32 @@ only if item fields themselves changed.
 
 Tests: `test_wikidata_verify_evidence.py`, `test_wikidata_verify_scope_cache.py`
 (quoted-CN join), `eval-agent/tests/test_wikidata_manuscripts_skill.py`.
+
+### Rule W-125 — Canonical Wikidata Studio MUST merge full MARC/authority enrichment (added 2026-07-27)
+
+PhD proposal RQ2/RQ4 require research-grade public items (production, place,
+language, works, agents, housing, themes, provenance). Export `(12)` on the
+canonical Studio path emitted only identity shells
+(`P3959`/`P31`/`P2888`/`P973` on manuscripts; `P214`/`P31`/`P2888` on persons;
+`P1476`/`P31`/`P2888` on works) because HMO claim→QID mapping fail-closed on
+project QIDs and did not re-run the legacy MARC builder.
+
+Invariant:
+
+1. **Canonical build merges legacy.** `execute_studio_build(source=canonical)`
+   runs `build_items_for_run` (MARC + approved authority + NER) and
+   `merge_legacy_into_canonical` keeps HMO `local_id` / bridges /
+   `existing_qid` while unioning research claims (P571, P1071, P407, P1574,
+   P217, P195, P11603, P127, P186, P1104, P9302, P136/P921, P953/P6108,
+   work P50/P2093, person P8189/dates, …).
+2. **Provenance events** (`record["provenance_events"]`) feed
+   `_add_provenance_claims` (owners/dates + P7153 significant places).
+3. **Person P106** occupation from role; **P1680** subtitle from MARC 245$b.
+4. Fingerprint salt `hmo-wikidata-v9` includes the MARC/authority enrichment
+   fingerprint so cache invalidates when either HMO or MARC inputs change.
+
+**Curator ops:** Wikidata Studio **Rebuild (skip cache)** on canonical source,
+then re-verify.
+
+Tests: `test_wikidata_canonical_enrichment.py`,
+`test_hmo_canonical_wikidata.py` (merge + fingerprint).

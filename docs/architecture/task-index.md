@@ -9,6 +9,7 @@
 | Change matching, guards, or authority data | [authority](blocks/authority/README.md) |
 | Change ontology output or graph build | [rdf-graph](blocks/rdf-graph/README.md) |
 | Touch anything that writes to Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) — read its `rules.md` **before** coding |
+| Enrich canonical Studio with full MARC/authority claims (W-125) | [wikidata-studio build](blocks/wikidata-studio/build-and-cache.md) + `wikidata_canonical_enrichment.py` |
 | Map HMO / project Wikibase P/Q → public Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) R38 + `hmo_wikidata_pq_mapper.py` + [docs/wikidata-data-access.md](../wikidata-data-access.md) |
 | Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |

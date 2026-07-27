@@ -222,10 +222,18 @@ def wikidata_candidates_from_hmo(
     ]
 
 
-def canonical_wikidata_fingerprint(entities: Iterable[CanonicalHmoEntity]) -> str:
+def canonical_wikidata_fingerprint(
+    entities: Iterable[CanonicalHmoEntity],
+    *,
+    enrichment_fingerprint: str | None = None,
+) -> str:
     candidates = wikidata_candidates_from_hmo(entities)
     payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
-    return hashlib.sha256(("hmo-wikidata-v8:" + payload).encode()).hexdigest()
+    # v9: MARC/authority enrichment merge (Rule W-125) participates in the salt.
+    salt = "hmo-wikidata-v9:"
+    if enrichment_fingerprint:
+        salt = f"{salt}enrich={enrichment_fingerprint}:"
+    return hashlib.sha256((salt + payload).encode()).hexdigest()
 
 
 def uploadable_entities_from_hmo(
@@ -411,9 +419,18 @@ def build_canonical_studio_result(
     return_native: bool = False,
     reconcile: bool = True,
     context: CanonicalStudioContext | None = None,
+    legacy_native_items: list[Any] | None = None,
 ) -> dict[str, Any]:
-    """Build serialised Wikidata Studio items from durable HMO snapshots."""
+    """Build serialised Wikidata Studio items from durable HMO snapshots.
+
+    When ``legacy_native_items`` is provided (Rule W-125), merge the rich
+    MARC/authority projection onto canonical items while keeping HMO
+    ``local_id`` / bridge / ``existing_qid`` identity.
+    """
     from app.pipeline import wikidata_studio  # noqa: PLC0415
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        merge_legacy_into_canonical,
+    )
     from app.pipeline.wikidata_upload import _reconcile_sync  # noqa: PLC0415
     from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
     from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
@@ -422,6 +439,8 @@ def build_canonical_studio_result(
     uploadable = uploadable_entities_from_hmo(materialized)
     rollup_stats = _rollup_summary_stats(materialized, uploadable)
     native_items = native_items_from_hmo(materialized, context=context)
+    if legacy_native_items:
+        native_items = merge_legacy_into_canonical(native_items, list(legacy_native_items))
     entities_by_local_id = {entity.local_id: entity for entity in materialized}
 
     if overrides:
@@ -456,9 +475,12 @@ def build_canonical_studio_result(
             )
         entity = entities_by_local_id.get(item.local_id)
         item_dict.update({
-            "source_uri": entity.source_uri if entity else None,
-            "hmo_wikibase_id": entity.wikibase_id if entity else None,
-            "projection_source": "hmo_wikibase",
+            "source_uri": entity.source_uri if entity else item_dict.get("source_uri"),
+            "hmo_wikibase_id": entity.wikibase_id if entity else item_dict.get("hmo_wikibase_id"),
+            "projection_source": (
+                "hmo_wikibase+marc" if legacy_native_items and entity
+                else ("marc" if legacy_native_items and not entity else "hmo_wikibase")
+            ),
             "source_fingerprint": entity.source_fingerprint if entity else None,
             "validation_issues": issues,
         })
@@ -477,6 +499,7 @@ def build_canonical_studio_result(
             "skipped_entities": max(0, len(materialized) - len(native_items)),
             "rolled_up_entities": rollup_stats["rolled_up_entities"],
             "summarized_hmo_nodes": rollup_stats["summarized_hmo_nodes"],
+            "legacy_enriched": bool(legacy_native_items),
         },
     }
 

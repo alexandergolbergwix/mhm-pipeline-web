@@ -293,6 +293,23 @@ class ManuscriptProjectionMixin:
                     references=ref,
                 )
             )
+        subtitle = str(
+            record.get("subtitle")
+            or record.get("245$b")
+            or ""
+        ).strip().strip(_QUOTE_CHARS + " /:")
+        if subtitle:
+            from converter.wikidata.property_mapping import P_SUBTITLE  # noqa: PLC0415
+
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_SUBTITLE,
+                    value=_normalise_label(subtitle),
+                    value_type="monolingualtext",
+                    language="he",
+                    references=ref,
+                )
+            )
 
         # ── Language & writing system ────────────────────────────
         self._add_languages(item, record, ref)

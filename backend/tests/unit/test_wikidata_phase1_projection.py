@@ -204,3 +204,47 @@ def test_printed_facsimile_exposes_semantic_subtype() -> None:
     })
     assert item.entity_type == "manuscript"
     assert item.semantic_type == "printed_facsimile"
+
+
+def test_provenance_events_emit_significant_place() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "PROV-EVENT",
+        "title": "כתב יד",
+        "provenance_events": [
+            {
+                "type": "exhibition",
+                "place_text": "London",
+                "wikidata_id": "Q84",
+                "year": 1900,
+            },
+        ],
+    })
+    places = _statements(item, "P7153")
+    assert [statement.value for statement in places] == ["Q84"]
+
+
+def test_subtitle_emits_p1680() -> None:
+    item = WikidataItemBuilder().build_manuscript_item({
+        "_control_number": "SUBTITLE",
+        "title": "כותרת",
+        "subtitle": "ותרגום",
+    })
+    assert [statement.value for statement in _statements(item, "P1680")] == ["ותרגום"]
+
+
+def test_scribe_person_emits_occupation_p106() -> None:
+    items = WikidataItemBuilder().build_all([{
+        "_control_number": "SCRIBE-OCC",
+        "title": "כתב יד",
+        "marc_authority_matches": [
+            {
+                "name": "Moshe Sofer",
+                "role": "scribe",
+                "mazal_id": "987007453092705171",
+                "entity_kind": "person",
+            },
+        ],
+    }])
+    persons = [item for item in items if item.entity_type == "person"]
+    assert persons
+    assert any(s.property_id == "P106" for s in persons[0].statements)

@@ -41,12 +41,22 @@ Before grouping build inputs, `build_items_for_run` runs every MARC record, appr
 
 Canonical source mode reads durable `hmo_canonical_entities` rows first; the per-run HMO cache is only a migration fallback. This keeps Wikidata Studio projections independent of cache retention. Claim predicates and item values are translated to public Wikidata P/Q only through `hmo_wikidata_pq_mapper` (ontology local-name / ledger URI → allowlist; bare project Cloud QIDs never become Wikidata values — Rule W-100).
 
+**Canonical enrichment (Rule W-125):** before validation, `execute_studio_build`
+also runs the legacy MARC/authority builder (`build_items_for_run`,
+`return_native=True`) and merges those claims onto HMO-rooted items via
+`wikidata_canonical_enrichment.merge_legacy_into_canonical`. Canonical
+`local_id`, P2888/P973 bridges, and `existing_qid` win; research claims
+(P571/P1071/P407/P1574/P217/P195/…, person dates/VIAF/Mazal, work P50)
+are unioned. Build fingerprint salt `hmo-wikidata-v9` includes the MARC/
+authority enrichment fingerprint so either input invalidates the cache.
+Summary flag: `legacy_enriched`; `projection_source` becomes
+`hmo_wikibase+marc` when enrichment applied.
+
 **Canonical rollup (Rule W-117):** only `manuscript` / `person` / `work` become
 Studio items. HMO classes with `summarized_in_wikidata` strategy contribute
 allowlisted claims onto the parent item when they share a control number
 (`hmo_canonical_wikidata._rollup_sources_for`). Build summary reports
-`rolled_up_entities` and `summarized_hmo_nodes`. Fingerprint salt:
-`hmo-wikidata-v4`.
+`rolled_up_entities` and `summarized_hmo_nodes`.
 
 The HMO-to-Wikidata boundary is deliberately narrow. `hmo_instance_qids_for_run`
 reads the run upload ledger, and `hmo_wikidata_projection` accepts a link only

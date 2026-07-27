@@ -24,6 +24,7 @@ P_INVENTORY_NUMBER = "P217"
 
 # Content
 P_TITLE = "P1476"
+P_SUBTITLE = "P1680"  # subtitle (Proposal / MARC 245$b)
 P_LANGUAGE = "P407"
 P_WRITING_SYSTEM = "P282"
 P_GENRE = "P136"

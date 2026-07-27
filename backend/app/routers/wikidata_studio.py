@@ -541,7 +541,13 @@ async def execute_studio_build(
         canonical = await _canonical_entities_for_run(db, run_id)
         if not canonical:
             raise ValueError(f"no durable HMO canonical entities for run {run_id}")
-        canonical_fp = canonical_wikidata_fingerprint(canonical)
+        enrichment_fp = wikidata_studio.compute_build_fingerprint(
+            records, all_matches, entity_rows, override_rows, approved_only,
+            hmo_instance_qids,
+        )
+        canonical_fp = canonical_wikidata_fingerprint(
+            canonical, enrichment_fingerprint=enrichment_fp,
+        )
         if (
             not force_rebuild
             and cached is not None
@@ -568,13 +574,19 @@ async def execute_studio_build(
         }
         approved_matches = [
             {
+                "id": str(m.id),
+                "control_number": m.control_number,
                 "entity_text": m.entity_text,
-                "matched_name": m.matched_name,
-                "role": m.role,
                 "entity_kind": m.entity_kind,
-                "viaf_id": m.viaf_id,
+                "role": m.role,
+                "field": (m.payload or {}).get("field") or "",
+                "matched_name": m.matched_name,
                 "mazal_id": m.mazal_id,
+                "viaf_id": m.viaf_id,
                 "wikidata_qid": m.wikidata_qid,
+                "confidence": m.confidence,
+                "source": m.source,
+                "approved": bool(m.approved),
                 "payload": m.payload or {},
             }
             for m in (m for m in all_matches if m.approved)
@@ -583,7 +595,27 @@ async def execute_studio_build(
             marc_records=[dict(r.marc) for r in records],
             approved_matches=approved_matches,
         )
+        entities_by_cn = _group_entity_rows(entity_rows, approved_only=True)
+        from converter.wikidata import hebrew_translit  # noqa: PLC0415
         from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+        prewarmed = await _prewarm_transliterations(
+            db, marc_records=[dict(r.marc) for r in records], user_id=run_user_id,
+        )
+        hebrew_translit.set_prewarmed_labels(prewarmed)
+        hebrew_translit.set_sync_network_disabled(True)
+        try:
+            legacy_result = await wikidata_studio.build_items_for_run(
+                marc_records=[dict(r.marc) for r in records],
+                approved_matches=approved_matches,
+                entities_by_cn=entities_by_cn,
+                overrides=overrides,
+                return_native=True,
+                hmo_instance_qids=hmo_instance_qids,
+            )
+        finally:
+            hebrew_translit.set_sync_network_disabled(False)
+            hebrew_translit.clear_prewarmed_labels()
 
         result = await run_in_threadpool(
             build_canonical_studio_result,
@@ -591,6 +623,7 @@ async def execute_studio_build(
             overrides=overrides,
             context=context,
             reconcile=reconcile,
+            legacy_native_items=legacy_result.get("native_items") or [],
         )
         items = result["items"]
         summary = result["summary"]

@@ -280,6 +280,24 @@ class PersonProjectionMixin:
             )
         )
 
+        # P106 occupation from role (Rule W-125 / PhD proposal agent richness).
+        if not is_org:
+            from converter.wikidata.item_builder import _ROLE_TO_OCCUPATION  # noqa: PLC0415
+            from converter.wikidata.property_mapping import P_OCCUPATION  # noqa: PLC0415
+
+            occupation_qid = _ROLE_TO_OCCUPATION.get(str(role or "").strip()) or (
+                _ROLE_TO_OCCUPATION.get(str(role or "").strip().upper())
+            )
+            if occupation_qid:
+                person.statements.append(
+                    WikidataStatement(
+                        property_id=P_OCCUPATION,
+                        value=occupation_qid,
+                        value_type="item",
+                        references=person_ref,
+                    )
+                )
+
         # Extract dates: first try direct authority ID match, then name match
         birth_year = None
         death_year = None

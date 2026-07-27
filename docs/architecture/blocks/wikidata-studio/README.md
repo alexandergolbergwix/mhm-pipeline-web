@@ -10,7 +10,9 @@ items — manuscripts, persons, works — using the shared `WikidataItemBuilder`
 compatibility facade, then lets a curator review, edit, approve, reconcile,
 and export/upload them. Canonical-source builds adapt durable
 `hmo_canonical_entities` through `hmo_wikidata_pq_mapper` (ontology / project
-Wikibase → public P/Q; never ID identity). The web pipeline reshapes DB rows
+Wikibase → public P/Q; never ID identity), then **merge full MARC/authority
+claims** from the legacy builder (Rule W-125) so research properties are not
+lost. The web pipeline reshapes DB rows
 into builder input. Projection code is split into focused modules, including
 the web-side source-aware work-candidate boundary; shared fixes need an
 explicit upstream port before the next desktop sync. Callers keep importing

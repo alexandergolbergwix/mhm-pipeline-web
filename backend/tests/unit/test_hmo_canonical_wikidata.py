@@ -57,10 +57,41 @@ def test_wikidata_projection_filters_unaccepted_evidence_and_maps_entity_type() 
     assert [row["identifier"] for row in result[0]["authority_evidence"]] == ["Q42"]
 
 
-def test_canonical_wikidata_fingerprint_changes_with_live_claims() -> None:
-    base = _person_entity()
-    changed = _person_entity(claims=[{"property_uri": "https://w3id.org/mhm/ontology#viaf_id", "value": "999888777"}])
-    assert canonical_wikidata_fingerprint([base]) != canonical_wikidata_fingerprint([changed])
+def test_canonical_build_merges_legacy_marc_claims() -> None:
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    manuscript = _manuscript_entity()
+    legacy = WikidataItem(
+        local_id="legacy-ms",
+        entity_type="manuscript",
+        records=["990001"],
+        labels={"he": "כתב יד"},
+        statements=[
+            WikidataStatement(property_id="P31", value="Q87167", value_type="item"),
+            WikidataStatement(property_id="P3959", value="990001", value_type="string"),
+            WikidataStatement(property_id="P571", value="+1600-00-00T00:00:00Z", value_type="time"),
+            WikidataStatement(property_id="P407", value="Q9288", value_type="item"),
+            WikidataStatement(property_id="P217", value="Heb. 1", value_type="string"),
+            WikidataStatement(property_id="P186", value="Q226697", value_type="item"),
+        ],
+    )
+    result = build_canonical_studio_result(
+        [manuscript],
+        reconcile=False,
+        legacy_native_items=[legacy],
+    )
+    assert result["summary"]["legacy_enriched"] is True
+    item = result["items"][0]
+    pids = {s.get("property") or s.get("property_id") for s in item["statements"]}
+    assert {"P571", "P407", "P217", "P186"} <= pids
+    assert item["projection_source"] == "hmo_wikibase+marc"
+
+
+def test_canonical_fingerprint_changes_with_enrichment_salt() -> None:
+    entity = _manuscript_entity()
+    assert canonical_wikidata_fingerprint([entity]) != canonical_wikidata_fingerprint(
+        [entity], enrichment_fingerprint="marc-v1",
+    )
 
 
 def test_uploadable_filter_excludes_internal_graph_nodes_and_unidentified_persons() -> None:
