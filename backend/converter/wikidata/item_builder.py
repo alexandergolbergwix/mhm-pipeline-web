@@ -615,23 +615,9 @@ def _is_catalog_note_placeholder(value: object) -> bool:
     after the shared MARC/NER merge. Keeping them in source evidence is useful,
     but projecting them as P1684 would make a false scholarly claim.
     """
-    text = _normalise_label(str(value or ""))
-    if not text:
-        return False
-    folded = text.casefold()
-    if folded in {
-        "רשומה זמנית",
-        "temporary record",
-        "temporary entry",
-        "תאור זמני",
-    }:
-        return True
-    return bool(
-        re.match(r"^(?:נושא נוסף|additional subject|catalog(?:ue|ing)? note)\s*[:：]", folded)
-        or "book suggested to google" in folded
-        or ("catalog" in folded and "rejected" in folded)
-    )
+    from converter.wikidata.catalog_notes import is_catalog_note_placeholder
 
+    return is_catalog_note_placeholder(value)
 
 def _holding_institution_name(record: dict[str, object]) -> str:
     """Return the current holding institution supported by the MARC record."""

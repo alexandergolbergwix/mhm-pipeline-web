@@ -231,6 +231,29 @@ def test_manuscript_bridge_statements_include_p2888_and_p973() -> None:
     props = {stmt.property_id for stmt in items[0].statements}
     assert "P2888" in props
     assert "P973" in props
+    bridges = [
+        stmt.value
+        for stmt in items[0].statements
+        if stmt.property_id in ("P2888", "P973")
+    ]
+    assert bridges
+    assert all(str(v).endswith("/wiki/Item:Q9001") for v in bridges)
+
+
+def test_manuscript_bridge_rewrites_ontology_iri_p2888() -> None:
+    manuscript = _manuscript_entity(
+        claims=[
+            {
+                "wikidata_property": "P2888",
+                "value": "https://w3id.org/mhm/ontology#MS_990001",
+                "datatype": "url",
+            }
+        ]
+    )
+    items = native_items_from_hmo([manuscript])
+    p2888 = [s.value for s in items[0].statements if s.property_id == "P2888"]
+    assert p2888 == ["https://mhm-hmo.wikibase.cloud/wiki/Item:Q9001"]
+    assert "https://w3id.org/mhm/ontology#MS_990001" not in p2888
 
 
 def test_build_summary_reports_rollup_counts() -> None:
@@ -326,7 +349,7 @@ def test_canonical_work_stamps_505_evidence_and_drops_unevidenced_creates() -> N
         "source_uri": "https://w3id.org/mhm/ontology#Work_505",
         "wikibase_id": "Q5051",
         "entity_type": "F1_Work",
-        "labels": {"he": "משנה תורה"},
+        "labels": {"he": "סדור מנהג קרפנטרץ לראש השנה"},
         "control_numbers": ["990001"],
     })
     work_bad = normalize_live_entity({
@@ -340,7 +363,8 @@ def test_canonical_work_stamps_505_evidence_and_drops_unevidenced_creates() -> N
     context = canonical_studio_context(
         marc_records=[{
             "_control_number": "990001",
-            "contents": [{"title": "משנה תורה", "folio": "1r", "sequence": 1}],
+            "title": "קובץ פיוטים",
+            "contents": [{"title": "סדור מנהג קרפנטרץ לראש השנה", "folio": "1r", "sequence": 1}],
         }],
     )
     items = native_items_from_hmo([work_ok, work_bad], context=context)
@@ -348,7 +372,7 @@ def test_canonical_work_stamps_505_evidence_and_drops_unevidenced_creates() -> N
     evidence = items[0].work_candidate_evidence
     assert evidence and evidence[0]["accepted"] is True
     assert evidence[0]["reason"] == "named_work_in_505"
-    assert items[0].labels.get("he") == "משנה תורה"
+    assert items[0].labels.get("he") == "סדור מנהג קרפנטרץ לראש השנה"
     assert "en" not in items[0].labels
 
 
@@ -367,6 +391,80 @@ def test_canonical_work_with_existing_qid_kept_without_marc_join() -> None:
     assert len(items) == 1
     assert items[0].existing_qid == "Q83367"
     assert items[0].work_candidate_evidence[0]["accepted"] is True
+
+
+def test_canonical_main_245_work_recovered_with_marc_title_evidence() -> None:
+    work = normalize_live_entity({
+        "local_id": "Work_245",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_245",
+        "wikibase_id": "Q6100",
+        "entity_type": "F1_Work",
+        "labels": {"he": "סדור מנהג קרפנטרץ לראש השנה"},
+        "control_numbers": ["990001792890205171"],
+    })
+    context = canonical_studio_context(
+        marc_records=[{
+            "_control_number": "990001792890205171",
+            "title": "סדור מנהג קרפנטרץ לראש השנה",
+            "authors": ["יוסף בן מרדכי"],
+            "shelfmark": "Heb. 8° 1",
+        }],
+    )
+    items = native_items_from_hmo([work], context=context)
+    assert len(items) == 1
+    assert items[0].work_candidate_evidence[0]["accepted"] is True
+    assert items[0].work_candidate_evidence[0]["reason"] in {
+        "marc_title_author", "marc_245_title",
+    }
+
+
+def test_canonical_work_ms_scope_suffix_still_matches_245() -> None:
+    work = normalize_live_entity({
+        "local_id": "Work_scope",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_scope",
+        "wikibase_id": "Q6101",
+        "entity_type": "F1_Work",
+        "labels": {"he": "אב הרחמים (MS 990000856010205171)"},
+        "control_numbers": ["990000856010205171"],
+    })
+    context = canonical_studio_context(
+        marc_records=[{
+            "_control_number": "990000856010205171",
+            "title": "אב הרחמים",
+        }],
+    )
+    items = native_items_from_hmo([work], context=context)
+    assert len(items) == 1
+    assert items[0].work_candidate_evidence[0]["reason"] == "marc_245_title"
+
+
+def test_canonical_known_work_qid_map_recovers_without_marc() -> None:
+    work = normalize_live_entity({
+        "local_id": "Work_tanakh",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_tanakh",
+        "wikibase_id": "Q6102",
+        "entity_type": "F1_Work",
+        "labels": {"he": 'תנ"ך'},
+    })
+    items = native_items_from_hmo([work])
+    assert len(items) == 1
+    assert items[0].existing_qid == "Q83367"
+    assert items[0].work_candidate_evidence[0]["accepted"] is True
+
+
+def test_canonical_placeholder_245_work_still_dropped() -> None:
+    work = normalize_live_entity({
+        "local_id": "Work_kovetz",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_kovetz",
+        "wikibase_id": "Q6103",
+        "entity_type": "F1_Work",
+        "labels": {"he": "קובץ."},
+        "control_numbers": ["990099"],
+    })
+    context = canonical_studio_context(
+        marc_records=[{"_control_number": "990099", "title": "קובץ."}],
+    )
+    assert native_items_from_hmo([work], context=context) == []
 
 
 def test_build_canonical_result_has_no_blocking_label_or_work_errors() -> None:

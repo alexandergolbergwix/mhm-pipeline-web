@@ -96,6 +96,12 @@ def assess_work_candidate(
         return decision(True, "named_work_in_500")
     if source == "505":
         return decision(True, "named_work_in_505")
+    if source in {"245", "100/245"}:
+        # Main MARC title work minted by GraphBuilder from 245 (and optional
+        # 100 author). Same quality filters already ran above.
+        if source == "100/245" or kind in {"marc_title_author", "marc_245_title"}:
+            return decision(True, "marc_title_author" if source == "100/245" else "marc_245_title")
+        return decision(True, "marc_245_title")
     if source == "CONTENTS_NER":
         return decision(False, "unapproved_ner_work")
     return decision(False, "unsupported_source")

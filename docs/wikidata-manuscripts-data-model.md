@@ -282,7 +282,7 @@ Community manuscript ID properties listed on the WPM page:
 | **P1566** | GeoNames ID | Places |
 | **P973** | described at URL | Catalog description page |
 | **P6108** | IIIF manifest URL | When available |
-| **P2888** | exact match | HMO Wikibase / ontology URI bridge |
+| **P2888** | exact match | Browseable HMO Wikibase `Item:Q…` URL only (never ontology IRI / MS_ slug) |
 | **P5008** | on focus list of Wikimedia project | WikiProject Manuscripts tagging when used |
 
 ---
@@ -378,7 +378,7 @@ control number.
 Every manuscript with a live HMO Wikibase QID also carries **`P2888` exact
 match** + **`P973` described at URL** to the project wiki item. Mapping runs
 through `hmo_wikidata_pq_mapper` only; project Cloud QIDs never become
-statement values. Build fingerprint salt: `hmo-wikidata-v5` (W-120 label/evidence hygiene).
+statement values. Build fingerprint salt: `hmo-wikidata-v8` (W-122 Item:Q bridges + catalog-note P1684 filter; includes W-121 245 recovery).
 
 ---
 

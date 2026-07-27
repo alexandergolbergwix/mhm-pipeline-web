@@ -95,3 +95,53 @@ def test_map_claim_via_project_pid_ledger() -> None:
     assert mapped is not None
     assert mapped.property_id == "P217"
     assert mapped.value == "Heb. 4"
+
+
+def test_exact_match_ontology_iri_rewrites_to_item_page() -> None:
+    mapped = map_hmo_claim_to_wikidata(
+        {
+            "property_uri": "https://w3id.org/mhm/ontology#hmo_source_uri",
+            "value": "https://w3id.org/mhm/ontology#MS_990001",
+            "datatype": "url",
+        },
+        entity_type="manuscript",
+        project_item_qid="Q894",
+    )
+    assert mapped is not None
+    assert mapped.property_id == "P2888"
+    assert mapped.value == "https://mhm-hmo.wikibase.cloud/wiki/Item:Q894"
+    assert mapped.value_type == "url"
+
+
+def test_exact_match_ontology_iri_dropped_without_qid() -> None:
+    mapped = map_hmo_claim_to_wikidata(
+        {
+            "wikidata_property": "P2888",
+            "value": "https://w3id.org/mhm/ontology#MS_990001",
+            "datatype": "url",
+        },
+        entity_type="manuscript",
+    )
+    assert mapped is None
+
+
+def test_catalog_temporary_record_never_becomes_inscription() -> None:
+    mapped = map_hmo_claim_to_wikidata(
+        {
+            "property_uri": "https://w3id.org/mhm/ontology#colophon_text",
+            "value": "רשומה זמנית",
+        },
+        entity_type="manuscript",
+    )
+    assert mapped is None
+
+
+def test_inscription_forbidden_on_person() -> None:
+    mapped = map_hmo_claim_to_wikidata(
+        {
+            "property_uri": "https://w3id.org/mhm/ontology#colophon_text",
+            "value": "נשלם העתק זה",
+        },
+        entity_type="person",
+    )
+    assert mapped is None

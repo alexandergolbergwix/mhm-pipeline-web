@@ -252,6 +252,17 @@ export function WikidataItemDetailDrawer({
             <div className="kicker">Wikidata Studio item</div>
             <h3 className="text-lg font-medium">{labelOf(item)}</h3>
             <p className="muted text-xs font-mono mt-1">{item.local_id}</p>
+            {item.hmo_wikibase_id ? (
+              <a
+                className="text-xs underline mt-1 inline-block"
+                href={`https://mhm-hmo.wikibase.cloud/wiki/Item:${item.hmo_wikibase_id}`}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="wikidata-item-hmo-wikibase-link"
+              >
+                Open on HMO Wikibase ({item.hmo_wikibase_id})
+              </a>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs muted flex items-center gap-1">

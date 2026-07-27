@@ -182,9 +182,8 @@ class ManuscriptProjectionMixin:
         #
         # Phase 6 (HMO Wikibase Studio, dev-docs/hmo-wikibase-studio-plan.md):
         # once this manuscript has a real Phase 5 upload, point at its
-        # actual `/wiki/Item:Q<n>` page instead of the static slug URL —
-        # the slug is a pre-upload placeholder, not a permanent redirect
-        # target (no such redirect mechanism is implemented).
+        # actual `/wiki/Item:Q<n>` page. Never emit the dead `/wiki/MS_<cn>`
+        # slug or ontology IRI placeholders (Rule W-122).
         wikibase_url = hmo_wikibase_entity_url(
             control_number, self._hmo_instance_qids
         ) or hmo_wikibase_page_url(control_number)

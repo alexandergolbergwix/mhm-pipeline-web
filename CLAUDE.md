@@ -2824,3 +2824,57 @@ Invariant:
 3. Fingerprint salt **`hmo-wikidata-v5`** so pre-hygiene Studio caches miss.
 
 Tests: `backend/tests/unit/test_hmo_canonical_wikidata.py` (label + evidence cases).
+
+### Rule W-121 — Canonical CREATE works MUST recover MARC 245 / known-QID evidence (added 2026-07-27)
+
+After W-120, Studio dropped from ~258 → ~190 items because every CREATE work
+lacked `work_candidate_evidence`. HMO always mints a main `F1_Work` from MARC
+**245**, but the evidence join only looked at 505/500/related_works — so the
+~68 main works were fail-closed away even though they are legitimate.
+
+Invariant:
+
+1. `assess_work_candidate` accepts `245` / `100/245` (reasons `marc_245_title` /
+   `marc_title_author`) under the same quality filters as 505.
+2. `_work_candidate_evidence_for` joins HMO work titles (labels, aliases,
+   `has_title`, stripped `(MS …)` suffix) to prepared MARC title/contents/
+   mentions/related_works and to sanitized authority name keys.
+3. Exact `known_work_qid_for_title` hits set `existing_qid` + accepted evidence.
+4. Placeholders, descriptive notes, Latin-without-authority, and unevidenced
+   CREATE works stay dropped. Fingerprint salt: `hmo-wikidata-v6`.
+
+Tests: `test_hmo_canonical_wikidata.py`, `test_wikidata_work_candidates.py`.
+
+### Rule W-122 — Wikidata→Wikibase bridges MUST be browseable Item:Q URLs (added 2026-07-27)
+
+Curators clicking Wikidata P2888/P973 (or Studio “Open on HMO Wikibase”) hit
+dead links for two independent reasons:
+
+1. **Ontology IRI as P2888.** Live HMO `hmo_source_uri` / exact-match claims
+   carry `https://w3id.org/mhm/ontology#MS_<cn>`. The PQ mapper forwarded that
+   string as public P2888. Clicking it follows w3id → GitHub raw, which for
+   LFS-tracked TTLs returns a **Git LFS pointer**, not Turtle and not a
+   Wikibase page. Export (11) had 21 manuscripts with a dual P2888
+   (ontology IRI + Item:Q).
+2. **Dead `/wiki/MS_<cn>` slug.** The planned Phase-3 redirect pages were
+   never created on `mhm-hmo.wikibase.cloud` (404). `hmo_wikibase_page_url`
+   must not invent that URL.
+
+Invariant:
+
+1. P2888/P973 emit only `https://mhm-hmo.wikibase.cloud/wiki/Item:Q…`
+   (`is_browseable_hmo_wikibase_url` / `resolve_hmo_bridge_url`).
+2. Ontology IRIs and MS_ slugs are rewritten to Item:Q when
+   `project_item_qid` / `wikibase_id` is known, otherwise dropped.
+3. Bridge attach strips non-browseable P2888/P973 before adding the Item:Q
+   pair. No QID → no bridge (fail closed).
+4. Fingerprint salt `hmo-wikidata-v8`. w3id ontology redirect must target
+   `media.githubusercontent.com/media/…` (LFS blob), not
+   `raw.githubusercontent.com` (pointer) — update
+   `pipeline/docs/w3id/htaccess` and re-publish to perma-id/w3id.org.
+5. Catalog workflow placeholders such as ``רשומה זמנית`` never become
+   P1684; P1684 is manuscript-only (legacy Rule W-72 filter on the
+   canonical mapper).
+
+Tests: `test_property_mapping_hmo_links.py`, `test_item_builder_hmo_links.py`,
+`test_hmo_wikidata_pq_mapper.py`, `test_hmo_canonical_wikidata.py`.

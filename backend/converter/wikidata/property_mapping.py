@@ -185,27 +185,53 @@ HMO_NS_TEMPLATE = "https://w3id.org/mhm/ontology#MS_{control_number}"
 
 # Project-owned Wikibase Cloud instance hosting the HMO graph entities. This
 # is the public, resolvable URI that Wikidata P2888 (exact match) points at.
-# The slug URL pattern `/wiki/MS_<control_number>` is stable and project-
-# controlled; Phase 3 (HMO Wikibase upload) creates a `#REDIRECT [[Item:Q<n>]]`
-# page at this slug so the URL resolves to the canonical Wikibase item.
+# Only ``/wiki/Item:Q<n>`` pages resolve on Wikibase Cloud — the planned
+# ``/wiki/MS_<cn>`` redirect pages were never created (404). Ontology IRIs
+# under ``w3id.org/mhm/ontology#…`` are RDF identifiers, not browse pages
+# (and the w3id ontology redirect historically served a Git LFS pointer).
 HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud"
 _HMO_QID_RE = re.compile(r"^Q[1-9][0-9]*$")
+_HMO_ITEM_PAGE_RE = re.compile(
+    rf"^{re.escape(HMO_WIKIBASE_BASE_URL)}/wiki/Item:(Q[1-9][0-9]*)$"
+)
+_HMO_ONTOLOGY_IRI_RE = re.compile(r"^https?://w3id\.org/mhm/ontology#", re.I)
+_HMO_MANUSCRIPT_PERMALINK_RE = re.compile(
+    r"^https?://w3id\.org/mhm/manuscript/", re.I
+)
+
+
+def hmo_wikibase_item_url(qid: str) -> str:
+    """Build a browseable ``/wiki/Item:Q<n>`` URL, or ``\"\"`` if invalid."""
+    cleaned = str(qid or "").strip()
+    if not _HMO_QID_RE.fullmatch(cleaned):
+        return ""
+    return f"{HMO_WIKIBASE_BASE_URL}/wiki/Item:{cleaned}"
+
+
+def is_browseable_hmo_wikibase_url(url: str) -> bool:
+    """True only for live project Wikibase item pages (Rule W-85 / W-122)."""
+    return bool(_HMO_ITEM_PAGE_RE.fullmatch(str(url or "").strip()))
+
+
+def is_hmo_identity_placeholder_url(url: str) -> bool:
+    """True for RDF IRIs / dead MS_ slug URLs that must not be P2888 targets."""
+    text = str(url or "").strip()
+    if not text:
+        return False
+    if _HMO_ONTOLOGY_IRI_RE.match(text) or _HMO_MANUSCRIPT_PERMALINK_RE.match(text):
+        return True
+    return f"{HMO_WIKIBASE_BASE_URL}/wiki/MS_" in text
 
 
 def hmo_wikibase_page_url(control_number: str) -> str:
-    """Build the project-owned Wikibase Cloud SLUG URL for a manuscript.
+    """Deprecated MS_ slug fallback — always empty (pages 404 on Wikibase).
 
-    Fallback used when no real Wikibase item exists yet for this
-    manuscript (see :func:`hmo_wikibase_entity_url` for the real-item
-    upgrade added in Phase 6 of the HMO Wikibase Studio buildout —
-    dev-docs/hmo-wikibase-studio-plan.md). Used as the value of
-    Wikidata P2888 (exact match). Empty / falsy input returns an empty
-    string, signalling "do not emit P2888".
+    Kept so callers that still OR this with :func:`hmo_wikibase_entity_url`
+    fail closed instead of emitting a dead link. Prefer
+    :func:`resolve_hmo_bridge_url`.
     """
-    cn = (control_number or "").strip()
-    if not cn:
-        return ""
-    return f"{HMO_WIKIBASE_BASE_URL}/wiki/MS_{cn}"
+    _ = control_number
+    return ""
 
 
 def hmo_wikibase_entity_url(
@@ -217,16 +243,27 @@ def hmo_wikibase_entity_url(
     ``instance_qids`` maps ``control_number -> live QID`` — callers with
     database access (``app.pipeline.wikidata_studio``) build this dict
     once per build from ``wikibase_entity_mappings``; this module stays
-    DB-agnostic. Returns ``None`` (never a broken link) when the
-    manuscript hasn't been uploaded yet, so the caller falls back to
-    :func:`hmo_wikibase_page_url`'s static slug.
+    DB-agnostic. Returns ``None`` when the manuscript hasn't been
+    uploaded yet (do not invent a dead MS_ slug).
     """
     if not instance_qids:
         return None
     qid = str(instance_qids.get((control_number or "").strip()) or "").strip()
-    if not _HMO_QID_RE.fullmatch(qid):
-        return None
-    return f"{HMO_WIKIBASE_BASE_URL}/wiki/Item:{qid}"
+    url = hmo_wikibase_item_url(qid)
+    return url or None
+
+
+def resolve_hmo_bridge_url(
+    control_number: str,
+    instance_qids: dict[str, str] | None = None,
+    *,
+    wikibase_qid: str | None = None,
+) -> str:
+    """Browseable HMO Wikibase item URL for P2888/P973, or ``\"\"`` to skip."""
+    direct = hmo_wikibase_item_url(str(wikibase_qid or ""))
+    if direct:
+        return direct
+    return hmo_wikibase_entity_url(control_number, instance_qids) or ""
 
 # ── Wikidata QIDs ────────────────────────────────────────────────────
 

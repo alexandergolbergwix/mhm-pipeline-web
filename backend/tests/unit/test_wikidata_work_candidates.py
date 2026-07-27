@@ -3,18 +3,24 @@
 from converter.wikidata.work_candidates import assess_work_candidate
 
 
-def test_clean_hebrew_505_title_is_accepted() -> None:
+def test_marc_245_title_is_accepted_as_main_work_evidence() -> None:
     decision = assess_work_candidate(
-        "ספר הדרושים",
-        source_field="505",
-        candidate_kind="named_work",
-        folio_range="א-ב",
-        sequence=1,
+        "סדור מנהג קרפנטרץ לראש השנה",
+        source_field="245",
+        candidate_kind="marc_245_title",
     )
     assert decision.accepted
-    assert decision.reason == "named_work_in_505"
-    assert decision.folio_range == "א-ב"
-    assert decision.sequence == 1
+    assert decision.reason == "marc_245_title"
+
+
+def test_marc_100_245_title_author_is_accepted() -> None:
+    decision = assess_work_candidate(
+        "אב הרחמים",
+        source_field="100/245",
+        candidate_kind="marc_title_author",
+    )
+    assert decision.accepted
+    assert decision.reason == "marc_title_author"
 
 
 def test_structured_500_named_work_is_accepted() -> None:

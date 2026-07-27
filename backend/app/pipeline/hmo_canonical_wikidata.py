@@ -29,8 +29,8 @@ from converter.wikidata.property_mapping import (
     Q_HUMAN,
     Q_MANUSCRIPT,
     Q_WRITTEN_WORK,
-    hmo_wikibase_entity_url,
-    hmo_wikibase_page_url,
+    is_browseable_hmo_wikibase_url,
+    resolve_hmo_bridge_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,9 +140,12 @@ def canonical_studio_context(
     marc_records: Iterable[Mapping[str, Any]] | None = None,
     approved_matches: Iterable[Mapping[str, Any]] | None = None,
 ) -> CanonicalStudioContext:
+    from app.pipeline.marc_ingest import prepare_record_for_pipeline  # noqa: PLC0415
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+
     marc_by_cn: dict[str, dict[str, Any]] = {}
     for raw in marc_records or []:
-        record = dict(raw)
+        record = prepare_record_for_pipeline(dict(raw))
         cn = canonical_control_number(
             str(record.get("_control_number") or record.get("control_number") or ""),
         )
@@ -165,9 +168,13 @@ def canonical_studio_context(
         if qid:
             matches_by_qid[qid] = match
         for key in ("entity_text", "matched_name"):
-            name = str(match.get(key) or "").strip().casefold()
-            if name:
-                matches_by_name[name] = match
+            name = str(match.get(key) or "").strip()
+            if not name:
+                continue
+            matches_by_name[name.casefold()] = match
+            sanitized = sanitize_work_title(name).casefold().strip(" .,;:/-\"'")
+            if sanitized:
+                matches_by_name[sanitized] = match
     return CanonicalStudioContext(
         marc_by_cn=marc_by_cn,
         matches_by_viaf=matches_by_viaf,
@@ -218,7 +225,7 @@ def wikidata_candidates_from_hmo(
 def canonical_wikidata_fingerprint(entities: Iterable[CanonicalHmoEntity]) -> str:
     candidates = wikidata_candidates_from_hmo(entities)
     payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
-    return hashlib.sha256(("hmo-wikidata-v5:" + payload).encode()).hexdigest()
+    return hashlib.sha256(("hmo-wikidata-v8:" + payload).encode()).hexdigest()
 
 
 def uploadable_entities_from_hmo(
@@ -348,6 +355,13 @@ def native_items_from_hmo(
         wd_type = _wikidata_entity_type(entity) or ""
         assert wd_type in PUBLIC_WIKIDATA_ENTITY_TYPES
         existing_qid = _accepted_wikidata_qid(entity)
+        if wd_type == "work" and not existing_qid:
+            from converter.wikidata.property_mapping import known_work_qid_for_title  # noqa: PLC0415
+
+            for title in _work_title_candidates(entity):
+                existing_qid = known_work_qid_for_title(title)
+                if existing_qid:
+                    break
         rollup_sources = _rollup_sources_for(entity, wd_type, all_entities, entities_by_cn)
         statements = [
             WikidataStatement(
@@ -939,89 +953,104 @@ def _work_candidate_evidence_for(
     context: CanonicalStudioContext | None,
 ) -> list[dict[str, object]]:
     """Stamp accepted W-68 evidence for a CREATE work, or leave empty to drop."""
-    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+    from converter.rdf.rdf_helpers import parse_contents_entry, sanitize_work_title  # noqa: PLC0415
+    from converter.wikidata.item_builder import _is_placeholder_title  # noqa: PLC0415
+    from converter.wikidata.property_mapping import known_work_qid_for_title  # noqa: PLC0415
     from converter.wikidata.work_candidates import assess_work_candidate  # noqa: PLC0415
 
-    title = sanitize_work_title(
-        str(
-            (entity.labels or {}).get("he")
-            or (entity.labels or {}).get("en")
-            or ""
-        ).strip()
-    )
-    if not title:
+    titles = _work_title_candidates(entity)
+    if not titles:
         return []
 
     known_qid = _accepted_wikidata_qid(entity)
+    for candidate in titles:
+        known_qid = known_qid or known_work_qid_for_title(candidate)
+
+    def _try_assess(
+        title: str,
+        *,
+        source_field: str,
+        approved: bool = False,
+        known: str | None = None,
+        candidate_kind: str = "",
+        folio_range: str = "",
+        sequence: object = None,
+        source_text: str = "",
+    ) -> list[dict[str, object]] | None:
+        decision = assess_work_candidate(
+            title,
+            source_field=source_field,
+            approved=approved,
+            known_qid=known or known_qid,
+            candidate_kind=candidate_kind,
+            folio_range=folio_range,
+            sequence=sequence,
+            source_text=source_text or title,
+        )
+        if decision.accepted:
+            return [decision.evidence()]
+        return None
 
     if context is not None:
-        match = context.matches_by_name.get(title.casefold())
-        if match and str(match.get("entity_kind") or match.get("role") or "").lower() in {
-            "work", "contained_work", "subject",
-        }:
-            # matches_by_name only holds approved matches from the build path
-            decision = assess_work_candidate(
-                title,
-                source_field="AUTHORITY",
-                approved=True,
-                known_qid=normalize_wikidata_qid(match.get("wikidata_qid")) or known_qid,
-                source_text=str(match.get("entity_text") or match.get("matched_name") or title),
-            )
-            if decision.accepted:
-                return [decision.evidence()]
+        for title in titles:
+            match = _authority_work_match(title, context)
+            if match:
+                hit = _try_assess(
+                    title,
+                    source_field="AUTHORITY",
+                    approved=True,
+                    known=normalize_wikidata_qid(match.get("wikidata_qid")),
+                    source_text=str(
+                        match.get("entity_text") or match.get("matched_name") or title
+                    ),
+                )
+                if hit:
+                    return hit
 
         for raw_cn in entity.control_numbers:
             record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)) or "")
             if not record:
                 continue
+
             for content in record.get("contents") or []:
-                if isinstance(content, dict):
-                    content_title = str(
-                        content.get("title") or content.get("text") or ""
-                    ).strip()
-                    folio = str(content.get("folio") or content.get("folio_range") or "")
-                    sequence = content.get("sequence") or content.get("seq")
-                    source_text = str(content.get("raw") or content.get("source_text") or content_title)
-                else:
-                    content_title = str(content).strip()
-                    folio = ""
-                    sequence = None
-                    source_text = content_title
-                if not _titles_match(title, content_title):
+                content_title, folio, sequence, source_text, source_field = (
+                    _contents_row_fields(content, parse_contents_entry)
+                )
+                if not any(_titles_match(t, content_title) for t in titles):
                     continue
-                decision = assess_work_candidate(
-                    content_title or title,
-                    source_field="505",
-                    known_qid=known_qid,
+                hit = _try_assess(
+                    content_title or titles[0],
+                    source_field=source_field,
                     folio_range=folio,
                     sequence=sequence,
                     source_text=source_text,
                 )
-                if decision.accepted:
-                    return [decision.evidence()]
+                if hit:
+                    return hit
 
             for mention in record.get("work_mentions") or []:
                 if isinstance(mention, dict):
                     mention_title = str(
                         mention.get("title") or mention.get("text") or ""
                     ).strip()
-                    kind = str(mention.get("kind") or mention.get("candidate_kind") or "named_work")
+                    kind = str(
+                        mention.get("kind") or mention.get("candidate_kind") or "named_work"
+                    )
                     source_text = str(mention.get("source_text") or mention_title)
                 else:
                     mention_title = str(mention).strip()
                     kind = "named_work"
                     source_text = mention_title
-                if not _titles_match(title, mention_title):
+                if not any(_titles_match(t, mention_title) for t in titles):
                     continue
-                decision = assess_work_candidate(
-                    mention_title or title,
+                hit = _try_assess(
+                    mention_title or titles[0],
                     source_field="500",
-                    known_qid=known_qid,
                     candidate_kind=kind,
                     source_text=source_text,
                 )
-                if decision.accepted:
-                    return [decision.evidence()]
+                if hit:
+                    return hit
 
             for related in record.get("related_works") or []:
                 if isinstance(related, dict):
@@ -1030,42 +1059,180 @@ def _work_candidate_evidence_for(
                     ).strip()
                     related_qid = normalize_wikidata_qid(
                         related.get("wikidata_qid") or related.get("qid")
-                    )
+                    ) or known_work_qid_for_title(related_title)
                     source_text = str(related.get("source_text") or related_title)
                 else:
                     related_title = str(related).strip()
-                    related_qid = None
+                    related_qid = known_work_qid_for_title(related_title)
                     source_text = related_title
-                if not _titles_match(title, related_title):
+                if not any(_titles_match(t, related_title) for t in titles):
                     continue
-                decision = assess_work_candidate(
-                    related_title or title,
+                hit = _try_assess(
+                    related_title or titles[0],
                     source_field="RELATED",
-                    known_qid=related_qid or known_qid,
+                    known=related_qid,
                     approved=bool(related_qid),
                     source_text=source_text,
                 )
-                if decision.accepted:
-                    return [decision.evidence()]
+                if hit:
+                    return hit
+
+            # Main MARC 245 work (GraphBuilder always mints F1_Work from 245).
+            marc_title = sanitize_work_title(str(record.get("title") or "")).strip()
+            if (
+                marc_title
+                and not _is_placeholder_title(marc_title)
+                and any(_titles_match(t, marc_title) for t in titles)
+            ):
+                has_authors = bool(record.get("authors") or record.get("author"))
+                source_field = "100/245" if has_authors else "245"
+                hit = _try_assess(
+                    marc_title,
+                    source_field=source_field,
+                    candidate_kind=(
+                        "marc_title_author" if has_authors else "marc_245_title"
+                    ),
+                    source_text=marc_title,
+                )
+                if hit:
+                    return hit
 
     if known_qid:
-        decision = assess_work_candidate(
-            title,
-            source_field="HMO",
-            known_qid=known_qid,
-            source_text=title,
-        )
-        if decision.accepted:
-            return [decision.evidence()]
+        hit = _try_assess(titles[0], source_field="HMO", known=known_qid)
+        if hit:
+            return hit
+
+    for title in titles:
+        mapped = known_work_qid_for_title(title)
+        if mapped:
+            hit = _try_assess(title, source_field="KNOWN_ALIAS", known=mapped)
+            if hit:
+                return hit
 
     return []
+
+
+def _work_title_candidates(entity: CanonicalHmoEntity) -> list[str]:
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def _add(raw: object) -> None:
+        text = sanitize_work_title(str(raw or "")).strip()
+        if not text:
+            return
+        for candidate in (text, _strip_ms_scope_suffix(text)):
+            key = candidate.casefold()
+            if not candidate or key in seen:
+                continue
+            seen.add(key)
+            out.append(candidate)
+
+    for lang in ("he", "en"):
+        _add((entity.labels or {}).get(lang))
+    for values in (entity.aliases or {}).values():
+        if isinstance(values, list):
+            for value in values:
+                _add(value)
+    for claim in entity.claims:
+        local = ontology_local_name(str(claim.get("property_uri") or ""))
+        if local in {"has_title", "title"}:
+            _add(claim.get("value"))
+    return out
+
+
+def _strip_ms_scope_suffix(title: str) -> str:
+    return re.sub(
+        r"\s*\(MS\s+[\d\"']+\)\s*$",
+        "",
+        str(title or "").strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def _authority_work_match(
+    title: str,
+    context: CanonicalStudioContext,
+) -> dict[str, Any] | None:
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+
+    keys = {
+        title.casefold(),
+        sanitize_work_title(title).casefold().strip(" .,;:/-\"'"),
+        _strip_ms_scope_suffix(title).casefold(),
+    }
+    work_roles = {
+        "work", "contained_work", "contained work", "related_work",
+        "related work", "subject",
+    }
+    for key in keys:
+        if not key:
+            continue
+        match = context.matches_by_name.get(key)
+        if not match:
+            continue
+        kind = str(match.get("entity_kind") or "").casefold().replace("-", "_")
+        role = str(match.get("role") or "").casefold().replace("-", "_")
+        if kind == "work" or role in work_roles or role.replace(" ", "_") in {
+            "contained_work", "related_work",
+        }:
+            return match
+    return None
+
+
+def _contents_row_fields(
+    content: object,
+    parse_contents_entry,
+) -> tuple[str, str, object, str, str]:
+    if isinstance(content, dict):
+        raw = str(
+            content.get("raw")
+            or content.get("source_text")
+            or content.get("title")
+            or content.get("text")
+            or ""
+        ).strip()
+        parsed = parse_contents_entry(raw) if raw else {}
+        content_title = str(
+            content.get("title") or content.get("text") or parsed.get("title") or ""
+        ).strip()
+        if not content_title and parsed.get("title"):
+            content_title = str(parsed["title"]).strip()
+        folio = str(
+            content.get("folio")
+            or content.get("folio_range")
+            or parsed.get("folio_range")
+            or ""
+        )
+        sequence = content.get("sequence") or content.get("seq") or parsed.get("sequence")
+        source_text = raw or content_title
+        source_field = str(content.get("source_field") or "505").strip().upper() or "505"
+        if source_field not in {"505", "500"}:
+            source_field = "505"
+        return content_title, folio, sequence, source_text, source_field
+
+    raw = str(content).strip()
+    parsed = parse_contents_entry(raw) if raw else {}
+    content_title = str(parsed.get("title") or raw).strip()
+    return (
+        content_title,
+        str(parsed.get("folio_range") or ""),
+        parsed.get("sequence"),
+        raw or content_title,
+        "505",
+    )
 
 
 def _titles_match(left: str, right: str) -> bool:
     from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
 
-    a = sanitize_work_title(str(left or "")).casefold().strip(" .,;:/-\"'")
-    b = sanitize_work_title(str(right or "")).casefold().strip(" .,;:/-\"'")
+    a = _strip_ms_scope_suffix(
+        sanitize_work_title(str(left or "")),
+    ).casefold().strip(" .,;:/-\"'")
+    b = _strip_ms_scope_suffix(
+        sanitize_work_title(str(right or "")),
+    ).casefold().strip(" .,;:/-\"'")
     if not a or not b:
         return False
     return a == b or a in b or b in a
@@ -1218,7 +1385,22 @@ def _append_manuscript_bridge_statements(
     control_number = str(entity.control_numbers[0]).strip()
     if not control_number:
         return
-    wikibase_url = hmo_wikibase_entity_url(control_number, {control_number: entity.wikibase_id}) or hmo_wikibase_page_url(control_number)
+    # Drop ontology IRIs / dead MS_ slugs that may have been rolled up from
+    # live HMO claims before attaching the browseable Item:Q bridge.
+    kept: list[WikidataStatement] = []
+    for stmt in statements:
+        if stmt.property_id in (P_EXACT_MATCH, P_DESCRIBED_AT_URL):
+            if not is_browseable_hmo_wikibase_url(str(stmt.value or "")):
+                continue
+        kept.append(stmt)
+    statements.clear()
+    statements.extend(kept)
+
+    wikibase_url = resolve_hmo_bridge_url(
+        control_number,
+        {control_number: entity.wikibase_id},
+        wikibase_qid=entity.wikibase_id,
+    )
     if not wikibase_url:
         return
     existing = {(stmt.property_id, str(stmt.value or "")) for stmt in statements}

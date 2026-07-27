@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from converter.authority.evidence import normalize_wikidata_qid
+from converter.wikidata.catalog_notes import is_catalog_note_placeholder
 from converter.wikidata.property_mapping import (
     P_ANNOTATOR,
     P_AUTHOR,
@@ -66,6 +67,9 @@ from converter.wikidata.property_mapping import (
     Q_MANUSCRIPT,
     Q_ORGANIZATION,
     Q_WRITTEN_WORK,
+    hmo_wikibase_item_url,
+    is_browseable_hmo_wikibase_url,
+    is_hmo_identity_placeholder_url,
 )
 
 _PROPERTY_ID = re.compile(r"^P[1-9][0-9]*$")
@@ -201,6 +205,7 @@ MANUSCRIPT_ONLY_WIKIDATA_PIDS = frozenset({
     P_FONDS,
     P_CATALOG_CODE,
     P_FOLIO,
+    P_INSCRIPTION,
     "P2635",
 })
 
@@ -396,9 +401,24 @@ def map_hmo_claim_to_wikidata(
     if not text:
         return None
 
-    # external_wikidata_uri / exact-match URLs
-    if property_id in {P_EXACT_MATCH, P_DESCRIBED_AT_URL, P_FULL_WORK_URL, P_IIIF_MANIFEST}:
+    # URL-valued public properties. P2888/P973 must be browseable Wikibase
+    # Item pages — never ontology IRIs or dead /wiki/MS_ slugs (Rule W-122).
+    if property_id in {P_EXACT_MATCH, P_DESCRIBED_AT_URL}:
+        if is_browseable_hmo_wikibase_url(text):
+            return MappedWikidataClaim(property_id=property_id, value=text, value_type="url")
+        if is_hmo_identity_placeholder_url(text):
+            rewritten = hmo_wikibase_item_url(str(project_item_qid or ""))
+            if rewritten:
+                return MappedWikidataClaim(
+                    property_id=property_id, value=rewritten, value_type="url"
+                )
+            return None
+        return None
+    if property_id in {P_FULL_WORK_URL, P_IIIF_MANIFEST}:
         return MappedWikidataClaim(property_id=property_id, value=text, value_type="url")
+
+    if property_id == P_INSCRIPTION and is_catalog_note_placeholder(text):
+        return None
 
     if property_id in {P_START_TIME, P_END_TIME}:
         return MappedWikidataClaim(property_id=property_id, value=text, value_type="time")

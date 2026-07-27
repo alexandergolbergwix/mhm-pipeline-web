@@ -263,3 +263,16 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `en`, and stamps `work_candidate_evidence` for CREATE works (or drops them).
     Fingerprint salt `hmo-wikidata-v5`. *Why:* export (11) had 237/258 blocking
     validator errors after public-type filtering alone.
+
+48. **R48 — Recover MARC 245 / known-QID work evidence (Rule W-121).**
+    Canonical CREATE works join prepared MARC 245 titles and exact known-work
+    QIDs so main HMO `F1_Work` nodes are not dropped. Fingerprint `hmo-wikidata-v6`.
+    *Why:* W-120 fail-closed ~68 valid main works that only had 245 grounding.
+
+49. **R49 — P2888/P973 are browseable Item:Q only (Rule W-122).**
+    Drop/rewrite ontology IRIs and dead `/wiki/MS_` slugs; emit only
+    `mhm-hmo.wikibase.cloud/wiki/Item:Q…`. Catalog placeholders
+    (`רשומה זמנית`) never become P1684; inscription is manuscript-only.
+    Fingerprint `hmo-wikidata-v8`.
+    *Why:* Wikidata→Wikibase clicks hit w3id LFS pointers / 404 MS_ pages;
+    NLI temporary-record markers were projected as inscriptions.
