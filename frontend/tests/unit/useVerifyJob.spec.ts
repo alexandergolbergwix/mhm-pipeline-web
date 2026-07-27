@@ -83,8 +83,10 @@ describe("useVerifyJob", () => {
         judged: 54,
         total: 313,
         outcome: "partial",
+        resumable: true,
         session_id: "sess-1",
       },
+      progress: {processed: 54, total: 313, session_id: "sess-1"},
     });
     vi.spyOn(RunJobs, "start").mockResolvedValue(running);
     vi.spyOn(RunJobs, "get").mockResolvedValue(done);
@@ -103,8 +105,55 @@ describe("useVerifyJob", () => {
     await waitFor(() => {
       expect(onFailed).toHaveBeenCalled();
     });
-    expect(String(onFailed.mock.calls[0]?.[0])).toContain("judge stopped early");
+    expect(String(onFailed.mock.calls[0]?.[0])).toContain("Continue");
     expect(String(onFailed.mock.calls[0]?.[0])).not.toContain("eval-agent error");
+    expect(result.current.resumeOffer?.judged).toBe(54);
+  });
+
+  it("continueFromPause starts a new job with override_cache false", async () => {
+    const loadSession = vi.fn().mockResolvedValue(undefined);
+    const interrupted = verifyJob({
+      status: "failed",
+      result: {
+        resumable: true,
+        judged: 61,
+        total: 313,
+        outcome: "partial",
+        session_id: "sess-1",
+      },
+      params: {
+        session_id: "sess-1",
+        action_id: "audit_wikidata_item",
+        item_ids: ["a", "b"],
+        override_cache: true,
+        source: "canonical",
+      },
+      error: "Verification interrupted after 61 of 313. Cached verdicts were kept — click Continue to resume the remaining items.",
+    });
+    vi.spyOn(RunJobs, "listForRun").mockResolvedValue({jobs: [interrupted]});
+    const startSpy = vi.spyOn(RunJobs, "start").mockResolvedValue(
+      verifyJob({id: "vj2", status: "queued"}),
+    );
+
+    const {result} = renderHook(() => useVerifyJob({
+      runId: "r1",
+      kind: "wikidata_verify",
+      loadSession,
+    }));
+
+    await waitFor(() => {
+      expect(result.current.resumeOffer?.judged).toBe(61);
+    });
+
+    await act(async () => {
+      await result.current.continueFromPause({tier_model: "gemini-3.5-flash"});
+    });
+
+    expect(startSpy).toHaveBeenCalled();
+    const params = startSpy.mock.calls[0]?.[2] as Record<string, unknown>;
+    expect(params.override_cache).toBe(false);
+    expect(params.action_id).toBe("audit_wikidata_item");
+    expect(params.session_id).toBeUndefined();
   });
 
 });

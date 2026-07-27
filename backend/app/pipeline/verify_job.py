@@ -27,8 +27,49 @@ from app.pipeline.verify_session_store import (
     slim_job_session_snapshot,
     snapshot_from_collected_events,
 )
+from app.pipeline.verify_resume import resumable_verify_result
 
 logger = logging.getLogger(__name__)
+
+
+def _terminal_snapshot(
+    *,
+    run_id: uuid.UUID,
+    session_id: str,
+    collected_events: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not collected_events:
+        return None
+    return slim_job_session_snapshot(
+        snapshot_from_collected_events(
+            run_id=str(run_id),
+            session_id=session_id,
+            events=collected_events,
+        ),
+    )
+
+
+def _interrupted_verify_result(
+    *,
+    run_id: uuid.UUID,
+    session_id: str,
+    judged: int,
+    total: int,
+    collected_events: list[dict[str, Any]],
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return resumable_verify_result(
+        session_id=session_id,
+        judged=judged,
+        total=total,
+        session_snapshot=_terminal_snapshot(
+            run_id=run_id,
+            session_id=session_id,
+            collected_events=collected_events,
+        ),
+        interrupted=True,
+        extra=extra,
+    )
 
 
 def _requires_gemini_key(tier_model: Any) -> bool:
@@ -223,7 +264,14 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                 await finish_job(
                     job_id,
                     status=JOB_STATUS_CANCELLED,
-                    result={"session_id": session_id, "judged": judged},
+                    result=_interrupted_verify_result(
+                        run_id=run_id,
+                        session_id=session_id,
+                        judged=judged,
+                        total=total,
+                        collected_events=collected_events,
+                        extra={"cancelled": True},
+                    ),
                     progress={
                         "phase": "cancelled",
                         "processed": judged,
@@ -267,7 +315,26 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                 break
     except Exception as exc:  # noqa: BLE001
         logger.exception("verify job %s failed", job_id)
-        await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
+        await finish_job(
+            job_id,
+            status=JOB_STATUS_FAILED,
+            error=str(exc),
+            result=_interrupted_verify_result(
+                run_id=run_id,
+                session_id=session_id,
+                judged=judged,
+                total=total,
+                collected_events=collected_events,
+                extra={"runner_error": str(exc)},
+            ),
+            progress={
+                "phase": "failed",
+                "processed": judged,
+                "total": total or judged,
+                "message": str(exc),
+                "session_id": session_id,
+            },
+        )
         return
 
     if error_message and not session_summary:
@@ -275,7 +342,21 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             job_id,
             status=JOB_STATUS_FAILED,
             error=error_message,
-            result={"session_id": session_id, "judged": judged},
+            result=_interrupted_verify_result(
+                run_id=run_id,
+                session_id=session_id,
+                judged=judged,
+                total=total,
+                collected_events=collected_events,
+                extra={"runner_error": error_message},
+            ),
+            progress={
+                "phase": "failed",
+                "processed": judged,
+                "total": total or judged,
+                "message": error_message,
+                "session_id": session_id,
+            },
         )
         return
 
@@ -287,21 +368,27 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
         ),
     )
 
+    outcome = session_summary.get("outcome")
+    result_body: dict[str, Any] = {
+        "session_id": session_id,
+        "judged": judged,
+        "total": total or judged,
+        "outcome": outcome,
+        "cache_hits": session_summary.get("cache_hits"),
+        "fresh_verdicts": session_summary.get("fresh_verdicts"),
+        "uncached_skipped": session_summary.get("uncached_skipped"),
+        "unverifiable_no_id": session_summary.get("unverifiable_no_id"),
+        "runner_error": session_summary.get("runner_error"),
+        "session_snapshot": session_snapshot,
+    }
+    if outcome == "partial" or (total > 0 and judged < total):
+        result_body["resumable"] = judged > 0
+        result_body["remaining"] = max(0, (total or judged) - judged)
+
     await finish_job(
         job_id,
         status=JOB_STATUS_SUCCEEDED,
-        result={
-            "session_id": session_id,
-            "judged": judged,
-            "total": total or judged,
-            "outcome": session_summary.get("outcome"),
-            "cache_hits": session_summary.get("cache_hits"),
-            "fresh_verdicts": session_summary.get("fresh_verdicts"),
-            "uncached_skipped": session_summary.get("uncached_skipped"),
-            "unverifiable_no_id": session_summary.get("unverifiable_no_id"),
-            "runner_error": session_summary.get("runner_error"),
-            "session_snapshot": session_snapshot,
-        },
+        result=result_body,
         progress={
             "phase": "done",
             "processed": judged,

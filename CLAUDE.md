@@ -3100,3 +3100,31 @@ replace a separate worker dyno for HTTP isolation.
 
 Tests: `backend/tests/unit/test_run_job_recovery.py` (admission cases),
 `frontend/tests/unit/waitForRunJob.spec.ts` (`runJobQueuedMessage`).
+
+### Rule W-130 — Interrupted AI verify MUST be Continuable from cached verdicts (added 2026-07-27)
+
+Incident: Wikidata verify job `5bd42818` reached **61/313** then the Basic
+dyno OOM'd (R14→R15→H10). After restart, `fail_stale_jobs` marked the row
+`failed` with *"Cancel and start again"* — no Continue path, and any
+verdicts not yet written in the stream `finally` were lost.
+
+Invariant:
+
+1. **Incremental persist** — Wikidata / HMO item verify streams write each
+   fresh `agent.verdict` to overrides + inference cache immediately (not
+   only in `finally`), so a kill mid-run still leaves durable cache hits.
+2. **Resumable terminal result** — `fail_stale_jobs`, verify-job exception /
+   cancel paths, and partial `session.end` stamp
+   `result.resumable` / `judged` / `total` / `remaining` (via
+   `verify_resume.py`). Stale verify errors tell the curator to Continue.
+3. **Continue UI** — `useVerifyJob` exposes `resumeOffer` +
+   `continueFromPause()` (same scope params, `override_cache=false`, new
+   `session_id`). Wikidata / HMO / NER verify modals show
+   **Continue verification (N/M done)**; cache hits skip already-judged
+   items. Session GET may hydrate from a failed job's slim snapshot.
+4. Dyno restart still re-spawns active rows (`recover_interrupted_jobs`);
+   with incremental cache the respawn is effectively a warm continue.
+
+Tests: `test_verify_resume.py`, `test_run_job_recovery.py`
+(`test_fail_stale_verify_job_is_resumable`),
+`frontend/tests/unit/verifyResume.spec.ts`, `useVerifyJob.spec.ts`.

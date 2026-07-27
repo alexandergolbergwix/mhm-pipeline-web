@@ -33,6 +33,7 @@ import { VerdictsTable } from "@/components/VerdictsTable";
 import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {Glass} from "@/components/glass";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
+import {continueVerifyLabel} from "@/utils/verifyResume";
 
 
 export interface WikidataVerificationModalProps {
@@ -95,7 +96,7 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
   );
   const verifyJobKey = verifyJob ? jobFingerprint(verifyJob) : null;
 
-  const {running, start: startVerifyJob, stop, progress} = useVerifyJob({
+  const {running, start: startVerifyJob, continueFromPause, stop, progress, resumeOffer} = useVerifyJob({
     runId,
     kind: "wikidata_verify",
     loadSession,
@@ -202,6 +203,26 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
     }
   }
 
+  async function continueVerification(): Promise<void> {
+    if (running) return;
+    setError(null);
+    setOverrideCache(false);
+    setShowingHistorical(false);
+    tableRefreshRef.current.reset();
+    try {
+      await continueFromPause({
+        action_id: actionId,
+        item_ids: itemIds,
+        approved_only: approvedOnly,
+        source,
+        tier_model: tierModel,
+        override_cache: false,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const action = useMemo(
     () => actions.find((a) => a.id === actionId) ?? null,
     [actions, actionId],
@@ -276,13 +297,26 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
           </label>
           {!running
             ? (
-              <button
-                onClick={() => { void start(); }}
-                disabled={!action}
-                className="button-primary text-sm"
-              >
-                {showingHistorical ? "Re-run verification" : "Start verification"}
-              </button>
+              <>
+                {resumeOffer && (
+                  <button
+                    type="button"
+                    onClick={() => { void continueVerification(); }}
+                    disabled={!action}
+                    className="button-primary text-sm"
+                    data-testid="wikidata-verify-continue"
+                  >
+                    {continueVerifyLabel(resumeOffer)}
+                  </button>
+                )}
+                <button
+                  onClick={() => { void start(); }}
+                  disabled={!action}
+                  className={resumeOffer ? "button-ghost text-sm" : "button-primary text-sm"}
+                >
+                  {showingHistorical ? "Re-run verification" : "Start verification"}
+                </button>
+              </>
             )
             : (
               <button onClick={stop} className="button-ghost text-sm text-warn">

@@ -19,6 +19,8 @@ from app.models.run_job import (
     JOB_KIND_HMO_ITEM_VERIFY,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_WIKIDATA_VERIFY,
+    JOB_STATUS_CANCELLED,
+    JOB_STATUS_FAILED,
     JOB_STATUS_SUCCEEDED,
     RunJob,
 )
@@ -39,13 +41,19 @@ async def fetch_verify_session_from_job(
     session_id: str,
     job_kind: str,
 ) -> dict[str, Any] | None:
+    # Include failed/cancelled so a dyno-interrupted verify (Rule W-130) can
+    # still hydrate prior TRACE/snapshot verdicts for Continue.
     rows = (
         await db.execute(
             select(RunJob)
             .where(
                 RunJob.run_id == run_id,
                 RunJob.kind == job_kind,
-                RunJob.status == JOB_STATUS_SUCCEEDED,
+                RunJob.status.in_((
+                    JOB_STATUS_SUCCEEDED,
+                    JOB_STATUS_FAILED,
+                    JOB_STATUS_CANCELLED,
+                )),
             )
             .order_by(RunJob.finished_at.desc())
         )
@@ -53,9 +61,16 @@ async def fetch_verify_session_from_job(
     for job in rows:
         if str((job.params or {}).get("session_id") or "") != session_id:
             continue
-        snap = (job.result or {}).get("session_snapshot")
-        if isinstance(snap, dict) and snap.get("session_id"):
+        result = job.result or {}
+        snap = result.get("session_snapshot")
+        if isinstance(snap, dict) and (snap.get("session_id") or snap.get("verdicts")):
             return snap
+        progress = job.progress if isinstance(job.progress, dict) else {}
+        prog_snap = progress.get("session_snapshot")
+        if isinstance(prog_snap, dict) and (
+            prog_snap.get("session_id") or prog_snap.get("verdicts")
+        ):
+            return prog_snap
     return None
 
 

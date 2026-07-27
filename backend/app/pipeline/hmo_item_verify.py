@@ -178,6 +178,11 @@ async def hmo_item_verify_event_stream(
     runner_error: str | None = None
     runner_exit_code: int | None = None
     saw_runner_exit = False
+    # Early index for per-verdict write-through before a dyno crash (Rule W-130).
+    items_by_id = {
+        str(i.get("_local_id") or i.get("local_id") or ""): i
+        for i in items
+    }
 
     if uncached_items:
         try:
@@ -250,6 +255,18 @@ async def hmo_item_verify_event_stream(
                     if local_id:
                         streamed_fresh_verdict_keys.add(local_id)
                         streamed_fresh_verdicts.append(payload)
+                        try:
+                            await _persist_hmo_item_verdicts(
+                                run_id=UUID(run_id),
+                                items_by_id=items_by_id,
+                                verdicts=[payload],
+                                judge_model=tier_model or "gemini-3.5-flash",
+                            )
+                        except Exception:  # noqa: BLE001
+                            logger.exception(
+                                "incremental HMO verdict persist failed for %s",
+                                local_id,
+                            )
                 elif ev.type == "runner.error":
                     runner_error = str((ev.payload or {}).get("message") or "verify failed")
                 elif ev.type == "runner.exit":
@@ -281,10 +298,6 @@ async def hmo_item_verify_event_stream(
             saw_runner_exit=saw_runner_exit or bool(eval_agent_error) or not uncached_items,
             runner_error=runner_error,
         )
-        items_by_id = {
-            str(i.get("_local_id") or i.get("local_id") or ""): i
-            for i in items
-        }
         verdicts_to_persist: list[dict[str, Any]] = [
             cached_hmo_item_verdict_event(item, cached_payload)
             for item, cached_payload in pre_cached

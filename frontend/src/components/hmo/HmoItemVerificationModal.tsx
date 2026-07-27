@@ -18,6 +18,7 @@ import {
   jobProcessedCount,
 } from "@/utils/throttledProgressRefresh";
 import {hydrateVerifySession, mergeFlowWithJobProgress} from "@/utils/verifySessionHydrate";
+import {continueVerifyLabel} from "@/utils/verifyResume";
 
 function verdictLocalId(row: Record<string, unknown>): string {
   const cand = (row.candidate ?? {}) as Record<string, unknown>;
@@ -79,7 +80,7 @@ export function HmoItemVerificationModal({
 
   const tableRefreshRef = useRef(createThrottledProgressRefresh());
 
-  const {running, start: startVerifyJob, stop, progress} = useVerifyJob({
+  const {running, start: startVerifyJob, continueFromPause, stop, progress, resumeOffer} = useVerifyJob({
     runId,
     kind: "hmo_item_verify",
     loadSession,
@@ -138,6 +139,24 @@ export function HmoItemVerificationModal({
     }
   }, [actionId, itemIds, overrideCache, running, startVerifyJob, tierModel]);
 
+  const handleContinue = useCallback(async () => {
+    if (running) return;
+    setError(null);
+    setDoneMessage(null);
+    setOverrideCache(false);
+    tableRefreshRef.current.reset();
+    try {
+      await continueFromPause({
+        action_id: actionId,
+        item_ids: itemIds,
+        tier_model: tierModel,
+        override_cache: false,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [actionId, continueFromPause, itemIds, running, tierModel]);
+
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
   const action = useMemo(
     () => actions.find((a) => a.id === actionId) ?? null,
@@ -172,7 +191,25 @@ export function HmoItemVerificationModal({
             Override cache
           </label>
           {!running ? (
-            <button type="button" className="button-primary text-sm" onClick={() => void handleStart()}>Start</button>
+            <>
+              {resumeOffer && (
+                <button
+                  type="button"
+                  className="button-primary text-sm"
+                  onClick={() => void handleContinue()}
+                  data-testid="hmo-item-verify-continue"
+                >
+                  {continueVerifyLabel(resumeOffer)}
+                </button>
+              )}
+              <button
+                type="button"
+                className={resumeOffer ? "button-ghost text-sm" : "button-primary text-sm"}
+                onClick={() => void handleStart()}
+              >
+                Start
+              </button>
+            </>
           ) : (
             <button type="button" className="button-ghost text-sm" onClick={stop}>Stop</button>
           )}

@@ -5,6 +5,7 @@ import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
 import {jobVerifySessionSnapshot} from "@/utils/fetchVerifySession";
 import {useLatestRef} from "@/utils/renderStable";
+import {resumeOfferFromJob, type VerifyResumeOffer} from "@/utils/verifyResume";
 import {shouldLoadVerifySession} from "@/utils/verifySession";
 
 interface UseVerifyJobOptions {
@@ -40,6 +41,7 @@ export function useVerifyJob({
 }: UseVerifyJobOptions) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [resumeOffer, setResumeOffer] = useState<VerifyResumeOffer | null>(null);
   const ensurePolling = useRunJobs((s) => s.ensurePolling);
   const cancelJob = useRunJobs((s) => s.cancelJob);
   const jobsRecord = useRunJobs((s) => s.jobs);
@@ -87,10 +89,15 @@ export function useVerifyJob({
 
     if (job.status === "queued" || job.status === "running") {
       setRunning(true);
+      setResumeOffer(null);
       return;
     }
     setRunning(false);
     setJobId((current) => (current === job.id ? null : current));
+
+    const offer = resumeOfferFromJob(job);
+    if (offer) setResumeOffer(offer);
+
     if (job.status === "succeeded") {
       const result = job.result ?? {};
       const judged = Number(result.judged ?? job.progress?.processed ?? 0);
@@ -114,7 +121,7 @@ export function useVerifyJob({
           ? "some entities may have been below the confidence threshold or errored"
           : runnerHint
             ? runnerHint
-            : "the judge stopped early before finishing the full scope — retry the remaining items";
+            : "the judge stopped early before finishing the full scope — click Continue to resume";
         const msg = skipped > 0
           ? `Verified ${judged} of ${scopeTotal || judged}. ${skipped} were skipped because the eval-agent could not run on this server.`
           : `Verified ${judged} of ${scopeTotal} — ${partialHint}.`;
@@ -123,25 +130,44 @@ export function useVerifyJob({
       onCompleteRef.current?.();
       return;
     }
-    if (job.status === "failed") {
-      onFailedRef.current?.(job.error ?? "Verification failed");
+    if (job.status === "failed" || job.status === "cancelled") {
+      const fallback = job.status === "cancelled"
+        ? "Verification cancelled"
+        : "Verification failed";
+      onFailedRef.current?.(job.error ?? fallback);
     }
-  }, [loadSessionRef, onCompleteRef, onFailedRef]);
+  }, [kind, loadSessionRef, onCompleteRef, onFailedRef]);
 
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
-    void RunJobs.listForRun(runId, true).then(({jobs}) => {
+    void RunJobs.listForRun(runId, false).then(({jobs}) => {
       if (cancelled) return;
-      const active = jobs.find((j) => j.kind === kind && isJobActive(j.status));
+      const ofKind = jobs.filter((j) => j.kind === kind);
+      const active = ofKind.find((j) => isJobActive(j.status));
       if (active) {
         setJobId(active.id);
         void applyJob(active, true);
         ensurePolling();
+        return;
+      }
+      const latest = ofKind[0];
+      const offer = resumeOfferFromJob(latest);
+      if (offer) {
+        setResumeOffer(offer);
+        const sessionId = offer.sessionId;
+        if (sessionId && latest) {
+          void loadSessionRef.current(sessionId, latest).catch(() => {
+            /* historical session may be gone on this dyno */
+          });
+        }
+        if (latest?.error) {
+          onFailedRef.current?.(latest.error);
+        }
       }
     });
     return () => { cancelled = true; };
-  }, [runId, kind, applyJob, ensurePolling]);
+  }, [runId, kind, applyJob, ensurePolling, loadSessionRef, onFailedRef]);
 
   useEffect(() => {
     if (!storeJob || !storeJobKey) return;
@@ -175,6 +201,7 @@ export function useVerifyJob({
 
   async function start(params: Record<string, unknown>) {
     setRunning(true);
+    setResumeOffer(null);
     lastFingerprintRef.current = null;
     try {
       const job = await RunJobs.start(runId, kind, params);
@@ -189,10 +216,36 @@ export function useVerifyJob({
     }
   }
 
+  /** Continue an interrupted verify: same scope, force cache reuse. */
+  async function continueFromPause(baseParams?: Record<string, unknown>) {
+    const offer = resumeOffer;
+    const merged: Record<string, unknown> = {
+      ...(offer?.params ?? {}),
+      ...(baseParams ?? {}),
+      override_cache: false,
+    };
+    delete merged.session_id;
+    delete merged._api_key;
+    return start(merged);
+  }
+
   function stop() {
     if (jobId) void cancelJob(runId, jobId);
     setRunning(false);
   }
 
-  return {running, start, stop, jobId, progress: storeJob?.progress ?? null};
+  function clearResumeOffer() {
+    setResumeOffer(null);
+  }
+
+  return {
+    running,
+    start,
+    continueFromPause,
+    stop,
+    jobId,
+    progress: storeJob?.progress ?? null,
+    resumeOffer,
+    clearResumeOffer,
+  };
 }

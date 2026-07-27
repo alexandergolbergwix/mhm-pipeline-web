@@ -291,30 +291,75 @@ async def recover_interrupted_jobs() -> int:
 
 
 async def fail_stale_jobs() -> int:
-    """Mark long-running jobs with no recent heartbeat as failed."""
+    """Mark long-running jobs with no recent heartbeat as failed.
+
+    Verify kinds (Rule W-130) get a ``resumable`` result so the curator can
+    Continue from cached verdicts instead of restarting the full scope.
+    """
+    from app.pipeline.verify_resume import (  # noqa: PLC0415
+        STALE_GENERIC_ERROR,
+        is_verify_job_kind,
+        progress_counts,
+        resumable_verify_result,
+        stale_verify_error_message,
+    )
+
     cutoff = _now() - STALE_JOB_AFTER
     async with session_scope() as db:
-        res = await db.execute(
-            update(RunJob)
-            .where(
-                RunJob.status == JOB_STATUS_RUNNING,
-                RunJob.updated_at < cutoff,
+        rows = (
+            await db.execute(
+                select(RunJob).where(
+                    RunJob.status == JOB_STATUS_RUNNING,
+                    RunJob.updated_at < cutoff,
+                )
             )
-            .values(
-                status=JOB_STATUS_FAILED,
-                error=(
-                    "Job interrupted — the server restarted or the worker "
-                    "stopped responding. Cancel and start again."
-                ),
-                finished_at=_now(),
-            )
-            .execution_options(synchronize_session=False)
-        )
+        ).scalars().all()
+        if not rows:
+            return 0
+
+        finished = _now()
+        for job in rows:
+            if is_verify_job_kind(job.kind):
+                progress = job.progress if isinstance(job.progress, dict) else {}
+                judged, total = progress_counts(progress)
+                session_id = str(
+                    progress.get("session_id")
+                    or (job.params or {}).get("session_id")
+                    or "",
+                )
+                snap = progress.get("session_snapshot")
+                if isinstance(snap, dict):
+                    from app.pipeline.verify_session_store import (  # noqa: PLC0415
+                        slim_job_session_snapshot,
+                    )
+                    snap = slim_job_session_snapshot(snap)
+                else:
+                    snap = None
+                job.result = resumable_verify_result(
+                    session_id=session_id or None,
+                    judged=judged,
+                    total=total,
+                    session_snapshot=snap,
+                    interrupted=True,
+                )
+                job.error = stale_verify_error_message(judged=judged, total=total)
+                job.progress = {
+                    **progress,
+                    "phase": "interrupted",
+                    "processed": judged,
+                    "total": total or judged,
+                    "message": job.error,
+                    "session_id": session_id or progress.get("session_id"),
+                }
+            else:
+                job.error = STALE_GENERIC_ERROR
+            job.status = JOB_STATUS_FAILED
+            job.finished_at = finished
         await db.commit()
-        count = res.rowcount or 0
+        count = len(rows)
+
     if count:
         logger.warning("marked %d stale run job(s) as failed", count)
-    if count:
         await admit_waiting_jobs()
     return count
 

@@ -20,6 +20,7 @@ POST /runs/{run_id}/jobs {kind, params}
 Every 60 s (run_job_maintenance_loop):
   _heartbeat_owned_jobs()   # bump updated_at on rows whose task is alive here
   fail_stale_jobs()         # running + updated_at > 5 min old → failed
+                            # (verify kinds stamp result.resumable — W-130)
   _respawn_orphaned_jobs()  # queued rows > 90 s old with no local task → spawn
 
 On process start (lifespan): fail_stale_jobs() → recover_interrupted_jobs()
@@ -50,6 +51,10 @@ re-spawns them after a terminal job or on each maintenance tick. Caps:
 `RUN_JOB_MAX_RUNNING`, `RUN_JOB_MAX_VERIFY`, `RUN_JOB_MAX_BUILD`,
 `RUN_JOB_MAX_UPLOAD`, `RUN_JOB_MAX_LIGHT`.
 
+**Interrupted verify resume (Rule W-130).** Stale/failed verify jobs carry
+`result.resumable` + judged/total. Wikidata/HMO streams write each verdict to
+the inference cache immediately so Continue (`override_cache=false`) warm-hits
+already-judged items.
 ## Job kinds and owners
 
 | Kind | Worker module | What it does |

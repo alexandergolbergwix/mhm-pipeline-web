@@ -45,6 +45,7 @@ import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {Glass} from "@/components/glass";
 import {useGlassOverlayLifecycle} from "@/hooks/useGlassOverlayLifecycle";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
+import {continueVerifyLabel} from "@/utils/verifyResume";
 import {useAuth} from "@/stores/auth";
 
 
@@ -142,7 +143,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
     onVerdictsLanded?.();
   }, [userId, runId, onVerdictsLanded]);
 
-  const {running, start: startVerifyJob, stop} = useVerifyJob({
+  const {running, start: startVerifyJob, continueFromPause, stop, resumeOffer} = useVerifyJob({
     runId,
     kind: "ner_verify",
     loadSession,
@@ -241,6 +242,23 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
     }
   }
 
+  async function continueVerification(): Promise<void> {
+    if (running) return;
+    setError(null);
+    setOverrideCache(false);
+    setShowingHistorical(false);
+    try {
+      await continueFromPause({
+        action_id: actionId,
+        entity_ids: entityIds,
+        tier_model: tierModel,
+        override_cache: false,
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   const action = useMemo(
     () => actions.find((a) => a.id === actionId) ?? null,
     [actions, actionId],
@@ -300,10 +318,28 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
             <span>Override cache (force fresh LLM call)</span>
           </label>
           {!running
-            ? <button onClick={start} disabled={!action}
-                      className="button-primary text-sm">
-                {showingHistorical ? "Re-run verification" : "Start verification"}
-              </button>
+            ? (
+              <>
+                {resumeOffer && (
+                  <button
+                    type="button"
+                    onClick={() => { void continueVerification(); }}
+                    disabled={!action}
+                    className="button-primary text-sm"
+                    data-testid="ner-verify-continue"
+                  >
+                    {continueVerifyLabel(resumeOffer)}
+                  </button>
+                )}
+                <button
+                  onClick={start}
+                  disabled={!action}
+                  className={resumeOffer ? "button-ghost text-sm" : "button-primary text-sm"}
+                >
+                  {showingHistorical ? "Re-run verification" : "Start verification"}
+                </button>
+              </>
+            )
             : <button onClick={stop} className="button-ghost text-sm text-warn">
                 Stop
               </button>}

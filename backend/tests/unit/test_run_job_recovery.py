@@ -381,3 +381,58 @@ async def test_maintenance_tick_calls_admit_waiting_jobs(
 
     await run_job_maintenance_tick()
     assert len(admit_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_fail_stale_verify_job_is_resumable(db_session, sample_run) -> None:
+    from app.pipeline.run_job_service import fail_stale_jobs  # noqa: PLC0415
+
+    job = await _add_job(
+        db_session,
+        sample_run,
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_RUNNING,
+        claimed_by=WORKER_ID,
+    )
+    job.params = {"session_id": "sess-wd", "action_id": "audit_wikidata_item"}
+    job.progress = {
+        "phase": "running",
+        "processed": 61,
+        "total": 313,
+        "session_id": "sess-wd",
+        "message": "judging",
+    }
+    await db_session.commit()
+    await _backdate(db_session, job.id, by=STALE_JOB_AFTER + timedelta(seconds=30))
+
+    count = await fail_stale_jobs()
+    assert count == 1
+    await db_session.refresh(job)
+    assert job.status == JOB_STATUS_FAILED
+    assert job.result is not None
+    assert job.result["resumable"] is True
+    assert job.result["judged"] == 61
+    assert job.result["total"] == 313
+    assert job.result["remaining"] == 252
+    assert "Continue" in (job.error or "")
+
+
+@pytest.mark.asyncio
+async def test_fail_stale_non_verify_keeps_generic_message(db_session, sample_run) -> None:
+    from app.pipeline.run_job_service import fail_stale_jobs  # noqa: PLC0415
+
+    job = await _add_job(
+        db_session,
+        sample_run,
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_RUNNING,
+        claimed_by=WORKER_ID,
+    )
+    await _backdate(db_session, job.id, by=STALE_JOB_AFTER + timedelta(seconds=30))
+
+    count = await fail_stale_jobs()
+    assert count == 1
+    await db_session.refresh(job)
+    assert job.status == JOB_STATUS_FAILED
+    assert job.result is None
+    assert "Cancel and start again" in (job.error or "")

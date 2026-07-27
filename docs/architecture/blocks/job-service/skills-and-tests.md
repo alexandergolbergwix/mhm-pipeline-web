@@ -70,7 +70,8 @@
 
 | Test file | Contract pinned |
 |---|---|
-| `backend/tests/unit/test_run_job_recovery.py` | Startup respawn; queued-row claim; fresh-foreign-row rejection; unowned/own-dyno/stale reclaim; heartbeat bumps only live+owned+running rows; tick order (heartbeat → reap → respawn → admit); create-race → `ActiveJobError`; admission caps block excess verify/build/global slots; `finish_job` admits next queued row |
+| `backend/tests/unit/test_run_job_recovery.py` | Startup respawn; queued-row claim; fresh-foreign-row rejection; unowned/own-dyno/stale reclaim; heartbeat bumps only live+owned+running rows; tick order (heartbeat → reap → respawn → admit); create-race → `ActiveJobError`; admission caps block excess verify/build/global slots; `finish_job` admits next queued row; stale verify → resumable (W-130) |
+| `backend/tests/unit/test_verify_resume.py` | Resumable result / stale-error copy helpers (Rule W-130) |
 | `backend/tests/test_hmo_item_upload.py` | `hmo_item_upload` worker behaviour incl. once-per-run reconcile-PID resolution (Rule W-40) and optional `local_ids` retry scope |
 | `backend/tests/test_studio_item_bulk_approve.py` | `hmo_item_bulk_approve` / `wikidata_item_bulk_approve` params + worker (Rule W-105) |
 | `backend/tests/test_hmo_studio_build_items_router.py` | `hmo_item_build` enqueue / 409-active / worker result (Rule W-106) |
