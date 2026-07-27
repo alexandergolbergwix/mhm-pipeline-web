@@ -16,7 +16,7 @@ from app.models.wikibase_cloud_write import (
 )
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
-from app.pipeline.wikidata_item_views import fetch_merged_wikidata_items
+from app.pipeline.wikidata_item_views import fetch_merged_wikidata_items, fetch_merged_wikidata_item
 
 
 @pytest.mark.asyncio
@@ -138,3 +138,42 @@ async def test_merged_view_excludes_non_public_entity_types(db_session) -> None:
 
     items = await fetch_merged_wikidata_items(db_session, run_id, source="canonical")
     assert [row["local_id"] for row in items] == ["990001234"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_merged_wikidata_item_returns_one_full_row(db_session) -> None:
+    run_id = uuid.uuid4()
+    db_session.add(
+        WikidataStudioCache(
+            run_id=run_id,
+            approved_only=True,
+            source="canonical",
+            input_fingerprint="f" * 64,
+            result_items=[
+                {
+                    "local_id": "990001234",
+                    "entity_type": "manuscript",
+                    "labels": {"en": "MS 1234"},
+                    "statements": [{"property": "P31", "value": "Q87167"}],
+                    "validation_issues": [],
+                },
+            ],
+            quickstatements="",
+            summary={"total_items": 1},
+            approved_match_count=0,
+            pending_match_count=0,
+            used_match_count=0,
+            record_count=1,
+        )
+    )
+    await db_session.commit()
+
+    row = await fetch_merged_wikidata_item(
+        db_session, run_id, "990001234", source="canonical",
+    )
+    assert row is not None
+    assert row["local_id"] == "990001234"
+    assert len(row["statements"]) == 1
+    assert await fetch_merged_wikidata_item(
+        db_session, run_id, "missing", source="canonical",
+    ) is None

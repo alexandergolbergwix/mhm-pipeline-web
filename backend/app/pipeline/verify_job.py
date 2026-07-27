@@ -24,6 +24,7 @@ from app.pipeline.run_job_service import (
     update_job_progress,
 )
 from app.pipeline.verify_session_store import (
+    _compact_verdict_for_job,
     slim_job_session_snapshot,
     snapshot_from_collected_events,
 )
@@ -258,7 +259,13 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     try:
         async for ev in stream:
             if _should_collect_event(ev):
-                collected_events.append({"type": ev.type, **(ev.payload or {})})
+                payload = dict(ev.payload or {})
+                if ev.type == "agent.verdict":
+                    collected_events.append(
+                        _compact_verdict_for_job({"type": ev.type, **payload}),
+                    )
+                else:
+                    collected_events.append({"type": ev.type, **payload})
             if await is_cancel_requested(job_id):
                 await stream.aclose()
                 await finish_job(

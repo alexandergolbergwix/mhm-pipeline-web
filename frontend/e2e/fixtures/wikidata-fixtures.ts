@@ -274,6 +274,16 @@ export async function installStudioMocks(
     const method = route.request().method();
     const localId = decodeURIComponent(url.split("/items/")[1]?.split("?")[0]?.split("/")[0] ?? "");
 
+    if (method === "GET" && localId && !url.includes("/export") && !url.includes("/validation-errors")) {
+      const base = build.items.find((i) => i.local_id === localId) ?? build.items[0];
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(base ?? {}),
+      });
+      return;
+    }
+
     if (method === "PATCH") {
       route.fulfill({
         status: 200,

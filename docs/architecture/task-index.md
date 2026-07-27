@@ -14,6 +14,7 @@
 | Fix verify stalling ~50 items on DeepSeek / no runner.exit | [eval-agent](blocks/eval-agent/README.md) R31 + [job-service](blocks/job-service/README.md) R20 + Rule W-127 |
 | Fix verify modal stuck RUNNING / VERDICTS (0) after R14/H12 | [job-service](blocks/job-service/README.md) R20 + Rule W-128 + reopen modal |
 | Continue AI verify after dyno OOM / restart | [job-service](blocks/job-service/README.md) R22 + [eval-agent](blocks/eval-agent/README.md) R33 + [frontend](blocks/frontend/README.md) R18 + Rule W-130 |
+| Avoid Basic-dyno OOM during Studio + verify | [wikidata-studio](blocks/wikidata-studio/README.md) R55 + [eval-agent](blocks/eval-agent/README.md) R34 + [frontend](blocks/frontend/README.md) R18 + Rule W-131 |
 | Limit parallel verify/build on one dyno (crash-safe queue) | [job-service](blocks/job-service/README.md) R21 + Rule W-129 + `RUN_JOB_MAX_*` env |
 | Map HMO / project Wikibase P/Q → public Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) R38 + `hmo_wikidata_pq_mapper.py` + [docs/wikidata-data-access.md](../wikidata-data-access.md) |
 | Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |

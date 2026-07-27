@@ -485,6 +485,7 @@ export function WikidataItemsPanel({
           runId={runId}
           projectId={projectId}
           item={openItem}
+          source={source}
           approvedOnly={approvedOnly}
           moratoriumLifted={moratoriumLifted}
           testMode={testMode}

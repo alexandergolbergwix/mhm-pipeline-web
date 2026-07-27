@@ -51,6 +51,8 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
   non-public entity types (W-118).
 - `backend/tests/unit/test_wikidata_studio_build_job.py` — build worker passes
   `reconcile=False` (W-119 / R46).
+- `backend/tests/unit/test_wikidata_studio_list_view.py` — `list_view` trim,
+  lean fixture + compact cached-verdict candidates (W-131).
 
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).

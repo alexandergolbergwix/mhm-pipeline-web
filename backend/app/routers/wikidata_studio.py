@@ -74,8 +74,10 @@ from app.pipeline.verify_session_store import load_verify_session
 from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
 from app.pipeline.wikidata_item_views import (
     StudioBuildMissingError,
+    fetch_merged_wikidata_item,
     fetch_merged_wikidata_items,
     fetch_validation_error_items,
+    trim_studio_list_item,
 )
 from app.pipeline.wikidata_verdict_cache import (
     attach_local_reference_targets,
@@ -85,6 +87,10 @@ from app.pipeline.wikidata_verdict_cache import (
     sanitise_stale_wikidata_verdict,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
+)
+from app.pipeline.wikidata_verify_fixture import (
+    compact_wikidata_verdict_candidate,
+    write_wikidata_verify_fixture,
 )
 from app.routers.runs import _lookup_run_with_access  # noqa: PLF401 — module-internal
 from app.services.wikibase_audit import WikibaseAuditContext
@@ -779,6 +785,7 @@ def _studio_response_from_cache(
     page: int,
     page_size: int,
     cache_stale: bool = False,
+    list_view: bool = False,
 ) -> StudioBuildResponse:
     sliced, total, props, plabels, approved_item_count = _slice_items(
         merged_items,
@@ -790,9 +797,11 @@ def _studio_response_from_cache(
         page=page,
         page_size=page_size,
     )
+    if list_view:
+        sliced = [trim_studio_list_item(item) for item in sliced]
     return StudioBuildResponse(
         items=sliced,
-        quickstatements=cached.quickstatements,
+        quickstatements="" if list_view else cached.quickstatements,
         summary=StudioSummary(**cached.summary),
         approved_match_count=cached.approved_match_count,
         pending_match_count=cached.pending_match_count,
@@ -856,6 +865,11 @@ async def build_studio(
         default=None,
         description="Filter by last upload outcome (create/adopt/update/blocked/…).",
     ),
+    list_view: bool = Query(
+        default=False,
+        description="When true, omit bulky per-item fields (statements, evidence, "
+                    "quickstatements corpus) for paginated review tables.",
+    ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StudioBuildResponse:
@@ -904,6 +918,7 @@ async def build_studio(
                 page=page,
                 page_size=page_size,
                 cache_stale=cache_shape_stale,
+                list_view=list_view,
             )
         # Stale cache: serve the last good build immediately. Do not auto-start
         # a background job — passive page loads should not surface a job-tray
@@ -928,6 +943,7 @@ async def build_studio(
             page=page,
             page_size=page_size,
             cache_stale=True,
+            list_view=list_view,
         )
 
     logger.debug("wikidata-studio cache miss for run %s (fp=%s)", run_id, fingerprint[:8])
@@ -1549,6 +1565,36 @@ class ItemOverrideResponse(BaseModel):
     approved: bool | None = None
     accept_foreign_modify: bool | None = None
     accepted_foreign_qid: str | None = None
+
+
+@router.get("/{run_id}/wikidata-studio/items/{local_id:path}")
+async def get_studio_item(
+    run_id: uuid.UUID,
+    local_id: str,
+    source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
+    approved_only: bool = Query(default=True),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    if source == "legacy" and get_settings().canonical_first_for_run(run_id):
+        source = "canonical"
+    try:
+        item = await fetch_merged_wikidata_item(
+            db,
+            run_id,
+            local_id,
+            approved_only=approved_only,
+            source=source,
+        )
+    except StudioBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"unknown local_id {local_id!r}",
+        )
+    return item
 
 
 @router.patch(
@@ -2381,6 +2427,16 @@ async def _wikidata_verify_event_stream(
         str(i.get("_local_id") or i.get("local_id") or ""): i
         for i in items
     }
+    persist_batch = None
+    if uncached_items and not eval_agent_error:
+        from app.pipeline.wikidata_item_verify import WikidataVerdictPersistBatch  # noqa: PLC0415
+
+        persist_batch = WikidataVerdictPersistBatch(
+            run_id=UUID(run_id),
+            items_by_id=items_by_id,
+            judge_model=tier_model or "gemini-3.5-flash",
+            marc_records=marc_records,
+        )
 
     if uncached_items:
         try:
@@ -2453,23 +2509,14 @@ async def _wikidata_verify_event_stream(
                     if local_id:
                         streamed_fresh_verdict_keys.add(local_id)
                         streamed_fresh_verdicts.append(payload)
-                        try:
-                            from app.pipeline.wikidata_item_verify import (  # noqa: PLC0415
-                                _persist_wikidata_verdicts_to_overrides,
-                            )
-
-                            await _persist_wikidata_verdicts_to_overrides(
-                                run_id=UUID(run_id),
-                                items_by_id=items_by_id,
-                                verdicts=[payload],
-                                judge_model=tier_model or "gemini-3.5-flash",
-                                marc_records=marc_records,
-                            )
-                        except Exception:  # noqa: BLE001
-                            logger.exception(
-                                "incremental Wikidata verdict persist failed for %s",
-                                local_id,
-                            )
+                        if persist_batch is not None:
+                            try:
+                                await persist_batch.add(payload)
+                            except Exception:  # noqa: BLE001
+                                logger.exception(
+                                    "incremental Wikidata verdict persist failed for %s",
+                                    local_id,
+                                )
                 elif ev.type == "runner.error":
                     runner_error = str((ev.payload or {}).get("message") or "verify failed")
                 elif ev.type == "runner.exit":
@@ -2480,6 +2527,12 @@ async def _wikidata_verify_event_stream(
                     except (TypeError, ValueError):
                         runner_exit_code = None
     finally:
+        if persist_batch is not None:
+            try:
+                await persist_batch.flush()
+            except Exception:  # noqa: BLE001
+                logger.exception("final Wikidata verdict persist batch failed")
+
         from app.pipeline.verify_outcome import (  # noqa: PLC0415
             merge_fresh_verdicts,
             resolve_verify_session_outcome,
@@ -2576,14 +2629,10 @@ def _write_wikidata_verify_fixture(
     marc_records: list[dict[str, Any]],
     items: list[dict[str, Any]],
 ) -> None:
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    (dest_dir / "marc_extracted.json").write_text(
-        json.dumps(marc_records, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    (dest_dir / "wikidata_items.json").write_text(
-        json.dumps(items, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    write_wikidata_verify_fixture(
+        dest_dir=dest_dir,
+        marc_records=marc_records,
+        items=items,
     )
 
 
@@ -2619,12 +2668,10 @@ def _cached_wikidata_verdict_event(
     local_id = str(item.get("_local_id") or item.get("local_id") or "")
     record_ids = item.get("record_ids") if isinstance(item.get("record_ids"), list) else []
     return {
-        "candidate": {
-            **item,
-            "_local_id": local_id,
-            "_item_id": local_id,
-            "label": _item_label(item),
-        },
+        "candidate": compact_wikidata_verdict_candidate(
+            item,
+            label=_item_label(item),
+        ),
         "verdict": cached_payload.get("verdict") or {},
         "judge_id": cached_payload.get("judge_id"),
         "judged_at": cached_payload.get("judged_at"),

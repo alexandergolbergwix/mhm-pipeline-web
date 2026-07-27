@@ -34,6 +34,7 @@ export interface StudioItem {
   descriptions?: Record<string, string>;
   aliases?: Record<string, string[]>;
   statements?: Snak[];
+  statement_count?: number;
   existing_qid?: string | null;
   entity_type?: string;
   local_id?: string;
@@ -193,6 +194,7 @@ export interface StudioBuildParams {
   source?: "legacy" | "canonical";
   approvedOnly?: boolean;
   forceRebuild?: boolean;
+  listView?: boolean;
   entityType?: string | null;
   q?: string | null;
   sort?: string;
@@ -214,7 +216,7 @@ export async function fetchAllStudioItems(
   let merged: StudioBuild | null = null;
   const allItems: StudioItem[] = [];
   while (true) {
-    const chunk = await Studio.build(runId, {...params, page, pageSize});
+    const chunk = await Studio.build(runId, {...params, page, pageSize, listView: true});
     if (!merged) merged = chunk;
     allItems.push(...chunk.items);
     if (allItems.length >= chunk.total || chunk.items.length === 0) break;
@@ -234,6 +236,7 @@ export const Studio = {
       source = "canonical",
       approvedOnly = true,
       forceRebuild = false,
+      listView = false,
       entityType,
       q,
       sort,
@@ -246,6 +249,7 @@ export const Studio = {
     qs.set("source", source);
     qs.set("approved_only", approvedOnly ? "true" : "false");
     if (forceRebuild) qs.set("force_rebuild", "true");
+    if (listView) qs.set("list_view", "true");
     if (entityType && entityType !== "all") qs.set("entity_type", entityType);
     if (q) qs.set("q", q);
     if (sort) qs.set("sort", sort);
@@ -254,6 +258,20 @@ export const Studio = {
     if (pageSize != null) qs.set("page_size", String(pageSize));
     if (uploadOutcome) qs.set("upload_outcome", uploadOutcome);
     return api.get<StudioBuild>(`/runs/${runId}/wikidata-studio?${qs.toString()}`);
+  },
+
+  fetchItem: (
+    runId: string,
+    localId: string,
+    params: Pick<StudioBuildParams, "source" | "approvedOnly"> = {},
+  ) => {
+    const {source = "canonical", approvedOnly = true} = params;
+    const qs = new URLSearchParams();
+    qs.set("source", source);
+    qs.set("approved_only", approvedOnly ? "true" : "false");
+    return api.get<StudioItem>(
+      `/runs/${runId}/wikidata-studio/items/${encodeURIComponent(localId)}?${qs.toString()}`,
+    );
   },
 
   qsUrl: (runId: string, approvedOnly = true, uploadApprovedOnly = false, gated = true, source: "legacy" | "canonical" = "canonical") =>

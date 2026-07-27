@@ -310,3 +310,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     Mid-run counters only; slim terminal `session_snapshot`; UI hydrates the
     VerdictsTable from the job result when polls starved mid-run.
     *Why:* job ecfdcf29 looked stuck at 53/313 with VERDICTS (0) after R14/H12.
+
+55. **R55 — Studio list payloads and verify heaps MUST stay Basic-dyno-safe (Rule W-131).**
+    `list_view=true` on `GET /wikidata-studio`; full item via
+    `GET …/items/{local_id}`; no mid-verify `fetchAllStudioItems` reload;
+    lean cached-verdict candidates, compact fixtures, batched incremental
+    persist. *Why:* Studio 500-page GET + verify worker + mid-reload R14'd
+    the 512 MB dyno during production verify.

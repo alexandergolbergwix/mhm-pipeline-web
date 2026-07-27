@@ -107,3 +107,54 @@ async def _persist_wikidata_verdicts_to_overrides(
                 result=cached_result,
             )
         await db.commit()
+
+
+class WikidataVerdictPersistBatch:
+    """Batch override/cache writes during verify streams (Rule W-131)."""
+
+    def __init__(
+        self,
+        *,
+        run_id: UUID,
+        items_by_id: dict[str, dict[str, Any]],
+        judge_model: str,
+        marc_records: list[dict[str, Any]] | None = None,
+        flush_size: int = 10,
+        flush_interval_s: float = 2.0,
+    ) -> None:
+        import time  # noqa: PLC0415
+
+        self._run_id = run_id
+        self._items_by_id = items_by_id
+        self._judge_model = judge_model
+        self._marc_records = marc_records
+        self._flush_size = flush_size
+        self._flush_interval_s = flush_interval_s
+        self._buffer: list[dict[str, Any]] = []
+        self._last_flush = time.monotonic()
+
+    async def add(self, payload: dict[str, Any]) -> None:
+        import time  # noqa: PLC0415
+
+        self._buffer.append(payload)
+        if (
+            len(self._buffer) >= self._flush_size
+            or (time.monotonic() - self._last_flush) >= self._flush_interval_s
+        ):
+            await self.flush()
+
+    async def flush(self) -> None:
+        import time  # noqa: PLC0415
+
+        if not self._buffer:
+            return
+        batch = self._buffer
+        self._buffer = []
+        self._last_flush = time.monotonic()
+        await _persist_wikidata_verdicts_to_overrides(
+            run_id=self._run_id,
+            items_by_id=self._items_by_id,
+            verdicts=batch,
+            judge_model=self._judge_model,
+            marc_records=self._marc_records,
+        )

@@ -38,6 +38,7 @@ export interface WikidataItemDetailDrawerProps {
   runId: string;
   projectId?: string;
   item: StudioItem;
+  source?: "legacy" | "canonical";
   approvedOnly: boolean;
   moratoriumLifted?: boolean;
   testMode?: boolean;
@@ -57,6 +58,7 @@ export function WikidataItemDetailDrawer({
   runId,
   projectId,
   item,
+  source = "canonical",
   approvedOnly,
   moratoriumLifted = false,
   testMode = false,
@@ -66,6 +68,8 @@ export function WikidataItemDetailDrawer({
   onVerify,
   onAutofix,
 }: WikidataItemDetailDrawerProps) {
+  const [detailItem, setDetailItem] = useState<StudioItem>(item);
+  const [detailLoading, setDetailLoading] = useState(true);
   const [pinned, setPinned] = useState(false);
   const [labels, setLabels] = useState({...(item.labels ?? {})});
   const [descriptions, setDescriptions] = useState({...(item.descriptions ?? {})});
@@ -83,13 +87,43 @@ export function WikidataItemDetailDrawer({
   const [acceptForeign, setAcceptForeign] = useState(Boolean(item.accept_foreign_modify));
   const labelStore = useLabelStore();
 
-  const statements = item.statements ?? [];
-  const wikidataQid = item.existing_qid || null;
-  const historyId = item.local_id ?? "";
+  useEffect(() => {
+    const localId = item.local_id;
+    if (!localId) {
+      setDetailItem(item);
+      setDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    void Studio.fetchItem(runId, localId, {source, approvedOnly})
+      .then((full) => {
+        if (cancelled) return;
+        setDetailItem(full);
+        setLabels({...(full.labels ?? {})});
+        setDescriptions({...(full.descriptions ?? {})});
+        setAliasesHe((full.aliases?.he ?? []).join(" · "));
+        setAcceptForeign(Boolean(full.accept_foreign_modify));
+        setExcluded(new Set());
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setDetailItem(item);
+        setError(e instanceof ApiError ? e.detail : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [approvedOnly, item, runId, source]);
+
+  const statements = detailItem.statements ?? [];
+  const wikidataQid = detailItem.existing_qid || null;
+  const historyId = detailItem.local_id ?? "";
 
   useEffect(() => {
-    setAcceptForeign(Boolean(item.accept_foreign_modify));
-  }, [item.accept_foreign_modify, item.local_id, item.existing_qid]);
+    setAcceptForeign(Boolean(detailItem.accept_foreign_modify));
+  }, [detailItem.accept_foreign_modify, detailItem.local_id, detailItem.existing_qid]);
 
   useEffect(() => {
     if (pinned) return;
@@ -102,7 +136,7 @@ export function WikidataItemDetailDrawer({
     const ids: string[] = [];
     statements.forEach((s) => collectIds(s, ids));
     labelStore.resolve(ids);
-  }, [item, statements, labelStore]);
+  }, [detailItem, statements, labelStore]);
 
   const save = useCallback(async (payload: ItemOverridePayload) => {
     if (!item.local_id) return;
@@ -250,17 +284,17 @@ export function WikidataItemDetailDrawer({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="kicker">Wikidata Studio item</div>
-            <h3 className="text-lg font-medium">{labelOf(item)}</h3>
-            <p className="muted text-xs font-mono mt-1">{item.local_id}</p>
-            {item.hmo_wikibase_id ? (
+            <h3 className="text-lg font-medium">{labelOf(detailItem)}</h3>
+            <p className="muted text-xs font-mono mt-1">{detailItem.local_id}</p>
+            {detailItem.hmo_wikibase_id ? (
               <a
                 className="text-xs underline mt-1 inline-block"
-                href={`https://mhm-hmo.wikibase.cloud/wiki/Item:${item.hmo_wikibase_id}`}
+                href={`https://mhm-hmo.wikibase.cloud/wiki/Item:${detailItem.hmo_wikibase_id}`}
                 target="_blank"
                 rel="noreferrer"
                 data-testid="wikidata-item-hmo-wikibase-link"
               >
-                Open on HMO Wikibase ({item.hmo_wikibase_id})
+                Open on HMO Wikibase ({detailItem.hmo_wikibase_id})
               </a>
             ) : null}
           </div>
@@ -279,18 +313,18 @@ export function WikidataItemDetailDrawer({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <WikidataItemDataStatusBadge item={item} />
-          {(item.validation_issues ?? []).length > 0 && (
-            <ItemValidatorBadge issues={item.validation_issues ?? []} localId={item.local_id} expanded />
+          <WikidataItemDataStatusBadge item={detailItem} />
+          {(detailItem.validation_issues ?? []).length > 0 && (
+            <ItemValidatorBadge issues={detailItem.validation_issues ?? []} localId={detailItem.local_id} expanded />
           )}
           <UploadOutcomeBadge
-            outcome={item.upload_outcome}
-            message={item.upload_message}
-            at={item.upload_at}
-            localId={item.local_id}
+            outcome={detailItem.upload_outcome}
+            message={detailItem.upload_message}
+            at={detailItem.upload_at}
+            localId={detailItem.local_id}
             testIdPrefix="wikidata-item"
           />
-          <WikidataItemAiVerdictBadge verdict={item.ai_verdict} localId={item.local_id} />
+          <WikidataItemAiVerdictBadge verdict={detailItem.ai_verdict} localId={detailItem.local_id} />
           {onVerify && (
             <button type="button" className="button-ghost text-xs" onClick={onVerify} data-testid="wikidata-item-verify-btn">
               Verify with AI
@@ -301,7 +335,7 @@ export function WikidataItemDetailDrawer({
               Autofix with AI
             </button>
           )}
-          {(item.ai_verdict as {suggested_fixes?: unknown[]} | null)?.suggested_fixes?.length ? (
+          {(detailItem.ai_verdict as {suggested_fixes?: unknown[]} | null)?.suggested_fixes?.length ? (
             <>
               <button
                 type="button"
@@ -365,7 +399,7 @@ export function WikidataItemDetailDrawer({
           </section>
         )}
 
-        <AiVerdictReasoningCard verdict={item.ai_verdict} />
+        <AiVerdictReasoningCard verdict={detailItem.ai_verdict} />
 
         <section className="space-y-2">
           <h4 className="text-sm font-medium">Labels</h4>
@@ -405,8 +439,12 @@ export function WikidataItemDetailDrawer({
         <section className="space-y-2 border-t border-white/5 pt-3">
           <div className="flex items-center justify-between gap-2">
             <h4 className="text-sm font-medium">Statements ({statements.length})</h4>
+            {detailLoading && <span className="text-xs muted">Loading full item…</span>}
             {excludeSaving && <span className="text-xs text-biu-sky animate-pulse">Saving…</span>}
           </div>
+          {detailLoading ? (
+            <p className="text-xs muted">Fetching statements and evidence…</p>
+          ) : (
           <ul className="space-y-2">
             {statements.map((s, i) => {
               const isExcluded = excluded.has(i);
@@ -432,6 +470,7 @@ export function WikidataItemDetailDrawer({
               );
             })}
           </ul>
+          )}
         </section>
 
         <section className="space-y-2 border-t border-white/5 pt-3">
@@ -467,9 +506,9 @@ export function WikidataItemDetailDrawer({
           <button
             type="button"
             className="button-ghost text-sm"
-            onClick={() => void save({approved: item.approved === true ? false : true})}
+            onClick={() => void save({approved: detailItem.approved === true ? false : true})}
           >
-            {item.approved ? "Unapprove" : "Approve"}
+            {detailItem.approved ? "Unapprove" : "Approve"}
           </button>
           <button
             type="button"
@@ -491,10 +530,10 @@ export function WikidataItemDetailDrawer({
         )}
       </Glass>
 
-      {compareOpen && wikidataQid && item.local_id && (
+      {compareOpen && wikidataQid && detailItem.local_id && (
         <WikidataComparePanel
           runId={runId}
-          item={item}
+          item={detailItem}
           qid={wikidataQid}
           approvedOnly={approvedOnly}
           onClose={() => setCompareOpen(false)}

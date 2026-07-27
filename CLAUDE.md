@@ -3131,3 +3131,31 @@ Pre-deploy docs gate note (W-130 follow-up): list endpoints omit
 run job history — listing every verify row with embedded verdicts R14'd
 the Basic dyno when the curator opened the modal after Studio's
 ``page_size=500`` payload.
+
+### Rule W-131 — Studio list payloads and verify heaps MUST stay Basic-dyno-safe (added 2026-07-27)
+
+Incident: opening Wikidata Studio with ~300 items while a verify job ran
+collided three heaps on one 512 MB web dyno — full ``page_size=500`` list
+responses (statements + QS + evidence), fat TRACE/cached-verdict candidates,
+and mid-verify ``fetchAllStudioItems`` reloads — producing R14/R15 crashes
+before the first uncached DeepSeek batch finished.
+
+Invariant:
+
+1. **``list_view=true`` on ``GET /wikidata-studio``** — drops ``statements``
+   (adds ``statement_count``), evidence blobs, and corpus ``quickstatements``;
+   slims ``ai_verdict`` to overall/reasoning/model/judged_at +
+   ``has_suggested_fixes``. Full item via
+   ``GET …/wikidata-studio/items/{local_id}`` (single-row merge).
+2. **No mid-verify corpus reload** — verify modals refresh the review table
+   only on terminal ``onComplete`` / Apply-fix, not on throttled progress
+   ticks (Wikidata + HMO item verify).
+3. **Lean verify heap** — cached verdict events carry compact candidates only;
+   ``verify_job`` stores compact ``agent.verdict`` rows in
+   ``collected_events``; fixtures use compact JSON, scoped MARC CNs, and
+   evaluator-needed item fields (``verify_evidence`` without duplicate
+   ``marc`` blob); incremental override/cache writes batch every ~10 verdicts
+   or ≤2 s (always flush on cancel/error/finally) — Continue still warm-hits
+   (W-130).
+
+Tests: ``test_wikidata_studio_list_view.py``, ``test_wikidata_item_views.py``.

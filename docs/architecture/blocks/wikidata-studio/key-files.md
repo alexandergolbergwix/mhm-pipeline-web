@@ -10,7 +10,8 @@
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow placeholders (`רשומה זמנית`) that must never become P1684 (W-72 / W-122) |
 | `backend/converter/wikidata/hmo_wikidata_pq_mapper.py` | Project Wikibase / ontology → public Wikidata P/Q allowlist (Rule W-100); never ID-identity |
 | `backend/app/pipeline/hmo_wikidata_projection.py` | Fail-closed adapter accepting only exact HMO manuscript URIs and unambiguous local QIDs for Wikidata projection |
-| `backend/app/pipeline/wikidata_item_views.py` | Merged read model: cache + overrides + ledger QID + upload audit + stale-sanitized AI verdict |
+| `backend/app/pipeline/wikidata_item_views.py` | Merged read model: cache + overrides + ledger QID + upload audit + stale-sanitized AI verdict; `trim_studio_list_item` / `fetch_merged_wikidata_item` (W-131) |
+| `backend/app/pipeline/wikidata_verify_fixture.py` | Lean eval-agent fixture + compact cached-verdict candidates (W-131) |
 | `backend/app/pipeline/wikidata_item_merge.py` | Apply curator overrides onto serialised item dicts |
 | `backend/app/pipeline/wikidata_item_verify.py` | Persist AI verdicts to `WikidataItemOverride` after verify streams |
 | `backend/app/pipeline/wikidata_verdict_cache.py` | Canonical record/MARC/local-target evidence, durable-target preservation, prompt-complete cache keys, and stale-verdict sanitisation |
