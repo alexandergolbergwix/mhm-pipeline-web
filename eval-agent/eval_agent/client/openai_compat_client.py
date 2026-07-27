@@ -107,8 +107,11 @@ class OpenAICompatJudge:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
+                from eval_agent.client.step_heartbeat import StepHeartbeat  # noqa: PLC0415
+
+                with StepHeartbeat(f"waiting on {self.id} HTTP (attempt {attempt + 1})"):
+                    with urllib.request.urlopen(req, timeout=timeout) as resp:
+                        return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as exc:
                 body_text = exc.read().decode("utf-8", errors="ignore")
                 log.debug(

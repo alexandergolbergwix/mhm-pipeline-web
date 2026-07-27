@@ -38,9 +38,11 @@
    *Why:* the crash handler in `_execute_job` races with normal completion; the guard keeps a late exception from clobbering a good result.
 
 10. **R10 — Verify jobs MUST embed `session_snapshot` in `progress` (live) and `result` (terminal).**
-    (`verify_job.py`, Rule W-33.) *Why:* `/tmp` verify state is per-dyno; the
-    snapshot is what lets session GET handlers and `useVerifyJob` survive
-    multi-dyno routing while the job is still running.
+    (`verify_job.py`, Rule W-33.) Live progress snapshots are **throttled**
+    (Rule W-127 / R20); the terminal `result` still carries the full
+    snapshot. *Why:* `/tmp` verify state is per-dyno; the snapshot is what
+    lets session GET handlers and `useVerifyJob` survive multi-dyno routing
+    while the job is still running.
 
 11. **R11 — Progress/NOTIFY pushes are best-effort and must never fail the job.**
     `_notify_job_update` skips non-Postgres dialects, refreshes the row before serialising (expired `updated_at` → `MissingGreenlet` otherwise), and swallows publish errors with a rollback.
@@ -70,3 +72,5 @@
 18. **R18 — Studio / RDF builds MUST be `run_jobs` with inline progress (Rule W-106).** `hmo_item_build`, `hmo_manifest_build`, `rdf_build`, and `wikidata_studio_build` own heavy build/rebuild work; HTTP handlers enqueue and return immediately; the UI attaches via `JobProgressInline`. *Why:* authority+RDF+export and large Studio rebuilds exceed Heroku’s 30s router budget and must not block the curator with a bare spinner.
 
 19. **R19 — Studio publish/upload MUST be `run_jobs` (Rule W-107).** `hmo_item_upload` (dry-run + live), `hmo_manifest_upload`, and `wikidata_upload` (including the legacy `POST …/wikidata-studio/upload` alias) enqueue; never run sequential Wikibase/Wikidata writes on the request path. *Why:* thousands of sequential writes H12; dry-run over ~2k items also exceeds the router budget.
+
+20. **R20 — Live verify `session_snapshot` MUST be throttled (Rule W-127).** Write a slim snapshot ~every 5 s / every 10 verdicts / on terminal — never on every TRACE event. Mid-run keep verdicts; drop bulky events. *Why:* megabyte progress blobs on each of ~50 DeepSeek verdicts starved the web dyno event loop and contributed to silent early stops (job 06b44db0).

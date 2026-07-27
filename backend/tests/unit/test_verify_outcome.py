@@ -73,3 +73,33 @@ def test_outcome_partial_when_eval_agent_missing() -> None:
         scope_size=5,
         cache_hits=0,
     ) == "partial"
+
+
+def test_outcome_partial_when_runner_exit_missing() -> None:
+    assert resolve_verify_session_outcome(
+        fresh_verdict_count=52,
+        scope_size=313,
+        cache_hits=0,
+        saw_runner_exit=False,
+    ) == "partial"
+
+
+def test_synthesize_missing_runner_error() -> None:
+    from app.pipeline.verify_outcome import synthesize_missing_runner_error
+
+    msg = synthesize_missing_runner_error(
+        fresh_verdict_count=52,
+        scope_size=313,
+        cache_hits=0,
+        saw_runner_exit=False,
+        runner_error=None,
+    )
+    assert msg is not None
+    assert "52 of 313" in msg
+    assert synthesize_missing_runner_error(
+        fresh_verdict_count=10,
+        scope_size=10,
+        cache_hits=0,
+        saw_runner_exit=True,
+        runner_error=None,
+    ) is None

@@ -1,4 +1,4 @@
-"""Honest verify-session completion outcomes (Rule W-126)."""
+"""Honest verify-session completion outcomes (Rules W-126 / W-127)."""
 
 from __future__ import annotations
 
@@ -49,6 +49,7 @@ def resolve_verify_session_outcome(
     cache_hits: int = 0,
     runner_error: str | None = None,
     runner_exit_code: int | None = None,
+    saw_runner_exit: bool = True,
 ) -> str:
     """Return ``complete`` only when the full scope was judged.
 
@@ -62,7 +63,37 @@ def resolve_verify_session_outcome(
         return "partial"
     if runner_exit_code not in (None, 0):
         return "partial"
+    if uncached_count > 0 and not saw_runner_exit:
+        return "partial"
     judged = int(cache_hits) + int(fresh_verdict_count)
     if int(scope_size) > 0 and judged < int(scope_size):
         return "partial"
     return "complete"
+
+
+def synthesize_missing_runner_error(
+    *,
+    fresh_verdict_count: int,
+    scope_size: int,
+    cache_hits: int,
+    saw_runner_exit: bool,
+    runner_error: str | None,
+) -> str | None:
+    """Explain silent early stops when spawn never emitted runner.exit."""
+    if runner_error:
+        return runner_error
+    if saw_runner_exit:
+        return None
+    judged = int(cache_hits) + int(fresh_verdict_count)
+    if int(scope_size) > 0 and judged < int(scope_size):
+        return (
+            f"eval-agent stopped after {judged} of {scope_size} verdicts "
+            "without a clean exit or checkpoint (likely hung judge API, "
+            "OOM, or pipe back-pressure on the web dyno)"
+        )
+    if fresh_verdict_count > 0:
+        return (
+            "eval-agent ended without runner.exit after streaming verdicts "
+            "(checkpoint missing)"
+        )
+    return "eval-agent ended without runner.exit"

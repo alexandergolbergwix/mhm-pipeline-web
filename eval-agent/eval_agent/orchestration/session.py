@@ -181,6 +181,10 @@ class SessionConfig:
                 rpm = pro_rpm
             if parallel is None:
                 parallel = pro_parallel
+        # OpenAI-compat providers on constrained hosts (Heroku web) hang when
+        # several large prompts run concurrently (Rule W-127).
+        if parallel is None and tier_spec.provider == "openai_compat":
+            parallel = 1
 
         escalate_on = tuple(ag_cfg.get("escalate_on", ["abstain", "partial"]))
         auth_cfg = ag_cfg.get("authority", {})
@@ -466,6 +470,12 @@ class Session:
         )
 
         # Judge in parallel; rate-limiter inside the Judge enforces the RPM cap.
+        # Append each verdict to results.jsonl immediately so a hung/killed
+        # subprocess still leaves a recoverable checkpoint (Rule W-127).
+        self._run_dir.mkdir(parents=True, exist_ok=True)
+        results_path = self._run_dir / "results.jsonl"
+        if results_path.exists():
+            results_path.unlink()
         verdicts: list[Verdict] = []
         errors_seen = 0
         t0 = time.time()
@@ -478,6 +488,8 @@ class Session:
                 v = fut.result()
                 verdicts.append(v)
                 _emit_verdict_trace(v)
+                with results_path.open("a", encoding="utf-8") as fp:
+                    fp.write(json.dumps(v.to_jsonl_record(), ensure_ascii=False) + "\n")
                 if v.error:
                     errors_seen += 1
                 ui.progress_line(i, total,

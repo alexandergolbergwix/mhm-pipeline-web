@@ -112,7 +112,11 @@ python backend/scripts/analyze_wikidata_verdicts.py \
 - `backend/tests/unit/test_verify_job_progress.py` — partial `session_snapshot`
   in `progress`.
 - `backend/tests/unit/test_verify_outcome.py` — incomplete scope → `partial`,
-  TRACE/checkpoint merge (Rule W-126).
+  TRACE/checkpoint merge (Rule W-126), synthesize missing `runner.exit`
+  (Rule W-127).
+- `backend/tests/unit/test_verify_job_progress_throttle.py` — throttled live
+  `session_snapshot` (Rule W-127 / job-service R20).
+- `eval-agent/tests/test_step_heartbeat.py` — mid-HTTP `[STEP]` keepalive.
 - `backend/tests/test_extraction_verify_router.py`,
   `test_extraction_verify_suggested_fix.py` — NER channel routes, threshold
   sentinel, verdict persistence + suggested_fix.

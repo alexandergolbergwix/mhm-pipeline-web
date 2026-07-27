@@ -68,6 +68,13 @@ def _progress_from_event(
     }
 
 
+# Writing the full TRACE blob on every verdict ballooned to >1 MB and
+# starved the web dyno's event loop / Postgres (Rule W-127). Live UI only
+# needs periodic verdict hydration; terminal result still carries everything.
+_PROGRESS_SNAPSHOT_INTERVAL_S = 5.0
+_PROGRESS_SNAPSHOT_EVERY_N_VERDICTS = 10
+
+
 def _progress_with_snapshot(
     ev: AgentEvent,
     *,
@@ -76,17 +83,55 @@ def _progress_with_snapshot(
     session_id: str,
     run_id: uuid.UUID,
     collected_events: list[dict[str, Any]],
+    force_snapshot: bool = False,
+    last_snapshot_at: list[float] | None = None,
 ) -> dict[str, Any]:
-    """Progress row for Postgres — includes partial session_snapshot for live UI."""
+    """Progress row for Postgres — throttled partial session_snapshot."""
+    import time  # noqa: PLC0415
+
     progress = _progress_from_event(
         ev, total=total, judged=judged, session_id=session_id,
     )
-    if collected_events:
-        progress["session_snapshot"] = snapshot_from_collected_events(
-            run_id=str(run_id),
-            session_id=session_id,
-            events=collected_events,
-        )
+    if not collected_events:
+        return progress
+
+    now = time.monotonic()
+    prev = last_snapshot_at[0] if last_snapshot_at else 0.0
+    is_terminal = ev.type in ("session.end", "runner.error")
+    is_milestone = (
+        ev.type == "agent.verdict"
+        and judged > 0
+        and judged % _PROGRESS_SNAPSHOT_EVERY_N_VERDICTS == 0
+    )
+    due = (now - prev) >= _PROGRESS_SNAPSHOT_INTERVAL_S
+    if not (force_snapshot or is_terminal or is_milestone or due):
+        return progress
+
+    snap = snapshot_from_collected_events(
+        run_id=str(run_id),
+        session_id=session_id,
+        events=collected_events,
+    )
+    if not is_terminal:
+        # Mid-run: keep verdicts for the live table; drop bulky TRACE noise.
+        snap = {
+            "session_id": snap.get("session_id"),
+            "run_id": snap.get("run_id"),
+            "verdicts": snap.get("verdicts") or [],
+            "events": [
+                e for e in (snap.get("events") or [])
+                if e.get("type") in (
+                    "session.start",
+                    "agent.verdict",
+                    "agent.stats",
+                    "runner.error",
+                    "runner.warning",
+                )
+            ],
+        }
+    progress["session_snapshot"] = snap
+    if last_snapshot_at is not None:
+        last_snapshot_at[0] = now
     return progress
 
 
@@ -113,6 +158,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     session_summary: dict[str, Any] = {}
     collected_events: list[dict[str, Any]] = []
     judged_candidate_ids: set[str] = set()
+    last_snapshot_at: list[float] = [0.0]
     await update_job_progress(job_id, {
         "phase": "preparing",
         "processed": 0,
@@ -187,6 +233,8 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                     session_id=session_id,
                     run_id=run_id,
                     collected_events=collected_events,
+                    force_snapshot=ev.type == "session.start",
+                    last_snapshot_at=last_snapshot_at,
                 ),
             )
 

@@ -299,3 +299,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `outcome` via `verify_outcome.resolve_verify_session_outcome`, and
     write-throughs fresh TRACE rows when `results.jsonl` is missing.
     *Why:* a hung DeepSeek run reported 54/313 as a successful complete pass.
+
+53. **R53 — Large-scope Wikidata verify MUST stay alive under dyno pressure (Rule W-127).**
+    Spawn forces OpenAI-compat `--parallel 1`; synthesize `runner_error` when
+    `runner.exit` never arrives; rely on throttled job snapshots + mid-HTTP
+    `[STEP]` heartbeats + incremental `results.jsonl`.
+    *Why:* job 06b44db0 stopped at 52/313 with no exit/checkpoint.

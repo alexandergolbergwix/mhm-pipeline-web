@@ -2374,6 +2374,7 @@ async def _wikidata_verify_event_stream(
     streamed_fresh_verdict_keys: set[str] = set()
     runner_error: str | None = None
     runner_exit_code: int | None = None
+    saw_runner_exit = False
 
     if uncached_items:
         try:
@@ -2449,6 +2450,7 @@ async def _wikidata_verify_event_stream(
                 elif ev.type == "runner.error":
                     runner_error = str((ev.payload or {}).get("message") or "verify failed")
                 elif ev.type == "runner.exit":
+                    saw_runner_exit = True
                     raw_rc = (ev.payload or {}).get("return_code")
                     try:
                         runner_exit_code = int(raw_rc) if raw_rc is not None else None
@@ -2458,6 +2460,7 @@ async def _wikidata_verify_event_stream(
         from app.pipeline.verify_outcome import (  # noqa: PLC0415
             merge_fresh_verdicts,
             resolve_verify_session_outcome,
+            synthesize_missing_runner_error,
             verdict_candidate_local_id,
         )
 
@@ -2465,6 +2468,13 @@ async def _wikidata_verify_event_stream(
         fresh_verdicts = merge_fresh_verdicts(
             streamed=streamed_fresh_verdicts,
             on_disk=on_disk_verdicts,
+        )
+        runner_error = synthesize_missing_runner_error(
+            fresh_verdict_count=len(fresh_verdicts),
+            scope_size=len(items),
+            cache_hits=len(pre_cached),
+            saw_runner_exit=saw_runner_exit or bool(eval_agent_error) or not uncached_items,
+            runner_error=runner_error,
         )
         items_by_id = {
             str(i.get("_local_id") or i.get("local_id") or ""): i
@@ -2523,6 +2533,7 @@ async def _wikidata_verify_event_stream(
             cache_hits=len(pre_cached),
             runner_error=runner_error,
             runner_exit_code=runner_exit_code,
+            saw_runner_exit=saw_runner_exit or bool(eval_agent_error) or not uncached_items,
         )
         end_ev = AgentEvent(
             type="session.end",

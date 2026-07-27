@@ -10,7 +10,8 @@
 | Change ontology output or graph build | [rdf-graph](blocks/rdf-graph/README.md) |
 | Touch anything that writes to Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) — read its `rules.md` **before** coding |
 | Enrich canonical Studio with full MARC/authority claims (W-125) | [wikidata-studio build](blocks/wikidata-studio/build-and-cache.md) + `wikidata_canonical_enrichment.py` |
-| Debug incomplete AI verify (judged ≪ scope, false “eval-agent error”) | [eval-agent](blocks/eval-agent/README.md) R30 + Rule W-126 + `verify_outcome.py` |
+| Debug incomplete AI verify (judged ≪ scope, false “eval-agent error”) | [eval-agent](blocks/eval-agent/README.md) R30–R31 + Rules W-126/W-127 + `verify_outcome.py` |
+| Fix verify stalling ~50 items on DeepSeek / no runner.exit | [eval-agent](blocks/eval-agent/README.md) R31 + [job-service](blocks/job-service/README.md) R20 + Rule W-127 |
 | Map HMO / project Wikibase P/Q → public Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) R38 + `hmo_wikidata_pq_mapper.py` + [docs/wikidata-data-access.md](../wikidata-data-access.md) |
 | Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |

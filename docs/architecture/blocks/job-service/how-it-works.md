@@ -47,7 +47,7 @@ that scope and records an invalid/empty scope as a failed job. This keeps the
 |---|---|---|
 | `extraction` | `extraction_job.py` | Streams `extract_entities_stream` over run records; persists entities from the results JSON at the end |
 | `authority_re_enrich` | retired | Compatibility rows fail closed with HTTP 410 / terminal error; HMO Studio owns enrichment |
-| `ner_verify` / `wikidata_verify` / `hmo_item_verify` | `verify_job.py` | Opens the corresponding eval-agent event stream, tracks unique candidate IDs (never aggregate stats or replayed events), embeds partial `session_snapshot` in `progress` (live UI) and full snapshot in `result` |
+| `ner_verify` / `wikidata_verify` / `hmo_item_verify` | `verify_job.py` | Opens the corresponding eval-agent event stream, tracks unique candidate IDs (never aggregate stats or replayed events), embeds **throttled** partial `session_snapshot` in `progress` (live UI; Rule W-127) and full snapshot in `result` |
 | `rdf_build` | `rdf_build_job.py` | Builds the TTL, write-throughs `RdfArtifact`, invalidates on-disk graph caches |
 | `wikidata_studio_build` | `wikidata_studio_build_job.py` | Delegates to `execute_studio_build` (fingerprint cache per Rule W-26) |
 | `wikidata_upload` | `wikidata_upload_job.py` | Item-by-item dry-run/live upload through the fail-closed `wikidata_upload.upload_items` gate (Rule W-30) |

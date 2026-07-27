@@ -83,3 +83,4 @@
 | `backend/tests/test_run_job_params_hmo_verify.py` | `hmo_item_verify` param validation: unknown action / empty scope rejected, valid scope accepted |
 | `backend/tests/test_run_job_params_wikidata_verify.py` | `wikidata_verify` enqueue avoids the slow Studio scope; worker errors and Kimi’s non-Gemini credential path are pinned |
 | `backend/tests/unit/test_verify_job_progress.py` | Verify jobs embed partial `session_snapshot` in `progress` (R10 live UI) |
+| `backend/tests/unit/test_verify_job_progress_throttle.py` | Live snapshots throttled; terminal still carries snapshot (R20 / W-127) |

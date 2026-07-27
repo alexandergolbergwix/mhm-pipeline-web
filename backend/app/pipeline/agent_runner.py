@@ -216,23 +216,26 @@ async def spawn_eval_agent_run(
         # silently fall back to the 0.85 default, so the "judge all"
         # value must be negative (truthy + below every real confidence).
         cmd += ["--threshold", str(threshold)]
+    # OpenAI-compat judges (Qubrid DeepSeek/Kimi) on a 512 MB web dyno
+    # stampede into hung HTTP + pipe-backpressure around ~50 items when
+    # parallel>1 (Rule W-127). Force a single worker from the web spawn.
+    if spec.provider == "openai_compat":
+        cmd += ["--parallel", "1"]
 
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
     if api_key:
         env["GEMINI_API_KEY"] = api_key
-    if tier_model:
-        spec = resolve_tier1_model(tier_model)
-        provider_key = os.environ.get(spec.api_key_env)
-        if provider_key and spec.provider != "gemini":
-            env[spec.api_key_env] = provider_key
+    provider_key = os.environ.get(spec.api_key_env)
+    if provider_key and spec.provider != "gemini":
+        env[spec.api_key_env] = provider_key
     # Defense-in-depth for Rule 52: inject state_dir via env var AS WELL AS
     # --state-dir argv so older bundled eval-agent versions that only honour
     # the env var still write results to the right location.
     if state_dir is not None:
         env["EVAL_AGENT_STATE_DIR"] = str(state_dir)
 
-    logger.info("eval-agent spawn cmd=%s cwd=%s", cmd[:6] + ["…"], root)
+    logger.info("eval-agent spawn cmd=%s cwd=%s", cmd[:8] + ["…"], root)
     proc = await asyncio.create_subprocess_exec(
         *cmd, cwd=str(root), env=env,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -256,6 +259,7 @@ async def spawn_eval_agent_run(
             stderr_chunks.append(chunk.decode("utf-8", errors="replace"))
 
     stderr_task = asyncio.create_task(_drain_stderr())
+    exit_emitted = False
 
     async def _kill_child() -> None:
         if proc.returncode is not None:
@@ -303,9 +307,14 @@ async def spawn_eval_agent_run(
                 },
             )
             yield AgentEvent(type="runner.exit", payload={"return_code": proc.returncode})
+            exit_emitted = True
             return
         rc = await proc.wait()
-        await stderr_task
+        try:
+            await asyncio.wait_for(asyncio.shield(stderr_task), timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            if not stderr_task.done():
+                stderr_task.cancel()
         if rc != 0:
             tail = "".join(stderr_chunks).strip()[-2000:]
             logger.error(
@@ -321,21 +330,27 @@ async def spawn_eval_agent_run(
                     "return_code": rc,
                 },
             )
+        else:
+            logger.info("eval-agent exited rc=0")
         yield AgentEvent(type="runner.exit", payload={"return_code": rc})
+        exit_emitted = True
     except asyncio.CancelledError:
         await _kill_child()
         raise
     finally:
-        # GeneratorExit (consumer break/aclose) is not CancelledError — without
-        # this the child keeps judging after the parent already emitted
-        # session.end and marked the job complete (Rule W-126).
-        if proc.returncode is None:
+        if not stderr_task.done():
+            stderr_task.cancel()
+        # Abandoned generator (aclose / GeneratorExit) without a clean exit:
+        # kill the child so it cannot keep burning API quota (Rule W-126/127).
+        if proc.returncode is None and not exit_emitted:
+            logger.warning(
+                "eval-agent spawn closed without runner.exit — killing child pid=%s",
+                proc.pid,
+            )
             try:
                 proc.kill()
             except ProcessLookupError:
                 pass
-        if not stderr_task.done():
-            stderr_task.cancel()
 
 
 # No output at all (not even a keepalive [STEP] line) from the eval-agent

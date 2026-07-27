@@ -2998,3 +2998,39 @@ Invariant:
    generic “eval-agent error”, and may surface `runner_error` when present.
 
 Tests: `test_verify_outcome.py`, `frontend/tests/unit/useVerifyJob.spec.ts`.
+
+### Rule W-127 — Large-scope verify MUST stay alive under dyno pressure (added 2026-07-27)
+
+Incident: Wikidata verify job `06b44db0` (DeepSeek V4 Flash, scope 313)
+streamed **52** TRACE verdicts in ~7 min then stopped with
+`outcome=partial`, no `runner.exit` / `runner.error`, and no
+`results.jsonl`. W-126 persistence kept the 52 pills, but the remaining
+~261 were never judged. Same shape as `341a976e` (54/313). Root causes
+on a 512 MB web dyno: OpenAI-compat `parallel>1` stampeding hung HTTP,
+megabyte `session_snapshot` written on every progress tick starving the
+event loop / filling the stdout pipe, and silent mid-call HTTP waits
+with no `[STEP]` keepalive.
+
+Invariant:
+
+1. **Throttle live verify progress snapshots** — attach
+   `session_snapshot` about every 5 s / every 10 verdicts / on terminal
+   (`verify_job._progress_with_snapshot`). Mid-run snapshots keep
+   verdicts only; drop bulky TRACE noise. Terminal `result` still
+   carries the full snapshot.
+2. **OpenAI-compat spawn forces `--parallel 1`** (and SessionConfig
+   defaults parallel=1 when unset for that provider).
+3. **Mid-HTTP `[STEP]` heartbeats** via `StepHeartbeat` around judge
+   `urlopen` (Gemini + OpenAI-compat) so the 180 s idle-kill does not
+   fire during a single long call.
+4. **Incremental `results.jsonl`** — append each verdict during the
+   judge loop, not only at `checkpoint()`, so a kill leaves a
+   recoverable disk trail.
+5. **Synthesize `runner_error`** when spawn ends without `runner.exit`
+   (`synthesize_missing_runner_error`) so the curator modal explains a
+   silent early stop instead of a blank failure.
+6. **Abandoned spawn kills the child** without requiring a clean exit
+   event (GeneratorExit / aclose) — continues W-126 kill hygiene.
+
+Tests: `test_verify_job_progress_throttle.py`, `test_verify_outcome.py`
+(synthesize / missing exit), `eval-agent/tests/test_step_heartbeat.py`.

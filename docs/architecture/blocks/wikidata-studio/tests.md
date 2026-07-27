@@ -43,7 +43,8 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — legacy→canonical
   claim merge for manuscripts/persons/works (W-125).
 - `backend/tests/unit/test_verify_outcome.py` — incomplete verify →
-  `outcome=partial` + TRACE/checkpoint merge (W-126 / R52).
+  `outcome=partial` + TRACE/checkpoint merge (W-126 / R52); missing
+  `runner.exit` synthesize + throttle (W-127 / R53).
 - `backend/tests/test_wikidata_item_views.py` — merged read model drops HMO-class
   `entity_type` rows from canonical cache (W-118).
 - `backend/tests/test_wikidata_items_export_import.py` — JSON export excludes
