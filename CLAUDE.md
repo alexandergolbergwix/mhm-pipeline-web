@@ -3125,6 +3125,9 @@ Invariant:
 4. Dyno restart still re-spawns active rows (`recover_interrupted_jobs`);
    with incremental cache the respawn is effectively a warm continue.
 
-Tests: `test_verify_resume.py`, `test_run_job_recovery.py`
-(`test_fail_stale_verify_job_is_resumable`),
-`frontend/tests/unit/verifyResume.spec.ts`, `useVerifyJob.spec.ts`.
+Pre-deploy docs gate note (W-130 follow-up): list endpoints omit
+``session_snapshot``; ``GET …/jobs/{id}`` may include the slim snapshot.
+``useVerifyJob`` probes resume via ``?kind=&limit=5``, never the full
+run job history — listing every verify row with embedded verdicts R14'd
+the Basic dyno when the curator opened the modal after Studio's
+``page_size=500`` payload.

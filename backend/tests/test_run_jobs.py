@@ -195,3 +195,32 @@ def test_serialise_job_strips_secret_params() -> None:
     out = serialise_job(job)
     assert out["params"].get("_api_key") is None
     assert out["params"]["add_epistemological_status"] is True
+
+
+def test_serialise_job_omits_session_snapshot_by_default() -> None:
+    job = RunJob(
+        project_id=__import__("uuid").uuid4(),
+        run_id=__import__("uuid").uuid4(),
+        kind="wikidata_verify",
+        status="failed",
+        params={"session_id": "sess-1"},
+        progress={
+            "processed": 61,
+            "total": 313,
+            "session_snapshot": {"session_id": "sess-1", "verdicts": [{"a": 1}]},
+        },
+        result={
+            "resumable": True,
+            "judged": 61,
+            "total": 313,
+            "session_snapshot": {"session_id": "sess-1", "verdicts": [{"a": 1}]},
+        },
+    )
+    listed = serialise_job(job)
+    assert "session_snapshot" not in (listed["result"] or {})
+    assert "session_snapshot" not in (listed["progress"] or {})
+    assert listed["result"]["resumable"] is True
+
+    detailed = serialise_job(job, include_session_snapshot=True)
+    assert "session_snapshot" in (detailed["result"] or {})
+    assert "session_snapshot" in (detailed["progress"] or {})

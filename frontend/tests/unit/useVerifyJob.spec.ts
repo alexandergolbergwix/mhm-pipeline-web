@@ -145,6 +145,13 @@ describe("useVerifyJob", () => {
       expect(result.current.resumeOffer?.judged).toBe(61);
     });
 
+    expect(RunJobs.listForRun).toHaveBeenCalledWith("r1", true);
+    expect(RunJobs.listForRun).toHaveBeenCalledWith(
+      "r1",
+      false,
+      {kind: "wikidata_verify", limit: 5},
+    );
+
     await act(async () => {
       await result.current.continueFromPause({tier_model: "gemini-3.5-flash"});
     });

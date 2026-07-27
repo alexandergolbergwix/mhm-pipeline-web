@@ -141,31 +141,49 @@ export function useVerifyJob({
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
-    void RunJobs.listForRun(runId, false).then(({jobs}) => {
-      if (cancelled) return;
-      const ofKind = jobs.filter((j) => j.kind === kind);
-      const active = ofKind.find((j) => isJobActive(j.status));
-      if (active) {
-        setJobId(active.id);
-        void applyJob(active, true);
-        ensurePolling();
-        return;
-      }
-      const latest = ofKind[0];
-      const offer = resumeOfferFromJob(latest);
-      if (offer) {
-        setResumeOffer(offer);
-        const sessionId = offer.sessionId;
-        if (sessionId && latest) {
-          void loadSessionRef.current(sessionId, latest).catch(() => {
-            /* historical session may be gone on this dyno */
-          });
+    async function attach() {
+      try {
+        const {jobs: activeJobs} = await RunJobs.listForRun(runId, true);
+        if (cancelled) return;
+        const active = activeJobs.find((j) => j.kind === kind && isJobActive(j.status));
+        if (active) {
+          setJobId(active.id);
+          void applyJob(active, true);
+          ensurePolling();
+          return;
         }
-        if (latest?.error) {
-          onFailedRef.current?.(latest.error);
+        // Light resume probe: recent jobs of this kind only, no full-run history
+        // (listing every job with embedded snapshots R14'd the Basic dyno).
+        const {jobs: recent} = await RunJobs.listForRun(runId, false, {
+          kind,
+          limit: 5,
+        });
+        if (cancelled) return;
+        const latest = recent[0];
+        const offer = resumeOfferFromJob(latest);
+        if (offer) {
+          setResumeOffer(offer);
+          const sessionId = offer.sessionId;
+          if (sessionId && latest) {
+            // Hydrate from session GET / single-job GET (list omits snapshots).
+            try {
+              const full = await RunJobs.get(runId, latest.id);
+              await loadSessionRef.current(sessionId, full);
+            } catch {
+              void loadSessionRef.current(sessionId, latest).catch(() => {
+                /* historical session may be gone on this dyno */
+              });
+            }
+          }
+          if (latest?.error) {
+            onFailedRef.current?.(latest.error);
+          }
         }
+      } catch {
+        // transient — modal still usable to Start
       }
-    });
+    }
+    void attach();
     return () => { cancelled = true; };
   }, [runId, kind, applyJob, ensurePolling, loadSessionRef, onFailedRef]);
 

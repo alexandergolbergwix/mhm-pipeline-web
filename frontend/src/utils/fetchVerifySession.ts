@@ -43,20 +43,51 @@ export async function fetchVerifySessionWithJobFallback(
     return full;
   }
 
-  const {jobs} = await RunJobs.listForRun(runId, false);
+  // Prefer the single-job GET (may include slim snapshot) over listing every
+  // historical job for the run — that list path R14'd the Basic dyno.
+  if (jobHint?.id) {
+    try {
+      const job = await RunJobs.get(runId, jobHint.id);
+      const snap = jobVerifySessionSnapshot(job);
+      if (snap && (snap.verdicts ?? []).length > 0) {
+        return {
+          session_id: snap.session_id ?? sessionId,
+          run_id: snap.run_id ?? runId,
+          events: snap.events ?? [],
+          verdicts: snap.verdicts ?? [],
+        };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const {jobs} = await RunJobs.listForRun(runId, false, {kind: jobKind, limit: 10});
   const job = jobs.find((j) =>
-    j.kind === jobKind
-    && String(j.params?.session_id ?? "") === sessionId
-    && (j.status === "succeeded" || j.status === "running" || j.status === "queued"),
+    String(j.params?.session_id ?? "") === sessionId
+    && (
+      j.status === "succeeded"
+      || j.status === "failed"
+      || j.status === "cancelled"
+      || j.status === "running"
+      || j.status === "queued"
+    ),
   );
-  const snap = jobVerifySessionSnapshot(job);
-  if (snap && (snap.verdicts ?? []).length > 0) {
-    return {
-      session_id: snap.session_id ?? sessionId,
-      run_id: snap.run_id ?? runId,
-      events: snap.events ?? [],
-      verdicts: snap.verdicts ?? [],
-    };
+  if (job?.id) {
+    try {
+      const fullJob = await RunJobs.get(runId, job.id);
+      const snap = jobVerifySessionSnapshot(fullJob);
+      if (snap && (snap.verdicts ?? []).length > 0) {
+        return {
+          session_id: snap.session_id ?? sessionId,
+          run_id: snap.run_id ?? runId,
+          events: snap.events ?? [],
+          verdicts: snap.verdicts ?? [],
+        };
+      }
+    } catch {
+      // ignore
+    }
   }
   return full;
 }

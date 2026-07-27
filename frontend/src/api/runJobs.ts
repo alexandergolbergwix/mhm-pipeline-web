@@ -137,10 +137,18 @@ export const RunJobs = {
   listMine: (active = false) =>
     api.get<{jobs: RunJobSnapshot[]}>(`/jobs/mine${active ? "?active=true" : ""}`),
 
-  listForRun: (runId: string, active = false) =>
-    api.get<{jobs: RunJobSnapshot[]}>(
-      `/runs/${runId}/jobs${active ? "?active=true" : ""}`,
-    ),
+  listForRun: (
+    runId: string,
+    active = false,
+    opts?: {kind?: string; limit?: number},
+  ) => {
+    const qs = new URLSearchParams();
+    if (active) qs.set("active", "true");
+    if (opts?.kind) qs.set("kind", opts.kind);
+    if (opts?.limit != null) qs.set("limit", String(opts.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{jobs: RunJobSnapshot[]}>(`/runs/${runId}/jobs${suffix}`);
+  },
 
   get: (runId: string, jobId: string) =>
     api.get<RunJobSnapshot>(`/runs/${runId}/jobs/${jobId}`),

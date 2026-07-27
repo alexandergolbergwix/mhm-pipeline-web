@@ -804,28 +804,46 @@ def _public_params(params: dict[str, Any] | None) -> dict[str, Any]:
     return {k: v for k, v in raw.items() if not str(k).startswith("_")}
 
 
-def serialise_job(job: RunJob) -> dict[str, Any]:
+def serialise_job(
+    job: RunJob,
+    *,
+    include_session_snapshot: bool = False,
+) -> dict[str, Any]:
+    """Serialize a job for the API.
+
+    List endpoints MUST omit ``session_snapshot`` (Rule W-130 / W-128): a run
+    with several verify jobs each embedding hundreds of compact verdicts was
+    enough to push the Basic dyno into R14 when the curator opened the
+    verify modal (``listForRun(active=false)``). Single-job GET may include
+    the slim snapshot for session hydration.
+    """
     progress = job.progress or {}
     result = job.result
     # Never ship TRACE events on the wire — job polls H12'd at ~1.8 MB (W-128).
     if isinstance(result, dict) and isinstance(result.get("session_snapshot"), dict):
-        from app.pipeline.verify_session_store import (  # noqa: PLC0415
-            slim_job_session_snapshot,
-        )
+        if include_session_snapshot:
+            from app.pipeline.verify_session_store import (  # noqa: PLC0415
+                slim_job_session_snapshot,
+            )
 
-        result = {
-            **result,
-            "session_snapshot": slim_job_session_snapshot(result["session_snapshot"]),
-        }
+            result = {
+                **result,
+                "session_snapshot": slim_job_session_snapshot(result["session_snapshot"]),
+            }
+        else:
+            result = {k: v for k, v in result.items() if k != "session_snapshot"}
     if isinstance(progress, dict) and isinstance(progress.get("session_snapshot"), dict):
-        from app.pipeline.verify_session_store import (  # noqa: PLC0415
-            slim_job_session_snapshot,
-        )
+        if include_session_snapshot:
+            from app.pipeline.verify_session_store import (  # noqa: PLC0415
+                slim_job_session_snapshot,
+            )
 
-        progress = {
-            **progress,
-            "session_snapshot": slim_job_session_snapshot(progress["session_snapshot"]),
-        }
+            progress = {
+                **progress,
+                "session_snapshot": slim_job_session_snapshot(progress["session_snapshot"]),
+            }
+        else:
+            progress = {k: v for k, v in progress.items() if k != "session_snapshot"}
     return {
         "id":              str(job.id),
         "project_id":      str(job.project_id),

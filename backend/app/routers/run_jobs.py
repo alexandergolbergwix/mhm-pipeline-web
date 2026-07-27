@@ -53,6 +53,8 @@ async def list_my_jobs(
 async def list_run_jobs(
     run_id: uuid.UUID,
     active: bool = Query(False),
+    kind: str | None = Query(None, max_length=48),
+    limit: int | None = Query(None, ge=1, le=100),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, list[dict[str, Any]]]:
@@ -60,8 +62,13 @@ async def list_run_jobs(
     q = select(RunJob).where(RunJob.run_id == run_id)
     if active:
         q = q.where(RunJob.status.in_(tuple(ACTIVE_JOB_STATUSES)))
+    if kind:
+        q = q.where(RunJob.kind == kind)
     q = q.order_by(RunJob.created_at.desc())
+    if limit is not None:
+        q = q.limit(limit)
     rows = (await db.execute(q)).scalars().all()
+    # List payloads omit session_snapshot by default (Rule W-130).
     return {"jobs": [serialise_job(j) for j in rows]}
 
 
@@ -108,7 +115,7 @@ async def get_run_job(
     ).scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
-    return serialise_job(job)
+    return serialise_job(job, include_session_snapshot=True)
 
 
 @router.post("/runs/{run_id}/jobs/{job_id}/cancel")
