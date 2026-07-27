@@ -41,6 +41,15 @@ Studio scope. After the job is committed and claimed, `verify_job.py` builds
 that scope and records an invalid/empty scope as a failed job. This keeps the
 `POST /jobs` request below Heroku’s 30-second router limit.
 
+**Admission control (Rule W-129).** `create_job` still returns 201 immediately,
+but `_execute_job` claims a `queued` row only when global and per-class
+concurrency slots are free (`verify` / `build` / `upload` / `light`; defaults
+tuned for a Basic dyno). Excess jobs stay `queued` with
+`progress.message = Waiting for capacity…` until `admit_waiting_jobs()`
+re-spawns them after a terminal job or on each maintenance tick. Caps:
+`RUN_JOB_MAX_RUNNING`, `RUN_JOB_MAX_VERIFY`, `RUN_JOB_MAX_BUILD`,
+`RUN_JOB_MAX_UPLOAD`, `RUN_JOB_MAX_LIGHT`.
+
 ## Job kinds and owners
 
 | Kind | Worker module | What it does |

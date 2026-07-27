@@ -13,6 +13,7 @@
 | Debug incomplete AI verify (judged ≪ scope, false “eval-agent error”) | [eval-agent](blocks/eval-agent/README.md) R30–R31 + Rules W-126/W-127 + `verify_outcome.py` |
 | Fix verify stalling ~50 items on DeepSeek / no runner.exit | [eval-agent](blocks/eval-agent/README.md) R31 + [job-service](blocks/job-service/README.md) R20 + Rule W-127 |
 | Fix verify modal stuck RUNNING / VERDICTS (0) after R14/H12 | [job-service](blocks/job-service/README.md) R20 + Rule W-128 + reopen modal |
+| Limit parallel verify/build on one dyno (crash-safe queue) | [job-service](blocks/job-service/README.md) R21 + Rule W-129 + `RUN_JOB_MAX_*` env |
 | Map HMO / project Wikibase P/Q → public Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) R38 + `hmo_wikidata_pq_mapper.py` + [docs/wikidata-data-access.md](../wikidata-data-access.md) |
 | Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |

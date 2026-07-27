@@ -5,9 +5,33 @@ import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {
   loadHmoCoverage,
   loadStudioBuild,
+  runJobQueuedMessage,
   studioBuildJobIdFromConflict,
   waitForRunJob,
 } from "@/utils/waitForRunJob";
+
+describe("runJobQueuedMessage", () => {
+  it("returns capacity-wait copy when progress.phase is queued", () => {
+    const msg = runJobQueuedMessage({
+      id: "j1",
+      project_id: "p1",
+      run_id: "r1",
+      kind: "wikidata_verify",
+      status: "queued",
+      progress: {phase: "queued", message: "Waiting for capacity…"},
+      params: {},
+      result: null,
+      error: null,
+      created_by: null,
+      started_at: null,
+      finished_at: null,
+      cancel_requested_at: null,
+      created_at: null,
+      updated_at: null,
+    });
+    expect(msg).toBe("Waiting for capacity…");
+  });
+});
 
 describe("waitForRunJob", () => {
   it("resolves when the job succeeds", async () => {

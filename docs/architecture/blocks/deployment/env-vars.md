@@ -16,6 +16,7 @@
 | `DYNO` | `agent_runner.py`, `run_job_service.py` | Heroku detection: `/tmp` state default + `WORKER_ID` prefix |
 | `MORATORIUM_LIFTED`, `WIKIDATA_TEST_MODE` | `wikidata_upload.py` (legacy), `uploader.py` | Legacy env overrides. Prefer curator `upload_target` in Wikidata Studio (Rule W-103): `dry_run` \| `test` \| `live` |
 | `WEB_CONCURRENCY`, `PORT` | `start.sh` | uvicorn workers / bind port |
+| `RUN_JOB_MAX_RUNNING`, `RUN_JOB_MAX_VERIFY`, `RUN_JOB_MAX_BUILD`, `RUN_JOB_MAX_UPLOAD`, `RUN_JOB_MAX_LIGHT` | `run_job_service.py` | Per-dyno job admission caps (defaults 2 / 1 / 1 / 1 / 2); excess jobs stay `queued` until a slot frees (Rule W-129) |
 | `ENV`, `COOKIE_SECURE`, `FRONTEND_ORIGIN`, `SESSION_TTL_HOURS` | `settings.py` | Prod flags, cookie policy, link bases |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_NOTIFICATION_EMAIL`, `TURNSTILE_SECRET_KEY`/`SITE_KEY` | email/turnstile services | Unset → log-only mail / Turnstile bypass (dev) |
 | `WIKIBASE_CLOUD_*` | `settings.py:52-62` | Server-held OAuth for HMO Wikibase Cloud writes |

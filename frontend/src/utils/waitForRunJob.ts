@@ -5,6 +5,18 @@ import {isJobActive} from "@/stores/runJobs";
 const DEFAULT_TIMEOUT_MS = 20 * 60_000;
 const POLL_MS = 2_000;
 
+/** Progress message when a job is queued behind the dyno concurrency gate. */
+export function runJobQueuedMessage(job: RunJobSnapshot): string {
+  const phase = job.progress?.phase;
+  const msg = job.progress?.message;
+  if (phase === "queued" && typeof msg === "string" && msg.trim()) {
+    return msg;
+  }
+  if (typeof msg === "string" && msg.trim()) return msg;
+  if (job.status === "queued") return "Queued — waiting for a worker…";
+  return "";
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => { window.setTimeout(resolve, ms); });
 }
@@ -73,9 +85,10 @@ export function studioBuildJobIdFromConflict(detail: string): string | null {
 }
 
 function studioBuildProgressMessage(job: RunJobSnapshot): string {
+  const queued = runJobQueuedMessage(job);
+  if (queued) return queued;
   const msg = job.progress?.message;
   if (typeof msg === "string" && msg.trim()) return msg;
-  if (job.status === "queued") return "Queued — waiting for a worker…";
   if (job.status === "running") return "Building Wikidata items in the background…";
   return "Finishing build…";
 }
@@ -147,8 +160,11 @@ export async function loadWithJobFallback<T>(
     opts?.onProgress?.("Building in the background…");
     await waitForRunJob(runId, jobId, {
       onUpdate: (job) => {
+        const queued = runJobQueuedMessage(job);
         const msg = job.progress?.message;
-        opts?.onProgress?.(typeof msg === "string" && msg.trim() ? msg : "Building in the background…");
+        opts?.onProgress?.(
+          queued || (typeof msg === "string" && msg.trim() ? msg : "Building in the background…"),
+        );
       },
     });
     return fetchReport();

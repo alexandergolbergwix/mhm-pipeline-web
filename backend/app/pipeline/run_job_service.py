@@ -56,6 +56,138 @@ _background_tasks: dict[str, asyncio.Task[None]] = {}
 WORKER_DYNO = os.environ.get("DYNO") or socket.gethostname()
 WORKER_ID = f"{WORKER_DYNO}:{uuid.uuid4().hex[:8]}"
 
+# Serialises admission checks + queued claims across asyncio tasks (SQLite dev/CI)
+# and Postgres dynos (``pg_advisory_xact_lock`` inside the same transaction).
+_admission_async_lock = asyncio.Lock()
+_ADMISSION_PG_LOCK_KEY = 0x4D484D4A  # "MHMJ" — job admission gate
+
+CAPACITY_WAIT_PHASE = "queued"
+CAPACITY_WAIT_MESSAGE = "Waiting for capacity…"
+
+SLOT_VERIFY = "verify"
+SLOT_BUILD = "build"
+SLOT_UPLOAD = "upload"
+SLOT_LIGHT = "light"
+SLOT_OTHER = "other"
+
+_VERIFY_KINDS = frozenset({
+    JOB_KIND_NER_VERIFY,
+    JOB_KIND_AUTHORITY_VERIFY,
+    JOB_KIND_WIKIDATA_VERIFY,
+    JOB_KIND_HMO_ITEM_VERIFY,
+})
+_BUILD_KINDS = frozenset({
+    JOB_KIND_RDF_BUILD,
+    JOB_KIND_WIKIDATA_STUDIO_BUILD,
+    JOB_KIND_HMO_COVERAGE,
+    JOB_KIND_HMO_ITEM_BUILD,
+    JOB_KIND_HMO_MANIFEST_BUILD,
+    JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
+    JOB_KIND_AUTHORITY_RE_ENRICH,
+})
+_UPLOAD_KINDS = frozenset({
+    JOB_KIND_HMO_ITEM_UPLOAD,
+    JOB_KIND_WIKIDATA_UPLOAD,
+    JOB_KIND_HMO_MANIFEST_UPLOAD,
+})
+_LIGHT_KINDS = frozenset({
+    JOB_KIND_EXTRACTION,
+    JOB_KIND_HMO_ITEM_BULK_APPROVE,
+    JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE,
+})
+
+
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return default
+
+
+def _max_running_global() -> int:
+    return _int_env("RUN_JOB_MAX_RUNNING", 2)
+
+
+def _max_running_for_slot(slot: str) -> int:
+    defaults = {
+        SLOT_VERIFY: 1,
+        SLOT_BUILD: 1,
+        SLOT_UPLOAD: 1,
+        SLOT_LIGHT: 2,
+    }
+    env_names = {
+        SLOT_VERIFY: "RUN_JOB_MAX_VERIFY",
+        SLOT_BUILD: "RUN_JOB_MAX_BUILD",
+        SLOT_UPLOAD: "RUN_JOB_MAX_UPLOAD",
+        SLOT_LIGHT: "RUN_JOB_MAX_LIGHT",
+    }
+    if slot not in defaults:
+        return _max_running_global()
+    return _int_env(env_names[slot], defaults[slot])
+
+
+def _admission_slot_class(kind: str) -> str:
+    if kind in _VERIFY_KINDS or kind.endswith("_verify"):
+        return SLOT_VERIFY
+    if kind in _BUILD_KINDS:
+        return SLOT_BUILD
+    if kind in _UPLOAD_KINDS:
+        return SLOT_UPLOAD
+    if kind in _LIGHT_KINDS:
+        return SLOT_LIGHT
+    return SLOT_OTHER
+
+
+def _kinds_for_slot(slot: str) -> frozenset[str]:
+    if slot == SLOT_VERIFY:
+        return _VERIFY_KINDS
+    if slot == SLOT_BUILD:
+        return _BUILD_KINDS
+    if slot == SLOT_UPLOAD:
+        return _UPLOAD_KINDS
+    if slot == SLOT_LIGHT:
+        return _LIGHT_KINDS
+    return frozenset()
+
+
+def _admission_allows(global_running: int, class_running: int, kind: str) -> bool:
+    if global_running >= _max_running_global():
+        return False
+    slot = _admission_slot_class(kind)
+    if slot == SLOT_OTHER:
+        return True
+    return class_running < _max_running_for_slot(slot)
+
+
+async def _acquire_admission_lock(db: AsyncSession) -> None:
+    from app.db import engine  # noqa: PLC0415
+
+    if engine.dialect.name == "postgresql":
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": _ADMISSION_PG_LOCK_KEY},
+        )
+
+
+async def _count_running_jobs(
+    db: AsyncSession,
+    *,
+    slot: str | None = None,
+) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(RunJob)
+        .where(RunJob.status == JOB_STATUS_RUNNING)
+    )
+    if slot is not None:
+        kinds = _kinds_for_slot(slot)
+        if kinds:
+            stmt = stmt.where(RunJob.kind.in_(tuple(kinds)))
+    return int((await db.execute(stmt)).scalar_one())
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -182,6 +314,8 @@ async def fail_stale_jobs() -> int:
         count = res.rowcount or 0
     if count:
         logger.warning("marked %d stale run job(s) as failed", count)
+    if count:
+        await admit_waiting_jobs()
     return count
 
 
@@ -221,6 +355,104 @@ async def _try_claim_job(db: AsyncSession, job_id: uuid.UUID) -> bool:
     )
     await db.commit()
     return (res.rowcount or 0) == 1
+
+
+async def _mark_waiting_for_capacity(db: AsyncSession, job_id: uuid.UUID) -> None:
+    progress = {
+        "phase": CAPACITY_WAIT_PHASE,
+        "message": CAPACITY_WAIT_MESSAGE,
+    }
+    await db.execute(
+        update(RunJob)
+        .where(
+            RunJob.id == job_id,
+            RunJob.status == JOB_STATUS_QUEUED,
+        )
+        .values(progress=progress, updated_at=func.now())
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    job = await db.get(RunJob, job_id)
+    if job is not None:
+        await _notify_job_update(db, job)
+
+
+async def _try_claim_queued_job(
+    db: AsyncSession,
+    job_id: uuid.UUID,
+    kind: str,
+) -> bool:
+    """Claim a queued row only when global + class admission slots are free."""
+    global_running = await _count_running_jobs(db)
+    slot = _admission_slot_class(kind)
+    class_running = (
+        await _count_running_jobs(db, slot=slot)
+        if slot != SLOT_OTHER
+        else 0
+    )
+    if not _admission_allows(global_running, class_running, kind):
+        await _mark_waiting_for_capacity(db, job_id)
+        return False
+
+    res = await db.execute(
+        update(RunJob)
+        .where(
+            RunJob.id == job_id,
+            RunJob.status == JOB_STATUS_QUEUED,
+        )
+        .values(
+            status=JOB_STATUS_RUNNING,
+            claimed_by=WORKER_ID,
+            started_at=func.coalesce(RunJob.started_at, func.now()),
+            updated_at=func.now(),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+    return (res.rowcount or 0) == 1
+
+
+async def _try_claim_with_admission(
+    db: AsyncSession,
+    job_id: uuid.UUID,
+    kind: str,
+    *,
+    status: str,
+) -> bool:
+    """Admission-gated claim for new work; running-row reclaim skips the gate."""
+    async with _admission_async_lock:
+        await _acquire_admission_lock(db)
+        if status == JOB_STATUS_QUEUED:
+            return await _try_claim_queued_job(db, job_id, kind)
+        return await _try_claim_job(db, job_id)
+
+
+async def admit_waiting_jobs() -> int:
+    """Re-spawn queued rows that are waiting for a concurrency slot.
+
+    Each spawn attempts admission again; excess spawns exit immediately after
+    stamping the capacity-wait progress message.
+    """
+    async with session_scope() as db:
+        rows = (
+            await db.execute(
+                select(RunJob.id)
+                .where(RunJob.status == JOB_STATUS_QUEUED)
+                .order_by(RunJob.created_at.asc())
+            )
+        ).scalars().all()
+
+    spawned = 0
+    for job_id in rows:
+        key = str(job_id)
+        task = _background_tasks.get(key)
+        if task is not None and not task.done():
+            continue
+        spawn_job(job_id)
+        spawned += 1
+    if spawned:
+        logger.info("admitted %d queued run job spawn(s)", spawned)
+    return spawned
 
 
 async def _heartbeat_owned_jobs() -> int:
@@ -289,6 +521,7 @@ async def run_job_maintenance_tick() -> None:
     await _heartbeat_owned_jobs()
     await fail_stale_jobs()
     await _respawn_orphaned_jobs()
+    await admit_waiting_jobs()
 
 
 async def run_job_maintenance_loop() -> None:
@@ -329,7 +562,9 @@ async def _execute_job(job_id: uuid.UUID) -> None:
             if job is None:
                 return
             kind = job.kind
-            if not await _try_claim_job(db, job_id):
+            if not await _try_claim_with_admission(
+                db, job_id, kind, status=job.status,
+            ):
                 return
 
         if kind in (JOB_KIND_AUTHORITY_RE_ENRICH, JOB_KIND_AUTHORITY_VERIFY):
@@ -416,6 +651,7 @@ async def _fail_job(job_id: uuid.UUID, message: str) -> None:
         job.error = message
         job.finished_at = _now()
         await db.commit()
+    await admit_waiting_jobs()
 
 
 async def finish_job(
@@ -438,6 +674,7 @@ async def finish_job(
             job.progress = progress
         await db.commit()
         await _notify_job_update(db, job)
+    await admit_waiting_jobs()
 
 
 async def update_job_progress(job_id: uuid.UUID, progress: dict[str, Any]) -> None:

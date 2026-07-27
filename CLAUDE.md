@@ -3068,3 +3068,35 @@ override-cache scopes on the current dyno size — DeepSeek + full
 evidence still OOMs around the first uncached batch after warm hits.
 
 Tests: `test_verify_job_progress.py`, `test_verify_job_progress_throttle.py`.
+
+### Rule W-129 — Run jobs MUST pass admission control before claim (added 2026-07-27)
+
+Capacity review for 50 parallel curators found the real queue already
+existed (`run_jobs.status=queued`) but every enqueue immediately
+`spawn_job()`'d into the same Basic web dyno — N concurrent verify/build
+tasks caused R14/H12 long before Postgres or Redis became the bottleneck.
+
+Invariant:
+
+1. **Postgres `run_jobs` stays the queue** — no Celery/RQ broker. Admission
+   gates the transition `queued → running`, not job creation (201/409-attach
+   unchanged).
+2. **Slot classes** — `verify` (all `*_verify`), `build` (RDF/Studio/HMO
+   build/coverage/schema bootstrap), `upload` (item/manifest/Wikidata upload),
+   `light` (`extraction`, `*_bulk_approve`). Defaults on Basic: global **2**,
+   verify/build/upload **1** each, light **2**.
+3. **Denied claim** — row stays `queued`; `progress.phase=queued`,
+   `message=Waiting for capacity…`; task exits without claiming.
+4. **`admit_waiting_jobs()`** — re-spawns queued rows without live asyncio
+   tasks after `finish_job`, `_fail_job`, `fail_stale_jobs`, and every
+   maintenance tick (not only the 90 s orphan grace).
+5. **Atomicity** — `pg_advisory_xact_lock` + in-process asyncio lock around
+   count + claim so two spawns cannot oversubscribe a class cap.
+6. **Env caps** — `RUN_JOB_MAX_RUNNING`, `RUN_JOB_MAX_VERIFY`,
+   `RUN_JOB_MAX_BUILD`, `RUN_JOB_MAX_UPLOAD`, `RUN_JOB_MAX_LIGHT`.
+
+This prevents crash-on-load from parallel heavy jobs; it does **not**
+replace a separate worker dyno for HTTP isolation.
+
+Tests: `backend/tests/unit/test_run_job_recovery.py` (admission cases),
+`frontend/tests/unit/waitForRunJob.spec.ts` (`runJobQueuedMessage`).

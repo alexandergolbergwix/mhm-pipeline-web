@@ -14,7 +14,7 @@ for NER).
 |---|---|
 | [docs/architecture/system-design.md](docs/architecture/system-design.md) | Navigation hub — runtime topology, data flow, links to every block |
 | [AGENTS.md](AGENTS.md) | Agent/operator instructions and block index |
-| [CLAUDE.md](CLAUDE.md) | Architectural invariants (Rules W-1…W-128) |
+| [CLAUDE.md](CLAUDE.md) | Architectural invariants (Rules W-1…W-129) |
 | [docs/wikidata-manuscripts-data-model.md](docs/wikidata-manuscripts-data-model.md) | WikiProject Manuscripts / DS projection contract (Rule W-98) |
 | [docs/wikidata-data-access.md](docs/wikidata-data-access.md) | Wikidata API access map + own-or-accept write policy (Rule W-99) |
 | [docs/testing.md](docs/testing.md) | Three-layer test pyramid (pytest, Vitest, Playwright) |

@@ -11,8 +11,11 @@ from sqlalchemy import update
 from app.db import session_scope
 from app.models.run_job import (
     JOB_KIND_EXTRACTION,
+    JOB_KIND_HMO_ITEM_VERIFY,
+    JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
+    JOB_KIND_WIKIDATA_VERIFY,
     JOB_STATUS_FAILED,
     JOB_STATUS_QUEUED,
     JOB_STATUS_RUNNING,
@@ -21,6 +24,7 @@ from app.models.run_job import (
 )
 from app.pipeline import run_job_service
 from app.pipeline.run_job_service import (
+    CAPACITY_WAIT_MESSAGE,
     STALE_JOB_AFTER,
     WORKER_DYNO,
     WORKER_ID,
@@ -28,7 +32,10 @@ from app.pipeline.run_job_service import (
     _heartbeat_owned_jobs,
     _now,
     _try_claim_job,
+    _try_claim_with_admission,
+    admit_waiting_jobs,
     create_job,
+    finish_job,
     recover_interrupted_jobs,
     run_job_maintenance_tick,
 )
@@ -209,6 +216,11 @@ async def test_maintenance_tick_heartbeats_reaps_and_respawns(
         run_job_service, "spawn_job", lambda job_id: spawned.append(job_id),
     )
 
+    async def _noop_admit() -> int:
+        return 0
+
+    monkeypatch.setattr(run_job_service, "admit_waiting_jobs", _noop_admit)
+
     await run_job_maintenance_tick()
 
     async with session_scope() as db:
@@ -248,3 +260,124 @@ async def test_create_job_race_loses_to_unique_index(
             created_by=sample_run["user_id"],
         )
     assert exc_info.value.job_id == existing.id
+
+
+@pytest.mark.asyncio
+async def test_admission_blocks_second_verify_while_first_running(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    monkeypatch.setenv("RUN_JOB_MAX_VERIFY", "1")
+    monkeypatch.setenv("RUN_JOB_MAX_RUNNING", "10")
+
+    await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_RUNNING,
+        claimed_by=WORKER_ID,
+    )
+    second = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_NER_VERIFY,
+        status=JOB_STATUS_QUEUED,
+    )
+
+    claimed = await _try_claim_with_admission(
+        db_session, second.id, JOB_KIND_NER_VERIFY, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is False
+
+    await db_session.refresh(second)
+    assert second.status == JOB_STATUS_QUEUED
+    assert second.progress.get("message") == CAPACITY_WAIT_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_admission_global_cap_blocks_mixed_jobs(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    monkeypatch.setenv("RUN_JOB_MAX_RUNNING", "1")
+    monkeypatch.setenv("RUN_JOB_MAX_VERIFY", "1")
+    monkeypatch.setenv("RUN_JOB_MAX_BUILD", "1")
+
+    await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_RUNNING,
+        claimed_by=WORKER_ID,
+    )
+    queued_build = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_QUEUED,
+    )
+
+    claimed = await _try_claim_with_admission(
+        db_session, queued_build.id, JOB_KIND_RDF_BUILD, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is False
+
+    await db_session.refresh(queued_build)
+    assert queued_build.status == JOB_STATUS_QUEUED
+    assert queued_build.progress.get("message") == CAPACITY_WAIT_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_finish_job_admits_next_queued_verify(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    monkeypatch.setenv("RUN_JOB_MAX_VERIFY", "1")
+    monkeypatch.setenv("RUN_JOB_MAX_RUNNING", "10")
+
+    running = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_HMO_ITEM_VERIFY,
+        status=JOB_STATUS_RUNNING,
+        claimed_by=WORKER_ID,
+    )
+    waiting = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_NER_VERIFY,
+        status=JOB_STATUS_QUEUED,
+    )
+    waiting.progress = {"phase": "queued", "message": CAPACITY_WAIT_MESSAGE}
+    await db_session.commit()
+
+    spawned: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        run_job_service, "spawn_job", lambda job_id: spawned.append(job_id),
+    )
+
+    await finish_job(running.id, status=JOB_STATUS_SUCCEEDED, result={})
+
+    assert waiting.id in spawned
+
+    claimed = await _try_claim_with_admission(
+        db_session, waiting.id, JOB_KIND_NER_VERIFY, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is True
+    await db_session.refresh(waiting)
+    assert waiting.status == JOB_STATUS_RUNNING
+
+
+@pytest.mark.asyncio
+async def test_maintenance_tick_calls_admit_waiting_jobs(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    await _add_job(db_session, sample_run, status=JOB_STATUS_QUEUED)
+    admit_calls: list[int] = []
+    real_admit = run_job_service.admit_waiting_jobs
+
+    async def _track_admit() -> int:
+        admit_calls.append(1)
+        return await real_admit()
+
+    async def _noop_int() -> int:
+        return 0
+
+    monkeypatch.setattr(run_job_service, "admit_waiting_jobs", _track_admit)
+    monkeypatch.setattr(run_job_service, "_heartbeat_owned_jobs", _noop_int)
+    monkeypatch.setattr(run_job_service, "fail_stale_jobs", _noop_int)
+    monkeypatch.setattr(run_job_service, "_respawn_orphaned_jobs", _noop_int)
+
+    await run_job_maintenance_tick()
+    assert len(admit_calls) == 1
