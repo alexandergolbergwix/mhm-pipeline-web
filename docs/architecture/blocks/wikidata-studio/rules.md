@@ -250,3 +250,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `studio_cache_has_non_public_items` is true. GET marks `cache_stale` so
     curators force-rebuild. *Why:* verify alone was not enough — export and the
     review table still served 1204+ HMO rows from stale Postgres cache.
+
+46. **R46 — Studio build jobs skip WDQS reconcile (Rule W-119).**
+    `wikidata_studio_build` always calls `execute_studio_build(...,
+    reconcile=False)`; canonical assembly runs in `run_in_threadpool`. Live
+    reconcile stays on upload / gated QS / preview only. *Why:* force-rebuild
+    hammered WDQS, blocked the web dyno (H12 job polls), and tripped asyncpg
+    while holding an open DB session.

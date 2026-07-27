@@ -54,6 +54,9 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
                 force_rebuild=force_rebuild,
                 run_user_id=run_user_id,
                 source=str(params.get("source") or "legacy"),
+                # Never WDQS-reconcile the full corpus on the build path (Rule W-119).
+                # Reconcile runs on upload / gated QS / the preview endpoint only.
+                reconcile=False,
             )
     except Exception as exc:  # noqa: BLE001
         logger.exception("wikidata studio build job failed for %s", run_id)

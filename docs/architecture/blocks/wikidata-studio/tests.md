@@ -39,6 +39,8 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
   `entity_type` rows from canonical cache (W-118).
 - `backend/tests/test_wikidata_items_export_import.py` — JSON export excludes
   non-public entity types (W-118).
+- `backend/tests/unit/test_wikidata_studio_build_job.py` — build worker passes
+  `reconcile=False` (W-119 / R46).
 
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).

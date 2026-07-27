@@ -583,8 +583,14 @@ async def execute_studio_build(
             marc_records=[dict(r.marc) for r in records],
             approved_matches=approved_matches,
         )
-        result = build_canonical_studio_result(
-            canonical, overrides=overrides, context=context, reconcile=reconcile,
+        from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+        result = await run_in_threadpool(
+            build_canonical_studio_result,
+            canonical,
+            overrides=overrides,
+            context=context,
+            reconcile=reconcile,
         )
         items = result["items"]
         summary = result["summary"]

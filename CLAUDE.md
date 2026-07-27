@@ -2783,3 +2783,23 @@ Invariant:
 Tests: `test_wikidata_item_views.py`,
 `test_wikidata_items_export_import.py`, `test_hmo_canonical_wikidata.py`
 (filter/stale-shape cases).
+
+### Rule W-119 — Wikidata Studio build jobs MUST NOT WDQS-reconcile the corpus (added 2026-07-27)
+
+Incident: force-rebuild on run `48ba6c13` with canonical source left the job at
+**0/1** for tens of minutes while the web dyno hammered `query.wikidata.org`
+(`reconcile=True` inside `execute_studio_build`). Job polls hit **H12** (30 s
+router timeout); asyncpg raised *cannot switch to state 12* when polls
+overlapped the build's open session during blocking SPARQL.
+
+Invariant:
+
+1. **`wikidata_studio_build` jobs always pass `reconcile=False`** to
+   `execute_studio_build` — same policy as verify scope materialisation
+   (Rule W-116). Live WDQS reconcile belongs on upload, gated QuickStatements,
+   and the `/reconcile` preview endpoint only.
+2. **Canonical CPU build runs in `run_in_threadpool`** so validation /
+   rollup assembly does not block the asyncio event loop on Heroku's single
+   web dyno.
+
+Tests: `backend/tests/unit/test_wikidata_studio_build_job.py`.
