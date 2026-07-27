@@ -2878,3 +2878,25 @@ Invariant:
 
 Tests: `test_property_mapping_hmo_links.py`, `test_item_builder_hmo_links.py`,
 `test_hmo_wikidata_pq_mapper.py`, `test_hmo_canonical_wikidata.py`.
+
+### Rule W-123 — Login MUST NOT wait on Wikibase Cloud account provisioning (added 2026-07-27)
+
+Incident: `POST /api/auth/login` on `mhm-pipeline.org` returned Heroku **H12**
+(30 s) while logs showed
+`wikibase account provision failed for shvedbook@gmail.com: All retries
+exhausted`. Login (and `/me`) called `ensure_wikibase_access`, which re-ran
+`WikibaseCloudWriter.create_local_account` whenever
+`wiki_account_status` was `failed` (not treated as terminal). Cloud client
+retries + backoff easily exceed the router budget, so a flaky Wikibase Cloud
+made the app unusable to sign in even with a correct password.
+
+Invariant:
+
+1. Remote wiki provision runs only when `attempt_provision=True` (login /
+   invite accept) — never on `/me`.
+2. Statuses `active` / `skipped` / `failed` are **no-retry**; do not call
+   Wikibase again on every login.
+3. Provision is hard-capped (`asyncio.wait_for`, 5 s); timeout → `failed`
+   without H12'ing the auth response. App authorization still succeeds.
+
+Tests: `backend/tests/test_wikibase_user_access.py`.

@@ -36,4 +36,4 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   behaviour extends its pinning test suite. *Why:* tests are the regression
   contract; docs describe, tests enforce.
 
-Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-122).
+Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-123).

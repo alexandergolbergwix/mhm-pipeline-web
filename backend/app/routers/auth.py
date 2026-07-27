@@ -95,7 +95,9 @@ async def login(
         user.password_hash = pw.hash_password(payload.password)
 
     email = pii.decrypt_pii(user.email_encrypted)
-    wikibase = await ensure_wikibase_access(db, user=user, email=email)
+    wikibase = await ensure_wikibase_access(
+        db, user=user, email=email, attempt_provision=True,
+    )
     await db.commit()
 
     set_session_cookie(response, session_id=session_row.id, session_secret=session_secret)

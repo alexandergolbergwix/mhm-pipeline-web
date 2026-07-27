@@ -26,3 +26,8 @@
     *Why:* keying on the socket peer would rate-limit the Heroku router itself, throttling all users as one.
 12. **R12 — Turnstile verification MUST fail closed (network error / non-2xx / bad JSON → reject) except for the explicit unset-secret dev bypass and `TEST_TOKEN_BYPASS`.**
     *Why:* an outage read as "human" reopens the bot funnel silently.
+13. **R13 — Login / invite MUST NOT block on Wikibase Cloud wiki-account provisioning (Rule W-123).**
+    Provision only with `attempt_provision=True`, treat `failed` as no-retry,
+    and hard-timeout the remote call (≤5 s). `/me` never provisions.
+    *Why:* Cloud retries exhausted the Heroku 30 s budget → H12 on
+    `POST /api/auth/login` while the password was already valid.

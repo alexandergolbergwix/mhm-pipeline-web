@@ -91,7 +91,9 @@ async def accept_invite(
     # Mint a session right away — the invitee is logged in after accept.
     kek = kek_mod.derive_kek(payload.password, salt=user.kek_salt)
     session_row, session_secret = await create_session(db, user=user, kek=kek)
-    wikibase = await ensure_wikibase_access(db, user=user, email=email)
+    wikibase = await ensure_wikibase_access(
+        db, user=user, email=email, attempt_provision=True,
+    )
     await db.commit()
     set_session_cookie(
         response, session_id=session_row.id, session_secret=session_secret,

@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.models.wikibase_user_access import (
     WIKI_ACCOUNT_ACTIVE,
+    WIKI_ACCOUNT_FAILED,
     WIKI_ACCOUNT_NONE,
     WIKI_ACCOUNT_SKIPPED,
     WikibaseUserAccess,
@@ -64,6 +65,7 @@ async def test_ensure_wikibase_access_grants_when_oauth_configured(
             db_session,
             user=user,
             email="test@example.com",
+            attempt_provision=True,
         )
     await db_session.commit()
 
@@ -129,9 +131,109 @@ async def test_ensure_wikibase_access_permission_denied_still_authorizes_app(
             db_session,
             user=user,
             email="test@example.com",
+            attempt_provision=True,
         )
     assert snap.wikibase_authorized is True
     assert snap.wikibase_wiki_account_status == WIKI_ACCOUNT_SKIPPED
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_ensure_wikibase_access_does_not_retry_failed_status(
+    db_session,
+    auth_user,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, _client = auth_user
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN", "jwt")
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+    db_session.add(
+        WikibaseUserAccess(
+            user_id=user.id,
+            app_authorized=True,
+            wiki_username="test@example.com",
+            wiki_account_status=WIKI_ACCOUNT_FAILED,
+            wiki_account_error="All retries exhausted: None",
+        )
+    )
+    await db_session.commit()
+
+    with patch(
+        "app.services.wikibase_user_access.WikibaseCloudWriter",
+    ) as mock_writer_cls:
+        snap = await ensure_wikibase_access(
+            db_session,
+            user=user,
+            email="test@example.com",
+            attempt_provision=True,
+        )
+    assert snap.wikibase_authorized is True
+    assert snap.wikibase_wiki_account_status == WIKI_ACCOUNT_FAILED
+    mock_writer_cls.assert_not_called()
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_ensure_wikibase_access_me_path_skips_provision(
+    db_session,
+    auth_user,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, _client = auth_user
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN", "jwt")
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+    with patch(
+        "app.services.wikibase_user_access.WikibaseCloudWriter",
+    ) as mock_writer_cls:
+        snap = await ensure_wikibase_access(
+            db_session,
+            user=user,
+            email="test@example.com",
+            attempt_provision=False,
+        )
+    assert snap.wikibase_authorized is True
+    mock_writer_cls.assert_not_called()
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_ensure_wikibase_access_provision_timeout_marks_failed(
+    db_session,
+    auth_user,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, _client = auth_user
+    monkeypatch.setenv("WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN", "jwt")
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+
+    def _hang(*_args: object, **_kwargs: object) -> tuple[str, str | None]:
+        import time
+
+        time.sleep(2.0)
+        return WIKI_ACCOUNT_ACTIVE, None
+
+    monkeypatch.setattr(
+        "app.services.wikibase_user_access._PROVISION_BUDGET_SECONDS",
+        0.05,
+    )
+    with patch(
+        "app.services.wikibase_user_access._provision_wiki_account_sync",
+        side_effect=_hang,
+    ):
+        snap = await ensure_wikibase_access(
+            db_session,
+            user=user,
+            email="test@example.com",
+            attempt_provision=True,
+        )
+    assert snap.wikibase_authorized is True
+    assert snap.wikibase_wiki_account_status == WIKI_ACCOUNT_FAILED
     get_settings.cache_clear()
 
 

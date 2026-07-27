@@ -27,4 +27,5 @@
 | `backend/app/services/email_throttle.py` + `models/email_throttle.py` | Per-recipient 1/60 s + 5/day Postgres throttle, `SELECT … FOR UPDATE`, blind-indexed recipient |
 | `backend/app/services/turnstile.py` | Cloudflare Turnstile siteverify; fail-closed on network/JSON errors, bypass when secret unset (dev) |
 | `backend/app/services/auth_me.py` | Builds `LoginResponse`/`MeResponse` incl. Wikibase access fields |
+| `backend/app/services/wikibase_user_access.py` | Per-user Wikibase authorize + best-effort wiki provision (login/invite only; 5 s cap; failed is no-retry — Rule W-123) |
 | `backend/app/db.py` | Async engine (`pool_size=5, max_overflow=10`), forced SSL on managed Postgres, 120 s `idle_in_transaction_session_timeout` backstop |

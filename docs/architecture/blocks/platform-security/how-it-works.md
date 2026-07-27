@@ -45,7 +45,12 @@ generic 202 body. Confirmation advances to `pending_admin` and emails the admin
 approve/deny magic links (one-time decision token, SHA-256 stored, 168 h TTL).
 `POST /auth/login` (`10/minute`) burns a module-level `_DUMMY_HASH` Argon2
 verify on the missing-user branch (`routers/auth.py:54,75`) and uses an
-identical 401 detail for both failure branches. `/access-request/confirm` and
+identical 401 detail for both failure branches. After a successful password
+verify, login may best-effort provision a Wikibase Cloud local account
+(`ensure_wikibase_access(..., attempt_provision=True)`) with a **5 s hard
+timeout** and no retry once status is `failed`/`active`/`skipped` (Rule W-123)
+— Wikibase Cloud outages must not H12 the auth response. `/me` authorizes
+without calling createaccount. `/access-request/confirm` and
 the decide magic link are `10/hour`. Note: the ≥40-char justification minimum
 cited in Rule W-20 lives in the `AccessRequestCreateRequest` schema, not the
 router. `/onboarding/forgot-password` also refuses to betray account existence

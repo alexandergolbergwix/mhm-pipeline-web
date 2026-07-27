@@ -33,5 +33,6 @@
 - `backend/tests/test_access_request_router.py` — honeypot, Turnstile, non-enumeration, double opt-in, admin decisions (~13 cases)
 - `backend/tests/test_email_throttle.py` — 1/60 s + 5/day caps (6)
 - `backend/tests/test_login_timing_parity.py` — dummy-verify branch (3)
+- `backend/tests/test_wikibase_user_access.py` — login/invite provision budget + failed no-retry (Rule W-123)
 - `frontend/e2e/access-request.spec.ts` — form click paths (~8)
 - Route suites under `backend/tests/` exercising 401/403 on projects, invites, admin

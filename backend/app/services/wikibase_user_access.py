@@ -30,11 +30,19 @@ from converter.wikibase.cloud_client import WikibaseCloudWriter
 
 logger = logging.getLogger(__name__)
 
+# Login /me must never wait on Wikibase Cloud's full retry budget (Rule W-40 /
+# Heroku H12). Provision is best-effort with a hard ceiling.
+_PROVISION_BUDGET_SECONDS = 5.0
+
 _INVALID_WIKI_USERNAME_CHARS = re.compile(r"[#<>[\]|{}\\/:]")
 
-_WIKI_TERMINAL_STATUSES = frozenset({
+# Do not re-attempt remote createaccount on every login/me once we already
+# have a decisive outcome. FAILED used to be retried forever, which turned a
+# flaky Wikibase Cloud into H12s on POST /api/auth/login.
+_WIKI_NO_RETRY_STATUSES = frozenset({
     WIKI_ACCOUNT_ACTIVE,
     WIKI_ACCOUNT_SKIPPED,
+    WIKI_ACCOUNT_FAILED,
 })
 
 
@@ -121,8 +129,14 @@ async def ensure_wikibase_access(
     *,
     user: User,
     email: str,
+    attempt_provision: bool = False,
 ) -> WikibaseAccessSnapshot:
-    """Authorize the user for Wikibase features and provision a wiki account if possible."""
+    """Authorize the user for Wikibase features; optionally provision a wiki account.
+
+    ``attempt_provision`` is True only on login / invite accept. ``/me`` must
+    never open a Wikibase Cloud retry loop — that path is polled constantly and
+    previously H12'd login when status was ``failed`` (non-terminal retry).
+    """
     settings = get_settings()
     configured = settings.wikibase_cloud_configured
     base_url = settings.wikibase_cloud_base_url.strip() or None
@@ -157,13 +171,28 @@ async def ensure_wikibase_access(
     await db.flush()
 
     should_provision = (
-        settings.wikibase_auto_provision_wiki_accounts
-        and row.wiki_account_status not in _WIKI_TERMINAL_STATUSES
+        attempt_provision
+        and settings.wikibase_auto_provision_wiki_accounts
+        and row.wiki_account_status not in _WIKI_NO_RETRY_STATUSES
     )
     if should_provision:
-        status, error = await asyncio.to_thread(
-            _provision_wiki_account_sync, wiki_username, email,
-        )
+        try:
+            status, error = await asyncio.wait_for(
+                asyncio.to_thread(
+                    _provision_wiki_account_sync, wiki_username, email,
+                ),
+                timeout=_PROVISION_BUDGET_SECONDS,
+            )
+        except TimeoutError:
+            logger.warning(
+                "wikibase account provision timed out after %.1fs for %s",
+                _PROVISION_BUDGET_SECONDS,
+                wiki_username,
+            )
+            status, error = (
+                WIKI_ACCOUNT_FAILED,
+                f"provision timed out after {_PROVISION_BUDGET_SECONDS:.0f}s",
+            )
         row.wiki_account_status = status
         row.wiki_account_error = error
         if status == WIKI_ACCOUNT_ACTIVE:

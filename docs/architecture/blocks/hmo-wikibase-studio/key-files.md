@@ -48,7 +48,7 @@
 | `backend/scripts/audit_hmo_authority_consistency.py` | Deterministic export audit for authority coverage, malformed links, and duplicate local-QID mappings |
 | `backend/app/services/wikibase_credentials.py` | Server-held OAuth config → verified `WikibaseCloudWriter` (checks the session is the expected write user) |
 | `backend/app/services/wikibase_audit.py` | `record_wikibase_write` — one `wikibase_cloud_writes` row per outcome, never raises; `fetch_latest_wikibase_writes` — portable "latest row per target" query powering the review table's upload-outcome fields |
-| `backend/app/services/wikibase_user_access.py` | Auto-provisions per-curator wiki accounts on login/invite |
+| `backend/app/services/wikibase_user_access.py` | Best-effort per-curator wiki provision on login/invite only (5 s cap; failed is no-retry — Rule W-123) |
 | `backend/app/models/hmo_studio_item_cache.py` | Per-run build cache (unique on `run_id`, fingerprinted) |
 | `backend/app/models/hmo_coverage_cache.py` | Durable Postgres coverage cache (Rule W-39) |
 | `backend/app/models/hmo_studio_item_override.py` | Curator override rows (labels/descriptions/aliases/statement edits/approved/ai_verdict) |
