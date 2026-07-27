@@ -235,7 +235,7 @@ four constraints are the scholarly contract of the browser deployment.
 46. **R46 — HMO item AI verify injects WPM + HMO→Wikidata skill context (Rule W-104).**
 `hmo_wikibase_item` / autofix prompts include the curated skill pack with an
 explicit projection checklist; structural entities stay HMO-only. Salt
-`HMO_ITEM_VERDICT_SCHEMA=w104_v1`. *Why:* the goal is Wikibase items that
+`HMO_ITEM_VERDICT_SCHEMA=w124_v1`. *Why:* the goal is Wikibase items that
 project to the best possible public Wikidata items under WikiProject Manuscripts.
 47. **R47 — Item and manifest builds are background jobs (Rule W-106).**
 `POST …/build-items` and `POST …/build-manifests` MUST enqueue

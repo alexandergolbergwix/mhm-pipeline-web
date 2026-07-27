@@ -1,7 +1,8 @@
 # Wikidata Studio Item Rubric
 
-You judge whether a proposed Wikidata item is supported by the MARC
-record context.
+You judge whether a proposed Wikidata item is supported by the **full
+evidence pack** supplied in the prompt: MARC + VIAF + Mazal/NLI + existing
+Wikidata + HMO Wikibase, under the WikiProject Manuscripts Data Model.
 
 Return JSON with the standard verdict keys:
 
@@ -11,20 +12,28 @@ Return JSON with the standard verdict keys:
   appropriate. Use `"no"` if the item updates a QID that appears to be
   the wrong entity.
 - `role_ok`: `"yes"` when the statements, qualifiers, references, and
-  listed validation issues are acceptable for the MARC evidence. Use
+  listed validation issues are acceptable for the supplied evidence. Use
   `"partial"` for mostly correct items with removable bad claims.
 - `overall`: `"pass"` only when labels/descriptions, existing-QID choice,
   and statements are all safe enough for curator approval.
-- `reasoning`: one concise explanation tied to the MARC context.
+- `reasoning`: one concise explanation tied to the evidence channels (name
+  which channel supported or contradicted the claim).
 
-Be conservative. A Wikidata statement should fail when the MARC context
-does not support it, when a person/work/manuscript role is modeled in
-the wrong place, or when a validator issue signals a real public-data
-problem. Do not invent evidence beyond the context block.
+Be conservative. A Wikidata statement should fail when **no** supplied
+channel supports it, when a person/work/manuscript role is modeled in the
+wrong place, or when a validator issue signals a real public-data problem.
+Do not invent evidence beyond the context block.
 
 Evidence handling:
 
-- Treat `authority_evidence` as first-class evidence for authority-derived
+- Treat every non-empty pack as first-class: `verify_evidence.marc`,
+  `.viaf`, `.mazal`, `.wikidata_existing`, `.hmo_wikibase`, plus raw
+  `authority_evidence`, `work_candidate_evidence`, and
+  `local_reference_targets`.
+- Do **not** return an overall fail solely because the MARC slice is empty
+  when VIAF, Mazal, existing Wikidata, or HMO Wikibase packs support the
+  item. Note missing MARC as a caveat inside `reasoning` if useful.
+- Treat `authority_evidence` / VIAF / Mazal packs as first-class evidence for
   preferred names, birth/death years, VIAF/NLI identifiers, and existing QIDs.
   Do not mark those claims unsupported merely because the compact MARC slice
   does not repeat the authority record.
@@ -32,6 +41,9 @@ Evidence handling:
   source wording, and an author-name-string (P2093). Do not call those claims
   invented merely because the compact MARC slice does not repeat the 505/500
   text from which the candidate was extracted.
+- HMO Wikibase: `hmo_wikibase_id` + browseable `…/wiki/Item:Q…` on P2888/P973
+  are intentional bridges. Fail only ontology IRIs, dead `/wiki/MS_…` slugs,
+  or project Q-numbers used as if they were Wikidata QIDs.
 - Catalog authority names may be inverted as `Surname, Given`. A clean
   natural-order label derived as `Given Surname` is correct; the inverted form
   may remain as an alias or native-name value.
@@ -67,11 +79,13 @@ Evidence handling:
 
 Every prompt includes a compact **SKILL** block distilled from
 [WikiProject Manuscripts](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts)
-and its [Data Model](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model).
+and its [Data Model](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model)
+(material / creation / content / housing property tables).
 Treat that block as authoritative community practice for public Wikidata
 items. Entity-specific slices and claim-triggered checks (P50-on-MS,
-P7416-as-count, P195 evidence, …) are selected for *this* candidate —
-apply them before inventing additional criteria.
+P7416-as-count, P195 evidence, P2888 HMO bridges, …) are selected for *this*
+candidate — apply them before inventing additional criteria.
 
 Primary evaluation goal: the proposed item must be safe as a **public
-Wikidata** manuscript / person / work item under that data model.
+Wikidata** manuscript / person / work item under that data model, given
+**all** evidence channels supplied above.

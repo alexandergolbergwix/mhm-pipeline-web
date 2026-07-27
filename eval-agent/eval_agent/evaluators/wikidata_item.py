@@ -49,10 +49,14 @@ class WikidataItemEvaluator(Evaluator):
             "statements": wikidata_items.compact_statements(ner_record),
             "statement_count": len(ner_record.get("statements") or []),
             "existing_qid": ner_record.get("existing_qid"),
+            "hmo_wikibase_id": ner_record.get("hmo_wikibase_id"),
+            "source_uri": ner_record.get("source_uri"),
             "validation_issues": ner_record.get("validation_issues") or [],
             "authority_evidence": ner_record.get("authority_evidence") or [],
             "work_candidate_evidence": ner_record.get("work_candidate_evidence") or {},
             "local_reference_targets": ner_record.get("local_reference_targets") or {},
+            "verify_evidence": ner_record.get("verify_evidence") or {},
+            "record_ids": wikidata_items.control_numbers(ner_record),
         }
         control_number = wikidata_items.control_number(ner_record)
         yield Candidate(
@@ -76,16 +80,39 @@ class WikidataItemEvaluator(Evaluator):
         issues_json = json.dumps(
             p.get("validation_issues") or [], ensure_ascii=False, indent=2
         )
+        evidence = p.get("verify_evidence") if isinstance(p.get("verify_evidence"), dict) else {}
+        viaf_json = json.dumps(evidence.get("viaf") or {}, ensure_ascii=False, indent=2)
+        mazal_json = json.dumps(evidence.get("mazal") or {}, ensure_ascii=False, indent=2)
+        wd_existing_json = json.dumps(
+            evidence.get("wikidata_existing") or {
+                "existing_qid": p.get("existing_qid"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        hmo_json = json.dumps(
+            evidence.get("hmo_wikibase") or {
+                "hmo_wikibase_id": p.get("hmo_wikibase_id"),
+                "source_uri": p.get("source_uri"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
         authority_json = json.dumps(p.get("authority_evidence") or [], ensure_ascii=False, indent=2)
         work_evidence_json = json.dumps(
-            p.get("work_candidate_evidence") or {},
+            p.get("work_candidate_evidence") or evidence.get("work_candidate_evidence") or {},
             ensure_ascii=False,
             indent=2,
         )
         local_targets_json = json.dumps(
-            p.get("local_reference_targets") or {},
+            p.get("local_reference_targets") or evidence.get("local_reference_targets") or {},
             ensure_ascii=False,
             indent=2,
+        )
+        marc_note = (
+            "present"
+            if (evidence.get("marc_present") or candidate.marc_context)
+            else "ABSENT — do not invent MARC facts; still use VIAF/Mazal/Wikidata/Wikibase packs"
         )
         block = (
             "Model: Wikidata Studio item projection\n"
@@ -93,6 +120,7 @@ class WikidataItemEvaluator(Evaluator):
             f"  local id:          {p.get('_local_id', '')}\n"
             f"  entity type:       {p.get('entity_type', '')}\n"
             f"  semantic subtype:  {p.get('semantic_type') or '(none)'}\n"
+            f"  record ids:        {json.dumps(p.get('record_ids') or [], ensure_ascii=False)}\n"
             f"  labels:            {json.dumps(p.get('labels') or {}, ensure_ascii=False)}\n"
             "  descriptions:      "
             f"{json.dumps(p.get('descriptions') or {}, ensure_ascii=False)}\n"
@@ -101,9 +129,18 @@ class WikidataItemEvaluator(Evaluator):
             f"  statement count:   {p.get('statement_count', 0)}\n"
             f"  statements sample:\n{statements_json}\n"
             f"  validation issues:\n{issues_json}\n"
-            f"  authority evidence:\n{authority_json}\n"
+            "Evidence channels (all first-class — MARC is necessary but not sufficient):\n"
+            f"  MARC slice status: {marc_note}\n"
+            f"  VIAF pack:\n{viaf_json}\n"
+            f"  Mazal / NLI pack:\n{mazal_json}\n"
+            f"  Existing Wikidata pack:\n{wd_existing_json}\n"
+            f"  HMO Wikibase pack:\n{hmo_json}\n"
+            f"  authority evidence (raw):\n{authority_json}\n"
             f"  work candidate evidence:\n{work_evidence_json}\n"
             f"  local reference targets:\n{local_targets_json}\n"
+            "  WPM Data Model: "
+            "https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model\n"
+            "  (also injected below as the SKILL block)\n"
         )
         return self.render_prompt(candidate, prediction_block=block)
 

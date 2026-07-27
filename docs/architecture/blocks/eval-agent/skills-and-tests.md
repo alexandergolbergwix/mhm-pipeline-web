@@ -145,7 +145,7 @@ python backend/scripts/analyze_wikidata_verdicts.py \
 - The Wikidata evaluator fixture carries `authority_evidence`, `work_candidate_evidence`, and resolved `local_reference_targets`; its rubric accepts source-backed natural-order names, work authors, year precision 9, clean Hebrew-only labels, and valid internal `__LOCAL:` links.
 - The Wikidata CSV diagnostic export includes authority/work/local-target evidence JSON; use these fields and the statement `value_label`s when clustering partial/fail rows.
 
-## Skill: refresh WikiProject Manuscripts judge context (Rule W-104)
+## Skill: refresh WikiProject Manuscripts judge context (Rules W-104 / W-124)
 
 1. Re-fetch
    [Data Model](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model)
@@ -154,10 +154,18 @@ python backend/scripts/analyze_wikidata_verdicts.py \
    claim triggers — keep prompts compact; update `SOURCES.md` scrape date.
 3. Bump `skill.json` `version` and both Studio verdict salts
    (`WIKIDATA_VERDICT_SCHEMA`, `HMO_ITEM_VERDICT_SCHEMA`).
-4. Extend `eval-agent/tests/test_wikidata_manuscripts_skill.py`.
-5. Align `docs/wikidata-manuscripts-data-model.md` + mapper if builders change.
+4. Keep `wikidata_verify_evidence.py` packs in sync with any new durable
+   evidence channel the builder adds (MARC / VIAF / Mazal / Wikidata / HMO).
+5. Extend `eval-agent/tests/test_wikidata_manuscripts_skill.py` and
+   `backend/tests/unit/test_wikidata_verify_evidence.py`.
+6. Align `docs/wikidata-manuscripts-data-model.md` + mapper if builders change.
 
-## Tests (W-104)
+## Tests (W-104 / W-124)
 
 - `eval-agent/tests/test_wikidata_manuscripts_skill.py` — pack load, entity
-  slices, claim triggers, prompt injection for Wikidata + HMO evaluators.
+  slices, claim triggers, prompt injection for Wikidata + HMO evaluators,
+  multi-channel evidence blocks in the Wikidata prompt.
+- `backend/tests/unit/test_wikidata_verify_evidence.py` — evidence pack
+  partitioning + MARC attach.
+- `backend/tests/unit/test_wikidata_verify_scope_cache.py` — quoted CN join
+  on verify fetch.

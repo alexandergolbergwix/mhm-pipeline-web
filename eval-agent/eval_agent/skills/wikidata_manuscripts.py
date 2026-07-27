@@ -145,7 +145,7 @@ def skill_context_for(
     entity_type: str,
     semantic_type: str = "",
     claim_pids: Iterable[str] | None = None,
-    max_chars: int = 4500,
+    max_chars: int = 6000,
 ) -> str:
     """Compact WPM skill block for one evaluated item."""
     skill = load_skill()

@@ -2274,7 +2274,12 @@ async def _fetch_wikidata_verify_items(
         cached.result_items or [],
         source=source,
     )
-    run_record_ids = {str(r.control_number) for r in records}
+    from app.pipeline.marc_verify_context import canonical_control_number  # noqa: PLC0415
+
+    run_record_ids = {
+        canonical_control_number(r.control_number) for r in records
+    }
+    run_record_ids.discard("")
 
     wanted = {str(i).strip() for i in (item_ids or []) if str(i).strip()}
     items: list[dict[str, Any]] = []
@@ -2286,14 +2291,30 @@ async def _fetch_wikidata_verify_items(
         # Never ground an item in the first run record: that pairs unrelated
         # person/work rows with arbitrary MARC data. Legacy cache rows recover
         # source IDs from P3959 reference snaks; fresh builds store `records`.
+        # Canonicalise both sides so quoted DB control numbers still join.
         item["record_ids"] = [
-            control_number
-            for control_number in record_ids_for_wikidata_item(item)
-            if control_number in run_record_ids
+            cn
+            for cn in (
+                canonical_control_number(value)
+                for value in record_ids_for_wikidata_item(item)
+            )
+            if cn and cn in run_record_ids
         ]
         items.append(item)
     attach_local_reference_targets(items)
-    return items, [dict(r.marc or {"_control_number": r.control_number}) for r in records]
+    marc_records: list[dict[str, Any]] = []
+    for r in records:
+        marc = dict(r.marc or {})
+        marc["_control_number"] = canonical_control_number(
+            marc.get("_control_number") or r.control_number,
+        )
+        marc_records.append(marc)
+    from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
+        enrich_items_with_verify_evidence,
+    )
+
+    enrich_items_with_verify_evidence(items, marc_records)
+    return items, marc_records
 
 _WIKIDATA_VERIFY_CHANNEL = "wikidata-verify-sessions"
 

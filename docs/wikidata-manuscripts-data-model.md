@@ -6,7 +6,7 @@
 **Code mirror:** `backend/converter/wikidata/property_mapping.py` (+ Studio builders / validators)  
 **HMO → public P/Q bridge:** `backend/converter/wikidata/hmo_wikidata_pq_mapper.py` (Rule W-100)  
 **Write policy:** `docs/wikidata-data-access.md` (Rule W-99)  
-**AI verify skill pack:** `eval-agent/config/skills/wikidata_manuscripts/` (Rule W-104) — compact judge context, not a second source of truth; this doc + mapper remain authoritative for builders.
+**AI verify skill pack:** `eval-agent/config/skills/wikidata_manuscripts/` (Rules W-104 / W-124) — compact judge context + multi-channel `verify_evidence` packs; not a second source of truth; this doc + mapper remain authoritative for builders.
 
 This document is the **full data model the code should use**. Constants in `property_mapping.py` must stay consistent with the tables below. Live P/Q pages must be re-checked before adding or changing a constant (Rule W-26).
 

@@ -14,9 +14,10 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w104_v1 with Rule W-104 (WPM skill injection). Prior: w71_v1.
-WIKIDATA_VERDICT_SCHEMA = "w104_v1"
-WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v5"
+# Bumped to w124_v1 with Rule W-124 (multi-source verify evidence + WPM refresh).
+# Prior: w104_v1 (WPM skill injection), w71_v1.
+WIKIDATA_VERDICT_SCHEMA = "w124_v1"
+WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 
 def _normalise_prompt_statements(statements: Any) -> list[dict[str, Any]]:
@@ -48,15 +49,20 @@ def _normalise_prompt_statements(statements: Any) -> list[dict[str, Any]]:
 
 def record_ids_for_wikidata_item(item: dict[str, Any]) -> list[str]:
     """Return explicit source records, or recover them from P3959 references."""
+    from app.pipeline.marc_verify_context import canonical_control_number  # noqa: PLC0415
+
     record_ids: set[str] = set()
-    for key in ("record_ids", "records"):
+    for key in ("record_ids", "records", "control_numbers"):
         stored = item.get(key)
         if isinstance(stored, list):
-            record_ids.update(str(value).strip().strip("\"") for value in stored if value)
+            for value in stored:
+                cn = canonical_control_number(value)
+                if cn:
+                    record_ids.add(cn)
     for key in ("control_number", "_control_number", "record_id"):
-        value = str(item.get(key) or "").strip().strip("\"")
-        if value:
-            record_ids.add(value)
+        cn = canonical_control_number(item.get(key))
+        if cn:
+            record_ids.add(cn)
     for statement in item.get("statements") or []:
         if not isinstance(statement, dict):
             continue
@@ -69,7 +75,7 @@ def record_ids_for_wikidata_item(item: dict[str, Any]) -> list[str]:
                 if not isinstance(snak, dict):
                     continue
                 prop = snak.get("property") or snak.get("property_id")
-                value = str(snak.get("value") or "").strip().strip("\"")
+                value = canonical_control_number(snak.get("value"))
                 if prop == "P3959" and value:
                     record_ids.add(value)
     return sorted(record_ids)
@@ -154,9 +160,16 @@ def attach_wikidata_marc_context(
     items: list[dict[str, Any]],
     marc_records: list[dict[str, Any]],
 ) -> None:
-    """Attach the same MARC slice used by Wikidata verdict cache keys."""
-    for item in items:
-        item["_marc_context"] = marc_context_for_wikidata_item(item, marc_records)
+    """Attach the same MARC slice used by Wikidata verdict cache keys.
+
+    Also ensures ``verify_evidence`` is present (Rule W-124) when callers
+    attach context after a path that skipped ``_fetch_wikidata_verify_items``.
+    """
+    from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
+        enrich_items_with_verify_evidence,
+    )
+
+    enrich_items_with_verify_evidence(items, marc_records)
 
 
 def wikidata_verdict_query_summary(
@@ -184,6 +197,9 @@ def wikidata_verdict_query_summary(
         "authority_evidence": item.get("authority_evidence") or [],
         "work_candidate_evidence": item.get("work_candidate_evidence") or {},
         "local_reference_targets": item.get("local_reference_targets") or {},
+        "verify_evidence": item.get("verify_evidence") or {},
+        "hmo_wikibase_id": item.get("hmo_wikibase_id"),
+        "source_uri": item.get("source_uri"),
         "marc_context": marc_slice,
         "judge_model": judge_model,
         "evaluator": evaluator,

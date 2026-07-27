@@ -39,8 +39,22 @@ def local_id(item: dict[str, Any], index: int) -> str:
     return f"{entity_type}::{label or index}"
 
 
-def control_number(item: dict[str, Any]) -> str:
-    """Best-effort parent MARC id for a Wikidata item."""
+def control_numbers(item: dict[str, Any]) -> list[str]:
+    """All parent MARC control numbers for a Wikidata item (deduped, ordered)."""
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def _add(value: Any) -> None:
+        text = str(value or "").strip().strip("\"'")
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+
+    for key in ("record_ids", "records", "control_numbers"):
+        stored = item.get(key)
+        if isinstance(stored, list):
+            for value in stored:
+                _add(value)
     for key in (
         "_control_number",
         "control_number",
@@ -48,27 +62,30 @@ def control_number(item: dict[str, Any]) -> str:
         "source_record_id",
         "manuscript_id",
     ):
-        value = item.get(key)
-        if value:
-            return str(value)
+        _add(item.get(key))
 
-    record_ids = item.get("record_ids")
-    if isinstance(record_ids, list) and record_ids:
-        return str(record_ids[0])
+    if not out:
+        lid = str(item.get("_local_id") or item.get("local_id") or "")
+        if item.get("entity_type") == "manuscript" and lid:
+            _add(lid)
 
-    lid = str(item.get("_local_id") or item.get("local_id") or "")
-    if item.get("entity_type") == "manuscript" and lid:
-        return lid
+    if not out:
+        for stmt in item.get("statements") or []:
+            if not isinstance(stmt, dict):
+                continue
+            prop = str(stmt.get("property") or stmt.get("property_id") or "")
+            value = str(stmt.get("value") or stmt.get("value_id") or "")
+            if prop == "P3959" and value:
+                _add(value)
+            elif value.startswith("__LOCAL:"):
+                _add(value.removeprefix("__LOCAL:"))
+    return out
 
-    for stmt in item.get("statements") or []:
-        if not isinstance(stmt, dict):
-            continue
-        value = str(stmt.get("value") or stmt.get("value_id") or "")
-        if value.startswith("__LOCAL:"):
-            target = value.removeprefix("__LOCAL:")
-            if target:
-                return target
-    return ""
+
+def control_number(item: dict[str, Any]) -> str:
+    """Best-effort primary parent MARC id for a Wikidata item."""
+    cns = control_numbers(item)
+    return cns[0] if cns else ""
 
 
 def confidence(item: dict[str, Any]) -> float:

@@ -30,7 +30,7 @@
 | `eval-agent/eval_agent/cli.py` | Vendored CLI: `run` subcommand, `--state-dir` monkey-patches session module paths |
 | `eval-agent/eval_agent/orchestration/session.py` | Judging loop; emits `[TRACE] agent.verdict` per candidate for live UI (`_emit_verdict_trace`) |
 | `eval-agent/config/rubrics/*.md` | Per-evaluator judging rubrics (authority, person_ner, contents_ner, provenance_ner, genre_classifier, wikidata_item(+autofix), hmo_wikibase_item(+autofix), hmo_wikibase_schema) |
-| `eval-agent/config/skills/wikidata_manuscripts/` | WikiProject Manuscripts skill pack (`skill.json` + `SOURCES.md`) for Studio judges (Rule W-104) |
+| `eval-agent/config/skills/wikidata_manuscripts/` | WikiProject Manuscripts skill pack (`skill.json` + `SOURCES.md`) for Studio judges (Rules W-104 / W-124) |
 | `eval-agent/eval_agent/skills/wikidata_manuscripts.py` | Entity/claim-aware skill context builder injected into Wikidata + HMO item prompts |
 | `eval-agent/config/schemas/verdict.v2.json` | Verdict JSON Schema validated by `eval-agent verify` |
 | `frontend/src/utils/fetchVerifySession.ts` | `jobVerifySessionSnapshot`, `fetchVerifySessionWithJobFallback` — disk session GET with job-row `progress`/`result` snapshot fallback |

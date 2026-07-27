@@ -196,10 +196,11 @@ to public Wikidata PIDs/QIDs. Local `P…`/`Q…` without an ontology URI or
 explicit Wikidata evidence are dropped. *Why:* conflating namespaces minted
 false public identities (Rule W-83 class).
 
-39. **R39 — AI verify injects WikiProject Manuscripts skill context (Rule W-104).**
+39. **R39 — AI verify injects WikiProject Manuscripts skill context (Rule W-104 / W-124).**
 Wikidata item/autofix judges receive the curated
-`eval-agent/config/skills/wikidata_manuscripts/` pack (entity + claim-aware).
-Verdict salt `WIKIDATA_VERDICT_SCHEMA=w104_v1`. *Why:* builders already
+`eval-agent/config/skills/wikidata_manuscripts/` pack (entity + claim-aware;
+Data Model material/creation/content/housing slices).
+Verdict salt `WIKIDATA_VERDICT_SCHEMA=w124_v1`. *Why:* builders already
 followed WPM; judges must evaluate toward the same public-item contract,
 especially for HMO→Wikidata readiness.
 
@@ -276,3 +277,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     Fingerprint `hmo-wikidata-v8`.
     *Why:* Wikidata→Wikibase clicks hit w3id LFS pointers / 404 MS_ pages;
     NLI temporary-record markers were projected as inscriptions.
+
+50. **R50 — AI verify receives all evidence channels (Rule W-124).**
+    `_fetch_wikidata_verify_items` canonicalises CNs; attaches
+    `verify_evidence` (MARC + VIAF + Mazal + Wikidata + HMO Wikibase);
+    eval-agent merges multi-CN MARC; skill/rubric `w124_v1` treat every
+    pack as first-class and accept browseable HMO Item:Q bridges.
+    *Why:* export (12) failed with “No MARC context” while authority/HMO
+    evidence was present but invisible to the judge.

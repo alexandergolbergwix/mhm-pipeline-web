@@ -2900,3 +2900,42 @@ Invariant:
    without H12'ing the auth response. App authorization still succeeds.
 
 Tests: `backend/tests/test_wikibase_user_access.py`.
+
+### Rule W-124 — Wikidata AI verify MUST receive all evidence channels + WPM Data Model (added 2026-07-27)
+
+Export `(12)` on run `48ba6c13` scored ~182/251 `fail` under DeepSeek largely
+because the judge reported **“No MARC context”** while Studio items still
+carried authority / HMO Wikibase evidence — and because quoted DB control
+numbers wiped `record_ids` before the fixture was written. The WPM Data Model
+skill pack (Rule W-104) was present but thin relative to the live
+[Data Model](https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model)
+property tables, and P2888/P973 to the project Wikibase were treated as
+suspicious rather than intentional bridges.
+
+Invariant:
+
+1. **Canonical MARC join on verify fetch.** `_fetch_wikidata_verify_items`
+   canonicalises run + item control numbers before membership filtering;
+   fixture MARC rows store a clean `_control_number`. Eval-agent Wikidata
+   paths **merge all** `record_ids` (parity with HMO item verify), not only
+   the first CN.
+2. **`verify_evidence` pack on every item** (`wikidata_verify_evidence.py`):
+   MARC slice, VIAF, Mazal/NLI, existing Wikidata, HMO Wikibase
+   (`hmo_wikibase_id` + browseable Item:Q + P2888/P973 bridges), plus work /
+   local-target evidence. Attached before the eval-agent fixture write;
+   `attach_wikidata_marc_context` also ensures the pack exists.
+3. **Evaluator prompt** surfaces each channel as first-class; rubric forbids
+   overall-fail solely for empty MARC when another pack supports the item.
+4. **WPM skill** (`wikidata_manuscripts` `w124_v1`) expands material /
+   creation / content / housing rules from the Data Model page and states
+   that browseable `mhm-hmo.wikibase.cloud/wiki/Item:Q…` on P2888/P973 is an
+   intentional bridge.
+5. **Cache salts** `WIKIDATA_VERDICT_SCHEMA` / `HMO_ITEM_VERDICT_SCHEMA` →
+   `w124_v1` (`records_marc_v6`) so old pills miss after deploy (Rule W-51).
+
+**Curator ops after deploy:** re-run Wikidata Studio **Verify with AI**
+(override cache optional — salt bump already invalidates). Rebuild Studio
+only if item fields themselves changed.
+
+Tests: `test_wikidata_verify_evidence.py`, `test_wikidata_verify_scope_cache.py`
+(quoted-CN join), `eval-agent/tests/test_wikidata_manuscripts_skill.py`.

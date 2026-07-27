@@ -1,27 +1,31 @@
 {
   "id": "wikidata_manuscripts",
-  "version": "w104_v1",
+  "version": "w124_v1",
   "title": "WikiProject Manuscripts + HMO→Wikidata projection skill",
-  "goal": "Judge whether an item is safe as a public Wikidata manuscript/person/work item, and whether an HMO Wikibase item would project cleanly into that model.",
+  "goal": "Judge whether an item is safe as a public Wikidata manuscript/person/work item using ALL supplied evidence channels (MARC + VIAF + Mazal + existing Wikidata + HMO Wikibase) under the WikiProject Manuscripts Data Model.",
   "always": [
     "Manuscript item = physical carrier. Contained texts are exemplar of (P1574) → written work (Q47461344). NEVER put work authors as P50 on the manuscript.",
-    "Default P31 for manuscripts is manuscript (Q87167). Allowed replacements/additions when evidenced: illuminated manuscript (Q48498), palimpsest (Q274076 — never Q179808), manuscript fragment (Q30103158), palm-leaf (Q1641020). Discouraged as primary P31: codex (Q213924), book (Q571), papyrus scroll, lectionary.",
-    "Label priority (WPM): (1) familiar trivial name → (2) canonical catalog code for a group → (3) library signature (city · institution · fonds · shelfmark). Description must not merely repeat the label.",
+    "Default P31 for manuscripts is manuscript (Q87167). Allowed replacements/additions when evidenced: illuminated manuscript (Q48498), palimpsest (Q274076 — never Q179808), manuscript fragment (Q30103158), Hebrew manuscript (Q115160920), composite manuscript (Q33308141), palm-leaf (Q1641020). Discouraged as primary P31: codex (Q213924), book (Q571).",
+    "Label priority (WPM fingerprint): (1) familiar trivial name → (2) canonical catalog code for a group → (3) library signature (city · institution · fonds · shelfmark). Description must not merely repeat the label.",
     "Folio/page counts use P1104 (number of pages) with a leaf/folio unit when counting leaves — never P7416 as a quantity (P7416 is a citation folio qualifier).",
-    "Scribe = transcribed by (P11603). Illuminator = illustrator (P110). Annotator = P11105. Commissioner = P88. Creation place = P1071; creation time = P571.",
-    "Housing: collection (P195) = holding institution (preferred rank for current); owned by (P127) for owners with time qualifiers; inventory number (P217) = shelfmark; catalog code (P528) with catalog (P972).",
-    "Language of the manuscript text = P407 (qualify with P518 when needed). Genre (P136) is intended use (lectionary, book of hours), not a dump of every subject note.",
+    "Creation: inception P571, location of creation P1071, transcribed by P11603 (scribe), illustrator P110, annotator P11105, commissioned by P88, script style P9302.",
+    "Content: language P407 (qualify with P518 when needed), exemplar of P1574 (qualify with section/folio P958 / object named as P1932), genre P136 = intended use.",
+    "Housing: collection P195 = holding institution (preferred rank for current); owned by P127 for owners with time qualifiers; inventory number P217 = shelfmark; catalog code P528 with catalog P972.",
+    "Material: made from material P186 (papyrus/parchment/vellum/paper), state of conservation P5816, height P2048 / width P2049 when known.",
     "Project Wikibase QIDs/PIDs (mhm-hmo.wikibase.cloud) are NOT Wikidata IDs. Public Wikidata claims require ontology-mapped P/Q or an explicit wikidata.org URI.",
+    "P2888 / P973 pointing at https://mhm-hmo.wikibase.cloud/wiki/Item:Q… are intentional HMO↔Wikidata bridges — do NOT fail solely because the URL is a project Wikibase page.",
+    "Evidence channels are complementary: MARC + VIAF + Mazal/NLI + existing Wikidata QID + HMO Wikibase pack. Do not report 'no evidence' when any non-empty channel supports the claim.",
     "Be fail-closed: unsupported semantic claims → omit or fail; do not invent QIDs from memory."
   ],
   "context_guide": {
     "wikidata": [
-      "Attend to: labels/descriptions/aliases, P31, P1574 chain, agent roles, housing/identifiers, validation_issues, authority_evidence, work_candidate_evidence, local_reference_targets, MARC slice.",
-      "Pass only when public Wikidata statements are evidence-backed and role-correct.",
-      "Partial when mostly safe but removable bad claims remain."
+      "Attend to EVERY evidence pack in the prompt: MARC slice, VIAF, Mazal/NLI, existing Wikidata, HMO Wikibase, plus labels/descriptions, P31, P1574 chain, agent roles, housing/identifiers, validation_issues, work_candidate_evidence, local_reference_targets.",
+      "Pass only when public Wikidata statements are evidence-backed (from any channel) and role-correct under the Data Model.",
+      "Partial when mostly safe but removable bad claims remain.",
+      "Do not fail an item solely for 'No MARC context' when VIAF/Mazal/Wikidata/Wikibase packs are present — use those packs; note MARC absence only as a caveat."
     ],
     "hmo": [
-      "Attend to: entity_type (not class_qid as Wikidata), labels/descriptions, claims that would map via HMO→Wikidata bridge, SHACL, MARC/control_numbers.",
+      "Attend to: entity_type (not class_qid as Wikidata), labels/descriptions, claims that would map via HMO→Wikidata bridge, SHACL, MARC/control_numbers, authority identifiers.",
       "Ask: if this HMO item were projected to public Wikidata, would it violate WPM (P50-on-MS, wrong P31, project-QID-as-Wikidata, folio misuse, invented holder)?",
       "Structural/epistemology HMO entities are HMO-only — do not demand Wikidata manuscript fingerprint completeness.",
       "Manuscript/Person/Work/Place HMO entities SHOULD be Wikidata-projection-ready when evidence exists."
@@ -33,17 +37,19 @@
       "P195 only with verified current-holder organization QID — absence of holder ≠ National Library of Israel collection.",
       "P1574 links works present in the MS; qualify with section/folio (P958) when known. Authors of those works live on the WORK item (P50), not on the MS.",
       "P48498 (illuminated) only with confirmed illumination/decoration evidence — MARC 'Illustrated works' alone is insufficient.",
-      "Identifiers: prefer stable catalog IDs (e.g. NLI / P3959-class ids when used by the project); IIIF = P6108 when present."
+      "Identifiers: prefer stable catalog IDs (e.g. NLI / P3959); IIIF = P6108 when present; HMO bridge via browseable Item:Q P2888/P973 is expected for canonical projection."
     ],
     "person": [
       "P31 human (Q5) for persons; organizations are E74_Group / organization — never emit a corporate body as human.",
       "Prefer VIAF (P214), NLI J9U (P8189), birth/death when authority-exact; inverted Surname, Given may stay as alias with natural-order label.",
-      "Scribes appear on manuscripts via P11603, not as manuscript P50."
+      "Scribes appear on manuscripts via P11603, not as manuscript P50.",
+      "VIAF + Mazal packs are first-class even when the compact MARC slice is empty for a shared person across manuscripts."
     ],
     "work": [
       "P31 written work (Q47461344) (or evidenced subclass). Author = P50 on the WORK; unresolved authors may be P2093 or deferred local P50 targets.",
       "Title language (P1476) follows the title script. Works do not inherit manuscript P407 casually.",
-      "Reject catalogue prose, dedications, geography fragments, and unverified Latin-only 505 headings without authority/QID."
+      "Reject catalogue prose, dedications, geography fragments, and unverified Latin-only 505 headings without authority/QID.",
+      "work_candidate_evidence + accepted Mazal/Wikidata work rows ground CREATE works; do not demand a live QID when the evidence pack accepts a local work."
     ],
     "place": [
       "Places need coordinates or a stable external id when asserted; Wikidata place QID must be a real wikidata.org id, never a project Wikibase Q-number.",
@@ -61,20 +67,27 @@
   "claim_triggers": {
     "P50": "If entity is a manuscript: P50 on manuscript is a HARD FAIL (use P1574→work→P50). If entity is a work: P50 is correct when author evidence exists.",
     "P7416": "P7416 as a quantity/count is a HARD FAIL. Folio counts → P1104 (+ leaf unit). P7416 only as a citation folio qualifier.",
-    "P31": "Check P31 against the allowed manuscript classes; Q179808 is never palimpsest; Q5 on a manuscript is wrong.",
+    "P31": "Check P31 against the allowed manuscript classes; Q179808 is never palimpsest; Q5 on a manuscript is wrong; Hebrew manuscript Q115160920 is allowed when evidenced.",
     "P195": "Require verified holder evidence; do not accept placeholder Unknown Library or default-NLI without evidence.",
     "P1574": "Expected on manuscripts that contain named works; authors belong on the linked work, not on the MS via P50.",
     "P1104": "Accept leaf/folio quantity modeling; do not demand P7416 for counts.",
     "P11603": "Scribe must be a person item, not an institution.",
     "P921": "Primary subject only — not every 650 note; broad headings like 'Jews' need primary-subject evidence.",
     "P136": "Genre/use — do not equate 'illustrated' MARC genre with illuminated manuscript P31.",
-    "P7535": "Archival-collection scope only — not arbitrary catalog notes."
+    "P7535": "Archival-collection scope only — not arbitrary catalog notes.",
+    "P2888": "exact match / same as: a browseable mhm-hmo.wikibase.cloud Item:Q URL is an intentional project bridge — accept when the HMO Wikibase pack agrees; reject ontology IRIs or dead /wiki/MS_ slugs.",
+    "P973": "described at URL: same bridge policy as P2888 for the project Wikibase Item page.",
+    "P214": "VIAF ID — treat VIAF pack / P214 as strong person identity evidence.",
+    "P8189": "NLI / Mazal person id — treat Mazal pack / P8189 as strong identity evidence.",
+    "P186": "Writing support / material — papyrus, parchment, vellum, paper when MARC or HMO claims support it.",
+    "P9302": "Script style — accept when paleography evidence exists; do not invent."
   },
   "hmo_to_wikidata_checklist": [
     "Map only allowlisted ontology local-names → public PIDs (hmo_wikidata_pq_mapper).",
     "Never copy project Wikibase P/Q numbers into Wikidata statements by numeric identity.",
     "Manuscript agents: scribe→P11603, author of contained work→work P50, owner→P127, holder→P195.",
     "HMO-only philology (stemma, paradigm bridges, epistemology steps) MUST NOT become speculative public claims.",
-    "External Wikidata URIs on HMO entities may become P2888/exact-match style links when the mapper allows — never treat a local Q1370 as Wikidata Q1370."
+    "External Wikidata URIs on HMO entities may become P2888/exact-match style links when the mapper allows — never treat a local Q1370 as Wikidata Q1370.",
+    "Browseable HMO Item:Q pages on P2888/P973 are correct bridges; ontology#MS_… IRIs and /wiki/MS_… slugs are not."
   ]
 }

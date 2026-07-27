@@ -15,7 +15,7 @@ from eval_agent.skills.wikidata_manuscripts import (
 def test_skill_loads_and_versions() -> None:
     skill = load_skill()
     assert skill["id"] == "wikidata_manuscripts"
-    assert skill_version() == "w104_v1"
+    assert skill_version() == "w124_v1"
     assert "always" in skill
     assert "P50" in skill["claim_triggers"]
 
@@ -81,6 +81,16 @@ def test_wikidata_evaluator_prompt_embeds_skill() -> None:
             "authority_evidence": [],
             "work_candidate_evidence": {},
             "local_reference_targets": {},
+            "verify_evidence": {
+                "marc_present": True,
+                "viaf": {"authority_rows": [{"kind": "viaf", "identifier": "1"}]},
+                "mazal": {"authority_rows": []},
+                "wikidata_existing": {"existing_qid": None},
+                "hmo_wikibase": {
+                    "hmo_wikibase_id": "Q9",
+                    "page_url": "https://mhm-hmo.wikibase.cloud/wiki/Item:Q9",
+                },
+            },
         },
         confidence=1.0,
         marc_context={"title": "Test"},
@@ -89,6 +99,20 @@ def test_wikidata_evaluator_prompt_embeds_skill() -> None:
     assert "WikiProject Manuscripts" in prompt or "SKILL:" in prompt
     assert "HARD FAIL" in prompt
     assert "P50" in prompt
+    assert "VIAF pack" in prompt
+    assert "HMO Wikibase pack" in prompt
+    assert "mhm-hmo.wikibase.cloud/wiki/Item:Q9" in prompt
+
+
+def test_skill_mentions_hmo_bridge_and_multi_source_evidence() -> None:
+    text = skill_context_for(
+        channel="wikidata",
+        entity_type="manuscript",
+        claim_pids=["P2888"],
+    )
+    assert "P2888" in text
+    assert "mhm-hmo.wikibase.cloud" in text or "HMO" in text
+    assert "VIAF" in text or "evidence" in text.lower()
 
 
 def test_hmo_evaluator_prompt_embeds_projection_skill() -> None:

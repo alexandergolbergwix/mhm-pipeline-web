@@ -12,9 +12,8 @@ from app.pipeline.ai_verdict_cache_common import (
 
 from app.pipeline.inference_cache import canonical_hash
 
-# Bumped to w104_v1 with Rule W-104 (WikiProject Manuscripts skill injection
-# into HMO + Wikidata Studio AI verify). Prior salt w53_v1 (Rule W-53).
-HMO_ITEM_VERDICT_SCHEMA = "w104_v1"
+# Bumped to w124_v1 with Rule W-124 (shared WPM skill refresh). Prior: w104_v1.
+HMO_ITEM_VERDICT_SCHEMA = "w124_v1"
 
 
 def _sorted_control_numbers(item: dict[str, Any]) -> list[str]:

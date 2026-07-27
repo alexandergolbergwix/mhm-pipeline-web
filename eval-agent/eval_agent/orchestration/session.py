@@ -383,6 +383,20 @@ class Session:
                 else:
                     rid = marc_extract.canonical_control_number(rec.get("_control_number"))
                 marc_rec = marc_index.get(rid, {})
+                if ev.id in WIKIDATA_ITEM_EVALUATORS:
+                    cns = [
+                        marc_extract.canonical_control_number(cn)
+                        for cn in wikidata_items.control_numbers(rec)
+                    ]
+                    if cns:
+                        primary = marc_extract.canonical_control_number(
+                            wikidata_items.control_number(rec)
+                        )
+                        marc_rec = marc_extract.merge_records(
+                            [marc_index[cn] for cn in cns if cn in marc_index],
+                            primary=marc_index.get(primary) if primary else None,
+                        )
+                        rid = primary or cns[0]
                 if ev.id in HMO_WIKIBASE_ITEM_EVALUATORS:
                     cns = [
                         marc_extract.canonical_control_number(cn)

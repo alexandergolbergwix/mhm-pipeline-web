@@ -36,7 +36,10 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
   `source`/`approved_only` into `_fetch_wikidata_verify_items` (W-115 / R42).
 - `backend/tests/unit/test_wikidata_verify_scope_cache.py` — verify prefers
   existing Studio cache and rebuilds with `reconcile=False` (W-116 / R43); skips
-  non-public `entity_type` rows (W-117 / R44).
+  non-public `entity_type` rows (W-117 / R44); quoted CN join + `verify_evidence`
+  pack (W-124 / R50).
+- `backend/tests/unit/test_wikidata_verify_evidence.py` — multi-channel evidence
+  pack partitioning (W-124).
 - `backend/tests/test_wikidata_item_views.py` — merged read model drops HMO-class
   `entity_type` rows from canonical cache (W-118).
 - `backend/tests/test_wikidata_items_export_import.py` — JSON export excludes

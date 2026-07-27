@@ -12,7 +12,61 @@ from app.routers.wikidata_studio import _fetch_wikidata_verify_items
 
 
 @pytest.mark.asyncio
-async def test_verify_fetch_uses_existing_cache_without_rebuild() -> None:
+async def test_verify_fetch_canonicalises_quoted_control_numbers() -> None:
+    """Quoted DB control numbers must still join clean Studio record_ids."""
+    run_id = uuid.uuid4()
+    cached = SimpleNamespace(
+        result_items=[
+            {
+                "local_id": "ms:1",
+                "entity_type": "manuscript",
+                "labels": {"he": "כותרת"},
+                "records": ["990000000000000099"],
+                "hmo_wikibase_id": "Q11",
+                "authority_evidence": [
+                    {"kind": "viaf", "identifier": "999", "accepted": True},
+                ],
+                "statements": [],
+            },
+        ],
+    )
+    db = MagicMock()
+    auth = SimpleNamespace(user=SimpleNamespace(id=uuid.uuid4()))
+
+    with (
+        patch("app.routers.wikidata_studio.select", return_value=MagicMock()),
+        patch.object(
+            db, "execute", new=AsyncMock(return_value=MagicMock(
+                scalars=lambda: MagicMock(all=lambda: [
+                    SimpleNamespace(
+                        control_number='"990000000000000099"',
+                        marc={"title": "כותרת", "_control_number": '"990000000000000099"'},
+                    ),
+                ]),
+            )),
+        ),
+        patch(
+            "app.routers.wikidata_studio._get_studio_cache_row",
+            new=AsyncMock(return_value=cached),
+        ),
+        patch(
+            "app.routers.wikidata_studio.execute_studio_build",
+            new=AsyncMock(side_effect=AssertionError("must not rebuild")),
+        ),
+    ):
+        items, marc = await _fetch_wikidata_verify_items(
+            db, run_id, auth,
+            item_ids=None,
+            approved_only=True,
+            source="canonical",
+        )
+
+    assert len(items) == 1
+    assert items[0]["record_ids"] == ["990000000000000099"]
+    assert marc[0]["_control_number"] == "990000000000000099"
+    assert items[0]["verify_evidence"]["marc_present"] is True
+    assert items[0]["verify_evidence"]["viaf"]["authority_rows"][0]["identifier"] == "999"
+    assert items[0]["verify_evidence"]["hmo_wikibase"]["hmo_wikibase_id"] == "Q11"
     run_id = uuid.uuid4()
     cached = SimpleNamespace(
         result_items=[
