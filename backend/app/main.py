@@ -40,15 +40,11 @@ async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
     """Boot/teardown — keep the Postgres LISTEN bridge running across
     the whole process lifetime."""
     from app.pipeline.run_job_service import (  # noqa: PLC0415
-        fail_stale_jobs,
-        recover_interrupted_jobs,
-        recover_resumable_verify_jobs,
         run_job_maintenance_loop,
+        startup_job_recovery,
     )
 
-    await fail_stale_jobs()
-    await recover_interrupted_jobs()
-    await recover_resumable_verify_jobs()
+    await startup_job_recovery()
     maintenance = asyncio.create_task(
         run_job_maintenance_loop(), name="run-job-maintenance",
     )

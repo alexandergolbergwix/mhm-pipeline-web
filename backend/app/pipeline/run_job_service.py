@@ -295,12 +295,13 @@ async def recover_resumable_verify_jobs() -> int:
 
     Covers deploys that landed before auto-requeue-on-stale: rows may still be
     ``failed`` with ``result.resumable`` even though verdicts are in Postgres.
-    Skips rows when another active job already exists for the same run+kind
-    (partial unique index ``uq_run_jobs_active_kind``).
+    At most one row per ``(run_id, kind)`` is re-queued — duplicate failed
+    partial jobs are common after repeated interrupts.
     """
     from app.pipeline.verify_resume import (  # noqa: PLC0415
         VERIFY_JOB_KINDS,
         apply_verify_job_auto_resume,
+        progress_counts,
     )
 
     cutoff = _now() - timedelta(hours=24)
@@ -317,9 +318,22 @@ async def recover_resumable_verify_jobs() -> int:
                 )
             )
         ).scalars().all()
-        for job in rows:
-            result = job.result if isinstance(job.result, dict) else {}
-            if not result.get("resumable"):
+        candidates = [
+            job for job in rows
+            if isinstance(job.result, dict) and job.result.get("resumable")
+        ]
+        candidates.sort(
+            key=lambda job: (
+                -progress_counts(
+                    job.progress if isinstance(job.progress, dict) else {},
+                )[0],
+                -(job.finished_at or datetime.min.replace(tzinfo=timezone.utc)).timestamp(),
+            ),
+        )
+        reserved: set[tuple[uuid.UUID, str]] = set()
+        for job in candidates:
+            slot = (job.run_id, job.kind)
+            if slot in reserved:
                 continue
             active = await find_active_job(db, run_id=job.run_id, kind=job.kind)
             if active is not None and active.id != job.id:
@@ -328,9 +342,12 @@ async def recover_resumable_verify_jobs() -> int:
                     job.id,
                     active.id,
                 )
+                reserved.add(slot)
                 continue
             if apply_verify_job_auto_resume(job):
+                reserved.add(slot)
                 spawn_ids.append(job.id)
+                await db.flush()
         if spawn_ids:
             try:
                 await db.commit()
@@ -430,6 +447,22 @@ async def fail_stale_jobs() -> int:
         logger.warning("marked %d stale run job(s) as failed", count - len(requeue_spawn))
         await admit_waiting_jobs()
     return count
+
+
+async def startup_job_recovery() -> None:
+    """Run boot-time job recovery; never block app startup on a single failure."""
+    steps = (
+        ("fail_stale_jobs", fail_stale_jobs),
+        ("recover_interrupted_jobs", recover_interrupted_jobs),
+        ("recover_resumable_verify_jobs", recover_resumable_verify_jobs),
+    )
+    for name, step in steps:
+        try:
+            count = await step()
+            if count:
+                logger.info("startup %s: %d row(s)", name, count)
+        except Exception:
+            logger.exception("startup %s failed — continuing boot", name)
 
 
 async def _try_claim_job(db: AsyncSession, job_id: uuid.UUID) -> bool:

@@ -24,9 +24,11 @@ Every 60 s (run_job_maintenance_loop):
                             # else → failed (verify stamps resumable — W-130)
   _respawn_orphaned_jobs()  # queued rows > 90 s old with no local task → spawn
 
-On process start (lifespan): fail_stale_jobs() → recover_interrupted_jobs()
-  → recover_resumable_verify_jobs()  # failed+resumable in last 24h → re-queue
-  (re-spawns every active row; foreign live rows lose the claim and no-op)
+On process start (lifespan): ``startup_job_recovery()`` runs
+``fail_stale_jobs`` → ``recover_interrupted_jobs`` →
+``recover_resumable_verify_jobs`` (each step is isolated — a failure never
+blocks boot). Resumable recovery re-queues at most one failed verify row per
+``(run_id, kind)`` (highest judged progress wins).
 ```
 
 Statuses: `queued → running → succeeded | failed | cancelled`. Active =

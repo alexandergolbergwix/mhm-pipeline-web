@@ -471,6 +471,50 @@ async def test_recover_resumable_verify_skips_when_active_job_exists(
 
 
 @pytest.mark.asyncio
+async def test_recover_resumable_verify_dedupes_same_run_kind(
+    db_session, sample_run,
+) -> None:
+    older = RunJob(
+        project_id=sample_run["project_id"],
+        run_id=sample_run["run_id"],
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_FAILED,
+        params={"session_id": "old-a", "action_id": "audit_wikidata_item"},
+        progress={"processed": 40, "total": 313},
+        result={"resumable": True, "judged": 40, "total": 313},
+        created_by=sample_run["user_id"],
+        finished_at=_now() - timedelta(hours=1),
+    )
+    newer = RunJob(
+        project_id=sample_run["project_id"],
+        run_id=sample_run["run_id"],
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_FAILED,
+        params={"session_id": "old-b", "action_id": "audit_wikidata_item"},
+        progress={"processed": 61, "total": 313},
+        result={"resumable": True, "judged": 61, "total": 313},
+        created_by=sample_run["user_id"],
+        finished_at=_now(),
+    )
+    db_session.add_all([older, newer])
+    await db_session.commit()
+
+    spawned: list[uuid.UUID] = []
+    with patch(
+        "app.pipeline.run_job_service.spawn_job",
+        side_effect=lambda job_id: spawned.append(job_id),
+    ):
+        count = await recover_resumable_verify_jobs()
+
+    assert count == 1
+    assert spawned == [newer.id]
+    await db_session.refresh(newer)
+    await db_session.refresh(older)
+    assert newer.status == JOB_STATUS_QUEUED
+    assert older.status == JOB_STATUS_FAILED
+
+
+@pytest.mark.asyncio
 async def test_fail_stale_non_verify_keeps_generic_message(db_session, sample_run) -> None:
     from app.pipeline.run_job_service import fail_stale_jobs  # noqa: PLC0415
 
