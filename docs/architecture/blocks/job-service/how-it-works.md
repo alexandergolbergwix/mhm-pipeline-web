@@ -19,11 +19,13 @@ POST /runs/{run_id}/jobs {kind, params}
 
 Every 60 s (run_job_maintenance_loop):
   _heartbeat_owned_jobs()   # bump updated_at on rows whose task is alive here
-  fail_stale_jobs()         # running + updated_at > 5 min old → failed
-                            # (verify kinds stamp result.resumable — W-130)
+  fail_stale_jobs()         # running + updated_at > 5 min old
+                            # verify kinds with judged>0 → re-queue (W-134)
+                            # else → failed (verify stamps resumable — W-130)
   _respawn_orphaned_jobs()  # queued rows > 90 s old with no local task → spawn
 
 On process start (lifespan): fail_stale_jobs() → recover_interrupted_jobs()
+  → recover_resumable_verify_jobs()  # failed+resumable in last 24h → re-queue
   (re-spawns every active row; foreign live rows lose the claim and no-op)
 ```
 

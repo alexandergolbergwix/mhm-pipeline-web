@@ -42,11 +42,13 @@ async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
     from app.pipeline.run_job_service import (  # noqa: PLC0415
         fail_stale_jobs,
         recover_interrupted_jobs,
+        recover_resumable_verify_jobs,
         run_job_maintenance_loop,
     )
 
     await fail_stale_jobs()
     await recover_interrupted_jobs()
+    await recover_resumable_verify_jobs()
     maintenance = asyncio.create_task(
         run_job_maintenance_loop(), name="run-job-maintenance",
     )

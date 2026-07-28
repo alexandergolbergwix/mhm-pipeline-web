@@ -5,6 +5,8 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from sqlalchemy import update
 
@@ -384,7 +386,7 @@ async def test_maintenance_tick_calls_admit_waiting_jobs(
 
 
 @pytest.mark.asyncio
-async def test_fail_stale_verify_job_is_resumable(db_session, sample_run) -> None:
+async def test_fail_stale_verify_job_auto_requeues(db_session, sample_run) -> None:
     from app.pipeline.run_job_service import fail_stale_jobs  # noqa: PLC0415
 
     job = await _add_job(
@@ -405,16 +407,27 @@ async def test_fail_stale_verify_job_is_resumable(db_session, sample_run) -> Non
     await db_session.commit()
     await _backdate(db_session, job.id, by=STALE_JOB_AFTER + timedelta(seconds=30))
 
-    count = await fail_stale_jobs()
+    spawned: list[uuid.UUID] = []
+
+    def _track_spawn(job_id: uuid.UUID) -> None:
+        spawned.append(job_id)
+
+    with (
+        patch("app.pipeline.run_job_service.spawn_job", side_effect=_track_spawn),
+        patch("app.pipeline.run_job_service.admit_waiting_jobs", new=AsyncMock(return_value=0)),
+    ):
+        count = await fail_stale_jobs()
     assert count == 1
     await db_session.refresh(job)
-    assert job.status == JOB_STATUS_FAILED
-    assert job.result is not None
-    assert job.result["resumable"] is True
-    assert job.result["judged"] == 61
-    assert job.result["total"] == 313
-    assert job.result["remaining"] == 252
-    assert "Continue" in (job.error or "")
+    assert job.status == JOB_STATUS_QUEUED
+    assert job.error is None
+    assert job.params["override_cache"] is False
+    assert job.params["session_id"] != "sess-wd"
+    assert job.progress["processed"] == 61
+    assert job.progress["total"] == 313
+    assert "Auto-resuming" in (job.progress.get("message") or "")
+    assert len(spawned) == 1
+    assert spawned[0] == job.id
 
 
 @pytest.mark.asyncio

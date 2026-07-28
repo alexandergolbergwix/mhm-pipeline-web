@@ -131,7 +131,7 @@ export function useVerifyJob({
           ? "some entities may have been below the confidence threshold or errored"
           : runnerHint
             ? runnerHint
-            : "the judge stopped early before finishing the full scope — click Continue to resume";
+            : "the judge stopped early before finishing the full scope — it will resume automatically when the server is back";
         const msg = skipped > 0
           ? `Verified ${judged} of ${scopeTotal || judged}. ${skipped} were skipped because the eval-agent could not run on this server.`
           : `Verified ${judged} of ${scopeTotal} — ${partialHint}.`;

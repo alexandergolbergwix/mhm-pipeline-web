@@ -1,7 +1,8 @@
-"""Resume metadata for interrupted AI verify jobs (Rule W-130)."""
+"""Resume metadata for interrupted AI verify jobs (Rule W-130 / W-134)."""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from app.models.run_job import (
@@ -9,7 +10,10 @@ from app.models.run_job import (
     JOB_KIND_HMO_ITEM_VERIFY,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_WIKIDATA_VERIFY,
+    JOB_STATUS_QUEUED,
+    RunJob,
 )
+from app.pipeline.agent_runner import new_session_id
 
 VERIFY_JOB_KINDS = frozenset({
     JOB_KIND_NER_VERIFY,
@@ -20,8 +24,7 @@ VERIFY_JOB_KINDS = frozenset({
 
 STALE_VERIFY_RESUME_ERROR = (
     "Verification interrupted — the server restarted or the worker stopped "
-    "responding. Cached verdicts were kept; click Continue to resume the "
-    "remaining items."
+    "responding. Cached verdicts were kept; resuming automatically."
 )
 
 STALE_VERIFY_RETRY_ERROR = (
@@ -78,7 +81,7 @@ def stale_verify_error_message(*, judged: int, total: int) -> str:
         scope = f"{judged_n} of {total_n}" if total_n else str(judged_n)
         return (
             f"Verification interrupted after {scope}. "
-            "Cached verdicts were kept — click Continue to resume the remaining items."
+            "Cached verdicts were kept — resuming automatically."
         )
     return STALE_VERIFY_RETRY_ERROR
 
@@ -88,3 +91,47 @@ def progress_counts(progress: dict[str, Any] | None) -> tuple[int, int]:
     judged = int(prog.get("processed") or 0)
     total = int(prog.get("total") or 0)
     return judged, total
+
+
+def verify_job_can_auto_resume(job: RunJob) -> bool:
+    if job.cancel_requested_at is not None:
+        return False
+    progress = job.progress if isinstance(job.progress, dict) else {}
+    judged, total = progress_counts(progress)
+    if judged <= 0:
+        return False
+    if total > 0 and judged >= total:
+        return False
+    return True
+
+
+def apply_verify_job_auto_resume(job: RunJob) -> bool:
+    """Re-queue a verify job so the worker continues from inference-cache hits.
+
+    Mutates ``job`` in place. Returns True when the row was re-queued.
+    """
+    if not verify_job_can_auto_resume(job):
+        return False
+    progress = job.progress if isinstance(job.progress, dict) else {}
+    judged, total = progress_counts(progress)
+    session_id = new_session_id()
+    params = dict(job.params or {})
+    params["override_cache"] = False
+    params["session_id"] = session_id
+    job.params = params
+    job.status = JOB_STATUS_QUEUED
+    job.claimed_by = None
+    job.error = None
+    job.result = None
+    job.finished_at = None
+    scope = f"{judged} of {total}" if total else str(judged)
+    job.progress = {
+        **progress,
+        "phase": "queued",
+        "processed": judged,
+        "total": total or judged,
+        "message": f"Auto-resuming verification ({scope} already cached)…",
+        "session_id": session_id,
+    }
+    job.updated_at = datetime.now(timezone.utc)
+    return True

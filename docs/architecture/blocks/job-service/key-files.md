@@ -5,7 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/run_job_service.py` | Core: create/claim/admission gate (W-129)/heartbeat/reap/respawn/admit, spawn + dispatch, progress, finish, cancel, serialise; stale verify → resumable (W-130) |
-| `backend/app/pipeline/verify_resume.py` | Resumable verify result + stale-error copy (Rule W-130) |
+| `backend/app/pipeline/verify_resume.py` | Auto-resume helpers: `apply_verify_job_auto_resume`, resumable result copy (W-130 / W-134) |
 | `backend/app/pipeline/run_job_params.py` | Bounded per-kind request validation + server-side secret injection; slow scope loading stays in workers |
 | `backend/app/routers/run_jobs.py` | HTTP API: list mine, list per run, start (201/409), get, cancel |
 | `backend/app/models/run_job.py` | `RunJob` model, kind/status constants, `uq_run_jobs_active_kind` partial unique index |

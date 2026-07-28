@@ -3216,3 +3216,27 @@ Invariant:
 pipe does not self-heal mid-job.
 
 Tests: ``test_wikidata_persist_batch.py``.
+
+
+### Rule W-134 — Interrupted verify jobs MUST auto-resume on the backend (added 2026-07-28)
+
+Verify already runs as ``run_jobs`` workers (not in the browser). After W-130
+the curator still had to click **Continue** when a dyno restart, OOM, or stale
+heartbeat left a partial run — even though verdicts were already in Postgres/
+Redis cache.
+
+Invariant:
+
+1. **Stale verify rows re-queue** — ``fail_stale_jobs`` calls
+   ``apply_verify_job_auto_resume``: ``status=queued``, new ``session_id``,
+   ``override_cache=false``, progress keeps ``processed``/``total``, then
+   ``spawn_job``. User-cancelled rows become ``cancelled``; zero-judged rows
+   still ``failed``.
+2. **Startup** — ``recover_interrupted_jobs`` (running/queued rows) then
+   ``recover_resumable_verify_jobs`` (failed + ``resumable`` in the last 24 h).
+3. **Worker behaviour unchanged** — a resumed job warm-hits inference cache for
+   already-judged items; only the remainder is sent to the judge.
+4. Manual **Continue** in the UI remains as a fallback when auto-resume did not
+   run (e.g. nothing judged yet).
+
+Tests: ``test_run_job_recovery.py``, ``test_verify_resume.py``.

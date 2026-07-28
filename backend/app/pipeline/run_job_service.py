@@ -290,21 +290,64 @@ async def recover_interrupted_jobs() -> int:
     return len(job_ids)
 
 
+async def recover_resumable_verify_jobs() -> int:
+    """Re-queue failed verify jobs that still have cached progress (Rule W-134).
+
+    Covers deploys that landed before auto-requeue-on-stale: rows may still be
+    ``failed`` with ``result.resumable`` even though verdicts are in Postgres.
+    """
+    from app.pipeline.verify_resume import (  # noqa: PLC0415
+        VERIFY_JOB_KINDS,
+        apply_verify_job_auto_resume,
+    )
+
+    cutoff = _now() - timedelta(hours=24)
+    async with session_scope() as db:
+        rows = (
+            await db.execute(
+                select(RunJob).where(
+                    RunJob.kind.in_(tuple(VERIFY_JOB_KINDS)),
+                    RunJob.status == JOB_STATUS_FAILED,
+                    RunJob.finished_at.is_not(None),
+                    RunJob.finished_at >= cutoff,
+                    RunJob.cancel_requested_at.is_(None),
+                )
+            )
+        ).scalars().all()
+        spawn_ids: list[uuid.UUID] = []
+        for job in rows:
+            result = job.result if isinstance(job.result, dict) else {}
+            if not result.get("resumable"):
+                continue
+            if apply_verify_job_auto_resume(job):
+                spawn_ids.append(job.id)
+        if spawn_ids:
+            await db.commit()
+
+    for job_id in spawn_ids:
+        spawn_job(job_id)
+    if spawn_ids:
+        logger.info("auto-resumed %d verify job(s) after interrupt", len(spawn_ids))
+    return len(spawn_ids)
+
+
 async def fail_stale_jobs() -> int:
     """Mark long-running jobs with no recent heartbeat as failed.
 
-    Verify kinds (Rule W-130) get a ``resumable`` result so the curator can
-    Continue from cached verdicts instead of restarting the full scope.
+    Verify kinds with cached progress (Rule W-134) are re-queued for automatic
+    resume instead of left in ``failed`` for manual Continue.
     """
     from app.pipeline.verify_resume import (  # noqa: PLC0415
         STALE_GENERIC_ERROR,
+        STALE_VERIFY_RETRY_ERROR,
+        apply_verify_job_auto_resume,
         is_verify_job_kind,
         progress_counts,
         resumable_verify_result,
-        stale_verify_error_message,
     )
 
     cutoff = _now() - STALE_JOB_AFTER
+    requeue_spawn: list[uuid.UUID] = []
     async with session_scope() as db:
         rows = (
             await db.execute(
@@ -320,6 +363,14 @@ async def fail_stale_jobs() -> int:
         finished = _now()
         for job in rows:
             if is_verify_job_kind(job.kind):
+                if job.cancel_requested_at is not None:
+                    job.status = JOB_STATUS_CANCELLED
+                    job.error = "Verification cancelled"
+                    job.finished_at = finished
+                    continue
+                if apply_verify_job_auto_resume(job):
+                    requeue_spawn.append(job.id)
+                    continue
                 progress = job.progress if isinstance(job.progress, dict) else {}
                 judged, total = progress_counts(progress)
                 session_id = str(
@@ -327,22 +378,14 @@ async def fail_stale_jobs() -> int:
                     or (job.params or {}).get("session_id")
                     or "",
                 )
-                snap = progress.get("session_snapshot")
-                if isinstance(snap, dict):
-                    from app.pipeline.verify_session_store import (  # noqa: PLC0415
-                        slim_job_session_snapshot,
-                    )
-                    snap = slim_job_session_snapshot(snap)
-                else:
-                    snap = None
                 job.result = resumable_verify_result(
                     session_id=session_id or None,
                     judged=judged,
                     total=total,
-                    session_snapshot=snap,
+                    session_snapshot=None,
                     interrupted=True,
                 )
-                job.error = stale_verify_error_message(judged=judged, total=total)
+                job.error = STALE_VERIFY_RETRY_ERROR
                 job.progress = {
                     **progress,
                     "phase": "interrupted",
@@ -351,15 +394,22 @@ async def fail_stale_jobs() -> int:
                     "message": job.error,
                     "session_id": session_id or progress.get("session_id"),
                 }
+                job.status = JOB_STATUS_FAILED
+                job.finished_at = finished
             else:
                 job.error = STALE_GENERIC_ERROR
-            job.status = JOB_STATUS_FAILED
-            job.finished_at = finished
+                job.status = JOB_STATUS_FAILED
+                job.finished_at = finished
         await db.commit()
         count = len(rows)
 
+    for job_id in requeue_spawn:
+        spawn_job(job_id)
+    if requeue_spawn:
+        logger.info("auto-requeued %d stale verify job(s)", len(requeue_spawn))
+
     if count:
-        logger.warning("marked %d stale run job(s) as failed", count)
+        logger.warning("marked %d stale run job(s) as failed", count - len(requeue_spawn))
         await admit_waiting_jobs()
     return count
 
