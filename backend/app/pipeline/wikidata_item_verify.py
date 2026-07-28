@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -110,7 +111,11 @@ async def _persist_wikidata_verdicts_to_overrides(
 
 
 class WikidataVerdictPersistBatch:
-    """Batch override/cache writes during verify streams (Rule W-131)."""
+    """Batch override/cache writes during verify streams (Rule W-131).
+
+    Flushes run in the background so Postgres I/O never blocks reading the
+    eval-agent subprocess stdout (pipe backpressure stalls the judge).
+    """
 
     def __init__(
         self,
@@ -132,16 +137,31 @@ class WikidataVerdictPersistBatch:
         self._flush_interval_s = flush_interval_s
         self._buffer: list[dict[str, Any]] = []
         self._last_flush = time.monotonic()
+        self._flush_lock = asyncio.Lock()
+        self._pending_flush: asyncio.Task[None] | None = None
 
-    async def add(self, payload: dict[str, Any]) -> None:
+    def enqueue(self, payload: dict[str, Any]) -> None:
         import time  # noqa: PLC0415
 
         self._buffer.append(payload)
+        now = time.monotonic()
         if (
             len(self._buffer) >= self._flush_size
-            or (time.monotonic() - self._last_flush) >= self._flush_interval_s
+            or (now - self._last_flush) >= self._flush_interval_s
         ):
+            self._schedule_flush()
+
+    def _schedule_flush(self) -> None:
+        if self._pending_flush is not None and not self._pending_flush.done():
+            return
+        self._pending_flush = asyncio.create_task(self._flush_guarded())
+
+    async def _flush_guarded(self) -> None:
+        async with self._flush_lock:
             await self.flush()
+
+    async def add(self, payload: dict[str, Any]) -> None:
+        self.enqueue(payload)
 
     async def flush(self) -> None:
         import time  # noqa: PLC0415
@@ -158,3 +178,11 @@ class WikidataVerdictPersistBatch:
             judge_model=self._judge_model,
             marc_records=self._marc_records,
         )
+
+    async def finish(self) -> None:
+        if self._pending_flush is not None:
+            try:
+                await self._pending_flush
+            except Exception:  # noqa: BLE001
+                logger.exception("Wikidata verdict background flush failed")
+        await self.flush()

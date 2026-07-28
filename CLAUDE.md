@@ -3190,3 +3190,29 @@ Invariant:
 
 Tests: ``test_wikidata_verify_heap.py``, ``test_wikidata_verify_scope_cache.py``,
 ``test_verify_job_progress.py``.
+
+
+### Rule W-133 — Wikidata verify persist MUST NOT block the eval-agent stdout reader (added 2026-07-28)
+
+Post-W-132 deploy, production verify dropped to **~1 entity/minute** (vs
+1–5 per 5–10 s before). W-130 incremental persist ``await``'d Postgres on
+every ``agent.verdict`` in the stream hot path; the worker stopped draining
+subprocess stdout → pipe backpressure stalled the judge. Concurrently, the UI
+session GET on every progress tick re-read the full ``trace.jsonl`` and
+scanned job history on the same 512 MB dyno.
+
+Invariant:
+
+1. **`WikidataVerdictPersistBatch.enqueue()`** schedules flushes in a
+   background task — never ``await`` persist in the eval-agent event loop.
+2. **Trace append** in the Wikidata stream uses ``asyncio.to_thread`` for
+   ``persist_session_event``.
+3. **Session GET** reads disk in a thread pool; skips the job-table scan when
+   disk already has verdicts; returns compact verdicts only (no TRACE events).
+4. **UI** throttles mid-run session reload to ≤1 per 8 s; job counter poll
+   stays at 2 s.
+
+**Curator ops:** cancel a crawl-speed run and restart after deploy — a stalled
+pipe does not self-heal mid-job.
+
+Tests: ``test_wikidata_persist_batch.py``.

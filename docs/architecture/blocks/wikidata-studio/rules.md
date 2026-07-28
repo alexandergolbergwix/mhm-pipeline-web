@@ -324,3 +324,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     lists in the worker; `GET …/jobs/{id}?include_session_snapshot=` defaults
     false; verify modal polls every 5 s. *Why:* post-W-131 runs still died at
     ~131/313 with R14 while holding the full run MARC + 313 full items.
+
+57. **R57 — Wikidata verify persist MUST NOT block eval-agent stdout (Rule W-133).**
+    `WikidataVerdictPersistBatch.enqueue()` background flush; trace append via
+    `asyncio.to_thread`; slim/throttled session GET; UI session reload ≤1/8 s
+    mid-run. *Why:* awaited incremental persist caused pipe backpressure →
+    ~1 entity/minute judge throughput on Basic.

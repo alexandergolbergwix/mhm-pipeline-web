@@ -54,6 +54,7 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `backend/tests/unit/test_wikidata_studio_list_view.py` — `list_view` trim,
   lean fixture + compact cached-verdict candidates (W-131).
 - `backend/tests/unit/test_wikidata_verify_heap.py` — scoped MARC + heap release (W-132).
+- `backend/tests/unit/test_wikidata_persist_batch.py` — non-blocking persist flush (W-133).
 
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).

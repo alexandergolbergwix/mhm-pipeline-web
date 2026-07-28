@@ -12,6 +12,7 @@ workflow's unit of truth (see Rule 54 in the desktop CLAUDE.md).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -2493,7 +2494,7 @@ async def _wikidata_verify_event_stream(
                 override_cache=override_cache,
                 rpm=action.rate_limit_rpm,
             ):
-                persist_session_event(session_dir, ev)
+                await asyncio.to_thread(persist_session_event, session_dir, ev)
                 yield ev
                 if ev.type == "agent.verdict":
                     payload = dict(ev.payload or {})
@@ -2505,13 +2506,7 @@ async def _wikidata_verify_event_stream(
                     if local_id:
                         streamed_fresh_verdict_keys.add(local_id)
                         if persist_batch is not None:
-                            try:
-                                await persist_batch.add(payload)
-                            except Exception:  # noqa: BLE001
-                                logger.exception(
-                                    "incremental Wikidata verdict persist failed for %s",
-                                    local_id,
-                                )
+                            persist_batch.enqueue(payload)
                 elif ev.type == "runner.error":
                     runner_error = str((ev.payload or {}).get("message") or "verify failed")
                 elif ev.type == "runner.exit":
@@ -2524,7 +2519,7 @@ async def _wikidata_verify_event_stream(
     finally:
         if persist_batch is not None:
             try:
-                await persist_batch.flush()
+                await persist_batch.finish()
             except Exception:  # noqa: BLE001
                 logger.exception("final Wikidata verdict persist batch failed")
 

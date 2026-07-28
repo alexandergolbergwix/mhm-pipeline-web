@@ -54,6 +54,7 @@ export function useVerifyJob({
   const storeJobKey = storeJob ? verifyJobPollKey(storeJob) : null;
 
   const lastFingerprintRef = useRef<string | null>(null);
+  const lastSessionLoadAtRef = useRef(0);
   const loadSessionRef = useLatestRef(loadSession);
   const onCompleteRef = useLatestRef(onComplete);
   const onFailedRef = useLatestRef(onFailed);
@@ -73,16 +74,25 @@ export function useVerifyJob({
       && Boolean(jobVerifySessionSnapshot(job)?.verdicts?.length)
     );
     if (sessionId && (shouldLoadVerifySession(job) || hasInlineSnapshot || terminalWithSnapshot)) {
-      try {
-        await loadSessionRef.current(sessionId, job);
-      } catch (e) {
-        const isActive = job.status === "queued" || job.status === "running";
-        if (e instanceof ApiError && e.status === 404 && isActive) {
-          // Worker has not written trace.jsonl yet — normal at job start.
-        } else if (!isActive) {
-          onFailedRef.current?.(
-            e instanceof Error ? e.message : "session not found",
-          );
+      const isActive = job.status === "queued" || job.status === "running";
+      const now = Date.now();
+      const sessionLoadDue = (
+        force
+        || !isActive
+        || now - lastSessionLoadAtRef.current >= 8000
+      );
+      if (sessionLoadDue) {
+        try {
+          await loadSessionRef.current(sessionId, job);
+          if (isActive) lastSessionLoadAtRef.current = now;
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 404 && isActive) {
+            // Worker has not written trace.jsonl yet — normal at job start.
+          } else if (!isActive) {
+            onFailedRef.current?.(
+              e instanceof Error ? e.message : "session not found",
+            );
+          }
         }
       }
     }
@@ -218,7 +228,7 @@ export function useVerifyJob({
       }
     }
     void poll();
-    const id = window.setInterval(() => { void poll(); }, 5000);
+    const id = window.setInterval(() => { void poll(); }, 2000);
     return () => {
       cancelled = true;
       window.clearInterval(id);

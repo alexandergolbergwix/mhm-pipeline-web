@@ -8,6 +8,7 @@ missing on the serving dyno.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -81,18 +82,39 @@ async def load_verify_session(
     session_id: str,
     channel: str,
     job_kind: str,
+    slim: bool = True,
 ) -> dict[str, Any] | None:
-    disk = read_verify_session(channel, str(run_id), session_id)
-    job_snap = await fetch_verify_session_from_job(
-        db, run_id=run_id, session_id=session_id, job_kind=job_kind,
+    disk = await asyncio.to_thread(
+        read_verify_session, channel, str(run_id), session_id,
     )
     disk_verdicts = len((disk or {}).get("verdicts") or [])
+    job_snap: dict[str, Any] | None = None
+    if disk_verdicts == 0:
+        job_snap = await fetch_verify_session_from_job(
+            db, run_id=run_id, session_id=session_id, job_kind=job_kind,
+        )
     job_verdicts = len((job_snap or {}).get("verdicts") or [])
     if job_snap and job_verdicts > disk_verdicts:
-        return job_snap
-    if disk is not None and (disk.get("events") or disk.get("verdicts")):
-        return disk
-    return job_snap
+        data = job_snap
+    elif disk is not None and (disk.get("events") or disk.get("verdicts")):
+        data = disk
+    else:
+        data = job_snap
+    if data is None:
+        return None
+    if slim:
+        return slim_api_verify_session(data)
+    return data
+
+
+def slim_api_verify_session(data: dict[str, Any]) -> dict[str, Any]:
+    """API response: compact verdicts only — never ship TRACE events (W-133)."""
+    return slim_job_session_snapshot({
+        "session_id": data.get("session_id"),
+        "run_id": data.get("run_id"),
+        "verdicts": data.get("verdicts") or [],
+        "events": [],
+    })
 
 
 def snapshot_from_collected_events(
