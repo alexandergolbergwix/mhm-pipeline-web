@@ -39,6 +39,7 @@ from app.pipeline.run_job_service import (
     create_job,
     finish_job,
     recover_interrupted_jobs,
+    recover_resumable_verify_jobs,
     run_job_maintenance_tick,
 )
 
@@ -428,6 +429,45 @@ async def test_fail_stale_verify_job_auto_requeues(db_session, sample_run) -> No
     assert "Auto-resuming" in (job.progress.get("message") or "")
     assert len(spawned) == 1
     assert spawned[0] == job.id
+
+
+@pytest.mark.asyncio
+async def test_recover_resumable_verify_skips_when_active_job_exists(
+    db_session, sample_run,
+) -> None:
+    active = await _add_job(
+        db_session,
+        sample_run,
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_QUEUED,
+    )
+    failed = RunJob(
+        project_id=sample_run["project_id"],
+        run_id=sample_run["run_id"],
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_FAILED,
+        params={"session_id": "old-sess", "action_id": "audit_wikidata_item"},
+        progress={"processed": 40, "total": 313},
+        result={"resumable": True, "judged": 40, "total": 313},
+        created_by=sample_run["user_id"],
+        finished_at=_now(),
+    )
+    db_session.add(failed)
+    await db_session.commit()
+
+    spawned: list[uuid.UUID] = []
+    with patch(
+        "app.pipeline.run_job_service.spawn_job",
+        side_effect=lambda job_id: spawned.append(job_id),
+    ):
+        count = await recover_resumable_verify_jobs()
+
+    assert count == 0
+    assert spawned == []
+    await db_session.refresh(failed)
+    assert failed.status == JOB_STATUS_FAILED
+    await db_session.refresh(active)
+    assert active.status == JOB_STATUS_QUEUED
 
 
 @pytest.mark.asyncio

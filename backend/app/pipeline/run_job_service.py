@@ -295,6 +295,8 @@ async def recover_resumable_verify_jobs() -> int:
 
     Covers deploys that landed before auto-requeue-on-stale: rows may still be
     ``failed`` with ``result.resumable`` even though verdicts are in Postgres.
+    Skips rows when another active job already exists for the same run+kind
+    (partial unique index ``uq_run_jobs_active_kind``).
     """
     from app.pipeline.verify_resume import (  # noqa: PLC0415
         VERIFY_JOB_KINDS,
@@ -302,6 +304,7 @@ async def recover_resumable_verify_jobs() -> int:
     )
 
     cutoff = _now() - timedelta(hours=24)
+    spawn_ids: list[uuid.UUID] = []
     async with session_scope() as db:
         rows = (
             await db.execute(
@@ -314,15 +317,30 @@ async def recover_resumable_verify_jobs() -> int:
                 )
             )
         ).scalars().all()
-        spawn_ids: list[uuid.UUID] = []
         for job in rows:
             result = job.result if isinstance(job.result, dict) else {}
             if not result.get("resumable"):
                 continue
+            active = await find_active_job(db, run_id=job.run_id, kind=job.kind)
+            if active is not None and active.id != job.id:
+                logger.info(
+                    "skip auto-resume for verify job %s: active job %s already exists",
+                    job.id,
+                    active.id,
+                )
+                continue
             if apply_verify_job_auto_resume(job):
                 spawn_ids.append(job.id)
         if spawn_ids:
-            await db.commit()
+            try:
+                await db.commit()
+            except IntegrityError:
+                await db.rollback()
+                logger.warning(
+                    "auto-resume commit hit active-job unique index; skipping %d row(s)",
+                    len(spawn_ids),
+                )
+                spawn_ids = []
 
     for job_id in spawn_ids:
         spawn_job(job_id)
