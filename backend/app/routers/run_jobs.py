@@ -104,6 +104,7 @@ async def start_run_job(
 async def get_run_job(
     run_id: uuid.UUID,
     job_id: uuid.UUID,
+    include_session_snapshot: bool = Query(False),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
@@ -115,7 +116,7 @@ async def get_run_job(
     ).scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
-    return serialise_job(job, include_session_snapshot=True)
+    return serialise_job(job, include_session_snapshot=include_session_snapshot)
 
 
 @router.post("/runs/{run_id}/jobs/{job_id}/cancel")

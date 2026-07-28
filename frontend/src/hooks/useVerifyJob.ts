@@ -167,7 +167,7 @@ export function useVerifyJob({
           if (sessionId && latest) {
             // Hydrate from session GET / single-job GET (list omits snapshots).
             try {
-              const full = await RunJobs.get(runId, latest.id);
+              const full = await RunJobs.get(runId, latest.id, {includeSessionSnapshot: true});
               await loadSessionRef.current(sessionId, full);
             } catch {
               void loadSessionRef.current(sessionId, latest).catch(() => {
@@ -204,13 +204,21 @@ export function useVerifyJob({
         await applyJob(job);
         if (!isJobActive(job.status)) {
           setJobId(null);
+          if (job.progress?.session_id) {
+            try {
+              const terminal = await RunJobs.get(rid, jid, {includeSessionSnapshot: true});
+              if (!cancelled) await applyJob(terminal, true);
+            } catch {
+              /* session GET is the fallback */
+            }
+          }
         }
       } catch {
         // transient
       }
     }
     void poll();
-    const id = window.setInterval(() => { void poll(); }, 2000);
+    const id = window.setInterval(() => { void poll(); }, 5000);
     return () => {
       cancelled = true;
       window.clearInterval(id);

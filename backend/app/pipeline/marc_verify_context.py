@@ -160,6 +160,49 @@ def attach_marc_context(
         item["_marc_context"] = marc_context_for_item(item, marc_index)
 
 
+async def load_run_control_numbers(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+) -> set[str]:
+    """Lightweight CN set for Studio joins — no MARC JSONB."""
+    rows = (
+        await db.execute(
+            select(RunRecord.control_number).where(RunRecord.run_id == run_id),
+        )
+    ).scalars().all()
+    out = {canonical_control_number(cn) for cn in rows}
+    out.discard("")
+    return out
+
+
+async def load_run_marc_records_scoped(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    control_numbers: set[str] | frozenset[str],
+) -> list[dict[str, Any]]:
+    """Load MARC only for control numbers in scope (quoted DB keys normalised)."""
+    wanted = {canonical_control_number(cn) for cn in control_numbers}
+    wanted.discard("")
+    if not wanted:
+        return []
+    rows = (
+        await db.execute(
+            select(RunRecord.control_number, RunRecord.marc).where(
+                RunRecord.run_id == run_id,
+            ).order_by(RunRecord.control_number.asc()),
+        )
+    ).all()
+    out: list[dict[str, Any]] = []
+    for cn, marc in rows:
+        canon = canonical_control_number(cn)
+        if canon not in wanted:
+            continue
+        rec = dict(marc or {})
+        rec["_control_number"] = canon
+        out.append(rec)
+    return out
+
+
 async def load_run_marc_records(
     db: AsyncSession,
     run_id: uuid.UUID,

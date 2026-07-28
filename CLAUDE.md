@@ -3159,3 +3159,34 @@ Invariant:
    (W-130).
 
 Tests: ``test_wikidata_studio_list_view.py``, ``test_wikidata_item_views.py``.
+
+
+### Rule W-132 — Wikidata verify MUST scope MARC and release in-memory Studio payloads (added 2026-07-28)
+
+W-131 improved list/verify payloads but production still interrupted at **131/313**
+(R14 → H12 job polls → H10). The worker still held the **entire run MARC corpus**
+(~2k JSONB rows), full Studio items for all 313 scopes, duplicate verdict dicts
+in ``streamed_fresh_verdicts`` / ``collected_events``, and fat
+``GET …/jobs/{id}`` snapshots on every 2 s poll.
+
+Invariant:
+
+1. **Scoped MARC** — ``_fetch_wikidata_verify_items`` loads run control numbers
+   lightly, then ``load_run_marc_records_scoped`` keeps only CNs referenced by
+   the verify scope (quoted DB keys canonicalised).
+2. **Release heap after fixture write** — ``release_wikidata_verify_heap`` slims
+   ``items_by_id`` to persist-only fields (≤40 compact statements,
+   ``_marc_context`` retained) and clears scoped ``marc_records`` once the
+   eval-agent fixture is on disk.
+3. **No duplicate verdict lists** — the Wikidata stream tracks
+   ``streamed_fresh_verdict_keys`` only; ``finally`` merges from
+   ``results.jsonl`` (incremental persist already wrote overrides/cache).
+4. **Job worker framing-only** — ``verify_job`` no longer appends every
+   ``agent.verdict`` to ``collected_events``; terminal snapshots hydrate from
+   session trace / ``results.jsonl`` via ``read_verify_session``.
+5. **Light job GET polls** — ``GET …/jobs/{id}`` defaults
+   ``include_session_snapshot=false``; the verify modal fetches the slim
+   snapshot once on terminal; poll interval 5 s.
+
+Tests: ``test_wikidata_verify_heap.py``, ``test_wikidata_verify_scope_cache.py``,
+``test_verify_job_progress.py``.

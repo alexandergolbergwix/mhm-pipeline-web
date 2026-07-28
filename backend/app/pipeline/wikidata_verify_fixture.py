@@ -113,6 +113,59 @@ def write_wikidata_verify_fixture(
     )
 
 
+def slim_item_for_verdict_persist(item: dict[str, Any]) -> dict[str, Any]:
+    """Retain only fields needed for override/cache fingerprint writes."""
+    local_id = str(item.get("_local_id") or item.get("local_id") or "")
+    marc_ctx = item.get("_marc_context")
+    evidence = item.get("verify_evidence")
+    slim_evidence = _slim_verify_evidence(evidence) if isinstance(evidence, dict) else {}
+    row: dict[str, Any] = {
+        "_local_id": local_id,
+        "local_id": local_id,
+        "entity_type": item.get("entity_type"),
+        "semantic_type": item.get("semantic_type"),
+        "labels": item.get("labels") or {},
+        "descriptions": item.get("descriptions") or {},
+        "aliases": item.get("aliases") or {},
+        "statements": compact_statements(item, limit=40),
+        "existing_qid": item.get("existing_qid"),
+        "hmo_wikibase_id": item.get("hmo_wikibase_id"),
+        "source_uri": item.get("source_uri"),
+        "validation_issues": item.get("validation_issues") or [],
+        "record_ids": record_ids_for_wikidata_item(item),
+        "authority_evidence": item.get("authority_evidence") or [],
+        "work_candidate_evidence": item.get("work_candidate_evidence") or {},
+        "local_reference_targets": item.get("local_reference_targets") or {},
+        "verify_evidence": slim_evidence,
+        "_marc_context": marc_ctx if isinstance(marc_ctx, dict) else {},
+    }
+    live = item.get("wikidata_live")
+    if isinstance(live, dict):
+        row["wikidata_live"] = live
+    return row
+
+
+def release_wikidata_verify_heap(
+    *,
+    items: list[dict[str, Any]],
+    items_by_id: dict[str, dict[str, Any]],
+    marc_records: list[dict[str, Any]],
+) -> None:
+    """Drop full Studio payloads after the eval-agent fixture is on disk."""
+    slimmed = {
+        lid: slim_item_for_verdict_persist(it)
+        for lid, it in items_by_id.items()
+        if lid
+    }
+    items_by_id.clear()
+    items_by_id.update(slimmed)
+    for idx, item in enumerate(items):
+        lid = str(item.get("_local_id") or item.get("local_id") or "")
+        if lid in slimmed:
+            items[idx] = slimmed[lid]
+    marc_records.clear()
+
+
 def compact_wikidata_verdict_candidate(item: dict[str, Any], *, label: str) -> dict[str, Any]:
     local_id = str(item.get("_local_id") or item.get("local_id") or "")
     cand: dict[str, Any] = {

@@ -24,7 +24,7 @@ from app.pipeline.run_job_service import (
     update_job_progress,
 )
 from app.pipeline.verify_session_store import (
-    _compact_verdict_for_job,
+    VERIFY_JOB_CHANNELS,
     slim_job_session_snapshot,
     snapshot_from_collected_events,
 )
@@ -38,7 +38,20 @@ def _terminal_snapshot(
     run_id: uuid.UUID,
     session_id: str,
     collected_events: list[dict[str, Any]],
+    kind: str | None = None,
 ) -> dict[str, Any] | None:
+    from app.pipeline.agent_runner import read_verify_session  # noqa: PLC0415
+
+    channel = VERIFY_JOB_CHANNELS.get(kind or "")
+    if channel:
+        raw = read_verify_session(channel, str(run_id), session_id)
+        if raw and raw.get("verdicts"):
+            return slim_job_session_snapshot({
+                "session_id": session_id,
+                "run_id": str(run_id),
+                "verdicts": raw["verdicts"],
+                "events": [],
+            })
     if not collected_events:
         return None
     return slim_job_session_snapshot(
@@ -57,6 +70,7 @@ def _interrupted_verify_result(
     judged: int,
     total: int,
     collected_events: list[dict[str, Any]],
+    kind: str | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return resumable_verify_result(
@@ -67,6 +81,7 @@ def _interrupted_verify_result(
             run_id=run_id,
             session_id=session_id,
             collected_events=collected_events,
+            kind=kind,
         ),
         interrupted=True,
         extra=extra,
@@ -121,7 +136,6 @@ _PROGRESS_WRITE_INTERVAL_S = 2.0
 _KEEP_COLLECTED_EVENT_TYPES = frozenset({
     "session.start",
     "session.end",
-    "agent.verdict",
     "runner.error",
     "runner.warning",
     "runner.exit",
@@ -173,6 +187,7 @@ def _progress_with_snapshot(
     session_id: str,
     run_id: uuid.UUID,
     collected_events: list[dict[str, Any]],
+    kind: str | None = None,
     force_snapshot: bool = False,
     last_snapshot_at: list[float] | None = None,
 ) -> dict[str, Any]:
@@ -183,15 +198,14 @@ def _progress_with_snapshot(
     is_terminal = ev.type in ("session.end", "runner.error")
     if not (force_snapshot and is_terminal) and not is_terminal:
         return progress
-    if not collected_events:
-        return progress
-    snap = slim_job_session_snapshot(
-        snapshot_from_collected_events(
-            run_id=str(run_id),
-            session_id=session_id,
-            events=collected_events,
-        ),
+    snap = _terminal_snapshot(
+        run_id=run_id,
+        session_id=session_id,
+        collected_events=collected_events,
+        kind=kind,
     )
+    if snap is None:
+        return progress
     progress["session_snapshot"] = snap
     if last_snapshot_at is not None:
         import time  # noqa: PLC0415
@@ -259,13 +273,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     try:
         async for ev in stream:
             if _should_collect_event(ev):
-                payload = dict(ev.payload or {})
-                if ev.type == "agent.verdict":
-                    collected_events.append(
-                        _compact_verdict_for_job({"type": ev.type, **payload}),
-                    )
-                else:
-                    collected_events.append({"type": ev.type, **payload})
+                collected_events.append({"type": ev.type, **dict(ev.payload or {})})
             if await is_cancel_requested(job_id):
                 await stream.aclose()
                 await finish_job(
@@ -277,6 +285,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                         judged=judged,
                         total=total,
                         collected_events=collected_events,
+                        kind=kind,
                         extra={"cancelled": True},
                     ),
                     progress={
@@ -313,6 +322,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                         session_id=session_id,
                         run_id=run_id,
                         collected_events=collected_events,
+                        kind=kind,
                         last_snapshot_at=last_snapshot_at,
                     ),
                 )
@@ -332,6 +342,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                 judged=judged,
                 total=total,
                 collected_events=collected_events,
+                kind=kind,
                 extra={"runner_error": str(exc)},
             ),
             progress={
@@ -355,6 +366,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                 judged=judged,
                 total=total,
                 collected_events=collected_events,
+                kind=kind,
                 extra={"runner_error": error_message},
             ),
             progress={
@@ -367,12 +379,11 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
         )
         return
 
-    session_snapshot = slim_job_session_snapshot(
-        snapshot_from_collected_events(
-            run_id=str(run_id),
-            session_id=session_id,
-            events=collected_events,
-        ),
+    session_snapshot = _terminal_snapshot(
+        run_id=run_id,
+        session_id=session_id,
+        collected_events=collected_events,
+        kind=kind,
     )
 
     outcome = session_summary.get("outcome")

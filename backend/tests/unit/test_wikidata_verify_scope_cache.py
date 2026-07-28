@@ -34,16 +34,15 @@ async def test_verify_fetch_canonicalises_quoted_control_numbers() -> None:
     auth = SimpleNamespace(user=SimpleNamespace(id=uuid.uuid4()))
 
     with (
-        patch("app.routers.wikidata_studio.select", return_value=MagicMock()),
-        patch.object(
-            db, "execute", new=AsyncMock(return_value=MagicMock(
-                scalars=lambda: MagicMock(all=lambda: [
-                    SimpleNamespace(
-                        control_number='"990000000000000099"',
-                        marc={"title": "כותרת", "_control_number": '"990000000000000099"'},
-                    ),
-                ]),
-            )),
+        patch(
+            "app.pipeline.marc_verify_context.load_run_control_numbers",
+            new=AsyncMock(return_value={"990000000000000099"}),
+        ),
+        patch(
+            "app.pipeline.marc_verify_context.load_run_marc_records_scoped",
+            new=AsyncMock(return_value=[
+                {"title": "כותרת", "_control_number": "990000000000000099"},
+            ]),
         ),
         patch(
             "app.routers.wikidata_studio._get_studio_cache_row",
@@ -83,15 +82,12 @@ async def test_verify_fetch_canonicalises_quoted_control_numbers() -> None:
 
     with (
         patch(
-            "app.routers.wikidata_studio.select",
-            return_value=MagicMock(),
+            "app.pipeline.marc_verify_context.load_run_control_numbers",
+            new=AsyncMock(return_value={"990000000000000001"}),
         ),
-        patch.object(
-            db, "execute", new=AsyncMock(return_value=MagicMock(
-                scalars=lambda: MagicMock(all=lambda: [
-                    SimpleNamespace(control_number="990000000000000001", marc={}),
-                ]),
-            )),
+        patch(
+            "app.pipeline.marc_verify_context.load_run_marc_records_scoped",
+            new=AsyncMock(return_value=[]),
         ),
         patch(
             "app.routers.wikidata_studio._get_studio_cache_row",
@@ -140,11 +136,13 @@ async def test_verify_fetch_skips_non_public_entity_types() -> None:
     auth = SimpleNamespace(user=SimpleNamespace(id=uuid.uuid4()))
 
     with (
-        patch("app.routers.wikidata_studio.select", return_value=MagicMock()),
-        patch.object(
-            db, "execute", new=AsyncMock(return_value=MagicMock(
-                scalars=lambda: MagicMock(all=lambda: []),
-            )),
+        patch(
+            "app.pipeline.marc_verify_context.load_run_control_numbers",
+            new=AsyncMock(return_value=set()),
+        ),
+        patch(
+            "app.pipeline.marc_verify_context.load_run_marc_records_scoped",
+            new=AsyncMock(return_value=[]),
         ),
         patch(
             "app.routers.wikidata_studio._get_studio_cache_row",
@@ -178,11 +176,13 @@ async def test_verify_fetch_rebuilds_without_reconcile_when_cache_empty() -> Non
     auth = SimpleNamespace(user=SimpleNamespace(id=uuid.uuid4()))
 
     with (
-        patch("app.routers.wikidata_studio.select", return_value=MagicMock()),
-        patch.object(
-            db, "execute", new=AsyncMock(return_value=MagicMock(
-                scalars=lambda: MagicMock(all=lambda: []),
-            )),
+        patch(
+            "app.pipeline.marc_verify_context.load_run_control_numbers",
+            new=AsyncMock(return_value=set()),
+        ),
+        patch(
+            "app.pipeline.marc_verify_context.load_run_marc_records_scoped",
+            new=AsyncMock(return_value=[]),
         ),
         patch(
             "app.routers.wikidata_studio._get_studio_cache_row",

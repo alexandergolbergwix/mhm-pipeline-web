@@ -150,8 +150,10 @@ export const RunJobs = {
     return api.get<{jobs: RunJobSnapshot[]}>(`/runs/${runId}/jobs${suffix}`);
   },
 
-  get: (runId: string, jobId: string) =>
-    api.get<RunJobSnapshot>(`/runs/${runId}/jobs/${jobId}`),
+  get: (runId: string, jobId: string, opts?: {includeSessionSnapshot?: boolean}) => {
+    const qs = opts?.includeSessionSnapshot ? "?include_session_snapshot=true" : "";
+    return api.get<RunJobSnapshot>(`/runs/${runId}/jobs/${jobId}${qs}`);
+  },
 
   start: (runId: string, kind: RunJobKind, params: Record<string, unknown> = {}) =>
     api.post<RunJobSnapshot>(`/runs/${runId}/jobs`, {kind, params}),

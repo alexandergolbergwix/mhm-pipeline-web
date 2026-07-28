@@ -2325,12 +2325,13 @@ async def _fetch_wikidata_verify_items(
     """
     if source not in ("legacy", "canonical"):
         source = "canonical"
-    records = (
-        await db.execute(
-            select(RunRecord).where(RunRecord.run_id == run_id)
-            .order_by(RunRecord.control_number.asc())
-        )
-    ).scalars().all()
+    from app.pipeline.marc_verify_context import (  # noqa: PLC0415
+        canonical_control_number,
+        load_run_control_numbers,
+        load_run_marc_records_scoped,
+    )
+
+    run_record_ids = await load_run_control_numbers(db, run_id)
     cached = await _get_studio_cache_row(db, run_id, approved_only, source)
     if cached is None or not (cached.result_items or []):
         # Fall back to the other approved_only cache for the same source when
@@ -2353,25 +2354,16 @@ async def _fetch_wikidata_verify_items(
         cached.result_items or [],
         source=source,
     )
-    from app.pipeline.marc_verify_context import canonical_control_number  # noqa: PLC0415
-
-    run_record_ids = {
-        canonical_control_number(r.control_number) for r in records
-    }
-    run_record_ids.discard("")
 
     wanted = {str(i).strip() for i in (item_ids or []) if str(i).strip()}
     items: list[dict[str, Any]] = []
+    wanted_cns: set[str] = set()
     for item in scoped_items:
         local_id = str(item.get("local_id") or "")
         if wanted and local_id not in wanted:
             continue
         item["_local_id"] = local_id
-        # Never ground an item in the first run record: that pairs unrelated
-        # person/work rows with arbitrary MARC data. Legacy cache rows recover
-        # source IDs from P3959 reference snaks; fresh builds store `records`.
-        # Canonicalise both sides so quoted DB control numbers still join.
-        item["record_ids"] = [
+        record_ids = [
             cn
             for cn in (
                 canonical_control_number(value)
@@ -2379,15 +2371,11 @@ async def _fetch_wikidata_verify_items(
             )
             if cn and cn in run_record_ids
         ]
+        item["record_ids"] = record_ids
+        wanted_cns.update(record_ids)
         items.append(item)
     attach_local_reference_targets(items)
-    marc_records: list[dict[str, Any]] = []
-    for r in records:
-        marc = dict(r.marc or {})
-        marc["_control_number"] = canonical_control_number(
-            marc.get("_control_number") or r.control_number,
-        )
-        marc_records.append(marc)
+    marc_records = await load_run_marc_records_scoped(db, run_id, wanted_cns)
     from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
         enrich_items_with_verify_evidence,
     )
@@ -2416,7 +2404,6 @@ async def _wikidata_verify_event_stream(
     pipeline_output = session_dir / "pipeline-output"
     session_dir.mkdir(parents=True, exist_ok=True)
     eval_agent_error: str | None = None
-    streamed_fresh_verdicts: list[dict[str, Any]] = []
     streamed_fresh_verdict_keys: set[str] = set()
     runner_error: str | None = None
     runner_exit_code: int | None = None
@@ -2488,6 +2475,15 @@ async def _wikidata_verify_event_stream(
                 marc_records=marc_records,
                 items=uncached_items,
             )
+            from app.pipeline.wikidata_verify_fixture import (  # noqa: PLC0415
+                release_wikidata_verify_heap,
+            )
+
+            release_wikidata_verify_heap(
+                items=items,
+                items_by_id=items_by_id,
+                marc_records=marc_records,
+            )
             async for ev in spawn_eval_agent_run(
                 pipeline_output=pipeline_output,
                 evaluators=action.evaluators,
@@ -2508,7 +2504,6 @@ async def _wikidata_verify_event_stream(
                     local_id = verdict_candidate_local_id(payload)
                     if local_id:
                         streamed_fresh_verdict_keys.add(local_id)
-                        streamed_fresh_verdicts.append(payload)
                         if persist_batch is not None:
                             try:
                                 await persist_batch.add(payload)
@@ -2542,7 +2537,7 @@ async def _wikidata_verify_event_stream(
 
         on_disk_verdicts = read_run_verdicts(state_dir) if (uncached_items and not eval_agent_error) else []
         fresh_verdicts = merge_fresh_verdicts(
-            streamed=streamed_fresh_verdicts,
+            streamed=[],
             on_disk=on_disk_verdicts,
         )
         runner_error = synthesize_missing_runner_error(

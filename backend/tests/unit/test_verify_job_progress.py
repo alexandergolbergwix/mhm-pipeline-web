@@ -33,17 +33,27 @@ def test_mid_run_progress_is_counters_only() -> None:
     assert progress["session_id"] == session_id
 
 
-def test_terminal_progress_includes_slim_verdicts() -> None:
+def test_terminal_progress_includes_slim_verdicts(monkeypatch) -> None:
     run_id = uuid.uuid4()
     session_id = "sess-end"
     events = [
         {"type": "session.start", "scope_size": 1},
-        {
-            "type": "agent.verdict",
-            "candidate": {"_local_id": "QDraft_A"},
-            "verdict": {"overall": "pass", "reasoning": "ok"},
-        },
     ]
+
+    def _fake_read(channel: str, rid: str, sid: str) -> dict:
+        return {
+            "verdicts": [
+                {
+                    "candidate": {"_local_id": "QDraft_A"},
+                    "verdict": {"overall": "pass", "reasoning": "ok"},
+                },
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.pipeline.agent_runner.read_verify_session",
+        _fake_read,
+    )
     progress = _progress_with_snapshot(
         AgentEvent(type="session.end", payload={"outcome": "partial"}),
         total=1,
@@ -51,6 +61,7 @@ def test_terminal_progress_includes_slim_verdicts() -> None:
         session_id=session_id,
         run_id=run_id,
         collected_events=events,
+        kind="wikidata_verify",
     )
     snap = progress.get("session_snapshot")
     assert isinstance(snap, dict)

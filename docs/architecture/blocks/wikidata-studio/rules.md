@@ -317,3 +317,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     lean cached-verdict candidates, compact fixtures, batched incremental
     persist. *Why:* Studio 500-page GET + verify worker + mid-reload R14'd
     the 512 MB dyno during production verify.
+
+56. **R56 — Wikidata verify MUST scope MARC and release in-memory payloads (Rule W-132).**
+    `load_run_marc_records_scoped` for verify scope only;
+    `release_wikidata_verify_heap` after fixture write; no duplicate verdict
+    lists in the worker; `GET …/jobs/{id}?include_session_snapshot=` defaults
+    false; verify modal polls every 5 s. *Why:* post-W-131 runs still died at
+    ~131/313 with R14 while holding the full run MARC + 313 full items.
