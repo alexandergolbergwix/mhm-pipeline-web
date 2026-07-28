@@ -243,7 +243,9 @@ async def hmo_item_verify_event_stream(
                 override_cache=override_cache,
                 rpm=action.rate_limit_rpm,
             ):
-                persist_session_event(session_dir, ev)
+                from app.pipeline.agent_runner import emit_session_event  # noqa: PLC0415
+
+                await emit_session_event(session_dir, ev)
                 yield ev
                 if ev.type == "agent.verdict":
                     from app.pipeline.verify_outcome import (  # noqa: PLC0415
@@ -255,18 +257,25 @@ async def hmo_item_verify_event_stream(
                     if local_id:
                         streamed_fresh_verdict_keys.add(local_id)
                         streamed_fresh_verdicts.append(payload)
-                        try:
-                            await _persist_hmo_item_verdicts(
-                                run_id=UUID(run_id),
-                                items_by_id=items_by_id,
-                                verdicts=[payload],
-                                judge_model=tier_model or "gemini-3.5-flash",
-                            )
-                        except Exception:  # noqa: BLE001
-                            logger.exception(
-                                "incremental HMO verdict persist failed for %s",
-                                local_id,
-                            )
+
+                        async def _persist_one(
+                            verdict_payload: dict[str, Any],
+                            lid: str = local_id,
+                        ) -> None:
+                            try:
+                                await _persist_hmo_item_verdicts(
+                                    run_id=UUID(run_id),
+                                    items_by_id=items_by_id,
+                                    verdicts=[verdict_payload],
+                                    judge_model=tier_model or "gemini-3.5-flash",
+                                )
+                            except Exception:  # noqa: BLE001
+                                logger.exception(
+                                    "incremental HMO verdict persist failed for %s",
+                                    lid,
+                                )
+
+                        asyncio.create_task(_persist_one(payload))
                 elif ev.type == "runner.error":
                     runner_error = str((ev.payload or {}).get("message") or "verify failed")
                 elif ev.type == "runner.exit":

@@ -150,6 +150,40 @@ def build_filtered_fixture(
 # ── The run loop ───────────────────────────────────────────────────────
 
 
+def _spawn_parallel_for_provider(provider: str) -> int | None:
+    """Optional ``--parallel`` for eval-agent spawn (Rule W-135).
+
+    OpenAI-compat (Qubrid) defaults to 2 workers after W-131/W-133 lean
+    verify heaps; set ``EVAL_AGENT_OPENAI_COMPAT_PARALLEL=1`` to revert.
+    Gemini may be raised via ``EVAL_AGENT_GEMINI_PARALLEL`` (omit to use
+    eval-agent ``default.yaml``).
+    """
+    if provider == "openai_compat":
+        raw = os.environ.get("EVAL_AGENT_OPENAI_COMPAT_PARALLEL", "2")
+        try:
+            return max(1, min(4, int(raw)))
+        except ValueError:
+            return 2
+    raw = os.environ.get("EVAL_AGENT_GEMINI_PARALLEL")
+    if raw is None:
+        return None
+    try:
+        return max(1, min(6, int(raw)))
+    except ValueError:
+        return None
+
+
+_TRACE_ASYNC_TYPES = frozenset({"runner.step", "agent.stats"})
+
+
+async def emit_session_event(session_dir: Path, ev: AgentEvent) -> None:
+    """Append to trace without blocking the verify stream on noisy events."""
+    if ev.type in _TRACE_ASYNC_TYPES:
+        asyncio.create_task(asyncio.to_thread(persist_session_event, session_dir, ev))
+    else:
+        await asyncio.to_thread(persist_session_event, session_dir, ev)
+
+
 async def spawn_eval_agent_run(
     *,
     pipeline_output: Path,
@@ -216,11 +250,9 @@ async def spawn_eval_agent_run(
         # silently fall back to the 0.85 default, so the "judge all"
         # value must be negative (truthy + below every real confidence).
         cmd += ["--threshold", str(threshold)]
-    # OpenAI-compat judges (Qubrid DeepSeek/Kimi) on a 512 MB web dyno
-    # stampede into hung HTTP + pipe-backpressure around ~50 items when
-    # parallel>1 (Rule W-127). Force a single worker from the web spawn.
-    if spec.provider == "openai_compat":
-        cmd += ["--parallel", "1"]
+    parallel = _spawn_parallel_for_provider(spec.provider)
+    if parallel is not None:
+        cmd += ["--parallel", str(parallel)]
 
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")

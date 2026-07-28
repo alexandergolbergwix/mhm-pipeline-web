@@ -3218,6 +3218,27 @@ pipe does not self-heal mid-job.
 Tests: ``test_wikidata_persist_batch.py``.
 
 
+### Rule W-135 — Verify judge throughput MUST use safe parallelism (added 2026-07-28)
+
+After W-133 restored the stdout reader, Qubrid/OpenAI-compat judges were still
+capped at ``parallel=1`` (~1 verdict / 5 s — API latency bound). Lean verify
+heaps (W-131/W-133) allow **2** concurrent judge workers by default.
+
+Invariant:
+
+1. ``spawn_eval_agent_run`` passes ``--parallel`` from
+   ``EVAL_AGENT_OPENAI_COMPAT_PARALLEL`` (default ``2``, clamp 1–4; set ``1`` to
+   revert W-127 behaviour). Optional ``EVAL_AGENT_GEMINI_PARALLEL`` (1–6)
+   overrides Gemini when set.
+2. **Non-blocking trace** — ``emit_session_event`` fire-and-forgets
+   ``runner.step`` / ``agent.stats`` so disk I/O does not stall subprocess
+   stdout between verdicts.
+3. HMO item verify schedules incremental Postgres persist as background tasks
+   (Wikidata already uses ``WikidataVerdictPersistBatch``).
+
+Tests: ``test_spawn_parallel.py``.
+
+
 ### Rule W-134 — Interrupted verify jobs MUST auto-resume on the backend (added 2026-07-28)
 
 Verify already runs as ``run_jobs`` workers (not in the browser). After W-130

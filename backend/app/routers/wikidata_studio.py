@@ -2494,7 +2494,9 @@ async def _wikidata_verify_event_stream(
                 override_cache=override_cache,
                 rpm=action.rate_limit_rpm,
             ):
-                await asyncio.to_thread(persist_session_event, session_dir, ev)
+                from app.pipeline.agent_runner import emit_session_event  # noqa: PLC0415
+
+                await emit_session_event(session_dir, ev)
                 yield ev
                 if ev.type == "agent.verdict":
                     payload = dict(ev.payload or {})

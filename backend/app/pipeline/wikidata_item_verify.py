@@ -124,8 +124,8 @@ class WikidataVerdictPersistBatch:
         items_by_id: dict[str, dict[str, Any]],
         judge_model: str,
         marc_records: list[dict[str, Any]] | None = None,
-        flush_size: int = 10,
-        flush_interval_s: float = 2.0,
+        flush_size: int = 5,
+        flush_interval_s: float = 1.0,
     ) -> None:
         import time  # noqa: PLC0415
 
