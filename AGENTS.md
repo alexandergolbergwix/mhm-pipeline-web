@@ -21,9 +21,11 @@ Every stage shares the same spine: slow work runs as claimed/heartbeated
 behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
-**→ Read [CLAUDE.md](CLAUDE.md) first** for the full incident-annotated
-architectural rules (Rules W-1…W-135). Each rule records a real production
-incident plus the invariant that closes it — check it before touching RDF
+**→ Read [CLAUDE.md](CLAUDE.md) first** — it indexes every architectural
+rule (Rules W-1…W-136) and points at the topic file under
+[docs/architecture/rules/](docs/architecture/rules/) that holds its full
+text. Read the topic file for the area you are touching; each rule records a
+real production incident plus the invariant that closes it — check it before touching RDF
 build/SHACL, Wikidata Studio writes, HMO Wikibase uploads, auth/rate-limit
 surfaces, or the job/cache/versioning plumbing. This `AGENTS.md` is the
 navigation layer; `CLAUDE.md` is where the "why" lives.
@@ -58,7 +60,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-135) stay in [CLAUDE.md](CLAUDE.md).
+(W-1…W-136) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -77,7 +79,7 @@ Skip only for question-only replies with zero file edits.
 | Layer | Update when |
 |---|---|
 | `docs/architecture/blocks/<block>/` | Any file, route, job kind, model field, or block invariant changes. Follow `.codex/skills/docs-architecture-sync/SKILL.md`. |
-| [CLAUDE.md](CLAUDE.md) | A new incident-driven invariant → add `Rule W-N` (full prose). |
+| [docs/architecture/rules/](docs/architecture/rules/) | A new incident-driven invariant → add `Rule W-N` (full prose) to the topic file + one index line in [CLAUDE.md](CLAUDE.md). |
 | [AGENTS.md](AGENTS.md) | Agent entry guidance changes: rule-range pointer, block index, cross-cutting workflows, doc-sync policy. |
 | [README.md](README.md) | Operator quickstart or documentation table when the high-level surface changes. |
 
@@ -113,7 +115,7 @@ Models are listed by `GET /api/judge-models` from
 Gemini uses the curator's Settings key (or server `GEMINI_API_KEY`); Qubrid
 models (Kimi K2.5, DeepSeek V4 Flash) use server `QUBRID_API_KEY` only.
 Non-Gemini models run linear judging (no agentic tool-loop). See eval-agent
-block **R16** and **Rule W-46** in [CLAUDE.md](CLAUDE.md).
+block **R16** and **Rule W-46** ([docs/architecture/rules/ai-verify.md](docs/architecture/rules/ai-verify.md)).
 
 ## HMO Wikibase Schema — AI verify
 

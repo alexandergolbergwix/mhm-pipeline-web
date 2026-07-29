@@ -1,0 +1,596 @@
+# Wikidata Studio (public projection + write path)
+
+Architectural invariants for this area. Each rule records a real
+production incident — read the whole rule before changing the code it
+names. Index: [CLAUDE.md](../../../CLAUDE.md).
+
+### Rule W-26 — Wikidata Studio build result is cached in Postgres (added 2026-06-03)
+
+`backend/app/models/wikidata_studio_cache.py::WikidataStudioCache`
+caches the last successful `build_studio` result per `(run_id,
+approved_only)` keyed by `input_fingerprint` (SHA-256 over
+records + matches + entities + overrides, computed by
+`pipeline/wikidata_studio.py::compute_build_fingerprint`).
+
+On every call to `POST /wikidata-studio/build`:
+1. Load raw data, compute fingerprint.
+2. If `WikidataStudioCache` hit with same fingerprint → return
+   cached `result_items`, `quickstatements`, `summary` instantly.
+3. On miss, run full `build_items_for_run`, upsert cache row.
+
+Cache is invalidated automatically whenever any input changes
+(new approvals, new matches, overrides edited). Never invalidate
+manually — changing the input data is sufficient.
+
+Migration: `0015_wikidata_studio_cache`.
+
+### Rule W-26 — Every Wikidata P/Q constant in property_mapping.py must be verified live (added 2026-06-04)
+
+The 2026-06-04 property audit found three silent catastrophes in
+`backend/converter/wikidata/property_mapping.py`:
+
+1. **`Q_PALIMPSEST = "Q179808"`** was the **Palme d'Or** (Cannes film
+   award). Every palimpsest manuscript was tagged `P31 = Palme d'Or`.
+   Correct QID: `Q274076`.
+2. **`P_NUMBER_OF_FOLIOS = "P7416"`** — P7416 "folio(s)" is a STRING
+   **citation qualifier** ("this statement references folio 15r of source
+   X"), not a count property. Folio count must use P1104 (number of pages)
+   with unit Q107256474 (leaf). P7416 as a folio-reference qualifier on
+   colophon/scribal-intervention statements is correct.
+3. **P50 directly on manuscript items** — Property:P50 has an explicit
+   Wikidata constraint: *"use exemplar of (P1574) to connect the manuscript
+   to the work(s) it contains; never connect directly the manuscript to the
+   author(s)"*. The correct chain: `manuscript → P1574 → work → P50 → person`.
+
+**Invariants enforced by the moat layer (`item_validator.py`):**
+
+- `P50_ON_MANUSCRIPT` (error): P50 on any `entity_type="manuscript"` item.
+- `P7416_AS_QUANTITY` (error): P7416 with `value_type="quantity"`.
+- `P31_WRONG_QID` (error): any P31 value in `_KNOWN_BAD_P31_QIDS`
+  (Q179808, Q5 on manuscripts, …).
+
+**Regression tests** (14 cases in `backend/tests/unit/test_item_validator.py`):
+`TestP50OnManuscript`, `TestP7416AsQuantity`, `TestP31WrongQid`,
+`TestBuilderNeverViolatesNewChecks`.
+
+**When adding or modifying a P/Q constant:**
+1. Open `https://www.wikidata.org/wiki/Property:PXXX` (or `/QXXX`).
+2. Read the **Statements** panel: confirm the label, data type, and
+   any scope-note constraints match your intended use.
+3. For `P_*` constants: check the *item of property constraint* notes —
+   these are the community's formal "never use this on X" rules.
+4. Add a `_KNOWN_BAD_P31_QIDS` entry and a unit test if you're removing
+   a wrong constant so it can never silently sneak back in.
+5. Never add a constant derived from memory or documentation alone —
+   always fetch the live page. Constants can change (merges, redirects).
+
+### Rule W-27 — Wikidata Studio curator controls (added 2026-06-04)
+
+Five new controls were shipped in one session; any future Studio work must
+respect these invariants:
+
+**Force-rebuild toggle** (`?force_rebuild=true` on `GET /wikidata-studio`):
+Bypasses the `WikidataStudioCache` fingerprint lookup and always runs a
+full rebuild. The cache-write at the end still fires so the next normal
+GET is served from cache. UI: "Skip cache (force fresh build)" checkbox
+next to the Rebuild button.
+
+**Validator badge** (`validation_issues` in build response):
+`item_validator.validate_item(item)` is called for every built item inside
+`_build_sync`; issues are returned as `[{code, severity, message}]` on each
+serialised item. The frontend renders a red/yellow dot in the sidebar and
+inline alert chips in the ItemPanel header. This surfaces the moat-layer
+checks (P50_ON_MANUSCRIPT, P31_WRONG_QID, etc.) to curators before upload.
+
+**Item-level approval** (`approved: bool | None` on `ItemOverridePayload`):
+Stored in `wikidata_item_overrides.payload.approved`. The QS download
+(`?approved_only=true`) and upload (`POST /upload` with
+`upload_approved_only=true`) filter to approved items only when the flag is
+set. UI: `ItemApprovalBadge` (○ / ✓) in sidebar and ItemPanel header.
+
+**Inline statement exclude** (`remove_statements` via PATCH):
+Each statement row in the ItemPanel gets a ✗ Exclude / Undo button.
+Clicking immediately PATCHes `{remove_statements: [...current, i]}` on the
+override and strikes through the row optimistically. No new DB column — this
+reuses the existing `remove_statements` list in `ItemOverridePayload`.
+
+**Approved-items-only upload/QS gate**:
+"Approved items only" checkbox + live "N of M approved" count badge in the
+Studio header. When active, QS download appends `&approved_only=true` and
+upload POST includes `upload_approved_only: true`.
+
+DB migration: `0016_item_override_approved` adds `approved BOOLEAN` to
+`wikidata_item_overrides` (nullable; null = not reviewed).
+
+### Rule W-30 — Wikidata upload is fail-closed: reconcile-before-create + validator gate IN the write path (added 2026-06-08)
+
+Context: the 2026-06-07 bulk-deletion request (Epìdosis, ~5,948 items)
+targets the OTHER April failure mode — mass *duplicate* creation and
+non-notable items — distinct from the mass-*merge* that Rule W-4's
+four-stage guard prevents. The 2026-06-08 audit found the create path
+unguarded: the `/reconcile` endpoint was decorative (it mutated
+in-memory items that `/upload` discarded by rebuilding fresh), manuscripts
+reconciled by P8189 (which they never carry — they use **P3959**) so they
+could never dedup, `reconciler._query` swallowed SPARQL errors as "absent"
+→ CREATE, and `validate_item` ran only at build time as a UI badge.
+
+Invariants now enforced in `backend/app/pipeline/wikidata_upload.py`
+(NOT in the byte-identical `uploader.py` — Rule W-4):
+
+- **Reconcile happens INSIDE `upload_items` / `_upload_sync`**, not just in
+  the `/reconcile` preview. `_prepare_for_upload(items, reconciler)` is the
+  single gate every item passes before any write (dry-run and live alike, so
+  the dry-run preview is truthful). The `/reconcile` endpoint is PREVIEW
+  ONLY and must never be relied on to change upload behaviour.
+- **Each creatable entity type has a dedup path.** Manuscripts reconcile by
+  P3959 (`reconcile_manuscript_by_identifiers` → P3959 then shelfmark);
+  persons go through the conflict-checked `reconcile_person_by_identifiers`
+  (cross-identifier verification — the anti-conflation guard from
+  2026-04-13); works go through `reconcile_work_by_label_and_author` (rejects
+  a candidate whose P50 author differs). The raw first-match path is gone.
+- **Fail closed on lookup error.** `reconciler._query` raises
+  `ReconciliationUnavailableError` (NOT `[]`) on any network/429/5xx. An item
+  whose lookup can't complete is BLOCKED (`status="blocked"`), never created —
+  a transient WDQS outage must never be read as "no existing item".
+- **`validate_item` is a HARD GATE before write**, not advisory. Any
+  ERROR-severity issue (NO_IDENTIFIER, KOVETZ_PLACEHOLDER, P50_ON_MANUSCRIPT,
+  P31_WRONG_QID, …) blocks the write regardless of create-vs-update and
+  regardless of UI approval state.
+
+Tests pinning the contract: `backend/tests/unit/test_wikidata_upload_guards.py`
+(15 cases). Any new external-write path or reconcile change MUST extend it.
+
+**Residual gap (NOT yet closed):** the QuickStatements download
+(`/quickstatements.txt`) emits raw CREATE lines with no reconcile/validate
+gate — a curator pasting it into the QuickStatements tool bypasses these
+guards. The `item_approved_only` filter is the only control there. Close
+this (or document the manual-review requirement) before any bulk QS import.
+
+### Rule W-57 — Wikidata Studio HMO-parity surface + write-path ledger (added 2026-07-10)
+
+The Wikidata Studio had fail-closed upload guards (Rule W-30) but lacked the
+review surface and durable state the HMO Wikibase Studio accumulated through
+Rules W-41…W-56: no upload audit trail, no merged read model, no AI-verdict
+pills outside the verify modal, no single-item push, no global QID ledger, and
+an ungated QuickStatements export that bypassed every guard.
+
+Invariants now enforced:
+
+- **Merged read model** — `fetch_merged_wikidata_items` joins build cache +
+  curator overrides + global QID ledger + latest `wikibase_cloud_writes` row
+  (channel `wikidata_upload`) + stale-sanitized `ai_verdict` on the override row.
+- **Durable upload audit** — `record_wikibase_write` per live outcome
+  (`create`/`update`/`adopt`/`skip`/`failed`/`blocked`); dry-run writes none.
+  Reuses `wikibase_cloud_writes`, not a parallel table.
+- **AI verdict persistence** — `WikidataItemOverride.ai_verdict`/`ai_verdict_at`
+  after verify streams (Rule W-17 pattern); content-addressed cache keys
+  (`WIKIDATA_VERDICT_SCHEMA`, currently `w57_v1`).
+- **Global QID ledger** — `wikibase_entity_mappings` rows with
+  `wikidata:{marc|person|work}:…` keys (`run_id IS NULL`) recorded on CREATE,
+  ADOPT, and per-item reconcile; consulted before WDQS on every write path.
+  Test-mode keys use the `wikidata-test:` prefix.
+- **Adopt semantics** — reconcile match → `adopted`/`would_adopt` outcome +
+  ledger write + audit `OPERATION_ADOPT`, not silent UPDATE flip.
+- **Single-item push** — `POST …/items/{local_id}/push` applies override-merged
+  state, runs full `_prepare_for_upload`, commits DB tx before network (Rule
+  W-40). Moratorium/test-mode honesty unchanged.
+- **Gated QuickStatements** — `GET …/quickstatements.txt?gated=true` (default)
+  runs `_prepare_for_upload`; blocked items excluded with comment header; 503 on
+  `ReconciliationUnavailableError`. Escape hatch: `gated=false&ack=raw` (logged).
+- **Frontend parity** — `WikidataItemTable` + `WikidataItemDetailDrawer` +
+  `WikidataUploadPanel` (pre/post verify confirm gate, Rule W-41/W-44); legacy
+  sidebar view preserved as secondary toggle. Bulk item loads use
+  `fetchAllStudioItems` (`STUDIO_MAX_PAGE_SIZE=500`) — the API rejects
+  `page_size>500` with a 422 that surfaces as an empty table.
+
+Tests: `test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`,
+`test_wikidata_qid_ledger.py`, `test_wikidata_single_push.py`,
+`test_wikidata_export_quality.py`, `test_wikidata_items_export_import.py`,
+extended `test_wikidata_upload_guards.py`, `frontend/e2e/wikidata-item-*.spec.ts`.
+
+Migration: `0033_wikidata_ai_verdict`.
+
+---
+
+### Rule W-65 — Wikidata projections MUST expose clean labels and verifier evidence (added 2026-07-11)
+
+Production verdicts showed recurring false failures from catalog IDs embedded in work labels, unknown MARC roles defaulting to authors, and authority-derived person claims judged without the authority match that produced them. The builder now keeps IDs in P3959/source metadata, skips unsupported or non-person roles instead of inventing author claims, records compact authority evidence, and annotates resolvable `__LOCAL:` links. The verifier prompt, cache, and export preserve that evidence; coherent year-level Wikidata dates (`precision=9`) are valid.
+
+---
+
+### Rule W-66 — Studio build joins MUST canonicalise all MARC control-number inputs (added 2026-07-11)
+
+After a Studio rebuild displayed 162 items rather than the prior 294, logs showed every person being skipped for lack of an external identifier. Records had clean control numbers while approved authority matches used the same IDs wrapped in quotes. `build_items_for_run` grouped matches by their raw stored key, so no authority match joined its source record; the builder correctly failed closed, but did so for the entire person corpus.
+
+The Studio boundary now applies `canonical_control_number` to record, authority-match, and NER-entity keys before grouping. Future build inputs MUST use this canonical key at every join boundary; local measurement must mirror the production authority-row shape. Test: `test_wikidata_studio_control_number_join.py`.
+
+### Rule W-67 — Wikidata projections MUST fail closed on unsupported semantic claims (added 2026-07-12)
+
+The latest 228-item verdict export still contained three hard failures: a generic holiday term emitted as a work, a raw MARC 505 title (`Diodati Segre`) promoted to a work despite an unapproved NER/authority match, and the corporate institution Hekhal Shlomo emitted as a human. Partial verdicts also exposed machine-generated English labels, arbitrary P921/P136 enrichment, archival P7535 claims on ordinary manuscript notes, and a wrong Curt Paul Janz QID used as a provenance role.
+
+The builder now requires a known or curator-approved work identity for structured contents, honors NER approval, gates English labels on trusted catalog romanization, skips unresolved corporate authorities, accepts person dates only from exact authority-ID matches, disables network subject lookup and genre inference by default, removes unsupported manuscript claims, and invalidates old verdict-cache keys. The evaluator receives contents/genre/catalog evidence and treats P5008 as administrative and P7535 as archival-only. Future projection changes MUST preserve this fail-closed boundary and add source-backed property mappings before emitting claims. Tests: `test_wikidata_studio_works.py`, `test_item_validator.py`.
+
+
+### Rule W-68 — Wikidata work projection MUST be source-aware, not authority-only (added 2026-07-12)
+
+Rule W-67 stopped catalogue fragments by requiring every structured work to have a known QID or approved authority row. That overcorrection removed all 94 works from a 228-item run and dropped Wikidata Studio to 131 items, even though most MARC 505 rows were legitimate structural contents evidence. The original false positives came instead from the MARC 500 parser: it matched כולל anywhere in prose, split every comma and Hebrew conjunction-vav, and reused persisted derived candidates after parser fixes.
+
+The build now uses one source-aware candidate boundary. Clean Hebrew MARC 505 titles may create works; MARC 500 titles must come from a trigger anchored at the note start or a manuscript noun and from quoted spans or recognised title heads; rejected NER stays rejected; Latin-only 505 headings require authority or a known QID. Every accepted/rejected decision retains source field/text, folio, sequence, and reason in `work_candidate_evidence`. Rebuilds recompute 500 candidates from raw MARC and delete older 500-derived contents, so code changes do not need a data migration. New works without accepted evidence fail validation.
+
+Projection quality is part of the same invariant: embedded author suffixes are removed from public work labels and used only for exact author linking; work P1476 uses the title script; works never inherit manuscript P407; English labels still require trusted catalog romanization; quoted generic manuscript titles such as `"קובץ."` fall back to the control-number signature. Build fingerprints include MARC JSON content (not only control numbers), and schema/verdict-cache salts must change whenever this evidence shape changes.
+
+A measurement-only rebuild of run `48ba6c13-115c-4763-bff1-c08b9031b518` with this boundary produced 183 reviewable items: 68 manuscripts, 63 externally grounded people, and 52 source-backed works. The excluded set contained catalogue prose/dedications/geography plus the unverified Latin heading `Diodati Segre`. Tests: `test_notes_work_extraction.py`, `test_wikidata_work_candidates.py`, `test_wikidata_studio_works.py`, `test_rdf_build.py`, and `test_wikidata_manuscript_labels.py`.
+
+### Rule W-69 — Work identity, author evidence, and export fields MUST remain complete (added 2026-07-12)
+
+The approved section export for run `48ba6c13-115c-4763-bff1-c08b9031b518`
+exposed four independent quality defects: all 52 work rows had no existing QID,
+all extracted work authors lacked P50/P2093, 20 English descriptions copied Hebrew
+author names, and 8 labels lost internal Hebrew abbreviation marks. The legacy
+section export also omitted item-level `approved` and `ai_verdict`, while its
+`approved_only` flag only filtered authority/NER inputs.
+
+The web projection now uses only exact, verified work aliases; exact approved
+author authority matches produce P50 before the person pass; unresolved extracted
+authors are retained as a local P50 target or P2093; English descriptions remain
+English; and normalization preserves Hebrew gershayim while cleaning P1476. The
+section export stamps explicit item-review fields and complete source/verdict JSON,
+and `backend/scripts/check_wikidata_export_quality.py` reports compact,
+source-grounded failures. Do not add fuzzy QID guesses or treat `approved_only`
+as item approval/AI success. Tests: `test_wikidata_studio_works.py`,
+`test_wikidata_export_quality_checker.py`, `test_section_export_router.py`.
+
+### Rule W-70 — Work projection MUST consume enriched content metadata (added 2026-07-14)
+
+The post-W-69 audit showed that the source records already carried contents-NER
+`author` values and approved work authority rows already carried Wikidata QIDs,
+but `content_projection` read neither field. The result was authorless local work
+items and avoidable duplicate work candidates even when an approved work match
+existed. The projection now reads `author`/`author_name`/`work_author`, validates
+content and approved-match QIDs as `Q\d+`, and emits direct P1574 references for
+approved existing works. Unknown titles remain fail-closed and never receive fuzzy
+QID guesses. Tests: `test_wikidata_studio_works.py`.
+
+### Rule W-72 — Public Wikidata semantic claims MUST be evidence-gated (added 2026-07-15)
+
+The Phase 1 audit of run `48ba6c13-115c-4763-bff1-c08b9031b518` found
+false-positive P921 topics, over-specific P136 genres, historical owners and
+censors projected as P127, catalog workflow text projected as P1684, and
+external 710 institutions replaced by a default NLI collection. It also found
+MARC wrapper cleanup deleting legitimate Hebrew gershayim. The public projection
+now protects Hebrew abbreviation marks, filters explicit catalog-note markers,
+requires canonical/primary subject evidence, gates unsafe genre/P31 mappings,
+keeps non-current roles out of P127, and emits P195 only from a verified current
+holder QID (with an evidence-based description fallback). Rejected candidates
+remain in source/evidence fields for curator reconciliation. Tests:
+`test_wikidata_phase1_projection.py`, `test_marc_650_655_lod.py`, and
+`test_wikidata_work_candidates.py`.
+
+
+### Rule W-73 — Illustrated genre MUST NOT imply illuminated manuscript (added 2026-07-15)
+
+The second Wikidata Studio verdict audit found 44 manuscripts marked partial
+because MARC 655 `Illustrated works (Manuscript)` and catalog prose mentioning
+illustrations were projected as P136/P31 `Q48498` (illuminated manuscript). The
+projection now separates genre support from instance typing: that MARC label is
+not statically mapped to Q48498, free-text notes and `has_decoration` are not
+sufficient, and P31=Q48498 requires an authority-stamped QID or structured
+confirmed decoration evidence. Rejected genre evidence remains available for
+review. Tests: `test_wikidata_phase1_projection.py`.
+
+
+### Rule W-75 — P195 MUST NOT default to the NLI collection (added 2026-07-15)
+
+The fourth Wikidata Studio export contained 43 partial manuscripts with
+`P195=Q188915` even though no verified current-holder collection evidence was
+present. The manuscript projection now emits P195 only when a current holder has
+a verified organization QID; absence of an external holder no longer implies
+the National Library of Israel collection. The description may still name the
+source institution. Tests: `test_wikidata_phase1_projection.py`.
+
+
+### Rule W-76 — Hebrew gershayim MUST NOT trigger quote-noise warnings (added 2026-07-15)
+
+The fourth Wikidata Studio export retained five partial work items because
+legitimate internal Hebrew abbreviation marks such as `פע"ח` were counted as
+unbalanced ISBD wrapper quotes. The validator now removes quote characters
+between Hebrew letters before checking wrapper balance, while still flagging
+surrounding and doubled wrapper noise. Test: `test_item_validator.py`.
+
+
+### Rule W-77 — Explicit catalog semantics MUST survive projection (added 2026-07-15)
+
+The fifth Wikidata Studio export showed that conservative Phase 1 guards had
+become too lossy: canonical NLI current-holder evidence was omitted, exact
+Masorah subjects were not projected, MARC-100 author/title records had no work
+chain, and a printed facsimile was typed as a manuscript. The projection now
+uses verified canonical mappings, a source-backed manuscript→P1574→work author
+fallback, explicit facsimile detection, and a verified Masorah P921 mapping.
+Ambiguous provenance and free-text signals remain excluded. Tests:
+`test_wikidata_phase1_projection.py`.
+
+
+### Rule W-78 — Exported authority and work identity MUST stay precise (added 2026-07-15)
+
+The sixth Wikidata Studio verdict export retained placeholder `Unknown Library`
+descriptions, incomplete Latin/inverted authority names, and an existing
+canonical Mishneh Torah QID on a partial-books work. The projection now omits
+known placeholder institutions, preserves authority forms as aliases, and
+requires exact work-title matches before using hardcoded canonical QIDs. Tests:
+`test_wikidata_phase1_projection.py` and `test_wikidata_studio_works.py`.
+
+
+### Rule W-82 — Manuscript labels MUST reflect the physical holder (added 2026-07-16)
+
+A Ktiv/NLI catalog record does not imply that the manuscript is physically held
+by NLI. When MARC identifies a current owner, the English shelfmark label and
+P195 description must not claim Jerusalem/NLI ownership. Shelfmarks and P217
+values must pass the shared MARC label normalizer so catalog quote wrappers
+cannot reach Wikidata.
+
+### Rule W-98 — Wikidata projection MUST follow the WikiProject Manuscripts data model fail-closed (added 2026-07-24)
+
+Manuscript items are physical carriers. Contained texts attach only via
+`P1574` (exemplar of); **P50 never appears on a manuscript** (including
+anonymous `somevalue`). Folio counts use `P1104` + leaf unit, never
+`P7416` as quantity. Preferred `P31` values are `Q87167` /
+`Q48498` / `Q274076` / `Q30103158` / `Q33308141`; discouraged classes such as
+`Q213924` (codex) are errors. Catalog control number `P3959` is required
+(ERROR). `P17`/`P131` are not inferred from holder/catalog alone. Content
+links carry catalog title form as `P1932`; thin unidentified titles may use
+`Q234460` (*text*) rather than a fuzzy work QID. Annotator/commissioner roles
+map to `P11105`/`P88`; editorial roles stay off the manuscript. The build
+export-quality gate runs the full `validate_item` ERROR set before cache
+write. Contract: `docs/wikidata-manuscripts-data-model.md`. Tests:
+`test_wikidata_wpm_guards.py`, `test_item_validator.py`,
+`test_wikidata_export_quality.py`.
+
+### Rule W-99 — Wikidata write path MUST smart-check existence and own-or-accept modify (added 2026-07-24)
+
+Every CREATE/UPDATE (live and dry-run) runs the access map in
+`docs/wikidata-data-access.md`: ledger → type-aware SPARQL reconcile →
+Action API `wbgetentities` alive check → ownership via first-revision /
+token (Rule-38 channels). Defaults: **CREATE** only when no live QID;
+**UPDATE** only when the acting Wikidata token created the item. A
+foreign existing QID is **skipped/blocked** (never duplicate-CREATED)
+unless the curator sets per-entity `accept_foreign_modify` +
+`accepted_foreign_qid` matching that QID on `WikidataItemOverride`.
+Accept primes an audited Rule-38 bypass for that QID only. Upload jobs
+and sync upload load accepts from overrides; the drawer exposes the
+checkbox. Tests: `test_wikidata_existence.py`,
+`test_wikidata_upload_guards.py`.
+
+### Rule W-100 — Project Wikibase P/Q MUST map to public Wikidata via ontology, never by ID identity (added 2026-07-24)
+
+Local IDs on `mhm-hmo.wikibase.cloud` are a different namespace from
+wikidata.org. Canonical HMO→Wikidata projection uses
+`converter/wikidata/hmo_wikidata_pq_mapper.py`: ontology local-name/URI
+→ public PID/QID allowlist (WPM-aligned: script `P9302`, folios
+`P1104`); project PID → public PID only through the schema ledger
+ontology URI; item values accept Wikidata URIs / class URIs / explicit
+`wikidata_property` claims — never a bare project QID. Manuscripts
+still forbid P50. Ontology `owl:equivalentProperty` lines match the
+runtime map. Tests: `test_hmo_wikidata_pq_mapper.py`,
+`test_hmo_canonical_wikidata.py`.
+
+### Rule W-103 — Wikidata upload target is curator-chosen; default dry-run (added 2026-07-25)
+
+The production moratorium is no longer only an env flag. Wikidata Studio
+exposes three **upload targets** (job param `upload_target`):
+
+1. **`dry_run`** (default) — moratorium active; reconcile + validator preview only.
+2. **`test`** — write to `test.wikidata.org` (bypasses production moratorium).
+3. **`live`** — write to `wikidata.org` after an explicit UI confirm; sets
+   `allow_live` on `WikidataUploader` (same effect as legacy
+   `MORATORIUM_LIFTED=true` for that request).
+
+Env `MORATORIUM_LIFTED` / `WIKIDATA_TEST_MODE` remain as legacy overrides when
+callers only pass `dry_run=false`. Single-item push accepts `test|live`
+(default `test`). Tests: `test_wikidata_upload_guards.py`
+(`test_resolve_upload_mode_*`, `test_ui_live_target_bypasses_env_moratorium`);
+`frontend/e2e/wikidata-upload-panel.spec.ts`.
+
+### Rule W-114 — Related works MUST NOT mint evidence-less Wikidata CREATE items (added 2026-07-26)
+
+Wikidata Studio AI verify failed before any judge call: refreshing the Studio
+build hit `WORK_WITHOUT_SOURCE_EVIDENCE` on four local works
+(`work:bible`, `work:ת_נ"ך`, `work:תיקון_חצות`, `work:הגדה_של_פסח`). The
+manuscript `related_works` path called `_get_or_create_work` without
+`work_candidate_evidence`, violating Rule W-68's source-aware work boundary
+and the hard export quality gate.
+
+Invariant:
+
+1. `related_works` projection runs `assess_work_candidate` and retains rejected
+   evidence on the manuscript for review.
+2. P1574 to an existing Wikidata work is allowed only with a verified known QID
+   (or an explicit curator-approved related-work row). Live-verified additions
+   include Bible (`Q1845`), Tanakh (`Q83367`), Haggadah (`Q623354`), and
+   Tikkun Chatzot (`Q2740944`).
+3. Local CREATE work items from related works require accepted evidence stamped
+   on the work item — never a bare title → `__LOCAL:work:…` mint.
+
+Tests: `backend/tests/unit/test_wikidata_studio_works.py`
+(`test_related_works_known_qid_links_without_local_work`,
+`test_related_works_curator_approved_stamps_evidence_on_local_work`,
+extended `test_dict_related_works_title`).
+
+### Rule W-117 — Wikidata Studio emits only WPM public items; summarized HMO nodes roll up (added 2026-07-26)
+
+A 1608-item canonical verify export showed 93% `fail` because HMO ontology
+classes (`Codicological_Unit`, `PhilologicalView`, `EvidenceChain`, …) were
+judged as Wikidata items. Canonical Studio already gated `direct_wikidata_item`
+rows to `manuscript` / `person` / `work`, but `summarized_in_wikidata`
+classes were skipped entirely — manuscripts only carried claims already on the
+`F4` node, not Production/CU/Expression facts stored on related HMO entities.
+
+Invariant:
+
+1. **Public item types only:** Studio `entity_type` MUST be
+   `manuscript` | `person` | `work`. Verify scope skips any other
+   `entity_type` (`PUBLIC_WIKIDATA_ENTITY_TYPES`).
+2. **Rollup, not separate items:** HMO classes with
+   `projection_status=summarized_in_wikidata` fold allowlisted claims onto the
+   parent manuscript (or work for `F27_Work_Creation`) when they share a MARC
+   control number. Mapping runs through `hmo_wikidata_pq_mapper` restricted to
+   each strategy's `wikidata_properties`.
+3. **Wikibase bridge:** every manuscript with a live HMO QID carries `P2888` +
+   `P973` to the project wiki item URL.
+4. **Never leak project QIDs** as statement values; never emit `P50` on
+   manuscripts.
+5. Build summary exposes `rolled_up_entities` and `summarized_hmo_nodes`.
+   Fingerprint salt: `hmo-wikidata-v4`.
+
+Tests: `backend/tests/unit/test_hmo_canonical_wikidata.py`,
+`backend/tests/unit/test_wikidata_verify_scope_cache.py`.
+
+### Rule W-118 — Wikidata Studio read paths MUST filter HMO ontology rows from stale cache (added 2026-07-26)
+
+Rule W-117 stopped **new** canonical builds from emitting HMO-class items, but a
+1608-item verify export still showed 92.9% `fail` because **stale Postgres cache
+rows** (pre-W-117) and the **merged read model** continued to surface
+`Codicological_Unit`, `PhilologicalView`, `E21_Person`, etc. to verify, export,
+and the review table. Verify scope filtered non-public types; export and
+`fetch_merged_wikidata_items` did not.
+
+Invariant:
+
+1. **Single read gate:** `filter_public_wikidata_items` /
+   `is_public_wikidata_studio_item` in `hmo_canonical_wikidata.py` — only
+   `manuscript` | `person` | `work` reach verify, export, cached-verdicts, and
+   the merged UI read model. HMO class names (`E21_Person`, `F4_…`, …) are
+   never public even when they look “person-like”.
+2. **Stale canonical cache rejection:** `studio_cache_has_non_public_items` —
+   `execute_studio_build` refuses a canonical cache hit and rebuilds when any
+   cached row has a non-public `entity_type`. Passive GET marks `cache_stale`
+   so curators know to **Rebuild (skip cache)**.
+3. **MARC join normalization:** the filter stamps `record_ids` from `records` /
+   P3959 references so export and verify share the same control-number slice.
+
+Tests: `test_wikidata_item_views.py`,
+`test_wikidata_items_export_import.py`, `test_hmo_canonical_wikidata.py`
+(filter/stale-shape cases).
+
+### Rule W-119 — Wikidata Studio build jobs MUST NOT WDQS-reconcile the corpus (added 2026-07-27)
+
+Incident: force-rebuild on run `48ba6c13` with canonical source left the job at
+**0/1** for tens of minutes while the web dyno hammered `query.wikidata.org`
+(`reconcile=True` inside `execute_studio_build`). Job polls hit **H12** (30 s
+router timeout); asyncpg raised *cannot switch to state 12* when polls
+overlapped the build's open session during blocking SPARQL.
+
+Invariant:
+
+1. **`wikidata_studio_build` jobs always pass `reconcile=False`** to
+   `execute_studio_build` — same policy as verify scope materialisation
+   (Rule W-116). Live WDQS reconcile belongs on upload, gated QuickStatements,
+   and the `/reconcile` preview endpoint only.
+2. **Canonical CPU build runs in `run_in_threadpool`** so validation /
+   rollup assembly does not block the asyncio event loop on Heroku's single
+   web dyno.
+
+Tests: `backend/tests/unit/test_wikidata_studio_build_job.py`.
+
+### Rule W-120 — Canonical Wikidata labels and work evidence MUST match legacy hygiene (added 2026-07-27)
+
+Export (11) on run `48ba6c13` after W-117–W-119 still had **237/258** blocking
+validation errors: Hebrew in `en` labels, MARC-inverted person names, Latin in
+`he`, and every CREATE work missing `work_candidate_evidence`. The canonical
+adapter had been copying live HMO labels verbatim and never stamping W-68
+evidence — legacy `WikidataItemBuilder` already fixed these.
+
+Invariant:
+
+1. **`_wikidata_labels_and_aliases`** in `hmo_canonical_wikidata.py` applies
+   legacy rules: manuscripts get shelfmark-based `en` (`Jerusalem, NLI, …`);
+   persons use `_to_natural_name_order` with inverted form kept as alias;
+   works route Hebrew→`he` and Latin→`en` only.
+2. **CREATE works** must stamp accepted `work_candidate_evidence` via
+   `assess_work_candidate` joined from MARC 505/500/related_works or approved
+   authority; unevidenced CREATE works are dropped (existing QID may remain).
+3. Fingerprint salt **`hmo-wikidata-v5`** so pre-hygiene Studio caches miss.
+
+Tests: `backend/tests/unit/test_hmo_canonical_wikidata.py` (label + evidence cases).
+
+### Rule W-121 — Canonical CREATE works MUST recover MARC 245 / known-QID evidence (added 2026-07-27)
+
+After W-120, Studio dropped from ~258 → ~190 items because every CREATE work
+lacked `work_candidate_evidence`. HMO always mints a main `F1_Work` from MARC
+**245**, but the evidence join only looked at 505/500/related_works — so the
+~68 main works were fail-closed away even though they are legitimate.
+
+Invariant:
+
+1. `assess_work_candidate` accepts `245` / `100/245` (reasons `marc_245_title` /
+   `marc_title_author`) under the same quality filters as 505.
+2. `_work_candidate_evidence_for` joins HMO work titles (labels, aliases,
+   `has_title`, stripped `(MS …)` suffix) to prepared MARC title/contents/
+   mentions/related_works and to sanitized authority name keys.
+3. Exact `known_work_qid_for_title` hits set `existing_qid` + accepted evidence.
+4. Placeholders, descriptive notes, Latin-without-authority, and unevidenced
+   CREATE works stay dropped. Fingerprint salt: `hmo-wikidata-v6`.
+
+Tests: `test_hmo_canonical_wikidata.py`, `test_wikidata_work_candidates.py`.
+
+### Rule W-122 — Wikidata→Wikibase bridges MUST be browseable Item:Q URLs (added 2026-07-27)
+
+Curators clicking Wikidata P2888/P973 (or Studio “Open on HMO Wikibase”) hit
+dead links for two independent reasons:
+
+1. **Ontology IRI as P2888.** Live HMO `hmo_source_uri` / exact-match claims
+   carry `https://w3id.org/mhm/ontology#MS_<cn>`. The PQ mapper forwarded that
+   string as public P2888. Clicking it follows w3id → GitHub raw, which for
+   LFS-tracked TTLs returns a **Git LFS pointer**, not Turtle and not a
+   Wikibase page. Export (11) had 21 manuscripts with a dual P2888
+   (ontology IRI + Item:Q).
+2. **Dead `/wiki/MS_<cn>` slug.** The planned Phase-3 redirect pages were
+   never created on `mhm-hmo.wikibase.cloud` (404). `hmo_wikibase_page_url`
+   must not invent that URL.
+
+Invariant:
+
+1. P2888/P973 emit only `https://mhm-hmo.wikibase.cloud/wiki/Item:Q…`
+   (`is_browseable_hmo_wikibase_url` / `resolve_hmo_bridge_url`).
+2. Ontology IRIs and MS_ slugs are rewritten to Item:Q when
+   `project_item_qid` / `wikibase_id` is known, otherwise dropped.
+3. Bridge attach strips non-browseable P2888/P973 before adding the Item:Q
+   pair. No QID → no bridge (fail closed).
+4. Fingerprint salt `hmo-wikidata-v8`. w3id ontology redirect must target
+   `media.githubusercontent.com/media/…` (LFS blob), not
+   `raw.githubusercontent.com` (pointer) — update
+   `pipeline/docs/w3id/htaccess` and re-publish to perma-id/w3id.org.
+5. Catalog workflow placeholders such as ``רשומה זמנית`` never become
+   P1684; P1684 is manuscript-only (legacy Rule W-72 filter on the
+   canonical mapper).
+
+Tests: `test_property_mapping_hmo_links.py`, `test_item_builder_hmo_links.py`,
+`test_hmo_wikidata_pq_mapper.py`, `test_hmo_canonical_wikidata.py`.
+
+### Rule W-125 — Canonical Wikidata Studio MUST merge full MARC/authority enrichment (added 2026-07-27)
+
+PhD proposal RQ2/RQ4 require research-grade public items (production, place,
+language, works, agents, housing, themes, provenance). Export `(12)` on the
+canonical Studio path emitted only identity shells
+(`P3959`/`P31`/`P2888`/`P973` on manuscripts; `P214`/`P31`/`P2888` on persons;
+`P1476`/`P31`/`P2888` on works) because HMO claim→QID mapping fail-closed on
+project QIDs and did not re-run the legacy MARC builder.
+
+Invariant:
+
+1. **Canonical build merges legacy.** `execute_studio_build(source=canonical)`
+   runs `build_items_for_run` (MARC + approved authority + NER) and
+   `merge_legacy_into_canonical` keeps HMO `local_id` / bridges /
+   `existing_qid` while unioning research claims (P571, P1071, P407, P1574,
+   P217, P195, P11603, P127, P186, P1104, P9302, P136/P921, P953/P6108,
+   work P50/P2093, person P8189/dates, …).
+2. **Provenance events** (`record["provenance_events"]`) feed
+   `_add_provenance_claims` (owners/dates + P7153 significant places).
+3. **Person P106** occupation from role; **P1680** subtitle from MARC 245$b.
+4. Fingerprint salt `hmo-wikidata-v9` includes the MARC/authority enrichment
+   fingerprint so cache invalidates when either HMO or MARC inputs change.
+
+**Curator ops:** Wikidata Studio **Rebuild (skip cache)** on canonical source,
+then re-verify.
+
+Tests: `test_wikidata_canonical_enrichment.py`,
+`test_hmo_canonical_wikidata.py` (merge + fingerprint).
