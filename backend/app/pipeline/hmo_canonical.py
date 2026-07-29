@@ -47,15 +47,24 @@ class CanonicalHmoEntity:
         }
 
 
+_FINGERPRINT_SCALARS = ("local_id", "source_uri", "wikibase_id")
+_FINGERPRINT_MAPPINGS = ("labels", "descriptions", "aliases")
+_FINGERPRINT_SEQUENCES = ("claims", "authority_evidence", "control_numbers")
+
+
 def canonical_entity_fingerprint(entity: dict[str, Any]) -> str:
-    """Hash the normalized live-item state, excluding volatile timestamps."""
-    stable = {
-        key: entity.get(key)
-        for key in (
-            "local_id", "source_uri", "wikibase_id", "labels", "descriptions",
-            "aliases", "claims", "authority_evidence", "control_numbers",
-        )
+    """Hash the normalized live-item state, excluding volatile timestamps.
+
+    An absent container and an empty one are the same state, so they must hash
+    the same — otherwise fingerprinting a raw read-back snapshot and then
+    re-fingerprinting it after ``normalize_live_entity`` disagree, and the
+    readiness gate reports a stale fingerprint for an unchanged item.
+    """
+    stable: dict[str, Any] = {
+        key: str(entity.get(key) or "") for key in _FINGERPRINT_SCALARS
     }
+    stable.update({key: dict(entity.get(key) or {}) for key in _FINGERPRINT_MAPPINGS})
+    stable.update({key: list(entity.get(key) or []) for key in _FINGERPRINT_SEQUENCES})
     return hashlib.sha256(
         json.dumps(stable, ensure_ascii=False, sort_keys=True, default=str).encode()
     ).hexdigest()

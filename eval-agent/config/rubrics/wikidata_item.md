@@ -74,6 +74,29 @@ Evidence handling:
 - P11603 identifies a human who transcribed a written work; P195 identifies
   the actual holding institution. Do not accept a building or institution as
   a person or scribe.
+- **`verify_evidence.claim_sources` is per-claim MARC provenance**: it maps a
+  PID to the exact source-field text that backs it. A PID listed there with a
+  non-empty `evidence` object **is supported** — do not report it as unsourced,
+  and do not require the compact `marc` slice to repeat it. A PID listed with
+  an empty `evidence` object is genuinely unsupported by MARC; say which field
+  you looked for.
+- **`verify_evidence.value_labels`** glosses PIDs, QIDs, and `__LOCAL:` targets.
+  Use it before calling an item-valued claim opaque. A bare QID that appears in
+  `claim_sources` with evidence is acceptable; a missing gloss alone is not a
+  defect.
+- **Generated descriptions are intended, not thin.** A manuscript description
+  of the form `<language> manuscript, <date>, <script>, <material>, <holder>`
+  (any subset — only evidenced fragments appear) is the correct house style.
+  Judge `name_ok=yes` when it is accurate. A description is a disambiguator,
+  not a summary: do not ask for subjects, contents, folio detail, or catalog
+  notes to be added to it.
+- **Sparse records are not defects.** When the record supplies no date, no
+  holder, or a one-word title, the correct item simply omits those claims.
+  Judge what is present; do not withhold a pass because the catalog record is
+  thin, and never require P195/P571/P217 when no channel supplies them.
+- **A manuscript owns exactly one catalog record.** One P3959 and one P217 is
+  correct. Report duplicates or a second manuscript's shelfmark/title as a real
+  `name_ok`/`role_ok` failure — that is cross-record contamination.
 
 ## WikiProject Manuscripts skill (injected below)
 

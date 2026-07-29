@@ -24,6 +24,8 @@
 | Enforce four HMO pillars (Wikibase root / WD map / ontology 1:1 / enrichment) | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) R45 + Rule W-102 |
 | Choose Wikidata upload target (dry-run / test / live) | [wikidata-studio](blocks/wikidata-studio/README.md) R6 + Rule W-103 |
 | Add an AI-verify surface | [eval-agent](blocks/eval-agent/README.md) |
+| Fix `unsupported by MARC` verdicts on evidenced claims | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `marc_verify_context.RAW_TAG_FALLBACK` |
+| Debug manuscripts sharing a label/shelfmark or emitting several P3959 | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `identity_control_number` |
 | Debug AI verdicts persisted but showing `—` in the review table | [Wikidata Studio R58](blocks/wikidata-studio/rules.md) + Rule W-136 + `wikidata_verdict_cache.py` |
 | Analyze partial/fail AI verdicts with Codex | [eval-agent](blocks/eval-agent/README.md) + [Wikidata Studio R25](blocks/wikidata-studio/rules.md) for item/QID evidence |
 | Audit Wikidata export quality/failure counts | [wikidata-studio](blocks/wikidata-studio/README.md) — run `check_wikidata_export_quality.py` |

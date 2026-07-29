@@ -113,6 +113,128 @@ def _hmo_wikibase_page_url(qid: str) -> str:
     return f"https://mhm-hmo.wikibase.cloud/wiki/Item:{q}"
 
 
+# Which MARC slice name backs each projected claim. The judge must be able to
+# check a claim against *its own* source field instead of scanning a blob —
+# absent this map, evidenced claims (dates, extent, shelfmark, rights) read as
+# unsupported (Rule W-137).
+CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
+    "P31": ("title", "genres", "carrier"),
+    "P50": ("authors",),
+    "P127": ("provenance",),
+    "P136": ("genres",),
+    "P186": ("material",),
+    "P195": ("shelfmark", "provenance", "contributors"),
+    "P217": ("shelfmark",),
+    "P276": ("place", "shelfmark"),
+    "P282": ("languages", "material"),
+    "P407": ("languages",),
+    "P571": ("dates",),
+    "P921": ("subjects",),
+    "P953": ("digital_access",),
+    "P1071": ("place",),
+    "P1104": ("extent",),
+    "P1476": ("title",),
+    "P1574": ("contents", "title", "related_records"),
+    "P1680": ("title",),
+    "P1684": ("notes", "colophon_text", "summary"),
+    "P2048": ("extent",),
+    "P2049": ("extent",),
+    "P2093": ("authors", "contributors"),
+    "P2635": ("extent",),
+    "P3959": ("record_ids",),
+    "P6108": ("digital_access",),
+    "P6216": ("rights",),
+    "P7153": ("place", "provenance"),
+    "P9302": ("material", "languages"),
+    "P11603": ("extent", "material"),
+}
+
+_MAX_CLAIM_EVIDENCE_CHARS = 400
+
+
+def _statement_property_ids(item: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    for statement in item.get("statements") or []:
+        if not isinstance(statement, dict):
+            continue
+        pid = str(statement.get("property_id") or statement.get("property") or "").strip()
+        if pid and pid not in out:
+            out.append(pid)
+    return out
+
+
+def build_claim_sources(
+    item: dict[str, Any],
+    marc: dict[str, str],
+    record_ids: list[str],
+) -> dict[str, Any]:
+    """Per-claim MARC provenance: PID → the slice text that supports it."""
+    sources: dict[str, Any] = {}
+    for pid in _statement_property_ids(item):
+        slices = CLAIM_SOURCE_SLICES.get(pid)
+        if not slices:
+            continue
+        evidence: dict[str, str] = {}
+        for name in slices:
+            if name == "record_ids":
+                if record_ids:
+                    evidence[name] = ", ".join(record_ids)
+                continue
+            text = str(marc.get(name) or "").strip()
+            if text:
+                evidence[name] = text[:_MAX_CLAIM_EVIDENCE_CHARS]
+        sources[pid] = {
+            "marc_slices": list(slices),
+            "evidence": evidence,
+            "supported": bool(evidence),
+        }
+    return sources
+
+
+def build_statement_value_labels(item: dict[str, Any]) -> dict[str, str]:
+    """Resolve QID/PID glosses for the judge without any network call.
+
+    A bare ``Q33513`` reads as an unverifiable claim; the static desktop
+    dictionary plus each item's own ``__LOCAL:`` targets cover everything we
+    project (Rule W-137). Live WDQS lookups stay off the verify path
+    (Rule W-116).
+    """
+    from converter.wikidata.property_labels import property_label, qid_label  # noqa: PLC0415
+
+    out: dict[str, str] = {}
+    targets = item.get("local_reference_targets")
+    local_labels: dict[str, str] = {}
+    if isinstance(targets, dict):
+        for target_id, target in targets.items():
+            labels = target.get("labels") if isinstance(target, dict) else None
+            if isinstance(labels, dict):
+                text = str(labels.get("en") or labels.get("he") or "").strip()
+                if text:
+                    local_labels[str(target_id)] = text
+
+    for statement in item.get("statements") or []:
+        if not isinstance(statement, dict):
+            continue
+        pid = str(statement.get("property_id") or statement.get("property") or "").strip()
+        if pid:
+            label = property_label(pid)
+            if label and label != pid:
+                out[pid] = label
+        value = str(statement.get("value") or "").strip()
+        if not value or value in out:
+            continue
+        if value.startswith("__LOCAL:"):
+            target_label = local_labels.get(value.removeprefix("__LOCAL:"))
+            if target_label:
+                out[value] = target_label
+            continue
+        if value.upper().startswith("Q"):
+            label = str(statement.get("value_label") or "").strip() or qid_label(value)
+            if label and label != value:
+                out[value] = label
+    return out
+
+
 def build_verify_evidence_pack(
     item: dict[str, Any],
     marc_records: list[dict[str, Any]],
@@ -140,6 +262,8 @@ def build_verify_evidence_pack(
         "record_ids": record_ids,
         "marc": marc,
         "marc_present": bool(marc),
+        "claim_sources": build_claim_sources(item, marc, record_ids),
+        "value_labels": build_statement_value_labels(item),
         "viaf": {
             "authority_rows": authority["viaf"],
             "from_statements": from_stmts["viaf_from_statements"],

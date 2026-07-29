@@ -15,6 +15,7 @@
 | `backend/app/pipeline/wikidata_verify_fixture.py` | Lean eval-agent fixture + `release_wikidata_verify_heap` (W-131/W-132) |
 | `backend/app/pipeline/wikidata_item_merge.py` | Apply curator overrides onto serialised item dicts |
 | `backend/app/pipeline/wikidata_item_verify.py` | Persist AI verdicts to `WikidataItemOverride` after verify streams |
+| `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-source evidence packs: MARC slice, per-claim `claim_sources` provenance, offline `value_labels`, VIAF/Mazal/HMO channels |
 | `backend/app/pipeline/wikidata_verdict_cache.py` | Canonical record/MARC/local-target evidence, durable-target preservation, slim-invariant cache keys (`fingerprint_statements` / `fingerprint_verify_evidence`), and stale-verdict sanitisation |
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-channel `verify_evidence` pack (MARC + VIAF + Mazal + Wikidata + HMO Wikibase) for AI verify (Rule W-124) |
 | `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125) |

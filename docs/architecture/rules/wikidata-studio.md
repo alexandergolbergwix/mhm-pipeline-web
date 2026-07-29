@@ -594,3 +594,115 @@ then re-verify.
 
 Tests: `test_wikidata_canonical_enrichment.py`,
 `test_hmo_canonical_wikidata.py` (merge + fingerprint).
+
+### Rule W-137 — Verify evidence must be complete and manuscript identity must be its own (added 2026-07-29)
+
+Audit of the 86 judged items in export (13) of run `48ba6c13` (22 full /
+43 partial / 21 fail — every non-full item a manuscript, all 19 judged
+persons full) traced the verdicts to four build/evidence defects, not to
+judge strictness. Each was confirmed against the run's actual
+`run_records.marc` in Postgres.
+
+**1. The judge saw almost no MARC.** `_marc_context` / `verify_evidence.marc`
+carried exactly `title`, `authors`, `contributors`, `subjects` on all 67
+manuscripts. This run (like every TSV/collapsed-key ingest) stores raw
+`NNN$x` keys — `300$a`, `852$j`, `540$a`, `008`, `500$a` — plus only five
+normalised keys, and `project_marc_slice` asked for normalised names only.
+The judge then correctly reported "unsupported by MARC" for exactly the
+claims whose source field it was never shown: P571 ×29, P1104 ×12,
+P217 ×10, P6216 ×8, P1574, P1684, P1476, P1071.
+
+- `marc_verify_context.RAW_TAG_FALLBACK` + `raw_tag_slice()` fill any slice
+  name the normalised pass could not supply; normalised values always win, so
+  a modern run is byte-identical to before. Mirrored in
+  `eval-agent/eval_agent/ingest/marc_extract.py` so fixture and cache key agree.
+- `wikidata_verify_evidence.build_claim_sources()` adds **per-claim
+  provenance** (`verify_evidence.claim_sources`): PID → the source-field text
+  that supports it, plus `supported: bool`. `CLAIM_SOURCE_SLICES` is the map.
+- `build_statement_value_labels()` adds `verify_evidence.value_labels` —
+  PID/QID/`__LOCAL:` glosses from the static desktop dictionary and the item's
+  own local targets. No WDQS on the verify path (Rule W-116).
+
+**2. Manuscript identity was contaminated across records (the only defect
+that could reach public Wikidata).** `_index_manuscripts` /
+`_match_manuscript` joined the legacy MARC item on *any* linked control
+number, so several canonical manuscripts matched the same legacy item:
+three items shipped as `The British Library, F 8298` with `P217 = F 7956`,
+7 items had a label shelfmark contradicting their own P217, and 14 carried
+2–5 `records`.
+
+- `marc_verify_context.primary_control_number_for(...)` /
+  `hmo_canonical_wikidata.identity_control_number(...)` — identity is the CN
+  embedded in the entity's own `source_uri` / `local_id`; propagated CNs
+  (Rule W-48) are context only.
+- Manuscript `records`, labels, descriptions, shelfmark and the legacy join
+  all use that CN (`identity_records_for`, `_marc_record_for_entity`,
+  `_merged_records`, `_with_scoped_records`). Persons/works still span
+  records (Rule W-63).
+- One `P3959` per manuscript — its own. The per-CN loop emitted 4–5.
+- **Hard export-quality gates** (`wikidata_export_quality_gate`):
+  `MANUSCRIPT_SHARED_IDENTITY`, `LABEL_SHELFMARK_MISMATCH`,
+  `MANUSCRIPT_MULTIPLE_CATALOG_IDS`, `MANUSCRIPT_MULTIPLE_SHELFMARKS`.
+  Identity defects are build bugs, never curator decisions.
+
+**3. Duplicate claims.** `_statement_key` included `value_type`, so the same
+fact emitted as `string` and `external-id` survived twice.
+`dedupe_statements()` keeps one statement per `(property, value)`, preferring
+the instance with references/qualifiers, and runs on every path (merged,
+canonical-only, legacy-only).
+
+**4. Descriptions were catalog notes.** 17 English descriptions contained the
+literal `MARC 336 content type: · MARC 337 media type: …` (RDA terms written
+as `rdfs:comment` at `graph_builder.py:702`), 9 Hebrew descriptions were raw
+MARC 500 notes, 26 carried the `Subjects include …` clause (26/26 non-full),
+and 45 work descriptions had Hebrew in the `en` slot.
+
+- Manuscripts: the **generated** form wins — `<language> manuscript, <date>,
+  <script>, <material>, <holder>` (the form that passed) — plus a generated
+  Hebrew counterpart (`_hebrew_manuscript_description`). Stored descriptions
+  are rejected when `_is_catalog_note_description` matches.
+- `_description_language_slot` routes Hebrew→`he` / Latin→`en` and drops a
+  mixed-script `en` description so the generated form takes over.
+- `_build_manuscript_description` no longer appends `Subjects include …`; a
+  description disambiguates, it does not summarise.
+
+**Also:** every serialised statement now carries `property` as well as
+`property_id` — all 1847 exported statements had `property: null`, which
+violates Rule W-62 and made this audit far harder than it should have been.
+
+**Rubric alignment** (`eval-agent/config/rubrics/wikidata_item.md`): a PID in
+`claim_sources` with evidence *is* supported; `value_labels` gloss item
+values; generated descriptions are the house style, not "thin"; a sparse
+catalog record is not a defect (never demand P195/P571/P217 that no channel
+supplies); duplicate catalog ids / a second manuscript's shelfmark are real
+failures.
+
+**Cache invalidation:** `WIKIDATA_VERDICT_SCHEMA` → `w137_v1`, canonical
+Studio fingerprint salt → `hmo-wikidata-v10`. Old verdicts miss automatically
+(Rule W-51) — a rebuild + re-verify is sufficient, no `override_cache`.
+
+**Curator ops after deploy:** Wikidata Studio **Rebuild (skip cache)** on the
+canonical source, then **Verify with AI**. Do not re-upload the 14 formerly
+multi-record manuscripts until their QID ledger rows are checked — their
+identity changed, and a corrected item must not re-point an existing QID
+(Rule W-99).
+
+**Measuring it without a judge run:**
+`backend/scripts/check_wikidata_export_quality.py <export.json>` now reports
+`manuscript_shared_identity`, `manuscript_multiple_catalog_ids`,
+`manuscript_multiple_source_records`, `label_shelfmark_mismatch`,
+`description_is_catalog_note`, and `export_missing_property_ids`. Baseline on
+export (13): 68 / 14 / 4 / 27 respectively.
+
+Tests: `backend/tests/unit/test_wikidata_evidence_and_identity.py` (19),
+`test_wikidata_description_hygiene.py` (14),
+`eval-agent/tests/test_marc_extract_merge.py` (raw-tag projection).
+
+**Follow-up (readiness fingerprint stability).** Auditing the red tests in this
+area surfaced a real fragility in `hmo_canonical.canonical_entity_fingerprint`:
+an absent container and an empty one hashed differently, so fingerprinting a raw
+read-back snapshot and re-fingerprinting it after `normalize_live_entity`
+disagreed — the canonical readiness gate (Rule W-94) then reported a stale
+fingerprint for an unchanged item. Scalars/mappings/sequences are now coerced to
+their empty form before hashing. Test:
+`test_hmo_canonical_readiness_contract.py::test_fingerprint_is_insensitive_to_absent_versus_empty_containers`.

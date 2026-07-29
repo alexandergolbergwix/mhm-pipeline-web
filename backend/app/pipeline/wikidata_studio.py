@@ -422,6 +422,11 @@ def _enrich_snak(snak: Any) -> None:
 
     prop = snak.get("property") or snak.get("property_id")
     if isinstance(prop, str) and prop:
+        # Mirror the PID into ``property`` — the dataclass field is
+        # ``property_id``, so every serialised statement used to reach the UI,
+        # exports and diagnostics with ``property: null`` (Rule W-62 / W-137).
+        snak.setdefault("property", prop)
+        snak["property_id"] = prop
         plabel = PROPERTY_LABELS.get(prop)
         if plabel:
             snak["property_label"] = plabel

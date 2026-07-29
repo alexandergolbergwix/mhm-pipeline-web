@@ -81,12 +81,12 @@ class TestWikidataStudioWorks:
         rec = {
             "_control_number": "990001",
             "245$a": "כתב יד",
-            "505$a": "פירוש א -- פירוש ב -- פירוש ג",
+            "505$a": "פירוש הרמבן על התורה -- שאלות ותשובות מהרשל",
             "100$a": "ראובן בן יעקב",
         }
         result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
         summary = result["summary"]
-        assert summary["works"] == 3
+        assert summary["works"] == 2
         works = [item for item in result["items"] if item["entity_type"] == "work"]
         assert all(
             item["work_candidate_evidence"][0]["source_field"] == "505"
@@ -94,12 +94,35 @@ class TestWikidataStudioWorks:
         )
         assert summary["manuscripts"] == 1
 
+    def test_thin_505_titles_link_to_unknown_text_instead_of_a_work(self) -> None:
+        """Rule W-98 — a 2-word fragment is not an identifiable work."""
+        rec = {
+            "_control_number": "990001",
+            "245$a": "כתב יד",
+            "505$a": "פירוש א -- פירוש ב -- פירוש ג",
+        }
+        result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
+        assert result["summary"]["works"] == 0
+        manuscript = next(
+            item for item in result["items"] if item["entity_type"] == "manuscript"
+        )
+        exemplars = [
+            statement for statement in manuscript["statements"]
+            if statement["property_id"] == "P1574"
+        ]
+        assert exemplars
+        assert {statement["value"] for statement in exemplars} == {"Q234460"}
+        assert all(statement["qualifiers"] for statement in exemplars)
+
     def test_works_created_from_flat_contents(self) -> None:
         """Clean structured contents default to MARC 505 evidence."""
         rec = {
             "_control_number": "990002",
             "title": "כתב יד",
-            "contents": [{"title": "פירוש א"}, {"title": "פירוש ב"}],
+            "contents": [
+                {"title": "פירוש הרמבן על התורה"},
+                {"title": "שאלות ותשובות מהרשל"},
+            ],
         }
         result = asyncio.run(build_items_for_run(marc_records=[rec], approved_matches=[]))
         assert result["summary"]["works"] == 2

@@ -867,18 +867,12 @@ def _build_manuscript_description(record: dict[str, object]) -> str:
     holding_name = _holding_institution_name(record)
     if holding_name:
         parts.append(holding_name)
-    desc = _cap_description(", ".join(parts))
-    from converter.wikidata.marc_subject_resolve import unresolved_topic_labels  # noqa: PLC0415
-
-    topics = unresolved_topic_labels(list(record.get("subjects") or []))
-    if topics:
-        topic_note = "; ".join(topics[:3])
-        if len(topics) > 3:
-            topic_note += ", …"
-        extra = _cap_description(f"Subjects include {topic_note}")
-        if len(desc) + len(extra) + 2 <= 250:
-            desc = _cap_description(f"{desc}. {extra}")
-    return desc
+    # A Wikidata description disambiguates; it is not a subject summary. The
+    # appended "Subjects include …" clause read as catalog spill — every one of
+    # the 26 manuscripts carrying it was judged partial or fail, while the
+    # plain "<language> manuscript, <date>, <holder>" form passed (Rule W-137).
+    # Unresolved topics remain available as evidence, never as description text.
+    return _cap_description(", ".join(parts))
 
 
 def _extract_century_for_work(source_record: dict[str, object]) -> str | None:

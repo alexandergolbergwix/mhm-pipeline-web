@@ -85,3 +85,18 @@ def test_readiness_round_trips_gate_envelope() -> None:
 
     assert result.ready is True
     assert result.expected_item_count == 1
+
+def test_fingerprint_is_insensitive_to_absent_versus_empty_containers() -> None:
+    """A raw snapshot and its normalized form describe the same state."""
+    from app.pipeline.hmo_canonical import normalize_live_entity
+
+    raw = {
+        "local_id": "A",
+        "source_uri": "urn:a",
+        "wikibase_id": "Q1",
+        "labels": {"en": "A"},
+    }
+    normalized = normalize_live_entity(dict(raw))
+    assert canonical_entity_fingerprint(raw) == canonical_entity_fingerprint(
+        normalized.to_dict(),
+    )

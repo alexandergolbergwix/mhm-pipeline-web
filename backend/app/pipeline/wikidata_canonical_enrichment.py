@@ -10,7 +10,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.marc_verify_context import (
+    canonical_control_number,
+    primary_control_number_for,
+)
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
 # Prefer the canonical value when both sides emit the same PID.
@@ -35,9 +38,9 @@ def merge_legacy_into_canonical(
     - Does not append unmatched legacy manuscripts (canonical is the MS root).
     """
     if not legacy_items:
-        return list(canonical_items)
+        return _with_deduped_statements(canonical_items)
     if not canonical_items:
-        return list(legacy_items)
+        return _with_deduped_statements(legacy_items)
 
     legacy_ms = _index_manuscripts(legacy_items)
     legacy_persons = _index_persons(legacy_items)
@@ -58,7 +61,8 @@ def merge_legacy_into_canonical(
             used_legacy_ids.add(legacy.local_id or id(legacy).__repr__())
             merged.append(_merge_pair(item, legacy))
         else:
-            merged.append(item)
+            item.statements = dedupe_statements(item.statements)
+            merged.append(_with_scoped_records(item))
 
     for legacy in legacy_items:
         lid = legacy.local_id or ""
@@ -70,6 +74,7 @@ def merge_legacy_into_canonical(
             # Canonical already owns the manuscript public item for each CN.
             continue
         if et in {"person", "work"}:
+            legacy.statements = dedupe_statements(legacy.statements)
             merged.append(legacy)
     return merged
 
@@ -87,7 +92,7 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
         entity_type=canonical.entity_type or legacy.entity_type,
         semantic_type=canonical.semantic_type or legacy.semantic_type,
         local_id=canonical.local_id,
-        records=_union_records(canonical.records, legacy.records),
+        records=_merged_records(canonical, legacy),
         authority_evidence=_union_evidence(
             canonical.authority_evidence, legacy.authority_evidence,
         ),
@@ -121,7 +126,50 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
             continue
         out.statements.append(stmt)
         seen.add(key)
+    out.statements = dedupe_statements(out.statements)
     return out
+
+
+def _with_scoped_records(item: WikidataItem) -> WikidataItem:
+    """A manuscript item's MARC scope is its own record (Rule W-137)."""
+    if (item.entity_type or "").strip().lower() == "manuscript":
+        cn = primary_control_number_of(item)
+        item.records = [cn] if cn else []
+    return item
+
+
+def _with_deduped_statements(items: list[WikidataItem]) -> list[WikidataItem]:
+    for item in items:
+        item.statements = dedupe_statements(item.statements)
+        _with_scoped_records(item)
+    return list(items)
+
+
+def dedupe_statements(statements: list[WikidataStatement]) -> list[WikidataStatement]:
+    """One statement per (property, value), keeping the best-sourced instance.
+
+    ``_statement_key`` includes ``value_type``, so the same fact emitted as
+    ``string`` and ``external-id`` survived twice — every manuscript shipped
+    P3959 four or five times (Rule W-137). Ranking by (references, qualifiers)
+    keeps the referenced instance the judge and curator want to see.
+    """
+    best: dict[tuple[str, str], WikidataStatement] = {}
+    order: list[tuple[str, str]] = []
+    for stmt in statements or []:
+        key = (
+            str(stmt.property_id or ""),
+            str(stmt.value if stmt.value is not None else ""),
+        )
+        current = best.get(key)
+        if current is None:
+            best[key] = stmt
+            order.append(key)
+            continue
+        rank = (len(stmt.references or []), len(stmt.qualifiers or []))
+        current_rank = (len(current.references or []), len(current.qualifiers or []))
+        if rank > current_rank:
+            best[key] = stmt
+    return [best[key] for key in order]
 
 
 def _statement_key(stmt: WikidataStatement) -> tuple[str, str, str]:
@@ -197,12 +245,42 @@ def _control_numbers_of(item: WikidataItem) -> set[str]:
     return out
 
 
+def _merged_records(canonical: WikidataItem, legacy: WikidataItem) -> list[str]:
+    """Manuscripts keep only their own record; other types union sources.
+
+    A manuscript's MARC slice is merged across its ``records``, so keeping
+    linked CNs here feeds the judge (and the label/description builders) another
+    manuscript's title, shelfmark and dates (Rule W-137). Persons and works
+    legitimately span records — Rule W-63.
+    """
+    if (canonical.entity_type or "").strip().lower() == "manuscript":
+        cn = primary_control_number_of(canonical) or primary_control_number_of(legacy)
+        return [cn] if cn else []
+    return _union_records(canonical.records, legacy.records)
+
+
+def primary_control_number_of(item: WikidataItem) -> str:
+    """The CN a manuscript item *is*, not the ones it merely links to."""
+    return primary_control_number_for(
+        sorted(_control_numbers_of(item)),
+        item.local_id,
+    )
+
+
 def _index_manuscripts(items: list[WikidataItem]) -> dict[str, WikidataItem]:
+    """Index legacy manuscripts by their OWN control number only.
+
+    Indexing by every linked CN made several canonical manuscripts match the
+    same legacy item, so each inherited that item's shelfmark, title, dates and
+    holder — three distinct manuscripts shipped as `The British Library, F 8298`
+    with `P217 = F 7956` (Rule W-137).
+    """
     index: dict[str, WikidataItem] = {}
     for item in items:
         if (item.entity_type or "").lower() != "manuscript":
             continue
-        for cn in _control_numbers_of(item):
+        cn = primary_control_number_of(item)
+        if cn:
             index.setdefault(cn, item)
     return index
 
@@ -211,11 +289,10 @@ def _match_manuscript(
     item: WikidataItem,
     index: dict[str, WikidataItem],
 ) -> WikidataItem | None:
-    for cn in _control_numbers_of(item):
-        hit = index.get(cn)
-        if hit is not None:
-            return hit
-    return None
+    cn = primary_control_number_of(item)
+    if not cn:
+        return None
+    return index.get(cn)
 
 
 def _person_keys(item: WikidataItem) -> set[str]:

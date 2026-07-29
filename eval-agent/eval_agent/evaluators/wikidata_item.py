@@ -109,6 +109,9 @@ class WikidataItemEvaluator(Evaluator):
             ensure_ascii=False,
             indent=2,
         )
+        claim_sources_json = json.dumps(
+            evidence.get("claim_sources") or {}, ensure_ascii=False, indent=2,
+        )
         marc_note = (
             "present"
             if (evidence.get("marc_present") or candidate.marc_context)
@@ -131,6 +134,10 @@ class WikidataItemEvaluator(Evaluator):
             f"  validation issues:\n{issues_json}\n"
             "Evidence channels (all first-class — MARC is necessary but not sufficient):\n"
             f"  MARC slice status: {marc_note}\n"
+            "  per-claim MARC provenance (PID -> the source field text that\n"
+            "  supports it; a claim listed here WITH evidence is supported —\n"
+            "  do not call it unsourced):\n"
+            f"{claim_sources_json}\n"
             f"  VIAF pack:\n{viaf_json}\n"
             f"  Mazal / NLI pack:\n{mazal_json}\n"
             f"  Existing Wikidata pack:\n{wd_existing_json}\n"

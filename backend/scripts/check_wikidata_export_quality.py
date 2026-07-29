@@ -109,6 +109,50 @@ def _evidence(row: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
+_LABEL_SHELFMARK_RE = re.compile(r"([A-Z]{1,3}\.?\s?\d[\d\-/. ]*)$")
+_CATALOG_NOTE_RE = (
+    re.compile(r"MARC 33[678]"),
+    re.compile(r"content type:|media type:|carrier type:", re.I),
+    re.compile(r"^\s*(f|ff)\.?\s*\d+[ab]?\s*[:.]", re.I),
+    re.compile(r"^\s*(According to|Related material|Formerly|Bound with)\b", re.I),
+    re.compile(r"^\s*(דף|דפים|בסוף|בראש|בתוך)\s"),
+)
+
+
+def _values(statements: list[dict[str, Any]], pid: str) -> list[str]:
+    out: list[str] = []
+    for statement in statements:
+        prop = str(statement.get("property_id") or statement.get("property") or "")
+        if prop != pid:
+            continue
+        value = str(statement.get("value") or "").strip()
+        if value:
+            out.append(value)
+    return out
+
+
+def _norm_shelfmark(text: str) -> str:
+    return re.sub(r"[\s.]+", "", str(text or "")).upper()
+
+
+def _looks_like_catalog_note(text: str) -> bool:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return False
+    if len(cleaned) > 180:
+        return True
+    return any(pattern.search(cleaned) for pattern in _CATALOG_NOTE_RE)
+
+
+def _description_any(row: dict[str, Any]) -> list[str]:
+    raw = row.get("descriptions") or row.get("descriptions_json") or {}
+    if isinstance(raw, str):
+        raw = _json_cell(raw)
+    if isinstance(raw, dict):
+        return [str(value or "") for value in raw.values()]
+    return []
+
+
 def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     entity_type = str(row.get("entity_type") or row.get("sub_type") or "")
     checks: list[str] = []
@@ -117,6 +161,30 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
         str(statement.get("property_id") or statement.get("property") or "")
         for statement in statements
     }
+    if statements and not any(pids - {""}):
+        checks.append("export_missing_property_ids")
+
+    if entity_type == "manuscript":
+        # Rule W-137 — cross-record contamination and note-as-description.
+        catalog_ids = _values(statements, "P3959")
+        shelfmarks = _values(statements, "P217")
+        if len(catalog_ids) > 1:
+            checks.append("manuscript_multiple_catalog_ids")
+        if len(shelfmarks) > 1:
+            checks.append("manuscript_multiple_shelfmarks")
+        records = row.get("records") or row.get("record_ids") or []
+        if isinstance(records, str):
+            records = _json_cell(records)
+        if isinstance(records, list) and len(records) > 1:
+            checks.append("manuscript_multiple_source_records")
+        match = _LABEL_SHELFMARK_RE.search(_label(row))
+        if match and shelfmarks:
+            wanted = _norm_shelfmark(match.group(1))
+            have = {_norm_shelfmark(s) for s in shelfmarks}
+            if wanted and not any(wanted in s or s in wanted for s in have):
+                checks.append("label_shelfmark_mismatch")
+        if any(_looks_like_catalog_note(text) for text in _description_any(row)):
+            checks.append("description_is_catalog_note")
     if "approved" not in row:
         checks.append("export_missing_item_approval")
     if "ai_verdict" not in row and "ai_verdict_json" not in row:
@@ -180,6 +248,31 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     return relevant
 
 
+def _shared_identity_findings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Manuscripts that ship the same label + shelfmark are one item, twice."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for row in rows:
+        if str(row.get("entity_type") or row.get("sub_type") or "") != "manuscript":
+            continue
+        shelfmarks = _values(_statements(row), "P217")
+        label = _label(row)
+        if not label or not shelfmarks:
+            continue
+        key = (label.casefold(), _norm_shelfmark(shelfmarks[0]))
+        groups.setdefault(key, []).append(str(row.get("local_id") or row.get("id") or ""))
+    return [
+        {
+            "local_id": ", ".join(sorted(local_ids)),
+            "entity_type": "manuscript",
+            "label": label,
+            "checks": ["manuscript_shared_identity"],
+            "shelfmark": shelfmark,
+        }
+        for (label, shelfmark), local_ids in groups.items()
+        if len(local_ids) > 1
+    ]
+
+
 def audit(path: Path) -> dict[str, Any]:
     rows, metadata = _items(path)
     findings = [
@@ -187,6 +280,7 @@ def audit(path: Path) -> dict[str, Any]:
         for row in rows
         if (finding := _check_row(row))
     ]
+    findings.extend(_shared_identity_findings(rows))
     counts: dict[str, int] = {}
     for finding in findings:
         for check in finding["checks"]:

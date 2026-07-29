@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-136)
+## Architectural rules (W-1…W-137)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -99,6 +99,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-121** — Canonical CREATE works MUST recover MARC 245 / known-QID evidence
 - **W-122** — Wikidata→Wikibase bridges MUST be browseable Item:Q URLs
 - **W-125** — Canonical Wikidata Studio MUST merge full MARC/authority enrichment
+- **W-137** — Verify evidence must be complete and manuscript identity must be its own
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

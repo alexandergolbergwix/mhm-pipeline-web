@@ -11,7 +11,10 @@ import logging
 import re
 
 from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
-from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.marc_verify_context import (
+    canonical_control_number,
+    primary_control_number_for,
+)
 from converter.authority.evidence import normalize_authority_id, normalize_viaf_id, normalize_wikidata_qid
 from converter.wikidata.hmo_wikidata_pq_mapper import (
     HMO_CLASS_TO_WIKIDATA_QID,
@@ -54,6 +57,28 @@ _BOILERPLATE_DESCRIPTION = (
 _PERSON_IDENTIFIER_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P268"})
 
 PUBLIC_WIKIDATA_ENTITY_TYPES = frozenset({"manuscript", "person", "work"})
+
+
+def identity_control_number(entity: CanonicalHmoEntity) -> str:
+    """The control number this entity is about (Rule W-137).
+
+    HMO propagates linked CNs onto derived nodes (Rule W-48); identity —
+    labels, shelfmark, description, the legacy MARC join — must use the CN in
+    the entity's own source URI / local id.
+    """
+    return primary_control_number_for(
+        entity.control_numbers,
+        entity.source_uri,
+        entity.local_id,
+    )
+
+
+def identity_records_for(entity: CanonicalHmoEntity, wd_type: str) -> list[str]:
+    """Manuscripts carry only their own record; persons/works span records."""
+    if wd_type == "manuscript":
+        cn = identity_control_number(entity)
+        return [cn] if cn else []
+    return list(entity.control_numbers)
 
 
 def is_public_wikidata_studio_item(
@@ -230,7 +255,9 @@ def canonical_wikidata_fingerprint(
     candidates = wikidata_candidates_from_hmo(entities)
     payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
     # v9: MARC/authority enrichment merge (Rule W-125) participates in the salt.
-    salt = "hmo-wikidata-v9:"
+    # v10 — Rule W-137 (manuscript identity scoping, one catalog id per
+    # manuscript, generated descriptions, deduped claims).
+    salt = "hmo-wikidata-v10:"
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -312,13 +339,15 @@ def native_wikidata_claims(
                     continue
             _append_mapped({"property": property_id, "value": str(raw)})
 
-    for cn in entity.control_numbers:
-        cn = str(cn).strip()
-        if cn and wd_type == "manuscript":
-            key = (P_NLI_CATALOG_ID, cn)
-            if key not in seen:
-                seen.add(key)
-                native.append({"property": P_NLI_CATALOG_ID, "value": cn})
+    # One catalog id per manuscript — its own. Emitting a P3959 per linked CN
+    # put 4–5 NNL ids on every item and claimed other manuscripts' records
+    # (Rule W-137).
+    if wd_type == "manuscript":
+        cn = identity_control_number(entity)
+        key = (P_NLI_CATALOG_ID, cn)
+        if cn and key not in seen:
+            seen.add(key)
+            native.append({"property": P_NLI_CATALOG_ID, "value": cn})
 
     for evidence in entity.authority_evidence:
         if evidence.get("accepted") is not True:
@@ -402,7 +431,7 @@ def native_items_from_hmo(
             existing_qid=existing_qid,
             entity_type=wd_type,
             local_id=entity.local_id,
-            records=list(entity.control_numbers),
+            records=identity_records_for(entity, wd_type),
             authority_evidence=[
                 evidence for evidence in entity.authority_evidence
                 if evidence.get("accepted") is True
@@ -684,6 +713,27 @@ def _is_boilerplate_description(text: str) -> bool:
     return any(pattern.search(cleaned) for pattern in _BOILERPLATE_DESCRIPTION)
 
 
+_CATALOG_NOTE_DESCRIPTION = (
+    re.compile(r"MARC 33[678]"),
+    re.compile(r"content type:|media type:|carrier type:", re.I),
+    re.compile(r"^\s*(f|ff)\.?\s*\d+[ab]?\s*[:.]", re.I),
+    re.compile(r"^\s*(According to|Related material|Formerly|Bound with)\b", re.I),
+    re.compile(r"^\s*(דף|דפים|בסוף|בראש|בתוך)\s"),
+)
+
+_MAX_DESCRIPTION_PROSE_LENGTH = 180
+
+
+def _is_catalog_note_description(text: str) -> bool:
+    """True when a stored description is really a MARC note (Rule W-137)."""
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return True
+    if len(cleaned) > _MAX_DESCRIPTION_PROSE_LENGTH:
+        return True
+    return any(pattern.search(cleaned) for pattern in _CATALOG_NOTE_DESCRIPTION)
+
+
 def _truncate_description(text: str) -> str:
     cleaned = str(text or "").strip()
     if len(cleaned) <= _MAX_DESCRIPTION_LENGTH:
@@ -762,7 +812,7 @@ def _wikidata_labels_and_aliases(
     if raw_labels:
         return _route_labels_by_script(raw_labels, has_hebrew=_has_hebrew_script), aliases
     if entity.control_numbers:
-        return {"en": f"NLI manuscript {entity.control_numbers[0]}"}, aliases
+        return {"en": f"NLI manuscript {identity_control_number(entity)}"}, aliases
     return {"en": entity.local_id.replace("QDraft_", "").replace("_", " ")}, aliases
 
 
@@ -837,7 +887,7 @@ def _manuscript_labels_and_aliases(
         if record:
             cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
         if not cn and entity.control_numbers:
-            cn = str(entity.control_numbers[0]).strip()
+            cn = identity_control_number(entity)
         if cn:
             labels["en"] = f"Jerusalem, NLI, {cn}"
             labels["he"] = f"כתב יד עברי, ספרייה לאומית, {cn}"
@@ -947,14 +997,17 @@ def _marc_record_for_entity(
     entity: CanonicalHmoEntity,
     context: CanonicalStudioContext | None,
 ) -> dict[str, Any] | None:
+    """The MARC record this entity *is about* — its own, never a linked one.
+
+    Everything downstream of this decides identity (label, shelfmark, holder,
+    description). Taking "the first linked record that exists" is what let one
+    manuscript's shelfmark label three others (Rule W-137).
+    """
     if context is None:
         return None
-    for raw_cn in entity.control_numbers:
-        cn = canonical_control_number(str(raw_cn))
-        record = context.marc_by_cn.get(cn) if cn else None
-        if record:
-            return dict(record)
-    return None
+    cn = identity_control_number(entity)
+    record = context.marc_by_cn.get(cn) if cn else None
+    return dict(record) if record else None
 
 
 def _shelfmark_from_claims(entity: CanonicalHmoEntity) -> str:
@@ -1267,11 +1320,27 @@ def _upload_descriptions(
     *,
     context: CanonicalStudioContext | None = None,
 ) -> dict[str, str]:
+    # Manuscripts: the generated form wins. HMO manuscript descriptions are
+    # `rdfs:comment` catalog notes ("According to Louis Levin…", "Related
+    # material: AHW-14", RDA 33x carrier terms) — evidence, not descriptions.
+    # Every manuscript carrying one was judged partial/fail; the generated
+    # "<language> manuscript, <date>, <holder>" form passed (Rule W-137).
+    if entity_type == "manuscript" and context is not None:
+        enriched = _enriched_description(entity, entity_type, context)
+        if enriched:
+            return enriched
+
     cleaned: dict[str, str] = {}
     for lang, value in entity.descriptions.items():
         text = str(value or "").strip()
-        if text and not _is_boilerplate_description(text):
-            cleaned[str(lang)] = _truncate_description(text)
+        if not text or _is_boilerplate_description(text):
+            continue
+        if entity_type == "manuscript" and _is_catalog_note_description(text):
+            continue
+        slot = _description_language_slot(str(lang), text)
+        if not slot:
+            continue
+        cleaned.setdefault(slot, _truncate_description(text))
     if cleaned:
         return cleaned
 
@@ -1289,6 +1358,54 @@ def _upload_descriptions(
     return {}
 
 
+_HEBREW_CHARS = re.compile(r"[֐-׿]")
+_LATIN_CHARS = re.compile(r"[A-Za-z]")
+
+
+def _description_language_slot(lang: str, text: str) -> str:
+    """Route a description to the language it is actually written in.
+
+    45 work items shipped Hebrew text in the ``en`` slot (Rule W-69 covered the
+    generated form only, not stored HMO comments). A mixed-script description
+    cannot be trusted as either language, so it is dropped and the generated
+    form takes over (Rule W-137).
+    """
+    hebrew = bool(_HEBREW_CHARS.search(text))
+    latin = bool(_LATIN_CHARS.search(text))
+    if hebrew and latin:
+        return "" if lang == "en" else lang
+    if hebrew:
+        return "he"
+    if latin:
+        return "en"
+    return lang
+
+
+def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
+    """Hebrew counterpart of the generated manuscript description.
+
+    Keeps the ``he`` slot from falling back to a MARC note (Rule W-137). Only
+    evidenced fragments are used — no invented date or holder.
+    """
+    from converter.wikidata.item_builder import _holding_institution_name  # noqa: PLC0415
+
+    parts = ["כתב יד עברי"]
+    dates = record.get("dates")
+    if isinstance(dates, dict):
+        year = str(dates.get("year") or dates.get("gregorian_year") or "").strip('" ')
+        if re.match(r"\d{3,4}$", year):
+            parts.append(year)
+    holder = _holding_institution_name(record)
+    if holder:
+        parts.append(holder)
+    shelfmark = str(record.get("shelfmark") or "").strip().strip('"')
+    if shelfmark:
+        parts.append(shelfmark)
+    if len(parts) == 1:
+        return ""
+    return ", ".join(parts)
+
+
 def _enriched_description(
     entity: CanonicalHmoEntity,
     entity_type: str,
@@ -1301,13 +1418,18 @@ def _enriched_description(
     )
 
     if entity_type == "manuscript":
-        for cn in entity.control_numbers:
-            record = context.marc_by_cn.get(str(cn).strip())
-            if not record:
-                continue
+        # Its own record only — a linked manuscript's title/date/holder must
+        # never describe this one (Rule W-137).
+        cn = identity_control_number(entity)
+        record = context.marc_by_cn.get(cn) if cn else None
+        if record:
             marc = dict(record)
-            marc["_control_number"] = str(cn).strip()
-            return {"en": _truncate_description(_build_manuscript_description(marc))}
+            marc["_control_number"] = cn
+            out = {"en": _truncate_description(_build_manuscript_description(marc))}
+            hebrew = _hebrew_manuscript_description(marc)
+            if hebrew:
+                out["he"] = _truncate_description(hebrew)
+            return out
 
     if entity_type == "person":
         match = _authority_match_for_entity(entity, context)
@@ -1405,7 +1527,7 @@ def _append_manuscript_bridge_statements(
 ) -> None:
     if entity_type != "manuscript" or not entity.control_numbers:
         return
-    control_number = str(entity.control_numbers[0]).strip()
+    control_number = identity_control_number(entity)
     if not control_number:
         return
     # Drop ontology IRIs / dead MS_ slugs that may have been rolled up from

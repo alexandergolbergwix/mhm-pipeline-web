@@ -285,3 +285,10 @@ Authority refresh reports `sub_processed`/`sub_total`/`sub_unit=entities`;
 RDF rebuild reports `sub_unit=records`. `JobProgressInline` and the job tray
 show a second bar when `sub_total > 0`. *Why:* `1/3 steps` alone hid hours of
 entity matching as a full bar with no movement.
+
+**Canonical fingerprint stability (Rule W-137 follow-up).**
+`canonical_entity_fingerprint` coerces scalars/mappings/sequences to their empty
+form before hashing: an absent `control_numbers` and an empty one are the same
+state and must hash the same, otherwise fingerprinting a raw read-back snapshot
+and re-fingerprinting it after `normalize_live_entity` disagree and the readiness
+gate (R-W-94) reports a stale fingerprint for an unchanged item.

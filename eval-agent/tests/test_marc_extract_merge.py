@@ -56,3 +56,24 @@ def test_canonical_control_number_strips_quotes_and_space() -> None:
     assert marc_extract.canonical_control_number('"990"') == "990"
     assert marc_extract.canonical_control_number("  990 ") == "990"
     assert marc_extract.canonical_control_number(None) == ""
+
+
+def test_project_fills_missing_slices_from_raw_marc_tags() -> None:
+    """Rule W-137 — collapsed-key runs store raw ``NNN$x`` keys only."""
+    record = {
+        "_control_number": "990000592310205171",
+        "title": "גלא עמיקתא",
+        "008": "1651",
+        "300$a": "39 leaves",
+        "852$j": "F 7956",
+    }
+    out = marc_extract.project(record, ["title", "dates", "extent", "shelfmark"])
+    assert out["title"] == "גלא עמיקתא"
+    assert out["dates"] == "008: 1651"
+    assert "39 leaves" in out["extent"]
+    assert "F 7956" in out["shelfmark"]
+
+
+def test_normalised_values_are_not_overwritten_by_raw_tags() -> None:
+    record = {"_control_number": "1", "extent": "12 folios", "300$a": "39 leaves"}
+    assert marc_extract.project(record, ["extent"])["extent"] == "12 folios"

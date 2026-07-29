@@ -117,11 +117,79 @@ def project_many(
     return project(merged, keys)
 
 
+# Raw collapsed MARC tags behind each slice name — byte-mirror of
+# backend/app/pipeline/marc_verify_context.py::RAW_TAG_FALLBACK.
+RAW_TAG_FALLBACK: dict[str, tuple[str, ...]] = {
+    "dates": ("008", "260$c", "264$c", "046$a", "046$b"),
+    "title": ("245$a", "245$b", "245$c"),
+    "variant_titles": ("246$a", "246$b"),
+    "place": ("260$a", "264$a", "751$a"),
+    "extent": ("300$a", "300$b", "300$c"),
+    "material": ("340$a", "340$e"),
+    "carrier": ("336$a", "337$a", "338$a"),
+    "notes": ("500$a", "590$a", "597$a"),
+    "contents": ("505$a", "505$t"),
+    "summary": ("520$a",),
+    "languages": ("041$a", "546$a"),
+    "rights": ("540$a", "540$u", "939$a", "939$u"),
+    "provenance": ("541$a", "541$b", "561$a", "563$a", "583$a"),
+    "subjects": ("650$a", "651$a", "600$a", "610$a"),
+    "genres": ("655$a",),
+    "authors": ("100$a", "100$d", "110$a", "111$a"),
+    "contributors": ("700$a", "700$d", "710$a", "711$a"),
+    "shelfmark": ("852$j", "852$h", "852$c", "952$a", "952$b", "952$c", "952$d"),
+    "digital_access": ("856$u", "966$a", "966$9"),
+    "related_records": ("773$a", "774$a", "787$a"),
+}
+
+def _raw_tag_values(record: dict[str, Any], tags: tuple[str, ...]) -> str:
+    parts: list[str] = []
+    for tag in tags:
+        value = record.get(tag)
+        if value in (None, "", [], {}):
+            continue
+        if isinstance(value, list):
+            rendered = " ; ".join(
+                json.dumps(x, ensure_ascii=False) if isinstance(x, dict) else str(x)
+                for x in value if x not in (None, "")
+            )
+        elif isinstance(value, dict):
+            rendered = json.dumps(value, ensure_ascii=False)
+        else:
+            rendered = str(value)
+        rendered = rendered.strip()
+        if rendered:
+            parts.append(f"{tag}: {rendered}")
+    return " | ".join(parts)
+
+
+def raw_tag_slice(
+    record: dict[str, Any],
+    *,
+    skip: set[str] | frozenset[str] = frozenset(),
+) -> dict[str, str]:
+    """Project raw collapsed MARC tags (mirror of the backend helper)."""
+    out: dict[str, str] = {}
+    for name, tags in RAW_TAG_FALLBACK.items():
+        if name in skip:
+            continue
+        rendered = _raw_tag_values(record, tags)
+        if rendered:
+            out[name] = rendered
+    return out
+
+
 def project(record: dict[str, Any], keys: list[str]) -> dict[str, str]:
     """Pick keys from a record and coerce values to single-line strings.
 
     Reusable across evaluators. Each evaluator declares its own ``keys``
     list — that's the per-evaluator MARC slice (context engineering).
+
+    Records ingested from TSV/collapsed-key sources carry only raw
+    ``NNN$x`` keys for most fields, so after the semantic pass we fill any
+    still-missing slice name from ``RAW_TAG_FALLBACK``. Without it the judge
+    sees title/authors/contributors/subjects only and every date, extent,
+    shelfmark, rights and note claim reads as unsupported (Rule W-137).
     """
     out: dict[str, str] = {}
     for k in keys:
@@ -144,4 +212,6 @@ def project(record: dict[str, Any], keys: list[str]) -> dict[str, str]:
             out[k] = json.dumps(v, ensure_ascii=False)
         else:
             out[k] = str(v)
+    for name, rendered in raw_tag_slice(record, skip=set(out)).items():
+        out[name] = rendered
     return out

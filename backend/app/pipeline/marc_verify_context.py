@@ -45,6 +45,35 @@ AUTHORITY_MARC_KEYS = [
     "notes", "dates", "place", "related_places", "colophon_text",
 ]
 
+# Raw collapsed MARC tags that back the claims we project, keyed by the slice
+# name the judge sees. Older runs (and every TSV/collapsed-key ingest) store
+# ONLY raw `NNN$x` keys plus a handful of normalised ones, so a slice built
+# from normalised names alone shows the judge title/authors/contributors/
+# subjects and nothing else — every date, extent, shelfmark, note, holder and
+# rights claim then reads as "unsupported by MARC" (Rule W-137).
+RAW_TAG_FALLBACK: dict[str, tuple[str, ...]] = {
+    "dates": ("008", "260$c", "264$c", "046$a", "046$b"),
+    "title": ("245$a", "245$b", "245$c"),
+    "variant_titles": ("246$a", "246$b"),
+    "place": ("260$a", "264$a", "751$a"),
+    "extent": ("300$a", "300$b", "300$c"),
+    "material": ("340$a", "340$e"),
+    "carrier": ("336$a", "337$a", "338$a"),
+    "notes": ("500$a", "590$a", "597$a"),
+    "contents": ("505$a", "505$t"),
+    "summary": ("520$a",),
+    "languages": ("041$a", "546$a"),
+    "rights": ("540$a", "540$u", "939$a", "939$u"),
+    "provenance": ("541$a", "541$b", "561$a", "563$a", "583$a"),
+    "subjects": ("650$a", "651$a", "600$a", "610$a"),
+    "genres": ("655$a",),
+    "authors": ("100$a", "100$d", "110$a", "111$a"),
+    "contributors": ("700$a", "700$d", "710$a", "711$a"),
+    "shelfmark": ("852$j", "852$h", "852$c", "952$a", "952$b", "952$c", "952$d"),
+    "digital_access": ("856$u", "966$a", "966$9"),
+    "related_records": ("773$a", "774$a", "787$a"),
+}
+
 
 def canonical_control_number(value: Any) -> str:
     """Strip surrounding quotes/whitespace so a persisted ``"990…"`` joins a
@@ -88,7 +117,54 @@ def merge_marc_records(
     return base
 
 
-def project_marc_slice(record: dict[str, Any], keys: list[str]) -> dict[str, str]:
+def _raw_tag_values(record: dict[str, Any], tags: tuple[str, ...]) -> str:
+    """Join the non-empty raw `NNN$x` values behind one slice name."""
+    parts: list[str] = []
+    for tag in tags:
+        value = record.get(tag)
+        if value in (None, "", [], {}):
+            continue
+        if isinstance(value, list):
+            rendered = " ; ".join(
+                json.dumps(x, ensure_ascii=False) if isinstance(x, dict) else str(x)
+                for x in value if x not in (None, "")
+            )
+        elif isinstance(value, dict):
+            rendered = json.dumps(value, ensure_ascii=False)
+        else:
+            rendered = str(value)
+        rendered = rendered.strip()
+        if rendered:
+            parts.append(f"{tag}: {rendered}")
+    return " | ".join(parts)
+
+
+def raw_tag_slice(
+    record: dict[str, Any],
+    *,
+    skip: set[str] | frozenset[str] = frozenset(),
+) -> dict[str, str]:
+    """Project raw collapsed MARC tags for the slice names in ``RAW_TAG_FALLBACK``.
+
+    Only fills names the normalised projection could not supply, so a modern
+    run (normalised keys present) is byte-identical to before.
+    """
+    out: dict[str, str] = {}
+    for name, tags in RAW_TAG_FALLBACK.items():
+        if name in skip:
+            continue
+        rendered = _raw_tag_values(record, tags)
+        if rendered:
+            out[name] = rendered
+    return out
+
+
+def project_marc_slice(
+    record: dict[str, Any],
+    keys: list[str],
+    *,
+    include_raw_tags: bool = True,
+) -> dict[str, str]:
     out: dict[str, str] = {}
     for key in keys:
         value = record.get(key)
@@ -109,18 +185,42 @@ def project_marc_slice(record: dict[str, Any], keys: list[str]) -> dict[str, str
             out[key] = json.dumps(value, ensure_ascii=False)
         else:
             out[key] = str(value)
+    if include_raw_tags:
+        for name, rendered in raw_tag_slice(record, skip=set(out)).items():
+            out[name] = rendered
     return out
 
 
-def _primary_control_number(item: dict[str, Any], control_numbers: list[str]) -> str:
-    if not control_numbers:
+def primary_control_number_for(
+    control_numbers: list[str] | tuple[str, ...],
+    *identity_fields: Any,
+) -> str:
+    """The control number this entity *is about*, not merely linked to.
+
+    HMO propagates linked control numbers onto derived nodes (Rule W-48), so a
+    manuscript can carry several. Identity — labels, shelfmark, dates, the
+    legacy MARC join — must use the CN embedded in its own source URI / local
+    id; the rest are context only (Rule W-137).
+    """
+    cns = [canonical_control_number(cn) for cn in control_numbers or []]
+    cns = [cn for cn in cns if cn]
+    if not cns:
         return ""
-    for field in (item.get("source_uri"), item.get("local_id"), item.get("_local_id")):
+    for field in identity_fields:
         text = str(field or "")
-        for cn in control_numbers:
-            if cn in text:
+        for cn in cns:
+            if cn and cn in text:
                 return cn
-    return control_numbers[0]
+    return cns[0]
+
+
+def _primary_control_number(item: dict[str, Any], control_numbers: list[str]) -> str:
+    return primary_control_number_for(
+        control_numbers,
+        item.get("source_uri"),
+        item.get("local_id"),
+        item.get("_local_id"),
+    )
 
 
 def marc_context_for_item(

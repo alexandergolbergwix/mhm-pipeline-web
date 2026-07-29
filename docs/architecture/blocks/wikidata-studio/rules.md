@@ -342,3 +342,20 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     a fingerprint that hashed the full shape produced a `cache_key` no reader
     could reproduce — a 313-item run showed 194/99/20 in the modal and `—` in
     every AI-verdict cell.
+
+59. **R59 — Verify evidence must be complete; manuscript identity is its own (Rule W-137).**
+    `marc_verify_context.RAW_TAG_FALLBACK` / `raw_tag_slice()` fill slice names
+    the normalised keys cannot (collapsed-key runs store `300$a`, `852$j`,
+    `540$a`, `008`); `wikidata_verify_evidence.build_claim_sources()` adds
+    per-claim PID → source-field provenance and `build_statement_value_labels()`
+    adds offline PID/QID glosses. Manuscript identity (labels, shelfmark,
+    description, `records`, the legacy MARC join, one `P3959`) uses
+    `identity_control_number()` — the CN in the entity's own source URI, never a
+    propagated one. `dedupe_statements()` keeps one claim per (property, value).
+    Manuscript descriptions are generated, never `rdfs:comment` catalog notes,
+    and `_description_language_slot` keeps Hebrew out of `en`. Hard gates:
+    `MANUSCRIPT_SHARED_IDENTITY`, `LABEL_SHELFMARK_MISMATCH`,
+    `MANUSCRIPT_MULTIPLE_CATALOG_IDS`, `MANUSCRIPT_MULTIPLE_SHELFMARKS`.
+    *Why:* export (13) judged 43 partial / 21 fail — all manuscripts. The judge
+    saw four MARC keys, three items shared one shelfmark, all 68 emitted P3959
+    4–5×, and 27 descriptions were catalog notes.

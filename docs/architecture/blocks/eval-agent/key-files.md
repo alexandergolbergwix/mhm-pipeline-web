@@ -26,7 +26,7 @@
 | `backend/app/pipeline/hmo_schema_verify.py` | HMO schema channel stream: `filter_schema_entries` enriches OWL metadata, `schema_verdict_query_summary` cache keys (cache-only persistence, no DB row) |
 | `backend/converter/wikibase/ontology_schema_reader.py` | Parses `hebrew-manuscripts.ttl` → Wikibase datatypes; `schema_entry_metadata_by_uri()` for verify fixture enrichment (Rule W-47) |
 | `eval-agent/eval_agent/ingest/hmo_wikibase_items.py` | Loads item fixture; `control_number()` / `control_numbers()` / `primary_control_number()`; `enrich_control_numbers()` across deferred links (Rule W-48) |
-| `eval-agent/eval_agent/ingest/marc_extract.py` | `project()`, `merge_records()`, `project_many()` — multi-CN MARC union (Rule W-50) |
+| `eval-agent/eval_agent/ingest/marc_extract.py` | `project()`, `merge_records()`, `project_many()` — multi-CN MARC union (Rule W-50) + `RAW_TAG_FALLBACK` / `raw_tag_slice()` collapsed-tag projection (Rule W-137) |
 | `eval-agent/eval_agent/ingest/shacl_gate.py` | `blocking_shacl_issues()` for verify prompts (mirrors upload gate) |
 | `eval-agent/eval_agent/evaluators/hmo_wikibase_item.py` | HMO item evaluator — entity_type, multi-CN grounding, SHACL block short-circuit (W-48/W-50) |
 | `eval-agent/eval_agent/evaluators/hmo_wikibase_schema.py` | Schema bootstrap evaluator — prompt includes description, aliases, OWL kind/range |
