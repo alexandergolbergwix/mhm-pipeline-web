@@ -24,6 +24,7 @@
 | Enforce four HMO pillars (Wikibase root / WD map / ontology 1:1 / enrichment) | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) R45 + Rule W-102 |
 | Choose Wikidata upload target (dry-run / test / live) | [wikidata-studio](blocks/wikidata-studio/README.md) R6 + Rule W-103 |
 | Add an AI-verify surface | [eval-agent](blocks/eval-agent/README.md) |
+| Debug AI verdicts persisted but showing `—` in the review table | [Wikidata Studio R58](blocks/wikidata-studio/rules.md) + Rule W-136 + `wikidata_verdict_cache.py` |
 | Analyze partial/fail AI verdicts with Codex | [eval-agent](blocks/eval-agent/README.md) + [Wikidata Studio R25](blocks/wikidata-studio/rules.md) for item/QID evidence |
 | Audit Wikidata export quality/failure counts | [wikidata-studio](blocks/wikidata-studio/README.md) — run `check_wikidata_export_quality.py` |
 | Add caching or an external API call | [caching](blocks/caching/README.md) |

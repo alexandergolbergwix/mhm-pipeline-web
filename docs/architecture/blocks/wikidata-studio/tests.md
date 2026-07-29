@@ -75,3 +75,4 @@ Any new external-write path or reconcile change MUST extend
 
 - `backend/tests/unit/test_wikidata_studio_source_cache.py` — legacy/canonical cache lookup isolation for shadow builds.
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical HMO claim filtering, fingerprints, and native Wikidata projection.
+- `backend/tests/unit/test_wikidata_verdict_cache.py` — slim-persist ↔ full-item fingerprint parity and evidence-free verdict survival (Rule W-136).

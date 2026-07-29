@@ -330,3 +330,15 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `asyncio.to_thread`; slim/throttled session GET; UI session reload ≤1/8 s
     mid-run. *Why:* awaited incremental persist caused pipe backpressure →
     ~1 entity/minute judge throughput on Basic.
+58. **R58 — Verdict fingerprints MUST be invariant under verify-heap slimming (Rule W-136).**
+    `fingerprint_statements` / `fingerprint_verify_evidence` in
+    `wikidata_verdict_cache.py` are the single statement/evidence projection used
+    by keys, eval-agent fixtures, and `slim_item_for_verdict_persist`; read paths
+    (`fetch_merged_wikidata_items`, and `fetch_merged_wikidata_item` which
+    delegates to it) attach `local_reference_targets` + `verify_evidence` over the
+    whole merged corpus *before* comparing a stored verdict; a verdict keyed
+    without the derived evidence packs is still accepted and its `cache_key`
+    rewritten forward. *Why:* Rule W-132 slims scope items before persisting, so
+    a fingerprint that hashed the full shape produced a `cache_key` no reader
+    could reproduce — a 313-item run showed 194/99/20 in the modal and `—` in
+    every AI-verdict cell.

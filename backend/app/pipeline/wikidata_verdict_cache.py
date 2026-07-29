@@ -20,31 +20,50 @@ WIKIDATA_VERDICT_SCHEMA = "w124_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 
-def _normalise_prompt_statements(statements: Any) -> list[dict[str, Any]]:
-    """Keep every statement field that is rendered into the judge prompt."""
+FINGERPRINT_STATEMENT_LIMIT = 40
+_FINGERPRINT_STATEMENT_KEYS = (
+    "property", "property_id", "property_label",
+    "value", "value_id", "value_type", "value_label", "rank",
+)
+
+
+def fingerprint_statements(
+    item: dict[str, Any],
+    *,
+    limit: int = FINGERPRINT_STATEMENT_LIMIT,
+) -> list[dict[str, Any]]:
+    """Statement projection shared by fixtures, persist slims, and keys.
+
+    The verify worker releases full Studio payloads before persisting verdicts
+    (Rule W-132), so the fingerprint MUST only read fields that survive
+    ``slim_item_for_verdict_persist`` — otherwise the stored ``cache_key`` can
+    never be reproduced and every verdict reads as stale (Rule W-136).
+    """
+    statements = item.get("statements")
     if not isinstance(statements, list):
         return []
     rows: list[dict[str, Any]] = []
-    for statement in statements:
+    for statement in statements[:limit]:
         if not isinstance(statement, dict):
             continue
-        rows.append({
-            "property": str(
-                statement.get("property") or statement.get("property_id") or ""
-            ),
-            "property_label": str(statement.get("property_label") or ""),
-            "value_type": str(
-                statement.get("value_type") or statement.get("datatype") or ""
-            ),
-            "value": statement.get("value"),
-            "value_label": str(statement.get("value_label") or ""),
-            "qualifiers": statement.get("qualifiers") or [],
-            "references": statement.get("references") or [],
-        })
-    return sorted(
-        rows,
-        key=lambda row: (row["property"], row["value_type"], str(row["value"])),
-    )
+        row = {
+            key: statement.get(key)
+            for key in _FINGERPRINT_STATEMENT_KEYS
+            if statement.get(key) not in (None, "")
+        }
+        if row:
+            rows.append(row)
+    return rows
+
+
+def fingerprint_verify_evidence(item: dict[str, Any]) -> dict[str, Any]:
+    """``verify_evidence`` minus the MARC slice (hashed separately)."""
+    pack = item.get("verify_evidence")
+    if not isinstance(pack, dict):
+        return {}
+    slim = dict(pack)
+    slim.pop("marc", None)
+    return slim
 
 
 def record_ids_for_wikidata_item(item: dict[str, Any]) -> list[str]:
@@ -191,13 +210,13 @@ def wikidata_verdict_query_summary(
         "labels": item.get("labels") or {},
         "descriptions": item.get("descriptions") or {},
         "aliases": item.get("aliases") or {},
-        "statements": _normalise_prompt_statements(item.get("statements") or []),
+        "statements": fingerprint_statements(item),
         "existing_qid": item.get("existing_qid"),
         "validation_issues": normalise_shacl_issues(item.get("validation_issues") or []),
         "authority_evidence": item.get("authority_evidence") or [],
         "work_candidate_evidence": item.get("work_candidate_evidence") or {},
         "local_reference_targets": item.get("local_reference_targets") or {},
-        "verify_evidence": item.get("verify_evidence") or {},
+        "verify_evidence": fingerprint_verify_evidence(item),
         "hmo_wikibase_id": item.get("hmo_wikibase_id"),
         "source_uri": item.get("source_uri"),
         "marc_context": marc_slice,
@@ -260,6 +279,23 @@ def sanitise_stale_wikidata_verdict(
     current = sanitise_stored_verdict(stored, expected_fingerprint=expected)
     if current is not None:
         return current
+
+    # Derived evidence packs are scope-dependent (a subset verify run resolves
+    # fewer ``__LOCAL`` targets), so a verdict keyed without them is still
+    # valid for the same curator-visible item state.
+    evidence_free = {**item, "verify_evidence": {}, "local_reference_targets": {}}
+    without_evidence = sanitise_stored_verdict(
+        stored,
+        expected_fingerprint=wikidata_verdict_input_fingerprint(
+            evidence_free,
+            model,
+            evaluator=eval_id,
+            marc_context=marc_context,
+        ),
+    )
+    if without_evidence is not None:
+        return {**without_evidence, "cache_key": expected}
+
     if stored.get("cache_key_version"):
         return None
 

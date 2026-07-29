@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from app.pipeline.marc_verify_context import canonical_control_number
-from app.pipeline.wikidata_verdict_cache import record_ids_for_wikidata_item
-
-_STATEMENT_KEYS = (
-    "property", "property_id", "property_label",
-    "value", "value_id", "value_type", "value_label", "rank",
+from app.pipeline.wikidata_verdict_cache import (
+    FINGERPRINT_STATEMENT_LIMIT,
+    fingerprint_statements,
+    fingerprint_verify_evidence,
+    record_ids_for_wikidata_item,
 )
 _FIXTURE_ITEM_KEYS = (
     "_local_id", "local_id", "entity_type", "semantic_type",
@@ -21,31 +21,12 @@ _FIXTURE_ITEM_KEYS = (
 )
 
 
-def _compact_statement(stmt: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: stmt.get(key)
-        for key in _STATEMENT_KEYS
-        if stmt.get(key) not in (None, "")
-    }
-
-
-def compact_statements(item: dict[str, Any], *, limit: int = 40) -> list[dict[str, Any]]:
-    statements = item.get("statements")
-    if not isinstance(statements, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for stmt in statements[:limit]:
-        if isinstance(stmt, dict):
-            compact = _compact_statement(stmt)
-            if compact:
-                out.append(compact)
-    return out
-
-
-def _slim_verify_evidence(pack: dict[str, Any]) -> dict[str, Any]:
-    slim = dict(pack)
-    slim.pop("marc", None)
-    return slim
+def compact_statements(
+    item: dict[str, Any],
+    *,
+    limit: int = FINGERPRINT_STATEMENT_LIMIT,
+) -> list[dict[str, Any]]:
+    return fingerprint_statements(item, limit=limit)
 
 
 def compact_wikidata_verify_fixture_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -68,7 +49,7 @@ def compact_wikidata_verify_fixture_item(item: dict[str, Any]) -> dict[str, Any]
     }
     evidence = item.get("verify_evidence")
     if isinstance(evidence, dict):
-        row["verify_evidence"] = _slim_verify_evidence(evidence)
+        row["verify_evidence"] = fingerprint_verify_evidence(item)
     return {key: row[key] for key in _FIXTURE_ITEM_KEYS if key in row}
 
 
@@ -117,8 +98,7 @@ def slim_item_for_verdict_persist(item: dict[str, Any]) -> dict[str, Any]:
     """Retain only fields needed for override/cache fingerprint writes."""
     local_id = str(item.get("_local_id") or item.get("local_id") or "")
     marc_ctx = item.get("_marc_context")
-    evidence = item.get("verify_evidence")
-    slim_evidence = _slim_verify_evidence(evidence) if isinstance(evidence, dict) else {}
+    slim_evidence = fingerprint_verify_evidence(item)
     row: dict[str, Any] = {
         "_local_id": local_id,
         "local_id": local_id,

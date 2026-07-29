@@ -171,3 +171,66 @@ def test_attach_local_reference_targets_uses_full_item_set() -> None:
         "aliases": {},
         "records": [],
     }
+
+
+def _verify_scope_item() -> dict:
+    return {
+        "_local_id": "person::x",
+        "local_id": "person::x",
+        "entity_type": "person",
+        "records": ["990000403370205171"],
+        "labels": {"en": "Abraham Firkowitsch"},
+        "descriptions": {"en": "Karaite collector."},
+        "aliases": {},
+        "statements": [
+            {
+                "property": "P214",
+                "property_label": "VIAF ID",
+                "value_type": "string",
+                "value": "12345",
+                "references": [{"property": "P3959", "value": "990000403370205171"}],
+            },
+        ],
+        "validation_issues": [],
+        "authority_evidence": [{"kind": "viaf", "id": "12345"}],
+        "verify_evidence": {
+            "marc": {"title": "MS 1"},
+            "viaf": [{"id": "12345"}],
+        },
+        "_marc_context": {"title": "MS 1"},
+    }
+
+
+def test_slimmed_persist_item_reproduces_the_full_item_fingerprint() -> None:
+    """Rule W-136 — the worker slims items before persisting the verdict."""
+    from app.pipeline.wikidata_verify_fixture import slim_item_for_verdict_persist
+
+    item = _verify_scope_item()
+    full = wikidata_verdict_input_fingerprint(item, "moonshotai/Kimi-K2.5")
+    slim = wikidata_verdict_input_fingerprint(
+        slim_item_for_verdict_persist(item), "moonshotai/Kimi-K2.5",
+    )
+    assert full == slim
+
+
+def test_verdict_survives_when_evidence_pack_is_absent() -> None:
+    """A verdict keyed without derived evidence stays visible."""
+    item = _verify_scope_item()
+    evidence_free = {**item, "verify_evidence": {}, "local_reference_targets": {}}
+    stored = {
+        "overall": "pass",
+        "model": "moonshotai/Kimi-K2.5",
+        "cache_key": wikidata_verdict_input_fingerprint(
+            evidence_free, "moonshotai/Kimi-K2.5",
+        ),
+        "cache_key_version": "records_marc_v6",
+        "evaluator": "wikidata_item",
+    }
+    kept = sanitise_stale_wikidata_verdict(
+        item, stored, marc_context=item["_marc_context"],
+    )
+    assert kept is not None
+    assert kept["overall"] == "pass"
+    assert kept["cache_key"] == wikidata_verdict_input_fingerprint(
+        item, "moonshotai/Kimi-K2.5",
+    )

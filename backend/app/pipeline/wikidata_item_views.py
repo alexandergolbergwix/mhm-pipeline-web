@@ -21,9 +21,9 @@ from app.pipeline.wikidata_qid_ledger import (
 )
 from app.pipeline.wikidata_verdict_cache import (
     attach_local_reference_targets,
-    marc_context_for_wikidata_item,
     sanitise_stale_wikidata_verdict,
 )
+from app.pipeline.wikidata_verify_evidence import enrich_items_with_verify_evidence
 from app.services.wikibase_audit import fetch_latest_wikibase_writes
 
 
@@ -72,24 +72,51 @@ async def fetch_merged_wikidata_items(
         marc_records = await load_run_marc_records(db, run_id)
 
     items: list[dict[str, Any]] = []
+    verdict_rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for raw in filter_public_wikidata_items(
         cache_row.result_items or [],
         source=source,
     ):
         local_id = str(raw.get("local_id") or "")
         ov_row = overrides_by_id.get(local_id)
-        items.append(
-            await _merge_one_wikidata_item(
-                raw,
-                ov_row=ov_row,
-                ledger=ledger,
-                latest_writes=latest_writes,
-                marc_records=marc_records,
-            )
+        row = _merge_one_wikidata_item(
+            raw,
+            ov_row=ov_row,
+            ledger=ledger,
+            latest_writes=latest_writes,
         )
+        stored = row.get("ai_verdict")
+        if stored:
+            verdict_rows.append((row, stored))
+        items.append(row)
 
     attach_local_reference_targets(items)
+    _sanitise_merged_verdicts(verdict_rows, items, marc_records)
     return items
+
+
+def _sanitise_merged_verdicts(
+    verdict_rows: list[tuple[dict[str, Any], dict[str, Any]]],
+    items: list[dict[str, Any]],
+    marc_records: list[dict[str, Any]],
+) -> None:
+    """Drop verdicts whose fingerprint no longer matches the current item.
+
+    The evidence packs (``local_reference_targets`` + ``verify_evidence``) are
+    part of the fingerprint, so they MUST be attached exactly as the verify
+    worker attaches them before any comparison (Rule W-136).
+    """
+    if not verdict_rows:
+        return
+    enrich_items_with_verify_evidence(items, marc_records)
+    for row, stored in verdict_rows:
+        row["ai_verdict"] = sanitise_stale_wikidata_verdict(
+            row,
+            stored,
+            marc_context=row.get("_marc_context") or {},
+        )
+        if row["ai_verdict"] is None:
+            row["ai_verdict_at"] = None
 
 
 async def fetch_validation_error_items(
@@ -168,13 +195,12 @@ def trim_studio_list_item(item: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-async def _merge_one_wikidata_item(
+def _merge_one_wikidata_item(
     raw: dict[str, Any],
     *,
     ov_row: WikidataItemOverride | None,
     ledger: dict[str, str],
     latest_writes: dict[str, Any],
-    marc_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
     entity = dict(raw)
     local_id = str(entity.get("local_id") or "")
@@ -219,16 +245,6 @@ async def _merge_one_wikidata_item(
             last_write.created_at.isoformat() if last_write else None
         ),
     }
-    stored_verdict = row.get("ai_verdict")
-    if stored_verdict:
-        marc_ctx = marc_context_for_wikidata_item(row, marc_records)
-        row["ai_verdict"] = sanitise_stale_wikidata_verdict(
-            row,
-            stored_verdict,
-            marc_context=marc_ctx,
-        )
-        if row["ai_verdict"] is None:
-            row["ai_verdict_at"] = None
     return row
 
 
@@ -240,52 +256,10 @@ async def fetch_merged_wikidata_item(
     approved_only: bool = True,
     source: str = "legacy",
 ) -> dict[str, Any] | None:
-    cache_row = (
-        await db.execute(
-            select(WikidataStudioCache).where(
-                WikidataStudioCache.run_id == run_id,
-                WikidataStudioCache.approved_only == approved_only,
-                WikidataStudioCache.source == source,
-            )
-        )
-    ).scalar_one_or_none()
-    if cache_row is None:
-        raise StudioBuildMissingError(run_id)
-
-    raw = None
-    for item in filter_public_wikidata_items(
-        cache_row.result_items or [],
-        source=source,
-    ):
+    items = await fetch_merged_wikidata_items(
+        db, run_id, approved_only=approved_only, source=source,
+    )
+    for item in items:
         if str(item.get("local_id") or "") == local_id:
-            raw = item
-            break
-    if raw is None:
-        return None
-
-    ov_row = (
-        await db.execute(
-            select(WikidataItemOverride).where(
-                WikidataItemOverride.run_id == run_id,
-                WikidataItemOverride.local_id == local_id,
-            )
-        )
-    ).scalar_one_or_none()
-    overrides_by_id = {local_id: ov_row} if ov_row else {}
-    ledger = await load_global_ledger(db)
-    latest_writes = await fetch_latest_wikibase_writes(
-        db, run_id, channel=CHANNEL_WIKIDATA_UPLOAD, target_kind=TARGET_ITEM,
-    )
-    marc_records: list[dict[str, Any]] = []
-    if ov_row and ov_row.ai_verdict:
-        marc_records = await load_run_marc_records(db, run_id)
-
-    merged = await _merge_one_wikidata_item(
-        raw,
-        ov_row=ov_row,
-        ledger=ledger,
-        latest_writes=latest_writes,
-        marc_records=marc_records,
-    )
-    attach_local_reference_targets([merged])
-    return merged
+            return item
+    return None
