@@ -2377,10 +2377,17 @@ async def _fetch_wikidata_verify_items(
         items.append(item)
     attach_local_reference_targets(items)
     marc_records = await load_run_marc_records_scoped(db, run_id, wanted_cns)
+    from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+        attach_duplicate_evidence,
+    )
     from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
         enrich_items_with_verify_evidence,
     )
 
+    # Ask Wikidata whether each CREATE candidate already exists, before the judge
+    # sees it (Rule W-139). Action API + inference cache only — never WDQS on
+    # this path (Rule W-116).
+    await attach_duplicate_evidence(db, items)
     enrich_items_with_verify_evidence(items, marc_records)
     return items, marc_records
 

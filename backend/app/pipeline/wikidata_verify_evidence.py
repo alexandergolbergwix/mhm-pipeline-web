@@ -444,6 +444,14 @@ def build_verify_evidence_pack(
             ),
             "authority_rows": authority["wikidata"],
             "live": live if isinstance(live, dict) else None,
+            # Live duplicate check for CREATE candidates (Rule W-139). A
+            # `candidates_found` status means an item with this identifier is
+            # already on Wikidata; `unavailable`/`skipped` means we do NOT know.
+            "duplicate_check": item.get("_wikidata_existence") or {
+                "status": "not_run",
+                "candidates": [],
+                "note": "duplicate probe did not run for this item",
+            },
         },
         "hmo_wikibase": {
             "hmo_wikibase_id": hmo_qid or None,

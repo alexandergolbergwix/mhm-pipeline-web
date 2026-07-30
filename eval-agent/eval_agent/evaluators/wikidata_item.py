@@ -83,6 +83,11 @@ class WikidataItemEvaluator(Evaluator):
         evidence = p.get("verify_evidence") if isinstance(p.get("verify_evidence"), dict) else {}
         viaf_json = json.dumps(evidence.get("viaf") or {}, ensure_ascii=False, indent=2)
         mazal_json = json.dumps(evidence.get("mazal") or {}, ensure_ascii=False, indent=2)
+        duplicate_check = {}
+        existing_pack = evidence.get("wikidata_existing")
+        if isinstance(existing_pack, dict):
+            duplicate_check = existing_pack.get("duplicate_check") or {}
+        duplicate_json = json.dumps(duplicate_check, ensure_ascii=False, indent=2)
         wd_existing_json = json.dumps(
             evidence.get("wikidata_existing") or {
                 "existing_qid": p.get("existing_qid"),
@@ -141,6 +146,11 @@ class WikidataItemEvaluator(Evaluator):
             f"  VIAF pack:\n{viaf_json}\n"
             f"  Mazal / NLI pack:\n{mazal_json}\n"
             f"  Existing Wikidata pack:\n{wd_existing_json}\n"
+            "  live duplicate check (Wikidata Action API; status\n"
+            "  candidates_found = an item with this identifier ALREADY EXISTS;\n"
+            "  absent = none found; unavailable/skipped/not_run = UNKNOWN, do not\n"
+            "  conclude the item is new):\n"
+            f"{duplicate_json}\n"
             f"  HMO Wikibase pack:\n{hmo_json}\n"
             f"  authority evidence (raw):\n{authority_json}\n"
             f"  work candidate evidence:\n{work_evidence_json}\n"

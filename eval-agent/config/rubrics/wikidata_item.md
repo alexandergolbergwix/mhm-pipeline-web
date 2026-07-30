@@ -143,3 +143,29 @@ Further calibration:
   modelling for an unidentified contained text. It is not a missing work item.
 - Absent claims are not defects: judge what the item asserts. Ask for a claim
   only when a supplied channel clearly evidences it and the projection omitted it.
+
+## Duplicate check before CREATE (Rule W-139)
+
+`verify_evidence.wikidata_existing.duplicate_check` reports a live Wikidata
+lookup (Action API `haswbstatement:<PID>=<value>`) for items with **no**
+`existing_qid` — i.e. items we would CREATE:
+
+- **`candidates_found`** — an item carrying this identifier **already exists**.
+  Creating another is a duplicate, the failure mode the April 2026 bulk-deletion
+  request was about. Set `type_ok="no"` and `overall="fail"`, and name the QID
+  and the matched identifier in `reasoning` so the curator can link instead of
+  create. This holds even when labels differ: an identifier match is an identity
+  match.
+- **`absent`** — no existing item carries this identifier. CREATE is reasonable
+  on that axis; judge the rest of the item normally.
+- **`already_linked`** — the item targets a live QID; this is an UPDATE, not a
+  CREATE. No duplication risk.
+- **`unavailable`** / **`skipped`** / **`not_run`** — the check could not be
+  completed (network failure, no identifier claim to probe, or the per-job probe
+  budget was exhausted). This means **unknown**, never "safe". Do not assert the
+  item is new; mention the gap in `reasoning` and judge the remaining evidence.
+  A missing check alone is not grounds for `fail`.
+
+Never infer duplication from label similarity alone — two manuscripts, scribes
+or works can legitimately share a name (see the homonym rules). The identifier
+match in `duplicate_check` is the signal.

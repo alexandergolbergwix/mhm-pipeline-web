@@ -390,3 +390,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     never minted as a local CREATE; `P1476`/`P1680`/`P1932` are sanitised like
     labels. New gate codes: `attestation_not_in_evidence`,
     `title_claim_has_quote_wrappers`.
+
+61. **R61 — Verify probes Wikidata for an existing item before CREATE (Rule W-139).**
+    `wikidata_duplicate_probe` batches `haswbstatement:` CirrusSearch queries over
+    the Action API (never WDQS — Rules W-116/W-119), throttled ≥1.1 s with
+    `Retry-After`/`maxlag` handling and content-addressed caching, and stamps
+    `verify_evidence.wikidata_existing.duplicate_check`. Identifier matches only
+    (P3959 / P214 / P8189 / P244 / P227); `unavailable`/`skipped` means unknown,
+    never safe. Gate code: `create_would_duplicate_existing_item`.
+    *Why:* 12 of 206 probeable CREATE candidates in run 48ba6c13 already exist on
+    Wikidata (Q66439 Yom-Tov Lipmann Heller, Q467161 Samuel ibn Naghrillah, …).
