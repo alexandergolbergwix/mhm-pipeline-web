@@ -359,3 +359,19 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     *Why:* export (13) judged 43 partial / 21 fail — all manuscripts. The judge
     saw four MARC keys, three items shared one shelfmark, all 68 emitted P3959
     4–5×, and 27 descriptions were catalog notes.
+
+60. **R60 — MARC values reach the handlers unwrapped; every claim names its channel (Rule W-138).**
+    `marc_ingest._unwrap_marc_value` strips balanced surrounding quotes per
+    subfield value *before* multi-value splitting (internal gershayim survives) —
+    quoted `041$a` had defeated the 3-char language-code chunker, so 48
+    manuscripts carried no `P407`. `_parse_dimensions` handles decimal cm/mm
+    pairs (`9.5X14.5 cm` was read as `50` mm). `build_claim_sources` is
+    channel-aware (`marc.<slice>`, `authority.*`, `hmo_wikibase`,
+    `work_candidate_evidence`, `structural` for P31/P3959) so no emitted PID
+    reaches the judge without provenance. Person dates require
+    `identifier_only=True` authority matches; works are never indexed by a
+    `P1476` value and keep one canonical title; `resolve_local_references`
+    degrades orphaned `__LOCAL:` work links to `Q234460` + `P1932`.
+    New hard gates: `WORK_MULTIPLE_TITLES`, `DANGLING_LOCAL_REFERENCE`.
+    *Why:* export (14) — 89 partial / 33 fail across 308 judged items, 121 of
+    122 non-full items explained by these seven defects.

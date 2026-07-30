@@ -149,6 +149,32 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P11603": ("extent", "material"),
 }
 
+# Claims whose support is NOT MARC. Without a provenance row of their own the
+# judge reported them unsupported on every person and bridge item — 246 items
+# carried a P2888 with no row, 122 a P214 (Rule W-138).
+_AUTHORITY_CLAIM_PIDS = {
+    "P214": "viaf",
+    "P8189": "mazal",
+    "P244": "authority_other",
+    "P227": "authority_other",
+    "P213": "authority_other",
+    "P268": "authority_other",
+    "P1559": "authority_names",
+    "P106": "authority_role",
+    "P569": "authority_dates",
+    "P570": "authority_dates",
+    "P1412": "authority_names",
+}
+_BRIDGE_CLAIM_PIDS = frozenset({"P2888", "P973"})
+# Identifier claims whose authority row lives on the HMO Wikibase item rather
+# than in this run's approved-match rows.
+_HMO_GATED_IDENTIFIER_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P268"})
+_WORK_LINK_CLAIM_PIDS = frozenset({"P1574", "P629", "P747"})
+
+# Claims that follow from the entity's own type rather than from a source
+# field. They are true by construction, so "no MARC row" is not a defect.
+_STRUCTURAL_CLAIM_PIDS = frozenset({"P31", "P3959"})
+
 _MAX_CLAIM_EVIDENCE_CHARS = 400
 
 
@@ -163,19 +189,61 @@ def _statement_property_ids(item: dict[str, Any]) -> list[str]:
     return out
 
 
+def _compact(value: Any) -> str:
+    import json as _json  # noqa: PLC0415
+
+    if isinstance(value, str):
+        text = value
+    else:
+        text = _json.dumps(value, ensure_ascii=False)
+    return text.strip()[:_MAX_CLAIM_EVIDENCE_CHARS]
+
+
+def _authority_channel_evidence(item: dict[str, Any]) -> dict[str, list[Any]]:
+    """Group the item's accepted authority rows by the channel they support."""
+    buckets: dict[str, list[Any]] = {}
+    for row in item.get("authority_evidence") or []:
+        if not isinstance(row, dict):
+            continue
+        kind = str(row.get("kind") or row.get("source") or "").casefold()
+        if row.get("viaf_uri") or row.get("viaf_id") or "viaf" in kind:
+            buckets.setdefault("viaf", []).append(row)
+        if row.get("mazal_id") or "mazal" in kind or kind in {"nli", "j9u"}:
+            buckets.setdefault("mazal", []).append(row)
+        if row.get("birth_year") or row.get("death_year"):
+            buckets.setdefault("authority_dates", []).append(row)
+        if row.get("role") or row.get("occupation"):
+            buckets.setdefault("authority_role", []).append(row)
+        if row.get("preferred_name_heb") or row.get("preferred_name_lat"):
+            buckets.setdefault("authority_names", []).append(row)
+        buckets.setdefault("authority_other", []).append(row)
+    return buckets
+
+
 def build_claim_sources(
     item: dict[str, Any],
     marc: dict[str, str],
     record_ids: list[str],
 ) -> dict[str, Any]:
-    """Per-claim MARC provenance: PID → the slice text that supports it."""
+    """Per-claim provenance across every channel the judge is shown.
+
+    MARC-backed claims cite their source field; authority, HMO-bridge and
+    work-link claims cite the channel that supports them; type-derived claims
+    are marked structural. A claim with no row at all reads as unsupported, so
+    every PID we emit must resolve to one of these (Rule W-137 / W-138).
+    """
     sources: dict[str, Any] = {}
+    authority = _authority_channel_evidence(item)
+    evidence_pack_targets = item.get("local_reference_targets") or {}
+    work_evidence = item.get("work_candidate_evidence") or []
+
     for pid in _statement_property_ids(item):
-        slices = CLAIM_SOURCE_SLICES.get(pid)
-        if not slices:
-            continue
-        evidence: dict[str, str] = {}
-        for name in slices:
+        evidence: dict[str, Any] = {}
+        channels: list[str] = []
+        structural = pid in _STRUCTURAL_CLAIM_PIDS
+
+        for name in CLAIM_SOURCE_SLICES.get(pid, ()):
+            channels.append(f"marc.{name}")
             if name == "record_ids":
                 if record_ids:
                     evidence[name] = ", ".join(record_ids)
@@ -183,11 +251,67 @@ def build_claim_sources(
             text = str(marc.get(name) or "").strip()
             if text:
                 evidence[name] = text[:_MAX_CLAIM_EVIDENCE_CHARS]
-        sources[pid] = {
-            "marc_slices": list(slices),
+
+        channel = _AUTHORITY_CLAIM_PIDS.get(pid)
+        if channel:
+            channels.append(f"authority.{channel}")
+            rows = authority.get(channel) or []
+            if rows:
+                evidence[channel] = _compact(rows[:2])
+            elif pid in _HMO_GATED_IDENTIFIER_PIDS and item.get("hmo_wikibase_id"):
+                # The identifier reached us on the live HMO Wikibase item, whose
+                # authority rows were validated before that item was created
+                # (Rule W-95). Citing the wiki item is the truthful provenance;
+                # without it a P214 read as unsupported on 122 items.
+                channels.append("hmo_wikibase")
+                evidence["hmo_wikibase_identifier"] = _compact({
+                    "hmo_wikibase_id": item.get("hmo_wikibase_id"),
+                    "value": next(
+                        (
+                            statement.get("value")
+                            for statement in item.get("statements") or []
+                            if isinstance(statement, dict)
+                            and str(
+                                statement.get("property_id")
+                                or statement.get("property") or "",
+                            ) == pid
+                        ),
+                        None,
+                    ),
+                    "gated_at": "HMO item creation (authority validation)",
+                })
+
+        if pid in _BRIDGE_CLAIM_PIDS:
+            channels.append("hmo_wikibase")
+            qid = str(item.get("hmo_wikibase_id") or "").strip()
+            source_uri = str(item.get("source_uri") or "").strip()
+            if qid or source_uri:
+                evidence["hmo_wikibase"] = _compact(
+                    {"hmo_wikibase_id": qid or None, "source_uri": source_uri or None},
+                )
+
+        if pid in _WORK_LINK_CLAIM_PIDS:
+            channels.append("work_candidate_evidence")
+            if work_evidence:
+                evidence["work_candidate_evidence"] = _compact(work_evidence[:2])
+            if evidence_pack_targets:
+                channels.append("local_reference_targets")
+                evidence["local_reference_targets"] = _compact(
+                    sorted(evidence_pack_targets)[:5],
+                )
+
+        row: dict[str, Any] = {
+            "channels": channels or ["structural"],
             "evidence": evidence,
-            "supported": bool(evidence),
+            "supported": bool(evidence) or structural,
         }
+        if structural:
+            row["structural"] = True
+            row["note"] = (
+                "follows from the entity type / catalog record identity — no "
+                "separate source field is expected"
+            )
+        sources[pid] = row
     return sources
 
 

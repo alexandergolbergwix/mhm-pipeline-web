@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v3"
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v4"  # Rule W-138
 
 
 async def hmo_instance_qids_for_run(
@@ -251,6 +251,7 @@ def _build_sync(
     overrides: dict[str, dict[str, Any]] | None = None,
     hmo_instance_qids: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    from app.pipeline.wikidata_local_refs import resolve_local_references  # noqa: PLC0415
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
     from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
     from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
@@ -267,6 +268,11 @@ def _build_sync(
             ov = overrides.get(_local_id_for(it))
             if ov:
                 _apply_override(it, ov)
+
+    # Every ``__LOCAL:`` target must name an item this build produced — works
+    # dropped by the thin-title / evidence gates otherwise leave the referring
+    # manuscript pointing at nothing (Rule W-138).
+    local_ref_stats = resolve_local_references(items)
 
     # Validate every built item, log issues, and collect them per item so
     # the UI can surface inline validation pills without a second round-trip.
@@ -292,6 +298,8 @@ def _build_sync(
         "persons":     sum(1 for i in items if getattr(i, "entity_type", "") == "person"),
         "works":       sum(1 for i in items if getattr(i, "entity_type", "") == "work"),
         "statements":  sum(len(getattr(i, "statements", []) or []) for i in items),
+        "local_references_degraded": local_ref_stats["degraded"],
+        "local_references_dropped": local_ref_stats["dropped"],
     }
 
     serialised = [_serialise_item(it) for it in items]

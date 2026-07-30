@@ -78,3 +78,4 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_verdict_cache.py` — slim-persist ↔ full-item fingerprint parity and evidence-free verdict survival (Rule W-136).
 - `backend/tests/unit/test_wikidata_evidence_and_identity.py` — raw-tag evidence slice, per-claim provenance, manuscript identity scoping, claim dedup, identity gates (Rule W-137).
 - `backend/tests/unit/test_wikidata_description_hygiene.py` — generated manuscript descriptions, catalog-note rejection, description language routing (Rule W-137).
+- `backend/tests/unit/test_wikidata_wave2_projection.py` — MARC unwrapping, dimension parsing, channel-aware provenance, work-title identity, local-reference resolution, generic subjects, verified holders (Rule W-138).

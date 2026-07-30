@@ -112,3 +112,34 @@ candidate — apply them before inventing additional criteria.
 Primary evaluation goal: the proposed item must be safe as a **public
 Wikidata** manuscript / person / work item under that data model, given
 **all** evidence channels supplied above.
+
+## Channel-aware provenance (Rule W-138)
+
+`verify_evidence.claim_sources[PID]` now names the **channel** that backs each
+claim, not only MARC:
+
+- `channels: ["marc.<slice>"]` — check the quoted source-field text.
+- `channels: ["authority.viaf" | "authority.mazal" | "authority.authority_dates"
+  | …]` — the claim rests on an authority row, not on MARC. Do not require the
+  MARC slice to repeat it.
+- `channels: ["hmo_wikibase"]` — `P2888` / `P973`, and identifier claims whose
+  authority row lives on the live HMO Wikibase item. Those identifiers were
+  validated before that item was created; treat the wiki item as the source.
+- `channels: ["work_candidate_evidence", "local_reference_targets"]` — `P1574`
+  and other work links.
+- `structural: true` (`P31`, `P3959`) — true by construction from the entity
+  type and its catalog record. Never report a structural claim as unsourced.
+
+`supported: false` means we ourselves could not find backing evidence — say so
+and name the missing channel; that is a real finding.
+
+Further calibration:
+
+- A person description carries dates **only** when an identifier-backed
+  authority row supplies them. A dateless `"scribe"` / `"person"` description is
+  correct, not incomplete.
+- A work carries exactly one `P1476`. Report a second title form as a defect.
+- `P1574 → Q234460` ("text") with a `P1932` catalog title is the correct
+  modelling for an unidentified contained text. It is not a missing work item.
+- Absent claims are not defects: judge what the item asserts. Ask for a claim
+  only when a supplied channel clearly evidences it and the projection omitted it.

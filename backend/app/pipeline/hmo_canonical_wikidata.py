@@ -257,7 +257,9 @@ def canonical_wikidata_fingerprint(
     # v9: MARC/authority enrichment merge (Rule W-125) participates in the salt.
     # v10 — Rule W-137 (manuscript identity scoping, one catalog id per
     # manuscript, generated descriptions, deduped claims).
-    salt = "hmo-wikidata-v10:"
+    # v11 — Rule W-138 (unwrapped MARC values, one work title, evidence-gated
+    # person dates, resolved local references).
+    salt = "hmo-wikidata-v11:"
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -470,6 +472,10 @@ def build_canonical_studio_result(
     native_items = native_items_from_hmo(materialized, context=context)
     if legacy_native_items:
         native_items = merge_legacy_into_canonical(native_items, list(legacy_native_items))
+    # Placeholders must name items this build produced (Rule W-138).
+    from app.pipeline.wikidata_local_refs import resolve_local_references  # noqa: PLC0415
+
+    local_ref_stats = resolve_local_references(native_items)
     entities_by_local_id = {entity.local_id: entity for entity in materialized}
 
     if overrides:
@@ -529,6 +535,8 @@ def build_canonical_studio_result(
             "rolled_up_entities": rollup_stats["rolled_up_entities"],
             "summarized_hmo_nodes": rollup_stats["summarized_hmo_nodes"],
             "legacy_enriched": bool(legacy_native_items),
+            "local_references_degraded": local_ref_stats["degraded"],
+            "local_references_dropped": local_ref_stats["dropped"],
         },
     }
 
@@ -1434,13 +1442,14 @@ def _enriched_description(
     if entity_type == "person":
         match = _authority_match_for_entity(entity, context)
         if match:
-            payload = match.get("payload") or {}
             role = str(match.get("role") or "").strip()
-            birth = payload.get("birth_year")
-            death = payload.get("death_year")
-            dates = ""
-            if birth or death:
-                dates = f"{birth or '?'}-{death or '?'}"
+            # Dates only from an identifier-backed match. A name-keyed match is
+            # a string coincidence: it described a scribe of a 1642 manuscript
+            # as "(1786-1874)" — a homonym's lifespan (Rule W-138 / W-67).
+            dated_match = _authority_match_for_entity(
+                entity, context, identifier_only=True,
+            )
+            dates = _authority_date_range(dated_match) if dated_match else ""
             return {
                 "en": _truncate_description(
                     _build_person_description(
@@ -1459,10 +1468,9 @@ def _enriched_description(
                 continue
             marc = dict(record)
             marc["_control_number"] = str(cn).strip()
-            century = _century_hint_from_record(marc)
             return {
                 "en": _truncate_description(
-                    _build_work_description(author_name=None, century=century),
+                    _work_description_with_attestation(entity, marc, context),
                 ),
             }
         if title:
@@ -1474,10 +1482,70 @@ def _enriched_description(
     return {}
 
 
+def _work_description_with_attestation(
+    entity: CanonicalHmoEntity,
+    marc: dict[str, Any],
+    context: CanonicalStudioContext,
+) -> str:
+    """Disambiguate a work by century, author and the manuscript attesting it.
+
+    82 works shipped the bare fallback `"Work preserved in a Hebrew
+    manuscript"`, which disambiguates nothing — Wikidata descriptions exist to
+    tell same-label items apart. Every fragment here is evidence-derived
+    (Rule W-138).
+    """
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _build_work_description,
+        _has_hebrew_script,
+    )
+
+    author_name = ""
+    match = _authority_match_for_entity(entity, context, identifier_only=True)
+    if match:
+        payload = match.get("payload") or {}
+        if isinstance(payload, Mapping):
+            candidate = str(payload.get("preferred_name_lat") or "").strip()
+            if candidate and not _has_hebrew_script(candidate):
+                author_name = candidate
+
+    description = _build_work_description(
+        author_name=author_name or None,
+        century=_century_hint_from_record(marc),
+    )
+
+    shelfmark = str(marc.get("shelfmark") or "").strip().strip('"')
+    attestation = shelfmark or canonical_control_number(marc.get("_control_number"))
+    if attestation:
+        description = f"{description}, attested in MS {attestation}"
+    return description
+
+
+def _authority_date_range(match: Mapping[str, Any]) -> str:
+    """`birth-death` from an authority payload, or empty when unknown."""
+    payload = match.get("payload") or {}
+    if not isinstance(payload, Mapping):
+        return ""
+    birth = payload.get("birth_year")
+    death = payload.get("death_year")
+    if not birth and not death:
+        return ""
+    return f"{birth or '?'}-{death or '?'}"
+
+
 def _authority_match_for_entity(
     entity: CanonicalHmoEntity,
     context: CanonicalStudioContext,
+    *,
+    identifier_only: bool = False,
 ) -> dict[str, Any] | None:
+    """Resolve the authority match behind an entity.
+
+    ``identifier_only`` refuses the label fallback. A name-keyed match is a
+    string coincidence, not an identity: it gave a scribe in a 1642 manuscript
+    the dates ``(1786-1874)`` from a homonym. Anything that asserts biographical
+    fact (P569/P570 or a dated description) MUST pass ``identifier_only=True``
+    (Rule W-138, and Rule W-67's exact-ID requirement).
+    """
     for evidence in entity.authority_evidence:
         if evidence.get("accepted") is not True:
             continue
@@ -1504,6 +1572,8 @@ def _authority_match_for_entity(
             mazal = normalize_authority_id(value)
             if mazal and mazal in context.matches_by_mazal:
                 return context.matches_by_mazal[mazal]
+    if identifier_only:
+        return None
     for label in entity.labels.values():
         key = str(label or "").strip().casefold()
         if key and key in context.matches_by_name:

@@ -180,10 +180,40 @@ def _header_norm(s: str) -> str:
 
 
 def _split_multi(value: str) -> list[str]:
+    # Unwrap before splitting: `"heb|lad"` must not split into `"heb` + `lad"`,
+    # where the unbalanced quote survives and breaks the handler (Rule W-138).
+    unwrapped = _unwrap_marc_value(value)
     for delim in _MULTI_DELIMS:
-        if delim in value:
-            return [v.strip() for v in value.split(delim) if v.strip()]
-    return [value]
+        if delim in unwrapped:
+            return [
+                cleaned
+                for v in unwrapped.split(delim)
+                if (cleaned := _unwrap_marc_value(v))
+            ]
+    return [unwrapped] if unwrapped else []
+
+
+def _unwrap_marc_value(value: str) -> str:
+    """Strip the quote wrappers TSV/JSON exports put around subfield values.
+
+    Control fields were already unwrapped; ``tag$code`` values were not, so the
+    desktop handlers received ``'"heb"'``. The 041 handler chunks language codes
+    in three-character slices, turning that into ``['"he', 'b"']`` — no valid
+    code, so 48 manuscripts carried no ``P407`` at all. Dimensions, extent and
+    shelfmark were degraded the same way (Rule W-138; same family as W-87 /
+    W-111 / W-54).
+
+    Only balanced *surrounding* quotes are removed — internal Hebrew gershayim
+    (``שד"ל``) must survive untouched.
+    """
+    text = str(value or "").strip()
+    for quote in ('"', "'"):
+        while len(text) >= 2 and text.startswith(quote) and text.endswith(quote):
+            inner = text[1:-1].strip()
+            if not inner:
+                return ""
+            text = inner
+    return text
 
 
 # ── shared helpers ──────────────────────────────────────────────────────

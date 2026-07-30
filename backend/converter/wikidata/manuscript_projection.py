@@ -12,6 +12,8 @@ from converter.wikidata.item_builder import (
     P_BASED_ON_HEURISTIC,
     P_CATALOG_CODE,
     P_COLLECTION,
+    Q_BODLEIAN,
+    Q_BRITISH_LIBRARY,
     P_CONDITION,
     P_DESCRIBED_AT_URL,
     P_EARLIEST_DATE,
@@ -112,6 +114,25 @@ def _current_holder_qid(record: dict[str, object], holder_names: list[str]) -> s
             "מוזיאון ישראל",
         }:
             return Q_ISRAEL_MUSEUM
+        # Verified live 2026-07-29 (Rule W-26). Only unambiguous holders are
+        # listed: "The Ben Zvi Institute" resolves to two plausible Wikidata
+        # entities (a publishing organization and Yad Yitzhak Ben-Zvi), so it
+        # abstains rather than guess (Rule W-84's reasoning).
+        if normalized_name in {
+            "the british library",
+            "british library",
+            "הספרייה הבריטית",
+        }:
+            return Q_BRITISH_LIBRARY
+        if normalized_name in {
+            "the bodleian library",
+            "bodleian library",
+            "the bodleian libraries",
+            "bodleian libraries",
+            "the bodleian libraries, university of oxford",
+            "bodleian libraries, university of oxford",
+        }:
+            return Q_BODLEIAN
         for key in ("wikidata_qid", "existing_qid", "qid"):
             qid = extract_wikidata_qid(str(contributor.get(key) or ""))
             if qid and _QID_RE.fullmatch(qid):

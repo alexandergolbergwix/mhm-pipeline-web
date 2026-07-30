@@ -164,6 +164,68 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     if statements and not any(pids - {""}):
         checks.append("export_missing_property_ids")
 
+    evidence_pack = row.get("verify_evidence")
+    if isinstance(evidence_pack, str):
+        evidence_pack = _json_cell(evidence_pack)
+    if not isinstance(evidence_pack, dict):
+        evidence_pack = {}
+    marc_slice = evidence_pack.get("marc") if isinstance(evidence_pack.get("marc"), dict) else {}
+    claim_sources = (
+        evidence_pack.get("claim_sources")
+        if isinstance(evidence_pack.get("claim_sources"), dict) else {}
+    )
+
+    # Rule W-138 — a claim the judge cannot trace reads as unsupported.
+    if claim_sources and (pids - {""}) - set(claim_sources):
+        checks.append("claim_without_provenance_row")
+    if any(
+        isinstance(source, dict) and not source.get("supported")
+        for source in claim_sources.values()
+    ):
+        checks.append("claim_without_evidence")
+
+    local_targets = set(evidence_pack.get("local_reference_targets") or {})
+    for statement in statements:
+        value = str(statement.get("value") or "")
+        if value.startswith("__LOCAL:") and value.removeprefix("__LOCAL:") not in local_targets:
+            checks.append("dangling_local_reference")
+            break
+
+    if entity_type == "person":
+        descriptions = " ".join(_description_any(row))
+        if re.search(r"\(\d{3,4}\s*[-–]\s*\d{0,4}\)", descriptions):
+            has_dates = any(
+                isinstance(item, dict) and (item.get("birth_year") or item.get("death_year"))
+                for item in _evidence(row)
+            )
+            if not has_dates:
+                checks.append("person_dates_without_authority_evidence")
+
+    if entity_type == "work":
+        if len(_values(statements, "P1476")) > 1:
+            checks.append("work_multiple_p1476")
+        if str(row.get("descriptions", {}).get("en") if isinstance(row.get("descriptions"), dict) else "") == (
+            "Work preserved in a Hebrew manuscript"
+        ):
+            checks.append("work_boilerplate_description")
+
+    if entity_type == "manuscript":
+        language_slice = str(marc_slice.get("languages") or "")
+        if language_slice and "P407" not in pids:
+            checks.append("missing_p407_with_language_evidence")
+        elif language_slice.count("|") >= 1 and len(_values(statements, "P407")) < 2:
+            checks.append("p407_drops_secondary_language")
+        extent_slice = str(marc_slice.get("extent") or "")
+        dimensions = _values(statements, "P2048") + _values(statements, "P2049")
+        if dimensions and extent_slice:
+            marc_numbers = {
+                n.rstrip("0").rstrip(".")
+                for n in re.findall(r"\d+(?:\.\d+)?", extent_slice)
+            }
+            emitted = {str(v).rstrip("0").rstrip(".") for v in dimensions}
+            if marc_numbers and not (emitted & marc_numbers):
+                checks.append("dimension_contradicts_extent")
+
     if entity_type == "manuscript":
         # Rule W-137 — cross-record contamination and note-as-description.
         catalog_ids = _values(statements, "P3959")
@@ -248,6 +310,11 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     return relevant
 
 
+# Expected states, not defects: a CREATE work legitimately has no QID yet
+# (Rule W-68 / W-121). Everything else must reach zero before a judge run.
+_INFORMATIONAL_CHECKS = frozenset({"work_missing_existing_qid", "validation_warning"})
+
+
 def _shared_identity_findings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Manuscripts that ship the same label + shelfmark are one item, twice."""
     groups: dict[tuple[str, str], list[str]] = {}
@@ -285,9 +352,19 @@ def audit(path: Path) -> dict[str, Any]:
     for finding in findings:
         for check in finding["checks"]:
             counts[check] = counts.get(check, 0) + 1
+    blocking = {
+        check: count for check, count in counts.items()
+        if check not in _INFORMATIONAL_CHECKS
+    }
     return {
         "file": str(path),
         "items": len(rows),
+        "blocking_counts": dict(sorted(blocking.items())),
+        "blocking_total": sum(blocking.values()),
+        "informational_counts": {
+            check: count for check, count in sorted(counts.items())
+            if check in _INFORMATIONAL_CHECKS
+        },
         "export_mode": (
             "authority-approved-only+item-review"
             if metadata.get("approved_only") is True and metadata.get("diagnostic_fields")

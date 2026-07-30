@@ -14,10 +14,10 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w137_v1 with Rule W-137 (raw-tag MARC evidence, per-claim
-# provenance, manuscript identity scoping, description hygiene).
-# Prior: w124_v1 (multi-source verify evidence), w104_v1, w71_v1.
-WIKIDATA_VERDICT_SCHEMA = "w137_v1"
+# Bumped to w138_v1 with Rule W-138 (MARC quote unwrap, channel-aware claim
+# provenance, work/person identity gating, local-reference resolution).
+# Prior: w137_v1, w124_v1 (multi-source verify evidence), w104_v1, w71_v1.
+WIKIDATA_VERDICT_SCHEMA = "w138_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 

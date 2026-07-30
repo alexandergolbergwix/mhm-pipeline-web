@@ -97,13 +97,36 @@ def _label_text(item: Any) -> str:
     return ""
 
 
+def _work_title_errors(items: list[Any]) -> list[str]:
+    """A work carries one title claim — its own (Rule W-138)."""
+    errors: list[str] = []
+    for item in items:
+        if str(getattr(item, "entity_type", "") or "").strip().lower() != "work":
+            continue
+        titles = _statement_values(item, "P1476")
+        if len(titles) > 1:
+            errors.append(
+                f"WORK_MULTIPLE_TITLES {getattr(item, 'local_id', '')}: "
+                f"P1476 emitted {len(titles)}× ({', '.join(titles)})",
+            )
+    return errors
+
+
 def assert_wikidata_export_quality(items: list[Any]) -> None:
     """Raise when built items have ERROR-severity issues that indicate a build bug.
 
     Uses the full ``validate_item`` ERROR set so a bad projection cannot be
     cached or handed to the curator as clean Studio output.
     """
+    from app.pipeline.wikidata_local_refs import dangling_local_references  # noqa: PLC0415
+
     errors: list[str] = _manuscript_identity_errors(items)
+    errors.extend(
+        f"DANGLING_LOCAL_REFERENCE {ref}: two-pass upload placeholder names an "
+        "item this build did not produce"
+        for ref in dangling_local_references(items)
+    )
+    errors.extend(_work_title_errors(items))
     for item in items:
         local_id = str(getattr(item, "local_id", "") or "")
         if not _label_text(item):

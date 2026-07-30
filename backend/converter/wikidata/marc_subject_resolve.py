@@ -191,6 +191,21 @@ def instance_qids_from_genre_labels(labels: list[str]) -> list[str]:
     return out
 
 
+# Ethnonyms and other headings so broad that they describe the whole corpus.
+# They index a collection, they are not any single manuscript's main subject —
+# the judge rejected `P921 = Q7325 (Jews)` on records whose own 650 fields name
+# `Jewish law` and a person (Rule W-72, enforced here at Rule W-138).
+_TOO_GENERIC_SUBJECT_TERMS = frozenset({
+    "jews", "judaism", "jewish", "hebrew", "hebrew language",
+    "manuscripts", "manuscripts, hebrew", "jewish literature",
+    "יהודים", "יהדות", "עברית", "כתבי יד",
+})
+
+
+def is_too_generic_subject(term: str) -> bool:
+    return str(term or "").strip().casefold() in _TOO_GENERIC_SUBJECT_TERMS
+
+
 def resolve_subject_qid(
     subj: dict[str, Any],
     *,
@@ -200,6 +215,8 @@ def resolve_subject_qid(
     """Resolve a topical/person subject row to a Wikidata QID."""
     term = subject_term(subj)
     if not term:
+        return None
+    if is_too_generic_subject(term):
         return None
     stamped = _normalize_qid(subj.get("wikidata_id"))
     if stamped:

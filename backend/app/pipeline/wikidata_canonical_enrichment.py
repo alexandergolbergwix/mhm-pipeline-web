@@ -62,7 +62,7 @@ def merge_legacy_into_canonical(
             merged.append(_merge_pair(item, legacy))
         else:
             item.statements = dedupe_statements(item.statements)
-            merged.append(_with_scoped_records(item))
+            merged.append(_with_canonical_titles(_with_scoped_records(item)))
 
     for legacy in legacy_items:
         lid = legacy.local_id or ""
@@ -75,7 +75,7 @@ def merge_legacy_into_canonical(
             continue
         if et in {"person", "work"}:
             legacy.statements = dedupe_statements(legacy.statements)
-            merged.append(legacy)
+            merged.append(_with_canonical_titles(legacy))
     return merged
 
 
@@ -127,6 +127,7 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
         out.statements.append(stmt)
         seen.add(key)
     out.statements = dedupe_statements(out.statements)
+    _with_canonical_titles(out)
     return out
 
 
@@ -138,10 +139,23 @@ def _with_scoped_records(item: WikidataItem) -> WikidataItem:
     return item
 
 
+def _with_canonical_titles(item: WikidataItem) -> WikidataItem:
+    """Keep one P1476 per work (Rule W-138)."""
+    if (item.entity_type or "").strip().lower() != "work":
+        return item
+    keep = {id(statement) for statement in canonical_work_titles(item)}
+    item.statements = [
+        statement for statement in item.statements or []
+        if str(statement.property_id or "") != "P1476" or id(statement) in keep
+    ]
+    return item
+
+
 def _with_deduped_statements(items: list[WikidataItem]) -> list[WikidataItem]:
     for item in items:
         item.statements = dedupe_statements(item.statements)
         _with_scoped_records(item)
+        _with_canonical_titles(item)
     return list(items)
 
 
@@ -352,21 +366,55 @@ def _match_person(
 
 
 def _work_keys(item: WikidataItem) -> set[str]:
+    """Identity keys for a work.
+
+    ``P1476`` values are deliberately NOT keys: an item can legitimately carry
+    several title forms, so matching on any of them merged unrelated works — the
+    Carpentras siddur inherited `סדר אליהו זוטא` as a second P1476 that no
+    channel supported (Rule W-138). Identity is the QID, the local id, or the
+    item's own label.
+    """
     keys: set[str] = set()
     for lang in ("he", "en"):
         label = str((item.labels or {}).get(lang) or "").strip().casefold()
         if label:
             keys.add(f"label:{label}")
-    for stmt in item.statements or []:
-        if str(stmt.property_id or "") == "P1476":
-            title = str(stmt.value or "").strip().casefold()
-            if title:
-                keys.add(f"title:{title}")
     if item.existing_qid:
         keys.add(f"qid:{item.existing_qid}")
     if item.local_id:
         keys.add(f"local:{item.local_id}")
     return keys
+
+
+def canonical_work_titles(item: WikidataItem) -> list[WikidataStatement]:
+    """One P1476 per work: the form that matches the work's own label.
+
+    Works shipped up to three P1476 values — a quote-wrapped raw form, the clean
+    form, and (via the old title-key merge) another work's title. A title claim
+    that matches no label/alias of this item is not this work's title
+    (Rule W-138).
+    """
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+
+    def norm(text: Any) -> str:
+        cleaned = sanitize_work_title(str(text or ""))
+        return cleaned.casefold().strip(" .,;:/-\"'")
+
+    own = {norm(v) for v in (item.labels or {}).values() if v}
+    for values in (item.aliases or {}).values():
+        own.update(norm(v) for v in values or [] if v)
+    own.discard("")
+
+    titles = [s for s in item.statements or [] if str(s.property_id or "") == "P1476"]
+    if len(titles) <= 1:
+        return titles
+    matching = [s for s in titles if norm(s.value) in own]
+    if not matching:
+        return titles[:1]
+    best: dict[str, WikidataStatement] = {}
+    for statement in matching:
+        best.setdefault(norm(statement.value), statement)
+    return list(best.values())
 
 
 def _index_works(items: list[WikidataItem]) -> dict[str, WikidataItem]:

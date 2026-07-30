@@ -295,6 +295,10 @@ DISCOURAGED_MANUSCRIPT_P31: frozenset[str] = frozenset({
 })
 
 # Collections / institutions
+# Verified live against the Wikidata API on 2026-07-29 (Rule W-26): each label,
+# description and P31 was read from wbgetentities before being added here.
+Q_BRITISH_LIBRARY = "Q23308"    # "national library of the United Kingdom"
+Q_BODLEIAN = "Q82133"           # "main research library of the University of Oxford"
 Q_NLI = "Q188915"
 Q_KTIV = "Q118384267"
 

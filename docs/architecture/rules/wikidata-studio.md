@@ -706,3 +706,97 @@ disagreed — the canonical readiness gate (Rule W-94) then reported a stale
 fingerprint for an unchanged item. Scalars/mappings/sequences are now coerced to
 their empty form before hashing. Test:
 `test_hmo_canonical_readiness_contract.py::test_fingerprint_is_insensitive_to_absent_versus_empty_containers`.
+
+### Rule W-138 — MARC values reach the handlers unwrapped; every claim names its channel (added 2026-07-29)
+
+Export (14) — the first run with persons and works in the judged pool (308
+judged, up from 86) — scored 186 full/pass, 89 partial, 33 fail. Every W-137
+defect class was 0, and **121 of the 122 non-full items** traced to seven
+further defects, each confirmed against the run's `run_records.marc`.
+
+**1. MARC quote wrappers reached the desktop field handlers.**
+`prepare_record_for_pipeline` unwrapped *control* fields only, so `041$a`
+arrived as `'"heb"'`. The 041 handler chunks language codes in three-character
+slices → `['"he', 'b"']`, no valid code, **no `P407` on 48 manuscripts** (plus
+20 that dropped a secondary language, because `_split_multi` split `"heb|lad"`
+into `"heb` + `lad"`). The same wrappers degraded extent, shelfmark and the
+RDA 33x terms (`content_types: ['']` is what produced the `MARC 336 content
+type:` description text W-137 had to filter).
+`_unwrap_marc_value` now strips balanced surrounding quotes per value **before**
+multi-value splitting, preserving internal gershayim (`שד"ל`). Third occurrence
+of this family — see W-54, W-87, W-111.
+
+**2. Dimensions were misparsed, not merely missing.** `300$c: "9.5X14.5 cm"`
+yielded `height_mm: 50` — the single-value `cm` branch matched `"5 cm"` out of
+`14.5 cm` because decimals were unhandled. `_parse_dimensions` now handles
+decimal/comma pairs with cm+mm units and refuses to start mid-number.
+
+**3. Claims outside MARC had no provenance row at all.** W-137's
+`claim_sources` only mapped MARC-backed PIDs, so `P2888` (246 items), `P214`
+(122), `P973` (63), `P106`/`P8189`/`P1559` (25 each) and `P569`/`P570` reached
+the judge with nothing to check — hence "unsupported" on nearly every person.
+`build_claim_sources` is now channel-aware: `marc.<slice>`,
+`authority.{viaf,mazal,authority_dates,authority_role,authority_names}`,
+`hmo_wikibase` (including identifier claims whose authority row lives on the
+live wiki item, gated at HMO creation per Rule W-95), `work_candidate_evidence`
+/ `local_reference_targets`, and `structural: true` for `P31`/`P3959`, which
+follow from the entity type. **Every emitted PID must resolve to a channel.**
+
+**4. Person dates came from a fuzzy name join.**
+`_authority_match_for_entity` fell back to `matches_by_name[label.casefold()]`,
+so a scribe in a 1642 manuscript was described `(1786-1874)` — a homonym's
+lifespan (26 items). Anything asserting biographical fact now passes
+`identifier_only=True`; a name-keyed match may still supply the *role*, never
+the dates (Rule W-67's exact-ID requirement, now enforced on the canonical
+description path too).
+
+**5. Works merged on a title key.** `_work_keys` indexed a work by every
+`P1476` value, so items carrying several title forms merged unrelated works —
+the Carpentras siddur inherited `סדר אליהו זוטא` (58 items had 2–3 titles).
+Identity is now the QID, the local id, or the item's own label;
+`canonical_work_titles` keeps the single title form that matches the work's own
+label/aliases, and `WORK_MULTIPLE_TITLES` blocks the build.
+
+**6. 82 works shipped the bare fallback description.**
+`_work_description_with_attestation` adds century, an identifier-backed author
+and the attesting manuscript's shelfmark — a description disambiguates.
+
+**7. 38 `__LOCAL:` targets named items that were never built** (31 manuscripts).
+Works dropped by the thin-title (W-98) or evidence (W-68/W-121) gates left the
+referring `P1574` pointing at nothing, which pass 2 of the upload would leave as
+a literal placeholder. `wikidata_local_refs.resolve_local_references` degrades a
+contained-text link to `P1574 → Q234460` + `P1932` catalog title and drops any
+other property, reporting counts in the build summary;
+`DANGLING_LOCAL_REFERENCE` is a hard gate.
+
+**Stragglers.** `is_too_generic_subject` keeps corpus-wide ethnonyms
+(`Jews`, `Judaism`, `כתבי יד`, …) out of `P921` (Rule W-72, enforced at the
+resolver). `P195` now resolves two further holders — `Q23308` British Library
+and `Q82133` Bodleian Library, **both read live from the Wikidata API on
+2026-07-29** per Rule W-26; `The Ben Zvi Institute` resolves to two plausible
+entities (a publishing organization and Yad Yitzhak Ben-Zvi) and therefore
+**abstains** (Rule W-84's reasoning).
+
+**Cache invalidation:** `WIKIDATA_VERDICT_SCHEMA` → `w138_v1`, Studio salt →
+`hmo-wikidata-v11`, `WIKIDATA_STUDIO_BUILD_SCHEMA` → `source-aware-works-v4`.
+
+**Offline gate before any judge run.**
+`backend/scripts/check_wikidata_export_quality.py` now reports
+`blocking_counts` (must be 0) separately from `informational_counts`
+(`work_missing_existing_qid` is expected for CREATE works). Baseline on export
+(14): **589 blocking** — `claim_without_provenance_row` 269,
+`work_boilerplate_description` 82, `work_multiple_p1476` 58,
+`missing_p407_with_language_evidence` 48, `claim_without_evidence` 48,
+`dangling_local_reference` 31, `person_dates_without_authority_evidence` 28,
+`p407_drops_secondary_language` 20, `dimension_contradicts_extent` 5.
+
+**Curator ops after deploy:** Wikidata Studio **Rebuild (skip cache)** on the
+canonical source → run the checker on a fresh export → only when
+`blocking_total` is 0, re-run **Verify with AI**.
+
+Mirror caveat (Rule R5 / W-43 residual): `field_handlers.py`,
+`marc_subject_resolve.py`, `item_builder.py`, `manuscript_projection.py` and
+`property_mapping.py` were hand-edited in the web copy. Do **not** run
+`sync_converter_to_web.sh` until the desktop repo carries the same changes.
+
+Tests: `backend/tests/unit/test_wikidata_wave2_projection.py` (39).

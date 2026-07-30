@@ -1489,28 +1489,47 @@ class FieldHandlers:
         Returns:
             Dictionary with height_mm and width_mm
         """
-        result = {}
+        result: dict[str, int] = {}
+        num = r"\d+(?:[.,]\d+)?"
 
-        match = re.search(r'(\d+)\s*[xX×]\s*(\d+)\s*(?:mm|מ"מ)', dim_str)
+        def mm(value: str, *, factor: int) -> int:
+            return round(float(value.replace(",", ".")) * factor)
+
+        # "9.5X14.5 cm" / "24 x 17 cm" — a paired measurement in centimetres.
+        # Decimals are common in NLI records and were previously unmatched, so
+        # the single-value branch below grabbed the digit before " cm" ("5 cm"
+        # out of "14.5 cm") and emitted height_mm=50 (Rule W-138).
+        match = re.search(rf'({num})\s*[xX×]\s*({num})\s*(?:cm|ס"מ)', dim_str)
         if match:
-            result["height_mm"] = int(match.group(1))
-            result["width_mm"] = int(match.group(2))
+            result["height_mm"] = mm(match.group(1), factor=10)
+            result["width_mm"] = mm(match.group(2), factor=10)
             return result
 
-        match = re.search(r'(\d+)\s*(?:cm|ס"מ)', dim_str)
+        match = re.search(rf'({num})\s*[xX×]\s*({num})\s*(?:mm|מ"מ)', dim_str)
         if match:
-            result["height_mm"] = int(match.group(1)) * 10
+            result["height_mm"] = mm(match.group(1), factor=1)
+            result["width_mm"] = mm(match.group(2), factor=1)
             return result
 
-        match = re.search(r"(\d+)\s*[xX×]\s*(\d+)", dim_str)
+        # Single value — must not start mid-number ("14.5 cm" is not "5 cm").
+        match = re.search(rf'(?<![\d.,])({num})\s*(?:cm|ס"מ)', dim_str)
         if match:
-            h, w = int(match.group(1)), int(match.group(2))
-            if h > 100 and w > 100:
-                result["height_mm"] = h
-                result["width_mm"] = w
-            else:
-                result["height_mm"] = h * 10
-                result["width_mm"] = w * 10
+            result["height_mm"] = mm(match.group(1), factor=10)
+            return result
+
+        match = re.search(rf'(?<![\d.,])({num})\s*(?:mm|מ"מ)', dim_str)
+        if match:
+            result["height_mm"] = mm(match.group(1), factor=1)
+            return result
+
+        # Unit-less pair: assume cm below 100, millimetres above.
+        match = re.search(rf"(?<![\d.,])({num})\s*[xX×]\s*({num})", dim_str)
+        if match:
+            h = float(match.group(1).replace(",", "."))
+            w = float(match.group(2).replace(",", "."))
+            factor = 1 if h > 100 and w > 100 else 10
+            result["height_mm"] = round(h * factor)
+            result["width_mm"] = round(w * factor)
 
         return result
 

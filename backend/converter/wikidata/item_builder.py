@@ -92,6 +92,8 @@ from converter.wikidata.property_mapping import (
     Q_HEBREW_ALPHABET,
     Q_HUMAN,
     Q_HYPOTHESIS,
+    Q_BODLEIAN,
+    Q_BRITISH_LIBRARY,
     Q_ISRAEL_MUSEUM,
     Q_ILLUMINATED_MANUSCRIPT,
     Q_KTIV,
