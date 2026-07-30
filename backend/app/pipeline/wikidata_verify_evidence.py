@@ -137,6 +137,10 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P1574": ("contents", "title", "related_records"),
     "P1680": ("title",),
     "P1684": ("notes", "colophon_text", "summary"),
+    "P1922": ("notes", "colophon_text", "summary"),   # first line / incipit
+    "P655": ("authors", "contributors"),              # translator
+    "P9046": ("authors", "contributors"),             # commentary by
+    "P5816": ("notes", "material"),                   # condition
     "P2048": ("extent",),
     "P2049": ("extent",),
     "P2093": ("authors", "contributors"),
@@ -300,8 +304,11 @@ def build_claim_sources(
                     sorted(evidence_pack_targets)[:5],
                 )
 
+        # An unmapped PID is labelled as such, never "structural" — that label
+        # asserts the claim needs no evidence, which is only true for the PIDs
+        # in ``_STRUCTURAL_CLAIM_PIDS`` (Rule W-138).
         row: dict[str, Any] = {
-            "channels": channels or ["structural"],
+            "channels": channels or (["structural"] if structural else ["unmapped"]),
             "evidence": evidence,
             "supported": bool(evidence) or structural,
         }

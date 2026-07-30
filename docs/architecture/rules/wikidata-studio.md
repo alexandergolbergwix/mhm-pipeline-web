@@ -800,3 +800,26 @@ Mirror caveat (Rule R5 / W-43 residual): `field_handlers.py`,
 `sync_converter_to_web.sh` until the desktop repo carries the same changes.
 
 Tests: `backend/tests/unit/test_wikidata_wave2_projection.py` (39).
+
+**Follow-up on export (15)** — the first rebuild under this rule dropped the
+offline gate from **589 → 32 blocking**: `claim_without_provenance_row` (269),
+`dangling_local_reference` (31), `missing_p407_with_language_evidence` (48),
+`p407_drops_secondary_language` (20) and `work_multiple_p1476` (58) all reached
+**0**, and verdicts improved to 223 full/pass of 308 judged (from 186). The 32
+residuals were two real defects and two checker bugs:
+
+- **Unmapped PIDs (5).** `P1922` (first line), `P655` (translator), `P9046`
+  (commentary by) and `P5816` (condition) had no `CLAIM_SOURCE_SLICES` entry, so
+  they arrived `supported: false`. Added. The empty-channel fallback also
+  mislabelled them `structural` — it now says `unmapped`, since "structural"
+  asserts a claim needs no evidence and that is only true for `P31`/`P3959`.
+- **Legacy work descriptions (21).** `_work_description_with_attestation` was
+  applied on the canonical path only; `work_projection._get_or_create_work`
+  still emitted the bare fallback. Both paths now name the attesting shelfmark.
+- **Checker: dimensions.** The projection was correct (`9.5X14.5 ס"מ` → 95 ×
+  145 mm); the checker compared millimetre claims against centimetre MARC text
+  and flagged all 5. It now compares in both units with a 0.5 mm tolerance.
+- **Checker: person dates.** It looked for `birth_year` in
+  `work_candidate_evidence` instead of `authority_evidence`, so a properly
+  identifier-backed `scribe (1632-1703)` (Mazal + VIAF, both present) was
+  flagged. Fixed.

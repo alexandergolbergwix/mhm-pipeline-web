@@ -59,6 +59,30 @@ def _find_work_author_match(
     return None
 
 
+def _work_description_with_attestation(
+    *,
+    author_name: str | None,
+    century: str | None,
+    source_record: dict[str, object],
+) -> str:
+    """Disambiguating work description, naming the attesting manuscript.
+
+    ``_build_work_description`` degrades to a bare "Work preserved in a Hebrew
+    manuscript" when neither author nor century is known, which disambiguates
+    nothing — 21 works shipped exactly that. The attesting shelfmark (or its
+    control number) is always available and always evidence-derived
+    (Rule W-138).
+    """
+    description = _build_work_description(author_name=author_name, century=century)
+    shelfmark = str(source_record.get("shelfmark") or "").strip().strip('"')
+    attestation = shelfmark or str(
+        source_record.get("_control_number") or "",
+    ).strip().strip('"')
+    if attestation:
+        return f"{description}, attested in MS {attestation}"
+    return description
+
+
 class WorkProjectionMixin:
     def _get_or_create_work(
         self,
@@ -165,9 +189,13 @@ class WorkProjectionMixin:
         # made same-label items indistinguishable on Wikidata. Build a
         # disambiguating description that includes the author when known
         # (Wikidata requires descriptions to disambiguate same-label items).
-        work.descriptions["en"] = _build_work_description(
+        # Name the attesting manuscript when neither author nor century is
+        # known, so the description still disambiguates: 21 works shipped the
+        # bare fallback text (Rule W-138).
+        work.descriptions["en"] = _work_description_with_attestation(
             author_name=author_name,
             century=_extract_century_for_work(source_record),
+            source_record=source_record,
         )
 
         work.statements.append(

@@ -326,3 +326,49 @@ class TestPersonDateGating:
         })
         out = _upload_descriptions(entity, "person", context=context)
         assert out["en"] == "author (1555-1619)"
+
+
+class TestResidualDefects:
+    """Rule W-138 follow-up — export (15) residuals."""
+
+    def test_every_projected_pid_has_a_provenance_mapping(self) -> None:
+        """P1922 / P655 / P9046 / P5816 reached the judge unmapped."""
+        item = {
+            "entity_type": "manuscript",
+            "statements": [
+                {"property_id": pid, "value": "x"}
+                for pid in ("P1922", "P655", "P9046", "P5816")
+            ],
+        }
+        sources = build_claim_sources(
+            item, {"notes": "F. 1a: incipit", "authors": "ויטל", "material": "parchment"}, [],
+        )
+        assert all(row["supported"] for row in sources.values())
+
+    def test_unmapped_pid_is_labelled_unmapped_not_structural(self) -> None:
+        sources = build_claim_sources(
+            {"statements": [{"property_id": "P9999", "value": "x"}]}, {}, [],
+        )
+        assert sources["P9999"]["channels"] == ["unmapped"]
+        assert sources["P9999"]["supported"] is False
+
+    def test_legacy_work_description_names_the_attesting_manuscript(self) -> None:
+        import asyncio
+
+        from app.pipeline.wikidata_studio import build_items_for_run
+
+        result = asyncio.run(build_items_for_run(
+            marc_records=[{
+                "_control_number": '"990000464110205171"',
+                "245$a": '"כתב יד"',
+                "852$j": '"F 12345"',
+                "500$a": '"כולל: ענף שני מפרי עץ החיים"',
+            }],
+            approved_matches=[],
+        ))
+        works = [i for i in result["items"] if i["entity_type"] == "work"]
+        assert works
+        for work in works:
+            description = work["descriptions"]["en"]
+            assert description != "Work preserved in a Hebrew manuscript"
+            assert "F 12345" in description

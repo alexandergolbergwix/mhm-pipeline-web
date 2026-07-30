@@ -194,9 +194,15 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     if entity_type == "person":
         descriptions = " ".join(_description_any(row))
         if re.search(r"\(\d{3,4}\s*[-–]\s*\d{0,4}\)", descriptions):
+            authority_rows = row.get("authority_evidence") or []
+            if isinstance(authority_rows, str):
+                authority_rows = _json_cell(authority_rows)
             has_dates = any(
                 isinstance(item, dict) and (item.get("birth_year") or item.get("death_year"))
-                for item in _evidence(row)
+                for item in (
+                    list(authority_rows if isinstance(authority_rows, list) else [])
+                    + _evidence(row)
+                )
             )
             if not has_dates:
                 checks.append("person_dates_without_authority_evidence")
@@ -218,12 +224,19 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
         extent_slice = str(marc_slice.get("extent") or "")
         dimensions = _values(statements, "P2048") + _values(statements, "P2049")
         if dimensions and extent_slice:
-            marc_numbers = {
-                n.rstrip("0").rstrip(".")
-                for n in re.findall(r"\d+(?:\.\d+)?", extent_slice)
-            }
-            emitted = {str(v).rstrip("0").rstrip(".") for v in dimensions}
-            if marc_numbers and not (emitted & marc_numbers):
+            # Claims are millimetres; MARC 300$c is usually centimetres
+            # ("9.5X14.5 ס\"מ" → 95 × 145 mm). Compare in both units before
+            # calling a value contradictory.
+            marc_numbers: set[float] = set()
+            for raw in re.findall(r"\d+(?:[.,]\d+)?", extent_slice):
+                value = float(raw.replace(",", "."))
+                marc_numbers.add(value)
+                marc_numbers.add(value * 10)
+            emitted = {float(str(v)) for v in dimensions}
+            if marc_numbers and not any(
+                any(abs(value - candidate) < 0.51 for candidate in marc_numbers)
+                for value in emitted
+            ):
                 checks.append("dimension_contradicts_extent")
 
     if entity_type == "manuscript":

@@ -375,3 +375,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     New hard gates: `WORK_MULTIPLE_TITLES`, `DANGLING_LOCAL_REFERENCE`.
     *Why:* export (14) — 89 partial / 33 fail across 308 judged items, 121 of
     122 non-full items explained by these seven defects.
+
+    *Export (15) follow-up:* gate went 589 → 32 → 0 blocking. Added
+    `P1922`/`P655`/`P9046`/`P5816` provenance rows, labelled unmapped PIDs
+    `unmapped` (not `structural`), applied the attesting-shelfmark work
+    description on the legacy path too, and fixed two checker bugs
+    (mm-vs-cm dimension comparison; person dates read from
+    `authority_evidence`).
