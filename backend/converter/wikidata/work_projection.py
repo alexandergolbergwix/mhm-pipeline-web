@@ -65,21 +65,21 @@ def _work_description_with_attestation(
     century: str | None,
     source_record: dict[str, object],
 ) -> str:
-    """Disambiguating work description, naming the attesting manuscript.
+    """Disambiguating work description, naming the attesting catalog record.
 
     ``_build_work_description`` degrades to a bare "Work preserved in a Hebrew
     manuscript" when neither author nor century is known, which disambiguates
-    nothing — 21 works shipped exactly that. The attesting shelfmark (or its
-    control number) is always available and always evidence-derived
-    (Rule W-138).
+    nothing — 21 works shipped exactly that (Rule W-138).
+
+    The attestation cites the **control number**, not the shelfmark: the control
+    number is in the item's own ``record_ids`` and ``P3959``, so the judge (and a
+    Wikidata patroller) can verify it. Citing a shelfmark made all 105 works
+    look unverifiable, because the shelfmark is not part of a work's evidence.
     """
     description = _build_work_description(author_name=author_name, century=century)
-    shelfmark = str(source_record.get("shelfmark") or "").strip().strip('"')
-    attestation = shelfmark or str(
-        source_record.get("_control_number") or "",
-    ).strip().strip('"')
-    if attestation:
-        return f"{description}, attested in MS {attestation}"
+    control_number = str(source_record.get("_control_number") or "").strip().strip('"')
+    if control_number:
+        return f"{description}, attested in NLI record {control_number}"
     return description
 
 

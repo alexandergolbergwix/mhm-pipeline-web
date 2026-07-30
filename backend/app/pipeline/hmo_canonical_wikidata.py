@@ -405,7 +405,7 @@ def native_items_from_hmo(
         statements = [
             WikidataStatement(
                 property_id=claim["property"],
-                value=claim["value"],
+                value=_claim_value_for(claim["property"], claim["value"]),
                 value_type="wikibase-item" if _QID.fullmatch(claim["value"]) else "string",
             )
             for claim in native_wikidata_claims(entity, rollup_sources=rollup_sources)
@@ -417,6 +417,12 @@ def native_items_from_hmo(
             if wd_type == "work"
             else []
         )
+        # A candidate accepted *because* a known Wikidata work exists must carry
+        # that QID. Without this, `הגדה של פסח` was accepted via
+        # `known_wikidata_work` and then minted as a local CREATE — a duplicate
+        # of an item that already exists on Wikidata (Rule W-114 / W-138).
+        if wd_type == "work" and not existing_qid:
+            existing_qid = _known_qid_from_work_evidence(work_evidence)
         # Fail closed: never emit a CREATE work without accepted source evidence
         # (Rule W-68 / WORK_WITHOUT_SOURCE_EVIDENCE). Existing QIDs may UPDATE.
         if (
@@ -1226,6 +1232,51 @@ def _work_title_candidates(entity: CanonicalHmoEntity) -> list[str]:
     return out
 
 
+_TITLE_VALUE_PIDS = frozenset({"P1476", "P1680", "P1932"})
+
+
+def _claim_value_for(property_id: str, value: str) -> str:
+    """Sanitise title-valued claims the same way labels are sanitised.
+
+    `P1476` shipped raw ISBD pairs like `"הגדה של פסח :" "מנהג אשכנז."` while the
+    label carried the clean form — the same string, quoted twice, disagreeing
+    with itself (Rule W-45 / W-50 hygiene, enforced on the canonical claim path
+    at Rule W-138).
+    """
+    if property_id not in _TITLE_VALUE_PIDS:
+        return value
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+
+    cleaned = sanitize_work_title(str(value or ""))
+    return cleaned or value
+
+
+def _known_qid_from_work_evidence(work_evidence: list[dict[str, Any]]) -> str:
+    """Resolve the known Wikidata QID that made a work candidate acceptable.
+
+    ``assess_work_candidate`` accepts a candidate with ``reason
+    known_wikidata_work`` when its *evidence* title matches a known work, but
+    the item's own label may be a longer ISBD form that no longer matches
+    exactly (Rule W-78). Recovering the QID from the evidence titles keeps the
+    two decisions consistent (Rule W-138 follow-up).
+    """
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+    from converter.wikidata.property_mapping import known_work_qid_for_title  # noqa: PLC0415
+
+    for row in work_evidence:
+        if not isinstance(row, dict) or row.get("accepted") is not True:
+            continue
+        for key in ("title", "raw_title", "source_text"):
+            candidate = str(row.get(key) or "").strip()
+            if not candidate:
+                continue
+            for form in (candidate, sanitize_work_title(candidate)):
+                qid = known_work_qid_for_title(form)
+                if qid:
+                    return qid
+    return ""
+
+
 def _strip_ms_scope_suffix(title: str) -> str:
     return re.sub(
         r"\s*\(MS\s+[\d\"']+\)\s*$",
@@ -1513,10 +1564,13 @@ def _work_description_with_attestation(
         century=_century_hint_from_record(marc),
     )
 
-    shelfmark = str(marc.get("shelfmark") or "").strip().strip('"')
-    attestation = shelfmark or canonical_control_number(marc.get("_control_number"))
-    if attestation:
-        description = f"{description}, attested in MS {attestation}"
+    # Cite the control number, not the shelfmark: it is in the item's own
+    # record_ids / P3959 and therefore verifiable from the evidence pack
+    # (Rule W-138 follow-up — a cited shelfmark read as unsupported on all 105
+    # works because a work's evidence does not carry one).
+    control_number = canonical_control_number(marc.get("_control_number"))
+    if control_number:
+        description = f"{description}, attested in NLI record {control_number}"
     return description
 
 

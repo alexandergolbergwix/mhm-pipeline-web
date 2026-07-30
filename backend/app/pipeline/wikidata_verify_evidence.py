@@ -182,6 +182,37 @@ _STRUCTURAL_CLAIM_PIDS = frozenset({"P31", "P3959"})
 _MAX_CLAIM_EVIDENCE_CHARS = 400
 
 
+_MAIN_TITLE_SOURCE_FIELDS = frozenset({"245", "100/245", "marc_title_author", "marc_245_title"})
+
+
+def _work_candidate_source_fields(item: dict[str, Any]) -> set[str]:
+    out: set[str] = set()
+    for row in item.get("work_candidate_evidence") or []:
+        if isinstance(row, dict):
+            for key in ("source_field", "reason"):
+                value = str(row.get(key) or "").strip()
+                if value:
+                    out.add(value)
+    return out
+
+
+def _marc_slices_for(pid: str, item: dict[str, Any]) -> tuple[str, ...]:
+    """MARC slices that back ``pid`` **for this entity type**.
+
+    A work's own title is only evidenced by MARC 245 when the work *is* the
+    record's main title. For a 505/500/RELATED-derived work, citing `marc.title`
+    hands the judge the manuscript's title as "evidence" for a different
+    title — it contradicts the claim instead of supporting it, which failed or
+    downgraded every 505-derived work (Rule W-138 follow-up).
+    """
+    slices = CLAIM_SOURCE_SLICES.get(pid, ())
+    if pid != "P1476" or str(item.get("entity_type") or "") != "work":
+        return slices
+    if _work_candidate_source_fields(item) & _MAIN_TITLE_SOURCE_FIELDS:
+        return slices
+    return tuple(name for name in slices if name != "title") + ("contents", "notes")
+
+
 def _statement_property_ids(item: dict[str, Any]) -> list[str]:
     out: list[str] = []
     for statement in item.get("statements") or []:
@@ -246,7 +277,7 @@ def build_claim_sources(
         channels: list[str] = []
         structural = pid in _STRUCTURAL_CLAIM_PIDS
 
-        for name in CLAIM_SOURCE_SLICES.get(pid, ()):
+        for name in _marc_slices_for(pid, item):
             channels.append(f"marc.{name}")
             if name == "record_ids":
                 if record_ids:
@@ -294,11 +325,12 @@ def build_claim_sources(
                     {"hmo_wikibase_id": qid or None, "source_uri": source_uri or None},
                 )
 
-        if pid in _WORK_LINK_CLAIM_PIDS:
+        is_work_title = pid == "P1476" and str(item.get("entity_type") or "") == "work"
+        if pid in _WORK_LINK_CLAIM_PIDS or is_work_title:
             channels.append("work_candidate_evidence")
             if work_evidence:
                 evidence["work_candidate_evidence"] = _compact(work_evidence[:2])
-            if evidence_pack_targets:
+            if evidence_pack_targets and pid in _WORK_LINK_CLAIM_PIDS:
                 channels.append("local_reference_targets")
                 evidence["local_reference_targets"] = _compact(
                     sorted(evidence_pack_targets)[:5],

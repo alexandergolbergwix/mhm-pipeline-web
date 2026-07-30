@@ -63,13 +63,19 @@ RAW_TAG_FALLBACK: dict[str, tuple[str, ...]] = {
     "contents": ("505$a", "505$t"),
     "summary": ("520$a",),
     "languages": ("041$a", "546$a"),
-    "rights": ("540$a", "540$u", "939$a", "939$u"),
+    "rights": ("540$a", "540$u", "939$a", "939$u", "952$a", "952$b"),
     "provenance": ("541$a", "541$b", "561$a", "563$a", "583$a"),
     "subjects": ("650$a", "651$a", "600$a", "610$a"),
     "genres": ("655$a",),
     "authors": ("100$a", "100$d", "110$a", "111$a"),
     "contributors": ("700$a", "700$d", "710$a", "711$a"),
-    "shelfmark": ("852$j", "852$h", "852$c", "952$a", "952$b", "952$c", "952$d"),
+    # 090/099 carry the NLI shelfmark ("F 3238"); 852 is the standard holdings
+    # field. 952$a–d are NOT shelfmark data in this corpus — they hold rights,
+    # audit and export notes ("Public domain; Contract", a cataloguer name),
+    # and mapping them here made the judge see rights text where it expected a
+    # shelfmark, so every work's cited attestation looked unverifiable
+    # (Rule W-138 follow-up).
+    "shelfmark": ("090$a", "099$a", "852$j", "852$h", "852$c"),
     "digital_access": ("856$u", "966$a", "966$9"),
     "related_records": ("773$a", "774$a", "787$a"),
 }

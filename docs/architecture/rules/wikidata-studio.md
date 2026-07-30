@@ -823,3 +823,42 @@ residuals were two real defects and two checker bugs:
   `work_candidate_evidence` instead of `authority_evidence`, so a properly
   identifier-backed `scribe (1632-1703)` (Mazal + VIAF, both present) was
   flagged. Fixed.
+
+**Follow-up on export (16)** — the gate reached **0 blocking** and persons
+improved sharply (full 89 → 126, partial 26 → 3, fail 18 → 6), but **works
+regressed** (fail 7 → 19) because two W-138 changes of mine were wrong, and the
+gate could not see either:
+
+- **`952$a–d` are not shelfmark data in this corpus.** They hold rights, audit
+  and export notes (`"Public domain; Contract"`, a cataloguer's name); the NLI
+  shelfmark is **`090$a`** (`"F 3238"`). Mapping 952 into the `shelfmark` slice
+  meant the judge saw rights text where it expected a shelfmark, so **all 105**
+  works cited an attestation it could not verify. `shelfmark` is now
+  `090$a / 099$a / 852$j / 852$h / 852$c`; `952$a–b` moved to `rights`.
+- **A work's attestation must be verifiable.** The description now cites the
+  **control number** (`attested in NLI record 990001499320205171`), which is in
+  the item's own `record_ids` and `P3959` — not a shelfmark, which is not part of
+  a work's evidence. This also removes the `attested in MS Ms. Heb. …` double-MS
+  (8 items).
+- **`P1476` provenance is entity-aware.** A work's title is evidenced by
+  `marc.title` only when the work *is* the record's main title (`100/245`); for a
+  505/500/RELATED-derived work, citing `marc.title` handed the judge the
+  manuscript's *different* title as "evidence" — contradiction, not support.
+  Derived works now cite `marc.contents` / `marc.notes` +
+  `work_candidate_evidence`.
+- **A known-QID work must not be minted as a local CREATE.** `הגדה של פסח` was
+  accepted with reason `known_wikidata_work` yet shipped `existing_qid: None`,
+  i.e. a duplicate of an item already on Wikidata.
+  `_known_qid_from_work_evidence` recovers the QID from the accepting evidence
+  row when the item's own (longer ISBD) label no longer matches exactly
+  (Rule W-78 / W-114).
+- **Title claims are sanitised like labels.** `P1476` shipped
+  `"הגדה של פסח :" "מנהג אשכנז."` while the label carried the clean form —
+  `_claim_value_for` routes `P1476`/`P1680`/`P1932` through
+  `sanitize_work_title` (64 items).
+
+New checker codes so neither class can hide again: `attestation_not_in_evidence`
+(a description may only cite what the item's own evidence carries) and
+`title_claim_has_quote_wrappers`. Both were **invisible** to the gate that
+reported 0 on export (16); re-running the extended checker on that same export
+reports **169 blocking** (105 + 64), which is the honest number.

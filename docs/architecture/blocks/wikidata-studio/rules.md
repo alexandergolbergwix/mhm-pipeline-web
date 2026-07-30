@@ -382,3 +382,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     description on the legacy path too, and fixed two checker bugs
     (mm-vs-cm dimension comparison; person dates read from
     `authority_evidence`).
+
+    *Export (16) follow-up:* `090$a`/`099$a` (not `952$a–d`) carry the NLI
+    shelfmark — 952 is rights/audit text; a work's attestation cites its
+    control number (verifiable via `record_ids`/P3959); `P1476` provenance is
+    entity-aware (only a 100/245 work cites `marc.title`); a known-QID work is
+    never minted as a local CREATE; `P1476`/`P1680`/`P1932` are sanitised like
+    labels. New gate codes: `attestation_not_in_evidence`,
+    `title_claim_has_quote_wrappers`.

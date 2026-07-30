@@ -210,6 +210,27 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     if entity_type == "work":
         if len(_values(statements, "P1476")) > 1:
             checks.append("work_multiple_p1476")
+        # A description may only cite what the item's own evidence carries.
+        # A description may only cite what the item's own evidence carries.
+        description = _description_en(row)
+        record_ids = row.get("record_ids") or row.get("records") or []
+        if isinstance(record_ids, str):
+            record_ids = _json_cell(record_ids)
+        record_ids = [str(r) for r in record_ids] if isinstance(record_ids, list) else []
+        for marker, haystack in (
+            ("attested in NLI record ", " ".join(record_ids)),
+            ("attested in MS ", str(marc_slice.get("shelfmark") or "")),
+        ):
+            if marker not in description:
+                continue
+            cited = description.split(marker, 1)[1].strip().rstrip(".")
+            if cited and cited not in haystack:
+                checks.append("attestation_not_in_evidence")
+            break
+        for title in _values(statements, "P1476"):
+            if '"' in title:
+                checks.append("title_claim_has_quote_wrappers")
+                break
         if str(row.get("descriptions", {}).get("en") if isinstance(row.get("descriptions"), dict) else "") == (
             "Work preserved in a Hebrew manuscript"
         ):

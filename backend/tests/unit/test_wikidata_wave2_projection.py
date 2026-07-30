@@ -371,4 +371,75 @@ class TestResidualDefects:
         for work in works:
             description = work["descriptions"]["en"]
             assert description != "Work preserved in a Hebrew manuscript"
-            assert "F 12345" in description
+            # The control number is verifiable from the item's own record_ids /
+            # P3959; a shelfmark is not part of a work's evidence pack.
+            assert "990000464110205171" in description
+
+
+class TestExport16Residuals:
+    """Rule W-138 follow-up — regressions my own W-138 changes introduced."""
+
+    def test_shelfmark_slice_holds_the_shelfmark_not_rights_text(self) -> None:
+        """952$a-d are rights/audit fields in this corpus; 090$a is the shelfmark."""
+        from app.pipeline.marc_verify_context import (
+            index_marc_records,
+            marc_context_for_item,
+        )
+
+        record = {
+            "_control_number": CN,
+            "090$a": '"F 3238"',
+            "952$a": '"Public domain; Contract"',
+            "952$c": '"Noam Solan by Ruben Wengiel 20220613"',
+        }
+        slice_ = marc_context_for_item(
+            {"control_numbers": [CN]}, index_marc_records([record]),
+        )
+        assert "F 3238" in slice_["shelfmark"]
+        assert "Public domain" not in slice_["shelfmark"]
+        assert "Public domain" in slice_["rights"]
+
+    def test_work_title_provenance_is_entity_aware(self) -> None:
+        """A 505-derived work is not evidenced by the manuscript's 245."""
+        marc = {"title": "גלא עמיקתא", "contents": "505$a: מחזור"}
+        main = {
+            "entity_type": "work",
+            "statements": [{"property_id": "P1476", "value": "גלא עמיקתא"}],
+            "work_candidate_evidence": [{"source_field": "100/245", "accepted": True}],
+        }
+        derived = {
+            "entity_type": "work",
+            "statements": [{"property_id": "P1476", "value": "מחזור"}],
+            "work_candidate_evidence": [{"source_field": "505", "accepted": True}],
+        }
+        assert "marc.title" in build_claim_sources(main, marc, [])["P1476"]["channels"]
+        derived_row = build_claim_sources(derived, marc, [])["P1476"]
+        assert "marc.title" not in derived_row["channels"]
+        assert "work_candidate_evidence" in derived_row["channels"]
+
+    def test_work_attestation_cites_a_verifiable_control_number(self) -> None:
+        from converter.wikidata.work_projection import _work_description_with_attestation
+
+        description = _work_description_with_attestation(
+            author_name=None, century=None,
+            source_record={"_control_number": CN, "shelfmark": "Ms. Heb. 197/11=4"},
+        )
+        assert f"attested in NLI record {CN}" in description
+        assert "MS Ms." not in description
+
+    def test_known_work_qid_is_carried_from_the_accepting_evidence(self) -> None:
+        """Accepted via `known_wikidata_work` must not mint a local CREATE."""
+        from app.pipeline.hmo_canonical_wikidata import _known_qid_from_work_evidence
+
+        assert _known_qid_from_work_evidence([
+            {"accepted": True, "title": "הגדה של פסח", "raw_title": "הגדה של פסח."},
+        ]) == "Q623354"
+        assert _known_qid_from_work_evidence([{"accepted": False, "title": "הגדה של פסח"}]) == ""
+
+    def test_title_claims_are_sanitised_like_labels(self) -> None:
+        from app.pipeline.hmo_canonical_wikidata import _claim_value_for
+
+        assert _claim_value_for(
+            "P1476", '"הגדה של פסח :" "מנהג אשכנז."',
+        ) == "הגדה של פסח : מנהג אשכנז"
+        assert _claim_value_for("P31", "Q47461344") == "Q47461344"
