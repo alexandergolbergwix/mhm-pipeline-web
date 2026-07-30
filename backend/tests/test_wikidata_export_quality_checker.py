@@ -79,3 +79,42 @@ def test_audit_flags_one_missing_review_field_in_otherwise_diagnostic_json(tmp_p
 
     assert report["export_mode"] == "diagnostic"
     assert report["counts"] == {"export_missing_ai_verdict": 1}
+
+
+def _work_with_title(local_id: str, title: str) -> dict:
+    return {
+        "local_id": local_id,
+        "entity_type": "work",
+        "approved": True,
+        "ai_verdict": {"overall": "full"},
+        "label": title,
+        "statements": [{"property_id": "P1476", "value": title}],
+    }
+
+
+def test_gershayim_in_a_title_claim_is_not_quote_noise(tmp_path: Path) -> None:
+    """Rule W-76 — רש"י is the title, not an unbalanced ISBD wrapper."""
+    source = tmp_path / "titles.json"
+    source.write_text(
+        json.dumps(
+            {
+                "items": [
+                    _work_with_title("work:gershayim", 'פרוש רש"י'),
+                    _work_with_title("work:geresh", "מאמרי חז\"ל הפותחים בג' דברים"),
+                    _work_with_title("work:wrapped", '"דרושים."'),
+                    _work_with_title("work:doubled", 'תקכ""א'),
+                ],
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    report = audit(source)
+
+    assert report["counts"]["title_claim_has_quote_wrappers"] == 2
+    flagged = {
+        f["local_id"]
+        for f in report["findings"]
+        if "title_claim_has_quote_wrappers" in f["checks"]
+    }
+    assert flagged == {"work:wrapped", "work:doubled"}

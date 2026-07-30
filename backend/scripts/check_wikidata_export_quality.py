@@ -119,6 +119,14 @@ _CATALOG_NOTE_RE = (
 )
 
 
+def _has_quote_wrappers(value: str) -> bool:
+    """MARC quote noise only — a Hebrew gershayim inside the title is not noise."""
+    text = value.strip()
+    if '""' in text:
+        return True
+    return len(text) >= 2 and text.startswith('"') and text.endswith('"')
+
+
 def _values(statements: list[dict[str, Any]], pid: str) -> list[str]:
     out: list[str] = []
     for statement in statements:
@@ -184,6 +192,12 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     ):
         checks.append("claim_without_evidence")
 
+    # Rule W-139 — a CREATE candidate that already exists on Wikidata.
+    duplicate_check = ((evidence_pack.get("wikidata_existing") or {}).get("duplicate_check")
+                       if isinstance(evidence_pack.get("wikidata_existing"), dict) else None)
+    if isinstance(duplicate_check, dict) and duplicate_check.get("status") == "candidates_found":
+        checks.append("create_would_duplicate_existing_item")
+
     local_targets = set(evidence_pack.get("local_reference_targets") or {})
     for statement in statements:
         value = str(statement.get("value") or "")
@@ -211,7 +225,6 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
         if len(_values(statements, "P1476")) > 1:
             checks.append("work_multiple_p1476")
         # A description may only cite what the item's own evidence carries.
-        # A description may only cite what the item's own evidence carries.
         description = _description_en(row)
         record_ids = row.get("record_ids") or row.get("records") or []
         if isinstance(record_ids, str):
@@ -227,8 +240,10 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
             if cited and cited not in haystack:
                 checks.append("attestation_not_in_evidence")
             break
+        # Hebrew gershayim are part of the title (רש"י, תשב"ץ) — only MARC
+        # wrapper quotes and the doubled-quote escape are noise (Rule W-76).
         for title in _values(statements, "P1476"):
-            if '"' in title:
+            if _has_quote_wrappers(title):
                 checks.append("title_claim_has_quote_wrappers")
                 break
         if str(row.get("descriptions", {}).get("en") if isinstance(row.get("descriptions"), dict) else "") == (
@@ -329,6 +344,11 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
         "label": _label(row),
         "checks": sorted(set(checks)),
     }
+    if isinstance(duplicate_check, dict) and duplicate_check.get("candidates"):
+        relevant["duplicate_candidates"] = [
+            {k: c.get(k) for k in ("qid", "matched_on", "label") if c.get(k)}
+            for c in duplicate_check["candidates"][:3]
+        ]
     if entity_type == "work":
         relevant["description_en"] = _description_en(row)
         relevant["existing_qid"] = row.get("existing_qid") or row.get("qid")

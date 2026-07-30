@@ -7,7 +7,7 @@
 - `backend/tests/unit/test_item_validator.py` — every check incl. label-hygiene warnings + `TestP50OnManuscript`, `TestP7416AsQuantity`, `TestP31WrongQid`, `MISSING_P3959` ERROR, `DISCOURAGED_P31`, `LOCATION_WITHOUT_GEO_EVIDENCE`.
 - `backend/tests/test_wikidata_export_quality.py` — build gate runs full validator ERROR set (incl. missing P3959 / bad P31).
 - `backend/tests/test_wikidata_items_export_import.py` — override export/import round-trip and diagnostic CSV coverage (item fields, MARC context, and full AI verdict).
-- `backend/tests/test_wikidata_export_quality_checker.py` — compact JSON/CSV audit reports only actionable failures and distinguishes authority-approved-only from diagnostic exports.
+- `backend/tests/test_wikidata_export_quality_checker.py` — compact JSON/CSV audit reports only actionable failures, distinguishes authority-approved-only from diagnostic exports, and treats Hebrew gershayim in a title claim as content rather than wrapper noise (Rule W-76).
 - `backend/tests/test_section_export_router.py` — section CSV retains item approval, verdict JSON, source records, validation, authority, and work-candidate evidence.
 - `backend/tests/test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`, and `unit/test_wikidata_verdict_cache.py` pin build `records` ↔ verify `record_ids`, MARC/local-target fingerprint parity, prompt-visible statement/work evidence, and safe stale-key display; `unit/test_marc_subject_resolve.py` and `test_marc_650_655_lod.py` pin verified static QIDs/labels and broad-P921 omission.
 - `backend/tests/unit/test_hmo_wikidata_pq_mapper.py` — ontology/local-PID → public P/Q allowlist; bare project QID rejected; MS P50 forbidden.
@@ -79,3 +79,4 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_evidence_and_identity.py` — raw-tag evidence slice, per-claim provenance, manuscript identity scoping, claim dedup, identity gates (Rule W-137).
 - `backend/tests/unit/test_wikidata_description_hygiene.py` — generated manuscript descriptions, catalog-note rejection, description language routing (Rule W-137).
 - `backend/tests/unit/test_wikidata_wave2_projection.py` — MARC unwrapping, dimension parsing, channel-aware provenance, work-title identity, local-reference resolution, generic subjects, verified holders (Rule W-138).
+- `backend/tests/unit/test_wikidata_duplicate_probe.py` — identifier probes, batch attribution, throttle/fail-closed statuses, evidence-pack exposure (Rule W-139).

@@ -297,6 +297,14 @@ unbalanced ISBD wrapper quotes. The validator now removes quote characters
 between Hebrew letters before checking wrapper balance, while still flagging
 surrounding and doubled wrapper noise. Test: `test_item_validator.py`.
 
+The seventeenth export showed the same defect had reappeared in the offline
+gate: `check_wikidata_export_quality.py` flagged twelve clean work titles
+(`פרוש רש"י`, `תשב"ץ`, `תרגום רס"ג לתורה`) as
+`title_claim_has_quote_wrappers` because it tested for any `"`. Every surface
+that judges quote noise — validator and offline gate alike — MUST flag only
+surrounding wrappers and the doubled-quote MARC escape. Test:
+`test_wikidata_export_quality_checker.py::test_gershayim_in_a_title_claim_is_not_quote_noise`.
+
 
 ### Rule W-77 — Explicit catalog semantics MUST survive projection (added 2026-07-15)
 
@@ -862,3 +870,53 @@ New checker codes so neither class can hide again: `attestation_not_in_evidence`
 `title_claim_has_quote_wrappers`. Both were **invisible** to the gate that
 reported 0 on export (16); re-running the extended checker on that same export
 reports **169 blocking** (105 + 64), which is the honest number.
+
+### Rule W-139 — AI verify asks Wikidata whether the item already exists (added 2026-07-30)
+
+The upload path has been fail-closed on duplicates since Rule W-30, but nothing
+earlier in the flow said so: an item could be built, judged, approved by a
+curator and only *then* discovered to duplicate a live Wikidata item. Verify now
+probes for an existing item and hands the answer to the judge as evidence.
+
+Measured on run `48ba6c13` export (16): **12 of 206 probeable CREATE candidates
+already exist on Wikidata** — Yom-Tov Lipmann Heller (`Q66439`), Samuel ibn
+Naghrillah (`Q467161`), Abraham Firkovich (`Q2390259`), Yihye Bashiri
+(`Q22935567`), … and one manuscript already imported as `Q134603946`
+("KTIV990001343040205171"). Creating those would have been 12 duplicates.
+
+**Action API, never WDQS.** Rules W-116 / W-119 forbid live SPARQL here — it
+produced 429s and read timeouts that hung whole jobs. CirrusSearch answers the
+same question over the light Action API:
+`action=query&list=search&srsearch=haswbstatement:P8189=987007262418105171`.
+
+- **Identity, not similarity.** Probes are by identifier only — `P3959` for
+  manuscripts, `P214`/`P8189`/`P244`/`P227` for persons. Label similarity is
+  never treated as duplication: homonymous scribes and works are normal
+  (Rules W-37 / W-84).
+- **Batched + throttled, because unthrottled probing 429s.** Measured: 50 of 60
+  single probes failed. `probe_batch` pipes up to 20 `PID=value` pairs into one
+  query (`haswbstatement:P214=A|P8189=B`), each hit is attributed by reading that
+  item's claims, requests share a ≥1.1 s interval and honour `Retry-After` and
+  `maxlag`. Full 313-item corpus: 206 probes in ~100 s, and answers are cached
+  content-addressed (`kind="wikidata.duplicate_probe"`, Rule W-25) so repeats are
+  free.
+- **Fail closed, never fail silent.** `unavailable` / `skipped` / `not_run` mean
+  *unknown*, never "safe to create". The 104 works have no identifier to probe and
+  are reported `skipped` with that reason stated — a silent `absent` there would
+  be a lie (Rule W-110's no-silent-caps reasoning).
+- **Budget + kill switch.** `WIKIDATA_DUPLICATE_PROBE=0` disables;
+  `WIKIDATA_DUPLICATE_PROBE_MAX` (400), `_INTERVAL` (1.1 s) and `_TIMEOUT` (8 s)
+  bound it. Runs in the verify **worker** during scope preparation, never in a
+  request handler (Rule W-59).
+- **Rubric.** `candidates_found` on a CREATE item ⇒ `type_ok="no"`,
+  `overall="fail"`, naming the QID and matched identifier so the curator links
+  instead of creating. An identifier match is an identity match even when labels
+  differ. `unavailable`/`skipped` is a caveat in `reasoning`, not a fail.
+- **Offline gate.** New checker code `create_would_duplicate_existing_item`,
+  which reports the matched QID in the finding row.
+
+Works remain unprobeable by identifier — an honest gap, not a solved problem.
+Closing it needs a curator-reviewed label+author search, which is a weak signal
+and must not auto-block (Rule W-84).
+
+Tests: `backend/tests/unit/test_wikidata_duplicate_probe.py` (13).
