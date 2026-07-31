@@ -17,11 +17,22 @@ from app.pipeline.marc_verify_context import (
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
 # Prefer the canonical value when both sides emit the same PID.
+# PIDs where the canonical projection wins outright: a legacy value is dropped
+# when the canonical item already carries that property. For P31 this is
+# essential — merging legacy types back in reintroduces the discouraged classes
+# Rule W-98 forbids.
 _CANONICAL_PREFERRED_PIDS = frozenset({
     "P31",
     "P2888",
     "P973",
 })
+
+# ...except that "already has this property" is the wrong test for a property
+# that legitimately holds several values. P973 carries BOTH the HMO bridge and
+# the catalogue's own record URL (MARC 856$u), so suppressing by PID silently
+# dropped the catalogue link from all 68 manuscripts (Rule W-142). For these,
+# only an identical VALUE is a duplicate.
+_MULTI_VALUE_CANONICAL_PIDS = frozenset({"P973"})
 
 _QID_RE = re.compile(r"^Q\d+$", re.IGNORECASE)
 
@@ -122,13 +133,49 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
         key = _statement_key(stmt)
         if key in seen:
             continue
-        if pid in _CANONICAL_PREFERRED_PIDS and _has_pid(out.statements, pid):
+        if (
+            pid in _CANONICAL_PREFERRED_PIDS
+            and pid not in _MULTI_VALUE_CANONICAL_PIDS
+            and _has_pid(out.statements, pid)
+        ):
             continue
         out.statements.append(stmt)
         seen.add(key)
     out.statements = dedupe_statements(out.statements)
     _with_canonical_titles(out)
+    _apply_printed_facsimile_typing(out, legacy)
     return out
+
+
+def _apply_printed_facsimile_typing(
+    merged: WikidataItem, legacy: WikidataItem,
+) -> None:
+    """A printed facsimile must not stay typed as a manuscript (Rule W-142).
+
+    Only the legacy projection reads MARC 500$a `דפוס צלום`, and P31 is
+    canonical-preferred, so the canonical `Q87167` overwrote the correct
+    `Q571` and the item claimed to be a manuscript it is a reproduction of.
+    """
+    if (legacy.semantic_type or "") != "printed_facsimile":
+        return
+    merged.semantic_type = "printed_facsimile"
+    kept = [
+        stmt for stmt in merged.statements
+        if not (str(stmt.property_id) == "P31" and str(stmt.value) == "Q87167")
+    ]
+    if not any(
+        str(stmt.property_id) == "P31" and str(stmt.value) == "Q571" for stmt in kept
+    ):
+        printed = next(
+            (
+                stmt for stmt in (legacy.statements or [])
+                if str(stmt.property_id) == "P31" and str(stmt.value) == "Q571"
+            ),
+            None,
+        )
+        if printed is not None:
+            kept.append(printed)
+    merged.statements = kept
 
 
 def _with_scoped_records(item: WikidataItem) -> WikidataItem:

@@ -93,11 +93,33 @@ async def _publish_build_progress(
         await update_job_progress(job_id, _build_progress(state, phases))
 
 
+async def _persist_mined_items(
+    run_id: uuid.UUID,
+    approved_only: bool,
+    source: str,
+    items: list[dict[str, object]],
+) -> None:
+    """Write the mined `_llm_proposals` back onto the durable Studio cache row."""
+    from app.db import session_scope  # noqa: PLC0415
+    from app.routers.wikidata_studio import _get_studio_cache_row  # noqa: PLC0415
+
+    async with session_scope() as db:
+        row = await _get_studio_cache_row(db, run_id, approved_only, source)
+        if row is None:
+            logger.warning("no Studio cache row to persist proposals for run %s", run_id)
+            return
+        row.result_items = items
+        await db.commit()
+
+
 async def _mine_provenance_prose(
     job_id: uuid.UUID,
     cached: object,
     state: dict[str, object],
     phases: tuple[str, ...],
+    run_id: uuid.UUID,
+    approved_only: bool,
+    source: str,
 ) -> None:
     """Attach span-grounded LLM proposals to the built items (Rule W-140).
 
@@ -122,6 +144,11 @@ async def _mine_provenance_prose(
             session_scope, items, on_progress=on_progress,
         )
         logger.info("marc llm extract: %s", stats)
+        if stats.get("proposals"):
+            # execute_studio_build already wrote the cache row, so mining in
+            # memory alone left every export reading `not_run`. Persist the
+            # enriched items or the proposals never reach a curator.
+            await _persist_mined_items(run_id, approved_only, source, items)
     except Exception as exc:  # noqa: BLE001 — enrichment must not fail the build
         logger.warning("marc llm extract skipped for job %s: %s", job_id, exc)
 
@@ -183,7 +210,10 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)
         return
 
-    await _mine_provenance_prose(job_id, cached, state, phases)
+    await _mine_provenance_prose(
+        job_id, cached, state, phases,
+        run_id=run_id, approved_only=approved_only, source=source,
+    )
 
     total = len(cached.result_items or [])
     summary = cached.summary or {}

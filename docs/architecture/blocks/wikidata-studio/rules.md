@@ -418,3 +418,17 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     advisory, never claims, and barred by the rubric from moving any verdict axis.
     *Why:* generation is not an evidence channel (Rules W-72/W-67/W-138), so the
     only safe LLM output is a span-grounded candidate a curator confirms.
+
+63. **R63 — Projection must not lose what the build already knows (Rule W-142).**
+    Auditing export (18) found four lost-information bugs: 32 of 42 degraded
+    `P1574` claims named a work present in the same build (now relinked by title
+    — `P1932` "stated as" and `P1476` the work's own title are distinct, and a
+    self-relink is refused); the MARC `856$u` catalogue URL was suppressed
+    because `P973` was already occupied by the HMO bridge (only an identical
+    *value* is a duplicate now, and `P31` stays strict per W-98); a printed
+    facsimile kept `P31=Q87167` because only the legacy path reads `דפוס צלום`;
+    and the `he` label hardcoded `ספרייה לאומית`. LLM proposals were mined after
+    the cache row was written and so never persisted.
+    *Also:* a judge verdict is a hypothesis — it claimed `tat` maps to `Q4927`,
+    which is live-verified as *"Category:History of Dominica"*, not Tatar.
+

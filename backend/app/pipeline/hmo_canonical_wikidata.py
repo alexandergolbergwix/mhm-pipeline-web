@@ -894,7 +894,7 @@ def _manuscript_labels_and_aliases(
         if title_clean and not placeholder and title_has_hebrew:
             aliases.setdefault("he", []).append(title_clean)
         if "he" not in labels and (placeholder or not title_has_hebrew):
-            labels["he"] = f"כתב יד עברי, ספרייה לאומית, {shelfmark}"
+            labels["he"] = _hebrew_manuscript_label(record, shelfmark)
 
     if "en" not in labels and "he" not in labels:
         cn = ""
@@ -904,7 +904,7 @@ def _manuscript_labels_and_aliases(
             cn = identity_control_number(entity)
         if cn:
             labels["en"] = f"Jerusalem, NLI, {cn}"
-            labels["he"] = f"כתב יד עברי, ספרייה לאומית, {cn}"
+            labels["he"] = _hebrew_manuscript_label(record, cn)
         else:
             labels = _route_labels_by_script(raw_labels, has_hebrew=has_hebrew) or {
                 "en": entity.local_id.replace("QDraft_", "").replace("_", " "),
@@ -1451,6 +1451,30 @@ def _description_language_slot(lang: str, text: str) -> str:
     return lang
 
 
+def _hebrew_manuscript_label(record: dict[str, Any] | None, suffix: str) -> str:
+    """`he` fallback label: the record's own language and holder, never NLI by default.
+
+    The old form hardcoded "כתב יד עברי, ספרייה לאומית", so an Israel Museum
+    manuscript announced the National Library as its holder (Rule W-142 / W-82).
+    """
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _LANG_CODE_TO_HEBREW,
+        _holding_institution_name,
+    )
+
+    languages = (record or {}).get("languages") or []
+    primary = str(languages[0]) if languages else "heb"
+    parts = [f"כתב יד {_LANG_CODE_TO_HEBREW.get(primary, 'עברי')}"]
+    holder = _holding_institution_name(record or {})
+    hebrew_holder = _HEBREW_INSTITUTION_NAMES.get(holder) if holder else None
+    if hebrew_holder:
+        parts.append(hebrew_holder)
+    elif holder:
+        parts.append(holder)
+    parts.append(suffix)
+    return ", ".join(parts)
+
+
 def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
     """Hebrew counterpart of the generated manuscript description.
 
@@ -1465,9 +1489,20 @@ def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
     # The language word follows the record, exactly as the `en` description
     # does — a hardcoded "עברי" made 10 Arabic/Italian manuscripts contradict
     # their own English description (Rule W-140).
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _is_printed_facsimile_record,
+    )
+
     languages = record.get("languages") or []
     primary = str(languages[0]) if languages else "heb"
-    parts = [f"כתב יד {_LANG_CODE_TO_HEBREW.get(primary, 'עברי')}"]
+    language_word = _LANG_CODE_TO_HEBREW.get(primary, "עברי")
+    # A photostatic reprint is not a manuscript; the `en` description already
+    # said so while `he` still called it כתב יד (Rule W-142 / W-77).
+    parts = [
+        f"מהדורת פקסימיליה מודפסת {language_word}"
+        if _is_printed_facsimile_record(record)
+        else f"כתב יד {language_word}"
+    ]
     dates = record.get("dates")
     if isinstance(dates, dict):
         year = str(dates.get("year") or dates.get("gregorian_year") or "").strip('" ')

@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-141)
+## Architectural rules (W-1…W-142)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -102,6 +102,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-137** — Verify evidence must be complete and manuscript identity must be its own
 - **W-138** — MARC values reach the handlers unwrapped; every claim names its channel
 - **W-139** — AI verify asks Wikidata whether the item already exists (duplicate probe)
+- **W-142** — Projection must not lose what the build already knows
 - **W-140** — Manuscript metadata MUST be recovered from MARC before it is generated
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)

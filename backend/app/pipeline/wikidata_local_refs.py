@@ -28,7 +28,11 @@ logger = logging.getLogger(__name__)
 LOCAL_PREFIX = "__LOCAL:"
 Q_UNKNOWN_TEXT = "Q234460"
 P_EXEMPLAR_OF = "P1574"
-P_TITLE = "P1932"
+# P1932 ("stated as") carries the catalog wording on the degraded claim; a work
+# item states its own title in P1476. Conflating the two made the title index
+# empty and every relink miss.
+P_STATED_AS = "P1932"
+P_WORK_TITLE = "P1476"
 
 # Properties whose local target can degrade to "some unidentified text".
 _DEGRADABLE_PIDS = frozenset({P_EXEMPLAR_OF})
@@ -41,7 +45,7 @@ def _local_target(value: Any) -> str:
 
 def _has_title_qualifier(statement: WikidataStatement) -> bool:
     return any(
-        str(q.get("property") or q.get("property_id") or "") == P_TITLE
+        str(q.get("property") or q.get("property_id") or "") == P_STATED_AS
         for q in statement.qualifiers or []
         if isinstance(q, dict)
     )
@@ -55,9 +59,45 @@ def _degrade(statement: WikidataStatement, target_id: str) -> WikidataStatement:
         if title:
             statement.qualifiers = [
                 *(statement.qualifiers or []),
-                {"property": P_TITLE, "value": title, "value_type": "monolingualtext"},
+                {"property": P_STATED_AS, "value": title, "value_type": "monolingualtext"},
             ]
     return statement
+
+
+def _work_title_index(items: list[WikidataItem]) -> dict[str, str]:
+    """Emitted work items keyed by every title they answer to.
+
+    A dropped-and-rebuilt work keeps its title but not its original local id, so
+    32 of 42 degraded `P1574` claims named a work that was sitting in the same
+    build under a different id (Rule W-142).
+    """
+    index: dict[str, str] = {}
+    for item in items:
+        if (item.entity_type or "").strip().lower() != "work":
+            continue
+        local_id = str(item.local_id or "")
+        if not local_id:
+            continue
+        titles = [str(v or "").strip() for v in (item.labels or {}).values()]
+        titles += [
+            str(stmt.value or "").strip()
+            for stmt in (item.statements or [])
+            if str(stmt.property_id) == P_WORK_TITLE
+        ]
+        for title in titles:
+            if title:
+                index.setdefault(title, local_id)
+    return index
+
+
+def _intended_title(statement: WikidataStatement, target_id: str) -> str:
+    """The title the referring claim meant, from its qualifier or its local id."""
+    for qualifier in statement.qualifiers or []:
+        if isinstance(qualifier, dict) and qualifier.get("property") == P_STATED_AS:
+            title = str(qualifier.get("value") or "").strip()
+            if title:
+                return title
+    return target_id.split(":", 1)[-1].replace("_", " ").strip()
 
 
 def resolve_local_references(items: list[WikidataItem]) -> dict[str, int]:
@@ -67,8 +107,10 @@ def resolve_local_references(items: list[WikidataItem]) -> dict[str, int]:
     hide a projection bug (Rule W-110's "no silent caps" reasoning).
     """
     known = {str(item.local_id or "") for item in items if item.local_id}
+    work_titles = _work_title_index(items)
     degraded = 0
     dropped = 0
+    relinked = 0
 
     for item in items:
         kept: list[WikidataStatement] = []
@@ -78,7 +120,18 @@ def resolve_local_references(items: list[WikidataItem]) -> dict[str, int]:
                 kept.append(statement)
                 continue
             pid = str(statement.property_id or "")
+            # Prefer the real work over the generic "text" placeholder: the
+            # target id may be stale while the work itself was built under a
+            # different id (Rule W-142).
             if pid in _DEGRADABLE_PIDS:
+                title = _intended_title(statement, target)
+                relinked_id = work_titles.get(title) if title else None
+                if relinked_id and relinked_id != str(item.local_id or ""):
+                    statement.value = f"__LOCAL:{relinked_id}"
+                    statement.value_type = "item"
+                    kept.append(statement)
+                    relinked += 1
+                    continue
                 kept.append(_degrade(statement, target))
                 degraded += 1
                 continue
@@ -103,12 +156,14 @@ def resolve_local_references(items: list[WikidataItem]) -> dict[str, int]:
                 qualifiers.append(qualifier)
             statement.qualifiers = qualifiers
 
+    if relinked:
+        logger.info("resolved local references: %d relinked to a built work", relinked)
     if degraded or dropped:
         logger.info(
             "resolved local references: %d degraded to %s, %d dropped",
             degraded, Q_UNKNOWN_TEXT, dropped,
         )
-    return {"degraded": degraded, "dropped": dropped}
+    return {"degraded": degraded, "dropped": dropped, "relinked": relinked}
 
 
 def dangling_local_references(items: list[Any]) -> list[str]:

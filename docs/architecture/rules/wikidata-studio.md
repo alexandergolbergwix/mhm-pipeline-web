@@ -1032,3 +1032,52 @@ Tests: `test_wikidata_verdict_cache.py::TestAdvisoryEvidenceNeverKeysAVerdict`.
 
 Tests: `backend/tests/unit/test_marc_extent_and_digital_access.py` (27),
 `test_marc_llm_extract.py` (20).
+
+### Rule W-142 — Projection must not lose what the build already knows (added 2026-07-31)
+
+Export (18) reached 0 blocking findings and 243/280 clean verdicts, and auditing
+the residue found four places where the build **had** the right answer and threw
+it away. Each is a lost-information bug, not a knowledge gap:
+
+1. **Contained works were replaced by a placeholder.** 42 `P1574` claims
+   degraded to generic `Q234460` ("text") — but **32 of them named a work that
+   was in the same build** under a different local id. `resolve_local_references`
+   now indexes emitted works by every title they answer to (labels plus their
+   `P1476` claim) and relinks the `__LOCAL:` target before degrading. Note the
+   two title properties are NOT interchangeable: `P1932` ("stated as") carries
+   the catalog wording on the referring claim, `P1476` is the work's own title —
+   conflating them made the index empty and every relink miss. A relink to the
+   referring item itself is refused, so the circular `P1574` the judge flagged
+   cannot be created.
+2. **The catalogue URL was dropped by the merge.** `P973` legitimately holds
+   both the HMO bridge and the catalogue's own record URL (MARC `856$u`), but
+   `_CANONICAL_PREFERRED_PIDS` suppressed the legacy statement because that
+   *property* was already present — so 0 of 68 manuscripts carried their
+   catalogue link. For `_MULTI_VALUE_CANONICAL_PIDS` only an identical **value**
+   is a duplicate. `P31` must stay strict: merging legacy types back in
+   reintroduces the discouraged classes Rule W-98 forbids.
+3. **A printed facsimile stayed typed as a manuscript.** Only the legacy
+   projection reads `500$a` `דפוס צלום`, and `P31` is canonical-preferred, so
+   `Q87167` overwrote the correct `Q571`. The merge now carries
+   `semantic_type="printed_facsimile"` across and swaps the type, and the `he`
+   description says `מהדורת פקסימיליה מודפסת` rather than `כתב יד`.
+4. **The `he` label hardcoded holder and language.** It emitted
+   `כתב יד עברי, ספרייה לאומית, <shelfmark>` verbatim, so an Israel Museum
+   manuscript announced the National Library as its holder (Rule W-82). It now
+   takes the language from the record and the holder from
+   `_HEBREW_INSTITUTION_NAMES`, keeping a foreign institution's own name rather
+   than inventing a Hebrew form.
+5. **LLM proposals were mined but never persisted.** `_mine_provenance_prose`
+   mutated `cached.result_items` *after* `execute_studio_build` had already
+   written the cache row, so all 313 items exported `llm_proposals: not_run`
+   while the extractor had genuinely run. The build job now writes the enriched
+   items back onto the durable cache row.
+
+**A judge verdict is a hypothesis, not a fact.** The same audit had the judge
+assert that MARC `tat` should map to `Q4927` rather than our `Q25285`. Live
+lookup (Rule W-26): `Q25285` **is** Tatar; `Q4927` is
+*"Category:History of Dominica"*. Acting on that verdict would have reproduced
+the Palme d'Or incident. Verify any P/Q a verdict recommends before changing a
+mapping.
+
+Tests: `backend/tests/unit/test_wikidata_projection_recovery.py` (11).
