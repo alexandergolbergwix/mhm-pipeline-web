@@ -92,6 +92,11 @@ KIND_TTL: dict[str, timedelta | None] = {
     "research.movement":       timedelta(days=30),  # full corpus; fingerprint-invalidated
     "research.movement_facets": timedelta(days=30), # facets; fingerprint-invalidated
     "wikidata.label":           timedelta(days=90),  # labels rarely change
+    # A stale "absent" is how a duplicate slips through later, so existence
+    # answers expire quickly; MARC prose does not change and the key already
+    # carries the record text + model (Rule W-140).
+    "wikidata.duplicate_probe": timedelta(days=7),
+    "marc.llm_extract":         timedelta(days=90),
 }
 
 # Redis TTL in seconds — None = no expiry (SET without EX).
@@ -113,6 +118,8 @@ _REDIS_TTL_SECONDS: dict[str, int | None] = {
     "research.movement":       86_400,      # 1-day Redis window; invalidated by fingerprint
     "research.movement_facets": 86_400,     # 1-day Redis window; invalidated by fingerprint
     "wikidata.label":           86_400 * 7, # 7-day Redis hot window
+    "wikidata.duplicate_probe": 86_400,      # 1-day Redis window on existence
+    "marc.llm_extract":         86_400 * 7,  # 7-day Redis window on extraction
 }
 
 

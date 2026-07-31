@@ -20,7 +20,10 @@ import logging
 import os
 from typing import Any
 
-from app.pipeline.inference_cache import cache_lookup_or_call
+from app.pipeline.inference_cache import (
+    read_from_inference_cache,
+    write_to_inference_cache,
+)
 from app.pipeline.judge_models import (
     Tier1CredentialsError,
     resolve_tier1_model,
@@ -220,7 +223,7 @@ def _call_qubrid(prompt: str, *, model_id: str, timeout: float) -> str:
 
 
 async def extract_for_record(
-    db: Any,
+    db_factory: Any = None,
     *,
     control_number: str,
     marc_slice: dict[str, Any] | None,
@@ -228,7 +231,14 @@ async def extract_for_record(
     call: Any = None,
     skip_cache: bool = False,
 ) -> dict[str, Any]:
-    """Proposals for one record, content-addressed on the MARC prose."""
+    """Proposals for one record, content-addressed on the MARC prose.
+
+    *db_factory* is a zero-arg async session **context manager factory**, not a
+    live session: a model call takes seconds, and holding a session across it
+    closes the connection under us (Rule W-40). The cache is read in one short
+    session, the call happens with **no** session open, and the result is
+    written in another short session.
+    """
     record_text = source_text(marc_slice)
     if not record_text:
         return {"status": STATUS_NO_SOURCE, "proposals": []}
@@ -237,50 +247,60 @@ async def extract_for_record(
 
     model = (model_id or _model_id()).strip()
     prompt = build_prompt(control_number, record_text)
+    query_summary = {
+        "schema": EXTRACT_SCHEMA,
+        "model": model,
+        "control_number": control_number,
+        "record": record_text,
+    }
+
+    if db_factory is not None and not skip_cache:
+        async with db_factory() as db:
+            cached = await read_from_inference_cache(
+                db, kind=CACHE_KIND, query_summary=query_summary,
+            )
+        if isinstance(cached, dict) and cached.get("status") == STATUS_OK:
+            return cached
+
     invoke = call or (
         lambda: _call_qubrid(prompt, model_id=model, timeout=_timeout())
     )
+    from fastapi.concurrency import run_in_threadpool  # noqa: PLC0415
 
-    async def fetch() -> dict[str, Any]:
-        from fastapi.concurrency import run_in_threadpool  # noqa: PLC0415
+    try:
+        raw = await run_in_threadpool(invoke)
+    except Exception as exc:  # noqa: BLE001
+        # An unreachable model must not look like "nothing to extract", and a
+        # transient failure must never be cached.
+        logger.warning("marc llm extract failed for %s: %s", control_number, exc)
+        return {"status": STATUS_UNAVAILABLE, "proposals": [], "error": str(exc)}
 
-        try:
-            raw = await run_in_threadpool(invoke)
-        except Exception as exc:  # noqa: BLE001
-            # An unreachable model must not look like "nothing to extract".
-            logger.warning("marc llm extract failed for %s: %s", control_number, exc)
-            return {"status": STATUS_UNAVAILABLE, "proposals": [], "error": str(exc)}
-        return {
-            "status": STATUS_OK,
-            "model": model,
-            "proposals": parse_response(raw, record_text),
-        }
-
-    if db is None:
-        return await fetch()
-    return await cache_lookup_or_call(
-        db,
-        kind=CACHE_KIND,
-        query_summary={
-            "schema": EXTRACT_SCHEMA,
-            "model": model,
-            "control_number": control_number,
-            "record": record_text,
-        },
-        fetch=fetch,
-        skip_cache=skip_cache,
-    )
+    result = {
+        "status": STATUS_OK,
+        "model": model,
+        "proposals": parse_response(raw, record_text),
+    }
+    if db_factory is not None:
+        async with db_factory() as db:
+            await write_to_inference_cache(
+                db, kind=CACHE_KIND, query_summary=query_summary, result=result,
+            )
+    return result
 
 
 async def attach_llm_proposals(
-    db: Any,
+    db_factory: Any,
     items: list[dict[str, Any]],
     *,
     marc_by_cn: dict[str, dict[str, Any]] | None = None,
     call: Any = None,
     budget: int | None = None,
 ) -> dict[str, int]:
-    """Stamp `_llm_proposals` on every manuscript item we can read prose for."""
+    """Stamp `_llm_proposals` on every manuscript item we can read prose for.
+
+    Takes a session **factory**, never a live session: the caller's session must
+    not stay open across dozens of multi-second model calls (Rule W-40).
+    """
     remaining = _budget() if budget is None else budget
     stats = {"records": 0, "proposals": 0, "skipped": 0, "unavailable": 0}
     slices = marc_by_cn or {}
@@ -306,7 +326,7 @@ async def attach_llm_proposals(
         remaining -= 1
         stats["records"] += 1
         result = await extract_for_record(
-            db,
+            db_factory,
             control_number=control_number,
             marc_slice=marc_slice,
             call=call,

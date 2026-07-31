@@ -915,6 +915,15 @@ same question over the light Action API:
 - **Offline gate.** New checker code `create_would_duplicate_existing_item`,
   which reports the matched QID in the finding row.
 
+**Correction (2026-07-31).** `attach_duplicate_evidence` uses the *batched*
+path, which never called `probe_item` and therefore never touched the cache — so
+the probe re-spent ~100 s of HTTP on every verify run despite Rule W-51. It now
+caches per `(pid, value)` identifier, so a lookup is shared across every item
+using it and free on a re-run; **absences are cached too** (that is the common
+case) under a 7-day TTL, short enough that a newly created Wikidata item is not
+missed for long. Cache reads and writes each take their own short transaction —
+the HTTP never runs inside one (Rule W-40).
+
 Works remain unprobeable by identifier — an honest gap, not a solved problem.
 Closing it needs a curator-reviewed label+author search, which is a weak signal
 and must not auto-block (Rule W-84).
@@ -976,7 +985,8 @@ Invariant:
    `P186` — the extractor never introduces a new P/Q (Rule W-26). Material
    values must resolve through `MATERIAL_TO_QID`. Results are content-addressed
    in the inference cache (Rule W-51), bounded by `MARC_LLM_EXTRACT_MAX`, and
-   disabled by `MARC_LLM_EXTRACT=0`.
+   disabled by `MARC_LLM_EXTRACT=0`. The extractor takes a session **factory**
+   and never holds a transaction across a model call (Rule W-40).
 7. **Proposals are never claims.** They surface as
    `verify_evidence.llm_proposals` for the curator and the judge, and nothing is
    projected into `statements`. Generation is not an evidence channel

@@ -362,8 +362,61 @@ def probe_batch(
     return out
 
 
+CACHE_KIND = "wikidata.duplicate_probe"
+
+
+def _pair_summary(pid: str, value: str) -> dict[str, Any]:
+    """Cache key for one identifier lookup, shared across every item using it."""
+    return {"schema": PROBE_SCHEMA, "pid": pid, "value": value}
+
+
+async def _read_cached_pairs(
+    db_factory: Any,
+    pairs: list[tuple[str, str]],
+) -> dict[tuple[str, str], list[dict[str, str]]]:
+    """Cached candidates per identifier. One short transaction, index lookups."""
+    if db_factory is None or not pairs:
+        return {}
+    from app.pipeline.inference_cache import read_from_inference_cache  # noqa: PLC0415
+
+    found: dict[tuple[str, str], list[dict[str, str]]] = {}
+    try:
+        async with db_factory() as db:
+            for pid, value in pairs:
+                hit = await read_from_inference_cache(
+                    db, kind=CACHE_KIND, query_summary=_pair_summary(pid, value),
+                )
+                # An explicit empty list is a real cached "absent" — keep it.
+                if isinstance(hit, dict) and isinstance(hit.get("candidates"), list):
+                    found[(pid, value)] = hit["candidates"]
+    except Exception as exc:  # noqa: BLE001 — a cache miss must never break verify
+        logger.warning("duplicate probe cache read failed: %s", exc)
+    return found
+
+
+async def _write_cached_pairs(
+    db_factory: Any,
+    results: dict[tuple[str, str], list[dict[str, str]]],
+) -> None:
+    if db_factory is None or not results:
+        return
+    from app.pipeline.inference_cache import write_to_inference_cache  # noqa: PLC0415
+
+    try:
+        async with db_factory() as db:
+            for (pid, value), candidates in results.items():
+                await write_to_inference_cache(
+                    db,
+                    kind=CACHE_KIND,
+                    query_summary=_pair_summary(pid, value),
+                    result={"candidates": candidates},
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("duplicate probe cache write failed: %s", exc)
+
+
 async def attach_duplicate_evidence(
-    db: AsyncSession | None,
+    db_factory: Any,
     items: list[dict[str, Any]],
     *,
     fetch: Any = None,
@@ -376,7 +429,9 @@ async def attach_duplicate_evidence(
     past the budget are marked ``skipped`` with the reason, never ``absent``
     (Rule W-110's "no silent caps").
     """
-    stats = {"probed": 0, "duplicates": 0, "unavailable": 0, "skipped": 0}
+    stats = {
+        "probed": 0, "duplicates": 0, "unavailable": 0, "skipped": 0, "cached": 0,
+    }
     if not probe_enabled():
         for item in items:
             item["_wikidata_existence"] = {
@@ -415,8 +470,29 @@ async def attach_duplicate_evidence(
     from fastapi.concurrency import run_in_threadpool  # noqa: PLC0415
 
     pairs = sorted(pending)
-    for start in range(0, len(pairs), _BATCH_SIZE):
-        chunk = pairs[start : start + _BATCH_SIZE]
+
+    def apply(key: tuple[str, str], candidates: list[dict[str, str]]) -> None:
+        for item in pending.get(key, []):
+            existence = item["_wikidata_existence"]
+            if not candidates:
+                continue
+            existence["status"] = STATUS_CANDIDATES
+            for candidate in candidates:
+                if candidate not in existence["candidates"]:
+                    existence["candidates"].append(candidate)
+
+    # Identifier lookups are cached per (pid, value) so they are shared across
+    # items and free on a re-run. Read in one short transaction, then release it:
+    # the HTTP below must never run inside an open transaction (Rule W-40).
+    cached = await _read_cached_pairs(db_factory, pairs)
+    for key, candidates in cached.items():
+        apply(key, candidates)
+    stats["cached"] = len(cached)
+
+    misses = [key for key in pairs if key not in cached]
+    fresh: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for start in range(0, len(misses), _BATCH_SIZE):
+        chunk = misses[start : start + _BATCH_SIZE]
         try:
             hits = await run_in_threadpool(probe_batch, chunk, fetch=fetch)
         except Exception as exc:  # noqa: BLE001 — a probe must never break verify
@@ -431,13 +507,13 @@ async def attach_duplicate_evidence(
                     }
                     stats["unavailable"] += 1
             continue
-        for key, candidates in hits.items():
-            for item in pending.get(key, []):
-                existence = item["_wikidata_existence"]
-                existence["status"] = STATUS_CANDIDATES
-                for candidate in candidates:
-                    if candidate not in existence["candidates"]:
-                        existence["candidates"].append(candidate)
+        # Every probed identifier in this chunk got an answer, including the
+        # absences — caching those is what makes a re-run free.
+        for key in chunk:
+            fresh[key] = hits.get(key, [])
+            apply(key, fresh[key])
+
+    await _write_cached_pairs(db_factory, fresh)
 
     stats["duplicates"] = sum(
         1 for item in items

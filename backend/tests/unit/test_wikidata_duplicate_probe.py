@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import urllib.error
+from unittest.mock import patch
 
 from app.pipeline.wikidata_duplicate_probe import (
     STATUS_ABSENT,
@@ -150,3 +152,106 @@ class TestAttachDuplicateEvidence:
     def test_unprobed_item_reports_not_run(self) -> None:
         pack = build_verify_evidence_pack(_person(), [])
         assert pack["wikidata_existing"]["duplicate_check"]["status"] == "not_run"
+
+
+class TestBatchedProbeCaching:
+    """Rule W-140 — the batched path caches per identifier and never holds a txn."""
+
+    @staticmethod
+    def _factory(store: dict, order: list, open_count: dict):
+        import contextlib
+
+        @contextlib.asynccontextmanager
+        async def factory():
+            open_count["now"] += 1
+            open_count["max"] = max(open_count["max"], open_count["now"])
+            order.append("session")
+            try:
+                yield object()
+            finally:
+                open_count["now"] -= 1
+
+        return factory
+
+    def test_absent_answers_are_cached_so_a_rerun_makes_no_calls(self) -> None:
+        store: dict = {}
+        order: list[str] = []
+        open_count = {"now": 0, "max": 0}
+        factory = self._factory(store, order, open_count)
+        http_calls: list[int] = []
+
+        def fetch(url: str, *, timeout: float) -> dict:
+            http_calls.append(1)
+            if open_count["now"]:
+                raise AssertionError("HTTP ran inside an open transaction")
+            return {"query": {"search": []}}
+
+        async def read(_db, *, kind, query_summary):
+            return store.get(json.dumps(query_summary, sort_keys=True))
+
+        async def write(_db, *, kind, query_summary, result):
+            store[json.dumps(query_summary, sort_keys=True)] = result
+
+        async def run() -> None:
+            with patch(
+                "app.pipeline.inference_cache.read_from_inference_cache", new=read,
+            ), patch(
+                "app.pipeline.inference_cache.write_to_inference_cache", new=write,
+            ):
+                first = await attach_duplicate_evidence(
+                    factory, [_person()], fetch=fetch,
+                )
+                assert first["cached"] == 0
+                second = await attach_duplicate_evidence(
+                    factory, [_person()], fetch=fetch,
+                )
+                assert second["cached"] == 1
+
+        asyncio.run(run())
+        assert len(http_calls) == 1, f"re-run hit the network: {len(http_calls)} calls"
+        assert open_count["now"] == 0, "a session leaked"
+
+    def test_cached_duplicate_is_still_reported(self) -> None:
+        store: dict = {}
+        order: list[str] = []
+        open_count = {"now": 0, "max": 0}
+        factory = self._factory(store, order, open_count)
+
+        async def read(_db, *, kind, query_summary):
+            return {"candidates": [{"qid": "Q118924043", "matched_on": "P214=61512894"}]}
+
+        async def write(_db, **_kwargs):
+            return None
+
+        async def run() -> dict:
+            items = [_person()]
+            with patch(
+                "app.pipeline.inference_cache.read_from_inference_cache", new=read,
+            ), patch(
+                "app.pipeline.inference_cache.write_to_inference_cache", new=write,
+            ):
+                stats = await attach_duplicate_evidence(
+                    factory, items, fetch=_boom,
+                )
+            return {"stats": stats, "item": items[0]}
+
+        out = asyncio.run(run())
+        existence = out["item"]["_wikidata_existence"]
+        assert existence["status"] == STATUS_CANDIDATES
+        assert existence["candidates"][0]["qid"] == "Q118924043"
+        assert out["stats"]["duplicates"] == 1
+
+    def test_a_broken_cache_does_not_break_the_probe(self) -> None:
+        import contextlib
+
+        @contextlib.asynccontextmanager
+        async def factory():
+            raise RuntimeError("pool exhausted")
+            yield  # pragma: no cover
+
+        items = [_person()]
+        stats = asyncio.run(
+            attach_duplicate_evidence(factory, items, fetch=_batch_hit),
+        )
+        assert stats["probed"] == 1
+        assert items[0]["_wikidata_existence"]["status"] == STATUS_CANDIDATES

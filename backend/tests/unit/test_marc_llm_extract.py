@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from unittest.mock import AsyncMock, patch
 
 from app.pipeline.marc_llm_extract import (
     STATUS_NO_SOURCE,
@@ -271,3 +272,117 @@ class TestQubridCall:
         except Tier1CredentialsError:
             return
         raise AssertionError("missing credentials must raise")
+
+
+class TestSessionLifetime:
+    """Rule W-40 — no DB session may stay open across the model call.
+
+    Holding the caller's session across 37 multi-second calls closed the
+    connection and the next cache read raised
+    `InterfaceError: connection is closed`.
+    """
+
+    def test_no_session_is_open_while_the_model_is_called(self) -> None:
+        import contextlib
+
+        open_sessions = {"count": 0, "max_during_call": 0}
+        state = {"in_call": False}
+
+        class FakeSession:
+            pass
+
+        @contextlib.asynccontextmanager
+        async def factory():
+            open_sessions["count"] += 1
+            if state["in_call"]:
+                open_sessions["max_during_call"] = max(
+                    open_sessions["max_during_call"], open_sessions["count"],
+                )
+            try:
+                yield FakeSession()
+            finally:
+                open_sessions["count"] -= 1
+
+        def call() -> str:
+            state["in_call"] = True
+            # A session opened here would be held across the network call.
+            open_sessions["max_during_call"] = max(
+                open_sessions["max_during_call"], open_sessions["count"],
+            )
+            state["in_call"] = False
+            return json.dumps({"proposals": []})
+
+        async def run() -> None:
+            with patch(
+                "app.pipeline.marc_llm_extract.read_from_inference_cache",
+                new=AsyncMock(return_value=None),
+            ), patch(
+                "app.pipeline.marc_llm_extract.write_to_inference_cache",
+                new=AsyncMock(),
+            ):
+                await extract_for_record(
+                    factory,
+                    control_number="990001",
+                    marc_slice=_marc(),
+                    call=call,
+                )
+
+        asyncio.run(run())
+        assert open_sessions["max_during_call"] == 0, (
+            "a DB session was open during the model call"
+        )
+        assert open_sessions["count"] == 0, "a session leaked"
+
+    def test_cache_hit_skips_the_model_entirely(self) -> None:
+        import contextlib
+
+        calls: list[int] = []
+
+        @contextlib.asynccontextmanager
+        async def factory():
+            yield object()
+
+        cached = {"status": STATUS_OK, "proposals": [], "model": "m"}
+
+        async def run() -> dict:
+            with patch(
+                "app.pipeline.marc_llm_extract.read_from_inference_cache",
+                new=AsyncMock(return_value=cached),
+            ):
+                return await extract_for_record(
+                    factory,
+                    control_number="990001",
+                    marc_slice=_marc(),
+                    call=lambda: calls.append(1) or "{}",
+                )
+
+        result = asyncio.run(run())
+        assert result is cached
+        assert not calls, "cache hit still called the model"
+
+    def test_a_failed_call_is_not_cached(self) -> None:
+        import contextlib
+
+        @contextlib.asynccontextmanager
+        async def factory():
+            yield object()
+
+        def boom() -> str:
+            raise RuntimeError("502 upstream")
+
+        write = AsyncMock()
+
+        async def run() -> dict:
+            with patch(
+                "app.pipeline.marc_llm_extract.read_from_inference_cache",
+                new=AsyncMock(return_value=None),
+            ), patch(
+                "app.pipeline.marc_llm_extract.write_to_inference_cache", new=write,
+            ):
+                return await extract_for_record(
+                    factory, control_number="x", marc_slice=_marc(), call=boom,
+                )
+
+        result = asyncio.run(run())
+        assert result["status"] == STATUS_UNAVAILABLE
+        write.assert_not_awaited()

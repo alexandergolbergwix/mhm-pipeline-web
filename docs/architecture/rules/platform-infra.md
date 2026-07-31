@@ -133,6 +133,43 @@ Tests: `backend/tests/unit/test_hmo_item_reconcile.py`
 (`test_live_upload_resolves_reconcile_pid_once_not_per_entity`,
 `test_dry_run_never_resolves_reconcile_pid`).
 
+**Recurrence (Wikidata verify scope, 2026-07-31).** The same rule was broken
+again, this time on the read side. `_fetch_wikidata_verify_items` did its scope
+reads, then — inside that still-open transaction — ran the Rule W-139 duplicate
+probe (~100 s of throttled Wikidata HTTP) and the Rule W-140 LLM extraction
+(one multi-second model call per manuscript). Postgres killed the connection at
+the 2-minute mark and the first statement afterwards raised
+`InterfaceError: connection is closed [SQL: SELECT ... FROM inference_cache
+WHERE kind = 'marc.llm_extract' ...]`.
+
+Note what the symptom is *not*: the query is a two-column index lookup behind
+`uq_inference_cache_key` and Redis L1 already fronts it (Rule W-25). No query
+was slow and no index was missing — the connection was dead *between*
+statements. Indexing or caching cannot fix an idle-in-transaction kill; only
+closing the transaction can.
+
+Invariant, restated for read paths:
+
+1. **Release the transaction before external I/O.** The scope builder calls
+   `await db.rollback()` once its reads are done, before either enrichment step.
+2. **A helper that interleaves cache reads with slow calls takes a session
+   *factory*, not a session.** `marc_llm_extract.extract_for_record` and
+   `wikidata_duplicate_probe.attach_duplicate_evidence` read the cache in one
+   short transaction, make the network call with **no** transaction open, then
+   write in another.
+3. **Never cache a transient failure.** An `unavailable` model or lookup result
+   is returned but not stored.
+4. **Every cache kind declares a TTL.** `wikidata.duplicate_probe` (7 days) and
+   `marc.llm_extract` (90 days) were missing from `KIND_TTL` /
+   `_REDIS_TTL_SECONDS`, so their rows never expired — a permanently cached
+   "this item is absent from Wikidata" is how a duplicate gets created months
+   later.
+
+Tests: `backend/tests/unit/test_wikidata_verify_scope_cache.py`
+(`test_verify_fetch_ends_its_transaction_before_external_io`),
+`backend/tests/unit/test_marc_llm_extract.py::TestSessionLifetime`,
+`backend/tests/unit/test_wikidata_duplicate_probe.py::TestBatchedProbeCaching`.
+
 ---
 
 ### Rule W-123 — Login MUST NOT wait on Wikibase Cloud account provisioning (added 2026-07-27)

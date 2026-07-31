@@ -2393,6 +2393,7 @@ async def _fetch_wikidata_verify_items(
         items.append(item)
     attach_local_reference_targets(items)
     marc_records = await load_run_marc_records_scoped(db, run_id, wanted_cns)
+    from app.db import session_scope  # noqa: PLC0415
     from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
         attach_duplicate_evidence,
     )
@@ -2400,17 +2401,26 @@ async def _fetch_wikidata_verify_items(
         enrich_items_with_verify_evidence,
     )
 
+    # Every DB read for the scope is done. End the transaction BEFORE the
+    # external I/O below: Postgres closes a connection that sits idle in a
+    # transaction past `idle_in_transaction_session_timeout` (2 min, see
+    # app/db.py), and the duplicate probe plus LLM extraction together take
+    # minutes. Leaving it open killed the connection and the next statement
+    # raised `InterfaceError: connection is closed` (Rule W-40).
+    await db.rollback()
+
     # Ask Wikidata whether each CREATE candidate already exists, before the judge
-    # sees it (Rule W-139). Action API + inference cache only — never WDQS on
-    # this path (Rule W-116).
-    await attach_duplicate_evidence(db, items)
+    # sees it (Rule W-139). Action API only — never WDQS on this path (W-116).
+    await attach_duplicate_evidence(session_scope, items)
     enrich_items_with_verify_evidence(items, marc_records)
     # Mine the MARC provenance prose for review candidates (Rule W-140). Runs
     # after the evidence pack so the extractor reads the same MARC slice the
     # judge does; every proposal is span-grounded and stays a proposal.
     from app.pipeline.marc_llm_extract import attach_llm_proposals  # noqa: PLC0415
 
-    await attach_llm_proposals(db, items)
+    # A session factory, not this session: each model call takes seconds, so the
+    # cache read and write each get their own short-lived transaction (W-40).
+    await attach_llm_proposals(session_scope, items)
     enrich_items_with_verify_evidence(items, marc_records)
     return items, marc_records
 
