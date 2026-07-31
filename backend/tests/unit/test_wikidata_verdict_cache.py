@@ -234,3 +234,68 @@ def test_verdict_survives_when_evidence_pack_is_absent() -> None:
     assert kept["cache_key"] == wikidata_verdict_input_fingerprint(
         item, "moonshotai/Kimi-K2.5",
     )
+
+
+class TestAdvisoryEvidenceNeverKeysAVerdict:
+    """Rule W-140 — `llm_proposals` must not participate in the verdict key.
+
+    The rubric forbids a proposal from moving any verdict axis, so letting it key
+    the verdict made the AI-verdict column go empty the moment the build mined a
+    record: the read path hashed `status: ok` where verify had hashed `not_run`.
+    """
+
+    @staticmethod
+    def _item(proposals: dict) -> dict:
+        return {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "labels": {"en": "Jerusalem, NLI, Ms. Heb. 1"},
+            "statements": [{"property_id": "P31", "value": "Q87167"}],
+            "record_ids": ["990001"],
+            "verify_evidence": {
+                "marc": {"shelfmark": "Ms. Heb. 1"},
+                "viaf": {},
+                "llm_proposals": proposals,
+            },
+        }
+
+    def test_fingerprint_ignores_the_proposal_channel(self) -> None:
+        not_run = wikidata_verdict_input_fingerprint(
+            self._item({"status": "not_run", "proposals": []}),
+        )
+        mined = wikidata_verdict_input_fingerprint(
+            self._item({
+                "status": "ok",
+                "proposals": [{"property_id": "P186", "value": "Q226697"}],
+            }),
+        )
+        assert not_run == mined
+
+    def test_a_real_evidence_change_still_changes_the_fingerprint(self) -> None:
+        """The exclusion must be surgical, not a blanket bypass."""
+        base = self._item({"status": "not_run", "proposals": []})
+        changed = self._item({"status": "not_run", "proposals": []})
+        changed["verify_evidence"]["viaf"] = {"authority_rows": [{"identifier": "9"}]}
+        assert wikidata_verdict_input_fingerprint(base) != (
+            wikidata_verdict_input_fingerprint(changed)
+        )
+
+    def test_a_verdict_keyed_the_old_way_is_recovered_and_rewritten(self) -> None:
+        item = self._item({"status": "not_run", "proposals": []})
+        legacy_key = wikidata_verdict_input_fingerprint(
+            item, evidence_drop=("marc",),
+        )
+        stored = {
+            "overall": "full",
+            "reasoning": "looks right",
+            "cache_key": legacy_key,
+            "cache_key_version": "records_marc_v6",
+            "model": "gemini-3.5-flash",
+            "evaluator": "wikidata_item",
+        }
+
+        recovered = sanitise_stale_wikidata_verdict(item, stored)
+
+        assert recovered is not None, "verdict written before the fix was lost"
+        assert recovered["overall"] == "full"
+        assert recovered["cache_key"] == wikidata_verdict_input_fingerprint(item)

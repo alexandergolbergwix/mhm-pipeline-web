@@ -998,5 +998,18 @@ Invariant:
    any verdict axis, and `unavailable` / `no_source` describes the extractor,
    never the item.
 
+**Follow-up (verdicts vanished from the table, 2026-07-31).** Adding
+`llm_proposals` to the evidence pack silently put it inside the verdict cache key
+(`fingerprint_verify_evidence` dropped only `marc`), so the AI-verdict column
+went empty for every row: verify hashed `status: not_run` while the read path
+hashed the `ok` pack the build had mined. Advisory evidence MUST NOT key a
+verdict — the rubric already forbids a proposal from moving any verdict axis, so
+including it in the key was wrong by construction. `llm_proposals` now joins
+`marc` in `_EVIDENCE_KEYS_OUTSIDE_FINGERPRINT`, and
+`sanitise_stale_wikidata_verdict` recognises the pre-fix key shape and rewrites
+it forward so verdicts already written are recovered instead of lost. Whenever a
+channel is added to the pack, decide explicitly whether it belongs in the key.
+Tests: `test_wikidata_verdict_cache.py::TestAdvisoryEvidenceNeverKeysAVerdict`.
+
 Tests: `backend/tests/unit/test_marc_extent_and_digital_access.py` (27),
 `test_marc_llm_extract.py` (20).

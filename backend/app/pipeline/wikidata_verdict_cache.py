@@ -57,13 +57,30 @@ def fingerprint_statements(
     return rows
 
 
-def fingerprint_verify_evidence(item: dict[str, Any]) -> dict[str, Any]:
-    """``verify_evidence`` minus the MARC slice (hashed separately)."""
+# Evidence channels that must NOT key a verdict.
+#   `marc` is hashed separately.
+#   `llm_proposals` is advisory: the rubric forbids a proposal from moving any
+#   verdict axis, so letting it key the verdict made every stored verdict read
+#   as stale the moment the build mined a record (Rule W-136 / W-140).
+_EVIDENCE_KEYS_OUTSIDE_FINGERPRINT = ("marc", "llm_proposals")
+
+# The pre-W-140 shape, kept only so verdicts written with `llm_proposals` in the
+# key can be recognised and rewritten forward instead of vanishing from the table.
+_LEGACY_EVIDENCE_KEYS_OUTSIDE_FINGERPRINT = ("marc",)
+
+
+def fingerprint_verify_evidence(
+    item: dict[str, Any],
+    *,
+    drop: tuple[str, ...] = _EVIDENCE_KEYS_OUTSIDE_FINGERPRINT,
+) -> dict[str, Any]:
+    """``verify_evidence`` minus the channels that must not key a verdict."""
     pack = item.get("verify_evidence")
     if not isinstance(pack, dict):
         return {}
     slim = dict(pack)
-    slim.pop("marc", None)
+    for key in drop:
+        slim.pop(key, None)
     return slim
 
 
@@ -198,6 +215,7 @@ def wikidata_verdict_query_summary(
     *,
     evaluator: str = "wikidata_item",
     marc_context: dict[str, str] | None = None,
+    evidence_drop: tuple[str, ...] = _EVIDENCE_KEYS_OUTSIDE_FINGERPRINT,
 ) -> dict[str, Any]:
     marc_slice = marc_context
     if marc_slice is None:
@@ -217,7 +235,7 @@ def wikidata_verdict_query_summary(
         "authority_evidence": item.get("authority_evidence") or [],
         "work_candidate_evidence": item.get("work_candidate_evidence") or {},
         "local_reference_targets": item.get("local_reference_targets") or {},
-        "verify_evidence": fingerprint_verify_evidence(item),
+        "verify_evidence": fingerprint_verify_evidence(item, drop=evidence_drop),
         "hmo_wikibase_id": item.get("hmo_wikibase_id"),
         "source_uri": item.get("source_uri"),
         "marc_context": marc_slice,
@@ -242,6 +260,7 @@ def wikidata_verdict_input_fingerprint(
     *,
     evaluator: str = "wikidata_item",
     marc_context: dict[str, str] | None = None,
+    evidence_drop: tuple[str, ...] = _EVIDENCE_KEYS_OUTSIDE_FINGERPRINT,
 ) -> str:
     return canonical_hash(
         wikidata_verdict_query_summary(
@@ -249,6 +268,7 @@ def wikidata_verdict_input_fingerprint(
             judge_model,
             evaluator=evaluator,
             marc_context=marc_context,
+            evidence_drop=evidence_drop,
         ),
     )
 
@@ -280,6 +300,22 @@ def sanitise_stale_wikidata_verdict(
     current = sanitise_stored_verdict(stored, expected_fingerprint=expected)
     if current is not None:
         return current
+
+    # Verdicts written while `llm_proposals` still keyed the fingerprint are
+    # valid for the same item state — recognise that shape and rewrite the key
+    # forward rather than showing the curator an empty verdict column (W-140).
+    legacy = sanitise_stored_verdict(
+        stored,
+        expected_fingerprint=wikidata_verdict_input_fingerprint(
+            item,
+            model,
+            evaluator=eval_id,
+            marc_context=marc_context,
+            evidence_drop=_LEGACY_EVIDENCE_KEYS_OUTSIDE_FINGERPRINT,
+        ),
+    )
+    if legacy is not None:
+        return {**legacy, "cache_key": expected}
 
     # Derived evidence packs are scope-dependent (a subset verify run resolves
     # fewer ``__LOCAL`` targets), so a verdict keyed without them is still
