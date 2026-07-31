@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from unittest.mock import AsyncMock, patch
 
 from app.pipeline.marc_llm_extract import (
@@ -181,7 +182,9 @@ class TestAttachAndSurface:
         })
         stats = asyncio.run(attach_llm_proposals(None, [item], call=lambda: payload))
 
-        assert stats == {"records": 1, "proposals": 1, "skipped": 0, "unavailable": 0}
+        assert stats["records"] == 1
+        assert stats["proposals"] == 1
+        assert stats["unavailable"] == 0
         pack = build_verify_evidence_pack(item, [])
         surfaced = pack["llm_proposals"]["proposals"]
         assert surfaced[0]["value"] == "Q226697"
@@ -386,3 +389,109 @@ class TestSessionLifetime:
         result = asyncio.run(run())
         assert result["status"] == STATUS_UNAVAILABLE
         write.assert_not_awaited()
+
+
+class TestScaling:
+    """Rule W-140 — the corpus path must be O(1) round trips and concurrent."""
+
+    @staticmethod
+    def _factory(calls: list[str]):
+        import contextlib
+
+        @contextlib.asynccontextmanager
+        async def factory():
+            calls.append("session")
+            yield object()
+
+        return factory
+
+    def _items(self, n: int) -> list[dict]:
+        return [
+            {
+                "local_id": f"ms{i}",
+                "entity_type": "manuscript",
+                "_primary_control_number": f"99000{i}",
+                "verify_evidence": {"marc": _marc()},
+            }
+            for i in range(n)
+        ]
+
+    def test_cache_is_read_once_for_the_whole_corpus(self) -> None:
+        sessions: list[str] = []
+        reads: list[int] = []
+
+        async def read_many(_db, *, kind, query_summaries):
+            reads.append(len(query_summaries))
+            return {}
+
+        async def write_many(_db, **_kwargs):
+            return None
+
+        async def run() -> None:
+            with patch(
+                "app.pipeline.inference_cache.read_many_from_inference_cache",
+                new=read_many,
+            ), patch(
+                "app.pipeline.inference_cache.write_many_to_inference_cache",
+                new=write_many,
+            ):
+                await attach_llm_proposals(
+                    self._factory(sessions),
+                    self._items(50),
+                    call=lambda: json.dumps({"proposals": []}),
+                )
+
+        asyncio.run(run())
+        assert reads == [50], f"expected one bulk read of 50 keys, got {reads}"
+        assert len(sessions) == 2, f"expected 2 short sessions, got {len(sessions)}"
+
+    def test_cached_records_never_reach_the_model(self) -> None:
+        from app.pipeline.inference_cache import canonical_hash
+
+        sessions: list[str] = []
+        model_calls: list[int] = []
+
+        async def read_many(_db, *, kind, query_summaries):
+            return {
+                canonical_hash(s): {"status": STATUS_OK, "proposals": []}
+                for s in query_summaries
+            }
+
+        async def run() -> dict:
+            with patch(
+                "app.pipeline.inference_cache.read_many_from_inference_cache",
+                new=read_many,
+            ):
+                return await attach_llm_proposals(
+                    self._factory(sessions),
+                    self._items(20),
+                    call=lambda: model_calls.append(1) or "{}",
+                )
+
+        stats = asyncio.run(run())
+        assert stats["cached"] == 20
+        assert not model_calls, "a fully cached corpus still called the model"
+
+    def test_calls_overlap_rather_than_running_serially(self, monkeypatch) -> None:
+        monkeypatch.setenv("MARC_LLM_EXTRACT_CONCURRENCY", "5")
+        inflight = {"now": 0, "max": 0}
+
+        def call() -> str:
+            inflight["now"] += 1
+            inflight["max"] = max(inflight["max"], inflight["now"])
+            time.sleep(0.02)
+            inflight["now"] -= 1
+            return json.dumps({"proposals": []})
+
+        asyncio.run(attach_llm_proposals(None, self._items(10), call=call))
+        assert inflight["max"] > 1, "extraction ran serially"
+
+    def test_budget_still_caps_the_model_calls(self) -> None:
+        items = self._items(5)
+        stats = asyncio.run(
+            attach_llm_proposals(
+                None, items, call=lambda: json.dumps({"proposals": []}), budget=2,
+            ),
+        )
+        assert stats["records"] == 2
+        assert stats["skipped"] == 3

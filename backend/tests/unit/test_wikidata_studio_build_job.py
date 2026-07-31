@@ -153,7 +153,7 @@ async def test_build_job_reports_phase_steps_and_nested_records(db_session, monk
     assert building[-1]["sub_total"] == 3
     assert building[-1]["sub_unit"] == "records"
     assert "3 of 3" in building[-1]["sub_message"]
-    assert building[-1]["message"] == "Step 4 of 5: building items"
+    assert building[-1]["message"] == f"Step 4 of {len(BUILD_PHASES)}: building items"
 
     done_progress = finish.await_args.kwargs["progress"]
     assert done_progress["processed"] == 2

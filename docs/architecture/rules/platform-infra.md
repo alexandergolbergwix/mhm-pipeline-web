@@ -170,6 +170,36 @@ Tests: `backend/tests/unit/test_wikidata_verify_scope_cache.py`
 `backend/tests/unit/test_marc_llm_extract.py::TestSessionLifetime`,
 `backend/tests/unit/test_wikidata_duplicate_probe.py::TestBatchedProbeCaching`.
 
+**Follow-up (per-corpus cache access, 2026-07-31).** The first fix released the
+transaction but kept a per-item loop, and "Loading Studio scope…" then hung for
+five minutes on 313 items. Two causes, both about *shape* rather than latency:
+
+1. `read_from_inference_cache` costs a SELECT **plus an UPDATE + COMMIT** for
+   hit accounting, so a loop over 313 items was ~900 round trips.
+2. LLM extraction ran one model call per manuscript, serially, on the path the
+   curator waits on.
+
+Invariant for any per-corpus cache user:
+
+1. **Bulk, not loops.** `read_many_from_inference_cache` (one `IN (...)` query,
+   Redis `MGET` first, no hit accounting) and
+   `write_many_to_inference_cache` (one upsert, one commit) are the only
+   acceptable access pattern once N scales with the corpus. The per-key helpers
+   are for single-item paths.
+2. **Independent external calls overlap.** LLM extraction runs under a bounded
+   `asyncio.Semaphore` (`MARC_LLM_EXTRACT_CONCURRENCY`, default 6), so wall
+   clock grows with N/6 rather than N.
+3. **Only misses reach the model.** The corpus cache read happens first; a fully
+   cached corpus makes zero model calls.
+4. **Optional enrichment never sits on a path the curator waits on.** Provenance
+   mining moved into the build job as its own reported phase ("mining provenance
+   prose"); verify reads whatever the build stamped and reports `not_run`
+   otherwise. An enrichment failure is logged, never fatal to the build.
+
+Tests: `test_marc_llm_extract.py::TestScaling` (one bulk read for 50 items, two
+short sessions, cached corpus makes no calls, calls overlap, budget still caps),
+`test_wikidata_duplicate_probe.py::TestBatchedProbeCaching`.
+
 ---
 
 ### Rule W-123 — Login MUST NOT wait on Wikibase Cloud account provisioning (added 2026-07-27)

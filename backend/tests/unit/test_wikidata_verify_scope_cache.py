@@ -250,10 +250,6 @@ async def test_verify_fetch_ends_its_transaction_before_external_io() -> None:
         order.append("duplicate_probe")
         return {}
 
-    async def fake_extract(_factory, _items, **_kwargs):
-        order.append("llm_extract")
-        return {}
-
     with (
         patch(
             "app.pipeline.marc_verify_context.load_run_control_numbers",
@@ -273,10 +269,6 @@ async def test_verify_fetch_ends_its_transaction_before_external_io() -> None:
             "app.pipeline.wikidata_duplicate_probe.attach_duplicate_evidence",
             new=fake_probe,
         ),
-        patch(
-            "app.pipeline.marc_llm_extract.attach_llm_proposals",
-            new=fake_extract,
-        ),
     ):
         await _fetch_wikidata_verify_items(
             db, run_id, auth, item_ids=None, approved_only=True, source="canonical",
@@ -284,4 +276,6 @@ async def test_verify_fetch_ends_its_transaction_before_external_io() -> None:
 
     assert "rollback" in order, "scope transaction was never released"
     assert order.index("rollback") < order.index("duplicate_probe")
-    assert order.index("rollback") < order.index("llm_extract")
+    # LLM extraction belongs to the BUILD, not to scope loading: one model call
+    # per manuscript kept "Loading Studio scope…" spinning for minutes.
+    assert "llm_extract" not in order

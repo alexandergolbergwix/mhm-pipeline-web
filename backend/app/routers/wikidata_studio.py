@@ -2412,15 +2412,10 @@ async def _fetch_wikidata_verify_items(
     # Ask Wikidata whether each CREATE candidate already exists, before the judge
     # sees it (Rule W-139). Action API only — never WDQS on this path (W-116).
     await attach_duplicate_evidence(session_scope, items)
-    enrich_items_with_verify_evidence(items, marc_records)
-    # Mine the MARC provenance prose for review candidates (Rule W-140). Runs
-    # after the evidence pack so the extractor reads the same MARC slice the
-    # judge does; every proposal is span-grounded and stays a proposal.
-    from app.pipeline.marc_llm_extract import attach_llm_proposals  # noqa: PLC0415
-
-    # A session factory, not this session: each model call takes seconds, so the
-    # cache read and write each get their own short-lived transaction (W-40).
-    await attach_llm_proposals(session_scope, items)
+    # LLM provenance proposals (Rule W-140) are attached during the BUILD, not
+    # here: one model call per manuscript kept "Loading Studio scope…" spinning
+    # for minutes. Verify reads whatever the build already stamped, and
+    # `llm_proposals` simply reports `not_run` when the build had none.
     enrich_items_with_verify_evidence(items, marc_records)
     return items, marc_records
 

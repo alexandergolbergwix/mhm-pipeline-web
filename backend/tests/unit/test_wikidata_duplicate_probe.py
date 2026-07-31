@@ -186,17 +186,26 @@ class TestBatchedProbeCaching:
                 raise AssertionError("HTTP ran inside an open transaction")
             return {"query": {"search": []}}
 
-        async def read(_db, *, kind, query_summary):
-            return store.get(json.dumps(query_summary, sort_keys=True))
+        from app.pipeline.inference_cache import canonical_hash
 
-        async def write(_db, *, kind, query_summary, result):
-            store[json.dumps(query_summary, sort_keys=True)] = result
+        async def read_many(_db, *, kind, query_summaries):
+            return {
+                canonical_hash(s): store[canonical_hash(s)]
+                for s in query_summaries
+                if canonical_hash(s) in store
+            }
+
+        async def write_many(_db, *, kind, entries):
+            for summary, result in entries:
+                store[canonical_hash(summary)] = result
 
         async def run() -> None:
             with patch(
-                "app.pipeline.inference_cache.read_from_inference_cache", new=read,
+                "app.pipeline.inference_cache.read_many_from_inference_cache",
+                new=read_many,
             ), patch(
-                "app.pipeline.inference_cache.write_to_inference_cache", new=write,
+                "app.pipeline.inference_cache.write_many_to_inference_cache",
+                new=write_many,
             ):
                 first = await attach_duplicate_evidence(
                     factory, [_person()], fetch=fetch,
@@ -217,18 +226,29 @@ class TestBatchedProbeCaching:
         open_count = {"now": 0, "max": 0}
         factory = self._factory(store, order, open_count)
 
-        async def read(_db, *, kind, query_summary):
-            return {"candidates": [{"qid": "Q118924043", "matched_on": "P214=61512894"}]}
+        from app.pipeline.inference_cache import canonical_hash
 
-        async def write(_db, **_kwargs):
+        async def read_many(_db, *, kind, query_summaries):
+            return {
+                canonical_hash(s): {
+                    "candidates": [
+                        {"qid": "Q118924043", "matched_on": "P214=61512894"},
+                    ],
+                }
+                for s in query_summaries
+            }
+
+        async def write_many(_db, **_kwargs):
             return None
 
         async def run() -> dict:
             items = [_person()]
             with patch(
-                "app.pipeline.inference_cache.read_from_inference_cache", new=read,
+                "app.pipeline.inference_cache.read_many_from_inference_cache",
+                new=read_many,
             ), patch(
-                "app.pipeline.inference_cache.write_to_inference_cache", new=write,
+                "app.pipeline.inference_cache.write_many_to_inference_cache",
+                new=write_many,
             ):
                 stats = await attach_duplicate_evidence(
                     factory, items, fetch=_boom,

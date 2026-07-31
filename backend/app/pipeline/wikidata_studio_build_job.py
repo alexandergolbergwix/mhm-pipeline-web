@@ -32,6 +32,7 @@ BUILD_PHASES: tuple[str, ...] = (
     "preparing transliterations",
     "building items",
     "assembling canonical projection",
+    "mining provenance prose",
 )
 _LEGACY_ONLY_PHASE = "loading canonical entities"
 
@@ -92,6 +93,39 @@ async def _publish_build_progress(
         await update_job_progress(job_id, _build_progress(state, phases))
 
 
+async def _mine_provenance_prose(
+    job_id: uuid.UUID,
+    cached: object,
+    state: dict[str, object],
+    phases: tuple[str, ...],
+) -> None:
+    """Attach span-grounded LLM proposals to the built items (Rule W-140).
+
+    Runs here rather than on the verify path: one model call per manuscript kept
+    "Loading Studio scope…" spinning for minutes before the judge could start.
+    Never fatal — a build must not fail because an optional enrichment did.
+    """
+    items = list(getattr(cached, "result_items", None) or [])
+    if not items:
+        return
+    from app.db import session_scope  # noqa: PLC0415
+    from app.pipeline.marc_llm_extract import attach_llm_proposals  # noqa: PLC0415
+
+    state["phase"] = "mining provenance prose"
+    state["done"], state["records"] = 0, 0
+
+    def on_progress(done: int, total: int) -> None:
+        state["done"], state["records"] = done, total
+
+    try:
+        stats = await attach_llm_proposals(
+            session_scope, items, on_progress=on_progress,
+        )
+        logger.info("marc llm extract: %s", stats)
+    except Exception as exc:  # noqa: BLE001 — enrichment must not fail the build
+        logger.warning("marc llm extract skipped for job %s: %s", job_id, exc)
+
+
 async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
@@ -148,6 +182,8 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
     if await is_cancel_requested(job_id):
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)
         return
+
+    await _mine_provenance_prose(job_id, cached, state, phases)
 
     total = len(cached.result_items or [])
     summary = cached.summary or {}

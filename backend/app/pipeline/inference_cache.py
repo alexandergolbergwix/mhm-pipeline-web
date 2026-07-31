@@ -441,8 +441,119 @@ async def read_from_inference_cache(
     return await _read(db, kind=kind, query_hash=query_hash, now=now)
 
 
+def _redis_key(kind: str, query_hash: str) -> str:
+    return f"ic:{kind}:{query_hash}"
+
+
+async def read_many_from_inference_cache(
+    db: AsyncSession,
+    *,
+    kind: str,
+    query_summaries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Look up many keys in ONE round trip, returning ``{query_hash: result}``.
+
+    The per-key helper costs a SELECT plus an UPDATE+COMMIT for hit accounting,
+    so calling it in a loop is O(N) round trips — 313 Studio items became ~900.
+    This is the path any per-corpus caller must use; it skips hit accounting
+    deliberately (it is best-effort telemetry, not correctness).
+    """
+    if not query_summaries:
+        return {}
+    from app.cache.redis_client import get_redis  # noqa: PLC0415
+
+    hashes = [canonical_hash(summary) for summary in query_summaries]
+    now = datetime.now(timezone.utc)
+    out: dict[str, Any] = {}
+
+    redis = await get_redis()
+    missing = list(hashes)
+    if redis is not None:
+        try:
+            raw_values = await redis.mget([_redis_key(kind, h) for h in hashes])
+            missing = []
+            for query_hash, raw in zip(hashes, raw_values, strict=True):
+                if raw is None:
+                    missing.append(query_hash)
+                else:
+                    out[query_hash] = json.loads(raw)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("redis L1 MGET failed (kind=%s): %s", kind, exc)
+            missing = list(hashes)
+
+    if not missing:
+        return out
+    rows = (
+        await db.execute(
+            select(InferenceCache).where(
+                InferenceCache.kind == kind,
+                InferenceCache.query_hash.in_(missing),
+            )
+        )
+    ).scalars().all()
+    for row in rows:
+        if row.expires_at is not None and row.expires_at < now:
+            continue
+        out[row.query_hash] = row.result
+    return out
+
+
+async def write_many_to_inference_cache(
+    db: AsyncSession,
+    *,
+    kind: str,
+    entries: list[tuple[dict[str, Any], Any]],
+    user_id: uuid.UUID | None = None,
+) -> None:
+    """Upsert many results in ONE statement + one commit (errors swallowed)."""
+    if not entries:
+        return
+    now = datetime.now(timezone.utc)
+    expires_at = _pg_expires_at(kind, now)
+    values = [
+        {
+            "kind": kind,
+            "query_hash": canonical_hash(summary),
+            "query_summary": summary,
+            "result": result,
+            "created_by": user_id,
+            "hit_count": 0,
+            "created_at": now,
+            "last_hit_at": now,
+            "expires_at": expires_at,
+        }
+        for summary, result in entries
+    ]
+    try:
+        stmt = pg_insert(InferenceCache).values(values)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_inference_cache_key",
+            set_={
+                "query_summary": stmt.excluded.query_summary,
+                "result":        stmt.excluded.result,
+                "last_hit_at":   now,
+                "expires_at":    expires_at,
+            },
+        )
+        await db.execute(stmt)
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("inference_cache bulk write failed (kind=%s): %s", kind, exc)
+        await db.rollback()
+
+    from app.cache.redis_client import get_redis  # noqa: PLC0415
+
+    redis = await get_redis()
+    if redis is None:
+        return
+    for summary, result in entries:
+        await _redis_set(redis, _redis_key(kind, canonical_hash(summary)), kind, result)
+
+
 __all__ = [
     "KIND_TTL",
+    "read_many_from_inference_cache",
+    "write_many_to_inference_cache",
     "cache_http_call",
     "cache_lookup_or_call",
     "canonical_hash",

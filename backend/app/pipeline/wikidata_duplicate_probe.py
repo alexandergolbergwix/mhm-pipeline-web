@@ -377,20 +377,29 @@ async def _read_cached_pairs(
     """Cached candidates per identifier. One short transaction, index lookups."""
     if db_factory is None or not pairs:
         return {}
-    from app.pipeline.inference_cache import read_from_inference_cache  # noqa: PLC0415
+    from app.pipeline.inference_cache import (  # noqa: PLC0415
+        canonical_hash,
+        read_many_from_inference_cache,
+    )
 
     found: dict[tuple[str, str], list[dict[str, str]]] = {}
+    summaries = {key: _pair_summary(*key) for key in pairs}
     try:
         async with db_factory() as db:
-            for pid, value in pairs:
-                hit = await read_from_inference_cache(
-                    db, kind=CACHE_KIND, query_summary=_pair_summary(pid, value),
-                )
-                # An explicit empty list is a real cached "absent" — keep it.
-                if isinstance(hit, dict) and isinstance(hit.get("candidates"), list):
-                    found[(pid, value)] = hit["candidates"]
+            # ONE round trip for the whole corpus: the per-key helper costs a
+            # SELECT plus an UPDATE+COMMIT each, which is ~900 round trips for
+            # 313 items and does not scale.
+            hits = await read_many_from_inference_cache(
+                db, kind=CACHE_KIND, query_summaries=list(summaries.values()),
+            )
     except Exception as exc:  # noqa: BLE001 — a cache miss must never break verify
         logger.warning("duplicate probe cache read failed: %s", exc)
+        return {}
+    for key, summary in summaries.items():
+        hit = hits.get(canonical_hash(summary))
+        # An explicit empty list is a real cached "absent" — keep it.
+        if isinstance(hit, dict) and isinstance(hit.get("candidates"), list):
+            found[key] = hit["candidates"]
     return found
 
 
@@ -400,17 +409,19 @@ async def _write_cached_pairs(
 ) -> None:
     if db_factory is None or not results:
         return
-    from app.pipeline.inference_cache import write_to_inference_cache  # noqa: PLC0415
+    from app.pipeline.inference_cache import write_many_to_inference_cache  # noqa: PLC0415
 
     try:
         async with db_factory() as db:
-            for (pid, value), candidates in results.items():
-                await write_to_inference_cache(
-                    db,
-                    kind=CACHE_KIND,
-                    query_summary=_pair_summary(pid, value),
-                    result={"candidates": candidates},
-                )
+            # One upsert statement, one commit — not one per identifier.
+            await write_many_to_inference_cache(
+                db,
+                kind=CACHE_KIND,
+                entries=[
+                    (_pair_summary(pid, value), {"candidates": candidates})
+                    for (pid, value), candidates in results.items()
+                ],
+            )
     except Exception as exc:  # noqa: BLE001
         logger.warning("duplicate probe cache write failed: %s", exc)
 

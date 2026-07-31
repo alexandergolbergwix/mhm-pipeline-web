@@ -15,6 +15,7 @@ surfaced as evidence so the judge and the curator can see them.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -96,6 +97,19 @@ def _timeout() -> float:
         return float(os.getenv("MARC_LLM_EXTRACT_TIMEOUT", "45"))
     except ValueError:
         return 45.0
+
+
+def _concurrency() -> int:
+    """How many model calls run at once.
+
+    Serial extraction over a 68-manuscript corpus took minutes of wall clock.
+    The calls are independent, so they overlap — bounded so a large corpus
+    cannot open hundreds of sockets from one Basic dyno.
+    """
+    try:
+        return max(1, int(os.getenv("MARC_LLM_EXTRACT_CONCURRENCY", "6")))
+    except ValueError:
+        return 6
 
 
 def _budget() -> int:
@@ -295,15 +309,23 @@ async def attach_llm_proposals(
     marc_by_cn: dict[str, dict[str, Any]] | None = None,
     call: Any = None,
     budget: int | None = None,
+    on_progress: Any = None,
 ) -> dict[str, int]:
     """Stamp `_llm_proposals` on every manuscript item we can read prose for.
 
-    Takes a session **factory**, never a live session: the caller's session must
-    not stay open across dozens of multi-second model calls (Rule W-40).
+    Scales by construction: the cache is read for the whole corpus in ONE round
+    trip, only the misses reach the model, those run concurrently, and every
+    result is written back in one statement. Takes a session **factory** so no
+    transaction is ever open across a model call (Rule W-40).
     """
     remaining = _budget() if budget is None else budget
-    stats = {"records": 0, "proposals": 0, "skipped": 0, "unavailable": 0}
+    stats = {
+        "records": 0, "proposals": 0, "skipped": 0, "unavailable": 0, "cached": 0,
+    }
     slices = marc_by_cn or {}
+
+    # 1. Which items have prose at all, and what is each one's cache key?
+    targets: list[tuple[dict[str, Any], str, str]] = []
     for item in items:
         if str(item.get("entity_type") or "") != "manuscript":
             continue
@@ -313,26 +335,125 @@ async def attach_llm_proposals(
             or slices.get(control_number)
             or (item.get("verify_evidence") or {}).get("marc")
         )
-        if not source_text(marc_slice if isinstance(marc_slice, dict) else None):
+        record_text = source_text(marc_slice if isinstance(marc_slice, dict) else None)
+        if record_text:
+            targets.append((item, control_number, record_text))
+
+    if not targets:
+        return stats
+    if not extraction_enabled():
+        for item, _cn, _text in targets:
+            item["_llm_proposals"] = {"status": STATUS_DISABLED, "proposals": []}
+        stats["skipped"] = len(targets)
+        return stats
+
+    model = _model_id()
+    summaries = {
+        id(item): {
+            "schema": EXTRACT_SCHEMA,
+            "model": model,
+            "control_number": control_number,
+            "record": record_text,
+        }
+        for item, control_number, record_text in targets
+    }
+
+    # 2. One cache read for the whole corpus.
+    hits: dict[str, Any] = {}
+    if db_factory is not None:
+        from app.pipeline.inference_cache import (  # noqa: PLC0415
+            canonical_hash,
+            read_many_from_inference_cache,
+        )
+
+        try:
+            async with db_factory() as db:
+                hits = await read_many_from_inference_cache(
+                    db, kind=CACHE_KIND, query_summaries=list(summaries.values()),
+                )
+        except Exception as exc:  # noqa: BLE001 — a cache miss must not break the build
+            logger.warning("marc llm extract cache read failed: %s", exc)
+            hits = {}
+
+    misses: list[tuple[dict[str, Any], str, str]] = []
+    for item, control_number, record_text in targets:
+        summary = summaries[id(item)]
+        cached = None
+        if hits:
+            from app.pipeline.inference_cache import canonical_hash  # noqa: PLC0415
+
+            cached = hits.get(canonical_hash(summary))
+        if isinstance(cached, dict) and cached.get("status") == STATUS_OK:
+            item["_llm_proposals"] = cached
+            stats["cached"] += 1
+            stats["proposals"] += len(cached.get("proposals") or [])
             continue
         if remaining <= 0:
-            stats["skipped"] += 1
             item["_llm_proposals"] = {
                 "status": STATUS_DISABLED,
                 "proposals": [],
                 "note": "extraction budget exhausted for this build",
             }
+            stats["skipped"] += 1
             continue
         remaining -= 1
-        stats["records"] += 1
-        result = await extract_for_record(
-            db_factory,
-            control_number=control_number,
-            marc_slice=marc_slice,
-            call=call,
+        misses.append((item, control_number, record_text))
+
+    if not misses:
+        return stats
+
+    # 3. Call the model for the misses only, concurrently, with NO transaction open.
+    from fastapi.concurrency import run_in_threadpool  # noqa: PLC0415
+
+    semaphore = asyncio.Semaphore(_concurrency())
+    done = 0
+
+    async def extract(entry: tuple[dict[str, Any], str, str]) -> None:
+        nonlocal done
+        item, control_number, record_text = entry
+        prompt = build_prompt(control_number, record_text)
+        invoke = call or (
+            lambda: _call_qubrid(prompt, model_id=model, timeout=_timeout())
         )
-        item["_llm_proposals"] = result
-        stats["proposals"] += len(result.get("proposals") or [])
-        if result.get("status") == STATUS_UNAVAILABLE:
-            stats["unavailable"] += 1
+        async with semaphore:
+            try:
+                raw = await run_in_threadpool(invoke)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "marc llm extract failed for %s: %s", control_number, exc,
+                )
+                item["_llm_proposals"] = {
+                    "status": STATUS_UNAVAILABLE, "proposals": [], "error": str(exc),
+                }
+                stats["unavailable"] += 1
+                return
+        item["_llm_proposals"] = {
+            "status": STATUS_OK,
+            "model": model,
+            "proposals": parse_response(raw, record_text),
+        }
+        stats["records"] += 1
+        stats["proposals"] += len(item["_llm_proposals"]["proposals"])
+        done += 1
+        if on_progress is not None:
+            on_progress(done, len(misses))
+
+    await asyncio.gather(*(extract(entry) for entry in misses))
+
+    # 4. One write for everything that succeeded — transient failures are not cached.
+    if db_factory is not None:
+        from app.pipeline.inference_cache import write_many_to_inference_cache  # noqa: PLC0415
+
+        entries = [
+            (summaries[id(item)], item["_llm_proposals"])
+            for item, _cn, _text in misses
+            if (item.get("_llm_proposals") or {}).get("status") == STATUS_OK
+        ]
+        try:
+            async with db_factory() as db:
+                await write_many_to_inference_cache(
+                    db, kind=CACHE_KIND, entries=entries,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("marc llm extract cache write failed: %s", exc)
     return stats

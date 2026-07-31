@@ -233,6 +233,9 @@ Invariant for this job:
    owns every DB write and publishes at most every 1.5 s (Rule W-128).
 4. Terminal progress switches to `unit=items` and names both totals
    ("Built 313 items from 105 records").
+5. Optional enrichment gets its own phase rather than hiding inside another —
+   "mining provenance prose" (Rule W-140) reports `x / n records` underneath and
+   never fails the build.
 
 Tests: `test_wikidata_studio_build_job.py` —
 `test_build_job_reports_phase_steps_and_nested_records`,

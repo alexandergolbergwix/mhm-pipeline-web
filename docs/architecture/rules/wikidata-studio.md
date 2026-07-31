@@ -986,7 +986,11 @@ Invariant:
    values must resolve through `MATERIAL_TO_QID`. Results are content-addressed
    in the inference cache (Rule W-51), bounded by `MARC_LLM_EXTRACT_MAX`, and
    disabled by `MARC_LLM_EXTRACT=0`. The extractor takes a session **factory**
-   and never holds a transaction across a model call (Rule W-40).
+   and never holds a transaction across a model call (Rule W-40). It runs in the
+   **build job** as the "mining provenance prose" phase — never on the verify
+   scope path, where one call per manuscript hung "Loading Studio scope…" for
+   minutes. The corpus cache is read in one bulk query, only misses reach the
+   model, and those overlap under `MARC_LLM_EXTRACT_CONCURRENCY` (default 6).
 7. **Proposals are never claims.** They surface as
    `verify_evidence.llm_proposals` for the curator and the judge, and nothing is
    projected into `statements`. Generation is not an evidence channel
