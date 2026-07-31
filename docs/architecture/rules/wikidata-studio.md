@@ -998,6 +998,25 @@ Invariant:
    any verdict axis, and `unavailable` / `no_source` describes the extractor,
    never the item.
 
+**Root cause of the empty verdict column (2026-07-31).** The `llm_proposals`
+follow-up below was the *second* instance of one defect; the first arrived with
+Rule W-139. `verify_evidence.wikidata_existing.duplicate_check` is produced by a
+live Wikidata probe that only the **verify** worker runs, so verify hashed
+`absent` / `candidates_found` while the review table hashed `not_run` — every
+verdict read as stale and the AI-verdict column showed `— —` for all 313 rows.
+
+**Invariant: the verdict fingerprint may contain only state the READ path can
+reproduce.** It answers "is this the same item state the judge saw?", so a
+channel that exists solely because the verify worker did external I/O cannot be
+part of it. `duplicate_check` is excluded via
+`_EVIDENCE_SUBKEYS_OUTSIDE_FINGERPRINT` (the subkey only — `existing_qid` and the
+authority rows in the same channel still key the verdict, so the exclusion stays
+surgical); its own 7-day cache TTL governs freshness instead. Verdicts written
+under the old key cannot be recovered by fingerprint arithmetic — the read path
+has no probe result to reproduce — so they need one more verify run to be
+re-keyed. Tests:
+`test_wikidata_verdict_cache.py::TestPathDependentEvidenceNeverKeysAVerdict`.
+
 **Follow-up (verdicts vanished from the table, 2026-07-31).** Adding
 `llm_proposals` to the evidence pack silently put it inside the verdict cache key
 (`fingerprint_verify_evidence` dropped only `marc`), so the AI-verdict column

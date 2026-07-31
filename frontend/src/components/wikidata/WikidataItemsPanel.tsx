@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {useSearchParams} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
 import {type RunJobSnapshot} from "@/api/runJobs";
@@ -177,6 +178,21 @@ export function WikidataItemsPanel({
     setVerifyActionId(actionId);
     setVerifyOpen(true);
   }, []);
+
+  // The job tray's "View" links to `?job=<id>` for jobs whose progress lives in
+  // a modal. Reopen it once so the curator lands on the live run they clicked,
+  // then drop the param so a later close does not immediately reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkedJobId = searchParams.get("job");
+  useEffect(() => {
+    if (!deepLinkedJobId) return;
+    setVerifyIds(undefined);
+    setVerifyActionId(undefined);
+    setVerifyOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("job");
+    setSearchParams(next, {replace: true});
+  }, [deepLinkedJobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,

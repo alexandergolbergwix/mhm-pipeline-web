@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-140)
+## Architectural rules (W-1…W-141)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -143,6 +143,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-112** — Pipeline job progress MUST use 1-based steps with a unit label
 - **W-113** — Long pipeline steps MUST report nested sub-progress
 - **W-129** — Run jobs MUST pass admission control before claim
+- **W-141** — The job tray's "View" MUST reopen the surface that started the job
 
 ### [authority-marc.md](docs/architecture/rules/authority-marc.md) — Authority matching + MARC ingest
 

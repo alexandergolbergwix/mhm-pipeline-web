@@ -107,7 +107,26 @@ export const JOB_KIND_LABELS: Record<string, string> = {
   wikidata_item_bulk_approve: "Wikidata approve visible",
 };
 
+/** Job kinds whose progress lives in a modal rather than on the page itself. */
+const JOB_KINDS_WITH_MODAL = new Set([
+  "wikidata_verify",
+  "hmo_item_verify",
+  "ner_verify",
+]);
+
+/**
+ * Where the tray's "View" should land.
+ *
+ * For a job whose progress is shown in a modal, the page alone is not enough —
+ * the curator clicked View to watch *that* run, so the job id rides along in
+ * `?job=` and the page reopens the originating window.
+ */
 export function jobRunHref(job: RunJobSnapshot): string {
+  const path = jobRunPath(job);
+  return JOB_KINDS_WITH_MODAL.has(job.kind) ? `${path}?job=${job.id}` : path;
+}
+
+function jobRunPath(job: RunJobSnapshot): string {
   switch (job.kind) {
     case "extraction":
     case "ner_verify":

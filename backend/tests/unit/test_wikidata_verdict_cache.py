@@ -299,3 +299,66 @@ class TestAdvisoryEvidenceNeverKeysAVerdict:
         assert recovered is not None, "verdict written before the fix was lost"
         assert recovered["overall"] == "full"
         assert recovered["cache_key"] == wikidata_verdict_input_fingerprint(item)
+
+
+class TestPathDependentEvidenceNeverKeysAVerdict:
+    """Rule W-136 — only state the READ path can reproduce may key a verdict.
+
+    The duplicate probe (Rule W-139) runs on the verify path only, so verify
+    hashed `duplicate_check: absent` while the review table hashed `not_run`.
+    Every verdict therefore read as stale and the AI-verdict column was empty.
+    """
+
+    @staticmethod
+    def _item(existence: dict | None) -> dict:
+        from app.pipeline.wikidata_verify_evidence import build_verify_evidence_pack
+
+        item = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "labels": {"en": "Cambridge University Library, F 18702"},
+            "statements": [{"property_id": "P31", "value": "Q87167"}],
+            "record_ids": ["990001402000205171"],
+        }
+        if existence is not None:
+            item["_wikidata_existence"] = existence
+        item["verify_evidence"] = build_verify_evidence_pack(item, [])
+        return item
+
+    def test_probed_and_unprobed_items_hash_identically(self) -> None:
+        verify = self._item({"status": "absent", "candidates": []})
+        read = self._item(None)
+        assert verify["verify_evidence"]["wikidata_existing"]["duplicate_check"][
+            "status"
+        ] == "absent"
+        assert read["verify_evidence"]["wikidata_existing"]["duplicate_check"][
+            "status"
+        ] == "not_run"
+        assert wikidata_verdict_input_fingerprint(
+            verify,
+        ) == wikidata_verdict_input_fingerprint(read)
+
+    def test_a_found_duplicate_also_hashes_identically(self) -> None:
+        found = self._item(
+            {"status": "candidates_found", "candidates": [{"qid": "Q66439"}]},
+        )
+        assert wikidata_verdict_input_fingerprint(
+            found,
+        ) == wikidata_verdict_input_fingerprint(self._item(None))
+
+    def test_the_stable_part_of_the_channel_still_keys_the_verdict(self) -> None:
+        """Only `duplicate_check` is excluded — not the whole channel."""
+        read = self._item(None)
+        linked = self._item(None)
+        linked["verify_evidence"]["wikidata_existing"]["existing_qid"] = "Q42"
+        assert wikidata_verdict_input_fingerprint(
+            read,
+        ) != wikidata_verdict_input_fingerprint(linked)
+
+    def test_a_claim_change_is_still_detected(self) -> None:
+        read = self._item(None)
+        changed = self._item(None)
+        changed["statements"] = [{"property_id": "P31", "value": "Q5"}]
+        assert wikidata_verdict_input_fingerprint(
+            read,
+        ) != wikidata_verdict_input_fingerprint(changed)

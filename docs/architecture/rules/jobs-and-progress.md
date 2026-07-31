@@ -295,3 +295,23 @@ replace a separate worker dyno for HTTP isolation.
 
 Tests: `backend/tests/unit/test_run_job_recovery.py` (admission cases),
 `frontend/tests/unit/waitForRunJob.spec.ts` (`runJobQueuedMessage`).
+
+### Rule W-141 — The job tray's "View" MUST reopen the surface that started the job (added 2026-07-31)
+
+"View" on a Wikidata AI verify job navigated to `/runs/<id>/wikidata-studio` and
+stopped there: the run's live progress lives in the **Verify with AI** modal, so
+the curator landed on the table with no way back to the run they clicked.
+
+Invariant:
+
+1. `jobRunHref` appends `?job=<id>` for every kind whose progress lives in a
+   modal rather than on the page (`JOB_KINDS_WITH_MODAL`: `wikidata_verify`,
+   `hmo_item_verify`, `ner_verify`). Page-level jobs stay a plain route.
+2. The receiving surface opens that modal once on mount and then **removes the
+   param** (`setSearchParams(..., {replace: true})`), so closing the modal does
+   not immediately reopen it and the back button behaves.
+3. A new job kind with modal-hosted progress must be added to the set, or its
+   tray entry silently becomes a dead end.
+
+Tests: `frontend/tests/unit/runJobsHref.spec.ts`.
+

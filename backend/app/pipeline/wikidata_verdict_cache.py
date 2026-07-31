@@ -58,11 +58,17 @@ def fingerprint_statements(
 
 
 # Evidence channels that must NOT key a verdict.
-#   `marc` is hashed separately.
-#   `llm_proposals` is advisory: the rubric forbids a proposal from moving any
-#   verdict axis, so letting it key the verdict made every stored verdict read
-#   as stale the moment the build mined a record (Rule W-136 / W-140).
+#
+# The fingerprint answers "is this the same item state the judge saw?", so it may
+# only contain state the READ path can reproduce. A channel that exists solely
+# because the verify worker did external I/O cannot be reproduced by the review
+# table, so keying on it makes every verdict read as stale (Rule W-136):
+#   `marc`           — hashed separately.
+#   `llm_proposals`  — advisory; the rubric forbids it from moving any axis.
+#   `duplicate_check` — a live Wikidata probe that only the verify path runs; its
+#                      own 7-day cache TTL governs freshness, not this key.
 _EVIDENCE_KEYS_OUTSIDE_FINGERPRINT = ("marc", "llm_proposals")
+_EVIDENCE_SUBKEYS_OUTSIDE_FINGERPRINT = {"wikidata_existing": ("duplicate_check",)}
 
 # The pre-W-140 shape, kept only so verdicts written with `llm_proposals` in the
 # key can be recognised and rewritten forward instead of vanishing from the table.
@@ -81,6 +87,14 @@ def fingerprint_verify_evidence(
     slim = dict(pack)
     for key in drop:
         slim.pop(key, None)
+    if drop == _EVIDENCE_KEYS_OUTSIDE_FINGERPRINT:
+        for channel, subkeys in _EVIDENCE_SUBKEYS_OUTSIDE_FINGERPRINT.items():
+            value = slim.get(channel)
+            if isinstance(value, dict) and any(k in value for k in subkeys):
+                trimmed = dict(value)
+                for subkey in subkeys:
+                    trimmed.pop(subkey, None)
+                slim[channel] = trimmed
     return slim
 
 
