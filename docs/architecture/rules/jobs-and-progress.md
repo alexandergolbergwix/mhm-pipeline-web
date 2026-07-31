@@ -185,6 +185,24 @@ Invariant:
 2. The curator panel patches matching rows by `local_id` via
    `frontend/src/utils/studioUploadProgress.ts` — no mid-run full list
    reload and no loading gate that hides an already-populated table.
+
+**Extension to AI verify (2026-07-31).** The same rule was only half-applied:
+the verify modal accumulated verdicts live, but the panel was told about them
+solely through `onVerdictsLanded`, which fires on **completion**. A curator
+watching 303/313 stream past therefore stared at `— —` on every row until the
+run ended.
+
+3. `WikidataVerificationModal` publishes `onVerdictStream(overallByItemId)`
+   whenever its verdict map changes, and the panel patches the matching rows by
+   `local_id`. Only `overall` crosses the boundary — the table renders nothing
+   else, and passing the full event would re-render every row per verdict.
+4. The patch is identity-preserving: rows whose verdict did not change are
+   returned unchanged (`return prev` when nothing changed), so React re-renders
+   the minimum and the table never flickers.
+5. A streamed value outside the rendered enum is ignored rather than shown as
+   `unknown` — an unrenderable verdict is worse than no verdict.
+
+Tests: `frontend/tests/unit/wikidataVerdictStream.spec.ts`.
 3. Terminal succeed/fail MAY silent-reload from the API to reconcile with
    durable mappings/audit rows; the table stays mounted when items exist.
 4. Bulk approve / verify may still throttle silent reloads, but MUST NOT

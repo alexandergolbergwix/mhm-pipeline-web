@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {useSearchParams} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
+import type {AiVerdictOverall} from "@/api/extractionApprovals";
 import {type RunJobSnapshot} from "@/api/runJobs";
 import {
   Studio,
@@ -172,6 +173,33 @@ export function WikidataItemsPanel({
   useEffect(() => {
     void refresh();
   }, [runId, approvedOnly, source]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Patch the rows already on screen as verdicts land, so the AI-verdict column
+  // fills in during the run instead of after it (Rule W-110). Only rows whose
+  // verdict actually changed are rewritten, so React re-renders the minimum.
+  const applyStreamedVerdicts = useCallback(
+    (overallByItemId: Record<string, string>) => {
+      // A verdict the table cannot render is worse than none — keep the row as
+      // it was rather than showing an unknown badge.
+      const known = new Set<AiVerdictOverall>([
+        "pass", "full", "partial", "fail", "abstain", "unknown",
+      ]);
+      setBuild((prev) => {
+        if (!prev?.items?.length) return prev;
+        let changed = false;
+        const items = prev.items.map((item) => {
+          const localId = item.local_id ?? "";
+          const streamed = overallByItemId[localId]?.toLowerCase() as AiVerdictOverall;
+          if (!streamed || !known.has(streamed)) return item;
+          if (item.ai_verdict?.overall === streamed) return item;
+          changed = true;
+          return {...item, ai_verdict: {...(item.ai_verdict ?? {}), overall: streamed}};
+        });
+        return changed ? {...prev, items} : prev;
+      });
+    },
+    [],
+  );
 
   const openVerify = useCallback((itemIds: string[], actionId?: string) => {
     setVerifyIds(itemIds);
@@ -527,6 +555,7 @@ export function WikidataItemsPanel({
           source={source}
           approvedOnly={approvedOnly}
           onVerdictsLanded={() => void loadItems({silent: true})}
+          onVerdictStream={applyStreamedVerdicts}
           onClose={() => {
             setVerifyOpen(false);
             setVerifyActionId(undefined);

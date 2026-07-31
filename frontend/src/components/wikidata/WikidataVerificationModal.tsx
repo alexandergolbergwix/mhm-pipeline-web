@@ -43,12 +43,19 @@ export interface WikidataVerificationModalProps {
   approvedOnly?: boolean;
   onClose: () => void;
   onVerdictsLanded?: () => void;
+  /**
+   * Live verdicts as the judge streams them, so the review table can patch the
+   * rows it already shows instead of sitting on `— —` until the run ends
+   * (Rule W-110: patch rows, never flicker the table).
+   */
+  onVerdictStream?: (overallByItemId: Record<string, string>) => void;
 }
 
 
 export function WikidataVerificationModal(props: WikidataVerificationModalProps) {
   const {
     runId, scopeKind, itemIds, scopeLabel, initialActionId, onClose, onVerdictsLanded,
+    onVerdictStream,
     source = "canonical",
     approvedOnly = false,
   } = props;
@@ -166,6 +173,22 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
     })();
     return () => { cancelled = true; };
   }, [runId, scopeKind, reloadKey, initialActionId]);
+
+  // Publish each judged item upward as it lands. Only the `overall` string is
+  // passed: the table renders nothing else, and sending the full event would
+  // re-render 313 rows on every verdict.
+  useEffect(() => {
+    if (!onVerdictStream) return;
+    const overallByItemId: Record<string, string> = {};
+    for (const [itemId, event] of Object.entries(verdicts)) {
+      const verdict = recordValue((event as Record<string, unknown>).verdict);
+      const overall = stringValue(verdict?.overall) || stringValue(
+        (event as Record<string, unknown>).overall,
+      );
+      if (itemId && overall) overallByItemId[itemId] = overall;
+    }
+    if (Object.keys(overallByItemId).length > 0) onVerdictStream(overallByItemId);
+  }, [verdicts, onVerdictStream]);
 
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
 
