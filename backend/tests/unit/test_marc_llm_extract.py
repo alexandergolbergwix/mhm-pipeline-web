@@ -495,3 +495,35 @@ class TestScaling:
         )
         assert stats["records"] == 2
         assert stats["skipped"] == 3
+
+
+class TestPromptNamesEachProperty:
+    """Rule W-140: bare PIDs made the model route languages into P1071."""
+
+    def test_every_supported_property_is_explained(self) -> None:
+        from app.pipeline.marc_llm_extract import (
+            SUPPORTED_PROPERTIES,
+            build_prompt,
+        )
+
+        prompt = build_prompt("990000592310205171", "[provenance] מאוסף פלוני")
+        for pid, meaning in SUPPORTED_PROPERTIES.items():
+            assert pid in prompt
+            assert meaning in prompt
+
+    def test_a_language_is_named_as_not_a_place(self) -> None:
+        from app.pipeline.marc_llm_extract import build_prompt
+
+        assert "never a place of creation" in build_prompt("cn", "[notes] x")
+
+
+class TestNoSourceIsReported:
+    """A manuscript with no prose must say so, not go unmentioned."""
+
+    def test_prose_free_manuscript_gets_no_source(self) -> None:
+        from app.pipeline.marc_llm_extract import attach_llm_proposals
+
+        item = {"entity_type": "manuscript", "_marc_context": {"title": "x"}}
+        stats = asyncio.run(attach_llm_proposals(None, [item]))
+        assert item["_llm_proposals"]["status"] == STATUS_NO_SOURCE
+        assert stats["no_source"] == 1

@@ -174,3 +174,61 @@ def test_progress_falls_back_to_the_first_step_for_an_unknown_phase() -> None:
     assert progress["processed"] == 1
     assert progress["total"] == len(BUILD_PHASES)
     assert "sub_total" not in progress
+
+
+class TestMiningReadsMarcProse:
+    """Rule W-140: built items carry no MARC, so mining must load it itself.
+
+    Without this the extractor found zero prose on every manuscript, the phase
+    was a sub-second no-op, and every export reported `llm_proposals: not_run`.
+    """
+
+    @pytest.mark.asyncio
+    async def test_prose_context_is_stamped_from_the_run_records(self, monkeypatch) -> None:
+        from app.pipeline import wikidata_studio_build_job as job
+
+        item = {
+            "entity_type": "manuscript",
+            "record_ids": ["990000592310205171"],
+            "source_uri": "https://w3id.org/mhm/ontology#MS_990000592310205171",
+            "local_id": "ms:990000592310205171",
+        }
+        records = [{
+            "_control_number": "990000592310205171",
+            "561$a": "מאוסף הספרייה הלאומית",
+        }]
+
+        async def fake_scoped(_db, _run_id, wanted):
+            assert "990000592310205171" in wanted
+            return records
+
+        monkeypatch.setattr(
+            "app.pipeline.marc_verify_context.load_run_marc_records_scoped", fake_scoped,
+        )
+        await job._attach_prose_context(
+            uuid.uuid4(), [item], ["provenance", "notes", "colophon_text"],
+        )
+
+        from app.pipeline.marc_llm_extract import source_text
+
+        assert item["_primary_control_number"] == "990000592310205171"
+        assert "מאוסף הספרייה הלאומית" in source_text(item["_marc_context"])
+
+    @pytest.mark.asyncio
+    async def test_non_manuscripts_are_never_loaded(self, monkeypatch) -> None:
+        from app.pipeline import wikidata_studio_build_job as job
+
+        called = False
+
+        async def fake_scoped(_db, _run_id, _wanted):
+            nonlocal called
+            called = True
+            return []
+
+        monkeypatch.setattr(
+            "app.pipeline.marc_verify_context.load_run_marc_records_scoped", fake_scoped,
+        )
+        items = [{"entity_type": "work", "record_ids": ["990000592310205171"]}]
+        await job._attach_prose_context(uuid.uuid4(), items, ["provenance"])
+        assert called is False
+        assert "_marc_context" not in items[0]

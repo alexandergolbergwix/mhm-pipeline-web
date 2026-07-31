@@ -112,6 +112,63 @@ async def _persist_mined_items(
         await db.commit()
 
 
+async def _attach_prose_context(
+    run_id: uuid.UUID,
+    items: list[dict[str, object]],
+    keys: list[str],
+) -> None:
+    """Stamp `_marc_context` with the prose slices the extractor reads.
+
+    Scoped to the manuscripts actually in the build and to the three prose keys
+    — the full verify pack is far too heavy for a Basic dyno (Rule W-132).
+    """
+    from app.db import session_scope  # noqa: PLC0415
+    from app.pipeline.marc_verify_context import (  # noqa: PLC0415
+        canonical_control_number,
+        index_marc_records,
+        load_run_marc_records_scoped,
+        marc_context_for_item,
+        primary_control_number_for,
+    )
+
+    manuscripts = [it for it in items if str(it.get("entity_type") or "") == "manuscript"]
+    if not manuscripts:
+        return
+    own_cns: dict[int, list[str]] = {}
+    wanted: set[str] = set()
+    for item in manuscripts:
+        # Studio items name their records `record_ids`/`records`; only the verify
+        # path renames that to `control_numbers`.
+        stored = item.get("record_ids") or item.get("records") or []
+        cns = [
+            canonical_control_number(cn)
+            for cn in (stored if isinstance(stored, list) else [])
+        ]
+        cns = [cn for cn in cns if cn]
+        own_cns[id(item)] = cns
+        wanted.update(cns)
+    if not wanted:
+        return
+    async with session_scope() as db:
+        records = await load_run_marc_records_scoped(db, run_id, wanted)
+    marc_index = index_marc_records(records)
+    for item in manuscripts:
+        cns = own_cns[id(item)]
+        primary = primary_control_number_for(
+            cns, item.get("source_uri"), item.get("local_id"),
+        )
+        item["_marc_context"] = marc_context_for_item(
+            {
+                "control_numbers": cns,
+                "source_uri": item.get("source_uri"),
+                "local_id": item.get("local_id"),
+            },
+            marc_index,
+            keys=keys,
+        )
+        item["_primary_control_number"] = primary
+
+
 async def _mine_provenance_prose(
     job_id: uuid.UUID,
     cached: object,
@@ -131,7 +188,10 @@ async def _mine_provenance_prose(
     if not items:
         return
     from app.db import session_scope  # noqa: PLC0415
-    from app.pipeline.marc_llm_extract import attach_llm_proposals  # noqa: PLC0415
+    from app.pipeline.marc_llm_extract import (  # noqa: PLC0415
+        SOURCE_SLICES,
+        attach_llm_proposals,
+    )
 
     state["phase"] = "mining provenance prose"
     state["done"], state["records"] = 0, 0
@@ -140,9 +200,20 @@ async def _mine_provenance_prose(
         state["done"], state["records"] = done, total
 
     try:
-        stats = await attach_llm_proposals(
-            session_scope, items, on_progress=on_progress,
-        )
+        # Built items carry no MARC — that is attached on the verify path only.
+        # Without it every manuscript had zero prose to read, so the whole phase
+        # was a 0.4 s no-op and every export reported `not_run` (Rule W-140).
+        await _attach_prose_context(run_id, items, list(SOURCE_SLICES))
+        try:
+            stats = await attach_llm_proposals(
+                session_scope, items, on_progress=on_progress,
+            )
+        finally:
+            # The prose slice is a mining input, not curator data — never let it
+            # ride into the persisted cache row (Rule W-131 heap budget).
+            for item in items:
+                item.pop("_marc_context", None)
+                item.pop("_primary_control_number", None)
         logger.info("marc llm extract: %s", stats)
         if stats.get("proposals"):
             # execute_studio_build already wrote the cache row, so mining in

@@ -991,6 +991,20 @@ Invariant:
    scope path, where one call per manuscript hung "Loading Studio scope…" for
    minutes. The corpus cache is read in one bulk query, only misses reach the
    model, and those overlap under `MARC_LLM_EXTRACT_CONCURRENCY` (default 6).
+   **The mining phase MUST load the MARC prose itself.** Built Studio items name
+   their records as `record_ids`/`records` and carry no MARC — that is attached
+   only on the verify path. Export (19) proved the cost of assuming otherwise:
+   68 of 68 manuscripts had zero readable prose, the phase was a 0.4 s no-op,
+   nothing was persisted, and every item reported `not_run`. The phase scopes
+   `load_run_marc_records_scoped` to the manuscripts in the build, projects only
+   the three `SOURCE_SLICES`, and pops `_marc_context` before persisting so the
+   cache row keeps its Basic-dyno budget (Rule W-131).
+   **The prompt MUST name what each property means.** `marc_llm_extract_v1` sent
+   bare PIDs; the model then routed languages (`לאדינו`, `ערבית`, `לטיני`) and
+   holding libraries into `P1071` (location of creation). `v2` renders
+   `SUPPORTED_PROPERTIES` with its descriptions and states that a language,
+   script or holding library is never a place of creation. A prompt-semantics
+   change bumps `EXTRACT_SCHEMA` so old-semantics cache rows are not served.
 7. **Proposals are never claims.** They surface as
    `verify_evidence.llm_proposals` for the curator and the judge, and nothing is
    projected into `statements`. Generation is not an evidence channel

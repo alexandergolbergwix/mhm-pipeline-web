@@ -83,3 +83,5 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_marc_extent_and_digital_access.py` — extent summation, gematria/page units, fail-closed cases, 856$u → P953, closed-vocabulary material, Hebrew description language agreement (Rule W-140).
 - `backend/tests/unit/test_marc_llm_extract.py` — span grounding (a hallucinated span cannot pass), closed material vocabulary, unavailable-vs-empty, budget reporting, advisory-only surfacing, Qubrid request shape (Rule W-140).
 - `backend/tests/unit/test_wikidata_projection_recovery.py` — contained-work relinking, multi-valued P973, facsimile typing, Hebrew label holder/language (Rule W-142).
+- `backend/tests/unit/test_wikidata_studio_build_job.py` — `TestMiningReadsMarcProse`: the mining phase loads run MARC for the manuscripts in the build and never loads it for other entity types (Rule W-140).
+- `backend/tests/unit/test_marc_llm_extract.py` — `TestPromptNamesEachProperty` (every PID is explained; a language is not a place) and `TestNoSourceIsReported` (a prose-free manuscript reports `no_source`, not silence) (Rule W-140).

@@ -39,7 +39,9 @@ from converter.wikidata.property_mapping import (
 
 logger = logging.getLogger(__name__)
 
-EXTRACT_SCHEMA = "marc_llm_extract_v1"
+# v2: the prompt names what each property MEANS. v1 sent bare PIDs, and the
+# model routed languages and holding libraries into P1071 (Rule W-140).
+EXTRACT_SCHEMA = "marc_llm_extract_v2"
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 CACHE_KIND = "marc.llm_extract"
 
@@ -63,8 +65,11 @@ _PROMPT = """You extract structured metadata from Hebrew manuscript catalogue re
 
 Return JSON only: {{"proposals": [...]}}.
 
+The only properties you may propose, and what each one means:
+{properties}
+
 Each proposal MUST be:
-  {{"property_id": one of {properties},
+  {{"property_id": one of the ids above,
     "value": the extracted value as it should be recorded,
     "span": the VERBATIM substring of the record that states it,
     "marc_tag": the MARC tag the span came from (e.g. "561$a"),
@@ -77,6 +82,8 @@ Hard rules:
   value that is not written there.
 - {material} must be one of: {materials}. If the record does not name the
   writing support, omit it.
+- Do not propose a property for a value it does not describe. A language, a
+  script or a holding library is never a place of creation.
 - Return an empty list rather than a guess.
 
 Record for {control_number}:
@@ -137,7 +144,10 @@ def source_text(marc_slice: dict[str, Any] | None) -> str:
 
 def build_prompt(control_number: str, record_text: str) -> str:
     return _PROMPT.format(
-        properties=sorted(SUPPORTED_PROPERTIES),
+        properties="\n".join(
+            f"  {pid} — {meaning}"
+            for pid, meaning in sorted(SUPPORTED_PROPERTIES.items())
+        ),
         material=P_MATERIAL,
         materials=sorted({term for term in MATERIAL_TO_QID}),
         control_number=control_number or "(unknown)",
@@ -320,7 +330,8 @@ async def attach_llm_proposals(
     """
     remaining = _budget() if budget is None else budget
     stats = {
-        "records": 0, "proposals": 0, "skipped": 0, "unavailable": 0, "cached": 0,
+        "records": 0, "proposals": 0, "skipped": 0, "unavailable": 0,
+        "cached": 0, "no_source": 0,
     }
     slices = marc_by_cn or {}
 
@@ -338,6 +349,11 @@ async def attach_llm_proposals(
         record_text = source_text(marc_slice if isinstance(marc_slice, dict) else None)
         if record_text:
             targets.append((item, control_number, record_text))
+            continue
+        # Say so. Leaving the key off made "this record has no provenance prose"
+        # indistinguishable from "extraction never ran" in every export.
+        item["_llm_proposals"] = {"status": STATUS_NO_SOURCE, "proposals": []}
+        stats["no_source"] += 1
 
     if not targets:
         return stats
