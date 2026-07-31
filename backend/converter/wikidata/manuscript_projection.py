@@ -71,6 +71,12 @@ from converter.wikidata.item_builder import (
 _QID_RE = re.compile(r"^Q\d+$")
 
 
+def _http_url_or_none(value: object) -> str | None:
+    """An http(s) URL with MARC quote wrappers stripped, else None."""
+    text = str(value or "").strip().strip('"').strip("'").strip()
+    return text if text.lower().startswith(("http://", "https://")) else None
+
+
 def _current_holder_names(record: dict[str, object]) -> list[str]:
     names: list[str] = []
     for contributor in record.get("contributors") or []:
@@ -430,7 +436,9 @@ class ManuscriptProjectionMixin:
         self._add_physical_description(item, record, ref)
 
         # ── Digital access ───────────────────────────────────────
-        digital_url = record.get("digital_url")
+        # 856$u reaches us quote-wrapped and occasionally holds prose rather
+        # than a link; a url-typed claim must be a real URL (Rule W-140).
+        digital_url = _http_url_or_none(record.get("digital_url"))
         if digital_url:
             item.statements.append(
                 WikidataStatement(

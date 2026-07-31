@@ -1455,29 +1455,15 @@ class FieldHandlers:
 
     @staticmethod
     def _parse_extent(extent_str: str) -> int | None:
-        """Parse folio count from extent string.
+        """Parse the physical extent count from a MARC 300$a string.
 
-        Args:
-            extent_str: Extent string like "248 leaves" or "150 ff."
-
-        Returns:
-            Number of folios or None
+        Delegates to the shared parser so multi-sequence, page-unit and
+        Hebrew-numeral extents are summed rather than half-read (Rule W-140).
         """
-        match = re.search(
-            r"\[?(\d+)\]?\s*(?:leaves?|ff?\.?|folios?|דף|דפים)", extent_str, re.IGNORECASE
-        )
-        if match:
-            return int(match.group(1))
+        from converter.transformer.extent import parse_extent
 
-        match = re.search(
-            r"\[?(\d+)\]?,?\s*\[?(\d+)\]?\s*(?:leaves?|ff?\.?|folios?|דפים)",
-            extent_str,
-            re.IGNORECASE,
-        )
-        if match:
-            return int(match.group(1)) + int(match.group(2))
-
-        return None
+        parsed = parse_extent(extent_str)
+        return parsed.count if parsed else None
 
     @staticmethod
     def _parse_dimensions(dim_str: str) -> dict[str, int]:

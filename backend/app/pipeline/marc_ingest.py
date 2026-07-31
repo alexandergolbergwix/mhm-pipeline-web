@@ -23,6 +23,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+
 # Tabular column header → internal slot.
 _CN_HEADERS = (
     "_control_number", "control_number", "controlnumber", "001", "id", "nli_id",
@@ -291,6 +292,7 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
     desktop values only fill empty slots or extend list/dict fields.
     """
     from converter.parser.marc_reader import MarcField, MarcRecord  # noqa: PLC0415
+    from converter.transformer.extent import parse_extent  # noqa: PLC0415
     from converter.transformer.field_handlers import extract_all_data  # noqa: PLC0415
 
     fields: dict[str, dict[str, list[str]]] = {}
@@ -341,16 +343,35 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
         elif not _has_value(current):
             record[field_name] = incoming
 
-    if not _has_value(record.get("extent")):
-        extent_raw = record.get("300$a")
-        if _has_value(extent_raw):
-            match = _re.search(
-                r"(\d+)\s*(?:דף|דפים|leaves?|folios?|ff?\.?)",
-                str(extent_raw),
-                _re.IGNORECASE,
-            )
-            if match:
-                record["extent"] = int(match.group(1))
+    extent_raw = record.get("300$a")
+    if _has_value(extent_raw):
+        # Sums every leaf sequence and understands page / Hebrew-numeral
+        # extents; fails closed on folio references (Rule W-140). The unit is
+        # stamped even when the desktop handler already supplied the count, so
+        # the projection never has to re-sniff it from the string.
+        parsed_extent = parse_extent(str(extent_raw))
+        if parsed_extent is not None:
+            if not _has_value(record.get("extent")):
+                record["extent"] = parsed_extent.count
+            record["extent_unit"] = parsed_extent.unit
+            if parsed_extent.volumes:
+                record["volume_count"] = parsed_extent.volumes
+
+    # 856$u is the catalogue's own digital-access URL. The pymarc path derives
+    # these in field_handlers; the collapsed-key web ingest must do it too or
+    # every manuscript loses P953 (Rule W-140).
+    if not _has_value(record.get("digital_url")):
+        for url in _split_multi(str(record.get("856$u") or "")):
+            candidate = url.strip().strip('"')
+            if not candidate.lower().startswith(("http://", "https://")):
+                continue
+            record["digital_url"] = candidate
+            lowered = candidate.lower()
+            if not _has_value(record.get("iiif_manifest_url")) and (
+                "iiif" in lowered or "/manifest" in lowered
+            ):
+                record["iiif_manifest_url"] = candidate
+            break
 
     carrier_fields = {
         "content_types": "336$a",

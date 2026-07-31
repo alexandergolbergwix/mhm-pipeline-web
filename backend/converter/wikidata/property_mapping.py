@@ -1045,3 +1045,36 @@ def extract_wikidata_qid(wikidata_uri: str) -> str | None:
         return None
     match = re.search(r"(Q\d+)", wikidata_uri)
     return match.group(1) if match else None
+
+
+# Negations that must suppress a material term found nearby ("not on paper").
+_MATERIAL_NEGATIONS = ("לא ", "אינו ", "not ", "no ")
+
+
+def materials_in_text(text: str) -> list[str]:
+    """Closed-vocabulary material QIDs mentioned as whole words in *text*.
+
+    340$a in the NLI corpus is a free-text note about the physical copy —
+    autographs, binding, multiple hands — and only sometimes names the writing
+    support ("...על קלף"). Matching whole words against MATERIAL_TO_QID keeps
+    the vocabulary closed while recovering the prose cases (Rule W-140).
+    """
+    import re as _re
+
+    haystack = str(text or "")
+    if not haystack.strip():
+        return []
+    found: list[str] = []
+    for term, qid in MATERIAL_TO_QID.items():
+        if qid in found:
+            continue
+        # Hebrew glues its conjunction/preposition prefixes to the word
+        # ("ופפירוס" = "and papyrus"), so allow one leading prefix letter.
+        pattern = rf"(?<![\w֐-׿])[ובלהמכש]?{_re.escape(term)}(?![\w֐-׿])"
+        for match in _re.finditer(pattern, haystack):
+            prefix = haystack[max(0, match.start() - 12):match.start()].lower()
+            if any(neg in prefix for neg in _MATERIAL_NEGATIONS):
+                continue
+            found.append(qid)
+            break
+    return found

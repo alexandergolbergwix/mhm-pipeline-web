@@ -37,6 +37,7 @@ from converter.wikidata.property_mapping import (
     DISCOURAGED_MANUSCRIPT_P31,
     FRAGMENT_CONDITION_KEYWORDS,
     Q_MANUSCRIPT_FRAGMENT,
+    materials_in_text,
 )
 
 
@@ -230,17 +231,30 @@ class ManuscriptMetadataMixin:
         ref: list[dict[str, str]],
     ) -> None:
         """Add material, dimensions, folio count."""
+        material_qids: list[str] = []
         for material in record.get("materials") or []:
             qid = MATERIAL_TO_QID.get(str(material))
-            if qid:
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_MATERIAL,
-                        value=qid,
-                        value_type="item",
-                        references=ref,
-                    )
+            if qid and qid not in material_qids:
+                material_qids.append(qid)
+        if not material_qids:
+            # 340$a is a free-text note in this corpus ("...על קלף", "קלף
+            # בהיר.") — scan it for the SAME closed vocabulary rather than
+            # inventing a material (Rule W-140).
+            material_qids = materials_in_text(
+                " ".join(
+                    str(record.get(key) or "")
+                    for key in ("material_note", "340$a", "physical_details")
                 )
+            )
+        for qid in material_qids:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_MATERIAL,
+                    value=qid,
+                    value_type="item",
+                    references=ref,
+                )
+            )
         height = record.get("height_mm")
         if height and float(height) > 0:
             item.statements.append(
@@ -268,6 +282,9 @@ class ManuscriptMetadataMixin:
             extent_str = str(extent)
             folio_match = re.search(r"(\d+)", extent_str)
             if folio_match:
+                # The ingest parser already resolved the unit (Rule W-140);
+                # only fall back to sniffing the string when it did not.
+                parsed_unit = str(record.get("extent_unit") or "")
                 # WikiProject Manuscripts Data Model (2026-06-04 audit):
                 # ALL physical extent goes on P1104 (number of pages) with an
                 # explicit unit.  P7416 "folio(s)" is a STRING QUALIFIER for
@@ -277,7 +294,11 @@ class ManuscriptMetadataMixin:
                 #        leaves/folios and WikiProject mandates the leaf unit.
                 # https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model
                 low = extent_str.lower()
-                says_pages = "page" in low or "עמוד" in low
+                says_pages = (
+                    parsed_unit == "page"
+                    if parsed_unit
+                    else ("page" in low or "עמוד" in low)
+                )
                 unit_qid = "Q1069725" if says_pages else Q_LEAF_UNIT  # page or leaf
                 item.statements.append(
                     WikidataStatement(
