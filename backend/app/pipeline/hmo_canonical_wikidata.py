@@ -1420,6 +1420,17 @@ def _upload_descriptions(
 _HEBREW_CHARS = re.compile(r"[֐-׿]")
 _LATIN_CHARS = re.compile(r"[A-Za-z]")
 
+# Israeli holders whose Hebrew name is the institution's *own* name, not a
+# translation. Foreign institutions intentionally keep their Latin name here
+# rather than have us invent a Hebrew form — extend this map only with a
+# name the institution itself uses (Rule W-140).
+_HEBREW_INSTITUTION_NAMES = {
+    "The National Library of Israel": "הספרייה הלאומית",
+    "National Library of Israel": "הספרייה הלאומית",
+    "The Israel Museum": "מוזיאון ישראל",
+    "The Ben Zvi Institute": "מכון בן־צבי",
+}
+
 
 def _description_language_slot(lang: str, text: str) -> str:
     """Route a description to the language it is actually written in.
@@ -1446,9 +1457,17 @@ def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
     Keeps the ``he`` slot from falling back to a MARC note (Rule W-137). Only
     evidenced fragments are used — no invented date or holder.
     """
-    from converter.wikidata.item_builder import _holding_institution_name  # noqa: PLC0415
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _LANG_CODE_TO_HEBREW,
+        _holding_institution_name,
+    )
 
-    parts = ["כתב יד עברי"]
+    # The language word follows the record, exactly as the `en` description
+    # does — a hardcoded "עברי" made 10 Arabic/Italian manuscripts contradict
+    # their own English description (Rule W-140).
+    languages = record.get("languages") or []
+    primary = str(languages[0]) if languages else "heb"
+    parts = [f"כתב יד {_LANG_CODE_TO_HEBREW.get(primary, 'עברי')}"]
     dates = record.get("dates")
     if isinstance(dates, dict):
         year = str(dates.get("year") or dates.get("gregorian_year") or "").strip('" ')
@@ -1456,7 +1475,7 @@ def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
             parts.append(year)
     holder = _holding_institution_name(record)
     if holder:
-        parts.append(holder)
+        parts.append(_HEBREW_INSTITUTION_NAMES.get(holder, holder))
     shelfmark = str(record.get("shelfmark") or "").strip().strip('"')
     if shelfmark:
         parts.append(shelfmark)

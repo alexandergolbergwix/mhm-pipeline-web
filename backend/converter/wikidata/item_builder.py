@@ -771,6 +771,28 @@ _LANG_CODE_TO_ENGLISH: dict[str, str] = {
     "sam": "Samaritan",
 }
 
+# Hebrew counterpart of _LANG_CODE_TO_ENGLISH, so the generated `he`
+# description can never disagree with `en` about the language (Rule W-140).
+_LANG_CODE_TO_HEBREW: dict[str, str] = {
+    "heb": "עברי",
+    "ara": "ערבי",
+    "jrb": "יהודי-ערבי",
+    "jpr": "יהודי-פרסי",
+    "lat": "לטיני",
+    "per": "פרסי",
+    "yid": "ביידיש",
+    "grk": "יווני",
+    "ita": "איטלקי",
+    "spa": "ספרדי",
+    "por": "פורטוגזי",
+    "ger": "גרמני",
+    "fre": "צרפתי",
+    "tur": "טורקי",
+    "syr": "סורי",
+    "cop": "קופטי",
+    "sam": "שומרוני",
+}
+
 _SCRIPT_TYPE_LABELS: dict[str, str] = {
     "AshkenaziScript": "Ashkenazi script",
     "SepharadicScript": "Sephardi script",
