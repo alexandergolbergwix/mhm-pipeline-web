@@ -210,14 +210,34 @@ Invariant:
 
 **Follow-up (Studio build, 2026-07-30).** The Wikidata Studio build job showed a
 fixed `0 / 1` for the whole build because `execute_studio_build` was one opaque
-await. `WikidataItemBuilder.build_all` already accepted a `progress_cb(done,
-total)` that nothing passed. The callback is now threaded job → build →
-`build_all` and reports `x / n records` (`unit=records`). The callback fires on
-a `run_in_threadpool` worker, so it only bumps an in-memory counter: a single
-`_publish_build_progress` task owns every DB write and publishes at most every
-1.5 s (Rule W-128). Terminal progress switches to `unit=items` and names both
-totals ("Built 313 items from 105 records"). Test:
-`test_wikidata_studio_build_job.py::test_build_job_reports_per_record_progress`.
+await.
+
+A first fix wired the `progress_cb(done, total)` that
+`WikidataItemBuilder.build_all` already accepted and nothing passed. That was
+not enough, and the bar still read `0 / 1` in production: for
+`source=canonical` the item loop is the *fourth* of five stages, and the three
+before it (row load, canonical read-back, transliteration prewarm) are the slow
+ones. Reporting only the loop leaves the bar dead for most of the build.
+
+Invariant for this job:
+
+1. Outer progress is the **1-based build phase** (`unit=steps`) from
+   `BUILD_PHASES`, published from the first write onward — never `0 / N`.
+   `_phase_plan(source)` drops the phases a legacy build never reaches, so the
+   denominator is honest for the path actually taken.
+2. The record loop nests underneath as `sub_processed` / `sub_total` /
+   `sub_unit=records` (Rule W-113), never as the outer counter — records and
+   phases are different units.
+3. `build_all` reports from a `run_in_threadpool` worker, so both callbacks only
+   mutate an in-memory `state` dict; a single `_publish_build_progress` task
+   owns every DB write and publishes at most every 1.5 s (Rule W-128).
+4. Terminal progress switches to `unit=items` and names both totals
+   ("Built 313 items from 105 records").
+
+Tests: `test_wikidata_studio_build_job.py` —
+`test_build_job_reports_phase_steps_and_nested_records`,
+`test_legacy_source_omits_the_canonical_phases`,
+`test_progress_falls_back_to_the_first_step_for_an_unknown_phase`.
 
 Tests: `backend/tests/unit/test_hmo_item_build_progress.py`.
 

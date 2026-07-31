@@ -526,6 +526,7 @@ async def execute_studio_build(
     run_user_id: uuid.UUID | None,
     reconcile: bool = True,
     progress_cb: Callable[[int, int], None] | None = None,
+    phase_cb: Callable[[str], None] | None = None,
 ) -> WikidataStudioCache:
     """Run the full item builder and upsert the Postgres cache.
 
@@ -534,6 +535,11 @@ async def execute_studio_build(
 
     ``reconcile=False`` skips live WDQS lookups (verify scope materialisation).
     """
+    def phase(label: str) -> None:
+        if phase_cb is not None:
+            phase_cb(label)
+
+    phase("loading records")
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
         db, run_id,
     )
@@ -547,6 +553,7 @@ async def execute_studio_build(
     cached = await _get_studio_cache_row(db, run_id, approved_only, source)
 
     if source == "canonical":
+        phase("loading canonical entities")
         canonical = await _canonical_entities_for_run(db, run_id)
         if not canonical:
             raise ValueError(f"no durable HMO canonical entities for run {run_id}")
@@ -608,9 +615,11 @@ async def execute_studio_build(
         from converter.wikidata import hebrew_translit  # noqa: PLC0415
         from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
 
+        phase("preparing transliterations")
         prewarmed = await _prewarm_transliterations(
             db, marc_records=[dict(r.marc) for r in records], user_id=run_user_id,
         )
+        phase("building items")
         hebrew_translit.set_prewarmed_labels(prewarmed)
         hebrew_translit.set_sync_network_disabled(True)
         try:
@@ -627,6 +636,7 @@ async def execute_studio_build(
             hebrew_translit.set_sync_network_disabled(False)
             hebrew_translit.clear_prewarmed_labels()
 
+        phase("assembling canonical projection")
         result = await run_in_threadpool(
             build_canonical_studio_result,
             canonical,
@@ -684,9 +694,11 @@ async def execute_studio_build(
 
     from converter.wikidata import hebrew_translit  # noqa: PLC0415
 
+    phase("preparing transliterations")
     prewarmed = await _prewarm_transliterations(
         db, marc_records=marc_records, user_id=run_user_id,
     )
+    phase("building items")
     hebrew_translit.set_prewarmed_labels(prewarmed)
     hebrew_translit.set_sync_network_disabled(True)
     try:
