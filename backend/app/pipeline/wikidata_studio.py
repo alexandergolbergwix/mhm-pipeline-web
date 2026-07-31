@@ -32,6 +32,8 @@ from sqlalchemy import select
 from app.pipeline.marc_verify_context import canonical_control_number
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.models.extraction_approval import ExtractionApproval
@@ -166,6 +168,7 @@ async def build_items_for_run(
     return_native: bool = False,
     overrides: dict[str, dict[str, Any]] | None = None,
     hmo_instance_qids: dict[str, str] | None = None,
+    progress_cb: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
     """Build Wikidata items + QuickStatements for *marc_records* enriched
     with *approved_matches* and Stage-2 NER *entities*.
@@ -242,6 +245,7 @@ async def build_items_for_run(
 
     return await run_in_threadpool(
         _build_sync, enriched, return_native, overrides or {}, hmo_instance_qids or {},
+        progress_cb,
     )
 
 
@@ -250,6 +254,7 @@ def _build_sync(
     return_native: bool = False,
     overrides: dict[str, dict[str, Any]] | None = None,
     hmo_instance_qids: dict[str, str] | None = None,
+    progress_cb: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
     from app.pipeline.wikidata_local_refs import resolve_local_references  # noqa: PLC0415
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
@@ -259,7 +264,7 @@ def _build_sync(
     builder = WikidataItemBuilder(  # SPARQL-free for the web
         reconciler=None, hmo_instance_qids=hmo_instance_qids,
     )
-    items = builder.build_all(records)
+    items = builder.build_all(records, progress_cb=progress_cb)
 
     # Apply per-item curator overrides FIRST so validation reflects the
     # final curator-adjusted state (not the raw builder output).

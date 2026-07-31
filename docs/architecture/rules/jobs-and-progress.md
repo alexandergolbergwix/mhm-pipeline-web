@@ -208,6 +208,17 @@ Invariant:
 3. Job tray / inline progress show `N / M steps · message`, not a bare
    fraction that reads like item counts.
 
+**Follow-up (Studio build, 2026-07-30).** The Wikidata Studio build job showed a
+fixed `0 / 1` for the whole build because `execute_studio_build` was one opaque
+await. `WikidataItemBuilder.build_all` already accepted a `progress_cb(done,
+total)` that nothing passed. The callback is now threaded job → build →
+`build_all` and reports `x / n records` (`unit=records`). The callback fires on
+a `run_in_threadpool` worker, so it only bumps an in-memory counter: a single
+`_publish_build_progress` task owns every DB write and publishes at most every
+1.5 s (Rule W-128). Terminal progress switches to `unit=items` and names both
+totals ("Built 313 items from 105 records"). Test:
+`test_wikidata_studio_build_job.py::test_build_job_reports_per_record_progress`.
+
 Tests: `backend/tests/unit/test_hmo_item_build_progress.py`.
 
 ### Rule W-113 — Long pipeline steps MUST report nested sub-progress (added 2026-07-25)
