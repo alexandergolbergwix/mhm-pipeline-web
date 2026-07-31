@@ -39,3 +39,6 @@
 | Deploy, migrate, configure | [deployment](blocks/deployment/README.md) |
 | Finish up any code change (docs sync) | [.cursor/skills/docs-on-code-change/SKILL.md](../../.cursor/skills/docs-on-code-change/SKILL.md) (gate) → [.codex/skills/docs-architecture-sync/SKILL.md](../../.codex/skills/docs-architecture-sync/SKILL.md) (how) |
 | Deploy or push to GitHub/Heroku | [.cursor/skills/pre-deploy-docs-sync/SKILL.md](../../.cursor/skills/pre-deploy-docs-sync/SKILL.md) — **mandatory** final docs audit via [task-index](task-index.md) before any push/deploy |
+| Add or fix a MARC-derived manuscript claim (extent, digital access, material) | [wikidata-studio](blocks/wikidata-studio/README.md) — Rule W-140; recover deterministically before generating |
+| Change LLM extraction of MARC provenance prose | [wikidata-studio](blocks/wikidata-studio/README.md) — `marc_llm_extract.py`, Rule W-140; proposals stay advisory |
+

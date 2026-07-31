@@ -461,6 +461,14 @@ def build_verify_evidence_pack(
             "bridge_statements": _bridge_statements(item),
         },
         "authority_other": authority["other"],
+        # Span-grounded LLM proposals (Rule W-140). These are review
+        # CANDIDATES, not claims — each one quotes the MARC span it came from
+        # and nothing here has been projected into `statements`.
+        "llm_proposals": item.get("_llm_proposals") or {
+            "status": "not_run",
+            "proposals": [],
+            "note": "LLM extraction did not run for this item",
+        },
         "work_candidate_evidence": item.get("work_candidate_evidence") or {},
         "local_reference_targets": item.get("local_reference_targets") or {},
         "wpm_data_model_url": (

@@ -169,3 +169,25 @@ lookup (Action API `haswbstatement:<PID>=<value>`) for items with **no**
 Never infer duplication from label similarity alone — two manuscripts, scribes
 or works can legitimately share a name (see the homonym rules). The identifier
 match in `duplicate_check` is the signal.
+
+## LLM extraction proposals are candidates, not evidence (Rule W-140)
+
+`verify_evidence.llm_proposals` holds structured values a tier-1 model mined
+from the MARC provenance prose (500 / 541 / 561 / 563 / 583) — the narrative
+Hebrew that names owners, places and writing supports no parser reaches. Each
+proposal quotes the verbatim `span` it came from and is dropped before it
+reaches you when that span is not literally present in the record.
+
+They are **review candidates for the curator**, and nothing in this block has
+been projected onto the item:
+
+- **Never treat a proposal as evidence for a claim.** Generation is not an
+  evidence channel (Rules W-72 / W-138). If a statement is supported only by a
+  proposal, it is unsupported.
+- **Never fault an item for not carrying a proposed value.** Absent claims are
+  not defects, and a proposal is explicitly not an instruction to project.
+- Do not fault the item when `status` is `unavailable`, `no_source`,
+  `disabled` or `not_run` — those describe the extractor, not the item.
+- You may mention in `reasoning` that a proposal looks worth a curator's
+  attention, but it must not change `name_ok`, `type_ok`, `role_ok` or
+  `overall`.

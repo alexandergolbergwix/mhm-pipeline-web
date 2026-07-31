@@ -400,3 +400,21 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     never safe. Gate code: `create_would_duplicate_existing_item`.
     *Why:* 12 of 206 probeable CREATE candidates in run 48ba6c13 already exist on
     Wikidata (Q66439 Yom-Tov Lipmann Heller, Q467161 Samuel ibn Naghrillah, …).
+
+62. **R62 — Recover MARC metadata deterministically; generate only for prose (Rule W-140).**
+    A head-to-head against `Q134603946` (an NLI manuscript hand-created on
+    Wikidata in 2025) showed 23 statements to our 15 — and measurement showed
+    most of the gap was data we already had: `856$u` present on 63/68 with
+    `P953` on 1, `300$a` on 62 with `P1104` on 45. `converter/transformer/extent.py`
+    is now the single extent parser (sums leaf sequences, page + gematria units,
+    `None` for unnameable units, folio references and bare numbers); `856$u`
+    yields `P953` behind an `http(s)` gate at the emit site; `materials_in_text`
+    keeps `P186` on the closed vocabulary (`בכתיבות אחדות` is hands, not
+    material); and the `he` description takes its language from the record.
+    `marc_llm_extract` sends 500/541/561/563/583 prose to a tier-1 model
+    (DeepSeek V4 Flash on Qubrid) and keeps a proposal only when its `span` is
+    verbatim in the record and its property is an audited constant
+    (P127/P1071/P186). Proposals surface as `verify_evidence.llm_proposals` —
+    advisory, never claims, and barred by the rubric from moving any verdict axis.
+    *Why:* generation is not an evidence channel (Rules W-72/W-67/W-138), so the
+    only safe LLM output is a span-grounded candidate a curator confirms.

@@ -920,3 +920,69 @@ Closing it needs a curator-reviewed label+author search, which is a weak signal
 and must not auto-block (Rule W-84).
 
 Tests: `backend/tests/unit/test_wikidata_duplicate_probe.py` (13).
+
+### Rule W-140 — Manuscript metadata MUST be recovered from MARC before it is generated (added 2026-07-30)
+
+Export (17) reached **0 blocking** offline findings and 240/280 clean verdicts,
+so the residual quality gap was breadth, not correctness. A head-to-head
+against `Q134603946` — an NLI manuscript hand-created on Wikidata in 2025 by
+editor `Lapon-Kandelshein Essi` — showed the shape of it: **23 statements to
+our 15**. They carried extent, material, location, subject, collection and the
+NLI link; we carried shelfmark, script, copyright and channel provenance on 13
+of 15 claims against 0 references on 22 of their 23.
+
+Measured across our 68 manuscripts, most of that gap was **data we already had
+and dropped**, not data needing generation:
+
+| MARC slot | had data | emitted | cause |
+|---|---|---|---|
+| `856$u` → `P953` | 63 | 1 | collapsed-key ingest never derived `digital_url` |
+| `300$a` → `P1104` | 62 | 45 | parser took the first number adjacent to a folio unit |
+| `340$a` → `P186` | 23 | 2 | exact-match vocabulary missed materials named in prose |
+| `561$a` → owner/place | 37 | 0 | genuinely unstructured Hebrew narrative |
+
+Invariant:
+
+1. **Recover before generating.** A field present in MARC is projected by
+   deterministic code. An LLM is only for prose no parser can reach.
+2. **The extent parser fails closed and sums honestly.**
+   `converter/transformer/extent.py` is the single implementation (the desktop
+   `FieldHandlers._parse_extent` delegates to it). It sums every leaf sequence
+   (`111, [2] דף` = 113; `3 כרכים (300, 207, 110 דף)` = 617 in 3 volumes),
+   reads page and Hebrew-numeral (gematria) units, ignores parenthetical
+   foliation notes, and returns **None** for a unit it cannot name (`עמודות`),
+   a folio *reference* (`דף 2א-2ב`) or a bare number. A unit word is never read
+   as a numeral — `דף` is gematria 84. The resolved unit is stamped as
+   `extent_unit` so the projection never re-sniffs the string.
+3. **`url`-typed claims must be URLs.** `856$u` arrives quote-wrapped and
+   sometimes holds prose, so `P953` is gated on an `http(s)` scheme at the emit
+   site, not only at ingest.
+4. **Material stays a closed vocabulary.** `materials_in_text` matches
+   `MATERIAL_TO_QID` terms as whole words (allowing one Hebrew prefix letter,
+   `ופפירוס`) and suppresses negations. 340$a in this corpus is a free-text note
+   about the copy — autographs, binding, multiple hands — and
+   `בכתיבות אחדות` ("in several hands") is **not** a material.
+5. **A generated description may not contradict its own item.** The `he`
+   manuscript description takes its language word from the record via
+   `_LANG_CODE_TO_HEBREW`; a hardcoded `עברי` had 10 Arabic/Italian manuscripts
+   contradicting their English description. Israeli holders render in Hebrew
+   from `_HEBREW_INSTITUTION_NAMES`; foreign institutions keep their own name
+   rather than have us invent a Hebrew form.
+6. **LLM extraction is span-grounded, closed and advisory.**
+   `marc_llm_extract.py` sends the 500/541/561/563/583 prose to a tier-1 model
+   (DeepSeek V4 Flash on Qubrid by default, `MARC_LLM_EXTRACT_MODEL`) and keeps
+   a proposal **only** when its quoted `span` appears verbatim in the record and
+   its property is one of the already-audited constants `P127` / `P1071` /
+   `P186` — the extractor never introduces a new P/Q (Rule W-26). Material
+   values must resolve through `MATERIAL_TO_QID`. Results are content-addressed
+   in the inference cache (Rule W-51), bounded by `MARC_LLM_EXTRACT_MAX`, and
+   disabled by `MARC_LLM_EXTRACT=0`.
+7. **Proposals are never claims.** They surface as
+   `verify_evidence.llm_proposals` for the curator and the judge, and nothing is
+   projected into `statements`. Generation is not an evidence channel
+   (Rules W-72 / W-67 / W-138), so the rubric forbids a proposal from changing
+   any verdict axis, and `unavailable` / `no_source` describes the extractor,
+   never the item.
+
+Tests: `backend/tests/unit/test_marc_extent_and_digital_access.py` (27),
+`test_marc_llm_extract.py` (20).

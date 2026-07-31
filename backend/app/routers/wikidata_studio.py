@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -524,6 +525,7 @@ async def execute_studio_build(
     force_rebuild: bool,
     run_user_id: uuid.UUID | None,
     reconcile: bool = True,
+    progress_cb: Callable[[int, int], None] | None = None,
 ) -> WikidataStudioCache:
     """Run the full item builder and upsert the Postgres cache.
 
@@ -619,6 +621,7 @@ async def execute_studio_build(
                 overrides=overrides,
                 return_native=True,
                 hmo_instance_qids=hmo_instance_qids,
+                progress_cb=progress_cb,
             )
         finally:
             hebrew_translit.set_sync_network_disabled(False)
@@ -692,6 +695,7 @@ async def execute_studio_build(
             entities_by_cn=entities_by_cn,
             overrides=overrides, return_native=True,
             hmo_instance_qids=hmo_instance_qids,
+            progress_cb=progress_cb,
         )
     finally:
         hebrew_translit.set_sync_network_disabled(False)
@@ -2388,6 +2392,13 @@ async def _fetch_wikidata_verify_items(
     # sees it (Rule W-139). Action API + inference cache only — never WDQS on
     # this path (Rule W-116).
     await attach_duplicate_evidence(db, items)
+    enrich_items_with_verify_evidence(items, marc_records)
+    # Mine the MARC provenance prose for review candidates (Rule W-140). Runs
+    # after the evidence pack so the extractor reads the same MARC slice the
+    # judge does; every proposal is span-grounded and stays a proposal.
+    from app.pipeline.marc_llm_extract import attach_llm_proposals  # noqa: PLC0415
+
+    await attach_llm_proposals(db, items)
     enrich_items_with_verify_evidence(items, marc_records)
     return items, marc_records
 

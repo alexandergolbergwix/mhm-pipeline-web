@@ -88,6 +88,9 @@ class WikidataItemEvaluator(Evaluator):
         if isinstance(existing_pack, dict):
             duplicate_check = existing_pack.get("duplicate_check") or {}
         duplicate_json = json.dumps(duplicate_check, ensure_ascii=False, indent=2)
+        llm_proposals_json = json.dumps(
+            evidence.get("llm_proposals") or {}, ensure_ascii=False, indent=2,
+        )
         wd_existing_json = json.dumps(
             evidence.get("wikidata_existing") or {
                 "existing_qid": p.get("existing_qid"),
@@ -151,6 +154,11 @@ class WikidataItemEvaluator(Evaluator):
             "  absent = none found; unavailable/skipped/not_run = UNKNOWN, do not\n"
             "  conclude the item is new):\n"
             f"{duplicate_json}\n"
+            "  LLM extraction proposals (span-grounded CANDIDATES mined from\n"
+            "  MARC provenance prose — NOT evidence and NOT claims on the item.\n"
+            "  Never treat a proposal as support for a statement, and never\n"
+            "  fault the item for not carrying one):\n"
+            f"{llm_proposals_json}\n"
             f"  HMO Wikibase pack:\n{hmo_json}\n"
             f"  authority evidence (raw):\n{authority_json}\n"
             f"  work candidate evidence:\n{work_evidence_json}\n"
