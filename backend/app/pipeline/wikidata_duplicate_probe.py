@@ -207,6 +207,16 @@ def _claims_url(qid: str) -> str:
     return f"{_API}?{params}"
 
 
+def _report(on_progress: Any, done: int, total: int) -> None:
+    """Publish probe progress, never letting a reporting error break the probe."""
+    if on_progress is None:
+        return
+    try:
+        on_progress(done, total)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("duplicate probe progress callback failed: %s", exc)
+
+
 def _unbatchable_budget() -> int:
     """How many one-request-each probes a single job may issue.
 
@@ -690,6 +700,7 @@ async def attach_duplicate_evidence(
     *,
     fetch: Any = None,
     budget: int | None = None,
+    on_progress: Any = None,
 ) -> dict[str, int]:
     """Stamp ``_wikidata_existence`` on every CREATE candidate in *items*.
 
@@ -800,6 +811,7 @@ async def attach_duplicate_evidence(
         for key in chunk:
             fresh[key] = hits.get(key, [])
             apply(key, fresh[key])
+        _report(on_progress, len(fresh), len(misses) + len(unbatchable))
 
     # Conjunctive and title keys cannot share a request (`|` is OR), so one each —
     # which makes them the expensive ones. Bounded, and with a circuit breaker so
@@ -824,6 +836,7 @@ async def attach_duplicate_evidence(
         consecutive_failures = 0
         fresh[key] = hits
         apply(key, hits)
+        _report(on_progress, len(fresh), len(misses) + len(unbatchable))
     if dropped:
         # Rule W-110: a cap the curator cannot see reads as "we checked".
         logger.warning(

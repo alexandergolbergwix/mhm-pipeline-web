@@ -333,3 +333,35 @@ Invariant:
 
 Tests: `frontend/tests/unit/runJobsHref.spec.ts`.
 
+
+### Rule W-147 — Verify scope preparation MUST report steps, not a static string (added 2026-08-02)
+
+The verify job published one progress row for the whole pre-judge phase:
+
+```json
+{"phase": "preparing", "processed": 0, "total": 0,
+ "message": "Loading Studio scope…"}
+```
+
+With `total: 0` and a fixed string there is **no way to distinguish real work from
+a hang**. That is how the Rule W-144 duplicate-probe 429 stall was reported —
+twice — and on both occasions the job was in fact progressing normally, once at
+2 min 20 s into a phase whose healthy duration is 1-3 minutes.
+
+`_fetch_wikidata_verify_items` now takes `phase_cb` / `progress_cb` and announces
+`VERIFY_SCOPE_PHASES`: assembling Studio scope → loading MARC records → checking
+Wikidata for duplicates → building verification evidence. `verify_job` owns a
+publisher task on the same pattern as the Studio build job: the callbacks only
+mutate shared state, the task performs every DB write, throttled to 1.5 s
+(Rule W-128 keeps polls light on the web dyno).
+
+1. **1-based steps with a unit label** (Rule W-112) — `Step 3 of 4: checking
+   Wikidata for duplicates`.
+2. **Nested counts where a step has them** (Rule W-113) — the duplicate step
+   reports `12 of 40 lookups`, which is exactly the loop that stalled.
+3. **A progress callback MUST NOT be able to break the work it reports on.**
+   `_report` swallows and logs a callback error; a broken progress bar must never
+   fail a verify job.
+
+No frontend change was needed: `JobProgressInline` already renders `sub_*` from
+the build job's Rule W-113 work.

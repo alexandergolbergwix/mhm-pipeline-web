@@ -1,0 +1,1 @@
+- `backend/tests/unit/test_verify_scope_progress.py` — scope preparation reports 1-based steps, nested `lookups` counts on the duplicate step, an unknown phase falls back to step 1, sub-counts never exceed their total, and the publisher writes only when the state changed (Rule W-147).

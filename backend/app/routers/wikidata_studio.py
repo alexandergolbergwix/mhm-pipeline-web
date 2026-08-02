@@ -2339,6 +2339,18 @@ async def _load_marc_records_for_run(db: AsyncSession, run_id: uuid.UUID) -> lis
     return await load_run_marc_records(db, run_id)
 
 
+# The steps between "start verify" and the judge's first verdict. Published as
+# 1-based steps with nested counts (Rules W-112 / W-113) because a single static
+# "Loading Studio scope…" made two minutes of honest work indistinguishable from
+# a hang — which is exactly how the 429 stall was first reported.
+VERIFY_SCOPE_PHASES: tuple[str, ...] = (
+    "assembling Studio scope",
+    "loading MARC records",
+    "checking Wikidata for duplicates",
+    "building verification evidence",
+)
+
+
 async def _fetch_wikidata_verify_items(
     db: AsyncSession,
     run_id: uuid.UUID,
@@ -2347,6 +2359,8 @@ async def _fetch_wikidata_verify_items(
     item_ids: list[str] | None,
     approved_only: bool,
     source: str = "canonical",
+    phase_cb: Any = None,
+    progress_cb: Any = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Load Studio items for verify — prefer the curator-visible cache.
 
@@ -2362,6 +2376,11 @@ async def _fetch_wikidata_verify_items(
         load_run_marc_records_scoped,
     )
 
+    def phase(label: str) -> None:
+        if phase_cb is not None:
+            phase_cb(label)
+
+    phase(VERIFY_SCOPE_PHASES[0])
     run_record_ids = await load_run_control_numbers(db, run_id)
     cached = await _get_studio_cache_row(db, run_id, approved_only, source)
     if cached is None or not (cached.result_items or []):
@@ -2406,6 +2425,7 @@ async def _fetch_wikidata_verify_items(
         wanted_cns.update(record_ids)
         items.append(item)
     attach_local_reference_targets(items)
+    phase(VERIFY_SCOPE_PHASES[1])
     marc_records = await load_run_marc_records_scoped(db, run_id, wanted_cns)
     from app.db import session_scope  # noqa: PLC0415
     from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
@@ -2425,11 +2445,13 @@ async def _fetch_wikidata_verify_items(
 
     # Ask Wikidata whether each CREATE candidate already exists, before the judge
     # sees it (Rule W-139). Action API only — never WDQS on this path (W-116).
-    await attach_duplicate_evidence(session_scope, items)
+    phase(VERIFY_SCOPE_PHASES[2])
+    await attach_duplicate_evidence(session_scope, items, on_progress=progress_cb)
     # LLM provenance proposals (Rule W-140) are attached during the BUILD, not
     # here: one model call per manuscript kept "Loading Studio scope…" spinning
     # for minutes. Verify reads whatever the build already stamped, and
     # `llm_proposals` simply reports `not_run` when the build had none.
+    phase(VERIFY_SCOPE_PHASES[3])
     enrich_items_with_verify_evidence(items, marc_records)
     return items, marc_records
 

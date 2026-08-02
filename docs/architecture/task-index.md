@@ -45,3 +45,4 @@
 | Add or change a holding-institution → QID mapping | [wikidata-studio](blocks/wikidata-studio/README.md) — `holding_institutions.py`, Rules W-143 / W-26; fetch the QID live and record its label |
 | Change duplicate detection (keys, batching, statuses) | [wikidata-studio](blocks/wikidata-studio/README.md) — `wikidata_duplicate_probe.py`, Rules W-144 / W-145; `absent` requires every key answered |
 | Add or change an internal entity link (person/work/manuscript roles) | [wikidata-studio](blocks/wikidata-studio/README.md) — `ROLE_TO_PID`, `person_linking.py`, Rule W-146; never create an item for the sake of an edge |
+| Change what a verify job reports before the first verdict | [job-service](blocks/job-service/README.md) — `verify_job._scope_progress`, `VERIFY_SCOPE_PHASES`, Rule W-147 |

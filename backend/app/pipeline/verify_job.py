@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import uuid
 from typing import Any
@@ -238,13 +240,13 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     judged_candidate_ids: set[str] = set()
     last_snapshot_at: list[float] = [0.0]
     last_write_at: list[float] = [0.0]
-    await update_job_progress(job_id, {
-        "phase": "preparing",
-        "processed": 0,
-        "total": 0,
-        "message": "Loading Studio scope…",
-        "session_id": session_id,
-    })
+    scope_state: dict[str, Any] = {"phase": "", "done": 0, "total": 0}
+    await update_job_progress(
+        job_id, _scope_progress(scope_state, session_id),
+    )
+    publisher = asyncio.create_task(
+        _publish_scope_progress(job_id, scope_state, session_id),
+    )
     try:
         stream = await _open_verify_stream(
             kind=kind,
@@ -253,11 +255,16 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             session_id=session_id,
             params=params,
             api_key=str(api_key),
+            scope_state=scope_state,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("could not open verify job %s stream", job_id)
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
         return
+    finally:
+        publisher.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await publisher
     if stream is None:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error="could not start verify stream")
         return
@@ -417,6 +424,60 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     )
 
 
+SCOPE_PROGRESS_INTERVAL_SECONDS = 1.5
+
+
+def _scope_progress(state: dict[str, Any], session_id: str) -> dict[str, Any]:
+    """1-based step progress for scope preparation (Rules W-112 / W-113).
+
+    A single static "Loading Studio scope…" with `total: 0` made two minutes of
+    real work indistinguishable from a hang — which is how the duplicate-probe
+    429 stall was first reported, twice.
+    """
+    from app.routers.wikidata_studio import VERIFY_SCOPE_PHASES  # noqa: PLC0415
+
+    label = str(state.get("phase") or "")
+    step = (VERIFY_SCOPE_PHASES.index(label) + 1) if label in VERIFY_SCOPE_PHASES else 1
+    total_steps = len(VERIFY_SCOPE_PHASES)
+    message = (
+        f"Step {step} of {total_steps}: {label}" if label else "Loading Studio scope…"
+    )
+    progress: dict[str, Any] = {
+        "phase": "preparing",
+        "processed": 0,
+        "total": 0,
+        "step": step,
+        "step_total": total_steps,
+        "message": message,
+        "session_id": session_id,
+    }
+    done, total = int(state.get("done") or 0), int(state.get("total") or 0)
+    if total:
+        progress.update(
+            sub_processed=min(done, total),
+            sub_total=total,
+            sub_unit="lookups",
+            sub_message=f"{min(done, total)} of {total} lookups",
+        )
+    return progress
+
+
+async def _publish_scope_progress(
+    job_id: uuid.UUID,
+    state: dict[str, Any],
+    session_id: str,
+) -> None:
+    """Own every DB write for scope progress; the callbacks only mutate state."""
+    last: tuple[Any, int] | None = None
+    while True:
+        await asyncio.sleep(SCOPE_PROGRESS_INTERVAL_SECONDS)
+        fingerprint = (state.get("phase"), int(state.get("done") or 0))
+        if fingerprint == last:
+            continue
+        last = fingerprint
+        await update_job_progress(job_id, _scope_progress(state, session_id))
+
+
 async def _open_verify_stream(
     *,
     kind: str,
@@ -425,6 +486,7 @@ async def _open_verify_stream(
     session_id: str,
     params: dict[str, Any],
     api_key: str,
+    scope_state: dict[str, Any] | None = None,
 ):
     override_cache = bool(params.get("override_cache"))
     tier_model = params.get("tier_model")
@@ -494,12 +556,23 @@ async def _open_verify_stream(
                 return None
             job = await db.get(RunJob, job_id)
             auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by if job else None))
+            state = scope_state if scope_state is not None else {}
+
+            def on_phase(label: str) -> None:
+                state["phase"] = label
+                state["done"], state["total"] = 0, 0
+
+            def on_lookups(done: int, total: int) -> None:
+                state["done"], state["total"] = done, total
+
             items, marc_records = await _fetch_wikidata_verify_items(
                 db, run_id,
                 auth,
                 item_ids=params.get("item_ids"),
                 approved_only=bool(params.get("approved_only", False)),
                 source=str(params.get("source") or "canonical"),
+                phase_cb=on_phase,
+                progress_cb=on_lookups,
             )
             from app.routers.wikidata_studio import _prepare_wikidata_verify_scope  # noqa: PLC0415
 
