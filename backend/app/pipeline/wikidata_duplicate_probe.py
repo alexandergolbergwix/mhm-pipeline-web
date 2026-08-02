@@ -207,6 +207,30 @@ def _claims_url(qid: str) -> str:
     return f"{_API}?{params}"
 
 
+def _unbatchable_budget() -> int:
+    """How many one-request-each probes a single job may issue.
+
+    Identifier probes pack 50 to a request; conjunctive and title keys cannot be
+    batched at all, so on the reference corpus they added ~173 sequential
+    CirrusSearch calls. Search is the expensive endpoint: the run on 2026-08-02
+    earned `429 Too Many Requests` and, with four polite retries each, left verify
+    sitting on "Loading Studio scope…" for tens of minutes. Bounded, and whatever
+    is dropped is reported as `skipped` and logged — never a silent cap.
+    """
+    try:
+        return max(0, int(os.getenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "40")))
+    except ValueError:
+        return 40
+
+
+def _rate_limit_trip() -> int:
+    """Consecutive failures after which this job stops probing entirely."""
+    try:
+        return max(1, int(os.getenv("WIKIDATA_DUPLICATE_PROBE_TRIP", "3")))
+    except ValueError:
+        return 3
+
+
 def _min_interval() -> float:
     try:
         return max(0.0, float(os.getenv("WIKIDATA_DUPLICATE_PROBE_INTERVAL", "1.1")))
@@ -777,19 +801,37 @@ async def attach_duplicate_evidence(
             fresh[key] = hits.get(key, [])
             apply(key, fresh[key])
 
-    # Conjunctive and title keys cannot share a request (`|` is OR), so one each.
-    for key in unbatchable:
+    # Conjunctive and title keys cannot share a request (`|` is OR), so one each —
+    # which makes them the expensive ones. Bounded, and with a circuit breaker so
+    # a rate-limited API cannot hold the whole verify job hostage.
+    allowance = _unbatchable_budget()
+    trip, consecutive_failures = _rate_limit_trip(), 0
+    dropped = 0
+    for index, key in enumerate(unbatchable):
+        if index >= allowance or consecutive_failures >= trip:
+            dropped += 1
+            continue
         resolver = probe_title if key[0].startswith(_TITLE_PREFIX) else probe_composite
         try:
             hits = await run_in_threadpool(resolver, key[0], key[1], fetch=fetch)
         except Exception as exc:  # noqa: BLE001 — a probe must never break verify
             logger.warning("duplicate probe %s failed: %s", key[0], exc)
+            consecutive_failures += 1
             for item in pending[key]:
                 existence = item["_wikidata_existence"]
                 existence.setdefault("errors", []).append(f"{key[0]}: {exc}")
             continue
+        consecutive_failures = 0
         fresh[key] = hits
         apply(key, hits)
+    if dropped:
+        # Rule W-110: a cap the curator cannot see reads as "we checked".
+        logger.warning(
+            "duplicate probe: %s of %s unbatchable keys not probed "
+            "(budget %s, consecutive failures %s) — those items report skipped",
+            dropped, len(unbatchable), allowance, consecutive_failures,
+        )
+        stats["dropped_unbatched"] = dropped
 
     await _write_cached_pairs(db_factory, fresh)
 

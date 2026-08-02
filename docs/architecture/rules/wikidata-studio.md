@@ -1133,7 +1133,16 @@ collide with us.
 3. **`absent` requires every key to have answered.** A probe that failed or never
    ran downgrades the item to `skipped` with the reason. Reporting `absent` off a
    partial probe is the precise false negative this rule exists to prevent.
-4. **The answer MUST be visible.** Export (19) said `duplicate_check: not_run` on
+4. **Unbatchable keys MUST be bounded.** Identifier probes pack 50 to a request;
+   a conjunction or a title cannot be batched at all, so on the reference corpus
+   they added ~173 sequential CirrusSearch calls. Search is the expensive
+   endpoint: the 2026-08-02 run earned `429 Too Many Requests` and, with four
+   polite retries each, left verify on "Loading Studio scope…" for tens of
+   minutes. `WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX` (default 40) caps them and
+   `..._TRIP` (default 3) consecutive failures stops probing for the rest of the
+   job. Everything dropped reports `skipped` and is logged — never a silent cap
+   (Rule W-110).
+5. **The answer MUST be visible.** Export (19) said `duplicate_check: not_run` on
    all 313 items while **207 answers sat in the cache** — `_wikidata_existence`
    lives in the verify process's memory and is outside the verdict fingerprint
    (Rule W-136), so no read path showed it. `attach_cached_duplicate_evidence`

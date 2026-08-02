@@ -504,3 +504,79 @@ class TestCachedAnswerIsVisibleWithoutProbing:
             asyncio.run(attach_cached_duplicate_evidence(object(), [item]))
         assert item["_wikidata_existence"]["status"] == STATUS_SKIPPED
         assert "NOT established" in item["_wikidata_existence"]["note"]
+
+
+class TestUnbatchableProbesAreBounded:
+    """Rule W-144: a rate-limited API must not hold a verify job hostage."""
+
+    def _works(self, count: int) -> list[dict[str, object]]:
+        return [
+            {
+                "entity_type": "work",
+                "statements": [
+                    _stmt("P1476", f"title {i}"), _stmt("P31", "Q47461344"),
+                ],
+            }
+            for i in range(count)
+        ]
+
+    def test_the_budget_caps_how_many_single_requests_a_job_issues(
+        self, monkeypatch,
+    ) -> None:
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "3")
+        calls = 0
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            nonlocal calls
+            calls += 1
+            return {"query": {"search": []}}
+
+        items = self._works(10)
+        stats = asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
+        assert calls == 3
+        assert stats["dropped_unbatched"] == 7
+
+    def test_a_dropped_probe_reports_skipped_never_absent(self, monkeypatch) -> None:
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "1")
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            return {"query": {"search": []}}
+
+        items = self._works(4)
+        asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
+        statuses = [i["_wikidata_existence"]["status"] for i in items]
+        assert statuses.count(STATUS_ABSENT) == 1
+        assert statuses.count(STATUS_SKIPPED) == 3
+
+    def test_repeated_rate_limiting_trips_the_breaker(self, monkeypatch) -> None:
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "50")
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_TRIP", "2")
+        calls = 0
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            nonlocal calls
+            calls += 1
+            raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+
+        items = self._works(20)
+        stats = asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
+        # Two failures trip it; the remaining 18 are never attempted.
+        assert calls == 2
+        assert stats["dropped_unbatched"] == 18
+
+    def test_a_recovery_resets_the_breaker(self, monkeypatch) -> None:
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "50")
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_TRIP", "2")
+        calls = 0
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise urllib.error.HTTPError(url, 429, "Too Many", {}, None)
+            return {"query": {"search": []}}
+
+        items = self._works(5)
+        stats = asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
+        assert calls == 5
+        assert "dropped_unbatched" not in stats
