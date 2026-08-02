@@ -105,7 +105,10 @@ describe("useVerifyJob", () => {
     await waitFor(() => {
       expect(onFailed).toHaveBeenCalled();
     });
-    expect(String(onFailed.mock.calls[0]?.[0])).toContain("Continue");
+    // Interrupted verify auto-resumes on the backend now (Rule W-134), so the
+    // message promises that rather than telling the curator to click Continue.
+    // The resume offer below is still what backs a manual Continue.
+    expect(String(onFailed.mock.calls[0]?.[0])).toContain("resume automatically");
     expect(String(onFailed.mock.calls[0]?.[0])).not.toContain("eval-agent error");
     expect(result.current.resumeOffer?.judged).toBe(54);
   });

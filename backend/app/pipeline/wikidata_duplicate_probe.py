@@ -46,6 +46,30 @@ _IDENTIFIER_PIDS_BY_TYPE: dict[str, tuple[str, ...]] = {
     "work": (),
 }
 
+# Conjunctive keys: no single identifier answers "same entity?", but the
+# combination does (Rule W-144). All 33 Samaritan manuscripts on Wikidata carry
+# no `P3959` at all, yet each is identified by its holder plus shelfmark —
+# `CAJS Rar Ms 75-117` at Penn, `MS. Bodley Or. 699` at the Bodleian. A `P3959`
+# probe cannot see any of them.
+#
+# These cannot be batched: `haswbstatement` joins with `|` as OR, so an AND is
+# one request per item. Bounded by the same probe budget.
+_COMPOSITE_PIDS_BY_TYPE: dict[str, tuple[tuple[str, ...], ...]] = {
+    "manuscript": (("P195", "P217"),),
+}
+
+# Separator inside a synthetic composite key. Chosen because neither a QID nor a
+# shelfmark contains it, so the key round-trips through the cache unambiguously.
+_COMPOSITE_SEP = "␟"
+
+# Works carry no identifier at all — 0 of 105 in the reference corpus — so there
+# was no duplicate check on them whatsoever (Rule W-145). A title is NOT an
+# identifier, so this probe returns *candidates for the curator*, never a match.
+# It exists because the collisions here are near-certain: the judge already caught
+# us proposing a new item against Q623354, the Passover Haggadah.
+_TITLE_PROBE_TYPES: dict[str, str] = {"work": "P1476"}
+_TITLE_PREFIX = "title+"
+
 STATUS_ABSENT = "absent"
 STATUS_CANDIDATES = "candidates_found"
 STATUS_UNAVAILABLE = "unavailable"
@@ -88,13 +112,72 @@ def _statement_values(item: dict[str, Any], pid: str) -> list[str]:
 
 
 def identity_probes(item: dict[str, Any]) -> list[dict[str, str]]:
-    """The identifier lookups that would reveal an existing item for *item*."""
+    """Every lookup that would reveal an existing item for *item*.
+
+    Identifier probes answer outright; composite probes (Rule W-144) answer by
+    conjunction. Both count, so an item with only a composite probe available is
+    still probed rather than skipped.
+    """
     entity_type = str(item.get("entity_type") or "")
     probes: list[dict[str, str]] = []
     for pid in _IDENTIFIER_PIDS_BY_TYPE.get(entity_type, ()):
         for value in _statement_values(item, pid):
             probes.append({"kind": "identifier", "pid": pid, "value": value})
+    probes.extend(composite_probes(item))
+    probes.extend(title_probes(item))
     return probes
+
+
+def title_probes(item: dict[str, Any]) -> list[dict[str, str]]:
+    """A title-plus-class lookup for entity types that have no identifier."""
+    entity_type = str(item.get("entity_type") or "")
+    title_pid = _TITLE_PROBE_TYPES.get(entity_type)
+    if not title_pid:
+        return []
+    titles = _statement_values(item, title_pid) or [
+        str((item.get("labels") or {}).get("he") or (item.get("labels") or {}).get("en") or "")
+    ]
+    title = titles[0].strip()
+    classes = _statement_values(item, "P31")
+    if not title or len(classes) != 1:
+        return []
+    return [{
+        "kind": "title",
+        "pid": f"{_TITLE_PREFIX}P31",
+        "value": _COMPOSITE_SEP.join((title, classes[0])),
+    }]
+
+
+def composite_probes(item: dict[str, Any]) -> list[dict[str, str]]:
+    """Conjunctive lookups — every PID in the group must have exactly one value.
+
+    Fails closed: a manuscript whose holder abstained (Rule W-143) has no `P195`,
+    so no composite probe is produced and the item cannot report `absent` on this
+    key. Two shelfmarks are ambiguous, so they abstain too.
+    """
+    entity_type = str(item.get("entity_type") or "")
+    probes: list[dict[str, str]] = []
+    for group in _COMPOSITE_PIDS_BY_TYPE.get(entity_type, ()):
+        values: list[str] = []
+        for pid in group:
+            found = _statement_values(item, pid)
+            if len(found) != 1:
+                values = []
+                break
+            values.append(found[0])
+        if not values:
+            continue
+        probes.append({
+            "kind": "composite",
+            "pid": "+".join(group),
+            "value": _COMPOSITE_SEP.join(values),
+        })
+    return probes
+
+
+def _composite_conjunction(pid: str, value: str) -> list[tuple[str, str]]:
+    """Split a synthetic composite key back into its `(pid, value)` pairs."""
+    return list(zip(pid.split("+"), value.split(_COMPOSITE_SEP), strict=True))
 
 
 def _search_url(query: str, *, limit: int = 10) -> str:
@@ -252,8 +335,8 @@ def decide_without_network(item: dict[str, Any]) -> dict[str, Any] | None:
             "status": STATUS_SKIPPED,
             "candidates": [],
             "note": (
-                "no identifier claim to probe — absence of a duplicate is NOT "
-                "established for this item"
+                "no identifier, holder+shelfmark or title+class key to probe — "
+                "absence of a duplicate is NOT established for this item"
             ),
         }
     return None
@@ -307,6 +390,79 @@ async def probe_item(
 
 def _batch_query(pairs: list[tuple[str, str]]) -> str:
     return "haswbstatement:" + "|".join(f"{pid}={value}" for pid, value in pairs)
+
+
+def _conjunction_query(conjunction: list[tuple[str, str]]) -> str:
+    """AND of several statement filters — space-separated, never `|` (that is OR)."""
+    return " ".join(
+        f'haswbstatement:{pid}="{value}"' if " " in value else f"haswbstatement:{pid}={value}"
+        for pid, value in conjunction
+    )
+
+
+def probe_title(
+    pid: str,
+    value: str,
+    *,
+    fetch: Any = None,
+    timeout: float | None = None,
+) -> list[dict[str, str]]:
+    """Candidates whose label or alias is this title and whose class matches.
+
+    `matched_on` deliberately says `title~` — a tilde, because this is a *likeness*
+    and the curator must confirm it. Nothing downstream may treat it as identity.
+    """
+    caller = fetch or _fetch_json
+    title, _sep, class_qid = value.partition(_COMPOSITE_SEP)
+    query = f'inlabel:"{title}" haswbstatement:P31={class_qid}'
+    payload = caller(_search_url(query, limit=10), timeout=timeout or _timeout())
+    results = ((payload or {}).get("query") or {}).get("search") or []
+    out: list[dict[str, str]] = []
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        qid = str(row.get("title") or "")
+        if not qid.startswith("Q"):
+            continue
+        out.append({
+            "qid": qid,
+            "matched_on": f"title~{title} AND P31={class_qid}",
+            "label": title,
+            "requires_curator_confirmation": "true",
+        })
+    return out
+
+
+def probe_composite(
+    pid: str,
+    value: str,
+    *,
+    fetch: Any = None,
+    timeout: float | None = None,
+) -> list[dict[str, str]]:
+    """Resolve one conjunctive key. Every hit is a candidate for *this* item.
+
+    Unlike an identifier probe there is no per-claim attribution to do: matching
+    the whole conjunction *is* the evidence, so the search result stands alone and
+    costs one request instead of one-plus-one-per-hit.
+    """
+    caller = fetch or _fetch_json
+    conjunction = _composite_conjunction(pid, value)
+    payload = caller(
+        _search_url(_conjunction_query(conjunction), limit=10),
+        timeout=timeout or _timeout(),
+    )
+    results = ((payload or {}).get("query") or {}).get("search") or []
+    matched_on = " AND ".join(f"{p}={v}" for p, v in conjunction)
+    out: list[dict[str, str]] = []
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        qid = str(row.get("title") or "")
+        if not qid.startswith("Q"):
+            continue
+        out.append({"qid": qid, "matched_on": matched_on, "label": ""})
+    return out
 
 
 def probe_batch(
@@ -363,6 +519,84 @@ def probe_batch(
 
 
 CACHE_KIND = "wikidata.duplicate_probe"
+
+STATUS_NOT_PROBED = "not_probed"
+
+
+async def attach_cached_duplicate_evidence(
+    db_factory: Any,
+    items: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Stamp the *cached* duplicate answer with no network call (Rule W-144).
+
+    Export (19) reported `duplicate_check: not_run` on all 313 items while 207
+    probe answers sat in the cache: `_wikidata_existence` lives only in the verify
+    process's memory and is deliberately outside the verdict fingerprint
+    (Rule W-136), so no read path ever showed it. A check the curator cannot see
+    is not a check.
+
+    Read-only by construction — it never probes, so it cannot turn opening an
+    export into external I/O.
+    """
+    stats = {"answered": 0, "candidates": 0, "not_probed": 0}
+    pending: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for item in items:
+        if item.get("_wikidata_existence"):
+            continue
+        decided = decide_without_network(item)
+        if decided is not None:
+            item["_wikidata_existence"] = decided
+            continue
+        probes = identity_probes(item)
+        item["_wikidata_existence"] = {
+            "status": STATUS_NOT_PROBED,
+            "candidates": [],
+            "probed": probes,
+            "note": "no probe has run for this item yet",
+        }
+        stats["not_probed"] += 1
+        for probe in probes:
+            pending.setdefault((probe["pid"], probe["value"]), []).append(item)
+
+    if not pending:
+        return stats
+
+    cached = await _read_cached_pairs(db_factory, sorted(pending))
+    for key, candidates in cached.items():
+        for item in pending.get(key, []):
+            existence = item["_wikidata_existence"]
+            if existence["status"] == STATUS_NOT_PROBED:
+                existence["status"] = STATUS_ABSENT
+                existence["note"] = (
+                    "answered from the cached probe; re-run verify to refresh"
+                )
+                stats["not_probed"] -= 1
+                stats["answered"] += 1
+            if candidates:
+                existence["status"] = STATUS_CANDIDATES
+                for candidate in candidates:
+                    if candidate not in existence["candidates"]:
+                        existence["candidates"].append(candidate)
+
+    # A partially cached item must not read as `absent` either (Rule W-144).
+    for item in items:
+        existence = item.get("_wikidata_existence") or {}
+        if existence.get("status") != STATUS_ABSENT:
+            continue
+        probed = existence.get("probed") or []
+        if any((p["pid"], p["value"]) not in cached for p in probed):
+            existence["status"] = STATUS_SKIPPED
+            existence["note"] = (
+                "only some keys have a cached answer — absence of a duplicate is "
+                "NOT established for this item"
+            )
+            stats["answered"] = max(0, stats["answered"] - 1)
+
+    stats["candidates"] = sum(
+        1 for item in items
+        if (item.get("_wikidata_existence") or {}).get("status") == STATUS_CANDIDATES
+    )
+    return stats
 
 
 def _pair_summary(pid: str, value: str) -> dict[str, Any]:
@@ -473,7 +707,17 @@ async def attach_duplicate_evidence(
             stats["skipped"] += 1
             continue
         remaining -= 1
-        item["_wikidata_existence"] = {"status": STATUS_ABSENT, "candidates": [], "probed": probes}
+        item["_wikidata_existence"] = {
+            "status": STATUS_ABSENT,
+            "candidates": [],
+            "probed": probes,
+            # `absent` is only honest once every key has answered (Rule W-144).
+            # Kept as strings, not tuples: this rides on an item that may be
+            # serialised to JSON, and a leaked set would raise there.
+            "_unanswered": [
+                _COMPOSITE_SEP.join((p["pid"], p["value"])) for p in probes
+            ],
+        }
         stats["probed"] += 1
         for probe in probes:
             pending.setdefault((probe["pid"], probe["value"]), []).append(item)
@@ -485,6 +729,10 @@ async def attach_duplicate_evidence(
     def apply(key: tuple[str, str], candidates: list[dict[str, str]]) -> None:
         for item in pending.get(key, []):
             existence = item["_wikidata_existence"]
+            answered = _COMPOSITE_SEP.join(key)
+            unanswered = existence.get("_unanswered")
+            if isinstance(unanswered, list) and answered in unanswered:
+                unanswered.remove(answered)
             if not candidates:
                 continue
             existence["status"] = STATUS_CANDIDATES
@@ -501,6 +749,11 @@ async def attach_duplicate_evidence(
     stats["cached"] = len(cached)
 
     misses = [key for key in pairs if key not in cached]
+    # Only single-identifier keys can share a request. Composite and title keys
+    # each need their own, so they are dispatched by key shape, not by guesswork.
+    single_misses = [key for key in misses if "+" not in key[0]]
+    unbatchable = [key for key in misses if "+" in key[0]]
+    misses = single_misses
     fresh: dict[tuple[str, str], list[dict[str, str]]] = {}
     for start in range(0, len(misses), _BATCH_SIZE):
         chunk = misses[start : start + _BATCH_SIZE]
@@ -524,7 +777,36 @@ async def attach_duplicate_evidence(
             fresh[key] = hits.get(key, [])
             apply(key, fresh[key])
 
+    # Conjunctive and title keys cannot share a request (`|` is OR), so one each.
+    for key in unbatchable:
+        resolver = probe_title if key[0].startswith(_TITLE_PREFIX) else probe_composite
+        try:
+            hits = await run_in_threadpool(resolver, key[0], key[1], fetch=fetch)
+        except Exception as exc:  # noqa: BLE001 — a probe must never break verify
+            logger.warning("duplicate probe %s failed: %s", key[0], exc)
+            for item in pending[key]:
+                existence = item["_wikidata_existence"]
+                existence.setdefault("errors", []).append(f"{key[0]}: {exc}")
+            continue
+        fresh[key] = hits
+        apply(key, hits)
+
     await _write_cached_pairs(db_factory, fresh)
+
+    # A key that never answered means duplication was not ruled out. Reporting
+    # `absent` off a partial probe is the exact false negative Rule W-144 forbids.
+    for item in items:
+        existence = item.get("_wikidata_existence") or {}
+        unanswered = existence.pop("_unanswered", None)
+        if not unanswered or existence.get("status") != STATUS_ABSENT:
+            continue
+        existence["status"] = STATUS_SKIPPED
+        existence["note"] = (
+            f"{len(unanswered)} of {len(existence.get('probed') or [])} keys did not "
+            "answer — absence of a duplicate is NOT established for this item"
+        )
+        stats["skipped"] += 1
+        stats["probed"] = max(0, stats["probed"] - 1)
 
     stats["duplicates"] = sum(
         1 for item in items

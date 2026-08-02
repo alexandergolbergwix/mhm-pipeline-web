@@ -118,3 +118,82 @@ def test_gershayim_in_a_title_claim_is_not_quote_noise(tmp_path: Path) -> None:
         if "title_claim_has_quote_wrappers" in f["checks"]
     }
     assert flagged == {"work:wrapped", "work:doubled"}
+
+
+class TestDuplicateCoverageChecks:
+    """Rules W-144 / W-145 / W-146 — the gate must see a missing check."""
+
+    def test_a_work_with_no_probe_is_reported_as_a_coverage_gap(self) -> None:
+        from scripts.check_wikidata_export_quality import _check_row
+
+        row = _check_row({
+            "entity_type": "work",
+            "statements": [{"property_id": "P1476", "value": "הגדה של פסח"}],
+        })
+        assert "work_create_without_duplicate_probe" in (row or {}).get("checks", [])
+
+    def test_a_probed_work_is_clean(self) -> None:
+        from scripts.check_wikidata_export_quality import _check_row
+
+        row = _check_row({
+            "entity_type": "work",
+            "statements": [{"property_id": "P1476", "value": "x"}],
+            "duplicate_check": {"status": "absent", "candidates": []},
+        })
+        assert "work_create_without_duplicate_probe" not in (row or {}).get("checks", [])
+
+    def test_a_resolved_holder_without_the_composite_probe_is_flagged(self) -> None:
+        from scripts.check_wikidata_export_quality import _check_row
+
+        row = _check_row({
+            "entity_type": "manuscript",
+            "statements": [
+                {"property_id": "P195", "value": "Q1028334"},
+                {"property_id": "P217", "value": "F 18760"},
+            ],
+            "duplicate_check": {
+                "status": "absent",
+                "candidates": [],
+                "probed": [{"pid": "P3959", "value": "99000"}],
+            },
+        })
+        assert "manuscript_missing_holder_shelfmark_probe" in (row or {}).get("checks", [])
+
+    def test_a_top_level_candidate_still_blocks(self) -> None:
+        from scripts.check_wikidata_export_quality import _check_row
+
+        row = _check_row({
+            "entity_type": "manuscript",
+            "statements": [{"property_id": "P3959", "value": "99000"}],
+            "duplicate_check": {"status": "candidates_found", "candidates": [{"qid": "Q1"}]},
+        })
+        assert "create_would_duplicate_existing_item" in (row or {}).get("checks", [])
+
+    def test_p2093_beside_a_real_author_item_is_a_defect(self) -> None:
+        from scripts.check_wikidata_export_quality import _check_row
+
+        row = _check_row({
+            "entity_type": "work",
+            "statements": [
+                {"property_id": "P1476", "value": "x"},
+                {"property_id": "P2093", "value": "משה בן מימון"},
+                {"property_id": "P50", "value": "__LOCAL:viaf:1"},
+            ],
+            "duplicate_check": {"status": "absent"},
+        })
+        assert "author_name_string_beside_author_item" in (row or {}).get("checks", [])
+
+    def test_p2093_alone_is_policy_correct_and_not_a_defect(self) -> None:
+        # Wikidata:Notability — with no identifier there is no item to link to,
+        # and P2093 is exactly what the guidance prescribes.
+        from scripts.check_wikidata_export_quality import _check_row
+
+        row = _check_row({
+            "entity_type": "work",
+            "statements": [
+                {"property_id": "P1476", "value": "x"},
+                {"property_id": "P2093", "value": "משה בן מימון"},
+            ],
+            "duplicate_check": {"status": "absent"},
+        })
+        assert "author_name_string_beside_author_item" not in (row or {}).get("checks", [])

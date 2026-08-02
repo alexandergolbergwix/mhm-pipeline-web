@@ -275,3 +275,232 @@ class TestBatchedProbeCaching:
         )
         assert stats["probed"] == 1
         assert items[0]["_wikidata_existence"]["status"] == STATUS_CANDIDATES
+
+
+def _stmt(pid: str, value: str) -> dict[str, str]:
+    return {"property_id": pid, "value": value}
+
+
+class TestHolderPlusShelfmarkKey:
+    """Rule W-144: a second key for manuscripts no P3959 probe can reach."""
+
+    def test_holder_and_shelfmark_make_a_composite_probe(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import composite_probes
+
+        item = {
+            "entity_type": "manuscript",
+            "statements": [_stmt("P195", "Q1028334"), _stmt("P217", "F 18760")],
+        }
+        probes = composite_probes(item)
+        assert [p["pid"] for p in probes] == ["P195+P217"]
+        assert probes[0]["kind"] == "composite"
+
+    def test_an_abstained_holder_yields_no_composite_probe(self) -> None:
+        # Rule W-143 abstains on ambiguous institutions, so there is no P195 and
+        # this key must not silently become a one-sided lookup.
+        from app.pipeline.wikidata_duplicate_probe import composite_probes
+
+        item = {"entity_type": "manuscript", "statements": [_stmt("P217", "F 18760")]}
+        assert composite_probes(item) == []
+
+    def test_two_shelfmarks_abstain_rather_than_pick_one(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import composite_probes
+
+        item = {
+            "entity_type": "manuscript",
+            "statements": [
+                _stmt("P195", "Q1028334"),
+                _stmt("P217", "F 18760"),
+                _stmt("P217", "Add. 1234"),
+            ],
+        }
+        assert composite_probes(item) == []
+
+    def test_the_conjunction_query_is_an_AND_not_an_OR(self) -> None:
+        # `haswbstatement` joins with `|` as OR. Using it here would return every
+        # manuscript at Cambridge, which reads as a duplicate for all of them.
+        from app.pipeline.wikidata_duplicate_probe import _conjunction_query
+
+        query = _conjunction_query([("P195", "Q1028334"), ("P217", "F 18760")])
+        assert "|" not in query
+        assert query == 'haswbstatement:P195=Q1028334 haswbstatement:P217="F 18760"'
+
+    def test_a_composite_hit_is_reported_as_a_candidate(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import probe_composite
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            assert "haswbstatement:P195=Q1028334" in url or "P195%3DQ1028334" in url
+            return {"query": {"search": [{"title": "Q999"}]}}
+
+        hits = probe_composite("P195+P217", "Q1028334␟F 18760", fetch=fetch)
+        assert [h["qid"] for h in hits] == ["Q999"]
+        assert "AND" in hits[0]["matched_on"]
+
+
+class TestWorkTitleProbe:
+    """Rule W-145: works had no duplicate check at all — 0 identifiers."""
+
+    def test_title_and_class_make_a_probe(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import title_probes
+
+        item = {
+            "entity_type": "work",
+            "statements": [_stmt("P1476", "הגדה של פסח"), _stmt("P31", "Q47461344")],
+        }
+        probes = title_probes(item)
+        assert probes[0]["pid"] == "title+P31"
+        assert probes[0]["value"].startswith("הגדה של פסח")
+
+    def test_a_manuscript_never_gets_a_title_probe(self) -> None:
+        # Manuscripts have real identifiers; a title likeness must not weaken them.
+        from app.pipeline.wikidata_duplicate_probe import title_probes
+
+        item = {
+            "entity_type": "manuscript",
+            "statements": [_stmt("P1476", "כתב יד"), _stmt("P31", "Q87167")],
+        }
+        assert title_probes(item) == []
+
+    def test_ambiguous_class_abstains(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import title_probes
+
+        item = {
+            "entity_type": "work",
+            "statements": [
+                _stmt("P1476", "x"), _stmt("P31", "Q47461344"), _stmt("P31", "Q571"),
+            ],
+        }
+        assert title_probes(item) == []
+
+    def test_a_title_candidate_demands_curator_confirmation(self) -> None:
+        # A title is a likeness, not an identity. Nothing may auto-match on it.
+        from app.pipeline.wikidata_duplicate_probe import probe_title
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            return {"query": {"search": [{"title": "Q623354"}]}}
+
+        hits = probe_title("title+P31", "הגדה של פסח␟Q47461344", fetch=fetch)
+        assert hits[0]["qid"] == "Q623354"
+        assert hits[0]["requires_curator_confirmation"] == "true"
+        assert "title~" in hits[0]["matched_on"]
+
+    def test_a_work_is_no_longer_skipped_outright(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import decide_without_network
+
+        item = {
+            "entity_type": "work",
+            "statements": [_stmt("P1476", "הגדה של פסח"), _stmt("P31", "Q47461344")],
+        }
+        assert decide_without_network(item) is None
+
+
+class TestAbsentMeansEveryKeyAnswered:
+    """Rule W-144: a partial probe is `skipped`, never `absent`."""
+
+    def test_a_failed_composite_downgrades_absent_to_skipped(self) -> None:
+        item = {
+            "entity_type": "manuscript",
+            "statements": [
+                _stmt("P3959", "990001404380205171"),
+                _stmt("P195", "Q1028334"),
+                _stmt("P217", "F 18760"),
+            ],
+        }
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            if "P195" in url or "P195%3D" in url:
+                raise urllib.error.URLError("boom")
+            return {"query": {"search": []}}
+
+        stats = asyncio.run(attach_duplicate_evidence(None, [item], fetch=fetch))
+        existence = item["_wikidata_existence"]
+        assert existence["status"] == STATUS_SKIPPED
+        assert "NOT established" in existence["note"]
+        assert stats["skipped"] == 1
+        assert "_unanswered" not in existence
+
+    def test_all_keys_answering_absent_stays_absent(self) -> None:
+        item = {
+            "entity_type": "manuscript",
+            "statements": [
+                _stmt("P3959", "990001404380205171"),
+                _stmt("P195", "Q1028334"),
+                _stmt("P217", "F 18760"),
+            ],
+        }
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            return {"query": {"search": []}}
+
+        asyncio.run(attach_duplicate_evidence(None, [item], fetch=fetch))
+        assert item["_wikidata_existence"]["status"] == STATUS_ABSENT
+
+
+class TestCachedAnswerIsVisibleWithoutProbing:
+    """Rule W-144: 207 cached answers were invisible in every export."""
+
+    def test_a_cached_candidate_surfaces_with_no_network_call(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import (
+            attach_cached_duplicate_evidence,
+        )
+
+        item = {
+            "entity_type": "manuscript",
+            "statements": [_stmt("P3959", "990001404380205171")],
+        }
+
+        async def fake_read(_factory, pairs):
+            assert pairs == [("P3959", "990001404380205171")]
+            return {pairs[0]: [{"qid": "Q999", "matched_on": "P3959=…", "label": "x"}]}
+
+        with patch(
+            "app.pipeline.wikidata_duplicate_probe._read_cached_pairs", fake_read,
+        ):
+            asyncio.run(attach_cached_duplicate_evidence(object(), [item]))
+        existence = item["_wikidata_existence"]
+        assert existence["status"] == STATUS_CANDIDATES
+        assert existence["candidates"][0]["qid"] == "Q999"
+
+    def test_no_cache_entry_reads_as_not_probed_never_absent(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import (
+            STATUS_NOT_PROBED,
+            attach_cached_duplicate_evidence,
+        )
+
+        item = {
+            "entity_type": "manuscript",
+            "statements": [_stmt("P3959", "990001404380205171")],
+        }
+
+        async def fake_read(_factory, _pairs):
+            return {}
+
+        with patch(
+            "app.pipeline.wikidata_duplicate_probe._read_cached_pairs", fake_read,
+        ):
+            asyncio.run(attach_cached_duplicate_evidence(object(), [item]))
+        assert item["_wikidata_existence"]["status"] == STATUS_NOT_PROBED
+
+    def test_a_partially_cached_item_is_skipped_not_absent(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import (
+            attach_cached_duplicate_evidence,
+        )
+
+        item = {
+            "entity_type": "manuscript",
+            "statements": [
+                _stmt("P3959", "990001404380205171"),
+                _stmt("P195", "Q1028334"),
+                _stmt("P217", "F 18760"),
+            ],
+        }
+
+        async def fake_read(_factory, _pairs):
+            return {("P3959", "990001404380205171"): []}
+
+        with patch(
+            "app.pipeline.wikidata_duplicate_probe._read_cached_pairs", fake_read,
+        ):
+            asyncio.run(attach_cached_duplicate_evidence(object(), [item]))
+        assert item["_wikidata_existence"]["status"] == STATUS_SKIPPED
+        assert "NOT established" in item["_wikidata_existence"]["note"]

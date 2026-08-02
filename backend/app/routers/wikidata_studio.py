@@ -1316,6 +1316,20 @@ async def export_wikidata_items(
     except StudioBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
+    # Show the duplicate answer the probe already has. Cache-only — an export must
+    # never turn into external I/O (Rule W-144).
+    from app.db import session_scope  # noqa: PLC0415
+    from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+        attach_cached_duplicate_evidence,
+    )
+
+    await db.rollback()
+    await attach_cached_duplicate_evidence(session_scope, items)
+    for item in items:
+        existence = item.pop("_wikidata_existence", None)
+        if existence is not None:
+            item["duplicate_check"] = existence
+
     filename = f"run-{run_id}-wikidata-studio-items.{format}"
     if format == "json":
         return StreamingResponse(

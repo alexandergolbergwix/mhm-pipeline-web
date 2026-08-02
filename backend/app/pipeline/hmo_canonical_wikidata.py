@@ -181,6 +181,28 @@ def canonical_studio_context(
     matches_by_mazal: dict[str, dict[str, Any]] = {}
     matches_by_qid: dict[str, dict[str, Any]] = {}
     matches_by_name: dict[str, dict[str, Any]] = {}
+    # The work projection resolves a work's author off the record's own
+    # ``marc_authority_matches``. The canonical context indexed the matches for
+    # its own lookups but never stamped them back onto the records, so
+    # ``_find_work_author_match`` had nothing to read and every work degraded to
+    # a P2093 author *name string* — 43 of 105, against 1 P50 (Rule W-146).
+    # Must be the *desktop* shape the builder reads (`name`, `viaf_uri`, quote-
+    # stripped `role`), not the raw DB row — a raw row has no `name` at all, so
+    # every person failed the Wikidata:Notability check for want of an identifier.
+    from app.pipeline.wikidata_studio import (  # noqa: PLC0415
+        _approved_match_to_desktop_shape,
+    )
+
+    matches_by_cn: dict[str, list[dict[str, Any]]] = {}
+    for raw in approved_matches or []:
+        cn = canonical_control_number(str(raw.get("control_number") or ""))
+        if cn:
+            matches_by_cn.setdefault(cn, []).append(
+                _approved_match_to_desktop_shape(dict(raw)),
+            )
+    for cn, record in marc_by_cn.items():
+        record["marc_authority_matches"] = matches_by_cn.get(cn, [])
+
     for raw in approved_matches or []:
         match = dict(raw)
         viaf = normalize_viaf_id(match.get("viaf_id"))

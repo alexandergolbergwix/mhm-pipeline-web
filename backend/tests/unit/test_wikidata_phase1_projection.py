@@ -83,29 +83,72 @@ def test_former_owner_and_censor_are_not_current_p127() -> None:
 
 
 def test_external_current_holder_uses_verified_p195_and_description() -> None:
+    # A holder absent from the audited table (Rule W-143) may still be resolved
+    # by an authority payload that carries its own QID.
     item = WikidataItemBuilder().build_manuscript_item({
         "_control_number": "HOLDER-GUARD",
         "title": "כתב יד",
-        "contributors": [{"name": "The Russian State Library", "role": "current owner"}],
+        "contributors": [{"name": "Provincial Archive of Nowhere", "role": "current owner"}],
         "marc_authority_matches": [{
-            "name": "The Russian State Library",
+            "name": "Provincial Archive of Nowhere",
             "role": "current owner",
             "wikidata_qid": "Q182",
             "entity_kind": "organization",
         }],
     })
     assert [statement.value for statement in _statements(item, "P195")] == ["Q182"]
-    assert "Russian State Library" in item.descriptions["en"]
+    assert "Provincial Archive of Nowhere" in item.descriptions["en"]
 
 
 def test_external_current_holder_without_qid_is_not_defaulted_to_nli() -> None:
     item = WikidataItemBuilder().build_manuscript_item({
         "_control_number": "HOLDER-EVIDENCE",
         "title": "כתב יד",
-        "contributors": [{"name": "The Russian State Library", "role": "current owner"}],
+        "contributors": [{"name": "Provincial Archive of Nowhere", "role": "current owner"}],
     })
     assert _statements(item, "P195") == []
-    assert "Russian State Library" in item.descriptions["en"]
+    assert "Provincial Archive of Nowhere" in item.descriptions["en"]
+
+
+class TestAuditedHolderTable:
+    """Rule W-143: one audited table resolves the holder, or abstains."""
+
+    def test_a_table_institution_resolves_to_its_verified_qid(self) -> None:
+        item = WikidataItemBuilder().build_manuscript_item({
+            "_control_number": "HOLDER-TABLE",
+            "title": "כתב יד",
+            "contributors": [{
+                "name": "The Jewish Theological Seminary of America",
+                "role": "current owner",
+            }],
+        })
+        assert [s.value for s in _statements(item, "P195")] == ["Q107722626"]
+
+    def test_the_table_wins_over_an_unverified_authority_qid(self) -> None:
+        # The table entry was fetched live and recorded; an authority payload's
+        # QID is external data of unknown provenance. Verified evidence wins.
+        item = WikidataItemBuilder().build_manuscript_item({
+            "_control_number": "HOLDER-CONFLICT",
+            "title": "כתב יד",
+            "contributors": [{"name": "Cambridge University Library", "role": "current owner"}],
+            "marc_authority_matches": [{
+                "name": "Cambridge University Library",
+                "role": "current owner",
+                "wikidata_qid": "Q182",
+                "entity_kind": "organization",
+            }],
+        })
+        assert [s.value for s in _statements(item, "P195")] == ["Q1028334"]
+
+    def test_an_ambiguous_institution_abstains(self) -> None:
+        # Ben Zvi resolves to two plausible entities, so it emits no P195 at all
+        # rather than pick one (Rule W-84's reasoning, Rule W-75: never NLI).
+        item = WikidataItemBuilder().build_manuscript_item({
+            "_control_number": "HOLDER-ABSTAIN",
+            "title": "כתב יד",
+            "contributors": [{"name": "The Ben Zvi Institute", "role": "current owner"}],
+        })
+        assert _statements(item, "P195") == []
 
 
 def test_missing_holder_qid_does_not_default_to_nli_collection() -> None:

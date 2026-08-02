@@ -55,8 +55,13 @@ class PersonLinkingMixin:
 
             # Normalize role for lookup (case-insensitive, strip whitespace)
             role_norm = role.strip().lower().replace("_", " ")
-            if role_norm in {"former owner", "seller", "censor", "former_owner"}:
-                logger.info("Skipping non-current ownership role %r for %r", role, name)
+            # A seller is not an owner (the data model forbids modelling auction
+            # houses as P127) and a censor is not one either. A *former* owner,
+            # however, is now a P3342 "significant person" edge rather than a
+            # P127 ownership claim, so dropping it only cost us the link: 49
+            # approved former-owner rows produced nothing at all (Rule W-146).
+            if role_norm in {"seller", "censor"}:
+                logger.info("Skipping non-ownership role %r for %r", role, name)
                 seen_person_keys.add(key)
                 return
             if role_norm in {"editor", "compiler", "contributor"}:

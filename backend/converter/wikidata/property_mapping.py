@@ -48,6 +48,19 @@ P_WORKSHOP_OF = "P1774"  # artistic attribution qualifier (DS paper)
 P_OWNED_BY = "P127"
 P_START_TIME = "P580"
 P_END_TIME = "P582"
+# Verified live 2026-08-02 (Rule W-26):
+#   P3342 "significant person" — "person linked to the item in any possible way"
+#   P1891 "signatory"          — "person, country, or organization that has
+#                                 signed an official document"
+#
+# Why a former owner lands on P3342 and not on P127 (Rule W-146): P127 means
+# *owner of the subject*. The data model does describe P127 as the ownership
+# chain distinguished by P580/P582 and preferred rank — but those dates come from
+# 561$a provenance prose we do not yet parse, and an unqualified P127 reads as
+# current ownership. P3342 is unambiguously true for a former owner and cannot be
+# misread, so it is the honest edge until date evidence exists.
+P_SIGNIFICANT_PERSON = "P3342"
+P_SIGNATORY = "P1891"
 
 # Physical description
 P_MATERIAL = "P186"
@@ -664,6 +677,16 @@ ROLE_TO_PID: dict[str, str] = {
     "(ממנו)": P_OWNED_BY,
     "owner": P_OWNED_BY,
     "transcriber": P_TRANSCRIBED_BY,
+    # Rule W-146. These roles were absent from this map, so every approved match
+    # carrying one was silently dropped: on the reference run, 49 former-owner,
+    # 27 mentioned and 13 signatory rows produced no statement at all, which is
+    # why 124 of 140 person items had nothing pointing at them.
+    "former owner": P_SIGNIFICANT_PERSON,
+    "בעלים קודמים": P_SIGNIFICANT_PERSON,
+    "mentioned": P_SIGNIFICANT_PERSON,
+    "נזכר": P_SIGNIFICANT_PERSON,
+    "signatory": P_SIGNATORY,
+    "חותם": P_SIGNATORY,
 }
 
 # ── Date precision constants (Wikidata time model) ───────────────────

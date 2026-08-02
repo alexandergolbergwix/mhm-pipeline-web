@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from converter.wikidata.holding_institutions import institution_qid
 from converter.wikidata.item_builder import (
     _QUOTE_CHARS,
     _SOURCE_FILENAME_RE,
@@ -12,8 +13,6 @@ from converter.wikidata.item_builder import (
     P_BASED_ON_HEURISTIC,
     P_CATALOG_CODE,
     P_COLLECTION,
-    Q_BODLEIAN,
-    Q_BRITISH_LIBRARY,
     P_CONDITION,
     P_DESCRIBED_AT_URL,
     P_EARLIEST_DATE,
@@ -45,8 +44,6 @@ from converter.wikidata.item_builder import (
     Q_GLOSS,
     Q_MANUSCRIPT,
     Q_MARGINALIA,
-    Q_ISRAEL_MUSEUM,
-    Q_NLI,
     Q_WIKIPROJECT_MANUSCRIPTS,
     SCRIPT_TYPE_TO_QID,
     WikidataItem,
@@ -104,41 +101,12 @@ def _current_holder_qid(record: dict[str, object], holder_names: list[str]) -> s
         name = _normalise_label(str(contributor.get("name") or ""))
         if "current owner" not in role or name.casefold() not in wanted:
             continue
-        normalized_name = name.casefold().strip()
-        if normalized_name in {
-            "the national library of israel",
-            "national library of israel",
-            "הספרייה הלאומית",
-            "הספריה הלאומית",
-        }:
-            return Q_NLI
-        if normalized_name in {
-            "the israel museum",
-            "israel museum",
-            "the israel museum, jerusalem",
-            "israel museum, jerusalem",
-            "מוזיאון ישראל",
-        }:
-            return Q_ISRAEL_MUSEUM
-        # Verified live 2026-07-29 (Rule W-26). Only unambiguous holders are
-        # listed: "The Ben Zvi Institute" resolves to two plausible Wikidata
-        # entities (a publishing organization and Yad Yitzhak Ben-Zvi), so it
-        # abstains rather than guess (Rule W-84's reasoning).
-        if normalized_name in {
-            "the british library",
-            "british library",
-            "הספרייה הבריטית",
-        }:
-            return Q_BRITISH_LIBRARY
-        if normalized_name in {
-            "the bodleian library",
-            "bodleian library",
-            "the bodleian libraries",
-            "bodleian libraries",
-            "the bodleian libraries, university of oxford",
-            "bodleian libraries, university of oxford",
-        }:
-            return Q_BODLEIAN
+        # One audited table, not a hand-rolled chain of four (Rule W-143).
+        # An institution it cannot resolve unambiguously abstains — it never
+        # falls back to NLI (Rule W-75) or guesses (Rule W-84's reasoning).
+        resolved = institution_qid(name)
+        if resolved:
+            return resolved
         for key in ("wikidata_qid", "existing_qid", "qid"):
             qid = extract_wikidata_qid(str(contributor.get(key) or ""))
             if qid and _QID_RE.fullmatch(qid):

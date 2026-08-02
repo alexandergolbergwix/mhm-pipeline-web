@@ -198,6 +198,33 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(duplicate_check, dict) and duplicate_check.get("status") == "candidates_found":
         checks.append("create_would_duplicate_existing_item")
 
+    # The export now carries the cached answer at the top level (Rule W-144).
+    top_level_check = row.get("duplicate_check")
+    if isinstance(top_level_check, dict):
+        if top_level_check.get("status") == "candidates_found":
+            checks.append("create_would_duplicate_existing_item")
+        duplicate_check = duplicate_check or top_level_check
+
+    existing_qid = str(row.get("existing_qid") or "").strip()
+    if not existing_qid:
+        status = (duplicate_check or {}).get("status")
+        # Rule W-144 — a manuscript whose holder resolved MUST also be probed on
+        # holder+shelfmark. `P3959` alone cannot see the imports most likely to
+        # collide with us: all 33 Samaritan manuscripts on Wikidata carry none.
+        if entity_type == "manuscript" and _values(statements, "P195"):
+            probed = {str(p.get("pid")) for p in (duplicate_check or {}).get("probed") or []}
+            if probed and "P195+P217" not in probed:
+                checks.append("manuscript_missing_holder_shelfmark_probe")
+        # Rule W-145 — a CREATE work with no duplicate probe at all.
+        if entity_type == "work" and status in (None, "not_run", "not_probed", "skipped"):
+            checks.append("work_create_without_duplicate_probe")
+
+    # Rule W-146 — P2093 is correct only while no person item exists for that
+    # author. Once one does, the name string is the deprecated form of the link.
+    if entity_type == "work" and _values(statements, "P2093"):
+        if _values(statements, "P50"):
+            checks.append("author_name_string_beside_author_item")
+
     local_targets = set(evidence_pack.get("local_reference_targets") or {})
     for statement in statements:
         value = str(statement.get("value") or "")
@@ -366,7 +393,15 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
 
 # Expected states, not defects: a CREATE work legitimately has no QID yet
 # (Rule W-68 / W-121). Everything else must reach zero before a judge run.
-_INFORMATIONAL_CHECKS = frozenset({"work_missing_existing_qid", "validation_warning"})
+_INFORMATIONAL_CHECKS = frozenset({
+    "work_missing_existing_qid",
+    "validation_warning",
+    # Coverage gaps, not data defects: they say "we have not checked", which is
+    # true of every export taken before the next verify run. Blocking on them
+    # would make the gate red for a reason the export itself cannot fix.
+    "manuscript_missing_holder_shelfmark_probe",
+    "work_create_without_duplicate_probe",
+})
 
 
 def _shared_identity_findings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

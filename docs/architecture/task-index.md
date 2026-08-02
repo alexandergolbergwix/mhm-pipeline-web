@@ -42,3 +42,6 @@
 | Add or fix a MARC-derived manuscript claim (extent, digital access, material) | [wikidata-studio](blocks/wikidata-studio/README.md) — Rule W-140; recover deterministically before generating |
 | Change LLM extraction of MARC provenance prose | [wikidata-studio](blocks/wikidata-studio/README.md) — `marc_llm_extract.py`, Rule W-140; proposals stay advisory |
 
+| Add or change a holding-institution → QID mapping | [wikidata-studio](blocks/wikidata-studio/README.md) — `holding_institutions.py`, Rules W-143 / W-26; fetch the QID live and record its label |
+| Change duplicate detection (keys, batching, statuses) | [wikidata-studio](blocks/wikidata-studio/README.md) — `wikidata_duplicate_probe.py`, Rules W-144 / W-145; `absent` requires every key answered |
+| Add or change an internal entity link (person/work/manuscript roles) | [wikidata-studio](blocks/wikidata-studio/README.md) — `ROLE_TO_PID`, `person_linking.py`, Rule W-146; never create an item for the sake of an edge |

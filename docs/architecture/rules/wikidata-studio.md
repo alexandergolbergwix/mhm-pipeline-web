@@ -1095,3 +1095,97 @@ the Palme d'Or incident. Verify any P/Q a verdict recommends before changing a
 mapping.
 
 Tests: `backend/tests/unit/test_wikidata_projection_recovery.py` (11).
+
+### Rule W-143 — Holding institutions resolve through one audited table (added 2026-08-02)
+
+`P195` was resolved by a hand-rolled `if`-chain covering four institutions, so 53
+of 68 manuscripts carried an inventory number with no holder QID beside it — even
+though their labels named a holder, across **22 distinct institutions**.
+
+1. **One table, live-verified.** `converter/wikidata/holding_institutions.py` maps
+   name variants → QID with **the English label recorded beside each QID as
+   fetched** (Rule W-26). The 2026-08-02 batch resolved 18 institutions via
+   `wbsearchentities` + `wbgetentities`.
+2. **Abstention is explicit, not an omission.** `ABSTAINED_INSTITUTIONS` names
+   each unresolvable holder *and why*: Ben Zvi resolves to two plausible entities
+   (`Q3571277` Yad Yitzhak Ben-Zvi vs `Q99770351` Ben Zvi Institute), and the
+   Montefiore Library and Lehmann Foundation have no Wikidata item. They emit no
+   `P195` and never fall back to NLI (Rule W-75).
+3. **Verified evidence beats an external payload.** When the table and an
+   authority row's `wikidata_qid` disagree, the table wins — it was audited; the
+   payload's provenance is unknown.
+
+The table is not only a label: it is half of the Rule W-144 duplicate key.
+
+### Rule W-144 — `absent` MUST mean every key was probed (added 2026-08-02)
+
+Manuscripts were probed on `P3959` alone. Live check of all 33 Samaritan
+manuscripts on Wikidata: **33 of 33 carry no `P3959`**, yet each is identifiable
+by holder + shelfmark — `CAJS Rar Ms 75-117` (Penn `Q49117`), `MS. Bodley Or. 699`
+(Bodleian `Q82133`). The one probe we ran could not see the imports most likely to
+collide with us.
+
+1. **Second key: `P195` + `P217`, as a conjunction.** `haswbstatement` joins with
+   `|` as **OR**, so an AND is space-separated and cannot be batched — one request
+   per item, inside the same probe budget.
+2. **Fail closed on both sides.** No `P195` (an abstained holder) or two
+   shelfmarks ⇒ no composite probe. A one-sided lookup is never substituted.
+3. **`absent` requires every key to have answered.** A probe that failed or never
+   ran downgrades the item to `skipped` with the reason. Reporting `absent` off a
+   partial probe is the precise false negative this rule exists to prevent.
+4. **The answer MUST be visible.** Export (19) said `duplicate_check: not_run` on
+   all 313 items while **207 answers sat in the cache** — `_wikidata_existence`
+   lives in the verify process's memory and is outside the verdict fingerprint
+   (Rule W-136), so no read path showed it. `attach_cached_duplicate_evidence`
+   stamps the cached answer on read paths, **cache-only**: opening an export must
+   never become external I/O. No cache entry reads as `not_probed`, never
+   `absent`.
+
+### Rule W-145 — Works MUST be probed for duplicates (added 2026-08-02)
+
+Works had **no duplicate check at all** — `_IDENTIFIER_PIDS_BY_TYPE["work"]` was
+empty, and 0 of 105 works carry any identifier. The collisions here are the most
+certain in the corpus: the judge already caught us proposing a new item against
+`Q623354`, the Passover Haggadah.
+
+1. **Probe `inlabel:"<title>" haswbstatement:P31=<class>`**, one request, only
+   when exactly one title and exactly one class are present.
+2. **A title is a likeness, not an identity.** Hits carry
+   `requires_curator_confirmation` and `matched_on: title~…`. Nothing downstream
+   may auto-match, auto-adopt, or suppress a CREATE on this evidence alone.
+3. **A manuscript never gets a title probe.** It has real identifiers; a
+   likeness must not dilute them.
+
+### Rule W-146 — Created items MUST be reachable from one another (added 2026-08-02)
+
+LOD is the point of the project, and the graph was one-directional: 92 internal
+edges, **91 of them originating from a manuscript**, with **124 of 140 person
+items having nothing pointing at them**.
+
+The cause was not notability — **122 of 140 persons carry `P214` (VIAF)** and are
+perfectly citable. `ROLE_TO_PID` simply had **no entry** for `former owner` (49
+approved rows on the reference run), `mentioned` (27) or `signatory` (13). Each was
+dropped with a log line, and `former owner` was additionally short-circuited
+before the lookup.
+
+1. **Every approved person role either maps to a property or is refused for a
+   stated reason.** `seller` (the data model forbids modelling auction houses as
+   owners) and `censor` remain refused. Silence is not a decision.
+2. **A former owner is `P3342` (significant person), not `P127`.** Verified live
+   2026-08-02: `P3342` is *"person linked to the item in any possible way"*, which
+   is unambiguously true; `P127` is *"owner of the subject"* and, unqualified,
+   asserts **current** ownership. The data model does describe `P127` as the
+   ownership chain distinguished by `P580`/`P582` — upgrading to it requires date
+   evidence from `561$a` prose that we do not yet parse.
+3. **Never create an item for the sake of an edge.**
+   `person_projection` refuses a person with no external identifier, citing
+   **Wikidata:Notability**. Of 21 approved work-author headings, **0 carry a VIAF
+   or Mazal id**, so those works keep `P2093` — with no item to link to, the name
+   string is exactly what Wikidata's guidance prescribes. `P2093` is a defect
+   **only** when a person item for that author does exist.
+4. **The canonical context MUST stamp `marc_authority_matches` onto its records,
+   in the desktop shape.** It indexed the matches for its own lookups and never
+   wrote them back, so `_find_work_author_match` had nothing to read. The shape
+   matters: a raw DB row has `entity_text`/`viaf_id`, while the builder reads
+   `name`/`viaf_uri` — passing the raw row makes every person fail the notability
+   check for want of an identifier that was in fact present.
