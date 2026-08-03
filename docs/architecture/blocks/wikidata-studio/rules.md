@@ -431,4 +431,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     the cache row was written and so never persisted.
     *Also:* a judge verdict is a hypothesis — it claimed `tat` maps to `Q4927`,
     which is live-verified as *"Category:History of Dominica"*, not Tatar.
-
+64. **R64 — Subset AI verification MUST retain freshly persisted verdicts.**
+    Verdict persistence stores a stable item-state fingerprint alongside the
+    strict prompt/evidence fingerprint. The merged review path may use the
+    stable key when only scope-dependent MARC/evidence enrichment differs;
+    semantic item edits still invalidate the verdict.
+    *Why:* re-verifying the `unknown` rows persisted known verdicts, but the
+    read-time full evidence pack changed the strict fingerprint and hid them
+    from the main table.

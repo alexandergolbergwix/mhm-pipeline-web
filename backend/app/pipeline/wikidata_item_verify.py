@@ -15,6 +15,7 @@ from app.pipeline.wikidata_verdict_cache import (
     WIKIDATA_VERDICT_KEY_VERSION,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
+    wikidata_verdict_stable_input_fingerprint,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,9 @@ async def _persist_wikidata_verdicts_to_overrides(
                 "model": model,
                 "judged_at": v.get("judged_at"),
                 "cache_key": fingerprint,
+                "stable_cache_key": wikidata_verdict_stable_input_fingerprint(
+                    item, model, evaluator=evaluator_id,
+                ),
                 "cache_key_version": WIKIDATA_VERDICT_KEY_VERSION,
                 "session_id": None,
                 "evaluator": evaluator_id,

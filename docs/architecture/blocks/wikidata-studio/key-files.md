@@ -18,7 +18,7 @@
 | `backend/app/pipeline/wikidata_duplicate_probe.py` | Batched Action-API duplicate check for CREATE candidates; fail-closed statuses (Rule W-139) |
 | `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets against the built set — degrade to `Q234460`+`P1932` or drop (Rule W-138) |
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-source evidence packs: MARC slice, per-claim `claim_sources` provenance, offline `value_labels`, VIAF/Mazal/HMO channels |
-| `backend/app/pipeline/wikidata_verdict_cache.py` | Canonical record/MARC/local-target evidence, durable-target preservation, slim-invariant cache keys (`fingerprint_statements` / `fingerprint_verify_evidence`), and stale-verdict sanitisation |
+| `backend/app/pipeline/wikidata_verdict_cache.py` | Canonical record/MARC/local-target evidence, strict and stable verdict fingerprints, durable-target preservation, slim-invariant cache keys, and stale-verdict sanitisation |
 | `backend/app/pipeline/wikidata_duplicate_probe.py` | Batched Action-API duplicate check for CREATE candidates; fail-closed statuses (Rule W-139) |
 | `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets against the built set — degrade to `Q234460`+`P1932` or drop (Rule W-138) |
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-channel `verify_evidence` pack (MARC + VIAF + Mazal + Wikidata + HMO Wikibase) for AI verify (Rule W-124) |

@@ -7,6 +7,7 @@ from app.pipeline.wikidata_verdict_cache import (
     attach_local_reference_targets,
     sanitise_stale_wikidata_verdict,
     wikidata_verdict_input_fingerprint,
+    wikidata_verdict_stable_input_fingerprint,
     wikidata_verdict_query_summary,
 )
 
@@ -234,6 +235,33 @@ def test_verdict_survives_when_evidence_pack_is_absent() -> None:
     assert kept["cache_key"] == wikidata_verdict_input_fingerprint(
         item, "moonshotai/Kimi-K2.5",
     )
+
+
+def test_verdict_survives_subset_verify_evidence_drift() -> None:
+    item = _verify_scope_item()
+    stored = {
+        "overall": "pass",
+        "model": "moonshotai/Kimi-K2.5",
+        "cache_key": wikidata_verdict_input_fingerprint(
+            item, "moonshotai/Kimi-K2.5",
+        ),
+        "stable_cache_key": wikidata_verdict_stable_input_fingerprint(
+            item, "moonshotai/Kimi-K2.5",
+        ),
+        "cache_key_version": "records_marc_v6",
+        "evaluator": "wikidata_item",
+    }
+    read_item = {**item}
+    read_item["verify_evidence"] = {"different_scope": True}
+    read_item["local_reference_targets"] = {"person::other": {"labels": {}}}
+    read_item["_marc_context"] = {"title": "read-time enrichment"}
+
+    kept = sanitise_stale_wikidata_verdict(
+        read_item, stored, marc_context=read_item["_marc_context"],
+    )
+
+    assert kept is not None
+    assert kept["overall"] == "pass"
 
 
 class TestAdvisoryEvidenceNeverKeysAVerdict:

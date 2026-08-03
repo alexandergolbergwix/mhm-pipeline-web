@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-147)
+## Architectural rules (W-1…W-148)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -150,6 +150,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-129** — Run jobs MUST pass admission control before claim
 - **W-141** — The job tray's "View" MUST reopen the surface that started the job
 - **W-147** — Verify scope preparation MUST report steps, not a static string
+- **W-148** — Subset AI verification MUST retain freshly persisted verdicts when only derived evidence scope changes
 
 ### [authority-marc.md](docs/architecture/rules/authority-marc.md) — Authority matching + MARC ingest
 

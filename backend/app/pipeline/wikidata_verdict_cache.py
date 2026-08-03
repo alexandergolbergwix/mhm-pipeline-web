@@ -287,6 +287,26 @@ def wikidata_verdict_input_fingerprint(
     )
 
 
+def wikidata_verdict_stable_input_fingerprint(
+    item: dict[str, Any],
+    judge_model: str = "gemini-3.5-flash",
+    *,
+    evaluator: str = "wikidata_item",
+) -> str:
+    """Fingerprint durable item state independently of verify-run evidence."""
+    stable_item = {
+        **item,
+        "verify_evidence": {},
+        "local_reference_targets": {},
+    }
+    return wikidata_verdict_input_fingerprint(
+        stable_item,
+        judge_model,
+        evaluator=evaluator,
+        marc_context={},
+    )
+
+
 def wikidata_verdict_judge_model(ai_verdict: dict[str, Any] | None) -> str:
     if not ai_verdict:
         return "gemini-3.5-flash"
@@ -305,6 +325,15 @@ def sanitise_stale_wikidata_verdict(
         return None
     model = judge_model or wikidata_verdict_judge_model(stored)
     eval_id = str(stored.get("evaluator") or evaluator)
+    if stored.get("stable_cache_key") == wikidata_verdict_stable_input_fingerprint(
+        item, model, evaluator=eval_id,
+    ):
+        return {
+            **stored,
+            "cache_key": wikidata_verdict_input_fingerprint(
+                item, model, evaluator=eval_id, marc_context=marc_context,
+            ),
+        }
     expected = wikidata_verdict_input_fingerprint(
         item,
         model,
