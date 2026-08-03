@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-149)
+## Architectural rules (W-1…W-150)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -152,6 +152,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-147** — Verify scope preparation MUST report steps, not a static string
 - **W-148** — Subset AI verification MUST retain freshly persisted verdicts when only derived evidence scope changes
 - **W-149** — Wikidata verify fingerprints MUST use the curator override-merged Studio item state, matching the main table.
+- **W-150** — Wikidata verdict reads MUST validate against the retained pre-derived item projection; ledger QIDs and local-reference display labels are presentation enrichment.
 
 ### [authority-marc.md](docs/architecture/rules/authority-marc.md) — Authority matching + MARC ingest
 

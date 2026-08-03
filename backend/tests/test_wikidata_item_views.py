@@ -17,6 +17,7 @@ from app.models.wikibase_cloud_write import (
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.pipeline.wikidata_item_views import fetch_merged_wikidata_items, fetch_merged_wikidata_item
+from app.pipeline.wikidata_verdict_cache import wikidata_verdict_stable_input_fingerprint
 
 
 @pytest.mark.asyncio
@@ -74,13 +75,25 @@ async def test_merged_view_joins_upload_audit_and_ledger(db_session) -> None:
             label="ledger hit",
         )
     )
-    db_session.add(
-        WikidataItemOverride(
-            run_id=run_id,
-            local_id="990001234",
-            labels={"en": "Curator label"},
-        )
+    override = WikidataItemOverride(
+        run_id=run_id,
+        local_id="990001234",
+        labels={"en": "Curator label"},
     )
+    override.ai_verdict = {
+        "overall": "pass",
+        "model": "gemini-3.5-flash",
+        "evaluator": "wikidata_item",
+        "stable_cache_key": wikidata_verdict_stable_input_fingerprint({
+            "local_id": "990001234",
+            "entity_type": "manuscript",
+            "labels": {"en": "Curator label"},
+            "descriptions": {"en": "A manuscript"},
+            "statements": [],
+            "validation_issues": [],
+        }),
+    }
+    db_session.add(override)
     await db_session.commit()
 
     items = await fetch_merged_wikidata_items(db_session, run_id)
@@ -92,6 +105,7 @@ async def test_merged_view_joins_upload_audit_and_ledger(db_session) -> None:
     assert row["upload_at"] is not None
     assert row["existing_qid"] == "Q88"
     assert row["on_wikidata"] is True
+    assert row["ai_verdict"]["overall"] == "pass"
 
 
 @pytest.mark.asyncio

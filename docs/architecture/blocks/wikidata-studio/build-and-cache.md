@@ -134,7 +134,10 @@ authors cannot disappear between enrichment and item construction.
 
 
 When `HMO_CANONICAL_FIRST=true`, the Wikidata Studio build route defaults legacy requests to the durable canonical HMO projection. The flag is the rollout boundary; explicit legacy mode remains available while it is disabled.
-AI verification loads the same curator override-merged item state used by the
+AI verification loads and the read path retains the same curator
+override-merged item state used by the
 review view before computing verdict fingerprints (R65). This keeps labels,
 descriptions, aliases, and statement edits from making a freshly judged item
 appear stale on the next table read.
+Derived ledger QIDs and local-reference display labels are excluded from this
+stable validation boundary (R66).

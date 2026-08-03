@@ -320,13 +320,15 @@ def sanitise_stale_wikidata_verdict(
     judge_model: str | None = None,
     evaluator: str = "wikidata_item",
     marc_context: dict[str, str] | None = None,
+    stable_item: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(stored, dict) or not stored:
         return None
     model = judge_model or wikidata_verdict_judge_model(stored)
     eval_id = str(stored.get("evaluator") or evaluator)
+    stable_source = stable_item or item
     if stored.get("stable_cache_key") == wikidata_verdict_stable_input_fingerprint(
-        item, model, evaluator=eval_id,
+        stable_source, model, evaluator=eval_id,
     ):
         return {
             **stored,

@@ -447,3 +447,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     represent different judged item states.
     *Why:* 56 freshly judged rows remained `unknown` because the verifier keyed
     raw cache items while the table keyed their override-merged counterparts.
+
+66. **R66 — Verdict reads MUST validate against the pre-derived item projection.**
+    The merged review view retains the override-merged cache projection used
+    by verification and uses it for stable-key validation; ledger QIDs and
+    local-reference display labels are derived presentation data.
+    *Why:* the verifier and table agreed on semantic input, but post-verify
+    enrichment hid 55 freshly persisted verdicts.

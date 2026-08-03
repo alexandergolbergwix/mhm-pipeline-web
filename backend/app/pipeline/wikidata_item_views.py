@@ -73,12 +73,17 @@ async def fetch_merged_wikidata_items(
 
     items: list[dict[str, Any]] = []
     verdict_rows: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    stable_items: dict[str, dict[str, Any]] = {}
     for raw in filter_public_wikidata_items(
         cache_row.result_items or [],
         source=source,
     ):
         local_id = str(raw.get("local_id") or "")
         ov_row = overrides_by_id.get(local_id)
+        stable_items[local_id] = (
+            apply_wikidata_item_override(raw, override_row_to_dict(ov_row))
+            if ov_row else dict(raw)
+        )
         row = _merge_one_wikidata_item(
             raw,
             ov_row=ov_row,
@@ -91,7 +96,9 @@ async def fetch_merged_wikidata_items(
         items.append(row)
 
     attach_local_reference_targets(items)
-    _sanitise_merged_verdicts(verdict_rows, items, marc_records)
+    stable_rows = list(stable_items.values())
+    attach_local_reference_targets(stable_rows)
+    _sanitise_merged_verdicts(verdict_rows, items, marc_records, stable_items)
     return items
 
 
@@ -99,6 +106,7 @@ def _sanitise_merged_verdicts(
     verdict_rows: list[tuple[dict[str, Any], dict[str, Any]]],
     items: list[dict[str, Any]],
     marc_records: list[dict[str, Any]],
+    stable_items: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Drop verdicts whose fingerprint no longer matches the current item.
 
@@ -109,11 +117,13 @@ def _sanitise_merged_verdicts(
     if not verdict_rows:
         return
     enrich_items_with_verify_evidence(items, marc_records)
+    stable_by_id = stable_items or {}
     for row, stored in verdict_rows:
         row["ai_verdict"] = sanitise_stale_wikidata_verdict(
             row,
             stored,
             marc_context=row.get("_marc_context") or {},
+            stable_item=stable_by_id.get(str(row.get("local_id") or "")),
         )
         if row["ai_verdict"] is None:
             row["ai_verdict_at"] = None
