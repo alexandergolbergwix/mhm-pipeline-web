@@ -14,9 +14,9 @@ from app.models.wikibase_cloud_write import (
     TARGET_ITEM,
     WikibaseCloudWrite,
 )
-from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
-from app.pipeline.wikidata_item_views import fetch_merged_wikidata_items, fetch_merged_wikidata_item
+from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.pipeline.wikidata_item_views import fetch_merged_wikidata_item, fetch_merged_wikidata_items
 from app.pipeline.wikidata_verdict_cache import wikidata_verdict_stable_input_fingerprint
 
 

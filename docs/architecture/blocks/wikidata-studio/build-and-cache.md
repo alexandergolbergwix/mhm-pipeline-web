@@ -141,3 +141,5 @@ descriptions, aliases, and statement edits from making a freshly judged item
 appear stale on the next table read.
 Derived ledger QIDs and local-reference display labels are excluded from this
 stable validation boundary (R66).
+The read path calls the same `slim_item_for_verdict_persist` projection used
+by write-through persistence before comparing stable keys (R67).

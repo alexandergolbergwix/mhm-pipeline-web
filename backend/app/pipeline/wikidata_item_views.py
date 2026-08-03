@@ -24,6 +24,7 @@ from app.pipeline.wikidata_verdict_cache import (
     sanitise_stale_wikidata_verdict,
 )
 from app.pipeline.wikidata_verify_evidence import enrich_items_with_verify_evidence
+from app.pipeline.wikidata_verify_fixture import slim_item_for_verdict_persist
 from app.services.wikibase_audit import fetch_latest_wikibase_writes
 
 
@@ -98,6 +99,10 @@ async def fetch_merged_wikidata_items(
     attach_local_reference_targets(items)
     stable_rows = list(stable_items.values())
     attach_local_reference_targets(stable_rows)
+    stable_items = {
+        str(item.get("local_id") or ""): slim_item_for_verdict_persist(item)
+        for item in stable_rows
+    }
     _sanitise_merged_verdicts(verdict_rows, items, marc_records, stable_items)
     return items
 

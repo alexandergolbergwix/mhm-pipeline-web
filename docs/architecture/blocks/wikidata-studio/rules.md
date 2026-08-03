@@ -454,3 +454,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     local-reference display labels are derived presentation data.
     *Why:* the verifier and table agreed on semantic input, but post-verify
     enrichment hid 55 freshly persisted verdicts.
+
+67. **R67 — Read validation MUST reuse the persist-slim projection.**
+    Stable-key validation uses `slim_item_for_verdict_persist` on the retained
+    cache-plus-override projection, exactly as write-through persistence does.
+    *Why:* 27 latest verdicts still had valid stored bodies but were keyed
+    after heap slimming, while the read path compared the unslimmed item.
