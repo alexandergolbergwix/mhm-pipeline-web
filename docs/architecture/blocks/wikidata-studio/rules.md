@@ -460,3 +460,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     cache-plus-override projection, exactly as write-through persistence does.
     *Why:* 27 latest verdicts still had valid stored bodies but were keyed
     after heap slimming, while the read path compared the unslimmed item.
+
+68. **R68 — Stable verdict keys MUST ignore subset-derived local labels.**
+    The durable fingerprint omits `value_label` generated for `__LOCAL:` targets;
+    those labels depend on which rows were selected for a subset verification.
+    *Why:* verifying only the 27 unknown rows produced different labels than
+    the full 364-row table and hid every persisted verdict.

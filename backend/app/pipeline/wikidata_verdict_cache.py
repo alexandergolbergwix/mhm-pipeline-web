@@ -299,6 +299,21 @@ def wikidata_verdict_stable_input_fingerprint(
         "verify_evidence": {},
         "local_reference_targets": {},
     }
+    statements = item.get("statements")
+    if isinstance(statements, list):
+        stable_item["statements"] = [
+            {
+                key: value
+                for key, value in statement.items()
+                if not (
+                    key == "value_label"
+                    and str(statement.get("value") or "").startswith("__LOCAL:")
+                )
+            }
+            if isinstance(statement, dict)
+            else statement
+            for statement in statements
+        ]
     return wikidata_verdict_input_fingerprint(
         stable_item,
         judge_model,

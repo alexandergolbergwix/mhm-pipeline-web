@@ -17,7 +17,11 @@ from app.models.wikibase_cloud_write import (
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.pipeline.wikidata_item_views import fetch_merged_wikidata_item, fetch_merged_wikidata_items
-from app.pipeline.wikidata_verdict_cache import wikidata_verdict_stable_input_fingerprint
+from app.pipeline.wikidata_verdict_cache import (
+    attach_local_reference_targets,
+    wikidata_verdict_stable_input_fingerprint,
+)
+from app.pipeline.wikidata_verify_fixture import slim_item_for_verdict_persist
 
 
 @pytest.mark.asyncio
@@ -106,6 +110,77 @@ async def test_merged_view_joins_upload_audit_and_ledger(db_session) -> None:
     assert row["existing_qid"] == "Q88"
     assert row["on_wikidata"] is True
     assert row["ai_verdict"]["overall"] == "pass"
+
+
+@pytest.mark.asyncio
+async def test_merged_view_keeps_subset_verdict_with_local_target(db_session) -> None:
+    run_id = uuid.uuid4()
+    item = {
+        "local_id": "QDraft_MS_1",
+        "entity_type": "manuscript",
+        "labels": {"en": "Source manuscript"},
+        "statements": [
+            {
+                "property_id": "P1574",
+                "value": "__LOCAL:QDraft_MS_2",
+                "value_type": "local",
+            },
+        ],
+        "validation_issues": [],
+    }
+    target = {
+        "local_id": "QDraft_MS_2",
+        "entity_type": "manuscript",
+        "labels": {"en": "Target manuscript"},
+        "statements": [],
+        "validation_issues": [],
+    }
+    db_session.add(
+        WikidataStudioCache(
+            run_id=run_id,
+            approved_only=True,
+            source="canonical",
+            input_fingerprint="f" * 64,
+            result_items=[item, target],
+            quickstatements="",
+            summary={"total_items": 2},
+            approved_match_count=2,
+            pending_match_count=0,
+            used_match_count=2,
+            record_count=2,
+        )
+    )
+    subset_item = dict(item)
+    subset_item["statements"] = [dict(item["statements"][0])]
+    attach_local_reference_targets([subset_item])
+    stable_item = slim_item_for_verdict_persist(subset_item)
+    override = WikidataItemOverride(
+        run_id=run_id,
+        local_id="QDraft_MS_1",
+    )
+    override.ai_verdict = {
+        "overall": "partial",
+        "model": "deepseek-ai/DeepSeek-V4-Flash",
+        "evaluator": "wikidata_item",
+        "cache_key": "old-scope-key",
+        "cache_key_version": "records_marc_v6",
+        "stable_cache_key": wikidata_verdict_stable_input_fingerprint(
+            stable_item,
+            "deepseek-ai/DeepSeek-V4-Flash",
+        ),
+    }
+    db_session.add(override)
+    await db_session.commit()
+
+    items = await fetch_merged_wikidata_items(
+        db_session,
+        run_id,
+        approved_only=True,
+        source="canonical",
+    )
+
+    row = next(item for item in items if item["local_id"] == "QDraft_MS_1")
+    assert row["ai_verdict"]["overall"] == "partial"
 
 
 @pytest.mark.asyncio

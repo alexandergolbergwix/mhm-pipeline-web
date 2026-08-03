@@ -29,7 +29,7 @@
 | Check whether a CREATE candidate already exists on Wikidata | [Wikidata Studio R61](blocks/wikidata-studio/rules.md) + Rule W-139 + `wikidata_duplicate_probe.py` |
 | Fix `unsupported by MARC` verdicts on evidenced claims | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `marc_verify_context.RAW_TAG_FALLBACK` |
 | Debug manuscripts sharing a label/shelfmark or emitting several P3959 | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `identity_control_number` |
-| Debug AI verdicts persisted but showing `—` in the review table | [Wikidata Studio R64–R67](blocks/wikidata-studio/rules.md) + Rules W-136/W-148/W-149/W-150/W-151 + `wikidata_verdict_cache.py` / merged item view |
+| Debug AI verdicts persisted but showing `—` in the review table | [Wikidata Studio R64–R68](blocks/wikidata-studio/rules.md) + Rules W-136/W-148/W-149/W-150/W-151/W-152 + `wikidata_verdict_cache.py` / merged item view |
 | Analyze partial/fail AI verdicts with Codex | [eval-agent](blocks/eval-agent/README.md) + [Wikidata Studio R25](blocks/wikidata-studio/rules.md) for item/QID evidence |
 | Audit Wikidata export quality/failure counts | [wikidata-studio](blocks/wikidata-studio/README.md) — run `check_wikidata_export_quality.py` |
 | Add caching or an external API call | [caching](blocks/caching/README.md) |
