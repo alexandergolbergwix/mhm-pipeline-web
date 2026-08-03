@@ -786,7 +786,7 @@ entities (a publishing organization and Yad Yitzhak Ben-Zvi) and therefore
 **abstains** (Rule W-84's reasoning).
 
 **Cache invalidation:** `WIKIDATA_VERDICT_SCHEMA` → `w138_v1`, Studio salt →
-`hmo-wikidata-v11`, `WIKIDATA_STUDIO_BUILD_SCHEMA` → `source-aware-works-v4`.
+`hmo-wikidata-v11`, `WIKIDATA_STUDIO_BUILD_SCHEMA` → `source-aware-works-v5`.
 
 **Offline gate before any judge run.**
 `backend/scripts/check_wikidata_export_quality.py` now reports
@@ -1198,3 +1198,19 @@ before the lookup.
    matters: a raw DB row has `entity_text`/`viaf_id`, while the builder reads
    `name`/`viaf_uri` — passing the raw row makes every person fail the notability
    check for want of an identifier that was in fact present.
+
+### Rule W-153 — Wikidata Studio cache rows MUST not preserve identifierless persons (added 2026-08-03)
+
+Run `48ba6c13-115c-4763-bff1-c08b9031b518` displayed an `Aaron` person with
+local ID `mazal:987007257211705171` and a `NO_IDENTIFIER` ERROR. The current
+legacy builder, given that identifier, emits both P214 and P8189 and validates
+cleanly; the row was an older Postgres Studio cache payload, not a fresh
+authority projection. The build fingerprint had no code/schema version that
+invalidated this pre-notability row, so a normal page load kept it reviewable.
+
+The Studio build schema is now `source-aware-works-v5`. In addition,
+`studio_cache_has_stale_validation` rejects any cached person carrying an
+ERROR-level `NO_IDENTIFIER`: cache-hit paths treat it as stale, GET exposes
+`cache_stale=true`, and the curator must force-rebuild before review or upload.
+The cache rule applies to both legacy and canonical source rows; the upload
+validator remains the final write-path gate.

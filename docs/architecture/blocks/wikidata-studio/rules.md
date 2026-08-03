@@ -466,3 +466,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     those labels depend on which rows were selected for a subset verification.
     *Why:* verifying only the 27 unknown rows produced different labels than
     the full 364-row table and hid every persisted verdict.
+
+69. **R69 — Identifierless person cache rows MUST be stale.** A Studio cache
+    containing a person with an ERROR-level `NO_IDENTIFIER` validation issue
+    MUST fail the cache-hit guard and be returned with `cache_stale=true` until
+    a rebuild writes the current projection. Build schema `v5` invalidates
+    pre-gate rows across legacy and canonical sources.
+    *Why:* run 48ba6c13 displayed an old `mazal:987007257211705171` person row
+    with a notability error even though the current builder emits P214/P8189;
+    the unchanged cache fingerprint kept the bad row reviewable.*

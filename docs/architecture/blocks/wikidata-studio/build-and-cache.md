@@ -22,6 +22,13 @@ item instead of the static slug), then computes
 - **No cache row** → enqueue a `wikidata_studio_build` run-job and 409 with
   `{code: "studio_build_in_progress", job_id}`; the frontend attaches to the job.
 
+The build schema is part of the fingerprint. Schema `source-aware-works-v5`
+also treats a cached person carrying an ERROR-level `NO_IDENTIFIER` issue as
+stale (`wikidata_studio.py:50`). The current builder either emits an external
+identifier or omits the person, so this shape can only come from an older
+cache. GET marks that cache `cache_stale=true`; the curator must force-rebuild
+before reviewing or uploading it.
+
 The cache is source-scoped (`legacy` or `canonical`). Every cache lookup and upsert includes the source, and the source is included in the `wikidata_studio_build` job parameters, so a forced canonical rebuild cannot silently return or overwrite the legacy row; old cache rows with a null source are treated as legacy for compatibility.
 
 `execute_studio_build` (`wikidata_studio.py:448`, also called by the job)

@@ -575,9 +575,19 @@ async def execute_studio_build(
             and not studio_cache_has_non_public_items(
                 cached.result_items, source="canonical",
             )
+            and not wikidata_studio.studio_cache_has_stale_validation(
+                cached.result_items,
+            )
         ):
             return cached
-    elif not force_rebuild and cached is not None and cached.input_fingerprint == fingerprint:
+    elif (
+        not force_rebuild
+        and cached is not None
+        and cached.input_fingerprint == fingerprint
+        and not wikidata_studio.studio_cache_has_stale_validation(
+            cached.result_items,
+        )
+    ):
         return cached
 
     if source == "canonical":
@@ -924,8 +934,11 @@ async def build_studio(
             merged = await fetch_merged_wikidata_items(
                 db, run_id, approved_only=approved_only, source=source,
             )
-            cache_shape_stale = studio_cache_has_non_public_items(
-                cached.result_items, source=source,
+            cache_shape_stale = (
+                studio_cache_has_non_public_items(cached.result_items, source=source)
+                or wikidata_studio.studio_cache_has_stale_validation(
+                    cached.result_items,
+                )
             )
             return _studio_response_from_cache(
                 cached,

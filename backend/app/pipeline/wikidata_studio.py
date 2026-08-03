@@ -42,7 +42,35 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v4"  # Rule W-138
+# v5 invalidates pre-notability cache rows that could expose an identifierless
+# person as an upload candidate (the current builder omits those rows).
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v5"  # Rule W-138
+
+
+def studio_cache_has_stale_validation(
+    result_items: list[dict[str, Any]] | None,
+) -> bool:
+    """Detect cached person rows from before the notability gate.
+
+    ``NO_IDENTIFIER`` is an ERROR for a person and the current builders either
+    attach an external identifier or omit the person. A cache containing that
+    issue therefore cannot be a valid result for either Studio projection.
+    """
+    for item in result_items or []:
+        if str(item.get("entity_type") or "").lower() != "person":
+            continue
+        issues = item.get("validation_issues")
+        if not isinstance(issues, list):
+            continue
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            if (
+                str(issue.get("code") or "") == "NO_IDENTIFIER"
+                and str(issue.get("severity") or "").lower() == "error"
+            ):
+                return True
+    return False
 
 
 async def hmo_instance_qids_for_run(
