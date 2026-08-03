@@ -1214,3 +1214,17 @@ ERROR-level `NO_IDENTIFIER`: cache-hit paths treat it as stale, GET exposes
 `cache_stale=true`, and the curator must force-rebuild before review or upload.
 The cache rule applies to both legacy and canonical source rows; the upload
 validator remains the final write-path gate.
+
+### Rule W-154 — Canonical Wikidata Studio merges MUST omit identifierless persons (added 2026-08-03)
+
+The production rebuild of run `48ba6c13-115c-4763-bff1-c08b9031b518` ran
+successfully after W-153, but the canonical result still logged
+`NO_IDENTIFIER`. The legacy builder correctly skipped many identifierless
+persons; canonical enrichment then allowed an identifierless canonical or
+unmatched legacy person to survive the final merge and cache write.
+
+`merge_legacy_into_canonical` now applies the same publishability boundary
+after matching and before cache persistence: a person must have an existing
+QID or a non-empty P214/P8189/P244/P227/P213/P268 statement. Otherwise it
+is omitted, so the Studio corpus cannot contain a person that the final
+validator marks `NO_IDENTIFIER` (R70).

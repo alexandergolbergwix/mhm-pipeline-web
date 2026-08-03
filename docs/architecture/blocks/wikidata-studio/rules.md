@@ -475,3 +475,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     *Why:* run 48ba6c13 displayed an old `mazal:987007257211705171` person row
     with a notability error even though the current builder emits P214/P8189;
     the unchanged cache fingerprint kept the bad row reviewable.*
+
+70. **R70 — Canonical merges MUST not emit identifierless persons.** After
+    canonical HMO items and the fresh legacy enrichment are matched, every
+    person retained in the merged Wikidata Studio result MUST have an
+    existing QID or a non-empty P214/P8189/P244/P227/P213/P268 statement.
+    Identifierless canonical or unmatched legacy persons are omitted before
+    cache persistence and validation. *Why:* the rebuild job still appended
+    an old `mazal:*` person after the legacy notability gate had skipped it.*

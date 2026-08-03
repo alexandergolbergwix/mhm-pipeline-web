@@ -106,3 +106,26 @@ def test_merge_matches_works_by_title_and_adds_author() -> None:
     assert len(merged) == 1
     assert any(s.property_id == "P50" and s.value == "Q1" for s in merged[0].statements)
     assert merged[0].work_candidate_evidence
+
+
+def test_merge_drops_identifierless_person_items() -> None:
+    """Canonical enrichment must never reintroduce a non-notable person."""
+    invalid = _person("mazal:987007257211705171", label="Aaron")
+    valid = _person("mazal:987007257436505171", label="Aaron ben David")
+    valid.statements.append(
+        WikidataStatement(
+            property_id="P8189",
+            value="987007257436505171",
+            value_type="string",
+        ),
+    )
+
+    assert merge_legacy_into_canonical([], [invalid]) == []
+    assert [item.local_id for item in merge_legacy_into_canonical([], [valid])] == [
+        "mazal:987007257436505171",
+    ]
+    assert [item.local_id for item in merge_legacy_into_canonical([invalid], [valid])] == [
+        "mazal:987007257436505171",
+    ]
+
+    assert merge_legacy_into_canonical([invalid], []) == []

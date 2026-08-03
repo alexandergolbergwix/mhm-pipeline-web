@@ -36,6 +36,28 @@ _MULTI_VALUE_CANONICAL_PIDS = frozenset({"P973"})
 
 _QID_RE = re.compile(r"^Q\d+$", re.IGNORECASE)
 
+_PERSON_IDENTIFIER_PIDS = frozenset(
+    {"P214", "P8189", "P244", "P227", "P213", "P268"},
+)
+
+
+def _has_publishable_person_identifier(item: WikidataItem) -> bool:
+    """Keep only person items that can pass the final notability gate."""
+    if str(item.existing_qid or "").strip():
+        return True
+    return any(
+        str(statement.property_id or "") in _PERSON_IDENTIFIER_PIDS
+        and str(statement.value or "").strip()
+        for statement in item.statements or []
+    )
+
+
+def _keep_merged_item(item: WikidataItem) -> bool:
+    return (
+        str(item.entity_type or "").strip().lower() != "person"
+        or _has_publishable_person_identifier(item)
+    )
+
 
 def merge_legacy_into_canonical(
     canonical_items: list[WikidataItem],
@@ -49,9 +71,13 @@ def merge_legacy_into_canonical(
     - Does not append unmatched legacy manuscripts (canonical is the MS root).
     """
     if not legacy_items:
-        return _with_deduped_statements(canonical_items)
+        return _with_deduped_statements(
+            [item for item in canonical_items if _keep_merged_item(item)],
+        )
     if not canonical_items:
-        return _with_deduped_statements(legacy_items)
+        return _with_deduped_statements(
+            [item for item in legacy_items if _keep_merged_item(item)],
+        )
 
     legacy_ms = _index_manuscripts(legacy_items)
     legacy_persons = _index_persons(legacy_items)
@@ -70,10 +96,14 @@ def merge_legacy_into_canonical(
             legacy = _match_work(item, legacy_works)
         if legacy is not None:
             used_legacy_ids.add(legacy.local_id or id(legacy).__repr__())
-            merged.append(_merge_pair(item, legacy))
+            candidate = _merge_pair(item, legacy)
+            if _keep_merged_item(candidate):
+                merged.append(candidate)
         else:
             item.statements = dedupe_statements(item.statements)
-            merged.append(_with_canonical_titles(_with_scoped_records(item)))
+            candidate = _with_canonical_titles(_with_scoped_records(item))
+            if _keep_merged_item(candidate):
+                merged.append(candidate)
 
     for legacy in legacy_items:
         lid = legacy.local_id or ""
@@ -86,7 +116,9 @@ def merge_legacy_into_canonical(
             continue
         if et in {"person", "work"}:
             legacy.statements = dedupe_statements(legacy.statements)
-            merged.append(_with_canonical_titles(legacy))
+            candidate = _with_canonical_titles(legacy)
+            if _keep_merged_item(candidate):
+                merged.append(candidate)
     return merged
 
 
