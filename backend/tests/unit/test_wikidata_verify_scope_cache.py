@@ -14,6 +14,11 @@ from app.routers.wikidata_studio import _fetch_wikidata_verify_items
 def _fake_session() -> MagicMock:
     """A fake AsyncSession whose `rollback()` can be awaited (Rule W-40)."""
     session = MagicMock()
+    session.execute = AsyncMock(
+        return_value=SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: []),
+        ),
+    )
     session.rollback = AsyncMock()
     return session
 
@@ -73,6 +78,74 @@ async def test_verify_fetch_canonicalises_quoted_control_numbers() -> None:
     assert items[0]["verify_evidence"]["marc_present"] is True
     assert items[0]["verify_evidence"]["viaf"]["authority_rows"][0]["identifier"] == "999"
     assert items[0]["verify_evidence"]["hmo_wikibase"]["hmo_wikibase_id"] == "Q11"
+
+
+@pytest.mark.asyncio
+async def test_verify_fetch_applies_curator_overrides_before_fingerprinting() -> None:
+    run_id = uuid.uuid4()
+    cached = SimpleNamespace(
+        result_items=[
+            {
+                "local_id": "ms:override",
+                "entity_type": "manuscript",
+                "labels": {"en": "raw label"},
+                "records": ["990000000000000001"],
+                "statements": [],
+            },
+        ],
+    )
+    override = SimpleNamespace(
+        local_id="ms:override",
+        labels={"en": "curator label"},
+        descriptions={},
+        aliases={},
+        add_statements=[],
+        remove_statements=[],
+        statement_edits={},
+        approved=True,
+        accept_foreign_modify=False,
+        accepted_foreign_qid=None,
+        ai_verdict=None,
+        ai_verdict_at=None,
+    )
+    db = _fake_session()
+    db.execute = AsyncMock(
+        return_value=SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: [override]),
+        ),
+    )
+    auth = SimpleNamespace(user=SimpleNamespace(id=uuid.uuid4()))
+
+    with (
+        patch(
+            "app.pipeline.marc_verify_context.load_run_control_numbers",
+            new=AsyncMock(return_value={"990000000000000001"}),
+        ),
+        patch(
+            "app.pipeline.marc_verify_context.load_run_marc_records_scoped",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.routers.wikidata_studio._get_studio_cache_row",
+            new=AsyncMock(return_value=cached),
+        ),
+        patch(
+            "app.routers.wikidata_studio.attach_local_reference_targets",
+            lambda items: items,
+        ),
+        patch(
+            "app.routers.wikidata_studio.record_ids_for_wikidata_item",
+            return_value=["990000000000000001"],
+        ),
+    ):
+        items, _marc = await _fetch_wikidata_verify_items(
+            db, run_id, auth,
+            item_ids=["ms:override"],
+            approved_only=True,
+            source="canonical",
+        )
+
+    assert items[0]["labels"]["en"] == "curator label"
     run_id = uuid.uuid4()
     cached = SimpleNamespace(
         result_items=[

@@ -72,6 +72,10 @@ from app.pipeline.agent_runner import (
     sse_stream,
 )
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.wikidata_item_merge import (
+    apply_wikidata_item_override,
+    override_row_to_dict,
+)
 from app.pipeline.verify_session_store import load_verify_session
 from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
 from app.pipeline.wikidata_item_views import (
@@ -2405,10 +2409,22 @@ async def _fetch_wikidata_verify_items(
         source=source,
     )
 
+    override_rows = (
+        await db.execute(
+            select(WikidataItemOverride).where(
+                WikidataItemOverride.run_id == run_id,
+            )
+        )
+    ).scalars().all()
+    overrides_by_id = {row.local_id: row for row in override_rows}
+
     wanted = {str(i).strip() for i in (item_ids or []) if str(i).strip()}
     items: list[dict[str, Any]] = []
     wanted_cns: set[str] = set()
     for item in scoped_items:
+        override = overrides_by_id.get(str(item.get("local_id") or ""))
+        if override is not None:
+            item = apply_wikidata_item_override(item, override_row_to_dict(override))
         local_id = str(item.get("local_id") or "")
         if wanted and local_id not in wanted:
             continue

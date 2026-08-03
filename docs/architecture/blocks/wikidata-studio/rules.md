@@ -439,3 +439,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     *Why:* re-verifying the `unknown` rows persisted known verdicts, but the
     read-time full evidence pack changed the strict fingerprint and hid them
     from the main table.
+
+65. **R65 — Verify fingerprints MUST use override-merged Studio items.**
+    The verify scope loader applies the same curator label, description,
+    alias, and statement overrides as the merged review view before building
+    verdict fingerprints. Raw cache payloads and the visible table must never
+    represent different judged item states.
+    *Why:* 56 freshly judged rows remained `unknown` because the verifier keyed
+    raw cache items while the table keyed their override-merged counterparts.
