@@ -485,3 +485,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     before cache persistence and validation. *Why:* the rebuild job still
     persisted an old `mazal:*` person after the legacy notability gate had
     skipped it; its only P8189 was buried in a reference snak.*
+
+71. **R71 — Canonical public claims MUST be finalized after filtering and remain source-scoped.**
+    Apply overrides, remove identifierless or authority-date-conflicted people,
+    sanitize broad subjects/current-holder claims, and only then resolve every
+    `__LOCAL:` target. Person authority hard-reject flags suppress both
+    biographical dates and the public person projection; work evidence records
+    the MARC control number that accepted it. *Why:* the first post-W-154
+    rebuild still left unsupported local edges, broad `P921`, stale `P195`,
+    chronologically impossible people, and work evidence whose source record
+    was invisible to the judge.

@@ -1229,3 +1229,24 @@ before cache persistence: a person must have an existing QID or a non-empty
 P214/P8189/P244/P227/P213/P268 statement. Otherwise it is omitted, so the
 Studio corpus cannot contain a person that the final validator marks
 `NO_IDENTIFIER` (R70).
+
+### Rule W-155 — Canonical Wikidata Studio finalization MUST be post-filter and source-scoped (added 2026-08-04)
+
+The first W-154 rebuild removed the identifierless row but still exposed
+non-full AI verdicts caused by claims that were finalized in the wrong order or
+with the wrong evidence scope. The canonical assembler now:
+
+1. applies curator overrides before final filtering;
+2. omits people whose exact authority match is hard-rejected or chronologically
+   impossible for every source record, and preserves those hard-reject flags so
+   legacy enrichment cannot restore their dates;
+3. removes broad `P921` subjects and `P195` values lacking a verified current
+   holder in the manuscript's own MARC record;
+4. resolves `__LOCAL:` references only after the public item set is final; and
+5. stamps the source MARC control number into accepted work evidence.
+
+This keeps the cached Studio corpus, the verifier evidence, and the eventual
+QuickStatements export on the same fail-closed public projection. *Why:* the
+production audit found unsupported local edges, broad `Jews` subject claims,
+holder mismatches, authority dates from the wrong person, and work evidence
+whose source record was not visible to the judge.

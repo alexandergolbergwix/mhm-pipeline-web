@@ -58,6 +58,16 @@ _PERSON_IDENTIFIER_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P
 
 PUBLIC_WIKIDATA_ENTITY_TYPES = frozenset({"manuscript", "person", "work"})
 
+_HARD_REJECT_AUTHORITY_FLAGS = frozenset({
+    "placeholder_name",
+    "non_person_heading",
+    "date_conflict",
+    "biographical_inconsistency",
+    "modern_person",
+})
+_BROAD_MAIN_SUBJECT_QIDS = frozenset({"Q7325", "Q9190"})
+_PERSON_BIOGRAPHY_PIDS = frozenset({"P569", "P570"})
+
 
 def identity_control_number(entity: CanonicalHmoEntity) -> str:
     """The control number this entity is about (Rule W-137).
@@ -501,10 +511,6 @@ def build_canonical_studio_result(
     native_items = native_items_from_hmo(materialized, context=context)
     if legacy_native_items:
         native_items = merge_legacy_into_canonical(native_items, list(legacy_native_items))
-    # Placeholders must name items this build produced (Rule W-138).
-    from app.pipeline.wikidata_local_refs import resolve_local_references  # noqa: PLC0415
-
-    local_ref_stats = resolve_local_references(native_items)
     entities_by_local_id = {entity.local_id: entity for entity in materialized}
 
     if overrides:
@@ -539,6 +545,26 @@ def build_canonical_studio_result(
                 or is_publishable_person_item(item)
             )
         ]
+
+    conflicted_person_ids = _drop_conflicted_person_items(native_items, context)
+    if conflicted_person_ids:
+        logger.warning(
+            "Dropping authority-conflicted canonical Wikidata persons: %s",
+            ", ".join(conflicted_person_ids),
+        )
+        native_items = [
+            item for item in native_items
+            if item.local_id not in set(conflicted_person_ids)
+        ]
+
+    _sanitize_canonical_claims(native_items, context)
+
+    # Apply overrides before resolving placeholders. A curator statement edit
+    # may itself add a __LOCAL target, and the resolver must see the final item
+    # set after identifierless/conflicted persons have been removed.
+    from app.pipeline.wikidata_local_refs import resolve_local_references  # noqa: PLC0415
+
+    local_ref_stats = resolve_local_references(native_items)
 
     per_item_issues: list[list[dict[str, Any]]] = []
     for item in native_items:
@@ -588,8 +614,164 @@ def build_canonical_studio_result(
             "legacy_enriched": bool(legacy_native_items),
             "local_references_degraded": local_ref_stats["degraded"],
             "local_references_dropped": local_ref_stats["dropped"],
+            "conflicted_persons_dropped": len(conflicted_person_ids),
         },
     }
+
+
+def _person_identifier_keys(item: WikidataItem) -> set[str]:
+    keys: set[str] = set()
+    for statement in item.statements or []:
+        pid = str(statement.property_id or "")
+        value = str(statement.value or "").strip()
+        if not value:
+            continue
+        if pid == "P214":
+            keys.add(f"viaf:{normalize_viaf_id(value) or value.rstrip('/').rsplit('/', 1)[-1]}")
+        elif pid == "P8189":
+            keys.add(f"mazal:{normalize_authority_id(value) or value}")
+        elif pid in _PERSON_IDENTIFIER_PIDS and pid not in {"P214", "P8189"}:
+            keys.add(f"id:{pid}:{value}")
+    if item.existing_qid:
+        keys.add(f"qid:{normalize_wikidata_qid(item.existing_qid) or item.existing_qid}")
+    for row in item.authority_evidence or []:
+        if not isinstance(row, dict):
+            continue
+        viaf = normalize_viaf_id(row.get("viaf_uri") or row.get("viaf_id"))
+        mazal = normalize_authority_id(row.get("mazal_id") or row.get("identifier"))
+        qid = normalize_wikidata_qid(row.get("wikidata_qid") or row.get("identifier"))
+        if viaf:
+            keys.add(f"viaf:{viaf}")
+        if mazal:
+            keys.add(f"mazal:{mazal}")
+        if qid:
+            keys.add(f"qid:{qid}")
+    return keys
+
+
+def _authority_match_keys(match: Mapping[str, Any]) -> set[str]:
+    payload = match.get("payload") or {}
+    if not isinstance(payload, Mapping):
+        payload = {}
+    keys: set[str] = set()
+    viaf = normalize_viaf_id(match.get("viaf_id") or payload.get("viaf_uri"))
+    mazal = normalize_authority_id(match.get("mazal_id"))
+    qid = normalize_wikidata_qid(match.get("wikidata_qid") or payload.get("wikidata_qid"))
+    if viaf:
+        keys.add(f"viaf:{viaf}")
+    if mazal:
+        keys.add(f"mazal:{mazal}")
+    if qid:
+        keys.add(f"qid:{qid}")
+    return keys
+
+
+def _authority_match_conflicts(
+    match: Mapping[str, Any],
+    record: Mapping[str, Any],
+) -> bool:
+    payload = match.get("payload") or {}
+    if not isinstance(payload, Mapping):
+        payload = {}
+    flags = set(match.get("guard_flags") or []) | set(payload.get("guard_flags") or [])
+    if flags & _HARD_REJECT_AUTHORITY_FLAGS:
+        return True
+    from app.pipeline.marc_date_sources import manuscript_production_year  # noqa: PLC0415
+    from converter.authority.stage3_guards import (  # noqa: PLC0415
+        evaluate_date_conflict,
+        evaluate_modern_person_conflict,
+    )
+
+    ms_year = manuscript_production_year(dict(record))
+    birth = match.get("birth_year") or payload.get("birth_year")
+    death = match.get("death_year") or payload.get("death_year")
+    try:
+        birth_year = int(birth) if birth is not None else None
+    except (TypeError, ValueError):
+        birth_year = None
+    try:
+        death_year = int(death) if death is not None else None
+    except (TypeError, ValueError):
+        death_year = None
+    if evaluate_modern_person_conflict(ms_year, birth_year):
+        return True
+    return bool(
+        evaluate_date_conflict(
+            role=str(match.get("role") or ""),
+            ms_year=ms_year,
+            person_birth_year=birth_year,
+            person_death_year=death_year,
+        )
+    )
+
+
+def _drop_conflicted_person_items(
+    items: list[WikidataItem],
+    context: CanonicalStudioContext | None,
+) -> list[str]:
+    if context is None:
+        return []
+    dropped: list[str] = []
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "person":
+            continue
+        if not any(
+            str(statement.property_id or "") in _PERSON_BIOGRAPHY_PIDS
+            for statement in item.statements or []
+        ) and not item.authority_evidence:
+            continue
+        identifiers = _person_identifier_keys(item)
+        matched: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for raw_cn in item.records or []:
+            cn = canonical_control_number(raw_cn)
+            record = context.marc_by_cn.get(cn)
+            if not record:
+                continue
+            for raw_match in record.get("marc_authority_matches") or []:
+                if not isinstance(raw_match, dict):
+                    continue
+                if identifiers & _authority_match_keys(raw_match):
+                    matched.append((record, raw_match))
+        if matched and all(_authority_match_conflicts(match, record) for record, match in matched):
+            dropped.append(str(item.local_id or ""))
+    return [local_id for local_id in dropped if local_id]
+
+
+def _sanitize_canonical_claims(
+    items: list[WikidataItem],
+    context: CanonicalStudioContext | None,
+) -> None:
+    """Remove known broad subjects and unsupported canonical holder claims."""
+    from converter.wikidata.manuscript_projection import (  # noqa: PLC0415
+        _current_holder_names,
+        _current_holder_qid,
+    )
+
+    for item in items:
+        kept: list[WikidataStatement] = []
+        record: dict[str, Any] | None = None
+        if context is not None and str(item.entity_type or "").lower() == "manuscript":
+            cn = next(
+                (
+                    canonical_control_number(raw_cn)
+                    for raw_cn in item.records or []
+                    if canonical_control_number(raw_cn)
+                ),
+                "",
+            )
+            record = context.marc_by_cn.get(cn)
+        holder_qid = None
+        if record is not None:
+            holder_qid = _current_holder_qid(record, _current_holder_names(record))
+        for statement in item.statements or []:
+            pid = str(statement.property_id or "")
+            value = str(statement.value or "")
+            if pid == "P921" and value in _BROAD_MAIN_SUBJECT_QIDS:
+                continue
+            if pid == "P195" and record is not None and value != holder_qid:
+                continue
+            kept.append(statement)
+        item.statements = kept
 
 
 def quickstatements_from_canonical(entities: Iterable[CanonicalHmoEntity]) -> str:
@@ -972,7 +1154,7 @@ def _person_labels_and_aliases(
     labels: dict[str, str] = {}
 
     def _place(name: str, *, as_alias: bool = False) -> None:
-        cleaned = normalise(strip_qualifiers(name))
+        cleaned = normalise(_strip_ms_scope_suffix(strip_qualifiers(name)))
         if not cleaned:
             return
         natural = normalise(strip_qualifiers(to_natural(cleaned)))
@@ -987,12 +1169,12 @@ def _person_labels_and_aliases(
 
     primary = str(raw_labels.get("he") or raw_labels.get("en") or "").strip()
     if primary:
-        _place(primary)
+        _place(_strip_ms_scope_suffix(primary))
 
     for lang, value in raw_labels.items():
         text = str(value).strip()
         if text and text != primary:
-            _place(text, as_alias=lang in labels)
+            _place(_strip_ms_scope_suffix(text), as_alias=lang in labels)
 
     if context is not None:
         match = _authority_match_for_entity(entity, context)
@@ -1111,6 +1293,7 @@ def _work_candidate_evidence_for(
         folio_range: str = "",
         sequence: object = None,
         source_text: str = "",
+        source_record_id: str = "",
     ) -> list[dict[str, object]] | None:
         decision = assess_work_candidate(
             title,
@@ -1123,7 +1306,10 @@ def _work_candidate_evidence_for(
             source_text=source_text or title,
         )
         if decision.accepted:
-            return [decision.evidence()]
+            evidence = decision.evidence()
+            if source_record_id:
+                evidence["source_record_id"] = source_record_id
+            return [evidence]
         return None
 
     if context is not None:
@@ -1159,6 +1345,7 @@ def _work_candidate_evidence_for(
                     folio_range=folio,
                     sequence=sequence,
                     source_text=source_text,
+                    source_record_id=canonical_control_number(str(raw_cn)),
                 )
                 if hit:
                     return hit
@@ -1183,6 +1370,7 @@ def _work_candidate_evidence_for(
                     source_field="500",
                     candidate_kind=kind,
                     source_text=source_text,
+                    source_record_id=canonical_control_number(str(raw_cn)),
                 )
                 if hit:
                     return hit
@@ -1208,6 +1396,7 @@ def _work_candidate_evidence_for(
                     known=related_qid,
                     approved=bool(related_qid),
                     source_text=source_text,
+                    source_record_id=canonical_control_number(str(raw_cn)),
                 )
                 if hit:
                     return hit
@@ -1228,6 +1417,7 @@ def _work_candidate_evidence_for(
                         "marc_title_author" if has_authors else "marc_245_title"
                     ),
                     source_text=marc_title,
+                    source_record_id=canonical_control_number(str(raw_cn)),
                 )
                 if hit:
                     return hit

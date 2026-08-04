@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-154)
+## Architectural rules (W-1…W-155)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -157,6 +157,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-152** — Wikidata stable verdict keys MUST ignore subset-derived `__LOCAL:` display labels.
 - **W-153** — Identifierless Wikidata Studio person cache rows MUST be stale and rebuilt.
 - **W-154** — Canonical Wikidata Studio merges MUST omit person items without a publishable external identifier.
+- **W-155** — Canonical Wikidata Studio finalization MUST be post-filter and source-scoped.
 
 ### [authority-marc.md](docs/architecture/rules/authority-marc.md) — Authority matching + MARC ingest
 

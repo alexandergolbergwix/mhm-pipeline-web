@@ -429,8 +429,124 @@ def test_canonical_work_stamps_505_evidence_and_drops_unevidenced_creates() -> N
     evidence = items[0].work_candidate_evidence
     assert evidence and evidence[0]["accepted"] is True
     assert evidence[0]["reason"] == "named_work_in_505"
+    assert evidence[0]["source_record_id"] == "990001"
     assert items[0].labels.get("he") == "סדור מנהג קרפנטרץ לראש השנה"
     assert "en" not in items[0].labels
+
+
+def test_canonical_person_label_drops_manuscript_scope_suffix() -> None:
+    person = _person_entity(labels={"he": "אברהם (MS 990001)"})
+
+    items = native_items_from_hmo([person])
+
+    assert items[0].labels["he"] == "אברהם"
+
+
+def test_canonical_build_resolves_refs_after_dropping_invalid_person() -> None:
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    manuscript = WikidataItem(
+        local_id="MS_1",
+        entity_type="manuscript",
+        records=["990001"],
+        statements=[
+            WikidataStatement(property_id="P3959", value="990001", value_type="string"),
+            WikidataStatement(
+                property_id="P3342",
+                value="__LOCAL:Person_invalid",
+                value_type="item",
+            ),
+        ],
+    )
+    invalid_person = WikidataItem(
+        local_id="Person_invalid",
+        entity_type="person",
+        labels={"en": "Unknown"},
+    )
+
+    with patch(
+        "app.pipeline.hmo_canonical_wikidata.native_items_from_hmo",
+        return_value=[manuscript, invalid_person],
+    ):
+        result = build_canonical_studio_result([], reconcile=False)
+
+    statements = result["items"][0]["statements"]
+    assert not any(
+        str(statement.get("value") or "").startswith("__LOCAL:")
+        for statement in statements
+    )
+
+
+def test_canonical_build_drops_person_with_hard_authority_date_conflict() -> None:
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    person = WikidataItem(
+        local_id="Person_modern",
+        entity_type="person",
+        records=["990001"],
+        labels={"en": "Modern Person"},
+        statements=[
+            WikidataStatement(property_id="P31", value="Q5", value_type="item"),
+            WikidataStatement(
+                property_id="P8189",
+                value="987000000000000001",
+                value_type="external-id",
+            ),
+            WikidataStatement(
+                property_id="P569",
+                value="+1956-00-00T00:00:00Z",
+                value_type="time",
+            ),
+        ],
+        authority_evidence=[
+            {"kind": "mazal", "mazal_id": "987000000000000001"},
+        ],
+    )
+    context = canonical_studio_context(
+        marc_records=[{"_control_number": "990001", "dates": {"year": 1672}}],
+        approved_matches=[{
+            "control_number": "990001",
+            "entity_text": "Modern Person",
+            "role": "signatory",
+            "mazal_id": "987000000000000001",
+            "payload": {
+                "birth_year": 1956,
+                "guard_flags": ["modern_person"],
+            },
+        }],
+    )
+
+    result = build_canonical_studio_result(
+        [], context=context, reconcile=False, legacy_native_items=[person],
+    )
+
+    assert result["items"] == []
+    assert result["summary"]["conflicted_persons_dropped"] == 1
+
+
+def test_canonical_build_drops_broad_main_subject_claims() -> None:
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    manuscript = _manuscript_entity()
+    legacy = WikidataItem(
+        local_id="legacy-ms",
+        entity_type="manuscript",
+        records=["990001"],
+        statements=[
+            WikidataStatement(property_id="P3959", value="990001", value_type="string"),
+            WikidataStatement(property_id="P921", value="Q7325", value_type="item"),
+        ],
+    )
+
+    result = build_canonical_studio_result(
+        [manuscript], reconcile=False, legacy_native_items=[legacy],
+    )
+
+    assert not any(
+        statement.get("property_id") == "P921"
+        and statement.get("value") == "Q7325"
+        for statement in result["items"][0]["statements"]
+    )
 
 
 def test_canonical_work_with_existing_qid_kept_without_marc_join() -> None:

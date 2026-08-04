@@ -130,3 +130,23 @@ class TestCanonicalCarriesAuthorityMatches:
             approved_matches=[],
         )
         assert context.marc_by_cn["990000000000000001"]["marc_authority_matches"] == []
+
+
+def test_hard_rejected_authority_dates_do_not_reach_person_item() -> None:
+    items = _build({
+        "_control_number": "DATE-CONFLICT",
+        "title": "כתב יד",
+        "dates": {"year": 1672},
+        "marc_authority_matches": [{
+            "name": "Modern Person",
+            "role": "signatory",
+            "approved": True,
+            "entity_kind": "person",
+            "mazal_id": "987000000000000001",
+            "birth_year": 1956,
+            "guard_flags": ["modern_person"],
+        }],
+    })
+
+    person = next(item for item in items if item.entity_type == "person")
+    assert all(statement.property_id not in {"P569", "P570"} for statement in person.statements)

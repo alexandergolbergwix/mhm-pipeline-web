@@ -67,6 +67,14 @@ authority enrichment fingerprint so either input invalidates the cache.
 Summary flag: `legacy_enriched`; `projection_source` becomes
 `hmo_wikibase+marc` when enrichment applied.
 
+Final canonicalization is source-scoped and runs after overrides and person
+publishability filtering (Rule W-155). Hard-rejected authority matches cannot
+reintroduce biographical dates or a public person item; broad `P921` values
+and `P195` values without a verified current-holder match are removed. Only
+after that pass does the builder resolve `__LOCAL:` targets, so no surviving
+statement points at a person or work that the public item set omitted. Accepted
+work evidence carries its source MARC control number for AI verification.
+
 **Canonical rollup (Rule W-117):** only `manuscript` / `person` / `work` become
 Studio items. HMO classes with `summarized_in_wikidata` strategy contribute
 allowlisted claims onto the parent item when they share a control number

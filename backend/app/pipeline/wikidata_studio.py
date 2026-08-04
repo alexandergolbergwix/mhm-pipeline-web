@@ -397,6 +397,7 @@ def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
         # Mazal supplementary IDs
         "mazal_aleph_id":     payload.get("mazal_aleph_id") or "",
         "guard_flags":        payload.get("guard_flags") or [],
+        "rejection_reason":   payload.get("rejection_reason") or "",
         "name_type":          payload.get("name_type") or payload.get("viaf_name_type") or "",
         "matched":            1,
         "approved":           bool(m.get("approved", True)),

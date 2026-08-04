@@ -35,6 +35,15 @@ from converter.wikidata.item_builder import (
 )
 
 
+_HARD_REJECT_AUTHORITY_FLAGS = frozenset({
+    "placeholder_name",
+    "non_person_heading",
+    "date_conflict",
+    "biographical_inconsistency",
+    "modern_person",
+})
+
+
 class PersonProjectionMixin:
     def _get_or_create_person(
         self,
@@ -155,6 +164,8 @@ class PersonProjectionMixin:
                         "main_marc_tag": match_info.get("main_marc_tag"),
                         "field": match_info.get("field"),
                         "role": match_info.get("role") or role,
+                        "guard_flags": match_info.get("guard_flags") or [],
+                        "rejection_reason": match_info.get("rejection_reason") or "",
                     }.items()
                     if value not in (None, "", [], {})
                 }
@@ -315,6 +326,16 @@ class PersonProjectionMixin:
 
 
         # Dates are accepted only from the exact authority-ID match above.
+
+        # Authority hardening may retain a curator-visible match row while
+        # explicitly rejecting its identity for the public projection. Do not
+        # reintroduce the rejected biographical dates from that row.
+        authority_rejected = bool(
+            set(match_info.get("guard_flags") or []) & _HARD_REJECT_AUTHORITY_FLAGS
+        ) or bool(match_info.get("rejection_reason"))
+        if authority_rejected:
+            birth_year = death_year = None
+            dates_str = ""
 
         # Parse dates string if we have it but not individual years
         if not birth_year and not death_year and dates_str and dates_str != "None":
