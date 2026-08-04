@@ -52,10 +52,15 @@ def _has_publishable_person_identifier(item: WikidataItem) -> bool:
     )
 
 
+def is_publishable_person_item(item: WikidataItem) -> bool:
+    """Return whether a person has an existing QID or authority identifier."""
+    return _has_publishable_person_identifier(item)
+
+
 def _keep_merged_item(item: WikidataItem) -> bool:
     return (
         str(item.entity_type or "").strip().lower() != "person"
-        or _has_publishable_person_identifier(item)
+        or is_publishable_person_item(item)
     )
 
 

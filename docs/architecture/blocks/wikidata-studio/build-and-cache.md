@@ -33,7 +33,9 @@ Canonical enrichment applies a second notability boundary after matching
 the HMO projection with fresh MARC/authority items. `merge_legacy_into_canonical`
 omits canonical or unmatched legacy persons unless the final item has an
 existing QID or a publishable P214/P8189/P244/P227/P213/P268 statement
-(Rule W-154). This prevents a skipped legacy person from being reintroduced into the canonical corpus.
+(Rule W-154). The canonical assembler repeats that boundary after curator
+overrides and reconciliation, immediately before validation and cache
+persistence, so a person cannot be reintroduced by a later build step.
 
 The cache is source-scoped (`legacy` or `canonical`). Every cache lookup and upsert includes the source, and the source is included in the `wikidata_studio_build` job parameters, so a forced canonical rebuild cannot silently return or overwrite the legacy row; old cache rows with a null source are treated as legacy for compatibility.
 

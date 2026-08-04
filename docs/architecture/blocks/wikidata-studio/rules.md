@@ -480,6 +480,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     canonical HMO items and the fresh legacy enrichment are matched, every
     person retained in the merged Wikidata Studio result MUST have an
     existing QID or a non-empty P214/P8189/P244/P227/P213/P268 statement.
-    Identifierless canonical or unmatched legacy persons are omitted before
-    cache persistence and validation. *Why:* the rebuild job still appended
-    an old `mazal:*` person after the legacy notability gate had skipped it.*
+    Identifierless canonical or unmatched legacy persons are omitted by the
+    merge and by the final canonical assembly after overrides/reconciliation,
+    before cache persistence and validation. *Why:* the rebuild job still
+    persisted an old `mazal:*` person after the legacy notability gate had
+    skipped it; its only P8189 was buried in a reference snak.*

@@ -488,6 +488,7 @@ def build_canonical_studio_result(
     """
     from app.pipeline import wikidata_studio  # noqa: PLC0415
     from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        is_publishable_person_item,
         merge_legacy_into_canonical,
     )
     from app.pipeline.wikidata_upload import _reconcile_sync  # noqa: PLC0415
@@ -516,6 +517,28 @@ def build_canonical_studio_result(
         for item, outcome in zip(native_items, _reconcile_sync(native_items), strict=True):
             if outcome.existing_qid and not item.existing_qid:
                 item.existing_qid = outcome.existing_qid
+
+    dropped_person_ids = [
+        item.local_id
+        for item in native_items
+        if (
+            str(item.entity_type or "").strip().lower() == "person"
+            and not is_publishable_person_item(item)
+        )
+    ]
+    if dropped_person_ids:
+        logger.warning(
+            "Dropping identifierless canonical Wikidata persons before validation: %s",
+            ", ".join(dropped_person_ids),
+        )
+        native_items = [
+            item
+            for item in native_items
+            if (
+                str(item.entity_type or "").strip().lower() != "person"
+                or is_publishable_person_item(item)
+            )
+        ]
 
     per_item_issues: list[list[dict[str, Any]]] = []
     for item in native_items:

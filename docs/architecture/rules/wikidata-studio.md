@@ -1223,8 +1223,9 @@ successfully after W-153, but the canonical result still logged
 persons; canonical enrichment then allowed an identifierless canonical or
 unmatched legacy person to survive the final merge and cache write.
 
-`merge_legacy_into_canonical` now applies the same publishability boundary
-after matching and before cache persistence: a person must have an existing
-QID or a non-empty P214/P8189/P244/P227/P213/P268 statement. Otherwise it
-is omitted, so the Studio corpus cannot contain a person that the final
-validator marks `NO_IDENTIFIER` (R70).
+`merge_legacy_into_canonical` and the final canonical assembler now apply the
+same publishability boundary after matching, overrides, and reconciliation,
+before cache persistence: a person must have an existing QID or a non-empty
+P214/P8189/P244/P227/P213/P268 statement. Otherwise it is omitted, so the
+Studio corpus cannot contain a person that the final validator marks
+`NO_IDENTIFIER` (R70).

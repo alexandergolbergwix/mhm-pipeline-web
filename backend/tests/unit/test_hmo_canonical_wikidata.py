@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from app.pipeline.hmo_canonical import normalize_live_entity
 from app.pipeline.hmo_canonical_wikidata import (
     PUBLIC_WIKIDATA_ENTITY_TYPES,
@@ -85,6 +87,30 @@ def test_canonical_build_merges_legacy_marc_claims() -> None:
     pids = {s.get("property") or s.get("property_id") for s in item["statements"]}
     assert {"P571", "P407", "P217", "P186"} <= pids
     assert item["projection_source"] == "hmo_wikibase+marc"
+
+
+def test_canonical_final_gate_drops_identifierless_person() -> None:
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    invalid = WikidataItem(
+        local_id="mazal:987007257211705171",
+        entity_type="person",
+        labels={"en": "Aaron"},
+        statements=[
+            WikidataStatement(
+                property_id="P1559",
+                value="אהרן",
+                value_type="monolingualtext",
+            ),
+        ],
+    )
+    with patch(
+        "app.pipeline.hmo_canonical_wikidata.native_items_from_hmo",
+        return_value=[invalid],
+    ):
+        result = build_canonical_studio_result([], reconcile=False)
+    assert result["items"] == []
+    assert result["summary"]["total_items"] == 0
 
 
 def test_canonical_fingerprint_changes_with_enrichment_salt() -> None:

@@ -80,6 +80,9 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — canonical merge
   drops identifierless persons after matching and before cache persistence
   (Rule W-154 / R70).
+- `backend/tests/unit/test_hmo_canonical_wikidata.py` — final canonical
+  assembly drops identifierless persons before validation/cache persistence
+  (Rule W-154 / R70).
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical HMO claim filtering, fingerprints, and native Wikidata projection.
 - `backend/tests/unit/test_wikidata_verdict_cache.py` — slim-persist ↔ full-item fingerprint parity, evidence-free verdict survival, and subset-verify evidence drift retention (Rules W-136 / R64).
 - `backend/tests/unit/test_wikidata_verify_scope_cache.py` — verify scope uses curator override-merged items before fingerprinting (R65).
