@@ -13,8 +13,11 @@ def test_manuscript_no_shelfmark_gets_cn_signature_label() -> None:
         "title": "קובץ.",
     }
     item = builder.build_manuscript_item(record)
-    assert item.labels.get("en") == "Jerusalem, NLI, 990001801390205171"
-    assert item.labels.get("he") == "כתב יד עברי, ספרייה לאומית, 990001801390205171"
+    # A record designation, not an ownership claim (Rule W-161).
+    assert item.labels.get("en") == "Hebrew manuscript, NLI record 990001801390205171"
+    # A catalogue-record designation, matching the `en` slot — not a claim that
+    # the National Library holds it (Rule W-161).
+    assert item.labels.get("he") == "כתב יד עברי, רשומת הספרייה הלאומית 990001801390205171"
 
 
 def test_manuscript_cn_fallback_passes_empty_label_validator() -> None:
@@ -35,7 +38,7 @@ def test_quoted_placeholder_title_uses_control_number_fallback() -> None:
         "title": '"קובץ."',
     }
     item = builder.build_manuscript_item(record)
-    assert item.labels["en"] == "Jerusalem, NLI, 990001801390205171"
-    assert item.labels["he"] == "כתב יד עברי, ספרייה לאומית, 990001801390205171"
+    assert item.labels["en"] == "Hebrew manuscript, NLI record 990001801390205171"
+    assert item.labels["he"] == "כתב יד עברי, רשומת הספרייה הלאומית 990001801390205171"
     codes = {issue.code for issue in validate_item(item)}
     assert "KOVETZ_PLACEHOLDER" not in codes

@@ -124,6 +124,102 @@ def _work_title_errors(items: list[Any]) -> list[str]:
     return errors
 
 
+_NLI_LABEL_RE = re.compile(r"\bJerusalem,\s*NLI\b", re.IGNORECASE)
+
+
+def _holder_findings(
+    items: list[Any],
+    marc_records: list[dict[str, Any]] | None,
+) -> tuple[list[str], list[str]]:
+    """Holder-resolution findings (Rule W-161).
+
+    Blocking: a holder name nobody has audited, and an invented NLI label. Both
+    are build bugs a lookup-table row fixes — never a curator decision (W-137).
+    Informational: a reviewed abstention, and a record that attests no holder.
+    """
+    from app.pipeline.marc_verify_context import (  # noqa: PLC0415
+        canonical_control_number,
+        index_marc_records,
+    )
+    from converter.wikidata.holding_institutions import (  # noqa: PLC0415
+        STATUS_ABSTAINED,
+        STATUS_PLACEHOLDER,
+        STATUS_UNKNOWN,
+        resolve_holder,
+    )
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        holder_names_from_record,
+    )
+
+    blocking: list[str] = []
+    informational: list[str] = []
+    by_cn = index_marc_records(marc_records or []) if marc_records else {}
+
+    for item in items:
+        if str(getattr(item, "entity_type", "") or "").strip().lower() != "manuscript":
+            continue
+        local_id = str(getattr(item, "local_id", "") or "")
+        label = _label_text(item)
+
+        record: dict[str, Any] = {}
+        for cn in _statement_values(item, "P3959") or list(
+            getattr(item, "records", None) or [],
+        ):
+            found = by_cn.get(canonical_control_number(cn) or "")
+            if found:
+                record = dict(found)
+                break
+
+        names = holder_names_from_record(record) if record else []
+        resolutions = [resolve_holder(name) for name in names]
+        attested = [r for r in resolutions if r.attested]
+
+        for resolution in attested:
+            if resolution.status == STATUS_UNKNOWN:
+                blocking.append(
+                    f"UNAUDITED_HOLDER {local_id}: holder {resolution.name!r} is not "
+                    "in the audited holding-institution table — verify the QID live "
+                    "and add an entry, or record an abstention with the reason",
+                )
+            elif resolution.status == STATUS_ABSTAINED:
+                informational.append(
+                    f"HOLDER_ABSTAINED {local_id}: {resolution.name!r} — "
+                    f"{resolution.reason}",
+                )
+        if record and not attested:
+            informational.append(
+                f"HOLDER_UNATTESTED {local_id}: the record names no current holder",
+            )
+
+        # The label may only say NLI when a holder actually resolved to NLI.
+        if _NLI_LABEL_RE.search(label):
+            nli_attested = any(r.qid == "Q188915" for r in attested)
+            if not nli_attested:
+                names_text = ", ".join(r.name for r in attested) or "none"
+                blocking.append(
+                    f"FABRICATED_HOLDER {local_id}: label {label!r} claims NLI but "
+                    f"the record attests {names_text}",
+                )
+
+        # A P195 we emit must be the QID the table verified for that holder.
+        for qid in _statement_values(item, "P195"):
+            if attested and not any(r.qid == qid for r in attested):
+                resolved = ", ".join(f"{r.name}={r.qid}" for r in attested)
+                blocking.append(
+                    f"HOLDER_QID_UNVERIFIED {local_id}: P195={qid} does not match "
+                    f"the audited holder ({resolved})",
+                )
+
+        if (
+            record
+            and attested
+            and all(r.status == STATUS_PLACEHOLDER for r in resolutions)
+        ):  # pragma: no cover — defensive; `attested` excludes placeholders
+            informational.append(f"HOLDER_UNATTESTED {local_id}")
+
+    return blocking, informational
+
+
 def wikidata_export_quality_report(
     items: list[Any],
     *,
@@ -155,6 +251,11 @@ def wikidata_export_quality_report(
             if issue.severity != "error":
                 continue
             blocking.append(f"{issue.code} {local_id}: {issue.message}")
+
+    if marc_records is not None:
+        holder_blocking, holder_informational = _holder_findings(items, marc_records)
+        blocking.extend(holder_blocking)
+        informational.extend(holder_informational)
 
     return {"blocking": blocking, "informational": informational}
 

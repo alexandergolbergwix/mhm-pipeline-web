@@ -377,7 +377,9 @@ def test_canonical_manuscript_en_label_uses_shelfmark_not_hebrew_title() -> None
     )
     items = native_items_from_hmo([manuscript], context=context)
     assert items[0].labels["he"] == "גלא עמיקתא (חלק א, ב)"
-    assert items[0].labels["en"] == "Jerusalem, NLI, Heb. 8° 1234"
+    # No holder is attested on this record, so the label carries the shelfmark
+    # alone. "Jerusalem, NLI" here would be an invented owner (Rule W-161).
+    assert items[0].labels["en"] == "Heb. 8° 1234"
     assert not any("\u0590" <= c <= "\u05ff" for c in items[0].labels["en"])
 
 
@@ -394,7 +396,7 @@ def test_canonical_latin_title_does_not_land_in_he_label() -> None:
         }],
     )
     items = native_items_from_hmo([manuscript], context=context)
-    assert items[0].labels["en"] == "Jerusalem, NLI, Ms. Or. 9"
+    assert items[0].labels["en"] == "Ms. Or. 9"
     assert "he" not in items[0].labels or any(
         "\u0590" <= c <= "\u05ff" for c in items[0].labels.get("he", "א")
     )

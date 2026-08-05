@@ -1116,21 +1116,27 @@ def _manuscript_labels_and_aliases(
     if not shelfmark:
         shelfmark = _shelfmark_from_claims(entity)
     if shelfmark:
+        from converter.wikidata.item_builder import manuscript_en_label  # noqa: PLC0415
+
         holding = holding_name(record) if record else ""
-        labels["en"] = f"{holding or 'Jerusalem, NLI'}, {shelfmark}"
+        labels["en"] = manuscript_en_label(shelfmark, holding)
         if title_clean and not placeholder and title_has_hebrew:
             aliases.setdefault("he", []).append(title_clean)
         if "he" not in labels and (placeholder or not title_has_hebrew):
             labels["he"] = _hebrew_manuscript_label(record, shelfmark)
 
     if "en" not in labels and "he" not in labels:
+        from converter.wikidata.item_builder import (  # noqa: PLC0415
+            manuscript_record_label,
+        )
+
         cn = ""
         if record:
             cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
         if not cn and entity.control_numbers:
             cn = identity_control_number(entity)
         if cn:
-            labels["en"] = f"Jerusalem, NLI, {cn}"
+            labels["en"] = manuscript_record_label(cn)
             labels["he"] = _hebrew_manuscript_label(record, cn)
         else:
             labels = _route_labels_by_script(raw_labels, has_hebrew=has_hebrew) or {
@@ -1659,14 +1665,6 @@ _LATIN_CHARS = re.compile(r"[A-Za-z]")
 # translation. Foreign institutions intentionally keep their Latin name here
 # rather than have us invent a Hebrew form — extend this map only with a
 # name the institution itself uses (Rule W-140).
-_HEBREW_INSTITUTION_NAMES = {
-    "The National Library of Israel": "הספרייה הלאומית",
-    "National Library of Israel": "הספרייה הלאומית",
-    "The Israel Museum": "מוזיאון ישראל",
-    "The Ben Zvi Institute": "מכון בן־צבי",
-}
-
-
 def _description_language_slot(lang: str, text: str) -> str:
     """Route a description to the language it is actually written in.
 
@@ -1687,27 +1685,12 @@ def _description_language_slot(lang: str, text: str) -> str:
 
 
 def _hebrew_manuscript_label(record: dict[str, Any] | None, suffix: str) -> str:
-    """`he` fallback label: the record's own language and holder, never NLI by default.
-
-    The old form hardcoded "כתב יד עברי, ספרייה לאומית", so an Israel Museum
-    manuscript announced the National Library as its holder (Rule W-142 / W-82).
-    """
+    """`he` designation label — delegates to the one builder in the mirror."""
     from converter.wikidata.item_builder import (  # noqa: PLC0415
-        _LANG_CODE_TO_HEBREW,
-        _holding_institution_name,
+        manuscript_he_designation,
     )
 
-    languages = (record or {}).get("languages") or []
-    primary = str(languages[0]) if languages else "heb"
-    parts = [f"כתב יד {_LANG_CODE_TO_HEBREW.get(primary, 'עברי')}"]
-    holder = _holding_institution_name(record or {})
-    hebrew_holder = _HEBREW_INSTITUTION_NAMES.get(holder) if holder else None
-    if hebrew_holder:
-        parts.append(hebrew_holder)
-    elif holder:
-        parts.append(holder)
-    parts.append(suffix)
-    return ", ".join(parts)
+    return manuscript_he_designation(record, suffix)
 
 
 def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
@@ -1717,6 +1700,7 @@ def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
     evidenced fragments are used — no invented date or holder.
     """
     from converter.wikidata.item_builder import (  # noqa: PLC0415
+        HEBREW_INSTITUTION_NAMES,
         _LANG_CODE_TO_HEBREW,
         _holding_institution_name,
     )
@@ -1745,7 +1729,7 @@ def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
             parts.append(year)
     holder = _holding_institution_name(record)
     if holder:
-        parts.append(_HEBREW_INSTITUTION_NAMES.get(holder, holder))
+        parts.append(HEBREW_INSTITUTION_NAMES.get(holder, holder))
     shelfmark = str(record.get("shelfmark") or "").strip().strip('"')
     if shelfmark:
         parts.append(shelfmark)

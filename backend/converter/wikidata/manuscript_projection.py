@@ -75,20 +75,15 @@ def _http_url_or_none(value: object) -> str | None:
 
 
 def _current_holder_names(record: dict[str, object]) -> list[str]:
-    names: list[str] = []
-    for contributor in record.get("contributors") or []:
-        if not isinstance(contributor, dict):
-            continue
-        role = str(contributor.get("role") or "").casefold().replace("_", " ")
-        if "current owner" not in role:
-            continue
-        name = _normalise_label(str(contributor.get("name") or ""))
-        if name and name not in names:
-            names.append(name)
-    holding = _normalise_label(str(record.get("holding_institution") or ""))
-    if holding and holding not in names:
-        names.append(holding)
-    return names
+    """The attested current-holder names. One extractor, shared with the label.
+
+    Lives in ``item_builder`` so the name that keys ``labels.en`` and the name
+    that keys P195 are the same name (Rule W-161) — they used to be produced by
+    two functions scanning different fields.
+    """
+    from converter.wikidata.item_builder import holder_names_from_record  # noqa: PLC0415
+
+    return holder_names_from_record(record)
 
 
 def _current_holder_qid(record: dict[str, object], holder_names: list[str]) -> str | None:

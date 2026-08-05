@@ -147,7 +147,11 @@ class TestHebrewLabelAndDescription:
             {"languages": ["ita"], "holding_institution": "The Russian State Library"},
             "F 9",
         )
-        assert "The Russian State Library" in label
+        # The verified table label ("Russian State Library") wins over the MARC
+        # spelling — one audited name, not whatever the cataloguer typed
+        # (Rule W-161). The point of the test is that NLI is not substituted.
+        assert "Russian State Library" in label
+        assert "הספרייה הלאומית" not in label
 
     def test_printed_facsimile_description_is_not_called_a_manuscript(self) -> None:
         text = _hebrew_manuscript_description({

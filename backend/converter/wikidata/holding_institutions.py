@@ -19,6 +19,9 @@ guessing (Rule W-84's reasoning, and Rule W-75: never default to NLI).
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+
 # qid: (verified English label, name variants as they appear in MARC/HMO)
 _INSTITUTIONS: dict[str, tuple[str, tuple[str, ...]]] = {
     "Q188915": ("National Library of Israel", (
@@ -117,6 +120,28 @@ _INSTITUTIONS: dict[str, tuple[str, tuple[str, ...]]] = {
         "library of the hungarian academy of sciences",
         "hungarian academy of sciences library and information centre",
     )),
+    # Verified live 2026-08-05 (`wbsearchentities` + `wbgetentities`). These three
+    # were unaudited misses that let `_manuscript_labels_and_aliases` fabricate
+    # "Jerusalem, NLI" over the record's own attested holder.
+    "Q4955432": ("Braginsky Collection", (
+        "braginsky collection of hebrew manuscripts and printed books",
+        "braginsky collection",
+    )),
+    "Q115654253": ("Yeshiva University Library", (
+        "yeshiva university library",
+        "yeshiva university libraries",
+        "yeshiva university. library",
+        "library of yeshiva university",
+    )),
+    # Verified label is "Archives of the Jewish People"; the MARC form is a
+    # recorded alias on the item, along with CAHJP.
+    "Q2893584": ("Archives of the Jewish People", (
+        "central archives for the history of the jewish people",
+        "archives of the jewish people",
+        "cahjp",
+        "הארכיון המרכזי לתולדות העם היהודי",
+        "ארכיון העם היהודי",
+    )),
 }
 
 # Named so the abstention is reviewable rather than looking like an oversight.
@@ -130,11 +155,118 @@ ABSTAINED_INSTITUTIONS: dict[str, str] = {
     "the montefiore library": "no Wikidata item found for the collection",
     "montefiore library": "no Wikidata item found for the collection",
     "manfred and anne lehmann foundation": "no Wikidata item found",
+    # Named private holders and unnamed collections. A person or an anonymous
+    # "private collection" is not an institution and has no P195 to point at —
+    # but the record DID attest a holder, so the label must say so rather than
+    # fall back to NLI (Rule W-161).
+    "private collection": "an unnamed private holder — no institution to link",
+    "klagsbald, victor": "a named private collector, not an institution",
+    "victor klagsbald": "a named private collector, not an institution",
+    "library of the admor of karlin-stolin, ha-rav shochet": (
+        "a named private/communal holder with no Wikidata item"
+    ),
 }
+
+# Placeholder catalogue strings that name no holder at all. These must resolve to
+# "nothing attested", NOT to an abstention — an abstention says "we know who holds
+# it and cannot link them", which would be a false claim here.
+PLACEHOLDER_HOLDER_NAMES: frozenset[str] = frozenset({
+    "unknown library",
+    "unknown",
+    "unidentified",
+    "n/a",
+})
 
 _BY_NAME: dict[str, str] = {
     variant: qid for qid, (_label, variants) in _INSTITUTIONS.items() for variant in variants
 }
+
+
+STATUS_RESOLVED = "resolved"
+STATUS_ABSTAINED = "abstained"
+STATUS_UNKNOWN = "unknown"
+STATUS_PLACEHOLDER = "placeholder"
+
+
+@dataclass(frozen=True)
+class HolderResolution:
+    """What this table knows about one attested holder name.
+
+    A bare ``None`` collapsed three different facts into one — "verified",
+    "reviewed and cannot be linked", and "nobody has ever looked at this name" —
+    so callers could not tell an audited abstention from an unaudited miss. Three
+    real institutions (Braginsky, Yeshiva University Library, CAHJP) sat in that
+    third bucket while the label builder quietly wrote "Jerusalem, NLI" over
+    them (Rule W-161).
+    """
+
+    name: str
+    qid: str | None
+    label: str | None
+    status: str
+    reason: str
+
+    @property
+    def attested(self) -> bool:
+        """True when the record names a holder at all, linkable or not."""
+        return self.status != STATUS_PLACEHOLDER and bool(self.name)
+
+    @property
+    def display_name(self) -> str:
+        """The name to put in a label: the verified one, else what MARC attested."""
+        return self.label or self.name
+
+
+def resolve_holder(name: str) -> HolderResolution:
+    """Resolve one holder name through the single audited table (Rule W-143)."""
+    text = " ".join(str(name or "").split()).strip(" ,.;:\"'")
+    key = _normalise(name)
+    if not key or key in PLACEHOLDER_HOLDER_NAMES:
+        return HolderResolution(
+            name="", qid=None, label=None, status=STATUS_PLACEHOLDER,
+            reason="the record names no holder",
+        )
+    qid = _BY_NAME.get(key)
+    if qid:
+        return HolderResolution(
+            name=text, qid=qid, label=institution_label(qid), status=STATUS_RESOLVED,
+            reason="",
+        )
+    abstained = ABSTAINED_INSTITUTIONS.get(key)
+    if abstained:
+        return HolderResolution(
+            name=text, qid=None, label=None, status=STATUS_ABSTAINED,
+            reason=abstained,
+        )
+    return HolderResolution(
+        name=text, qid=None, label=None, status=STATUS_UNKNOWN,
+        reason=(
+            "not present in the audited holding-institution table — verify the "
+            "QID live and add an entry, or record an abstention with the reason"
+        ),
+    )
+
+
+def resolve_first_holder(names: Sequence[str]) -> HolderResolution | None:
+    """The first attested holder among *names*, preferring a resolved one."""
+    resolutions = [resolve_holder(name) for name in names]
+    attested = [r for r in resolutions if r.attested]
+    if not attested:
+        return None
+    for resolution in attested:
+        if resolution.status == STATUS_RESOLVED:
+            return resolution
+    return attested[0]
+
+
+def unknown_holder_names(names: Iterable[str]) -> list[str]:
+    """Attested names this table has never been asked to audit."""
+    out: list[str] = []
+    for name in names:
+        resolution = resolve_holder(name)
+        if resolution.status == STATUS_UNKNOWN and resolution.name not in out:
+            out.append(resolution.name)
+    return out
 
 
 def institution_qid(name: str) -> str | None:

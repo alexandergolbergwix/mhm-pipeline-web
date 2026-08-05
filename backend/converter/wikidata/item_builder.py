@@ -621,17 +621,39 @@ def _is_catalog_note_placeholder(value: object) -> bool:
 
     return is_catalog_note_placeholder(value)
 
-def _holding_institution_name(record: dict[str, object]) -> str:
-    """Return the current holding institution supported by the MARC record."""
-    placeholder_names = {
-        "unknown library",
-        "unknown institution",
-        "unknown holder",
-        "לא ידוע",
-        "ספריה לא ידועה",
-        "library of the admor",
-        "ha-rav shochet",
-    }
+_HOLDER_PLACEHOLDER_NAMES = {
+    "unknown library",
+    "unknown institution",
+    "unknown holder",
+    "לא ידוע",
+    "ספריה לא ידועה",
+    "library of the admor",
+    "ha-rav shochet",
+}
+
+
+def _is_placeholder_holder(name: str) -> bool:
+    folded = name.casefold()
+    return (
+        not name
+        or folded in _HOLDER_PLACEHOLDER_NAMES
+        or any(
+            token in folded
+            for token in _HOLDER_PLACEHOLDER_NAMES
+            if len(token) > 5
+        )
+    )
+
+
+def holder_names_from_record(record: dict[str, object]) -> list[str]:
+    """Every name the record attests as the CURRENT holder, best first.
+
+    Shared with ``manuscript_projection._current_holder_qid`` so the name that
+    keys the label and the name that keys P195 cannot diverge — they used to scan
+    different fields (contributors + holding_institution here, contributors +
+    marc_authority_matches there).
+    """
+    names: list[str] = []
     for contributor in record.get("contributors") or []:
         if not isinstance(contributor, dict):
             continue
@@ -639,18 +661,104 @@ def _holding_institution_name(record: dict[str, object]) -> str:
         if "current owner" not in role:
             continue
         name = _normalise_label(str(contributor.get("name") or ""))
-        folded_name = name.casefold()
-        if (name and folded_name not in placeholder_names
-                and not any(token in folded_name for token in placeholder_names if len(token) > 5)
-                and _is_institutional_name(name)):
-            return name
+        if name and name not in names:
+            names.append(name)
     holding = _normalise_label(str(record.get("holding_institution") or ""))
-    folded_holding = holding.casefold()
-    if (holding and folded_holding not in placeholder_names
-            and not any(token in folded_holding for token in placeholder_names if len(token) > 5)
-            and _is_institutional_name(holding)):
-        return holding
-    return ""
+    if holding and holding not in names:
+        names.append(holding)
+    return [name for name in names if not _is_placeholder_holder(name)]
+
+
+def holder_resolution_for_record(record: dict[str, object]):
+    """The audited holder resolution for *record*, or None when none is attested.
+
+    Routes through ``holding_institutions`` (Rule W-143) rather than the
+    ``_INSTITUTIONAL_KEYWORDS`` substring test that used to gate this. That test
+    rejected "Braginsky Collection" — "collection" is in
+    ``_PERSON_NAME_QUALIFIER_WORDS``, not the institutional keywords — and the
+    caller then fell back to "Jerusalem, NLI" over the record's own attested
+    holder (Rule W-161).
+    """
+    from converter.wikidata.holding_institutions import (  # noqa: PLC0415
+        resolve_first_holder,
+    )
+
+    return resolve_first_holder(holder_names_from_record(record))
+
+
+def _holding_institution_name(record: dict[str, object]) -> str:
+    """The holder name to put in a label: the verified form, else what MARC said.
+
+    Empty only when the record attests no holder at all. A holder we cannot link
+    is still a holder, and naming it is attestation — inventing NLI instead is
+    fabrication (Rule W-75 / W-82).
+    """
+    resolution = holder_resolution_for_record(record)
+    return resolution.display_name if resolution else ""
+
+
+def manuscript_en_label(shelfmark: str, holder_name: str) -> str:
+    """The English shelfmark label. NEVER defaults to a holder (Rule W-161).
+
+    Three cases, and the third is the one that was broken:
+
+    1. holder resolved   → the verified table label + shelfmark.
+    2. holder attested but unlinkable → the record's own 710 string + shelfmark.
+       Attestation, not fabrication — this is what fixes the 11 items that read
+       "Jerusalem, NLI, F 39766" while MARC named Braginsky or Beit Ariela.
+    3. no holder attested → the shelfmark alone. An unowned shelfmark is honest;
+       an invented owner is not.
+    """
+    shelfmark = str(shelfmark or "").strip()
+    holder_name = str(holder_name or "").strip()
+    if not shelfmark:
+        return ""
+    return f"{holder_name}, {shelfmark}" if holder_name else shelfmark
+
+
+def manuscript_record_label(control_number: str) -> str:
+    """The no-shelfmark fallback: a CATALOGUE designation, not an ownership claim."""
+    cn = str(control_number or "").strip()
+    return f"Hebrew manuscript, NLI record {cn}" if cn else ""
+
+
+# Hebrew forms for holders whose verified English label we already trust. A holder
+# absent here keeps its attested Latin name — transliterating it would be
+# inventing a name Wikidata does not carry.
+HEBREW_INSTITUTION_NAMES: dict[str, str] = {
+    "The National Library of Israel": "הספרייה הלאומית",
+    "National Library of Israel": "הספרייה הלאומית",
+    "The Israel Museum": "מוזיאון ישראל",
+    "Israel Museum": "מוזיאון ישראל",
+    "The Ben Zvi Institute": "מכון בן־צבי",
+}
+
+
+def manuscript_he_designation(
+    record: dict[str, object] | None,
+    suffix: str,
+    *,
+    holder_name: str | None = None,
+) -> str:
+    """The `he` designation label — the record's own language and holder.
+
+    The old form hardcoded "כתב יד עברי, ספרייה לאומית", so an Israel Museum
+    manuscript announced the National Library as its holder (Rule W-142 / W-82).
+    A holder that did not resolve contributes its attested name, never NLI.
+    """
+    languages = (record or {}).get("languages") or []
+    primary = str(languages[0]) if languages else "heb"
+    parts = [f"כתב יד {_LANG_CODE_TO_HEBREW.get(primary, 'עברי')}"]
+    holder = (
+        holder_name
+        if holder_name is not None
+        else _holding_institution_name(record or {})
+    )
+    if holder:
+        parts.append(HEBREW_INSTITUTION_NAMES.get(holder, holder))
+    if suffix:
+        parts.append(str(suffix))
+    return ", ".join(parts)
 
 
 def _is_placeholder_title(title: str | None) -> bool:

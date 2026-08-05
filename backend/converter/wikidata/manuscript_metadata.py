@@ -87,22 +87,34 @@ class ManuscriptMetadataMixin:
 
         if shelfmark:
             # The catalog is NLI, but the physical holder may be a library or
-            # archive named in MARC 710. Never claim Jerusalem/NLI ownership
-            # when the record explicitly identifies another current holder.
-            label_prefix = holding or "Jerusalem, NLI"
-            item.labels["en"] = f"{label_prefix}, {shelfmark}"
+            # archive named in MARC 710. Never claim Jerusalem/NLI ownership —
+            # not even as a fallback when the holder did not resolve, which is
+            # how 11 items shipped labelled NLI while MARC named someone else
+            # (Rule W-161).
+            from converter.wikidata.item_builder import (  # noqa: PLC0415
+                manuscript_en_label,
+                manuscript_he_designation,
+            )
+
+            item.labels["en"] = manuscript_en_label(shelfmark, holding)
             if title_clean and not is_placeholder and title_has_hebrew:
                 item.aliases.setdefault("he", []).append(title_clean)
             # When the title was a placeholder OR Latin-only AND we have a
             # shelfmark, synthesise a useful Hebrew label from the shelfmark.
             if "he" not in item.labels and (is_placeholder or not title_has_hebrew):
-                item.labels["he"] = f"כתב יד עברי, ספרייה לאומית, {shelfmark}"
+                item.labels["he"] = manuscript_he_designation(
+                    record, shelfmark, holder_name=holding,
+                )
 
         if "en" not in item.labels and "he" not in item.labels:
+            from converter.wikidata.item_builder import (  # noqa: PLC0415
+                manuscript_record_label,
+            )
+
             cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
             if cn:
-                item.labels["en"] = f"Jerusalem, NLI, {cn}"
-                item.labels["he"] = f"כתב יד עברי, ספרייה לאומית, {cn}"
+                item.labels["en"] = manuscript_record_label(cn)
+                item.labels["he"] = f"כתב יד עברי, רשומת הספרייה הלאומית {cn}"
 
         # Variant titles as aliases
         for vt in record.get("variant_titles") or []:

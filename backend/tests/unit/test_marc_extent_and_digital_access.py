@@ -152,7 +152,8 @@ class TestHebrewManuscriptDescription:
         text = _hebrew_manuscript_description(
             {"languages": ["ita"], "holding_institution": "The Russian State Library"},
         )
-        assert "The Russian State Library" in text
+        assert "Russian State Library" in text
+        assert "הספרייה הלאומית" not in text
 
     def test_no_evidence_yields_no_description(self) -> None:
         assert _hebrew_manuscript_description({"languages": ["heb"]}) == ""
