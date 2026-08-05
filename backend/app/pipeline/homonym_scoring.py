@@ -19,6 +19,40 @@ SCORE_TAG_100 = 100
 SCORE_DATE_OVERLAP = 50
 SCORE_MS_PLAUSIBLE = 20
 PENALTY_FUZZY = 30
+# The scorer had no name term at all (Rule W-166): a candidate whose given name is
+# simply a different person scored identically to the right one, and `_fuzzy` was a
+# -30 nudge rather than a signal about WHICH name matched. Weighted above the
+# date-overlap term, because a shared date range across relatives is common and a
+# different given name is decisive.
+SCORE_NAME_MATCH = 60
+PENALTY_NAME_MISMATCH = 60
+
+
+def name_term_enabled() -> bool:
+    """Is the name-similarity term active? OFF by default — read the docstring.
+
+    This term changes *matching*, whose output feeds person-link evidence
+    (Rule W-162), date suppression (Rule W-166) and the W-155 person drop. A
+    corpus-wide matching change has to be measured before it is trusted, and the
+    Studio export cannot measure it: it never records WHICH MARC heading each
+    authority row matched, so any pairing reconstructed from it mispairs (an
+    institution's 710 against a person's row, an author against a scribe) and
+    reports flips that are artifacts.
+
+    Measure it against live authority data first:
+
+        cd backend && .venv/bin/python -m scripts.dryrun_homonym_name_term --run <id>
+
+    then enable with ``AUTHORITY_HOMONYM_NAME_TERM=1``. Until then the scorer
+    behaves exactly as before, and the wrong-Gabbai class of error is still caught
+    downstream by the crosscheck gate and the heading-fidelity check (Rule W-166) —
+    just not prevented at the source.
+    """
+    import os  # noqa: PLC0415
+
+    return os.getenv("AUTHORITY_HOMONYM_NAME_TERM", "0").strip().lower() not in {
+        "0", "false", "no", "",
+    }
 PENALTY_SUBJECT_TAG = 40
 TIE_THRESHOLD = 15
 
@@ -28,6 +62,8 @@ class ScoredCandidate:
     candidate: dict[str, Any]
     score: int
     date_overlap: bool = False
+    #: None when no MARC heading was supplied to compare against.
+    name_match: bool | None = None
 
     def as_payload_entry(self) -> dict[str, Any]:
         c = self.candidate
@@ -38,6 +74,7 @@ class ScoredCandidate:
             "preferred_name_heb": c.get("preferred_name_heb"),
             "preferred_name_lat": c.get("preferred_name_lat"),
             "score": self.score,
+            "name_match": self.name_match,
             "date_overlap": self.date_overlap,
         }
 
@@ -91,6 +128,7 @@ def _parsed_years(date_str: str | None) -> tuple[int | None, int | None]:
 def score_mazal_candidate(
     candidate: dict[str, Any],
     *,
+    marc_name: str | None = None,
     marc_dates: str | None,
     ms_year: int | None,
     role: str,
@@ -117,12 +155,31 @@ def score_mazal_candidate(
     if candidate.get("_fuzzy"):
         score -= PENALTY_FUZZY
 
-    return ScoredCandidate(candidate=candidate, score=score, date_overlap=overlap)
+    name_match: bool | None = None
+    if marc_name and name_term_enabled():
+        from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
+
+        headings = [
+            str(candidate.get("preferred_name_heb") or ""),
+            str(candidate.get("preferred_name_lat") or ""),
+        ]
+        name_match = any(
+            heading_matches(marc_name, heading) for heading in headings if heading
+        )
+        score += SCORE_NAME_MATCH if name_match else -PENALTY_NAME_MISMATCH
+
+    return ScoredCandidate(
+        candidate=candidate,
+        score=score,
+        date_overlap=overlap,
+        name_match=name_match,
+    )
 
 
 def pick_mazal_candidate(
     candidates: list[dict[str, Any]],
     *,
+    marc_name: str | None = None,
     marc_dates: str | None = None,
     ms_year: int | None = None,
     role: str = "",
@@ -133,15 +190,31 @@ def pick_mazal_candidate(
         return MazalMatchDecision(abstain=True, reason="no_candidates")
 
     scored = [
-        score_mazal_candidate(c, marc_dates=marc_dates, ms_year=ms_year, role=role)
+        score_mazal_candidate(
+            c, marc_name=marc_name, marc_dates=marc_dates, ms_year=ms_year, role=role,
+        )
         for c in candidates
     ]
     scored.sort(key=lambda s: (-s.score, str(s.candidate.get("mazal_id") or "")))
     top_n = scored[:limit]
 
     if len(scored) == 1:
+        only = scored[0]
+        # A lone candidate used to be returned with NO checks whatsoever — which is
+        # the branch that matched the wrong Gabbai scribe. A name that does not
+        # match needs corroboration from a tag-100 personality heading with an
+        # overlapping date range, or the match abstains (Rule W-166).
+        if only.name_match is False and not (
+            str(only.candidate.get("main_marc_tag") or "") == "100"
+            and only.date_overlap
+        ):
+            return MazalMatchDecision(
+                abstain=True,
+                reason="single_candidate_name_mismatch",
+                top_n=top_n,
+            )
         return MazalMatchDecision(
-            winner=scored[0].candidate,
+            winner=only.candidate,
             reason="single_candidate",
             top_n=top_n,
         )

@@ -204,6 +204,7 @@ class LocalAuthorityBackend:
             if candidates:
                 decision = pick_mazal_candidate(
                     candidates,
+                    marc_name=name,
                     marc_dates=dates,
                     ms_year=ms_year,
                     role=role,
@@ -785,6 +786,7 @@ class PostgresAuthorityBackend:
             if candidates:
                 decision = pick_mazal_candidate(
                     candidates,
+                    marc_name=name,
                     marc_dates=dates,
                     ms_year=ms_year,
                     role=role,
