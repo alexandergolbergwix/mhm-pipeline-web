@@ -28,10 +28,18 @@
     },
     "evaluator_id": {
       "type": "string",
-      "enum": ["person_ner", "provenance_ner", "contents_ner", "genre_classifier"]
+      "enum": [
+        "person_ner",
+        "provenance_ner",
+        "contents_ner",
+        "genre_classifier"
+      ]
     },
     "sub_type": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Free-form sub-category, e.g. 'AUTHOR', 'OWNER', 'WORK', 'Piyyutim'."
     },
     "candidate": {
@@ -47,21 +55,75 @@
     "verdict": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name_ok", "type_ok", "role_ok", "overall", "reasoning", "suggested_fix"],
+      "required": [
+        "name_ok",
+        "type_ok",
+        "role_ok",
+        "overall",
+        "reasoning",
+        "suggested_fix"
+      ],
       "properties": {
-        "name_ok":   { "type": "string", "enum": ["yes", "partial", "no"] },
-        "type_ok":   { "type": "string", "enum": ["yes", "partial", "no"] },
-        "role_ok":   { "type": "string", "enum": ["yes", "partial", "no", "n/a"] },
-        "overall":   { "type": "string", "enum": ["full", "partial", "fail"] },
-        "reasoning": { "type": "string" },
+        "name_ok": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "partial",
+            "no",
+            "unknown"
+          ],
+          "description": "`unknown` is HARNESS-only: it means the judge did not answer this axis (Rule W-158). _load_schema() strips it before the responseSchema, so the model is never offered it."
+        },
+        "type_ok": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "partial",
+            "no",
+            "unknown"
+          ],
+          "description": "`unknown` is HARNESS-only: it means the judge did not answer this axis (Rule W-158). _load_schema() strips it before the responseSchema, so the model is never offered it."
+        },
+        "role_ok": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "partial",
+            "no",
+            "n/a",
+            "unknown"
+          ],
+          "description": "`unknown` is HARNESS-only: it means the judge did not answer this axis (Rule W-158). _load_schema() strips it before the responseSchema, so the model is never offered it."
+        },
+        "overall": {
+          "type": "string",
+          "enum": [
+            "full",
+            "partial",
+            "fail",
+            "pass",
+            "abstain",
+            "verification_failed"
+          ],
+          "description": "The judge may only emit full / partial / fail; `pass` and `abstain` come from evaluators that grade on a two-way axis, and `verification_failed` is set by the HARNESS when the judge did not answer (Rule W-158). _load_schema() narrows this enum to the judge-emittable values before it becomes a responseSchema, so the model is never offered the harness-only ones."
+        },
+        "reasoning": {
+          "type": "string",
+          "description": "Why the verdict is what it is. Required to be non-empty for a substantive overall — see the top-level allOf."
+        },
         "suggested_fix": {
           "description": "Optional high-confidence corrected entity text. null by default. Only permitted when the correction is directly visible in the provided MARC context and confidence is high. Never for wrong role/type only.",
           "oneOf": [
-            { "type": "null" },
+            {
+              "type": "null"
+            },
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["text", "confidence"],
+              "required": [
+                "text",
+                "confidence"
+              ],
               "properties": {
                 "text": {
                   "type": "string",
@@ -70,16 +132,24 @@
                   "description": "The corrected entity text value."
                 },
                 "reasoning": {
-                  "type": ["string", "null"],
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "Why this fix was proposed, citing the MARC evidence."
                 },
                 "source_field": {
-                  "type": ["string", "null"],
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "The MARC field key from which the correction was derived."
                 },
                 "confidence": {
                   "type": "string",
-                  "enum": ["high"],
+                  "enum": [
+                    "high"
+                  ],
                   "description": "Only 'high' fixes are permitted. Medium/low are rejected."
                 }
               }
@@ -97,12 +167,88 @@
       "pattern": "^[0-9a-f]{64}$"
     },
     "error": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "If present, the verdict object is a placeholder and judging failed."
     },
     "agentic": {
       "type": "boolean",
       "description": "True when produced by the agentic tool-loop; false or absent for linear single-shot."
     }
-  }
+  },
+  "allOf": [
+    {
+      "description": "A substantive verdict must explain itself. An unexplained fail is not actionable by a curator, and was how a judge failure used to be indistinguishable from a rejection (Rule W-158).",
+      "if": {
+        "properties": {
+          "verdict": {
+            "properties": {
+              "overall": {
+                "enum": [
+                  "full",
+                  "partial",
+                  "fail",
+                  "pass"
+                ]
+              }
+            },
+            "required": [
+              "overall"
+            ]
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "verdict": {
+            "properties": {
+              "reasoning": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "reasoning"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "A verification_failed verdict must carry the envelope-level error that explains it, so the failure is never silent.",
+      "if": {
+        "properties": {
+          "verdict": {
+            "properties": {
+              "overall": {
+                "const": "verification_failed"
+              }
+            },
+            "required": [
+              "overall"
+            ]
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "error"
+        ]
+      }
+    }
+  ]
 }

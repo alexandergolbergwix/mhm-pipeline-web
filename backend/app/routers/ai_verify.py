@@ -35,11 +35,20 @@ from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import JOB_KIND_AUTHORITY_VERIFY
 from app.pipeline import agent_actions, agent_runner
 from app.pipeline.agent_runner import (
-    AgentEvent, build_filtered_fixture, list_sessions,
-    locate_eval_agent, new_session_id, persist_session_event, read_session,
-    read_run_verdicts, resolve_verify_session_dir, resolve_verify_state_dir,
-    spawn_eval_agent_run, sse_stream,
+    AgentEvent,
+    build_filtered_fixture,
+    list_sessions,
+    locate_eval_agent,
+    new_session_id,
+    persist_session_event,
+    read_run_verdicts,
+    read_session,
+    resolve_verify_session_dir,
+    resolve_verify_state_dir,
+    spawn_eval_agent_run,
+    sse_stream,
 )
+from app.pipeline.ai_verdict_cache_common import normalise_verdict_body
 from app.pipeline.authority_verdict_cache import (
     authority_verdict_input_fingerprint,
     authority_verdict_query_summary,
@@ -48,7 +57,6 @@ from app.pipeline.authority_verdict_cache import (
 from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.pipeline.verify_session_store import load_verify_session
 from app.routers.runs import _lookup_run_with_access
-
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ai-verify"])
@@ -516,7 +524,7 @@ async def _persist_ai_verdicts_to_matches(
             mid = uuid.UUID(str(raw))
         except (ValueError, TypeError):
             continue
-        vd = (v.get("verdict") or {}) if isinstance(v, dict) else {}
+        vd, judge_error = normalise_verdict_body(v if isinstance(v, dict) else {})
         cand = (v.get("candidate") or {}) if isinstance(v, dict) else {}
         suggested_fix = vd.get("suggested_fix")
         if suggested_fix is None and isinstance(cand, dict):
@@ -535,6 +543,9 @@ async def _persist_ai_verdicts_to_matches(
             "session_id":     session_id,
             "evaluator":      v.get("evaluator_id") or v.get("evaluator"),
             "_judge_model":   _jm,
+            # A judge that did not answer must not read as a substantive
+            # rejection of the authority match (Rule W-158).
+            **({"error": judge_error} if judge_error else {}),
         }
 
     if not summaries:
@@ -618,7 +629,8 @@ async def list_run_verdicts_endpoint(
           "limit": <int>,
           "verdicts": [<AgentEvent>, ...],  // page
           "counts": {               // over the whole filtered set
-            "pass": 0, "partial": 0, "fail": 0, "abstain": 0, "unknown": 0
+            "pass": 0, "partial": 0, "fail": 0, "abstain": 0,
+            "verification_failed": 0, "unknown": 0
           }
         }
     """
@@ -669,8 +681,8 @@ async def export_run_verdicts(
 
     suffix = f"run-{run_id}-ai-verify"
     if format == "csv":
-        import io  # noqa: PLC0415
         import csv as _csv  # noqa: PLC0415
+        import io  # noqa: PLC0415
 
         def _csv_gen():
             buf = io.StringIO()
@@ -995,7 +1007,10 @@ def _filter_verdicts(
 
 def _count_by_overall(verdicts: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {
-        "pass": 0, "partial": 0, "fail": 0, "abstain": 0, "unknown": 0,
+        "pass": 0, "partial": 0, "fail": 0, "abstain": 0,
+        # A judge that did not answer is its own bucket, never a `fail`
+        # (Rule W-158).
+        "verification_failed": 0, "unknown": 0,
     }
     for ev in verdicts:
         if not isinstance(ev, dict):
@@ -1004,7 +1019,7 @@ def _count_by_overall(verdicts: list[dict[str, Any]]) -> dict[str, int]:
         raw = str(v.get("overall") or "").lower() if isinstance(v, dict) else ""
         if raw in ("pass", "full"):
             counts["pass"] += 1
-        elif raw in ("partial", "fail", "abstain"):
+        elif raw in ("partial", "fail", "abstain", "verification_failed"):
             counts[raw] += 1
         else:
             counts["unknown"] += 1

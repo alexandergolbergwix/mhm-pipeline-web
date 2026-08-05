@@ -67,6 +67,14 @@ log = get_logger("eval_agent.session")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _judge_retries() -> int:
+    """Retries when the judge returns no verdict at all (Rule W-158)."""
+    try:
+        return max(0, int(os.environ.get("EVAL_AGENT_JUDGE_RETRY", "1")))
+    except ValueError:
+        return 1
+
+
 def _resolve_state_dir() -> Path:
     """STATE_DIR resolution.
 
@@ -665,6 +673,16 @@ class Session:
     def _judge_linear(self, evaluator, candidate, prompt, cache_id, key):  # noqa: ANN001
         assert self._judge is not None
         response = self._judge.judge(prompt=prompt, schema=self._schema)
+        self._tally_tokens(response.input_tokens, response.output_tokens)
+        if response.verdict is None and _judge_retries():
+            # One retry before giving up. A transport hiccup used to cost the item
+            # a whole verdict, and the curator saw a reasonless `fail` (Rule W-158).
+            for _ in range(_judge_retries()):
+                retry = self._judge.judge(prompt=prompt, schema=self._schema)
+                self._tally_tokens(retry.input_tokens, retry.output_tokens)
+                if retry.verdict is not None:
+                    response = retry
+                    break
         if response.verdict is not None:
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
         v = evaluator.parse_verdict(response.verdict, candidate)
@@ -672,7 +690,6 @@ class Session:
         v.cache_key = key
         if response.error:
             v.error = response.error
-        self._tally_tokens(response.input_tokens, response.output_tokens)
         return v
 
     def _judge_agentic(self, evaluator, candidate, prompt, cache_id, key):  # noqa: ANN001
@@ -783,7 +800,17 @@ def _load_schema() -> dict[str, Any]:
     etc. and rewrites the ``suggested_fix`` ``oneOf`` into ``nullable``).
     """
     full = json.loads(VERDICT_SCHEMA_PATH.read_text(encoding="utf-8"))
-    return full.get("properties", {}).get("verdict", full)
+    verdict = json.loads(json.dumps(full.get("properties", {}).get("verdict", full)))
+    # `verification_failed` and the `unknown` axis value are HARNESS-set, not
+    # judge-emittable, so they are stripped before this becomes a responseSchema —
+    # offering the model a way to declare its own check failed invites it
+    # (Rule W-158). Ditto the two-way `pass`/`abstain` overalls, which belong to
+    # evaluators that grade on a different axis.
+    harness_only = {"verification_failed", "pass", "abstain", "unknown"}
+    for prop in (verdict.get("properties") or {}).values():
+        if isinstance(prop, dict) and isinstance(prop.get("enum"), list):
+            prop["enum"] = [v for v in prop["enum"] if v not in harness_only]
+    return verdict
 
 
 def _build_judge(config: SessionConfig) -> Judge:

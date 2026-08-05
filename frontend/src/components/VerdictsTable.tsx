@@ -87,7 +87,10 @@ export interface VerdictsTableProps {
 }
 
 
-type Overall = "pass" | "full" | "partial" | "fail" | "abstain" | "unknown";
+/** `verification_failed` means the judge did not answer — a transport, parse or
+ *  budget failure, never an assessment of the row (Rule W-158). An `overall` the
+ *  table does not list is silently dropped, so it must be listed here. */
+type Overall = "pass" | "full" | "partial" | "fail" | "abstain" | "verification_failed" | "unknown";
 
 type SortKey = "record" | "evaluator" | "entity" | "verdict" | "confidence";
 
@@ -202,7 +205,10 @@ export function VerdictsTable(props: VerdictsTableProps) {
     setServerLoading(true);
     const params: Parameters<typeof AiVerify.results>[1] = { limit: 200, offset: 0 };
     if (debouncedSearch.trim()) params.q = debouncedSearch.trim();
-    if (overallFilter !== "all") params.overall = overallFilter as "pass" | "partial" | "fail" | "abstain";
+    if (overallFilter !== "all") {
+      params.overall = overallFilter as
+        "pass" | "partial" | "fail" | "abstain" | "verification_failed";
+    }
     AiVerify.results(runId, params)
       .then((page) => {
         if (ctrl.signal.aborted) return;
@@ -228,7 +234,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
   const counts = useMemo(() => {
     if (useServer && serverCounts) return serverCounts;
     const c: Record<string, number> = {
-      pass: 0, partial: 0, fail: 0, abstain: 0, unknown: 0,
+      pass: 0, partial: 0, fail: 0, abstain: 0, verification_failed: 0, unknown: 0,
     };
     for (const ev of rows) {
       const o = overall(ev);
@@ -359,6 +365,9 @@ export function VerdictsTable(props: VerdictsTableProps) {
             active={overallFilter === "fail"} onClick={() => setOverallFilter("fail")} />
           <FilterChip label="abstain" count={counts.abstain ?? 0} tone="muted"
             active={overallFilter === "abstain"} onClick={() => setOverallFilter("abstain")} />
+          <FilterChip label="check failed" count={counts.verification_failed ?? 0} tone="warn"
+            active={overallFilter === "verification_failed"}
+            onClick={() => setOverallFilter("verification_failed")} />
         </div>
       </div>
 
@@ -766,6 +775,7 @@ function VerdictPill({ overall: o }: { overall: Overall }) {
     : o === "partial" ? "~"
     : o === "fail" ? "✗"
     : o === "abstain" ? "?"
+    : o === "verification_failed" ? "⚠"
     : "—";
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${tone}`}
@@ -809,6 +819,7 @@ function overallTone(o: Overall): string {
        : o === "partial" ? "text-warn"
        : o === "fail"    ? "text-danger"
        : o === "abstain" ? "muted"
+       : o === "verification_failed" ? "text-warn"
        : "muted";
 }
 

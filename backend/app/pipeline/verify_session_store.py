@@ -141,7 +141,12 @@ def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
             "judged_at": row.get("judged_at"),
             "confidence": row.get("confidence"),
         }
+    judge_error = str(row.get("error") or verd_in.get("error") or "").strip()
     reasoning = str(verd_in.get("reasoning") or "")
+    if not reasoning and judge_error:
+        # Dropping a falsy reasoning while keeping the axes is what made a judge
+        # failure render as a reasonless `fail` in the UI (Rule W-158).
+        reasoning = f"Judge failure: {judge_error}"
     if len(reasoning) > 800:
         reasoning = reasoning[:797] + "…"
     cand_out = {
@@ -163,6 +168,8 @@ def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
     }
     if reasoning:
         verd_out["reasoning"] = reasoning
+    if judge_error:
+        verd_out["error"] = judge_error
     out: dict[str, Any] = {}
     if cand_out:
         out["candidate"] = cand_out

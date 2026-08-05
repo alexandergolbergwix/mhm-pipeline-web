@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -38,20 +38,30 @@ from app.models.run import RunRecord
 from app.models.run_job import JOB_KIND_NER_VERIFY
 from app.pipeline import agent_actions, extraction_actions
 from app.pipeline.agent_runner import (
-    AgentEvent, build_filtered_fixture, list_sessions, list_verify_sessions,
-    locate_eval_agent, new_session_id, persist_session_event, read_session,
-    read_run_verdicts, read_verify_session, resolve_verify_session_dir,
-    resolve_verify_state_dir, spawn_eval_agent_run, sse_stream,
+    AgentEvent,
+    build_filtered_fixture,
+    list_sessions,
+    list_verify_sessions,
+    locate_eval_agent,
+    new_session_id,
+    persist_session_event,
+    read_run_verdicts,
+    read_session,
+    read_verify_session,
+    resolve_verify_session_dir,
+    resolve_verify_state_dir,
+    spawn_eval_agent_run,
+    sse_stream,
 )
-from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.ai_verdict_cache_common import normalise_verdict_body
 from app.pipeline.extraction_entities_cache import invalidate_entities_cache
-from app.pipeline.verify_session_store import load_verify_session
+from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
 from app.pipeline.ner_verdict_cache import (
     ner_verdict_input_fingerprint,
     ner_verdict_query_summary,
 )
+from app.pipeline.verify_session_store import load_verify_session
 from app.routers.runs import _lookup_run_with_access
-
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["extraction-verify"])
@@ -507,7 +517,7 @@ async def _persist_ai_verdicts_to_entities(
             if ext is None:
                 continue
             eid = ext.id
-        vd = (v.get("verdict") or {}) if isinstance(v, dict) else {}
+        vd, judge_error = normalise_verdict_body(v if isinstance(v, dict) else {})
         suggested_fix = vd.get("suggested_fix")
         if suggested_fix is None and isinstance(cand, dict):
             suggested_fix = cand.get("suggested_fix")
@@ -532,6 +542,10 @@ async def _persist_ai_verdicts_to_entities(
             "session_id":    session_id,
             "evaluator":     v.get("evaluator_id") or v.get("evaluator"),
         }
+        if judge_error:
+            # A judge that did not answer must not read as a substantive
+            # rejection of the extraction (Rule W-158).
+            summary["error"] = judge_error
         summaries[eid] = summary
 
     if not summaries:
@@ -620,10 +634,13 @@ async def _fetch_entities(
     a curator who scopes by "all" presumably wants whatever has been
     touched.)
     """
-    from app.routers.extraction import (   # noqa: PLC0415
-        _parse_entity_id, _flatten_records, _results_path,
-    )
     import json as _json
+
+    from app.routers.extraction import (  # noqa: PLC0415
+        _flatten_records,
+        _parse_entity_id,
+        _results_path,
+    )
 
     # — Branch A: ``entity_ids`` provided → decode + upsert-synthetic
     if entity_ids:

@@ -174,6 +174,28 @@ class Evaluator(ABC):
         {"person_ner", "provenance_ner", "contents_ner"}
     )
 
+    # A judge that did not answer is NOT a judgement (Rule W-158). The dataclass
+    # defaults are `fail / no / no / n-a / ""` because that is the safe
+    # pre-parse construction shape, but returning them unchanged made a transport
+    # error indistinguishable from a substantive rejection: one manuscript in
+    # run 48ba6c13 shipped `overall="fail", name_ok="no", type_ok="no"` with an
+    # empty `reasoning`, and nothing downstream could tell that the judge had
+    # simply never spoken.
+    JUDGE_FAILURE_OVERALL = "verification_failed"
+    _SUBSTANTIVE_OVERALLS = frozenset({"full", "pass", "partial", "fail"})
+
+    def _as_judge_failure(self, v: Verdict, reason: str) -> Verdict:
+        v.error = reason
+        v.overall = self.JUDGE_FAILURE_OVERALL
+        v.name_ok = "unknown"
+        v.type_ok = "unknown"
+        v.role_ok = "n/a"
+        v.reasoning = (
+            f"Judge failure: {reason}. This is NOT an assessment of the item — "
+            "the check did not complete and must be re-run."
+        )
+        return v
+
     def parse_verdict(self, raw: dict[str, Any] | None, candidate: Candidate) -> Verdict:
         """Map a Gemini response (or None) into a structured Verdict."""
         v = Verdict(
@@ -184,13 +206,17 @@ class Evaluator(ABC):
             confidence=candidate.confidence,
         )
         if raw is None:
-            v.error = "no verdict (judge failure)"
-            return v
+            return self._as_judge_failure(v, "no verdict (judge failure)")
         v.name_ok = str(raw.get("name_ok", "no"))
         v.type_ok = str(raw.get("type_ok", "no"))
         v.role_ok = str(raw.get("role_ok", "n/a"))
         v.overall = str(raw.get("overall", "fail"))
         v.reasoning = str(raw.get("reasoning", ""))
+        if v.overall in self._SUBSTANTIVE_OVERALLS and not v.reasoning.strip():
+            # The agentic tool-loop cannot send a responseSchema, so a reply can
+            # carry the axes and silently omit `reasoning`. An unexplained verdict
+            # is not actionable by a curator, so it reads as a failure to judge.
+            return self._as_judge_failure(v, "verdict missing reasoning")
         v.suggested_fix = self._parse_suggested_fix(raw.get("suggested_fix"), candidate)
         return v
 

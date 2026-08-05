@@ -84,3 +84,59 @@ def sanitise_stored_verdict(
     if str(cache_key) == expected_fingerprint:
         return stored
     return None
+
+
+# A judge failure is not a verdict (Rule W-158).
+JUDGE_FAILURE_OVERALL = "verification_failed"
+_SUBSTANTIVE_OVERALLS = frozenset({"full", "pass", "partial", "fail"})
+
+
+def normalise_verdict_body(verdict: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """Split a raw eval-agent verdict envelope into a body and a judge error.
+
+    Returns ``(body, judge_error)``. When the judge did not actually answer, the
+    body reports ``overall="verification_failed"`` with ``unknown`` axes instead
+    of the substantive ``fail / no / no`` the eval-agent dataclass defaults to.
+
+    One manuscript in run 48ba6c13 was persisted as `overall="fail",
+    name_ok="no", type_ok="no"` with an empty ``reasoning``: a transport failure
+    stored as a hard rejection. The envelope-level ``error`` that explained it
+    ("no verdict (judge failure)") was never read on this path, and the job
+    snapshot dropped the empty reasoning entirely, so the curator saw a reasoned-
+    looking fail with no reason.
+    """
+    body = dict(verdict.get("verdict") or {}) if isinstance(verdict, dict) else {}
+    envelope_error = str((verdict or {}).get("error") or "").strip()
+    overall = str(body.get("overall") or "").strip()
+    reasoning = str(body.get("reasoning") or "").strip()
+
+    reason = ""
+    if envelope_error:
+        reason = envelope_error
+    elif not overall or overall == "unknown":
+        reason = "judge returned no overall verdict"
+    elif overall in _SUBSTANTIVE_OVERALLS and not reasoning:
+        reason = "judge returned no reasoning"
+
+    if not reason:
+        return body, None
+
+    return {
+        **body,
+        "overall": JUDGE_FAILURE_OVERALL,
+        "name_ok": "unknown",
+        "type_ok": "unknown",
+        "role_ok": body.get("role_ok") or "n/a",
+        "reasoning": (
+            f"Judge failure: {reason}. This is NOT an assessment of the item — "
+            "the check did not complete and must be re-run."
+        ),
+        "error": reason,
+    }, reason
+
+
+def is_judge_failure(body: Any) -> bool:
+    return (
+        isinstance(body, dict)
+        and str(body.get("overall") or "") == JUDGE_FAILURE_OVERALL
+    )

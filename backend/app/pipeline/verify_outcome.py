@@ -50,6 +50,7 @@ def resolve_verify_session_outcome(
     runner_error: str | None = None,
     runner_exit_code: int | None = None,
     saw_runner_exit: bool = True,
+    judge_failure_count: int = 0,
 ) -> str:
     """Return ``complete`` only when the full scope was judged.
 
@@ -65,10 +66,31 @@ def resolve_verify_session_outcome(
         return "partial"
     if uncached_count > 0 and not saw_runner_exit:
         return "partial"
+    if int(judge_failure_count) > 0:
+        # A `verification_failed` row carries a stable candidate id, so it still
+        # advances progress (Rule W-64) — but a run that produced them did not
+        # judge its whole scope, and must not read as a clean pass (Rule W-158).
+        return "partial"
     judged = int(cache_hits) + int(fresh_verdict_count)
     if int(scope_size) > 0 and judged < int(scope_size):
         return "partial"
     return "complete"
+
+
+def count_judge_failures(verdicts: list[dict[str, Any]]) -> int:
+    """How many verdicts in *verdicts* are judge failures rather than judgements."""
+    from app.pipeline.ai_verdict_cache_common import (  # noqa: PLC0415
+        JUDGE_FAILURE_OVERALL,
+    )
+
+    total = 0
+    for verdict in verdicts:
+        if not isinstance(verdict, dict):
+            continue
+        body = verdict.get("verdict") if isinstance(verdict.get("verdict"), dict) else verdict
+        if str(body.get("overall") or "") == JUDGE_FAILURE_OVERALL or verdict.get("error"):
+            total += 1
+    return total
 
 
 def synthesize_missing_runner_error(

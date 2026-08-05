@@ -432,14 +432,34 @@ async def attach_llm_proposals(
             lambda: _call_qubrid(prompt, model_id=model, timeout=_timeout())
         )
         async with semaphore:
-            try:
-                raw = await run_in_threadpool(invoke)
-            except Exception as exc:  # noqa: BLE001
+            raw = None
+            last_exc: Exception | None = None
+            # One retry on a transient transport failure. Two items in run
+            # 48ba6c13 reported `unavailable` with "The read operation timed out"
+            # and lost their whole proposal channel to a single slow response.
+            for attempt in range(2):
+                try:
+                    raw = await run_in_threadpool(invoke)
+                    last_exc = None
+                    break
+                except (TimeoutError, OSError) as exc:
+                    last_exc = exc
+                    if attempt == 0:
+                        logger.info(
+                            "marc llm extract transient failure for %s (%s) — retrying",
+                            control_number, exc,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    break
+            if last_exc is not None:
                 logger.warning(
-                    "marc llm extract failed for %s: %s", control_number, exc,
+                    "marc llm extract failed for %s: %s", control_number, last_exc,
                 )
                 item["_llm_proposals"] = {
-                    "status": STATUS_UNAVAILABLE, "proposals": [], "error": str(exc),
+                    "status": STATUS_UNAVAILABLE,
+                    "proposals": [],
+                    "error": str(last_exc),
                 }
                 stats["unavailable"] += 1
                 return

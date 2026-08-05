@@ -182,7 +182,7 @@ export function WikidataItemsPanel({
       // A verdict the table cannot render is worse than none — keep the row as
       // it was rather than showing an unknown badge.
       const known = new Set<AiVerdictOverall>([
-        "pass", "full", "partial", "fail", "abstain", "unknown",
+        "pass", "full", "partial", "fail", "abstain", "verification_failed", "unknown",
       ]);
       setBuild((prev) => {
         if (!prev?.items?.length) return prev;

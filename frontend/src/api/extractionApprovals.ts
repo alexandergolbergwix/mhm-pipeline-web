@@ -56,6 +56,9 @@ export type AiVerdictOverall =
   | "partial"
   | "fail"
   | "abstain"
+  /** The judge did not answer — a transport, parse or budget failure, NOT an
+   *  assessment of the item (Rule W-158). Renders as "check failed". */
+  | "verification_failed"
   | "unknown";
 
 /** v2 extension: AI-suggested corrected entity text.

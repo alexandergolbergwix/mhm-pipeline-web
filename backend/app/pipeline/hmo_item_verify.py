@@ -22,6 +22,7 @@ from app.pipeline.agent_runner import (
     resolve_verify_state_dir,
     spawn_eval_agent_run,
 )
+from app.pipeline.ai_verdict_cache_common import normalise_verdict_body
 from app.pipeline.hmo_item_verdict_cache import (
     hmo_item_verdict_input_fingerprint,
     hmo_item_verdict_query_summary,
@@ -100,7 +101,7 @@ async def _persist_hmo_item_verdicts(
             evaluator_id = str(
                 v.get("evaluator_id") or v.get("evaluator") or "hmo_wikibase_item",
             )
-            verdict_body = v.get("verdict") or {}
+            verdict_body, judge_error = normalise_verdict_body(v)
             fingerprint = hmo_item_verdict_input_fingerprint(
                 item,
                 model,
@@ -118,6 +119,8 @@ async def _persist_hmo_item_verdicts(
                 "session_id": None,
                 "evaluator": evaluator_id,
             }
+            if judge_error:
+                summary["error"] = judge_error
             if evaluator_id == "hmo_wikibase_item_autofix":
                 fixes = verdict_body.get("suggested_fixes") or cand.get("suggested_fixes")
                 if fixes:
@@ -136,6 +139,16 @@ async def _persist_hmo_item_verdicts(
                 db.add(row)
             row.ai_verdict = summary
             row.ai_verdict_at = now
+
+            if judge_error:
+                # A judge failure is written to the override row so the curator
+                # sees "check failed", but never cached: the 90-day TTL would
+                # freeze it and the item would never be re-judged (Rule W-158).
+                logger.warning(
+                    "hmo verdict for %s was a judge failure (%s) — not cached",
+                    local_id, judge_error,
+                )
+                continue
 
             cached_result = {
                 "verdict": verdict_body,

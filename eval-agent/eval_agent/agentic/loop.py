@@ -170,8 +170,12 @@ class AgenticJudge:
         trace.add(tool=None, note="forced-final")
         verdict_dict = final.verdict if final.verdict is not None else {}
         v = self._verdict(evaluator, candidate, verdict_dict)
-        if final.error and not verdict_dict:
-            v.error = final.error
+        if not verdict_dict:
+            # A forced final that produced nothing is a judge failure, and it must
+            # say so even when the transport reported no error of its own —
+            # otherwise budget exhaustion is persisted as a substantive `fail`
+            # (Rule W-158).
+            v.error = final.error or "budget exhausted without a verdict"
         return v, trace
 
     def _verdict(

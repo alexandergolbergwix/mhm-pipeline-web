@@ -328,6 +328,10 @@ _GEMINI_UNSUPPORTED_KEYS = frozenset({
     "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
     "minItems", "maxItems", "minLength", "maxLength",
     "title", "examples",
+    # Draft-2020-12 applicators. The stored-row schema uses `allOf`/`if`/`then`
+    # to require a reason for a substantive verdict (Rule W-158); passing those
+    # through would make the responseSchema itself invalid.
+    "allOf", "if", "then", "else", "not", "dependentSchemas",
 })
 
 

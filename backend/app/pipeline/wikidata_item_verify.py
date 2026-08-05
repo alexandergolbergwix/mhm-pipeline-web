@@ -10,6 +10,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.pipeline.ai_verdict_cache_common import normalise_verdict_body
 from app.pipeline.inference_cache import write_to_inference_cache
 from app.pipeline.wikidata_duplicate_probe import (
     duplicate_class_for_item,
@@ -54,7 +55,7 @@ async def _persist_wikidata_verdicts_to_overrides(
             evaluator_id = str(
                 v.get("evaluator_id") or v.get("evaluator") or "wikidata_item",
             )
-            verdict_body = v.get("verdict") or {}
+            verdict_body, judge_error = normalise_verdict_body(v)
             marc_ctx = item.get("_marc_context")
             if not isinstance(marc_ctx, dict):
                 marc_ctx = marc_context_for_wikidata_item(item, marc_records or [])
@@ -85,6 +86,8 @@ async def _persist_wikidata_verdicts_to_overrides(
                 "duplicate_status": duplicate_status_for_item(item),
                 "duplicate_class": duplicate_class_for_item(item),
             }
+            if judge_error:
+                summary["error"] = judge_error
             if evaluator_id == "wikidata_autofix":
                 fixes = verdict_body.get("suggested_fixes") or cand.get("suggested_fixes")
                 if fixes:
@@ -103,6 +106,19 @@ async def _persist_wikidata_verdicts_to_overrides(
                 db.add(row)
             row.ai_verdict = summary
             row.ai_verdict_at = now
+
+            if judge_error:
+                # NEVER cache a judge failure: the ai_verdict cache has a 90-day
+                # TTL, so a transport hiccup would warm-hit for three months and
+                # the item would never be judged again. The override row is still
+                # written, so the curator sees "check failed" rather than nothing
+                # (Rule W-158, amending W-51).
+                logger.warning(
+                    "wikidata verdict for %s was a judge failure (%s) — "
+                    "persisted to the override row, not cached",
+                    local_id, judge_error,
+                )
+                continue
 
             cached_result = {
                 "verdict": {

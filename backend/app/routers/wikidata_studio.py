@@ -2647,6 +2647,7 @@ async def _wikidata_verify_event_stream(
                 logger.exception("final Wikidata verdict persist batch failed")
 
         from app.pipeline.verify_outcome import (  # noqa: PLC0415
+            count_judge_failures,
             merge_fresh_verdicts,
             resolve_verify_session_outcome,
             synthesize_missing_runner_error,
@@ -2710,6 +2711,7 @@ async def _wikidata_verify_event_stream(
             except Exception:  # noqa: BLE001
                 logger.exception("failed to write Wikidata item verdicts to inference cache")
 
+        judge_failures = count_judge_failures(fresh_verdicts)
         outcome = resolve_verify_session_outcome(
             eval_agent_unavailable=bool(eval_agent_error),
             uncached_count=len(uncached_items),
@@ -2719,6 +2721,7 @@ async def _wikidata_verify_event_stream(
             runner_error=runner_error,
             runner_exit_code=runner_exit_code,
             saw_runner_exit=saw_runner_exit or bool(eval_agent_error) or not uncached_items,
+            judge_failure_count=judge_failures,
         )
         end_ev = AgentEvent(
             type="session.end",
@@ -2727,6 +2730,7 @@ async def _wikidata_verify_event_stream(
                 "scope_size": len(items),
                 "cache_hits": len(pre_cached),
                 "fresh_verdicts": len(fresh_verdicts),
+                "judge_failures": judge_failures,
                 "uncached_skipped": len(uncached_items) if eval_agent_error else 0,
                 "outcome": outcome,
                 "runner_error": runner_error,
