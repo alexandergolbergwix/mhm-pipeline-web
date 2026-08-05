@@ -119,7 +119,7 @@ PROPERTY_LABELS: dict[str, str] = {
 
 QID_LABELS: dict[str, str] = {
     "Q33513": "Hebrew alphabet",
-    "Q9190": "Jews",
+    "Q9190": "Exodus",
     "Q188915": "National Library of Israel",
     "Q46815": "Israel Museum",
     # Top-level classes
@@ -140,7 +140,7 @@ QID_LABELS: dict[str, str] = {
     "Q6581097": "male",
     "Q6581072": "female",
     # Catalog
-    "Q118384267": "Ktiv (NLI manuscript catalog)",
+    "Q118384267": "Ktiv",
     # Common roles
     "Q916292":  "scribe",
     "Q333634":  "translator",
@@ -170,7 +170,7 @@ QID_LABELS: dict[str, str] = {
     "Q18562479": "vital record",
     "Q191825": "Mishnah",
     "Q208398": "Karaite Judaism",
-    "Q2095829": "Pinkas",
+    "Q2095829": "pinkasim",
     "Q223681": "apostasy",
     "Q2350579": "Sefer Torah",
     "Q247034": "mezuzah",
@@ -218,6 +218,115 @@ QID_LABELS: dict[str, str] = {
     "Q848599": "brit milah",
     "Q861258": "shechita",
     "Q9026959": "autograph",
+    # Fetched live 2026-08-05 (`wbgetentities`, English labels as returned) so
+    # every QID the projection can emit carries a gloss (Rule W-80). The audit
+    # that produced this list is what surfaced 24 wrong P/Q constants in
+    # BIBLE_BOOK_TO_QID and TALMUD_TRACTATE_TO_QID.
+    "Q104378399": "dubious",
+    "Q1063210": "Yoma",
+    "Q106379705": "damaged",
+    "Q106959824": "unlocated, probably destroyed",
+    "Q107256474": "leaf",
+    "Q107531416": "mildly damaged",
+    "Q1136474": "Costas loop",
+    "Q11472": "paper",
+    "Q121094898": "Ashkenazic Script (Hebrew script)",
+    "Q121094936": "Yemenite Script (hebrew script)",
+    "Q122901270": "lower script",
+    "Q122901275": "upper script",
+    "Q123078816": "WikiProject Manuscripts",
+    "Q125576": "papyrus",
+    "Q1264302": "Nazir",
+    "Q131458": "Isaiah",
+    "Q131590": "Jeremiah",
+    "Q1321": "Spanish",
+    "Q133177480": "Sepharadic script (Hebrew script)",
+    "Q133327488": "Oriental Script (hebrew Script)",
+    "Q133370075": "Italian script (Hebrew script)",
+    "Q133370466": "Byzantine script (Hebrew script)",
+    "Q136350185": "poor",
+    "Q13955": "Arabic",
+    "Q150": "French",
+    "Q1561132": "Josippon",
+    "Q1641020": "palm-leaf manuscript",
+    "Q17051386": "Nedarim",
+    "Q181620": "Books of Samuel",
+    "Q1860": "English",
+    "Q188": "German",
+    "Q19602268": "chained book",
+    "Q1974785": "Pesahim",
+    "Q201029": "Mishneh Torah",
+    "Q205388": "Zohar",
+    "Q20734200": "not completed",
+    "Q213924": "codex",
+    "Q2211504": "Berakhot",
+    "Q226697": "parchment",
+    "Q234460": "text",
+    "Q2358436": "Massechet Sanhedrin",
+    "Q2363125": "Shevu'ot",
+    "Q25285": "Tatar",
+    "Q256": "Turkish",
+    "Q2703125": "Mishnah Shabbat",
+    "Q274076": "palimpsest",
+    "Q2740944": "Tikkun Chatzot",
+    "Q28602": "Aramaic",
+    "Q30103158": "manuscript fragment",
+    "Q3299332": "Ryo Kanazawa",
+    "Q33308141": "composite manuscript",
+    "Q33367": "Judeo-Persian",
+    "Q35497": "Ancient Greek",
+    "Q36196": "Judaeo-Spanish",
+    "Q36510": "Modern Greek",
+    "Q372474": "colophon",
+    "Q3749265": "fragment",
+    "Q37733": "Judeo-Arabic",
+    "Q378274": "vellum",
+    "Q397": "Latin",
+    "Q41064": "Psalms",
+    "Q41490": "Leviticus",
+    "Q41719": "hypothesis",
+    "Q4224666": "Books of Kings",
+    "Q42614": "Deuteronomy",
+    "Q43099": "Book of Numbers",
+    "Q4577": "Book of Job",
+    "Q4579": "Proverbs",
+    "Q47680": "Joshua",
+    "Q482980": "author",
+    "Q50423863": "copyrighted",
+    "Q5146": "Portuguese",
+    "Q56556915": "demolished or destroyed",
+    "Q56557591": "preserved",
+    "Q571": "book",
+    "Q5727902": "circa",
+    "Q6124976": "Pirush Hamishnayot",
+    "Q61962974": "disassembled",
+    "Q623354": "Haggadah",
+    "Q652": "Italian",
+    "Q657535": "Tractate Ketubot",
+    "Q66890153": "unknown preservation status",
+    "Q7411": "Dutch",
+    "Q75505084": "restored",
+    "Q791251": "Avodah Zarah",
+    "Q811988": "Bava Batra",
+    "Q811989": "Bava Kamma",
+    "Q822206": "Shulchan Aruch",
+    "Q83367": "Tanakh",
+    "Q860740": "learning disability",
+    "Q8641": "Yiddish",
+    "Q9168": "Persian",
+    "Q9184": "Book of Genesis",
+    "Q927314": "Sotah",
+    "Q927378": "Tractate Kiddushin",
+    "Q1069725": "page",
+    "Q113016548": "papyrus scroll",
+    "Q1145267": "Curt Paul Janz",
+    "Q15632617": "fictional human",
+    "Q179808": "Palme d'Or",
+    "Q21857942": "Stolpersteine in Upper Austria",
+    "Q284465": "lectionary",
+    "Q3884": "Amazon",
+    "Q54919": "Virtual International Authority File",
+    "Q95065857": "papyrus fragment",
 }
 
 
@@ -227,5 +336,19 @@ def property_label(pid: str) -> str:
 
 
 def qid_label(qid: str) -> str:
-    """Return the best known label for *qid* (falls back to the QID itself)."""
-    return QID_LABELS.get(qid, qid)
+    """Return the best known label for *qid* (falls back to the QID itself).
+
+    Holding institutions are NOT duplicated here: ``holding_institutions`` already
+    records a verified English label beside every QID it resolves (Rule W-143), so
+    that table is consulted rather than copied. Without this, a P195 on
+    Q1256981 rendered `value_label: null` in the verify pack even though the label
+    "San Francisco State University" was sitting one module away (Rule W-80).
+    """
+    label = QID_LABELS.get(qid)
+    if label:
+        return label
+    from converter.wikidata.holding_institutions import (  # noqa: PLC0415
+        institution_label,
+    )
+
+    return institution_label(qid) or qid

@@ -125,6 +125,7 @@ def _work_title_errors(items: list[Any]) -> list[str]:
 
 
 _NLI_LABEL_RE = re.compile(r"\bJerusalem,\s*NLI\b", re.IGNORECASE)
+_QID_VALUE_RE = re.compile(r"Q\d+")
 
 
 def _holder_findings(
@@ -279,6 +280,24 @@ def _claim_provenance_findings(
                     f"claim_channel_empty {local_id}: {pid} has a channel "
                     f"({', '.join(row.get('channels') or [])}) but this record's "
                     "field is empty",
+                )
+
+        # Rule W-80: a QID we project must come with a gloss, or the curator and
+        # the judge are shown a bare Q-number and cannot check it.
+        value_labels = (item.get("verify_evidence") or {}).get("value_labels") or {}
+        for stmt in item.get("statements") or []:
+            if not isinstance(stmt, dict):
+                continue
+            value = str(stmt.get("value") or "")
+            if not _QID_VALUE_RE.fullmatch(value):
+                continue
+            gloss = str(value_labels.get(value) or stmt.get("value_label") or "")
+            if not gloss or gloss == value:
+                pid = str(stmt.get("property") or stmt.get("property_id") or "")
+                blocking.append(
+                    f"MISSING_VALUE_LABEL {local_id} {value}: {pid} projects a QID "
+                    "with no label — add it to QID_LABELS or to the audited "
+                    "holding-institution table",
                 )
     return blocking, informational
 

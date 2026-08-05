@@ -65,7 +65,11 @@ _HARD_REJECT_AUTHORITY_FLAGS = frozenset({
     "biographical_inconsistency",
     "modern_person",
 })
-_BROAD_MAIN_SUBJECT_QIDS = frozenset({"Q7325", "Q9190"})
+# P921 values too broad to say anything about a manuscript. Q9190 used to be in
+# here because `QID_LABELS` glossed it as "Jews" — it is actually **Exodus**, so
+# this filter was silently dropping a perfectly specific biblical subject while
+# believing it dropped a generic one. Verified live 2026-08-05 (Rule W-26).
+_BROAD_MAIN_SUBJECT_QIDS = frozenset({"Q7325"})  # Jewish people
 _PERSON_BIOGRAPHY_PIDS = frozenset({"P569", "P570"})
 
 
@@ -1101,47 +1105,52 @@ def _manuscript_labels_and_aliases(
     title_has_hebrew = has_hebrew(title_clean)
     placeholder = is_placeholder(title_clean) if title_clean else False
 
-    if title_clean and not placeholder:
-        if title_has_hebrew:
-            labels["he"] = title_clean
-        else:
-            labels["en"] = title_clean
-            aliases.setdefault("en", []).append(title_clean)
-    elif title_clean:
-        aliases.setdefault("he", []).append(title_clean)
+    if title_clean and not placeholder and not title_has_hebrew:
+        labels["en"] = title_clean
+        aliases.setdefault("en", []).append(title_clean)
 
     shelfmark = ""
     if record:
         shelfmark = normalise(str(record.get("shelfmark") or ""))
     if not shelfmark:
         shelfmark = _shelfmark_from_claims(entity)
-    if shelfmark:
-        from converter.wikidata.item_builder import manuscript_en_label  # noqa: PLC0415
+    cn = ""
+    if record:
+        cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
+    if not cn and entity.control_numbers:
+        cn = identity_control_number(entity)
 
-        holding = holding_name(record) if record else ""
-        labels["en"] = manuscript_en_label(shelfmark, holding)
-        if title_clean and not placeholder and title_has_hebrew:
-            aliases.setdefault("he", []).append(title_clean)
-        if "he" not in labels and (placeholder or not title_has_hebrew):
-            labels["he"] = _hebrew_manuscript_label(record, shelfmark)
-
-    if "en" not in labels and "he" not in labels:
+    # A manuscript is a physical carrier, so its label is a DESIGNATION — holder
+    # plus shelfmark — not the title of a text it happens to contain. 64 of 68
+    # manuscripts in run 48ba6c13 carried the MARC 245 in `labels.he`, which the
+    # judge flagged as "the work title, not the manuscript" (Rule W-164). The
+    # title stays searchable as an alias.
+    designation_suffix = shelfmark or cn
+    if designation_suffix:
         from converter.wikidata.item_builder import (  # noqa: PLC0415
+            manuscript_en_label,
             manuscript_record_label,
         )
 
-        cn = ""
-        if record:
-            cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
-        if not cn and entity.control_numbers:
-            cn = identity_control_number(entity)
-        if cn:
-            labels["en"] = manuscript_record_label(cn)
-            labels["he"] = _hebrew_manuscript_label(record, cn)
-        else:
-            labels = _route_labels_by_script(raw_labels, has_hebrew=has_hebrew) or {
-                "en": entity.local_id.replace("QDraft_", "").replace("_", " "),
-            }
+        holding = holding_name(record) if record else ""
+        labels["en"] = (
+            manuscript_en_label(shelfmark, holding) if shelfmark
+            else manuscript_record_label(cn)
+        )
+        labels["he"] = _hebrew_manuscript_label(record, designation_suffix)
+        if title_clean and title_has_hebrew:
+            aliases.setdefault("he", []).append(title_clean)
+    elif title_clean and title_has_hebrew and not placeholder:
+        # Nothing better exists: no shelfmark and no control number, so the title
+        # is the only designation available.
+        labels["he"] = title_clean
+    elif title_clean:
+        aliases.setdefault("he", []).append(title_clean)
+
+    if "en" not in labels and "he" not in labels:
+        labels = _route_labels_by_script(raw_labels, has_hebrew=has_hebrew) or {
+            "en": entity.local_id.replace("QDraft_", "").replace("_", " "),
+        }
 
     return labels, _dedupe_aliases(aliases, labels)
 

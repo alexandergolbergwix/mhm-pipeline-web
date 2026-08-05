@@ -376,7 +376,10 @@ def test_canonical_manuscript_en_label_uses_shelfmark_not_hebrew_title() -> None
         }],
     )
     items = native_items_from_hmo([manuscript], context=context)
-    assert items[0].labels["he"] == "גלא עמיקתא (חלק א, ב)"
+    # A manuscript's label is a designation, not the title of a text inside it —
+    # the MARC 245 stays searchable as an alias (Rule W-164).
+    assert items[0].labels["he"] == "כתב יד עברי, Heb. 8° 1234"
+    assert "גלא עמיקתא (חלק א, ב)" in items[0].aliases["he"]
     # No holder is attested on this record, so the label carries the shelfmark
     # alone. "Jerusalem, NLI" here would be an invented owner (Rule W-161).
     assert items[0].labels["en"] == "Heb. 8° 1234"

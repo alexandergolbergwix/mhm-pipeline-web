@@ -485,38 +485,54 @@ def known_work_qid_for_title(title: str) -> str | None:
     return None
 
 # Bible books → Wikidata QIDs (for P921 main subject from canonical_references)
+#
+# CORRECTED 2026-08-05. Ten of the thirteen QIDs here were wrong, and they were
+# emitted as P921 (main subject) on public items: Deuteronomy pointed at "natural
+# monument", Isaiah at "Yggdrasil", Jeremiah at "Tom and Jerry", Leviticus at
+# "calcium carbonate", Numbers at "aragonite", Samuel at a species of endive,
+# Joshua at "tuba", Job at an Italian footballer, Kings at "office" and Proverbs
+# at "mass density". This is precisely the failure Rule W-26 exists to prevent —
+# a QID written from memory looks exactly like a verified one.
+#
+# Every value below was fetched live via `wbsearchentities` + `wbgetentities` and
+# its English label recorded beside it. Do not add a row without doing the same.
 BIBLE_BOOK_TO_QID: dict[str, str] = {
-    "Genesis": "Q9184",
-    "Exodus": "Q9190",
-    "Leviticus": "Q23767",
-    "Numbers": "Q23775",
-    "Deuteronomy": "Q23790",
-    "Joshua": "Q131168",
-    "Samuel": "Q178547",
-    "Kings": "Q182060",
-    "Isaiah": "Q131135",
-    "Jeremiah": "Q131144",
-    "Psalms": "Q41064",
-    "Proverbs": "Q29539",
-    "Job": "Q43304",
+    "Genesis": "Q9184",        # Book of Genesis
+    "Exodus": "Q9190",         # Exodus
+    "Leviticus": "Q41490",     # Leviticus
+    "Numbers": "Q43099",       # Book of Numbers
+    "Deuteronomy": "Q42614",   # Deuteronomy
+    "Joshua": "Q47680",        # Joshua
+    "Samuel": "Q181620",       # Books of Samuel
+    "Kings": "Q4224666",       # Books of Kings
+    "Isaiah": "Q131458",       # Isaiah
+    "Jeremiah": "Q131590",     # Jeremiah
+    "Psalms": "Q41064",        # Psalms
+    "Proverbs": "Q4579",       # Proverbs
+    "Job": "Q4577",            # Book of Job
 }
 
 # Talmud Bavli tractates → Wikidata QIDs (for P921 main subject)
+#
+# CORRECTED 2026-08-05. ALL FOURTEEN were wrong, and also emitted as P921 on
+# public items: Shabbat pointed at a species of arachnid, Bava Batra at the
+# central bank of Brazil, Avodah Zarah at a Japanese TV drama, Nedarim at an
+# episode of Beverly Hills 90210. Verified live, labels recorded (Rule W-26).
 TALMUD_TRACTATE_TO_QID: dict[str, str] = {
-    "ברכות": "Q598626",
-    "שבת": "Q2276714",
-    "פסחים": "Q2364178",
-    "יומא": "Q2605561",
-    "סוטה": "Q1544949",
-    "קידושין": "Q2360571",
-    "בבא קמא": "Q806189",
-    "בבא בתרא": "Q806186",
-    "סנהדרין": "Q605375",
-    "עבודה זרה": "Q1135584",
-    "כתובות": "Q2360474",
-    "נדרים": "Q2604843",
-    "נזיר": "Q2605296",
-    "שבועות": "Q2606013",
+    "ברכות": "Q2211504",       # Berakhot
+    "שבת": "Q2703125",         # Mishnah Shabbat
+    "פסחים": "Q1974785",       # Pesahim
+    "יומא": "Q1063210",        # Yoma
+    "סוטה": "Q927314",         # Sotah
+    "קידושין": "Q927378",      # Tractate Kiddushin
+    "בבא קמא": "Q811989",      # Bava Kamma
+    "בבא בתרא": "Q811988",     # Bava Batra
+    "סנהדרין": "Q2358436",     # Massechet Sanhedrin
+    "עבודה זרה": "Q791251",    # Avodah Zarah
+    "כתובות": "Q657535",       # Tractate Ketubot
+    "נדרים": "Q17051386",      # Nedarim
+    "נזיר": "Q1264302",        # Nazir
+    "שבועות": "Q2363125",      # Shevu'ot
 }
 
 # LCSH subject terms → Wikidata QIDs (for P921 main subject)
@@ -1023,22 +1039,11 @@ def date_to_wikidata(dates_dict: dict[str, object]) -> DateResult | None:
             end_year,
         )
 
-    # Hebrew century: "מאה ט"ז" (16th century)
-    heb_century = _parse_hebrew_century(original)
-    if heb_century:
-        start_year = (heb_century - 1) * 100 + 1
-        end_year = heb_century * 100
-        return (
-            f"+{start_year:04d}-00-00T00:00:00Z",
-            PRECISION_CENTURY,
-            _calendar_for_year(start_year),
-            start_year,
-            end_year,
-        )
-
-    # Hebrew century range: "מאה י"ד-ט"ו" — use the EARLIER century as the
-    # main value (precision 7 = century); the full range is captured via
-    # P1319/P1326 (Fix 2026-04-15 third audit Fix #12).
+    # Hebrew century RANGE first: "מאה י"ד-ט"ו". This MUST precede the
+    # single-century branch: `_parse_hebrew_century` matches the first century in
+    # a range, so `מאה ט"ז-י"ז` yielded bounds of 1501-1600 and silently discarded
+    # the 17th-century half — which then made a colophon-attested 1676 look like
+    # it fell outside the catalogue range (Rule W-164).
     range_match = re.search(
         r'מאה\s+([א-ת]["\u05F4\']?[א-ת]?)\s*[-–]\s*([א-ת]["\u05F4\']?[א-ת]?)',
         original.replace('""', '"'),
@@ -1058,6 +1063,19 @@ def date_to_wikidata(dates_dict: dict[str, object]) -> DateResult | None:
                 start_year,
                 end_year,
             )
+
+    # Hebrew century: "מאה ט"ז" (16th century)
+    heb_century = _parse_hebrew_century(original)
+    if heb_century:
+        start_year = (heb_century - 1) * 100 + 1
+        end_year = heb_century * 100
+        return (
+            f"+{start_year:04d}-00-00T00:00:00Z",
+            PRECISION_CENTURY,
+            _calendar_for_year(start_year),
+            start_year,
+            end_year,
+        )
 
     # Gregorian year in string: extract 4-digit year
     year_match = re.search(r"\b(\d{4})\b", original)

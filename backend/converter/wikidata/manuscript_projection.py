@@ -370,6 +370,42 @@ class ManuscriptProjectionMixin:
                 inception_ref = colophon_ref
             else:
                 inception_ref = ref
+
+            # A colophon-attested year NARROWS a century; it never widens or
+            # invents one. `date_to_wikidata` encodes a century as its first year
+            # — the 16th century becomes +1501 — so two items in run 48ba6c13
+            # asserted an inception of 1501 while their own MARC 260 $c read
+            # "מאה ט"ז-י"ז, לפני תל"ו (1676)". The audited dating policy already
+            # layers the colophon over the catalog date and refuses to escape the
+            # catalog range, but it was not on this path at all (Rule W-164).
+            from converter.transformer.production_year import (  # noqa: PLC0415
+                manuscript_production_year,
+            )
+
+            audited_year = manuscript_production_year(record)
+            if (
+                audited_year is not None
+                and precision == PRECISION_CENTURY
+                and earliest_year
+                and latest_year
+                and earliest_year <= audited_year <= latest_year
+            ):
+                time_value = f"+{audited_year:04d}-00-00T00:00:00Z"
+                precision = PRECISION_YEAR
+                # The century bounds stay as P1319/P1326 qualifiers: the catalogue
+                # only committed to a century, and that remains true.
+                if not any(
+                    q.get("property") == P_BASED_ON_HEURISTIC
+                    for q in inception_ref
+                ):
+                    inception_ref = list(inception_ref) + [
+                        {
+                            "property": P_BASED_ON_HEURISTIC,
+                            "value": Q_COLOPHON,
+                            "type": "item",
+                        }
+                    ]
+
             item.statements.append(
                 WikidataStatement(
                     property_id=P_INCEPTION,
