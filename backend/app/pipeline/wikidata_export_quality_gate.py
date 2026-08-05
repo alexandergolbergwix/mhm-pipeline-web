@@ -128,6 +128,28 @@ _NLI_LABEL_RE = re.compile(r"\bJerusalem,\s*NLI\b", re.IGNORECASE)
 _QID_VALUE_RE = re.compile(r"Q\d+")
 
 
+def _static_projected_qids() -> frozenset[str]:
+    """QIDs the projection picks from a table WE maintain (Rule W-164).
+
+    Everything else on a statement was reconciled at runtime, so no table exists
+    to gloss it from.
+    """
+    from converter.wikidata import property_mapping  # noqa: PLC0415
+    from converter.wikidata.holding_institutions import _INSTITUTIONS  # noqa: PLC0415
+
+    out: set[str] = set(_INSTITUTIONS)
+    for name in dir(property_mapping):
+        value = getattr(property_mapping, name)
+        if isinstance(value, str) and _QID_VALUE_RE.fullmatch(value):
+            out.add(value)
+        elif isinstance(value, dict):
+            for item in value.values():
+                for candidate in (item if isinstance(item, (list, tuple)) else [item]):
+                    if isinstance(candidate, str) and _QID_VALUE_RE.fullmatch(candidate):
+                        out.add(candidate)
+    return frozenset(out)
+
+
 def _holder_findings(
     items: list[Any],
     marc_records: list[dict[str, Any]] | None,
@@ -292,12 +314,25 @@ def _claim_provenance_findings(
             if not _QID_VALUE_RE.fullmatch(value):
                 continue
             gloss = str(value_labels.get(value) or stmt.get("value_label") or "")
-            if not gloss or gloss == value:
-                pid = str(stmt.get("property") or stmt.get("property_id") or "")
+            if gloss and gloss != value:
+                continue
+            pid = str(stmt.get("property") or stmt.get("property_id") or "")
+            if value in _static_projected_qids():
+                # A QID WE chose from a static table and then failed to gloss. The
+                # gloss is how a wrong constant becomes visible — the audit that
+                # found 24 of them started from exactly this check (Rule W-164).
                 blocking.append(
-                    f"MISSING_VALUE_LABEL {local_id} {value}: {pid} projects a QID "
-                    "with no label — add it to QID_LABELS or to the audited "
-                    "holding-institution table",
+                    f"MISSING_VALUE_LABEL {local_id} {value}: {pid} projects a "
+                    "static QID with no label — add it to QID_LABELS or to the "
+                    "audited holding-institution table",
+                )
+            else:
+                # Reconciled at runtime (a KIMA place, a matched person). There is
+                # no static table to add it to; the fix is for the reconciler to
+                # stamp `value_label`, so this is a coverage gap, not a build bug.
+                informational.append(
+                    f"value_label_missing_for_reconciled_qid {local_id} {value}: "
+                    f"{pid} — the reconciler did not stamp a label",
                 )
     return blocking, informational
 

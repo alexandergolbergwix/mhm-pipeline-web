@@ -121,3 +121,58 @@ class TestInceptionUsesTheAuditedYear:
         assert found is not None
         assert found[0].startswith("+1501")
         assert found[1] == 7
+
+
+class TestTheBraginskyItemEndToEnd:
+    """The exact item from run 48ba6c13 that shipped labelled "Jerusalem, NLI"."""
+
+    _CN = "990001882630205171"
+
+    def _labels(self) -> tuple[dict, dict]:
+        from app.pipeline.hmo_canonical import CanonicalHmoEntity
+        from app.pipeline.hmo_canonical_wikidata import (
+            _wikidata_labels_and_aliases,
+            canonical_studio_context,
+        )
+
+        record = {
+            "_control_number": self._CN,
+            "control_number": self._CN,
+            "title": "מלאכת שלמה (סדר זרעים)",
+            "shelfmark": "F 41164",
+            "languages": ["heb"],
+            "contributors": [{
+                "name": '"Braginsky Collection of Hebrew Manuscripts and Printed Books',
+                "role": '"current owner',
+                "field": "710",
+            }],
+        }
+        entity = CanonicalHmoEntity(
+            local_id=f"QDraft_MS_{self._CN}",
+            source_uri=f"https://example.org/marc/{self._CN}",
+            wikibase_id="Q1",
+            revision_id=1,
+            labels={"he": "מלאכת שלמה (סדר זרעים)"},
+            descriptions={},
+            aliases={},
+            claims=[{
+                "property_uri": "https://w3id.org/mhm/ontology#shelfmark",
+                "value": "F 41164",
+            }],
+            authority_evidence=[],
+            source_fingerprint="fp",
+            entity_type="manuscript",
+            control_numbers=[self._CN],
+        )
+        context = canonical_studio_context(marc_records=[record], approved_matches=[])
+        return _wikidata_labels_and_aliases(entity, "manuscript", context=context)
+
+    def test_the_label_names_the_holder_marc_attests(self) -> None:
+        labels, _aliases = self._labels()
+        assert labels["en"] == "Braginsky Collection, F 41164"
+        assert "NLI" not in labels["en"]
+
+    def test_the_hebrew_label_is_a_designation_and_the_title_an_alias(self) -> None:
+        labels, aliases = self._labels()
+        assert labels["he"] == "כתב יד עברי, Braginsky Collection, F 41164"
+        assert "מלאכת שלמה (סדר זרעים)" in aliases["he"]
