@@ -12,6 +12,10 @@ from __future__ import annotations
 from typing import Any
 
 from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.wikidata_duplicate_probe import (
+    duplicate_check_fallback,
+    stamp_duplicate_check,
+)
 from app.pipeline.wikidata_verdict_cache import marc_context_for_wikidata_item
 
 _WIKIBASE_HOST_HINTS = (
@@ -447,11 +451,9 @@ def build_verify_evidence_pack(
             # Live duplicate check for CREATE candidates (Rule W-139). A
             # `candidates_found` status means an item with this identifier is
             # already on Wikidata; `unavailable`/`skipped` means we do NOT know.
-            "duplicate_check": item.get("_wikidata_existence") or {
-                "status": "not_run",
-                "candidates": [],
-                "note": "duplicate probe did not run for this item",
-            },
+            # `stamp_duplicate_check` re-publishes this after the pack is built,
+            # so the fallback only survives when no probe ran at all (Rule W-159).
+            "duplicate_check": item.get("_wikidata_existence") or duplicate_check_fallback(),
         },
         "hmo_wikibase": {
             "hmo_wikibase_id": hmo_qid or None,
@@ -486,3 +488,6 @@ def enrich_items_with_verify_evidence(
         pack = build_verify_evidence_pack(item, marc_records)
         item["verify_evidence"] = pack
         item["_marc_context"] = pack.get("marc") or {}
+        # Rebuilding the pack would otherwise silently discard a probe answer
+        # stamped earlier, which is how the export lost all 343 of them.
+        stamp_duplicate_check(item)

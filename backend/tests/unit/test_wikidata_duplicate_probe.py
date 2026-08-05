@@ -11,14 +11,20 @@ from app.pipeline.wikidata_duplicate_probe import (
     STATUS_ABSENT,
     STATUS_CANDIDATES,
     STATUS_HAS_QID,
+    STATUS_NOT_RUN,
     STATUS_SKIPPED,
     STATUS_UNAVAILABLE,
     attach_duplicate_evidence,
+    duplicate_class_for_item,
+    duplicate_status_for_item,
     identity_probes,
-    probe_item,
     search_by_statement,
+    stamp_duplicate_check,
 )
-from app.pipeline.wikidata_verify_evidence import build_verify_evidence_pack
+from app.pipeline.wikidata_verify_evidence import (
+    build_verify_evidence_pack,
+    enrich_items_with_verify_evidence,
+)
 
 
 def _hit(qid: str, *, pid: str = "P214", value: str = "61512894"):
@@ -105,20 +111,24 @@ class TestSearchByStatement:
         assert result["candidates"] == []
 
 
-class TestProbeItem:
+def _probe_one(item: dict, *, fetch) -> dict:
+    """The per-item answer, via the only production entry point."""
+    asyncio.run(attach_duplicate_evidence(None, [item], fetch=fetch))
+    return item["_wikidata_existence"]
+
+
+class TestSingleItemAnswer:
     def test_duplicate_is_surfaced(self) -> None:
-        result = asyncio.run(probe_item(None, _person(), fetch=_hit("Q118924043")))
+        result = _probe_one(_person(), fetch=_hit("Q118924043"))
         assert result["status"] == STATUS_CANDIDATES
         assert result["candidates"][0]["qid"] == "Q118924043"
 
     def test_item_with_existing_qid_is_an_update_not_a_create(self) -> None:
-        result = asyncio.run(probe_item(None, _person(existing_qid="Q42"), fetch=_boom))
+        result = _probe_one(_person(existing_qid="Q42"), fetch=_boom)
         assert result["status"] == STATUS_HAS_QID
 
     def test_item_without_identifiers_says_absence_is_not_established(self) -> None:
-        result = asyncio.run(
-            probe_item(None, {"entity_type": "work", "statements": []}, fetch=_miss),
-        )
+        result = _probe_one({"entity_type": "work", "statements": []}, fetch=_miss)
         assert result["status"] == STATUS_SKIPPED
         assert "NOT established" in result["note"]
 
@@ -580,3 +590,66 @@ class TestUnbatchableProbesAreBounded:
         stats = asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
         assert calls == 5
         assert "dropped_unbatched" not in stats
+
+
+class TestOneWriterForTheDuplicateAnswer:
+    """Rule W-159 — the two surfaces are the same object, in either order."""
+
+    @staticmethod
+    def _marc() -> list[dict[str, object]]:
+        return [{"control_number": "990000403370205171", "title": "t"}]
+
+    def test_probe_then_enrich_publishes_the_answer_into_the_pack(self) -> None:
+        item = _person()
+        asyncio.run(attach_duplicate_evidence(None, [item], fetch=_batch_hit))
+        enrich_items_with_verify_evidence([item], self._marc())
+
+        in_pack = item["verify_evidence"]["wikidata_existing"]["duplicate_check"]
+        assert in_pack["status"] == STATUS_CANDIDATES
+        assert in_pack is item["_wikidata_existence"]
+
+    def test_enrich_then_probe_publishes_the_answer_into_the_pack(self) -> None:
+        item = _person()
+        enrich_items_with_verify_evidence([item], self._marc())
+        assert (
+            item["verify_evidence"]["wikidata_existing"]["duplicate_check"]["status"]
+            == STATUS_NOT_RUN
+        )
+
+        asyncio.run(attach_duplicate_evidence(None, [item], fetch=_batch_hit))
+
+        # This is the export (23) regression: the pack used to keep `not_run`
+        # forever because it was built before the probe and never republished.
+        in_pack = item["verify_evidence"]["wikidata_existing"]["duplicate_check"]
+        assert in_pack["status"] == STATUS_CANDIDATES
+        assert in_pack is item["_wikidata_existence"]
+
+    def test_an_unprobed_item_reads_not_run_never_absent(self) -> None:
+        item = _person()
+        enrich_items_with_verify_evidence([item], self._marc())
+        assert duplicate_status_for_item(item) == STATUS_NOT_RUN
+        assert duplicate_class_for_item(item) == "unknown"
+
+    def test_the_class_is_readable_from_the_pack_alone(self) -> None:
+        """The read path has no `_wikidata_existence` — only the persisted pack."""
+        item = _person()
+        asyncio.run(attach_duplicate_evidence(None, [item], fetch=_batch_hit))
+        enrich_items_with_verify_evidence([item], self._marc())
+        item.pop("_wikidata_existence")
+
+        assert duplicate_status_for_item(item) == STATUS_CANDIDATES
+        assert duplicate_class_for_item(item) == "probed-conclusive"
+
+    def test_stamping_is_idempotent_and_never_invents_an_answer(self) -> None:
+        item = _person()
+        enrich_items_with_verify_evidence([item], self._marc())
+        first = stamp_duplicate_check(item)
+        assert stamp_duplicate_check(item) is first
+        assert first["status"] == STATUS_NOT_RUN
+        assert first["candidates"] == []
+
+    def test_a_skipped_answer_is_not_conclusive(self) -> None:
+        item = {"entity_type": "work", "statements": []}
+        asyncio.run(attach_duplicate_evidence(None, [item], fetch=_miss))
+        assert duplicate_status_for_item(item) == STATUS_SKIPPED
+        assert duplicate_class_for_item(item) == "unknown"

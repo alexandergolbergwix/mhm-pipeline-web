@@ -1350,14 +1350,26 @@ async def export_wikidata_items(
     from app.db import session_scope  # noqa: PLC0415
     from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
         attach_cached_duplicate_evidence,
+        stamp_duplicate_check,
     )
+    from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
+        enrich_items_with_verify_evidence,
+    )
+
+    # Build the evidence pack BEFORE the probe answer is stamped, then let
+    # `stamp_duplicate_check` publish that answer into it. Doing it the other way
+    # round is what left `verify_evidence.wikidata_existing.duplicate_check` reading
+    # `not_run` on all 343 items of export (23) while 314 answers sat at the top
+    # level (Rule W-159). `fetch_merged_wikidata_items` only enriches when a stored
+    # verdict exists, so the pack is guaranteed here (Rule W-62).
+    marc_records = await _load_marc_records_for_run(db, run_id)
+    enrich_items_with_verify_evidence(items, marc_records)
 
     await db.rollback()
     await attach_cached_duplicate_evidence(session_scope, items)
     for item in items:
-        existence = item.pop("_wikidata_existence", None)
-        if existence is not None:
-            item["duplicate_check"] = existence
+        item["duplicate_check"] = stamp_duplicate_check(item)
+        item.pop("_wikidata_existence", None)
 
     filename = f"run-{run_id}-wikidata-studio-items.{format}"
     if format == "json":
@@ -1372,7 +1384,6 @@ async def export_wikidata_items(
             return ""
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
-    marc_records = await _load_marc_records_for_run(db, run_id)
     fields = [
         "local_id", "entity_type", "existing_qid", "approved", "source_uri",
         "record_ids_json", "label_en", "label_he", "description_en", "description_he",

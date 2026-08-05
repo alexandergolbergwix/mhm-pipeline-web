@@ -30,8 +30,6 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 logger = logging.getLogger(__name__)
 
 PROBE_SCHEMA = "dup_probe_v1"
@@ -75,6 +73,70 @@ STATUS_CANDIDATES = "candidates_found"
 STATUS_UNAVAILABLE = "unavailable"
 STATUS_SKIPPED = "skipped"
 STATUS_HAS_QID = "already_linked"
+STATUS_NOT_RUN = "not_run"
+
+# The statuses that actually answer "does this already exist on Wikidata?".
+# Everything else means UNKNOWN, and the judge must not read it as "new"
+# (Rule W-144).
+CONCLUSIVE_STATUSES = frozenset({STATUS_ABSENT, STATUS_CANDIDATES, STATUS_HAS_QID})
+
+# The coarse class the read path CAN reproduce. The raw probe payload cannot key a
+# verdict (Rule W-136) — this can, because it is derived from the persisted answer.
+DUP_CLASS_CONCLUSIVE = "probed-conclusive"
+DUP_CLASS_UNKNOWN = "unknown"
+
+
+def duplicate_check_fallback() -> dict[str, Any]:
+    """The answer for an item no probe has touched. Never ``absent``."""
+    return {
+        "status": STATUS_NOT_RUN,
+        "candidates": [],
+        "note": "duplicate probe did not run for this item",
+    }
+
+
+def duplicate_status_for_item(item: dict[str, Any]) -> str:
+    """The duplicate status of *item*, from whichever surface carries it."""
+    existence = item.get("_wikidata_existence")
+    if isinstance(existence, dict) and existence.get("status"):
+        return str(existence["status"])
+    pack = item.get("verify_evidence")
+    if isinstance(pack, dict):
+        existing = pack.get("wikidata_existing")
+        if isinstance(existing, dict):
+            check = existing.get("duplicate_check")
+            if isinstance(check, dict) and check.get("status"):
+                return str(check["status"])
+    return STATUS_NOT_RUN
+
+
+def duplicate_class_for_item(item: dict[str, Any]) -> str:
+    return (
+        DUP_CLASS_CONCLUSIVE
+        if duplicate_status_for_item(item) in CONCLUSIVE_STATUSES
+        else DUP_CLASS_UNKNOWN
+    )
+
+
+def stamp_duplicate_check(item: dict[str, Any]) -> dict[str, Any]:
+    """Publish the duplicate answer to every surface — the only writer (Rule W-159).
+
+    Export (23) reported ``duplicate_check: not_run`` inside ``verify_evidence`` on
+    all 343 items while 314 answers sat at the top level, because the export built
+    the evidence pack *before* stamping the probe and never rebuilt it. Two
+    surfaces written by two code paths in two orders will always drift eventually,
+    so they are now literally the same object.
+    """
+    existence = item.get("_wikidata_existence")
+    if not isinstance(existence, dict) or not existence:
+        existence = duplicate_check_fallback()
+        item["_wikidata_existence"] = existence
+    pack = item.get("verify_evidence")
+    if isinstance(pack, dict):
+        existing = pack.get("wikidata_existing")
+        if isinstance(existing, dict):
+            existing["duplicate_check"] = existence
+    return existence
 
 
 def probe_enabled() -> bool:
@@ -333,27 +395,6 @@ def search_by_statement(
     }
 
 
-def _merge(results: list[dict[str, Any]]) -> dict[str, Any]:
-    candidates: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    unavailable = False
-    for result in results:
-        if result.get("status") == STATUS_UNAVAILABLE:
-            unavailable = True
-        for candidate in result.get("candidates") or []:
-            qid = str(candidate.get("qid") or "")
-            if qid and qid not in seen:
-                seen.add(qid)
-                candidates.append(candidate)
-    if candidates:
-        status = STATUS_CANDIDATES
-    elif unavailable:
-        status = STATUS_UNAVAILABLE
-    else:
-        status = STATUS_ABSENT
-    return {"status": status, "candidates": candidates}
-
-
 def decide_without_network(item: dict[str, Any]) -> dict[str, Any] | None:
     """The two verdicts that need no lookup, or ``None`` when a probe is needed."""
     existing = str(item.get("existing_qid") or "").strip()
@@ -374,52 +415,6 @@ def decide_without_network(item: dict[str, Any]) -> dict[str, Any] | None:
             ),
         }
     return None
-
-
-async def probe_item(
-    db: AsyncSession | None,
-    item: dict[str, Any],
-    *,
-    fetch: Any = None,
-    skip_cache: bool = False,
-) -> dict[str, Any]:
-    """Existence evidence for one Studio item (cached; never raises)."""
-    decided = decide_without_network(item)
-    if decided is not None:
-        return decided
-    probes = identity_probes(item)
-
-    async def run() -> dict[str, Any]:
-        from fastapi.concurrency import run_in_threadpool  # noqa: PLC0415
-
-        results = [
-            await run_in_threadpool(
-                search_by_statement, probe["pid"], probe["value"], fetch=fetch,
-            )
-            for probe in probes
-        ]
-        return {**_merge(results), "probed": probes}
-
-    if db is None:
-        return await run()
-
-    from app.pipeline.inference_cache import cache_lookup_or_call  # noqa: PLC0415
-
-    try:
-        return await cache_lookup_or_call(
-            db,
-            kind="wikidata.duplicate_probe",
-            query_summary={
-                "schema": PROBE_SCHEMA,
-                "entity_type": item.get("entity_type"),
-                "probes": probes,
-            },
-            fetch=run,
-            skip_cache=skip_cache,
-        )
-    except Exception as exc:  # noqa: BLE001 — a probe must never break verify
-        logger.warning("duplicate probe cache path failed: %s", exc)
-        return {"status": STATUS_UNAVAILABLE, "candidates": [], "error": str(exc)}
 
 
 def _batch_query(pairs: list[tuple[str, str]]) -> str:
@@ -630,6 +625,8 @@ async def attach_cached_duplicate_evidence(
         1 for item in items
         if (item.get("_wikidata_existence") or {}).get("status") == STATUS_CANDIDATES
     )
+    for item in items:
+        stamp_duplicate_check(item)
     return stats
 
 
@@ -867,5 +864,7 @@ async def attach_duplicate_evidence(
         1 for item in items
         if (item.get("_wikidata_existence") or {}).get("status") == STATUS_CANDIDATES
     )
+    for item in items:
+        stamp_duplicate_check(item)
     logger.info("wikidata duplicate probe: %s", stats)
     return stats
