@@ -1,12 +1,24 @@
-"""Hard export-quality gate for Wikidata Studio builds."""
+"""Hard export-quality gate for Wikidata Studio builds.
+
+Findings come in two severities and the distinction is the whole design:
+
+* **blocking** — a build bug. The projection asserted something the evidence does
+  not support, or lost an identity it was given. A curator cannot override these
+  (Rule W-137); they clear by fixing a lookup table or a projection.
+* **informational** — a reviewed decision or a sparse catalog record. Blocking on
+  these would make a perfectly valid but thin MARC record unbuildable.
+"""
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from typing import Any
 
 from converter.wikidata.item_validator import validate_item
+
+logger = logging.getLogger(__name__)
 
 # A label ending in a library signature: "Jerusalem, NLI, F 12345".
 _LABEL_SHELFMARK_RE = re.compile(r"([A-Z]{1,3}\.?\s?\d[\d\-/. ]*)$")
@@ -112,29 +124,60 @@ def _work_title_errors(items: list[Any]) -> list[str]:
     return errors
 
 
-def assert_wikidata_export_quality(items: list[Any]) -> None:
-    """Raise when built items have ERROR-severity issues that indicate a build bug.
+def wikidata_export_quality_report(
+    items: list[Any],
+    *,
+    serialised_items: list[dict[str, Any]] | None = None,
+    marc_records: list[dict[str, Any]] | None = None,
+) -> dict[str, list[str]]:
+    """Audit built items and split findings into blocking / informational.
 
-    Uses the full ``validate_item`` ERROR set so a bad projection cannot be
-    cached or handed to the curator as clean Studio output.
+    ``serialised_items`` and ``marc_records`` unlock the evidence-level checks,
+    which need the serialised statement/claim shape the verify pack is built
+    from. Callers that only have native items still get every identity check.
     """
     from app.pipeline.wikidata_local_refs import dangling_local_references  # noqa: PLC0415
 
-    errors: list[str] = _manuscript_identity_errors(items)
-    errors.extend(
+    blocking: list[str] = _manuscript_identity_errors(items)
+    informational: list[str] = []
+
+    blocking.extend(
         f"DANGLING_LOCAL_REFERENCE {ref}: two-pass upload placeholder names an "
         "item this build did not produce"
         for ref in dangling_local_references(items)
     )
-    errors.extend(_work_title_errors(items))
+    blocking.extend(_work_title_errors(items))
     for item in items:
         local_id = str(getattr(item, "local_id", "") or "")
         if not _label_text(item):
-            errors.append(f"MISSING_LABEL {local_id}: item has no label")
+            blocking.append(f"MISSING_LABEL {local_id}: item has no label")
         for issue in validate_item(item):
             if issue.severity != "error":
                 continue
-            errors.append(f"{issue.code} {local_id}: {issue.message}")
+            blocking.append(f"{issue.code} {local_id}: {issue.message}")
+
+    return {"blocking": blocking, "informational": informational}
+
+
+def assert_wikidata_export_quality(
+    items: list[Any],
+    *,
+    serialised_items: list[dict[str, Any]] | None = None,
+    marc_records: list[dict[str, Any]] | None = None,
+) -> None:
+    """Raise when built items have blocking findings that indicate a build bug.
+
+    Uses the full ``validate_item`` ERROR set so a bad projection cannot be
+    cached or handed to the curator as clean Studio output. Informational
+    findings are logged and never block.
+    """
+    report = wikidata_export_quality_report(
+        items, serialised_items=serialised_items, marc_records=marc_records,
+    )
+    for finding in report["informational"]:
+        logger.warning("wikidata export quality [informational] %s", finding)
+
+    errors = report["blocking"]
     if not errors:
         return
     sample = errors[:12]

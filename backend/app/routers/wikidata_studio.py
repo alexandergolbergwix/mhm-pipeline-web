@@ -658,9 +658,17 @@ async def execute_studio_build(
             context=context,
             reconcile=reconcile,
             legacy_native_items=legacy_result.get("native_items") or [],
+            return_native=True,
         )
         items = result["items"]
         summary = result["summary"]
+        # The canonical projection is gated exactly like the legacy one: a build
+        # bug must not reach the Studio cache or the curator (Rule W-163).
+        assert_wikidata_export_quality(
+            result["native_items"] or [],
+            serialised_items=items,
+            marc_records=[dict(r.marc) for r in records],
+        )
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=result["quickstatements"], summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
         row = await _get_studio_cache_row(db, run_id, approved_only, source)
         if row is None:
@@ -728,7 +736,11 @@ async def execute_studio_build(
         hebrew_translit.clear_prewarmed_labels()
 
     if result.get("native_items"):
-        assert_wikidata_export_quality(result["native_items"])
+        assert_wikidata_export_quality(
+            result["native_items"],
+            serialised_items=result["items"],
+            marc_records=marc_records,
+        )
         for it_dict, it_native in zip(
             result["items"], result["native_items"], strict=True,
         ):
