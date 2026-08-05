@@ -146,6 +146,7 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
         ),
         work_candidate_evidence=_union_work_evidence(
             canonical.work_candidate_evidence, legacy.work_candidate_evidence,
+            allowed_records=set(_merged_records(canonical, legacy)),
         ),
     )
     # Prefer non-empty legacy labels/descriptions when canonical is thin.
@@ -313,15 +314,34 @@ def _union_evidence(
     return out
 
 
-def _union_work_evidence(a: Any, b: Any) -> list[dict[str, object]]:
+def _union_work_evidence(
+    a: Any,
+    b: Any,
+    *,
+    allowed_records: set[str] | None = None,
+) -> list[dict[str, object]]:
+    """Union work evidence, keyed by the record each row came from.
+
+    Deduping on the title alone silently kept whichever row came first when two
+    records attested the same title, and nothing dropped a row whose record was
+    not among the merged item's own — which is exactly how ``QDraft_Work_37``
+    carried evidence from a record it does not cite (Rule W-165).
+    """
     rows_a = a if isinstance(a, list) else ([a] if isinstance(a, dict) and a else [])
     rows_b = b if isinstance(b, list) else ([b] if isinstance(b, dict) and b else [])
     out: list[dict[str, object]] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str, str]] = set()
     for row in list(rows_a) + list(rows_b):
         if not isinstance(row, dict):
             continue
-        key = str(row.get("title") or row.get("source_text") or row)
+        record_id = str(row.get("source_record_id") or "")
+        if allowed_records is not None and record_id and record_id not in allowed_records:
+            continue
+        key = (
+            str(row.get("title") or row.get("source_text") or ""),
+            record_id,
+            str(row.get("source_field") or ""),
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -511,12 +531,51 @@ def _index_works(items: list[WikidataItem]) -> dict[str, WikidataItem]:
     return index
 
 
+def _work_evidence_pairs(item: WikidataItem) -> set[tuple[str, str]]:
+    """Accepted ``(title, source_record_id)`` pairs on a work."""
+    pairs: set[tuple[str, str]] = set()
+    for row in getattr(item, "work_candidate_evidence", None) or []:
+        if isinstance(row, dict):
+            pairs.add((
+                str(row.get("title") or "").casefold(),
+                str(row.get("source_record_id") or ""),
+            ))
+    return pairs
+
+
+def _work_match_is_compatible(canonical: WikidataItem, legacy: WikidataItem) -> bool:
+    """May a label-keyed work match merge?
+
+    QID and local-id keys are exact and need no test. A LABEL match does: two
+    works can share a label and be attested from unrelated records, and merging
+    them unions both their records and their evidence — how ``QDraft_Work_37``
+    came to carry a third record's evidence rows (Rule W-165).
+
+    The block is targeted at that case, not at every label match: two works that
+    each name records and name *disjoint* ones are different works. Recordless
+    works still merge, because refusing would just mint a duplicate.
+    """
+    if canonical.existing_qid and canonical.existing_qid == legacy.existing_qid:
+        return True
+    if canonical.local_id and canonical.local_id == legacy.local_id:
+        return True
+    left, right = _control_numbers_of(canonical), _control_numbers_of(legacy)
+    if left and right and not (left & right):
+        # Both are anchored, to different records. Corroborated evidence can still
+        # justify the merge; nothing else can.
+        return bool(_work_evidence_pairs(canonical) & _work_evidence_pairs(legacy))
+    return True
+
+
 def _match_work(
     item: WikidataItem,
     index: dict[str, WikidataItem],
 ) -> WikidataItem | None:
     for key in _work_keys(item):
         hit = index.get(key)
-        if hit is not None:
-            return hit
+        if hit is None:
+            continue
+        if key.startswith("label:") and not _work_match_is_compatible(item, hit):
+            continue
+        return hit
     return None

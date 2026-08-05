@@ -302,6 +302,53 @@ def _claim_provenance_findings(
     return blocking, informational
 
 
+_ATTESTED_IN_RE = re.compile(r"attested in NLI record\s+(\d+)")
+
+
+def _work_identity_findings(items: list[Any]) -> list[str]:
+    """A work names ONE record, on every surface it names one at all (W-165).
+
+    `QDraft_Work_37` shipped a label from the HMO snapshot, a description citing
+    record 990000592310205171 (whose MARC 245 is a different work), and evidence
+    sourced from 990001253400205171 — three sources, three answers.
+    """
+    errors: list[str] = []
+    for item in items:
+        if str(getattr(item, "entity_type", "") or "").strip().lower() != "work":
+            continue
+        local_id = str(getattr(item, "local_id", "") or "")
+        records = {str(r) for r in (getattr(item, "records", None) or []) if r}
+        evidence = [
+            row for row in (getattr(item, "work_candidate_evidence", None) or [])
+            if isinstance(row, dict)
+        ]
+        evidence_records = {
+            str(row.get("source_record_id") or "")
+            for row in evidence
+        } - {""}
+
+        descriptions = getattr(item, "descriptions", {}) or {}
+        cited = {
+            match.group(1)
+            for text in descriptions.values()
+            for match in [_ATTESTED_IN_RE.search(str(text or ""))]
+            if match
+        }
+        for cn in sorted(cited - records - evidence_records):
+            errors.append(
+                f"WORK_EVIDENCE_RECORD_MISMATCH {local_id}: the description is "
+                f"attested in record {cn}, which is neither in the item's records "
+                f"{sorted(records) or '[]'} nor in its evidence "
+                f"{sorted(evidence_records) or '[]'}",
+            )
+        for cn in sorted(evidence_records - records) if records else []:
+            errors.append(
+                f"WORK_EVIDENCE_RECORD_MISMATCH {local_id}: evidence cites record "
+                f"{cn}, which is not among the item's records {sorted(records)}",
+            )
+    return errors
+
+
 def wikidata_export_quality_report(
     items: list[Any],
     *,
@@ -325,6 +372,7 @@ def wikidata_export_quality_report(
         for ref in dangling_local_references(items)
     )
     blocking.extend(_work_title_errors(items))
+    blocking.extend(_work_identity_findings(items))
     for item in items:
         local_id = str(getattr(item, "local_id", "") or "")
         if not _label_text(item):

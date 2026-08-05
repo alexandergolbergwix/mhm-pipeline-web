@@ -1266,6 +1266,73 @@ def _marc_record_for_entity(
     return dict(record) if record else None
 
 
+def _work_identity_record(
+    entity: CanonicalHmoEntity,
+    context: CanonicalStudioContext | None,
+) -> tuple[str, dict[str, Any] | None]:
+    """The single record this WORK item is attested from (Rule W-165).
+
+    Manuscripts have had this anchor since Rule W-137; works had none, so the
+    label came from the HMO snapshot, the description's "attested in NLI record X"
+    clause came from the first control number that happened to index, and
+    `work_candidate_evidence` came from an independent third walk. `QDraft_Work_37`
+    ended up naming three different records at once.
+
+    Precedence:
+      1. ``identity_control_number(entity)`` when it indexes in ``marc_by_cn``;
+      2. the UNIQUE control number whose MARC 245 / contents / mentions / related
+         works strictly match this work's own label;
+      3. ``("", None)`` — fail closed rather than pick one.
+    """
+    if context is None:
+        return "", None
+
+    identity_cn = identity_control_number(entity)
+    if identity_cn:
+        record = context.marc_by_cn.get(identity_cn)
+        if record:
+            return identity_cn, dict(record)
+
+    titles = _work_title_candidates(entity)
+    if not titles:
+        return "", None
+
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for raw_cn in entity.control_numbers:
+        cn = canonical_control_number(str(raw_cn)) or ""
+        record = context.marc_by_cn.get(cn) if cn else None
+        if not record:
+            continue
+        if any(_titles_match(t, cn_title) for t in titles for cn_title in _record_titles(record)):
+            matches.append((cn, dict(record)))
+    if len(matches) == 1:
+        return matches[0]
+    return "", None
+
+
+def _record_titles(record: dict[str, Any]) -> list[str]:
+    """Every title a record attests, for anchoring a work to it."""
+    from converter.rdf.rdf_helpers import parse_contents_entry  # noqa: PLC0415
+
+    titles: list[str] = []
+    main = str(record.get("title") or "").strip()
+    if main:
+        titles.append(main)
+    for content in record.get("contents") or []:
+        title = _contents_row_fields(content, parse_contents_entry)[0]
+        if title:
+            titles.append(title)
+    for key in ("work_mentions", "related_works"):
+        for row in record.get(key) or []:
+            text = (
+                str(row.get("title") or row.get("name") or "")
+                if isinstance(row, dict) else str(row)
+            ).strip()
+            if text:
+                titles.append(text)
+    return titles
+
+
 def _shelfmark_from_claims(entity: CanonicalHmoEntity) -> str:
     from converter.wikidata.item_builder import _normalise_label  # noqa: PLC0415
 
@@ -1309,6 +1376,7 @@ def _work_candidate_evidence_for(
         sequence: object = None,
         source_text: str = "",
         source_record_id: str = "",
+        source_scope: str = "record",
     ) -> list[dict[str, object]] | None:
         decision = assess_work_candidate(
             title,
@@ -1322,8 +1390,11 @@ def _work_candidate_evidence_for(
         )
         if decision.accepted:
             evidence = decision.evidence()
-            if source_record_id:
-                evidence["source_record_id"] = source_record_id
+            # Always present, even when empty: "no record backs this row" is a
+            # stated fact, not a missing key. 45 of 106 rows in the export carried
+            # no `source_record_id` at all (Rule W-165).
+            evidence["source_record_id"] = source_record_id or ""
+            evidence["source_scope"] = source_scope
             return [evidence]
         return None
 
@@ -1339,15 +1410,19 @@ def _work_candidate_evidence_for(
                     source_text=str(
                         match.get("entity_text") or match.get("matched_name") or title
                     ),
+                    source_record_id=_work_identity_record(entity, context)[0],
+                    source_scope="authority",
                 )
                 if hit:
                     return hit
 
-        for raw_cn in entity.control_numbers:
-            record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)) or "")
-            if not record:
-                continue
-
+        # ONE record, not an independent walk of every linked control number.
+        # The description cites the anchor, so the evidence must come from the same
+        # record or the item names two sources at once (Rule W-165).
+        anchor_cn, anchor_record = _work_identity_record(entity, context)
+        for raw_cn, record in (
+            [(anchor_cn, anchor_record)] if anchor_record is not None else []
+        ):
             for content in record.get("contents") or []:
                 content_title, folio, sequence, source_text, source_field = (
                     _contents_row_fields(content, parse_contents_entry)
@@ -1437,15 +1512,22 @@ def _work_candidate_evidence_for(
                 if hit:
                     return hit
 
+    # These two rest on a known QID rather than on a record, so they say so
+    # instead of leaving `source_record_id` silently absent (Rule W-165).
     if known_qid:
-        hit = _try_assess(titles[0], source_field="HMO", known=known_qid)
+        hit = _try_assess(
+            titles[0], source_field="HMO", known=known_qid, source_scope="hmo_wikibase",
+        )
         if hit:
             return hit
 
     for title in titles:
         mapped = known_work_qid_for_title(title)
         if mapped:
-            hit = _try_assess(title, source_field="KNOWN_ALIAS", known=mapped)
+            hit = _try_assess(
+                title, source_field="KNOWN_ALIAS", known=mapped,
+                source_scope="known_wikidata_work",
+            )
             if hit:
                 return hit
 
@@ -1609,18 +1691,57 @@ def _contents_row_fields(
     )
 
 
-def _titles_match(left: str, right: str) -> bool:
+_TITLE_MATCH_STRICT = "strict"
+_TITLE_MATCH_LOOSE = "loose"
+# A loose match needs enough text to mean anything. "מחזור" matching
+# "מחזור מנהג אשכנז המערבי (וורמיזא) לכל השנה" is how QDraft_Work_37 bound to the
+# wrong record.
+_LOOSE_MATCH_MIN_CHARS = 8
+_LOOSE_MATCH_MIN_TOKENS = 2
+
+
+def _normalise_work_title(text: str) -> str:
     from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
 
-    a = _strip_ms_scope_suffix(
-        sanitize_work_title(str(left or "")),
+    return _strip_ms_scope_suffix(
+        sanitize_work_title(str(text or "")),
     ).casefold().strip(" .,;:/-\"'")
-    b = _strip_ms_scope_suffix(
-        sanitize_work_title(str(right or "")),
-    ).casefold().strip(" .,;:/-\"'")
+
+
+def _isbd_stem(text: str) -> str:
+    """The part before an ISBD subtitle break, so `A : B` matches `A`."""
+    for sep in (" : ", ". ", " — ", " - "):
+        head, found, _tail = text.partition(sep)
+        if found and head.strip():
+            return head.strip(" .,;:/-\"'")
+    return text
+
+
+def _titles_match(left: str, right: str, *, mode: str = _TITLE_MATCH_STRICT) -> bool:
+    """Do two titles name the same work?
+
+    ``strict`` is the only mode allowed to establish identity or to ACCEPT
+    evidence: equality after work-title sanitisation, optionally up to an ISBD
+    subtitle break. ``loose`` keeps the old substring behaviour for discovery and
+    ranking only, floored so a single short word cannot match a long title
+    (Rule W-165).
+    """
+    a = _normalise_work_title(left)
+    b = _normalise_work_title(right)
     if not a or not b:
         return False
-    return a == b or a in b or b in a
+    if a == b:
+        return True
+    if _isbd_stem(a) == _isbd_stem(b):
+        return True
+    if mode == _TITLE_MATCH_STRICT:
+        return False
+    shorter = a if len(a) <= len(b) else b
+    if len(shorter) < _LOOSE_MATCH_MIN_CHARS:
+        return False
+    if len(shorter.split()) < _LOOSE_MATCH_MIN_TOKENS:
+        return False
+    return a in b or b in a
 
 
 def _upload_descriptions(
@@ -1795,18 +1916,21 @@ def _enriched_description(
 
     if entity_type == "work":
         title = entity.labels.get("he") or entity.labels.get("en") or ""
-        for cn in entity.control_numbers:
-            record = context.marc_by_cn.get(str(cn).strip())
-            if not record:
-                continue
-            marc = dict(record)
-            marc["_control_number"] = str(cn).strip()
+        # The attestation clause must cite the record this work is anchored to, not
+        # the first control number that happens to index. It also used to look the
+        # CN up as a raw string rather than canonicalising it (Rule W-66), and the
+        # `title` computed here was never consulted at all (Rule W-165).
+        anchor_cn, anchor_record = _work_identity_record(entity, context)
+        if anchor_record is not None:
+            marc = dict(anchor_record)
+            marc["_control_number"] = anchor_cn
             return {
                 "en": _truncate_description(
                     _work_description_with_attestation(entity, marc, context),
                 ),
             }
         if title:
+            # No anchor: describe the work, but claim no attestation.
             return {
                 "en": _truncate_description(
                     _build_work_description(author_name=None, century=None),
