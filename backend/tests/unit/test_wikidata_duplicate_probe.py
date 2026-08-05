@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import urllib.error
+import urllib.parse
 from unittest.mock import patch
 
 from app.pipeline.wikidata_duplicate_probe import (
@@ -14,6 +15,7 @@ from app.pipeline.wikidata_duplicate_probe import (
     STATUS_NOT_RUN,
     STATUS_SKIPPED,
     STATUS_UNAVAILABLE,
+    _pair_result,
     attach_duplicate_evidence,
     duplicate_class_for_item,
     duplicate_status_for_item,
@@ -418,7 +420,9 @@ class TestAbsentMeansEveryKeyAnswered:
         }
 
         def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
-            if "P195" in url or "P195%3D" in url:
+            # The composite key is batched on its selective PID (P217), so that is
+            # the request to fail — and the per-key fallback fails with it.
+            if "P217" in url or "P217%3D" in url:
                 raise urllib.error.URLError("boom")
             return {"query": {"search": []}}
 
@@ -461,7 +465,11 @@ class TestCachedAnswerIsVisibleWithoutProbing:
 
         async def fake_read(_factory, pairs):
             assert pairs == [("P3959", "990001404380205171")]
-            return {pairs[0]: [{"qid": "Q999", "matched_on": "P3959=…", "label": "x"}]}
+            return {
+                pairs[0]: _pair_result(
+                    [{"qid": "Q999", "matched_on": "P3959=…", "label": "x"}],
+                ),
+            }
 
         with patch(
             "app.pipeline.wikidata_duplicate_probe._read_cached_pairs", fake_read,
@@ -506,7 +514,7 @@ class TestCachedAnswerIsVisibleWithoutProbing:
         }
 
         async def fake_read(_factory, _pairs):
-            return {("P3959", "990001404380205171"): []}
+            return {("P3959", "990001404380205171"): _pair_result([])}
 
         with patch(
             "app.pipeline.wikidata_duplicate_probe._read_cached_pairs", fake_read,
@@ -516,40 +524,97 @@ class TestCachedAnswerIsVisibleWithoutProbing:
         assert "NOT established" in item["_wikidata_existence"]["note"]
 
 
-class TestUnbatchableProbesAreBounded:
-    """Rule W-144: a rate-limited API must not hold a verify job hostage."""
+def _is_group_query(url: str) -> bool:
+    """True for a batched group query: `... OR ...` (titles) or `A|B` (composites)."""
+    decoded = urllib.parse.unquote_plus(url)
+    return " OR " in decoded or "|" in decoded
 
-    def _works(self, count: int) -> list[dict[str, object]]:
+
+class TestUnbatchableProbesAreBounded:
+    """Rule W-144/W-145: batched by group; the cap bounds only the residue."""
+
+    def _works(self, count: int, *, class_qid: str = "Q47461344") -> list[dict[str, object]]:
         return [
             {
                 "entity_type": "work",
                 "statements": [
-                    _stmt("P1476", f"title {i}"), _stmt("P31", "Q47461344"),
+                    _stmt("P1476", f"title {i}"), _stmt("P31", class_qid),
                 ],
             }
             for i in range(count)
         ]
 
-    def test_the_budget_caps_how_many_single_requests_a_job_issues(
-        self, monkeypatch,
-    ) -> None:
-        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "3")
-        calls = 0
+    def _manuscripts(self, count: int) -> list[dict[str, object]]:
+        return [
+            {
+                "entity_type": "manuscript",
+                "statements": [
+                    _stmt("P195", "Q1028334"), _stmt("P217", f"F {1000 + i}"),
+                ],
+            }
+            for i in range(count)
+        ]
+
+    def test_title_keys_of_one_class_share_a_single_request(self) -> None:
+        """The starvation fix: 10 works cost one search, not ten."""
+        searches: list[str] = []
 
         def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
-            nonlocal calls
-            calls += 1
+            searches.append(url)
             return {"query": {"search": []}}
 
         items = self._works(10)
         stats = asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
-        assert calls == 3
+        assert len(searches) == 1
+        assert "dropped_unbatched" not in stats
+        assert all(
+            i["_wikidata_existence"]["status"] == STATUS_ABSENT for i in items
+        )
+
+    def test_the_budget_caps_only_the_residue(self, monkeypatch) -> None:
+        """When a group errors, its keys fall back one-by-one — and that is capped."""
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "3")
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_TITLE_GROUP", "10")
+        single_calls = 0
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            nonlocal single_calls
+            if _is_group_query(url):
+                raise urllib.error.URLError("group failed")
+            single_calls += 1
+            return {"query": {"search": []}}
+
+        items = self._works(10)
+        stats = asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
+        assert single_calls == 3
         assert stats["dropped_unbatched"] == 7
 
-    def test_a_dropped_probe_reports_skipped_never_absent(self, monkeypatch) -> None:
+    def test_works_are_not_starved_when_manuscripts_fill_the_budget(
+        self, monkeypatch,
+    ) -> None:
+        """The bug: "P195+P217" sorts before "title+P31", so works were always last."""
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "4")
+        probed_classes: list[str] = []
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            if _is_group_query(url):
+                raise urllib.error.URLError("group failed")
+            decoded = urllib.parse.unquote_plus(url)
+            probed_classes.append("title" if "inlabel" in decoded else "composite")
+            return {"query": {"search": []}}
+
+        items = self._manuscripts(10) + self._works(10)
+        asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
+        # Both classes get a share; neither is systematically last.
+        assert "title" in probed_classes
+        assert "composite" in probed_classes
+
+    def test_a_capped_key_reports_skipped_never_absent(self, monkeypatch) -> None:
         monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "1")
 
         def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            if _is_group_query(url):
+                raise urllib.error.URLError("group failed")
             return {"query": {"search": []}}
 
         items = self._works(4)
@@ -557,39 +622,215 @@ class TestUnbatchableProbesAreBounded:
         statuses = [i["_wikidata_existence"]["status"] for i in items]
         assert statuses.count(STATUS_ABSENT) == 1
         assert statuses.count(STATUS_SKIPPED) == 3
+        capped = [
+            i for i in items
+            if i["_wikidata_existence"].get("reason") == "capped"
+        ]
+        assert len(capped) == 3
 
     def test_repeated_rate_limiting_trips_the_breaker(self, monkeypatch) -> None:
         monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "50")
         monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_TRIP", "2")
-        calls = 0
+        single_calls = 0
 
         def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
-            nonlocal calls
-            calls += 1
+            nonlocal single_calls
+            if not _is_group_query(url):
+                single_calls += 1
             raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
 
         items = self._works(20)
         stats = asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
-        # Two failures trip it; the remaining 18 are never attempted.
-        assert calls == 2
+        # Two per-key failures trip it; the remaining 18 are never attempted.
+        assert single_calls == 2
         assert stats["dropped_unbatched"] == 18
 
     def test_a_recovery_resets_the_breaker(self, monkeypatch) -> None:
         monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "50")
         monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_TRIP", "2")
-        calls = 0
+        single_calls = 0
 
         def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
-            nonlocal calls
-            calls += 1
-            if calls == 1:
+            nonlocal single_calls
+            if _is_group_query(url):
+                raise urllib.error.URLError("group failed")
+            single_calls += 1
+            if single_calls == 1:
                 raise urllib.error.HTTPError(url, 429, "Too Many", {}, None)
             return {"query": {"search": []}}
 
         items = self._works(5)
         stats = asyncio.run(attach_duplicate_evidence(None, items, fetch=fetch))
-        assert calls == 5
+        assert single_calls == 5
         assert "dropped_unbatched" not in stats
+
+
+class TestBatchedGroupProbes:
+    """Rule W-144: a batched query is a superset; the AND is enforced locally."""
+
+    def test_a_title_hit_is_attributed_only_to_the_title_it_carries(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import (
+            _COMPOSITE_SEP,
+            probe_titles_batch,
+        )
+
+        keys = [
+            ("title+P31", _COMPOSITE_SEP.join(("Mahzor", "Q47461344"))),
+            ("title+P31", _COMPOSITE_SEP.join(("Siddur", "Q47461344"))),
+        ]
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            if "list=search" in url:
+                return {"query": {"search": [{"title": "Q1"}, {"title": "Q2"}]}}
+            return {
+                "entities": {
+                    "Q1": {"labels": {"en": {"value": "Mahzor"}}, "aliases": {}},
+                    "Q2": {"labels": {"en": {"value": "Something else"}}, "aliases": {}},
+                },
+            }
+
+        hits = probe_titles_batch(keys, fetch=fetch)
+        assert [c["qid"] for c in hits[keys[0]]] == ["Q1"]
+        assert hits[keys[1]] == []
+
+    def test_a_title_candidate_still_requires_curator_confirmation(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import (
+            _COMPOSITE_SEP,
+            probe_titles_batch,
+        )
+
+        key = ("title+P31", _COMPOSITE_SEP.join(("Mahzor", "Q47461344")))
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            if "list=search" in url:
+                return {"query": {"search": [{"title": "Q1"}]}}
+            return {"entities": {"Q1": {"labels": {"en": {"value": "Mahzor"}}}}}
+
+        candidate = probe_titles_batch([key], fetch=fetch)[key][0]
+        assert candidate["requires_curator_confirmation"] == "true"
+        assert candidate["matched_on"].startswith("title~")
+
+    def test_a_shelfmark_only_hit_is_not_a_composite_candidate(self) -> None:
+        """The batched query ORs P217; a hit must still carry the whole AND."""
+        from app.pipeline.wikidata_duplicate_probe import (
+            _COMPOSITE_SEP,
+            probe_composites_batch,
+        )
+
+        key = ("P195+P217", _COMPOSITE_SEP.join(("Q1028334", "F 18760")))
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            if "list=search" in url:
+                return {"query": {"search": [{"title": "Q9"}]}}
+            return {
+                "entities": {
+                    "Q9": {
+                        "claims": {
+                            # Right shelfmark, WRONG holder.
+                            "P217": [{"mainsnak": {"datavalue": {"value": "F 18760"}}}],
+                            "P195": [
+                                {"mainsnak": {"datavalue": {"value": {"id": "Q999"}}}},
+                            ],
+                        },
+                    },
+                },
+            }
+
+        assert probe_composites_batch([key], fetch=fetch)[key] == []
+
+    def test_a_full_conjunction_hit_is_a_composite_candidate(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import (
+            _COMPOSITE_SEP,
+            probe_composites_batch,
+        )
+
+        key = ("P195+P217", _COMPOSITE_SEP.join(("Q1028334", "F 18760")))
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            if "list=search" in url:
+                return {"query": {"search": [{"title": "Q9"}]}}
+            return {
+                "entities": {
+                    "Q9": {
+                        "claims": {
+                            "P217": [{"mainsnak": {"datavalue": {"value": "F 18760"}}}],
+                            "P195": [
+                                {"mainsnak": {"datavalue": {"value": {"id": "Q1028334"}}}},
+                            ],
+                        },
+                    },
+                },
+            }
+
+        hits = probe_composites_batch([key], fetch=fetch)[key]
+        assert [c["qid"] for c in hits] == ["Q9"]
+        assert hits[0]["matched_on"] == "P195=Q1028334 AND P217=F 18760"
+
+
+class TestDeferredMarkers:
+    """Rule W-160: capped is a different fact from never attempted."""
+
+    def test_a_capped_key_is_cached_as_deferred(self, monkeypatch) -> None:
+        monkeypatch.setenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "0")
+        written: dict = {}
+
+        async def fake_write(_factory, results, *, deferred=None):
+            written["results"] = results
+            written["deferred"] = deferred or {}
+
+        def fetch(url: str, timeout: float | None = None) -> dict[str, object]:
+            raise urllib.error.URLError("group failed")
+
+        items = [
+            {
+                "entity_type": "work",
+                "statements": [_stmt("P1476", "t"), _stmt("P31", "Q47461344")],
+            },
+        ]
+        with patch(
+            "app.pipeline.wikidata_duplicate_probe._write_cached_pairs", fake_write,
+        ):
+            asyncio.run(attach_duplicate_evidence(object(), items, fetch=fetch))
+
+        assert len(written["deferred"]) == 1
+        reason = next(iter(written["deferred"].values()))
+        assert "budget" in reason
+
+    def test_a_deferred_row_is_a_miss_so_the_next_job_retries_it(self) -> None:
+        """A deferred marker must never let the 7-day TTL freeze the cap."""
+        from app.pipeline.wikidata_duplicate_probe import cached_pair_candidates
+
+        assert cached_pair_candidates(_pair_result(None, deferred_reason="capped")) is None
+        assert cached_pair_candidates(_pair_result([])) == []
+
+    def test_a_legacy_cache_row_still_reads_as_answered(self) -> None:
+        """A warm 7-day cache predates the `answer` field; do not throw it away."""
+        from app.pipeline.wikidata_duplicate_probe import cached_pair_candidates
+
+        assert cached_pair_candidates({"candidates": []}) == []
+
+    def test_a_deferred_row_reads_as_capped_not_never_probed(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import (
+            attach_cached_duplicate_evidence,
+        )
+
+        item = {
+            "entity_type": "manuscript",
+            "statements": [_stmt("P3959", "990001404380205171")],
+        }
+
+        async def fake_read(_factory, pairs):
+            return {pairs[0]: _pair_result(None, deferred_reason="probe budget")}
+
+        with patch(
+            "app.pipeline.wikidata_duplicate_probe._read_cached_pairs", fake_read,
+        ):
+            asyncio.run(attach_cached_duplicate_evidence(object(), [item]))
+
+        existence = item["_wikidata_existence"]
+        assert existence["status"] == STATUS_SKIPPED
+        assert existence["reason"] == "capped"
+        assert "not probed" in existence["note"]
 
 
 class TestOneWriterForTheDuplicateAnswer:

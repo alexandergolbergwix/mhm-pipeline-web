@@ -269,6 +269,84 @@ def _claims_url(qid: str) -> str:
     return f"{_API}?{params}"
 
 
+# wbgetentities accepts 50 ids per request; asking for more is an API error.
+_ENTITIES_PER_REQUEST = 50
+
+
+def _entities_url(qids: list[str]) -> str:
+    params = urllib.parse.urlencode({
+        "action": "wbgetentities",
+        "ids": "|".join(qids),
+        "props": "claims|labels|aliases",
+        "languages": "en|he",
+        "format": "json",
+        "formatversion": "2",
+        "maxlag": "5",
+    })
+    return f"{_API}?{params}"
+
+
+def _claim_values(claims: dict[str, Any], pid: str) -> set[str]:
+    """Every value of *pid*, as a string. Item values come back as their QID."""
+    out: set[str] = set()
+    for claim in claims.get(pid) or []:
+        snak = ((claim or {}).get("mainsnak") or {}).get("datavalue") or {}
+        value = snak.get("value")
+        if isinstance(value, dict):
+            value = value.get("id") or value.get("text") or ""
+        text = str(value or "").strip()
+        if text:
+            out.add(text)
+    return out
+
+
+def _entity_names(entity: dict[str, Any]) -> set[str]:
+    """Labels and aliases of *entity*, normalised for title attribution."""
+    names: set[str] = set()
+    for value in (entity.get("labels") or {}).values():
+        text = value.get("value") if isinstance(value, dict) else value
+        if text:
+            names.add(_normalise_title(str(text)))
+    aliases = entity.get("aliases") or {}
+    for rows in aliases.values():
+        for row in rows if isinstance(rows, list) else []:
+            text = row.get("value") if isinstance(row, dict) else row
+            if text:
+                names.add(_normalise_title(str(text)))
+    return names
+
+
+def _normalise_title(text: str) -> str:
+    return " ".join(str(text or "").split()).casefold()
+
+
+def _fetch_entities(
+    qids: list[str],
+    *,
+    fetch: Any = None,
+    timeout: float | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Labels, aliases and claims for many QIDs — batched, never one per QID."""
+    caller = fetch or _fetch_json
+    out: dict[str, dict[str, Any]] = {}
+    for start in range(0, len(qids), _ENTITIES_PER_REQUEST):
+        chunk = qids[start : start + _ENTITIES_PER_REQUEST]
+        payload = caller(_entities_url(chunk), timeout=timeout or _timeout())
+        for qid, entity in ((payload or {}).get("entities") or {}).items():
+            if isinstance(entity, dict):
+                out[str(qid)] = entity
+    return out
+
+
+def _search_qids(payload: dict[str, Any] | None) -> list[str]:
+    results = ((payload or {}).get("query") or {}).get("search") or []
+    return [
+        str(row.get("title") or "")
+        for row in results
+        if isinstance(row, dict) and str(row.get("title") or "").startswith("Q")
+    ]
+
+
 def _report(on_progress: Any, done: int, total: int) -> None:
     """Publish probe progress, never letting a reporting error break the probe."""
     if on_progress is None:
@@ -282,17 +360,54 @@ def _report(on_progress: Any, done: int, total: int) -> None:
 def _unbatchable_budget() -> int:
     """How many one-request-each probes a single job may issue.
 
-    Identifier probes pack 50 to a request; conjunctive and title keys cannot be
-    batched at all, so on the reference corpus they added ~173 sequential
-    CirrusSearch calls. Search is the expensive endpoint: the run on 2026-08-02
-    earned `429 Too Many Requests` and, with four polite retries each, left verify
-    sitting on "Loading Studio scope…" for tens of minutes. Bounded, and whatever
-    is dropped is reported as `skipped` and logged — never a silent cap.
+    Identifier probes pack 50 to a request; conjunctive and title keys are now
+    grouped too (``probe_titles_batch`` / ``probe_composites_batch``), so this
+    bounds only the residue — the groups that errored and fell back to one request
+    each. Search is the expensive endpoint: the run on 2026-08-02 earned
+    `429 Too Many Requests` and, with four polite retries each, left verify sitting
+    on "Loading Studio scope…" for tens of minutes. Whatever is dropped is
+    reported as `skipped`, cached as `deferred` and logged — never a silent cap.
     """
     try:
         return max(0, int(os.getenv("WIKIDATA_DUPLICATE_PROBE_UNBATCHED_MAX", "40")))
     except ValueError:
         return 40
+
+
+def _probe_class(key: tuple[str, str]) -> str:
+    """The probe class of a key — its PID group, e.g. `title+P31` or `P195+P217`."""
+    return key[0]
+
+
+def order_unbatchable_fairly(keys: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Round-robin across probe classes so no class is systematically last.
+
+    The residue used to be issued in ``sorted()`` order, and `"P195+P217"` sorts
+    before `"title+P31"`, so every manuscript composite key was attempted before
+    any work title key. Works were not unlucky — they were structurally last, and
+    the budget always ran out on them.
+    """
+    by_class: dict[str, list[tuple[str, str]]] = {}
+    for key in keys:
+        by_class.setdefault(_probe_class(key), []).append(key)
+    out: list[tuple[str, str]] = []
+    queues = [iter(sorted(group)) for _, group in sorted(by_class.items())]
+    while queues:
+        remaining = []
+        for queue in queues:
+            key = next(queue, None)
+            if key is not None:
+                out.append(key)
+                remaining.append(queue)
+        queues = remaining
+    return out
+
+
+def _unbatchable_class_budget(allowance: int, classes_present: int) -> int:
+    """Per-class share of the residue budget, so one class cannot consume it all."""
+    if classes_present <= 1:
+        return allowance
+    return max(1, -(-allowance // classes_present))
 
 
 def _rate_limit_trip() -> int:
@@ -494,6 +609,150 @@ def probe_composite(
     return out
 
 
+def _title_group_size() -> int:
+    try:
+        return max(1, int(os.getenv("WIKIDATA_DUPLICATE_PROBE_TITLE_GROUP", "10")))
+    except ValueError:
+        return 10
+
+
+def probe_titles_batch(
+    keys: list[tuple[str, str]],
+    *,
+    fetch: Any = None,
+    timeout: float | None = None,
+    group_size: int | None = None,
+) -> dict[tuple[str, str], list[dict[str, str]]]:
+    """Resolve many title+class keys, grouped by class (Rule W-145).
+
+    One request per group of titles that share a class, then one batched
+    ``wbgetentities`` to attribute each hit to the title it actually carries.
+    105 works went from 105 sequential searches — more than the whole unbatchable
+    budget — to roughly ten. That starvation is why 29 works reported
+    ``not_probed`` with their keys already computed.
+
+    Attribution is by normalised label/alias equality, so a hit that merely ranked
+    for the group is not credited to a title it does not carry. `matched_on` keeps
+    the tilde: this is a likeness the curator must confirm, never an identity.
+    """
+    caller = fetch or _fetch_json
+    limit = group_size or _title_group_size()
+    out: dict[tuple[str, str], list[dict[str, str]]] = {}
+    if not keys:
+        return out
+
+    by_class: dict[str, list[tuple[str, str]]] = {}
+    for key in keys:
+        title, _sep, class_qid = key[1].partition(_COMPOSITE_SEP)
+        if title.strip() and class_qid.strip():
+            by_class.setdefault(class_qid, []).append(key)
+
+    for class_qid, class_keys in by_class.items():
+        for start in range(0, len(class_keys), limit):
+            group = class_keys[start : start + limit]
+            titles = {key: key[1].partition(_COMPOSITE_SEP)[0] for key in group}
+            clause = " OR ".join(f'inlabel:"{title}"' for title in titles.values())
+            query = f"haswbstatement:P31={class_qid} ({clause})"
+            qids = _search_qids(
+                caller(_search_url(query, limit=50), timeout=timeout or _timeout()),
+            )
+            for key in group:
+                out.setdefault(key, [])
+            if not qids:
+                continue
+            entities = _fetch_entities(qids, fetch=fetch, timeout=timeout)
+            for qid, entity in entities.items():
+                names = _entity_names(entity)
+                for key, title in titles.items():
+                    if _normalise_title(title) not in names:
+                        continue
+                    out[key].append({
+                        "qid": qid,
+                        "matched_on": f"title~{title} AND P31={class_qid}",
+                        "label": title,
+                        "requires_curator_confirmation": "true",
+                    })
+    return out
+
+
+def _composite_group_size() -> int:
+    try:
+        return max(1, int(os.getenv("WIKIDATA_DUPLICATE_PROBE_COMPOSITE_GROUP", "15")))
+    except ValueError:
+        return 15
+
+
+def composite_batching_enabled() -> bool:
+    return os.getenv(
+        "WIKIDATA_DUPLICATE_PROBE_BATCH_COMPOSITE", "1",
+    ).strip().lower() not in {"0", "false", "no"}
+
+
+def probe_composites_batch(
+    keys: list[tuple[str, str]],
+    *,
+    fetch: Any = None,
+    timeout: float | None = None,
+    group_size: int | None = None,
+) -> dict[tuple[str, str], list[dict[str, str]]]:
+    """Resolve many conjunctive keys by batching the *selective* PID (Rule W-144).
+
+    `haswbstatement` joins with `|` as OR, so the batched query is a deliberate
+    superset: it ORs the shelfmarks (the selective half of holder+shelfmark) and
+    then enforces the **full conjunction client-side** against each hit's claims.
+    A hit that matches only the shelfmark is not a candidate — substituting a
+    one-sided lookup for the AND is exactly the false positive W-144 forbids.
+
+    Only groups whose keys share the same PID list can batch together.
+    """
+    caller = fetch or _fetch_json
+    limit = group_size or _composite_group_size()
+    out: dict[tuple[str, str], list[dict[str, str]]] = {}
+    if not keys:
+        return out
+
+    by_shape: dict[str, list[tuple[str, str]]] = {}
+    for key in keys:
+        by_shape.setdefault(key[0], []).append(key)
+
+    for pid_group, shape_keys in by_shape.items():
+        pids = pid_group.split("+")
+        selective_pid = pids[-1]
+        for start in range(0, len(shape_keys), limit):
+            group = shape_keys[start : start + limit]
+            conjunctions = {key: _composite_conjunction(*key) for key in group}
+            selective = {
+                key: next(v for p, v in pairs if p == selective_pid)
+                for key, pairs in conjunctions.items()
+            }
+            clause = "|".join(
+                f'{selective_pid}="{value}"' if " " in value else f"{selective_pid}={value}"
+                for value in dict.fromkeys(selective.values())
+            )
+            qids = _search_qids(
+                caller(
+                    _search_url(f"haswbstatement:{clause}", limit=50),
+                    timeout=timeout or _timeout(),
+                ),
+            )
+            for key in group:
+                out.setdefault(key, [])
+            if not qids:
+                continue
+            entities = _fetch_entities(qids, fetch=fetch, timeout=timeout)
+            for qid, entity in entities.items():
+                claims = entity.get("claims") or {}
+                for key, pairs in conjunctions.items():
+                    if not all(value in _claim_values(claims, pid) for pid, value in pairs):
+                        continue
+                    out[key].append({
+                        "qid": qid,
+                        "matched_on": " AND ".join(f"{p}={v}" for p, v in pairs),
+                        "label": "",
+                    })
+    return out
+
+
 def probe_batch(
     pairs: list[tuple[str, str]],
     *,
@@ -591,7 +850,17 @@ async def attach_cached_duplicate_evidence(
         return stats
 
     cached = await _read_cached_pairs(db_factory, sorted(pending))
-    for key, candidates in cached.items():
+    answered = {
+        key: candidates
+        for key, row in cached.items()
+        if (candidates := cached_pair_candidates(row)) is not None
+    }
+    deferred_reasons = {
+        key: reason
+        for key, row in cached.items()
+        if (reason := cached_pair_deferred_reason(row))
+    }
+    for key, candidates in answered.items():
         for item in pending.get(key, []):
             existence = item["_wikidata_existence"]
             if existence["status"] == STATUS_NOT_PROBED:
@@ -607,13 +876,32 @@ async def attach_cached_duplicate_evidence(
                     if candidate not in existence["candidates"]:
                         existence["candidates"].append(candidate)
 
-    # A partially cached item must not read as `absent` either (Rule W-144).
+    # A partially cached item must not read as `absent` either (Rule W-144). A key
+    # the budget deferred says so, which is a different fact from "never attempted"
+    # and the curator is told which (Rule W-160).
     for item in items:
         existence = item.get("_wikidata_existence") or {}
+        probed = existence.get("probed") or []
+        keys = [(p["pid"], p["value"]) for p in probed]
+        capped = [key for key in keys if key in deferred_reasons]
+        if capped and existence.get("status") in {STATUS_NOT_PROBED, STATUS_ABSENT}:
+            was_answered = existence.get("status") == STATUS_ABSENT
+            existence["status"] = STATUS_SKIPPED
+            existence["reason"] = "capped"
+            existence["note"] = (
+                f"{len(capped)} of {len(keys)} keys were deferred by the probe budget "
+                f"({deferred_reasons[capped[0]]}) — the key was computed but not "
+                "probed; absence of a duplicate is NOT established"
+            )
+            if was_answered:
+                stats["answered"] = max(0, stats["answered"] - 1)
+            else:
+                stats["not_probed"] = max(0, stats["not_probed"] - 1)
+            stats["capped"] = stats.get("capped", 0) + 1
+            continue
         if existence.get("status") != STATUS_ABSENT:
             continue
-        probed = existence.get("probed") or []
-        if any((p["pid"], p["value"]) not in cached for p in probed):
+        if any(key not in answered for key in keys):
             existence["status"] = STATUS_SKIPPED
             existence["note"] = (
                 "only some keys have a cached answer — absence of a duplicate is "
@@ -635,11 +923,49 @@ def _pair_summary(pid: str, value: str) -> dict[str, Any]:
     return {"schema": PROBE_SCHEMA, "pid": pid, "value": value}
 
 
+ANSWER_DEFERRED = "deferred"
+
+
+def _pair_result(
+    candidates: list[dict[str, str]] | None,
+    *,
+    deferred_reason: str | None = None,
+) -> dict[str, Any]:
+    """The cached payload for one key — an answer, or a stated non-answer.
+
+    A key the budget dropped used to leave no row at all, indistinguishable on the
+    read path from a key nothing had ever looked at: 29 works reported "no probe
+    has run for this item yet" when the truth was "we computed the key and then
+    ran out of budget" (Rule W-160).
+    """
+    if deferred_reason:
+        return {"answer": ANSWER_DEFERRED, "candidates": [], "reason": deferred_reason}
+    return {"answer": "candidates" if candidates else "absent", "candidates": candidates or []}
+
+
+def cached_pair_candidates(answer: Any) -> list[dict[str, str]] | None:
+    """Candidates from a cached row, or ``None`` when it did not answer.
+
+    Tolerates the pre-`answer` row shape so a warm 7-day cache is not thrown away.
+    """
+    if not isinstance(answer, dict) or not isinstance(answer.get("candidates"), list):
+        return None
+    if answer.get("answer") == ANSWER_DEFERRED:
+        return None
+    return answer["candidates"]
+
+
+def cached_pair_deferred_reason(answer: Any) -> str | None:
+    if isinstance(answer, dict) and answer.get("answer") == ANSWER_DEFERRED:
+        return str(answer.get("reason") or "capped")
+    return None
+
+
 async def _read_cached_pairs(
     db_factory: Any,
     pairs: list[tuple[str, str]],
-) -> dict[tuple[str, str], list[dict[str, str]]]:
-    """Cached candidates per identifier. One short transaction, index lookups."""
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Cached rows per identifier. One short transaction, index lookups."""
     if db_factory is None or not pairs:
         return {}
     from app.pipeline.inference_cache import (  # noqa: PLC0415
@@ -647,7 +973,7 @@ async def _read_cached_pairs(
         read_many_from_inference_cache,
     )
 
-    found: dict[tuple[str, str], list[dict[str, str]]] = {}
+    found: dict[tuple[str, str], dict[str, Any]] = {}
     summaries = {key: _pair_summary(*key) for key in pairs}
     try:
         async with db_factory() as db:
@@ -662,31 +988,34 @@ async def _read_cached_pairs(
         return {}
     for key, summary in summaries.items():
         hit = hits.get(canonical_hash(summary))
-        # An explicit empty list is a real cached "absent" — keep it.
+        # An explicit empty candidate list is a real cached "absent" — keep it.
         if isinstance(hit, dict) and isinstance(hit.get("candidates"), list):
-            found[key] = hit["candidates"]
+            found[key] = hit
     return found
 
 
 async def _write_cached_pairs(
     db_factory: Any,
     results: dict[tuple[str, str], list[dict[str, str]]],
+    *,
+    deferred: dict[tuple[str, str], str] | None = None,
 ) -> None:
-    if db_factory is None or not results:
+    if db_factory is None or not (results or deferred):
         return
     from app.pipeline.inference_cache import write_many_to_inference_cache  # noqa: PLC0415
 
+    entries = [
+        (_pair_summary(pid, value), _pair_result(candidates))
+        for (pid, value), candidates in results.items()
+    ]
+    entries.extend(
+        (_pair_summary(pid, value), _pair_result(None, deferred_reason=reason))
+        for (pid, value), reason in (deferred or {}).items()
+    )
     try:
         async with db_factory() as db:
             # One upsert statement, one commit — not one per identifier.
-            await write_many_to_inference_cache(
-                db,
-                kind=CACHE_KIND,
-                entries=[
-                    (_pair_summary(pid, value), {"candidates": candidates})
-                    for (pid, value), candidates in results.items()
-                ],
-            )
+            await write_many_to_inference_cache(db, kind=CACHE_KIND, entries=entries)
     except Exception as exc:  # noqa: BLE001
         logger.warning("duplicate probe cache write failed: %s", exc)
 
@@ -776,50 +1105,108 @@ async def attach_duplicate_evidence(
     # items and free on a re-run. Read in one short transaction, then release it:
     # the HTTP below must never run inside an open transaction (Rule W-40).
     cached = await _read_cached_pairs(db_factory, pairs)
-    for key, candidates in cached.items():
+    answered_keys: set[tuple[str, str]] = set()
+    for key, row in cached.items():
+        candidates = cached_pair_candidates(row)
+        if candidates is None:
+            # A deferred row is a MISS, so the next job retries it. Treating it as
+            # an answer would let the 7-day cache TTL freeze the cap in place.
+            continue
+        answered_keys.add(key)
         apply(key, candidates)
-    stats["cached"] = len(cached)
+    stats["cached"] = len(answered_keys)
 
-    misses = [key for key in pairs if key not in cached]
-    # Only single-identifier keys can share a request. Composite and title keys
-    # each need their own, so they are dispatched by key shape, not by guesswork.
+    misses = [key for key in pairs if key not in answered_keys]
+    # Identifier keys pack many to a request; composite and title keys batch too,
+    # but by group (see probe_composites_batch / probe_titles_batch), so they are
+    # dispatched by key shape rather than one at a time.
     single_misses = [key for key in misses if "+" not in key[0]]
-    unbatchable = [key for key in misses if "+" in key[0]]
-    misses = single_misses
+    title_misses = [key for key in misses if key[0].startswith(_TITLE_PREFIX)]
+    composite_misses = [
+        key for key in misses
+        if "+" in key[0] and not key[0].startswith(_TITLE_PREFIX)
+    ]
+    total_keys = len(misses)
     fresh: dict[tuple[str, str], list[dict[str, str]]] = {}
-    for start in range(0, len(misses), _BATCH_SIZE):
-        chunk = misses[start : start + _BATCH_SIZE]
+
+    def mark_unavailable(keys: list[tuple[str, str]], exc: Exception) -> None:
+        for key in keys:
+            for item in pending[key]:
+                item["_wikidata_existence"] = {
+                    "status": STATUS_UNAVAILABLE,
+                    "candidates": [],
+                    "error": str(exc),
+                    "note": "lookup failed — duplication is UNKNOWN, not ruled out",
+                }
+                stats["unavailable"] += 1
+
+    for start in range(0, len(single_misses), _BATCH_SIZE):
+        chunk = single_misses[start : start + _BATCH_SIZE]
         try:
             hits = await run_in_threadpool(probe_batch, chunk, fetch=fetch)
         except Exception as exc:  # noqa: BLE001 — a probe must never break verify
             logger.warning("duplicate probe batch failed: %s", exc)
-            for key in chunk:
-                for item in pending[key]:
-                    item["_wikidata_existence"] = {
-                        "status": STATUS_UNAVAILABLE,
-                        "candidates": [],
-                        "error": str(exc),
-                        "note": "lookup failed — duplication is UNKNOWN, not ruled out",
-                    }
-                    stats["unavailable"] += 1
+            mark_unavailable(chunk, exc)
             continue
         # Every probed identifier in this chunk got an answer, including the
         # absences — caching those is what makes a re-run free.
         for key in chunk:
             fresh[key] = hits.get(key, [])
             apply(key, fresh[key])
-        _report(on_progress, len(fresh), len(misses) + len(unbatchable))
+        _report(on_progress, len(fresh), total_keys)
 
-    # Conjunctive and title keys cannot share a request (`|` is OR), so one each —
-    # which makes them the expensive ones. Bounded, and with a circuit breaker so
-    # a rate-limited API cannot hold the whole verify job hostage.
-    allowance = _unbatchable_budget()
-    trip, consecutive_failures = _rate_limit_trip(), 0
-    dropped = 0
-    for index, key in enumerate(unbatchable):
-        if index >= allowance or consecutive_failures >= trip:
-            dropped += 1
+    # Title and composite keys, grouped. A group that errors falls back to the
+    # per-key residue below rather than losing every key in it.
+    unbatchable: list[tuple[str, str]] = []
+    for group_keys, resolver, label in (
+        (title_misses, probe_titles_batch, "title"),
+        (composite_misses, probe_composites_batch, "composite"),
+    ):
+        if not group_keys:
             continue
+        if label == "composite" and not composite_batching_enabled():
+            unbatchable.extend(group_keys)
+            continue
+        try:
+            hits = await run_in_threadpool(resolver, group_keys, fetch=fetch)
+        except Exception as exc:  # noqa: BLE001 — a probe must never break verify
+            logger.warning("duplicate probe %s batch failed: %s", label, exc)
+            unbatchable.extend(group_keys)
+            continue
+        for key in group_keys:
+            if key not in hits:
+                # The group answered, but not for this key — fall back rather than
+                # cache an absence nobody established (Rule W-144).
+                unbatchable.append(key)
+                continue
+            fresh[key] = hits[key]
+            apply(key, fresh[key])
+        _report(on_progress, len(fresh), total_keys)
+
+    # The residue: groups that errored, plus keys a group did not answer. One
+    # request each, bounded, with a circuit breaker so a rate-limited API cannot
+    # hold the whole verify job hostage — and interleaved across probe classes so
+    # the budget does not always run out on the same class (Rule W-145).
+    allowance = _unbatchable_budget()
+    ordered = order_unbatchable_fairly(unbatchable)
+    classes_present = len({_probe_class(key) for key in ordered})
+    per_class = _unbatchable_class_budget(allowance, classes_present)
+    trip, consecutive_failures = _rate_limit_trip(), 0
+    issued_by_class: dict[str, int] = {}
+    deferred: dict[tuple[str, str], str] = {}
+    for key in ordered:
+        probe_class = _probe_class(key)
+        issued = issued_by_class.get(probe_class, 0)
+        if consecutive_failures >= trip:
+            deferred[key] = "circuit breaker tripped after repeated lookup failures"
+            continue
+        if issued >= per_class or sum(issued_by_class.values()) >= allowance:
+            deferred[key] = (
+                f"probe budget: {probe_class} reached its share "
+                f"({per_class} of {allowance})"
+            )
+            continue
+        issued_by_class[probe_class] = issued + 1
         resolver = probe_title if key[0].startswith(_TITLE_PREFIX) else probe_composite
         try:
             hits = await run_in_threadpool(resolver, key[0], key[1], fetch=fetch)
@@ -833,17 +1220,23 @@ async def attach_duplicate_evidence(
         consecutive_failures = 0
         fresh[key] = hits
         apply(key, hits)
-        _report(on_progress, len(fresh), len(misses) + len(unbatchable))
-    if dropped:
-        # Rule W-110: a cap the curator cannot see reads as "we checked".
+        _report(on_progress, len(fresh), total_keys)
+    if deferred:
+        # Rule W-110: a cap the curator cannot see reads as "we checked". The
+        # deferred rows make it visible on the read path too (Rule W-160).
         logger.warning(
-            "duplicate probe: %s of %s unbatchable keys not probed "
-            "(budget %s, consecutive failures %s) — those items report skipped",
-            dropped, len(unbatchable), allowance, consecutive_failures,
+            "duplicate probe: %s of %s residue keys deferred "
+            "(budget %s, per class %s, consecutive failures %s) — those items "
+            "report skipped with reason=capped",
+            len(deferred), len(ordered), allowance, per_class, consecutive_failures,
         )
-        stats["dropped_unbatched"] = dropped
+        stats["dropped_unbatched"] = len(deferred)
+        for key in deferred:
+            for item in pending[key]:
+                existence = item["_wikidata_existence"]
+                existence["reason"] = "capped"
 
-    await _write_cached_pairs(db_factory, fresh)
+    await _write_cached_pairs(db_factory, fresh, deferred=deferred)
 
     # A key that never answered means duplication was not ruled out. Reporting
     # `absent` off a partial probe is the exact false negative Rule W-144 forbids.
