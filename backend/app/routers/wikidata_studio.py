@@ -1346,6 +1346,7 @@ async def export_wikidata_items(
         annotate_duplicate_rejudge,
     )
     from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
+        attach_live_value_labels,
         enrich_items_with_verify_evidence,
     )
 
@@ -1356,6 +1357,7 @@ async def export_wikidata_items(
     # level (Rule W-159). `fetch_merged_wikidata_items` only enriches when a stored
     # verdict exists, so the pack is guaranteed here (Rule W-62).
     marc_records = await _load_marc_records_for_run(db, run_id)
+    await attach_live_value_labels(db, items)
     enrich_items_with_verify_evidence(items, marc_records)
 
     await db.rollback()
@@ -2482,6 +2484,7 @@ async def _fetch_wikidata_verify_items(
         attach_duplicate_evidence,
     )
     from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
+        attach_live_value_labels,
         enrich_items_with_verify_evidence,
     )
 
@@ -2502,6 +2505,12 @@ async def _fetch_wikidata_verify_items(
     # for minutes. Verify reads whatever the build already stamped, and
     # `llm_proposals` simply reports `not_run` when the build had none.
     phase(VERIFY_SCOPE_PHASES[3])
+    # Gloss the QIDs no static table covers, before the pack is built — a KIMA
+    # place or a matched person otherwise reaches the judge as a bare Q-number
+    # while the frontend lazy-fetches a label for the same value (Rule W-80).
+    # Cached three tiers deep and never raises, so this cannot slow or break the
+    # scope; the DB transaction is already closed above (Rule W-40).
+    await attach_live_value_labels(session_scope, items)
     enrich_items_with_verify_evidence(items, marc_records)
     return items, marc_records
 

@@ -1,11 +1,40 @@
-"""Human-readable labels for the Wikidata properties the pipeline emits.
+"""Human-readable labels for the Wikidata properties and QIDs the pipeline emits.
 
-The Wikidata Studio's entity view mirrors the wikidata.org page, which
-shows each property's *label* (e.g. "author" for P50) next to the PID
-chip. Fetching labels live would add latency and require network access,
-so we ship a static map covering every property the pipeline uses.
+**Why a static table when the labels are fetchable?** Live lookup exists and is
+used — ``app/routers/wikidata_labels.resolve_labels`` batches ``wbgetentities``
+behind three cache tiers (process dict → Redis → Postgres, 90-day TTL), the
+frontend lazy-fetches through it, and the verify path pre-resolves through it
+(``attach_live_value_labels``). This table is not a substitute for that. It has
+three jobs live lookup cannot do:
 
-Keep this in sync with :mod:`converter.wikidata.property_mapping`.
+1. **Offline correctness.** The converter is importable with no network and no
+   database — tests, the desktop mirror, and any build on a dyno that cannot reach
+   wikidata.org still need a gloss for the QIDs we ourselves chose.
+2. **Zero latency on the common path.** Q5, Q87167, Q47461344 and the ~30 genre and
+   subject targets appear on nearly every item; resolving them live would be a
+   round trip to learn what we already decided.
+3. **It is a REVIEW SURFACE, and this is the important one.** A gloss recorded
+   beside a QID we picked from a table is how a wrong pick becomes visible. The
+   2026-08-05 audit started from exactly this check and found **24** wrong
+   constants — all 14 Talmud tractate QIDs and 10 of 13 Bible book QIDs, every one
+   emitted as P921 on public items: Shabbat pointed at a species of arachnid, Bava
+   Batra at the central bank of Brazil, Jeremiah at "Tom and Jerry". A live
+   resolver would have rendered those labels and hidden nothing, but nobody was
+   looking at a rendered label — whereas a table row that says
+   ``"Q9190": "Jews"`` next to ``"Exodus": "Q9190"`` is a contradiction on one
+   screen. (That one also put Q9190 in ``_BROAD_MAIN_SUBJECT_QIDS``, silently
+   dropping a specific biblical subject in the belief it was dropping a generic
+   one.)
+
+So: **a QID this pipeline CHOOSES belongs here, with its label as fetched
+live** (Rule W-26 — never from memory). A QID *reconciled at runtime* — a KIMA
+place, a VIAF-matched person — does NOT: there is nothing to review, and
+``resolve_labels`` glosses it. The export-quality gate enforces the split, blocking
+``MISSING_VALUE_LABEL`` only for the former.
+
+Keep this in sync with :mod:`converter.wikidata.property_mapping`; the
+``test_claim_provenance_completeness`` and ``test_manuscript_identity_*`` suites
+fail if a projected static QID loses its gloss.
 """
 
 from __future__ import annotations

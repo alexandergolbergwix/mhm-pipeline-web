@@ -9,6 +9,8 @@ before the eval-agent fixture is written.
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
 
 from app.pipeline.marc_verify_context import canonical_control_number
@@ -17,6 +19,10 @@ from app.pipeline.wikidata_duplicate_probe import (
     stamp_duplicate_check,
 )
 from app.pipeline.wikidata_verdict_cache import marc_context_for_wikidata_item
+
+logger = logging.getLogger(__name__)
+
+_QID_RE = re.compile(r"Q\d+")
 
 _WIKIBASE_HOST_HINTS = (
     "mhm-hmo.wikibase.cloud",
@@ -553,10 +559,12 @@ def unmapped_projectable_pids() -> frozenset[str]:
 def build_statement_value_labels(item: dict[str, Any]) -> dict[str, str]:
     """Resolve QID/PID glosses for the judge without any network call.
 
-    A bare ``Q33513`` reads as an unverifiable claim; the static desktop
-    dictionary plus each item's own ``__LOCAL:`` targets cover everything we
-    project (Rule W-137). Live WDQS lookups stay off the verify path
-    (Rule W-116).
+    A bare ``Q33513`` reads as an unverifiable claim. Three sources, none of them
+    on the network: the statement's own ``value_label`` (pre-resolved by
+    ``attach_live_value_labels`` from the cached live resolver, so a runtime-
+    reconciled place or person is glossed too), the static desktop dictionary, and
+    the item's own ``__LOCAL:`` targets (Rule W-80 / W-137). Live WDQS lookups stay
+    off the verify path (Rule W-116).
     """
     from converter.wikidata.property_labels import property_label, qid_label  # noqa: PLC0415
 
@@ -592,6 +600,63 @@ def build_statement_value_labels(item: dict[str, Any]) -> dict[str, str]:
             if label and label != value:
                 out[value] = label
     return out
+
+
+def statement_qids_needing_labels(items: list[dict[str, Any]]) -> list[str]:
+    """QIDs the static tables cannot gloss — the ones worth a live lookup."""
+    from converter.wikidata.property_labels import qid_label  # noqa: PLC0415
+
+    wanted: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        for statement in item.get("statements") or []:
+            if not isinstance(statement, dict):
+                continue
+            if str(statement.get("value_label") or "").strip():
+                continue
+            value = str(statement.get("value") or "").strip()
+            if not value or value in seen or not _QID_RE.fullmatch(value):
+                continue
+            seen.add(value)
+            if qid_label(value) == value:
+                wanted.append(value)
+    return wanted
+
+
+async def attach_live_value_labels(db_or_factory: Any, items: list[dict[str, Any]]) -> int:
+    """Stamp ``value_label`` on statements the static tables cannot gloss.
+
+    Rule W-80: the judge and the curator must see the same gloss. A QID reconciled
+    at runtime — a KIMA place on P1071, a matched person on P3342 — is in no static
+    table, so it rendered bare to the judge while the frontend lazy-fetched a label
+    for the very same value. This resolves them through the shared cached resolver
+    (process dict → Redis/Postgres → one batched ``wbgetentities``), so a run pays
+    for each QID once, ever.
+
+    Never raises and never blocks: a gloss is presentation, and a lookup failure
+    leaves the bare QID exactly as before.
+    """
+    wanted = statement_qids_needing_labels(items)
+    if not wanted:
+        return 0
+    try:
+        from app.routers.wikidata_labels import resolve_labels  # noqa: PLC0415
+
+        resolved = await resolve_labels(db_or_factory, wanted)
+    except Exception as exc:  # noqa: BLE001 — a gloss must never fail a verify run
+        logger.warning("live value-label resolution failed: %s", exc)
+        return 0
+    if not resolved:
+        return 0
+    for item in items:
+        for statement in item.get("statements") or []:
+            if not isinstance(statement, dict):
+                continue
+            value = str(statement.get("value") or "").strip()
+            label = resolved.get(value)
+            if label and not str(statement.get("value_label") or "").strip():
+                statement["value_label"] = label
+    return len(resolved)
 
 
 def build_verify_evidence_pack(
