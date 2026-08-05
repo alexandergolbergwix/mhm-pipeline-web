@@ -220,6 +220,69 @@ def _holder_findings(
     return blocking, informational
 
 
+def _claim_provenance_findings(
+    serialised_items: list[dict[str, Any]],
+    marc_records: list[dict[str, Any]],
+) -> tuple[list[str], list[str]]:
+    """Every projected claim must be traceable to a channel (Rule W-162).
+
+    Blocking: a statement PID with no ``claim_sources`` row at all, and one whose
+    row says ``no_channel_mapped`` — both mean the judge is shown a claim it cannot
+    trace, which is how 21 rows (P3342 ×16, P1891 ×5) shipped as
+    ``channels: ["unmapped"], supported: false``.
+
+    Informational: ``channel_empty``. The channel exists and this record's field is
+    simply empty. Blocking on that would make a sparse but perfectly valid
+    catalogue record unbuildable.
+    """
+    from copy import deepcopy  # noqa: PLC0415
+
+    from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
+        SUPPORT_CHANNEL_EMPTY,
+        SUPPORT_NO_CHANNEL,
+        enrich_items_with_verify_evidence,
+    )
+
+    blocking: list[str] = []
+    informational: list[str] = []
+    # Pure and offline: `_wikidata_existence` and `_llm_proposals` are absent at
+    # build time, so no verify-time fact is consulted here.
+    probe = deepcopy(serialised_items)
+    enrich_items_with_verify_evidence(probe, marc_records)
+
+    for item in probe:
+        local_id = str(item.get("local_id") or item.get("_local_id") or "")
+        claim_sources = (item.get("verify_evidence") or {}).get("claim_sources") or {}
+        emitted = {
+            str(stmt.get("property") or stmt.get("property_id") or "")
+            for stmt in item.get("statements") or []
+            if isinstance(stmt, dict)
+        } - {""}
+
+        for pid in sorted(emitted - set(claim_sources)):
+            blocking.append(
+                f"CLAIM_WITHOUT_PROVENANCE_ROW {local_id}: {pid} is projected but "
+                "has no claim_sources row",
+            )
+        for pid, row in sorted(claim_sources.items()):
+            if not isinstance(row, dict):
+                continue
+            status = str(row.get("support_status") or "")
+            if status == SUPPORT_NO_CHANNEL:
+                blocking.append(
+                    f"CLAIM_WITHOUT_CHANNEL_ROW {local_id}: {pid} has no channel "
+                    "table row — add one, or list the PID as qualifier/reference "
+                    "only in property_mapping",
+                )
+            elif status == SUPPORT_CHANNEL_EMPTY:
+                informational.append(
+                    f"claim_channel_empty {local_id}: {pid} has a channel "
+                    f"({', '.join(row.get('channels') or [])}) but this record's "
+                    "field is empty",
+                )
+    return blocking, informational
+
+
 def wikidata_export_quality_report(
     items: list[Any],
     *,
@@ -256,6 +319,13 @@ def wikidata_export_quality_report(
         holder_blocking, holder_informational = _holder_findings(items, marc_records)
         blocking.extend(holder_blocking)
         informational.extend(holder_informational)
+
+    if serialised_items and marc_records is not None:
+        claim_blocking, claim_informational = _claim_provenance_findings(
+            serialised_items, marc_records,
+        )
+        blocking.extend(claim_blocking)
+        informational.extend(claim_informational)
 
     return {"blocking": blocking, "informational": informational}
 

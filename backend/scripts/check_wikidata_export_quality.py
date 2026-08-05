@@ -186,11 +186,21 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     # Rule W-138 — a claim the judge cannot trace reads as unsupported.
     if claim_sources and (pids - {""}) - set(claim_sources):
         checks.append("claim_without_provenance_row")
-    if any(
-        isinstance(source, dict) and not source.get("supported")
-        for source in claim_sources.values()
-    ):
-        checks.append("claim_without_evidence")
+    # `supported: false` used to mean two different things. `no_channel_mapped`
+    # is our build defect (no channel table names the PID); `channel_empty` is a
+    # thin catalogue record, which is not a defect at all (Rule W-162).
+    for source in claim_sources.values():
+        if not isinstance(source, dict):
+            continue
+        status = str(source.get("support_status") or "")
+        if status == "no_channel_mapped":
+            checks.append("claim_without_channel_row")
+        elif status == "channel_empty":
+            checks.append("claim_channel_empty")
+        elif not status and not source.get("supported"):
+            # Pre-W-162 export: the two causes are indistinguishable, so keep the
+            # old blocking check rather than guess which one it was.
+            checks.append("claim_without_evidence")
 
     # Rule W-139 — a CREATE candidate that already exists on Wikidata.
     duplicate_check = ((evidence_pack.get("wikidata_existing") or {}).get("duplicate_check")
@@ -215,9 +225,14 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
             probed = {str(p.get("pid")) for p in (duplicate_check or {}).get("probed") or []}
             if probed and "P195+P217" not in probed:
                 checks.append("manuscript_missing_holder_shelfmark_probe")
-        # Rule W-145 — a CREATE work with no duplicate probe at all.
+        # Rule W-145 / W-160 — a CREATE work with no duplicate answer. "Capped"
+        # (the key was computed and the budget deferred it) is a different fact
+        # from "never attempted", and the curator is told which.
         if entity_type == "work" and status in (None, "not_run", "not_probed", "skipped"):
-            checks.append("work_create_without_duplicate_probe")
+            if (duplicate_check or {}).get("reason") == "capped":
+                checks.append("work_create_probe_capped")
+            else:
+                checks.append("work_create_without_duplicate_probe")
 
     # Rule W-146 — P2093 is correct only while no person item exists for that
     # author. Once one does, the name string is the deprecated form of the link.
@@ -401,6 +416,12 @@ _INFORMATIONAL_CHECKS = frozenset({
     # would make the gate red for a reason the export itself cannot fix.
     "manuscript_missing_holder_shelfmark_probe",
     "work_create_without_duplicate_probe",
+    # The probe computed the key and the budget deferred it — a coverage gap the
+    # next verify run closes, distinct from never having attempted it (W-160).
+    "work_create_probe_capped",
+    # The channel exists; this record's field is empty. Blocking here would make
+    # a sparse but valid catalogue record unbuildable (Rule W-162).
+    "claim_channel_empty",
 })
 
 

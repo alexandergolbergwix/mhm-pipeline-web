@@ -155,6 +155,23 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P7153": ("place", "provenance"),
     "P9302": ("material", "languages"),
     "P11603": ("extent", "material"),
+    # Rule W-162 sweep: every remaining PID a projection can emit as a main snak.
+    # Declared-but-not-yet-emitted constants are included deliberately — the point
+    # is that the NEXT projection to use one already has provenance, instead of
+    # shipping `unmapped` the way P3342 and P1891 did for three months.
+    "P18": ("digital_access",),                       # image
+    "P27": ("place", "provenance"),                   # country of citizenship
+    "P361": ("contents", "related_records", "title"),  # part of
+    "P527": ("contents", "related_records"),          # has parts
+    "P528": ("record_ids", "shelfmark"),              # catalog code
+    "P958": ("extent", "notes"),                      # folio / section
+    "P972": ("record_ids",),                          # catalog
+    "P793": ("provenance", "notes"),                  # significant event
+    "P1552": ("material", "notes"),                   # has quality
+    "P1566": ("place",),                              # GeoNames ID
+    "P3132": ("notes", "colophon_text", "summary"),   # last line / explicit
+    "P7535": ("summary", "notes", "contents"),        # scope and content
+    "P12095": ("shelfmark", "provenance"),            # fonds
 }
 
 # Claims whose support is NOT MARC. Without a provenance row of their own the
@@ -179,9 +196,47 @@ _BRIDGE_CLAIM_PIDS = frozenset({"P2888", "P973"})
 _HMO_GATED_IDENTIFIER_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P268"})
 _WORK_LINK_CLAIM_PIDS = frozenset({"P1574", "P629", "P747"})
 
+# Role-derived person links. These are not MARC-slice claims (the value is a
+# person, not a field's text) and not authority-identifier claims — the evidence
+# is the *relator role* that produced the edge, so the row cites the contributor
+# or authority match whose role maps to this PID.
+#
+# Rule W-146 added P3342 / P1891 to ROLE_TO_PID and to the emitter, but never
+# added a channel row, so all 21 of them shipped as
+# `channels: ["unmapped"], supported: false` — a claim the judge is told to treat
+# as unsupported, on a public item (Rule W-162).
+_PERSON_LINK_CLAIM_PIDS: dict[str, tuple[str, ...]] = {
+    "P3342": ("provenance", "contributors", "notes"),
+    "P1891": ("contributors", "notes", "colophon_text"),
+    "P127": ("provenance", "contributors"),
+    "P11603": ("contributors", "colophon_text", "extent", "material"),
+    "P11105": ("contributors", "notes"),
+    "P88": ("contributors", "notes"),
+    "P110": ("contributors",),
+    "P655": ("authors", "contributors"),
+    "P9046": ("authors", "contributors"),
+    "P50": ("authors",),
+    "P2093": ("authors", "contributors"),
+    "P1028": ("provenance", "contributors"),   # donated by
+    "P11811": ("provenance", "contributors"),  # beforehand owned by
+    "P11812": ("provenance", "contributors"),  # afterward owned by
+    "P1774": ("contributors", "notes"),        # workshop of
+    "P1780": ("contributors", "notes"),        # school of
+}
+
 # Claims that follow from the entity's own type rather than from a source
 # field. They are true by construction, so "no MARC row" is not a defect.
-_STRUCTURAL_CLAIM_PIDS = frozenset({"P31", "P3959"})
+# P5008 is our own WikiProject Manuscripts membership, not a claim about the
+# manuscript, so it has no MARC evidence to cite either.
+_STRUCTURAL_CLAIM_PIDS = frozenset({"P31", "P3959", "P5008"})
+
+# `supported` was one boolean for two different facts. These name them.
+SUPPORT_SUPPORTED = "supported"
+SUPPORT_STRUCTURAL = "structural"
+#: The channel exists but this record's field is empty — sparsity, not a defect.
+SUPPORT_CHANNEL_EMPTY = "channel_empty"
+#: No channel table names this PID at all. That is OUR build defect.
+SUPPORT_NO_CHANNEL = "no_channel_mapped"
 
 _MAX_CLAIM_EVIDENCE_CHARS = 400
 
@@ -257,6 +312,60 @@ def _authority_channel_evidence(item: dict[str, Any]) -> dict[str, list[Any]]:
             buckets.setdefault("authority_names", []).append(row)
         buckets.setdefault("authority_other", []).append(row)
     return buckets
+
+
+def _roles_for_person_link(pid: str) -> set[str]:
+    """The MARC/NER relator roles that map to *pid*, casefolded."""
+    from converter.wikidata.property_mapping import ROLE_TO_PID  # noqa: PLC0415
+
+    return {
+        str(role).strip().casefold()
+        for role, mapped in ROLE_TO_PID.items()
+        if mapped == pid and str(role).strip()
+    }
+
+
+def _person_link_evidence(pid: str, item: dict[str, Any], marc: dict[str, str]) -> dict[str, Any]:
+    """The role rows that produced a person-link claim (Rule W-162).
+
+    Inverts ``ROLE_TO_PID`` so the evidence names the relator the edge came from,
+    rather than handing the judge a whole MARC field and hoping. Reads the same
+    ``marc_authority_matches`` / contributor rows the linker itself used.
+    """
+    roles = _roles_for_person_link(pid)
+    if not roles:
+        return {}
+
+    def _matches(row: Any) -> bool:
+        if not isinstance(row, dict):
+            return False
+        role = str(row.get("role") or "").strip().casefold()
+        return bool(role) and any(role == r or r in role for r in roles)
+
+    rows: list[dict[str, Any]] = []
+    for key in ("authority_evidence", "marc_authority_matches", "entities"):
+        for row in item.get(key) or []:
+            if _matches(row):
+                rows.append({
+                    "name": row.get("name") or row.get("entity_text") or row.get("text"),
+                    "role": row.get("role"),
+                    "source": key,
+                })
+
+    # The MARC context keeps contributors as one flattened blob, so the matching
+    # rows are read out of it rather than re-parsed.
+    for name in ("contributors", "provenance"):
+        text = str(marc.get(name) or "")
+        if not text:
+            continue
+        for chunk in text.split(" | "):
+            lowered = chunk.casefold()
+            if any(role in lowered for role in roles):
+                rows.append({"marc_field": name, "row": chunk[:200]})
+
+    if not rows:
+        return {}
+    return {"person_link": _compact(rows[:3]), "roles": ", ".join(sorted(roles))}
 
 
 def build_claim_sources(
@@ -340,13 +449,33 @@ def build_claim_sources(
                     sorted(evidence_pack_targets)[:5],
                 )
 
+        if pid in _PERSON_LINK_CLAIM_PIDS:
+            channels.append("authority.person_link")
+            link_evidence = _person_link_evidence(pid, item, marc)
+            if link_evidence:
+                evidence.update(link_evidence)
+
         # An unmapped PID is labelled as such, never "structural" — that label
         # asserts the claim needs no evidence, which is only true for the PIDs
         # in ``_STRUCTURAL_CLAIM_PIDS`` (Rule W-138).
+        if structural:
+            support_status = SUPPORT_STRUCTURAL
+        elif evidence:
+            support_status = SUPPORT_SUPPORTED
+        elif channels:
+            support_status = SUPPORT_CHANNEL_EMPTY
+        else:
+            support_status = SUPPORT_NO_CHANNEL
+
         row: dict[str, Any] = {
             "channels": channels or (["structural"] if structural else ["unmapped"]),
             "evidence": evidence,
+            # `supported` was one boolean for two facts — "no channel table row
+            # exists for this PID" (our bug) and "the channel exists but this
+            # record's field is empty" (data sparsity). Kept for compatibility;
+            # `support_status` is the one to read (Rule W-162).
             "supported": bool(evidence) or structural,
+            "support_status": support_status,
         }
         if structural:
             row["structural"] = True
@@ -354,8 +483,71 @@ def build_claim_sources(
                 "follows from the entity type / catalog record identity — no "
                 "separate source field is expected"
             )
+        elif support_status == SUPPORT_NO_CHANNEL:
+            row["note"] = (
+                "BUILD DEFECT: no channel table names this PID, so the judge "
+                "cannot trace the claim to any source. See "
+                "unmapped_projectable_pids()"
+            )
+        elif support_status == SUPPORT_CHANNEL_EMPTY:
+            row["note"] = (
+                "the channel exists but this record's field is empty — catalogue "
+                "sparsity, not a projection defect"
+            )
         sources[pid] = row
     return sources
+
+
+def claim_channel_table_pids() -> frozenset[str]:
+    """Every PID some channel table can explain."""
+    return frozenset(
+        set(CLAIM_SOURCE_SLICES)
+        | set(_AUTHORITY_CLAIM_PIDS)
+        | set(_PERSON_LINK_CLAIM_PIDS)
+        | set(_BRIDGE_CLAIM_PIDS)
+        | set(_HMO_GATED_IDENTIFIER_PIDS)
+        | set(_WORK_LINK_CLAIM_PIDS)
+        | set(_STRUCTURAL_CLAIM_PIDS),
+    )
+
+
+# PIDs the projections emit as bare literals rather than via a `P_*` constant.
+_EXTRA_PROJECTED_PIDS = frozenset({"P195", "P217", "P31", "P3959"})
+
+
+def projectable_property_ids() -> frozenset[str]:
+    """Every main-snak PID any projection can emit — computed, not hand-listed.
+
+    A hand-maintained list is exactly what went stale: Rule W-146 added two role
+    mappings and the matching channel rows were simply forgotten. Derived from the
+    ``P_*`` constants and ``ROLE_TO_PID`` so a new mapping shows up here for free.
+    """
+    import re as _re  # noqa: PLC0415
+
+    from converter.wikidata import property_mapping  # noqa: PLC0415
+
+    pids = set(_EXTRA_PROJECTED_PIDS)
+    for name in dir(property_mapping):
+        if not name.startswith("P_"):
+            continue
+        value = getattr(property_mapping, name)
+        if isinstance(value, str) and _re.fullmatch(r"P\d+", value):
+            pids.add(value)
+    pids.update(
+        str(v) for v in property_mapping.ROLE_TO_PID.values()
+        if isinstance(v, str) and _re.fullmatch(r"P\d+", v)
+    )
+    return frozenset(pids - property_mapping.QUALIFIER_ONLY_PIDS
+                     - property_mapping.REFERENCE_ONLY_PIDS)
+
+
+def unmapped_projectable_pids() -> frozenset[str]:
+    """PIDs a projection can emit that no channel table can explain.
+
+    MUST be empty. A PID in here reaches the judge as
+    ``support_status: "no_channel_mapped"`` on a public item (Rule W-162).
+    """
+    return frozenset(projectable_property_ids() - claim_channel_table_pids())
 
 
 def build_statement_value_labels(item: dict[str, Any]) -> dict[str, str]:

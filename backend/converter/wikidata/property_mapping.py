@@ -639,6 +639,40 @@ CONDITION_TO_QID: dict[str, str] = {
 # Keywords that force P31=manuscript fragment instead of P5816.
 FRAGMENT_CONDITION_KEYWORDS: tuple[str, ...] = ("fragment", "קטע")
 
+# ── Properties that never carry evidence of their own (Rule W-162) ────
+#
+# Every PID a projection can emit as a MAIN SNAK must have a row in one of the
+# claim-source channel tables, or the judge is told it is unsupported. These two
+# sets are the reviewed exclusions: PIDs that only ever appear *inside* a
+# statement, where the statement they qualify or cite carries the evidence.
+#
+# Reviewed data, not a test literal — a new qualifier belongs here, and anything
+# not here has to earn a channel row.
+
+QUALIFIER_ONLY_PIDS: frozenset[str] = frozenset({
+    "P1319",   # earliest date — bounds on P571
+    "P1326",   # latest date — bounds on P571
+    "P1480",   # sourcing circumstances (circa)
+    "P1932",   # object named as (stated form of a linked value)
+    "P2241",   # reason for deprecated rank
+    "P3831",   # object has role
+    "P518",    # applies to part
+    "P580",    # start time
+    "P582",    # end time
+    "P478",    # volume
+    "P5102",   # nature of statement
+    "P7416",   # number of folios — a folio reference on an inscription
+})
+
+REFERENCE_ONLY_PIDS: frozenset[str] = frozenset({
+    "P248",    # stated in
+    "P813",    # retrieved
+    "P854",    # reference URL
+    "P887",    # based on heuristic
+    "P3680",   # statement supported by
+})
+
+
 # ── NER/MARC role → Wikidata PID mapping ─────────────────────────────
 # Manuscript-side roles only. Author/editor/contributor authorship belongs on
 # the WORK (MS → P1574 → work → P50), never as P50 on the manuscript.

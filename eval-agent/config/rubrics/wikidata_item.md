@@ -127,11 +127,27 @@ claim, not only MARC:
   validated before that item was created; treat the wiki item as the source.
 - `channels: ["work_candidate_evidence", "local_reference_targets"]` — `P1574`
   and other work links.
-- `structural: true` (`P31`, `P3959`) — true by construction from the entity
-  type and its catalog record. Never report a structural claim as unsourced.
+- `channels: ["authority.person_link"]` — a role-derived person edge
+  (`P3342` significant person, `P1891` signatory, `P127` owner, …). The evidence
+  is the MARC relator that produced the edge, quoted in `evidence.person_link`,
+  not a MARC field that repeats the value.
+- `structural: true` (`P31`, `P3959`, `P5008`) — true by construction from the
+  entity type, its catalog record, or our own WikiProject membership. Never
+  report a structural claim as unsourced.
 
-`supported: false` means we ourselves could not find backing evidence — say so
-and name the missing channel; that is a real finding.
+**Read `support_status`, not `supported`.** The boolean conflated two very
+different facts; the status names them:
+
+- `supported` — evidence is quoted. Check the claim against it.
+- `structural` — needs no separate source (see above).
+- `channel_empty` — the channel is correct and **this record's field is empty**.
+  Catalogue sparsity, not a defect: do not report it, and do not let it move any
+  axis. A thin MARC record is still a valid one.
+- `no_channel_mapped` — **our build defect.** No channel table names this PID, so
+  nobody can trace the claim. Report it as a projection bug that needs a channel
+  row, naming the PID — not as a claim the item failed to evidence. Until
+  August 2026 `P3342` and `P1891` shipped this way on 21 rows, and it read as if
+  the data were unsupported when the mapping was simply missing.
 
 Further calibration:
 
