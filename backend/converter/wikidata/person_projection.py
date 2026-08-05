@@ -43,6 +43,17 @@ _HARD_REJECT_AUTHORITY_FLAGS = frozenset({
     "modern_person",
 })
 
+# A guard flag that says "we cannot CONFIRM this identity for this heading", as
+# opposed to "this row is not a person". Authority hardening strips the Wikidata
+# and VIAF ids on this flag but deliberately keeps Mazal, and a surviving mazal_id
+# is a publishable P8189 — so 13 persons in run 48ba6c13 shipped with the
+# unconfirmed row's name AND its dates. The item survives on its MARC attestation;
+# everything that came from the unconfirmed row does not (Rule W-166).
+_SOFT_REJECT_AUTHORITY_FLAGS = frozenset({"wikidata_crosscheck_fail"})
+_DATE_SUPPRESSING_AUTHORITY_FLAGS = (
+    _HARD_REJECT_AUTHORITY_FLAGS | _SOFT_REJECT_AUTHORITY_FLAGS
+)
+
 
 class PersonProjectionMixin:
     def _get_or_create_person(
@@ -273,12 +284,29 @@ class PersonProjectionMixin:
 
         pref_heb = str(match_info.get("preferred_name_heb") or "").strip()
         if pref_heb:
+            from converter.authority.heading_fidelity import (  # noqa: PLC0415
+                heading_matches,
+                heading_mismatch_reason,
+            )
+
             normalized_heb = _normalise_label(
                 _strip_person_name_qualifiers(_to_natural_name_order(pref_heb))
             )
+            # An authority heading may not overwrite a MARC heading it does not
+            # match (Rule W-166). This used to be unconditional, which published
+            # `יצחק בן שלמה בן חיים גבאי` for a manuscript whose scribe MARC names
+            # as `גבאי, טוביה בן חיים יצחק` — same family, different given name.
+            fidelity_ok = heading_matches(clean_name, pref_heb)
             if normalized_heb and normalized_heb != person.labels.get("he"):
                 person.aliases.setdefault("he", []).append(normalized_heb)
-            person.labels["he"] = normalized_heb
+            if fidelity_ok:
+                person.labels["he"] = normalized_heb
+            else:
+                person.heading_mismatch = {
+                    "marc": clean_name,
+                    "authority": pref_heb,
+                    "reason": heading_mismatch_reason(clean_name, pref_heb),
+                }
 
         # P31 = human (or organization) — uses the shared institutional
         # keyword list (see _is_institutional_name above).
@@ -331,7 +359,8 @@ class PersonProjectionMixin:
         # explicitly rejecting its identity for the public projection. Do not
         # reintroduce the rejected biographical dates from that row.
         authority_rejected = bool(
-            set(match_info.get("guard_flags") or []) & _HARD_REJECT_AUTHORITY_FLAGS
+            set(match_info.get("guard_flags") or [])
+            & _DATE_SUPPRESSING_AUTHORITY_FLAGS
         ) or bool(match_info.get("rejection_reason"))
         if authority_rejected:
             birth_year = death_year = None

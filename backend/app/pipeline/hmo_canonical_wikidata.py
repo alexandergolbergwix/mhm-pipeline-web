@@ -65,6 +65,14 @@ _HARD_REJECT_AUTHORITY_FLAGS = frozenset({
     "biographical_inconsistency",
     "modern_person",
 })
+# "We cannot confirm this identity for this heading" — not "this is not a person".
+# The item survives on its MARC attestation, but its dates and its authority-derived
+# label do not (Rule W-166). Deliberately NOT added to the hard-reject set, which
+# drives `_drop_conflicted_person_items`: a soft flag must never remove the item.
+_SOFT_REJECT_AUTHORITY_FLAGS = frozenset({"wikidata_crosscheck_fail"})
+_DATE_SUPPRESSING_AUTHORITY_FLAGS = (
+    _HARD_REJECT_AUTHORITY_FLAGS | _SOFT_REJECT_AUTHORITY_FLAGS
+)
 # P921 values too broad to say anything about a manuscript. Q9190 used to be in
 # here because `QID_LABELS` glossed it as "Jews" — it is actually **Exodus**, so
 # this filter was silently dropping a perfectly specific biblical subject while
@@ -561,6 +569,14 @@ def build_canonical_studio_result(
             if item.local_id not in set(conflicted_person_ids)
         ]
 
+    unconfirmed_date_ids = _suppress_unconfirmed_person_dates(native_items)
+    if unconfirmed_date_ids:
+        logger.warning(
+            "Suppressing dates on persons whose authority identity is unconfirmed "
+            "(wikidata_crosscheck_fail): %s",
+            ", ".join(unconfirmed_date_ids),
+        )
+
     _sanitize_canonical_claims(native_items, context)
 
     # Apply overrides before resolving placeholders. A curator statement edit
@@ -619,6 +635,7 @@ def build_canonical_studio_result(
             "local_references_degraded": local_ref_stats["degraded"],
             "local_references_dropped": local_ref_stats["dropped"],
             "conflicted_persons_dropped": len(conflicted_person_ids),
+            "unconfirmed_person_dates_suppressed": len(unconfirmed_date_ids),
         },
     }
 
@@ -707,6 +724,41 @@ def _authority_match_conflicts(
             person_death_year=death_year,
         )
     )
+
+
+def _suppress_unconfirmed_person_dates(items: list[WikidataItem]) -> list[str]:
+    """Strip biographical dates that came from an unconfirmed authority row.
+
+    Rule W-166. ``wikidata_crosscheck_fail`` means no Wikidata label for that
+    cluster is within two edits of the MARC name — we cannot confirm the identity
+    for this heading. Authority hardening strips the Wikidata and VIAF ids on the
+    flag but keeps Mazal, and a surviving ``mazal_id`` is a publishable P8189, so
+    13 persons in run 48ba6c13 shipped with the unconfirmed row's dates. The item
+    survives on its MARC attestation; the dates from that row do not.
+    """
+    suppressed: list[str] = []
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "person":
+            continue
+        flags: set[str] = set()
+        for row in item.authority_evidence or []:
+            if isinstance(row, Mapping):
+                flags |= {str(f) for f in (row.get("guard_flags") or [])}
+        if not (flags & _SOFT_REJECT_AUTHORITY_FLAGS):
+            continue
+        kept = [
+            statement for statement in item.statements or []
+            if str(statement.property_id or "") not in _PERSON_BIOGRAPHY_PIDS
+        ]
+        if len(kept) != len(item.statements or []):
+            item.statements = kept
+            suppressed.append(item.local_id)
+        # The generated description embeds the same dates.
+        for lang, text in list((item.descriptions or {}).items()):
+            cleaned = re.sub(r"\s*\([^)]*\d{3,4}[^)]*\)", "", str(text or "")).strip()
+            if cleaned != text:
+                item.descriptions[lang] = cleaned
+    return suppressed
 
 
 def _drop_conflicted_person_items(

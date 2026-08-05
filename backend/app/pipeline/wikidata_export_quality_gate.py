@@ -349,6 +349,33 @@ def _work_identity_findings(items: list[Any]) -> list[str]:
     return errors
 
 
+def _person_heading_findings(items: list[Any]) -> list[str]:
+    """Report a refused authority heading, and an unconfirmed identity (W-166).
+
+    Informational for now: the MARC heading already won the label slot and the
+    dates are already suppressed, so nothing wrong ships. Promote to blocking once
+    a clean run confirms the comparator is not over-refusing.
+    """
+    findings: list[str] = []
+    for item in items:
+        if str(getattr(item, "entity_type", "") or "").strip().lower() != "person":
+            continue
+        local_id = str(getattr(item, "local_id", "") or "")
+        mismatch = getattr(item, "heading_mismatch", None)
+        if isinstance(mismatch, dict) and mismatch.get("reason"):
+            findings.append(f"PERSON_HEADING_MISMATCH {local_id}: {mismatch['reason']}")
+        flags: set[str] = set()
+        for row in getattr(item, "authority_evidence", None) or []:
+            if isinstance(row, dict):
+                flags |= {str(f) for f in (row.get("guard_flags") or [])}
+        if "wikidata_crosscheck_fail" in flags:
+            findings.append(
+                f"PERSON_IDENTITY_UNCONFIRMED {local_id}: the authority row failed "
+                "the Wikidata crosscheck — dates suppressed, MARC heading kept",
+            )
+    return findings
+
+
 def wikidata_export_quality_report(
     items: list[Any],
     *,
@@ -373,6 +400,7 @@ def wikidata_export_quality_report(
     )
     blocking.extend(_work_title_errors(items))
     blocking.extend(_work_identity_findings(items))
+    informational.extend(_person_heading_findings(items))
     for item in items:
         local_id = str(getattr(item, "local_id", "") or "")
         if not _label_text(item):

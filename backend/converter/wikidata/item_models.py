@@ -39,3 +39,7 @@ class WikidataItem:
     records: list[str] = field(default_factory=list)
     authority_evidence: list[dict[str, object]] = field(default_factory=list)
     work_candidate_evidence: list[dict[str, object]] = field(default_factory=list)
+    #: Set when an authority heading was refused as this person's label because it
+    #: does not name the same person as the MARC heading (Rule W-166). Carries
+    #: ``{marc, authority, reason}`` so the curator sees why the MARC form won.
+    heading_mismatch: dict[str, object] | None = None
