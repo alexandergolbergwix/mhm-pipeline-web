@@ -390,3 +390,138 @@ class TestPathDependentEvidenceNeverKeysAVerdict:
         assert wikidata_verdict_input_fingerprint(
             read,
         ) != wikidata_verdict_input_fingerprint(changed)
+
+
+class TestJudgeProjectionIsNotTheFingerprintProjection:
+    """Rule W-156 — what the judge reads and what keys the verdict differ."""
+
+    @staticmethod
+    def _item() -> dict:
+        from app.pipeline.wikidata_verify_evidence import build_verify_evidence_pack
+
+        item = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "labels": {"en": "Cambridge University Library, F 18702"},
+            "statements": [{"property_id": "P31", "value": "Q87167"}],
+            "record_ids": ["990001402000205171"],
+            "_wikidata_existence": {"status": "absent", "candidates": []},
+            "_llm_proposals": {"status": "ok", "proposals": [{"span": "x"}]},
+        }
+        item["verify_evidence"] = build_verify_evidence_pack(item, [])
+        return item
+
+    def test_the_fixture_projection_keeps_the_duplicate_check(self) -> None:
+        """The bug: the judge was asked about a channel it was never shown."""
+        from app.pipeline.wikidata_verdict_cache import judge_evidence_projection
+
+        pack = judge_evidence_projection(self._item())
+        assert pack["wikidata_existing"]["duplicate_check"]["status"] == "absent"
+
+    def test_the_fixture_projection_keeps_the_llm_proposals(self) -> None:
+        from app.pipeline.wikidata_verdict_cache import judge_evidence_projection
+
+        assert judge_evidence_projection(self._item())["llm_proposals"]["status"] == "ok"
+
+    def test_the_fixture_projection_still_drops_marc(self) -> None:
+        """MARC travels in marc_extracted.json, not twice."""
+        from app.pipeline.wikidata_verdict_cache import judge_evidence_projection
+
+        assert "marc" not in judge_evidence_projection(self._item())
+
+    def test_the_fingerprint_projection_still_drops_both(self) -> None:
+        """Rule W-136 must not regress: these channels may not key a verdict."""
+        from app.pipeline.wikidata_verdict_cache import fingerprint_verify_evidence
+
+        pack = fingerprint_verify_evidence(self._item())
+        assert "llm_proposals" not in pack
+        assert "duplicate_check" not in pack["wikidata_existing"]
+
+    def test_the_written_fixture_carries_the_duplicate_check(self, tmp_path) -> None:
+        import json
+
+        from app.pipeline.wikidata_verify_fixture import write_wikidata_verify_fixture
+
+        write_wikidata_verify_fixture(
+            dest_dir=tmp_path, marc_records=[], items=[self._item()],
+        )
+        written = json.loads((tmp_path / "wikidata_items.json").read_text())
+        check = written[0]["verify_evidence"]["wikidata_existing"]["duplicate_check"]
+        assert check["status"] == "absent"
+
+
+class TestDuplicateRejudge:
+    """Rule W-157 — a verdict judged without a duplicate answer is re-judged once."""
+
+    @staticmethod
+    def _item(status: str) -> dict:
+        return {"local_id": "QDraft_MS_1", "_duplicate_status": status}
+
+    def test_unknown_to_conclusive_triggers_a_rejudge(self) -> None:
+        from app.pipeline.wikidata_verdict_cache import (
+            cached_verdict_needs_duplicate_rejudge,
+        )
+
+        cached = {"verdict": {"overall": "partial", "duplicate_class": "unknown"}}
+        assert cached_verdict_needs_duplicate_rejudge(cached, self._item("absent"))
+
+    def test_a_verdict_with_no_class_reads_as_unknown(self) -> None:
+        """Every verdict written before Rule W-157 was judged with the probe hidden."""
+        from app.pipeline.wikidata_verdict_cache import (
+            cached_verdict_needs_duplicate_rejudge,
+        )
+
+        cached = {"verdict": {"overall": "partial"}}
+        assert cached_verdict_needs_duplicate_rejudge(cached, self._item("absent"))
+
+    def test_a_conclusive_verdict_stays_a_cache_hit(self) -> None:
+        from app.pipeline.wikidata_verdict_cache import (
+            cached_verdict_needs_duplicate_rejudge,
+        )
+
+        cached = {
+            "verdict": {"overall": "full", "duplicate_class": "probed-conclusive"},
+        }
+        assert not cached_verdict_needs_duplicate_rejudge(cached, self._item("absent"))
+
+    def test_a_still_unknown_probe_does_not_loop_forever(self) -> None:
+        from app.pipeline.wikidata_verdict_cache import (
+            cached_verdict_needs_duplicate_rejudge,
+        )
+
+        cached = {"verdict": {"overall": "partial", "duplicate_class": "unknown"}}
+        assert not cached_verdict_needs_duplicate_rejudge(cached, self._item("skipped"))
+        assert not cached_verdict_needs_duplicate_rejudge(cached, self._item("not_run"))
+
+    def test_the_annotator_never_drops_a_verdict(self) -> None:
+        from app.pipeline.wikidata_verdict_cache import annotate_duplicate_rejudge
+
+        verdict = {"overall": "partial", "reasoning": "…", "duplicate_class": "unknown"}
+        out = annotate_duplicate_rejudge(verdict, self._item("candidates_found"))
+        assert out["overall"] == "partial"
+        assert out["reasoning"] == "…"
+        assert out["needs_rejudge"] is True
+        assert out["rejudge_reason"] == "duplicate_check_resolved"
+
+    def test_the_annotator_leaves_a_fresh_verdict_alone(self) -> None:
+        from app.pipeline.wikidata_verdict_cache import annotate_duplicate_rejudge
+
+        verdict = {"overall": "full", "duplicate_class": "probed-conclusive"}
+        assert annotate_duplicate_rejudge(verdict, self._item("absent")) == verdict
+
+    def test_a_slim_persist_item_still_answers_its_duplicate_class(self) -> None:
+        """`fingerprint_verify_evidence` strips the probe, so persist keys off this."""
+        from app.pipeline.wikidata_duplicate_probe import duplicate_class_for_item
+        from app.pipeline.wikidata_verify_evidence import build_verify_evidence_pack
+        from app.pipeline.wikidata_verify_fixture import slim_item_for_verdict_persist
+
+        item = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "statements": [],
+            "_wikidata_existence": {"status": "candidates_found", "candidates": []},
+        }
+        item["verify_evidence"] = build_verify_evidence_pack(item, [])
+        slim = slim_item_for_verdict_persist(item)
+        assert "duplicate_check" not in slim["verify_evidence"]["wikidata_existing"]
+        assert duplicate_class_for_item(slim) == "probed-conclusive"

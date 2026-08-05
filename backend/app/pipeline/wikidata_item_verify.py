@@ -11,6 +11,10 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.pipeline.inference_cache import write_to_inference_cache
+from app.pipeline.wikidata_duplicate_probe import (
+    duplicate_class_for_item,
+    duplicate_status_for_item,
+)
 from app.pipeline.wikidata_verdict_cache import (
     WIKIDATA_VERDICT_KEY_VERSION,
     wikidata_verdict_input_fingerprint,
@@ -75,6 +79,11 @@ async def _persist_wikidata_verdicts_to_overrides(
                 "cache_key_version": WIKIDATA_VERDICT_KEY_VERSION,
                 "session_id": None,
                 "evaluator": evaluator_id,
+                # Recorded, never keyed (Rule W-157): a verdict judged while the
+                # probe was inconclusive must be re-judged once it answers, and
+                # the fingerprint cannot carry that without going stale everywhere.
+                "duplicate_status": duplicate_status_for_item(item),
+                "duplicate_class": duplicate_class_for_item(item),
             }
             if evaluator_id == "wikidata_autofix":
                 fixes = verdict_body.get("suggested_fixes") or cand.get("suggested_fixes")
@@ -96,7 +105,11 @@ async def _persist_wikidata_verdicts_to_overrides(
             row.ai_verdict_at = now
 
             cached_result = {
-                "verdict": verdict_body,
+                "verdict": {
+                    **verdict_body,
+                    "duplicate_status": summary["duplicate_status"],
+                    "duplicate_class": summary["duplicate_class"],
+                },
                 "judge_id": model,
                 "judged_at": v.get("judged_at"),
                 "cache_key": fingerprint,

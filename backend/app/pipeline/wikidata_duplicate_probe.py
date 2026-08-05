@@ -96,7 +96,12 @@ def duplicate_check_fallback() -> dict[str, Any]:
 
 
 def duplicate_status_for_item(item: dict[str, Any]) -> str:
-    """The duplicate status of *item*, from whichever surface carries it."""
+    """The duplicate status of *item*, from whichever surface carries it.
+
+    Three surfaces, in order of directness: the live probe result, the evidence
+    pack, and `_duplicate_status` — which is all a verdict-persist slim item keeps,
+    because `fingerprint_verify_evidence` strips `duplicate_check` out of the pack.
+    """
     existence = item.get("_wikidata_existence")
     if isinstance(existence, dict) and existence.get("status"):
         return str(existence["status"])
@@ -107,6 +112,9 @@ def duplicate_status_for_item(item: dict[str, Any]) -> str:
             check = existing.get("duplicate_check")
             if isinstance(check, dict) and check.get("status"):
                 return str(check["status"])
+    stamped = item.get("_duplicate_status")
+    if stamped:
+        return str(stamped)
     return STATUS_NOT_RUN
 
 

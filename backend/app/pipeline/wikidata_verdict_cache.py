@@ -14,10 +14,12 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w138_v1 with Rule W-138 (MARC quote unwrap, channel-aware claim
-# provenance, work/person identity gating, local-reference resolution).
-# Prior: w137_v1, w124_v1 (multi-source verify evidence), w104_v1, w71_v1.
-WIKIDATA_VERDICT_SCHEMA = "w138_v1"
+# Bumped to w156_v1 with Rule W-156: the judge's fixture now carries the
+# duplicate probe and the LLM proposals it was always asked to reason about, so
+# every verdict judged before this must miss (Rule W-51).
+# Prior: w138_v1 (MARC quote unwrap, channel-aware claim provenance, work/person
+# identity gating, local-reference resolution), w137_v1, w124_v1, w104_v1, w71_v1.
+WIKIDATA_VERDICT_SCHEMA = "w156_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 
@@ -95,6 +97,32 @@ def fingerprint_verify_evidence(
                 for subkey in subkeys:
                     trimmed.pop(subkey, None)
                 slim[channel] = trimmed
+    return slim
+
+
+# The judge's evidence projection is NOT the fingerprint projection (Rule W-156).
+#
+# The fingerprint answers "is this the same item state the judge saw?" and so may
+# only contain state the read path can reproduce. What the judge *reads* is a
+# different question, and collapsing the two blinded it: the fixture was built
+# with `fingerprint_verify_evidence`, so `duplicate_check` and `llm_proposals`
+# were stripped from every prompt while the rubric asked about both. They always
+# rendered as `{}`, the rubric's "unknown ⇒ do not conclude the item is new"
+# branch fired on all 343 items, and 28 of 29 `partial` verdicts hedged on a
+# probe that had in fact answered.
+#
+# MARC still travels separately, in `marc_extracted.json`.
+JUDGE_EVIDENCE_KEYS_DROPPED = ("marc",)
+
+
+def judge_evidence_projection(item: dict[str, Any]) -> dict[str, Any]:
+    """``verify_evidence`` as the JUDGE must see it — every channel the rubric names."""
+    pack = item.get("verify_evidence")
+    if not isinstance(pack, dict):
+        return {}
+    slim = dict(pack)
+    for key in JUDGE_EVIDENCE_KEYS_DROPPED:
+        slim.pop(key, None)
     return slim
 
 
@@ -412,4 +440,61 @@ def sanitise_stale_wikidata_verdict(
         **legacy,
         "cache_key": expected,
         "cache_key_version": WIKIDATA_VERDICT_KEY_VERSION,
+    }
+
+
+def cached_verdict_needs_duplicate_rejudge(
+    cached: dict[str, Any] | None,
+    item: dict[str, Any],
+) -> bool:
+    """True when the judge answered without a duplicate answer and now has one.
+
+    Rule W-157. This deliberately does NOT touch the fingerprint. Keying a verdict
+    on the raw probe payload is what Rule W-136 forbids — the review table cannot
+    reproduce a live probe, so every verdict would read as stale. Instead the
+    verdict records the coarse *class* it was judged under, and a transition from
+    `unknown` to `probed-conclusive` sends that one item back to the judge.
+
+    Terminating by construction: after the re-judge the stored class is conclusive,
+    so the item is no longer eligible; if the probe is still inconclusive it was
+    never eligible.
+    """
+    from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+        DUP_CLASS_CONCLUSIVE,
+        DUP_CLASS_UNKNOWN,
+        duplicate_class_for_item,
+    )
+
+    if not isinstance(cached, dict):
+        return False
+    verdict = cached.get("verdict") if isinstance(cached.get("verdict"), dict) else cached
+    stored_class = str(verdict.get("duplicate_class") or "")
+    # A verdict written before Rule W-157 has no class at all. It was judged with
+    # the probe stripped from its fixture, so `unknown` is the truthful reading.
+    if not stored_class:
+        stored_class = DUP_CLASS_UNKNOWN
+    return (
+        stored_class == DUP_CLASS_UNKNOWN
+        and duplicate_class_for_item(item) == DUP_CLASS_CONCLUSIVE
+    )
+
+
+def annotate_duplicate_rejudge(
+    verdict: dict[str, Any] | None,
+    item: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Flag a verdict whose duplicate answer has since resolved. Never drops one.
+
+    A read path that discarded the verdict here would lose a real judgement over a
+    channel the judge was not shown; the curator is told it is worth re-running
+    instead.
+    """
+    if not isinstance(verdict, dict):
+        return verdict
+    if not cached_verdict_needs_duplicate_rejudge(verdict, item):
+        return verdict
+    return {
+        **verdict,
+        "needs_rejudge": True,
+        "rejudge_reason": "duplicate_check_resolved",
     }

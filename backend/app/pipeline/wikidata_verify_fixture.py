@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.wikidata_duplicate_probe import duplicate_status_for_item
 from app.pipeline.wikidata_verdict_cache import (
     FINGERPRINT_STATEMENT_LIMIT,
     fingerprint_statements,
     fingerprint_verify_evidence,
+    judge_evidence_projection,
     record_ids_for_wikidata_item,
 )
 _FIXTURE_ITEM_KEYS = (
@@ -49,7 +51,10 @@ def compact_wikidata_verify_fixture_item(item: dict[str, Any]) -> dict[str, Any]
     }
     evidence = item.get("verify_evidence")
     if isinstance(evidence, dict):
-        row["verify_evidence"] = fingerprint_verify_evidence(item)
+        # The judge projection, not the fingerprint one — the rubric asks about
+        # `duplicate_check` and `llm_proposals`, so it must be shown them
+        # (Rule W-156).
+        row["verify_evidence"] = judge_evidence_projection(item)
     return {key: row[key] for key in _FIXTURE_ITEM_KEYS if key in row}
 
 
@@ -118,6 +123,10 @@ def slim_item_for_verdict_persist(item: dict[str, Any]) -> dict[str, Any]:
         "local_reference_targets": item.get("local_reference_targets") or {},
         "verify_evidence": slim_evidence,
         "_marc_context": marc_ctx if isinstance(marc_ctx, dict) else {},
+        # `fingerprint_verify_evidence` strips `duplicate_check`, so the slim item
+        # cannot answer "what did the probe say?" any more. Persist keys off this
+        # instead of the raw payload (Rule W-157).
+        "_duplicate_status": duplicate_status_for_item(item),
     }
     live = item.get("wikidata_live")
     if isinstance(live, dict):

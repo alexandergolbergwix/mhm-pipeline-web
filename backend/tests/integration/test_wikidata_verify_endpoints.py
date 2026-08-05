@@ -102,6 +102,7 @@ class TestWikidataVerifyStartStream:
     async def test_cached_item_stream_does_not_require_eval_agent(
         self, sample_run, monkeypatch,
     ) -> None:
+        from app.pipeline import wikidata_verify_scope as verify_scope
         from app.routers import wikidata_studio as ws_router
 
         client = sample_run["client"]
@@ -145,7 +146,7 @@ class TestWikidataVerifyStartStream:
 
         monkeypatch.setattr(ws_router, "_fetch_wikidata_verify_items", _items)
         monkeypatch.setattr(ws_router, "_resolve_gemini_key", _key)
-        monkeypatch.setattr(ws_router, "read_from_inference_cache", _cache)
+        monkeypatch.setattr(verify_scope, "read_from_inference_cache", _cache)
         monkeypatch.setattr(ws_router, "locate_eval_agent", _missing_eval_agent)
 
         async with client.stream(
@@ -168,6 +169,7 @@ class TestWikidataVerifyStartStream:
     async def test_uncached_missing_eval_agent_emits_runner_warning(
         self, sample_run, monkeypatch,
     ) -> None:
+        from app.pipeline import wikidata_verify_scope as verify_scope
         from app.routers import wikidata_studio as ws_router
 
         client = sample_run["client"]
@@ -195,7 +197,7 @@ class TestWikidataVerifyStartStream:
 
         monkeypatch.setattr(ws_router, "_fetch_wikidata_verify_items", _items)
         monkeypatch.setattr(ws_router, "_resolve_gemini_key", _key)
-        monkeypatch.setattr(ws_router, "read_from_inference_cache", _no_cache)
+        monkeypatch.setattr(verify_scope, "read_from_inference_cache", _no_cache)
         monkeypatch.setattr(ws_router, "locate_eval_agent", _missing_eval_agent)
 
         async with client.stream(

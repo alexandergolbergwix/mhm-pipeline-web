@@ -94,6 +94,7 @@ from app.pipeline.wikidata_verdict_cache import (
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
 )
+from app.pipeline.wikidata_verify_scope import partition_wikidata_verify_cache
 from app.pipeline.wikidata_verify_fixture import (
     compact_wikidata_verdict_candidate,
     write_wikidata_verify_fixture,
@@ -280,23 +281,12 @@ async def start_verify_stream(
     judge_model = payload.tier_model or GEMINI_MODEL
     evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
     attach_wikidata_marc_context(items, marc_records)
-    pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    uncached: list[dict[str, Any]] = []
-    if not payload.override_cache:
-        for item in items:
-            hit = await read_from_inference_cache(
-                db,
-                kind="ai_verdict",
-                query_summary=wikidata_verdict_query_summary(
-                    item, judge_model, evaluator=evaluator_id,
-                ),
-            )
-            if hit is not None:
-                pre_cached.append((item, hit))
-            else:
-                uncached.append(item)
-    else:
-        uncached = list(items)
+    pre_cached, uncached, _cache_stats = await partition_wikidata_verify_cache(
+        db, items,
+        judge_model=judge_model,
+        evaluator_id=evaluator_id,
+        override_cache=payload.override_cache,
+    )
 
     api_key = await _resolve_gemini_key(db, auth)
     if not api_key:
@@ -1352,6 +1342,9 @@ async def export_wikidata_items(
         attach_cached_duplicate_evidence,
         stamp_duplicate_check,
     )
+    from app.pipeline.wikidata_verdict_cache import (  # noqa: PLC0415
+        annotate_duplicate_rejudge,
+    )
     from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
         enrich_items_with_verify_evidence,
     )
@@ -1370,6 +1363,11 @@ async def export_wikidata_items(
     for item in items:
         item["duplicate_check"] = stamp_duplicate_check(item)
         item.pop("_wikidata_existence", None)
+        # A verdict judged before the probe answered is kept, and flagged — the
+        # curator should re-run verify on it (Rule W-157).
+        annotated = annotate_duplicate_rejudge(item.get("ai_verdict"), item)
+        if annotated is not None:
+            item["ai_verdict"] = annotated
 
     filename = f"run-{run_id}-wikidata-studio-items.{format}"
     if format == "json":

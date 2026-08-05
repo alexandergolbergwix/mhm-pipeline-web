@@ -162,9 +162,22 @@ lookup (Action API `haswbstatement:<PID>=<value>`) for items with **no**
   CREATE. No duplication risk.
 - **`unavailable`** / **`skipped`** / **`not_run`** — the check could not be
   completed (network failure, no identifier claim to probe, or the per-job probe
-  budget was exhausted). This means **unknown**, never "safe". Do not assert the
+  budget was exhausted; `reason: "capped"` means the key was computed but the
+  budget deferred it). This means **unknown**, never "safe". Do not assert the
   item is new; mention the gap in `reasoning` and judge the remaining evidence.
   A missing check alone is not grounds for `fail`.
+
+**Name the status token you saw.** Write `duplicate_check.status=absent` (or
+whichever it is) rather than prose like "the duplicate check was empty" or "not
+available". Until August 2026 the fixture stripped this channel out entirely, so
+every verdict rendered `{}` and hedged about it — 28 of 29 `partial` verdicts on
+run `48ba6c13` spent their reasoning on a probe that had in fact answered
+`absent`. Quoting the token makes that class of bug visible in one grep instead
+of invisible for three months.
+
+**An inconclusive check may not move any axis.** It is not evidence against
+`name_ok`, `type_ok` or `role_ok`, and it must not by itself downgrade `overall`
+from `full` to `partial`. Mention it and move on.
 
 Never infer duplication from label similarity alone — two manuscripts, scribes
 or works can legitimately share a name (see the homonym rules). The identifier
