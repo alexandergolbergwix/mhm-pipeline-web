@@ -1150,6 +1150,16 @@ collide with us.
    never become external I/O. No cache entry reads as `not_probed`, never
    `absent`.
 
+**Amended 2026-08-05 (Rules W-159 / W-160).** Composite and title keys ARE
+batchable: ``probe_titles_batch`` groups by class and ORs ``inlabel:`` clauses,
+``probe_composites_batch`` ORs the selective PID and then enforces the FULL
+conjunction client-side against each hit's claims — the batched query is a
+deliberate superset and the AND is never substituted by a one-sided lookup. The
+unbatchable budget now bounds only the residue (groups that errored), the residue
+is interleaved across probe classes by ``order_unbatchable_fairly`` so the cap
+cannot land on one class, and a capped key persists a ``deferred`` marker that a
+later job retries. The duplicate answer has exactly one writer.
+
 ### Rule W-145 — Works MUST be probed for duplicates (added 2026-08-02)
 
 Works had **no duplicate check at all** — `_IDENTIFIER_PIDS_BY_TYPE["work"]` was
@@ -1164,6 +1174,13 @@ certain in the corpus: the judge already caught us proposing a new item against
    may auto-match, auto-adopt, or suppress a CREATE on this evidence alone.
 3. **A manuscript never gets a title probe.** It has real identifiers; a
    likeness must not dilute them.
+
+**Amended 2026-08-05 (Rule W-145 follow-up).** Works are batched by class and
+interleaved with the other probe classes, so works are never the class the budget
+starves. Before this, ``unbatchable`` was ``sorted(pending)`` and ``"P195+P217"``
+sorts before ``"title+P31"`` — every manuscript composite key was issued before any
+work title key, and 29 works reported ``not_probed`` with their keys already
+computed.
 
 ### Rule W-146 — Created items MUST be reachable from one another (added 2026-08-02)
 
@@ -1250,3 +1267,199 @@ QuickStatements export on the same fail-closed public projection. *Why:* the
 production audit found unsupported local edges, broad `Jews` subject claims,
 holder mismatches, authority dates from the wrong person, and work evidence
 whose source record was not visible to the judge.
+
+### Rule W-159 — The duplicate answer has exactly one writer (added 2026-08-05)
+
+Export (23) reported `verify_evidence.wikidata_existing.duplicate_check.status`
+as `not_run` on **all 343** items while 314 answers sat at the top level of the
+same rows. `export_wikidata_items` built the evidence pack inside
+`fetch_merged_wikidata_items` and only stamped `_wikidata_existence` afterwards,
+so `build_verify_evidence_pack` always took its `not_run` fallback and nothing ever
+republished it. Two surfaces, two writers, two orders — the third such incident
+after export (19).
+
+Invariant:
+
+1. **`stamp_duplicate_check` is the only writer.** It puts the *same object* on
+   `item["_wikidata_existence"]` and inside the evidence pack, so the two cannot
+   drift and the order cannot matter. Called at the tail of both
+   `attach_duplicate_evidence` and `attach_cached_duplicate_evidence`, and after
+   every `enrich_items_with_verify_evidence` — rebuilding the pack would otherwise
+   discard an answer stamped earlier.
+2. **Read the answer through `duplicate_status_for_item`.** It checks the live
+   result, then the pack, then `_duplicate_status` — which is all a persist-slim
+   item keeps, because `fingerprint_verify_evidence` strips the pack's copy.
+3. **The export derives the top-level field from the pack**, never the reverse.
+
+### Rule W-160 — A capped probe MUST be distinguishable from an unattempted one (added 2026-08-05)
+
+29 work items reported `duplicate_check.status = "not_probed"` with the note "no
+probe has run for this item yet" — while their probe keys were sitting right there
+in the same object, already computed. The keys had been dropped by the unbatchable
+budget, and a dropped key left **no cache row at all**, which on the read path is
+indistinguishable from a key nothing ever looked at.
+
+Invariant:
+
+1. **A capped key persists a `deferred` cache row** carrying the reason. The
+   export reads it as `skipped` with `reason: "capped"` and a note naming the cap,
+   never as `not_probed` and never as `absent`.
+2. **A deferred row is a MISS for the probe.** `attach_duplicate_evidence` retries
+   it, because treating it as an answer would let the 7-day cache TTL freeze the
+   cap in place for a week.
+3. **The offline checker separates them** — `work_create_probe_capped` (coverage
+   gap the next run closes, informational) vs
+   `work_create_without_duplicate_probe` (never attempted).
+
+### Rule W-161 — A holder name is either audited or the build fails (added 2026-08-05)
+
+Amends Rules W-75 / W-82 / W-143.
+
+Incident: 11 of 68 manuscripts shipped labelled `Jerusalem, NLI, F …` while MARC
+710 named Braginsky, a private collector, or nothing at all. Two faults compounded:
+`_holding_institution_name` gated acceptance on a substring keyword list that
+rejected "Braginsky Collection" — "collection" lives in
+`_PERSON_NAME_QUALIFIER_WORDS`, not `_INSTITUTIONAL_KEYWORDS` — and both label
+builders filled the gap with a hardcoded `holding or "Jerusalem, NLI"`.
+
+A bare `None` from `institution_qid` conflated three different facts: verified,
+reviewed-and-unlinkable, and never-audited. Three real institutions sat in that
+third bucket.
+
+Invariant:
+
+1. **`resolve_holder` returns a status, not a `None`** — `resolved` / `abstained` /
+   `unknown` / `placeholder`, each with a reason. `unknown` is a build error;
+   `abstained` is a reviewed decision and only informational.
+2. **Label precedence, and it NEVER ends at NLI.** Verified table label, else the
+   record's own attested 710 string (attestation, not fabrication), else the
+   shelfmark alone. The no-shelfmark fallback is
+   `Hebrew manuscript, NLI record <cn>` — a catalogue designation, not an
+   ownership claim.
+3. **One extractor.** `holder_names_from_record` feeds both the label and P195, so
+   the name that keys one cannot differ from the name that keys the other.
+4. **The gate blocks `UNAUDITED_HOLDER`, `FABRICATED_HOLDER` and
+   `HOLDER_QID_UNVERIFIED`.** None of them is a curator decision (Rule W-137);
+   each clears by verifying a QID live and adding a table row, or by recording an
+   abstention with its reason.
+5. `scripts/audit_holding_institutions.py` reports the buckets for a run or an
+   export. **`unknown` MUST be empty.**
+
+### Rule W-162 — Every PID a projection can emit has a channel row (added 2026-08-05)
+
+Amends Rules W-137 / W-138.
+
+21 statements reached the judge as `channels: ["unmapped"], supported: false` —
+P3342 on 16 items, P1891 on 5. Rule W-146 had added both to `ROLE_TO_PID` and to
+the person linker but not to any claim-source table, and the rubric tells the judge
+that a claim it cannot trace is unsupported. A missing *mapping* read as missing
+*data*, for three months.
+
+Invariant:
+
+1. **Role-derived person links have their own channel.**
+   `_PERSON_LINK_CLAIM_PIDS` + `_person_link_evidence` invert `ROLE_TO_PID` and
+   quote the relator row that produced the edge — the same rows the linker read.
+2. **The map is exhaustive and self-checking.** `projectable_property_ids()` is
+   *computed* from the `P_*` constants and `ROLE_TO_PID`, and
+   `unmapped_projectable_pids()` MUST be empty. A hand-listed set is what went
+   stale.
+3. **The exclusions are reviewed data, not a test literal.**
+   `QUALIFIER_ONLY_PIDS` / `REFERENCE_ONLY_PIDS` in `property_mapping.py` name the
+   PIDs that only ever appear inside a statement. Anything not there earns a
+   channel row.
+4. **`support_status` names the cause.** `no_channel_mapped` is OUR build defect
+   and blocks; `channel_empty` is catalogue sparsity and is informational —
+   blocking on it would make a thin but valid record unbuildable. `supported`
+   stays for compatibility; read the status.
+
+### Rule W-163 — The export-quality gate runs in the build path, on both sources (added 2026-08-05)
+
+`assert_wikidata_export_quality` had exactly one non-test caller, inside the
+**legacy** branch of `execute_studio_build`. The `source == "canonical"` branch
+upserted the Studio cache and returned without ever calling it — so every defect in
+this rule file's neighbours shipped through an ungated path.
+
+Invariant:
+
+1. **Both branches gate before `_upsert_studio_cache`**, and the canonical build
+   requests `return_native=True` so the gate has something to check.
+2. **Two severities, and the distinction is load-bearing.** Blocking findings are
+   build bugs with no curator override (Rule W-137); informational findings are
+   reviewed decisions or sparse records and MUST never block.
+3. **The evidence-level checks are pure.** They rebuild the pack in-process from
+   the serialised items plus MARC; `_wikidata_existence` and `_llm_proposals` are
+   absent at build time, so no verify-time fact is consulted.
+
+### Rule W-164 — A manuscript's label is a designation and its inception is the audited year (added 2026-08-05)
+
+Amends Rules W-80 / W-140 / W-82.
+
+Three defects in what a manuscript asserts about itself:
+
+* **64 of 68** items carried the MARC 245 in `labels.he` — the title of a text the
+  manuscript *contains*, not a designation for the physical carrier.
+* A P195 on Q1256981 rendered `value_label: null` while the verified label sat in
+  `holding_institutions` one module away.
+* Two items asserted P571 = **1501** while their own MARC 260 $c read
+  `מאה ט"ז-י"ז, לפני תל"ו (1676)`.
+
+Invariant:
+
+1. **With a shelfmark or control number present, `labels.he` is the designation**
+   and the Hebrew 245 becomes an alias. A title becomes the label only when there
+   is nothing better.
+2. **Every projected QID carries a gloss** (Rule W-80). `qid_label` defers to
+   `institution_label` rather than duplicating the institution table, and the gate
+   blocks `MISSING_VALUE_LABEL`.
+3. **`manuscript_production_year` is the only P571 source.** It lives in
+   `converter/transformer/production_year.py` so the projection can reach it; a
+   second copy under `app/pipeline` is the drift Rule W-142 punishes. A
+   colophon-attested year NARROWS a century-precision date and never widens or
+   invents one; the century stays as P1319/P1326 and the year is referenced
+   through P887.
+4. **A century RANGE is parsed before a single century.** `_parse_hebrew_century`
+   matches the first century in a range, so `מאה ט"ז-י"ז` yielded 1501–1600 and
+   silently discarded half the range.
+5. **Corollary — a P/Q constant is verified live or it is not written** (Rule
+   W-26). The audit behind point 2 found that **all 14** Talmud tractate QIDs and
+   **10 of 13** Bible book QIDs were wrong, and both tables are emitted as P921 on
+   public items: Shabbat pointed at a species of arachnid, Bava Batra at the
+   central bank of Brazil, Jeremiah at "Tom and Jerry". A wrong QID looks exactly
+   like a verified one, which is why the gloss must be recorded beside it — the
+   wrong gloss on Q9190 ("Jews" for what is actually Exodus) had also put it in
+   `_BROAD_MAIN_SUBJECT_QIDS`, dropping a specific biblical subject in the belief
+   it was dropping a generic one.
+
+### Rule W-165 — A work item is attested from exactly one record (added 2026-08-05)
+
+The work counterpart of Rule W-137's manuscript-identity clause.
+
+`QDraft_Work_37` shipped three answers to "which record is this work from?": a
+label from the HMO snapshot (`מחזור מנהג אשכנז המערבי`), a description citing
+record `990000592310205171` — whose MARC 245 is `גלא עמיקתא`, a different work —
+and `work_candidate_evidence` sourced from a third record. Manuscripts have had an
+identity anchor since Rule W-137; works had none, so three independent walks of
+`entity.control_numbers` each stopped at whichever record they reached first.
+
+Invariant:
+
+1. **`_work_identity_record` is the anchor**: the identity control number when it
+   indexes, else the UNIQUE record whose titles strictly match the work's own
+   label, else fail closed. The description's attestation clause and the evidence
+   walk both read it.
+2. **`_titles_match` is strict by default.** Equality after work-title
+   sanitisation, or up to an ISBD subtitle break. The old `a in b or b in a` is how
+   a bare `מחזור` bound to a 42-character title. `loose` remains for discovery and
+   ranking only, floored at 8 characters and 2 tokens, and may never ACCEPT
+   evidence.
+3. **Every evidence row carries `source_record_id` and `source_scope`, even when
+   empty** — "no record backs this row" is a stated fact, not a missing key.
+4. **A label-keyed merge may not union across records.** Two works that each name
+   records and name disjoint ones do not merge without corroborating evidence;
+   recordless works still merge, since refusing would mint a duplicate. The
+   evidence union dedupes on `(title, record, field)` — deduping on the title alone
+   silently kept only the first of two records attesting it — and drops rows whose
+   record is not among the merged item's own.
+5. **The gate blocks `WORK_EVIDENCE_RECORD_MISMATCH`** when the description cites a
+   record the item neither owns nor evidences.

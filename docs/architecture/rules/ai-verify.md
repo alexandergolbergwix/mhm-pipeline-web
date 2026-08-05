@@ -821,10 +821,17 @@ Two independent key mismatches:
 
 Invariant:
 
-1. **One projection.** ``fingerprint_statements`` / ``fingerprint_verify_evidence``
-   in ``wikidata_verdict_cache.py`` are the only statement/evidence projections
-   used for keys, fixtures, and persist slims — ``wikidata_verify_fixture``
-   imports them. Any field a fingerprint reads MUST survive slimming.
+1. **One projection *per question*.** ``fingerprint_statements`` /
+   ``fingerprint_verify_evidence`` in ``wikidata_verdict_cache.py`` are the only
+   statement/evidence projections used for **keys and persist slims**. Any field a
+   fingerprint reads MUST survive slimming.
+
+   **Amended 2026-08-05 (Rule W-156):** the FIXTURE is a different projection.
+   Building it with ``fingerprint_verify_evidence`` stripped ``duplicate_check`` and
+   ``llm_proposals`` from every prompt while the rubric asked about both, so they
+   rendered as ``{}`` on all 343 items of run ``48ba6c13`` and 28 of 29 partial
+   verdicts hedged about a probe that had answered. Use
+   ``judge_evidence_projection`` for the fixture.
 2. **Read paths enrich first.** ``attach_local_reference_targets`` +
    ``enrich_items_with_verify_evidence`` run over the whole merged corpus before
    any verdict is compared; ``fetch_merged_wikidata_item`` delegates to the
@@ -837,3 +844,102 @@ Tests: ``tests/unit/test_wikidata_verdict_cache.py``
 (``test_slimmed_persist_item_reproduces_the_full_item_fingerprint``,
 ``test_verdict_survives_when_evidence_pack_is_absent``),
 ``test_wikidata_verdict_persistence.py``.
+
+### Rule W-156 — The judge's evidence projection MUST NOT be the fingerprint projection (added 2026-08-05)
+
+Incident: export (23) of run `48ba6c13` came back 204 full / 27 pass / **29
+partial** / 6 fail, and 28 of the 29 partial verdicts spent their reasoning
+hedging about a duplicate check — "the duplicate check was not run", "the result
+was empty", "duplication cannot be ruled out". The probe had in fact answered
+`absent` for 293 of the 343 items.
+
+The judge had never seen it. `compact_wikidata_verify_fixture_item` built the
+fixture with `fingerprint_verify_evidence`, which strips
+`wikidata_existing.duplicate_check` and `llm_proposals` — correctly, because
+Rule W-136 forbids keying a verdict on state the read path cannot reproduce. But
+`wikidata_item.py` renders both channels as first-class prompt blocks and the
+rubric instructs the judge on both, so they rendered as `{}` on every item and the
+rubric's "unknown ⇒ do not conclude the item is new" branch fired 343 times.
+
+Rule W-136's "one projection" bullet was taken one step too far. **What the judge
+reads and what keys the verdict are different questions.**
+
+Invariant:
+
+1. **Two named projections.** `judge_evidence_projection` builds the fixture and
+   keeps every channel the rubric names; it drops only `marc`, which travels
+   separately in `marc_extracted.json`. `fingerprint_verify_evidence` is
+   unchanged and remains the only projection used for keys and persist slims.
+2. **A channel the rubric asks about MUST be in the judge projection.** Adding a
+   prompt block to an evaluator without adding the channel here is the same bug.
+3. **Changing the judge projection is a schema bump** (Rule W-51): the judge's
+   input changed, so every prior verdict must miss. This one is `w156_v1`.
+
+### Rule W-157 — A verdict judged without a conclusive duplicate answer MUST be re-judged once one exists (added 2026-08-05)
+
+Verdicts written on 2026-08-02 and 08-03, while the probe was still reporting
+`skipped` / `not_run`, were reused verbatim after the probe later answered for 314
+items. Nothing anywhere re-judged on a duplicate-status transition.
+
+The obvious fix — put `duplicate_check` in the fingerprint — is the one Rule W-136
+forbids: the review table cannot reproduce a live probe, so every verdict would
+read as stale and the AI-verdict column would empty out again.
+
+Invariant:
+
+1. **Record the class, do not key on it.** Every persisted verdict carries
+   `duplicate_status` (the raw status) and `duplicate_class` — `probed-conclusive`
+   when the status is `absent` / `candidates_found` / `already_linked`, `unknown`
+   otherwise. The class is derived from the persisted answer, so the read path can
+   reproduce it; the raw payload still never enters a fingerprint.
+2. **Re-judge at scope partitioning.** `cached_verdict_needs_duplicate_rejudge`
+   sends a cache hit back to the judge when its stored class is `unknown` and the
+   item is now `probed-conclusive`. A verdict with no class at all was judged
+   before this rule, with the probe stripped from its fixture, so `unknown` is the
+   truthful reading.
+3. **It MUST terminate by construction.** After the re-judge the stored class is
+   conclusive, so the item is no longer eligible; an item whose probe is still
+   inconclusive was never eligible.
+4. **`sanitise_stale_wikidata_verdict` is NOT touched.** No new accept branch, no
+   fingerprint change — Rules W-136 / W-148 / W-149 / W-150 / W-151 / W-152 cannot
+   regress. Read-path visibility comes from `annotate_duplicate_rejudge`, a pure
+   annotator that adds `needs_rejudge` and never drops a verdict. It runs on the
+   export and the single-row drawer, deliberately **not** on the `list_view` table
+   path (Rule W-131's payload budget).
+
+### Rule W-158 — A judge failure MUST NOT persist as a substantive verdict (added 2026-08-05)
+
+Incident: one manuscript in run `48ba6c13` was stored as `overall="fail",
+name_ok="no", type_ok="no", role_ok="n/a", reasoning=""`. That is exactly the
+eval-agent `Verdict` dataclass default set. A transport failure, a parse failure
+and budget exhaustion were all indistinguishable from a reasoned rejection.
+
+Three things had to be wrong at once. `parse_verdict(None)` returned the defaults
+unchanged; the envelope-level `error` that explained it ("no verdict (judge
+failure)") was never read on the persist path; and `_compact_verdict_for_job`
+dropped a falsy `reasoning` while keeping the axes, so the UI rendered a
+reasoned-looking fail with no reason.
+
+Invariant:
+
+1. **`verification_failed`, not `fail`.** A judge that did not answer reports
+   `overall="verification_failed"` with `unknown` axes and a reasoning that says
+   it is not an assessment. A substantive `overall` with blank `reasoning` is the
+   same thing — reachable because the agentic tool-loop cannot send a
+   `responseSchema`.
+2. **The failure MUST carry its reason.** The stored-row schema requires a
+   non-empty `reasoning` for a substantive `overall` and a non-empty `error` for
+   `verification_failed`. `_load_schema` strips those conditionals and the
+   harness-only enum values before the schema becomes a `responseSchema`: the
+   model is never offered a way to declare its own check failed.
+3. **NEVER cache a judge failure** (amends Rule W-51). The `ai_verdict` cache has a
+   90-day TTL, so a transport hiccup would warm-hit for three months and the item
+   would never be judged again. The override row is still written, so the curator
+   sees "check failed" rather than nothing.
+4. **A run that produced one is `partial`, not `complete`.** A
+   `verification_failed` row carries a stable candidate id so it still advances
+   progress (Rule W-64), but the run did not judge its whole scope.
+5. **Every `overall` the backend can emit MUST be in the frontend allowlists**
+   (Rule W-110.5) — `WikidataItemsPanel`'s streamed-verdict set and
+   `VerdictsTable`'s `Overall` union and filter chips. An unlisted value is
+   silently dropped.

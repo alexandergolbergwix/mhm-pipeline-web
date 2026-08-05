@@ -44,7 +44,9 @@ logger = logging.getLogger(__name__)
 
 # v5 invalidates pre-notability cache rows that could expose an identifierless
 # person as an upload candidate (the current builder omits those rows).
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v5"  # Rule W-138
+# v6: designation labels, audited holders, anchored works, corrected P/Q constants
+# (Rules W-161 … W-166) — every cached Studio row predates them.
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v6"
 
 
 def studio_cache_has_stale_validation(

@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-155)
+## Architectural rules (W-1…W-167)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -66,6 +66,9 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-134** — Interrupted verify jobs MUST auto-resume on the backend
 - **W-135** — Verify judge throughput MUST use safe parallelism
 - **W-136** — Verdict fingerprints MUST be invariant under verify-heap slimming
+- **W-156** — The judge's evidence projection MUST NOT be the fingerprint projection
+- **W-157** — A verdict judged without a conclusive duplicate answer MUST be re-judged
+- **W-158** — A judge failure MUST NOT persist as a substantive verdict, nor be cached
 
 ### [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md) — Wikidata Studio (public projection + write path)
 
@@ -108,6 +111,13 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-144** — `absent` MUST mean every duplicate key was probed, and be visible
 - **W-145** — Works MUST be probed for duplicates
 - **W-146** — Created items MUST be reachable from one another
+- **W-159** — The duplicate answer has exactly one writer
+- **W-160** — A capped probe MUST be distinguishable from an unattempted one
+- **W-161** — A holder name is either audited or the build fails; labels never default to NLI
+- **W-162** — Every PID a projection can emit has a channel row; "unsupported" names its cause
+- **W-163** — The export-quality gate runs in the build path, on both sources
+- **W-164** — A manuscript's label is a designation; its inception is the audited year
+- **W-165** — A work item is attested from exactly one record
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 
@@ -150,6 +160,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-129** — Run jobs MUST pass admission control before claim
 - **W-141** — The job tray's "View" MUST reopen the surface that started the job
 - **W-147** — Verify scope preparation MUST report steps, not a static string
+- **W-167** — Verify scope cache partitioning lives in one function
 - **W-148** — Subset AI verification MUST retain freshly persisted verdicts when only derived evidence scope changes
 - **W-149** — Wikidata verify fingerprints MUST use the curator override-merged Studio item state, matching the main table.
 - **W-150** — Wikidata verdict reads MUST validate against the retained pre-derived item projection; ledger QIDs and local-reference display labels are presentation enrichment.
@@ -170,6 +181,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-81** — MARC coverage MUST be loss-aware
 - **W-83** — Place authority identifiers MUST preserve their namespace
 - **W-84** — Ambiguous KIMA names MUST abstain
+- **W-166** — An unconfirmed authority identity may not name or date a person
 
 ### [rdf-ontology.md](docs/architecture/rules/rdf-ontology.md) — RDF graph + ontology
 

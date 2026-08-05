@@ -303,7 +303,7 @@ def canonical_wikidata_fingerprint(
     # manuscript, generated descriptions, deduped claims).
     # v11 — Rule W-138 (unwrapped MARC values, one work title, evidence-gated
     # person dates, resolved local references).
-    salt = "hmo-wikidata-v11:"
+    salt = "hmo-wikidata-v12:"  # Rules W-161 … W-166
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()

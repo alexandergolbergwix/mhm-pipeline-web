@@ -238,3 +238,53 @@ A normalized place name may resolve to multiple KIMA rows. If those rows carry
 conflicting Wikidata IDs, matching must abstain unless one exact primary name
 uniquely disambiguates it; the UI must display local Wikibase IDs separately
 from external authority IDs.
+
+### Rule W-166 — An unconfirmed authority identity may not name or date a person (added 2026-08-05)
+
+Amends Rules W-37 / W-53.
+
+Incident: `mazal:987007299516905171` shipped labelled `יצחק בן שלמה בן חיים גבאי`
+with a death year of 1640, for a manuscript created 1655–1660 whose MARC
+contributor is `גבאי, טוביה בן חיים יצחק` (role `מעתיק`, scribe). Same family, a
+different given name, and a scribe who was already dead. The authority row carried
+`wikidata_crosscheck_fail` the whole time. **13 persons** in run `48ba6c13` are in
+this state.
+
+Three independent gaps:
+
+1. **The flag gated nothing.** It is in neither `_HARD_REJECT_AUTHORITY_FLAGS` set,
+   and `guard_wikidata_crosscheck` deliberately strips the Wikidata and VIAF ids
+   while KEEPING Mazal — so the surviving `mazal_id` became a publishable P8189
+   (Rules W-153 / W-154 are satisfied by P8189 alone) and dragged the unconfirmed
+   row's dates along with it.
+2. **`preferred_name_heb` overwrote the MARC heading unconditionally**, with the
+   MARC form demoted to an alias and no comparison of any kind.
+3. **Homonym scoring had no name term at all** — tag-100 +100, date overlap +50,
+   MS plausibility +20, `_fuzzy` −30 — and `pick_mazal_candidate` returned a LONE
+   candidate with zero checks. That is the branch this row came through.
+
+Invariant:
+
+1. **`wikidata_crosscheck_fail` is a SOFT reject.** It means "we cannot confirm
+   this identity for this heading", not "this is not a person", so the item
+   survives on its MARC attestation — but P569/P570 are suppressed and the dates
+   are stripped from the generated description. It MUST stay out of the hard-reject
+   set, which drives `_drop_conflicted_person_items`: a soft flag may never remove
+   an item.
+2. **An authority heading may not overwrite a MARC heading it does not match.**
+   `converter/authority/heading_fidelity.py` reuses
+   `wikidata_crosscheck.hebrew_label_matches` so both sides of the pipeline agree
+   on what "the same name" means. Token overlap alone is not enough — the two
+   Gabbai headings share a surname and two patronymics and score 0.6 — so the
+   comparator strips patronymic connectors and requires the GIVEN name and the
+   family name to match within one edit. On mismatch the MARC heading keeps the
+   label, the authority form becomes an alias, and `heading_mismatch` records why.
+3. **Homonym scoring has a name term**, and a lone mismatched candidate abstains
+   unless a tag-100 heading with an overlapping date range corroborates it.
+   Shipped behind `AUTHORITY_HOMONYM_NAME_TERM`, **default OFF**: this changes
+   *matching*, whose output feeds person-link evidence (Rule W-162), the date
+   suppression above, and the Rule W-155 drop. Measure it against live authority
+   data with `scripts/dryrun_homonym_name_term.py` before enabling — the Studio
+   export cannot measure it, because it never records WHICH MARC heading each
+   authority row matched, so any pairing reconstructed from it mispairs and reports
+   artifact flips.

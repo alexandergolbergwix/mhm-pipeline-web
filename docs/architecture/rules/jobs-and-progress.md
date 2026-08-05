@@ -365,3 +365,63 @@ mutate shared state, the task performs every DB write, throttled to 1.5 s
 
 No frontend change was needed: `JobProgressInline` already renders `sub_*` from
 the build job's Rule W-113 work.
+
+### Rule W-148 — Subset AI verification MUST retain freshly persisted verdicts when only derived evidence scope changes (added 2026-08-02)
+
+Verifying a subset of the corpus re-derives `local_reference_targets` and the MARC
+slice against the *subset*, not the whole run. A verdict persisted moments earlier
+therefore hashed a wider evidence scope than the read path could reproduce, and
+sanitisation dropped it — the curator watched verdicts stream in and then vanish.
+
+Invariant: a change confined to **derived** evidence scope MUST NOT invalidate a
+verdict. `sanitise_stale_wikidata_verdict` accepts on the stable key and rewrites
+`cache_key` forward, so the verdict survives and the reproducible key catches up.
+A change to what the item ASSERTS still invalidates.
+
+### Rule W-149 — Wikidata verify fingerprints MUST use the curator override-merged item state (added 2026-08-02)
+
+Verify hashed the raw Studio-cache item; the review table hashed the item with
+curator overrides applied. Any item a curator had edited therefore read as stale
+immediately after being judged.
+
+Invariant: the verify scope applies overrides **before** fingerprinting, so the
+state that keys a verdict is the state the table shows — one item state, not two.
+
+### Rule W-150 — Wikidata verdict reads MUST validate against the retained pre-derived projection (added 2026-08-02)
+
+`fetch_merged_wikidata_items` enriches rows for display: ledger QIDs, resolved
+`__LOCAL:` display labels, upload outcomes. Validating a stored verdict against
+that enriched row compares it to a shape that never existed when it was written.
+
+Invariant: `sanitise_stale_wikidata_verdict` takes a `stable_item` — the retained
+pre-derived projection — and validates against it. Presentation enrichment is
+presentation, and MUST NOT key a verdict.
+
+### Rule W-151 — Wikidata verdict reads MUST reuse the persist-slim projection (added 2026-08-02)
+
+The read path built its own approximation of the slim item. Any divergence from
+`slim_item_for_verdict_persist` is an unreproducible key.
+
+Invariant: the read path calls `slim_item_for_verdict_persist` itself. One
+function, both sides — the same reasoning as Rule W-136's "one projection".
+
+### Rule W-152 — Wikidata stable verdict keys MUST ignore subset-derived `__LOCAL:` display labels (added 2026-08-02)
+
+A `__LOCAL:` statement's `value_label` is filled in from whichever items are in
+scope, so the same statement carries a label in a full run and none in a subset.
+Hashing it made subset verdicts unreadable by the full-run table and vice versa.
+
+Invariant: `wikidata_verdict_stable_input_fingerprint` strips `value_label` from
+`__LOCAL:` statements. The reference itself still keys the verdict; its rendering
+does not.
+
+### Rule W-167 — Verify scope cache partitioning lives in one function (added 2026-08-05)
+
+The loop that decides which items are already judged and which go to the judge was
+copy-pasted between `start_verify_stream` and `verify_job`. A rule added to one path
+was silently absent from the other — which is how a re-judge trigger (Rule W-157)
+would have ended up existing only in the interactive path and never in the
+background job the curator actually runs.
+
+Invariant: `partition_wikidata_verify_cache` is the single implementation, and both
+entry points call it. A test asserts the hand-rolled loop is gone from both.

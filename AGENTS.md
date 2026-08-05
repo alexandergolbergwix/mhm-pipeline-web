@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** — it indexes every architectural
-rule (Rules W-1…W-155) and points at the topic file under
+rule (Rules W-1…W-167) and points at the topic file under
 [docs/architecture/rules/](docs/architecture/rules/) that holds its full
 text. Read the topic file for the area you are touching; each rule records a
 real production incident plus the invariant that closes it — check it before touching RDF
@@ -60,7 +60,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-155) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
+(W-1…W-167) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
