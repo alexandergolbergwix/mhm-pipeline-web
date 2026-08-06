@@ -399,6 +399,7 @@ def _person_heading_findings(items: list[Any]) -> list[str]:
         mismatch = getattr(item, "heading_mismatch", None)
         if isinstance(mismatch, dict) and mismatch.get("reason"):
             findings.append(f"PERSON_HEADING_MISMATCH {local_id}: {mismatch['reason']}")
+
         flags: set[str] = set()
         for row in getattr(item, "authority_evidence", None) or []:
             if isinstance(row, dict):

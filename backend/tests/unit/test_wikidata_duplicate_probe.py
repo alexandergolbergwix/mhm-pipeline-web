@@ -881,16 +881,116 @@ class TestOneWriterForTheDuplicateAnswer:
         assert duplicate_status_for_item(item) == STATUS_CANDIDATES
         assert duplicate_class_for_item(item) == "probed-conclusive"
 
-    def test_stamping_is_idempotent_and_never_invents_an_answer(self) -> None:
+    def test_stamping_never_invents_an_answer(self) -> None:
         item = _person()
         enrich_items_with_verify_evidence([item], self._marc())
         first = stamp_duplicate_check(item)
-        assert stamp_duplicate_check(item) is first
         assert first["status"] == STATUS_NOT_RUN
         assert first["candidates"] == []
+        # The placeholder is NOT written back onto `_wikidata_existence`: doing so
+        # made `attach_cached_duplicate_evidence` skip the item and read no cached
+        # answer at all (export 24).
+        assert item.get("_wikidata_existence") in (None, {})
+        assert stamp_duplicate_check(item)["status"] == STATUS_NOT_RUN
 
     def test_a_skipped_answer_is_not_conclusive(self) -> None:
         item = {"entity_type": "work", "statements": []}
         asyncio.run(attach_duplicate_evidence(None, [item], fetch=_miss))
         assert duplicate_status_for_item(item) == STATUS_SKIPPED
         assert duplicate_class_for_item(item) == "unknown"
+
+
+class TestThePlaceholderIsNotAnAnswer:
+    """Export (24) read `not_run` on all 284 items — for the opposite reason to (23).
+
+    The two surfaces agreed this time (Rule W-159 held), but both showed the
+    PLACEHOLDER: `stamp_duplicate_check` wrote `not_run` onto
+    `_wikidata_existence`, and `attach_cached_duplicate_evidence` skips any item
+    that already has one, so the cached answer was never read. The persisted
+    verdicts meanwhile held 255 absent / 15 candidates_found / 6 already_linked.
+    """
+
+    @staticmethod
+    def _manuscript() -> dict:
+        return {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "statements": [
+                _stmt("P31", "Q87167"),
+                _stmt("P3959", "990000403370205171"),
+            ],
+        }
+
+    def test_enriching_does_not_fake_an_answer(self) -> None:
+        item = self._manuscript()
+        enrich_items_with_verify_evidence([item], [])
+        assert item.get("_wikidata_existence") in (None, {})
+        # The pack still shows the placeholder, so the judge is told "unknown".
+        pack = item["verify_evidence"]["wikidata_existing"]["duplicate_check"]
+        assert pack["status"] == STATUS_NOT_RUN
+
+    def test_a_cached_answer_is_read_after_enriching(self) -> None:
+        """The exact export-(24) regression."""
+        from app.pipeline.wikidata_duplicate_probe import (
+            attach_cached_duplicate_evidence,
+        )
+
+        item = self._manuscript()
+        enrich_items_with_verify_evidence([item], [])
+
+        async def fake_read(_factory, pairs):
+            return {
+                p: _pair_result([{"qid": "Q999", "matched_on": "x", "label": "y"}])
+                for p in pairs
+            }
+
+        with patch(
+            "app.pipeline.wikidata_duplicate_probe._read_cached_pairs", fake_read,
+        ):
+            asyncio.run(attach_cached_duplicate_evidence(object(), [item]))
+
+        answer = stamp_duplicate_check(item)
+        assert answer["status"] == STATUS_CANDIDATES
+        assert (
+            item["verify_evidence"]["wikidata_existing"]["duplicate_check"]["status"]
+            == STATUS_CANDIDATES
+        )
+
+    def test_has_duplicate_answer_rejects_the_placeholder(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import has_duplicate_answer
+
+        assert not has_duplicate_answer({})
+        assert not has_duplicate_answer({"_wikidata_existence": {"status": "not_run"}})
+        assert has_duplicate_answer({"_wikidata_existence": {"status": "absent"}})
+
+    def test_a_real_answer_survives_a_later_stamp(self) -> None:
+        item = self._manuscript()
+        item["_wikidata_existence"] = {"status": STATUS_ABSENT, "candidates": []}
+        enrich_items_with_verify_evidence([item], [])
+        assert stamp_duplicate_check(item)["status"] == STATUS_ABSENT
+
+    def test_a_verdicts_recorded_status_survives_the_probe_cache_expiring(self) -> None:
+        """The probe cache lives 7 days; a verdict lives 90 (Rule W-157)."""
+        item = self._manuscript()
+        item["ai_verdict"] = {
+            "overall": "fail", "duplicate_status": STATUS_CANDIDATES,
+            "duplicate_class": "probed-conclusive",
+        }
+        enrich_items_with_verify_evidence([item], [])
+        answer = stamp_duplicate_check(item)
+        assert answer["status"] == STATUS_CANDIDATES
+        assert "stored verdict" in answer["note"]
+
+    def test_a_stale_absent_never_suppresses_a_warning(self) -> None:
+        """Only WARNINGS carry forward from a verdict — Rule W-144's whole point."""
+        item = self._manuscript()
+        item["ai_verdict"] = {"overall": "full", "duplicate_status": STATUS_ABSENT}
+        enrich_items_with_verify_evidence([item], [])
+        assert stamp_duplicate_check(item)["status"] == STATUS_NOT_RUN
+
+    def test_a_live_conclusive_answer_beats_the_verdict(self) -> None:
+        item = self._manuscript()
+        item["ai_verdict"] = {"overall": "fail", "duplicate_status": STATUS_CANDIDATES}
+        item["_wikidata_existence"] = {"status": STATUS_ABSENT, "candidates": []}
+        enrich_items_with_verify_evidence([item], [])
+        assert stamp_duplicate_check(item)["status"] == STATUS_ABSENT

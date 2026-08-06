@@ -265,13 +265,42 @@ class PersonProjectionMixin:
         if original_name and original_name != person.labels[label_lang]:
             person.aliases.setdefault(label_lang, []).append(original_name)
 
-        pref_lat = str(match_info.get("preferred_name_lat") or "").strip()
+        # ONE fidelity decision per authority row, taken before either label slot
+        # is filled (Rule W-166). Gating only the Hebrew slot made the item
+        # contradict itself across languages: run 48ba6c13's rebuild shipped
+        # `en="Sara Molho"` beside `he="שבתי מולכו"` — the Latin heading from the
+        # very row whose Hebrew heading had just been refused. An internally
+        # inconsistent item is worse than a consistently-uncertain one.
+        pref_heb_raw = str(match_info.get("preferred_name_heb") or "").strip()
+        pref_lat_raw = str(match_info.get("preferred_name_lat") or "").strip()
+        authority_heading_trusted = True
+        heading_mismatch_note: dict[str, object] | None = None
+        if pref_heb_raw or pref_lat_raw:
+            from converter.authority.heading_fidelity import (  # noqa: PLC0415
+                heading_matches,
+                heading_mismatch_reason,
+            )
+
+            comparable = pref_heb_raw or pref_lat_raw
+            authority_heading_trusted = heading_matches(clean_name, comparable)
+            if not authority_heading_trusted:
+                heading_mismatch_note = {
+                    "marc": clean_name,
+                    "authority": comparable,
+                    "reason": heading_mismatch_reason(clean_name, comparable),
+                }
+
+        pref_lat = pref_lat_raw
         if pref_lat:
             original_lat = _normalise_label(_strip_person_name_qualifiers(pref_lat))
             normalized_lat = _normalise_label(
                 _strip_person_name_qualifiers(_to_natural_name_order(pref_lat))
             )
-            if _has_hebrew_script(normalized_lat) and not re.search(r"[A-Za-z]", normalized_lat):
+            if not authority_heading_trusted:
+                # Searchable, but it may not speak for the item.
+                if normalized_lat:
+                    person.aliases.setdefault("en", []).append(normalized_lat)
+            elif _has_hebrew_script(normalized_lat) and not re.search(r"[A-Za-z]", normalized_lat):
                 if "he" not in person.labels:
                     person.labels["he"] = normalized_lat
             else:
@@ -282,13 +311,8 @@ class PersonProjectionMixin:
             if original_lat and original_lat != normalized_lat and person.labels.get("en"):
                 person.aliases.setdefault("en", []).append(original_lat)
 
-        pref_heb = str(match_info.get("preferred_name_heb") or "").strip()
+        pref_heb = pref_heb_raw
         if pref_heb:
-            from converter.authority.heading_fidelity import (  # noqa: PLC0415
-                heading_matches,
-                heading_mismatch_reason,
-            )
-
             normalized_heb = _normalise_label(
                 _strip_person_name_qualifiers(_to_natural_name_order(pref_heb))
             )
@@ -296,17 +320,12 @@ class PersonProjectionMixin:
             # match (Rule W-166). This used to be unconditional, which published
             # `יצחק בן שלמה בן חיים גבאי` for a manuscript whose scribe MARC names
             # as `גבאי, טוביה בן חיים יצחק` — same family, different given name.
-            fidelity_ok = heading_matches(clean_name, pref_heb)
             if normalized_heb and normalized_heb != person.labels.get("he"):
                 person.aliases.setdefault("he", []).append(normalized_heb)
-            if fidelity_ok:
+            if authority_heading_trusted:
                 person.labels["he"] = normalized_heb
-            else:
-                person.heading_mismatch = {
-                    "marc": clean_name,
-                    "authority": pref_heb,
-                    "reason": heading_mismatch_reason(clean_name, pref_heb),
-                }
+        if heading_mismatch_note is not None:
+            person.heading_mismatch = heading_mismatch_note
 
         # P31 = human (or organization) — uses the shared institutional
         # keyword list (see _is_institutional_name above).

@@ -458,14 +458,58 @@ def _index_persons(items: list[WikidataItem]) -> dict[str, WikidataItem]:
     return index
 
 
+def _person_identifier_pairs(item: WikidataItem) -> set[tuple[str, str]]:
+    """``(pid, value)`` for every publishable identifier on a person."""
+    pairs: set[tuple[str, str]] = set()
+    for stmt in item.statements or []:
+        pid = str(stmt.property_id or "")
+        value = str(stmt.value or "").strip()
+        if pid in _PERSON_IDENTIFIER_PIDS and value:
+            pairs.add((pid, value))
+    return pairs
+
+
+def _person_match_is_compatible(canonical: WikidataItem, legacy: WikidataItem) -> bool:
+    """May a LABEL-keyed person match merge?
+
+    Identifier and QID keys are exact and need no test. A label match does: two
+    people can share a heading and be different people — that is the whole homonym
+    problem (Rule W-37) — and merging them unions one identity into another.
+
+    This guard was added after Rule W-166 changed which label a mismatched
+    authority heading lands in. That quietly loosened label-keyed person matching:
+    54 persons vanished from run 48ba6c13's rebuild, 39 absorbed into another
+    person and **15 taking their only publishable identifier with them**, because
+    ``_merge_pair`` keeps the canonical side's statements. A corpus-wide matching
+    change is exactly what Rule W-166 gated behind a flag; it must not arrive
+    through a label key instead.
+    """
+    if canonical.existing_qid and canonical.existing_qid == legacy.existing_qid:
+        return True
+    if canonical.local_id and canonical.local_id == legacy.local_id:
+        return True
+    left, right = _person_identifier_pairs(canonical), _person_identifier_pairs(legacy)
+    if left & right:
+        return True
+    # Both sides carry identifiers and they disagree: different people.
+    if left and right:
+        return False
+    # One side has none — a stub merging into an identified person is the case
+    # this merge exists for.
+    return True
+
+
 def _match_person(
     item: WikidataItem,
     index: dict[str, WikidataItem],
 ) -> WikidataItem | None:
     for key in _person_keys(item):
         hit = index.get(key)
-        if hit is not None:
-            return hit
+        if hit is None:
+            continue
+        if key.startswith("label:") and not _person_match_is_compatible(item, hit):
+            continue
+        return hit
     return None
 
 

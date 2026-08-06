@@ -102,19 +102,31 @@ def duplicate_status_for_item(item: dict[str, Any]) -> str:
     pack, and `_duplicate_status` — which is all a verdict-persist slim item keeps,
     because `fingerprint_verify_evidence` strips `duplicate_check` out of the pack.
     """
+    # `not_run` is the placeholder at every tier: skip it and keep looking, or a
+    # freshly-built pack masks the answer the tier below still has.
     existence = item.get("_wikidata_existence")
-    if isinstance(existence, dict) and existence.get("status"):
+    if isinstance(existence, dict) and existence.get("status") not in (None, STATUS_NOT_RUN):
         return str(existence["status"])
     pack = item.get("verify_evidence")
     if isinstance(pack, dict):
         existing = pack.get("wikidata_existing")
         if isinstance(existing, dict):
             check = existing.get("duplicate_check")
-            if isinstance(check, dict) and check.get("status"):
+            if (
+                isinstance(check, dict)
+                and check.get("status") not in (None, STATUS_NOT_RUN)
+            ):
                 return str(check["status"])
     stamped = item.get("_duplicate_status")
     if stamped:
         return str(stamped)
+    # Last resort: the status the judge was shown, recorded on the verdict
+    # (Rule W-157). The probe cache expires after 7 days but a verdict lives 90,
+    # so without this an export taken a week later reports `not_run` for an item
+    # whose verdict plainly says `candidates_found`.
+    verdict = item.get("ai_verdict")
+    if isinstance(verdict, dict) and verdict.get("duplicate_status"):
+        return str(verdict["duplicate_status"])
     return STATUS_NOT_RUN
 
 
@@ -126,6 +138,33 @@ def duplicate_class_for_item(item: dict[str, Any]) -> str:
     )
 
 
+def has_duplicate_answer(item: dict[str, Any]) -> bool:
+    """Has anything actually decided this item's duplicate status?
+
+    ``not_run`` is the PLACEHOLDER, not an answer. Treating it as one is how the
+    export came back reading ``not_run`` on all 284 items of export (24) while the
+    persisted verdicts held 255 `absent` / 15 `candidates_found` / 6
+    `already_linked`: ``stamp_duplicate_check`` wrote the placeholder onto
+    ``_wikidata_existence``, and ``attach_cached_duplicate_evidence`` skips any item
+    that already has one — so the cached answer was never read.
+    """
+    existence = item.get("_wikidata_existence")
+    return (
+        isinstance(existence, dict)
+        and bool(existence.get("status"))
+        and existence["status"] != STATUS_NOT_RUN
+    )
+
+
+def _recorded_warning_status(item: dict[str, Any]) -> str:
+    """A duplicate WARNING the stored verdict recorded, if any (Rule W-157)."""
+    verdict = item.get("ai_verdict")
+    if not isinstance(verdict, dict):
+        return ""
+    status = str(verdict.get("duplicate_status") or "")
+    return status if status in {STATUS_CANDIDATES, STATUS_HAS_QID} else ""
+
+
 def stamp_duplicate_check(item: dict[str, Any]) -> dict[str, Any]:
     """Publish the duplicate answer to every surface — the only writer (Rule W-159).
 
@@ -134,10 +173,38 @@ def stamp_duplicate_check(item: dict[str, Any]) -> dict[str, Any]:
     the evidence pack *before* stamping the probe and never rebuilt it. Two
     surfaces written by two code paths in two orders will always drift eventually,
     so they are now literally the same object.
+
+    The ``not_run`` placeholder is published into the pack but deliberately NOT
+    written back onto ``_wikidata_existence``: a placeholder that looks like an
+    answer stops the cached-probe reader from ever running (see
+    ``has_duplicate_answer``).
     """
     existence = item.get("_wikidata_existence")
-    if not isinstance(existence, dict) or not existence:
+    warning = _recorded_warning_status(item)
+    if warning and (
+        not isinstance(existence, dict)
+        or existence.get("status") not in CONCLUSIVE_STATUSES
+    ):
+        # A verdict that recorded `candidates_found` / `already_linked` must not be
+        # masked by a cold probe cache: the probe cache lives 7 days, the verdict 90.
+        # Only WARNINGS are carried forward — a stale `absent` may never suppress
+        # one (Rule W-144's whole point).
+        existence = {
+            "status": warning,
+            "candidates": [],
+            "note": (
+                "recorded on the stored verdict; the probe cache no longer has this "
+                "key — re-run verify to refresh"
+            ),
+        }
+        item["_wikidata_existence"] = existence
+    elif not isinstance(existence, dict) or not existence:
         existence = duplicate_check_fallback()
+    elif existence.get("status") == STATUS_NOT_RUN:
+        # Keep the placeholder out of `_wikidata_existence` even if a caller put
+        # one there, so the item stays eligible for the cached answer.
+        item.pop("_wikidata_existence", None)
+    else:
         item["_wikidata_existence"] = existence
     pack = item.get("verify_evidence")
     if isinstance(pack, dict):
@@ -837,7 +904,7 @@ async def attach_cached_duplicate_evidence(
     stats = {"answered": 0, "candidates": 0, "not_probed": 0}
     pending: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for item in items:
-        if item.get("_wikidata_existence"):
+        if has_duplicate_answer(item):
             continue
         decided = decide_without_network(item)
         if decided is not None:
