@@ -1478,3 +1478,34 @@ SHAPE it matches (an 18-digit `987…` is a J9U, a short number is a VIAF cluste
 and refuses a value that fits neither register — an identifier we cannot attribute
 is worse than an absent one (Rules W-67 / W-72). The build gate blocks
 `IDENTIFIER_WRONG_PROPERTY` and `IDENTIFIER_SHAPE_UNRECOGNISED`.
+
+### Rule W-168 — An item whose identifier already exists on Wikidata is an UPDATE (added 2026-08-06)
+
+Run `48ba6c13`'s rebuild produced 19 fails, and 14 of them said the same thing: the
+duplicate probe had found a live Wikidata item carrying this item's own `P8189`,
+and the judge — correctly — refused to create a second one and told the curator to
+link instead. One manuscript said it about `P3959`. The finding was right and
+newly visible (Rule W-156), but leaving the item as a CREATE meant the risk stayed
+on the board and a human had to re-key 15 QIDs the probe had already resolved.
+
+Invariant: `adopt_identifier_matched_duplicates` sets `existing_qid` from the
+probe, turning the CREATE into an UPDATE. Deliberately narrow, and fail-closed at
+every edge:
+
+1. Only `candidates_found`, and only when the item has no `existing_qid` yet.
+2. Only IDENTITY keys — an authority/catalog identifier, or a composite whose AND
+   was verified client-side (Rule W-144). **A title match is a likeness and stays
+   with the curator** (Rule W-145).
+3. Only when exactly ONE distinct QID was found. Two is ambiguous, and ambiguity is
+   a curator decision (Rule W-37's reasoning). The ambiguity is recorded on the
+   item either way.
+4. **Adoption does not authorise the write.** The upload path still classifies
+   ownership and blocks a foreign item until the curator explicitly accepts that
+   QID (Rule W-99). This only stops us *proposing* a duplicate.
+5. Applied on the verify path, the export, and the build — the build reads the
+   probe cache only, never the network (Rule W-119), so it reflects whatever the
+   last verify run learned. Both item shapes are told: the serialised dicts drive
+   the curator table, the native items drive validation and upload.
+
+The rubric is amended to match: with `adoption.adopted: true` the duplicate axis is
+settled and the judge assesses the claims instead.

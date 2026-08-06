@@ -1336,3 +1336,128 @@ async def attach_duplicate_evidence(
         stamp_duplicate_check(item)
     logger.info("wikidata duplicate probe: %s", stats)
     return stats
+
+
+# A candidate found by title is a LIKENESS, never an identity (Rule W-145), so it
+# may never be adopted automatically. These prefixes mark the keys that DO
+# identify: an authority/catalog identifier, or the holder+shelfmark conjunction
+# whose AND is verified client-side (Rule W-144).
+_ADOPTABLE_MATCH_PREFIXES = tuple(f"{pid}=" for pid in sorted({
+    *(pid for pids in _IDENTIFIER_PIDS_BY_TYPE.values() for pid in pids),
+}))
+
+
+def _adoptable_qids(existence: dict[str, Any]) -> set[str]:
+    """QIDs from candidates matched on an IDENTITY key, not a likeness."""
+    qids: set[str] = set()
+    for candidate in existence.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        if str(candidate.get("requires_curator_confirmation") or "").lower() == "true":
+            continue
+        matched_on = str(candidate.get("matched_on") or "")
+        if matched_on.startswith(_TITLE_PREFIX) or matched_on.startswith("title~"):
+            continue
+        if not (
+            matched_on.startswith(_ADOPTABLE_MATCH_PREFIXES)
+            or " AND " in matched_on  # a verified composite conjunction
+        ):
+            continue
+        qid = str(candidate.get("qid") or "").strip()
+        if qid.startswith("Q"):
+            qids.add(qid)
+    return qids
+
+
+def _item_existing_qid(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("existing_qid") or "").strip()
+    return str(getattr(item, "existing_qid", "") or "").strip()
+
+
+def _set_existing_qid(item: Any, qid: str) -> None:
+    if isinstance(item, dict):
+        item["existing_qid"] = qid
+    else:
+        item.existing_qid = qid
+
+
+def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]]:
+    """Turn a CREATE whose identifier already exists on Wikidata into an UPDATE.
+
+    Rule W-168. The probe found 15 items in run 48ba6c13 whose own authority or
+    catalog identifier is already carried by a live Wikidata item — 14 persons on
+    ``P8189`` and one manuscript on ``P3959``. The judge failed every one of them,
+    correctly, and told the curator to link instead of create. Making a human
+    re-key a QID the probe has already resolved is work we can do for them, and
+    leaving the item as a CREATE means the duplicate risk stays on the board.
+
+    Fail-closed, deliberately narrow:
+
+    * only ``candidates_found``, and only when the item has no ``existing_qid`` yet;
+    * only IDENTITY keys — an identifier, or a composite whose AND was verified.
+      A title match is a likeness and stays with the curator (Rule W-145);
+    * only when exactly ONE distinct QID was found. Two is ambiguous, and
+      ambiguity is a curator decision (Rule W-37's reasoning);
+    * adoption does NOT authorise the write. The upload path still classifies
+      ownership and blocks a foreign item until the curator accepts that QID
+      explicitly (Rule W-99) — this only stops us proposing a duplicate.
+
+    Returns one record per adoption, for the summary and the audit trail.
+    """
+    adopted: list[dict[str, Any]] = []
+    for item in items:
+        existence = item.get("_wikidata_existence") if isinstance(item, dict) else None
+        if not isinstance(existence, dict):
+            continue
+        if existence.get("status") != STATUS_CANDIDATES:
+            continue
+        if _item_existing_qid(item):
+            continue
+        qids = _adoptable_qids(existence)
+        if len(qids) != 1:
+            if qids:
+                existence["adoption"] = {
+                    "adopted": False,
+                    "reason": (
+                        f"{len(qids)} identity-matched candidates — ambiguous, so the "
+                        "curator chooses"
+                    ),
+                    "candidates": sorted(qids),
+                }
+            continue
+        qid = next(iter(qids))
+        _set_existing_qid(item, qid)
+        matched_on = next(
+            (
+                str(c.get("matched_on") or "")
+                for c in existence.get("candidates") or []
+                if isinstance(c, dict) and str(c.get("qid") or "") == qid
+            ),
+            "",
+        )
+        record = {
+            "local_id": str(
+                (item.get("_local_id") or item.get("local_id"))
+                if isinstance(item, dict) else getattr(item, "local_id", ""),
+            ),
+            "qid": qid,
+            "matched_on": matched_on,
+        }
+        existence["adoption"] = {
+            "adopted": True,
+            "qid": qid,
+            "matched_on": matched_on,
+            "note": (
+                "this item's own identifier is already on Wikidata, so it is an "
+                "UPDATE, not a CREATE; the upload path still checks ownership"
+            ),
+        }
+        adopted.append(record)
+    if adopted:
+        logger.info(
+            "adopted %s existing Wikidata QID(s) for identifier-matched duplicates: %s",
+            len(adopted),
+            ", ".join(f"{r['local_id']}->{r['qid']}" for r in adopted[:8]),
+        )
+    return adopted

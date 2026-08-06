@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-167)
+## Architectural rules (W-1…W-168)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -118,6 +118,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-163** — The export-quality gate runs in the build path, on both sources
 - **W-164** — A manuscript's label is a designation; its inception is the audited year
 - **W-165** — A work item is attested from exactly one record
+- **W-168** — An item whose identifier already exists on Wikidata is an UPDATE
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

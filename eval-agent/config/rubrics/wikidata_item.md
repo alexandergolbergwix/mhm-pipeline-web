@@ -176,6 +176,12 @@ lookup (Action API `haswbstatement:<PID>=<value>`) for items with **no**
   on that axis; judge the rest of the item normally.
 - **`already_linked`** — the item targets a live QID; this is an UPDATE, not a
   CREATE. No duplication risk.
+- **`candidates_found` with `adoption.adopted: true`** — the pipeline has already
+  adopted that QID, so `existing_qid` is set and this is an UPDATE. The duplicate
+  axis is SETTLED: do not fail the item for duplication, and do not ask the curator
+  to link it. Judge the claims themselves. (Adoption only happens on an identifier
+  or verified-composite match with exactly one candidate; it does not authorise the
+  write, which still passes an ownership check.)
 - **`unavailable`** / **`skipped`** / **`not_run`** — the check could not be
   completed (network failure, no identifier claim to probe, or the per-job probe
   budget was exhausted; `reason: "capped"` means the key was computed but the

@@ -652,6 +652,14 @@ async def execute_studio_build(
         )
         items = result["items"]
         summary = result["summary"]
+        # Adopt any QID the duplicate probe already resolved by identifier, so the
+        # Studio table, the verdict and the upload path all see an UPDATE rather
+        # than a CREATE we would have to refuse later (Rule W-168). Cache-only —
+        # a build never probes (Rule W-119) — so this picks up whatever the last
+        # verify run learned.
+        summary["duplicates_adopted"] = await _adopt_probed_duplicate_qids(
+            items, result["native_items"] or [],
+        )
         # The canonical projection is gated exactly like the legacy one: a build
         # bug must not reach the Studio cache or the curator (Rule W-163).
         assert_wikidata_export_quality(
@@ -1339,6 +1347,7 @@ async def export_wikidata_items(
     # never turn into external I/O (Rule W-144).
     from app.db import session_scope  # noqa: PLC0415
     from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+        adopt_identifier_matched_duplicates,
         attach_cached_duplicate_evidence,
         stamp_duplicate_check,
     )
@@ -1362,6 +1371,10 @@ async def export_wikidata_items(
 
     await db.rollback()
     await attach_cached_duplicate_evidence(session_scope, items)
+    # An item whose own identifier is already on Wikidata is an UPDATE, not a
+    # CREATE (Rule W-168). Adoption does not authorise the write — the upload path
+    # still checks ownership.
+    adopt_identifier_matched_duplicates(items)
     for item in items:
         item["duplicate_check"] = stamp_duplicate_check(item)
         item.pop("_wikidata_existence", None)
@@ -2481,6 +2494,7 @@ async def _fetch_wikidata_verify_items(
     marc_records = await load_run_marc_records_scoped(db, run_id, wanted_cns)
     from app.db import session_scope  # noqa: PLC0415
     from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+        adopt_identifier_matched_duplicates,
         attach_duplicate_evidence,
     )
     from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
@@ -2500,6 +2514,11 @@ async def _fetch_wikidata_verify_items(
     # sees it (Rule W-139). Action API only — never WDQS on this path (W-116).
     phase(VERIFY_SCOPE_PHASES[2])
     await attach_duplicate_evidence(session_scope, items, on_progress=progress_cb)
+    # Judge it as what it is: an item whose identifier already exists on Wikidata
+    # is an UPDATE, so the duplicate axis is settled and the judge assesses the
+    # claims instead of failing the item on a risk we have just resolved
+    # (Rule W-168).
+    adopt_identifier_matched_duplicates(items)
     # LLM provenance proposals (Rule W-140) are attached during the BUILD, not
     # here: one model call per manuscript kept "Loading Studio scope…" spinning
     # for minutes. Verify reads whatever the build already stamped, and
@@ -2995,6 +3014,44 @@ def _group_entity_rows(
                 deduped.append(ent)
         grouped[cn] = deduped
     return grouped
+
+
+async def _adopt_probed_duplicate_qids(
+    serialised: list[dict[str, Any]],
+    native: list[Any],
+) -> int:
+    """Adopt QIDs the probe already resolved, onto both item shapes (Rule W-168).
+
+    Reads the cached probe answers only — a build must never make external calls
+    (Rule W-119) — so this reflects whatever the most recent verify run learned. The
+    serialised dicts drive the curator table and the export; the native items drive
+    validation, QuickStatements and upload, so both have to be told.
+    """
+    from app.db import session_scope  # noqa: PLC0415
+    from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+        adopt_identifier_matched_duplicates,
+        attach_cached_duplicate_evidence,
+    )
+
+    if not serialised:
+        return 0
+    try:
+        await attach_cached_duplicate_evidence(session_scope, serialised)
+        adopted = adopt_identifier_matched_duplicates(serialised)
+    except Exception:  # noqa: BLE001 — never fail a build over an optimisation
+        logger.exception("duplicate-QID adoption failed; leaving items as CREATE")
+        return 0
+    finally:
+        for item in serialised:
+            item.pop("_wikidata_existence", None)
+    if not adopted:
+        return 0
+    by_local_id = {r["local_id"]: r["qid"] for r in adopted}
+    for item in native:
+        qid = by_local_id.get(str(getattr(item, "local_id", "") or ""))
+        if qid and not str(getattr(item, "existing_qid", "") or "").strip():
+            item.existing_qid = qid
+    return len(adopted)
 
 
 async def _upsert_studio_cache(
