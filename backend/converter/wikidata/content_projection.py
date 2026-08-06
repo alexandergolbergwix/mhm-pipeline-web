@@ -472,7 +472,10 @@ class ContentProjectionMixin:
     ) -> None:
         """Add P921 (main subject) from canonical refs and MARC 650 topics."""
         from converter.transformer.subject_records import subject_term  # noqa: PLC0415
-        from converter.wikidata.marc_subject_resolve import resolve_subject_qid  # noqa: PLC0415
+        from converter.wikidata.marc_subject_resolve import (  # noqa: PLC0415
+            canonical_reference_grounded_in_subjects,
+            resolve_subject_qid,
+        )
         from converter.wikidata.property_mapping import (  # noqa: PLC0415
             BIBLE_BOOK_TO_QID,
             TALMUD_TRACTATE_TO_QID,
@@ -500,7 +503,7 @@ class ContentProjectionMixin:
                 qid = BIBLE_BOOK_TO_QID.get(str(cr.get("book", "")))
             elif hierarchy == "Talmud_Bavli":
                 qid = TALMUD_TRACTATE_TO_QID.get(str(cr.get("tractate", "")))
-            if qid:
+            if qid and canonical_reference_grounded_in_subjects(record, cr):
                 _append_p921(qid)
 
         for subj in record.get("subjects") or []:

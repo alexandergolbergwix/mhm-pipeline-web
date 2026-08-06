@@ -1382,6 +1382,30 @@ def _set_existing_qid(item: Any, qid: str) -> None:
         item.existing_qid = qid
 
 
+def _adoption_blocked(item: Any) -> str | None:
+    """Reason adoption must stay CREATE — identity is not trusted."""
+    if isinstance(item, dict):
+        if item.get("heading_mismatch"):
+            return "heading_mismatch"
+        for row in item.get("authority_evidence") or []:
+            if not isinstance(row, dict):
+                continue
+            flags = row.get("guard_flags") or []
+            if "wikidata_crosscheck_fail" in flags:
+                return "wikidata_crosscheck_fail"
+        return None
+    mismatch = getattr(item, "heading_mismatch", None)
+    if mismatch:
+        return "heading_mismatch"
+    for row in getattr(item, "authority_evidence", None) or []:
+        if not isinstance(row, dict):
+            continue
+        flags = row.get("guard_flags") or []
+        if "wikidata_crosscheck_fail" in flags:
+            return "wikidata_crosscheck_fail"
+    return None
+
+
 def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]]:
     """Turn a CREATE whose identifier already exists on Wikidata into an UPDATE.
 
@@ -1407,8 +1431,18 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
     """
     adopted: list[dict[str, Any]] = []
     for item in items:
+        blocked = _adoption_blocked(item)
         existence = item.get("_wikidata_existence") if isinstance(item, dict) else None
         if not isinstance(existence, dict):
+            continue
+        if blocked:
+            existence["adoption"] = {
+                "adopted": False,
+                "reason": (
+                    f"identity not trusted ({blocked}) — keep CREATE until the "
+                    "heading or crosscheck conflict is resolved"
+                ),
+            }
             continue
         if existence.get("status") != STATUS_CANDIDATES:
             continue

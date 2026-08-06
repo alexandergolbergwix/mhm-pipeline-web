@@ -206,6 +206,64 @@ def is_too_generic_subject(term: str) -> bool:
     return str(term or "").strip().casefold() in _TOO_GENERIC_SUBJECT_TERMS
 
 
+# Hebrew / English topical headings that ground a canonical-reference P921.
+# A Bible-book or tractate citation in a 500 note is not, by itself, proof that
+# the manuscript is *about* that book — run 48ba6c13's judge rejected Exodus,
+# Mishnah Shabbat and Books of Samuel P921 without a matching 650 subject.
+_BIBLE_BOOK_SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
+    "Genesis": ("genesis", "בראשית"),
+    "Exodus": ("exodus", "שמות"),
+    "Leviticus": ("leviticus", "ויקרא"),
+    "Numbers": ("numbers", "במדבר"),
+    "Deuteronomy": ("deuteronomy", "דברים"),
+    "Joshua": ("joshua", "יהושע"),
+    "Samuel": ("samuel", "שמואל", "books of samuel"),
+    "Kings": ("kings", "מלכים", "books of kings"),
+    "Isaiah": ("isaiah", "ישעיה"),
+    "Jeremiah": ("jeremiah", "ירמיה"),
+    "Psalms": ("psalms", "תהלים"),
+    "Proverbs": ("proverbs", "משלי"),
+    "Job": ("job", "איוב"),
+}
+
+
+def canonical_reference_grounded_in_subjects(
+    record: dict[str, object],
+    canonical_ref: dict[str, object],
+) -> bool:
+    """True when a topical subject heading also names the canonical concept."""
+    hierarchy = str(canonical_ref.get("hierarchy") or "")
+    needles: list[str] = []
+    if hierarchy == "Bible":
+        book = str(canonical_ref.get("book") or "").strip()
+        if not book:
+            return False
+        needles.extend(_BIBLE_BOOK_SUBJECT_ALIASES.get(book, (book.casefold(),)))
+    elif hierarchy == "Talmud_Bavli":
+        tractate = str(canonical_ref.get("tractate") or "").strip()
+        if not tractate:
+            return False
+        needles.append(tractate.casefold())
+    else:
+        return False
+
+    normalized_needles = {n.casefold() for n in needles if n}
+    for subj in record.get("subjects") or []:
+        if not isinstance(subj, dict):
+            continue
+        if str(subj.get("type") or "topic").lower() in {
+            "place", "organization", "corporate", "meeting",
+        }:
+            continue
+        term = subject_term(subj).casefold()
+        if not term:
+            continue
+        for needle in normalized_needles:
+            if needle in term or term in needle:
+                return True
+    return False
+
+
 def resolve_subject_qid(
     subj: dict[str, Any],
     *,

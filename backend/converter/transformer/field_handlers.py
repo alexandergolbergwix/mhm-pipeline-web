@@ -1508,12 +1508,13 @@ class FieldHandlers:
             result["height_mm"] = mm(match.group(1), factor=1)
             return result
 
-        # Unit-less pair: assume cm below 100, millimetres above.
+        # Unit-less pair: assume centimetres below 100, millimetres at 100+.
+        # `145X100` is a common NLI shelf-dimension form and was read as cm (10×).
         match = re.search(rf"(?<![\d.,])({num})\s*[xX×]\s*({num})", dim_str)
         if match:
             h = float(match.group(1).replace(",", "."))
             w = float(match.group(2).replace(",", "."))
-            factor = 1 if h > 100 and w > 100 else 10
+            factor = 1 if h >= 100 or w >= 100 else 10
             result["height_mm"] = round(h * factor)
             result["width_mm"] = round(w * factor)
 

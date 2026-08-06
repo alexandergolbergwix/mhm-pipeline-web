@@ -385,6 +385,8 @@ class PersonProjectionMixin:
             birth_year = death_year = None
             dates_str = ""
 
+        identifiers_trusted = authority_heading_trusted and not authority_rejected
+
         # Parse dates string if we have it but not individual years
         if not birth_year and not death_year and dates_str and dates_str != "None":
             parts = re.split(r"[-–]", dates_str.strip())
@@ -461,7 +463,7 @@ class PersonProjectionMixin:
                 viaf_name_type,
             )
             viaf_id = None
-        if viaf_id and not is_org:
+        if viaf_id and not is_org and identifiers_trusted:
             person.statements.append(
                 WikidataStatement(
                     property_id=P_VIAF_ID,
@@ -479,7 +481,7 @@ class PersonProjectionMixin:
         # /Duplicates/humans page to flood with false-positive duplicates.
         # P8189's format URL is nli.org.il/en/authorities/$1 — authority-only.
         mazal_str = str(mazal_id) if mazal_id else ""
-        if mazal_str and mazal_str.startswith("9870") and not is_org:
+        if mazal_str and mazal_str.startswith("9870") and not is_org and identifiers_trusted:
             person.statements.append(
                 WikidataStatement(
                     property_id=P_NLI_J9U_ID,
@@ -493,7 +495,12 @@ class PersonProjectionMixin:
             pass
 
         j9u_from_viaf = str(match_info.get("j9u_id") or "").strip()
-        if j9u_from_viaf and j9u_from_viaf.startswith("987") and not is_org:
+        if (
+            j9u_from_viaf
+            and j9u_from_viaf.startswith("987")
+            and not is_org
+            and identifiers_trusted
+        ):
             if not (mazal_str and mazal_str.startswith("9870")):
                 person.statements.append(
                     WikidataStatement(
@@ -550,7 +557,7 @@ class PersonProjectionMixin:
         # P1559 = name in native language — use natural order, matching the public label.
         # Catalog inverted forms are source evidence, not the Wikidata value.
         cleaned_name = name.strip().rstrip(",;:")
-        if pref_heb and not is_org:
+        if pref_heb and not is_org and authority_heading_trusted:
             inverted_heb = _normalise_label(
                 _to_natural_name_order(_strip_person_name_qualifiers(pref_heb))
             )
@@ -588,43 +595,44 @@ class PersonProjectionMixin:
                 )
 
         # Additional authority IDs from VIAF cluster harvesting
-        for match in source_record.get("marc_authority_matches") or []:
-            mid = str(match.get("mazal_id", ""))
-            vid = str(match.get("viaf_uri", ""))
-            if (mazal_id and mid == mazal_id) or (viaf_uri and vid == viaf_uri):
-                if match.get("gnd_id"):
-                    person.statements.append(
-                        WikidataStatement(
-                            property_id="P227",
-                            value=str(match["gnd_id"]),
-                            value_type="external-id",
+        if identifiers_trusted:
+            for match in source_record.get("marc_authority_matches") or []:
+                mid = str(match.get("mazal_id", ""))
+                vid = str(match.get("viaf_uri", ""))
+                if (mazal_id and mid == mazal_id) or (viaf_uri and vid == viaf_uri):
+                    if match.get("gnd_id"):
+                        person.statements.append(
+                            WikidataStatement(
+                                property_id="P227",
+                                value=str(match["gnd_id"]),
+                                value_type="external-id",
+                            )
                         )
-                    )
-                if match.get("lc_id"):
-                    person.statements.append(
-                        WikidataStatement(
-                            property_id="P244",
-                            value=str(match["lc_id"]),
-                            value_type="external-id",
+                    if match.get("lc_id"):
+                        person.statements.append(
+                            WikidataStatement(
+                                property_id="P244",
+                                value=str(match["lc_id"]),
+                                value_type="external-id",
+                            )
                         )
-                    )
-                if match.get("isni"):
-                    person.statements.append(
-                        WikidataStatement(
-                            property_id="P213",
-                            value=str(match["isni"]),
-                            value_type="external-id",
+                    if match.get("isni"):
+                        person.statements.append(
+                            WikidataStatement(
+                                property_id="P213",
+                                value=str(match["isni"]),
+                                value_type="external-id",
+                            )
                         )
-                    )
-                if match.get("bnf_id"):
-                    person.statements.append(
-                        WikidataStatement(
-                            property_id="P268",
-                            value=str(match["bnf_id"]),
-                            value_type="external-id",
+                    if match.get("bnf_id"):
+                        person.statements.append(
+                            WikidataStatement(
+                                property_id="P268",
+                                value=str(match["bnf_id"]),
+                                value_type="external-id",
+                            )
                         )
-                    )
-                break
+                    break
 
         # Bug fix 2026-04-16 (deeper audit Fix #1): attach person_ref to
         # every statement that does not already carry references. Done as

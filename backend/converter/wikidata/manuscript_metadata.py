@@ -108,13 +108,32 @@ class ManuscriptMetadataMixin:
 
         if "en" not in item.labels and "he" not in item.labels:
             from converter.wikidata.item_builder import (  # noqa: PLC0415
+                manuscript_he_designation,
                 manuscript_record_label,
             )
 
             cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
             if cn:
-                item.labels["en"] = manuscript_record_label(cn)
-                item.labels["he"] = f"כתב יד עברי, רשומת הספרייה הלאומית {cn}"
+                item.labels["en"] = manuscript_record_label(cn, record)
+                item.labels["he"] = manuscript_he_designation(
+                    record,
+                    f"רשומת הספרייה הלאומית {cn}",
+                )
+
+        from converter.wikidata.item_builder import _is_printed_facsimile_record  # noqa: PLC0415
+        if _is_printed_facsimile_record(record):
+            from converter.wikidata.item_builder import manuscript_he_designation  # noqa: PLC0415
+            title_label = item.labels.get("he")
+            if title_clean and title_label == title_clean:
+                item.aliases.setdefault("he", []).append(title_clean)
+            suffix = shelfmark or str(
+                record.get("_control_number") or record.get("control_number") or "",
+            ).strip()
+            item.labels["he"] = manuscript_he_designation(
+                record,
+                suffix,
+                holder_name=holding,
+            )
 
         # Variant titles as aliases
         for vt in record.get("variant_titles") or []:

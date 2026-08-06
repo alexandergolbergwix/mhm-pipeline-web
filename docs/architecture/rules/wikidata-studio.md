@@ -1502,7 +1502,11 @@ every edge:
 4. **Adoption does not authorise the write.** The upload path still classifies
    ownership and blocks a foreign item until the curator explicitly accepts that
    QID (Rule W-99). This only stops us *proposing* a duplicate.
-5. Applied on the verify path, the export, and the build — the build reads the
+5. **Adoption MUST refuse untrusted identity (Rule W-170).** When
+   `heading_mismatch` or `wikidata_crosscheck_fail` is present, record
+   `adoption.adopted: false` — never auto-link to a probe QID that contradicts the
+   MARC heading.
+6. Applied on the verify path, the export, and the build — the build reads the
    probe cache only, never the network (Rule W-119), so it reflects whatever the
    last verify run learned. Both item shapes are told: the serialised dicts drive
    the curator table, the native items drive validation and upload.
@@ -1536,3 +1540,38 @@ two. A gloss or adoption failure MUST NOT fail the list read.
 Tests: `test_wikidata_item_views.py`
 (`test_merged_view_keeps_verdict_after_probe_qid_adoption`,
 `test_merged_view_keeps_verdict_when_live_labels_match_verify`).
+
+### Rule W-170 — Non-passing projection defects MUST be fixed fail-closed, not rubric-weakened (added 2026-08-06)
+
+Run `48ba6c13` still had 10 `fail` and 24 `partial` Wikidata Studio verdicts after
+the W-169 table fix. The judge was right on every bucket — the builder was wrong.
+These invariants close the gaps without weakening the eval-agent rubric:
+
+1. **Person identifiers require a trusted authority row (extends W-166).**
+   `P8189`, `P214`, and the other cluster-harvested external IDs MUST NOT emit when
+   `heading_mismatch` is set or `wikidata_crosscheck_fail` is in the match row's
+   `guard_flags`. `P1559` from `preferred_name_heb` follows the same gate.
+2. **W-168 adoption MUST refuse untrusted identity.** `adopt_identifier_matched_duplicates`
+   records `adoption.adopted: false` when `heading_mismatch` or
+   `wikidata_crosscheck_fail` is present — keep CREATE rather than UPDATE-to-wrong-QID
+   (the Maurizio→Kagel incident).
+3. **Canonical-reference P921 requires a topical subject hit.** Bible-book and
+   Talmud-tractate QIDs from `canonical_references` emit only when a MARC 650/600
+   subject heading also names the same concept (`canonical_reference_grounded_in_subjects`).
+   A 500-note citation alone is not main-subject evidence.
+4. **Description years follow audited precision (W-164).** English manuscript
+   descriptions include a numeric year only when the MARC date is year-level; century
+   strings stay century strings — never a midpoint year inferred from a century note.
+5. **Manuscript language labels follow MARC 041/008.** The Hebrew designation uses
+   the primary catalogue language (`manuscript_he_designation`), including the
+   no-shelfmark fallback — not a hardcoded “עברי”.
+6. **Printed facsimiles label as facsimiles in Hebrew.** When
+   `_is_printed_facsimile_record`, the `he` designation is facsimile wording and
+   stays consistent with `P31=Q571`.
+7. **Millimetre dimensions without units.** Unit-less `145X100` pairs are millimetres
+   when either dimension is ≥100; treating them as centimetres emitted 10× values on
+   `P2048`/`P2049`.
+
+Tests: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
+`test_person_heading_and_crosscheck.py`, `test_duplicate_qid_adoption.py`.
+

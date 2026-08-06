@@ -68,6 +68,7 @@ class TestDimensionParsing:
             ("28 cm", {"height_mm": 280}),
             ("9,5X14,5 cm", {"height_mm": 95, "width_mm": 145}),
             ("39 leaves ; 9.5X14.5 cm", {"height_mm": 95, "width_mm": 145}),
+            ("145X100", {"height_mm": 145, "width_mm": 100}),
         ],
     )
     def test_dimensions_are_parsed_not_guessed(

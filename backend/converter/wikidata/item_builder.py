@@ -716,10 +716,17 @@ def manuscript_en_label(shelfmark: str, holder_name: str) -> str:
     return f"{holder_name}, {shelfmark}" if holder_name else shelfmark
 
 
-def manuscript_record_label(control_number: str) -> str:
+def manuscript_record_label(control_number: str, record: dict[str, object] | None = None) -> str:
     """The no-shelfmark fallback: a CATALOGUE designation, not an ownership claim."""
     cn = str(control_number or "").strip()
-    return f"Hebrew manuscript, NLI record {cn}" if cn else ""
+    if not cn:
+        return ""
+    languages = (record or {}).get("languages") or []
+    primary = str(languages[0]) if languages else "heb"
+    lang_name = _LANG_CODE_TO_ENGLISH.get(primary, "Hebrew")
+    if _is_printed_facsimile_record(record or {}):
+        return f"{lang_name} printed facsimile edition, NLI record {cn}"
+    return f"{lang_name} manuscript, NLI record {cn}"
 
 
 # Hebrew forms for holders whose verified English label we already trust. A holder
@@ -748,7 +755,10 @@ def manuscript_he_designation(
     """
     languages = (record or {}).get("languages") or []
     primary = str(languages[0]) if languages else "heb"
-    parts = [f"כתב יד {_LANG_CODE_TO_HEBREW.get(primary, 'עברי')}"]
+    if _is_printed_facsimile_record(record or {}):
+        parts = [f"מהדורת פקסימיליה מודפסת ({_LANG_CODE_TO_HEBREW.get(primary, 'עברי')})"]
+    else:
+        parts = [f"כתב יד {_LANG_CODE_TO_HEBREW.get(primary, 'עברי')}"]
     holder = (
         holder_name
         if holder_name is not None
@@ -939,6 +949,43 @@ def _is_printed_facsimile_record(record: dict[str, object]) -> bool:
     return bool(_FACSIMILE_RE.search(text))
 
 
+def _description_date_fragment(dates: dict[str, object]) -> str | None:
+    """Return a date phrase for manuscript descriptions at the right precision."""
+    if not isinstance(dates, dict):
+        return None
+    original = str(dates.get("original_string") or "").replace('""', '"').strip()
+    century_range = re.search(
+        r"\d{1,2}(?:th|st|nd|rd)\s*[-–]\s*\d{1,2}(?:th|st|nd|rd)\s*centur(?:y|ies)",
+        original,
+        re.IGNORECASE,
+    )
+    if century_range:
+        return century_range.group(0).lower()
+    single_century = re.search(
+        r"\d{1,2}(?:th|st|nd|rd)\s*century",
+        original,
+        re.IGNORECASE,
+    )
+    if single_century:
+        return single_century.group(0).lower()
+    if re.search(r"מאה\s+", original):
+        hebrew_century = re.search(
+            r'מאה\s+[^,;]+',
+            original,
+        )
+        if hebrew_century:
+            return hebrew_century.group(0).strip()
+    date_format = str(dates.get("date_format") or "")
+    year = str(dates.get("year") or "").strip('" ')
+    if year and re.match(r"\d{3,4}$", year):
+        if date_format == "FullDate" or re.search(rf"\b{re.escape(year)}\b", original):
+            return year
+    year_match = re.search(r"\b(\d{3,4})\b", original)
+    if year_match and not re.search(r"centur", original, re.IGNORECASE):
+        return year_match.group(1)
+    return None
+
+
 def _build_manuscript_description(record: dict[str, object]) -> str:
     """Build a rich, disambiguating English description for a manuscript item.
 
@@ -964,25 +1011,10 @@ def _build_manuscript_description(record: dict[str, object]) -> str:
         parts = [f"{lang_str} manuscript"]
 
     # Date — prefer a readable century string; fall back to exact year.
-    # Handles ranges like "12th–13th century" or "15th-16th century".
     dates = record.get("dates") or {}
-    if isinstance(dates, dict):
-        original = str(dates.get("original_string") or "").replace('""', '"').strip()
-        # Century range: "12th–13th century" or "15th-16th century"
-        century_range = re.search(
-            r"\d{1,2}(?:th|st|nd|rd)\s*[-–]\s*\d{1,2}(?:th|st|nd|rd)\s*centur(?:y|ies)",
-            original,
-            re.IGNORECASE,
-        )
-        if century_range:
-            parts.append(century_range.group(0).lower())
-        else:
-            single_century = re.search(r"\d{1,2}(?:th|st|nd|rd)\s*century", original, re.IGNORECASE)
-            if single_century:
-                parts.append(single_century.group(0).lower())
-            elif year := str(dates.get("year") or "").strip('" '):
-                if re.match(r"\d{3,4}$", year):
-                    parts.append(year)
+    date_fragment = _description_date_fragment(dates if isinstance(dates, dict) else {})
+    if date_fragment:
+        parts.append(date_fragment)
 
     # Script tradition
     script_type = str(record.get("script_type") or "").strip()

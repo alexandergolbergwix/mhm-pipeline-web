@@ -503,3 +503,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     sanitisation. *Why:* verifying only the 19 unknowns on run 48ba6c13 persisted
     correct verdicts, but the table still showed unknown — CREATE-shaped cache
     rows and unglossed statement QIDs hashed differently than the verify scope.
+
+73. **R73 — Non-passing projection buckets MUST stay fail-closed (Rule W-170).**
+    Person identifiers, canonical-reference P921, description years, language
+    labels, facsimile Hebrew designations, and mm dimension parsing follow the
+    invariants in Rule W-170. Regression tests live in
+    `test_wikidata_nonpassing_buckets.py`. *Why:* run 48ba6c13 still had 34
+    non-passing verdicts after W-169; each bucket was a real projection defect,
+    not a rubric problem.
