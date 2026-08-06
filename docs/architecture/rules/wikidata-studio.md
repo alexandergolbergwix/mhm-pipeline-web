@@ -1509,3 +1509,30 @@ every edge:
 
 The rubric is amended to match: with `adoption.adopted: true` the duplicate axis is
 settled and the judge assesses the claims instead.
+
+### Rule W-169 — Review-table verdict reads MUST replay verify's adoption and live labels (added 2026-08-06)
+
+After verifying only the 19 `unknown` rows on run `48ba6c13`, the modal showed
+every item judged and `WikidataItemOverride.ai_verdict` held `full`/`partial`/`fail`
+with matching `stable_cache_key`s — but `GET /wikidata-studio?list_view=true`
+still rendered 19 unknowns. Two verify-only enrichments were missing from
+`fetch_merged_wikidata_items` before stale sanitisation:
+
+1. **Cached QID adoption (Rule W-168).** Verify sets `existing_qid` from the
+   probe before fingerprinting. The Studio cache can still be a CREATE until the
+   next rebuild, so the table hashed CREATE-shaped rows and dropped the verdicts.
+2. **Live value-label glosses (Rule W-80).** Verify stamps `value_label` on
+   statement QIDs the static tables cannot gloss. Those labels enter the stable
+   fingerprint (only `__LOCAL:` labels are stripped — Rule W-152). List reads
+   never glossed, so manuscript keys diverged even when adoption did not apply.
+
+Invariant: before `_sanitise_merged_verdicts`, the merge path MUST
+`attach_cached_duplicate_evidence` + `adopt_identifier_matched_duplicates` on the
+display rows, mirror adopted QIDs onto the pre-derived stable rows, and
+`attach_live_value_labels` on both whenever any stored verdict is present. The
+state that keys a verdict is the state the table validates — one item state, not
+two. A gloss or adoption failure MUST NOT fail the list read.
+
+Tests: `test_wikidata_item_views.py`
+(`test_merged_view_keeps_verdict_after_probe_qid_adoption`,
+`test_merged_view_keeps_verdict_when_live_labels_match_verify`).

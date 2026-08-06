@@ -10,7 +10,7 @@
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow placeholders (`רשומה זמנית`) that must never become P1684 (W-72 / W-122) |
 | `backend/converter/wikidata/hmo_wikidata_pq_mapper.py` | Project Wikibase / ontology → public Wikidata P/Q allowlist (Rule W-100); never ID-identity |
 | `backend/app/pipeline/hmo_wikidata_projection.py` | Fail-closed adapter accepting only exact HMO manuscript URIs and unambiguous local QIDs for Wikidata projection |
-| `backend/app/pipeline/wikidata_item_views.py` | Merged read model: cache + overrides + ledger QID + upload audit + stale-sanitized AI verdict; `trim_studio_list_item` / `fetch_merged_wikidata_item` (W-131) |
+| `backend/app/pipeline/wikidata_item_views.py` | Merged read model: cache + overrides + ledger QID + upload audit + cached QID adoption + live value-label gloss + stale-sanitized AI verdict; `trim_studio_list_item` / `fetch_merged_wikidata_item` (W-131 / W-169) |
 | `backend/app/pipeline/marc_verify_context.py` | `load_run_control_numbers`, `load_run_marc_records_scoped` (W-132) |
 | `backend/app/pipeline/wikidata_verify_fixture.py` | Lean eval-agent fixture + `release_wikidata_verify_heap` (W-131/W-132) |
 | `backend/app/pipeline/wikidata_item_merge.py` | Apply curator overrides onto serialised item dicts |

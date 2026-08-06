@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
@@ -26,6 +27,8 @@ from app.pipeline.wikidata_verdict_cache import (
 from app.pipeline.wikidata_verify_evidence import enrich_items_with_verify_evidence
 from app.pipeline.wikidata_verify_fixture import slim_item_for_verdict_persist
 from app.services.wikibase_audit import fetch_latest_wikibase_writes
+
+logger = logging.getLogger(__name__)
 
 
 class StudioBuildMissingError(RuntimeError):
@@ -99,12 +102,77 @@ async def fetch_merged_wikidata_items(
     attach_local_reference_targets(items)
     stable_rows = list(stable_items.values())
     attach_local_reference_targets(stable_rows)
+    # Verify fingerprints items after cached QID adoption (Rule W-168) and after
+    # live value-label glosses (Rule W-80). The Studio cache may still be a CREATE
+    # until the next rebuild, and list reads never glossed QIDs — so every
+    # subset-verify verdict landed in overrides and then vanished as "unknown"
+    # (Rule W-169).
+    await _adopt_cached_duplicate_qids(items)
+    _mirror_adopted_qids(items, stable_rows)
+    if verdict_rows:
+        await _attach_live_labels_for_verdict_keys(items, stable_rows)
     stable_items = {
         str(item.get("local_id") or ""): slim_item_for_verdict_persist(item)
         for item in stable_rows
     }
     _sanitise_merged_verdicts(verdict_rows, items, marc_records, stable_items)
     return items
+
+
+async def _adopt_cached_duplicate_qids(items: list[dict[str, Any]]) -> None:
+    """Apply Rule W-168 adoption from the probe cache onto review-table rows."""
+    if not items:
+        return
+    from app.db import session_scope  # noqa: PLC0415
+    from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+        adopt_identifier_matched_duplicates,
+        attach_cached_duplicate_evidence,
+    )
+
+    try:
+        await attach_cached_duplicate_evidence(session_scope, items)
+        adopt_identifier_matched_duplicates(items)
+    except Exception:  # noqa: BLE001 — never fail a list read over an optimisation
+        logger.exception(
+            "duplicate-QID adoption on Studio merge failed; leaving items as CREATE",
+        )
+    finally:
+        for item in items:
+            item.pop("_wikidata_existence", None)
+
+
+def _mirror_adopted_qids(
+    items: list[dict[str, Any]],
+    stable_rows: list[dict[str, Any]],
+) -> None:
+    """Copy probe-adopted ``existing_qid`` onto the pre-derived fingerprint rows."""
+    by_id = {
+        str(item.get("local_id") or ""): item
+        for item in items
+        if str(item.get("local_id") or "")
+    }
+    for row in stable_rows:
+        local_id = str(row.get("local_id") or "")
+        src = by_id.get(local_id)
+        if src is None:
+            continue
+        qid = str(src.get("existing_qid") or "").strip()
+        if qid and not str(row.get("existing_qid") or "").strip():
+            row["existing_qid"] = qid
+
+
+async def _attach_live_labels_for_verdict_keys(
+    items: list[dict[str, Any]],
+    stable_rows: list[dict[str, Any]],
+) -> None:
+    """Gloss statement QIDs the same way verify does before fingerprinting."""
+    from app.db import session_scope  # noqa: PLC0415
+    from app.pipeline.wikidata_verify_evidence import attach_live_value_labels  # noqa: PLC0415
+
+    try:
+        await attach_live_value_labels(session_scope, items + stable_rows)
+    except Exception:  # noqa: BLE001 — a gloss must never fail a list read
+        logger.exception("live value-label attach on Studio merge failed")
 
 
 def _sanitise_merged_verdicts(

@@ -495,3 +495,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     rebuild still left unsupported local edges, broad `P921`, stale `P195`,
     chronologically impossible people, and work evidence whose source record
     was invisible to the judge.
+
+72. **R72 — Review-table verdict reads MUST replay verify's adoption and live labels (Rule W-169).**
+    `fetch_merged_wikidata_items` runs cached duplicate-QID adoption (Rule W-168)
+    and, when any stored verdict exists, `attach_live_value_labels` on both the
+    display rows and the pre-derived stable rows *before* slim + stale
+    sanitisation. *Why:* verifying only the 19 unknowns on run 48ba6c13 persisted
+    correct verdicts, but the table still showed unknown — CREATE-shaped cache
+    rows and unglossed statement QIDs hashed differently than the verify scope.

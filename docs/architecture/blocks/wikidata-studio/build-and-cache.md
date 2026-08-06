@@ -169,3 +169,6 @@ by write-through persistence before comparing stable keys (R67).
 Stable keys also omit display-only labels generated for `__LOCAL:` targets, so
 subset verification and full-table reads share the same durable item state
 (R68).
+Before stale sanitisation the merge path also replays cached QID adoption and
+live value-label glosses so the table hashes the same item state verify wrote
+(R72 / Rule W-169).
