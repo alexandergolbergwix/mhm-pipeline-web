@@ -113,6 +113,15 @@ def test_canonical_final_gate_drops_identifierless_person() -> None:
     assert result["summary"]["total_items"] == 0
 
 
+def test_canonical_summary_reports_soft_reject_identity_strip() -> None:
+    """Regression: summary must not reference a renamed local (NameError on assemble)."""
+    result = build_canonical_studio_result([], reconcile=False)
+    summary = result["summary"]
+    assert "unconfirmed_person_identity_suppressed" in summary
+    assert "identifierless_after_soft_reject" in summary
+    assert summary["unconfirmed_person_identity_suppressed"] == 0
+
+
 def test_canonical_fingerprint_changes_with_enrichment_salt() -> None:
     entity = _manuscript_entity()
     assert canonical_wikidata_fingerprint([entity]) != canonical_wikidata_fingerprint(

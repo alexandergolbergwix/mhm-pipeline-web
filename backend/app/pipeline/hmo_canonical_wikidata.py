@@ -664,7 +664,8 @@ def build_canonical_studio_result(
             "local_references_degraded": local_ref_stats["degraded"],
             "local_references_dropped": local_ref_stats["dropped"],
             "conflicted_persons_dropped": len(conflicted_person_ids),
-            "unconfirmed_person_dates_suppressed": len(unconfirmed_date_ids),
+            "unconfirmed_person_identity_suppressed": len(unconfirmed_ids),
+            "identifierless_after_soft_reject": len(after_strip_dropped),
         },
     }
 
