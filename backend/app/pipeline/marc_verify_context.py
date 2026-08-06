@@ -13,6 +13,7 @@ from app.models.run import RunRecord
 
 _LIST_MERGE_KEYS = frozenset({
     "authors",
+    "canonical_references",
     "contributors",
     "subjects",
     "contents",
@@ -38,6 +39,11 @@ HMO_ITEM_MARC_KEYS = [
     "title", "authors", "contributors", "subjects", "provenance",
     "notes", "dates", "place", "related_places", "languages",
     "material", "extent", "shelfmark", "colophon_text", "contents",
+    # P921 (main subject) is derived from these as well as from 650/600 — a
+    # canonical Bible/Talmud citation is a different source from a subject
+    # heading, and a claim must cite the channel it actually came from
+    # (Rule W-162).
+    "canonical_references",
 ]
 
 AUTHORITY_MARC_KEYS = [
@@ -66,6 +72,7 @@ RAW_TAG_FALLBACK: dict[str, tuple[str, ...]] = {
     "rights": ("540$a", "540$u", "939$a", "939$u", "952$a", "952$b"),
     "provenance": ("541$a", "541$b", "561$a", "563$a", "583$a"),
     "subjects": ("650$a", "651$a", "600$a", "610$a"),
+    "canonical_references": ("630$a", "730$a", "830$a"),
     "genres": ("655$a",),
     "authors": ("100$a", "100$d", "110$a", "111$a"),
     "contributors": ("700$a", "700$d", "710$a", "711$a"),

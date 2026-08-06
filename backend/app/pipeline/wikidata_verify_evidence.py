@@ -139,7 +139,11 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P282": ("languages", "material"),
     "P407": ("languages",),
     "P571": ("dates",),
-    "P921": ("subjects",),
+    # A canonical Bible / Talmud citation is a DIFFERENT source from a 650 subject
+    # heading. Citing only `subjects` made every canonical-reference P921 read as
+    # unsupported: the judge was shown a person heading as the evidence for
+    # "main subject = Exodus" (Rule W-162).
+    "P921": ("subjects", "canonical_references"),
     "P953": ("digital_access",),
     "P1071": ("place",),
     "P1104": ("extent",),

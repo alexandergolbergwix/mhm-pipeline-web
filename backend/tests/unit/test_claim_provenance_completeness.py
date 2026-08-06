@@ -189,3 +189,49 @@ class TestGateBlocksUntraceableClaims:
             [{"_control_number": "990000403370205171"}],
         )
         assert not any("CLAIM_WITHOUT" in f for f in report["blocking"])
+
+
+class TestP921CitesTheChannelItCameFrom:
+    """Rule W-162 — a canonical citation is not a subject heading.
+
+    P921 cited only `marc.subjects`, so a value derived from
+    `canonical_references` (Bible book / Talmud tractate → QID) was evidenced by
+    whatever happened to be in 650/600. The judge was shown a PERSON heading as
+    the evidence for "main subject = Exodus" and correctly called it unsupported —
+    19 partials in run 48ba6c13's rebuild turned on P921.
+    """
+
+    def test_p921_names_both_channels(self) -> None:
+        from app.pipeline.wikidata_verify_evidence import CLAIM_SOURCE_SLICES
+
+        assert set(CLAIM_SOURCE_SLICES["P921"]) == {"subjects", "canonical_references"}
+
+    def test_a_canonical_reference_supports_p921(self) -> None:
+        item = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "statements": [{"property_id": "P921", "value": "Q9190"}],
+        }
+        marc = {"canonical_references": "Bible / Exodus"}
+        row = build_claim_sources(item, marc, [])["P921"]
+        assert row["support_status"] == SUPPORT_SUPPORTED
+        assert "marc.canonical_references" in row["channels"]
+
+    def test_a_subject_heading_still_supports_p921(self) -> None:
+        item = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "statements": [{"property_id": "P921", "value": "Q123006"}],
+        }
+        row = build_claim_sources(item, {"subjects": "Cabala"}, [])["P921"]
+        assert row["support_status"] == SUPPORT_SUPPORTED
+
+    def test_neither_channel_reads_as_sparse_not_as_a_build_defect(self) -> None:
+        item = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "statements": [{"property_id": "P921", "value": "Q9190"}],
+        }
+        assert build_claim_sources(item, {}, [])["P921"]["support_status"] == (
+            SUPPORT_CHANNEL_EMPTY
+        )
