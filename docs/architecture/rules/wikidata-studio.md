@@ -1503,9 +1503,10 @@ every edge:
    ownership and blocks a foreign item until the curator explicitly accepts that
    QID (Rule W-99). This only stops us *proposing* a duplicate.
 5. **Adoption MUST refuse untrusted identity (Rule W-170).** When
-   `heading_mismatch` or `wikidata_crosscheck_fail` is present, record
-   `adoption.adopted: false` — never auto-link to a probe QID that contradicts the
-   MARC heading.
+   `heading_mismatch` is set, or the probe candidate label conflicts with the item
+   label, record `adoption.adopted: false` (and clear a prior bad `existing_qid`).
+   Do not blanket-block solely on `wikidata_crosscheck_fail` after identifiers were
+   stripped — that left CREATE + live P8189 for the judge to fail under W-139.
 6. Applied on the verify path, the export, and the build — the build reads the
    probe cache only, never the network (Rule W-119), so it reflects whatever the
    last verify run learned. Both item shapes are told: the serialised dicts drive
@@ -1545,32 +1546,39 @@ Tests: `test_wikidata_item_views.py`
 
 Run `48ba6c13` still had 10 `fail` and 24 `partial` Wikidata Studio verdicts after
 the W-169 table fix. The judge was right on every bucket — the builder was wrong.
-These invariants close the gaps without weakening the eval-agent rubric:
+After the first W-170 ship the table was 18 fail + 19 partial: most person fails
+were CREATE + live `P8189` while adoption was blanket-blocked on
+`wikidata_crosscheck_fail`. These invariants close the gaps without weakening the
+eval-agent rubric:
 
 1. **Person identifiers require a trusted authority row (extends W-166).**
    `P8189`, `P214`, and the other cluster-harvested external IDs MUST NOT emit when
    `heading_mismatch` is set or `wikidata_crosscheck_fail` is in the match row's
-   `guard_flags`. `P1559` from `preferred_name_heb` follows the same gate.
-2. **W-168 adoption MUST refuse untrusted identity.** `adopt_identifier_matched_duplicates`
-   records `adoption.adopted: false` when `heading_mismatch` or
-   `wikidata_crosscheck_fail` is present — keep CREATE rather than UPDATE-to-wrong-QID
-   (the Maurizio→Kagel incident).
-3. **Canonical-reference P921 requires a topical subject hit.** Bible-book and
+   `guard_flags`.
+2. **Canonical soft-reject MUST strip identity claims, not only dates.**
+   `hmo_canonical_wikidata._suppress_unconfirmed_person_identity` removes
+   `P569`/`P570`, identifier PIDs, and `P1559`. Persons left identifierless are
+   dropped (W-154). Legacy `person_projection` alone is not enough — Studio source
+   is `hmo_wikibase+marc`.
+3. **W-168 adoption MUST refuse wrong identity, not every crosscheck flag.**
+   Block on `heading_mismatch`, or when the probe candidate **label** conflicts with
+   the item label (Maurizio→Kagel). Clear a prior bad `existing_qid` on the same
+   conflict. Do **not** blanket-block adoption solely because
+   `wikidata_crosscheck_fail` is present after identifiers were stripped.
+4. **P1559 MUST equal the public Hebrew label** (or be omitted) — never a Mazal
+   preferred_name that names someone else.
+5. **Canonical-reference P921 requires a topical subject hit.** Bible-book and
    Talmud-tractate QIDs from `canonical_references` emit only when a MARC 650/600
    subject heading also names the same concept (`canonical_reference_grounded_in_subjects`).
-   A 500-note citation alone is not main-subject evidence.
-4. **Description years follow audited precision (W-164).** English manuscript
-   descriptions include a numeric year only when the MARC date is year-level; century
-   strings stay century strings — never a midpoint year inferred from a century note.
-5. **Manuscript language labels follow MARC 041/008.** The Hebrew designation uses
-   the primary catalogue language (`manuscript_he_designation`), including the
-   no-shelfmark fallback — not a hardcoded “עברי”.
-6. **Printed facsimiles label as facsimiles in Hebrew.** When
+6. **Description years follow audited precision (W-164).** English descriptions
+   never embed Hebrew century text or century midpoint years; Hebrew descriptions
+   omit those midpoints too. `manuscript_record_label` MUST receive the MARC
+   record so language follows 041/008.
+7. **Printed facsimiles label as facsimiles in Hebrew.** When
    `_is_printed_facsimile_record`, the `he` designation is facsimile wording and
    stays consistent with `P31=Q571`.
-7. **Millimetre dimensions without units.** Unit-less `145X100` pairs are millimetres
-   when either dimension is ≥100; treating them as centimetres emitted 10× values on
-   `P2048`/`P2049`.
+8. **Millimetre dimensions without units.** Unit-less `145X100` pairs are millimetres
+   when either dimension is ≥100.
 
 Tests: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
 `test_person_heading_and_crosscheck.py`, `test_duplicate_qid_adoption.py`.

@@ -79,6 +79,12 @@ _DATE_SUPPRESSING_AUTHORITY_FLAGS = (
 # believing it dropped a generic one. Verified live 2026-08-05 (Rule W-26).
 _BROAD_MAIN_SUBJECT_QIDS = frozenset({"Q7325"})  # Jewish people
 _PERSON_BIOGRAPHY_PIDS = frozenset({"P569", "P570"})
+# Soft-reject / heading-mismatch: these identity claims must not ship when the
+# authority row is unconfirmed (Rule W-170). Leaving P8189 on CREATE while
+# blocking W-168 adoption is exactly the corner the judge fails under W-139.
+_UNCONFIRMED_IDENTITY_PIDS = (
+    _PERSON_BIOGRAPHY_PIDS | _PERSON_IDENTIFIER_PIDS | frozenset({"P1559"})
+)
 
 
 def identity_control_number(entity: CanonicalHmoEntity) -> str:
@@ -569,13 +575,36 @@ def build_canonical_studio_result(
             if item.local_id not in set(conflicted_person_ids)
         ]
 
-    unconfirmed_date_ids = _suppress_unconfirmed_person_dates(native_items)
-    if unconfirmed_date_ids:
+    unconfirmed_ids = _suppress_unconfirmed_person_identity(native_items)
+    if unconfirmed_ids:
         logger.warning(
-            "Suppressing dates on persons whose authority identity is unconfirmed "
-            "(wikidata_crosscheck_fail): %s",
-            ", ".join(unconfirmed_date_ids),
+            "Suppressing identity claims on persons whose authority is unconfirmed "
+            "(wikidata_crosscheck_fail / heading_mismatch): %s",
+            ", ".join(unconfirmed_ids),
         )
+    # Soft-reject may have stripped the only publishable IDs — drop those persons
+    # before local-ref resolve (Rule W-154 / W-170).
+    after_strip_dropped = [
+        item.local_id
+        for item in native_items
+        if (
+            str(item.entity_type or "").strip().lower() == "person"
+            and not is_publishable_person_item(item)
+        )
+    ]
+    if after_strip_dropped:
+        logger.warning(
+            "Dropping persons left identifierless after unconfirmed-identity strip: %s",
+            ", ".join(after_strip_dropped),
+        )
+        native_items = [
+            item
+            for item in native_items
+            if (
+                str(item.entity_type or "").strip().lower() != "person"
+                or is_publishable_person_item(item)
+            )
+        ]
 
     _sanitize_canonical_claims(native_items, context)
 
@@ -726,15 +755,17 @@ def _authority_match_conflicts(
     )
 
 
-def _suppress_unconfirmed_person_dates(items: list[WikidataItem]) -> list[str]:
-    """Strip biographical dates that came from an unconfirmed authority row.
+def _suppress_unconfirmed_person_identity(items: list[WikidataItem]) -> list[str]:
+    """Strip identity claims from an unconfirmed authority row (Rule W-170).
 
-    Rule W-166. ``wikidata_crosscheck_fail`` means no Wikidata label for that
-    cluster is within two edits of the MARC name — we cannot confirm the identity
-    for this heading. Authority hardening strips the Wikidata and VIAF ids on the
-    flag but keeps Mazal, and a surviving ``mazal_id`` is a publishable P8189, so
-    13 persons in run 48ba6c13 shipped with the unconfirmed row's dates. The item
-    survives on its MARC attestation; the dates from that row do not.
+    ``wikidata_crosscheck_fail`` means no Wikidata label for that cluster is
+    within two edits of the MARC name — we cannot confirm the identity for this
+    heading. ``heading_mismatch`` means Mazal preferred_name names someone else.
+    Authority hardening may keep Mazal for curator review, but a surviving
+    ``mazal_id`` as public P8189 on a CREATE duplicates a live QID (W-139) while
+    W-168 adoption correctly refuses the wrong link. Strip identifiers and
+    P1559; the later W-154 gate drops the person when nothing publishable remains.
+    Dates are stripped with the same pass (Rule W-166).
     """
     suppressed: list[str] = []
     for item in items:
@@ -744,21 +775,28 @@ def _suppress_unconfirmed_person_dates(items: list[WikidataItem]) -> list[str]:
         for row in item.authority_evidence or []:
             if isinstance(row, Mapping):
                 flags |= {str(f) for f in (row.get("guard_flags") or [])}
-        if not (flags & _SOFT_REJECT_AUTHORITY_FLAGS):
+        untrusted = bool(flags & _SOFT_REJECT_AUTHORITY_FLAGS) or bool(
+            getattr(item, "heading_mismatch", None)
+        )
+        if not untrusted:
             continue
         kept = [
             statement for statement in item.statements or []
-            if str(statement.property_id or "") not in _PERSON_BIOGRAPHY_PIDS
+            if str(statement.property_id or "") not in _UNCONFIRMED_IDENTITY_PIDS
         ]
         if len(kept) != len(item.statements or []):
             item.statements = kept
             suppressed.append(item.local_id)
-        # The generated description embeds the same dates.
         for lang, text in list((item.descriptions or {}).items()):
             cleaned = re.sub(r"\s*\([^)]*\d{3,4}[^)]*\)", "", str(text or "")).strip()
             if cleaned != text:
                 item.descriptions[lang] = cleaned
     return suppressed
+
+
+def _suppress_unconfirmed_person_dates(items: list[WikidataItem]) -> list[str]:
+    """Compat alias — identity strip now covers dates too (Rule W-170)."""
+    return _suppress_unconfirmed_person_identity(items)
 
 
 def _drop_conflicted_person_items(
@@ -1187,7 +1225,7 @@ def _manuscript_labels_and_aliases(
         holding = holding_name(record) if record else ""
         labels["en"] = (
             manuscript_en_label(shelfmark, holding) if shelfmark
-            else manuscript_record_label(cn)
+            else manuscript_record_label(cn, record)
         )
         labels["he"] = _hebrew_manuscript_label(record, designation_suffix)
         if title_clean and title_has_hebrew:
@@ -1906,9 +1944,18 @@ def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
     ]
     dates = record.get("dates")
     if isinstance(dates, dict):
-        year = str(dates.get("year") or dates.get("gregorian_year") or "").strip('" ')
-        if re.match(r"\d{3,4}$", year):
-            parts.append(year)
+        # Same precision gate as the English description (Rule W-164 / W-170):
+        # never put a century midpoint (1001/1501) into the Hebrew description.
+        from converter.wikidata.item_builder import _description_date_fragment  # noqa: PLC0415
+
+        fragment = _description_date_fragment(dates)
+        if fragment and re.match(r"\d{3,4}$", fragment):
+            parts.append(fragment)
+        elif fragment and "century" in fragment:
+            # Keep HE free of English century prose; omit rather than invent מאה.
+            pass
+        # else: Hebrew-only century in original_string already handled by fragment
+        # returning an English century string — omit from he description.
     holder = _holding_institution_name(record)
     if holder:
         parts.append(HEBREW_INSTITUTION_NAMES.get(holder, holder))

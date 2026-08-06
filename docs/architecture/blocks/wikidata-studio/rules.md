@@ -505,9 +505,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     rows and unglossed statement QIDs hashed differently than the verify scope.
 
 73. **R73 — Non-passing projection buckets MUST stay fail-closed (Rule W-170).**
-    Person identifiers, canonical-reference P921, description years, language
-    labels, facsimile Hebrew designations, and mm dimension parsing follow the
-    invariants in Rule W-170. Regression tests live in
-    `test_wikidata_nonpassing_buckets.py`. *Why:* run 48ba6c13 still had 34
-    non-passing verdicts after W-169; each bucket was a real projection defect,
-    not a rubric problem.
+    Canonical soft-reject strips identity PIDs (not only dates); adoption blocks on
+    heading/label conflict (not blanket crosscheck); P1559 equals the public he
+    label; description years and language labels follow MARC precision/041.
+    Regression tests live in `test_wikidata_nonpassing_buckets.py`. *Why:* the first
+    W-170 ship left 18 fails — CREATE + P8189 while adoption was over-blocked.*

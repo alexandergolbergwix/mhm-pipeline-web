@@ -120,17 +120,18 @@ class TestCanonicalPathSuppressesUnconfirmedDates:
 
     def test_the_dates_and_their_description_are_suppressed(self) -> None:
         from app.pipeline.hmo_canonical_wikidata import (
-            _suppress_unconfirmed_person_dates,
+            _suppress_unconfirmed_person_identity,
         )
 
         item = self._item(["wikidata_crosscheck_fail"])
-        suppressed = _suppress_unconfirmed_person_dates([item])
+        suppressed = _suppress_unconfirmed_person_identity([item])
         assert suppressed == ["mazal:987007299516905171"]
         assert not any(s.property_id == "P570" for s in item.statements)
+        assert not any(s.property_id == "P8189" for s in item.statements)
         assert "1640" not in item.descriptions["en"]
 
     def test_the_item_itself_is_not_dropped(self) -> None:
-        """It survives on its MARC attestation and its publishable P8189."""
+        """Soft-reject does not hard-delete; W-154 drops it only when IDsless."""
         from app.pipeline.hmo_canonical_wikidata import (
             _HARD_REJECT_AUTHORITY_FLAGS,
             _SOFT_REJECT_AUTHORITY_FLAGS,
@@ -140,12 +141,13 @@ class TestCanonicalPathSuppressesUnconfirmedDates:
 
     def test_a_clean_person_keeps_its_dates(self) -> None:
         from app.pipeline.hmo_canonical_wikidata import (
-            _suppress_unconfirmed_person_dates,
+            _suppress_unconfirmed_person_identity,
         )
 
         item = self._item([])
-        assert _suppress_unconfirmed_person_dates([item]) == []
+        assert _suppress_unconfirmed_person_identity([item]) == []
         assert any(s.property_id == "P570" for s in item.statements)
+        assert any(s.property_id == "P8189" for s in item.statements)
 
 
 class TestOneFidelityDecisionPerRow:

@@ -1382,27 +1382,47 @@ def _set_existing_qid(item: Any, qid: str) -> None:
         item.existing_qid = qid
 
 
+def _item_label_texts(item: Any) -> list[str]:
+    labels = item.get("labels") if isinstance(item, dict) else getattr(item, "labels", None)
+    if not isinstance(labels, dict):
+        return []
+    return [str(v).strip() for v in labels.values() if str(v or "").strip()]
+
+
+def _candidate_label_conflicts(item: Any, existence: dict[str, Any], qid: str) -> bool:
+    """True when the probe candidate's label names a different person (Maurizio→Kagel)."""
+    candidate_label = ""
+    for candidate in existence.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        if str(candidate.get("qid") or "") != qid:
+            continue
+        candidate_label = str(candidate.get("label") or "").strip()
+        break
+    if not candidate_label:
+        return False
+    item_labels = _item_label_texts(item)
+    if not item_labels:
+        return False
+    from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
+
+    return not any(heading_matches(label, candidate_label) for label in item_labels)
+
+
 def _adoption_blocked(item: Any) -> str | None:
-    """Reason adoption must stay CREATE — identity is not trusted."""
+    """Reason adoption must stay CREATE — identity is not trusted.
+
+    ``wikidata_crosscheck_fail`` alone is NOT enough to block: after Rule W-170
+    strips unconfirmed P8189, remaining persons with a trusted heading may still
+    adopt a live QID that carries the same identifier. ``heading_mismatch`` means
+    the Mazal row names someone else — never auto-link that.
+    """
     if isinstance(item, dict):
         if item.get("heading_mismatch"):
             return "heading_mismatch"
-        for row in item.get("authority_evidence") or []:
-            if not isinstance(row, dict):
-                continue
-            flags = row.get("guard_flags") or []
-            if "wikidata_crosscheck_fail" in flags:
-                return "wikidata_crosscheck_fail"
         return None
-    mismatch = getattr(item, "heading_mismatch", None)
-    if mismatch:
+    if getattr(item, "heading_mismatch", None):
         return "heading_mismatch"
-    for row in getattr(item, "authority_evidence", None) or []:
-        if not isinstance(row, dict):
-            continue
-        flags = row.get("guard_flags") or []
-        if "wikidata_crosscheck_fail" in flags:
-            return "wikidata_crosscheck_fail"
     return None
 
 
@@ -1423,6 +1443,8 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
       A title match is a likeness and stays with the curator (Rule W-145);
     * only when exactly ONE distinct QID was found. Two is ambiguous, and
       ambiguity is a curator decision (Rule W-37's reasoning);
+    * refuse when ``heading_mismatch`` is set, or when the candidate label clearly
+      conflicts with the item label (Rule W-170 — Maurizio→Kagel);
     * adoption does NOT authorise the write. The upload path still classifies
       ownership and blocks a foreign item until the curator accepts that QID
       explicitly (Rule W-99) — this only stops us proposing a duplicate.
@@ -1440,13 +1462,28 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
                 "adopted": False,
                 "reason": (
                     f"identity not trusted ({blocked}) — keep CREATE until the "
-                    "heading or crosscheck conflict is resolved"
+                    "heading conflict is resolved"
                 ),
             }
             continue
         if existence.get("status") != STATUS_CANDIDATES:
             continue
-        if _item_existing_qid(item):
+        existing = _item_existing_qid(item)
+        if existing:
+            # A prior bad adoption (Maurizio→Kagel) must not stick forever.
+            if _candidate_label_conflicts(item, existence, existing):
+                if isinstance(item, dict):
+                    item.pop("existing_qid", None)
+                else:
+                    item.existing_qid = None
+                existence["adoption"] = {
+                    "adopted": False,
+                    "reason": (
+                        "cleared prior adoption — probe candidate label conflicts "
+                        "with the item label (Rule W-170)"
+                    ),
+                    "qid": existing,
+                }
             continue
         qids = _adoptable_qids(existence)
         if len(qids) != 1:
@@ -1461,6 +1498,16 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
                 }
             continue
         qid = next(iter(qids))
+        if _candidate_label_conflicts(item, existence, qid):
+            existence["adoption"] = {
+                "adopted": False,
+                "reason": (
+                    "probe candidate label conflicts with the item label — refuse "
+                    "UPDATE-to-wrong-QID (Rule W-170)"
+                ),
+                "qid": qid,
+            }
+            continue
         _set_existing_qid(item, qid)
         matched_on = next(
             (

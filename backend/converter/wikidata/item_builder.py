@@ -950,7 +950,11 @@ def _is_printed_facsimile_record(record: dict[str, object]) -> bool:
 
 
 def _description_date_fragment(dates: dict[str, object]) -> str | None:
-    """Return a date phrase for manuscript descriptions at the right precision."""
+    """Return an English date phrase for manuscript descriptions at the right precision.
+
+    Never put Hebrew century text (מאה …) or a century midpoint year (1501/1001)
+    into the English description (Rule W-164 / W-170).
+    """
     if not isinstance(dates, dict):
         return None
     original = str(dates.get("original_string") or "").replace('""', '"').strip()
@@ -968,20 +972,36 @@ def _description_date_fragment(dates: dict[str, object]) -> str | None:
     )
     if single_century:
         return single_century.group(0).lower()
-    if re.search(r"מאה\s+", original):
-        hebrew_century = re.search(
-            r'מאה\s+[^,;]+',
-            original,
-        )
-        if hebrew_century:
-            return hebrew_century.group(0).strip()
+    # Hebrew century in original_string → English century phrasing when possible.
+    from converter.wikidata.property_mapping import (  # noqa: PLC0415
+        _HEBREW_ORDINAL_TO_INT,
+        _parse_hebrew_century,
+    )
+
+    heb_range = re.search(
+        r'מאה\s+([א-ת]["\u05F4\']?[א-ת]?)\s*[-–]\s*([א-ת]["\u05F4\']?[א-ת]?)',
+        original,
+    )
+    if heb_range:
+        c1 = _HEBREW_ORDINAL_TO_INT.get(heb_range.group(1).strip())
+        c2 = _HEBREW_ORDINAL_TO_INT.get(heb_range.group(2).strip())
+        if not c1:
+            c1 = _parse_hebrew_century(f"מאה {heb_range.group(1)}")
+        if not c2:
+            c2 = _parse_hebrew_century(f"מאה {heb_range.group(2)}")
+        if c1 and c2:
+            earlier, later = min(c1, c2), max(c1, c2)
+            return f"{earlier}th–{later}th century"
+    heb_century = _parse_hebrew_century(original)
+    if heb_century:
+        return f"{heb_century}th century"
     date_format = str(dates.get("date_format") or "")
     year = str(dates.get("year") or "").strip('" ')
     if year and re.match(r"\d{3,4}$", year):
         if date_format == "FullDate" or re.search(rf"\b{re.escape(year)}\b", original):
             return year
     year_match = re.search(r"\b(\d{3,4})\b", original)
-    if year_match and not re.search(r"centur", original, re.IGNORECASE):
+    if year_match and not re.search(r"centur|מאה", original, re.IGNORECASE):
         return year_match.group(1)
     return None
 

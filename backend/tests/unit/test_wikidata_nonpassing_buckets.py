@@ -148,6 +148,47 @@ class TestMillimetreDimensions:
 
 
 class TestAdoptionBlocksConflation:
+    def test_crosscheck_fail_alone_does_not_block_adoption(self) -> None:
+        """After W-170 strips bad IDs, a clean heading may still adopt."""
+        from app.pipeline.wikidata_duplicate_probe import adopt_identifier_matched_duplicates
+
+        item = {
+            "local_id": "QDraft_Person_105",
+            "entity_type": "person",
+            "labels": {"he": "ישראל בן יוסף כרמי"},
+            "authority_evidence": [{"guard_flags": ["wikidata_crosscheck_fail"]}],
+            "_wikidata_existence": {
+                "status": "candidates_found",
+                "candidates": [{
+                    "qid": "Q132798378",
+                    "matched_on": "P8189=987007263785105171",
+                    "label": "ישראל בן יוסף כרמי",
+                }],
+            },
+        }
+        assert adopt_identifier_matched_duplicates([item])
+        assert item["existing_qid"] == "Q132798378"
+
+    def test_candidate_label_conflict_blocks_adoption(self) -> None:
+        from app.pipeline.wikidata_duplicate_probe import adopt_identifier_matched_duplicates
+
+        item = {
+            "local_id": "QDraft_Person_110",
+            "entity_type": "person",
+            "labels": {"he": "מאוריציו"},
+            "_wikidata_existence": {
+                "status": "candidates_found",
+                "candidates": [{
+                    "qid": "Q178293",
+                    "matched_on": "P8189=1",
+                    "label": "Mauricio Kagel",
+                }],
+            },
+        }
+        assert adopt_identifier_matched_duplicates([item]) == []
+        assert "existing_qid" not in item
+        assert item["_wikidata_existence"]["adoption"]["adopted"] is False
+
     def test_heading_mismatch_blocks_adoption(self) -> None:
         from app.pipeline.wikidata_duplicate_probe import adopt_identifier_matched_duplicates
 
@@ -163,17 +204,82 @@ class TestAdoptionBlocksConflation:
         assert adopt_identifier_matched_duplicates([item]) == []
         assert "existing_qid" not in item
 
-    def test_crosscheck_fail_blocks_adoption(self) -> None:
+
+    def test_prior_bad_adoption_is_cleared_on_label_conflict(self) -> None:
         from app.pipeline.wikidata_duplicate_probe import adopt_identifier_matched_duplicates
 
         item = {
             "local_id": "QDraft_Person_110",
             "entity_type": "person",
-            "authority_evidence": [{"guard_flags": ["wikidata_crosscheck_fail"]}],
+            "labels": {"he": "מאוריציו"},
+            "existing_qid": "Q178293",
             "_wikidata_existence": {
                 "status": "candidates_found",
-                "candidates": [{"qid": "Q178293", "matched_on": "P8189=1"}],
+                "candidates": [{
+                    "qid": "Q178293",
+                    "matched_on": "P8189=1",
+                    "label": "Mauricio Kagel",
+                }],
             },
         }
-        assert adopt_identifier_matched_duplicates([item]) == []
+        adopt_identifier_matched_duplicates([item])
         assert "existing_qid" not in item
+        assert item["_wikidata_existence"]["adoption"]["adopted"] is False
+
+
+class TestP1559MatchesPublicLabel:
+    def test_p1559_equals_he_label(self) -> None:
+        items = WikidataItemBuilder().build_all([{
+            "_control_number": "990001404380205171",
+            "title": "ספר",
+            "shelfmark": "F 1",
+            "contributors": [{"name": "סעדיה בן שלמה אלקיסי", "role": "מעתיק", "field": "700"}],
+            "marc_authority_matches": [{
+                "name": "סעדיה בן שלמה אלקיסי",
+                "entity_text": "סעדיה בן שלמה אלקיסי",
+                "role": "מעתיק",
+                "mazal_id": "987007507328605171",
+                "preferred_name_heb": "טויל, סעדיה בן שלמה",
+                "approved": True,
+            }],
+        }])
+        person = next(i for i in items if i.entity_type == "person")
+        p1559 = _statements(person, "P1559")
+        assert p1559
+        assert p1559[0].value == person.labels.get("he")
+
+
+class TestCanonicalLanguageAndDate:
+    def test_german_record_label_is_not_hebrew(self) -> None:
+        from converter.wikidata.item_builder import manuscript_record_label
+
+        label = manuscript_record_label(
+            "997008371275105171",
+            {"languages": ["ger", "heb"]},
+        )
+        assert label.startswith("German manuscript")
+        assert "Hebrew" not in label
+
+    def test_hebrew_century_becomes_english_in_en_description(self) -> None:
+        item = WikidataItemBuilder().build_manuscript_item({
+            "_control_number": "CENTURY-HEB",
+            "title": "כתב יד",
+            "dates": {
+                "year": 1001,
+                "original_string": 'מאה י"א',
+            },
+        })
+        assert "1001" not in item.descriptions["en"]
+        assert "מאה" not in item.descriptions["en"]
+        assert "11th century" in item.descriptions["en"]
+
+    def test_hebrew_description_omits_century_midpoint(self) -> None:
+        from app.pipeline.hmo_canonical_wikidata import _hebrew_manuscript_description
+
+        text = _hebrew_manuscript_description({
+            "languages": ["heb"],
+            "dates": {"year": 1501, "original_string": 'מאה ט"ז-י"ז'},
+            "shelfmark": "F 1",
+        })
+        assert "1501" not in text
+

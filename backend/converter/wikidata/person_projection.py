@@ -554,20 +554,19 @@ class PersonProjectionMixin:
                         )
                     )
 
-        # P1559 = name in native language — use natural order, matching the public label.
-        # Catalog inverted forms are source evidence, not the Wikidata value.
+        # P1559 = name in native language — MUST match the public Hebrew label.
+        # Emitting Mazal preferred_name when it disagreed with labels["he"] made
+        # the judge fail role_ok (Rule W-170): e.g. label סעדיה… vs P1559 שלמה….
         cleaned_name = name.strip().rstrip(",;:")
-        if pref_heb and not is_org and authority_heading_trusted:
-            inverted_heb = _normalise_label(
-                _to_natural_name_order(_strip_person_name_qualifiers(pref_heb))
-            )
+        he_label = str(person.labels.get("he") or "").strip()
+        if he_label and not is_org:
             person.statements = [
                 s for s in person.statements if getattr(s, "property_id", "") != "P1559"
             ]
             person.statements.append(
                 WikidataStatement(
                     property_id="P1559",
-                    value=inverted_heb,
+                    value=he_label,
                     value_type="monolingualtext",
                     language="he",
                 )
