@@ -1463,3 +1463,18 @@ Invariant:
    record is not among the merged item's own.
 5. **The gate blocks `WORK_EVIDENCE_RECORD_MISMATCH`** when the description cites a
    record the item neither owns nor evidences.
+
+### Rule W-167(b) — An authority identifier must look like the register it claims (added 2026-08-06)
+
+Run `48ba6c13` published **105** statements of `P214 = 987007…` — an 18-digit NLI
+J9U number asserted as a **VIAF ID**, which violates P214's own Wikidata format
+constraint. The HMO ontology's `viaf_id` property was taken at face value by
+`hmo_wikidata_pq_mapper`. For 48 of those persons P214 was the *only* identifier,
+so it was simultaneously what made them publishable under Rules W-153 / W-154 —
+dropping it would have deleted the person.
+
+Invariant: `route_authority_identifier` sends the value to the property whose
+SHAPE it matches (an 18-digit `987…` is a J9U, a short number is a VIAF cluster),
+and refuses a value that fits neither register — an identifier we cannot attribute
+is worse than an absent one (Rules W-67 / W-72). The build gate blocks
+`IDENTIFIER_WRONG_PROPERTY` and `IDENTIFIER_SHAPE_UNRECOGNISED`.

@@ -384,6 +384,40 @@ def _work_identity_findings(items: list[Any]) -> list[str]:
     return errors
 
 
+_IDENTIFIER_SHAPE_PIDS = {"P214": "VIAF ID", "P8189": "NLI J9U ID"}
+
+
+def _identifier_shape_errors(items: list[Any]) -> list[str]:
+    """An authority identifier must look like the register it claims (Rule W-167).
+
+    105 statements in run 48ba6c13 asserted `P214 = 987007…` — an 18-digit NLI J9U
+    number published as a VIAF ID, violating P214's own format constraint. For 48
+    of those persons it was the only identifier, so it was also what made them
+    publishable.
+    """
+    from converter.wikidata.hmo_wikidata_pq_mapper import (  # noqa: PLC0415
+        route_authority_identifier,
+    )
+
+    errors: list[str] = []
+    for item in items:
+        local_id = str(getattr(item, "local_id", "") or "")
+        for pid, register in _IDENTIFIER_SHAPE_PIDS.items():
+            for value in _statement_values(item, pid):
+                routed = route_authority_identifier(pid, value)
+                if routed is None:
+                    errors.append(
+                        f"IDENTIFIER_SHAPE_UNRECOGNISED {local_id}: {pid} "
+                        f"({register}) = {value!r} matches no known register",
+                    )
+                elif routed[0] != pid:
+                    errors.append(
+                        f"IDENTIFIER_WRONG_PROPERTY {local_id}: {pid} ({register}) "
+                        f"= {value!r} is a {_IDENTIFIER_SHAPE_PIDS[routed[0]]}",
+                    )
+    return errors
+
+
 def _person_heading_findings(items: list[Any]) -> list[str]:
     """Report a refused authority heading, and an unconfirmed identity (W-166).
 
@@ -436,6 +470,7 @@ def wikidata_export_quality_report(
     )
     blocking.extend(_work_title_errors(items))
     blocking.extend(_work_identity_findings(items))
+    blocking.extend(_identifier_shape_errors(items))
     informational.extend(_person_heading_findings(items))
     for item in items:
         local_id = str(getattr(item, "local_id", "") or "")

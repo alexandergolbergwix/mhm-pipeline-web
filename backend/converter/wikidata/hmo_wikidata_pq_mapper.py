@@ -349,6 +349,28 @@ def claim_allowed_for_entity_type(property_id: str, entity_type: str) -> bool:
     return True
 
 
+# An NLI J9U id is an 18-digit `987…`; a VIAF cluster id is numeric and short
+# (the largest live clusters are 9 digits, so 12 is generous).
+_J9U_RE = re.compile(r"^987\d{12,17}$")
+_VIAF_RE = re.compile(r"^[1-9]\d{0,11}$")
+
+
+def route_authority_identifier(property_id: str, value: str) -> tuple[str, str] | None:
+    """Send an authority identifier to the property whose SHAPE it matches.
+
+    Returns ``(property_id, value)``, or ``None`` when the value fits neither
+    register — an identifier we cannot attribute is worse than an absent one.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if _J9U_RE.fullmatch(text):
+        return (P_NLI_J9U_ID, text)
+    if _VIAF_RE.fullmatch(text):
+        return (P_VIAF_ID, text) if property_id == P_VIAF_ID else (property_id, text)
+    return None
+
+
 def map_hmo_claim_to_wikidata(
     claim: Mapping[str, Any],
     *,
@@ -419,6 +441,20 @@ def map_hmo_claim_to_wikidata(
 
     if property_id == P_INSCRIPTION and is_catalog_note_placeholder(text):
         return None
+
+    # An authority identifier must LOOK like the register it claims to be from.
+    # Run 48ba6c13 published 105 statements of `P214 = 987007…` — a 17-digit NLI
+    # J9U number asserted as a VIAF ID, which violates P214's own format
+    # constraint — because the HMO `viaf_id` property was taken at face value. For
+    # 48 of those persons it was the ONLY identifier, so it was also what made them
+    # publishable (Rules W-153 / W-154). Route it to the property it belongs to
+    # rather than dropping it, and refuse anything that fits neither shape
+    # (Rules W-67 / W-72 fail closed).
+    if property_id in {P_VIAF_ID, P_NLI_J9U_ID}:
+        routed = route_authority_identifier(property_id, text)
+        if routed is None:
+            return None
+        property_id, text = routed
 
     if property_id in {P_START_TIME, P_END_TIME}:
         return MappedWikidataClaim(property_id=property_id, value=text, value_type="time")
