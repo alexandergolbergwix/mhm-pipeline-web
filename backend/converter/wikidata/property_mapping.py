@@ -484,6 +484,31 @@ def known_work_qid_for_title(title: str) -> str | None:
         return KNOWN_WORK_TITLE_ALIASES["פירוש המשנה לרמבם"]
     return None
 
+
+def is_known_work_edition_title(title: str) -> bool:
+    """True when a manuscript 245 is an edition/chapter form of a known work.
+
+    Used only for manuscript P1476 hygiene (prefer shelfmark over work title).
+    Does **not** mint work QIDs — ``known_work_qid_for_title`` stays exact so
+    ``משנה תורה (ספר זמנים)`` does not adopt the whole-work QID.
+    """
+    if known_work_qid_for_title(title):
+        return True
+    clean = re.sub(r"\s+", " ", str(title or "").strip()).rstrip(" .,;:/-")
+    if not clean:
+        return False
+    canonical = clean.replace('"', "").replace("׳", "").replace("״", "")
+    known = {**KNOWN_WORK_QIDS, **KNOWN_WORK_TITLE_ALIASES}
+    for key in sorted(known, key=len, reverse=True):
+        key_c = key.replace('"', "").replace("׳", "").replace("״", "")
+        if not key_c:
+            continue
+        if canonical.startswith(f"{key_c}("):
+            return True
+        if " " in key_c and canonical.startswith(f"{key_c} "):
+            return True
+    return False
+
 # Bible books → Wikidata QIDs (for P921 main subject from canonical_references)
 #
 # CORRECTED 2026-08-05. Ten of the thirteen QIDs here were wrong, and they were
@@ -735,6 +760,7 @@ ROLE_TO_PID: dict[str, str] = {
     "בעלים קודמים": P_SIGNIFICANT_PERSON,
     "mentioned": P_SIGNIFICANT_PERSON,
     "נזכר": P_SIGNIFICANT_PERSON,
+    "מוזכר": P_SIGNIFICANT_PERSON,
     "signatory": P_SIGNATORY,
     "חותם": P_SIGNATORY,
 }

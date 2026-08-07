@@ -50,6 +50,7 @@ from converter.wikidata.item_builder import (
     WikidataStatement,
     _associate_item_with_source_record,
     _extract_inception_year,
+    _has_hebrew_script,
     _is_catalog_note_placeholder,
     _is_institutional_name,
     _is_printed_facsimile_record,
@@ -63,15 +64,129 @@ from converter.wikidata.item_builder import (
     nli_j9u_id,
     nli_reference,
 )
+from converter.wikidata.property_mapping import is_known_work_edition_title
 
 
 _QID_RE = re.compile(r"^Q\d+$")
+
+# Prefer city/settlement QIDs over broader admin units when KIMA is coarse (W-170).
+_PLACE_LABEL_QID_OVERRIDES: dict[str, str] = {
+    "ʻamrān (yemen)": "Q48200",  # city, not Q275720 ʼAmran Governorate
+    "'amrān (yemen)": "Q48200",
+    "amran (yemen)": "Q48200",
+    "amrān (yemen)": "Q48200",
+}
 
 
 def _http_url_or_none(value: object) -> str | None:
     """An http(s) URL with MARC quote wrappers stripped, else None."""
     text = str(value or "").strip().strip('"').strip("'").strip()
     return text if text.lower().startswith(("http://", "https://")) else None
+
+
+def _place_qid_for_label(place_name: str, kima_uri: str | None = None) -> str | None:
+    """Resolve a place label to a Wikidata QID, with audited overrides."""
+    key = str(place_name or "").strip().casefold()
+    override = _PLACE_LABEL_QID_OVERRIDES.get(key)
+    if override:
+        return override
+    if kima_uri:
+        return extract_wikidata_qid(str(kima_uri))
+    return None
+
+
+def _norm_title_key(text: str) -> str:
+    return re.sub(r"\s+", " ", _normalise_label(str(text or "")).casefold()).strip(" .")
+
+
+def _linked_work_titles(record: dict[str, object]) -> set[str]:
+    titles: set[str] = set()
+    for row in record.get("work_candidate_evidence") or []:
+        if not isinstance(row, dict) or not row.get("accepted"):
+            continue
+        for key in ("title", "raw_title"):
+            norm = _norm_title_key(str(row.get(key) or ""))
+            if norm:
+                titles.add(norm)
+    for rw in record.get("related_works") or []:
+        if isinstance(rw, dict):
+            raw = str(rw.get("title") or "")
+        else:
+            raw = str(rw or "")
+        norm = _norm_title_key(raw)
+        if norm:
+            titles.add(norm)
+    return titles
+
+
+def _manuscript_public_title(marc_title: str, record: dict[str, object]) -> str:
+    """Title claim for the manuscript item — not the contained work's title."""
+    title = str(marc_title or "").strip()
+    if not title:
+        return ""
+    if (
+        _norm_title_key(title) in _linked_work_titles(record)
+        or is_known_work_edition_title(title)
+    ):
+        shelf = str(record.get("shelfmark") or "").strip().strip('"')
+        return shelf
+    return title
+
+
+def _align_manuscript_title_away_from_works(
+    item: WikidataItem,
+    record: dict[str, object],
+) -> None:
+    """After P1574 links land, drop a P1476 that merely repeats the work title."""
+    work_titles = _linked_work_titles(record)
+    for row in item.work_candidate_evidence or []:
+        if isinstance(row, dict) and row.get("accepted"):
+            norm = _norm_title_key(str(row.get("title") or ""))
+            if norm:
+                work_titles.add(norm)
+    for statement in item.statements or []:
+        if str(statement.property_id or "") != P_EXEMPLAR_OF:
+            continue
+        for qualifier in statement.qualifiers or []:
+            if not isinstance(qualifier, dict):
+                continue
+            if str(qualifier.get("property") or qualifier.get("property_id") or "") != "P1932":
+                continue
+            norm = _norm_title_key(str(qualifier.get("value") or ""))
+            if norm:
+                work_titles.add(norm)
+    if not work_titles:
+        # Known corpus works (Mishneh Torah, Shulchan Aruch, …) even without
+        # a stamped evidence row yet.
+        for statement in item.statements or []:
+            if str(statement.property_id or "") == P_TITLE:
+                if is_known_work_edition_title(str(statement.value or "")):
+                    work_titles.add(_norm_title_key(str(statement.value or "")))
+    if not work_titles:
+        return
+    kept: list[WikidataStatement] = []
+    replaced = False
+    shelf = str(record.get("shelfmark") or "").strip().strip('"')
+    for statement in item.statements or []:
+        if str(statement.property_id or "") != P_TITLE:
+            kept.append(statement)
+            continue
+        if _norm_title_key(str(statement.value or "")) not in work_titles:
+            kept.append(statement)
+            continue
+        if shelf and not replaced:
+            kept.append(
+                WikidataStatement(
+                    property_id=P_TITLE,
+                    value=_normalise_label(shelf),
+                    value_type="monolingualtext",
+                    language="en" if not _has_hebrew_script(shelf) else "he",
+                    references=list(statement.references or []),
+                )
+            )
+            replaced = True
+        # else drop the work-title P1476
+    item.statements = kept
 
 
 def _current_holder_names(record: dict[str, object]) -> list[str]:
@@ -274,15 +389,20 @@ class ManuscriptProjectionMixin:
                     )
                 )
         if title:
-            item.statements.append(
-                WikidataStatement(
-                    property_id=P_TITLE,
-                    value=_normalise_label(title),
-                    value_type="monolingualtext",
-                    language="he",
-                    references=ref,
+            # When 245 is the contained work title and we already link that work
+            # via P1574, do not also put the work title on the manuscript (WPM /
+            # Rule W-170 — export-29 MS F 39766 / F 32325).
+            ms_title = _manuscript_public_title(title, record)
+            if ms_title:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_TITLE,
+                        value=_normalise_label(ms_title),
+                        value_type="monolingualtext",
+                        language="he" if _has_hebrew_script(ms_title) else "en",
+                        references=ref,
+                    )
                 )
-            )
         subtitle = str(
             record.get("subtitle")
             or record.get("245$b")
@@ -417,19 +537,31 @@ class ManuscriptProjectionMixin:
                 )
             )
 
-        # ── Location of creation (KIMA places → Wikidata QIDs) ──
+        # ── Location of creation: production place only (not MARC 751) ──
+        # 751/752 geographic added entries live in related_places → P7153.
+        # Emitting every kima_places hit as P1071 made Egypt/Heraklion/Amran
+        # look like creation sites (Rule W-170 / export-29).
+        production_place = str(record.get("place") or "").strip()
         kima_places = record.get("kima_places") or {}
-        for _place_name, wikidata_uri in kima_places.items():
-            qid = extract_wikidata_qid(str(wikidata_uri))
-            if qid:
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_LOCATION_OF_CREATION,
-                        value=qid,
-                        value_type="item",
-                        references=ref,
+        if production_place and isinstance(kima_places, dict):
+            emitted_creation: set[str] = set()
+            for place_name, wikidata_uri in kima_places.items():
+                name = str(place_name or "").strip()
+                if not name:
+                    continue
+                if production_place not in name and name not in production_place:
+                    continue
+                qid = _place_qid_for_label(name, str(wikidata_uri or ""))
+                if qid and qid not in emitted_creation:
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id=P_LOCATION_OF_CREATION,
+                            value=qid,
+                            value_type="item",
+                            references=ref,
+                        )
                     )
-                )
+                    emitted_creation.add(qid)
 
         # ── Physical description ─────────────────────────────────
         self._add_physical_description(item, record, ref)
@@ -759,32 +891,35 @@ class ManuscriptProjectionMixin:
             place_name = _marc_entry_label(place_entry, keys=("place", "name", "term"))
             if not place_name:
                 continue
-            for _name, uri in (record.get("kima_places") or {}).items():
-                if place_name in _name or _name in place_name:
-                    qid = extract_wikidata_qid(str(uri))
-                    if qid:
-                        item.statements.append(
-                            WikidataStatement(
-                                property_id=P_SIGNIFICANT_PLACE,
-                                value=qid,
-                                value_type="item",
-                                # P7153 constraint requires P3831 (object of statement
-                                # has role) qualifier. Use Q1773840 (provenance) as the
-                                # role — the closest concept for "place associated with
-                                # the manuscript's custody history". Bug fix 2026-04-16:
-                                # Q1616923 was previously used but is a disambiguation
-                                # page (Heydeck), not a role concept.
-                                qualifiers=[
-                                    {
-                                        "property": P_OBJECT_HAS_ROLE,
-                                        "value": "Q1773840",
-                                        "type": "item",
-                                    }
-                                ],
-                                references=ref,
-                            )
-                        )
-                        break
+            qid: str | None = _place_qid_for_label(place_name)
+            if not qid:
+                for _name, uri in (record.get("kima_places") or {}).items():
+                    if place_name in _name or _name in place_name:
+                        qid = _place_qid_for_label(str(_name), str(uri or ""))
+                        if qid:
+                            break
+            if qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_SIGNIFICANT_PLACE,
+                        value=qid,
+                        value_type="item",
+                        # P7153 constraint requires P3831 (object of statement
+                        # has role) qualifier. Use Q1773840 (provenance) as the
+                        # role — the closest concept for "place associated with
+                        # the manuscript's custody history". Bug fix 2026-04-16:
+                        # Q1616923 was previously used but is a disambiguation
+                        # page (Heydeck), not a role concept.
+                        qualifiers=[
+                            {
+                                "property": P_OBJECT_HAS_ROLE,
+                                "value": "Q1773840",
+                                "type": "item",
+                            }
+                        ],
+                        references=ref,
+                    )
+                )
 
         # ── General notes (MARC 500) → P7535 ────────────────────
         for note in record.get("notes") or []:
@@ -912,5 +1047,6 @@ class ManuscriptProjectionMixin:
             for statement in item.statements
             if statement.property_id not in {"P7535", "P5008", "P17", "P131", "P50"}
         ]
+        _align_manuscript_title_away_from_works(item, record)
 
         return item

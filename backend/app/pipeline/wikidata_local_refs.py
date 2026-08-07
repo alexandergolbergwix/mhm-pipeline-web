@@ -166,6 +166,39 @@ def resolve_local_references(items: list[WikidataItem]) -> dict[str, int]:
     return {"degraded": degraded, "dropped": dropped, "relinked": relinked}
 
 
+def drop_orphan_significant_person_claims(items: list[WikidataItem]) -> int:
+    """Drop P3342 public QIDs that name nobody in this build (Rule W-170)."""
+    known = {
+        str(item.existing_qid or "").strip()
+        for item in items
+        if str(item.existing_qid or "").strip()
+    }
+    dropped = 0
+    for item in items:
+        if str(item.entity_type or "").lower() != "manuscript":
+            continue
+        kept: list[WikidataStatement] = []
+        for statement in item.statements or []:
+            if str(statement.property_id or "") != "P3342":
+                kept.append(statement)
+                continue
+            value = str(statement.value or "").strip()
+            if value.startswith("__LOCAL:") or not value.startswith("Q"):
+                kept.append(statement)
+                continue
+            has_named_as = any(
+                str(q.get("property") or q.get("property_id") or "") == "P1932"
+                for q in (statement.qualifiers or [])
+                if isinstance(q, dict)
+            )
+            if value in known or has_named_as:
+                kept.append(statement)
+                continue
+            dropped += 1
+        item.statements = kept
+    return dropped
+
+
 def dangling_local_references(items: list[Any]) -> list[str]:
     """Every remaining unresolved ``__LOCAL:`` target — used by the build gate."""
     known = {str(getattr(item, "local_id", "") or "") for item in items}

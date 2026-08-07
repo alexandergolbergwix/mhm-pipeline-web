@@ -517,8 +517,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     person subjects do not ground bible-book P921; catalog-note P1684 is dropped;
     weak editor/commentator descriptions without dates stay generic;
     `manuscript_record_label` names the holder or says `catalog record`, never
-    invents `NLI record`. Regression tests live in `test_wikidata_nonpassing_buckets.py`.
+    invents `NLI record`; MARC role wrappers normalise before ROLE_TO_PID so
+    `(מעתיק)` emits P11603; P1071 is production-place only (751→P7153; Amran
+    city override); MS P1476 that duplicates a linked/known work becomes the
+    shelfmark; orphan bare-QID P3342 without a build person or P1932 drops.
+    Regression tests live in `test_wikidata_nonpassing_buckets.py`.
     *Why:* a blanket preferred strip would have dropped 16 full-passing persons;
     bare HE↔EN adopt would have linked Maurizio→Kagel and Philippson;
     refuse-without-strip left CREATE+live P8189 as W-139 fails; subset verify
-    emptied `local_reference_targets` and partialled true work links.*
+    emptied `local_reference_targets` and partialled true work links; export-29
+    left three partials on paren roles, 751-as-creation, and work-title P1476.*

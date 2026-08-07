@@ -1612,6 +1612,19 @@ the eval-agent rubric:
 12. **P1559 equal to `labels.he` is label-backed** in claim_sources when
     authority rows were slimmed; weak editor/commentator descriptions without
     dates fall back to the generic person line.
+13. **MARC role wrappers MUST normalise before ROLE_TO_PID.** Forms like
+    `(מעתיק)` / `"(מעתיק)"` strip to the Hebrew relator so P11603/P3342 emit
+    (`role_normalize.normalize_marc_role`); `מוזכר` maps to P3342.
+14. **P1071 is production place only.** MARC 751 / `related_places` /
+    non-matching `kima_places` stay on P7153; Amran city overrides
+    governorate Q275720 → Q48200.
+15. **Manuscript P1476 MUST NOT duplicate a linked/known work title.** When
+    245 equals an accepted related work or an edition form of a known work
+    (`is_known_work_edition_title`), emit the shelfmark instead. Work QIDs
+    stay exact via `known_work_qid_for_title` (no fuzzy part→whole adoption).
+16. **Orphan P3342 bare QIDs drop.** After local-ref resolve, a manuscript
+    P3342 naming a public QID that is not any built person's `existing_qid`
+    and lacks P1932 is removed (export-29 Malkiel orphan).
 
 Tests: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
 `test_person_heading_and_crosscheck.py`, `test_duplicate_qid_adoption.py`.

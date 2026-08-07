@@ -17,6 +17,7 @@ from converter.wikidata.item_builder import (
     _strip_name_quotes,
     logger,
 )
+from converter.wikidata.role_normalize import normalize_marc_role
 
 
 class PersonLinkingMixin:
@@ -53,8 +54,8 @@ class PersonLinkingMixin:
             if key in seen_person_keys:
                 return
 
-            # Normalize role for lookup (case-insensitive, strip whitespace)
-            role_norm = role.strip().lower().replace("_", " ")
+            # Normalize role for lookup (case-insensitive, strip MARC wrappers).
+            role_norm = normalize_marc_role(role)
             # A seller is not an owner (the data model forbids modelling auction
             # houses as P127) and a censor is not one either. A *former* owner,
             # however, is now a P3342 "significant person" edge rather than a
@@ -70,7 +71,7 @@ class PersonLinkingMixin:
                 logger.info("Skipping work-side editorial role %r for %r", role, name)
                 seen_person_keys.add(key)
                 return
-            pid = ROLE_TO_PID.get(role_norm) or ROLE_TO_PID.get(role.upper())
+            pid = ROLE_TO_PID.get(role_norm) or ROLE_TO_PID.get(role_norm.upper())
             if pid is None:
                 logger.warning("Skipping unsupported MARC/NER role %r for %r", role, name)
                 return

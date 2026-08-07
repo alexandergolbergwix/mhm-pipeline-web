@@ -16,11 +16,11 @@
 | `backend/app/pipeline/wikidata_item_merge.py` | Apply curator overrides onto serialised item dicts |
 | `backend/app/pipeline/wikidata_item_verify.py` | Persist AI verdicts to `WikidataItemOverride` after verify streams |
 | `backend/app/pipeline/wikidata_duplicate_probe.py` | Batched Action-API duplicate check for CREATE candidates; fail-closed statuses (Rule W-139) |
-| `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets against the built set — degrade to `Q234460`+`P1932` or drop (Rule W-138) |
+| `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets; drops orphan bare-QID P3342 (Rules W-138 / W-170) |
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-source evidence packs: MARC slice, per-claim `claim_sources` provenance, offline `value_labels`, VIAF/Mazal/HMO channels |
 | `backend/app/pipeline/wikidata_verdict_cache.py` | Canonical record/MARC/local-target evidence, strict and stable verdict fingerprints, durable-target preservation, slim-invariant cache keys, and stale-verdict sanitisation |
 | `backend/app/pipeline/wikidata_duplicate_probe.py` | Batched Action-API duplicate check for CREATE candidates; fail-closed statuses (Rule W-139) |
-| `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets against the built set — degrade to `Q234460`+`P1932` or drop (Rule W-138) |
+| `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets; drops orphan bare-QID P3342 (Rules W-138 / W-170) |
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-channel `verify_evidence` pack (MARC + VIAF + Mazal + Wikidata + HMO Wikibase) for AI verify (Rule W-124) |
 | `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125) |
 | `backend/app/pipeline/wikidata_qid_ledger.py` | Global `wikibase_entity_mappings` ledger (`wikidata:` keys) — adopt + idempotent upload |
@@ -44,7 +44,7 @@
 | `backend/converter/wikidata/manuscript_projection.py` | Manuscript identity, catalog, digital-access, note, and evidence-gated related_works → P1574 (Rule W-114) |
 | `backend/converter/wikidata/manuscript_metadata.py` | Labels, instance types, language, physical description, and provenance projection |
 | `backend/converter/wikidata/content_projection.py` | Contents, genre, and canonical-subject projection |
-| `backend/converter/wikidata/person_linking.py`, `person_projection.py` | Role-safe manuscript links and authority-backed person construction |
+| `backend/converter/wikidata/person_linking.py`, `person_projection.py`, `role_normalize.py` | Role-safe manuscript links (paren/quote MARC relators), authority-backed person construction |
 | `backend/converter/wikidata/work_projection.py` | Work creation, labels, deduplication, and author links |
 | `backend/converter/wikidata/work_candidates.py` | Source-aware MARC 500/505/NER eligibility decisions and compact evidence |
 | `backend/converter/wikidata/property_mapping.py` | P/Q constants, WPM role map, discouraged P31 set, condition/fragment vocabulary, verified KNOWN_WORK_QIDS (Rules W-26/W-71/W-98/W-114) |

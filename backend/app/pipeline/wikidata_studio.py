@@ -286,7 +286,10 @@ def _build_sync(
     hmo_instance_qids: dict[str, str] | None = None,
     progress_cb: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
-    from app.pipeline.wikidata_local_refs import resolve_local_references  # noqa: PLC0415
+    from app.pipeline.wikidata_local_refs import (  # noqa: PLC0415
+        drop_orphan_significant_person_claims,
+        resolve_local_references,
+    )
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
     from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
     from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
@@ -308,6 +311,7 @@ def _build_sync(
     # dropped by the thin-title / evidence gates otherwise leave the referring
     # manuscript pointing at nothing (Rule W-138).
     local_ref_stats = resolve_local_references(items)
+    drop_orphan_significant_person_claims(items)
 
     # Validate every built item, log issues, and collect them per item so
     # the UI can surface inline validation pills without a second round-trip.

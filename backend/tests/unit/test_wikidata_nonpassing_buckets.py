@@ -649,3 +649,105 @@ class TestCanonicalLanguageAndDate:
             "shelfmark": "F 1",
         })
         assert "1501" not in text
+
+
+class TestExport29RolePlaceTitle:
+    def test_paren_scribe_role_emits_p11603(self) -> None:
+        items = WikidataItemBuilder().build_all([{
+            "_control_number": "990001827870205171",
+            "title": "ספר",
+            "shelfmark": "F 32325",
+            "marc_authority_matches": [{
+                "name": "אלעדוי, יוסף בן עמרם בן עודד",
+                "role": "(מעתיק)",
+                "mazal_id": "987007402783005171",
+                "preferred_name_heb": "אלעדוי, יוסף בן עמרם בן עודד",
+                "approved": True,
+            }],
+        }])
+        ms = next(i for i in items if i.entity_type == "manuscript")
+        assert _statements(ms, "P11603")
+
+    def test_amran_related_place_is_city_not_governorate(self) -> None:
+        item = WikidataItemBuilder().build_manuscript_item({
+            "_control_number": "AMRAN",
+            "title": "ספר",
+            "shelfmark": "F 1",
+            "place": "",
+            "related_places": ["ʻAmrān (Yemen)"],
+            "kima_places": {
+                "ʻAmrān (Yemen)": "https://www.wikidata.org/entity/Q275720",
+            },
+        })
+        assert _statements(item, "P1071") == []
+        assert any(s.value == "Q48200" for s in _statements(item, "P7153"))
+
+    def test_subject_places_are_not_creation_sites(self) -> None:
+        item = WikidataItemBuilder().build_manuscript_item({
+            "_control_number": "EGYPT-751",
+            "title": "ספר",
+            "shelfmark": "F 1",
+            "place": "",
+            "kima_places": {
+                "Egypt": "https://www.wikidata.org/entity/Q79",
+                "Heraklion": "https://www.wikidata.org/entity/Q160544",
+            },
+        })
+        assert _statements(item, "P1071") == []
+
+    def test_work_title_p1476_becomes_shelfmark(self) -> None:
+        items = WikidataItemBuilder().build_all([{
+            "_control_number": "990001875220205171",
+            "title": "שלחן ערוך (ארח חיים)",
+            "shelfmark": "F 39766",
+            "related_works": [{"title": "שלחן ערוך (ארח חיים)", "approved": True}],
+        }])
+        ms = next(i for i in items if i.entity_type == "manuscript")
+        assert [s.value for s in _statements(ms, "P1476")] == ["F 39766"]
+
+    def test_known_work_title_alone_uses_shelfmark(self) -> None:
+        from converter.wikidata.property_mapping import known_work_qid_for_title
+
+        assert known_work_qid_for_title("שלחן ערוך (ארח חיים)") is None
+        from converter.wikidata.property_mapping import is_known_work_edition_title
+
+        assert is_known_work_edition_title("שלחן ערוך (ארח חיים)")
+        assert is_known_work_edition_title("משנה תורה לרמבם")
+        assert not is_known_work_edition_title("תורה שבעל פה")
+        item = WikidataItemBuilder().build_manuscript_item({
+            "_control_number": "SHULCHAN",
+            "title": "שלחן ערוך (ארח חיים)",
+            "shelfmark": "F 39766",
+        })
+        assert [s.value for s in _statements(item, "P1476")] == ["F 39766"]
+
+
+class TestOrphanSignificantPersonDrop:
+    def test_bare_public_qid_without_build_person_is_dropped(self) -> None:
+        from app.pipeline.wikidata_local_refs import drop_orphan_significant_person_claims
+        from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+        ms = WikidataItem(
+            local_id="QDraft_MS_1",
+            entity_type="manuscript",
+            statements=[
+                WikidataStatement(
+                    property_id="P3342",
+                    value="Q86007560",
+                    value_type="item",
+                ),
+                WikidataStatement(
+                    property_id="P3342",
+                    value="__LOCAL:mazal:1",
+                    value_type="item",
+                ),
+            ],
+        )
+        person = WikidataItem(
+            local_id="QDraft_Person_1",
+            entity_type="person",
+            existing_qid="Q123",
+        )
+        assert drop_orphan_significant_person_claims([ms, person]) == 1
+        values = [s.value for s in ms.statements if s.property_id == "P3342"]
+        assert values == ["__LOCAL:mazal:1"]
