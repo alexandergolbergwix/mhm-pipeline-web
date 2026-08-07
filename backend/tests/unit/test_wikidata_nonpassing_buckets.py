@@ -438,6 +438,120 @@ class TestManuscriptClaimHygiene:
         assert is_catalog_note_placeholder("רשומה זמנית | נושא נוסף: כתב-יד. מכירה")
 
 
+class TestPatronymicFatherIdWithDates:
+    def test_yehoyakhin_strips_medieval_father_mazal(self) -> None:
+        """Person_91: 19th-c. label must not keep מרדכי 1290–1355 identity."""
+        from app.pipeline.hmo_canonical_wikidata import _suppress_unconfirmed_person_identity
+        from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+        item = WikidataItem(
+            local_id="QDraft_Person_91",
+            entity_type="person",
+            labels={"he": "יהויכין בן מרדכי"},
+            statements=[
+                WikidataStatement(
+                    property_id="P8189",
+                    value="987007415787905171",
+                    value_type="external-id",
+                ),
+                WikidataStatement(
+                    property_id="P569",
+                    value="+1290-00-00T00:00:00Z",
+                    value_type="time",
+                ),
+                WikidataStatement(
+                    property_id="P570",
+                    value="+1355-00-00T00:00:00Z",
+                    value_type="time",
+                ),
+            ],
+            authority_evidence=[{
+                "preferred_name_heb": "מרדכי בן יהושע",
+                "preferred_name_lat": "Mordechai ben Joshua",
+            }],
+        )
+        assert _suppress_unconfirmed_person_identity([item])
+        assert not any(
+            s.property_id in {"P8189", "P569", "P570"} for s in item.statements
+        )
+        assert item.heading_mismatch is not None
+
+    def test_patronymic_without_dates_does_not_strip_passer(self) -> None:
+        from app.pipeline.hmo_canonical_wikidata import _suppress_unconfirmed_person_identity
+        from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+        item = WikidataItem(
+            local_id="QDraft_Person_59",
+            entity_type="person",
+            labels={"he": "יהודה בן יצחק דדיניאה"},
+            statements=[
+                WikidataStatement(
+                    property_id="P8189",
+                    value="1",
+                    value_type="external-id",
+                ),
+            ],
+            authority_evidence=[{"preferred_name_heb": "יצחק בן יהודה"}],
+        )
+        assert _suppress_unconfirmed_person_identity([item]) == []
+        assert any(s.property_id == "P8189" for s in item.statements)
+
+
+class TestSubsetVerifyLocalCatalog:
+    def test_attach_resolves_locals_from_catalog(self) -> None:
+        from app.pipeline.wikidata_verdict_cache import attach_local_reference_targets
+
+        ms = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "statements": [
+                {"property_id": "P1574", "value": "__LOCAL:QDraft_Work_1"},
+            ],
+        }
+        work = {
+            "local_id": "QDraft_Work_1",
+            "entity_type": "work",
+            "labels": {"he": "נר ה"},
+        }
+        attach_local_reference_targets([ms], catalog=[ms, work])
+        assert "QDraft_Work_1" in (ms.get("local_reference_targets") or {})
+        assert ms["statements"][0]["value_label"] == "נר ה"
+
+
+class TestP1559LabelEvidence:
+    def test_p1559_matching_he_label_is_supported_without_authority(self) -> None:
+        from app.pipeline.wikidata_verify_evidence import build_claim_sources
+
+        sources = build_claim_sources(
+            {
+                "entity_type": "person",
+                "labels": {"he": "מאוריציו"},
+                "statements": [
+                    {"property_id": "P1559", "value": "מאוריציו"},
+                    {"property_id": "P31", "value": "Q5"},
+                ],
+                "authority_evidence": [],
+            },
+            {},
+            [],
+        )
+        row = sources["P1559"]
+        assert row["supported"] is True
+        assert "labels.he" in row["channels"]
+
+
+class TestWeakEditorDescription:
+    def test_editor_without_dates_uses_generic_description(self) -> None:
+        from converter.wikidata.item_builder import _build_person_description
+
+        assert _build_person_description("editor", "", False) == (
+            "person associated with Hebrew manuscripts"
+        )
+        assert _build_person_description("editor", "1200-1280", False) == (
+            "editor (1200-1280)"
+        )
+
+
 class TestP1559AlignAfterMerge:
     def test_align_forces_p1559_to_he_label(self) -> None:
         from app.pipeline.hmo_canonical_wikidata import _align_person_p1559_to_hebrew_label

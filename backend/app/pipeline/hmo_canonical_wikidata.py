@@ -874,6 +874,58 @@ def _same_family_heading_conflict(item: WikidataItem, prefs: list[str]) -> bool:
     )
 
 
+def _item_has_biographical_dates(item: WikidataItem) -> bool:
+    return any(
+        str(statement.property_id or "") in _PERSON_BIOGRAPHY_PIDS
+        for statement in item.statements or []
+    )
+
+
+def _patronymic_father_id_with_dates(item: WikidataItem, prefs: list[str]) -> bool:
+    """True when Mazal dates name a relative embedded in the MARC heading.
+
+    Export-28 Person_91: label ``יהויכין בן מרדכי`` (19th-c. loans) carried
+    Mazal ``מרדכי בן יהושע`` (1290–1355). Broader patronymic strip hits ~12
+    full-passing rows; gating on emitted P569/P570 keeps the passer hit count
+    at zero while still stripping the chronologically impossible identity.
+    """
+    if not prefs or not _item_has_biographical_dates(item):
+        return False
+    labels = _item_label_texts(item)
+    if not labels:
+        return False
+    from converter.authority.heading_fidelity import (  # noqa: PLC0415
+        _given_and_surname,
+        _name_tokens,
+        heading_matches,
+    )
+    from converter.authority.wikidata_crosscheck import hebrew_label_matches  # noqa: PLC0415
+
+    for label in labels:
+        for preferred in prefs:
+            if heading_matches(label, preferred):
+                continue
+            label_given, _ = _given_and_surname(label)
+            pref_given, _ = _given_and_surname(preferred)
+            if not (label_given and pref_given):
+                continue
+            if hebrew_label_matches(label_given, [pref_given], max_distance=1):
+                continue
+            label_tokens = _name_tokens(label)
+            pref_tokens = _name_tokens(preferred)
+            if any(
+                hebrew_label_matches(token, [pref_given], max_distance=1)
+                for token in label_tokens[1:]
+            ):
+                return True
+            if any(
+                hebrew_label_matches(token, [label_given], max_distance=1)
+                for token in pref_tokens[1:]
+            ):
+                return True
+    return False
+
+
 def _suppress_unconfirmed_person_identity(
     items: list[WikidataItem],
     context: CanonicalStudioContext | None = None,
@@ -884,11 +936,12 @@ def _suppress_unconfirmed_person_identity(
     within two edits of the MARC name — we cannot confirm the identity for this
     heading. ``heading_mismatch`` means Mazal preferred_name names someone else.
     Canonical HMO can still emit P8189 without that flag; recover only the
-    same-family / different-given conflation (Sara≠Shabtai) from evidence or the
-    Mazal row behind P8189 — not every preferred↔label disagreement (those ship
-    on many full-passing rows). Strip identifiers and P1559; clear a bad
-    ``existing_qid``; the later W-154 gate drops the person when nothing
-    publishable remains. Dates go with the same pass (Rule W-166).
+    same-family / different-given conflation (Sara≠Shabtai) and the
+    date-gated patronymic father-ID case (יהויכין vs מרדכי 1290–1355) from
+    evidence or the Mazal row behind P8189 — not every preferred↔label
+    disagreement (those ship on many full-passing rows). Strip identifiers and
+    P1559; clear a bad ``existing_qid``; the later W-154 gate drops the person
+    when nothing publishable remains. Dates go with the same pass (Rule W-166).
     """
     from converter.authority.heading_fidelity import heading_mismatch_reason  # noqa: PLC0415
 
@@ -904,7 +957,9 @@ def _suppress_unconfirmed_person_identity(
             item, context,
         )
         family_conflict = _same_family_heading_conflict(item, prefs)
-        if family_conflict and not getattr(item, "heading_mismatch", None):
+        father_dates_conflict = _patronymic_father_id_with_dates(item, prefs)
+        conflict = family_conflict or father_dates_conflict
+        if conflict and not getattr(item, "heading_mismatch", None):
             labels = _item_label_texts(item)
             item.heading_mismatch = {
                 "marc": labels[0] if labels else "",
@@ -916,7 +971,7 @@ def _suppress_unconfirmed_person_identity(
             }
         untrusted = bool(flags & _SOFT_REJECT_AUTHORITY_FLAGS) or bool(
             getattr(item, "heading_mismatch", None)
-        ) or family_conflict
+        ) or conflict
         if not untrusted:
             continue
         if item.existing_qid:
@@ -929,7 +984,7 @@ def _suppress_unconfirmed_person_identity(
             item.statements = kept
             suppressed.append(item.local_id)
         elif item.local_id not in suppressed and (
-            family_conflict or getattr(item, "heading_mismatch", None)
+            conflict or getattr(item, "heading_mismatch", None)
         ):
             suppressed.append(item.local_id)
         for lang, text in list((item.descriptions or {}).items()):

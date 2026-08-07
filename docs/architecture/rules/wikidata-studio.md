@@ -1601,6 +1601,17 @@ the eval-agent rubric:
 9. **Same-family surname particles.** Soft-reject same-family·different-given
    treats `אל חמדי` / `אלחמדי` as one surname so a father's Mazal ID on a son's
    label is stripped (Person_17).
+10. **Date-gated patronymic father-ID.** When Mazal emits P569/P570 and the
+    preferred given is embedded as a non-given token in the MARC label (or
+    vice versa) while givens differ, strip identity — Person_91
+    (יהויכין vs מרדכי 1290–1355). Without dates this must not strip the ~12
+    full-passing father/son patterns.
+11. **Subset verify MUST resolve `__LOCAL:` from the full Studio catalog.**
+    `attach_local_reference_targets(items, catalog=…)` keeps P1574/P3342
+    evidence when only non-passing manuscripts are judged.
+12. **P1559 equal to `labels.he` is label-backed** in claim_sources when
+    authority rows were slimmed; weak editor/commentator descriptions without
+    dates fall back to the generic person line.
 
 Tests: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
 `test_person_heading_and_crosscheck.py`, `test_duplicate_qid_adoption.py`.

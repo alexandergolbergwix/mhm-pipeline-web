@@ -438,6 +438,28 @@ def build_claim_sources(
                     ),
                     "gated_at": "HMO item creation (authority validation)",
                 })
+            elif pid == "P1559":
+                # After W-170 P1559 is forced to labels.he; cite the label when
+                # authority rows were slimmed (Maurizio / identifierless CREATE).
+                he_label = ""
+                labels = item.get("labels")
+                if isinstance(labels, dict):
+                    he_label = str(labels.get("he") or "").strip()
+                p1559_value = next(
+                    (
+                        str(statement.get("value") or "").strip()
+                        for statement in item.get("statements") or []
+                        if isinstance(statement, dict)
+                        and str(
+                            statement.get("property_id")
+                            or statement.get("property") or "",
+                        ) == "P1559"
+                    ),
+                    "",
+                )
+                if he_label and p1559_value == he_label:
+                    channels.append("labels.he")
+                    evidence["native_name_from_label"] = he_label
 
         if pid in _BRIDGE_CLAIM_PIDS:
             channels.append("hmo_wikibase")

@@ -2468,15 +2468,17 @@ async def _fetch_wikidata_verify_items(
     overrides_by_id = {row.local_id: row for row in override_rows}
 
     wanted = {str(i).strip() for i in (item_ids or []) if str(i).strip()}
+    catalog: list[dict[str, Any]] = []
     items: list[dict[str, Any]] = []
     wanted_cns: set[str] = set()
-    for item in scoped_items:
-        override = overrides_by_id.get(str(item.get("local_id") or ""))
-        if override is not None:
-            item = apply_wikidata_item_override(item, override_row_to_dict(override))
+    for raw in scoped_items:
+        override = overrides_by_id.get(str(raw.get("local_id") or ""))
+        item = (
+            apply_wikidata_item_override(raw, override_row_to_dict(override))
+            if override is not None
+            else raw
+        )
         local_id = str(item.get("local_id") or "")
-        if wanted and local_id not in wanted:
-            continue
         item["_local_id"] = local_id
         record_ids = [
             cn
@@ -2487,9 +2489,14 @@ async def _fetch_wikidata_verify_items(
             if cn and cn in run_record_ids
         ]
         item["record_ids"] = record_ids
+        catalog.append(item)
+        if wanted and local_id not in wanted:
+            continue
         wanted_cns.update(record_ids)
         items.append(item)
-    attach_local_reference_targets(items)
+    # Subset verify still needs work/person targets for P1574/P3342 evidence
+    # (Rule W-170) — look them up in the full Studio catalog, do not judge them.
+    attach_local_reference_targets(items, catalog=catalog)
     phase(VERIFY_SCOPE_PHASES[1])
     marc_records = await load_run_marc_records_scoped(db, run_id, wanted_cns)
     from app.db import session_scope  # noqa: PLC0415

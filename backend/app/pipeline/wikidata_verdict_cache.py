@@ -164,11 +164,22 @@ def _record_ids(item: dict[str, Any]) -> list[str]:
     return record_ids_for_wikidata_item(item)
 
 
-def attach_local_reference_targets(items: list[dict[str, Any]]) -> None:
-    """Attach evidence for every ``__LOCAL`` statement target in one item set."""
+def attach_local_reference_targets(
+    items: list[dict[str, Any]],
+    *,
+    catalog: list[dict[str, Any]] | None = None,
+) -> None:
+    """Attach evidence for every ``__LOCAL`` statement target.
+
+    ``catalog`` is the lookup set for resolving targets. Subset AI verify passes
+    the full Studio cache here so manuscript ``P1574`` / ``P3342`` edges still
+    resolve when only the non-passing rows are in ``items`` (Rule W-170).
+    """
+    lookup = catalog if catalog is not None else items
     by_local_id = {
         str(item.get("_local_id") or item.get("local_id") or ""): item
-        for item in items
+        for item in lookup
+        if str(item.get("_local_id") or item.get("local_id") or "")
     }
     for item in items:
         targets: dict[str, dict[str, Any]] = {}

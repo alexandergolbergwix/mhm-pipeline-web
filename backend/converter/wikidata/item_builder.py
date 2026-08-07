@@ -841,6 +841,12 @@ def _build_person_description(role: str, dates_str: str, is_org: bool) -> str:
             return _cap_description(f"organization ({safe_dates})")
         return "organization associated with Hebrew manuscripts"
     role_label = _ROLE_TO_LABEL.get((role or "").strip(), "")
+    # Role-only "Hebrew manuscript editor/commentator" descriptions arrive on
+    # Studio persons whose authority_evidence was slimmed, so the judge sees an
+    # unsupported description (export-28 Person_164). Keep role wording when
+    # dates disambiguate; otherwise fall back to the generic person line.
+    if role_label in {"editor", "commentator"} and not safe_dates:
+        return "person associated with Hebrew manuscripts"
     if role_label and safe_dates:
         return _cap_description(f"{role_label} ({safe_dates})")
     if role_label:

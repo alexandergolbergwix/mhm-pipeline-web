@@ -131,7 +131,7 @@ async def test_verify_fetch_applies_curator_overrides_before_fingerprinting() ->
         ),
         patch(
             "app.routers.wikidata_studio.attach_local_reference_targets",
-            lambda items: items,
+            lambda items, catalog=None: items,
         ),
         patch(
             "app.routers.wikidata_studio.record_ids_for_wikidata_item",
@@ -179,7 +179,7 @@ async def test_verify_fetch_applies_curator_overrides_before_fingerprinting() ->
         ) as build,
         patch(
             "app.routers.wikidata_studio.attach_local_reference_targets",
-            lambda items: items,
+            lambda items, catalog=None: items,
         ),
         patch(
             "app.routers.wikidata_studio.record_ids_for_wikidata_item",
@@ -230,7 +230,7 @@ async def test_verify_fetch_skips_non_public_entity_types() -> None:
         ),
         patch(
             "app.routers.wikidata_studio.attach_local_reference_targets",
-            lambda items: items,
+            lambda items, catalog=None: items,
         ),
         patch(
             "app.routers.wikidata_studio.record_ids_for_wikidata_item",
@@ -274,7 +274,7 @@ async def test_verify_fetch_rebuilds_without_reconcile_when_cache_empty() -> Non
         ) as build,
         patch(
             "app.routers.wikidata_studio.attach_local_reference_targets",
-            lambda items: items,
+            lambda items, catalog=None: items,
         ),
         patch(
             "app.routers.wikidata_studio.record_ids_for_wikidata_item",
