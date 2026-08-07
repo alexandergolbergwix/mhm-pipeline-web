@@ -115,10 +115,9 @@ class ManuscriptMetadataMixin:
             cn = str(record.get("_control_number") or record.get("control_number") or "").strip()
             if cn:
                 item.labels["en"] = manuscript_record_label(cn, record)
-                item.labels["he"] = manuscript_he_designation(
-                    record,
-                    f"רשומת הספרייה הלאומית {cn}",
-                )
+                # Suffix is the catalog identity only — holder comes from
+                # manuscript_he_designation (Rule W-161 / W-170).
+                item.labels["he"] = manuscript_he_designation(record, cn)
 
         from converter.wikidata.item_builder import _is_printed_facsimile_record  # noqa: PLC0415
         if _is_printed_facsimile_record(record):

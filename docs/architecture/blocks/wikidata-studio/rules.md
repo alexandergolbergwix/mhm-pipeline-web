@@ -505,8 +505,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     rows and unglossed statement QIDs hashed differently than the verify scope.
 
 73. **R73 — Non-passing projection buckets MUST stay fail-closed (Rule W-170).**
-    Canonical soft-reject strips identity PIDs (not only dates); adoption blocks on
-    heading/label conflict (not blanket crosscheck); P1559 equals the public he
-    label; description years and language labels follow MARC precision/041.
-    Regression tests live in `test_wikidata_nonpassing_buckets.py`. *Why:* the first
-    W-170 ship left 18 fails — CREATE + P8189 while adoption was over-blocked.*
+    Canonical soft-reject strips identity PIDs on crosscheck / heading_mismatch /
+    same-family·different-given conflation (not every preferred↔label disagreement);
+    clears bad `existing_qid`; adoption blocks on heading or same-script conflict;
+    cross-script adopts only with a trusted Latin form; manuscripts skip the label
+    gate; P1559 re-aligns to `labels.he` after merge; `manuscript_record_label`
+    names the holder or says `catalog record`, never invents `NLI record`.
+    Regression tests live in `test_wikidata_nonpassing_buckets.py`. *Why:* a blanket
+    preferred strip would have dropped 16 full-passing persons; bare HE↔EN adopt
+    would have linked Maurizio→Kagel and Philippson.*

@@ -717,16 +717,26 @@ def manuscript_en_label(shelfmark: str, holder_name: str) -> str:
 
 
 def manuscript_record_label(control_number: str, record: dict[str, object] | None = None) -> str:
-    """The no-shelfmark fallback: a CATALOGUE designation, not an ownership claim."""
+    """The no-shelfmark fallback: a CATALOGUE designation, not an ownership claim.
+
+    When the holder is known, name it (Cambridge must not read as an NLI holding).
+    When unknown, say ``catalog record`` — never invent ``NLI record`` (Rule W-161 / W-170).
+    """
     cn = str(control_number or "").strip()
     if not cn:
         return ""
     languages = (record or {}).get("languages") or []
     primary = str(languages[0]) if languages else "heb"
     lang_name = _LANG_CODE_TO_ENGLISH.get(primary, "Hebrew")
-    if _is_printed_facsimile_record(record or {}):
-        return f"{lang_name} printed facsimile edition, NLI record {cn}"
-    return f"{lang_name} manuscript, NLI record {cn}"
+    kind = (
+        "printed facsimile edition"
+        if _is_printed_facsimile_record(record or {})
+        else "manuscript"
+    )
+    holder = _holding_institution_name(record or {})
+    if holder:
+        return f"{lang_name} {kind}, {holder}, {cn}"
+    return f"{lang_name} {kind}, catalog record {cn}"
 
 
 # Hebrew forms for holders whose verified English label we already trust. A holder

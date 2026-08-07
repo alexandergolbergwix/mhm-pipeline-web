@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1382,6 +1383,12 @@ def _set_existing_qid(item: Any, qid: str) -> None:
         item.existing_qid = qid
 
 
+def _item_entity_type(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("entity_type") or "").strip().lower()
+    return str(getattr(item, "entity_type", "") or "").strip().lower()
+
+
 def _item_label_texts(item: Any) -> list[str]:
     labels = item.get("labels") if isinstance(item, dict) else getattr(item, "labels", None)
     if not isinstance(labels, dict):
@@ -1389,8 +1396,83 @@ def _item_label_texts(item: Any) -> list[str]:
     return [str(v).strip() for v in labels.values() if str(v or "").strip()]
 
 
+def _has_hebrew_script(text: str) -> bool:
+    return any("\u0590" <= c <= "\u05ff" for c in text)
+
+
+def _same_script_family(a: str, b: str) -> bool:
+    """Only compare labels when both are Hebrew or both are Latin-ish."""
+    a_he, b_he = _has_hebrew_script(a), _has_hebrew_script(b)
+    if a_he and b_he:
+        return True
+    if not a_he and not b_he and re.search(r"[A-Za-z]", a) and re.search(r"[A-Za-z]", b):
+        return True
+    return False
+
+
+def _item_latin_identity_forms(item: Any) -> list[str]:
+    """EN labels/aliases plus trusted preferred_name_lat for cross-script checks."""
+    forms: list[str] = []
+    labels = item.get("labels") if isinstance(item, dict) else getattr(item, "labels", None)
+    aliases = item.get("aliases") if isinstance(item, dict) else getattr(item, "aliases", None)
+    if isinstance(labels, dict):
+        en = str(labels.get("en") or "").strip()
+        if en:
+            forms.append(en)
+    if isinstance(aliases, dict):
+        for alias in aliases.get("en") or []:
+            text = str(alias or "").strip()
+            if text and text not in forms:
+                forms.append(text)
+    evidence = (
+        item.get("authority_evidence")
+        if isinstance(item, dict)
+        else getattr(item, "authority_evidence", None)
+    )
+    he_labels = [
+        str(v).strip()
+        for v in ((labels or {}).values() if isinstance(labels, dict) else [])
+        if str(v or "").strip() and _has_hebrew_script(str(v))
+    ]
+    he_prefs: list[str] = []
+    lat_prefs: list[str] = []
+    for row in evidence or []:
+        if not isinstance(row, dict):
+            continue
+        heb = str(row.get("preferred_name_heb") or "").strip()
+        lat = str(row.get("preferred_name_lat") or "").strip()
+        if heb and heb not in he_prefs:
+            he_prefs.append(heb)
+        if lat and lat not in lat_prefs:
+            lat_prefs.append(lat)
+    # Only trust preferred_lat when the Hebrew preferred also matches the HE label.
+    # Otherwise Maurizio→Kagel would adopt via preferred_lat alone.
+    from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
+
+    he_trusted = bool(he_labels) and bool(he_prefs) and any(
+        heading_matches(label, preferred)
+        for label in he_labels
+        for preferred in he_prefs
+    )
+    if he_trusted:
+        for lat in lat_prefs:
+            if lat not in forms:
+                forms.append(lat)
+    return forms
+
+
 def _candidate_label_conflicts(item: Any, existence: dict[str, Any], qid: str) -> bool:
-    """True when the probe candidate's label names a different person (Maurizio→Kagel)."""
+    """True when the probe candidate's label names a different person (Maurizio→Kagel).
+
+    Manuscripts: never — identity is the catalog/composite key (P3959 / P195+P217),
+    and local labels like ``KTIV…`` never match Wikidata's title label.
+    Persons: same-script ``heading_matches`` failure is a conflict. Cross-script
+    (HE item vs EN Wikidata) adopts only when a trusted Latin form on the item
+    matches the candidate — never by identifier alone (that adopted Kagel /
+    Philippson onto unrelated headings).
+    """
+    if _item_entity_type(item) != "person":
+        return False
     candidate_label = ""
     for candidate in existence.get("candidates") or []:
         if not isinstance(candidate, dict):
@@ -1406,7 +1488,21 @@ def _candidate_label_conflicts(item: Any, existence: dict[str, Any], qid: str) -
         return False
     from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
 
-    return not any(heading_matches(label, candidate_label) for label in item_labels)
+    comparable = [lab for lab in item_labels if _same_script_family(lab, candidate_label)]
+    if comparable:
+        return not any(heading_matches(label, candidate_label) for label in comparable)
+    latin_forms = _item_latin_identity_forms(item)
+    if not latin_forms:
+        # Fail closed: HE-only item vs EN candidate without a trusted Latin form.
+        return True
+    return not any(heading_matches(form, candidate_label) for form in latin_forms)
+
+
+def _clear_existing_qid(item: Any) -> None:
+    if isinstance(item, dict):
+        item.pop("existing_qid", None)
+    else:
+        item.existing_qid = None
 
 
 def _adoption_blocked(item: Any) -> str | None:
@@ -1429,25 +1525,16 @@ def _adoption_blocked(item: Any) -> str | None:
 def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]]:
     """Turn a CREATE whose identifier already exists on Wikidata into an UPDATE.
 
-    Rule W-168. The probe found 15 items in run 48ba6c13 whose own authority or
-    catalog identifier is already carried by a live Wikidata item — 14 persons on
-    ``P8189`` and one manuscript on ``P3959``. The judge failed every one of them,
-    correctly, and told the curator to link instead of create. Making a human
-    re-key a QID the probe has already resolved is work we can do for them, and
-    leaving the item as a CREATE means the duplicate risk stays on the board.
+    Rule W-168 / W-170. Fail-closed, deliberately narrow:
 
-    Fail-closed, deliberately narrow:
-
-    * only ``candidates_found``, and only when the item has no ``existing_qid`` yet;
-    * only IDENTITY keys — an identifier, or a composite whose AND was verified.
-      A title match is a likeness and stays with the curator (Rule W-145);
-    * only when exactly ONE distinct QID was found. Two is ambiguous, and
-      ambiguity is a curator decision (Rule W-37's reasoning);
-    * refuse when ``heading_mismatch`` is set, or when the candidate label clearly
-      conflicts with the item label (Rule W-170 — Maurizio→Kagel);
-    * adoption does NOT authorise the write. The upload path still classifies
-      ownership and blocks a foreign item until the curator accepts that QID
-      explicitly (Rule W-99) — this only stops us proposing a duplicate.
+    * only ``candidates_found`` (or clearing a bad prior ``existing_qid``);
+    * only IDENTITY keys — an identifier, or a composite whose AND was verified;
+    * only when exactly ONE distinct QID was found;
+    * refuse when ``heading_mismatch`` is set (and clear any prior ``existing_qid``);
+    * for persons, refuse when a same-script candidate label conflicts, or when
+      cross-script has no trusted Latin form that matches the candidate;
+      manuscripts skip the label gate;
+    * adoption does NOT authorise the write (Rule W-99).
 
     Returns one record per adoption, for the summary and the audit trail.
     """
@@ -1456,13 +1543,21 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
         blocked = _adoption_blocked(item)
         existence = item.get("_wikidata_existence") if isinstance(item, dict) else None
         if not isinstance(existence, dict):
+            # Native items during build may lack the scratch field; still clear a
+            # heading-mismatch UPDATE target if one was stamped earlier.
+            if blocked == "heading_mismatch" and _item_existing_qid(item):
+                _clear_existing_qid(item)
             continue
         if blocked:
+            prior = _item_existing_qid(item)
+            if prior:
+                _clear_existing_qid(item)
             existence["adoption"] = {
                 "adopted": False,
                 "reason": (
                     f"identity not trusted ({blocked}) — keep CREATE until the "
                     "heading conflict is resolved"
+                    + (f"; cleared prior existing_qid={prior}" if prior else "")
                 ),
             }
             continue
@@ -1472,10 +1567,7 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
         if existing:
             # A prior bad adoption (Maurizio→Kagel) must not stick forever.
             if _candidate_label_conflicts(item, existence, existing):
-                if isinstance(item, dict):
-                    item.pop("existing_qid", None)
-                else:
-                    item.existing_qid = None
+                _clear_existing_qid(item)
                 existence["adoption"] = {
                     "adopted": False,
                     "reason": (

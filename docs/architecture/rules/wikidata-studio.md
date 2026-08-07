@@ -1548,8 +1548,9 @@ Run `48ba6c13` still had 10 `fail` and 24 `partial` Wikidata Studio verdicts aft
 the W-169 table fix. The judge was right on every bucket — the builder was wrong.
 After the first W-170 ship the table was 18 fail + 19 partial: most person fails
 were CREATE + live `P8189` while adoption was blanket-blocked on
-`wikidata_crosscheck_fail`. These invariants close the gaps without weakening the
-eval-agent rubric:
+`wikidata_crosscheck_fail`. Export (26) after the soft-reject ship still had
+27 non-passing rows; these invariants close the remaining gaps without weakening
+the eval-agent rubric:
 
 1. **Person identifiers require a trusted authority row (extends W-166).**
    `P8189`, `P214`, and the other cluster-harvested external IDs MUST NOT emit when
@@ -1559,21 +1560,30 @@ eval-agent rubric:
    `hmo_canonical_wikidata._suppress_unconfirmed_person_identity` removes
    `P569`/`P570`, identifier PIDs, and `P1559`. Persons left identifierless are
    dropped (W-154). Legacy `person_projection` alone is not enough — Studio source
-   is `hmo_wikibase+marc`.
+   is `hmo_wikibase+marc`. Auto-detect only the **same-family / different-given**
+   conflation (Sara Molho ID on a Shabtai label) — broader preferred↔label
+   disagreements (family vs personal headings, toponymic bynames) ship on many
+   full-passing rows and MUST NOT strip. Clear a bad `existing_qid` when
+   `heading_mismatch` is set.
 3. **W-168 adoption MUST refuse wrong identity, not every crosscheck flag.**
-   Block on `heading_mismatch`, or when the probe candidate **label** conflicts with
-   the item label (Maurizio→Kagel). Clear a prior bad `existing_qid` on the same
-   conflict. Do **not** blanket-block adoption solely because
-   `wikidata_crosscheck_fail` is present after identifiers were stripped.
-4. **P1559 MUST equal the public Hebrew label** (or be omitted) — never a Mazal
-   preferred_name that names someone else.
+   Block on `heading_mismatch`, or when a **same-script** probe candidate label
+   conflicts with the item label (Maurizio→Kagel). Manuscripts skip the label
+   gate (catalog/composite keys, not title likeness). Cross-script (HE item vs
+   EN Wikidata) adopts only when a trusted Latin form on the item matches the
+   candidate (EN label/alias, or `preferred_name_lat` whose Hebrew preferred
+   also matches the HE label) — never by identifier alone. Clear a prior bad
+   `existing_qid` on heading mismatch or label conflict. Do **not** blanket-block
+   adoption solely because `wikidata_crosscheck_fail` is present after
+   identifiers were stripped.4. **P1559 MUST equal the public Hebrew label** (or be omitted) — never a Mazal
+   preferred_name that names someone else. Re-align after canonical↔legacy merge.
 5. **Canonical-reference P921 requires a topical subject hit.** Bible-book and
    Talmud-tractate QIDs from `canonical_references` emit only when a MARC 650/600
    subject heading also names the same concept (`canonical_reference_grounded_in_subjects`).
 6. **Description years follow audited precision (W-164).** English descriptions
    never embed Hebrew century text or century midpoint years; Hebrew descriptions
    omit those midpoints too. `manuscript_record_label` MUST receive the MARC
-   record so language follows 041/008.
+   record so language follows 041/008, and MUST name the resolved holder (or say
+   `catalog record`) — never invent `NLI record` for a Cambridge holding.
 7. **Printed facsimiles label as facsimiles in Hebrew.** When
    `_is_printed_facsimile_record`, the `he` designation is facsimile wording and
    stays consistent with `P31=Q571`.

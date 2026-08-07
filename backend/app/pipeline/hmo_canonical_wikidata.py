@@ -575,11 +575,11 @@ def build_canonical_studio_result(
             if item.local_id not in set(conflicted_person_ids)
         ]
 
-    unconfirmed_ids = _suppress_unconfirmed_person_identity(native_items)
+    unconfirmed_ids = _suppress_unconfirmed_person_identity(native_items, context)
     if unconfirmed_ids:
         logger.warning(
             "Suppressing identity claims on persons whose authority is unconfirmed "
-            "(wikidata_crosscheck_fail / heading_mismatch): %s",
+            "(wikidata_crosscheck_fail / heading_mismatch / preferred↔label): %s",
             ", ".join(unconfirmed_ids),
         )
     # Soft-reject may have stripped the only publishable IDs — drop those persons
@@ -607,6 +607,7 @@ def build_canonical_studio_result(
         ]
 
     _sanitize_canonical_claims(native_items, context)
+    _align_person_p1559_to_hebrew_label(native_items)
 
     # Apply overrides before resolving placeholders. A curator statement edit
     # may itself add a __LOCAL target, and the resolver must see the final item
@@ -756,18 +757,106 @@ def _authority_match_conflicts(
     )
 
 
-def _suppress_unconfirmed_person_identity(items: list[WikidataItem]) -> list[str]:
+def _item_label_texts(item: WikidataItem) -> list[str]:
+    return [
+        str(value).strip()
+        for value in (item.labels or {}).values()
+        if str(value or "").strip()
+    ]
+
+
+def _preferred_names_from_evidence(item: WikidataItem) -> list[str]:
+    prefs: list[str] = []
+    for row in item.authority_evidence or []:
+        if not isinstance(row, Mapping):
+            continue
+        for key in ("preferred_name_heb", "preferred_name_lat", "matched_name"):
+            text = str(row.get(key) or "").strip()
+            if text and text not in prefs:
+                prefs.append(text)
+    return prefs
+
+
+def _preferred_names_from_context(
+    item: WikidataItem,
+    context: CanonicalStudioContext | None,
+) -> list[str]:
+    """Recover Mazal preferred names via emitted P8189 when evidence was slimmed."""
+    if context is None:
+        return []
+    prefs: list[str] = []
+    for statement in item.statements or []:
+        if str(statement.property_id or "") != "P8189":
+            continue
+        mazal = normalize_authority_id(statement.value)
+        if not mazal:
+            continue
+        match = context.matches_by_mazal.get(mazal) or {}
+        for key in ("preferred_name_heb", "preferred_name_lat", "matched_name", "entity_text"):
+            text = str(match.get(key) or "").strip()
+            if text and text not in prefs:
+                prefs.append(text)
+    return prefs
+
+
+def _same_family_different_person(label: str, preferred: str) -> bool:
+    """True when surnames match but given names do not (Sara Molho vs Shabtai Molho).
+
+    Broader preferred↔label mismatch is common on *passing* rows (family vs
+    personal headings, toponymic bynames). Stripping those is a regression.
+    Same-family / different-given is the conflation that must never ship.
+    """
+    from converter.authority.heading_fidelity import (  # noqa: PLC0415
+        _given_and_surname,
+        heading_matches,
+    )
+    from converter.authority.wikidata_crosscheck import hebrew_label_matches  # noqa: PLC0415
+
+    if not label or not preferred or heading_matches(label, preferred):
+        return False
+    label_given, label_surname = _given_and_surname(label)
+    pref_given, pref_surname = _given_and_surname(preferred)
+    if not (label_given and pref_given and label_surname and pref_surname):
+        return False
+    if not hebrew_label_matches(label_surname, [pref_surname], max_distance=1):
+        return False
+    return not hebrew_label_matches(label_given, [pref_given], max_distance=1)
+
+
+def _same_family_heading_conflict(item: WikidataItem, prefs: list[str]) -> bool:
+    """True when a preferred form is the same family but a different person."""
+    labels = _item_label_texts(item)
+    if not prefs or not labels:
+        return False
+    from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
+
+    if any(heading_matches(label, preferred) for label in labels for preferred in prefs):
+        return False
+    return any(
+        _same_family_different_person(label, preferred)
+        for label in labels
+        for preferred in prefs
+    )
+
+
+def _suppress_unconfirmed_person_identity(
+    items: list[WikidataItem],
+    context: CanonicalStudioContext | None = None,
+) -> list[str]:
     """Strip identity claims from an unconfirmed authority row (Rule W-170).
 
     ``wikidata_crosscheck_fail`` means no Wikidata label for that cluster is
     within two edits of the MARC name — we cannot confirm the identity for this
     heading. ``heading_mismatch`` means Mazal preferred_name names someone else.
-    Authority hardening may keep Mazal for curator review, but a surviving
-    ``mazal_id`` as public P8189 on a CREATE duplicates a live QID (W-139) while
-    W-168 adoption correctly refuses the wrong link. Strip identifiers and
-    P1559; the later W-154 gate drops the person when nothing publishable remains.
-    Dates are stripped with the same pass (Rule W-166).
+    Canonical HMO can still emit P8189 without that flag; recover only the
+    same-family / different-given conflation (Sara≠Shabtai) from evidence or the
+    Mazal row behind P8189 — not every preferred↔label disagreement (those ship
+    on many full-passing rows). Strip identifiers and P1559; clear a bad
+    ``existing_qid``; the later W-154 gate drops the person when nothing
+    publishable remains. Dates go with the same pass (Rule W-166).
     """
+    from converter.authority.heading_fidelity import heading_mismatch_reason  # noqa: PLC0415
+
     suppressed: list[str] = []
     for item in items:
         if str(item.entity_type or "").strip().lower() != "person":
@@ -776,17 +865,37 @@ def _suppress_unconfirmed_person_identity(items: list[WikidataItem]) -> list[str
         for row in item.authority_evidence or []:
             if isinstance(row, Mapping):
                 flags |= {str(f) for f in (row.get("guard_flags") or [])}
+        prefs = _preferred_names_from_evidence(item) or _preferred_names_from_context(
+            item, context,
+        )
+        family_conflict = _same_family_heading_conflict(item, prefs)
+        if family_conflict and not getattr(item, "heading_mismatch", None):
+            labels = _item_label_texts(item)
+            item.heading_mismatch = {
+                "marc": labels[0] if labels else "",
+                "authority": prefs[0] if prefs else "",
+                "reason": heading_mismatch_reason(
+                    labels[0] if labels else "",
+                    prefs[0] if prefs else "",
+                ),
+            }
         untrusted = bool(flags & _SOFT_REJECT_AUTHORITY_FLAGS) or bool(
             getattr(item, "heading_mismatch", None)
-        )
+        ) or family_conflict
         if not untrusted:
             continue
+        if item.existing_qid:
+            item.existing_qid = None
         kept = [
             statement for statement in item.statements or []
             if str(statement.property_id or "") not in _UNCONFIRMED_IDENTITY_PIDS
         ]
         if len(kept) != len(item.statements or []):
             item.statements = kept
+            suppressed.append(item.local_id)
+        elif item.local_id not in suppressed and (
+            family_conflict or getattr(item, "heading_mismatch", None)
+        ):
             suppressed.append(item.local_id)
         for lang, text in list((item.descriptions or {}).items()):
             cleaned = re.sub(r"\s*\([^)]*\d{3,4}[^)]*\)", "", str(text or "")).strip()
@@ -795,9 +904,34 @@ def _suppress_unconfirmed_person_identity(items: list[WikidataItem]) -> list[str
     return suppressed
 
 
-def _suppress_unconfirmed_person_dates(items: list[WikidataItem]) -> list[str]:
+def _suppress_unconfirmed_person_dates(
+    items: list[WikidataItem],
+    context: CanonicalStudioContext | None = None,
+) -> list[str]:
     """Compat alias — identity strip now covers dates too (Rule W-170)."""
-    return _suppress_unconfirmed_person_identity(items)
+    return _suppress_unconfirmed_person_identity(items, context)
+
+
+def _align_person_p1559_to_hebrew_label(items: list[WikidataItem]) -> None:
+    """After merge, P1559 MUST equal ``labels["he"]`` (Rule W-170)."""
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "person":
+            continue
+        he_label = str((item.labels or {}).get("he") or "").strip()
+        without = [
+            statement for statement in item.statements or []
+            if str(statement.property_id or "") != "P1559"
+        ]
+        if he_label:
+            without.append(
+                WikidataStatement(
+                    property_id="P1559",
+                    value=he_label,
+                    value_type="monolingualtext",
+                    language="he",
+                )
+            )
+        item.statements = without
 
 
 def _drop_conflicted_person_items(

@@ -139,8 +139,9 @@ class TestManuscriptLabels:
 
     def test_the_no_shelfmark_fallback_is_a_record_designation(self) -> None:
         label = manuscript_record_label("990001801390205171")
-        assert label == "Hebrew manuscript, NLI record 990001801390205171"
+        assert label == "Hebrew manuscript, catalog record 990001801390205171"
         assert "Jerusalem" not in label
+        assert "NLI record" not in label
 
     def test_the_hebrew_designation_names_the_real_holder(self) -> None:
         label = manuscript_he_designation(
