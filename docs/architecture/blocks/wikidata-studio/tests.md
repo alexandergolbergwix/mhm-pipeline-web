@@ -3,9 +3,10 @@
 > Up: [Wikidata Studio](README.md)
 
 - `backend/tests/unit/test_wikidata_nonpassing_buckets.py` — Rule W-170 regression:
-  person identifier fail-closed, preferred↔label strip, P1559 align-after-merge,
-  HE↔EN / manuscript adoption gates, Cambridge catalog labels, canonical P921
-  grounding, description year precision, language/facsimile labels, mm dimensions.
+  person identifier fail-closed, same-family·different-given strip (incl. `אל`
+  particle), P1559 align-after-merge, HE↔EN map + refuse-and-strip adoption,
+  manuscript claim hygiene (person-subject P921, catalog-note P1684), Cambridge
+  catalog labels, description year precision, language/facsimile labels, mm dimensions.
 - `backend/tests/unit/test_wikidata_wpm_guards.py` — WPM/DS alignment: no MS P50,
   composite not codex, fragment P31 from condition notes, P1574+P1932, role map.
 - `backend/tests/unit/test_item_validator.py` — every check incl. label-hygiene warnings + `TestP50OnManuscript`, `TestP7416AsQuantity`, `TestP31WrongQid`, `MISSING_P3959` ERROR, `DISCOURAGED_P31`, `LOCATION_WITHOUT_GEO_EVIDENCE`.

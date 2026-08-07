@@ -251,8 +251,10 @@ def canonical_reference_grounded_in_subjects(
     for subj in record.get("subjects") or []:
         if not isinstance(subj, dict):
             continue
+        # Person/org headings that merely contain a biblical name (e.g. 600
+        # ``פרנקו, שמואל``) must not ground a Books-of-Samuel P921 (Rule W-170).
         if str(subj.get("type") or "topic").lower() in {
-            "place", "organization", "corporate", "meeting",
+            "person", "place", "organization", "corporate", "meeting",
         }:
             continue
         term = subject_term(subj).casefold()

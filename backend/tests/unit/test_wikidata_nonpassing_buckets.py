@@ -201,17 +201,59 @@ class TestAdoptionBlocksConflation:
             "local_id": "QDraft_Person_110",
             "entity_type": "person",
             "labels": {"he": "מאוריציו"},
+            "statements": [
+                {"property_id": "P8189", "value": "987007263446605171"},
+            ],
             "_wikidata_existence": {
                 "status": "candidates_found",
                 "candidates": [{
                     "qid": "Q178293",
-                    "matched_on": "P8189=1",
+                    "matched_on": "P8189=987007263446605171",
                     "label": "Mauricio Kagel",
                 }],
             },
         }
         assert adopt_identifier_matched_duplicates([item]) == []
         assert "existing_qid" not in item
+        assert item["_wikidata_existence"]["status"] == "absent"
+        assert item["statements"] == []
+        assert item["_wikidata_existence"]["adoption"]["stripped_identifier"] == (
+            "P8189=987007263446605171"
+        )
+
+    def test_he_en_map_adopts_without_preferred_lat(self) -> None:
+        """Abraham Monson / Yehuda Ben-Shaul: mapped HE↔EN tokens adopt fail-closed."""
+        from app.pipeline.wikidata_duplicate_probe import adopt_identifier_matched_duplicates
+
+        monson = {
+            "local_id": "QDraft_Person_117",
+            "entity_type": "person",
+            "labels": {"he": "אברהם מונסון"},
+            "_wikidata_existence": {
+                "status": "candidates_found",
+                "candidates": [{
+                    "qid": "Q114038729",
+                    "matched_on": "P8189=1",
+                    "label": "Abraham Monson",
+                }],
+            },
+        }
+        benshaul = {
+            "local_id": "QDraft_Person_90",
+            "entity_type": "person",
+            "labels": {"he": "יהודה שאול בן דוד איש קוסטליץ"},
+            "_wikidata_existence": {
+                "status": "candidates_found",
+                "candidates": [{
+                    "qid": "Q6645488",
+                    "matched_on": "P8189=1",
+                    "label": "Yehuda Ben-Shaul",
+                }],
+            },
+        }
+        assert adopt_identifier_matched_duplicates([monson, benshaul])
+        assert monson["existing_qid"] == "Q114038729"
+        assert benshaul["existing_qid"] == "Q6645488"
 
     def test_family_bynam_mismatch_does_not_strip_passing_identity(self) -> None:
         """Toponymic / family-heading disagreements must not drop full-passing P8189."""
@@ -277,6 +319,8 @@ class TestAdoptionBlocksConflation:
         assert adopt_identifier_matched_duplicates([item]) == []
         assert "existing_qid" not in item
         assert item["_wikidata_existence"]["adoption"]["adopted"] is False
+        assert item["_wikidata_existence"]["status"] == "absent"
+        assert item["statements"] == []
 
     def test_heading_mismatch_blocks_adoption_and_clears_qid(self) -> None:
         from app.pipeline.wikidata_duplicate_probe import adopt_identifier_matched_duplicates
@@ -303,6 +347,7 @@ class TestAdoptionBlocksConflation:
             "entity_type": "person",
             "labels": {"en": "Maurizio of Savoy"},
             "existing_qid": "Q178293",
+            "statements": [{"property_id": "P8189", "value": "1"}],
             "_wikidata_existence": {
                 "status": "candidates_found",
                 "candidates": [{
@@ -315,6 +360,8 @@ class TestAdoptionBlocksConflation:
         adopt_identifier_matched_duplicates([item])
         assert "existing_qid" not in item
         assert item["_wikidata_existence"]["adoption"]["adopted"] is False
+        assert item["_wikidata_existence"]["status"] == "absent"
+        assert item["statements"] == []
 
 
 class TestPreferredLabelStrip:
@@ -342,6 +389,53 @@ class TestPreferredLabelStrip:
         assert _suppress_unconfirmed_person_identity([item])
         assert not any(s.property_id == "P8189" for s in item.statements)
         assert item.heading_mismatch is not None
+
+    def test_al_particle_surname_strips_father_id_on_son(self) -> None:
+        """``אל חמדי`` vs ``אלחמדי`` is the same family (Person_17)."""
+        from app.pipeline.hmo_canonical_wikidata import _suppress_unconfirmed_person_identity
+        from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+        item = WikidataItem(
+            local_id="QDraft_Person_17",
+            entity_type="person",
+            labels={"he": "יחיא בן דוד אלחמדי"},
+            statements=[
+                WikidataStatement(
+                    property_id="P8189",
+                    value="987007298284205171",
+                    value_type="external-id",
+                ),
+            ],
+            authority_evidence=[{
+                "preferred_name_heb": "אל חמדי, דוד בן מסעוד",
+                "preferred_name_lat": "Daṿid ben Masʻud",
+            }],
+        )
+        assert _suppress_unconfirmed_person_identity([item])
+        assert not any(s.property_id == "P8189" for s in item.statements)
+        assert item.heading_mismatch is not None
+
+
+class TestManuscriptClaimHygiene:
+    def test_person_subject_does_not_ground_bible_book_p921(self) -> None:
+        from converter.wikidata.marc_subject_resolve import (
+            canonical_reference_grounded_in_subjects,
+        )
+
+        record = {
+            "subjects": [
+                {"term": "פרנקו, שמואל", "type": "person"},
+                {"term": "Jewish funeral sermons", "type": "topic"},
+            ],
+        }
+        assert not canonical_reference_grounded_in_subjects(
+            record, {"hierarchy": "Bible", "book": "Samuel"},
+        )
+
+    def test_compound_temporary_catalog_note_is_placeholder(self) -> None:
+        from converter.wikidata.catalog_notes import is_catalog_note_placeholder
+
+        assert is_catalog_note_placeholder("רשומה זמנית | נושא נוסף: כתב-יד. מכירה")
 
 
 class TestP1559AlignAfterMerge:

@@ -78,6 +78,22 @@ _DATE_SUPPRESSING_AUTHORITY_FLAGS = (
 # this filter was silently dropping a perfectly specific biblical subject while
 # believing it dropped a generic one. Verified live 2026-08-05 (Rule W-26).
 _BROAD_MAIN_SUBJECT_QIDS = frozenset({"Q7325"})  # Jewish people
+# Bible-book P921 QIDs that require a topical (not person) subject hit (W-170).
+_BIBLE_BOOK_P921_QIDS: dict[str, str] = {
+    "Q9184": "Genesis",
+    "Q9190": "Exodus",
+    "Q123243": "Leviticus",
+    "Q43016": "Numbers",
+    "Q43020": "Deuteronomy",
+    "Q131737": "Joshua",
+    "Q181620": "Samuel",
+    "Q131740": "Kings",
+    "Q131466": "Isaiah",
+    "Q131605": "Jeremiah",
+    "Q4107": "Psalms",
+    "Q172356": "Proverbs",
+    "Q179692": "Job",
+}
 _PERSON_BIOGRAPHY_PIDS = frozenset({"P569", "P570"})
 # Soft-reject / heading-mismatch: these identity claims must not ship when the
 # authority row is unconfirmed (Rule W-170). Leaving P8189 on CREATE while
@@ -805,6 +821,9 @@ def _same_family_different_person(label: str, preferred: str) -> bool:
     Broader preferred↔label mismatch is common on *passing* rows (family vs
     personal headings, toponymic bynames). Stripping those is a regression.
     Same-family / different-given is the conflation that must never ship.
+    Surname comparison ignores internal spaces (``אל חמדי`` vs ``אלחמדי``) and
+    reunites a split ``אל`` particle so natural-order tokenisation does not
+    drop the article from the family name.
     """
     from converter.authority.heading_fidelity import (  # noqa: PLC0415
         _given_and_surname,
@@ -818,7 +837,23 @@ def _same_family_different_person(label: str, preferred: str) -> bool:
     pref_given, pref_surname = _given_and_surname(preferred)
     if not (label_given and pref_given and label_surname and pref_surname):
         return False
-    if not hebrew_label_matches(label_surname, [pref_surname], max_distance=1):
+
+    def _surname_keys(text: str) -> list[str]:
+        compact = re.sub(r"[\s\u05be\-]+", "", text)
+        keys = {compact, text}
+        # ``אל חמדי`` tokenises to surname ``חמדי``; ``אלחמדי`` stays whole.
+        if compact.startswith("אל") and len(compact) > 2:
+            keys.add(compact[2:])
+        else:
+            keys.add("אל" + compact)
+        return [k for k in keys if k]
+
+    surname_ok = any(
+        hebrew_label_matches(a, [b], max_distance=1)
+        for a in _surname_keys(label_surname)
+        for b in _surname_keys(pref_surname)
+    )
+    if not surname_ok:
         return False
     return not hebrew_label_matches(label_given, [pref_given], max_distance=1)
 
@@ -971,6 +1006,10 @@ def _sanitize_canonical_claims(
     context: CanonicalStudioContext | None,
 ) -> None:
     """Remove known broad subjects and unsupported canonical holder claims."""
+    from converter.wikidata.catalog_notes import is_catalog_note_placeholder  # noqa: PLC0415
+    from converter.wikidata.marc_subject_resolve import (  # noqa: PLC0415
+        canonical_reference_grounded_in_subjects,
+    )
     from converter.wikidata.manuscript_projection import (  # noqa: PLC0415
         _current_holder_names,
         _current_holder_qid,
@@ -997,7 +1036,15 @@ def _sanitize_canonical_claims(
             value = str(statement.value or "")
             if pid == "P921" and value in _BROAD_MAIN_SUBJECT_QIDS:
                 continue
+            book = _BIBLE_BOOK_P921_QIDS.get(value)
+            if pid == "P921" and book and record is not None:
+                if not canonical_reference_grounded_in_subjects(
+                    record, {"hierarchy": "Bible", "book": book},
+                ):
+                    continue
             if pid == "P195" and record is not None and value != holder_qid:
+                continue
+            if pid == "P1684" and is_catalog_note_placeholder(value):
                 continue
             kept.append(statement)
         item.statements = kept

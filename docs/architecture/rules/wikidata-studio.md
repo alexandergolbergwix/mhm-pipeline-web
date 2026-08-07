@@ -1569,16 +1569,25 @@ the eval-agent rubric:
    Block on `heading_mismatch`, or when a **same-script** probe candidate label
    conflicts with the item label (Maurizio→Kagel). Manuscripts skip the label
    gate (catalog/composite keys, not title likeness). Cross-script (HE item vs
-   EN Wikidata) adopts only when a trusted Latin form on the item matches the
+   EN Wikidata) adopts when (a) a trusted Latin form on the item matches the
    candidate (EN label/alias, or `preferred_name_lat` whose Hebrew preferred
-   also matches the HE label) — never by identifier alone. Clear a prior bad
-   `existing_qid` on heading mismatch or label conflict. Do **not** blanket-block
-   adoption solely because `wikidata_crosscheck_fail` is present after
-   identifiers were stripped.4. **P1559 MUST equal the public Hebrew label** (or be omitted) — never a Mazal
+   also matches the HE label), or (b) a small fail-closed HE→Latin given/surname
+   map agrees (hyphen-split EN tokens; secondary mapped tokens cover
+   `יהודה שאול` ↔ `Yehuda Ben-Shaul`) — never by identifier alone. When adoption
+   refuses on label conflict, **strip the probe-matched identifier** from the
+   item and rewrite `duplicate_check` to `absent` so CREATE is not still a
+   W-139 fail. Clear a prior bad `existing_qid` on heading mismatch or label
+   conflict. Do **not** blanket-block adoption solely because
+   `wikidata_crosscheck_fail` is present after identifiers were stripped.
+4. **P1559 MUST equal the public Hebrew label** (or be omitted) — never a Mazal
    preferred_name that names someone else. Re-align after canonical↔legacy merge.
 5. **Canonical-reference P921 requires a topical subject hit.** Bible-book and
-   Talmud-tractate QIDs from `canonical_references` emit only when a MARC 650/600
-   subject heading also names the same concept (`canonical_reference_grounded_in_subjects`).
+   Talmud-tractate QIDs from `canonical_references` emit only when a MARC 650
+   topical subject heading also names the same concept
+   (`canonical_reference_grounded_in_subjects`). Person/org headings that merely
+   contain a biblical name (600 `שמואל`) MUST NOT ground a Books-of-Samuel P921.
+   Canonical sanitize also drops ungrounded bible-book P921 and catalog-note
+   `P1684` values such as `רשומה זמנית | …`.
 6. **Description years follow audited precision (W-164).** English descriptions
    never embed Hebrew century text or century midpoint years; Hebrew descriptions
    omit those midpoints too. `manuscript_record_label` MUST receive the MARC
@@ -1589,6 +1598,9 @@ the eval-agent rubric:
    stays consistent with `P31=Q571`.
 8. **Millimetre dimensions without units.** Unit-less `145X100` pairs are millimetres
    when either dimension is ≥100.
+9. **Same-family surname particles.** Soft-reject same-family·different-given
+   treats `אל חמדי` / `אלחמדי` as one surname so a father's Mazal ID on a son's
+   label is stripped (Person_17).
 
 Tests: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
 `test_person_heading_and_crosscheck.py`, `test_duplicate_qid_adoption.py`.

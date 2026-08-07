@@ -24,6 +24,9 @@ def is_catalog_note_placeholder(value: object) -> bool:
         "תאור זמני",
     }:
         return True
+    # Compound catalog rows: ``רשומה זמנית | נושא נוסף: …`` (Rule W-170).
+    if "רשומה זמנית" in folded or "temporary record" in folded:
+        return True
     return bool(
         re.match(r"^(?:נושא נוסף|additional subject|catalog(?:ue|ing)? note)\s*[:：]", folded)
         or "book suggested to google" in folded

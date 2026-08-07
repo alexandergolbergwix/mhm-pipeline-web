@@ -1410,6 +1410,118 @@ def _same_script_family(a: str, b: str) -> bool:
     return False
 
 
+# Hebrew given-name → Latin forms for cross-script adoption (Rule W-170).
+# Keep this corpus-small and fail-closed: a missing entry refuses HE↔EN adopt.
+_HE_GIVEN_LATIN: dict[str, frozenset[str]] = {
+    "אברהם": frozenset({"abraham", "avraham"}),
+    "יצחק": frozenset({"isaac", "yitzhak", "yitshak", "yizhak"}),
+    "יעקב": frozenset({"jacob", "yaakov", "yaakov"}),
+    "משה": frozenset({"moses", "moshe", "mosheh"}),
+    "אהרן": frozenset({"aaron", "aharon"}),
+    "יוסף": frozenset({"joseph", "yosef", "josef"}),
+    "דוד": frozenset({"david", "dawid"}),
+    "שלמה": frozenset({"solomon", "shlomo", "salomon", "shelomo"}),
+    "שמואל": frozenset({"samuel", "shmuel"}),
+    "יהודה": frozenset({"yehuda", "judah", "yehudah", "juda"}),
+    "ישראל": frozenset({"israel", "yisrael"}),
+    "אפרים": frozenset({"efrayim", "ephraim", "efraim"}),
+    "חיים": frozenset({"hayim", "chaim", "haim", "hayyim"}),
+    "אליעזר": frozenset({"eliezer"}),
+    "שאול": frozenset({"shaul", "saul"}),
+    "מאוריציו": frozenset({"maurizio", "mauricio"}),
+    "ויטוריו": frozenset({"vittorio", "victor"}),
+    "אמדיאו": frozenset({"amadeus", "amedeo"}),
+    "סולל": frozenset({"sultan", "soll", "solel"}),
+    "סולטן": frozenset({"sultan"}),
+    "מונסון": frozenset({"monson"}),
+    "פנצירי": frozenset({"pantsiri", "panciri"}),
+    "קוריאל": frozenset({"curiel"}),
+    "בריאל": frozenset({"briel"}),
+    "שור": frozenset({"shor"}),
+    "בן־שאול": frozenset({"benshaul"}),
+    "קוסטליץ": frozenset({"kostlitz", "castlitz"}),
+}
+
+
+_LATIN_NOISE_TOKENS = frozenset({
+    "ben", "bar", "ibn", "de", "di", "da", "del", "della", "von", "van",
+    "of", "the", "ii", "iii", "iv", "jr", "sr",
+})
+
+
+def _latin_token_norm(text: str) -> str:
+    return re.sub(r"[^a-z]", "", str(text or "").casefold())
+
+
+def _latin_token_norms(en_label: str) -> set[str]:
+    """Latin tokens from an EN label, splitting hyphens (Ben-Shaul → shaul)."""
+    from converter.authority.heading_fidelity import _name_tokens  # noqa: PLC0415
+
+    norms: set[str] = set()
+    for token in _name_tokens(en_label):
+        for part in re.split(r"[\s\-]+", str(token or "")):
+            norm = _latin_token_norm(part)
+            if norm and norm not in _LATIN_NOISE_TOKENS:
+                norms.add(norm)
+        full = _latin_token_norm(token)
+        if full and full not in _LATIN_NOISE_TOKENS:
+            norms.add(full)
+    return norms
+
+
+def _hebrew_token_latin_forms(token: str) -> set[str]:
+    key = str(token or "").strip()
+    forms = set(_HE_GIVEN_LATIN.get(key, ()))
+    # Space-stripped surname variants (אלחמדי).
+    compact = re.sub(r"[\s\u05be\-]+", "", key)
+    forms.update(_HE_GIVEN_LATIN.get(compact, ()))
+    return {_latin_token_norm(f) for f in forms if _latin_token_norm(f)}
+
+
+def _forms_hit_norms(forms: set[str], en_norms: set[str]) -> bool:
+    if forms & en_norms:
+        return True
+    return any(
+        any(e.startswith(f[:4]) or f.startswith(e[:4]) or f in e or e in f
+            for e in en_norms if len(e) >= 4)
+        for f in forms
+        if len(f) >= 4
+    )
+
+
+def _cross_script_names_compatible(he_label: str, en_label: str) -> bool:
+    """True when HE and EN labels plausibly name the same person.
+
+    Requires the Hebrew given name to map onto an English token. When both sides
+    have ≥2 tokens, also require a surname *or* another mapped HE token on the
+    EN side (יהודה שאול ↔ Yehuda Ben-Shaul). A single-token Hebrew label against
+    a multi-token English label is refused (Maurizio→Kagel).
+    """
+    from converter.authority.heading_fidelity import _name_tokens  # noqa: PLC0415
+
+    he_tokens = _name_tokens(he_label)
+    en_tokens = _name_tokens(en_label)
+    if not he_tokens or not en_tokens:
+        return False
+    if len(he_tokens) == 1 and len(en_tokens) >= 2:
+        return False
+    en_norms = _latin_token_norms(en_label)
+    if not en_norms:
+        return False
+    given_forms = _hebrew_token_latin_forms(he_tokens[0])
+    if not given_forms or not _forms_hit_norms(given_forms, en_norms):
+        return False
+    if len(he_tokens) >= 2 and len(en_tokens) >= 2:
+        if _forms_hit_norms(_hebrew_token_latin_forms(he_tokens[-1]), en_norms):
+            return True
+        # Secondary mapped tokens (שאול in Yehuda Ben-Shaul) without a surname hit.
+        for token in he_tokens[1:]:
+            if _forms_hit_norms(_hebrew_token_latin_forms(token), en_norms):
+                return True
+        return False
+    return True
+
+
 def _item_latin_identity_forms(item: Any) -> list[str]:
     """EN labels/aliases plus trusted preferred_name_lat for cross-script checks."""
     forms: list[str] = []
@@ -1445,8 +1557,6 @@ def _item_latin_identity_forms(item: Any) -> list[str]:
             he_prefs.append(heb)
         if lat and lat not in lat_prefs:
             lat_prefs.append(lat)
-    # Only trust preferred_lat when the Hebrew preferred also matches the HE label.
-    # Otherwise Maurizio→Kagel would adopt via preferred_lat alone.
     from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
 
     he_trusted = bool(he_labels) and bool(he_prefs) and any(
@@ -1464,12 +1574,10 @@ def _item_latin_identity_forms(item: Any) -> list[str]:
 def _candidate_label_conflicts(item: Any, existence: dict[str, Any], qid: str) -> bool:
     """True when the probe candidate's label names a different person (Maurizio→Kagel).
 
-    Manuscripts: never — identity is the catalog/composite key (P3959 / P195+P217),
-    and local labels like ``KTIV…`` never match Wikidata's title label.
+    Manuscripts: never — identity is the catalog/composite key (P3959 / P195+P217).
     Persons: same-script ``heading_matches`` failure is a conflict. Cross-script
-    (HE item vs EN Wikidata) adopts only when a trusted Latin form on the item
-    matches the candidate — never by identifier alone (that adopted Kagel /
-    Philippson onto unrelated headings).
+    adopts when a trusted Latin form matches, or when HE↔EN given+surname map
+    agrees — never by identifier alone (Philippson / Kagel).
     """
     if _item_entity_type(item) != "person":
         return False
@@ -1492,10 +1600,77 @@ def _candidate_label_conflicts(item: Any, existence: dict[str, Any], qid: str) -
     if comparable:
         return not any(heading_matches(label, candidate_label) for label in comparable)
     latin_forms = _item_latin_identity_forms(item)
-    if not latin_forms:
-        # Fail closed: HE-only item vs EN candidate without a trusted Latin form.
+    if latin_forms and any(heading_matches(form, candidate_label) for form in latin_forms):
+        return False
+    he_labels = [lab for lab in item_labels if _has_hebrew_script(lab)]
+    if he_labels and not _has_hebrew_script(candidate_label):
+        if any(_cross_script_names_compatible(lab, candidate_label) for lab in he_labels):
+            return False
         return True
-    return not any(heading_matches(form, candidate_label) for form in latin_forms)
+    # No bridge — refuse.
+    return True
+
+
+def _strip_probe_matched_identifiers(item: Any, existence: dict[str, Any], qid: str) -> str:
+    """Remove the probe-matched identity PID so CREATE is not a live duplicate.
+
+    Returns the matched_on string that was stripped, or empty.
+    """
+    matched_on = ""
+    for candidate in existence.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        if str(candidate.get("qid") or "") != qid:
+            continue
+        matched_on = str(candidate.get("matched_on") or "").strip()
+        break
+    if not matched_on or "=" not in matched_on:
+        return ""
+    pid, _, value = matched_on.partition("=")
+    pid, value = pid.strip(), value.strip()
+    if not pid or not value:
+        return ""
+    if isinstance(item, dict):
+        statements = [
+            stmt for stmt in (item.get("statements") or [])
+            if not (
+                isinstance(stmt, dict)
+                and str(stmt.get("property_id") or stmt.get("property") or "") == pid
+                and str(stmt.get("value") or "") == value
+            )
+        ]
+        item["statements"] = statements
+    else:
+        item.statements = [
+            stmt for stmt in (item.statements or [])
+            if not (
+                str(getattr(stmt, "property_id", "") or "") == pid
+                and str(getattr(stmt, "value", "") or "") == value
+            )
+        ]
+    return matched_on
+
+
+def _reject_conflicting_candidate(
+    item: Any, existence: dict[str, Any], qid: str, *, prior: bool = False,
+) -> None:
+    """Refuse adoption and strip the conflicting identifier from the item."""
+    stripped = _strip_probe_matched_identifiers(item, existence, qid)
+    if prior:
+        _clear_existing_qid(item)
+    existence["status"] = STATUS_ABSENT
+    existence["candidates"] = []
+    existence["adoption"] = {
+        "adopted": False,
+        "reason": (
+            ("cleared prior adoption and " if prior else "")
+            + "stripped untrusted identifier that conflicted with the item label "
+            "(Rule W-170) — CREATE no longer carries the live duplicate key"
+            + (f"; stripped {stripped}" if stripped else "")
+        ),
+        "qid": qid,
+        "stripped_identifier": stripped or None,
+    }
 
 
 def _clear_existing_qid(item: Any) -> None:
@@ -1532,8 +1707,10 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
     * only when exactly ONE distinct QID was found;
     * refuse when ``heading_mismatch`` is set (and clear any prior ``existing_qid``);
     * for persons, refuse when a same-script candidate label conflicts, or when
-      cross-script has no trusted Latin form that matches the candidate;
-      manuscripts skip the label gate;
+      cross-script has neither a trusted Latin form nor a mapped HE↔EN token
+      agreement; manuscripts skip the label gate;
+    * on refuse, strip the probe-matched identifier and rewrite status to
+      ``absent`` so CREATE is not still a live-duplicate fail (Rule W-139);
     * adoption does NOT authorise the write (Rule W-99).
 
     Returns one record per adoption, for the summary and the audit trail.
@@ -1567,15 +1744,7 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
         if existing:
             # A prior bad adoption (Maurizio→Kagel) must not stick forever.
             if _candidate_label_conflicts(item, existence, existing):
-                _clear_existing_qid(item)
-                existence["adoption"] = {
-                    "adopted": False,
-                    "reason": (
-                        "cleared prior adoption — probe candidate label conflicts "
-                        "with the item label (Rule W-170)"
-                    ),
-                    "qid": existing,
-                }
+                _reject_conflicting_candidate(item, existence, existing, prior=True)
             continue
         qids = _adoptable_qids(existence)
         if len(qids) != 1:
@@ -1591,14 +1760,9 @@ def adopt_identifier_matched_duplicates(items: list[Any]) -> list[dict[str, Any]
             continue
         qid = next(iter(qids))
         if _candidate_label_conflicts(item, existence, qid):
-            existence["adoption"] = {
-                "adopted": False,
-                "reason": (
-                    "probe candidate label conflicts with the item label — refuse "
-                    "UPDATE-to-wrong-QID (Rule W-170)"
-                ),
-                "qid": qid,
-            }
+            # Refuse UPDATE *and* strip the live duplicate key so CREATE is not
+            # still a W-139 fail (Maurizio→Kagel, Philippson, father/son IDs).
+            _reject_conflicting_candidate(item, existence, qid)
             continue
         _set_existing_qid(item, qid)
         matched_on = next(
