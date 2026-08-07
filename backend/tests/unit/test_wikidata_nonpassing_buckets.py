@@ -695,7 +695,8 @@ class TestExport29RolePlaceTitle:
         })
         assert _statements(item, "P1071") == []
 
-    def test_work_title_p1476_becomes_shelfmark(self) -> None:
+    def test_marc_245_stays_on_p1476_even_with_linked_work(self) -> None:
+        """Export-30 regression: do not swap P1476 to shelfmark (W-170)."""
         items = WikidataItemBuilder().build_all([{
             "_control_number": "990001875220205171",
             "title": "שלחן ערוך (ארח חיים)",
@@ -703,23 +704,7 @@ class TestExport29RolePlaceTitle:
             "related_works": [{"title": "שלחן ערוך (ארח חיים)", "approved": True}],
         }])
         ms = next(i for i in items if i.entity_type == "manuscript")
-        assert [s.value for s in _statements(ms, "P1476")] == ["F 39766"]
-
-    def test_known_work_title_alone_uses_shelfmark(self) -> None:
-        from converter.wikidata.property_mapping import known_work_qid_for_title
-
-        assert known_work_qid_for_title("שלחן ערוך (ארח חיים)") is None
-        from converter.wikidata.property_mapping import is_known_work_edition_title
-
-        assert is_known_work_edition_title("שלחן ערוך (ארח חיים)")
-        assert is_known_work_edition_title("משנה תורה לרמבם")
-        assert not is_known_work_edition_title("תורה שבעל פה")
-        item = WikidataItemBuilder().build_manuscript_item({
-            "_control_number": "SHULCHAN",
-            "title": "שלחן ערוך (ארח חיים)",
-            "shelfmark": "F 39766",
-        })
-        assert [s.value for s in _statements(item, "P1476")] == ["F 39766"]
+        assert [s.value for s in _statements(ms, "P1476")] == ["שלחן ערוך (ארח חיים)"]
 
 
 class TestOrphanSignificantPersonDrop:

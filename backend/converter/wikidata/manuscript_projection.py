@@ -64,7 +64,6 @@ from converter.wikidata.item_builder import (
     nli_j9u_id,
     nli_reference,
 )
-from converter.wikidata.property_mapping import is_known_work_edition_title
 
 
 _QID_RE = re.compile(r"^Q\d+$")
@@ -93,100 +92,6 @@ def _place_qid_for_label(place_name: str, kima_uri: str | None = None) -> str | 
     if kima_uri:
         return extract_wikidata_qid(str(kima_uri))
     return None
-
-
-def _norm_title_key(text: str) -> str:
-    return re.sub(r"\s+", " ", _normalise_label(str(text or "")).casefold()).strip(" .")
-
-
-def _linked_work_titles(record: dict[str, object]) -> set[str]:
-    titles: set[str] = set()
-    for row in record.get("work_candidate_evidence") or []:
-        if not isinstance(row, dict) or not row.get("accepted"):
-            continue
-        for key in ("title", "raw_title"):
-            norm = _norm_title_key(str(row.get(key) or ""))
-            if norm:
-                titles.add(norm)
-    for rw in record.get("related_works") or []:
-        if isinstance(rw, dict):
-            raw = str(rw.get("title") or "")
-        else:
-            raw = str(rw or "")
-        norm = _norm_title_key(raw)
-        if norm:
-            titles.add(norm)
-    return titles
-
-
-def _manuscript_public_title(marc_title: str, record: dict[str, object]) -> str:
-    """Title claim for the manuscript item — not the contained work's title."""
-    title = str(marc_title or "").strip()
-    if not title:
-        return ""
-    if (
-        _norm_title_key(title) in _linked_work_titles(record)
-        or is_known_work_edition_title(title)
-    ):
-        shelf = str(record.get("shelfmark") or "").strip().strip('"')
-        return shelf
-    return title
-
-
-def _align_manuscript_title_away_from_works(
-    item: WikidataItem,
-    record: dict[str, object],
-) -> None:
-    """After P1574 links land, drop a P1476 that merely repeats the work title."""
-    work_titles = _linked_work_titles(record)
-    for row in item.work_candidate_evidence or []:
-        if isinstance(row, dict) and row.get("accepted"):
-            norm = _norm_title_key(str(row.get("title") or ""))
-            if norm:
-                work_titles.add(norm)
-    for statement in item.statements or []:
-        if str(statement.property_id or "") != P_EXEMPLAR_OF:
-            continue
-        for qualifier in statement.qualifiers or []:
-            if not isinstance(qualifier, dict):
-                continue
-            if str(qualifier.get("property") or qualifier.get("property_id") or "") != "P1932":
-                continue
-            norm = _norm_title_key(str(qualifier.get("value") or ""))
-            if norm:
-                work_titles.add(norm)
-    if not work_titles:
-        # Known corpus works (Mishneh Torah, Shulchan Aruch, …) even without
-        # a stamped evidence row yet.
-        for statement in item.statements or []:
-            if str(statement.property_id or "") == P_TITLE:
-                if is_known_work_edition_title(str(statement.value or "")):
-                    work_titles.add(_norm_title_key(str(statement.value or "")))
-    if not work_titles:
-        return
-    kept: list[WikidataStatement] = []
-    replaced = False
-    shelf = str(record.get("shelfmark") or "").strip().strip('"')
-    for statement in item.statements or []:
-        if str(statement.property_id or "") != P_TITLE:
-            kept.append(statement)
-            continue
-        if _norm_title_key(str(statement.value or "")) not in work_titles:
-            kept.append(statement)
-            continue
-        if shelf and not replaced:
-            kept.append(
-                WikidataStatement(
-                    property_id=P_TITLE,
-                    value=_normalise_label(shelf),
-                    value_type="monolingualtext",
-                    language="en" if not _has_hebrew_script(shelf) else "he",
-                    references=list(statement.references or []),
-                )
-            )
-            replaced = True
-        # else drop the work-title P1476
-    item.statements = kept
 
 
 def _current_holder_names(record: dict[str, object]) -> list[str]:
@@ -389,20 +294,20 @@ class ManuscriptProjectionMixin:
                     )
                 )
         if title:
-            # When 245 is the contained work title and we already link that work
-            # via P1574, do not also put the work title on the manuscript (WPM /
-            # Rule W-170 — export-29 MS F 39766 / F 32325).
-            ms_title = _manuscript_public_title(title, record)
-            if ms_title:
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_TITLE,
-                        value=_normalise_label(ms_title),
-                        value_type="monolingualtext",
-                        language="he" if _has_hebrew_script(ms_title) else "en",
-                        references=ref,
-                    )
+            # Keep MARC 245 on P1476. Auto-swapping to shelfmark when 245 matched
+            # a linked/known work (export-29) regressed 19 full→partial rows in
+            # export-30: claim_sources still cited marc.title while the value
+            # became P217. Do not resurrect that swap without a matching
+            # evidence-channel rewrite.
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_TITLE,
+                    value=_normalise_label(title),
+                    value_type="monolingualtext",
+                    language="he" if _has_hebrew_script(title) else "en",
+                    references=ref,
                 )
+            )
         subtitle = str(
             record.get("subtitle")
             or record.get("245$b")
@@ -1047,6 +952,5 @@ class ManuscriptProjectionMixin:
             for statement in item.statements
             if statement.property_id not in {"P7535", "P5008", "P17", "P131", "P50"}
         ]
-        _align_manuscript_title_away_from_works(item, record)
 
         return item

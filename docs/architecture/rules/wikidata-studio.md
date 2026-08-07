@@ -1618,10 +1618,11 @@ the eval-agent rubric:
 14. **P1071 is production place only.** MARC 751 / `related_places` /
     non-matching `kima_places` stay on P7153; Amran city overrides
     governorate Q275720 → Q48200.
-15. **Manuscript P1476 MUST NOT duplicate a linked/known work title.** When
-    245 equals an accepted related work or an edition form of a known work
-    (`is_known_work_edition_title`), emit the shelfmark instead. Work QIDs
-    stay exact via `known_work_qid_for_title` (no fuzzy part→whole adoption).
+15. **Manuscript P1476 MUST stay MARC 245.** Auto-replacing a linked/known
+    work title with the shelfmark (export-29) left `claim_sources` on
+    `marc.title` while the value became P217 and regressed 19 `full`→`partial`
+    manuscripts in export-30. Do not resurrect that swap without rewriting
+    the evidence channel in the same change.
 16. **Orphan P3342 bare QIDs drop.** After local-ref resolve, a manuscript
     P3342 naming a public QID that is not any built person's `existing_qid`
     and lacks P1932 is removed (export-29 Malkiel orphan).
