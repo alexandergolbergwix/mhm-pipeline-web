@@ -37,7 +37,7 @@ class TestJudgeFixtureKeepsQuantityUnit:
         assert rows[0]["value_type"] == "quantity"
 
     def test_schema_bumped_for_unit_fixture(self) -> None:
-        assert WIKIDATA_VERDICT_SCHEMA == "w172_v1"
+        assert WIKIDATA_VERDICT_SCHEMA == "w173_v1"
 
 
 class TestHebrewDescriptionNotLabelClone:

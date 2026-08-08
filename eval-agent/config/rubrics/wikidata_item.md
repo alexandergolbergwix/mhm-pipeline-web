@@ -56,7 +56,10 @@ a control number or shelfmark:
    disambiguation page when `verify_evidence.wikidata_existing` does not show
    `P31=Q4167410`. A human (`Q5`) target with matching labels is not a type
    error solely because the name is shared by several historical figures.
-8. **Keep hard fails** for true identity contamination (conflicting P8189),
+8. **Holding QIDs:** never invent that `Q1028334` (Cambridge University
+   Library) or another audited holder QID is the National Library of Israel.
+   Prefer `value_label`, then the English manuscript label’s holder fragment.
+9. **Keep hard fails** for true identity contamination (conflicting P8189),
    wrong public QID links, and unsupported bad claims that are present.
 
 Evidence handling:

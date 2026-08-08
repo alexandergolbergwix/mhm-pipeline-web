@@ -1711,3 +1711,27 @@ eval-agent re-compact was the hole.
 7. Schema / skill salt **`w172_v1`**.
 
 Tests: `backend/tests/unit/test_wikidata_export33_w172.py`.
+
+### Rule W-173 — RELATED_WORKS P1574 ladder + Hebrew preferred identity (added 2026-08-08)
+
+Export-34 on canary `48ba6c13` after W-172: **245 full / 6 partial / 1 fail**.
+
+**Projection:**
+
+1. **RELATED_WORKS → P1574** must run `refine_exemplar_work_qid`. Bare
+   `Bible` / `תנ״ך` aliases on piyyut manuscripts must not survive; whole-
+   scripture attestation comes from the manuscript record, not from the
+   candidate alias alone.
+2. **P1922** — catalog chronology notes (`בשנת…`, `בעמוד N…`) are not
+   incipits (`is_incipit_text`).
+3. **P8189** — when a Hebrew Mazal `preferred_name_*` fails
+   `heading_matches` against the person label, strip identifiers (export-34
+   Person_147/95/32). Latin-only preferred rows are not used for this gate.
+4. **Aliases** — post-build `_scrub_person_aliases` re-applies the
+   `heading_matches` filter.
+5. **P195 value_label** — `Q1028334` is Cambridge University Library in
+   `QID_LABELS` (judges must not invent NLI).
+
+Schema / skill salt **`w173_v1`**.
+
+Tests: `backend/tests/unit/test_wikidata_export34_w173.py`.

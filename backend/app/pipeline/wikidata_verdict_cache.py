@@ -14,10 +14,10 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w172_v1 with Rule W-172: judge fixture keeps quantity `unit`.
-# Prior: w171_v1 (Mode-β sticky-full); w170_v1 (unit intended but dropped in
-# eval-agent compact_statements).
-WIKIDATA_VERDICT_SCHEMA = "w172_v1"
+# Bumped to w173_v1 with Rule W-173: related-works P1574 ladder + Hebrew
+# preferred P8189 strip + incipit chronology gate.
+# Prior: w172_v1 (quantity unit in judge fixture).
+WIKIDATA_VERDICT_SCHEMA = "w173_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 

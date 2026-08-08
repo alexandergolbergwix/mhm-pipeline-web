@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-172)
+## Architectural rules (W-1…W-173)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -123,6 +123,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-170** — Non-passing projection defects MUST be fixed fail-closed, not rubric-weakened
 - **W-171** — Corpus-scale Mode-α predicates + Mode-β sticky-full (ISBD/P1574/extent/incipit/aliases/dates; rubric hygiene; claims-fingerprint sticky-full)
 - **W-172** — Judge fixture keeps quantity `unit`; HE desc ≠ label; P1684 catalog notes; person alias identity; facsimile work descriptions
+- **W-173** — RELATED_WORKS P1574 ladder; Hebrew preferred P8189 strip; P1922 chronology gate; Cambridge holder label
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

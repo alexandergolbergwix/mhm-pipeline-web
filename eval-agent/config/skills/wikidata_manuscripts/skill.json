@@ -1,6 +1,6 @@
 {
   "id": "wikidata_manuscripts",
-  "version": "w172_v1",
+  "version": "w173_v1",
   "title": "WikiProject Manuscripts + HMO→Wikidata projection skill",
   "goal": "Judge whether an item is safe as a public Wikidata manuscript/person/work item using ALL supplied evidence channels (MARC + VIAF + Mazal + existing Wikidata + HMO Wikibase) under the WikiProject Manuscripts Data Model.",
   "always": [
@@ -9,7 +9,7 @@
     "Label priority (WPM fingerprint): (1) familiar trivial name → (2) canonical catalog code for a group → (3) library signature (city · institution · fonds · shelfmark). Holder+shelfmark labels are correct when MARC supports them; description must not merely repeat the label.",
     "Folio/page counts use P1104 (number of pages) with an explicit quantity `unit` field (leaf Q107256474 or page Q1069725) — never P7416 as a quantity. The Wikibase quantity `unit` IS the unit; do NOT demand a separate unit qualifier, and never partial for 'missing unit' when `unit` is already set.",
     "Absent claims are never defects: do not partial an item solely for missing P11603/P195/P1574.",
-    "Trust supplied value_label / verify_evidence.value_labels; never invent institution names from QID memory.",
+    "Trust supplied value_label / verify_evidence.value_labels; never invent institution names from QID memory (especially never invent NLI for Cambridge Q1028334 or other audited holders).",
     "P1476 may equal a linked work title on a manuscript; do not demand shelfmark substitution.",
     "Creation: inception P571, location of creation P1071, transcribed by P11603 (scribe), illustrator P110, annotator P11105, commissioned by P88, script style P9302.",
     "Content: language P407 (qualify with P518 when needed), exemplar of P1574 (qualify with section/folio P958 / object named as P1932), genre P136 = intended use.",

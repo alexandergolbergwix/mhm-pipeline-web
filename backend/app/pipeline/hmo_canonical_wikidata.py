@@ -624,6 +624,7 @@ def build_canonical_studio_result(
 
     _sanitize_canonical_claims(native_items, context)
     _align_person_p1559_to_hebrew_label(native_items)
+    _scrub_person_aliases(native_items)
 
     # Apply overrides before resolving placeholders. A curator statement edit
     # may itself add a __LOCAL target, and the resolver must see the final item
@@ -880,6 +881,33 @@ def _same_family_heading_conflict(item: WikidataItem, prefs: list[str]) -> bool:
     )
 
 
+def _hebrew_preferred_heading_mismatch(item: WikidataItem, prefs: list[str]) -> bool:
+    """True when a Hebrew Mazal preferred heading names someone else (W-173).
+
+    Export-34 Person_147/95/32 kept P8189 because same-family conflict only
+    fires when surnames match. Completely different Hebrew preferred forms
+    (``עלי בן סולימאן`` vs ``סלימן בן סאלם``) must also strip identifiers.
+    Latin-only preferred rows are ignored here so HE label + EN preferred
+    pairs that already ship as full are not over-stripped.
+    """
+    labels = _item_label_texts(item)
+    if not prefs or not labels:
+        return False
+    from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
+    from converter.wikidata.item_builder import _has_hebrew_script  # noqa: PLC0415
+
+    hebrew_prefs = [p for p in prefs if _has_hebrew_script(p)]
+    if not hebrew_prefs:
+        return False
+    if any(heading_matches(label, preferred) for label in labels for preferred in prefs):
+        return False
+    return not any(
+        heading_matches(label, preferred)
+        for label in labels
+        for preferred in hebrew_prefs
+    )
+
+
 def _item_has_biographical_dates(item: WikidataItem) -> bool:
     return any(
         str(statement.property_id or "") in _PERSON_BIOGRAPHY_PIDS
@@ -964,7 +992,8 @@ def _suppress_unconfirmed_person_identity(
         )
         family_conflict = _same_family_heading_conflict(item, prefs)
         father_dates_conflict = _patronymic_father_id_with_dates(item, prefs)
-        conflict = family_conflict or father_dates_conflict
+        heb_pref_conflict = _hebrew_preferred_heading_mismatch(item, prefs)
+        conflict = family_conflict or father_dates_conflict or heb_pref_conflict
         if conflict and not getattr(item, "heading_mismatch", None):
             labels = _item_label_texts(item)
             item.heading_mismatch = {
@@ -1028,6 +1057,20 @@ def _align_person_p1559_to_hebrew_label(items: list[WikidataItem]) -> None:
                 )
             )
         item.statements = without
+
+
+def _scrub_person_aliases(items: list[WikidataItem]) -> None:
+    """Drop different-person aliases that survived label assembly (W-173)."""
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "person":
+            continue
+        labels = dict(item.labels or {})
+        aliases = {
+            lang: list(values)
+            for lang, values in (item.aliases or {}).items()
+            if isinstance(values, list)
+        }
+        item.aliases = _filter_person_aliases(_dedupe_aliases(aliases, labels), labels)
 
 
 def _drop_conflicted_person_items(

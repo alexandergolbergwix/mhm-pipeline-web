@@ -907,6 +907,10 @@ class ManuscriptProjectionMixin:
         # path produced WORK_WITHOUT_SOURCE_EVIDENCE and blocked Studio rebuild.
         from converter.wikidata.work_candidates import assess_work_candidate  # noqa: PLC0415
 
+        from converter.wikidata.work_link_specificity import (  # noqa: PLC0415
+            refine_exemplar_work_qid,
+        )
+
         for rw in record.get("related_works") or []:
             rw_dict = rw if isinstance(rw, dict) else {"title": str(rw)}
             rw_title = str(rw_dict.get("title") or "").strip().strip(_QUOTE_CHARS + ".")
@@ -923,6 +927,11 @@ class ManuscriptProjectionMixin:
             if not _QID_RE.match(explicit_qid):
                 explicit_qid = ""
             rw_qid = explicit_qid or known_work_qid_for_title(rw_title)
+            # RELATED_WORKS often carries bare "Bible"/"תנ״ך" on piyyut MSS —
+            # run the same specificity ladder as contents (export-34 / W-173).
+            rw_qid = refine_exemplar_work_qid(
+                rw_qid or None, title=rw_title, record=record,
+            ) or ""
             approved = bool(rw_dict.get("approved")) or bool(rw_qid)
             decision = assess_work_candidate(
                 rw_title,

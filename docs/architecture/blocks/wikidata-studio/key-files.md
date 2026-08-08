@@ -9,7 +9,7 @@
 | `backend/converter/wikidata/property_mapping.py` | `resolve_hmo_bridge_url` / `is_browseable_hmo_wikibase_url` — fail-closed HMO Wikibase link helpers (W-122); known-work / Esther aliases (W-171) |
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow + scholarly catalog notes that must never become P1684 / P1922 (W-72 / W-122 / W-171 / W-172) |
 | `backend/converter/wikidata/isbd_title.py` | ISBD `245` title/subtitle split (Rule W-171) |
-| `backend/converter/wikidata/work_link_specificity.py` | P1574 specificity ladder — megillah vs Bible/Tanakh (W-171) |
+| `backend/converter/wikidata/work_link_specificity.py` | P1574 specificity ladder — megillah vs Bible/Tanakh; RELATED_WORKS alias must not defeat piyyut block (W-171 / W-173) |
 | `backend/converter/wikidata/hmo_wikidata_pq_mapper.py` | Project Wikibase / ontology → public Wikidata P/Q allowlist (Rule W-100); never ID-identity |
 | `backend/app/pipeline/hmo_wikidata_projection.py` | Fail-closed adapter accepting only exact HMO manuscript URIs and unambiguous local QIDs for Wikidata projection |
 | `backend/app/pipeline/wikidata_item_views.py` | Merged read model: cache + overrides + ledger QID + upload audit + cached QID adoption + live value-label gloss + stale-sanitized AI verdict; `trim_studio_list_item` / `fetch_merged_wikidata_item` (W-131 / W-169) |
@@ -20,7 +20,7 @@
 | `backend/app/pipeline/wikidata_duplicate_probe.py` | Batched Action-API duplicate check for CREATE candidates; fail-closed statuses (Rule W-139) |
 | `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets; drops orphan bare-QID P3342; drops redundant Q234460 (Rules W-138 / W-170 / W-171) |
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-source evidence packs: MARC slice, per-claim `claim_sources` provenance, offline `value_labels`, VIAF/Mazal/HMO channels |
-| `backend/app/pipeline/wikidata_verdict_cache.py` | Verdict fingerprints, claims-fingerprint sticky-full helpers, schema `w172_v1` (W-171 / W-172) |
+| `backend/app/pipeline/wikidata_verdict_cache.py` | Verdict fingerprints, claims-fingerprint sticky-full helpers, schema `w173_v1` (W-171 / W-172 / W-173) |
 | `backend/app/pipeline/wikidata_verify_scope.py` | Shared verify cache partitioner + sticky-full (W-167 / W-171) |
 | `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125) |
 | `backend/app/pipeline/wikidata_qid_ledger.py` | Global `wikibase_entity_mappings` ledger (`wikidata:` keys) — adopt + idempotent upload |

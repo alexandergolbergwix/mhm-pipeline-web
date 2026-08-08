@@ -53,4 +53,17 @@ def is_incipit_text(value: object) -> bool:
     text = str(value or "").strip()
     if not text or text == "None":
         return False
-    return not is_catalog_note_placeholder(text)
+    if is_catalog_note_placeholder(text):
+        return False
+    # Catalog chronology / folio apparatus is not an incipit (export-34 / W-173).
+    # Example: ``בשנת תכ"א. בעמוד 542 דף השלמה…`` landed on P1922.
+    folded = text.casefold()
+    if re.match(r"^בשנת\b", text) or re.match(r"^in the year\b", folded):
+        return False
+    if re.search(r"(?:^|[\s.])בעמוד\s+\d+", text) and not re.search(
+        r"^[\"'«]?[\u0590-\u05ff]{3,}", text,
+    ):
+        return False
+    if re.match(r"^(?:f\.|fol\.|folio|p\.|page|עמ['׳]?)\s*\d+", folded):
+        return False
+    return True

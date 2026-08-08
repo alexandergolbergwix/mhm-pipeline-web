@@ -553,3 +553,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `test_wikidata_export33_w172.py`.
     *Why:* export-33 false-partialled nine manuscripts whose P1104 already
     had leaf unit, because the judge never saw `unit`.*
+
+76. **R76 — RELATED_WORKS P1574 ladder + Hebrew preferred identity (Rule W-173).**
+    `related_works` emit path runs `refine_exemplar_work_qid`; record-side
+    piyyut evidence blocks bare Bible/Tanakh aliases; `is_incipit_text`
+    rejects `בשנת`/`בעמוד` chronology; Hebrew preferred mismatch strips
+    P8189; schema/skill `w173_v1`. Regression:
+    `test_wikidata_export34_w173.py`.
+    *Why:* export-34 left Bible on a piyyut MS via RELATED_WORKS and three
+    persons with wrong Mazal P8189 that same-family conflict missed.*

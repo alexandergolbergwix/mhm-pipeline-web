@@ -74,7 +74,14 @@ def specific_biblical_work_qid(text: str) -> str | None:
 
 def blocks_broad_scripture_qid(record: dict[str, Any] | None, title: str = "") -> bool:
     """True when piyyut / miscellany evidence forbids whole-Bible / Tanakh P1574."""
-    blob = f"{title} {record_evidence_text(record)}"
+    record_blob = record_evidence_text(record)
+    # RELATED_WORKS often supplies a bare "Bible"/"תנ״ך" *candidate* title.
+    # That alias must not cancel a piyyut manuscript's block (export-34 / W-173).
+    if _PIYYUT_OR_MISC_RE.search(record_blob) and not _WHOLE_BIBLE_ATTEST_RE.search(
+        record_blob,
+    ):
+        return True
+    blob = f"{title} {record_blob}"
     if specific_biblical_work_qid(blob):
         return True
     if _PIYYUT_OR_MISC_RE.search(blob) and not _WHOLE_BIBLE_ATTEST_RE.search(blob):
@@ -83,11 +90,22 @@ def blocks_broad_scripture_qid(record: dict[str, Any] | None, title: str = "") -
 
 
 def whole_scripture_attested(record: dict[str, Any] | None, title: str = "") -> bool:
-    """True when evidence claims the collection as a whole (not one book)."""
-    blob = f"{title} {record_evidence_text(record)}"
-    if specific_biblical_work_qid(blob):
+    """True when evidence claims the collection as a whole (not one book).
+
+    Attestation must come from the manuscript record (title/notes/genres), not
+    solely from a RELATED_WORKS alias equal to ``Bible`` / ``תנ״ך``.
+    """
+    record_blob = record_evidence_text(record)
+    if specific_biblical_work_qid(f"{title} {record_blob}"):
         return False
-    return bool(_WHOLE_BIBLE_ATTEST_RE.search(blob))
+    if _WHOLE_BIBLE_ATTEST_RE.search(record_blob):
+        return True
+    # Manuscript's own title may attest (e.g. ``תנ״ך`` as 245$a), but a bare
+    # known-work alias passed as *title* without record support does not.
+    ms_title = ""
+    if record:
+        ms_title = str(record.get("title") or record.get("245$a") or "")
+    return bool(_WHOLE_BIBLE_ATTEST_RE.search(ms_title))
 
 
 def refine_exemplar_work_qid(
@@ -113,7 +131,9 @@ def refine_exemplar_work_qid(
         return None
     if qid not in BROAD_SCRIPTURE_QIDS:
         return qid
-    if whole_scripture_attested(record, title) and not blocks_broad_scripture_qid(record, title):
+    if blocks_broad_scripture_qid(record, title):
+        return None
+    if whole_scripture_attested(record, title):
         return qid
     return None
 

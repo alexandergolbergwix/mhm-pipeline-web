@@ -55,8 +55,20 @@ class TestWorkLinkSpecificity:
         assert qid is None
 
     def test_exact_bible_title_kept_without_piyyut(self) -> None:
-        qid = refine_exemplar_work_qid(Q_BIBLE, title="Bible", record={})
+        # Manuscript 245$a is Bible — keep. A bare RELATED_WORKS alias without
+        # record support must not keep (see export-34 / W-173).
+        qid = refine_exemplar_work_qid(
+            Q_BIBLE, title="Bible", record={"title": "Bible"},
+        )
         assert qid == Q_BIBLE
+
+    def test_related_works_bible_alias_dropped_on_piyyut_ms(self) -> None:
+        qid = refine_exemplar_work_qid(
+            Q_BIBLE,
+            title="Bible",
+            record={"title": "פיוטים ושירים", "genres": ["Piyyutim"]},
+        )
+        assert qid is None
 
 
 class TestIdentityCompatible:
