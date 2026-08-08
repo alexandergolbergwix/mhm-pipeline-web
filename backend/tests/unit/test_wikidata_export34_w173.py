@@ -5,7 +5,24 @@ from __future__ import annotations
 from converter.wikidata.catalog_notes import is_incipit_text
 from converter.wikidata.item_builder import WikidataItemBuilder
 from converter.wikidata.property_labels import QID_LABELS
-from converter.wikidata.work_link_specificity import Q_BIBLE, refine_exemplar_work_qid
+from converter.wikidata.work_link_specificity import (
+    Q_BIBLE,
+    Q_BOOK_OF_ESTHER,
+    Q_TANAKH,
+    Q_UNKNOWN_TEXT,
+    refine_exemplar_work_qid,
+)
+
+
+class TestP1574LadderQidLabels:
+    def test_ladder_static_qids_are_labeled(self) -> None:
+        for qid, expected in (
+            (Q_BIBLE, "Bible"),
+            (Q_TANAKH, "Tanakh"),
+            (Q_BOOK_OF_ESTHER, "Book of Esther"),
+            (Q_UNKNOWN_TEXT, "text"),
+        ):
+            assert QID_LABELS.get(qid) == expected, qid
 
 
 class TestRelatedWorksBibleLadder:

@@ -1652,7 +1652,8 @@ allowlists.
 1. **ISBD title/subtitle** — `split_isbd_title_subtitle` on 245 `$a`/`$b` so
    P1476 and P1680 never duplicate the full `a : b` string.
 2. **P1574 specificity ladder** — `work_link_specificity.refine_exemplar_work_qid`
-   prefers megillah/book QIDs (Esther = **Q131068**, live-verified), blocks
+   prefers megillah/book QIDs (Esther = **Q131068**, live-verified; must stay in
+   `QID_LABELS` or the export quality gate raises `MISSING_VALUE_LABEL`), blocks
    whole-Bible/Tanakh when piyyut/miscellany evidence lacks whole-collection
    attestation, and drops redundant bare `Q234460` exemplars.
 3. **Agent public QIDs** — `person_linking` withholds a resolved QID when

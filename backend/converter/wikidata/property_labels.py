@@ -201,6 +201,7 @@ QID_LABELS: dict[str, str] = {
     "Q1749541": "commentary",
     "Q180115": "Purim",
     "Q1845": "Bible",
+    "Q131068": "Book of Esther",  # P1574 ladder (work_link_specificity)
     "Q18562479": "vital record",
     "Q191825": "Mishnah",
     "Q208398": "Karaite Judaism",

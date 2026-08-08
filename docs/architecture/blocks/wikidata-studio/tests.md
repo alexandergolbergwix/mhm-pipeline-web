@@ -3,8 +3,9 @@
 > Up: [Wikidata Studio](README.md)
 
 - `backend/tests/unit/test_wikidata_export34_w173.py` — Rule W-173:
-  RELATED_WORKS Bible ladder on piyyut MSS, P1922 chronology gate,
-  Cambridge holder label, Hebrew preferred P8189 strip.
+  RELATED_WORKS Bible ladder on piyyut MSS, P1574 ladder QIDs labeled
+  (incl. Esther Q131068), P1922 chronology gate, Cambridge holder label,
+  Hebrew preferred P8189 strip.
 - `backend/tests/unit/test_wikidata_export33_w172.py` — Rule W-172:
   judge fixture keeps quantity `unit`, HE description omits shelfmark,
   scholarly P1684 gate, facsimile work description, person alias filter.

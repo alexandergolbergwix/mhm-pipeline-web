@@ -556,9 +556,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 
 76. **R76 — RELATED_WORKS P1574 ladder + Hebrew preferred identity (Rule W-173).**
     `related_works` emit path runs `refine_exemplar_work_qid`; record-side
-    piyyut evidence blocks bare Bible/Tanakh aliases; `is_incipit_text`
-    rejects `בשנת`/`בעמוד` chronology; Hebrew preferred mismatch strips
-    P8189; schema/skill `w173_v1`. Regression:
+    piyyut evidence blocks bare Bible/Tanakh aliases; ladder QIDs including
+    Esther **Q131068** stay in `QID_LABELS` (else `MISSING_VALUE_LABEL`);
+    `is_incipit_text` rejects `בשנת`/`בעמוד` chronology; Hebrew preferred
+    mismatch strips P8189; schema/skill `w173_v1`. Regression:
     `test_wikidata_export34_w173.py`.
     *Why:* export-34 left Bible on a piyyut MS via RELATED_WORKS and three
     persons with wrong Mazal P8189 that same-family conflict missed.*
