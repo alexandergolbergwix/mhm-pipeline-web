@@ -26,6 +26,10 @@ from converter.wikidata.item_builder import (
     known_work_qid_for_title,
 )
 from converter.wikidata.work_candidates import assess_work_candidate
+from converter.wikidata.work_link_specificity import (
+    refine_exemplar_work_qid,
+    should_emit_unknown_text_exemplar,
+)
 
 
 _QID_RE = re.compile(r"^Q\d+$")
@@ -157,6 +161,9 @@ class ContentProjectionMixin:
                 or known_work_qid_for_title(cleaned)
                 or known_work_qid_for_title(raw_title)
             )
+            work_qid = refine_exemplar_work_qid(
+                work_qid, title=cleaned or raw_title, record=record,
+            )
             approved = work_key in approved_work_titles
             decision = assess_work_candidate(
                 candidate_title,
@@ -212,19 +219,28 @@ class ContentProjectionMixin:
                     )
                 )
             else:
-                item.statements.append(
-                    WikidataStatement(
-                        property_id=P_EXEMPLAR_OF,
-                        value=Q_UNKNOWN_TEXT,
-                        value_type="item",
-                        qualifiers=_exemplar_qualifiers(
-                            catalog_title=named_as,
-                            folio_range=str(decision.folio_range or ""),
-                            presumably=True,
-                        ),
-                        references=ref,
+                existing_exemplars = {
+                    str(s.value)
+                    for s in item.statements
+                    if str(s.property_id) == P_EXEMPLAR_OF
+                }
+                if should_emit_unknown_text_exemplar(
+                    catalog_title=named_as,
+                    other_exemplar_qids=existing_exemplars,
+                ):
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id=P_EXEMPLAR_OF,
+                            value=Q_UNKNOWN_TEXT,
+                            value_type="item",
+                            qualifiers=_exemplar_qualifiers(
+                                catalog_title=named_as,
+                                folio_range=str(decision.folio_range or ""),
+                                presumably=True,
+                            ),
+                            references=ref,
+                        )
                     )
-                )
 
         entities = record.get("entities") or []
         cont_entities = [
@@ -241,6 +257,9 @@ class ContentProjectionMixin:
             work_qid = (
                 known_work_qid_for_title(work_title)
                 or approved_work_qids.get(_work_title_key(work_title))
+            )
+            work_qid = refine_exemplar_work_qid(
+                work_qid, title=work_title or raw, record=record,
             )
             decision = assess_work_candidate(
                 work_title,

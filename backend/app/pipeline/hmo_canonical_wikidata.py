@@ -630,11 +630,13 @@ def build_canonical_studio_result(
     # set after identifierless/conflicted persons have been removed.
     from app.pipeline.wikidata_local_refs import (  # noqa: PLC0415
         drop_orphan_significant_person_claims,
+        drop_redundant_unknown_text_exemplars,
         resolve_local_references,
     )
 
     local_ref_stats = resolve_local_references(native_items)
     drop_orphan_significant_person_claims(native_items)
+    drop_redundant_unknown_text_exemplars(native_items)
 
     per_item_issues: list[list[dict[str, Any]]] = []
     for item in native_items:

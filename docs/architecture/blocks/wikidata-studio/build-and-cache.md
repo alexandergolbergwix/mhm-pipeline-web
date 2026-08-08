@@ -172,3 +172,15 @@ subset verification and full-table reads share the same durable item state
 Before stale sanitisation the merge path also replays cached QID adoption and
 live value-label glosses so the table hashes the same item state verify wrote
 (R72 / Rule W-169).
+
+### Corpus-scale projection + sticky-full verify (Rule W-171)
+
+Mode-α projection uses shared predicates (`isbd_title`, `work_link_specificity`,
+`identity_compatible` at person-link emit, leaf-unit extent, incipit gate,
+per-record work-title alias subtraction, century vs embedded CE year) — never
+control-number allowlists. Verify scope partitioning
+(`wikidata_verify_scope.partition_wikidata_verify_cache`) reuses a prior
+`full`/`pass` verdict when the schema-agnostic `claims_fingerprint` still
+matches (sticky-full), so a payload-neutral schema bump does not re-judge
+unchanged fulls. Override merge carries `ai_verdict` for that fallback;
+`override_cache`, claim edits, and duplicate-class transitions still re-judge.

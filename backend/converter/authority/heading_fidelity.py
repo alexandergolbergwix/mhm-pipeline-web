@@ -98,3 +98,40 @@ def heading_mismatch_reason(marc_heading: str, authority_heading: str) -> str:
         f"MARC heading {marc_heading!r} and authority heading "
         f"{authority_heading!r} do not name the same person: {detail}"
     )
+
+
+def identity_compatible(
+    marc_heading: str,
+    authority_or_label: str,
+    *,
+    max_distance: int = 2,
+) -> bool:
+    """True when a public person identity may be attached to this MARC agent.
+
+    Corpus-scale gate (Rule W-171): emit P8189 / public QIDs only when the
+    headings name the same person. Same-family / different-given is always
+    incompatible. When both sides have Hebrew given+surname and the surnames
+    disagree, still treat as compatible only via ``heading_matches`` — Latin
+    transliteration and toponymic bynames must not force a strip on their own
+    (those ship on many full-passing rows). Callers that already know a hard
+    ``heading_mismatch`` should treat that as incompatible regardless.
+    """
+    marc = str(marc_heading or "").strip()
+    other = str(authority_or_label or "").strip()
+    if not marc or not other:
+        return True
+    if heading_matches(marc, other, max_distance=max_distance):
+        return True
+    marc_given, marc_surname = _given_and_surname(marc)
+    other_given, other_surname = _given_and_surname(other)
+    if not (marc_given and other_given and marc_surname and other_surname):
+        return True
+    from converter.authority.wikidata_crosscheck import (  # noqa: PLC0415
+        hebrew_label_matches,
+    )
+
+    surname_ok = bool(hebrew_label_matches(marc_surname, [other_surname], max_distance=1))
+    given_ok = bool(hebrew_label_matches(marc_given, [other_given], max_distance=1))
+    if surname_ok and not given_ok:
+        return False
+    return True

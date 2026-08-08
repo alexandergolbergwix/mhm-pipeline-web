@@ -531,3 +531,16 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     P1476→shelfmark without rewriting claim_sources cost 19 full manuscripts;
     export-31 Amran→Kufra and mm-without-unit were judge-visible projection
     defects.*
+
+74. **R74 — Corpus-scale Mode-α predicates + Mode-β sticky-full (Rule W-171).**
+    Projection fixes are MARC/role/heading predicates (`isbd_title`,
+    `work_link_specificity`, `identity_compatible` at person-link emit,
+    leaf-unit extent, incipit gate, work-title alias subtraction, century
+    year vs embedded CE). Verify: rubric/skill `w171_v1` Mode-β hygiene;
+    `partition_wikidata_verify_cache` sticky-full on matching
+    `claims_fingerprint`; override merge carries `ai_verdict`. No CN
+    allowlists. Regression:
+    `test_wikidata_corpus_scale_w171.py`.
+    *Why:* export-32 mixed real projection defects with schema-bump
+    re-judge noise; hardcoding the 18 canary IDs would not hold on ~123k
+    filtered MARC rows.*

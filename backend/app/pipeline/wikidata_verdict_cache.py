@@ -14,10 +14,9 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w170_v1 with Rule W-170 export-31: quantity ``unit`` (mm) must
-# reach the judge fixture so P2048/P2049 are not read as bare centimetres.
-# Prior: w156_v1 (duplicate probe + LLM proposals in the judge fixture).
-WIKIDATA_VERDICT_SCHEMA = "w170_v1"
+# Bumped to w171_v1 with Rule W-171: Mode-β rubric/skill hygiene + sticky-full.
+# Prior: w170_v1 (quantity unit in judge fixture).
+WIKIDATA_VERDICT_SCHEMA = "w171_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 
@@ -486,6 +485,100 @@ def cached_verdict_needs_duplicate_rejudge(
         stored_class == DUP_CLASS_UNKNOWN
         and duplicate_class_for_item(item) == DUP_CLASS_CONCLUSIVE
     )
+
+
+def _verdict_envelope(cached: dict[str, Any]) -> dict[str, Any]:
+    """Normalise override-row vs inference-cache envelopes."""
+    if isinstance(cached.get("verdict"), dict):
+        return cached
+    # Override rows store axes at the top level.
+    overall = str(cached.get("overall") or "").strip().lower()
+    if overall:
+        return {
+            "verdict": cached,
+            "judge_id": cached.get("model") or cached.get("judge_id"),
+            "judged_at": cached.get("judged_at"),
+            "cache_key": cached.get("cache_key"),
+            "evaluator": cached.get("evaluator") or cached.get("evaluator_id"),
+            "confidence": cached.get("confidence"),
+        }
+    return cached
+
+
+def cached_verdict_is_sticky_full(
+    cached: dict[str, Any] | None,
+    item: dict[str, Any],
+    *,
+    judge_model: str,
+    evaluator_id: str,
+) -> bool:
+    """True when a prior *full* verdict may skip re-judge (Rule W-171).
+
+    Sticky-full applies only when the strict claim fingerprint still matches.
+    Schema-only bumps that leave claims unchanged keep the same fingerprint
+    fields except ``wikidata_verdict_schema`` — those still miss the inference
+    cache, but an override / prior envelope whose ``cache_key`` equals the
+    *claims* fingerprint (schema-agnostic) may stick. Partial/fail never stick.
+    """
+    if not isinstance(cached, dict):
+        return False
+    envelope = _verdict_envelope(cached)
+    verdict = envelope.get("verdict") if isinstance(envelope.get("verdict"), dict) else {}
+    overall = str(verdict.get("overall") or "").strip().lower()
+    if overall not in {"full", "pass"}:
+        return False
+    reasoning = str(verdict.get("reasoning") or "").strip()
+    if not reasoning:
+        return False
+    if verdict.get("judge_failure") or envelope.get("judge_failure"):
+        return False
+    stored_model = str(
+        envelope.get("judge_id") or verdict.get("model") or ""
+    ).strip()
+    if stored_model and stored_model != str(judge_model or "").strip():
+        return False
+    stored_eval = str(
+        envelope.get("evaluator") or verdict.get("evaluator") or evaluator_id
+    ).strip()
+    if stored_eval and stored_eval != str(evaluator_id or "").strip():
+        return False
+    if cached_verdict_needs_duplicate_rejudge(envelope, item):
+        return False
+
+    stored_key = str(envelope.get("cache_key") or verdict.get("cache_key") or "").strip()
+    if not stored_key:
+        return False
+    current = wikidata_verdict_input_fingerprint(
+        item, judge_model, evaluator=evaluator_id,
+    )
+    if stored_key == current:
+        return True
+    # Schema-agnostic claims match: allow sticky across non-payload schema bumps.
+    claims_now = wikidata_claims_fingerprint(item, judge_model, evaluator=evaluator_id)
+    claims_stored = str(
+        verdict.get("claims_fingerprint")
+        or envelope.get("claims_fingerprint")
+        or ""
+    ).strip()
+    if claims_stored and claims_stored == claims_now:
+        return True
+    return False
+
+
+def wikidata_claims_fingerprint(
+    item: dict[str, Any],
+    judge_model: str = "gemini-3.5-flash",
+    *,
+    evaluator: str = "wikidata_item",
+    marc_context: dict[str, str] | None = None,
+) -> str:
+    """Strict fingerprint with the schema salt removed (sticky-full helper)."""
+    summary = wikidata_verdict_query_summary(
+        item, judge_model, evaluator=evaluator, marc_context=marc_context,
+    )
+    summary = dict(summary)
+    summary.pop("wikidata_verdict_schema", None)
+    return canonical_hash(summary)
 
 
 def annotate_duplicate_rejudge(

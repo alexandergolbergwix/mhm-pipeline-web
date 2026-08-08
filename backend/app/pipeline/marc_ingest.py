@@ -483,10 +483,30 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     # ── Title ────────────────────────────────────────────────────────
     title_a = _str(record.get("245$a"))
     title_b = _str(record.get("245$b"))
-    if title_a and not record.get("title"):
-        record["title"] = (title_a + (f" {title_b}" if title_b else "")).strip(" :./,")
-    if title_b and not record.get("subtitle"):
-        record["subtitle"] = title_b.strip(" :./,")
+    from converter.wikidata.isbd_title import split_isbd_title_subtitle  # noqa: PLC0415
+
+    split_title, split_subtitle = split_isbd_title_subtitle(title_a, title_b)
+    if not record.get("title"):
+        if split_title:
+            record["title"] = split_title
+        elif title_a:
+            record["title"] = (title_a + (f" {title_b}" if title_b else "")).strip(" :./,")
+    if not record.get("subtitle"):
+        if split_subtitle:
+            record["subtitle"] = split_subtitle
+        elif title_b:
+            record["subtitle"] = title_b.strip(" :./,")
+    # Repair already-joined ``title`` that still embeds an ISBD colon break
+    # with a missing or duplicated subtitle (P1476 == P1680 defect class).
+    current_title = _str(record.get("title"))
+    current_sub = _str(record.get("subtitle"))
+    if current_title and (
+        not current_sub or current_title.casefold() == current_sub.casefold()
+    ):
+        main, sub = split_isbd_title_subtitle(current_title, None)
+        if main and sub:
+            record["title"] = main
+            record["subtitle"] = sub
 
     # ── Authors (MARC 100, 110, 111) ────────────────────────────────
     authors = list(record.get("authors") or [])

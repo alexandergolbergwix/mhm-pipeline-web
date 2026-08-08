@@ -31,4 +31,16 @@ def is_catalog_note_placeholder(value: object) -> bool:
         re.match(r"^(?:נושא נוסף|additional subject|catalog(?:ue|ing)? note)\s*[:：]", folded)
         or "book suggested to google" in folded
         or ("catalog" in folded and "rejected" in folded)
+        or re.match(r"^(?:הערה|note|internal note|catalog(?:ue)?)\s*[:：]", folded)
+        or "רשומה נדחתה" in folded
+        or "record rejected" in folded
+        or folded.startswith("נושא נוסף")
     )
+
+
+def is_incipit_text(value: object) -> bool:
+    """True when *value* may become P1922 (first line), not a catalog note."""
+    text = str(value or "").strip()
+    if not text or text == "None":
+        return False
+    return not is_catalog_note_placeholder(text)

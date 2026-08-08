@@ -456,6 +456,11 @@ KNOWN_WORK_TITLE_ALIASES: dict[str, str] = {
     "יוסיפון": "Q1561132",                  # Josippon
     "פרוש המשנה לרמבם": "Q6124976",         # Pirush Hamishnayot
     "פירוש המשנה לרמבם": "Q6124976",
+    # Q131068 — Book of Esther (live-verified 2026-08-08)
+    "מגילת אסתר": "Q131068",
+    "מגילת-אסתר": "Q131068",
+    "Book of Esther": "Q131068",
+    "Megillat Esther": "Q131068",
 }
 
 
@@ -471,6 +476,14 @@ def known_work_qid_for_title(title: str) -> str | None:
     clean = clean.rstrip(" .,;:/-")
     if not clean:
         return None
+    from converter.wikidata.work_link_specificity import (  # noqa: PLC0415
+        specific_biblical_work_qid,
+    )
+
+    # Megillah / book-level detectors before broad Bible/Tanakh aliases.
+    specific = specific_biblical_work_qid(clean)
+    if specific:
+        return specific
     direct = KNOWN_WORK_QIDS.get(clean) or KNOWN_WORK_TITLE_ALIASES.get(clean)
     if direct:
         return direct

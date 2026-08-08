@@ -20,6 +20,20 @@ from converter.wikidata.item_builder import (
 from converter.wikidata.role_normalize import normalize_marc_role
 
 
+def _public_person_qid_ok(marc_name: str, person_item: WikidataItem) -> bool:
+    """True when a resolved public QID may be attached to this MARC agent."""
+    if getattr(person_item, "heading_mismatch", None):
+        return False
+    from converter.authority.heading_fidelity import identity_compatible  # noqa: PLC0415
+
+    labels = person_item.labels or {}
+    for key in ("he", "en"):
+        label = str(labels.get(key) or "").strip()
+        if label and not identity_compatible(marc_name, label):
+            return False
+    return True
+
+
 class PersonLinkingMixin:
     def _add_person_claims(
         self,
@@ -112,6 +126,17 @@ class PersonLinkingMixin:
                     name,
                 )
                 return
+
+            # Public QID only when the resolved identity names the MARC agent
+            # (Rule W-171). A heading_mismatch / same-family conflict must not
+            # paint a foreign QID onto P11603 / P3342 / …
+            if resolved_qid and not _public_person_qid_ok(clean_name, person_item):
+                logger.info(
+                    "Withholding public QID %s for MARC agent %r (identity gate)",
+                    resolved_qid,
+                    clean_name,
+                )
+                resolved_qid = None
 
             if resolved_qid:
                 item.statements.append(

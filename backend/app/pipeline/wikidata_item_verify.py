@@ -18,6 +18,7 @@ from app.pipeline.wikidata_duplicate_probe import (
 )
 from app.pipeline.wikidata_verdict_cache import (
     WIKIDATA_VERDICT_KEY_VERSION,
+    wikidata_claims_fingerprint,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
     wikidata_verdict_stable_input_fingerprint,
@@ -65,6 +66,12 @@ async def _persist_wikidata_verdicts_to_overrides(
                 evaluator=evaluator_id,
                 marc_context=marc_ctx if isinstance(marc_ctx, dict) else None,
             )
+            claims_fp = wikidata_claims_fingerprint(
+                item,
+                model,
+                evaluator=evaluator_id,
+                marc_context=marc_ctx if isinstance(marc_ctx, dict) else None,
+            )
             summary: dict[str, Any] = {
                 "overall": verdict_body.get("overall") or "unknown",
                 "name_ok": verdict_body.get("name_ok"),
@@ -74,6 +81,7 @@ async def _persist_wikidata_verdicts_to_overrides(
                 "model": model,
                 "judged_at": v.get("judged_at"),
                 "cache_key": fingerprint,
+                "claims_fingerprint": claims_fp,
                 "stable_cache_key": wikidata_verdict_stable_input_fingerprint(
                     item, model, evaluator=evaluator_id,
                 ),
@@ -125,6 +133,7 @@ async def _persist_wikidata_verdicts_to_overrides(
                     **verdict_body,
                     "duplicate_status": summary["duplicate_status"],
                     "duplicate_class": summary["duplicate_class"],
+                    "claims_fingerprint": claims_fp,
                 },
                 "judge_id": model,
                 "judged_at": v.get("judged_at"),

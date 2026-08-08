@@ -2,6 +2,10 @@
 
 > Up: [Wikidata Studio](README.md)
 
+- `backend/tests/unit/test_wikidata_corpus_scale_w171.py` — Rule W-171:
+  ISBD split, P1574 specificity, identity gate, leaf unit, alias hygiene,
+  incipit gate, century→embedded year, sticky-full, optional TSV stream
+  sample, rubric Mode-β clauses.
 - `backend/tests/unit/test_wikidata_nonpassing_buckets.py` — Rule W-170 regression:
   person identifier fail-closed, same-family·different-given strip (incl. `אל`
   particle), date-gated patronymic father-ID, P1559 align/label evidence,

@@ -2869,8 +2869,20 @@ async def _write_wikidata_verdicts_to_cache(
                 evaluator=evaluator_id,
                 marc_context=marc_ctx if isinstance(marc_ctx, dict) else None,
             )
+            from app.pipeline.wikidata_verdict_cache import (  # noqa: PLC0415
+                wikidata_claims_fingerprint,
+            )
+
+            claims_fp = wikidata_claims_fingerprint(
+                item,
+                judge_model,
+                evaluator=evaluator_id,
+                marc_context=marc_ctx if isinstance(marc_ctx, dict) else None,
+            )
+            verdict_body = dict(v.get("verdict") or {})
+            verdict_body["claims_fingerprint"] = claims_fp
             cached_result = {
-                "verdict": v.get("verdict") or {},
+                "verdict": verdict_body,
                 "judge_id": v.get("judge_id") or v.get("model"),
                 "judged_at": v.get("judged_at"),
                 "cache_key": fingerprint,

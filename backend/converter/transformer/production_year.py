@@ -67,9 +67,20 @@ _CENTURY_DATE_FORMATS = frozenset({
 
 
 def _catalog_production_year(record: dict[str, Any]) -> int | None:
-    """Production year from 260/264 $c only — never colophon."""
+    """Production year from 260/264 $c only — never colophon.
+
+    Century / range rows must not treat ``year_start`` (the encoded century
+    midpoint such as 1501 for the 16th century) as an exact production year.
+    Prefer an explicit CE year embedded in ``original_string`` when it falls
+    inside the catalog range (e.g. ``מאה ט״ז-י״ז, לפני תל״ו (1676)``).
+    """
     dates = record.get("dates")
     if isinstance(dates, dict):
+        if _catalog_date_is_imprecise(dates):
+            embedded = _parse_year_scalar(dates.get("original_string"))
+            if embedded is not None and _year_within_catalog_range(embedded, dates):
+                return embedded
+            return None
         year = _parse_year_scalar(dates.get("year"))
         if year is not None:
             return year

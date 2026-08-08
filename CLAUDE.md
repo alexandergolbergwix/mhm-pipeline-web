@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-170)
+## Architectural rules (W-1…W-171)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -121,6 +121,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-168** — An item whose identifier already exists on Wikidata is an UPDATE
 - **W-169** — Review-table verdict reads MUST replay verify's adoption and live labels
 - **W-170** — Non-passing projection defects MUST be fixed fail-closed, not rubric-weakened
+- **W-171** — Corpus-scale Mode-α predicates + Mode-β sticky-full (ISBD/P1574/extent/incipit/aliases/dates; rubric hygiene; claims-fingerprint sticky-full)
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

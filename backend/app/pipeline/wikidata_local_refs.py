@@ -199,6 +199,41 @@ def drop_orphan_significant_person_claims(items: list[WikidataItem]) -> int:
     return dropped
 
 
+def drop_redundant_unknown_text_exemplars(items: list[WikidataItem]) -> int:
+    """Drop bare / redundant P1574→Q234460 when specific works already link.
+
+    A manuscript that already exemplifies named works must not also claim
+    unidentified text without P1932 (export-32 Mode-α class).
+    """
+    dropped = 0
+    for item in items:
+        if str(item.entity_type or "").lower() != "manuscript":
+            continue
+        exemplars = [
+            s for s in (item.statements or [])
+            if str(s.property_id or "") == P_EXEMPLAR_OF
+        ]
+        specific = [
+            s for s in exemplars
+            if str(s.value or "") != Q_UNKNOWN_TEXT
+        ]
+        kept: list[WikidataStatement] = []
+        for statement in item.statements or []:
+            if str(statement.property_id or "") != P_EXEMPLAR_OF:
+                kept.append(statement)
+                continue
+            if str(statement.value or "") != Q_UNKNOWN_TEXT:
+                kept.append(statement)
+                continue
+            has_stated_as = _has_title_qualifier(statement)
+            if specific or not has_stated_as:
+                dropped += 1
+                continue
+            kept.append(statement)
+        item.statements = kept
+    return dropped
+
+
 def dangling_local_references(items: list[Any]) -> list[str]:
     """Every remaining unresolved ``__LOCAL:`` target — used by the build gate."""
     known = {str(getattr(item, "local_id", "") or "") for item in items}

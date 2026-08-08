@@ -41,6 +41,54 @@ from converter.wikidata.property_mapping import (
 )
 
 
+def _work_titles_for_record(record: dict[str, object]) -> set[str]:
+    """Normalised titles of contained / related works for this record only."""
+    titles: set[str] = set()
+
+    def _add(value: object) -> None:
+        text = _normalise_label(str(value or ""))
+        if text:
+            titles.add(text.casefold())
+
+    for content in record.get("contents") or []:
+        if isinstance(content, dict):
+            _add(content.get("title") or content.get("name"))
+        else:
+            _add(content)
+    for related in record.get("related_works") or []:
+        if isinstance(related, dict):
+            _add(related.get("title") or related.get("name"))
+        else:
+            _add(related)
+    for mention in record.get("work_mentions") or []:
+        if isinstance(mention, dict):
+            _add(mention.get("title") or mention.get("name") or mention.get("text"))
+        else:
+            _add(mention)
+    return titles
+
+
+def _strip_work_titles_from_aliases(
+    item: WikidataItem,
+    record: dict[str, object],
+) -> None:
+    """Drop aliases that name a contained/related work, not this manuscript."""
+    work_titles = _work_titles_for_record(record)
+    if not work_titles or not item.aliases:
+        return
+    for lang, values in list(item.aliases.items()):
+        if not isinstance(values, list):
+            continue
+        kept = [
+            alias for alias in values
+            if _normalise_label(str(alias)).casefold() not in work_titles
+        ]
+        if kept:
+            item.aliases[lang] = kept
+        else:
+            item.aliases.pop(lang, None)
+
+
 class ManuscriptMetadataMixin:
     def _set_labels(
         self,
@@ -139,6 +187,9 @@ class ManuscriptMetadataMixin:
             vt_clean = _normalise_label(str(vt))
             if vt_clean:
                 item.aliases.setdefault("he", []).append(vt_clean)
+
+        # Contained / related work titles are not names of this manuscript.
+        _strip_work_titles_from_aliases(item, record)
 
         # Description — language, date/century, script tradition, material, NLI
         item.descriptions["en"] = _build_manuscript_description(record)
@@ -310,11 +361,18 @@ class ManuscriptMetadataMixin:
         extent = record.get("extent")
         if extent:
             extent_str = str(extent)
-            folio_match = re.search(r"(\d+)", extent_str)
-            if folio_match:
-                # The ingest parser already resolved the unit (Rule W-140);
-                # only fall back to sniffing the string when it did not.
-                parsed_unit = str(record.get("extent_unit") or "")
+            from converter.transformer.extent import parse_extent  # noqa: PLC0415
+
+            parsed = parse_extent(extent_str)
+            parsed_unit = str(record.get("extent_unit") or "")
+            if parsed is not None:
+                count = int(parsed.count)
+                if not parsed_unit:
+                    parsed_unit = str(parsed.unit or "")
+            else:
+                folio_match = re.search(r"(\d+)", extent_str)
+                count = int(folio_match.group(1)) if folio_match else 0
+            if count > 0:
                 # WikiProject Manuscripts Data Model (2026-06-04 audit):
                 # ALL physical extent goes on P1104 (number of pages) with an
                 # explicit unit.  P7416 "folio(s)" is a STRING QUALIFIER for
@@ -322,7 +380,6 @@ class ManuscriptMetadataMixin:
                 # Units: page (Q1069725) when the extent string says "page/עמוד",
                 #        leaf (Q107256474) otherwise — manuscripts count in
                 #        leaves/folios and WikiProject mandates the leaf unit.
-                # https://www.wikidata.org/wiki/Wikidata:WikiProject_Manuscripts/Data_Model
                 low = extent_str.lower()
                 says_pages = (
                     parsed_unit == "page"
@@ -333,7 +390,7 @@ class ManuscriptMetadataMixin:
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_NUMBER_OF_PAGES,
-                        value=int(folio_match.group(1)),
+                        value=count,
                         value_type="quantity",
                         unit=unit_qid,
                         references=ref,

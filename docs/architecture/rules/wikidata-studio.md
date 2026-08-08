@@ -1638,3 +1638,45 @@ the eval-agent rubric:
 Tests: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
 `test_person_heading_and_crosscheck.py`, `test_duplicate_qid_adoption.py`.
 
+### Rule W-171 — Corpus-scale Mode-α predicates + Mode-β sticky-full (added 2026-08-08)
+
+Export-32 on canary run `48ba6c13` still had 17 partial + 1 fail after W-170.
+Fifteen of sixteen `full→partial` regressions had **identical** claim
+signatures — a `w170_v1` schema bump forced DeepSeek to re-score unchanged
+payloads. Fixes MUST be predicate-driven for the full filtered corpus
+(~123k MARC rows in `filtered_manuscripts_after_906a.tsv`), never CN/shelfmark
+allowlists.
+
+**Projection (Mode α):**
+
+1. **ISBD title/subtitle** — `split_isbd_title_subtitle` on 245 `$a`/`$b` so
+   P1476 and P1680 never duplicate the full `a : b` string.
+2. **P1574 specificity ladder** — `work_link_specificity.refine_exemplar_work_qid`
+   prefers megillah/book QIDs (Esther = **Q131068**, live-verified), blocks
+   whole-Bible/Tanakh when piyyut/miscellany evidence lacks whole-collection
+   attestation, and drops redundant bare `Q234460` exemplars.
+3. **Agent public QIDs** — `person_linking` withholds a resolved QID when
+   `heading_mismatch` or `identity_compatible(marc, label)` fails.
+4. **Extent** — P1104 always carries leaf/page unit from `extent_unit` /
+   `parse_extent`.
+5. **P1922** — only `is_incipit_text` (catalog workflow notes excluded).
+6. **Aliases** — subtract per-record contained/related work titles.
+7. **Inception** — century `year_start` midpoints must not steal an exact CE
+   year embedded in `dates.original_string` (e.g. 1676 inside a 16–17th-c.
+   range).
+
+**Verify (Mode β + durability):**
+
+8. **Rubric/skill** — universal Mode-β clauses (absent claims ≠ defects;
+   trust `value_label`; honour quantity `unit`; facsimile `semantic_type`;
+   WPM holder+shelfmark labels; P1476 may equal linked work title). Skill
+   version `w171_v1`.
+9. **Sticky-full** — `partition_wikidata_verify_cache` reuses a prior
+   `full`/`pass` verdict when the schema-agnostic `claims_fingerprint`
+   matches (override `ai_verdict` carried through
+   `apply_wikidata_item_override`). Partial/fail never stick; claim changes
+   and duplicate-class transitions still re-judge. Verdict schema
+   `WIKIDATA_VERDICT_SCHEMA=w171_v1`.
+
+Tests: `backend/tests/unit/test_wikidata_corpus_scale_w171.py`.
+

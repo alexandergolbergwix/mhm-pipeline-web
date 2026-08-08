@@ -1016,7 +1016,17 @@ def _description_date_fragment(dates: dict[str, object]) -> str | None:
     date_format = str(dates.get("date_format") or "")
     year = str(dates.get("year") or "").strip('" ')
     if year and re.match(r"\d{3,4}$", year):
-        if date_format == "FullDate" or re.search(rf"\b{re.escape(year)}\b", original):
+        # Exact year rows (with or without FullDate) may enter the description.
+        # Century-encoded midpoints (HebrewCentury / Century) must not.
+        if date_format in {
+            "HebrewCentury", "Century", "HebrewGematriaCentury",
+        }:
+            pass
+        elif (
+            not date_format
+            or date_format == "FullDate"
+            or re.search(rf"\b{re.escape(year)}\b", original)
+        ):
             return year
     year_match = re.search(r"\b(\d{3,4})\b", original)
     if year_match and not re.search(r"centur|מאה", original, re.IGNORECASE):

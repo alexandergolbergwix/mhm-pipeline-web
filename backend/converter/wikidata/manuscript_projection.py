@@ -302,32 +302,41 @@ class ManuscriptProjectionMixin:
             # export-30: claim_sources still cited marc.title while the value
             # became P217. Do not resurrect that swap without a matching
             # evidence-channel rewrite.
+            from converter.wikidata.isbd_title import (  # noqa: PLC0415
+                split_isbd_title_subtitle,
+            )
+
+            subtitle = str(
+                record.get("subtitle")
+                or record.get("245$b")
+                or ""
+            ).strip().strip(_QUOTE_CHARS + " /:")
+            main_title = title
+            if not subtitle or subtitle.casefold() == title.casefold():
+                main_title, subtitle = split_isbd_title_subtitle(title, subtitle or None)
+            if not main_title:
+                main_title = title
             item.statements.append(
                 WikidataStatement(
                     property_id=P_TITLE,
-                    value=_normalise_label(title),
+                    value=_normalise_label(main_title),
                     value_type="monolingualtext",
-                    language="he" if _has_hebrew_script(title) else "en",
+                    language="he" if _has_hebrew_script(main_title) else "en",
                     references=ref,
                 )
             )
-        subtitle = str(
-            record.get("subtitle")
-            or record.get("245$b")
-            or ""
-        ).strip().strip(_QUOTE_CHARS + " /:")
-        if subtitle:
-            from converter.wikidata.property_mapping import P_SUBTITLE  # noqa: PLC0415
+            if subtitle and subtitle.casefold() != main_title.casefold():
+                from converter.wikidata.property_mapping import P_SUBTITLE  # noqa: PLC0415
 
-            item.statements.append(
-                WikidataStatement(
-                    property_id=P_SUBTITLE,
-                    value=_normalise_label(subtitle),
-                    value_type="monolingualtext",
-                    language="he",
-                    references=ref,
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_SUBTITLE,
+                        value=_normalise_label(subtitle),
+                        value_type="monolingualtext",
+                        language="he" if _has_hebrew_script(subtitle) else "en",
+                        references=ref,
+                    )
                 )
-            )
 
         # ── Language & writing system ────────────────────────────
         self._add_languages(item, record, ref)
@@ -411,28 +420,40 @@ class ManuscriptProjectionMixin:
             )
 
             audited_year = manuscript_production_year(record)
-            if (
-                audited_year is not None
-                and precision == PRECISION_CENTURY
-                and earliest_year
-                and latest_year
-                and earliest_year <= audited_year <= latest_year
-            ):
-                time_value = f"+{audited_year:04d}-00-00T00:00:00Z"
-                precision = PRECISION_YEAR
-                # The century bounds stay as P1319/P1326 qualifiers: the catalogue
-                # only committed to a century, and that remains true.
-                if not any(
-                    q.get("property") == P_BASED_ON_HEURISTIC
-                    for q in inception_ref
-                ):
-                    inception_ref = list(inception_ref) + [
-                        {
-                            "property": P_BASED_ON_HEURISTIC,
-                            "value": Q_COLOPHON,
-                            "type": "item",
-                        }
-                    ]
+            if audited_year is not None:
+                in_range = (
+                    earliest_year
+                    and latest_year
+                    and earliest_year <= audited_year <= latest_year
+                )
+                if precision == PRECISION_CENTURY and in_range:
+                    time_value = f"+{audited_year:04d}-00-00T00:00:00Z"
+                    precision = PRECISION_YEAR
+                    # The century bounds stay as P1319/P1326 qualifiers: the catalogue
+                    # only committed to a century, and that remains true.
+                    if not any(
+                        q.get("property") == P_BASED_ON_HEURISTIC
+                        for q in inception_ref
+                    ):
+                        inception_ref = list(inception_ref) + [
+                            {
+                                "property": P_BASED_ON_HEURISTIC,
+                                "value": Q_COLOPHON,
+                                "type": "item",
+                            }
+                        ]
+                elif precision == PRECISION_YEAR:
+                    # Prefer the audited bibliographic year over a century-encoded
+                    # midpoint that leaked into ``dates.year`` / ``year_start``.
+                    current = None
+                    try:
+                        current = int(str(time_value).lstrip("+")[:4])
+                    except ValueError:
+                        current = None
+                    if current != audited_year and (
+                        in_range or earliest_year is None
+                    ):
+                        time_value = f"+{audited_year:04d}-00-00T00:00:00Z"
 
             item.statements.append(
                 WikidataStatement(
@@ -536,8 +557,10 @@ class ManuscriptProjectionMixin:
         self._add_contents(item, record, ref)
 
         # ── Incipit (first line of text) → P1922 ───────────────
+        from converter.wikidata.catalog_notes import is_incipit_text  # noqa: PLC0415
+
         incipit = record.get("has_incipit")
-        if incipit and str(incipit).strip() and str(incipit) != "None":
+        if is_incipit_text(incipit):
             from converter.wikidata.property_mapping import P_FIRST_LINE  # noqa: PLC0415
 
             item.statements.append(

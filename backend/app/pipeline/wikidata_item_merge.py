@@ -56,6 +56,12 @@ def apply_wikidata_item_override(entity: dict[str, Any], ov: dict[str, Any]) -> 
     if add:
         stmts.extend(add)
     out["statements"] = stmts
+    # Carry prior AI verdict for sticky-full reuse (Rule W-171). Editorial
+    # fields above may change claims — the partitioner re-checks the fingerprint.
+    if isinstance(ov.get("ai_verdict"), dict) and ov.get("ai_verdict"):
+        out["ai_verdict"] = dict(ov["ai_verdict"])
+        if ov.get("ai_verdict_at"):
+            out["ai_verdict_at"] = ov["ai_verdict_at"]
     return out
 
 

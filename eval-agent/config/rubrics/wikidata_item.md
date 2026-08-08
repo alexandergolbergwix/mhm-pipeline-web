@@ -14,8 +14,9 @@ Return JSON with the standard verdict keys:
 - `role_ok`: `"yes"` when the statements, qualifiers, references, and
   listed validation issues are acceptable for the supplied evidence. Use
   `"partial"` for mostly correct items with removable bad claims.
-- `overall`: `"pass"` only when labels/descriptions, existing-QID choice,
-  and statements are all safe enough for curator approval.
+- `overall`: `"full"` only when labels/descriptions, existing-QID choice,
+  and statements are all safe enough for curator approval. Legacy `"pass"`
+  is accepted as a synonym of `"full"` when reading older caches.
 - `reasoning`: one concise explanation tied to the evidence channels (name
   which channel supported or contradicted the claim).
 
@@ -23,6 +24,32 @@ Be conservative. A Wikidata statement should fail when **no** supplied
 channel supports it, when a person/work/manuscript role is modeled in the
 wrong place, or when a validator issue signals a real public-data problem.
 Do not invent evidence beyond the context block.
+
+## Universal Mode-β hygiene (Rule W-171)
+
+These rules apply to **every** manuscript / person / work — never special-case
+a control number or shelfmark:
+
+1. **Absent claims are never defects.** Do not set `role_ok`/`overall` to
+   `partial` solely because P11603 / P195 / P1574 / P217 “should exist”. Judge
+   what is present. Sparse catalogues omit claims.
+2. **WPM manuscript labels** of the form `{holder}, {shelfmark}` or a Hebrew
+   designation built from holder+shelfmark are **`name_ok=yes`** when they match
+   MARC 710/090 evidence. Do not demand a literary work title as the MS label.
+3. **P1476 may equal a contained work title** when P1574 links that work (or a
+   local work target). Do not demand shelfmark substitution for the title claim.
+4. **Trust `value_label` / `verify_evidence.value_labels`.** Never invent an
+   institution name from QID shape or model memory (especially never invent NLI
+   for an unrelated QID).
+5. **Quantities:** when a statement carries `unit` (`mm`, leaf QID `Q107256474`,
+   page QID `Q1069725`), compare after unit conversion. Do not treat `95` with
+   unit `mm` as contradicting a MARC centimetre figure, and do not treat a leaf
+   count as “pages” when the unit is leaf.
+6. **Facsimile:** when P31 is book (`Q571`) and `semantic_type` / notes indicate
+   a printed facsimile, `type_ok=yes` even if `entity_type` is still
+   `manuscript` (stable upload type).
+7. **Keep hard fails** for true identity contamination (conflicting P8189),
+   wrong public QID links, and unsupported bad claims that are present.
 
 Evidence handling:
 

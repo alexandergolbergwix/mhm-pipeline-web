@@ -288,6 +288,7 @@ def _build_sync(
 ) -> dict[str, Any]:
     from app.pipeline.wikidata_local_refs import (  # noqa: PLC0415
         drop_orphan_significant_person_claims,
+        drop_redundant_unknown_text_exemplars,
         resolve_local_references,
     )
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
@@ -312,6 +313,7 @@ def _build_sync(
     # manuscript pointing at nothing (Rule W-138).
     local_ref_stats = resolve_local_references(items)
     drop_orphan_significant_person_claims(items)
+    drop_redundant_unknown_text_exemplars(items)
 
     # Validate every built item, log issues, and collect them per item so
     # the UI can surface inline validation pills without a second round-trip.
