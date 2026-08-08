@@ -146,7 +146,9 @@ _MARC_RELATOR_RE = re.compile(
     r"compiler|comp\.?|copyist|scribe|annotator|contributor|adapter|"
     r"composer|performer|engraver|printer|publisher|collector|respondent|"
     r"cartographer|photographer|joint\s+author|joint\s+editor|"
-    r"מעתיק|מחבר|עורך|מתרגם|מאייר"  # Hebrew relators
+    r"former\s+owner|current\s+owner|owner|"
+    # Hebrew relators + catalog mention markers that pollute aliases.
+    r"מעתיק|מחבר|עורך|מתרגם|מאייר|מוזכר|בעלים(?:\s+קודמים)?|אליו"
     r")\.?\s*\)\s*$",
     re.IGNORECASE,
 )

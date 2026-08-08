@@ -518,13 +518,16 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     weak editor/commentator descriptions without dates stay generic;
     `manuscript_record_label` names the holder or says `catalog record`, never
     invents `NLI record`; MARC role wrappers normalise before ROLE_TO_PID so
-    `(מעתיק)` emits P11603; P1071 is production-place only (751→P7153; Amran
-    city override); manuscript P1476 stays MARC 245 (no shelfmark swap —
-    export-30 regression); orphan bare-QID P3342 without a build person or
-    P1932 drops.
+    `(מעתיק)` emits P11603; P1071 is production-place only (bare 751 and
+    `$e=related place` stay on P7153; Amran city = Q172597, never Kufra
+    Q48200); manuscript P1476 stays MARC 245 (no shelfmark swap); orphan
+    bare-QID P3342 drops; quantity `unit` reaches the judge fixture (mm);
+    `(מוזכר)` strips from aliases.
     Regression tests live in `test_wikidata_nonpassing_buckets.py`.
     *Why:* a blanket preferred strip would have dropped 16 full-passing persons;
     bare HE↔EN adopt would have linked Maurizio→Kagel and Philippson;
     refuse-without-strip left CREATE+live P8189 as W-139 fails; subset verify
     emptied `local_reference_targets` and partialled true work links; export-29
-    P1476→shelfmark without rewriting claim_sources cost 19 full manuscripts.*
+    P1476→shelfmark without rewriting claim_sources cost 19 full manuscripts;
+    export-31 Amran→Kufra and mm-without-unit were judge-visible projection
+    defects.*

@@ -150,6 +150,10 @@ QID_LABELS: dict[str, str] = {
     "Q33513": "Hebrew alphabet",
     "Q9190": "Exodus",
     "Q188915": "National Library of Israel",
+    "Q458921": "Hungarian Academy of Sciences Library and Information Centre",
+    "Q1048694": "Russian State Library",
+    "Q172597": "ʿAmrān",
+    "Q275720": "'Amran Governorate",
     "Q46815": "Israel Museum",
     # Top-level classes
     "Q5":       "human",

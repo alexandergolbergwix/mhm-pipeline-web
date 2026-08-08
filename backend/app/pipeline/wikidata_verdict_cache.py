@@ -14,19 +14,17 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w156_v1 with Rule W-156: the judge's fixture now carries the
-# duplicate probe and the LLM proposals it was always asked to reason about, so
-# every verdict judged before this must miss (Rule W-51).
-# Prior: w138_v1 (MARC quote unwrap, channel-aware claim provenance, work/person
-# identity gating, local-reference resolution), w137_v1, w124_v1, w104_v1, w71_v1.
-WIKIDATA_VERDICT_SCHEMA = "w156_v1"
+# Bumped to w170_v1 with Rule W-170 export-31: quantity ``unit`` (mm) must
+# reach the judge fixture so P2048/P2049 are not read as bare centimetres.
+# Prior: w156_v1 (duplicate probe + LLM proposals in the judge fixture).
+WIKIDATA_VERDICT_SCHEMA = "w170_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 
 FINGERPRINT_STATEMENT_LIMIT = 40
 _FINGERPRINT_STATEMENT_KEYS = (
     "property", "property_id", "property_label",
-    "value", "value_id", "value_type", "value_label", "rank",
+    "value", "value_id", "value_type", "value_label", "unit", "rank",
 )
 
 

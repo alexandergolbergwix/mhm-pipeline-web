@@ -1616,8 +1616,10 @@ the eval-agent rubric:
     `(מעתיק)` / `"(מעתיק)"` strip to the Hebrew relator so P11603/P3342 emit
     (`role_normalize.normalize_marc_role`); `מוזכר` maps to P3342.
 14. **P1071 is production place only.** MARC 751 / `related_places` /
-    non-matching `kima_places` stay on P7153; Amran city overrides
-    governorate Q275720 → Q48200.
+    non-matching `kima_places` stay on P7153; bare 751$a and
+    `$e=related place` MUST NOT fill production `place`. Amran city is
+    **Q172597** (verified live) — never Q48200 (Kufra District) or the
+    governorate Q275720 alone when a city override exists.
 15. **Manuscript P1476 MUST stay MARC 245.** Auto-replacing a linked/known
     work title with the shelfmark (export-29) left `claim_sources` on
     `marc.title` while the value became P217 and regressed 19 `full`→`partial`
@@ -1626,6 +1628,12 @@ the eval-agent rubric:
 16. **Orphan P3342 bare QIDs drop.** After local-ref resolve, a manuscript
     P3342 naming a public QID that is not any built person's `existing_qid`
     and lacks P1932 is removed (export-29 Malkiel orphan).
+17. **Quantity claims MUST carry `unit` into the judge fixture.** P2048/P2049
+    are millimetres; omitting `unit` from fingerprint statements made the
+    judge treat `95` as centimetres against MARC `9.5 ס"מ` (export-31).
+18. **Catalog mention markers MUST NOT pollute aliases.** Trailing
+    `(מוזכר)` / ownership relators strip via `_MARC_RELATOR_RE` like other
+    MARC role parentheses.
 
 Tests: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
 `test_person_heading_and_crosscheck.py`, `test_duplicate_qid_adoption.py`.

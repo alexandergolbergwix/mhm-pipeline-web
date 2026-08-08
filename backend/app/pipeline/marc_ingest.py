@@ -602,7 +602,6 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             "place of origin",
             "production place",
             "place of creation",
-            "related place",
             "origin",
             "written",
         )
@@ -622,10 +621,9 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
                 record["place"] = place_name
     if related_places:
         record["related_places"] = related_places
-    # When NLI omits $e or uses an unlisted role, still promote the first 751$a
-    # to production place if nothing else filled the slot.
-    if not record.get("place") and related_places:
-        record["place"] = related_places[0]
+    # Do NOT promote a bare 751$a into production ``place``. NLI often omits
+    # $e for subject/provenance geography (ʻAmrān, Egypt, Istanbul); treating
+    # those as P1071 creation sites caused export-31 Amran→Kufra partials.
 
     # ── Dates (260/264 $c — never 008, which is catalog-entry metadata) ─
     if not record.get("dates"):

@@ -66,6 +66,7 @@ def test_prepare_merges_work_mentions_into_contents() -> None:
 
 
 def test_place_from_related_751_role() -> None:
+    """Bare / 'related place' 751 must NOT become production place (export-31)."""
     from app.pipeline.marc_ingest import _collapse_marc_subfields
 
     record = {
@@ -73,7 +74,28 @@ def test_place_from_related_751_role() -> None:
         "751$e": "related place",
     }
     _collapse_marc_subfields(record)
+    assert record.get("place") in (None, "")
+    assert "Prague" in (record.get("related_places") or [])
+
+
+def test_place_from_751_writing_role() -> None:
+    from app.pipeline.marc_ingest import _collapse_marc_subfields
+
+    record = {
+        "751$a": "Prague",
+        "751$e": "place of writing",
+    }
+    _collapse_marc_subfields(record)
     assert record.get("place") == "Prague"
+
+
+def test_bare_751_does_not_fill_production_place() -> None:
+    from app.pipeline.marc_ingest import _collapse_marc_subfields
+
+    record = {"751$a": "ʻAmrān (Yemen)"}
+    _collapse_marc_subfields(record)
+    assert record.get("place") in (None, "")
+    assert record.get("related_places") == ["ʻAmrān (Yemen)"]
 
 
 def test_place_from_260_a() -> None:

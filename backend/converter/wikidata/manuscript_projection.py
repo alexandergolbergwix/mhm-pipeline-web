@@ -70,10 +70,13 @@ _QID_RE = re.compile(r"^Q\d+$")
 
 # Prefer city/settlement QIDs over broader admin units when KIMA is coarse (W-170).
 _PLACE_LABEL_QID_OVERRIDES: dict[str, str] = {
-    "ʻamrān (yemen)": "Q48200",  # city, not Q275720 ʼAmran Governorate
-    "'amrān (yemen)": "Q48200",
-    "amran (yemen)": "Q48200",
-    "amrān (yemen)": "Q48200",
+    # Verified live 2026-08-07: Q172597 = ʿAmrān (city in Yemen).
+    # Do NOT use Q48200 (Kufra District, Libya) or Q275720 (governorate).
+    "ʻamrān (yemen)": "Q172597",
+    "'amrān (yemen)": "Q172597",
+    "amran (yemen)": "Q172597",
+    "amrān (yemen)": "Q172597",
+    "ʿamrān (yemen)": "Q172597",
 }
 
 

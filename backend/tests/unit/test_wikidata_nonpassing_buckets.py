@@ -680,7 +680,22 @@ class TestExport29RolePlaceTitle:
             },
         })
         assert _statements(item, "P1071") == []
-        assert any(s.value == "Q48200" for s in _statements(item, "P7153"))
+        assert any(s.value == "Q172597" for s in _statements(item, "P7153"))
+
+    def test_mozkar_stripped_from_alias(self) -> None:
+        from converter.wikidata.item_builder import _normalise_label
+
+        assert _normalise_label("נר לרגלי (מוזכר)") == "נר לרגלי"
+
+    def test_fingerprint_includes_quantity_unit(self) -> None:
+        from app.pipeline.wikidata_verdict_cache import fingerprint_statements
+
+        rows = fingerprint_statements({
+            "statements": [
+                {"property_id": "P2048", "value": 95.0, "value_type": "quantity", "unit": "mm"},
+            ],
+        })
+        assert rows[0].get("unit") == "mm"
 
     def test_subject_places_are_not_creation_sites(self) -> None:
         item = WikidataItemBuilder().build_manuscript_item({
