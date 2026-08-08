@@ -468,7 +468,7 @@ def _enrich_snak(snak: Any) -> None:
     """
     if not isinstance(snak, dict):
         return
-    from converter.wikidata.property_labels import PROPERTY_LABELS, QID_LABELS  # noqa: PLC0415
+    from converter.wikidata.property_labels import PROPERTY_LABELS, qid_label  # noqa: PLC0415
 
     prop = snak.get("property") or snak.get("property_id")
     if isinstance(prop, str) and prop:
@@ -481,15 +481,16 @@ def _enrich_snak(snak: Any) -> None:
         if plabel:
             snak["property_label"] = plabel
 
-    # value_label: only set if the value is a Q-id AND the static dict
-    # knows it. Otherwise the frontend's useLabelStore lazy-fetches.
+    # value_label: stamp when the static table OR the audited holding-
+    # institution table can gloss the QID. Never fall back to the bare QID
+    # string (that short-circuits the frontend's lazy Wikidata lookup).
     val = snak.get("value")
     vid = snak.get("value_id")
     qid = vid if isinstance(vid, str) and vid.startswith("Q") else \
           (val if isinstance(val, str) and val.startswith("Q") and val[1:].isdigit() else None)
     if qid:
-        vlabel = QID_LABELS.get(qid)
-        if vlabel:
+        vlabel = qid_label(qid)
+        if vlabel and vlabel != qid:
             snak["value_label"] = vlabel
 
 

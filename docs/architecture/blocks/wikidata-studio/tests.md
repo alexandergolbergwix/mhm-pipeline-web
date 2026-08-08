@@ -2,6 +2,9 @@
 
 > Up: [Wikidata Studio](README.md)
 
+- `backend/tests/unit/test_wikidata_export35_w174.py` — Rule W-174:
+  catalogue P973 shelfmark gate, Hebrew bracket expansion, Leeds holder
+  gloss via `qid_label`, work-title alias elaboration strip.
 - `backend/tests/unit/test_wikidata_export34_w173.py` — Rule W-173:
   RELATED_WORKS Bible ladder on piyyut MSS, P1574 ladder QIDs labeled
   (incl. Esther Q131068), P1922 chronology gate, Cambridge holder label,

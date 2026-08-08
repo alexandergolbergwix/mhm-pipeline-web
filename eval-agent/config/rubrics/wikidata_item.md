@@ -25,7 +25,7 @@ channel supports it, when a person/work/manuscript role is modeled in the
 wrong place, or when a validator issue signals a real public-data problem.
 Do not invent evidence beyond the context block.
 
-## Universal Mode-β hygiene (Rule W-171 / W-172)
+## Universal Mode-β hygiene (Rule W-171 / W-172 / W-174)
 
 These rules apply to **every** manuscript / person / work — never special-case
 a control number or shelfmark:
@@ -57,10 +57,23 @@ a control number or shelfmark:
    `P31=Q4167410`. A human (`Q5`) target with matching labels is not a type
    error solely because the name is shared by several historical figures.
 8. **Holding QIDs:** never invent that `Q1028334` (Cambridge University
-   Library) or another audited holder QID is the National Library of Israel.
-   Prefer `value_label`, then the English manuscript label’s holder fragment.
-9. **Keep hard fails** for true identity contamination (conflicting P8189),
+   Library), `Q24568958` (University of Leeds Libraries), `Q23308` (British
+   Library), or any other audited holder QID is a different institution
+   (especially never invent NLI or Robarts). Prefer `value_label`, then
+   `verify_evidence.value_labels`, then the English manuscript label’s holder
+   fragment. A correct P195 with a glossed audited QID is `role_ok=yes` for
+   that claim.
+9. **Manuscript aliases:** when the manuscript **label** is the WPM
+   holder+shelfmark designation, a Hebrew MARC 245 title remaining as an
+   **alias** is intentional (Rule W-164). Do **not** partial solely for that.
+   Do partial when aliases name *other* contained works that are not the 245.
+10. **Keep hard fails** for true identity contamination (conflicting P8189),
    wrong public QID links, and unsupported bad claims that are present.
+11. **Catalogue P973:** an external `described at URL` whose embedded
+   shelfmark/ref disagrees with this item’s P217 is a removable bad claim.
+12. **Provider judge failures** (`verification_failed` / HTTP 400 content
+    filter) are **not** an assessment of the item — they must be re-run, not
+    treated as `partial`/`fail` projection defects.
 
 Evidence handling:
 

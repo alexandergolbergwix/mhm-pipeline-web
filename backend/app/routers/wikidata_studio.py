@@ -2232,7 +2232,12 @@ def _slice_items(
                 else (val if isinstance(val, str) and val.startswith("Q") and val[1:].isdigit() else None)
             )
             if qid:
-                vlbl = stmt.get("value_label") or QID_LABELS.get(qid)
+                from converter.wikidata.property_labels import qid_label  # noqa: PLC0415
+                vlbl = stmt.get("value_label") or ""
+                if not vlbl:
+                    gloss = qid_label(qid)
+                    if gloss and gloss != qid:
+                        vlbl = gloss
                 if vlbl:
                     property_labels[qid] = vlbl
 

@@ -14,10 +14,10 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w173_v1 with Rule W-173: related-works P1574 ladder + Hebrew
-# preferred P8189 strip + incipit chronology gate.
-# Prior: w172_v1 (quantity unit in judge fixture).
-WIKIDATA_VERDICT_SCHEMA = "w173_v1"
+# Bumped to w174_v1 with Rule W-174: catalogue P973 shelfmark gate, Hebrew
+# bracket expansion, audited P195 value labels, work-title alias strip.
+# Prior: w173_v1 (related-works P1574 ladder + Hebrew preferred P8189 strip).
+WIKIDATA_VERDICT_SCHEMA = "w174_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 

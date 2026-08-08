@@ -1736,3 +1736,32 @@ Export-34 on canary `48ba6c13` after W-172: **245 full / 6 partial / 1 fail**.
 Schema / skill salt **`w173_v1`**.
 
 Tests: `backend/tests/unit/test_wikidata_export34_w173.py`.
+
+
+### Rule W-174 — Catalogue P973 shelfmark gate + Hebrew brackets + holder gloss (added 2026-08-08)
+
+Export-35 on canary `48ba6c13` after W-173: **231 full / 4 partial /
+1 verification_failed**. Remaining defects:
+
+1. **P973** — MARC 856 `digital_url` with BL `ref=Or_12354` on a manuscript
+   whose P217 is `F 8298` (cross-record contamination). Gate with
+   `catalogue_url_agrees_with_shelfmark` on emit + merge.
+2. **Aliases** — contained-work elaborations (`פרוש התורה לרש"י` vs work
+   `פרוש רש"י`) stayed as manuscript aliases; expand the work-title strip
+   (WCE + P1574 local ids + acronym elaboration) on legacy **and** canonical
+   paths. A Hebrew **245** as alias under a holder+shelfmark label remains
+   intentional (W-164) — Mode-β must not partial solely for that.
+3. **P195 gloss** — Leeds `Q24568958` is correct in the audited table, but
+   `_enrich_snak` only consulted `QID_LABELS`, so exports/UI lacked
+   `value_label` and the judge invented “Robarts”. Stamp via `qid_label`
+   (holding table fallback) whenever the gloss ≠ the bare QID.
+4. **Hebrew brackets** — `_normalise_label` treated `מע[וצ']ה` as a MARC note
+   and produced `מע ה`. Expand Hebrew restoration brackets before note-strip.
+5. **P195 fallback** — unaudited contributor/authority QIDs must not name
+   P195; only `institution_qid` from the audited table (W-143).
+6. **verification_failed** — provider content-filter HTTP 400 on a German
+   Zionist-Congress title is **not** a projection verdict (W-158); re-run.
+
+Schema / skill salt **`w174_v1`**.
+
+Tests: `backend/tests/unit/test_wikidata_export35_w174.py`.

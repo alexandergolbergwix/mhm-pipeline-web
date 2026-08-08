@@ -563,3 +563,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `test_wikidata_export34_w173.py`.
     *Why:* export-34 left Bible on a piyyut MS via RELATED_WORKS and three
     persons with wrong Mazal P8189 that same-family conflict missed.*
+
+77. **R77 — Catalogue P973 shelfmark gate + Hebrew brackets + holder gloss (Rule W-174).**
+    Drop external P973 whose embedded ref ≠ P217; expand Hebrew
+    `מע[וצ']ה` brackets before note-strip; `_enrich_snak` uses `qid_label`
+    (audited holding table); P195 only via `institution_qid`; work-title
+    alias elaborations stripped on legacy+canonical; schema/skill
+    `w174_v1`. Regression: `test_wikidata_export35_w174.py`.
+    *Why:* export-35 partialled a BL cross-record 856 URL, a Leeds holder
+    the judge misread as Robarts, work-title aliases, and a mangled Hebrew
+    personal name.*

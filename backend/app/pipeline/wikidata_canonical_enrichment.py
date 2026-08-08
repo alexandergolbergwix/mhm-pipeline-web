@@ -36,6 +36,27 @@ _MULTI_VALUE_CANONICAL_PIDS = frozenset({"P973"})
 
 _QID_RE = re.compile(r"^Q\d+$", re.IGNORECASE)
 
+
+def _legacy_catalogue_p973_ok(canonical: WikidataItem, stmt: WikidataStatement) -> bool:
+    """Drop cross-record catalogue P973 whose embedded ref ≠ P217 (W-174)."""
+    from converter.wikidata.property_mapping import (  # noqa: PLC0415
+        is_browseable_hmo_wikibase_url,
+    )
+    from converter.wikidata.manuscript_projection import (  # noqa: PLC0415
+        catalogue_url_agrees_with_shelfmark,
+    )
+
+    url = str(stmt.value or "")
+    if not url or is_browseable_hmo_wikibase_url(url):
+        return True
+    shelfmark = ""
+    for existing in canonical.statements or []:
+        if existing.property_id == "P217":
+            shelfmark = str(existing.value or "")
+            break
+    return catalogue_url_agrees_with_shelfmark(url, shelfmark)
+
+
 _PERSON_IDENTIFIER_PIDS = frozenset(
     {"P214", "P8189", "P244", "P227", "P213", "P268"},
 )
@@ -176,6 +197,8 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
             and pid not in _MULTI_VALUE_CANONICAL_PIDS
             and _has_pid(out.statements, pid)
         ):
+            continue
+        if pid == "P973" and not _legacy_catalogue_p973_ok(out, stmt):
             continue
         out.statements.append(stmt)
         seen.add(key)

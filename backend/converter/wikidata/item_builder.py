@@ -165,6 +165,13 @@ _MARC_ACTIVITY_DATE_RE = re.compile(
 # e.g. "[microform]", "[manuscript]", "[i.e. ...]", "[sic]", "[u.a.]"
 _MARC_BRACKET_NOTE_RE = re.compile(r"\s*\[[^\]]{1,60}\]\s*")
 
+# Catalogers embed restored Hebrew letters in square brackets
+# (``מע[וצ']ה`` → ``מעוצ'ה``). Those are orthography, not notes — expand
+# them before the note-strip regex turns them into ``מע ה`` (export-35).
+_HEBREW_BRACKET_EXPAND_RE = re.compile(
+    r"\[([\u0590-\u05ff'׳״\"]{1,40})\]",
+)
+
 # Trailing MARC ISBD punctuation including " /" (before statement of
 # responsibility) and " :" (before subtitle).
 _MARC_ISBD_TRAIL_RE = re.compile(r"[\s.,;:/\-–]+$")
@@ -183,10 +190,11 @@ def _normalise_label(s: str) -> str:
     3. Strip surrounding Hebrew geresh/gershayim quote marks.
     4. Strip MARC relator terms in trailing parentheses: "(author)",
        "(ed.)", "(copyist)", "(מעתיק)", etc.
-    5. Strip bracketed MARC notes: "[microform]", "[sic]", etc.
-    6. Strip trailing MARC ISBD punctuation: . , ; : / - –
-    7. Collapse internal runs of multiple spaces to a single space.
-    8. Title-case ALL-CAPS Latin labels (e.g. "COHEN, DAVID" → "Cohen, David").
+    5. Expand Hebrew restoration brackets (``מע[וצ']ה`` → ``מעוצ'ה``).
+    6. Strip bracketed MARC notes: "[microform]", "[sic]", etc.
+    7. Strip trailing MARC ISBD punctuation: . , ; : / - –
+    8. Collapse internal runs of multiple spaces to a single space.
+    9. Title-case ALL-CAPS Latin labels (e.g. "COHEN, DAVID" → "Cohen, David").
        Hebrew and mixed-script names are left unchanged.
     """
     if not s:
@@ -203,6 +211,7 @@ def _normalise_label(s: str) -> str:
     protected = re.sub(r'(?<=[\u0590-\u05ff])"(?=[\u0590-\u05ff])', "\ue002", s)
     s = protected.replace('"', "").replace("\ue002", '"')
     s = _MARC_RELATOR_RE.sub("", s).strip()
+    s = _HEBREW_BRACKET_EXPAND_RE.sub(r"\1", s)
     s = _MARC_BRACKET_NOTE_RE.sub(" ", s).strip()
     s = _MARC_ISBD_TRAIL_RE.sub("", s).strip()
     while s.endswith(")") and s.count(")") > s.count("("):

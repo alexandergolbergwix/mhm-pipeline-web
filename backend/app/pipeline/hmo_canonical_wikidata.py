@@ -1528,7 +1528,19 @@ def _manuscript_labels_and_aliases(
             "en": entity.local_id.replace("QDraft_", "").replace("_", " "),
         }
 
-    return labels, _dedupe_aliases(aliases, labels)
+    labels_out = labels
+    aliases_out = _dedupe_aliases(aliases, labels)
+    # Mirror legacy W-171/W-174 work-title alias strip on the canonical path.
+    if record:
+        from converter.wikidata.item_models import WikidataItem  # noqa: PLC0415
+        from converter.wikidata.manuscript_metadata import (  # noqa: PLC0415
+            _strip_work_titles_from_aliases,
+        )
+
+        tmp = WikidataItem(labels=dict(labels_out), aliases=dict(aliases_out))
+        _strip_work_titles_from_aliases(tmp, record)
+        aliases_out = tmp.aliases
+    return labels_out, aliases_out
 
 
 def _person_labels_and_aliases(

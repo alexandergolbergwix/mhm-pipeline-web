@@ -65,7 +65,43 @@ def _work_titles_for_record(record: dict[str, object]) -> set[str]:
             _add(mention.get("title") or mention.get("name") or mention.get("text"))
         else:
             _add(mention)
+    for evidence in record.get("work_candidate_evidence") or []:
+        if isinstance(evidence, dict):
+            _add(evidence.get("title") or evidence.get("name"))
     return titles
+
+
+_HE_ACRONYM_RE = re.compile(r"[\u0590-\u05ff]+[\"״][\u0590-\u05ff]+")
+
+
+def _alias_names_work_title(alias: str, work_titles: set[str]) -> bool:
+    """True when *alias* is a work title or a longer elaboration of one."""
+    normalised = _normalise_label(str(alias or "")).casefold()
+    if not normalised:
+        return False
+    if normalised in work_titles:
+        return True
+    alias_tokens = set(re.findall(r"[\u0590-\u05ff]{2,}", normalised))
+    alias_acro = set(_HE_ACRONYM_RE.findall(normalised))
+    for work in work_titles:
+        if len(work) < 4:
+            continue
+        if work in normalised:
+            return True
+        work_tokens = set(re.findall(r"[\u0590-\u05ff]{2,}", work))
+        work_acro = set(_HE_ACRONYM_RE.findall(work))
+        if work_tokens and work_tokens <= alias_tokens:
+            return True
+        # ``פרוש רש"י`` vs ``פרוש התורה לרש"י`` — shared acronym (+ optional
+        # proclitic ל) and a shared content token; alias is longer.
+        if (
+            work_acro
+            and any(acro in normalised for acro in work_acro)
+            and (work_tokens & alias_tokens)
+            and len(normalised) > len(work)
+        ):
+            return True
+    return False
 
 
 def _strip_work_titles_from_aliases(
@@ -74,6 +110,18 @@ def _strip_work_titles_from_aliases(
 ) -> None:
     """Drop aliases that name a contained/related work, not this manuscript."""
     work_titles = _work_titles_for_record(record)
+    for evidence in getattr(item, "work_candidate_evidence", None) or []:
+        if isinstance(evidence, dict):
+            text = _normalise_label(str(evidence.get("title") or evidence.get("name") or ""))
+            if text:
+                work_titles.add(text.casefold())
+    for statement in item.statements or []:
+        if getattr(statement, "property_id", None) != "P1574":
+            continue
+        value = getattr(statement, "value", None)
+        if isinstance(value, str) and value.startswith("__LOCAL:"):
+            tail = value.rsplit(":", 1)[-1].replace("_", " ")
+            work_titles.add(_normalise_label(tail).casefold())
     if not work_titles or not item.aliases:
         return
     for lang, values in list(item.aliases.items()):
@@ -81,7 +129,7 @@ def _strip_work_titles_from_aliases(
             continue
         kept = [
             alias for alias in values
-            if _normalise_label(str(alias)).casefold() not in work_titles
+            if not _alias_names_work_title(str(alias), work_titles)
         ]
         if kept:
             item.aliases[lang] = kept

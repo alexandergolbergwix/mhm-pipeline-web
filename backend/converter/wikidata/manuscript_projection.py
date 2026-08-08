@@ -86,6 +86,55 @@ def _http_url_or_none(value: object) -> str | None:
     return text if text.lower().startswith(("http://", "https://")) else None
 
 
+# Catalogue digital URLs often embed a shelfmark token
+# (``…FullDisplay.aspx?ref=Or_12354``). When that token disagrees with
+# this manuscript's own P217 / shelfmark, the URL is cross-record
+# contamination and must not become public P973 (export-35 / W-174).
+_URL_SHELFMARK_REF_RE = re.compile(r"[?&]ref=([^&#]+)", re.IGNORECASE)
+_URL_SHELFMARK_PATH_RE = re.compile(
+    r"/(?:mss|manuscripts)/([^&#/?]+)",
+    re.IGNORECASE,
+)
+_URL_SHELFMARK_PATH_NOISE = frozenset({
+    "fulldisplay.aspx", "default.aspx", "viewer", "viewer.aspx",
+})
+
+
+def _norm_shelfmark_token(value: object) -> str:
+    return re.sub(r"[^0-9a-z\u0590-\u05ff]", "", str(value or "").casefold())
+
+
+def _shelfmark_refs_from_url(url: str) -> list[str]:
+    refs = [m.group(1) for m in _URL_SHELFMARK_REF_RE.finditer(str(url or ""))]
+    if refs:
+        return refs
+    out: list[str] = []
+    for match in _URL_SHELFMARK_PATH_RE.finditer(str(url or "")):
+        token = match.group(1)
+        if token.casefold() in _URL_SHELFMARK_PATH_NOISE:
+            continue
+        out.append(token)
+    return out
+
+
+def catalogue_url_agrees_with_shelfmark(url: str, shelfmark: str) -> bool:
+    """False when *url* embeds a shelfmark/ref that disagrees with *shelfmark*."""
+    sm = _norm_shelfmark_token(shelfmark)
+    if not sm:
+        return True
+    refs = _shelfmark_refs_from_url(url)
+    if not refs:
+        return True
+    for raw in refs:
+        ref = _norm_shelfmark_token(raw)
+        if not ref or len(ref) < 3:
+            continue
+        if sm == ref or sm in ref or ref in sm:
+            return True
+        return False
+    return True
+
+
 def _place_qid_for_label(place_name: str, kima_uri: str | None = None) -> str | None:
     """Resolve a place label to a Wikidata QID, with audited overrides."""
     key = str(place_name or "").strip().casefold()
@@ -122,13 +171,13 @@ def _current_holder_qid(record: dict[str, object], holder_names: list[str]) -> s
         # One audited table, not a hand-rolled chain of four (Rule W-143).
         # An institution it cannot resolve unambiguously abstains — it never
         # falls back to NLI (Rule W-75) or guesses (Rule W-84's reasoning).
+        # Fail closed: only the audited holding table may name P195
+        # (Rule W-143 / W-174). Contributor/authority QIDs are not a
+        # back door — they were how a Leeds MS could pick up a foreign
+        # library QID from an unmatched authority payload.
         resolved = institution_qid(name)
         if resolved:
             return resolved
-        for key in ("wikidata_qid", "existing_qid", "qid"):
-            qid = extract_wikidata_qid(str(contributor.get(key) or ""))
-            if qid and _QID_RE.fullmatch(qid):
-                return qid
     for match in record.get("marc_authority_matches") or []:
         if not isinstance(match, dict):
             continue
@@ -138,11 +187,9 @@ def _current_holder_qid(record: dict[str, object], holder_names: list[str]) -> s
             continue
         if wanted and name.casefold() not in wanted:
             continue
-        qid = extract_wikidata_qid(
-            str(match.get("wikidata_qid") or (match.get("payload") or {}).get("wikidata_qid") or "")
-        )
-        if qid and _QID_RE.fullmatch(qid):
-            return qid
+        resolved = institution_qid(name)
+        if resolved:
+            return resolved
     return None
 
 
@@ -498,8 +545,12 @@ class ManuscriptProjectionMixin:
         # ── Digital access ───────────────────────────────────────
         # 856$u reaches us quote-wrapped and occasionally holds prose rather
         # than a link; a url-typed claim must be a real URL (Rule W-140).
+        # Cross-record 856 links whose embedded ref ≠ this MS shelfmark are
+        # dropped (export-35 / Rule W-174) — HMO bridge P973 stays.
         digital_url = _http_url_or_none(record.get("digital_url"))
-        if digital_url:
+        if digital_url and catalogue_url_agrees_with_shelfmark(
+            digital_url, shelfmark,
+        ):
             item.statements.append(
                 WikidataStatement(
                     property_id=P_DESCRIBED_AT_URL,
@@ -987,5 +1038,12 @@ class ManuscriptProjectionMixin:
             for statement in item.statements
             if statement.property_id not in {"P7535", "P5008", "P17", "P131", "P50"}
         ]
+
+        # Re-run after P1574 / work_candidate_evidence exist — early label
+        # pass cannot see contained-work titles that only appear later.
+        from converter.wikidata.manuscript_metadata import (  # noqa: PLC0415
+            _strip_work_titles_from_aliases,
+        )
+        _strip_work_titles_from_aliases(item, record)
 
         return item
