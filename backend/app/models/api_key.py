@@ -1,4 +1,4 @@
-"""Per-user encrypted API key store (Gemini, Wikidata, Wikibase bot password).
+"""Per-user encrypted API key store (Gemini, Wikidata live/test, Hugging Face).
 
 Envelope encryption — see :mod:`app.crypto.secrets`. The wrapping key is
 the user's *password-derived* KEK, which only exists for the duration of

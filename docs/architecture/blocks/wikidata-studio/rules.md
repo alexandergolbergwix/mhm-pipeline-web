@@ -45,11 +45,14 @@
     (Rule W-106).
     A stale cache is served with `cache_stale=true`, not silently rebuilt.
     *Why:* Heroku's 30 s router timeout, and passive page loads must not spawn surprise job-tray banners.
-12. **R12 — Live uploads use the curator's own encrypted Wikidata token**
-    (Settings → `_unwrap_user_secret`), never a shared credential. Both
-    `POST /jobs` (`wikidata_upload`) and `POST …/wikidata-studio/upload`
-    enqueue only — never run `upload_items` on the request path (Rule W-107).
-    *Why:* attribution / authorship plus Heroku H12 on sequential writes.
+12. **R12 — Live/test uploads use the curator's own encrypted Wikidata token**
+    (Settings → `_unwrap_user_secret`), never a shared credential. Target
+    `test` unwraps `wikidata_test` (test.wikidata.org bot); `live` unwraps
+    `wikidata`. Both `POST /jobs` (`wikidata_upload`) and
+    `POST …/wikidata-studio/upload` enqueue only — never run `upload_items`
+    on the request path (Rule W-107 / W-178).
+    *Why:* attribution / authorship plus Heroku H12 on sequential writes;
+    production bot passwords do not authenticate on test.wikidata.org.
 13. **R13 — Wikidata Studio parity with HMO review surface (Rule W-57).**
     Merged read model (`fetch_merged_wikidata_items`), durable
     `wikidata_upload` audit rows, global QID ledger + adopt semantics,
@@ -588,3 +591,17 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `test_wikidata_export36_w176.py`.
     *Why:* export-36 Mode-β partialled seven MSS solely for second aliases
     naming contained works.*
+
+80. **R80 — Upload natives MUST carry build-adopted QIDs (Rule W-177).**
+    `_build_native_items` ends with `_apply_cached_qid_adoption_to_native`
+    (Studio-cache `existing_qid` overlay + probe-cache adoption). Regression:
+    `test_wikidata_upload_qid_hydrate.py`.
+    *Why:* export-37 showed 13 on-Wikidata UPDATEs while upload SPARQL-
+    reconciled them as CREATE and fail-closed on WDQS.*
+
+81. **R81 — Test vs live Wikidata Settings secrets (Rule W-178).**
+    `wikidata_test` for `upload_target=test`; `wikidata` for live. Settings
+    UI stores both; upload/push fail closed with a target-specific message
+    when the matching secret is missing.
+    *Why:* production OAuth/bot logged into test as anonymous
+    (`Login failed. An anonymous token was returned`).*

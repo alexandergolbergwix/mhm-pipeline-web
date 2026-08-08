@@ -34,13 +34,17 @@ router = APIRouter(prefix="/me/api-keys", tags=["api-keys"])
 KeyName = Literal[
     "gemini",
     "wikidata",
+    "wikidata_test",
     "huggingface",
 ]
-_VALID_KEYS: set[str] = {
+# Display / list order — live Wikidata then test.wikidata.org bot.
+_KEY_ORDER: tuple[str, ...] = (
     "gemini",
     "wikidata",
+    "wikidata_test",
     "huggingface",
-}
+)
+_VALID_KEYS: set[str] = set(_KEY_ORDER)
 
 
 class ApiKeyStatus(BaseModel):
@@ -70,7 +74,7 @@ async def list_keys(
             last_used_at=by_name[name].last_used_at if name in by_name else None,
             created_at=by_name[name].created_at if name in by_name else None,
         )
-        for name in sorted(_VALID_KEYS)
+        for name in _KEY_ORDER
     ]
 
 

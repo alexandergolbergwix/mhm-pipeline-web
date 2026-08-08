@@ -1538,11 +1538,20 @@ async def push_wikidata_item(
     if item is None:
         raise HTTPException(status_code=404, detail=f"unknown local_id {local_id!r}")
 
-    token = await _unwrap_user_secret(db, auth, "wikidata")
+    token = await _unwrap_user_secret(
+        db, auth, wikidata_upload.wikidata_secret_key_for_target(upload_target),
+    )
     if not token:
+        if upload_target == wikidata_upload.UPLOAD_TARGET_TEST:
+            detail = (
+                "Test push requires a Wikidata *test* bot password in Settings "
+                "(test.wikidata.org)."
+            )
+        else:
+            detail = "Live push requires a Wikidata (live) bot password in Settings."
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Live push requires a Wikidata token in Settings.",
+            detail=detail,
         )
 
     await db.commit()
@@ -2351,6 +2360,9 @@ async def _build_native_items(
             ov = overrides.get(item.local_id)
             if ov:
                 wikidata_studio._apply_override(item, ov)
+        await _apply_cached_qid_adoption_to_native(
+            db, run_id, approved_only=approved_only, source=source, native=native,
+        )
         return native
     matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
 
@@ -2388,7 +2400,11 @@ async def _build_native_items(
         overrides=overrides,
         return_native=True,
     )
-    return result.get("native_items") or []
+    native = result.get("native_items") or []
+    await _apply_cached_qid_adoption_to_native(
+        db, run_id, approved_only=approved_only, source=source, native=native,
+    )
+    return native
 
 
 async def _load_marc_records_for_run(db: AsyncSession, run_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -3076,6 +3092,57 @@ async def _adopt_probed_duplicate_qids(
         if qid and not str(getattr(item, "existing_qid", "") or "").strip():
             item.existing_qid = qid
     return len(adopted)
+
+
+async def _apply_cached_qid_adoption_to_native(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    *,
+    approved_only: bool,
+    source: str,
+    native: list[Any],
+) -> int:
+    """Stamp build/verify-adopted QIDs onto re-projected upload natives (Rule W-177).
+
+    Build persists W-168 adoption into ``WikidataStudioCache.result_items``, but
+    upload rebuilds natives from HMO/legacy without reading that cache — so the
+    13 identifier-matched UPDATEs looked correct on export while upload SPARQL-
+    reconciled them as CREATE and fail-closed on WDQS. Overlay the Studio cache
+    first, then re-apply probe-cache adoption for anything still CREATE.
+    """
+    if not native:
+        return 0
+    stamped = 0
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+    by_id: dict[str, str] = {}
+    if cached is not None and isinstance(cached.result_items, list):
+        for raw in cached.result_items:
+            if not isinstance(raw, dict):
+                continue
+            lid = str(raw.get("local_id") or "").strip()
+            qid = str(raw.get("existing_qid") or "").strip()
+            if lid and qid:
+                by_id[lid] = qid
+    for item in native:
+        if str(getattr(item, "existing_qid", "") or "").strip():
+            continue
+        lid = str(getattr(item, "local_id", "") or "").strip()
+        qid = by_id.get(lid)
+        if qid:
+            item.existing_qid = qid
+            stamped += 1
+
+    serialised: list[dict[str, Any]] = []
+    for item in native:
+        row = wikidata_studio._serialise_item(item)
+        lid = str(getattr(item, "local_id", "") or row.get("local_id") or "").strip()
+        row["local_id"] = lid
+        row["_local_id"] = lid
+        if not str(row.get("existing_qid") or "").strip():
+            row["existing_qid"] = getattr(item, "existing_qid", None)
+        serialised.append(row)
+    adopted = await _adopt_probed_duplicate_qids(serialised, native)
+    return stamped + adopted
 
 
 async def _upsert_studio_cache(

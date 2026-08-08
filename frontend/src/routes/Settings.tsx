@@ -17,8 +17,21 @@ const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
     hint: "Used by the AI-verification step. Get one at aistudio.google.com/app/apikey.",
   },
   wikidata: {
-    label: "Wikidata token",
-    hint: "Bot password (User@Bot:hex) or OAuth credentials for live Wikidata upload.",
+    label: "Wikidata (live) bot password",
+    hint: (
+      "For upload target “live” (www.wikidata.org). Format: " +
+      "Username@BotName:password from Special:BotPasswords on wikidata.org, " +
+      "or OAuth credentials."
+    ),
+  },
+  wikidata_test: {
+    label: "Wikidata (test) bot password",
+    hint: (
+      "For upload target “test” (test.wikidata.org). Create a separate bot at " +
+      "test.wikidata.org/wiki/Special:BotPasswords — production bots do not " +
+      "log into test. Format: Username@BotName:password " +
+      "(e.g. Alexander Goldberg IL@MHMPipelineTest:…)."
+    ),
   },
   huggingface: {
     label: "Hugging Face token",
@@ -71,7 +84,7 @@ export default function Settings() {
         <Glass as="section" className="p-6 space-y-4">
           <div>
             <div className="kicker">Encrypted API keys · zero-knowledge</div>
-            <h3 className="text-lg font-medium">Gemini · Wikidata · Hugging Face</h3>
+            <h3 className="text-lg font-medium">Gemini · Wikidata live/test · Hugging Face</h3>
             <p className="muted text-sm leading-relaxed mt-2">
               Each key is wrapped with a Data Encryption Key; the DEK is
               wrapped with the encryption key derived from your password

@@ -74,6 +74,18 @@ VALID_UPLOAD_TARGETS = frozenset({
     UPLOAD_TARGET_DRY_RUN, UPLOAD_TARGET_TEST, UPLOAD_TARGET_LIVE,
 })
 
+# Per-user Settings key names (``api_keys.key_name``). Bot passwords are
+# per-wiki — live and test must not share one secret.
+WIKIDATA_SECRET_LIVE = "wikidata"
+WIKIDATA_SECRET_TEST = "wikidata_test"
+
+
+def wikidata_secret_key_for_target(upload_target: str | None) -> str:
+    """Return the Settings secret name for this upload target."""
+    if (upload_target or "").strip().lower() == UPLOAD_TARGET_TEST:
+        return WIKIDATA_SECRET_TEST
+    return WIKIDATA_SECRET_LIVE
+
 
 @dataclass(frozen=True)
 class UploadMode:

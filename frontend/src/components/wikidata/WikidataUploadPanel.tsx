@@ -67,12 +67,12 @@ const TARGET_OPTIONS: Array<{
   {
     value: "test",
     label: "Wikidata test",
-    hint: "Write to test.wikidata.org",
+    hint: "Write to test.wikidata.org (uses Settings → Wikidata test bot)",
   },
   {
     value: "live",
     label: "Live Wikidata",
-    hint: "Write to wikidata.org",
+    hint: "Write to wikidata.org (uses Settings → Wikidata live bot)",
   },
 ];
 

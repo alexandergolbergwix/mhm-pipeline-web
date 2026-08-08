@@ -1821,3 +1821,54 @@ W-164 intends the **245** as the searchable alias — not every note title.
    unchanged fulls.
 
 Tests: `backend/tests/unit/test_wikidata_export36_w176.py`.
+
+
+### Rule W-177 — Upload natives MUST carry build-adopted QIDs (added 2026-08-08)
+
+Export-37 on canary `48ba6c13` listed **13** items with `on_wikidata` /
+`existing_qid` (identifier-matched UPDATEs from Rule W-168). Upload then
+blocked most of them with “Reconciliation lookup could not be completed …
+refusing to CREATE” — WDQS timeouts — as if they were still CREATEs.
+
+Root cause: build *does* adopt into `WikidataStudioCache.result_items` via
+`_adopt_probed_duplicate_qids`, and export/list read that cache (plus read-path
+adoption). But `wikidata_upload` rebuilds **native** items through
+`_build_native_items` from HMO/legacy projection and never reapplied the
+cached QIDs. `_prepare_for_upload` only skips SPARQL when `existing_qid` is
+already set, so the upload path re-hit WDQS and fail-closed.
+
+**Invariants:**
+
+1. After `_build_native_items` projects natives, it MUST run
+   `_apply_cached_qid_adoption_to_native`: overlay `existing_qid` from the
+   Studio cache by `local_id`, then re-apply probe-cache adoption
+   (`_adopt_probed_duplicate_qids`) for anything still CREATE.
+2. No live WDQS on that hydrate (Rule W-119) — cache + probe answers only.
+3. Do not overwrite a native that already carries `existing_qid`.
+4. Build remains the writer of the durable adoption into
+   `result_items`; upload is a reader that must not drop it.
+
+Tests: `backend/tests/unit/test_wikidata_upload_qid_hydrate.py`.
+
+
+### Rule W-178 — Test and live Wikidata credentials MUST be separate Settings secrets (added 2026-08-08)
+
+Canary upload to `test.wikidata.org` failed with
+`Login failed. An anonymous token was returned` while the curator’s production
+OAuth / bot password was stored under the single Settings key `wikidata`.
+MediaWiki bot passwords and OAuth consumers are **per wiki** — a
+www.wikidata.org secret does not authenticate against
+`https://test.wikidata.org/w/api.php`.
+
+**Invariants:**
+
+1. Settings stores two Wikidata secrets: `wikidata` (live) and
+   `wikidata_test` (test.wikidata.org).
+2. `upload_target=test` / single-item push `test` unwraps `wikidata_test`
+   only — never silently falls back to the live secret.
+3. `upload_target=live` unwraps `wikidata`.
+4. Missing secret → 400 with a target-specific Settings pointer.
+5. Format remains `Username@BotName:password` (or OAuth/JWT as already
+   supported by `WikidataUploader`).
+
+Tests: `backend/tests/unit/test_wikidata_secret_keys.py`.

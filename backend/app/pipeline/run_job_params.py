@@ -146,14 +146,33 @@ async def prepare_job_params(
         merged["dry_run"] = mode.dry_run
         merged["upload_target"] = mode.target
 
-        token = await _unwrap_user_secret(db, auth, "wikidata")
+        secret_name = wikidata_upload.wikidata_secret_key_for_target(mode.target)
+        token = await _unwrap_user_secret(db, auth, secret_name)
         if not mode.dry_run and not token:
+            if mode.is_test:
+                detail = (
+                    "Test upload requires a Wikidata *test* bot password in "
+                    "Settings (test.wikidata.org → Special:BotPasswords). "
+                    "Production Wikidata credentials do not log into test."
+                )
+            else:
+                detail = (
+                    "Live upload requires a Wikidata (live) bot password in "
+                    "Settings."
+                )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Live upload requires a Wikidata token in Settings.",
+                detail=detail,
             )
         # Dry-run also carries the token when present so ownership classify
-        # (own vs foreign) matches live policy (Rule W-99).
+        # (own vs foreign) matches live policy (Rule W-99). Prefer the live
+        # secret for dry-run previews; fall back to test if only that is set.
+        if mode.dry_run and not token:
+            token = await _unwrap_user_secret(
+                db, auth, wikidata_upload.WIKIDATA_SECRET_LIVE,
+            ) or await _unwrap_user_secret(
+                db, auth, wikidata_upload.WIKIDATA_SECRET_TEST,
+            )
         if token:
             merged["_wikidata_token"] = token
 

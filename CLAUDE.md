@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-176)
+## Architectural rules (W-1…W-178)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -127,6 +127,8 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-174** — Catalogue P973 shelfmark gate; Hebrew restoration brackets; audited P195 gloss; work-title alias elaborations
 - **W-175** — Sticky-full on review sanitise; gloss labels out of cache keys; Verify non-passing default; schema-salt policy
 - **W-176** — Under designation labels, only the 245/P1476 title may remain as a manuscript alias
+- **W-177** — Upload natives MUST carry build-adopted QIDs
+- **W-178** — Test and live Wikidata credentials MUST be separate Settings secrets
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

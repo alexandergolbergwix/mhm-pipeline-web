@@ -30,8 +30,9 @@
 1. UI: Wikidata Studio page → "Dry run" (starts a `wikidata_upload` job with
    `dry_run: true`). API: `POST /api/runs/{id}/wikidata-studio/upload?dry_run=true`.
 2. Prefer having a Wikidata token in Settings so ownership (own vs foreign) is
-   classified the same as live (Rule W-99). Without a token, existing QIDs
-   block unless a QID-bound foreign accept is set.
+   truthful on dry-run (Rule W-99). Use **Wikidata (test) bot password** for
+   `upload_target=test` and **Wikidata (live)** for live (Rule W-178).
+   Without a token, existing QIDs block unless a QID-bound foreign accept is set.
 3. Read per-item outcomes: `exists` (would UPDATE own item), `would_adopt`
    (ledger/reconcile match or accepted foreign), `success` (would CREATE),
    `skipped`/`blocked` (foreign without accept, ownership unknown, reconcile

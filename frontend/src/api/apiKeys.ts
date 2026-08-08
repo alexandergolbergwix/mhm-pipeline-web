@@ -3,6 +3,7 @@ import { api } from "@/api/client";
 export type ApiKeyName =
   | "gemini"
   | "wikidata"
+  | "wikidata_test"
   | "huggingface";
 
 export interface ApiKeyStatus {
