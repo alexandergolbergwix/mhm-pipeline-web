@@ -81,7 +81,9 @@ class TestProjectionKeepsTheMarcHeading:
         assert people, "expected a person item"
         person = people[0]
         assert person.labels.get("he") != _MAZAL_ROW
-        assert _MAZAL_ROW in person.aliases.get("he", [])
+        # Rule W-172: a different-person authority heading must not become an
+        # alias either (export-33 Person_150 pollution).
+        assert _MAZAL_ROW not in person.aliases.get("he", [])
         assert person.heading_mismatch
         assert "given name" in str(person.heading_mismatch["reason"])
 
@@ -186,7 +188,8 @@ class TestOneFidelityDecisionPerRow:
     def test_a_refused_row_supplies_neither_label(self) -> None:
         person = self._person("מולכו, שרה", "Molho, Sara", "מולכו, שבתי")
         assert person.labels.get("en") != "Sara Molho"
-        assert "Sara Molho" in person.aliases.get("en", [])
+        # Rule W-172: refused Latin heading is omitted from aliases too.
+        assert "Sara Molho" not in person.aliases.get("en", [])
         assert person.heading_mismatch
 
     def test_the_two_label_slots_never_name_different_people(self) -> None:

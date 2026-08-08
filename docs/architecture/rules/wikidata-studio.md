@@ -1680,3 +1680,34 @@ allowlists.
 
 Tests: `backend/tests/unit/test_wikidata_corpus_scale_w171.py`.
 
+
+### Rule W-172 — Judge fixture keeps quantity unit + export-33 hygiene (added 2026-08-08)
+
+Export-33 on canary `48ba6c13` after W-171: **239 full / 12 partial / 1 fail**.
+Nine manuscripts already carried `P1104` with `unit=Q107256474` (leaf), but
+`eval-agent/eval_agent/ingest/wikidata_items.py::compact_statements` **dropped
+`unit`** when building the judge prompt, so DeepSeek invented “missing unit
+qualifier” and partialled correct claims. Backend
+`wikidata_verify_fixture.fingerprint_statements` already kept `unit` — the
+eval-agent re-compact was the hole.
+
+**Invariants:**
+
+1. **Judge statements must include `unit` / `value_type`** whenever present on
+   the Studio statement. The Wikibase quantity `unit` field **is** the unit;
+   never demand a separate unit qualifier.
+2. **Hebrew manuscript descriptions omit shelfmark** so `descriptions.he` cannot
+   equal the holder+shelfmark `labels.he` when the century fragment is absent.
+3. **P1684** — scholarly catalog attribution (`לפי דעת`, `מיוסד על`, `וראה:`)
+   is a catalog note, not an inscription.
+4. **Person aliases** — authority preferred names and seeded aliases that fail
+   `heading_matches` against the item label are omitted (no different-person
+   alias pollution).
+5. **Facsimile works** — descriptions use “printed facsimile edition”, not
+   “preserved in a Hebrew manuscript”.
+6. **Mode-β** — do not invent that `existing_qid` is a disambiguation page
+   without `P31=Q4167410` in evidence (export-33 Person_71 / Q209579 is a
+   human, Victor Amadeus II).
+7. Schema / skill salt **`w172_v1`**.
+
+Tests: `backend/tests/unit/test_wikidata_export33_w172.py`.

@@ -1,13 +1,13 @@
 {
   "id": "wikidata_manuscripts",
-  "version": "w171_v1",
+  "version": "w172_v1",
   "title": "WikiProject Manuscripts + HMO→Wikidata projection skill",
   "goal": "Judge whether an item is safe as a public Wikidata manuscript/person/work item using ALL supplied evidence channels (MARC + VIAF + Mazal + existing Wikidata + HMO Wikibase) under the WikiProject Manuscripts Data Model.",
   "always": [
     "Manuscript item = physical carrier. Contained texts are exemplar of (P1574) → written work (Q47461344). NEVER put work authors as P50 on the manuscript.",
     "Default P31 for manuscripts is manuscript (Q87167). Allowed replacements/additions when evidenced: illuminated manuscript (Q48498), palimpsest (Q274076 — never Q179808), manuscript fragment (Q30103158), Hebrew manuscript (Q115160920), composite manuscript (Q33308141), palm-leaf (Q1641020). Printed facsimile editions may use book (Q571) with semantic_type=printed_facsimile — that is type_ok.",
     "Label priority (WPM fingerprint): (1) familiar trivial name → (2) canonical catalog code for a group → (3) library signature (city · institution · fonds · shelfmark). Holder+shelfmark labels are correct when MARC supports them; description must not merely repeat the label.",
-    "Folio/page counts use P1104 (number of pages) with an explicit unit (leaf Q107256474 or page Q1069725) — never P7416 as a quantity. Honour the unit before calling a leaf count wrong.",
+    "Folio/page counts use P1104 (number of pages) with an explicit quantity `unit` field (leaf Q107256474 or page Q1069725) — never P7416 as a quantity. The Wikibase quantity `unit` IS the unit; do NOT demand a separate unit qualifier, and never partial for 'missing unit' when `unit` is already set.",
     "Absent claims are never defects: do not partial an item solely for missing P11603/P195/P1574.",
     "Trust supplied value_label / verify_evidence.value_labels; never invent institution names from QID memory.",
     "P1476 may equal a linked work title on a manuscript; do not demand shelfmark substitution.",

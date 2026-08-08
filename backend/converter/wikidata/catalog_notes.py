@@ -27,6 +27,16 @@ def is_catalog_note_placeholder(value: object) -> bool:
     # Compound catalog rows: ``רשומה זמנית | נושא נוסף: …`` (Rule W-170).
     if "רשומה זמנית" in folded or "temporary record" in folded:
         return True
+    # Scholarly catalog attribution / bibliography — not text written on the
+    # object (export-33 P1684 false colophons / Rule W-172).
+    if (
+        "לפי דעת" in folded
+        or "מיוסד על" in folded
+        or "according to" in folded
+        or re.search(r"(?:^|[\s|])(?:וראה|ראה)\s*:", text)
+        or re.search(r"\b(?:see|cf\.)\s*:", folded)
+    ):
+        return True
     return bool(
         re.match(r"^(?:נושא נוסף|additional subject|catalog(?:ue|ing)? note)\s*[:：]", folded)
         or "book suggested to google" in folded

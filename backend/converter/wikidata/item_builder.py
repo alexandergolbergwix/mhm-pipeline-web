@@ -590,6 +590,28 @@ def _build_work_description(author_name: str | None, century: str | None) -> str
     return _cap_description(" ".join(parts))
 
 
+def _build_work_description_for_record(
+    author_name: str | None,
+    century: str | None,
+    source_record: dict[str, object] | None = None,
+) -> str:
+    """Work description that respects printed-facsimile source records (W-172)."""
+    if source_record is not None and _is_printed_facsimile_record(source_record):
+        parts = ["Work issued as a printed facsimile edition"]
+        if author_name:
+            cleaned = author_name.strip().rstrip(",;:")
+            if cleaned and not _has_hebrew_script(cleaned):
+                parts.append(f"by {cleaned}")
+            elif cleaned:
+                parts.append("with author recorded in the source catalogue")
+        if century:
+            ascii_century = _ascii_dates(str(century))
+            if ascii_century:
+                parts.append(f"({ascii_century})")
+        return _cap_description(" ".join(parts))
+    return _build_work_description(author_name, century)
+
+
 _ROLE_TO_LABEL: dict[str, str] = {
     "AUTHOR": "author",
     "author": "author",

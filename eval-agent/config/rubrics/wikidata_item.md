@@ -25,7 +25,7 @@ channel supports it, when a person/work/manuscript role is modeled in the
 wrong place, or when a validator issue signals a real public-data problem.
 Do not invent evidence beyond the context block.
 
-## Universal Mode-β hygiene (Rule W-171)
+## Universal Mode-β hygiene (Rule W-171 / W-172)
 
 These rules apply to **every** manuscript / person / work — never special-case
 a control number or shelfmark:
@@ -42,13 +42,21 @@ a control number or shelfmark:
    institution name from QID shape or model memory (especially never invent NLI
    for an unrelated QID).
 5. **Quantities:** when a statement carries `unit` (`mm`, leaf QID `Q107256474`,
-   page QID `Q1069725`), compare after unit conversion. Do not treat `95` with
-   unit `mm` as contradicting a MARC centimetre figure, and do not treat a leaf
-   count as “pages” when the unit is leaf.
+   page QID `Q1069725`), that field **is** the unit. Do **not** demand a
+   separate unit *qualifier*, and do **not** set `role_ok`/`overall` to
+   `partial` for “missing unit” when `unit` is already present. Compare after
+   unit conversion; do not treat `95` with unit `mm` as contradicting a MARC
+   centimetre figure, and do not treat a leaf count as “pages” when the unit
+   is leaf.
 6. **Facsimile:** when P31 is book (`Q571`) and `semantic_type` / notes indicate
    a printed facsimile, `type_ok=yes` even if `entity_type` is still
-   `manuscript` (stable upload type).
-7. **Keep hard fails** for true identity contamination (conflicting P8189),
+   `manuscript` (stable upload type). Work descriptions for facsimile source
+   records must not claim the work is “preserved in a Hebrew manuscript”.
+7. **Existing QID type:** do **not** invent that `existing_qid` is a
+   disambiguation page when `verify_evidence.wikidata_existing` does not show
+   `P31=Q4167410`. A human (`Q5`) target with matching labels is not a type
+   error solely because the name is shared by several historical figures.
+8. **Keep hard fails** for true identity contamination (conflicting P8189),
    wrong public QID links, and unsupported bad claims that are present.
 
 Evidence handling:

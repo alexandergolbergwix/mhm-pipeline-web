@@ -1527,16 +1527,24 @@ def _person_labels_and_aliases(
     if context is not None:
         match = _authority_match_for_entity(entity, context)
         if match:
+            from converter.authority.heading_fidelity import (  # noqa: PLC0415
+                heading_matches,
+            )
+
+            primary_label = labels.get("he") or labels.get("en") or ""
             for key in ("preferred_name_heb", "preferred_name_lat", "matched_name", "entity_text"):
                 pref = str(match.get(key) or "").strip()
-                if pref:
-                    _place(pref, as_alias=True)
+                if not pref:
+                    continue
+                if primary_label and not heading_matches(primary_label, pref):
+                    continue
+                _place(pref, as_alias=True)
 
     if not labels:
         labels = _route_labels_by_script(raw_labels, has_hebrew=has_hebrew)
     if not labels:
         labels = {"en": entity.local_id.replace("QDraft_", "").replace("_", " ")}
-    return labels, _dedupe_aliases(aliases, labels)
+    return labels, _filter_person_aliases(_dedupe_aliases(aliases, labels), labels)
 
 
 def _work_labels_and_aliases(
@@ -1569,16 +1577,34 @@ def _dedupe_aliases(
     out: dict[str, list[str]] = {}
     for lang, values in aliases.items():
         seen: set[str] = set()
+        kept: list[str] = []
         label = str(labels.get(lang) or "").strip()
-        cleaned: list[str] = []
-        for value in values:
-            text = str(value).strip()
+        for raw in values:
+            text = str(raw or "").strip()
             if not text or text == label or text in seen:
                 continue
             seen.add(text)
-            cleaned.append(text)
-        if cleaned:
-            out[str(lang)] = cleaned
+            kept.append(text)
+        if kept:
+            out[lang] = kept
+    return out
+
+
+def _filter_person_aliases(
+    aliases: Mapping[str, list[str]],
+    labels: Mapping[str, str],
+) -> dict[str, list[str]]:
+    """Drop aliases that name a different person than the item label (W-172)."""
+    from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
+
+    primary = str(labels.get("he") or labels.get("en") or "").strip()
+    if not primary:
+        return dict(aliases)
+    out: dict[str, list[str]] = {}
+    for lang, values in aliases.items():
+        kept = [text for text in values if heading_matches(primary, text)]
+        if kept:
+            out[lang] = kept
     return out
 
 
@@ -2202,9 +2228,10 @@ def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
     holder = _holding_institution_name(record)
     if holder:
         parts.append(HEBREW_INSTITUTION_NAMES.get(holder, holder))
-    shelfmark = str(record.get("shelfmark") or "").strip().strip('"')
-    if shelfmark:
-        parts.append(shelfmark)
+    # Do NOT append shelfmark here. The HE label already uses holder+shelfmark;
+    # repeating it made `descriptions.he` identical to `labels.he` whenever the
+    # century fragment was omitted (export-33 / Rule W-172). English descriptions
+    # also stop at holder.
     if len(parts) == 1:
         return ""
     return ", ".join(parts)
@@ -2294,7 +2321,7 @@ def _work_description_with_attestation(
     (Rule W-138).
     """
     from converter.wikidata.item_builder import (  # noqa: PLC0415
-        _build_work_description,
+        _build_work_description_for_record,
         _has_hebrew_script,
     )
 
@@ -2307,9 +2334,10 @@ def _work_description_with_attestation(
             if candidate and not _has_hebrew_script(candidate):
                 author_name = candidate
 
-    description = _build_work_description(
+    description = _build_work_description_for_record(
         author_name=author_name or None,
         century=_century_hint_from_record(marc),
+        source_record=marc,
     )
 
     # Cite the control number, not the shelfmark: it is in the item's own

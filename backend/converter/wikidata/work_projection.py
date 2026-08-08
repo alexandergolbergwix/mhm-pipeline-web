@@ -15,7 +15,7 @@ from converter.wikidata.item_builder import (
     WikidataItem,
     WikidataStatement,
     _associate_item_with_source_record,
-    _build_work_description,
+    _build_work_description_for_record,
     _extract_century_for_work,
     _has_hebrew_script,
     _normalise_label,
@@ -67,16 +67,21 @@ def _work_description_with_attestation(
 ) -> str:
     """Disambiguating work description, naming the attesting catalog record.
 
-    ``_build_work_description`` degrades to a bare "Work preserved in a Hebrew
-    manuscript" when neither author nor century is known, which disambiguates
-    nothing — 21 works shipped exactly that (Rule W-138).
+    ``_build_work_description_for_record`` degrades to a bare "Work preserved in a
+    Hebrew manuscript" when neither author nor century is known (and the source
+    is not a printed facsimile), which disambiguates nothing — 21 works shipped
+    exactly that (Rule W-138).
 
     The attestation cites the **control number**, not the shelfmark: the control
     number is in the item's own ``record_ids`` and ``P3959``, so the judge (and a
     Wikidata patroller) can verify it. Citing a shelfmark made all 105 works
     look unverifiable, because the shelfmark is not part of a work's evidence.
     """
-    description = _build_work_description(author_name=author_name, century=century)
+    description = _build_work_description_for_record(
+        author_name=author_name,
+        century=century,
+        source_record=source_record,
+    )
     control_number = str(source_record.get("_control_number") or "").strip().strip('"')
     if control_number:
         return f"{description}, attested in NLI record {control_number}"

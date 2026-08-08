@@ -544,3 +544,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     *Why:* export-32 mixed real projection defects with schema-bump
     re-judge noise; hardcoding the 18 canary IDs would not hold on ~123k
     filtered MARC rows.*
+
+75. **R75 — Judge fixture keeps quantity `unit` + export-33 hygiene (Rule W-172).**
+    `eval-agent` `compact_statements` MUST pass through `unit`/`value_type`.
+    Hebrew MS descriptions omit shelfmark; P1684 rejects scholarly catalog
+    attribution; person aliases require `heading_matches`; facsimile works
+    get facsimile descriptions; schema/skill `w172_v1`. Regression:
+    `test_wikidata_export33_w172.py`.
+    *Why:* export-33 false-partialled nine manuscripts whose P1104 already
+    had leaf unit, because the judge never saw `unit`.*

@@ -297,9 +297,9 @@ class PersonProjectionMixin:
                 _strip_person_name_qualifiers(_to_natural_name_order(pref_lat))
             )
             if not authority_heading_trusted:
-                # Searchable, but it may not speak for the item.
-                if normalized_lat:
-                    person.aliases.setdefault("en", []).append(normalized_lat)
+                # Searchable only when the authority heading still names this
+                # person; otherwise omit (Rule W-172).
+                pass
             elif _has_hebrew_script(normalized_lat) and not re.search(r"[A-Za-z]", normalized_lat):
                 if "he" not in person.labels:
                     person.labels["he"] = normalized_lat
@@ -308,7 +308,12 @@ class PersonProjectionMixin:
                 latin_token_count = len(normalized_lat.split())
                 if not (hebrew_token_count >= 3 and latin_token_count <= 1):
                     person.labels["en"] = normalized_lat
-            if original_lat and original_lat != normalized_lat and person.labels.get("en"):
+            if (
+                authority_heading_trusted
+                and original_lat
+                and original_lat != normalized_lat
+                and person.labels.get("en")
+            ):
                 person.aliases.setdefault("en", []).append(original_lat)
 
         pref_heb = pref_heb_raw
@@ -321,7 +326,11 @@ class PersonProjectionMixin:
             # `יצחק בן שלמה בן חיים גבאי` for a manuscript whose scribe MARC names
             # as `גבאי, טוביה בן חיים יצחק` — same family, different given name.
             if normalized_heb and normalized_heb != person.labels.get("he"):
-                person.aliases.setdefault("he", []).append(normalized_heb)
+                # Only demote a mismatched authority heading when it still
+                # names the same person. A different given/family name must
+                # never become an alias (export-33 Person_150 / Rule W-172).
+                if authority_heading_trusted:
+                    person.aliases.setdefault("he", []).append(normalized_heb)
             if authority_heading_trusted:
                 person.labels["he"] = normalized_heb
         if heading_mismatch_note is not None:

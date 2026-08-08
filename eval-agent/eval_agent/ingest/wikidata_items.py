@@ -101,17 +101,23 @@ def compact_statements(item: dict[str, Any], limit: int = 40) -> list[dict[str, 
     for stmt in item.get("statements") or []:
         if not isinstance(stmt, dict):
             continue
-        out.append(
-            {
-                "property": stmt.get("property") or stmt.get("property_id"),
-                "property_label": stmt.get("property_label"),
-                "value": stmt.get("value") or stmt.get("value_id"),
-                "value_label": stmt.get("value_label"),
-                "qualifiers": stmt.get("qualifiers") or [],
-                "references": stmt.get("references") or [],
-                "rank": stmt.get("rank"),
-            }
-        )
+        row: dict[str, Any] = {
+            "property": stmt.get("property") or stmt.get("property_id"),
+            "property_label": stmt.get("property_label"),
+            "value": stmt.get("value") or stmt.get("value_id"),
+            "value_label": stmt.get("value_label"),
+            "qualifiers": stmt.get("qualifiers") or [],
+            "references": stmt.get("references") or [],
+            "rank": stmt.get("rank"),
+        }
+        # Quantity unit lives on the snak (`unit`), not as a qualifier. Dropping
+        # it made judges invent "missing unit qualifier" on already-correct
+        # P1104 leaf counts (export-33 / Rule W-172).
+        for key in ("unit", "value_type", "language", "precision"):
+            val = stmt.get(key)
+            if val not in (None, ""):
+                row[key] = val
+        out.append(row)
         if len(out) >= limit:
             break
     return out
