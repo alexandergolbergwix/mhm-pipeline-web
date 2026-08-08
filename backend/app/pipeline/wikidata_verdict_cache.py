@@ -14,15 +14,22 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w174_v1 with Rule W-174: catalogue P973 shelfmark gate, Hebrew
-# bracket expansion, audited P195 value labels, work-title alias strip.
-# Prior: w173_v1 (related-works P1574 ladder + Hebrew preferred P8189 strip).
-WIKIDATA_VERDICT_SCHEMA = "w174_v1"
+# Bumped to w175_v1 with Rule W-175: sticky-full on review-table sanitise,
+# presentation labels out of cache keys, non-passing verify default.
+# Prior: w174_v1 (catalogue P973 gate + Hebrew brackets + holder gloss).
+WIKIDATA_VERDICT_SCHEMA = "w175_v1"
 WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
 
 
 FINGERPRINT_STATEMENT_LIMIT = 40
+# Cache-key projection (Rule W-175 / W-150): gloss labels are presentation
+# enrichment — stamping an audited holder name must not invalidate sticky-full.
 _FINGERPRINT_STATEMENT_KEYS = (
+    "property", "property_id",
+    "value", "value_id", "value_type", "unit", "rank",
+)
+# Judge / fixture projection still carries human-readable glosses (W-80).
+_FIXTURE_STATEMENT_KEYS = (
     "property", "property_id", "property_label",
     "value", "value_id", "value_type", "value_label", "unit", "rank",
 )
@@ -32,6 +39,7 @@ def fingerprint_statements(
     item: dict[str, Any],
     *,
     limit: int = FINGERPRINT_STATEMENT_LIMIT,
+    include_presentation_labels: bool = False,
 ) -> list[dict[str, Any]]:
     """Statement projection shared by fixtures, persist slims, and keys.
 
@@ -39,22 +47,41 @@ def fingerprint_statements(
     (Rule W-132), so the fingerprint MUST only read fields that survive
     ``slim_item_for_verdict_persist`` — otherwise the stored ``cache_key`` can
     never be reproduced and every verdict reads as stale (Rule W-136).
+
+    Presentation ``value_label`` / ``property_label`` are included only when
+    ``include_presentation_labels`` is true (judge fixtures). Cache keys omit
+    them so a gloss-only enrich cannot bust sticky-full (Rule W-175).
     """
     statements = item.get("statements")
     if not isinstance(statements, list):
         return []
+    keys = (
+        _FIXTURE_STATEMENT_KEYS if include_presentation_labels
+        else _FINGERPRINT_STATEMENT_KEYS
+    )
     rows: list[dict[str, Any]] = []
     for statement in statements[:limit]:
         if not isinstance(statement, dict):
             continue
         row = {
             key: statement.get(key)
-            for key in _FINGERPRINT_STATEMENT_KEYS
+            for key in keys
             if statement.get(key) not in (None, "")
         }
         if row:
             rows.append(row)
     return rows
+
+
+def fixture_statements(
+    item: dict[str, Any],
+    *,
+    limit: int = FINGERPRINT_STATEMENT_LIMIT,
+) -> list[dict[str, Any]]:
+    """Statement rows for the judge prompt — keeps value_label glosses."""
+    return fingerprint_statements(
+        item, limit=limit, include_presentation_labels=True,
+    )
 
 
 # Evidence channels that must NOT key a verdict.
@@ -267,6 +294,7 @@ def wikidata_verdict_query_summary(
     evaluator: str = "wikidata_item",
     marc_context: dict[str, str] | None = None,
     evidence_drop: tuple[str, ...] = _EVIDENCE_KEYS_OUTSIDE_FINGERPRINT,
+    include_presentation_labels: bool = False,
 ) -> dict[str, Any]:
     marc_slice = marc_context
     if marc_slice is None:
@@ -280,7 +308,9 @@ def wikidata_verdict_query_summary(
         "labels": item.get("labels") or {},
         "descriptions": item.get("descriptions") or {},
         "aliases": item.get("aliases") or {},
-        "statements": fingerprint_statements(item),
+        "statements": fingerprint_statements(
+            item, include_presentation_labels=include_presentation_labels,
+        ),
         "existing_qid": item.get("existing_qid"),
         "validation_issues": normalise_shacl_issues(item.get("validation_issues") or []),
         "authority_evidence": item.get("authority_evidence") or [],
@@ -431,6 +461,21 @@ def sanitise_stale_wikidata_verdict(
         return {**without_evidence, "cache_key": expected}
 
     if stored.get("cache_key_version"):
+        # Sticky-full (W-171 / W-175): a schema-only or presentation-label
+        # drift must not blank the review table for an unchanged full verdict.
+        if cached_verdict_is_sticky_full(
+            stored,
+            item,
+            judge_model=model,
+            evaluator_id=eval_id,
+        ):
+            return {
+                **stored,
+                "cache_key": expected,
+                "claims_fingerprint": wikidata_claims_fingerprint(
+                    item, model, evaluator=eval_id, marc_context=marc_context,
+                ),
+            }
         return None
 
     legacy_item = {**item, "record_ids": _record_ids(item)}
@@ -444,6 +489,19 @@ def sanitise_stale_wikidata_verdict(
         ),
     )
     if legacy is None:
+        if cached_verdict_is_sticky_full(
+            stored,
+            item,
+            judge_model=model,
+            evaluator_id=eval_id,
+        ):
+            return {
+                **stored,
+                "cache_key": expected,
+                "claims_fingerprint": wikidata_claims_fingerprint(
+                    item, model, evaluator=eval_id, marc_context=marc_context,
+                ),
+            }
         return None
     return {
         **legacy,
@@ -556,12 +614,16 @@ def cached_verdict_is_sticky_full(
         return True
     # Schema-agnostic claims match: allow sticky across non-payload schema bumps.
     claims_now = wikidata_claims_fingerprint(item, judge_model, evaluator=evaluator_id)
+    claims_legacy = wikidata_claims_fingerprint(
+        item, judge_model, evaluator=evaluator_id,
+        include_presentation_labels=True,
+    )
     claims_stored = str(
         verdict.get("claims_fingerprint")
         or envelope.get("claims_fingerprint")
         or ""
     ).strip()
-    if claims_stored and claims_stored == claims_now:
+    if claims_stored and claims_stored in {claims_now, claims_legacy}:
         return True
     return False
 
@@ -572,10 +634,12 @@ def wikidata_claims_fingerprint(
     *,
     evaluator: str = "wikidata_item",
     marc_context: dict[str, str] | None = None,
+    include_presentation_labels: bool = False,
 ) -> str:
     """Strict fingerprint with the schema salt removed (sticky-full helper)."""
     summary = wikidata_verdict_query_summary(
         item, judge_model, evaluator=evaluator, marc_context=marc_context,
+        include_presentation_labels=include_presentation_labels,
     )
     summary = dict(summary)
     summary.pop("wikidata_verdict_schema", None)

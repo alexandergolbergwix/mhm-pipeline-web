@@ -82,6 +82,17 @@ export function WikidataItemsPanel({
       .map((item) => item.local_id as string);
   }, [build?.items, filteredIds]);
 
+  const nonPassingIds = useMemo(() => {
+    const visible = new Set(filteredIds);
+    return (build?.items ?? [])
+      .filter((item) => {
+        if (!item.local_id || !visible.has(item.local_id)) return false;
+        const overall = String(item.ai_verdict?.overall ?? "").toLowerCase();
+        return overall !== "full" && overall !== "pass";
+      })
+      .map((item) => item.local_id as string);
+  }, [build?.items, filteredIds]);
+
   const pendingVisibleIds = useMemo(() => {
     const visible = new Set(filteredIds);
     return (build?.items ?? [])
@@ -372,12 +383,23 @@ export function WikidataItemsPanel({
           </button>
           <button
             type="button"
+            className="button-primary text-xs"
+            disabled={!nonPassingIds.length}
+            data-testid="wikidata-items-verify-nonpassing"
+            title="Re-judge only items that are not already full/pass. Unchanged fulls stick across schema bumps (Rule W-175)."
+            onClick={() => openVerify(nonPassingIds, "audit_wikidata_item")}
+          >
+            Verify non-passing ({nonPassingIds.length})
+          </button>
+          <button
+            type="button"
             className="button-ghost text-xs"
             disabled={!filteredIds.length}
             data-testid="wikidata-items-verify-ai"
+            title="Judge every currently filtered row (including fulls that sticky-full would otherwise skip only when override-cache is on)."
             onClick={() => openVerify(filteredIds, "audit_wikidata_item")}
           >
-            Verify with AI ({filteredIds.length})
+            Verify visible ({filteredIds.length})
           </button>
           <button
             type="button"

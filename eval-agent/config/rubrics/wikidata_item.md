@@ -25,7 +25,7 @@ channel supports it, when a person/work/manuscript role is modeled in the
 wrong place, or when a validator issue signals a real public-data problem.
 Do not invent evidence beyond the context block.
 
-## Universal Mode-β hygiene (Rule W-171 / W-172 / W-174)
+## Universal Mode-β hygiene (Rule W-171 / W-172 / W-174 / W-175)
 
 These rules apply to **every** manuscript / person / work — never special-case
 a control number or shelfmark:
@@ -74,6 +74,10 @@ a control number or shelfmark:
 12. **Provider judge failures** (`verification_failed` / HTTP 400 content
     filter) are **not** an assessment of the item — they must be re-run, not
     treated as `partial`/`fail` projection defects.
+13. **Sticky-full durability:** a prior `full`/`pass` on unchanged claims is
+    still valid after a schema-salt bump or gloss-only `value_label` enrich.
+    Do not treat a blank review-table pill as proof the item must be re-judged
+    when sticky-full would keep it.
 
 Evidence handling:
 

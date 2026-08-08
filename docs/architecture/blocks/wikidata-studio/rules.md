@@ -573,3 +573,18 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     *Why:* export-35 partialled a BL cross-record 856 URL, a Leeds holder
     the judge misread as Robarts, work-title aliases, and a mangled Hebrew
     personal name.*
+
+78. **R78 — Sticky-full survives schema bumps + non-passing verify default (Rule W-175).**
+    `sanitise_stale_wikidata_verdict` reuses sticky-full; cache keys omit
+    presentation `value_label`/`property_label` (fixtures keep them);
+    schema salt only for Mode-β rubric/skill changes; Studio primary
+    button is Verify non-passing; schema/skill `w175_v1`.
+    *Why:* each W-171…W-174 salt bump blanked every pill and forced
+    full-corpus re-verify for unchanged fulls.*
+
+79. **R79 — Designation labels keep only the 245 as alias (Rule W-176).**
+    Under holder+shelfmark / `כתב יד…` labels, drop non-245 aliases
+    (variant titles, 500-note works); re-apply after merge. Regression:
+    `test_wikidata_export36_w176.py`.
+    *Why:* export-36 Mode-β partialled seven MSS solely for second aliases
+    naming contained works.*

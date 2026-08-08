@@ -2,6 +2,11 @@
 
 > Up: [Wikidata Studio](README.md)
 
+- `backend/tests/unit/test_wikidata_export36_w176.py` — Rule W-176:
+  under designation labels only the 245/P1476 title remains as an alias.
+- `backend/tests/unit/test_wikidata_verdict_cache.py` — sticky-full sanitise
+  across schema bumps, gloss-agnostic cache keys, fixture keeps value_label
+  (Rule W-175).
 - `backend/tests/unit/test_wikidata_export35_w174.py` — Rule W-174:
   catalogue P973 shelfmark gate, Hebrew bracket expansion, Leeds holder
   gloss via `qid_label`, work-title alias elaboration strip.

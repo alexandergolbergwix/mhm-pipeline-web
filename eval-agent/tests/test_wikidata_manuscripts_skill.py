@@ -15,7 +15,7 @@ from eval_agent.skills.wikidata_manuscripts import (
 def test_skill_loads_and_versions() -> None:
     skill = load_skill()
     assert skill["id"] == "wikidata_manuscripts"
-    assert skill_version() == "w174_v1"
+    assert skill_version() == "w175_v1"
     assert "always" in skill
     assert "P50" in skill["claim_triggers"]
 

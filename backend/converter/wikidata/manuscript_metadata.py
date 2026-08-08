@@ -137,6 +137,68 @@ def _strip_work_titles_from_aliases(
             item.aliases.pop(lang, None)
 
 
+def _label_is_manuscript_designation(item: WikidataItem) -> bool:
+    """True when labels are the WPM holder+shelfmark designation (Rule W-164)."""
+    labels = item.labels or {}
+    he = str(labels.get("he") or "").strip()
+    en = str(labels.get("en") or "").strip()
+    if he.startswith("כתב יד"):
+        return True
+    # ``manuscript_en_label`` is ``{holder}, {shelfmark}`` (comma + space).
+    if en and ", " in en and not _has_hebrew_script(en):
+        return True
+    return False
+
+
+def _restrict_aliases_under_designation(
+    item: WikidataItem,
+    *,
+    primary_title: str = "",
+) -> None:
+    """Under a designation label, only the 245 / P1476 title may stay as alias.
+
+    Export-36: variant_titles and 500-note work names (``זהר``, ``תקון עזרא``,
+    responsa titles, poem openings) were surviving as second Hebrew aliases and
+    Mode-β correctly partialled them. W-164 intends the primary title as the
+    searchable alias — not every contained work.
+    """
+    if not _label_is_manuscript_designation(item) or not item.aliases:
+        return
+    allowed: set[str] = set()
+    title = _normalise_label(str(primary_title or ""))
+    if title:
+        allowed.add(title.casefold())
+    for statement in item.statements or []:
+        if getattr(statement, "property_id", None) != "P1476":
+            continue
+        text = _normalise_label(str(getattr(statement, "value", "") or ""))
+        if text:
+            allowed.add(text.casefold())
+    for lang, values in list(item.aliases.items()):
+        if not isinstance(values, list):
+            continue
+        if not allowed:
+            item.aliases.pop(lang, None)
+            continue
+        kept = [
+            alias for alias in values
+            if _normalise_label(str(alias)).casefold() in allowed
+        ]
+        # Deduplicate while preserving order.
+        seen: set[str] = set()
+        unique: list[str] = []
+        for alias in kept:
+            key = _normalise_label(str(alias)).casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(alias)
+        if unique:
+            item.aliases[lang] = unique
+        else:
+            item.aliases.pop(lang, None)
+
+
 class ManuscriptMetadataMixin:
     def _set_labels(
         self,
@@ -230,14 +292,18 @@ class ManuscriptMetadataMixin:
                 holder_name=holding,
             )
 
-        # Variant titles as aliases
-        for vt in record.get("variant_titles") or []:
-            vt_clean = _normalise_label(str(vt))
-            if vt_clean:
-                item.aliases.setdefault("he", []).append(vt_clean)
+        # Variant titles as aliases — only when the label is still the literary
+        # title. Under a holder+shelfmark designation, variant / 500-note titles
+        # are contained-work noise (export-36 / W-176).
+        if not _label_is_manuscript_designation(item):
+            for vt in record.get("variant_titles") or []:
+                vt_clean = _normalise_label(str(vt))
+                if vt_clean:
+                    item.aliases.setdefault("he", []).append(vt_clean)
 
         # Contained / related work titles are not names of this manuscript.
         _strip_work_titles_from_aliases(item, record)
+        _restrict_aliases_under_designation(item, primary_title=title_clean)
 
         # Description — language, date/century, script tradition, material, NLI
         item.descriptions["en"] = _build_manuscript_description(record)

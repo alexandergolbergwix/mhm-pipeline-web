@@ -1534,11 +1534,13 @@ def _manuscript_labels_and_aliases(
     if record:
         from converter.wikidata.item_models import WikidataItem  # noqa: PLC0415
         from converter.wikidata.manuscript_metadata import (  # noqa: PLC0415
+            _restrict_aliases_under_designation,
             _strip_work_titles_from_aliases,
         )
 
         tmp = WikidataItem(labels=dict(labels_out), aliases=dict(aliases_out))
         _strip_work_titles_from_aliases(tmp, record)
+        _restrict_aliases_under_designation(tmp, primary_title=title_clean)
         aliases_out = tmp.aliases
     return labels_out, aliases_out
 

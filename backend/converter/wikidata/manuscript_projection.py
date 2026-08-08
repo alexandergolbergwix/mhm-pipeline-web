@@ -1042,8 +1042,13 @@ class ManuscriptProjectionMixin:
         # Re-run after P1574 / work_candidate_evidence exist — early label
         # pass cannot see contained-work titles that only appear later.
         from converter.wikidata.manuscript_metadata import (  # noqa: PLC0415
+            _restrict_aliases_under_designation,
             _strip_work_titles_from_aliases,
         )
         _strip_work_titles_from_aliases(item, record)
+        _restrict_aliases_under_designation(
+            item,
+            primary_title=str(record.get("title") or ""),
+        )
 
         return item

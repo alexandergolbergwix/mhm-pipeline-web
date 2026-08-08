@@ -1,4 +1,4 @@
-# Architectural rules (W-1…W-174)
+# Architectural rules (W-1…W-176)
 
 One file per area. Read the file that covers the code you are about to
 change — the rules record real production incidents and the invariant that

@@ -132,7 +132,8 @@ def test_query_summary_changes_when_work_candidate_evidence_changes() -> None:
     assert wikidata_verdict_input_fingerprint(item) != before
 
 
-def test_query_summary_changes_when_statement_labels_change() -> None:
+def test_query_summary_ignores_presentation_value_label_changes() -> None:
+    """Gloss-only enrich must not bust cache keys (Rule W-175 / W-150)."""
     item = {
         "_local_id": "manuscript:1",
         "statements": [{
@@ -144,7 +145,53 @@ def test_query_summary_changes_when_statement_labels_change() -> None:
     }
     before = wikidata_verdict_input_fingerprint(item)
     item["statements"][0]["value_label"] = "incorrect label"
-    assert wikidata_verdict_input_fingerprint(item) != before
+    assert wikidata_verdict_input_fingerprint(item) == before
+
+
+def test_fixture_statements_keep_value_label() -> None:
+    from app.pipeline.wikidata_verdict_cache import fixture_statements
+
+    rows = fixture_statements({
+        "statements": [{
+            "property_id": "P195",
+            "value": "Q24568958",
+            "value_label": "University of Leeds Libraries",
+        }],
+    })
+    assert rows[0]["value_label"] == "University of Leeds Libraries"
+
+
+def test_sanitise_sticky_full_survives_schema_bump() -> None:
+    from app.pipeline.wikidata_verdict_cache import (
+        sanitise_stale_wikidata_verdict,
+        wikidata_claims_fingerprint,
+        wikidata_verdict_input_fingerprint,
+    )
+
+    item = {
+        "local_id": "SYNTH-STICKY-1",
+        "entity_type": "manuscript",
+        "labels": {"en": "Test"},
+        "statements": [
+            {"property_id": "P31", "value": "Q87167", "value_type": "item"},
+        ],
+    }
+    claims = wikidata_claims_fingerprint(item, "gemini-3.5-flash")
+    stored = {
+        "overall": "full",
+        "reasoning": "ok under prior schema",
+        "model": "gemini-3.5-flash",
+        "evaluator": "wikidata_item",
+        "cache_key": "stale-schema-key",
+        "cache_key_version": "records_marc_v6",
+        "claims_fingerprint": claims,
+    }
+    # Full key mismatches (schema salt), but sticky-full must keep the pill.
+    assert wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash") != "stale-schema-key"
+    kept = sanitise_stale_wikidata_verdict(item, stored)
+    assert kept is not None
+    assert kept["overall"] == "full"
+    assert kept["claims_fingerprint"] == claims
 
 
 def test_attach_local_reference_targets_uses_full_item_set() -> None:

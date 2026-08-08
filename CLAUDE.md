@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-174)
+## Architectural rules (W-1…W-176)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -125,6 +125,8 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-172** — Judge fixture keeps quantity `unit`; HE desc ≠ label; P1684 catalog notes; person alias identity; facsimile work descriptions
 - **W-173** — RELATED_WORKS P1574 ladder; Hebrew preferred P8189 strip; P1922 chronology gate; Cambridge holder label
 - **W-174** — Catalogue P973 shelfmark gate; Hebrew restoration brackets; audited P195 gloss; work-title alias elaborations
+- **W-175** — Sticky-full on review sanitise; gloss labels out of cache keys; Verify non-passing default; schema-salt policy
+- **W-176** — Under designation labels, only the 245/P1476 title may remain as a manuscript alias
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

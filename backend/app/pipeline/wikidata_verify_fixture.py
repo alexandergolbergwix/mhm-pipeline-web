@@ -10,8 +10,8 @@ from app.pipeline.marc_verify_context import canonical_control_number
 from app.pipeline.wikidata_duplicate_probe import duplicate_status_for_item
 from app.pipeline.wikidata_verdict_cache import (
     FINGERPRINT_STATEMENT_LIMIT,
-    fingerprint_statements,
     fingerprint_verify_evidence,
+    fixture_statements,
     judge_evidence_projection,
     record_ids_for_wikidata_item,
 )
@@ -28,7 +28,8 @@ def compact_statements(
     *,
     limit: int = FINGERPRINT_STATEMENT_LIMIT,
 ) -> list[dict[str, Any]]:
-    return fingerprint_statements(item, limit=limit)
+    """Judge-facing statement rows (keeps value_label; Rule W-80 / W-175)."""
+    return fixture_statements(item, limit=limit)
 
 
 def compact_wikidata_verify_fixture_item(item: dict[str, Any]) -> dict[str, Any]:

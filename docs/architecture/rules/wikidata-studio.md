@@ -1765,3 +1765,59 @@ Export-35 on canary `48ba6c13` after W-173: **231 full / 4 partial /
 Schema / skill salt **`w174_v1`**.
 
 Tests: `backend/tests/unit/test_wikidata_export35_w174.py`.
+
+
+### Rule W-175 — Sticky-full survives schema bumps + non-passing verify default (added 2026-08-08)
+
+After W-171…W-174, each Mode-β schema salt bump made the review table blank
+every pill and pushed curators to re-verify the whole canary — even when
+claims were unchanged. Sticky-full already existed in
+`partition_wikidata_verify_cache`, but:
+
+1. **`sanitise_stale_wikidata_verdict`** compared only the schema-salted
+   fingerprint, so full pills vanished on list load before verify could stick.
+2. **Presentation `value_label` / `property_label`** keyed the fingerprint, so
+   stamping an audited holder gloss (W-174 Leeds) busted claims fingerprints
+   corpus-wide.
+3. The primary Studio button verified **all visible** rows, not non-passing.
+
+**Invariants:**
+
+1. **Review-table sanitise is sticky-full aware** — a prior `full`/`pass` whose
+   schema-agnostic `claims_fingerprint` still matches (including the pre-W-175
+   label-including shape) is rewritten forward, not blanked.
+2. **Cache keys omit presentation glosses** — `fingerprint_statements` drops
+   `value_label` / `property_label`; judge fixtures keep them via
+   `fixture_statements` (W-80).
+3. **Schema salt policy** — bump `WIKIDATA_VERDICT_SCHEMA` only when rubric /
+   skill Mode-β changes the judge contract. Pure projection gates rely on
+   claims-fingerprint sticky-full; do not salt-bump “just because we shipped”.
+4. **Curator default** — Studio primary action is **Verify non-passing**;
+   “Verify visible / all” remains available as a secondary control.
+5. Partial / fail / verification_failed never stick.
+
+Schema / skill salt **`w175_v1`**.
+
+Tests: `backend/tests/unit/test_wikidata_verdict_cache.py` (sticky sanitise +
+gloss-agnostic keys).
+
+
+### Rule W-176 — Designation labels keep only the 245 as alias (added 2026-08-08)
+
+Export-36 on canary `48ba6c13`: **229 full / 7 partial**. Every partial was
+the same Mode-β hit: under a holder+shelfmark (or `כתב יד…`) label, a *second*
+Hebrew alias named a contained work / poem opening / responsa title from MARC
+500 or `variant_titles` (`זהר`, `תקון עזרא`, `שאלות ותשובות הרמב"ם`, …).
+W-164 intends the **245** as the searchable alias — not every note title.
+
+**Invariants:**
+
+1. When labels are a manuscript **designation**, aliases may only equal the
+   cleaned 245 / P1476 title (deduped).
+2. Do not append `variant_titles` as aliases under a designation label.
+3. Re-apply the restrict after legacy↔canonical alias union so merge cannot
+   reintroduce note titles.
+4. No schema-salt bump — pure projection gate; sticky-full (W-175) covers
+   unchanged fulls.
+
+Tests: `backend/tests/unit/test_wikidata_export36_w176.py`.

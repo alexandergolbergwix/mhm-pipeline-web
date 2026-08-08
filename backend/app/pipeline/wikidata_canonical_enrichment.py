@@ -205,6 +205,16 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
     out.statements = dedupe_statements(out.statements)
     _with_canonical_titles(out)
     _apply_printed_facsimile_typing(out, legacy)
+    # Alias union can reintroduce 500-note work titles; re-apply W-176.
+    from converter.wikidata.manuscript_metadata import (  # noqa: PLC0415
+        _restrict_aliases_under_designation,
+    )
+    primary = ""
+    for stmt in out.statements or []:
+        if stmt.property_id == "P1476" and stmt.value:
+            primary = str(stmt.value)
+            break
+    _restrict_aliases_under_designation(out, primary_title=primary)
     return out
 
 

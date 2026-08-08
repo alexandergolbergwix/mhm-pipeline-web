@@ -338,7 +338,15 @@ export default function WikidataStudio() {
 
   const current = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].it : null;
   const currentKey = itemRows.length > 0 ? itemRows[Math.min(selectedIdx, itemRows.length - 1)].key : "";
-  const visibleItemIds = itemRows.map(({ it }) => it.local_id).filter((id): id is string => Boolean(id));
+  const visibleItemIds = itemRows.map(({it}) => it.local_id).filter((id): id is string => Boolean(id));
+  const nonPassingVisibleIds = itemRows
+    .map(({it}) => it)
+    .filter((it) => {
+      if (!it.local_id) return false;
+      const overall = String(it.ai_verdict?.overall ?? "").toLowerCase();
+      return overall !== "full" && overall !== "pass";
+    })
+    .map((it) => it.local_id as string);
 
   return (
     <Layout>
@@ -449,13 +457,25 @@ export default function WikidataStudio() {
             <button
               onClick={() => setVerifyScope({
                 scopeKind: "all",
+                itemIds: nonPassingVisibleIds,
+                label: `${nonPassingVisibleIds.length} non-passing`,
+              })}
+              disabled={nonPassingVisibleIds.length === 0}
+              className="button-primary text-sm text-biu-sky"
+              title="Re-judge only items that are not already full/pass (Rule W-175)."
+            >
+              ✨ Verify non-passing ({nonPassingVisibleIds.length})
+            </button>
+            <button
+              onClick={() => setVerifyScope({
+                scopeKind: "all",
                 itemIds: visibleItemIds,
                 label: `${visibleItemIds.length} visible`,
               })}
               disabled={visibleItemIds.length === 0}
               className="button-ghost text-sm text-biu-sky"
             >
-              ✨ Verify all visible with AI
+              ✨ Verify all visible ({visibleItemIds.length})
             </button>
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
