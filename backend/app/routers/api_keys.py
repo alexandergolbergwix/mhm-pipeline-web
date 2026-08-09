@@ -90,7 +90,21 @@ async def set_key(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown key name. Allowed: {sorted(_VALID_KEYS)}",
         )
-    wrapped = secrets_mod.wrap_secret(payload.value, kek=auth.kek)
+    value = payload.value
+    if name in {"wikidata", "wikidata_test"}:
+        from converter.wikidata.auth_token import (  # noqa: PLC0415
+            WIKIDATA_AUTH_FORMAT_HINT,
+            normalize_wikidata_auth_token,
+            wikidata_auth_token_format_ok,
+        )
+
+        value = normalize_wikidata_auth_token(value)
+        if not wikidata_auth_token_format_ok(value):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=WIKIDATA_AUTH_FORMAT_HINT,
+            )
+    wrapped = secrets_mod.wrap_secret(value, kek=auth.kek)
 
     existing = (
         await db.execute(

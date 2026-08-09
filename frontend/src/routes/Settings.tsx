@@ -16,21 +16,20 @@ const KEY_LABELS: Record<ApiKeyName, { label: string; hint: string }> = {
     label: "Gemini API key",
     hint: "Used by the AI-verification step. Get one at aistudio.google.com/app/apikey.",
   },
-  wikidata: {
-    label: "Wikidata (live) bot password",
-    hint: (
-      "For upload target “live” (www.wikidata.org). Format: " +
-      "Username@BotName:password from Special:BotPasswords on wikidata.org, " +
-      "or OAuth credentials."
-    ),
-  },
   wikidata_test: {
     label: "Wikidata (test) bot password",
     hint: (
-      "For upload target “test” (test.wikidata.org). Create a separate bot at " +
-      "test.wikidata.org/wiki/Special:BotPasswords — production bots do not " +
-      "log into test. Format: Username@BotName:password " +
-      "(e.g. Alexander Goldberg IL@MHMPipelineTest:…)."
+      "One line only: Username@BotName:password from " +
+      "test.wikidata.org/wiki/Special:BotPasswords. Example: " +
+      "Alexander Goldberg IL@MHMPipelineTest:xxxxxxxx (bot name + colon + the " +
+      "generated password — not the bot name alone)."
+    ),
+  },
+  wikidata: {
+    label: "Wikidata (live) bot password",
+    hint: (
+      "One line: Username@BotName:password from wikidata.org Special:BotPasswords, " +
+      "or OAuth key|secret."
     ),
   },
   huggingface: {

@@ -106,7 +106,11 @@ class WikidataUploader:
                 effect and neither ``allow_live`` nor ``MORATORIUM_LIFTED=true``
                 is set. Test mode (``is_test=True``) bypasses the check.
         """
-        self._token = token
+        from converter.wikidata.auth_token import (  # noqa: PLC0415
+            normalize_wikidata_auth_token,
+        )
+
+        self._token = normalize_wikidata_auth_token(token)
         self._is_test = is_test
         self._batch_mode = batch_mode
         self._allow_live = allow_live
