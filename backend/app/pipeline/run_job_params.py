@@ -117,7 +117,10 @@ async def prepare_job_params(
     if kind == JOB_KIND_WIKIDATA_UPLOAD:
         from app.pipeline.wikidata_upload import (  # noqa: PLC0415
             VALID_UPLOAD_TARGETS,
+            WIKIDATA_SECRET_LIVE,
+            WIKIDATA_SECRET_TEST,
             resolve_upload_mode,
+            wikidata_secret_key_for_target,
         )
         from app.routers.wikidata_studio import _unwrap_user_secret  # noqa: PLC0415
 
@@ -146,7 +149,7 @@ async def prepare_job_params(
         merged["dry_run"] = mode.dry_run
         merged["upload_target"] = mode.target
 
-        secret_name = wikidata_upload.wikidata_secret_key_for_target(mode.target)
+        secret_name = wikidata_secret_key_for_target(mode.target)
         token = await _unwrap_user_secret(db, auth, secret_name)
         if not mode.dry_run and not token:
             if mode.is_test:
@@ -169,9 +172,9 @@ async def prepare_job_params(
         # secret for dry-run previews; fall back to test if only that is set.
         if mode.dry_run and not token:
             token = await _unwrap_user_secret(
-                db, auth, wikidata_upload.WIKIDATA_SECRET_LIVE,
+                db, auth, WIKIDATA_SECRET_LIVE,
             ) or await _unwrap_user_secret(
-                db, auth, wikidata_upload.WIKIDATA_SECRET_TEST,
+                db, auth, WIKIDATA_SECRET_TEST,
             )
         if token:
             merged["_wikidata_token"] = token
