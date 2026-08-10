@@ -288,6 +288,14 @@ class WikidataUploader:
         self._wbi = WikibaseIntegrator(login=login)
         return self._wbi
 
+    def ensure_authenticated(self) -> None:
+        """Force a single MediaWiki login now (Rule W-179).
+
+        Upload jobs must call this once and reuse the same uploader; logging
+        in per item burns MediaWiki's login rate limit.
+        """
+        self._init_wbi()
+
     def _rate_limit(self) -> None:
         """Enforce edit rate limiting."""
         elapsed = time.time() - self._last_edit_time

@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-178)
+## Architectural rules (W-1…W-179)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -129,6 +129,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-176** — Under designation labels, only the 245/P1476 title may remain as a manuscript alias
 - **W-177** — Upload natives MUST carry build-adopted QIDs
 - **W-178** — Test and live Wikidata credentials MUST be separate Settings secrets
+- **W-179** — Wikidata upload jobs MUST log in once and abort on auth failure
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

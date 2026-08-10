@@ -581,6 +581,7 @@ async def upload_items(
     run_id: uuid.UUID | None = None,
     upload_target: str | None = None,
     mode: UploadMode | None = None,
+    uploader: Any | None = None,
 ) -> list[UploadOutcome]:
     resolved = mode or resolve_upload_mode(upload_target, dry_run=dry_run)
     if ledger is None and db is not None:
@@ -598,6 +599,7 @@ async def upload_items(
         accept_by_local_id or {},
         resolved.is_test,
         resolved.allow_live,
+        uploader,
     )
     if db is not None and audit_ctx is not None and not resolved.dry_run:
         for outcome in outcomes:
@@ -650,6 +652,7 @@ def _upload_sync(
     accept_by_local_id: dict[str, ForeignAccept] | None = None,
     is_test: bool | None = None,
     allow_live: bool = False,
+    uploader: Any | None = None,
 ) -> list[UploadOutcome]:
     from converter.wikidata.uploader import (  # noqa: PLC0415
         UnauthorisedModificationError,
@@ -662,10 +665,9 @@ def _upload_sync(
         allow_live = os.environ.get("MORATORIUM_LIFTED", "").lower() == "true"
     accepts = accept_by_local_id or {}
 
-    # Ownership classification needs an authenticated uploader whenever a token
-    # is present — including dry-run — so the preview matches live policy.
-    ownership_checker: Any | None = None
-    if token:
+    # Prefer a shared uploader (Rule W-179) so batch jobs log in once.
+    ownership_checker: Any | None = uploader
+    if ownership_checker is None and token:
         try:
             ownership_checker = WikidataUploader(
                 token=token,
@@ -712,7 +714,7 @@ def _upload_sync(
         enforce_ownership=True,
     )
 
-    uploader = ownership_checker or WikidataUploader(
+    write_uploader = ownership_checker or WikidataUploader(
         token=token, is_test=is_test, batch_mode=True, allow_live=allow_live,
     )
 
@@ -732,10 +734,10 @@ def _upload_sync(
                     "FOREIGN_MODIFY_ACCEPTED local_id=%s qid=%s — curator override",
                     p.local_id, p.existing_qid,
                 )
-                cache = getattr(uploader, "_is_our_item_cache", None)
+                cache = getattr(write_uploader, "_is_our_item_cache", None)
                 if isinstance(cache, dict):
                     cache[p.existing_qid] = True
-            result = uploader.upload_item(p.item)
+            result = write_uploader.upload_item(p.item)
             status = result.status
             if p.adopt_candidate and status == "updated":
                 status = "adopted"
@@ -767,7 +769,23 @@ def _upload_sync(
                     status="failed", message=str(exc), added_properties=[],
                 ),
             )
+            if _is_auth_failure_message(str(exc)):
+                # Stop the batch immediately — further logins will rate-limit
+                # (Rule W-179). Callers that share an uploader should abort the job.
+                break
     return out
+
+
+def _is_auth_failure_message(message: str) -> bool:
+    low = (message or "").lower()
+    return (
+        "login failed" in low
+        or "incorrect username or password" in low
+        or "too many recent login attempts" in low
+        or "anonymous token was returned" in low
+        or "invalid authentication format" in low
+        or "additional verification step" in low
+    )
 
 
 def _dry_run(

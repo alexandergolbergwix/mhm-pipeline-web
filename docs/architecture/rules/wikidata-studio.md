@@ -1872,3 +1872,25 @@ www.wikidata.org secret does not authenticate against
    supported by `WikidataUploader`).
 
 Tests: `backend/tests/unit/test_wikidata_secret_keys.py`.
+
+
+### Rule W-179 — Wikidata upload jobs MUST log in once and abort on auth failure (added 2026-08-10)
+
+Export-38 on canary `48ba6c13`: **118 failed** logins. Three were
+`Incorrect username or password`; the rest were
+`too many recent login attempts` after the job built a new
+`WikidataUploader` (and therefore a new MediaWiki `clientlogin`) **for every
+item**.
+
+**Invariants:**
+
+1. `run_wikidata_upload_job` constructs one `WikidataUploader`, calls
+   `ensure_authenticated()` once before the item loop, and passes that
+   instance into every `upload_items(..., uploader=…)` call.
+2. `_upload_sync` must not construct a second uploader when one is shared.
+3. On an auth-shaped failure (`Login failed` / rate-limit / bad format), the
+   job aborts remaining items immediately — it must not keep attempting
+   logins.
+4. Progress / finish payloads record `aborted_auth` when that path fires.
+
+Tests: `backend/tests/unit/test_wikidata_upload_login_once.py`.

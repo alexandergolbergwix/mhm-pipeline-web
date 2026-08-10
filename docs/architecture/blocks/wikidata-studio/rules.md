@@ -605,3 +605,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     when the matching secret is missing.
     *Why:* production OAuth/bot logged into test as anonymous
     (`Login failed. An anonymous token was returned`).*
+82. **R82 — Upload jobs log in once; abort on auth failure (Rule W-179).**
+    One shared `WikidataUploader` + `ensure_authenticated` before the loop;
+    abort remaining items on login/rate-limit failures. Regression:
+    `test_wikidata_upload_login_once.py`.
+    *Why:* export-38 turned 3 bad logins into 113 rate-limit failures.*

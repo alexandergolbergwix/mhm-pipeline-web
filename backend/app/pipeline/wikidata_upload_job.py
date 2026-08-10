@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import select
+from starlette.concurrency import run_in_threadpool
 
 from app.db import session_scope
 from app.models.run_job import (
@@ -89,6 +90,31 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error="missing Wikidata token")
         return
 
+    # One MediaWiki login for the whole job (Rule W-179). Creating a new
+    # WikidataUploader per item burned login rate limits and turned one bad
+    # password into hundreds of "too many recent login attempts" failures.
+    shared_uploader: Any | None = None
+    if token:
+        from converter.wikidata.uploader import WikidataUploader  # noqa: PLC0415
+
+        shared_uploader = WikidataUploader(
+            token=token,
+            is_test=mode.is_test,
+            batch_mode=True,
+            allow_live=mode.allow_live,
+        )
+        if not mode.dry_run:
+            try:
+                await run_in_threadpool(shared_uploader.ensure_authenticated)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("wikidata upload login failed for %s", run_id)
+                await finish_job(
+                    job_id,
+                    status=JOB_STATUS_FAILED,
+                    error=f"Wikidata login failed before any writes: {exc}",
+                )
+                return
+
     outcomes: list[Any] = []
     audit_ctx = None if mode.dry_run else WikibaseAuditContext(
         actor_user_id=job.created_by,
@@ -117,6 +143,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     [item], token=token or "", mode=mode,
                     audit_ctx=audit_ctx, db=db, ledger=ledger,
                     run_id=run_id,
+                    uploader=shared_uploader,
                 )
             outcomes.extend(batch_outcomes)
             item_outcome = None
@@ -129,6 +156,34 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     "wikibase_id": last.qid,
                     "message": last.message,
                 }
+                if (
+                    last.status == "failed"
+                    and wikidata_upload._is_auth_failure_message(last.message)
+                ):
+                    await finish_job(
+                        job_id,
+                        status=JOB_STATUS_FAILED,
+                        error=(
+                            "Wikidata authentication failed; aborted remaining "
+                            f"items to avoid login rate-limits. {last.message}"
+                        ),
+                        result={
+                            "dry_run": mode.dry_run,
+                            "upload_target": mode.target,
+                            "moratorium_lifted": mode.moratorium_lifted,
+                            "test_mode": mode.test_mode,
+                            "outcomes": [o.__dict__ for o in outcomes],
+                            "aborted_auth": True,
+                        },
+                        progress={
+                            "phase": "failed",
+                            "processed": idx + 1,
+                            "total": total,
+                            "message": "Aborted: Wikidata login failure",
+                            "upload_target": mode.target,
+                        },
+                    )
+                    return
             progress: dict = {
                 "phase": "uploading",
                 "processed": idx + 1,
