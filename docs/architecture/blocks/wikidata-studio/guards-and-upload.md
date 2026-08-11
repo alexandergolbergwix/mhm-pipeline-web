@@ -41,7 +41,9 @@ then stamps Studio-cache / probe-adopted `existing_qid`s
 (`_apply_cached_qid_adoption_to_native`, Rule W-177) so identifier-matched
 UPDATEs do not fall back to SPARQL CREATE. It constructs **one**
 `WikidataUploader`, calls `ensure_authenticated()` once, and reuses it for
-every item (Rule W-179); auth failures abort the remainder. It optionally filters to
+every item (Rule W-179); auth failures abort the remainder. Writes use
+WikibaseIntegrator's `is_bot=True` (Rule W-180) — not `bot=`, which
+`requests` rejects. It optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
 loads per-item foreign accepts from `WikidataItemOverride`, and calls

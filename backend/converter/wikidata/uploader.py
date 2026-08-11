@@ -1093,7 +1093,10 @@ class WikidataUploader:
                 self._assert_modifiable(
                     item.existing_qid or "", stage="pre_write",
                 )
-                result = wbi_item.write(summary=edit_summary, bot=True)
+                # WikibaseIntegrator ≥0.12 takes ``is_bot``; bare ``bot=``
+                # is forwarded into requests.Session.request and raises
+                # TypeError (export-39: 119× unexpected keyword 'bot').
+                result = wbi_item.write(summary=edit_summary, is_bot=True)
                 qid = result.id if result else None
 
                 if item.existing_qid:

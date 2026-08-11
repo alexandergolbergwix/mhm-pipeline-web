@@ -610,3 +610,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     abort remaining items on login/rate-limit failures. Regression:
     `test_wikidata_upload_login_once.py`.
     *Why:* export-38 turned 3 bad logins into 113 rate-limit failures.*
+83. **R83 — WBI writes use `is_bot=True`, never `bot=True` (Rule W-180).**
+    `wbi_item.write(summary=…, is_bot=True)`. Regression:
+    `test_wikidata_upload_is_bot.py`.
+    *Why:* export-39 — 119× `Session.request() got an unexpected keyword
+    argument 'bot'` after login succeeded.*

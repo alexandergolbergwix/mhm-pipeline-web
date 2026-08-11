@@ -1894,3 +1894,23 @@ item**.
 4. Progress / finish payloads record `aborted_auth` when that path fires.
 
 Tests: `backend/tests/unit/test_wikidata_upload_login_once.py`.
+
+
+### Rule W-180 — Wikidata writes MUST pass WikibaseIntegrator's `is_bot` flag (added 2026-08-11)
+
+Export-39 on canary `48ba6c13`: login succeeded (test bot password OK),
+then **119** items failed with
+`Session.request() got an unexpected keyword argument 'bot'`.
+`WikidataUploader.upload_item` called `wbi_item.write(..., bot=True)`.
+WikibaseIntegrator 0.12+ documents the flag as **`is_bot`**; unknown
+kwargs are forwarded into `requests.Session.request`, which rejects
+`bot=`.
+
+**Invariants:**
+
+1. Every `ItemEntity.write` / `_write` call from the upload path MUST use
+   `is_bot=True` (never `bot=True`).
+2. Edits remain marked as bot edits for RecentChanges filtering
+   (Wikidata:Bots policy) when the account has the bot right.
+
+Tests: `backend/tests/unit/test_wikidata_upload_is_bot.py`.
