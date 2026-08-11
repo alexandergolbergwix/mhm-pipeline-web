@@ -12,13 +12,13 @@ import {WikidataVerify, type AgentEvent} from "@/api/wikidataVerify";
 import {AgentFlowDiagram, makeInitialFlowState, type FlowState} from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {Glass, GlassPill} from "@/components/glass";
-import {CuratorTableScroll} from "@/components/CuratorTableScroll";
 import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {UploadResultSummary} from "@/utils/wikidataUploadOutcomes";
 import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
 import {
   collectNewProgressOutcomes,
@@ -42,6 +42,8 @@ export interface WikidataUploadPanelProps {
     test_mode: boolean;
   }) => void;
   onUploadOutcomes?: (outcomes: StudioUploadProgressOutcome[]) => void;
+  /** Open the live upload progress modal (Rule W-141). */
+  onUploadJobActive?: (jobId: string) => void;
 }
 
 function verdictOverall(ev: AgentEvent): string {
@@ -88,6 +90,7 @@ export function WikidataUploadPanel({
   onUploadTargetChange,
   onUploaded,
   onUploadOutcomes,
+  onUploadJobActive,
 }: WikidataUploadPanelProps) {
   const [uploadTargetLocal, setUploadTargetLocal] = useState<WikidataUploadTarget>("dry_run");
   const uploadTarget = uploadTargetProp ?? uploadTargetLocal;
@@ -145,6 +148,9 @@ export function WikidataUploadPanel({
     "wikidata_upload",
     (j) => {
       setJob(j);
+      if (isJobActive(j.status)) {
+        onUploadJobActive?.(j.id);
+      }
       const dry = Boolean(
         (j.params as {dry_run?: unknown} | null)?.dry_run
         || (j.params as {upload_target?: unknown} | null)?.upload_target === "dry_run",
@@ -240,6 +246,7 @@ export function WikidataUploadPanel({
       upsertJob(started);
       setJob(started);
       setTrackedJobId(started.id);
+      onUploadJobActive?.(started.id);
       ensureJobPolling();
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
@@ -247,7 +254,7 @@ export function WikidataUploadPanel({
     }
   }, [
     runId, uploadTarget, approvedOnly, uploadApprovedOnly, updateExisting, source,
-    ensureJobPolling, setTrackedJobId, upsertJob,
+    ensureJobPolling, setTrackedJobId, upsertJob, onUploadJobActive,
   ]);
 
   useEffect(() => {
@@ -524,72 +531,5 @@ export function WikidataUploadPanel({
       {controls}
       {extras}
     </Glass>
-  );
-}
-
-function UploadResultSummary({result}: {result: UploadResponse}) {
-  const [expand, setExpand] = useState(false);
-  const adopted = result.outcomes.filter((o) => o.status === "adopted").length;
-  const blocked = result.outcomes.filter((o) => o.status === "blocked" || o.status === "skipped").length;
-  const failed = result.outcomes.filter((o) => o.status === "failed").length;
-  const created = result.outcomes.filter((o) => o.status === "success" || o.status === "pending").length;
-  const updated = result.outcomes.filter((o) => o.status === "updated" || o.status === "exists").length;
-
-  return (
-    <div className="border-t border-white/5 pt-3 space-y-2">
-      <div className="flex items-baseline justify-between flex-wrap gap-2">
-        <p className="text-sm">
-          <span className="muted">{result.dry_run ? "Would create:" : "Created:"}</span>{" "}
-          <b className="text-biu-sky">{created}</b>
-          {" · "}
-          <span className="muted">{result.dry_run ? "would update " : "updated "}</span>
-          <b className="text-biu-sky">{updated}</b>
-          {adopted > 0 && (
-            <>
-              {" · adopted "}
-              <b className="text-biu-sky">{adopted}</b>
-            </>
-          )}
-          {blocked > 0 && (
-            <>
-              {" · "}
-              <span className="text-warn">blocked/skipped {blocked}</span>
-            </>
-          )}
-          {failed > 0 && (
-            <>
-              {" · "}
-              <span className="text-danger">failed {failed}</span>
-            </>
-          )}
-        </p>
-        <button onClick={() => setExpand((v) => !v)} className="button-ghost text-xs">
-          {expand ? "Hide details" : "Show details"}
-        </button>
-      </div>
-      {expand && (
-        <CuratorTableScroll>
-          <table className="w-full text-sm">
-            <thead className="bg-white/3 text-xs uppercase muted tracking-wider sticky top-0 z-10 table-head">
-              <tr>
-                {["Local id", "Status", "QID", "Message"].map((h) => (
-                  <th key={h} className="text-left px-3 py-2">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {result.outcomes.map((o) => (
-                <tr key={o.local_id} className="border-t border-white/5">
-                  <td className="px-3 py-2 font-mono text-xs">{o.local_id}</td>
-                  <td className="px-3 py-2"><GlassPill className="px-2 py-0.5 text-[10px] kicker">{o.status}</GlassPill></td>
-                  <td className="px-3 py-2 font-mono text-xs">{o.qid ?? "—"}</td>
-                  <td className="px-3 py-2 text-xs">{o.message}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CuratorTableScroll>
-      )}
-    </div>
   );
 }

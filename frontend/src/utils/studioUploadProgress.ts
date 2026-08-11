@@ -5,6 +5,8 @@
 
 export type StudioUploadProgressOutcome = {
   local_id?: string;
+  label?: string | null;
+  entity_type?: string | null;
   status?: string;
   wikibase_id?: string | null;
   qid?: string | null;

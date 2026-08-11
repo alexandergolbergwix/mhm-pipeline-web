@@ -20,6 +20,9 @@ describe("jobRunHref", () => {
     expect(jobRunHref(job("wikidata_verify"))).toBe(
       "/runs/run-9/wikidata-studio?job=job-1",
     );
+    expect(jobRunHref(job("wikidata_upload"))).toBe(
+      "/runs/run-9/wikidata-studio?job=job-1",
+    );
     expect(jobRunHref(job("hmo_item_verify"))).toBe(
       "/runs/run-9/hmo-studio?job=job-1",
     );

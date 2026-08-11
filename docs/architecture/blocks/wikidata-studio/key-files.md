@@ -34,7 +34,7 @@
 | `backend/app/routers/wikidata_studio.py` (`_build_native_items`, `studio_dict_to_native_item`) | Upload natives from Studio cache (W-181); cache-miss rebuild fallback |
 | `backend/app/pipeline/wikidata_existence.py` | Action API `wbgetentities` alive check + ownership classify + QID-bound foreign accept |
 | `docs/wikidata-data-access.md` | Wikidata:Data_access API map + MHM write-policy matrix (Rule W-99) |
-| `backend/app/pipeline/wikidata_upload_job.py` | Background upload/dry-run job (`wikidata_upload` kind), item-by-item progress + cancel |
+| `backend/app/pipeline/wikidata_upload_job.py` | Background upload/dry-run job (`wikidata_upload` kind), item-by-item progress (`label`, `entity_type`, `outcome_counts`) + cancel |
 | `backend/app/pipeline/wikidata_actions.py` | Prefab AI-agent actions (`audit_wikidata_item`, `autofix_from_wikidata`) for the eval-agent verify modal |
 | `backend/app/pipeline/wikidata_autofix_apply.py` | Merge high-confidence AI fixes into override PATCH fragments |
 | `backend/app/pipeline/wikidata_entity_compare.py` | Fetch live Wikidata entity + build Studio-vs-live diff rows |
@@ -59,12 +59,14 @@
 | `backend/app/models/wikidata_studio_cache.py` | `WikidataStudioCache` — one row per `(run_id, approved_only)`, fingerprint-keyed build result |
 | `backend/app/models/item_override.py` | `WikidataItemOverride` — curator diff + `approved` + `ai_verdict`/`ai_verdict_at` |
 | `frontend/src/routes/WikidataStudio.tsx` | Studio page: modern review table (default) + legacy sidebar/table toggle; `useProjectEvents` → job-tray live progress |
-| `frontend/src/components/wikidata/WikidataItemsPanel.tsx` | Orchestrator: lifecycle bar, upload hub, review table, drawer, verify modal; **Approve all visible** → `wikidata_item_bulk_approve` job |
+| `frontend/src/components/wikidata/WikidataItemsPanel.tsx` | Orchestrator: lifecycle bar, upload hub, review table, drawer, verify + upload progress modals; **Approve all visible** → `wikidata_item_bulk_approve` job |
 | `backend/app/pipeline/studio_item_bulk_approve.py` | Shared HMO/Wikidata bulk-approve core (versioned overrides) |
 | `backend/app/pipeline/studio_item_bulk_approve_job.py` | Background worker for Studio bulk approve |
 | `frontend/src/components/wikidata/WikidataItemTable.tsx` | HMO-parity review table (filters, badges, pagination) |
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Per-item drawer: overrides, compare, reconcile, verify/autofix/push |
-| `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Upload hub: dry_run/test/live radios (default dry-run), pre/post AI verify |
+| `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Upload hub: dry_run/test/live radios (default dry-run), pre/post AI verify; opens upload progress modal on start |
+| `frontend/src/components/wikidata/WikidataUploadProgressModal.tsx` | Live upload progress modal (tray View / Rule W-141): counts strip, per-item table, cancel |
+| `frontend/src/utils/wikidataUploadOutcomes.tsx` | Shared upload outcome tally/table helpers (panel summary + progress modal) |
 | `frontend/src/components/shared/UploadOutcomeBadge.tsx` | Shared upload-outcome pill (HMO + Wikidata) |
 | `frontend/src/components/wikidata/` | Also: `ItemValidatorBadge`, `ItemApprovalBadge`, `WikidataComparePanel`, `WikidataVerificationModal`, data-status + AI verdict badges |
 | `frontend/src/api/wikidataStudio.ts` | Typed API client; `STUDIO_MAX_PAGE_SIZE` (500); `fetchAllStudioItems` paginates bulk loads |

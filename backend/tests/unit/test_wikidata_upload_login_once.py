@@ -85,10 +85,16 @@ def test_ensure_authenticated_is_idempotent(monkeypatch) -> None:
         return self._wbi
 
     monkeypatch.setattr(WikidataUploader, "_init_wbi", _init)
+    monkeypatch.setattr(
+        WikidataUploader,
+        "assert_write_capability",
+        lambda self: None,
+    )
     up = WikidataUploader.__new__(WikidataUploader)
     up._token = "User@Bot:x"
     up._is_test = True
     up._wbi = None
+    up._login = None
     up.ensure_authenticated()
     up.ensure_authenticated()
     assert calls["n"] == 1

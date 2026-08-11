@@ -30,6 +30,49 @@ from app.services.wikibase_audit import WikibaseAuditContext
 logger = logging.getLogger(__name__)
 
 
+def slim_upload_progress_outcome(outcome: Any) -> dict[str, Any]:
+    """Slim per-item row for live upload progress (modal + table patches)."""
+    return {
+        "local_id": outcome.local_id,
+        "label": outcome.label,
+        "entity_type": outcome.entity_type,
+        "status": outcome.status,
+        "qid": outcome.qid,
+        "wikibase_id": outcome.qid,
+        "message": outcome.message,
+    }
+
+
+def upload_outcome_counts(outcomes: list[Any]) -> dict[str, int]:
+    """Aggregate upload statuses for the live modal count strip."""
+    counts = {
+        "created": 0,
+        "updated": 0,
+        "adopted": 0,
+        "blocked": 0,
+        "skipped": 0,
+        "failed": 0,
+        "pending": 0,
+    }
+    for o in outcomes:
+        status = str(getattr(o, "status", "") or "").lower()
+        if status in {"success", "created", "would_create"}:
+            counts["created"] += 1
+        elif status in {"updated", "exists", "would_update"}:
+            counts["updated"] += 1
+        elif status in {"adopted", "would_adopt"}:
+            counts["adopted"] += 1
+        elif status in {"blocked", "would_block"}:
+            counts["blocked"] += 1
+        elif status == "skipped":
+            counts["skipped"] += 1
+        elif status == "failed":
+            counts["failed"] += 1
+        elif status == "pending":
+            counts["pending"] += 1
+    return counts
+
+
 async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
@@ -149,13 +192,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             item_outcome = None
             if batch_outcomes:
                 last = batch_outcomes[-1]
-                item_outcome = {
-                    "local_id": last.local_id,
-                    "status": last.status,
-                    "qid": last.qid,
-                    "wikibase_id": last.qid,
-                    "message": last.message,
-                }
+                item_outcome = slim_upload_progress_outcome(last)
                 if (
                     last.status == "failed"
                     and wikidata_upload._is_auth_failure_message(last.message)
@@ -193,17 +230,12 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             }
             if item_outcome is not None:
                 recent = [
-                    {
-                        "local_id": o.local_id,
-                        "status": o.status,
-                        "qid": o.qid,
-                        "wikibase_id": o.qid,
-                        "message": o.message,
-                    }
+                    slim_upload_progress_outcome(o)
                     for o in outcomes[-200:]
                 ]
                 progress["item_outcome"] = item_outcome
                 progress["recent_item_outcomes"] = recent
+                progress["outcome_counts"] = upload_outcome_counts(outcomes)
             await update_job_progress(job_id, progress)
     except Exception as exc:  # noqa: BLE001
         logger.exception("wikidata upload job failed for %s", run_id)

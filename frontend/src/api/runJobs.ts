@@ -48,6 +48,8 @@ export interface RunJobProgress {
   /** Latest per-item upload outcome (HMO / Wikidata live upload). */
   item_outcome?: {
     local_id?: string;
+    label?: string | null;
+    entity_type?: string | null;
     status?: string;
     wikibase_id?: string | null;
     qid?: string | null;
@@ -57,12 +59,25 @@ export interface RunJobProgress {
   /** Rolling window of recent item outcomes for mid-run table patches. */
   recent_item_outcomes?: Array<{
     local_id?: string;
+    label?: string | null;
+    entity_type?: string | null;
     status?: string;
     wikibase_id?: string | null;
     qid?: string | null;
     message?: string | null;
     source_uri?: string;
   }>;
+  /** Live upload aggregate counts (Wikidata upload modal). */
+  outcome_counts?: {
+    created?: number;
+    updated?: number;
+    adopted?: number;
+    blocked?: number;
+    skipped?: number;
+    failed?: number;
+    pending?: number;
+  };
+  upload_target?: string;
   session_snapshot?: {
     session_id?: string;
     run_id?: string;
@@ -110,6 +125,7 @@ export const JOB_KIND_LABELS: Record<string, string> = {
 /** Job kinds whose progress lives in a modal rather than on the page itself. */
 const JOB_KINDS_WITH_MODAL = new Set([
   "wikidata_verify",
+  "wikidata_upload",
   "hmo_item_verify",
   "ner_verify",
 ]);

@@ -38,6 +38,23 @@
    `skipped`/`blocked` (foreign without accept, ownership unknown, reconcile
    outage, or validator ERROR — message says which).
 4. No live writes in dry-run; moratorium still does not apply to dry-run.
+5. If every row fails with **permissiondenied** / "permissions needed", the
+   bot password authenticated but cannot create items — open
+   `Special:BotPasswords` on the same wiki and enable **High-volume editing**,
+   **Edit existing pages**, and **Create, edit, and move pages**, then paste the
+   new password into Settings. Upload jobs now abort once at login when
+   `createpage`/`edit` are missing.
+
+### Skill: watch live upload progress (tray View / Rule W-141)
+
+1. Job-tray **View** on `wikidata_upload` navigates to
+   `/runs/{id}/wikidata-studio?job={jobId}`; `WikidataItemsPanel` opens
+   `WikidataUploadProgressModal` once and strips `?job=`.
+2. Starting or attaching an active upload from `WikidataUploadPanel` opens the same
+   modal. Progress rows come from `recent_item_outcomes` / `outcome_counts`; the
+   review table still patches via `onUploadOutcomes` (Rule W-110).
+3. **Close** dismisses the modal without cancelling; **Cancel upload** calls
+   `POST …/jobs/{id}/cancel` while the job is still active.
 
 ### Skill: accept modifying a foreign Wikidata QID
 

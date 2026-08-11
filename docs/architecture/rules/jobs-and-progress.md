@@ -324,10 +324,13 @@ Invariant:
 
 1. `jobRunHref` appends `?job=<id>` for every kind whose progress lives in a
    modal rather than on the page (`JOB_KINDS_WITH_MODAL`: `wikidata_verify`,
-   `hmo_item_verify`, `ner_verify`). Page-level jobs stay a plain route.
+   `wikidata_upload`, `hmo_item_verify`, `ner_verify`). Page-level jobs stay a
+   plain route.
 2. The receiving surface opens that modal once on mount and then **removes the
    param** (`setSearchParams(..., {replace: true})`), so closing the modal does
-   not immediately reopen it and the back button behaves.
+   not immediately reopen it and the back button behaves. On Wikidata Studio,
+   `wikidata_verify` reopens **Verify with AI**; `wikidata_upload` reopens the
+   **live upload progress** modal (`WikidataUploadProgressModal`).
 3. A new job kind with modal-hosted progress must be added to the set, or its
    tray entry silently becomes a dead end.
 

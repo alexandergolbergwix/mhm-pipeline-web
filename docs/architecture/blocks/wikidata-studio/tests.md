@@ -46,7 +46,8 @@
 - `backend/tests/unit/test_wikidata_secret_keys.py` — live vs `wikidata_test` Settings key routing (W-178 / R81).
 - `backend/tests/unit/test_wikidata_auth_token.py` — bot-password normalize/validate (two-line paste).
 - `backend/tests/unit/test_wikidata_upload_login_once.py` — shared uploader + auth abort (W-179 / R82).
-- `backend/tests/unit/test_wikidata_upload_is_bot.py` — `is_bot` kwarg (not `bot=`), default false, no retry on bot-right (W-180 / W-181 / R83).
+- `backend/tests/unit/test_wikidata_upload_is_bot.py` — `is_bot` kwarg (not `bot=`), default false, no retry on bot-right / permissiondenied; write-rights preflight (W-180 / W-181).
+- `backend/tests/unit/test_wikidata_upload_job_progress.py` — live progress rows include `label` / `entity_type` / `outcome_counts` (W-141 upload modal).
 - `backend/tests/unit/test_studio_dict_to_native.py` — Studio-cache dict → native item (W-181 / R84).
 - `backend/tests/unit/test_wikidata_existence.py` — `wbgetentities` alive parse, ownership classify, QID-bound foreign accept gate.
 - `backend/tests/unit/test_rdf_build.py` — clean raw 505 and flat contents create evidence-backed works.
@@ -63,7 +64,8 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `backend/tests/test_studio_item_bulk_approve.py` — bulk-approve params + worker for HMO/Wikidata override rows.
 - `frontend/e2e/wikidata-item-drawer.spec.ts` — drawer apply-fix, push, reconcile API shapes.
 - `frontend/e2e/wikidata-upload-panel.spec.ts` — upload target radios (default dry-run), pill, pre-verify fail confirm gate.
-- `frontend/tests/unit/useVerifyJob.spec.ts` — verify jobs upsert into the global job tray on start and reset the modal state when enqueue rejects.
+- `frontend/tests/unit/runJobsHref.spec.ts` — modal job kinds append `?job=` (verify + upload, Rule W-141).
+- `frontend/tests/unit/wikidataUploadOutcomes.spec.ts` — upload outcome tally + terminal row selection for the progress modal.
 - `backend/tests/test_run_job_params_wikidata_verify.py` — enqueue skips scope
   build (W-59); Gemini key only for Gemini tiers (W-60); worker passes Studio
   `source`/`approved_only` into `_fetch_wikidata_verify_items` (W-115 / R42).

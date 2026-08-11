@@ -208,13 +208,15 @@ followed WPM; judges must evaluate toward the same public-item contract,
 especially for HMO→Wikidata readiness.
 
 40. **R40 — Review tables MUST update mid-run without full-table flicker.**
-Live Wikidata upload streams `item_outcome` / `recent_item_outcomes`; the panel
-patches matching rows via `studioUploadProgress` (parity with HMO R51 /
-frontend R14 / Rule W-110). Bulk-approve and verify may silent-reload
-(throttled) but MUST keep the table mounted when items are already loaded.
-Studio **build** still refreshes only at finish (cache written at end).
-*Why:* mid-run `setLoading(true)` unmounted the table and flickered Publication
-status during publish.
+Live Wikidata upload streams `item_outcome` / `recent_item_outcomes` (with
+`label`, `entity_type`, and rolling `outcome_counts` for the progress modal);
+the panel patches matching rows via `studioUploadProgress` (parity with HMO R51 /
+frontend R14 / Rule W-110). Job-tray **View** on `wikidata_upload` reopens
+`WikidataUploadProgressModal` via `?job=` (Rule W-141). Bulk-approve and verify
+may silent-reload (throttled) but MUST keep the table mounted when items are
+already loaded. Studio **build** still refreshes only at finish (cache written
+at end). *Why:* mid-run `setLoading(true)` unmounted the table and flickered
+Publication status during publish.
 
 41. **R41 — Related works are evidence-gated (Rule W-114).** Manuscript
 `related_works` MUST run `assess_work_candidate`, retain rejected evidence, and

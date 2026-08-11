@@ -3,7 +3,7 @@ import {useSearchParams} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
 import type {AiVerdictOverall} from "@/api/extractionApprovals";
-import {type RunJobSnapshot} from "@/api/runJobs";
+import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {
   Studio,
   fetchAllStudioItems,
@@ -18,6 +18,7 @@ import {LoadingOverlay} from "@/components/LoadingOverlay";
 import {WikidataItemDetailDrawer} from "@/components/wikidata/WikidataItemDetailDrawer";
 import {WikidataItemTable} from "@/components/wikidata/WikidataItemTable";
 import {WikidataUploadPanel} from "@/components/wikidata/WikidataUploadPanel";
+import {WikidataUploadProgressModal} from "@/components/wikidata/WikidataUploadProgressModal";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
@@ -61,6 +62,8 @@ export function WikidataItemsPanel({
   const [filteredIds, setFilteredIds] = useState<string[]>([]);
   const [openItem, setOpenItem] = useState<StudioItem | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadModalJobId, setUploadModalJobId] = useState<string | null>(null);
   const [verifyIds, setVerifyIds] = useState<string[] | undefined>(undefined);
   const [verifyActionId, setVerifyActionId] = useState<string | undefined>(undefined);
   const [uploadTarget, setUploadTarget] = useState<WikidataUploadTarget>("dry_run");
@@ -218,6 +221,13 @@ export function WikidataItemsPanel({
     setVerifyOpen(true);
   }, []);
 
+  const jobsRecord = useRunJobs((s) => s.jobs);
+
+  const openUploadModal = useCallback((jobId: string) => {
+    setUploadModalJobId(jobId);
+    setUploadModalOpen(true);
+  }, []);
+
   // The job tray's "View" links to `?job=<id>` for jobs whose progress lives in
   // a modal. Reopen it once so the curator lands on the live run they clicked,
   // then drop the param so a later close does not immediately reopen it.
@@ -225,12 +235,32 @@ export function WikidataItemsPanel({
   const deepLinkedJobId = searchParams.get("job");
   useEffect(() => {
     if (!deepLinkedJobId) return;
-    setVerifyIds(undefined);
-    setVerifyActionId(undefined);
-    setVerifyOpen(true);
-    const next = new URLSearchParams(searchParams);
-    next.delete("job");
-    setSearchParams(next, {replace: true});
+    const finishDeepLink = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("job");
+      setSearchParams(next, {replace: true});
+    };
+    const openFromJob = (job: RunJobSnapshot) => {
+      if (job.kind === "wikidata_upload") {
+        openUploadModal(job.id);
+      } else if (job.kind === "wikidata_verify") {
+        setVerifyIds(undefined);
+        setVerifyActionId(undefined);
+        setVerifyOpen(true);
+      }
+      finishDeepLink();
+    };
+    const cached = jobsRecord[deepLinkedJobId];
+    if (cached && cached.run_id === runId) {
+      openFromJob(cached);
+      return;
+    }
+    void RunJobs.get(runId, deepLinkedJobId).then((job) => {
+      upsertJob(job);
+      openFromJob(job);
+    }).catch(() => {
+      finishDeepLink();
+    });
   }, [deepLinkedJobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
@@ -504,6 +534,7 @@ export function WikidataItemsPanel({
           void loadItems({silent: true});
         }}
         onUploadOutcomes={applyUploadOutcomes}
+        onUploadJobActive={openUploadModal}
       />
 
       {error && <p className="text-danger text-sm">{error}</p>}
@@ -564,6 +595,17 @@ export function WikidataItemsPanel({
               ? () => openVerify([openItem.local_id ?? ""], "autofix_from_wikidata")
               : undefined
           }
+        />
+      )}
+
+      {uploadModalOpen && uploadModalJobId && (
+        <WikidataUploadProgressModal
+          runId={runId}
+          jobId={uploadModalJobId}
+          onClose={() => {
+            setUploadModalOpen(false);
+            setUploadModalJobId(null);
+          }}
         />
       )}
 

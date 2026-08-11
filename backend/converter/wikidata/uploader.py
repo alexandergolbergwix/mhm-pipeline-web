@@ -16,6 +16,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from converter.wikidata.item_builder import WikidataItem, WikidataStatement
 
@@ -127,6 +128,7 @@ class WikidataUploader:
             }
         self._mark_as_bot = bool(mark_as_bot)
         self._wbi = None
+        self._login = None
         self._last_edit_time: float = 0.0
         self._authenticated_user: str | None = None  # Set after first auth
         self._creator_cache: dict[str, str] = {}  # qid → first revision author
@@ -298,15 +300,83 @@ class WikidataUploader:
             )
 
         self._wbi = WikibaseIntegrator(login=login)
+        self._login = login
         return self._wbi
+
+    # MediaWiki rights required to CREATE Wikibase items. Bot passwords that
+    # only grant "Edit existing pages" authenticate fine but fail every write
+    # with permissiondenied (export-41 / 2026-08-11).
+    _REQUIRED_WRITE_RIGHTS = frozenset({"edit", "createpage"})
 
     def ensure_authenticated(self) -> None:
         """Force a single MediaWiki login now (Rule W-179).
 
         Upload jobs must call this once and reuse the same uploader; logging
-        in per item burns MediaWiki's login rate limit.
+        in per item burns MediaWiki's login rate limit. Also verifies the
+        session can create/edit items so missing bot-password grants abort
+        the job once instead of failing every row three times.
         """
         self._init_wbi()
+        self.assert_write_capability()
+
+    def assert_write_capability(self) -> None:
+        """Abort early when the session cannot create Wikidata items.
+
+        Raises:
+            RuntimeError: anonymous session or missing ``edit``/``createpage``.
+        """
+        info = self._query_userinfo_rights()
+        if not info:
+            logger.warning("Could not verify write rights via userinfo; continuing")
+            return
+        name = str(info.get("name") or "")
+        if info.get("anon") or not name or name == "127.0.0.1":
+            wiki = "test.wikidata.org" if self._is_test else "www.wikidata.org"
+            raise RuntimeError(
+                f"Wikidata session is anonymous on {wiki}. "
+                "Check Settings → Wikidata (test/live) bot password."
+            )
+        self._authenticated_user = name
+        rights = {str(r) for r in (info.get("rights") or [])}
+        missing = sorted(self._REQUIRED_WRITE_RIGHTS - rights)
+        if missing:
+            wiki = "test.wikidata.org" if self._is_test else "www.wikidata.org"
+            raise RuntimeError(
+                f"Authenticated as {name!r} on {wiki} but missing MediaWiki "
+                f"rights {missing}. On {wiki}/wiki/Special:BotPasswords enable "
+                "at least: High-volume editing; Edit existing pages; "
+                "Create, edit, and move pages. Then save a new password into "
+                "Settings and retry."
+            )
+        logger.info(
+            "Wikidata write session ok user=%s rights_has_createpage=%s",
+            name,
+            "createpage" in rights,
+        )
+
+    def _query_userinfo_rights(self) -> dict[str, Any] | None:
+        """Return ``userinfo`` (name/rights/anon) via the logged-in WBI session."""
+        try:
+            login = self._login
+            if login is None:
+                return None
+            session = login.get_session()
+            api_url = _TEST_API if self._is_test else _WIKIDATA_API
+            resp = session.get(
+                api_url,
+                params={
+                    "action": "query",
+                    "meta": "userinfo",
+                    "uiprop": "rights|groups",
+                    "format": "json",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return resp.json().get("query", {}).get("userinfo")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("userinfo rights probe failed: %s", exc)
+            return None
 
     def _rate_limit(self) -> None:
         """Enforce edit rate limiting."""
@@ -1163,6 +1233,18 @@ class WikidataUploader:
                     or "do not have the \"bot\" right" in err_lower
                     or "do not have the 'bot' right" in err_lower
                 )
+                # Generic MediaWiki permissiondenied (export-41): almost always
+                # missing bot-password grants (createpage / edit), never fixed
+                # by retrying the same write three times.
+                is_permission = (
+                    "permissions needed" in err_lower
+                    or "permissiondenied" in err_lower
+                )
+                mw_code = ""
+                if hasattr(exc, "code"):
+                    mw_code = str(getattr(exc, "code") or "")
+                    if mw_code.lower() == "permissiondenied":
+                        is_permission = True
                 logger.warning(
                     "Upload attempt %d/%d for %s failed (%s%s): %s",
                     attempt,
@@ -1180,6 +1262,19 @@ class WikidataUploader:
                             "Account lacks the MediaWiki 'bot' right but writes "
                             "requested is_bot=True. Unset WIKIDATA_MARK_AS_BOT "
                             f"(or pass mark_as_bot=False). Detail: {last_error[:160]}"
+                        ),
+                    )
+                if is_permission:
+                    wiki = "test.wikidata.org" if self._is_test else "www.wikidata.org"
+                    return UploadResult(
+                        local_id=item.local_id,
+                        status="failed",
+                        message=(
+                            f"MediaWiki permissiondenied on {wiki}"
+                            + (f" (code={mw_code})" if mw_code else "")
+                            + ". Bot password needs: High-volume editing; "
+                            "Edit existing pages; Create, edit, and move pages. "
+                            f"Detail: {last_error[:120]}"
                         ),
                     )
                 if attempt < _MAX_RETRIES:
