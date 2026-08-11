@@ -610,8 +610,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     abort remaining items on login/rate-limit failures. Regression:
     `test_wikidata_upload_login_once.py`.
     *Why:* export-38 turned 3 bad logins into 113 rate-limit failures.*
-83. **R83 — WBI writes use `is_bot=True`, never `bot=True` (Rule W-180).**
-    `wbi_item.write(summary=…, is_bot=True)`. Regression:
-    `test_wikidata_upload_is_bot.py`.
-    *Why:* export-39 — 119× `Session.request() got an unexpected keyword
-    argument 'bot'` after login succeeded.*
+83. **R83 — WBI writes use `is_bot` kwarg, default false (Rules W-180 / W-181).**
+    `wbi_item.write(summary=…, is_bot=mark_as_bot)`; never bare `bot=`.
+    Default `mark_as_bot=False` unless `WIKIDATA_MARK_AS_BOT=true`.
+    Regression: `test_wikidata_upload_is_bot.py`.
+    *Why:* export-39 TypeError on `bot=`; export-40 hard-fail without bot right.*
+84. **R84 — Upload natives = Studio table; test clears missing QIDs (Rule W-181).**
+    `_build_native_items` prefers Studio cache → `studio_dict_to_native_item`;
+    on test, missing/live QIDs and WDQS outages become CREATE. Regression:
+    `test_studio_dict_to_native.py`, `test_wikidata_upload_guards.py`.
+    *Why:* export-40 — 100× never (HMO-only rebuild) + 14× missing-on-test.*

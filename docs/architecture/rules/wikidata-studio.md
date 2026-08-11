@@ -1914,3 +1914,38 @@ kwargs are forwarded into `requests.Session.request`, which rejects
    (Wikidata:Bots policy) when the account has the bot right.
 
 Tests: `backend/tests/unit/test_wikidata_upload_is_bot.py`.
+
+
+### Rule W-181 — Test upload path MUST match Studio scope and tolerate test-wiki gaps (added 2026-08-11)
+
+Export-40 on canary `48ba6c13` after login + `is_bot` fixes:
+
+* **115 failed** — `is_bot=True` while the account lacked the MediaWiki
+  `bot` right (API hard-fails; the old "silently ignored" assumption was
+  wrong).
+* **100 never** — upload rebuilt natives from HMO-only
+  (`native_items_from_hmo`) while the Studio table showed the
+  canonical+MARC merge (works included). Those local_ids never entered
+  the job.
+* **14 blocked** — live QIDs adopted into Studio but missing on
+  `test.wikidata.org` (`wbgetentities` → refuse CREATE).
+* **4 blocked** — production WDQS 429/502 fail-closed on test uploads.
+
+**Invariants:**
+
+1. `WikidataUploader` defaults to `is_bot=False`. Opt in only via
+   `mark_as_bot=True` or `WIKIDATA_MARK_AS_BOT=true` when the account has
+   the bot right. A `"bot" right` API error must not be retried thrice.
+2. `_build_native_items` for upload MUST prefer the curator-visible
+   Studio cache (same public filter + overrides as verify / the table),
+   converting cache dicts via `studio_dict_to_native_item`. Rebuild is
+   fallback on cache miss only.
+3. When `upload_target=test` / `is_test=True` and a reconciled QID is
+   **missing** on test.wikidata.org, clear `existing_qid` and **CREATE**
+   on test (do not block). Live uploads keep the fail-closed block.
+4. When `is_test=True` and WDQS reconcile raises
+   `ReconciliationUnavailableError`, proceed as CREATE on test. Live
+   uploads keep the fail-closed block.
+
+Tests: `test_wikidata_upload_is_bot.py`, `test_wikidata_upload_guards.py`
+(test create-on-outage / missing-QID clear), `test_studio_dict_to_native.py`.

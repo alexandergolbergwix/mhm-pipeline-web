@@ -2312,9 +2312,49 @@ async def _build_native_items(
     db: AsyncSession, run_id: uuid.UUID, auth: AuthContext,
     *, approved_only: bool, source: str = "canonical",
 ) -> list[Any]:
-    """Re-run the builder and return the *native* WikidataItem objects
-    (not the JSON dicts) so reconcile/upload can mutate them in place."""
+    """Return native WikidataItem objects for upload — same set as the Studio table.
+
+    Prefer the curator-visible Studio cache (Rule W-181). Rebuilding from HMO
+    alone dropped MARC-merged works/persons and left them as Last-upload
+    ``never`` while manuscripts/persons from HMO were attempted (export-40).
+    """
     await _lookup_run_with_access(db, run_id, auth)
+    if source not in ("legacy", "canonical"):
+        source = "canonical"
+
+    override_rows = (
+        await db.execute(
+            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+        )
+    ).scalars().all()
+    overrides_by_id = {row.local_id: row for row in override_rows}
+
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+    if cached is None or not (cached.result_items or []):
+        alt = await _get_studio_cache_row(db, run_id, not approved_only, source)
+        if alt is not None and (alt.result_items or []):
+            cached = alt
+
+    if cached is not None and (cached.result_items or []):
+        scoped = filter_public_wikidata_items(
+            cached.result_items or [],
+            source=source,
+        )
+        native: list[Any] = []
+        for raw in scoped:
+            override = overrides_by_id.get(str(raw.get("local_id") or ""))
+            item_dict = (
+                apply_wikidata_item_override(raw, override_row_to_dict(override))
+                if override is not None
+                else raw
+            )
+            native.append(studio_dict_to_native_item(item_dict))
+        await _apply_cached_qid_adoption_to_native(
+            db, run_id, approved_only=approved_only, source=source, native=native,
+        )
+        return native
+
+    # Cache miss — fall back to a rebuild (same sources as before).
     records = (
         await db.execute(
             select(RunRecord).where(RunRecord.run_id == run_id)
@@ -2327,11 +2367,6 @@ async def _build_native_items(
     entity_rows = (
         await db.execute(
             select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
-        )
-    ).scalars().all()
-    override_rows = (
-        await db.execute(
-            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
         )
     ).scalars().all()
     if source == "canonical":
@@ -2405,6 +2440,74 @@ async def _build_native_items(
         db, run_id, approved_only=approved_only, source=source, native=native,
     )
     return native
+
+
+def studio_dict_to_native_item(raw: dict[str, Any]) -> Any:
+    """Rebuild a ``WikidataItem`` from a Studio-cache / list-API dict."""
+    from converter.wikidata.item_models import (  # noqa: PLC0415
+        WikidataItem,
+        WikidataStatement,
+    )
+    from converter.wikidata.property_mapping import PRECISION_YEAR  # noqa: PLC0415
+
+    stmts: list[WikidataStatement] = []
+    for s in raw.get("statements") or []:
+        if not isinstance(s, dict):
+            continue
+        pid = str(s.get("property_id") or s.get("property") or "").strip()
+        if not pid:
+            continue
+        vtype = str(s.get("value_type") or "string")
+        precision = s.get("precision")
+        try:
+            precision_i = int(precision) if precision is not None else PRECISION_YEAR
+        except (TypeError, ValueError):
+            precision_i = PRECISION_YEAR
+        stmts.append(
+            WikidataStatement(
+                property_id=pid,
+                value=s.get("value"),
+                value_type=vtype,
+                qualifiers=list(s.get("qualifiers") or []),
+                references=list(s.get("references") or []),
+                precision=precision_i,
+                language=str(s.get("language") or "he"),
+                unit=str(s.get("unit") or ""),
+                rank=str(s.get("rank") or "normal"),
+            )
+        )
+
+    qid = raw.get("existing_qid")
+    qid_s = str(qid).strip() if qid else None
+    if qid_s and not qid_s.startswith("Q"):
+        qid_s = None
+
+    aliases_raw = raw.get("aliases") or {}
+    aliases: dict[str, list[str]] = {}
+    if isinstance(aliases_raw, dict):
+        for lang, vals in aliases_raw.items():
+            if isinstance(vals, list):
+                aliases[str(lang)] = [str(v) for v in vals if str(v).strip()]
+            elif vals:
+                aliases[str(lang)] = [str(vals)]
+
+    return WikidataItem(
+        labels={str(k): str(v) for k, v in (raw.get("labels") or {}).items()},
+        descriptions={
+            str(k): str(v) for k, v in (raw.get("descriptions") or {}).items()
+        },
+        aliases=aliases,
+        statements=stmts,
+        existing_qid=qid_s,
+        entity_type=str(raw.get("entity_type") or ""),
+        semantic_type=str(raw.get("semantic_type") or ""),
+        local_id=str(raw.get("local_id") or ""),
+        records=[str(r) for r in (raw.get("records") or raw.get("record_ids") or [])],
+        authority_evidence=list(raw.get("authority_evidence") or []),
+        work_candidate_evidence=list(raw.get("work_candidate_evidence") or []),
+        heading_mismatch=raw.get("heading_mismatch"),
+    )
+
 
 
 async def _load_marc_records_for_run(db: AsyncSession, run_id: uuid.UUID) -> list[dict[str, Any]]:

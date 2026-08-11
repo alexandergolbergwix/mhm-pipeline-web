@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-180)
+## Architectural rules (W-1…W-181)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -131,6 +131,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-178** — Test and live Wikidata credentials MUST be separate Settings secrets
 - **W-179** — Wikidata upload jobs MUST log in once and abort on auth failure
 - **W-180** — Wikidata writes MUST pass WikibaseIntegrator's `is_bot` flag
+- **W-181** — Test upload path MUST match Studio scope and tolerate test-wiki gaps
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

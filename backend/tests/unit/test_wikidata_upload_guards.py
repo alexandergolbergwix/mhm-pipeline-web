@@ -216,7 +216,8 @@ def test_work_reconciles_by_label_and_author():
 # ── _upload_sync: blocked items never reach the uploader ──────────────────
 
 
-def test_upload_sync_never_writes_blocked_items(monkeypatch):
+def test_upload_sync_wdqs_outage_creates_on_test(monkeypatch):
+    """On test.wikidata.org, WDQS outage must not block CREATE (Rule W-181)."""
     monkeypatch.setenv("WIKIDATA_TEST_MODE", "true")
     monkeypatch.delenv("MORATORIUM_LIFTED", raising=False)
     monkeypatch.setattr(
@@ -224,11 +225,9 @@ def test_upload_sync_never_writes_blocked_items(monkeypatch):
         lambda qid, *, is_test=False: True,
     )
 
-    good = _manuscript("990000001")            # matches → update
-    outage = _manuscript("990000002")          # lookup fails → blocked
+    good = _manuscript("990000001")
+    outage = _manuscript("990000002")
 
-    # Route through a reconciler that raises for a specific id so only the
-    # second item's lookup fails.
     class _SelectiveRec(_FakeReconciler):
         def reconcile_manuscript_by_identifiers(self, nnl_id, shelfmark):
             self.ms_calls.append((nnl_id, shelfmark))
@@ -250,7 +249,9 @@ def test_upload_sync_never_writes_blocked_items(monkeypatch):
 
         def upload_item(self, item):
             written.append(item)
-            return _FakeResult(qid="Q1", status="updated", message="Updated Q1: +3 claims")
+            qid = getattr(item, "existing_qid", None) or "Qnew"
+            status = "updated" if getattr(item, "existing_qid", None) else "success"
+            return _FakeResult(qid=qid, status=status, message=f"{status} {qid}")
 
     monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _FakeUploader)
 
@@ -260,9 +261,82 @@ def test_upload_sync_never_writes_blocked_items(monkeypatch):
 
     statuses = {o.local_id: o.status for o in outcomes}
     assert statuses["990000001"] == "adopted"
-    assert statuses["990000002"] == "blocked"
-    # The blocked item must never have been written.
-    assert written == [good]
+    assert statuses["990000002"] in {"created", "success"}
+    assert len(written) == 2
+
+
+def test_upload_sync_wdqs_outage_blocks_on_live(monkeypatch):
+    monkeypatch.delenv("WIKIDATA_TEST_MODE", raising=False)
+    monkeypatch.setenv("MORATORIUM_LIFTED", "true")
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False: True,
+    )
+
+    outage = _manuscript("990000002")
+
+    class _Rec(_FakeReconciler):
+        def reconcile_manuscript_by_identifiers(self, nnl_id, shelfmark):
+            raise ReconciliationUnavailableError("timeout")
+
+    monkeypatch.setattr(wu, "_make_reconciler", lambda: _Rec())
+
+    written: list = []
+
+    class _FakeUploader:
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
+            self._is_our_item_cache = {}
+
+        def _is_our_item(self, qid: str) -> bool:
+            return True
+
+        def upload_item(self, item):
+            written.append(item)
+            return _FakeResult(qid="Q1", status="success", message="ok")
+
+    monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _FakeUploader)
+
+    outcomes = wu._upload_sync(
+        [outage],
+        token="User@Bot:deadbeef",
+        dry_run=False,
+        ledger={},
+        ledger_ns="wikidata",
+        is_test=False,
+        allow_live=True,
+    )
+    assert outcomes[0].status == "blocked"
+    assert written == []
+
+
+def test_missing_qid_on_test_clears_for_create(monkeypatch):
+    item = _manuscript("990000099")
+    item.existing_qid = "Q134603946"
+    prepared = wu.PreparedItem(
+        item=item,
+        local_id="990000099",
+        label="x",
+        entity_type="manuscript",
+        existing_qid="Q134603946",
+        method="prebuilt",
+        blocked=False,
+        block_status="",
+        block_message="",
+    )
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False: False,
+    )
+    out = wu._apply_existence_and_ownership(
+        prepared,
+        accept=None,
+        ownership_checker=None,
+        is_test=True,
+    )
+    assert out.blocked is False
+    assert out.existing_qid is None
+    assert item.existing_qid is None
+    assert "cleared_missing_on_test" in out.method
 
 
 def test_dry_run_reports_update_create_and_block(monkeypatch):

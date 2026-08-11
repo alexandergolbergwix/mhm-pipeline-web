@@ -205,6 +205,27 @@ def _apply_existence_and_ownership(
 
     alive = confirm_qid_alive(qid, is_test=is_test)
     if alive is False:
+        if is_test:
+            # Live/reconciled QIDs often do not exist on test.wikidata.org.
+            # Blocking CREATE there stranded the canary (export-40). Clear the
+            # ghost QID and CREATE a test item instead (Rule W-181).
+            logger.info(
+                "test upload: QID %s missing on test.wikidata.org — clearing "
+                "for CREATE (local_id=%s)",
+                qid, prepared.local_id,
+            )
+            prepared.existing_qid = None
+            try:
+                prepared.item.existing_qid = None
+            except Exception:  # noqa: BLE001
+                pass
+            prepared.method = f"{prepared.method}+cleared_missing_on_test"
+            prepared.ownership = "absent"
+            prepared.adopt_candidate = False
+            prepared.blocked = False
+            prepared.block_status = ""
+            prepared.block_message = ""
+            return prepared
         # Stale ledger/reconcile hit — clear QID so we do not UPDATE a ghost,
         # but BLOCK CREATE until the curator re-reconciles (fail closed).
         prepared.blocked = True
@@ -364,19 +385,30 @@ def _prepare_for_upload(
             try:
                 existing, method = _reconcile_for_upload(reconciler, item, et)
             except ReconciliationUnavailableError as exc:
-                prepared.append(PreparedItem(
-                    item=item, local_id=local_id, label=label, entity_type=et,
-                    existing_qid=None, method="error", blocked=True,
-                    block_status="blocked",
-                    block_message=(
-                        "Reconciliation lookup could not be completed "
-                        f"({exc}) — refusing to CREATE. A transient Wikidata "
-                        "Query Service outage must never be read as 'no "
-                        "existing item'. Retry when WDQS is reachable."
-                    ),
-                    had_builder_qid=had_builder_qid,
-                ))
-                continue
+                if is_test:
+                    # Test wiki is disposable; do not strand the canary on
+                    # production WDQS 429/502 (Rule W-181). Proceed as CREATE.
+                    logger.warning(
+                        "test upload: WDQS unavailable for %s — CREATE without "
+                        "reconcile (%s)",
+                        local_id, exc,
+                    )
+                    existing = None
+                    method = "wdqs_unavailable_test_create"
+                else:
+                    prepared.append(PreparedItem(
+                        item=item, local_id=local_id, label=label, entity_type=et,
+                        existing_qid=None, method="error", blocked=True,
+                        block_status="blocked",
+                        block_message=(
+                            "Reconciliation lookup could not be completed "
+                            f"({exc}) — refusing to CREATE. A transient Wikidata "
+                            "Query Service outage must never be read as 'no "
+                            "existing item'. Retry when WDQS is reachable."
+                        ),
+                        had_builder_qid=had_builder_qid,
+                    ))
+                    continue
             if existing:
                 adopt_candidate = not had_builder_qid
                 item.existing_qid = existing

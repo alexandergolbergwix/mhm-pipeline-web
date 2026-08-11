@@ -28,7 +28,7 @@ function cellFilterValues(item: StudioItem, col: ColKey): string[] {
   }
   if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "unknown"];
   if (col === "data_status") return [resolveWikidataItemDataStatus(item)];
-  if (col === "upload_outcome") return [item.upload_outcome ?? "never"];
+  if (col === "upload_outcome") return [item.upload_outcome ?? "never tried"];
   if (col === "approved") {
     if (item.approved === true) return ["approved"];
     if (item.approved === false) return ["rejected"];

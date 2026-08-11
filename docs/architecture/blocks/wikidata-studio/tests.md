@@ -46,7 +46,8 @@
 - `backend/tests/unit/test_wikidata_secret_keys.py` — live vs `wikidata_test` Settings key routing (W-178 / R81).
 - `backend/tests/unit/test_wikidata_auth_token.py` — bot-password normalize/validate (two-line paste).
 - `backend/tests/unit/test_wikidata_upload_login_once.py` — shared uploader + auth abort (W-179 / R82).
-- `backend/tests/unit/test_wikidata_upload_is_bot.py` — `write(..., is_bot=True)` not `bot=` (W-180 / R83).
+- `backend/tests/unit/test_wikidata_upload_is_bot.py` — `is_bot` kwarg (not `bot=`), default false, no retry on bot-right (W-180 / W-181 / R83).
+- `backend/tests/unit/test_studio_dict_to_native.py` — Studio-cache dict → native item (W-181 / R84).
 - `backend/tests/unit/test_wikidata_existence.py` — `wbgetentities` alive parse, ownership classify, QID-bound foreign accept gate.
 - `backend/tests/unit/test_rdf_build.py` — clean raw 505 and flat contents create evidence-backed works.
 - `backend/tests/unit/test_wikidata_studio_slicing.py`, `test_wikidata_studio_works.py`, `test_wikidata_manuscript_labels.py`, `test_wikidata_matcher_backfill.py` — build/serialisation behaviour. `test_wikidata_studio_works.py` also pins source evidence, folio qualifiers, embedded-author cleanup, Latin-heading rejection, non-inherited work P407, and exact per-item `records`; it also pins contents-level author fields and

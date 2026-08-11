@@ -91,6 +91,7 @@ class WikidataUploader:
         batch_mode: bool = False,
         *,
         allow_live: bool = False,
+        mark_as_bot: bool | None = None,
     ) -> None:
         """Initialize the uploader.
 
@@ -100,12 +101,18 @@ class WikidataUploader:
             batch_mode: If True, pause 60s every 45 items to stay under rate limits.
             allow_live: If True, curator explicitly chose live wikidata.org
                 (UI upload target). Same effect as ``MORATORIUM_LIFTED=true``.
+            mark_as_bot: Pass ``is_bot=True`` on writes. Default False — MediaWiki
+                hard-fails when the account lacks the ``bot`` right (export-40).
+                Set True / ``WIKIDATA_MARK_AS_BOT=true`` only after the account
+                has been granted bot rights.
 
         Raises:
             RuntimeError: If the Wikidata moratorium (CLAUDE.md rule 25) is in
                 effect and neither ``allow_live`` nor ``MORATORIUM_LIFTED=true``
                 is set. Test mode (``is_test=True``) bypasses the check.
         """
+        import os  # noqa: PLC0415
+
         from converter.wikidata.auth_token import (  # noqa: PLC0415
             normalize_wikidata_auth_token,
         )
@@ -114,6 +121,11 @@ class WikidataUploader:
         self._is_test = is_test
         self._batch_mode = batch_mode
         self._allow_live = allow_live
+        if mark_as_bot is None:
+            mark_as_bot = os.environ.get("WIKIDATA_MARK_AS_BOT", "").lower() in {
+                "1", "true", "yes",
+            }
+        self._mark_as_bot = bool(mark_as_bot)
         self._wbi = None
         self._last_edit_time: float = 0.0
         self._authenticated_user: str | None = None  # Set after first auth
@@ -1077,14 +1089,6 @@ class WikidataUploader:
                 # to leave room for the "..." suffix.
                 if len(edit_summary) > 497:
                     edit_summary = edit_summary[:497] + "..."
-                # Bug fix 2026-04-16 (deeper audit Fix #3): mark every edit
-                # as a bot edit so it is filtered out of the human-default
-                # RecentChanges feed. Without this flag, all our edits flood
-                # community watchlists — the #1 reason bot operators get
-                # blocked at WD:AN. The flag is silently ignored if the
-                # account does not have a bot flag yet, so it is safe to
-                # always pass.
-                #
                 # DEFENSE-IN-DEPTH #4 (rule 38): immediately before the
                 # only .write() call in the codebase, re-assert that the
                 # target QID is ours. This is the last gate — if someone
@@ -1093,10 +1097,13 @@ class WikidataUploader:
                 self._assert_modifiable(
                     item.existing_qid or "", stage="pre_write",
                 )
-                # WikibaseIntegrator ≥0.12 takes ``is_bot``; bare ``bot=``
-                # is forwarded into requests.Session.request and raises
-                # TypeError (export-39: 119× unexpected keyword 'bot').
-                result = wbi_item.write(summary=edit_summary, is_bot=True)
+                # WikibaseIntegrator ≥0.12 takes ``is_bot`` (never bare ``bot=``;
+                # Rule W-180). Default is_bot=False — accounts without the
+                # MediaWiki bot right hard-fail (Rule W-181 / export-40).
+                result = wbi_item.write(
+                    summary=edit_summary,
+                    is_bot=self._mark_as_bot,
+                )
                 qid = result.id if result else None
 
                 if item.existing_qid:
@@ -1149,6 +1156,13 @@ class WikidataUploader:
                 err_lower = last_error.lower()
                 is_conflict = "editconflict" in err_lower
                 is_badtoken = "badtoken" in err_lower
+                # "bot" right missing is configuration, not transient —
+                # three retries only burn wall clock (export-40).
+                is_bot_right = (
+                    '"bot" right' in err_lower
+                    or "do not have the \"bot\" right" in err_lower
+                    or "do not have the 'bot' right" in err_lower
+                )
                 logger.warning(
                     "Upload attempt %d/%d for %s failed (%s%s): %s",
                     attempt,
@@ -1158,13 +1172,22 @@ class WikidataUploader:
                     " badtoken" if is_badtoken else "",
                     exc,
                 )
+                if is_bot_right:
+                    return UploadResult(
+                        local_id=item.local_id,
+                        status="failed",
+                        message=(
+                            "Account lacks the MediaWiki 'bot' right but writes "
+                            "requested is_bot=True. Unset WIKIDATA_MARK_AS_BOT "
+                            f"(or pass mark_as_bot=False). Detail: {last_error[:160]}"
+                        ),
+                    )
                 if attempt < _MAX_RETRIES:
                     # Shorter backoff for conflicts (someone is actively
                     # editing this item, so a quick retry is more likely
                     # to succeed); longer for unknown failures.
                     delay = (_RETRY_DELAY_SECONDS * attempt) if not is_conflict else 1.0
                     time.sleep(delay)
-
         return UploadResult(
             local_id=item.local_id,
             status="failed",
