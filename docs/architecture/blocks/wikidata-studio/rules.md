@@ -622,3 +622,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     on test, missing/live QIDs and WDQS outages become CREATE. Regression:
     `test_studio_dict_to_native.py`, `test_wikidata_upload_guards.py`.
     *Why:* export-40 — 100× never (HMO-only rebuild) + 14× missing-on-test.*
+85. **R85 — Test uploads drop incompatible claims (Rule W-182).**
+    `test_wiki_compat.filter_item_for_test_wiki` runs only when `is_test=True`.
+    Live keeps the full WPM set. Remaining `Bad value type` fails once.
+    Regression: `test_wikidata_test_wiki_compat.py`.
+    *Why:* test.wikidata.org P-ids are not public Wikidata properties.*

@@ -48,7 +48,9 @@ without the MediaWiki bot right hard-fail if `is_bot=True`. Upload natives
 come from the **Studio cache** (same public set as the review table), not
 an HMO-only rebuild. On `upload_target=test`, QIDs missing on
 test.wikidata.org and WDQS outages clear to CREATE rather than block
-(live stays fail-closed). It optionally filters to
+(live stays fail-closed). Test writes also **strip claims** whose
+property datatype (or item target) does not exist on test.wikidata.org —
+labels still go out so CREATE can succeed (Rule W-182). It optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
 loads per-item foreign accepts from `WikidataItemOverride`, and calls

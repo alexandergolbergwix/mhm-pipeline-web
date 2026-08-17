@@ -81,7 +81,7 @@ class WikidataUploader:
 
     Usage::
 
-        uploader = WikidataUploader(token="your-oauth-token")
+        uploader = WikidataUploader(auth="User@BotName:bot-password")
         results = uploader.upload_all(items)
     """
 
@@ -115,10 +115,10 @@ class WikidataUploader:
         import os  # noqa: PLC0415
 
         from converter.wikidata.auth_token import (  # noqa: PLC0415
-            normalize_wikidata_auth_token,
+            normalize_wikidata_auth_token as _normalize_auth,
         )
 
-        self._token = normalize_wikidata_auth_token(token)
+        self._token = _normalize_auth(token)
         self._is_test = is_test
         self._batch_mode = batch_mode
         self._allow_live = allow_live
@@ -133,6 +133,8 @@ class WikidataUploader:
         self._authenticated_user: str | None = None  # Set after first auth
         self._creator_cache: dict[str, str] = {}  # qid → first revision author
         self._is_our_item_cache: dict[str, bool] = {}  # qid → creator-check result
+        self._test_property_datatypes: dict[str, str | None] = {}
+        self._test_entity_exists: dict[str, bool] = {}
         self._enforce_moratorium()
 
     @staticmethod
@@ -1083,6 +1085,78 @@ class WikidataUploader:
         if not self._is_our_item(qid):
             raise UnauthorisedModificationError(qid=qid, stage=stage)
 
+    def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
+        """Fetch entities from the current wiki. Empty dict on network failure."""
+        import requests  # noqa: PLC0415
+
+        out: dict[str, dict] = {}
+        if not ids:
+            return out
+        api_url = _TEST_API if self._is_test else _WIKIDATA_API
+        headers = {"User-Agent": "MHMPipeline/1.0 (shvedbook@gmail.com)"}
+        try:
+            for i in range(0, len(ids), 50):
+                chunk = ids[i : i + 50]
+                resp = requests.get(
+                    api_url,
+                    params={
+                        "action": "wbgetentities",
+                        "ids": "|".join(chunk),
+                        "props": props,
+                        "format": "json",
+                    },
+                    headers=headers,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                entities = resp.json().get("entities") or {}
+                if isinstance(entities, dict):
+                    out.update(entities)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("wbgetentities failed (%s): %s", props, exc)
+        return out
+
+    def _adapt_item_for_test_wiki(
+        self, item: WikidataItem,
+    ) -> tuple[WikidataItem, list[str]]:
+        """Strip claims test.wikidata.org cannot accept (Rule W-182)."""
+        from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+            collect_test_wiki_ids,
+            filter_item_for_test_wiki,
+        )
+
+        pids, qids = collect_test_wiki_ids(item)
+        missing_p = [p for p in pids if p not in self._test_property_datatypes]
+        missing_q = [q for q in qids if q not in self._test_entity_exists]
+        if missing_p:
+            fetched = self._wbgetentities(missing_p, props="datatype")
+            for pid in missing_p:
+                ent = fetched.get(pid) if isinstance(fetched.get(pid), dict) else None
+                if not ent or "missing" in ent:
+                    self._test_property_datatypes[pid] = None
+                else:
+                    dt = ent.get("datatype")
+                    self._test_property_datatypes[pid] = str(dt) if dt else None
+        if missing_q:
+            fetched = self._wbgetentities(missing_q, props="info")
+            for qid in missing_q:
+                ent = fetched.get(qid) if isinstance(fetched.get(qid), dict) else None
+                self._test_entity_exists[qid] = bool(ent) and "missing" not in ent
+        existing = {qid for qid, ok in self._test_entity_exists.items() if ok}
+        filtered, skipped = filter_item_for_test_wiki(
+            item,
+            property_datatypes=self._test_property_datatypes,
+            existing_item_ids=existing,
+        )
+        if skipped:
+            logger.info(
+                "test.wikidata.org smoke filter for %s dropped %d snaks: %s",
+                item.local_id,
+                len(skipped),
+                "; ".join(skipped[:12]),
+            )
+        return filtered, skipped
+
     def upload_item(self, item: WikidataItem) -> UploadResult:
         """Upload a single item to Wikidata with retry logic and smart diffing.
 
@@ -1098,6 +1172,10 @@ class WikidataUploader:
         """
         self._check_moratorium_for_live()
         self._init_wbi()
+
+        skipped_test_claims: list[str] = []
+        if self._is_test:
+            item, skipped_test_claims = self._adapt_item_for_test_wiki(item)
 
         # SAFETY: If this item has an existing_qid, verify it's OUR item before modifying
         if item.existing_qid and not self._is_our_item(item.existing_qid):
@@ -1176,6 +1254,12 @@ class WikidataUploader:
                 )
                 qid = result.id if result else None
 
+                skip_note = ""
+                if skipped_test_claims:
+                    skip_note = (
+                        f"; skipped {len(skipped_test_claims)} test-incompatible "
+                        "claims (Rule W-182)"
+                    )
                 if item.existing_qid:
                     from collections import Counter  # noqa: PLC0415
 
@@ -1186,14 +1270,17 @@ class WikidataUploader:
                         local_id=item.local_id,
                         qid=qid,
                         status="updated",
-                        message=f"Updated {qid}: +{new_claims} claims ({prop_summary})",
+                        message=(
+                            f"Updated {qid}: +{new_claims} claims ({prop_summary})"
+                            + skip_note
+                        ),
                         added_properties=added_props,
                     )
                 return UploadResult(
                     local_id=item.local_id,
                     qid=qid,
                     status="success",
-                    message=f"Created {qid} ({new_claims} claims)",
+                    message=f"Created {qid} ({new_claims} claims){skip_note}",
                     added_properties=added_props,
                 )
             except UnauthorisedModificationError as exc:
@@ -1240,6 +1327,7 @@ class WikidataUploader:
                     "permissions needed" in err_lower
                     or "permissiondenied" in err_lower
                 )
+                is_bad_value_type = "bad value type" in err_lower
                 mw_code = ""
                 if hasattr(exc, "code"):
                     mw_code = str(getattr(exc, "code") or "")
@@ -1275,6 +1363,19 @@ class WikidataUploader:
                             + ". Bot password needs: High-volume editing; "
                             "Edit existing pages; Create, edit, and move pages. "
                             f"Detail: {last_error[:120]}"
+                        ),
+                    )
+                if is_bad_value_type:
+                    wiki = "test.wikidata.org" if self._is_test else "www.wikidata.org"
+                    return UploadResult(
+                        local_id=item.local_id,
+                        status="failed",
+                        message=(
+                            f"Bad claim datatype on {wiki} (not retried). "
+                            "On test.wikidata.org, P-ids are not the public "
+                            "Wikidata properties — remaining mismatches should "
+                            "have been stripped (Rule W-182). "
+                            f"Detail: {last_error[:160]}"
                         ),
                     )
                 if attempt < _MAX_RETRIES:

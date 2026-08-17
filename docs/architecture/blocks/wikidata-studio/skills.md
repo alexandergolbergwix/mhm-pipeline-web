@@ -44,6 +44,10 @@
    **Edit existing pages**, and **Create, edit, and move pages**, then paste the
    new password into Settings. Upload jobs now abort once at login when
    `createpage`/`edit` are missing.
+6. `upload_target=test` is a **smoke sandbox**: test.wikidata.org reuses
+   production P-ids for unrelated properties, so the uploader strips
+   incompatible claims and still CREATE-s with labels (Rule W-182). It is
+   not a full WikiProject Manuscripts rehearsal.
 
 ### Skill: watch live upload progress (tray View / Rule W-141)
 

@@ -1949,3 +1949,24 @@ Export-40 on canary `48ba6c13` after login + `is_bot` fixes:
 
 Tests: `test_wikidata_upload_is_bot.py`, `test_wikidata_upload_guards.py`
 (test create-on-outage / missing-QID clear), `test_studio_dict_to_native.py`.
+
+### Rule W-182 — Test uploads MUST drop claims test.wikidata.org cannot accept (added 2026-08-17)
+
+After IPBE, test uploads still failed every manuscript with
+`Bad value type … expected globecoordinate/monolingualtext` because
+**test.wikidata.org reuses production P-ids for unrelated properties**
+(`P1476` is a globe-coordinate there; `P31` is a URL). Retrying the same
+write three times does not help.
+
+**Invariants:**
+
+1. On `is_test=True` only, `WikidataUploader` fetches test property
+   datatypes (+ existence of item-valued QIDs) and strips incompatible
+   claims, qualifiers, and references via
+   `converter/wikidata/test_wiki_compat.py`. Labels, descriptions, and
+   aliases still write so CREATE can succeed as a smoke path.
+2. Live `wikidata.org` uploads MUST NOT use this filter — they keep the
+   full WikiProject Manuscripts claim set.
+3. A remaining `Bad value type` error MUST fail once (no 3× retry).
+
+Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`.

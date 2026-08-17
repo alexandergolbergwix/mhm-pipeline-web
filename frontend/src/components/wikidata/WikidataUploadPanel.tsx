@@ -69,7 +69,7 @@ const TARGET_OPTIONS: Array<{
   {
     value: "test",
     label: "Wikidata test",
-    hint: "Write to test.wikidata.org (uses Settings → Wikidata test bot)",
+    hint: "Smoke write to test.wikidata.org: labels plus claims whose datatypes exist there (Settings → Wikidata test bot). Not a full WPM sandbox.",
   },
   {
     value: "live",
@@ -523,7 +523,7 @@ export function WikidataUploadPanel({
         <div className="kicker">Upload to Wikidata</div>
         <h3 className="text-lg font-medium">Reconcile-before-create upload</h3>
         <p className="muted text-sm leading-relaxed mt-1">
-          Default is dry-run (moratorium active). Choose Wikidata test or live when you are ready to write.
+          Default is dry-run (moratorium active). Test.wikidata.org is a smoke sandbox (labels + compatible claims only — P-ids there are not public Wikidata). Choose live only for real WPM writes.
         </p>
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}
