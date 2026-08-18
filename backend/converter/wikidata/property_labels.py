@@ -160,6 +160,7 @@ QID_LABELS: dict[str, str] = {
     "Q5":       "human",
     "Q43229":   "organization",
     "Q87167":   "manuscript",
+    "Q571":     "book",
     "Q47461344": "written work",
     "Q871232":  "editorial collective",     # placeholder used for some colls
     # Countries / places (pipeline hardcodes)

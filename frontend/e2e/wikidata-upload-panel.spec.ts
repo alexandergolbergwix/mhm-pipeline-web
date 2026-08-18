@@ -133,4 +133,56 @@ test.describe("Wikidata upload panel", () => {
     await page.getByTestId("wikidata-upload-failconfirm-review").click();
     await expect(page.getByText(/AI verification.*Wikidata Studio/i)).toBeVisible();
   });
+
+  test("test target hint describes remap-before-drop", async ({page}) => {
+    await expect(page.getByTestId("wikidata-upload-target-hint-test")).toContainText("remaps live P/Q");
+    await expect(page.getByTestId("wikidata-upload-target-hint-test")).toContainText("leftover snaks");
+  });
+
+  test("choosing test target posts upload_target=test and never live", async ({page}) => {
+    let jobBody: Record<string, unknown> | null = null;
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      jobBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "job-wd-upload-test",
+          project_id: TEST_PROJECT_ID,
+          run_id: TEST_RUN_ID,
+          kind: "wikidata_upload",
+          status: "succeeded",
+          progress: {phase: "done"},
+          params: jobBody,
+          result: {
+            dry_run: false,
+            upload_target: "test",
+            moratorium_lifted: false,
+            test_mode: true,
+            outcomes: [],
+          },
+          error: null,
+          created_by: null,
+          started_at: null,
+          finished_at: null,
+          cancel_requested_at: null,
+          created_at: null,
+          updated_at: null,
+        }),
+      });
+    });
+
+    await page.getByTestId("wikidata-upload-target-test").check();
+    await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("TEST MODE");
+    await page.getByTestId("wikidata-upload-submit").click();
+    await expect.poll(() => jobBody).not.toBeNull();
+    expect(jobBody?.kind).toBe("wikidata_upload");
+    const params = jobBody?.params as Record<string, unknown>;
+    expect(params.upload_target).toBe("test");
+    expect(params.dry_run).toBe(false);
+  });
 });

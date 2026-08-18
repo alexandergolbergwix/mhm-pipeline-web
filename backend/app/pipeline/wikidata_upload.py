@@ -247,14 +247,17 @@ def _apply_existence_and_ownership(
         return prepared
 
     acc = accept or ForeignAccept()
-    if accept_allows_foreign_modify(
-        existing_qid=qid,
-        accept_foreign_modify=bool(acc.accept_foreign_modify),
-        accepted_foreign_qid=acc.accepted_foreign_qid,
+    if (
+        not is_test
+        and accept_allows_foreign_modify(
+            existing_qid=qid,
+            accept_foreign_modify=bool(acc.accept_foreign_modify),
+            accepted_foreign_qid=acc.accepted_foreign_qid,
+        )
     ):
         # Explicit per-QID accept is sufficient even without a live ownership
         # classify (e.g. dry-run before token unwrap). Still fail-closed on
-        # missing/ghost QIDs above.
+        # missing/ghost QIDs above. Live only — test never UPDATEs foreign items.
         prepared.ownership = "foreign"
         prepared.allow_foreign_modify = True
         return prepared
@@ -760,15 +763,8 @@ def _upload_sync(
             ))
             continue
         try:
-            if p.allow_foreign_modify and p.existing_qid:
-                # Audited Rule-38 exception: curator explicitly accepted this QID.
-                logger.warning(
-                    "FOREIGN_MODIFY_ACCEPTED local_id=%s qid=%s — curator override",
-                    p.local_id, p.existing_qid,
-                )
-                cache = getattr(write_uploader, "_is_our_item_cache", None)
-                if isinstance(cache, dict):
-                    cache[p.existing_qid] = True
+            if p.allow_foreign_modify and p.existing_qid and not is_test:
+                write_uploader.register_foreign_accept(p.existing_qid)
             result = write_uploader.upload_item(p.item)
             status = result.status
             if p.adopt_candidate and status == "updated":

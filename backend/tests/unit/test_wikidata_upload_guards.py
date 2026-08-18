@@ -440,6 +440,51 @@ def test_dry_run_allows_foreign_with_accept(monkeypatch):
     assert "explicit accept_foreign_modify" in outcomes[0].message
 
 
+def test_foreign_accept_ignored_on_test_upload(monkeypatch):
+    item = _manuscript("990000021")
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False: True,
+    )
+    monkeypatch.setattr(
+        wu, "_make_reconciler",
+        lambda: _FakeReconciler(ms_map={"990000021": "Q21"}),
+    )
+
+    class _ForeignUploader:
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
+            assert is_test is True
+            self._is_our_item_cache = {}
+            self.registered: list[str] = []
+
+        def register_foreign_accept(self, qid: str) -> None:
+            self.registered.append(qid)
+
+        def _is_our_item(self, qid: str) -> bool:
+            return False
+
+        def upload_item(self, item):
+            raise AssertionError("must not upload foreign item on test")
+
+    monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _ForeignUploader)
+
+    outcomes = wu._upload_sync(
+        [item],
+        token="User@Bot:deadbeef",
+        dry_run=False,
+        ledger={},
+        ledger_ns="wikidata",
+        is_test=True,
+        accept_by_local_id={
+            "990000021": wu.ForeignAccept(
+                accept_foreign_modify=True, accepted_foreign_qid="Q21",
+            ),
+        },
+    )
+    assert outcomes[0].status == "skipped"
+    assert "not created by your account" in outcomes[0].message
+
+
 def test_reconcile_preview_marks_outage_as_error(monkeypatch):
     monkeypatch.setattr(wu, "_make_reconciler", lambda: _FakeReconciler(raise_on="manuscript"))
 

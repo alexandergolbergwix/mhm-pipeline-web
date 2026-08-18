@@ -103,6 +103,75 @@ test.describe("Wikidata item review table", () => {
     await expect(page.getByTestId("wikidata-item-row-manuscript::A")).toHaveCount(0);
   });
 
+  test("last-upload details show remapped claims and skipped foreign items", async ({page}) => {
+    await installStudioMocks(page, makeBuildResponse({
+      items: [
+        makeStudioItem({
+          local_id: "manuscript::Remap",
+          labels: {en: "69 A 1756"},
+          upload_outcome: "create",
+          upload_message: "Created Q248051 (12 claims); remapped 9 properties, 3 classes; skipped 0 snaks (Rule W-182/W-183)",
+          upload_at: "2026-08-18T12:00:00Z",
+        }),
+        makeStudioItem({
+          local_id: "person::Foreign",
+          entity_type: "person",
+          labels: {en: "Community Person"},
+          existing_qid: "Q209579",
+          upload_outcome: "skip",
+          upload_message: "Skipped Q209579 — not authored by the authenticated user (Rule-38; no UPDATE of foreign items on test.wikidata.org)",
+          upload_at: "2026-08-18T12:00:01Z",
+        }),
+      ],
+      total: 2,
+    }));
+    await gotoModernStudio(page);
+
+    await page.getByTestId("wikidata-item-upload-badge-manuscript::Remap").click();
+    const remapDetail = page.getByTestId("wikidata-item-upload-detail-manuscript::Remap");
+    await expect(remapDetail).toBeVisible();
+    await expect(remapDetail).toContainText("created");
+    await expect(remapDetail).toContainText("remapped 9 properties");
+    await expect(remapDetail).toContainText("Rule W-182/W-183");
+    await remapDetail.getByRole("button", {name: "Close"}).click();
+
+    await page.getByTestId("wikidata-item-upload-badge-person::Foreign").click();
+    const skipDetail = page.getByTestId("wikidata-item-upload-detail-person::Foreign");
+    await expect(skipDetail).toBeVisible();
+    await expect(skipDetail).toContainText("skipped");
+    await expect(skipDetail).toContainText("no UPDATE of foreign items");
+    await expect(skipDetail).toContainText("test.wikidata.org");
+  });
+
+  test("filtering skipped upload outcomes hides created rows", async ({page}) => {
+    await installStudioMocks(page, makeBuildResponse({
+      items: [
+        makeStudioItem({
+          local_id: "manuscript::A",
+          upload_outcome: "create",
+          upload_message: "Created Q1 (2 claims)",
+        }),
+        makeStudioItem({
+          local_id: "person::B",
+          entity_type: "person",
+          existing_qid: "Q209579",
+          upload_outcome: "skip",
+          upload_message: "Skipped Q209579 — not authored by the authenticated user",
+        }),
+      ],
+      total: 2,
+    }));
+    await gotoModernStudio(page);
+
+    await page.getByTestId("wikidata-item-col-upload_outcome").click();
+    const checkboxList = page.getByTestId("filter-mode-checkbox");
+    await checkboxList.locator("label", {hasText: "skip"}).locator('input[type="checkbox"]').check();
+    await page.getByRole("button", {name: "Apply"}).click();
+
+    await expect(page.getByTestId("wikidata-item-row-person::B")).toBeVisible();
+    await expect(page.getByTestId("wikidata-item-row-manuscript::A")).toHaveCount(0);
+  });
+
   test("data-status filter shows real row counts for shared values", async ({page}) => {
     await installStudioMocks(page, makeBuildResponse({
       items: [

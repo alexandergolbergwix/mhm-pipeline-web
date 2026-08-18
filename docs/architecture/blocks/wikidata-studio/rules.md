@@ -622,8 +622,18 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     on test, missing/live QIDs and WDQS outages become CREATE. Regression:
     `test_studio_dict_to_native.py`, `test_wikidata_upload_guards.py`.
     *Why:* export-40 — 100× never (HMO-only rebuild) + 14× missing-on-test.*
-85. **R85 — Test uploads drop incompatible claims (Rule W-182).**
-    `test_wiki_compat.filter_item_for_test_wiki` runs only when `is_test=True`.
-    Live keeps the full WPM set. Remaining `Bad value type` fails once.
-    Regression: `test_wikidata_test_wiki_compat.py`.
-    *Why:* test.wikidata.org P-ids are not public Wikidata properties.*
+85. **R85 — Test uploads remap then drop incompatible claims (Rules W-182 / W-183).**
+    `test_wiki_compat` ranks test properties/items by English label +
+    datatype, `WikidataUploader._ensure_test_maps_for_item` searches or
+    stub-CREATEs, rewrites snaks, then `filter_item_for_test_wiki` drops
+    leftovers. Live keeps the full WPM set. Remaining `Bad value type`
+    fails once. Regression: `test_wikidata_test_wiki_compat.py`.
+    *Why:* test.wikidata.org P/Q numbers are not public Wikidata entities.*
+86. **R86 — Ownership before UPDATE (Rule W-184).**
+    `_is_our_item` triple-check on live **and** test; `register_foreign_accept`
+    live-only; ownership before test adapt; SPARQL false on test falls back to
+    Action API; test Q remap uses bot-owned/stub targets only; skipped foreign
+    QIDs do not enter `created_qids` on test. Regression:
+    `test_wikidata_upload_guards.py`, `test_wikidata_test_wiki_compat.py`,
+    `frontend/e2e/wikidata-item-table.spec.ts`.
+    *Why:* foreign-accept cache priming bypassed Rule-38; test WDQS false-negatives.*

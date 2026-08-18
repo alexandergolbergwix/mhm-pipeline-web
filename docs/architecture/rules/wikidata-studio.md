@@ -1950,7 +1950,7 @@ Export-40 on canary `48ba6c13` after login + `is_bot` fixes:
 Tests: `test_wikidata_upload_is_bot.py`, `test_wikidata_upload_guards.py`
 (test create-on-outage / missing-QID clear), `test_studio_dict_to_native.py`.
 
-### Rule W-182 — Test uploads MUST drop claims test.wikidata.org cannot accept (added 2026-08-17)
+### Rule W-182 — Test uploads MUST remap then drop claims test.wikidata.org cannot accept (added 2026-08-17; amended 2026-08-18)
 
 After IPBE, test uploads still failed every manuscript with
 `Bad value type … expected globecoordinate/monolingualtext` because
@@ -1960,13 +1960,81 @@ write three times does not help.
 
 **Invariants:**
 
-1. On `is_test=True` only, `WikidataUploader` fetches test property
-   datatypes (+ existence of item-valued QIDs) and strips incompatible
-   claims, qualifiers, and references via
-   `converter/wikidata/test_wiki_compat.py`. Labels, descriptions, and
+1. On `is_test=True` only, `WikidataUploader` **remaps first**: for each
+   live property it searches test.wikidata.org by English label +
+   expected datatype (from `property_labels.PROPERTY_LABELS`), keeps
+   same-id P when datatypes already match, otherwise rewrites to the
+   best `wbsearchentities` hit (exact label, lowest P-number) or CREATEs
+   a property when `property-create` is available. Item-valued snaks get
+   the same treatment via `QID_LABELS` (search or one-line stub CREATE).
+   Session maps `_test_pid_map` / `_test_qid_map` cache results for the
+   job. Pure ranking/rewrite lives in
+   `converter/wikidata/test_wiki_compat.py`.
+2. After rewrite, strip **leftover** incompatible claims, qualifiers, and
+   references via `filter_item_for_test_wiki`. Labels, descriptions, and
    aliases still write so CREATE can succeed as a smoke path.
-2. Live `wikidata.org` uploads MUST NOT use this filter — they keep the
-   full WikiProject Manuscripts claim set.
-3. A remaining `Bad value type` error MUST fail once (no 3× retry).
+3. Live `wikidata.org` uploads MUST NOT use this remap/filter — they keep
+   the full WikiProject Manuscripts claim set.
+4. A remaining `Bad value type` error MUST fail once (no 3× retry).
+5. Upload outcome messages MUST report remapped property/class counts and
+   leftover skipped snak counts separately (not lump every dropped snak
+   as “claims”).
 
 Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`.
+
+### Rule W-183 — Test uploads MUST NOT treat live Q-ids as item values by number alone (added 2026-08-18)
+
+On test.wikidata.org, `Q9288` is not Hebrew and `Q571` is not “book” even
+though those Q-numbers exist. The old W-182 filter treated “Q exists on
+test” as sufficient and still dropped most item-valued claims; worse, a
+naïve same-id pass would write wrong semantics.
+
+**Invariants:**
+
+1. On `is_test=True`, item-valued snaks MUST resolve targets by English
+   gloss (`QID_LABELS`) via search or stub CREATE, never by live Q-number
+   presence alone.
+2. A live Q-id with no gloss in `QID_LABELS` MUST NOT be stubbed from the
+   bare id — the snak is dropped after remap.
+3. Live uploads MUST NOT run Q remap logic.
+
+Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`
+(`test_choose_test_item_never_uses_live_qid_without_map`).
+
+### Rule W-184 — UPDATES MUST pass ownership verification; foreign accept is live-only (added 2026-08-18)
+
+Rule-38 already refuses to MODIFY existing Wikidata items unless the
+authenticated user authored the first revision (revisions + usercontribs +
+SPARQL channels). Test uploads must follow the same bar; priming
+`_is_our_item_cache` from `accept_foreign_modify` bypassed verification.
+
+**Invariants:**
+
+1. Any UPDATE (``item.existing_qid`` set) on **both** wikidata.org and
+   test.wikidata.org MUST pass ``WikidataUploader._is_our_item`` at entry,
+   in ``_build_wbi_item``, and immediately before ``write()`` — fail closed
+   to ``skipped`` when foreign. Ownership runs **before** test-wiki adapt
+   so a skip never stub-CREATEs properties or classes.
+2. ``accept_foreign_modify`` / ``register_foreign_accept`` apply to **live**
+   uploads only. Test uploads MUST ignore curator foreign-accept overrides
+   and MUST NOT UPDATE community items.
+3. Test Q remap search hits used as **claim values** MUST be items the bot
+   created (``_is_our_item`` or a stub CREATE in the same job); otherwise
+   stub CREATE or drop the snak — never reuse an unrelated community Q-id
+   by label collision alone.
+4. An unmapped live static Q-id (``QID_LABELS``) MUST NOT be written as an
+   item value just because that Q-number exists on test (Rule W-183).
+5. On test, skipped foreign QIDs MUST NOT enter ``created_qids`` (no
+   ``__LOCAL:`` wiring onto a community test item). Live may still *link*
+   to a skipped-foreign person from a manuscript CREATE.
+6. On test, a SPARQL ``false`` existence check MUST fall back to Action
+   API ``wbgetentities`` — test WDQS is sparse and must not block UPDATEs
+   of items the bot created.
+
+Tests: `backend/tests/unit/test_wikidata_upload_guards.py`
+(`test_foreign_accept_ignored_on_test_upload`),
+`backend/tests/unit/test_wikidata_test_wiki_compat.py`
+(ownership-before-adapt, SPARQL fallback, skipped-foreign wiring,
+unmapped live Q drop),
+`frontend/e2e/wikidata-upload-panel.spec.ts`,
+`frontend/e2e/wikidata-item-table.spec.ts` (remap / skip last-upload details).

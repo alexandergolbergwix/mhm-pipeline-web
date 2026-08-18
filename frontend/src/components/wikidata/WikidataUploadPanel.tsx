@@ -69,7 +69,7 @@ const TARGET_OPTIONS: Array<{
   {
     value: "test",
     label: "Wikidata test",
-    hint: "Smoke write to test.wikidata.org: labels plus claims whose datatypes exist there (Settings → Wikidata test bot). Not a full WPM sandbox.",
+    hint: "Smoke write to test.wikidata.org: remaps live P/Q to labeled test properties and classes; only leftover snaks are skipped (Settings → Wikidata test bot). Not a full WPM sandbox.",
   },
   {
     value: "live",
@@ -364,7 +364,7 @@ export function WikidataUploadPanel({
             />
             <span>
               <span className="text-ink">{opt.label}</span>
-              <span className="block text-xs muted">{opt.hint}</span>
+              <span className="block text-xs muted" data-testid={`wikidata-upload-target-hint-${opt.value}`}>{opt.hint}</span>
             </span>
           </label>
         ))}

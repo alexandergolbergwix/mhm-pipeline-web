@@ -45,9 +45,9 @@
    new password into Settings. Upload jobs now abort once at login when
    `createpage`/`edit` are missing.
 6. `upload_target=test` is a **smoke sandbox**: test.wikidata.org reuses
-   production P-ids for unrelated properties, so the uploader strips
-   incompatible claims and still CREATE-s with labels (Rule W-182). It is
-   not a full WikiProject Manuscripts rehearsal.
+   production P/Q numbers, so the uploader **remaps** by English label +
+   datatype (search or stub CREATE), then **strips** leftover snaks (Rules
+   W-182 / W-183). It is not a full WikiProject Manuscripts rehearsal.
 
 ### Skill: watch live upload progress (tray View / Rule W-141)
 

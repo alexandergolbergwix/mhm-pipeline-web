@@ -49,7 +49,7 @@
 - `backend/tests/unit/test_wikidata_upload_is_bot.py` — `is_bot` kwarg (not `bot=`), default false, no retry on bot-right / permissiondenied; write-rights preflight (W-180 / W-181).
 - `backend/tests/unit/test_wikidata_upload_job_progress.py` — live progress rows include `label` / `entity_type` / `outcome_counts` (W-141 upload modal).
 - `backend/tests/unit/test_studio_dict_to_native.py` — Studio-cache dict → native item (W-181 / R84).
-- `backend/tests/unit/test_wikidata_test_wiki_compat.py` — test.wikidata.org smoke filter + no live strip + no `Bad value type` retry (W-182 / R85).
+- `backend/tests/unit/test_wikidata_test_wiki_compat.py` — test.wikidata.org remap + leftover filter + ownership on test Q refs + ownership-before-adapt + SPARQL fallback + skipped-foreign `__LOCAL:` wiring + unmapped live Q drop + no live strip + no `Bad value type` retry (W-182 / W-183 / W-184 / R85–R86).
 - `backend/tests/unit/test_wikidata_existence.py` — `wbgetentities` alive parse, ownership classify, QID-bound foreign accept gate.
 - `backend/tests/unit/test_rdf_build.py` — clean raw 505 and flat contents create evidence-backed works.
 - `backend/tests/unit/test_wikidata_studio_slicing.py`, `test_wikidata_studio_works.py`, `test_wikidata_manuscript_labels.py`, `test_wikidata_matcher_backfill.py` — build/serialisation behaviour. `test_wikidata_studio_works.py` also pins source evidence, folio qualifiers, embedded-author cleanup, Latin-heading rejection, non-inherited work P407, and exact per-item `records`; it also pins contents-level author fields and
@@ -61,10 +61,10 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `backend/tests/test_hmo_instance_qids_for_run.py` — HMO QID injection into the fingerprint/build, including quoted control-number normalisation.
 - `backend/tests/unit/test_hmo_wikidata_projection.py`, `unit/test_property_mapping_hmo_links.py`, and `unit/test_item_builder_hmo_links.py` — exact-URI, valid-QID, conflicting-mapping, real-item URL, malformed-QID, and slug-fallback behavior at the HMO→Wikidata boundary.
 - `frontend/e2e/wikidata-studio.spec.ts` — page (modern + legacy), AI verification, filters, sort, approval, force-rebuild.
-- `frontend/e2e/wikidata-item-table.spec.ts` — review table columns, data status, search, approval PATCH, upload-outcome filter, real filter counts, Approve all visible (`wikidata_item_bulk_approve` job).
+- `frontend/e2e/wikidata-item-table.spec.ts` — review table columns, data status, search, approval PATCH, upload-outcome filter (incl. skip vs create), last-upload remap/skip popovers, real filter counts, Approve all visible (`wikidata_item_bulk_approve` job).
 - `backend/tests/test_studio_item_bulk_approve.py` — bulk-approve params + worker for HMO/Wikidata override rows.
 - `frontend/e2e/wikidata-item-drawer.spec.ts` — drawer apply-fix, push, reconcile API shapes.
-- `frontend/e2e/wikidata-upload-panel.spec.ts` — upload target radios (default dry-run), pill, pre-verify fail confirm gate.
+- `frontend/e2e/wikidata-upload-panel.spec.ts` — upload target radios (default dry-run), test remap hint, `upload_target=test` job params, pill, pre-verify fail confirm gate.
 - `frontend/tests/unit/runJobsHref.spec.ts` — modal job kinds append `?job=` (verify + upload, Rule W-141).
 - `frontend/tests/unit/wikidataUploadOutcomes.spec.ts` — upload outcome tally + terminal row selection for the progress modal.
 - `backend/tests/test_run_job_params_wikidata_verify.py` — enqueue skips scope

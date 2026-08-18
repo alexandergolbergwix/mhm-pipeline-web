@@ -22,7 +22,7 @@
 | Change MARC 500/505 work candidates or Studio item counts | [extraction ingest](blocks/extraction/ingest.md) + [Wikidata Studio R22](blocks/wikidata-studio/rules.md) |
 | Touch Wikibase Cloud items/schema | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) — schema AI verify: eval-agent [R17](blocks/eval-agent/rules.md), Rule W-47 |
 | Enforce four HMO pillars (Wikibase root / WD map / ontology 1:1 / enrichment) | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) R45 + Rule W-102 |
-| Choose Wikidata upload target (dry-run / test / live) | [wikidata-studio](blocks/wikidata-studio/README.md) R6 + Rule W-103; test is a smoke path (Rule W-182) |
+| Choose Wikidata upload target (dry-run / test / live) | [wikidata-studio](blocks/wikidata-studio/README.md) R6 + Rule W-103; test remaps then strips leftovers (Rules W-182 / W-183) |
 | Add an AI-verify surface | [eval-agent](blocks/eval-agent/README.md) |
 | Debug a missing P407/extent/shelfmark on a TSV-ingested run | [Wikidata Studio R60](blocks/wikidata-studio/rules.md) + Rule W-138 + `marc_ingest._unwrap_marc_value` |
 | Debug an unresolved `__LOCAL:` target or duplicate work title | [Wikidata Studio R60](blocks/wikidata-studio/rules.md) + Rule W-138 + `wikidata_local_refs.py` |

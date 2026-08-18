@@ -48,9 +48,10 @@ without the MediaWiki bot right hard-fail if `is_bot=True`. Upload natives
 come from the **Studio cache** (same public set as the review table), not
 an HMO-only rebuild. On `upload_target=test`, QIDs missing on
 test.wikidata.org and WDQS outages clear to CREATE rather than block
-(live stays fail-closed). Test writes also **strip claims** whose
-property datatype (or item target) does not exist on test.wikidata.org —
-labels still go out so CREATE can succeed (Rule W-182). It optionally filters to
+(live stays fail-closed). Test writes **remap** live P/Q to labeled test properties and class stubs
+(search + optional CREATE), then **strip** leftover snaks whose datatype or
+target still cannot exist on test.wikidata.org — labels still go out so
+CREATE can succeed (Rules W-182 / W-183). It optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
 loads per-item foreign accepts from `WikidataItemOverride`, and calls
@@ -61,8 +62,9 @@ the uploader independently re-enforces via `allow_live` / env
 (`uploader.py`). All four desktop Rule-38
 modification guards stay intact (`_is_our_item`, `_assert_modifiable` in
 `_build_wbi_item`, `_would_create_identity_conflict` per statement, pre-write
-`_assert_modifiable`); foreign accept may prime `_is_our_item_cache` for one
-audited QID.
+`_assert_modifiable`); foreign accept on **live only** via
+`register_foreign_accept` (never cache priming; test ignores accept). Test Q
+remap reuses only bot-owned items or session stubs (Rule W-184).
 The default source is the durable HMO Wikibase read-back. `native_items_from_hmo`
 adapts normalized HMO labels, descriptions, aliases, accepted authority
 evidence, and explicitly mapped Wikidata claims into the shared native item
