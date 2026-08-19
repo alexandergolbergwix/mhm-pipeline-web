@@ -12,6 +12,7 @@ const OUTCOME_LABEL: Record<string, string> = {
   failed: "failed",
   blocked: "blocked",
   would_block: "would block",
+  processing: "processing…",
 };
 
 const OUTCOME_TONE: Record<string, string> = {
@@ -23,6 +24,7 @@ const OUTCOME_TONE: Record<string, string> = {
   failed: "text-danger",
   blocked: "text-warn",
   would_block: "text-warn",
+  processing: "text-biu-sky",
 };
 
 export interface UploadOutcomeBadgeProps {
@@ -68,12 +70,27 @@ export function UploadOutcomeBadge({
   const label = OUTCOME_LABEL[outcome] ?? outcome;
   const tone = OUTCOME_TONE[outcome] ?? "muted";
   const when = formatWhen(at);
-  const clickable = outcome === "failed" || outcome === "blocked" || outcome === "would_block" || Boolean(message?.trim());
+  const isProcessing = outcome === "processing";
+  const clickable = !isProcessing && (
+    outcome === "failed" || outcome === "blocked" || outcome === "would_block" || Boolean(message?.trim())
+  );
   const badgeTestId = localId ? `${testIdPrefix}-upload-badge-${localId}` : undefined;
   const detailTestId = localId ? `${testIdPrefix}-upload-detail-${localId}` : undefined;
   const pill = (
-    <GlassPill className={`px-2 py-0.5 text-[10px] kicker ${tone}${clickable ? " hover:brightness-110" : ""}`}>
-      {label}
+    <GlassPill
+      className={`px-2 py-0.5 text-[10px] kicker ${tone}${clickable ? " hover:brightness-110" : ""}${isProcessing ? " animate-pulse" : ""}`}
+    >
+      {isProcessing ? (
+        <span className="inline-flex items-center gap-1">
+          <span
+            aria-hidden
+            className="inline-block h-1.5 w-1.5 rounded-full bg-biu-sky animate-pulse"
+          />
+          {label}
+        </span>
+      ) : (
+        label
+      )}
     </GlassPill>
   );
 
@@ -93,7 +110,7 @@ export function UploadOutcomeBadge({
           {pill}
         </button>
       ) : (
-        pill
+        <span data-testid={badgeTestId}>{pill}</span>
       )}
       {showDetail && when && (
         <div className="text-[10px] muted leading-tight">{when}</div>

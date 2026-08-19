@@ -118,8 +118,17 @@ def _progress_from_event(
     total: int,
     judged: int,
     session_id: str,
+    cache_hits: int = 0,
 ) -> dict[str, Any]:
     payload = ev.payload or {}
+    hits = cache_hits
+    if ev.type in ("session.start", "session.end", "agent.stats"):
+        raw = payload.get("cache_hits", payload.get("hits"))
+        if raw is not None:
+            try:
+                hits = max(hits, int(raw))
+            except (TypeError, ValueError):
+                pass
     return {
         "phase": "running",
         "processed": judged,
@@ -127,6 +136,7 @@ def _progress_from_event(
         "message": str(payload.get("message") or ev.type),
         "session_id": session_id,
         "last_event_type": ev.type,
+        "cache_hits": hits,
     }
 
 
@@ -154,9 +164,10 @@ def _progress_counters(
     total: int,
     judged: int,
     session_id: str,
+    cache_hits: int = 0,
 ) -> dict[str, Any]:
     return _progress_from_event(
-        ev, total=total, judged=judged, session_id=session_id,
+        ev, total=total, judged=judged, session_id=session_id, cache_hits=cache_hits,
     )
 
 
@@ -192,10 +203,11 @@ def _progress_with_snapshot(
     kind: str | None = None,
     force_snapshot: bool = False,
     last_snapshot_at: list[float] | None = None,
+    cache_hits: int = 0,
 ) -> dict[str, Any]:
     """Progress row for Postgres — counters only mid-run (Rule W-128)."""
     progress = _progress_counters(
-        ev, total=total, judged=judged, session_id=session_id,
+        ev, total=total, judged=judged, session_id=session_id, cache_hits=cache_hits,
     )
     is_terminal = ev.type in ("session.end", "runner.error")
     if not (force_snapshot and is_terminal) and not is_terminal:
@@ -234,6 +246,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
 
     judged = 0
     total = 0
+    cache_hits = 0
     error_message: str | None = None
     session_summary: dict[str, Any] = {}
     collected_events: list[dict[str, Any]] = []
@@ -307,6 +320,21 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
 
             if ev.type == "session.start":
                 total = int((ev.payload or {}).get("scope_size") or total)
+                try:
+                    cache_hits = max(
+                        cache_hits,
+                        int((ev.payload or {}).get("cache_hits") or 0),
+                    )
+                except (TypeError, ValueError):
+                    pass
+            if ev.type == "agent.stats":
+                payload = ev.payload or {}
+                raw_hits = payload.get("cache_hits", payload.get("hits"))
+                if raw_hits is not None:
+                    try:
+                        cache_hits = max(cache_hits, int(raw_hits))
+                    except (TypeError, ValueError):
+                        pass
             if ev.type == "runner.error":
                 # Keep draining until session.end so TRACE verdicts + partial
                 # outcome are recorded (Rule W-126). Only fail hard when the
@@ -331,6 +359,7 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
                         collected_events=collected_events,
                         kind=kind,
                         last_snapshot_at=last_snapshot_at,
+                        cache_hits=cache_hits,
                     ),
                 )
 

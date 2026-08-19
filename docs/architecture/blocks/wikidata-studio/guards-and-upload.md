@@ -39,7 +39,10 @@ always re-runs inside `upload_items`. Contract: `docs/wikidata-data-access.md`
 with progress + cancel) builds native items fresh via `_build_native_items`,
 then stamps Studio-cache / probe-adopted `existing_qid`s
 (`_apply_cached_qid_adoption_to_native`, Rule W-177) so identifier-matched
-UPDATEs do not fall back to SPARQL CREATE. It constructs **one**
+UPDATEs do not fall back to SPARQL CREATE. Before each write the job emits
+`item_outcome.status=processing` (and `processing_local_id`) so the review
+table shows a loading pill on the row under work; terminal outcomes replace
+it without a full reload (Rule W-110). It constructs **one**
 `WikidataUploader`, calls `ensure_authenticated()` once, and reuses it for
 every item (Rule W-179); auth failures abort the remainder. Writes use
 WikibaseIntegrator's `is_bot` kwarg (Rule W-180) with **default false**
@@ -82,7 +85,12 @@ raw export remains available only with `gated=false&ack=raw`.
 `wikidata_actions.py` registers two eval-agent actions surfaced by
 `WikidataVerificationModal` (SSE stream, sessions under
 `wikidata-verify-sessions/<run_id>/`, verdicts cached in `inference_cache`).
-The worker, cache lookup, persistence, and merged review table all canonicalise
+Identical judge prompts reuse the content-addressed verdict cache
+(Postgres + eval-agent on-disk); the modal leaves **Override cache** off by
+default and surfaces cache-hit counts so curators see when the LLM was
+skipped. Scope rows without a landed overall show a **judging…** pill while
+the verify job is active. The worker, cache lookup, persistence, and merged
+review table all canonicalise
 build `records` and fixture `record_ids` into the same MARC-aware verdict
 fingerprint; otherwise stale sanitisation would hide a completed verdict.
 The `wikidata_verify` job is committed before this scope is materialised, so a

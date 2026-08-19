@@ -37,11 +37,14 @@ describe("reduceFlow — pure reducer", () => {
     const next = reduceFlow(makeInitialFlowState(), {
       type: "session.start",
       scope_size: 3,
+      cache_hits: 2,
     } as AgentEvent);
     expect(next.nodeStatus.inputs).toBe("done");
     expect(next.nodeStatus.rubric).toBe("done");
     expect(next.nodeStatus.candidates).toBe("active");
     expect(next.total).toBe(3);
+    expect(next.cacheHits).toBe(2);
+    expect(next.nodeStatus.cache).toBe("active");
   });
 
   it("agent.stats routes cache misses to the judge", () => {

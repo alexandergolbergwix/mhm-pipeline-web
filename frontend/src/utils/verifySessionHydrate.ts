@@ -141,10 +141,16 @@ export function mergeFlowWithJobProgress(
 ): FlowState {
   if (!progress) return flow;
   const merged = applyJobProgressToFlow(flow, progress);
+  const cacheHits = Math.max(
+    flow.cacheHits,
+    merged.cacheHits,
+    Number(progress.cache_hits ?? 0),
+  );
   return {
     ...merged,
     judged: Math.max(flow.judged, merged.judged),
     total: Math.max(flow.total, merged.total),
+    cacheHits,
     finished: flow.finished || merged.finished,
   };
 }

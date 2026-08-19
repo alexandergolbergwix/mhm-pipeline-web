@@ -372,13 +372,29 @@ export function WikidataVerificationModal(props: WikidataVerificationModalProps)
         <Glass as="section" variant="compact" className="p-3">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <div className="kicker">Agent flow</div>
-            {running && progress && Number(progress.total ?? 0) > 0 && (
-              <span className="text-xs muted">
-                {Number(progress.processed ?? 0)} / {Number(progress.total ?? 0)} judged
+            {running && (
+              <span className="text-xs muted" data-testid="wikidata-verify-cache-stats">
+                {Number(progress?.total ?? flow.total ?? 0) > 0 && (
+                  <>
+                    {Number(progress?.processed ?? flow.judged ?? 0)} / {Number(progress?.total ?? flow.total ?? 0)} judged
+                  </>
+                )}
+                {(flow.cacheHits > 0 || Number(progress?.cache_hits ?? 0) > 0) && (
+                  <>
+                    {(Number(progress?.total ?? flow.total ?? 0) > 0) ? " · " : ""}
+                    {Math.max(flow.cacheHits, Number(progress?.cache_hits ?? 0))} from cache (no LLM)
+                  </>
+                )}
               </span>
             )}
           </div>
           <AgentFlowDiagram lastEvent={lastEvent} flow={flow} variant="wikidata" />
+          {!overrideCache && !running && (
+            <p className="text-xs muted mt-2">
+              Identical judge prompts reuse the verdict cache (Postgres + on-disk). Tick
+              &quot;Override cache&quot; only when you need a fresh LLM call.
+            </p>
+          )}
           {running
             && Number(progress?.processed ?? 0) > 0
             && Object.keys(verdicts).length === 0 && (

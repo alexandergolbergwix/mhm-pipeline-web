@@ -49,6 +49,7 @@ const STATUS_TO_COUNT_KEY: Record<string, keyof WikidataUploadOutcomeCounts> = {
   skipped: "skipped",
   failed: "failed",
   pending: "pending",
+  processing: "pending",
 };
 
 export function tallyWikidataUploadOutcomeCounts(

@@ -358,7 +358,11 @@ export async function installStudioMocks(
   // Upload job
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, (route) => {
     if (route.request().method() !== "POST") {
-      route.continue();
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({jobs: []}),
+      });
       return;
     }
     const body = route.request().postDataJSON() as {kind?: string};
@@ -420,6 +424,22 @@ export async function installStudioMocks(
         created_at: null,
         updated_at: null,
       }),
+    });
+  });
+
+  await page.route("**/api/jobs/mine**", (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({jobs: []}),
+    });
+  });
+
+  await page.route("**/api/judge-models**", (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({models: [], default: ""}),
     });
   });
 

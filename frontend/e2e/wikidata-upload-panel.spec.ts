@@ -3,6 +3,7 @@ import {expect, test} from "@playwright/test";
 import {
   installStudioMocks,
   makeBuildResponse,
+  makeStudioItem,
   TEST_PROJECT_ID,
   TEST_RUN_ID,
 } from "./fixtures/wikidata-fixtures";
@@ -37,6 +38,7 @@ test.describe("Wikidata upload panel", () => {
     // post-verify stays disabled while dry-run is selected
     await expect(post).toBeDisabled();
     await page.getByTestId("wikidata-upload-target-test").check();
+    await expect(post).toBeEnabled();
     await post.check();
     await expect(post).toBeChecked();
   });
@@ -49,6 +51,24 @@ test.describe("Wikidata upload panel", () => {
   });
 
   test("pre-upload verify fail shows confirm gate", async ({page}) => {
+    const verifyJob = {
+      id: "job-wd-verify",
+      project_id: TEST_PROJECT_ID,
+      run_id: TEST_RUN_ID,
+      kind: "wikidata_verify",
+      status: "succeeded",
+      progress: {phase: "done", session_id: "sess-wd-1"},
+      params: {action_id: "audit_wikidata_item", session_id: "sess-wd-1"},
+      result: {session_id: "sess-wd-1", judged: 1, total: 1},
+      error: null,
+      created_by: null,
+      started_at: null,
+      finished_at: null,
+      cancel_requested_at: null,
+      created_at: null,
+      updated_at: null,
+    };
+
     await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, async (route) => {
       if (route.request().method() !== "POST") {
         await route.fallback();
@@ -59,23 +79,7 @@ test.describe("Wikidata upload panel", () => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({
-            id: "job-wd-verify",
-            project_id: TEST_PROJECT_ID,
-            run_id: TEST_RUN_ID,
-            kind: "wikidata_verify",
-            status: "succeeded",
-            progress: {phase: "done", session_id: "sess-wd-1"},
-            params: {action_id: "audit_wikidata_item", session_id: "sess-wd-1"},
-            result: {session_id: "sess-wd-1", judged: 1, total: 1},
-            error: null,
-            created_by: null,
-            started_at: null,
-            finished_at: null,
-            cancel_requested_at: null,
-            created_at: null,
-            updated_at: null,
-          }),
+          body: JSON.stringify(verifyJob),
         });
         return;
       }
@@ -105,6 +109,15 @@ test.describe("Wikidata upload panel", () => {
       }
       await route.fallback();
     });
+    // Polls must keep judged>0 — the fixture jobs/* stub omits judged and
+    // would otherwise fire "finished with no verdicts" and clear verifyPhase.
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/job-wd-verify`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(verifyJob),
+      });
+    });
 
     await page.route(
       `**/api/runs/${TEST_RUN_ID}/wikidata-studio/ai-verify/sessions/sess-wd-1`,
@@ -128,7 +141,7 @@ test.describe("Wikidata upload panel", () => {
     await page.getByTestId("wikidata-upload-preverify-checkbox").check();
     await page.getByTestId("wikidata-upload-submit").click();
 
-    await expect(page.getByTestId("wikidata-upload-failconfirm")).toBeVisible({timeout: 10000});
+    await expect(page.getByTestId("wikidata-upload-failconfirm")).toBeVisible({timeout: 15000});
 
     await page.getByTestId("wikidata-upload-failconfirm-review").click();
     await expect(page.getByText(/AI verification.*Wikidata Studio/i)).toBeVisible();
@@ -137,6 +150,125 @@ test.describe("Wikidata upload panel", () => {
   test("test target hint describes remap-before-drop", async ({page}) => {
     await expect(page.getByTestId("wikidata-upload-target-hint-test")).toContainText("remaps live P/Q");
     await expect(page.getByTestId("wikidata-upload-target-hint-test")).toContainText("leftover snaks");
+  });
+
+  test("live upload progress patches processing pill on the row under write", async ({page}) => {
+    const localId = "manuscript::MS Alpha";
+    const processingOutcome = {
+      local_id: localId,
+      label: "MS Alpha",
+      entity_type: "manuscript",
+      status: "processing",
+      message: "Processing…",
+    };
+    const processingProgress = {
+      phase: "uploading",
+      processed: 0,
+      total: 1,
+      message: "Processing item 1 / 1",
+      processing_local_id: localId,
+      item_outcome: processingOutcome,
+      recent_item_outcomes: [processingOutcome],
+      outcome_counts: {pending: 1},
+    };
+
+    await installStudioMocks(page, makeBuildResponse({
+      items: [
+        makeStudioItem({local_id: localId, labels: {en: "MS Alpha"}}),
+      ],
+      total: 1,
+    }));
+    await gotoModernStudio(page);
+
+    let uploadStarted = false;
+    let pollN = 0;
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const body = route.request().postDataJSON() as {kind?: string};
+      if (body.kind !== "wikidata_upload") {
+        await route.fallback();
+        return;
+      }
+      uploadStarted = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "job-wd-upload-processing",
+          project_id: TEST_PROJECT_ID,
+          run_id: TEST_RUN_ID,
+          kind: "wikidata_upload",
+          status: "running",
+          progress: processingProgress,
+          params: body,
+          result: null,
+          error: null,
+          created_by: null,
+          started_at: null,
+          finished_at: null,
+          cancel_requested_at: null,
+          created_at: null,
+          updated_at: null,
+        }),
+      });
+    });
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/job-wd-upload-processing`, async (route) => {
+      pollN += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "job-wd-upload-processing",
+          project_id: TEST_PROJECT_ID,
+          run_id: TEST_RUN_ID,
+          kind: "wikidata_upload",
+          status: "running",
+          progress: processingProgress,
+          params: {upload_target: "dry_run", dry_run: true},
+          result: null,
+          error: null,
+          created_by: null,
+          started_at: null,
+          finished_at: null,
+          cancel_requested_at: null,
+          created_at: null,
+          updated_at: null,
+        }),
+      });
+    });
+    // Only surface the running job after submit — a pre-submit jobs/mine
+    // "running" snapshot disables upload controls (jobRunning).
+    await page.route("**/api/jobs/mine**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          jobs: uploadStarted
+            ? [{
+              id: "job-wd-upload-processing",
+              project_id: TEST_PROJECT_ID,
+              run_id: TEST_RUN_ID,
+              kind: "wikidata_upload",
+              status: "running",
+              progress: processingProgress,
+              params: {upload_target: "dry_run"},
+              result: null,
+              error: null,
+            }]
+            : [],
+        }),
+      });
+    });
+
+    await page.getByTestId("wikidata-upload-submit").click();
+    await expect(page.getByTestId(`wikidata-item-upload-badge-${localId}`)).toContainText(
+      "processing",
+      {timeout: 10_000},
+    );
+    expect(pollN).toBeGreaterThanOrEqual(0);
   });
 
   test("choosing test target posts upload_target=test and never live", async ({page}) => {

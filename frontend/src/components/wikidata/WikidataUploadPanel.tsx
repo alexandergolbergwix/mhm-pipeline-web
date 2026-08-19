@@ -117,7 +117,7 @@ export function WikidataUploadPanel({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewIds, setReviewIds] = useState<string[]>([]);
   const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
-  const seenOutcomeIdsRef = useRef<Set<string>>(new Set());
+  const seenOutcomeIdsRef = useRef<Map<string, string>>(new Map());
 
   const loadVerifySession = useCallback(async (sessionId: string, verifyJob?: RunJobSnapshot) => {
     const full = await fetchVerifySessionWithJobFallback(
@@ -151,16 +151,10 @@ export function WikidataUploadPanel({
       if (isJobActive(j.status)) {
         onUploadJobActive?.(j.id);
       }
-      const dry = Boolean(
-        (j.params as {dry_run?: unknown} | null)?.dry_run
-        || (j.params as {upload_target?: unknown} | null)?.upload_target === "dry_run",
-      );
       if (isJobActive(j.status)) {
         setBusy(true);
-        if (!dry) {
-          const fresh = collectNewProgressOutcomes(j.progress, seenOutcomeIdsRef.current);
-          if (fresh.length) onUploadOutcomes?.(fresh);
-        }
+        const fresh = collectNewProgressOutcomes(j.progress, seenOutcomeIdsRef.current);
+        if (fresh.length) onUploadOutcomes?.(fresh);
       }
       if (j.status === "succeeded" && j.result) {
         const outcomes = (j.result.outcomes as UploadOutcome[]) ?? [];
@@ -227,7 +221,7 @@ export function WikidataUploadPanel({
     setBusy(true);
     setError(null);
     try {
-      seenOutcomeIdsRef.current = new Set();
+      seenOutcomeIdsRef.current = new Map();
       const started = await RunJobs.start(runId, "wikidata_upload", {
         upload_target: uploadTarget,
         dry_run: uploadTarget === "dry_run",

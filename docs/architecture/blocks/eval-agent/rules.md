@@ -26,8 +26,10 @@
 - **R6 — Every fresh verdict is write-through.** Persist to the owning DB row
   (where one exists) AND to `inference_cache` kind `ai_verdict` in a **fresh
   `session_scope()`** — the request session is closed by the time the
-  finally-block runs. *Why:* durability + cross-user warm hits; reusing the
-  request session raises on a closed connection.
+  finally-block runs. Mid-run job progress MUST carry `cache_hits` so the
+  curator UI can show how many identical prompts skipped a fresh LLM call.
+  *Why:* durability + cross-user warm hits; reusing the request session
+  raises on a closed connection.
 - **R7 — Cache keys MUST include the judge model** (and any live-data
   fingerprint for autofix evaluators). *Why:* a verdict cached under an older
   model must never be served after an upgrade.

@@ -77,6 +77,10 @@ export interface RunJobProgress {
     failed?: number;
     pending?: number;
   };
+  /** Row currently under Wikidata write (loading pill in review table). */
+  processing_local_id?: string | null;
+  /** Pre-cached + warm-hit count for verify jobs (skips fresh LLM calls). */
+  cache_hits?: number;
   upload_target?: string;
   session_snapshot?: {
     session_id?: string;

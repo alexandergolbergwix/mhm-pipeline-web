@@ -43,6 +43,8 @@ export interface WikidataItemTableProps {
   onOpenItem: (item: StudioItem) => void;
   onFilteredChange?: (ids: string[]) => void;
   onToggleApproved?: (item: StudioItem, next: boolean) => void;
+  /** Local ids currently in an active AI-verify scope (show judging pill). */
+  judgingIds?: ReadonlySet<string>;
 }
 
 export function WikidataItemTable({
@@ -50,6 +52,7 @@ export function WikidataItemTable({
   onOpenItem,
   onFilteredChange,
   onToggleApproved,
+  judgingIds,
 }: WikidataItemTableProps) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<"label" | "local_id" | "data_status">("label");
@@ -216,7 +219,11 @@ export function WikidataItemTable({
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <WikidataItemAiVerdictBadge verdict={item.ai_verdict} localId={id} />
+                    <WikidataItemAiVerdictBadge
+                      verdict={item.ai_verdict}
+                      localId={id}
+                      judging={Boolean(judgingIds?.has(id) && !item.ai_verdict?.overall)}
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <input

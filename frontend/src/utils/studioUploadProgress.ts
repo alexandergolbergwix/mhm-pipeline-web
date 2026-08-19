@@ -17,6 +17,8 @@ export type StudioUploadProgressOutcome = {
 export type StudioUploadProgressSlice = {
   item_outcome?: StudioUploadProgressOutcome | null;
   recent_item_outcomes?: StudioUploadProgressOutcome[] | null;
+  /** Local id currently under write — table shows a loading pill. */
+  processing_local_id?: string | null;
 } | null | undefined;
 
 const HMO_STATUS_TO_OPERATION: Record<string, string> = {
@@ -29,6 +31,8 @@ const HMO_STATUS_TO_OPERATION: Record<string, string> = {
   would_create: "create",
   would_update: "update",
   would_block: "blocked",
+  processing: "processing",
+  pending: "processing",
 };
 
 const WIKIDATA_STATUS_TO_OPERATION: Record<string, string> = {
@@ -40,23 +44,43 @@ const WIKIDATA_STATUS_TO_OPERATION: Record<string, string> = {
   skipped: "skip",
   failed: "failed",
   blocked: "blocked",
+  processing: "processing",
+  pending: "processing",
 };
 
-/** New outcomes from a progress poll that have not yet been applied. */
+/**
+ * New or *changed* outcomes from a progress poll.
+ *
+ * ``Map`` tracks last applied status so a ``processing`` pill can be replaced
+ * by the terminal create/fail/etc. Legacy ``Set`` callers keep first-seen-only.
+ */
 export function collectNewProgressOutcomes(
   progress: StudioUploadProgressSlice,
-  seenLocalIds: Set<string>,
+  seenLocalIds: Set<string> | Map<string, string>,
 ): StudioUploadProgressOutcome[] {
+  const isMap = seenLocalIds instanceof Map;
+  const lastById = isMap ? seenLocalIds : null;
+  const legacySet = isMap ? null : seenLocalIds;
   const raw = [
     ...(progress?.recent_item_outcomes ?? []),
     ...(progress?.item_outcome ? [progress.item_outcome] : []),
   ];
   const out: StudioUploadProgressOutcome[] = [];
+  const emitted = new Set<string>();
   for (const o of raw) {
     const id = String(o?.local_id ?? "").trim();
-    if (!id || seenLocalIds.has(id)) continue;
-    seenLocalIds.add(id);
-    out.push({...o, local_id: id, status: String(o.status ?? "")});
+    if (!id || emitted.has(id)) continue;
+    const status = String(o.status ?? "");
+    if (lastById) {
+      const prev = lastById.get(id);
+      if (prev !== undefined && prev === status) continue;
+      lastById.set(id, status);
+    } else if (legacySet) {
+      if (legacySet.has(id)) continue;
+      legacySet.add(id);
+    }
+    emitted.add(id);
+    out.push({...o, local_id: id, status});
   }
   return out;
 }
@@ -100,14 +124,16 @@ export function patchHmoItemsFromUploadOutcomes<T extends PatchableHmoItem>(
       Boolean(qid)
       && o.status !== "failed"
       && o.status !== "blocked"
-      && o.status !== "would_block";
+      && o.status !== "would_block"
+      && o.status !== "processing"
+      && o.status !== "pending";
     changed = true;
     return {
       ...item,
       upload_outcome: op,
       upload_message: o.message ?? item.upload_message ?? "",
-      upload_at: uploadedAt,
-      wikibase_id: qid,
+      upload_at: (op === "processing") ? item.upload_at : uploadedAt,
+      wikibase_id: (op === "processing") ? item.wikibase_id : qid,
       status: mapped ? "created" : item.status,
     };
   });
@@ -142,13 +168,15 @@ export function patchWikidataItemsFromUploadOutcomes<T extends PatchableWikidata
     if (!o?.status) return item;
     const op = WIKIDATA_STATUS_TO_OPERATION[o.status];
     if (!op) return item;
-    const qid = outcomeQid(o) ?? item.existing_qid ?? null;
+    const qid = (op === "processing")
+      ? (item.existing_qid ?? null)
+      : (outcomeQid(o) ?? item.existing_qid ?? null);
     changed = true;
     return {
       ...item,
       upload_outcome: op,
       upload_message: o.message ?? item.upload_message ?? "",
-      upload_at: uploadedAt,
+      upload_at: (op === "processing") ? item.upload_at : uploadedAt,
       existing_qid: qid,
     };
   });

@@ -133,6 +133,11 @@ export function reduceFlow(prev: FlowState, ev: AgentEvent): FlowState {
       next.nodeStatus.candidates = "active";
       const scope = Number((ev as { scope_size?: number }).scope_size ?? 0);
       if (scope > 0) next.total = scope;
+      const hits = Number((ev as { cache_hits?: number }).cache_hits ?? 0);
+      if (hits > 0) {
+        next.cacheHits = hits;
+        next.nodeStatus.cache = "active";
+      }
       break;
     }
     case "agent.stats": {

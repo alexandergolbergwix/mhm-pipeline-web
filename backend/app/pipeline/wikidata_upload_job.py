@@ -181,6 +181,46 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     },
                 )
                 return
+            local_id = wikidata_studio.local_id_for_item(item)
+            label_txt = ""
+            labels = getattr(item, "labels", None) or {}
+            if isinstance(labels, dict):
+                label_txt = str(labels.get("en") or labels.get("he") or next(iter(labels.values()), "") or "")
+            entity_type = str(getattr(item, "entity_type", "") or "")
+            # Announce the row under work before the (slow) write so the review
+            # table can show a loading pill instead of looking stuck.
+            await update_job_progress(job_id, {
+                "phase": "uploading",
+                "processed": idx,
+                "total": total,
+                "message": f"Processing item {idx + 1} / {total}",
+                "upload_target": mode.target,
+                "processing_local_id": local_id,
+                "item_outcome": {
+                    "local_id": local_id,
+                    "label": label_txt or None,
+                    "entity_type": entity_type or None,
+                    "status": "processing",
+                    "qid": None,
+                    "wikibase_id": None,
+                    "message": "Processing…",
+                },
+                "recent_item_outcomes": [
+                    slim_upload_progress_outcome(o) for o in outcomes[-199:]
+                ] + [{
+                    "local_id": local_id,
+                    "label": label_txt or None,
+                    "entity_type": entity_type or None,
+                    "status": "processing",
+                    "qid": None,
+                    "wikibase_id": None,
+                    "message": "Processing…",
+                }],
+                "outcome_counts": {
+                    **upload_outcome_counts(outcomes),
+                    "pending": 1,
+                },
+            })
             async with session_scope() as db:
                 batch_outcomes = await wikidata_upload.upload_items(
                     [item], token=token or "", mode=mode,
@@ -218,6 +258,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                             "total": total,
                             "message": "Aborted: Wikidata login failure",
                             "upload_target": mode.target,
+                            "processing_local_id": None,
                         },
                     )
                     return
@@ -227,6 +268,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 "total": total,
                 "message": f"Item {idx + 1} / {total}",
                 "upload_target": mode.target,
+                "processing_local_id": None,
             }
             if item_outcome is not None:
                 recent = [

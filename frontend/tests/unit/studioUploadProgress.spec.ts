@@ -22,6 +22,20 @@ describe("collectNewProgressOutcomes", () => {
     expect(fresh).toEqual([{local_id: "b", status: "updated", wikibase_id: "Q2"}]);
     expect(seen.has("b")).toBe(true);
   });
+
+  it("re-emits when status changes from processing to terminal", () => {
+    const seen = new Map<string, string>([["a", "processing"]]);
+    const fresh = collectNewProgressOutcomes(
+      {
+        item_outcome: {local_id: "a", status: "success", qid: "Q9", message: "Created"},
+      },
+      seen,
+    );
+    expect(fresh).toEqual([
+      {local_id: "a", status: "success", qid: "Q9", message: "Created"},
+    ]);
+    expect(seen.get("a")).toBe("success");
+  });
 });
 
 describe("patchHmoItemsFromUploadOutcomes", () => {
@@ -100,6 +114,27 @@ describe("patchWikidataItemsFromUploadOutcomes", () => {
     expect(next[0]).toMatchObject({
       existing_qid: "Q1",
       upload_outcome: "create",
+    });
+  });
+
+  it("marks the current row as processing without inventing a QID", () => {
+    const items = [{
+      local_id: "person:1",
+      existing_qid: "Q1" as string | null,
+      upload_outcome: null as string | null,
+      upload_message: "",
+      upload_at: "old" as string | null,
+    }];
+    const next = patchWikidataItemsFromUploadOutcomes(
+      items,
+      [{local_id: "person:1", status: "processing", message: "Processing…"}],
+      "t",
+    );
+    expect(next[0]).toMatchObject({
+      existing_qid: "Q1",
+      upload_outcome: "processing",
+      upload_message: "Processing…",
+      upload_at: "old",
     });
   });
 });

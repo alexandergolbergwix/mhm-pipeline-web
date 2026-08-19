@@ -21,7 +21,7 @@ import {WikidataUploadPanel} from "@/components/wikidata/WikidataUploadPanel";
 import {WikidataUploadProgressModal} from "@/components/wikidata/WikidataUploadProgressModal";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
-import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
 import {
   createThrottledProgressRefresh,
   jobProcessedCount,
@@ -222,6 +222,16 @@ export function WikidataItemsPanel({
   }, []);
 
   const jobsRecord = useRunJobs((s) => s.jobs);
+  const verifyJobActive = useMemo(
+    () => selectActiveJob(jobsRecord, runId, "wikidata_verify"),
+    [jobsRecord, runId],
+  );
+  const judgingIds = useMemo(() => {
+    if (!verifyOpen || !verifyJobActive || !isJobActive(verifyJobActive.status)) {
+      return undefined;
+    }
+    return new Set(verifyIds ?? []);
+  }, [verifyOpen, verifyJobActive, verifyIds]);
 
   const openUploadModal = useCallback((jobId: string) => {
     setUploadModalJobId(jobId);
@@ -567,6 +577,7 @@ export function WikidataItemsPanel({
           onFilteredChange={setFilteredIds}
           onOpenItem={setOpenItem}
           onToggleApproved={(item, next) => void handleToggleApproved(item, next)}
+          judgingIds={judgingIds}
         />
       )}
       {!buildPresent && !loading && (

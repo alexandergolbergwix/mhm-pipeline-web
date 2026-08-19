@@ -43,10 +43,12 @@ export interface AiVerdictPillProps {
   /** Optional click handler — parent typically opens the detail view. */
   onClick?: () => void;
   size?:    "sm" | "md";
+  /** True while this row is in an active AI-verify scope and has no verdict yet. */
+  judging?: boolean;
 }
 
 
-type Bucket = "pass" | "partial" | "fail" | "abstain" | "verification_failed" | "unknown";
+type Bucket = "pass" | "partial" | "fail" | "abstain" | "verification_failed" | "unknown" | "judging";
 
 
 /** Map ``verdict.overall`` onto one of the five visual buckets.
@@ -56,7 +58,8 @@ type Bucket = "pass" | "partial" | "fail" | "abstain" | "verification_failed" | 
  *  newer ``full`` while still accepting ``pass`` keeps old verdicts
  *  rendering correctly.
  */
-function bucketFor(verdict: AiVerdict | null | undefined): Bucket {
+function bucketFor(verdict: AiVerdict | null | undefined, judging?: boolean): Bucket {
+  if (judging && !verdict) return "judging";
   if (!verdict) return "unknown";
   const o = String(verdict.overall ?? "").toLowerCase();
   if (o === "full" || o === "pass") return "pass";
@@ -79,6 +82,8 @@ const _PALETTE: Record<Bucket, { bg: string; border: string; fg: string; label: 
                          fg: "var(--muted)", label: "unsure",       glyph: "?" },
   verification_failed: { bg: "rgba(253, 186, 116, 0.16)", border: "rgba(253, 186, 116, 0.45)",
                          fg: "#fb923c", label: "check failed",      glyph: "⚠" },
+  judging:             { bg: "rgba(127, 196, 255, 0.10)", border: "rgba(127, 196, 255, 0.30)",
+                         fg: "#77cce5", label: "judging…",          glyph: "…" },
   unknown:             { bg: "transparent",                border: "rgba(255, 255, 255, 0.12)",
                          fg: "var(--muted)", label: "—",            glyph: "—" },
 };
@@ -98,20 +103,22 @@ function truncateReasoning(s: string | null | undefined, max = 240): string {
 
 
 export function AiVerdictPill(props: AiVerdictPillProps) {
-  const { verdict, onClick, size = "sm" } = props;
-  const bucket = bucketFor(verdict);
+  const { verdict, onClick, size = "sm", judging = false } = props;
+  const bucket = bucketFor(verdict, judging);
   const tone   = _PALETTE[bucket];
 
   const reasoning = truncateReasoning(verdict?.reasoning);
-  const tooltip   = reasoning
-    ? `${tone.label}\n\n${reasoning}`
-    : tone.label;
+  const tooltip   = bucket === "judging"
+    ? "AI is judging this item (cache hit skips a fresh LLM call)"
+    : reasoning
+      ? `${tone.label}\n\n${reasoning}`
+      : tone.label;
 
   const padY = size === "md" ? "py-1"   : "py-0.5";
   const padX = size === "md" ? "px-2.5" : "px-2";
   const text = size === "md" ? "text-[11px]" : "text-[10px]";
 
-  const isInteractive = !!onClick && bucket !== "unknown";
+  const isInteractive = !!onClick && bucket !== "unknown" && bucket !== "judging";
 
   const inner = (
     <>
@@ -144,7 +151,7 @@ export function AiVerdictPill(props: AiVerdictPillProps) {
   return (
     <span
       title={tooltip}
-      className={`inline-flex items-center rounded-full font-medium ${padY} ${padX} ${text}`}
+      className={`inline-flex items-center rounded-full font-medium ${padY} ${padX} ${text}${bucket === "judging" ? " animate-pulse" : ""}`}
       style={{
         background: tone.bg,
         border:     `1px solid ${tone.border}`,

@@ -89,7 +89,7 @@ export function ItemUploadPanel({
   const {list: tier1List, tierModel, setTierModel, loading: tier1Loading} = useTier1Model();
   const upsertJob = useRunJobs((s) => s.upsertJob);
   const notifiedSuccessIdRef = useRef<string | null>(null);
-  const seenOutcomeIdsRef = useRef<Set<string>>(new Set());
+  const seenOutcomeIdsRef = useRef<Map<string, string>>(new Map());
 
   const refresh = useCallback(async () => {
     try {
@@ -130,13 +130,10 @@ export function ItemUploadPanel({
     "hmo_item_upload",
     (j) => {
       setJob(j);
-      const dry = Boolean((j.params as {dry_run?: unknown} | null)?.dry_run);
       if (isJobActive(j.status)) {
         setBusy(true);
-        if (!dry) {
-          const fresh = collectNewProgressOutcomes(j.progress, seenOutcomeIdsRef.current);
-          if (fresh.length) onUploadOutcomes?.(fresh);
-        }
+        const fresh = collectNewProgressOutcomes(j.progress, seenOutcomeIdsRef.current);
+        if (fresh.length) onUploadOutcomes?.(fresh);
       }
       if (j.status === "succeeded") {
         const fromJob = itemUploadResultFromJob(j);
@@ -187,7 +184,7 @@ export function ItemUploadPanel({
       );
       if (isItemUploadJob(r)) {
         notifiedSuccessIdRef.current = null;
-        seenOutcomeIdsRef.current = new Set();
+        seenOutcomeIdsRef.current = new Map();
         upsertJob(r);
         setJob(r);
         setTrackedJobId(r.id);

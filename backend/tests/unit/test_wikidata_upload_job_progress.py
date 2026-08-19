@@ -37,6 +37,7 @@ def test_upload_outcome_counts_tallies_statuses() -> None:
         SimpleNamespace(status="blocked"),
         SimpleNamespace(status="skipped"),
         SimpleNamespace(status="failed"),
+        SimpleNamespace(status="pending"),
     ]
     counts = upload_outcome_counts(outcomes)
     assert counts == {
@@ -46,5 +47,21 @@ def test_upload_outcome_counts_tallies_statuses() -> None:
         "blocked": 1,
         "skipped": 1,
         "failed": 1,
-        "pending": 0,
+        "pending": 1,
     }
+
+
+def test_slim_upload_progress_outcome_processing_shape() -> None:
+    row = slim_upload_progress_outcome(
+        SimpleNamespace(
+            local_id="QDraft_MS_1",
+            label="Ms. Heb. 1",
+            entity_type="manuscript",
+            status="processing",
+            qid=None,
+            message="Processing…",
+        ),
+    )
+    assert row["status"] == "processing"
+    assert row["message"] == "Processing…"
+    assert row["qid"] is None

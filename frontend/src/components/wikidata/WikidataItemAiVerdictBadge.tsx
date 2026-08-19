@@ -28,10 +28,16 @@ function formatWhen(at: string | null | undefined): string | null {
 export interface WikidataItemAiVerdictBadgeProps {
   verdict: AiVerdict | null | undefined;
   localId?: string;
+  /** True while AI verify is running for this row and no verdict has landed yet. */
+  judging?: boolean;
 }
 
-export function WikidataItemAiVerdictBadge({verdict, localId}: WikidataItemAiVerdictBadgeProps) {
+export function WikidataItemAiVerdictBadge({verdict, localId, judging = false}: WikidataItemAiVerdictBadgeProps) {
   const [popover, setPopover] = useState<{x: number; y: number} | null>(null);
+
+  if (!verdict && judging) {
+    return <AiVerdictPill verdict={null} judging />;
+  }
 
   if (!verdict) {
     return <AiVerdictPill verdict={null} />;
