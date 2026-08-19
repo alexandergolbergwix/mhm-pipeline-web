@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,58 +28,161 @@ Ownership = Literal["own", "foreign", "unknown", "absent"]
 _USER_AGENT = "MHM-Pipeline-Web/1.0 (Wikidata Studio; academic research)"
 _PROD_API = "https://www.wikidata.org/w/api.php"
 _TEST_API = "https://test.wikidata.org/w/api.php"
+_WBGETENTITIES_BATCH = 50
+_MIN_INTERVAL_SEC = 0.35
+_last_api_call_at = 0.0
 
 
 def _api_base(*, is_test: bool = False) -> str:
     return _TEST_API if is_test else _PROD_API
 
 
-def _get_json(url: str, *, timeout: float = 30.0) -> dict:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": _USER_AGENT,
-            "Accept": "application/json",
-            "Accept-Encoding": "gzip,deflate",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read()
-        # urllib may already decompress gzip depending on build; tolerate both.
-        if raw[:2] == b"\x1f\x8b":
-            import gzip  # noqa: PLC0415
-
-            raw = gzip.decompress(raw)
-        return json.loads(raw.decode("utf-8"))
-
-
-def confirm_qid_alive(qid: str, *, is_test: bool = False) -> bool | None:
-    """Return True if *qid* exists, False if missing, None if lookup failed.
-
-    Uses Action API ``wbgetentities`` (Wikidata:Data_access — entity JSON for
-    known QIDs in small batches).
-    """
+def _normalize_qid(qid: str) -> str | None:
     clean = str(qid or "").strip()
     if not clean.startswith("Q") or not clean[1:].isdigit():
-        return False
-    params = urllib.parse.urlencode({
-        "action": "wbgetentities",
-        "ids": clean,
-        "props": "info",
-        "format": "json",
-    })
-    url = f"{_api_base(is_test=is_test)}?{params}"
-    try:
-        data = _get_json(url)
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        logger.warning("wbgetentities failed for %s: %s", clean, exc)
         return None
-    entities = data.get("entities") or {}
-    ent = entities.get(clean) or {}
+    return clean
+
+
+def _parse_entity_alive(ent: dict) -> bool:
     if ent.get("missing") is not None:
         return False
-    # Redirects still have an id; treat as alive (reconcile target is valid).
     return bool(ent.get("id") or ent.get("title"))
+
+
+def _fetch_json_throttled(url: str, *, timeout: float = 45.0) -> dict:
+    """One Action API GET with min interval and polite 429 / maxlag retry."""
+    global _last_api_call_at
+    delay = 2.0
+    for attempt in range(4):
+        wait = _MIN_INTERVAL_SEC - (time.monotonic() - _last_api_call_at)
+        if wait > 0:
+            time.sleep(wait)
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": _USER_AGENT,
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip,deflate",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                _last_api_call_at = time.monotonic()
+                raw = resp.read()
+                if raw[:2] == b"\x1f\x8b":
+                    import gzip  # noqa: PLC0415
+
+                    raw = gzip.decompress(raw)
+                payload = json.loads(raw.decode("utf-8"))
+            if isinstance(payload, dict) and payload.get("error"):
+                code = str((payload.get("error") or {}).get("code") or "")
+                if code == "maxlag" and attempt < 3:
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
+            return payload
+        except urllib.error.HTTPError as exc:
+            _last_api_call_at = time.monotonic()
+            if exc.code != 429 or attempt == 3:
+                raise
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            try:
+                sleep_for = float(retry_after) if retry_after else delay
+            except (TypeError, ValueError):
+                sleep_for = delay
+            time.sleep(min(max(sleep_for, 1.0), 30.0))
+            delay *= 2
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+            OSError,
+        ) as exc:
+            _last_api_call_at = time.monotonic()
+            if attempt == 3:
+                raise exc
+            time.sleep(delay)
+            delay *= 2
+    raise urllib.error.URLError("wbgetentities exhausted retries")
+
+
+def _get_json(url: str, *, timeout: float = 30.0) -> dict:
+    return _fetch_json_throttled(url, timeout=timeout)
+
+
+def confirm_qids_alive(
+    qids: list[str],
+    *,
+    is_test: bool = False,
+) -> dict[str, bool | None]:
+    """Batch ``wbgetentities`` with throttling; True / False / None per QID."""
+    out: dict[str, bool | None] = {}
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in qids:
+        qid = _normalize_qid(raw)
+        if not qid or qid in seen:
+            continue
+        seen.add(qid)
+        normalized.append(qid)
+    for raw in qids:
+        qid = str(raw or "").strip()
+        if qid and _normalize_qid(qid) is None:
+            out[qid] = False
+
+    base = _api_base(is_test=is_test)
+    for start in range(0, len(normalized), _WBGETENTITIES_BATCH):
+        chunk = normalized[start:start + _WBGETENTITIES_BATCH]
+        params = urllib.parse.urlencode({
+            "action": "wbgetentities",
+            "ids": "|".join(chunk),
+            "props": "info",
+            "format": "json",
+        })
+        url = f"{base}?{params}"
+        try:
+            data = _fetch_json_throttled(url)
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            TimeoutError,
+            json.JSONDecodeError,
+            OSError,
+        ) as exc:
+            logger.warning("wbgetentities batch failed (%d ids): %s", len(chunk), exc)
+            for qid in chunk:
+                out[qid] = None
+            continue
+        entities = data.get("entities") or {}
+        for qid in chunk:
+            ent = entities.get(qid) or {}
+            if not ent:
+                out[qid] = None
+            else:
+                out[qid] = _parse_entity_alive(ent)
+    return out
+
+
+def confirm_qid_alive(
+    qid: str,
+    *,
+    is_test: bool = False,
+    retries: int = 3,
+) -> bool | None:
+    """Return True if *qid* exists, False if missing, None if lookup failed."""
+    clean = _normalize_qid(qid)
+    if clean is None:
+        return False
+    delay = 1.0
+    for attempt in range(max(1, retries)):
+        result = confirm_qids_alive([clean], is_test=is_test).get(clean)
+        if result is not None:
+            return result
+        if attempt < retries - 1:
+            time.sleep(delay)
+            delay = min(delay * 2, 8.0)
+    return None
 
 
 def classify_ownership_with_uploader(uploader: object, qid: str) -> Ownership:

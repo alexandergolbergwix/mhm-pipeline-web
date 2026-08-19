@@ -26,10 +26,13 @@ network/429/5xx (`reconciler.py:147`) — never returns `[]` for an outage. The
 item is then `blocked`, never created. After reconcile, `validate_item` runs;
 any ERROR blocks the write regardless of create-vs-update or approval state.
 Then (live + dry-run with `enforce_ownership`) `wikidata_existence` confirms
-the QID via Action API `wbgetentities` and classifies ownership with the
-curator token: **own → UPDATE**, **foreign without accept → skip**, **foreign
-with QID-bound `accept_foreign_modify` → UPDATE (audited)**, **unknown →
-block**. `POST /reconcile` is a **preview only** — the authoritative reconcile
+the QID via batched Action API `wbgetentities` (50 ids, throttled 429 backoff;
+Rule W-185) and classifies ownership with the curator token: **own → UPDATE**,
+**foreign without accept → skip**, **foreign with QID-bound `accept_foreign_modify` → UPDATE (audited)**, **unknown →
+block**. Upload jobs prefetch all native `existing_qid`s once into an
+existence cache before the write loop. `None` from the Action API is retried
+before fail-closed block; on test, confirmed-missing QIDs still clear to CREATE
+(Rule W-181). `POST /reconcile` is a **preview only** — the authoritative reconcile
 always re-runs inside `upload_items`. Contract: `docs/wikidata-data-access.md`
 (Rule W-99).
 
@@ -44,17 +47,23 @@ UPDATEs do not fall back to SPARQL CREATE. Before each write the job emits
 table shows a loading pill on the row under work; terminal outcomes replace
 it without a full reload (Rule W-110). It constructs **one**
 `WikidataUploader`, calls `ensure_authenticated()` once, and reuses it for
-every item (Rule W-179); auth failures abort the remainder. Writes use
+every item (Rule W-179); auth/session failures (`permissiondenied`, logged-out,
+global block — Rule W-185) abort the remainder. Writes use
 WikibaseIntegrator's `is_bot` kwarg (Rule W-180) with **default false**
 unless `WIKIDATA_MARK_AS_BOT` / `mark_as_bot=True` (Rule W-181) — accounts
 without the MediaWiki bot right hard-fail if `is_bot=True`. Upload natives
 come from the **Studio cache** (same public set as the review table), not
-an HMO-only rebuild. On `upload_target=test`, QIDs missing on
+an HMO-only rebuild. `_build_native_items` runs
+`prepare_wikidata_upload_native_items` (recover accepted VIAF/NLI, omit
+identifierless persons, rollup work P2093 — Rule W-185 / W-154). On
+`upload_target=test`, QIDs missing on
 test.wikidata.org and WDQS outages clear to CREATE rather than block
 (live stays fail-closed). Test writes **remap** live P/Q to labeled test properties and class stubs
-(search + optional CREATE), then **strip** leftover snaks whose datatype or
-target still cannot exist on test.wikidata.org — labels still go out so
-CREATE can succeed (Rules W-182 / W-183). It optionally filters to
+(search + optional CREATE). After remap, leftover snaks whose datatype or
+target still cannot exist on test.wikidata.org **refuse the item**
+(`blocked`) — they are not stripped so a partial CREATE can succeed
+(Rule W-186). Labels still go out only when the full remapped claim set
+is writable (Rules W-182 / W-183 / W-186). It optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
 loads per-item foreign accepts from `WikidataItemOverride`, and calls

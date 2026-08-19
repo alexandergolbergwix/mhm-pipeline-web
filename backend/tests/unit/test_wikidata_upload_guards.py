@@ -174,18 +174,17 @@ def test_person_uses_conflict_checked_identifier_path():
     assert prepared[0].blocked is False
 
 
-def test_validator_blocks_person_with_no_identifier():
-    # "Winter": single short Latin name, no external id → NO_IDENTIFIER +
-    # AMBIGUOUS_SINGLE_NAME errors. Reconciliation returns None (no ids), so
-    # only the validator gate can stop it — and it must.
+def test_validator_skips_person_with_no_identifier():
+    # Identifierless persons are omitted/skipped (W-154/W-185), not validator-blocked.
     item = _Item(entity_type="person", labels={"en": "Winter"},
                  statements=[], existing_qid="", local_id="winter")
     rec = _FakeReconciler()
 
     prepared = wu._prepare_for_upload([item], rec)
 
-    assert prepared[0].blocked is True
-    assert "NO_IDENTIFIER" in prepared[0].block_message
+    assert prepared[0].blocked is False
+    assert prepared[0].block_status == "skipped"
+    assert "W-154" in prepared[0].block_message or "publishable" in prepared[0].block_message.lower()
 
 
 def test_validator_blocks_p50_on_manuscript_even_when_matched():
@@ -222,7 +221,7 @@ def test_upload_sync_wdqs_outage_creates_on_test(monkeypatch):
     monkeypatch.delenv("MORATORIUM_LIFTED", raising=False)
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
-        lambda qid, *, is_test=False: True,
+        lambda qid, *, is_test=False, **kwargs: True,
     )
 
     good = _manuscript("990000001")
@@ -270,7 +269,7 @@ def test_upload_sync_wdqs_outage_blocks_on_live(monkeypatch):
     monkeypatch.setenv("MORATORIUM_LIFTED", "true")
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
-        lambda qid, *, is_test=False: True,
+        lambda qid, *, is_test=False, **kwargs: True,
     )
 
     outage = _manuscript("990000002")
@@ -325,7 +324,7 @@ def test_missing_qid_on_test_clears_for_create(monkeypatch):
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
-        lambda qid, *, is_test=False: False,
+        lambda qid, *, is_test=False, **kwargs: False,
     )
     out = wu._apply_existence_and_ownership(
         prepared,
@@ -345,7 +344,7 @@ def test_dry_run_reports_update_create_and_block(monkeypatch):
     block_item = _manuscript("990000012")
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
-        lambda qid, *, is_test=False: True,
+        lambda qid, *, is_test=False, **kwargs: True,
     )
 
     class _Rec(_FakeReconciler):
@@ -383,7 +382,7 @@ def test_dry_run_skips_foreign_without_accept(monkeypatch):
     item = _manuscript("990000020")
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
-        lambda qid, *, is_test=False: True,
+        lambda qid, *, is_test=False, **kwargs: True,
     )
     monkeypatch.setattr(
         wu, "_make_reconciler",
@@ -411,7 +410,7 @@ def test_dry_run_allows_foreign_with_accept(monkeypatch):
     item = _manuscript("990000021")
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
-        lambda qid, *, is_test=False: True,
+        lambda qid, *, is_test=False, **kwargs: True,
     )
     monkeypatch.setattr(
         wu, "_make_reconciler",
@@ -444,7 +443,7 @@ def test_foreign_accept_ignored_on_test_upload(monkeypatch):
     item = _manuscript("990000021")
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
-        lambda qid, *, is_test=False: True,
+        lambda qid, *, is_test=False, **kwargs: True,
     )
     monkeypatch.setattr(
         wu, "_make_reconciler",
@@ -555,7 +554,7 @@ async def test_live_upload_records_audit_rows(db_session, sample_run, monkeypatc
     from app.models.wikibase_cloud_write import (
         CHANNEL_WIKIDATA_UPLOAD,
         OPERATION_ADOPT,
-        OPERATION_BLOCKED,
+        OPERATION_SKIP,
         WikibaseCloudWrite,
     )
     from app.services.wikibase_audit import WikibaseAuditContext
@@ -563,7 +562,7 @@ async def test_live_upload_records_audit_rows(db_session, sample_run, monkeypatc
     monkeypatch.setenv("WIKIDATA_TEST_MODE", "true")
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
-        lambda qid, *, is_test=False: True,
+        lambda qid, *, is_test=False, **kwargs: True,
     )
 
     good = _manuscript("990000001")
@@ -610,7 +609,7 @@ async def test_live_upload_records_audit_rows(db_session, sample_run, monkeypatc
     ).scalars().all()
     ops = {r.target_key: r.operation for r in rows}
     assert ops["990000001"] == OPERATION_ADOPT
-    assert ops["winter"] == OPERATION_BLOCKED
+    assert ops["winter"] == OPERATION_SKIP
 
 
 @pytest.mark.asyncio
@@ -697,4 +696,45 @@ def test_ui_live_target_bypasses_env_moratorium(monkeypatch):
         allow_live=True,
     )
     assert len(written) == 1
-    assert outcomes[0].status == "created"
+
+
+def test_upload_sync_aborts_on_permissiondenied(monkeypatch):
+    monkeypatch.setenv("WIKIDATA_TEST_MODE", "true")
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False, **kwargs: True,
+    )
+    monkeypatch.setattr(wu, "_make_reconciler", lambda: _FakeReconciler())
+
+    calls = {"n": 0}
+
+    class _FakeUploader:
+        def __init__(self, token, is_test, batch_mode, **_kwargs):
+            self._is_our_item_cache = {}
+
+        def _is_our_item(self, qid: str) -> bool:
+            return True
+
+        def upload_item(self, item):
+            calls["n"] += 1
+            return _FakeResult(
+                qid=None,
+                status="failed",
+                message="MediaWiki permissiondenied on test.wikidata.org",
+            )
+
+    monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _FakeUploader)
+
+    items = [_manuscript(f"9900000{i:02d}") for i in range(3)]
+    shared = _FakeUploader("x", True, True)
+    outcomes = wu._upload_sync(
+        items,
+        token="User@Bot:deadbeef",
+        dry_run=False,
+        ledger={},
+        ledger_ns="wikidata",
+        uploader=shared,
+    )
+    assert calls["n"] == 1
+    assert outcomes[0].status == "failed"
+    assert len(outcomes) == 1

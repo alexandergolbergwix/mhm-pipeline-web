@@ -45,7 +45,7 @@ class UploadResult:
 
     local_id: str
     qid: str | None = None
-    status: str = "pending"  # "success" | "updated" | "exists" | "failed" | "skipped"
+    status: str = "pending"  # "success" | "updated" | "exists" | "failed" | "skipped" | "blocked"
     message: str = ""
     added_properties: list[str] = field(default_factory=list)
 
@@ -605,6 +605,33 @@ class WikidataUploader:
         except Exception:
             return ""
 
+    def _quantity_unit_uri(self, unit: str | None) -> str:
+        """Build a Wikibase quantity unit URI on the active wiki (Rule W-185)."""
+        from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+            quantity_unit_to_live_qid,
+        )
+
+        wiki_host = "test.wikidata.org" if self._is_test else "www.wikidata.org"
+        raw = str(unit or "").strip()
+        if not raw:
+            return "1"
+        live_qid = quantity_unit_to_live_qid(raw)
+        if not live_qid:
+            return "1"
+        if self._is_test:
+            mapped = self._test_qid_map.get(live_qid, live_qid)
+            allowed = set(self._test_qid_map.values()) | set(self._test_stubs_we_created)
+            exists = {
+                qid for qid, ok in self._test_entity_exists.items() if ok
+            }
+            if mapped in allowed or mapped in exists:
+                return f"http://{wiki_host}/entity/{mapped}"
+            raise ValueError(
+                f"Quantity unit {live_qid} is not remapped on test.wikidata.org "
+                "(Rule W-186) — refusing a dimensionless write"
+            )
+        return f"http://{wiki_host}/entity/{live_qid}"
+
     def _build_claim(self, stmt: WikidataStatement) -> object | None:
         """Convert a WikidataStatement to a WikibaseIntegrator claim.
 
@@ -700,13 +727,7 @@ class WikidataUploader:
                     rank=rank_enum,
                 )
             if stmt.value_type == "quantity":
-                # Map unit strings to Wikidata entity URLs
-                unit_url_map = {
-                    "mm": "http://www.wikidata.org/entity/Q174789",
-                    "cm": "http://www.wikidata.org/entity/Q174728",
-                    "m": "http://www.wikidata.org/entity/Q11573",
-                }
-                unit_val = unit_url_map.get(stmt.unit, "1") if stmt.unit else "1"
+                unit_val = self._quantity_unit_uri(stmt.unit)
                 return datatypes.Quantity(
                     prop_nr=stmt.property_id,
                     amount=value,
@@ -1406,14 +1427,16 @@ class WikidataUploader:
     def _adapt_item_for_test_wiki(
         self, item: WikidataItem,
     ) -> tuple[WikidataItem, object]:
-        """Remap then strip claims test.wikidata.org cannot accept (W-182/W-183)."""
+        """Remap claims for test.wikidata.org; leftovers refuse the write (W-186)."""
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
             WikiTestAdaptResult,
             collect_test_wiki_ids,
             filter_item_for_test_wiki,
+            normalize_item_quantity_units,
             rewrite_item_with_maps,
         )
 
+        item = normalize_item_quantity_units(item)
         stats = self._ensure_test_maps_for_item(item)
         rewritten = rewrite_item_with_maps(
             item,
@@ -1435,8 +1458,8 @@ class WikidataUploader:
             allowed_item_ids=allowed,
         )
         if skipped:
-            logger.info(
-                "test.wikidata.org adapt for %s dropped %d snaks: %s",
+            logger.warning(
+                "test.wikidata.org adapt for %s has %d leftover snaks (Rule W-186): %s",
                 item.local_id,
                 len(skipped),
                 "; ".join(skipped[:12]),
@@ -1459,7 +1482,6 @@ class WikidataUploader:
         self._check_moratorium_for_live()
         self._init_wbi()
 
-        skipped_test_claims: list[str] = []
         test_adapt_result = None
 
         # Ownership BEFORE test adapt: never stub-CREATE properties/classes
@@ -1484,8 +1506,23 @@ class WikidataUploader:
 
         if self._is_test:
             item, test_adapt_result = self._adapt_item_for_test_wiki(item)
-            if test_adapt_result is not None:
-                skipped_test_claims = test_adapt_result.skipped
+            if test_adapt_result is not None and test_adapt_result.skipped:
+                leftovers = test_adapt_result.skipped
+                reasons = "; ".join(leftovers[:12])
+                extra = (
+                    f" (+{len(leftovers) - 12} more)"
+                    if len(leftovers) > 12
+                    else ""
+                )
+                return UploadResult(
+                    local_id=item.local_id,
+                    status="blocked",
+                    message=(
+                        "Refusing test.wikidata.org write: the remapped item "
+                        "would drop claims and would not pass expert review "
+                        f"(Rule W-186). {reasons}{extra}"
+                    ),
+                )
 
         # Bug fix 2026-04-16 (deeper audit Fix #9): respect the community
         # convention {{bots|deny=…}} on the item's talk page. If the talk
@@ -1622,7 +1659,17 @@ class WikidataUploader:
                     "permissions needed" in err_lower
                     or "permissiondenied" in err_lower
                 )
+                is_session_death = (
+                    "you are no longer logged in" in err_lower
+                    or "notloggedin" in err_lower
+                    or "assertuserfailed" in err_lower
+                    or "globally blocked" in err_lower
+                    or "open proxy" in err_lower
+                )
                 is_bad_value_type = "bad value type" in err_lower
+                is_illegal_live_entity = (
+                    "illegal value: http://www.wikidata.org/entity/" in err_lower
+                )
                 mw_code = ""
                 if hasattr(exc, "code"):
                     mw_code = str(getattr(exc, "code") or "")
@@ -1647,29 +1694,41 @@ class WikidataUploader:
                             f"(or pass mark_as_bot=False). Detail: {last_error[:160]}"
                         ),
                     )
-                if is_permission:
+                if is_permission or is_session_death:
                     wiki = "test.wikidata.org" if self._is_test else "www.wikidata.org"
+                    detail = (
+                        "Session expired or account blocked"
+                        if is_session_death
+                        else "MediaWiki permissiondenied"
+                    )
                     return UploadResult(
                         local_id=item.local_id,
                         status="failed",
                         message=(
-                            f"MediaWiki permissiondenied on {wiki}"
+                            f"{detail} on {wiki}"
                             + (f" (code={mw_code})" if mw_code else "")
-                            + ". Bot password needs: High-volume editing; "
-                            "Edit existing pages; Create, edit, and move pages. "
-                            f"Detail: {last_error[:120]}"
+                            + (
+                                ". Re-authenticate and retry the upload job."
+                                if is_session_death
+                                else ". Bot password needs: High-volume editing; "
+                                "Edit existing pages; Create, edit, and move pages."
+                            )
+                            + f" Detail: {last_error[:120]}"
                         ),
                     )
-                if is_bad_value_type:
+                if is_bad_value_type or is_illegal_live_entity:
                     wiki = "test.wikidata.org" if self._is_test else "www.wikidata.org"
+                    detail = (
+                        "Illegal live entity URI on test wiki (Rule W-185)."
+                        if is_illegal_live_entity
+                        else "Bad claim datatype."
+                    )
                     return UploadResult(
                         local_id=item.local_id,
                         status="failed",
                         message=(
-                            f"Bad claim datatype on {wiki} (not retried). "
-                            "On test.wikidata.org, P-ids are not the public "
-                            "Wikidata properties — remaining mismatches should "
-                            "have been stripped (Rules W-182/W-183). "
+                            f"{detail} On {wiki}, remaining mismatches should "
+                            "have been stripped (Rules W-182/W-183/W-185). "
                             f"Detail: {last_error[:160]}"
                         ),
                     )

@@ -69,7 +69,7 @@ const TARGET_OPTIONS: Array<{
   {
     value: "test",
     label: "Wikidata test",
-    hint: "Smoke write to test.wikidata.org: remaps live P/Q to labeled test properties and classes; only leftover snaks are skipped (Settings → Wikidata test bot). Not a full WPM sandbox.",
+    hint: "Write to test.wikidata.org with the same claim set as live: remaps P/Q by English label, stub-creates missing classes/units, and blocks the item if any snak cannot be represented (Settings → Wikidata test bot).",
   },
   {
     value: "live",

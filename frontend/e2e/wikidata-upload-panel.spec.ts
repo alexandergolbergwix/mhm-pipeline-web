@@ -147,9 +147,9 @@ test.describe("Wikidata upload panel", () => {
     await expect(page.getByText(/AI verification.*Wikidata Studio/i)).toBeVisible();
   });
 
-  test("test target hint describes remap-before-drop", async ({page}) => {
-    await expect(page.getByTestId("wikidata-upload-target-hint-test")).toContainText("remaps live P/Q");
-    await expect(page.getByTestId("wikidata-upload-target-hint-test")).toContainText("leftover snaks");
+  test("test target hint describes full-claim remap", async ({page}) => {
+    await expect(page.getByTestId("wikidata-upload-target-hint-test")).toContainText("same claim set as live");
+    await expect(page.getByTestId("wikidata-upload-target-hint-test")).toContainText("blocks the item");
   });
 
   test("live upload progress patches processing pill on the row under write", async ({page}) => {

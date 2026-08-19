@@ -7,6 +7,7 @@ provenance) while keeping HMO local_ids, bridges, and existing QIDs.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -15,6 +16,8 @@ from app.pipeline.marc_verify_context import (
     primary_control_number_for,
 )
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+logger = logging.getLogger(__name__)
 
 # Prefer the canonical value when both sides emit the same PID.
 # PIDs where the canonical projection wins outright: a legacy value is dropped
@@ -76,6 +79,186 @@ def _has_publishable_person_identifier(item: WikidataItem) -> bool:
 def is_publishable_person_item(item: WikidataItem) -> bool:
     """Return whether a person has an existing QID or authority identifier."""
     return _has_publishable_person_identifier(item)
+
+
+_UPLOAD_SKIP_MESSAGE = (
+    "Not publishable — no VIAF/NLI/QID (Rule W-154/W-185)."
+)
+
+_HARD_REJECT_AUTHORITY_FLAGS = frozenset({
+    "placeholder_name",
+    "non_person_heading",
+    "date_conflict",
+    "biographical_inconsistency",
+    "modern_person",
+})
+_SOFT_REJECT_AUTHORITY_FLAGS = frozenset({"wikidata_crosscheck_fail"})
+
+
+def person_identity_untrusted_for_recovery(item: WikidataItem) -> bool:
+    """True when W-166 flags forbid recovering identifiers from evidence."""
+    if getattr(item, "heading_mismatch", None):
+        return True
+    flags: set[str] = set()
+    for row in getattr(item, "authority_evidence", None) or []:
+        if isinstance(row, dict):
+            flags |= {str(f) for f in (row.get("guard_flags") or [])}
+    return bool(flags & (_HARD_REJECT_AUTHORITY_FLAGS | _SOFT_REJECT_AUTHORITY_FLAGS))
+
+
+def _evidence_identifier(evidence: dict[str, object]) -> str:
+    for key in ("identifier", "value", "wikidata_qid", "viaf_id", "viaf_uri", "mazal_id"):
+        text = str(evidence.get(key) or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def recover_person_identifiers_from_evidence(item: WikidataItem) -> bool:
+    """Stamp P214/P8189/existing_qid from accepted evidence when W-166 allows."""
+    if str(item.entity_type or "").strip().lower() != "person":
+        return False
+    if person_identity_untrusted_for_recovery(item):
+        return False
+    if is_publishable_person_item(item):
+        return False
+
+    from converter.authority.evidence import (  # noqa: PLC0415
+        normalize_authority_id,
+        normalize_viaf_id,
+        normalize_wikidata_qid,
+    )
+
+    changed = False
+    seen_pids = {
+        str(stmt.property_id or "")
+        for stmt in item.statements or []
+    }
+
+    for row in getattr(item, "authority_evidence", None) or []:
+        if not isinstance(row, dict) or row.get("accepted") is not True:
+            continue
+        kind = str(row.get("kind") or "").lower()
+        identifier = _evidence_identifier(row)
+        if not identifier:
+            continue
+        if kind == "wikidata":
+            qid = normalize_wikidata_qid(identifier)
+            if qid and not item.existing_qid:
+                item.existing_qid = qid
+                changed = True
+            continue
+        if kind == "viaf" and "P214" not in seen_pids:
+            name_type = str(row.get("name_type") or "")
+            if name_type and name_type != "Personal":
+                continue
+            viaf = normalize_viaf_id(identifier)
+            if viaf:
+                item.statements = list(item.statements or [])
+                item.statements.append(
+                    WikidataStatement(
+                        property_id="P214",
+                        value=viaf,
+                        value_type="external-id",
+                    ),
+                )
+                seen_pids.add("P214")
+                changed = True
+            continue
+        if kind == "mazal" and "P8189" not in seen_pids:
+            mazal = normalize_authority_id(identifier) or identifier
+            if mazal.startswith("9870"):
+                item.statements = list(item.statements or [])
+                item.statements.append(
+                    WikidataStatement(
+                        property_id="P8189",
+                        value=mazal,
+                        value_type="external-id",
+                    ),
+                )
+                seen_pids.add("P8189")
+                changed = True
+
+    return changed
+
+
+def _person_display_name(item: WikidataItem) -> str:
+    labels = item.labels or {}
+    return str(labels.get("he") or labels.get("en") or "").strip()
+
+
+def rollup_dropped_person_local_refs(
+    items: list[WikidataItem],
+    dropped_local_ids: set[str],
+    *,
+    names_by_local_id: dict[str, str],
+) -> int:
+    """Rewrite work P50 ``__LOCAL:<dropped>`` to P2093 author name strings."""
+    from converter.wikidata.property_mapping import P_AUTHOR_NAME_STRING  # noqa: PLC0415
+
+    rolled = 0
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "work":
+            continue
+        kept: list[WikidataStatement] = []
+        for stmt in item.statements or []:
+            pid = str(stmt.property_id or "")
+            value = str(stmt.value or "")
+            if pid != "P50" or not value.startswith("__LOCAL:"):
+                kept.append(stmt)
+                continue
+            local_id = value.removeprefix("__LOCAL:")
+            if local_id not in dropped_local_ids:
+                kept.append(stmt)
+                continue
+            name = names_by_local_id.get(local_id, "").strip()
+            if not name:
+                continue
+            kept.append(
+                WikidataStatement(
+                    property_id=P_AUTHOR_NAME_STRING,
+                    value=name,
+                    value_type="string",
+                ),
+            )
+            rolled += 1
+        item.statements = kept
+    return rolled
+
+
+def prepare_wikidata_upload_native_items(items: list[WikidataItem]) -> list[WikidataItem]:
+    """Recover publishable IDs, omit identifierless persons, rollup P2093 (W-185)."""
+    for item in items:
+        if str(item.entity_type or "").strip().lower() == "person":
+            recover_person_identifiers_from_evidence(item)
+
+    dropped_ids: set[str] = set()
+    names: dict[str, str] = {}
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "person":
+            continue
+        if is_publishable_person_item(item):
+            continue
+        lid = str(item.local_id or "")
+        if not lid:
+            continue
+        dropped_ids.add(lid)
+        names[lid] = _person_display_name(item)
+
+    if not dropped_ids:
+        return items
+
+    kept = [
+        item for item in items
+        if str(item.local_id or "") not in dropped_ids
+    ]
+    rollup_dropped_person_local_refs(kept, dropped_ids, names_by_local_id=names)
+    logger.info(
+        "Omitted %d identifierless persons from upload set (Rule W-185): %s",
+        len(dropped_ids),
+        ", ".join(sorted(dropped_ids)),
+    )
+    return kept
 
 
 def _keep_merged_item(item: WikidataItem) -> bool:
@@ -465,7 +648,7 @@ def _person_keys(item: WikidataItem) -> set[str]:
         label = str((item.labels or {}).get(lang) or "").strip().casefold()
         if label:
             keys.add(f"label:{label}")
-    for row in item.authority_evidence or []:
+    for row in getattr(item, "authority_evidence", None) or []:
         if not isinstance(row, dict):
             continue
         viaf = str(row.get("viaf_uri") or row.get("viaf_id") or "").strip()

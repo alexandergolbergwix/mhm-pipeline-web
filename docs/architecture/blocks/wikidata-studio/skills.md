@@ -44,10 +44,11 @@
    **Edit existing pages**, and **Create, edit, and move pages**, then paste the
    new password into Settings. Upload jobs now abort once at login when
    `createpage`/`edit` are missing.
-6. `upload_target=test` is a **smoke sandbox**: test.wikidata.org reuses
-   production P/Q numbers, so the uploader **remaps** by English label +
-   datatype (search or stub CREATE), then **strips** leftover snaks (Rules
-   W-182 / W-183). It is not a full WikiProject Manuscripts rehearsal.
+6. `upload_target=test` remaps live P/Q by English label + datatype
+   (search or stub CREATE) so test.wikidata.org can accept the **same**
+   WikiProject Manuscripts claim set. Leftover snaks **block** the item
+   (Rule W-186) — they are not stripped. Quantity units must remap to a
+   test-local millimetre/leaf/page entity.
 
 ### Skill: watch live upload progress (tray View / Rule W-141)
 

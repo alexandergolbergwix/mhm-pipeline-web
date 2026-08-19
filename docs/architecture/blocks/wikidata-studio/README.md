@@ -36,7 +36,7 @@ selected.
 - [How it works: guards and upload](guards-and-upload.md) —
   reconcile-before-create, existence/ownership, upload job + moratorium + QS,
   AI review + autofix.
-- [Rules](rules.md) — the invariants (R1–R85) this block enforces.
+- [Rules](rules.md) — the invariants (R1–R88) this block enforces.
 - [Phase 1 projection quality](projection-quality.md) — evidence gates for labels, notes, subjects, genres, roles, and current institutions.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
   dry-runs, force-rebuild, blocked items, local quality audit, AI autofixes,

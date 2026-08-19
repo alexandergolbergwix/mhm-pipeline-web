@@ -2352,7 +2352,11 @@ async def _build_native_items(
         await _apply_cached_qid_adoption_to_native(
             db, run_id, approved_only=approved_only, source=source, native=native,
         )
-        return native
+        from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+            prepare_wikidata_upload_native_items,
+        )
+
+        return prepare_wikidata_upload_native_items(native)
 
     # Cache miss — fall back to a rebuild (same sources as before).
     records = (

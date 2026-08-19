@@ -192,7 +192,7 @@ def test_format_outcome_note() -> None:
     )
     assert "remapped 5 properties" in note
     assert "remapped 2 classes" in note
-    assert "skipped 1 snaks" in note
+    assert "skipped" not in note
     assert "W-182/W-183" in note
 
 
@@ -337,7 +337,7 @@ def test_bad_value_type_does_not_retry(monkeypatch) -> None:
     )
     assert result.status == "failed"
     assert calls["n"] == 1
-    assert "not retried" in result.message
+    assert "Bad claim datatype" in result.message
 
 
 def test_ensure_test_maps_resolves_property_and_item(monkeypatch) -> None:
@@ -437,6 +437,170 @@ def test_ensure_test_maps_rejects_foreign_search_hit(monkeypatch) -> None:
     assert up._test_qid_map["Q9288"] == "Q888"
     assert stats.classes_created == 1
     assert "Q888" in up._test_stubs_we_created
+
+
+def test_quantity_unit_mm_is_collected_and_remapped() -> None:
+    item = WikidataItem(
+        statements=[
+            WikidataStatement(
+                property_id="P2048",
+                value="+100",
+                value_type="quantity",
+                unit="mm",
+            ),
+        ],
+    )
+    from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+        collect_test_wiki_ids,
+        normalize_item_quantity_units,
+        quantity_unit_to_live_qid,
+        rewrite_item_with_maps,
+    )
+
+    assert quantity_unit_to_live_qid("mm") == "Q174789"
+    normalized = normalize_item_quantity_units(item)
+    _, qids = collect_test_wiki_ids(normalized)
+    assert "Q174789" in qids
+    rewritten = rewrite_item_with_maps(
+        normalized,
+        pid_map={"P2048": "P2048"},
+        qid_map={"Q174789": "Q777"},
+    )
+    assert rewritten.statements[0].unit == "Q777"
+
+
+def test_quantity_unit_qids_have_glosses() -> None:
+    from converter.wikidata.property_labels import QID_LABELS  # noqa: PLC0415
+    from converter.wikidata.test_wiki_compat import QUANTITY_UNIT_ALIASES  # noqa: PLC0415
+
+    for live_qid in QUANTITY_UNIT_ALIASES.values():
+        assert live_qid in QID_LABELS, live_qid
+
+
+def test_quantity_unit_uri_uses_test_host(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    up._test_qid_map = {"Q174789": "Q888"}
+    up._test_stubs_we_created = set()
+    up._test_entity_exists = {"Q888": True}
+    uri = up._quantity_unit_uri("mm")
+    assert uri == "http://test.wikidata.org/entity/Q888"
+
+
+def test_quantity_unit_unmapped_on_test_refuses_dimensionless() -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    up._test_qid_map = {}
+    up._test_stubs_we_created = set()
+    up._test_entity_exists = {}
+    try:
+        up._quantity_unit_uri("mm")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "W-186" in str(exc)
+
+
+def test_leftover_snaks_refuse_degraded_write(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    written = {"n": 0}
+
+    class _FakeWbiItem:
+        id = "Q9"
+
+        def write(self, **kwargs):  # noqa: ANN003
+            written["n"] += 1
+            return self
+
+    monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_rate_limit", lambda: None)
+    monkeypatch.setattr(
+        up,
+        "_adapt_item_for_test_wiki",
+        lambda item: (
+            item,
+            WikiTestAdaptResult(skipped=["P1476 datatype monolingualtext != globecoordinate"]),
+        ),
+    )
+    monkeypatch.setattr(
+        up, "_build_wbi_item", lambda _item: (_FakeWbiItem(), 1, ["P1476"]),
+    )
+    monkeypatch.setattr(up, "_assert_modifiable", lambda *_a, **_k: None)
+
+    result = up.upload_item(
+        WikidataItem(local_id="x", entity_type="manuscript", labels={"en": "x"}),
+    )
+    assert result.status == "blocked"
+    assert written["n"] == 0
+    assert "W-186" in result.message
+    assert "expert review" in result.message
+
+
+def test_unmapped_quantity_unit_is_a_leftover() -> None:
+    item = WikidataItem(
+        statements=[
+            WikidataStatement(
+                property_id="P2048",
+                value="+100",
+                value_type="quantity",
+                unit="Q174789",
+            ),
+        ],
+    )
+    filtered, skipped = filter_item_for_test_wiki(
+        item,
+        property_datatypes={"P2048": "quantity"},
+        existing_item_ids=set(),
+        live_static_qids={"Q174789"},
+        allowed_item_ids=set(),
+    )
+    assert filtered.statements == []
+    assert any("W-186" in s for s in skipped)
+
+
+def test_illegal_live_entity_does_not_retry(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    calls = {"n": 0}
+
+    class _FakeWbiItem:
+        id = "Q9"
+
+        def write(self, **kwargs):  # noqa: ANN003
+            calls["n"] += 1
+            raise RuntimeError(
+                "Illegal value: http://www.wikidata.org/entity/Q174789"
+            )
+
+    monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_rate_limit", lambda: None)
+    monkeypatch.setattr(
+        up,
+        "_adapt_item_for_test_wiki",
+        lambda item: (item, WikiTestAdaptResult()),
+    )
+    monkeypatch.setattr(
+        up, "_build_wbi_item", lambda _item: (_FakeWbiItem(), 1, ["P2048"]),
+    )
+    monkeypatch.setattr(up, "_assert_modifiable", lambda *_a, **_k: None)
+    monkeypatch.setattr("converter.wikidata.uploader.time.sleep", lambda *_a: None)
+
+    result = up.upload_item(
+        WikidataItem(local_id="x", entity_type="manuscript", labels={"en": "x"}),
+    )
+    assert result.status == "failed"
+    assert calls["n"] == 1
+    assert "W-185" in result.message
 
 
 def test_filter_drops_unmapped_live_qid_even_if_it_exists_on_test() -> None:

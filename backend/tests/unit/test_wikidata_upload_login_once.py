@@ -14,6 +14,9 @@ def test_auth_failure_detector() -> None:
         "Login failed. Reason: 'You have made too many recent login attempts.'"
     )
     assert _is_auth_failure_message("Incorrect username or password entered.")
+    assert _is_auth_failure_message("MediaWiki permissiondenied on test.wikidata.org")
+    assert _is_auth_failure_message("You are no longer logged in, so this action could not be completed.")
+    assert _is_auth_failure_message("Your IP address has been blocked globally")
     assert not _is_auth_failure_message("Blocked by validator (ERROR: x)")
 
 

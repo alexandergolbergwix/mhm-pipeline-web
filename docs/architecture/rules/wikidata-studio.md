@@ -1950,7 +1950,7 @@ Export-40 on canary `48ba6c13` after login + `is_bot` fixes:
 Tests: `test_wikidata_upload_is_bot.py`, `test_wikidata_upload_guards.py`
 (test create-on-outage / missing-QID clear), `test_studio_dict_to_native.py`.
 
-### Rule W-182 — Test uploads MUST remap then drop claims test.wikidata.org cannot accept (added 2026-08-17; amended 2026-08-18)
+### Rule W-182 — Test uploads MUST remap live P/Q; leftover snaks refuse the write (added 2026-08-17; amended 2026-08-19)
 
 After IPBE, test uploads still failed every manuscript with
 `Bad value type … expected globecoordinate/monolingualtext` because
@@ -1970,15 +1970,16 @@ write three times does not help.
    Session maps `_test_pid_map` / `_test_qid_map` cache results for the
    job. Pure ranking/rewrite lives in
    `converter/wikidata/test_wiki_compat.py`.
-2. After rewrite, strip **leftover** incompatible claims, qualifiers, and
-   references via `filter_item_for_test_wiki`. Labels, descriptions, and
-   aliases still write so CREATE can succeed as a smoke path.
-3. Live `wikidata.org` uploads MUST NOT use this remap/filter — they keep
-   the full WikiProject Manuscripts claim set.
-4. A remaining `Bad value type` error MUST fail once (no 3× retry).
-5. Upload outcome messages MUST report remapped property/class counts and
-   leftover skipped snak counts separately (not lump every dropped snak
-   as “claims”).
+2. After rewrite, `filter_item_for_test_wiki` **lists** leftover
+   incompatible claims, qualifiers, and references. Rule **W-186** forbids
+   writing the stripped item: leftovers refuse the whole row. Remap and
+   stub CREATE must succeed for every projected snak. Live `wikidata.org`
+   uploads MUST NOT use this remap/filter — they keep the full WikiProject
+   Manuscripts claim set.
+3. A remaining `Bad value type` error MUST fail once (no 3× retry).
+4. Successful test writes MAY report remapped property/class counts.
+   Leftover snaks MUST appear only on a refused (`blocked`) outcome
+   (Rule W-186), never as a success suffix.
 
 Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`.
 
@@ -1995,7 +1996,7 @@ naïve same-id pass would write wrong semantics.
    gloss (`QID_LABELS`) via search or stub CREATE, never by live Q-number
    presence alone.
 2. A live Q-id with no gloss in `QID_LABELS` MUST NOT be stubbed from the
-   bare id — the snak is dropped after remap.
+   bare id — the snak is a leftover and Rule W-186 refuses the item.
 3. Live uploads MUST NOT run Q remap logic.
 
 Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`
@@ -2038,3 +2039,63 @@ Tests: `backend/tests/unit/test_wikidata_upload_guards.py`
 unmapped live Q drop),
 `frontend/e2e/wikidata-upload-panel.spec.ts`,
 `frontend/e2e/wikidata-item-table.spec.ts` (remap / skip last-upload details).
+
+### Rule W-185 — Test upload must batch existence, remap quantity units, and omit identifierless persons (added 2026-08-19)
+
+Job `c51fc5e6` on run `48ba6c13` finished 236/236 but only 77 writes landed:
+150 rows were **blocked** because per-item `wbgetentities` hit 429 and returned
+`None` (fail-closed); six **failed** on height/width claims whose `unit="mm"`
+became live `www.wikidata.org/entity/Q174789` URLs test.wikidata.org rejects;
+three persons were **blocked** on `NO_IDENTIFIER` from stale cache rows that
+should never be CREATE targets.
+
+**Invariants:**
+
+1. **Existence:** `confirm_qids_alive` batches Action API `wbgetentities`
+   (50 ids, gzip, min interval, 429/maxlag backoff). Upload jobs prefetch
+   every native `existing_qid` once; `_apply_existence_and_ownership` retries
+   `None` before blocking. Live stays fail-closed; test still clears missing
+   QIDs to CREATE (Rule W-181).
+2. **Quantity units:** projection aliases (`mm`/`cm`/`m`/`leaf`/`page`) normalize
+   to live unit Q-ids before test remap; `_build_claim` emits
+   `http://{wiki_host}/entity/{qid}` on the active wiki. Unmapped test units
+   refuse the item (Rule W-186) — never dimensionless `"1"` when a unit was
+   projected. `Illegal value: http://www.wikidata.org/entity/` is non-retryable.
+3. **Publishability:** accepted authority evidence may stamp P214/P8189/QID
+   when W-166 soft/hard reject flags do not forbid it. Identifierless persons
+   are omitted at upload rehydrate (`prepare_wikidata_upload_native_items`) and
+   skipped in `_prepare_for_upload` — never CREATE. Remaining work `P50
+   __LOCAL:` edges rollup to P2093 name strings.
+4. **Session death:** `permissiondenied`, logged-out, and global-block errors
+   abort the upload job remainder (Rule W-179 extension) — no per-item retries.
+
+Tests: `backend/tests/unit/test_wikidata_existence.py`,
+`backend/tests/unit/test_wikidata_upload_guards.py`,
+`backend/tests/unit/test_wikidata_test_wiki_compat.py`,
+`backend/tests/unit/test_wikidata_canonical_enrichment.py`,
+`backend/tests/unit/test_wikidata_upload_is_bot.py`.
+
+### Rule W-186 — Test uploads MUST write the full remapped claim set or refuse the item (added 2026-08-19)
+
+Test.wikidata.org P/Q numbers are unrelated to live Wikidata, so remap
+(Rule W-182) is still required. The old leftover-drop path let CREATE
+succeed with missing titles, languages, millimetre units, and other WPM
+claims — items that would fail expert review on www.wikidata.org.
+
+**Invariants:**
+
+1. After remap, if `filter_item_for_test_wiki` reports any leftover claim,
+   qualifier, reference, or quantity unit, `WikidataUploader.upload_item`
+   MUST return `blocked` and MUST NOT call `write()`. A degraded item is
+   not a successful test upload.
+2. Quantity units (`mm`/`cm`/`m`/`leaf`/`page` and live unit Q-ids) MUST
+   resolve to a wiki-local test entity (search or stub CREATE via
+   `QID_LABELS`). An unmapped unit MUST NOT become dimensionless `"1"`.
+3. Millimetre / centimetre / metre live Q-ids (`Q174789`, `Q174728`,
+   `Q11573`) belong in `QID_LABELS` so test stub CREATE can name them.
+4. Live `wikidata.org` uploads are unchanged: full WPM claim set, no remap.
+
+Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`
+(`test_leftover_snaks_refuse_degraded_write`,
+`test_quantity_unit_unmapped_on_test_refuses_dimensionless`,
+`test_unmapped_quantity_unit_is_a_leftover`).

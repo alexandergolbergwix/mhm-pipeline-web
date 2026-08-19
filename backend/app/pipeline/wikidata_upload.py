@@ -188,6 +188,7 @@ def _apply_existence_and_ownership(
     accept: ForeignAccept | None,
     ownership_checker: Any | None,
     is_test: bool,
+    existence_cache: dict[str, bool | None] | None = None,
 ) -> PreparedItem:
     """Confirm QID alive + enforce create-or-own / explicit-foreign-accept policy."""
     from app.pipeline.wikidata_existence import (  # noqa: PLC0415
@@ -203,7 +204,14 @@ def _apply_existence_and_ownership(
         prepared.ownership = "absent"
         return prepared
 
-    alive = confirm_qid_alive(qid, is_test=is_test)
+    clean_qid = str(qid).strip()
+    alive: bool | None
+    if existence_cache is not None and clean_qid in existence_cache:
+        alive = existence_cache[clean_qid]
+    else:
+        alive = confirm_qid_alive(clean_qid, is_test=is_test)
+    if alive is None:
+        alive = confirm_qid_alive(clean_qid, is_test=is_test, retries=4)
     if alive is False:
         if is_test:
             # Live/reconciled QIDs often do not exist on test.wikidata.org.
@@ -357,6 +365,7 @@ def _prepare_for_upload(
     ownership_checker: Any | None = None,
     is_test: bool = False,
     enforce_ownership: bool = False,
+    existence_cache: dict[str, bool | None] | None = None,
 ) -> list[PreparedItem]:
     from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
     from converter.wikidata.reconciler import (  # noqa: PLC0415
@@ -374,6 +383,24 @@ def _prepare_for_upload(
         existing = getattr(item, "existing_qid", None)
         method = "prebuilt" if existing else "none"
         adopt_candidate = False
+
+        if et == "person":
+            from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+                _UPLOAD_SKIP_MESSAGE,
+                is_publishable_person_item,
+                recover_person_identifiers_from_evidence,
+            )
+
+            recover_person_identifiers_from_evidence(item)
+            if not is_publishable_person_item(item):
+                prepared.append(PreparedItem(
+                    item=item, local_id=local_id, label=label, entity_type=et,
+                    existing_qid=existing, method=method, blocked=False,
+                    block_status="skipped",
+                    block_message=_UPLOAD_SKIP_MESSAGE,
+                    had_builder_qid=had_builder_qid,
+                ))
+                continue
 
         if not existing and ledger:
             key = ledger_key_for_item(item, ns)
@@ -451,6 +478,7 @@ def _prepare_for_upload(
                 accept=accepts.get(local_id),
                 ownership_checker=ownership_checker,
                 is_test=is_test,
+                existence_cache=existence_cache,
             )
         prepared.append(row)
     return prepared
@@ -617,6 +645,7 @@ async def upload_items(
     upload_target: str | None = None,
     mode: UploadMode | None = None,
     uploader: Any | None = None,
+    existence_cache: dict[str, bool | None] | None = None,
 ) -> list[UploadOutcome]:
     resolved = mode or resolve_upload_mode(upload_target, dry_run=dry_run)
     if ledger is None and db is not None:
@@ -635,6 +664,7 @@ async def upload_items(
         resolved.is_test,
         resolved.allow_live,
         uploader,
+        existence_cache,
     )
     if db is not None and audit_ctx is not None and not resolved.dry_run:
         for outcome in outcomes:
@@ -688,6 +718,7 @@ def _upload_sync(
     is_test: bool | None = None,
     allow_live: bool = False,
     uploader: Any | None = None,
+    existence_cache: dict[str, bool | None] | None = None,
 ) -> list[UploadOutcome]:
     from converter.wikidata.uploader import (  # noqa: PLC0415
         UnauthorisedModificationError,
@@ -720,6 +751,7 @@ def _upload_sync(
             accept_by_local_id=accepts,
             ownership_checker=ownership_checker,
             is_test=is_test,
+            existence_cache=existence_cache,
         )
 
     if not is_test and not allow_live:
@@ -747,6 +779,7 @@ def _upload_sync(
         ownership_checker=ownership_checker,
         is_test=is_test,
         enforce_ownership=True,
+        existence_cache=existence_cache,
     )
 
     write_uploader = ownership_checker or WikidataUploader(
@@ -755,6 +788,13 @@ def _upload_sync(
 
     out: list[UploadOutcome] = []
     for p in prepared:
+        if p.block_status == "skipped" and not p.blocked:
+            out.append(UploadOutcome(
+                local_id=p.local_id, label=p.label, entity_type=p.entity_type,
+                qid=p.existing_qid, status="skipped",
+                message=p.block_message, added_properties=[],
+            ))
+            continue
         if p.blocked:
             out.append(UploadOutcome(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
@@ -778,6 +818,8 @@ def _upload_sync(
                     added_properties=list(result.added_properties or []),
                 ),
             )
+            if status == "failed" and _is_auth_failure_message(result.message):
+                break
         except UnauthorisedModificationError as exc:
             out.append(
                 UploadOutcome(
@@ -813,6 +855,14 @@ def _is_auth_failure_message(message: str) -> bool:
         or "anonymous token was returned" in low
         or "invalid authentication format" in low
         or "additional verification step" in low
+        or "permissiondenied" in low
+        or "permissions needed" in low
+        or "you are no longer logged in" in low
+        or "notloggedin" in low
+        or "assertuserfailed" in low
+        or "globally blocked" in low
+        or "blocked globally" in low
+        or "open proxy" in low
     )
 
 
@@ -824,6 +874,7 @@ def _dry_run(
     accept_by_local_id: dict[str, ForeignAccept] | None = None,
     ownership_checker: Any | None = None,
     is_test: bool = False,
+    existence_cache: dict[str, bool | None] | None = None,
 ) -> list[UploadOutcome]:
     reconciler = _make_reconciler()
     prepared = _prepare_for_upload(
@@ -832,11 +883,19 @@ def _dry_run(
         ownership_checker=ownership_checker,
         is_test=is_test,
         enforce_ownership=True,
+        existence_cache=existence_cache,
     )
 
     out: list[UploadOutcome] = []
     for p in prepared:
         stmts = getattr(p.item, "statements", []) or []
+        if p.block_status == "skipped" and not p.blocked:
+            out.append(UploadOutcome(
+                local_id=p.local_id, label=p.label, entity_type=p.entity_type,
+                qid=p.existing_qid, status="skipped",
+                message=p.block_message, added_properties=[],
+            ))
+            continue
         if p.blocked:
             out.append(UploadOutcome(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,

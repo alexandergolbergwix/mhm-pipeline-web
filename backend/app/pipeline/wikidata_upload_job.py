@@ -158,6 +158,27 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 )
                 return
 
+    from app.pipeline.wikidata_existence import confirm_qids_alive  # noqa: PLC0415
+
+    prefetch_qids = sorted({
+        str(getattr(it, "existing_qid", "") or "").strip()
+        for it in native
+        if str(getattr(it, "existing_qid", "") or "").strip().startswith("Q")
+    })
+    existence_cache: dict[str, bool | None] = {}
+    if prefetch_qids:
+        existence_cache = await run_in_threadpool(
+            confirm_qids_alive, prefetch_qids, is_test=mode.is_test,
+        )
+        logger.info(
+            "Prefetched existence for %d QIDs (test=%s): %d alive, %d missing, %d unknown",
+            len(prefetch_qids),
+            mode.is_test,
+            sum(1 for v in existence_cache.values() if v is True),
+            sum(1 for v in existence_cache.values() if v is False),
+            sum(1 for v in existence_cache.values() if v is None),
+        )
+
     outcomes: list[Any] = []
     audit_ctx = None if mode.dry_run else WikibaseAuditContext(
         actor_user_id=job.created_by,
@@ -227,6 +248,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     audit_ctx=audit_ctx, db=db, ledger=ledger,
                     run_id=run_id,
                     uploader=shared_uploader,
+                    existence_cache=existence_cache,
                 )
             outcomes.extend(batch_outcomes)
             item_outcome = None
@@ -234,7 +256,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 last = batch_outcomes[-1]
                 item_outcome = slim_upload_progress_outcome(last)
                 if (
-                    last.status == "failed"
+                    last.status in {"failed", "skipped"}
                     and wikidata_upload._is_auth_failure_message(last.message)
                 ):
                     await finish_job(

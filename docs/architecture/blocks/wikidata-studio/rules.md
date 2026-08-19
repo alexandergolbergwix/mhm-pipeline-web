@@ -622,13 +622,15 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     on test, missing/live QIDs and WDQS outages become CREATE. Regression:
     `test_studio_dict_to_native.py`, `test_wikidata_upload_guards.py`.
     *Why:* export-40 — 100× never (HMO-only rebuild) + 14× missing-on-test.*
-85. **R85 — Test uploads remap then drop incompatible claims (Rules W-182 / W-183).**
+85. **R85 — Test uploads remap; leftovers refuse the write (Rules W-182 / W-183 / W-186).**
     `test_wiki_compat` ranks test properties/items by English label +
     datatype, `WikidataUploader._ensure_test_maps_for_item` searches or
-    stub-CREATEs, rewrites snaks, then `filter_item_for_test_wiki` drops
-    leftovers. Live keeps the full WPM set. Remaining `Bad value type`
-    fails once. Regression: `test_wikidata_test_wiki_compat.py`.
-    *Why:* test.wikidata.org P/Q numbers are not public Wikidata entities.*
+    stub-CREATEs, rewrites snaks, then `filter_item_for_test_wiki` lists
+    leftovers. A leftover blocks the item (no degraded CREATE). Live keeps
+    the full WPM set. Remaining `Bad value type` fails once. Regression:
+    `test_wikidata_test_wiki_compat.py`.
+    *Why:* test.wikidata.org P/Q numbers are not public Wikidata entities;
+    smoke-path claim drops would fail expert review.*
 86. **R86 — Ownership before UPDATE (Rule W-184).**
     `_is_our_item` triple-check on live **and** test; `register_foreign_accept`
     live-only; ownership before test adapt; SPARQL false on test falls back to
@@ -637,3 +639,17 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `test_wikidata_upload_guards.py`, `test_wikidata_test_wiki_compat.py`,
     `frontend/e2e/wikidata-item-table.spec.ts`.
     *Why:* foreign-accept cache priming bypassed Rule-38; test WDQS false-negatives.*
+87. **R87 — Test upload reliability (Rule W-185).**
+    Batch/throttled existence prefetch; quantity unit alias → wiki-local URI
+    (never dimensionless when a unit was projected — W-186); upload rehydrate
+    omits identifierless persons (skipped, not blocked) with P2093 rollup;
+    session-death aborts job. Regression:
+    `test_wikidata_existence.py`, `test_wikidata_upload_guards.py`,
+    `test_wikidata_test_wiki_compat.py`, `test_wikidata_canonical_enrichment.py`,
+    `test_wikidata_upload_is_bot.py`.
+    *Why:* job c51fc5e6 — 150 existence blocks, 6 mm unit failures, 3 NO_IDENTIFIER.*
+88. **R88 — Test write quality matches live (Rule W-186).**
+    Remap must preserve every projected claim/qualifier/reference/unit or the
+    item is `blocked`. Millimetre/centimetre/metre Q-ids are in `QID_LABELS`
+    for stub CREATE. Regression: `test_wikidata_test_wiki_compat.py`.
+    *Why:* leftover-drop CREATE produced items that would fail expert review.*

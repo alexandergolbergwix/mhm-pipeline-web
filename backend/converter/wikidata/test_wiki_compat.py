@@ -1,9 +1,10 @@
-"""Smoke-path helpers for test.wikidata.org claim writes (Rules W-182 / W-183).
+"""Remap helpers for test.wikidata.org claim writes (Rules W-182 / W-183 / W-186).
 
 test.wikidata.org reuses production P/Q numbers for unrelated properties, so a
 WikiProject Manuscripts claim set cannot be written unchanged. On test uploads
-we remap by English label + datatype (and stub-create when needed), then drop
-only leftovers. Live uploads must not call this module.
+we remap by English label + datatype (and stub-create when needed). Leftover
+incompatible snaks MUST refuse the item (Rule W-186) — they are not stripped
+so a degraded CREATE can succeed. Live uploads must not call this module.
 """
 
 from __future__ import annotations
@@ -53,7 +54,44 @@ def item_target_qid(value: object) -> str | None:
     text = str(value or "").strip()
     if text[:1] in {"Q", "q"} and text[1:].isdigit():
         return "Q" + text[1:]
+    if "/entity/Q" in text:
+        tail = text.rsplit("/entity/", 1)[-1]
+        if tail[:1] in {"Q", "q"} and tail[1:].isdigit():
+            return "Q" + tail[1:]
     return None
+
+
+# Short unit tokens and live Wikidata unit Q-ids used in manuscript claims.
+QUANTITY_UNIT_ALIASES: dict[str, str] = {
+    "mm": "Q174789",
+    "cm": "Q174728",
+    "m": "Q11573",
+    "leaf": "Q107256474",
+    "page": "Q1069725",
+}
+
+
+def quantity_unit_to_live_qid(unit: str) -> str | None:
+    """Normalize a quantity unit token to a live Wikidata Q-id."""
+    raw = str(unit or "").strip()
+    if not raw:
+        return None
+    qid = item_target_qid(raw)
+    if qid:
+        return qid
+    return QUANTITY_UNIT_ALIASES.get(raw.lower())
+
+
+def normalize_item_quantity_units(item: WikidataItem) -> WikidataItem:
+    """Rewrite quantity ``unit`` aliases to Q-ids so test remap can see them."""
+    kept: list[WikidataStatement] = []
+    for stmt in item.statements:
+        if stmt.value_type != "quantity" or not stmt.unit:
+            kept.append(stmt)
+            continue
+        qid = quantity_unit_to_live_qid(stmt.unit)
+        kept.append(replace(stmt, unit=qid if qid else stmt.unit))
+    return replace(item, statements=kept)
 
 
 def _entity_numeric_id(entity_id: str) -> int:
@@ -238,8 +276,12 @@ def rewrite_item_with_maps(
     for stmt in item.statements:
         unit = stmt.unit
         if unit:
-            mapped_unit = map_qid_value(unit)
-            unit = str(mapped_unit) if mapped_unit is not None else unit
+            unit_qid = quantity_unit_to_live_qid(str(unit)) or item_target_qid(unit)
+            if unit_qid:
+                mapped_unit = map_qid_value(unit_qid)
+                unit = str(mapped_unit) if mapped_unit is not None else unit_qid
+            else:
+                unit = str(unit)
         kept.append(
             replace(
                 stmt,
@@ -293,6 +335,31 @@ def snak_compatible_with_test(
     return None
 
 
+def quantity_unit_compatible_with_test(
+    unit: str | None,
+    *,
+    existing_item_ids: set[str],
+    live_static_qids: set[str] | None = None,
+    allowed_item_ids: set[str] | None = None,
+) -> str | None:
+    """Return a skip reason when a quantity unit cannot be written on test."""
+    raw = str(unit or "").strip()
+    if not raw or raw == "1":
+        return None
+    qid = item_target_qid(raw) or quantity_unit_to_live_qid(raw)
+    if not qid:
+        return f"quantity unit {raw!r} is not a Q-id (Rule W-186)"
+    allowed = allowed_item_ids or set()
+    if live_static_qids and qid in live_static_qids and qid not in allowed:
+        return (
+            f"quantity unit {qid} is a live Q-id not remapped on test "
+            "(Rule W-186)"
+        )
+    if qid not in existing_item_ids and qid not in allowed:
+        return f"quantity unit {qid} missing on test (Rule W-186)"
+    return None
+
+
 def filter_item_for_test_wiki(
     item: WikidataItem,
     *,
@@ -301,9 +368,11 @@ def filter_item_for_test_wiki(
     live_static_qids: set[str] | None = None,
     allowed_item_ids: set[str] | None = None,
 ) -> tuple[WikidataItem, list[str]]:
-    """Drop claims/snaks that still cannot be written after remap.
+    """List leftover snaks that still cannot be written after remap.
 
-    Labels, descriptions, and aliases are kept. Live uploads must not use this.
+    Callers MUST refuse the write when the leftover list is non-empty
+    (Rule W-186). The filtered item is only a diagnostic view. Live
+    uploads must not use this.
     """
     skipped: list[str] = []
     kept: list[WikidataStatement] = []
@@ -341,6 +410,17 @@ def filter_item_for_test_wiki(
         if reason:
             skipped.append(reason)
             continue
+        unit_reason = None
+        if (stmt.value_type or "").strip().lower() == "quantity":
+            unit_reason = quantity_unit_compatible_with_test(
+                stmt.unit,
+                existing_item_ids=existing_item_ids,
+                live_static_qids=live_static_qids,
+                allowed_item_ids=allowed_item_ids,
+            )
+        if unit_reason:
+            skipped.append(unit_reason)
+            continue
         kept.append(
             replace(
                 stmt,
@@ -363,8 +443,6 @@ def format_test_wiki_outcome_note(result: WikiTestAdaptResult | None) -> str:
         parts.append(f"remapped {prop_n} properties")
     if class_n:
         parts.append(f"remapped {class_n} classes")
-    if result.skipped:
-        parts.append(f"skipped {len(result.skipped)} snaks")
     if not parts:
         return ""
     return "; " + ", ".join(parts) + " (Rule W-182/W-183)"

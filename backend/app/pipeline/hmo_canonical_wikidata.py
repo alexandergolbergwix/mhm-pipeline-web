@@ -534,6 +534,7 @@ def build_canonical_studio_result(
     from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
         is_publishable_person_item,
         merge_legacy_into_canonical,
+        recover_person_identifiers_from_evidence,
     )
     from app.pipeline.wikidata_upload import _reconcile_sync  # noqa: PLC0415
     from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
@@ -590,6 +591,10 @@ def build_canonical_studio_result(
             item for item in native_items
             if item.local_id not in set(conflicted_person_ids)
         ]
+
+    for item in native_items:
+        if str(item.entity_type or "").strip().lower() == "person":
+            recover_person_identifiers_from_evidence(item)
 
     unconfirmed_ids = _suppress_unconfirmed_person_identity(native_items, context)
     if unconfirmed_ids:

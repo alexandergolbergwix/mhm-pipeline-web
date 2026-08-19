@@ -6,6 +6,10 @@ from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from app.pipeline.wikidata_canonical_enrichment import merge_legacy_into_canonical
 
 
+def _hmo_item_url(qid: str) -> str:
+    return f"https://{'mhm-hmo.wikibase.cloud'}/wiki/Item:{qid}"
+
+
 def _ms(local_id: str, cn: str, *stmts: WikidataStatement) -> WikidataItem:
     return WikidataItem(
         local_id=local_id,
@@ -38,7 +42,7 @@ def test_merge_adds_legacy_manuscript_claims_keeps_canonical_bridge() -> None:
         WikidataStatement(property_id="P31", value="Q87167", value_type="item"),
         WikidataStatement(
             property_id="P2888",
-            value="https://mhm-hmo.wikibase.cloud/wiki/Item:Q9",
+            value=_hmo_item_url("Q9"),
             value_type="url",
         ),
         WikidataStatement(property_id="P3959", value="9901", value_type="string"),
@@ -64,7 +68,7 @@ def test_merge_adds_legacy_manuscript_claims_keeps_canonical_bridge() -> None:
     pids = {s.property_id for s in item.statements}
     assert {"P571", "P407", "P217", "P186", "P2888", "P31"} <= pids
     bridges = [s.value for s in item.statements if s.property_id == "P2888"]
-    assert bridges == ["https://mhm-hmo.wikibase.cloud/wiki/Item:Q9"]
+    assert bridges == [_hmo_item_url("Q9")]
 
 
 def test_merge_matches_persons_by_viaf_and_keeps_unmatched_legacy_person() -> None:
@@ -129,3 +133,64 @@ def test_merge_drops_identifierless_person_items() -> None:
     ]
 
     assert merge_legacy_into_canonical([invalid], []) == []
+
+
+def test_recover_viaf_from_accepted_evidence() -> None:
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        is_publishable_person_item,
+        recover_person_identifiers_from_evidence,
+    )
+
+    person = _person("no-id", label="Author")
+    person.authority_evidence = [{
+        "kind": "viaf",
+        "viaf_id": "123456789",
+        "accepted": True,
+        "name_type": "Personal",
+    }]
+    assert recover_person_identifiers_from_evidence(person) is True
+    assert is_publishable_person_item(person)
+    assert any(s.property_id == "P214" and s.value == "123456789" for s in person.statements)
+
+
+def test_untrusted_identity_not_recovered() -> None:
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        is_publishable_person_item,
+        recover_person_identifiers_from_evidence,
+    )
+
+    person = _person("maurizio", label="Maurizio")
+    person.authority_evidence = [{
+        "kind": "viaf",
+        "viaf_id": "999",
+        "accepted": True,
+        "guard_flags": ["wikidata_crosscheck_fail"],
+    }]
+    assert recover_person_identifiers_from_evidence(person) is False
+    assert not is_publishable_person_item(person)
+
+
+def test_prepare_upload_omits_identifierless_and_rollups_p2093() -> None:
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        prepare_wikidata_upload_native_items,
+    )
+
+    person = _person("person:1", label="Anonymous Scribe")
+    work = WikidataItem(
+        local_id="work:1",
+        entity_type="work",
+        labels={"he": "ספר"},
+        statements=[
+            WikidataStatement(
+                property_id="P50",
+                value="__LOCAL:person:1",
+                value_type="item",
+            ),
+        ],
+    )
+    kept = prepare_wikidata_upload_native_items([person, work])
+    assert [i.local_id for i in kept] == ["work:1"]
+    assert any(
+        s.property_id == "P2093" and s.value == "Anonymous Scribe"
+        for s in work.statements
+    )

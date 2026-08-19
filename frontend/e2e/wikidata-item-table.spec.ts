@@ -110,7 +110,7 @@ test.describe("Wikidata item review table", () => {
           local_id: "manuscript::Remap",
           labels: {en: "69 A 1756"},
           upload_outcome: "create",
-          upload_message: "Created Q248051 (12 claims); remapped 9 properties, 3 classes; skipped 0 snaks (Rule W-182/W-183)",
+          upload_message: "Created Q248051 (12 claims); remapped 9 properties, 3 classes (Rule W-182/W-183)",
           upload_at: "2026-08-18T12:00:00Z",
         }),
         makeStudioItem({
