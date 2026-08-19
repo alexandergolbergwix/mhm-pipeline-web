@@ -1942,13 +1942,17 @@ Export-40 on canary `48ba6c13` after login + `is_bot` fixes:
    fallback on cache miss only.
 3. When `upload_target=test` / `is_test=True` and a reconciled QID is
    **missing** on test.wikidata.org, clear `existing_qid` and **CREATE**
-   on test (do not block). Live uploads keep the fail-closed block.
+   on test (do not block). When the QID **exists** on test but is **foreign**
+   (not bot-owned), clear `existing_qid` and **CREATE** as well — never
+   UPDATE a community test item by live Q-number (Rule W-183). Live uploads
+   keep the fail-closed block / foreign-accept path.
 4. When `is_test=True` and WDQS reconcile raises
    `ReconciliationUnavailableError`, proceed as CREATE on test. Live
    uploads keep the fail-closed block.
 
 Tests: `test_wikidata_upload_is_bot.py`, `test_wikidata_upload_guards.py`
-(test create-on-outage / missing-QID clear), `test_studio_dict_to_native.py`.
+(test create-on-outage / missing-QID / foreign-alive clear),
+`test_wikidata_existence.py`, `test_studio_dict_to_native.py`.
 
 ### Rule W-182 — Test uploads MUST remap live P/Q; leftover snaks refuse the write (added 2026-08-17; amended 2026-08-19)
 
@@ -1964,8 +1968,14 @@ write three times does not help.
    live property it searches test.wikidata.org by English label +
    expected datatype (from `property_labels.PROPERTY_LABELS`), keeps
    same-id P when datatypes already match, otherwise rewrites to the
-   best `wbsearchentities` hit (exact label, lowest P-number) or CREATEs
-   a property when `property-create` is available. Item-valued snaks get
+   best `wbsearchentities` hit (**exact** English label only, lowest
+   P-number) or CREATEs a property when `property-create` is available.
+   Session `_test_pid_map` keys are `(live_pid, value_type)` so a URL
+   property cannot satisfy a string snak. After search or CREATE, confirm
+   the test property datatype via `wbgetentities` before mapping. On
+   `label-with-description-conflict` / property label conflict,
+   `_wbeditentity_new` MUST adopt the existing id from the API error or
+   an immediate exact-label re-search (Rule W-187). Item-valued snaks get
    the same treatment via `QID_LABELS` (search or one-line stub CREATE).
    Session maps `_test_pid_map` / `_test_qid_map` cache results for the
    job. Pure ranking/rewrite lives in
@@ -2020,9 +2030,11 @@ SPARQL channels). Test uploads must follow the same bar; priming
    uploads only. Test uploads MUST ignore curator foreign-accept overrides
    and MUST NOT UPDATE community items.
 3. Test Q remap search hits used as **claim values** MUST be items the bot
-   created (``_is_our_item`` or a stub CREATE in the same job); otherwise
-   stub CREATE or drop the snak — never reuse an unrelated community Q-id
-   by label collision alone.
+   created (``_is_our_item`` or a stub CREATE in the same job), **or** an
+   existing test item whose English description is exactly
+   ``MHM test stub for live {live_qid}`` (Rule W-187); otherwise stub
+   CREATE or drop the snak — never reuse an unrelated community Q-id by
+   label collision alone.
 4. An unmapped live static Q-id (``QID_LABELS``) MUST NOT be written as an
    item value just because that Q-number exists on test (Rule W-183).
 5. On test, skipped foreign QIDs MUST NOT enter ``created_qids`` (no
@@ -2099,3 +2111,41 @@ Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`
 (`test_leftover_snaks_refuse_degraded_write`,
 `test_quantity_unit_unmapped_on_test_refuses_dimensionless`,
 `test_unmapped_quantity_unit_is_a_leftover`).
+
+### Rule W-187 — Test stub CREATE conflict MUST adopt; MHM stub descriptions MAY be claim-value targets (added 2026-08-19)
+
+Canary job `5ea88249` on run `48ba6c13` blocked **179** items with W-186
+leftovers because test stub CREATE raced `label-with-description-conflict`
+(manuscript, circa, leaf, genre, millimetre, …) and `_wbeditentity_new`
+returned `None` without adopting the existing test Q/P. A parallel failure
+keyed `_test_pid_map` by live P-id only so a URL hit on test was reused for
+every string snak on that P (~132× `P100218 string != url`).
+
+**Invariants:**
+
+1. On test only, when `wbeditentity` `new=item|property` fails with a
+   label/description conflict, the uploader MUST parse the existing id from
+   the API error (or exact-label re-search) and store it in the session
+   map — never return `None` when a conflicting entity id is present.
+2. Before committing a property map entry, `wbgetentities` MUST confirm
+   the test property datatype matches the snak's expected datatype.
+3. `_test_pid_map` MUST be keyed by `(live_pid, value_type)`; fuzzy
+   property label matches MUST NOT be accepted.
+4. A test item whose English description is exactly
+   `MHM test stub for live {live_qid}` MAY be used as an item-valued claim
+   target even when `_is_our_item` is inconclusive (429/SPARQL flake) —
+   claim values only, never UPDATE targets (Rule W-184 unchanged).
+5. Rule W-186 refuse-on-leftover is unchanged: every projected snak must
+   remap or the item stays `blocked`.
+6. Once per test `wikidata_upload` job, `warm_test_maps_for_items` MUST
+   resolve every live P/Q used in the native batch into the session maps
+   before the write loop (search → MHM-stub adopt → CREATE).
+
+Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`
+(`test_wbeditentity_new_adopts_conflict_id`,
+`test_wbeditentity_researches_when_conflict_unparsed`,
+`test_pid_map_keys_separate_by_datatype`,
+`test_mhm_stub_search_hit_usable_without_is_our_item`,
+`test_choose_test_property_rejects_fuzzy_label`,
+`test_p1680_remaps_via_subtitle_gloss`,
+`test_warm_test_maps_for_items_fills_session_maps`).

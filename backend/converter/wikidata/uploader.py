@@ -14,7 +14,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -138,6 +138,8 @@ class WikidataUploader:
         self._test_pid_map: dict[str, str] = {}
         self._test_qid_map: dict[str, str] = {}
         self._test_stubs_we_created: set[str] = set()
+        self._test_fresh_creates: set[str] = set()
+        self._test_item_descriptions: dict[str, str] = {}
         self._foreign_accept_qids: set[str] = set()
         self._test_can_create_properties: bool | None = None
         self._enforce_moratorium()
@@ -996,14 +998,35 @@ class WikidataUploader:
         logger.warning("FOREIGN_MODIFY_ACCEPTED qid=%s (live upload only)", clean)
         self._foreign_accept_qids.add(clean)
 
-    def _item_usable_as_test_reference(self, qid: str) -> bool:
+    def _item_usable_as_test_reference(
+        self, qid: str, *, live_qid: str | None = None,
+    ) -> bool:
         """True when a test Q-id may be used as a claim value (not an UPDATE target)."""
         clean = str(qid or "").strip()
         if not clean:
             return False
-        if clean in self._test_stubs_we_created:
+        if clean in self._test_stubs_we_created or clean in self._test_fresh_creates:
             return True
+        if live_qid:
+            from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+                description_is_mhm_stub_for,
+            )
+
+            desc = self._item_english_description(clean)
+            if description_is_mhm_stub_for(desc, live_qid):
+                return True
         return self._is_our_item(clean)
+
+    def _item_english_description(self, qid: str) -> str:
+        if qid in self._test_item_descriptions:
+            return self._test_item_descriptions[qid]
+        fetched = self._wbgetentities([qid], props="descriptions")
+        ent = fetched.get(qid) if isinstance(fetched.get(qid), dict) else {}
+        descs = ent.get("descriptions") or {} if ent and "missing" not in ent else {}
+        en = descs.get("en") or {}
+        val = str(en.get("value") or "")
+        self._test_item_descriptions[qid] = val
+        return val
 
     def _is_our_item(self, qid: str) -> bool:
         """Return True iff the authenticated user is the first-revision author of *qid*.
@@ -1227,10 +1250,15 @@ class WikidataUploader:
             for hit in hits:
                 if not isinstance(hit, dict):
                     continue
+                hid = str(hit.get("id") or "")
+                desc = str(hit.get("description") or "")
+                if hid and desc and hid not in self._test_item_descriptions:
+                    self._test_item_descriptions[hid] = desc
                 out.append({
-                    "id": str(hit.get("id") or ""),
+                    "id": hid,
                     "label": str(hit.get("label") or ""),
                     "datatype": str(hit.get("datatype") or ""),
+                    "description": desc,
                 })
             return out
         except Exception as exc:  # noqa: BLE001
@@ -1297,11 +1325,91 @@ class WikidataUploader:
             entity = body.get("entity") or {}
             entity_id = str(entity.get("id") or "").strip()
             if entity_id:
+                self._test_fresh_creates.add(entity_id)
                 return entity_id
+            from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+                parse_wbeditentity_conflict_id,
+            )
+
+            conflict_id = parse_wbeditentity_conflict_id(body)
+            if conflict_id:
+                logger.info(
+                    "wbeditentity new=%s adopted existing %s from label conflict",
+                    new,
+                    conflict_id,
+                )
+                return conflict_id
+            adopted = self._adopt_by_exact_label_from_new_data(new=new, data=data)
+            if adopted:
+                logger.info(
+                    "wbeditentity new=%s adopted existing %s from exact-label re-search",
+                    new,
+                    adopted,
+                )
+                return adopted
             logger.warning("wbeditentity new=%s failed: %s", new, body)
         except Exception as exc:  # noqa: BLE001
             logger.warning("wbeditentity new=%s error: %s", new, exc)
+            adopted = self._adopt_by_exact_label_from_new_data(new=new, data=data)
+            if adopted:
+                return adopted
         return None
+
+    def _adopt_by_exact_label_from_new_data(
+        self, *, new: str, data: dict[str, object],
+    ) -> str | None:
+        labels = data.get("labels") if isinstance(data.get("labels"), dict) else {}
+        en = labels.get("en") if isinstance(labels, dict) else None
+        label = ""
+        if isinstance(en, dict):
+            label = str(en.get("value") or "")
+        expected = str(data.get("datatype") or "").strip() or None
+        return self._adopt_by_exact_label(
+            entity_type="property" if new == "property" else "item",
+            label=label,
+            expected_datatype=expected,
+        )
+
+    def _adopt_by_exact_label(
+        self,
+        *,
+        entity_type: str,
+        label: str,
+        expected_datatype: str | None = None,
+    ) -> str | None:
+        from converter.wikidata.test_wiki_compat import choose_test_item  # noqa: PLC0415
+
+        target = label.strip()
+        if not target:
+            return None
+        hits = self._wbsearchentities(target, entity_type=entity_type)
+        if entity_type == "property":
+            pids = [
+                str(hit.get("id") or "")
+                for hit in hits
+                if str(hit.get("id") or "").startswith("P")
+            ]
+            self._ensure_test_property_datatypes(pids)
+            wanted = (expected_datatype or "").strip()
+            needle = target.lower()
+            for hit in hits:
+                hit_id = str(hit.get("id") or "").strip()
+                hit_label = str(hit.get("label") or "").strip().lower()
+                if not hit_id.startswith("P") or hit_label != needle:
+                    continue
+                actual = self._test_property_datatypes.get(hit_id) or str(
+                    hit.get("datatype") or "",
+                )
+                if wanted and actual != wanted:
+                    continue
+                return hit_id
+            return None
+        return choose_test_item(
+            "Q0",
+            item_label=target,
+            qid_map={},
+            search_hits=hits,
+        )
 
     def _create_test_property(self, label: str, datatype: str) -> str | None:
         if not self._can_create_test_properties():
@@ -1313,16 +1421,23 @@ class WikidataUploader:
         return self._wbeditentity_new(new="property", data=data)
 
     def _create_test_item_stub(self, label: str, live_qid: str) -> str | None:
+        from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+            mhm_test_stub_description,
+        )
+
         data = {
             "labels": {"en": {"language": "en", "value": label}},
             "descriptions": {
                 "en": {
                     "language": "en",
-                    "value": f"MHM test stub for live {live_qid}",
+                    "value": mhm_test_stub_description(live_qid),
                 },
             },
         }
-        return self._wbeditentity_new(new="item", data=data)
+        created = self._wbeditentity_new(new="item", data=data)
+        if created and created in self._test_fresh_creates:
+            self._test_item_descriptions[created] = mhm_test_stub_description(live_qid)
+        return created
 
     def _ensure_test_property_datatypes(self, pids: list[str]) -> None:
         missing = [p for p in pids if p not in self._test_property_datatypes]
@@ -1346,20 +1461,103 @@ class WikidataUploader:
             ent = fetched.get(qid) if isinstance(fetched.get(qid), dict) else None
             self._test_entity_exists[qid] = bool(ent) and "missing" not in ent
 
+    def _store_test_property_map(
+        self,
+        live_pid: str,
+        value_type: str,
+        test_pid: str,
+        stats: object,
+        *,
+        created: bool,
+    ) -> bool:
+        from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+            expected_wikibase_datatype,
+            pid_map_store,
+        )
+
+        expected = expected_wikibase_datatype(value_type)
+        if expected is None:
+            return False
+        self._ensure_test_property_datatypes([test_pid])
+        actual = self._test_property_datatypes.get(test_pid)
+        if actual != expected:
+            return False
+        pid_map_store(self._test_pid_map, live_pid, value_type, test_pid)
+        if created:
+            stats.properties_created += 1
+        elif test_pid != live_pid:
+            stats.properties_remapped += 1
+        return True
+
+    def _resolve_test_property_for_snak(
+        self,
+        live_pid: str,
+        value_type: str,
+        stats: object,
+    ) -> None:
+        from converter.wikidata.property_labels import PROPERTY_LABELS  # noqa: PLC0415
+        from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+            choose_test_property,
+            expected_wikibase_datatype,
+            pid_map_lookup,
+        )
+
+        if pid_map_lookup(self._test_pid_map, live_pid, value_type):
+            return
+        label = PROPERTY_LABELS.get(live_pid, "")
+        expected = expected_wikibase_datatype(value_type)
+        hits = self._wbsearchentities(label, entity_type="property") if label else []
+        hit_pids = [
+            str(hit.get("id") or "")
+            for hit in hits
+            if str(hit.get("id") or "").startswith("P")
+        ]
+        self._ensure_test_property_datatypes(hit_pids)
+        for hit in hits:
+            pid = str(hit.get("id") or "")
+            confirmed = self._test_property_datatypes.get(pid)
+            if confirmed:
+                hit["datatype"] = confirmed
+        test_pid = choose_test_property(
+            live_pid,
+            value_type,
+            property_label=label,
+            property_datatypes=self._test_property_datatypes,
+            pid_map=self._test_pid_map,
+            search_hits=hits,
+        )
+        if test_pid and self._store_test_property_map(
+            live_pid, value_type, test_pid, stats, created=False,
+        ):
+            return
+        if label and expected:
+            created = self._create_test_property(label, expected)
+            if created and self._store_test_property_map(
+                live_pid, value_type, created, stats, created=True,
+            ):
+                return
+            retry_hits = self._wbsearchentities(label, entity_type="property")
+            test_pid = choose_test_property(
+                live_pid,
+                value_type,
+                property_label=label,
+                property_datatypes=self._test_property_datatypes,
+                pid_map=self._test_pid_map,
+                search_hits=retry_hits,
+            )
+            if test_pid and self._store_test_property_map(
+                live_pid, value_type, test_pid, stats, created=False,
+            ):
+                return
+
     def _ensure_test_maps_for_item(self, item: WikidataItem) -> object:
         """Resolve live P/Q ids to test wiki ids (search, then stub CREATE)."""
-        from converter.wikidata.property_labels import (  # noqa: PLC0415
-            PROPERTY_LABELS,
-            QID_LABELS,
-        )
+        from converter.wikidata.property_labels import QID_LABELS  # noqa: PLC0415
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
-            WikiTestAdaptResult,
             WikiTestAdaptStats,
             choose_test_item,
-            choose_test_property,
             collect_live_pids_with_types,
             collect_live_qids,
-            expected_wikibase_datatype,
         )
 
         stats = WikiTestAdaptStats()
@@ -1368,31 +1566,7 @@ class WikidataUploader:
         self._ensure_test_property_datatypes([p for p, _ in live_pids])
 
         for live_pid, value_type in live_pids:
-            if live_pid in self._test_pid_map:
-                continue
-            label = PROPERTY_LABELS.get(live_pid, "")
-            hits = self._wbsearchentities(label, entity_type="property") if label else []
-            test_pid = choose_test_property(
-                live_pid,
-                value_type,
-                property_label=label,
-                property_datatypes=self._test_property_datatypes,
-                pid_map=self._test_pid_map,
-                search_hits=hits,
-            )
-            if test_pid:
-                self._test_pid_map[live_pid] = test_pid
-                if test_pid != live_pid:
-                    stats.properties_remapped += 1
-                self._ensure_test_property_datatypes([test_pid])
-                continue
-            expected = expected_wikibase_datatype(value_type)
-            if label and expected:
-                created = self._create_test_property(label, expected)
-                if created:
-                    self._test_pid_map[live_pid] = created
-                    self._test_property_datatypes[created] = expected
-                    stats.properties_created += 1
+            self._resolve_test_property_for_snak(live_pid, value_type, stats)
 
         for live_qid in live_qids:
             if live_qid in self._test_qid_map:
@@ -1408,7 +1582,9 @@ class WikidataUploader:
                 search_hits=hits,
             )
             if test_qid:
-                if not self._item_usable_as_test_reference(test_qid):
+                if not self._item_usable_as_test_reference(
+                    test_qid, live_qid=live_qid,
+                ):
                     test_qid = None
             if test_qid:
                 self._test_qid_map[live_qid] = test_qid
@@ -1416,13 +1592,31 @@ class WikidataUploader:
                 self._test_entity_exists[test_qid] = True
                 continue
             created = self._create_test_item_stub(gloss, live_qid)
-            if created:
+            if not created:
+                created = self._adopt_by_exact_label(
+                    entity_type="item", label=gloss,
+                )
+            if created and self._item_usable_as_test_reference(
+                created, live_qid=live_qid,
+            ):
                 self._test_qid_map[live_qid] = created
-                self._test_stubs_we_created.add(created)
-                stats.classes_created += 1
                 self._test_entity_exists[created] = True
+                if created in self._test_fresh_creates:
+                    self._test_stubs_we_created.add(created)
+                    stats.classes_created += 1
+                else:
+                    stats.classes_remapped += 1
 
         return stats
+
+    def warm_test_maps_for_items(self, items: list[WikidataItem]) -> None:
+        """Resolve session P/Q maps once per test-upload job (Rule W-187)."""
+        if not self._is_test:
+            return
+        if self._login is None:
+            self._init_wbi()
+        for item in items:
+            self._ensure_test_maps_for_item(item)
 
     def _adapt_item_for_test_wiki(
         self, item: WikidataItem,
@@ -1487,22 +1681,30 @@ class WikidataUploader:
         # Ownership BEFORE test adapt: never stub-CREATE properties/classes
         # for an item we are about to skip (Rule W-184).
         if item.existing_qid and not self._is_our_item(item.existing_qid):
-            logger.warning(
-                "SAFETY: Skipping %s — existing item %s was NOT authored by the "
-                "authenticated user",
-                item.local_id,
-                item.existing_qid,
-            )
-            return UploadResult(
-                local_id=item.local_id,
-                qid=item.existing_qid,
-                status="skipped",
-                message=(
-                    f"Skipped {item.existing_qid} — not authored by the authenticated "
-                    "user (Rule-38; no UPDATE of foreign items on "
-                    f"{'test.wikidata.org' if self._is_test else 'wikidata.org'})"
-                ),
-            )
+            if self._is_test:
+                logger.info(
+                    "test upload: clearing foreign existing_qid %s for CREATE "
+                    "(local_id=%s)",
+                    item.existing_qid,
+                    item.local_id,
+                )
+                item = replace(item, existing_qid=None)
+            else:
+                logger.warning(
+                    "SAFETY: Skipping %s — existing item %s was NOT authored by the "
+                    "authenticated user",
+                    item.local_id,
+                    item.existing_qid,
+                )
+                return UploadResult(
+                    local_id=item.local_id,
+                    qid=item.existing_qid,
+                    status="skipped",
+                    message=(
+                        f"Skipped {item.existing_qid} — not authored by the authenticated "
+                        "user (Rule-38; no UPDATE of foreign items on wikidata.org)"
+                    ),
+                )
 
         if self._is_test:
             item, test_adapt_result = self._adapt_item_for_test_wiki(item)
@@ -1762,6 +1964,8 @@ class WikidataUploader:
         """
         results: list[UploadResult] = []
         total = len(items)
+        if self._is_test:
+            self.warm_test_maps_for_items(items)
 
         # Track created QIDs so manuscripts can reference freshly created persons
         created_qids: dict[str, str] = {}

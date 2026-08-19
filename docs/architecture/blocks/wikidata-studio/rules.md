@@ -617,25 +617,30 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     Default `mark_as_bot=False` unless `WIKIDATA_MARK_AS_BOT=true`.
     Regression: `test_wikidata_upload_is_bot.py`.
     *Why:* export-39 TypeError on `bot=`; export-40 hard-fail without bot right.*
-84. **R84 — Upload natives = Studio table; test clears missing QIDs (Rule W-181).**
+84. **R84 — Upload natives = Studio table; test clears missing/foreign QIDs (Rule W-181).**
     `_build_native_items` prefers Studio cache → `studio_dict_to_native_item`;
-    on test, missing/live QIDs and WDQS outages become CREATE. Regression:
-    `test_studio_dict_to_native.py`, `test_wikidata_upload_guards.py`.
-    *Why:* export-40 — 100× never (HMO-only rebuild) + 14× missing-on-test.*
+    on test, missing QIDs, foreign-but-alive Q-numbers, and WDQS outages become
+    CREATE (never UPDATE community test items). Regression:
+    `test_studio_dict_to_native.py`, `test_wikidata_upload_guards.py`,
+    `test_wikidata_existence.py`.
+    *Why:* export-40 — 100× never (HMO-only rebuild) + 14× missing-on-test;
+    job 5ea88249 skipped foreign Q209579.*
 85. **R85 — Test uploads remap; leftovers refuse the write (Rules W-182 / W-183 / W-186).**
-    `test_wiki_compat` ranks test properties/items by English label +
-    datatype, `WikidataUploader._ensure_test_maps_for_item` searches or
-    stub-CREATEs, rewrites snaks, then `filter_item_for_test_wiki` lists
-    leftovers. A leftover blocks the item (no degraded CREATE). Live keeps
-    the full WPM set. Remaining `Bad value type` fails once. Regression:
-    `test_wikidata_test_wiki_compat.py`.
+    `test_wiki_compat` matches **exact** English label + datatype, keys maps by
+    `(live_pid, value_type)`, `WikidataUploader._ensure_test_maps_for_item`
+    searches or stub-CREATEs (adopt-on-conflict), rewrites snaks, then
+    `filter_item_for_test_wiki` lists leftovers. A leftover blocks the item.
+    Live keeps the full WPM set. Remaining `Bad value type` fails once.
+    Regression: `test_wikidata_test_wiki_compat.py`.
     *Why:* test.wikidata.org P/Q numbers are not public Wikidata entities;
     smoke-path claim drops would fail expert review.*
 86. **R86 — Ownership before UPDATE (Rule W-184).**
     `_is_our_item` triple-check on live **and** test; `register_foreign_accept`
     live-only; ownership before test adapt; SPARQL false on test falls back to
-    Action API; test Q remap uses bot-owned/stub targets only; skipped foreign
-    QIDs do not enter `created_qids` on test. Regression:
+    Action API; test Q remap uses bot-owned, session-stub, or MHM-description
+    targets only; skipped foreign QIDs do not enter `created_qids` on test.
+    On test, foreign-alive UPDATE targets clear to CREATE instead of skip.
+    Regression:
     `test_wikidata_upload_guards.py`, `test_wikidata_test_wiki_compat.py`,
     `frontend/e2e/wikidata-item-table.spec.ts`.
     *Why:* foreign-accept cache priming bypassed Rule-38; test WDQS false-negatives.*
@@ -653,3 +658,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     item is `blocked`. Millimetre/centimetre/metre Q-ids are in `QID_LABELS`
     for stub CREATE. Regression: `test_wikidata_test_wiki_compat.py`.
     *Why:* leftover-drop CREATE produced items that would fail expert review.*
+89. **R89 — Test remap adopt-on-conflict + datatype-keyed maps (Rule W-187).**
+    `_wbeditentity_new` adopts conflicting Q/P ids; `_test_pid_map` keys
+    `(live_pid, value_type)` with exact-label search + datatype confirm;
+    MHM stub descriptions (`MHM test stub for live {qid}`) are reusable claim
+    values; foreign-but-alive test QIDs clear for CREATE (W-181). Regression:
+    `test_wikidata_test_wiki_compat.py`, `test_wikidata_existence.py`,
+    `test_wikidata_upload_guards.py`.
+    *Why:* job 5ea88249 — 179 W-186 blocks from CREATE races and wrong-type P reuse.*

@@ -58,9 +58,14 @@ export const useRunJobs = create<RunJobsState>((set, get) => ({
     try {
       const {jobs} = await RunJobs.listMine(true);
       if (seq !== refreshSeq) return;
-      const map: Record<string, RunJobSnapshot> = {};
-      for (const j of jobs) map[j.id] = j;
-      set({jobs: map});
+      // Merge active jobs into the existing map. listMine(active=true) omits
+      // terminal jobs — replacing the map wholesale wiped cancelled/succeeded
+      // snapshots and made open upload modals flicker (test badge ↔ live default).
+      set((s) => {
+        const map = {...s.jobs};
+        for (const j of jobs) map[j.id] = j;
+        return {jobs: map};
+      });
       if (jobs.length === 0) {
         get().stopPolling();
       }

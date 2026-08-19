@@ -11,10 +11,16 @@ from converter.wikidata.test_wiki_compat import (
     choose_test_item,
     choose_test_property,
     collect_test_wiki_ids,
+    description_is_mhm_stub_for,
     expected_wikibase_datatype,
     filter_item_for_test_wiki,
     format_test_wiki_outcome_note,
     item_target_qid,
+    mhm_test_stub_description,
+    parse_wbeditentity_conflict_id,
+    pid_map_key,
+    pid_map_lookup,
+    pid_map_store,
     rewrite_item_with_maps,
 )
 from converter.wikidata.uploader import WikidataUploader
@@ -30,6 +36,20 @@ def test_item_target_qid() -> None:
     assert item_target_qid("Q87167") == "Q87167"
     assert item_target_qid("q12") == "Q12"
     assert item_target_qid("not-a-qid") is None
+
+
+def test_choose_test_property_rejects_fuzzy_label() -> None:
+    chosen = choose_test_property(
+        "P31",
+        "item",
+        property_label="instance of",
+        property_datatypes={"P31": "url"},
+        pid_map={},
+        search_hits=[
+            {"id": "P85140", "label": "instance of:jsiavb", "datatype": "wikibase-item"},
+        ],
+    )
+    assert chosen is None
 
 
 def test_choose_test_property_prefers_exact_label_and_lowest_pid() -> None:
@@ -96,7 +116,11 @@ def test_rewrite_item_with_maps() -> None:
     )
     rewritten = rewrite_item_with_maps(
         item,
-        pid_map={"P31": "P82", "P1476": "P77107", "P248": "P248"},
+        pid_map={
+            pid_map_key("P31", "item"): "P82",
+            pid_map_key("P1476", "monolingualtext"): "P77107",
+            pid_map_key("P248", "item"): "P248",
+        },
         qid_map={"Q87167": "Q500", "Q118384267": "Q501"},
     )
     assert rewritten.statements[0].property_id == "P82"
@@ -379,7 +403,7 @@ def test_ensure_test_maps_resolves_property_and_item(monkeypatch) -> None:
         ],
     )
     stats = up._ensure_test_maps_for_item(item)
-    assert up._test_pid_map["P1476"] == "P77107"
+    assert pid_map_lookup(up._test_pid_map, "P1476", "monolingualtext") == "P77107"
     assert up._test_qid_map["Q9288"] == "Q999"
     assert stats.properties_remapped == 1
     assert stats.classes_remapped == 1
@@ -423,6 +447,7 @@ def test_ensure_test_maps_rejects_foreign_search_hit(monkeypatch) -> None:
 
     def _stub(label: str, live_qid: str) -> str:
         created["qid"] = "Q888"
+        up._test_fresh_creates.add("Q888")
         return "Q888"
 
     monkeypatch.setattr(up, "_create_test_item_stub", _stub)
@@ -463,7 +488,7 @@ def test_quantity_unit_mm_is_collected_and_remapped() -> None:
     assert "Q174789" in qids
     rewritten = rewrite_item_with_maps(
         normalized,
-        pid_map={"P2048": "P2048"},
+        pid_map={pid_map_key("P2048", "quantity"): "P2048"},
         qid_map={"Q174789": "Q777"},
     )
     assert rewritten.statements[0].unit == "Q777"
@@ -637,10 +662,57 @@ def test_filter_keeps_remapped_live_class() -> None:
     assert skipped == []
 
 
-def test_foreign_existing_qid_skips_before_test_adapt(monkeypatch) -> None:
+def test_foreign_existing_qid_creates_on_test(monkeypatch) -> None:
     up = WikidataUploader(
         token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
         is_test=True,
+    )
+    adapted = {"n": 0}
+    written = {"n": 0}
+
+    class _FakeWbiItem:
+        id = "Q9"
+
+        def write(self, **kwargs):  # noqa: ANN003
+            written["n"] += 1
+            return self
+
+    def _adapt(item: WikidataItem):
+        adapted["n"] += 1
+        assert item.existing_qid is None
+        return item, WikiTestAdaptResult()
+
+    monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_is_our_item", lambda _qid: False)
+    monkeypatch.setattr(up, "_adapt_item_for_test_wiki", _adapt)
+    monkeypatch.setattr(up, "_rate_limit", lambda: None)
+    monkeypatch.setattr(
+        up, "_build_wbi_item", lambda _item: (_FakeWbiItem(), 1, ["P31"]),
+    )
+    monkeypatch.setattr(up, "_assert_modifiable", lambda *_a, **_k: None)
+
+    result = up.upload_item(
+        WikidataItem(
+            local_id="x",
+            entity_type="manuscript",
+            existing_qid="Q209579",
+            labels={"en": "x"},
+            statements=[
+                WikidataStatement(property_id="P31", value="Q87167", value_type="item"),
+            ],
+        ),
+    )
+    assert result.status == "success"
+    assert adapted["n"] == 1
+    assert written["n"] == 1
+
+
+def test_foreign_existing_qid_skips_on_live(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipeline:diagpasswordxxxxxxxx",
+        is_test=False,
+        allow_live=True,
     )
     adapted = {"n": 0}
 
@@ -664,6 +736,205 @@ def test_foreign_existing_qid_skips_before_test_adapt(monkeypatch) -> None:
     assert result.status == "skipped"
     assert adapted["n"] == 0
     assert "not authored" in result.message
+
+
+def test_parse_wbeditentity_conflict_id_from_html() -> None:
+    body = {
+        "error": {
+            "messages": [
+                {
+                    "html": {
+                        "*": 'Item [[Q248282|Q248282]] already has label "manuscript"',
+                    },
+                },
+            ],
+        },
+    }
+    assert parse_wbeditentity_conflict_id(body) == "Q248282"
+
+
+def test_parse_wbeditentity_conflict_id_from_property_param() -> None:
+    body = {
+        "error": {
+            "messages": [{"parameters": ["P99710"]}],
+        },
+    }
+    assert parse_wbeditentity_conflict_id(body) == "P99710"
+
+
+def test_pid_map_keys_separate_by_datatype() -> None:
+    pid_map: dict[str, str] = {}
+    pid_map_store(pid_map, "P100218", "string", "P9001")
+    pid_map_store(pid_map, "P100218", "url", "P9002")
+    assert pid_map_lookup(pid_map, "P100218", "string") == "P9001"
+    assert pid_map_lookup(pid_map, "P100218", "url") == "P9002"
+
+
+def test_mhm_stub_description_helpers() -> None:
+    assert mhm_test_stub_description("Q87167") == "MHM test stub for live Q87167"
+    assert description_is_mhm_stub_for(
+        "MHM test stub for live Q87167",
+        "Q87167",
+    )
+
+
+def test_mhm_stub_search_hit_usable_without_is_our_item(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    monkeypatch.setattr(
+        up,
+        "_item_english_description",
+        lambda qid: mhm_test_stub_description("Q9288") if qid == "Q777" else "",
+    )
+    monkeypatch.setattr(up, "_is_our_item", lambda _qid: False)
+    assert up._item_usable_as_test_reference("Q777", live_qid="Q9288") is True
+    assert up._item_usable_as_test_reference("Q777", live_qid="Q87167") is False
+
+
+def test_wbeditentity_new_adopts_conflict_id(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            return None
+
+        @staticmethod
+        def json() -> dict:
+            return {
+                "error": {
+                    "messages": [
+                        {"parameters": ["Q248282"]},
+                    ],
+                },
+            }
+
+    class _Session:
+        @staticmethod
+        def post(*_a, **_k):
+            return _Resp()
+
+    monkeypatch.setattr(up, "_login", SimpleNamespace(get_session=lambda: _Session()))
+    monkeypatch.setattr(up, "_get_csrf_token", lambda: "csrf")
+    monkeypatch.setattr(up, "_rate_limit", lambda: None)
+    assert up._wbeditentity_new(new="item", data={}) == "Q248282"
+
+
+def test_p1680_has_property_label() -> None:
+    from converter.wikidata.property_labels import PROPERTY_LABELS  # noqa: PLC0415
+
+    assert PROPERTY_LABELS.get("P1680") == "subtitle"
+
+
+def test_property_labels_cover_mapping_pids() -> None:
+    import converter.wikidata.property_mapping as mapping  # noqa: PLC0415
+    from converter.wikidata.property_labels import PROPERTY_LABELS  # noqa: PLC0415
+
+    missing = [
+        value
+        for name, value in vars(mapping).items()
+        if name.startswith("P_") and isinstance(value, str) and value.startswith("P")
+        if value not in PROPERTY_LABELS
+    ]
+    assert missing == [], missing
+
+
+def test_p1680_remaps_via_subtitle_gloss(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_login", SimpleNamespace())
+    monkeypatch.setattr(
+        up,
+        "_ensure_test_property_datatypes",
+        lambda pids: up._test_property_datatypes.update({
+            "P1680": "globe-coordinate",
+            "P9001": "monolingualtext",
+        }),
+    )
+    monkeypatch.setattr(
+        up,
+        "_wbsearchentities",
+        lambda search, *, entity_type, limit=8: (
+            [{"id": "P9001", "label": "subtitle", "datatype": "monolingualtext"}]
+            if entity_type == "property" and search == "subtitle"
+            else []
+        ),
+    )
+    monkeypatch.setattr(up, "_create_test_property", lambda *_a, **_k: None)
+    stats = up._ensure_test_maps_for_item(
+        WikidataItem(
+            statements=[
+                WikidataStatement(
+                    property_id="P1680", value="ותרגום", value_type="monolingualtext",
+                ),
+            ],
+        ),
+    )
+    assert pid_map_lookup(up._test_pid_map, "P1680", "monolingualtext") == "P9001"
+    assert stats.properties_remapped == 1
+
+
+def test_wbeditentity_researches_when_conflict_unparsed(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            return None
+
+        @staticmethod
+        def json() -> dict:
+            return {"error": {"info": "label conflict without id"}}
+
+    class _Session:
+        @staticmethod
+        def post(*_a, **_k):
+            return _Resp()
+
+    monkeypatch.setattr(up, "_login", SimpleNamespace(get_session=lambda: _Session()))
+    monkeypatch.setattr(up, "_get_csrf_token", lambda: "csrf")
+    monkeypatch.setattr(up, "_rate_limit", lambda: None)
+    monkeypatch.setattr(
+        up,
+        "_wbsearchentities",
+        lambda search, *, entity_type, limit=8: (
+            [{"id": "Q248282", "label": "manuscript", "datatype": ""}]
+            if entity_type == "item" and search == "manuscript"
+            else []
+        ),
+    )
+    data = {"labels": {"en": {"language": "en", "value": "manuscript"}}}
+    assert up._wbeditentity_new(new="item", data=data) == "Q248282"
+
+
+def test_warm_test_maps_for_items_fills_session_maps(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_login", SimpleNamespace())
+    called: list[str] = []
+
+    def _ensure(item: WikidataItem):
+        called.append(item.local_id)
+        return WikiTestAdaptStats()
+
+    monkeypatch.setattr(up, "_ensure_test_maps_for_item", _ensure)
+    up.warm_test_maps_for_items([
+        WikidataItem(local_id="a", entity_type="manuscript"),
+        WikidataItem(local_id="b", entity_type="work"),
+    ])
+    assert called == ["a", "b"]
 
 
 def test_test_sparql_false_falls_back_to_action_api(monkeypatch) -> None:
@@ -707,6 +978,7 @@ def test_upload_all_does_not_wire_skipped_foreign_qid_on_test(monkeypatch) -> No
         )
 
     monkeypatch.setattr(up, "upload_item", _upload)
+    monkeypatch.setattr(up, "warm_test_maps_for_items", lambda _items: None)
     person = WikidataItem(local_id="person:a", entity_type="person", labels={"en": "p"})
     ms = WikidataItem(
         local_id="ms:a",

@@ -18,6 +18,7 @@ Guarantees pinned:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -463,7 +464,14 @@ def test_foreign_accept_ignored_on_test_upload(monkeypatch):
             return False
 
         def upload_item(self, item):
-            raise AssertionError("must not upload foreign item on test")
+            assert item.existing_qid is None
+            return SimpleNamespace(
+                local_id=item.local_id,
+                qid="Q999",
+                status="success",
+                message="created on test",
+                added_properties=[],
+            )
 
     monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _ForeignUploader)
 
@@ -480,8 +488,8 @@ def test_foreign_accept_ignored_on_test_upload(monkeypatch):
             ),
         },
     )
-    assert outcomes[0].status == "skipped"
-    assert "not created by your account" in outcomes[0].message
+    assert outcomes[0].status == "created"
+    assert outcomes[0].qid == "Q999"
 
 
 def test_reconcile_preview_marks_outage_as_error(monkeypatch):

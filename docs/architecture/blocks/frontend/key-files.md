@@ -11,7 +11,7 @@
 | `frontend/src/api/client.ts` | The only fetch wrapper: `api.get/post/put/patch/del`, `ApiError`, CSRF double-submit header, HTML-fallback → login redirect |
 | `frontend/src/api/*.ts` | One typed client per backend resource, exported as a namespace object (`RunJobs`, `Extraction`, …) |
 | `frontend/src/stores/auth.ts` | `useAuth` Zustand store — user, bootstrap/login/logout |
-| `frontend/src/stores/runJobs.ts` | `useRunJobs` Zustand store — job map, 2 s poll loop, monotonic `refreshSeq` guard, `selectActiveJob` helper |
+| `frontend/src/stores/runJobs.ts` | `useRunJobs` Zustand store — job map, 2 s poll loop, monotonic `refreshSeq` guard, merge-not-replace active poll (keeps terminal snapshots), `selectActiveJob` helper |
 | `frontend/src/stores/theme.ts` | `useTheme` — color scheme, `initTheme()` |
 | `frontend/src/hooks/useApprovalStore.ts` | Polling entity store for AI Extraction (fast/slow poll + ETag + `mhm.entities.refreshed` listener) |
 | `frontend/src/hooks/useRunJobAttachment.ts` | Attach a page to an in-flight background job (attach-on-mount, fingerprint-guarded sync) |

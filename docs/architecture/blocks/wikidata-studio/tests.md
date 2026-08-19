@@ -48,9 +48,11 @@
 - `backend/tests/unit/test_wikidata_upload_login_once.py` — shared uploader + auth abort (W-179 / R82).
 - `backend/tests/unit/test_wikidata_upload_is_bot.py` — `is_bot` kwarg (not `bot=`), default false, no retry on bot-right / permissiondenied; write-rights preflight (W-180 / W-181).
 - `backend/tests/unit/test_wikidata_upload_job_progress.py` — live progress rows include `label` / `entity_type` / `outcome_counts` + processing status shape (W-141 upload modal).
+- `frontend/tests/unit/wikidataUploadProgressModal.spec.ts` — sticky/test resolve of `upload_target` (no invented live; frontend R19).
+- `frontend/tests/unit/runJobsStore.spec.ts` — active poll merges without wiping terminal upload snapshots (frontend R19).
 - `frontend/tests/unit/studioUploadProgress.spec.ts` — processing → terminal status replace; Wikidata/HMO row patches.
 - `backend/tests/unit/test_studio_dict_to_native.py` — Studio-cache dict → native item (W-181 / R84).
-- `backend/tests/unit/test_wikidata_test_wiki_compat.py` — test.wikidata.org remap + leftover **refuse** (not drop) + ownership on test Q refs + ownership-before-adapt + SPARQL fallback + skipped-foreign `__LOCAL:` wiring + unmapped live Q leftover + quantity unit remap + illegal live-entity no-retry + no live strip + no `Bad value type` retry (W-182 / W-183 / W-184 / W-185 / W-186 / R85–R88).
+- `backend/tests/unit/test_wikidata_test_wiki_compat.py` — test.wikidata.org remap + leftover **refuse** (not drop) + ownership on test Q refs + ownership-before-adapt + SPARQL fallback + skipped-foreign `__LOCAL:` wiring + unmapped live Q leftover + quantity unit remap + illegal live-entity no-retry + no live strip + no `Bad value type` retry + adopt-on-conflict + datatype-keyed P map + MHM stub reuse + foreign-alive CREATE (W-182 / W-183 / W-184 / W-185 / W-186 / W-187 / R85–R89).
 - `backend/tests/unit/test_wikidata_existence.py` — batched `wbgetentities`, 429 retry, existence cache, alive parse, ownership classify, QID-bound foreign accept gate (W-185).
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — identifier recovery from evidence, upload omit + P2093 rollup (W-185).
 - `backend/tests/unit/test_rdf_build.py` — clean raw 505 and flat contents create evidence-backed works.

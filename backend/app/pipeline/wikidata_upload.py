@@ -287,6 +287,26 @@ def _apply_existence_and_ownership(
     if ownership == "own":
         return prepared
 
+    if ownership == "foreign" and is_test:
+        logger.info(
+            "test upload: foreign QID %s on test.wikidata.org — clearing "
+            "for CREATE (local_id=%s)",
+            qid,
+            prepared.local_id,
+        )
+        prepared.existing_qid = None
+        try:
+            prepared.item.existing_qid = None
+        except Exception:  # noqa: BLE001
+            pass
+        prepared.method = f"{prepared.method}+cleared_foreign_on_test"
+        prepared.ownership = "absent"
+        prepared.adopt_candidate = False
+        prepared.blocked = False
+        prepared.block_status = ""
+        prepared.block_message = ""
+        return prepared
+
     prepared.blocked = True
     prepared.block_status = "skipped"
     if ownership == "foreign":
@@ -785,6 +805,10 @@ def _upload_sync(
     write_uploader = ownership_checker or WikidataUploader(
         token=token, is_test=is_test, batch_mode=True, allow_live=allow_live,
     )
+    if is_test:
+        warmer = getattr(write_uploader, "warm_test_maps_for_items", None)
+        if callable(warmer):
+            warmer([p.item for p in prepared if not p.blocked])
 
     out: list[UploadOutcome] = []
     for p in prepared:

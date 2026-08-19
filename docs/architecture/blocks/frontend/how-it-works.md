@@ -59,10 +59,12 @@ so fallbacks never inline `new Set()`.
 **Polling conventions.** Two families:
 
 - *Job polling* — `useRunJobs.ensurePolling()` starts a shared 2 s
-  `setInterval` over `GET /jobs/mine`, self-stopping when no jobs remain.
-  A monotonic `refreshSeq` counter (`runJobs.ts:50`) discards out-of-order
-  responses so progress never jumps backward. `upsertJob` merges push
-  updates without becoming a new source of truth. `JobTray` renders at
+  `setInterval` over `GET /jobs/mine?active=true`, self-stopping when no
+  active jobs remain. A monotonic `refreshSeq` counter (`runJobs.ts`)
+  discards out-of-order responses so progress never jumps backward.
+  Active polls **merge** into the existing job map (R19) so cancelled /
+  succeeded snapshots stay available to open modals. `upsertJob` merges
+  push updates without becoming a new source of truth. `JobTray` renders at
   `z-[60]` so it stays above verify modals (`z-50`). Pages attach via
   `useRunJobAttachment(runId, kind, sync)` (attach-on-mount to jobs started
   elsewhere/earlier, plus a targeted per-job 2 s poll) or `useVerifyJob`

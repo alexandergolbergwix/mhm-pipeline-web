@@ -69,7 +69,7 @@ def _prepared(qid: str | None = "Q50") -> PreparedItem:
     )
 
 
-def test_apply_existence_blocks_foreign_without_accept(monkeypatch):
+def test_apply_existence_foreign_on_test_clears_for_create(monkeypatch):
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
         lambda qid, *, is_test=False, **kwargs: True,
@@ -85,9 +85,32 @@ def test_apply_existence_blocks_foreign_without_accept(monkeypatch):
         ownership_checker=_Foreign(),
         is_test=True,
     )
+    assert out.blocked is False
+    assert out.existing_qid is None
+    assert "cleared_foreign_on_test" in out.method
+    assert out.ownership == "absent"
+
+
+def test_apply_existence_blocks_foreign_without_accept_on_live(monkeypatch):
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False, **kwargs: True,
+    )
+
+    class _Foreign:
+        def _is_our_item(self, qid: str) -> bool:
+            return False
+
+    out = _apply_existence_and_ownership(
+        _prepared(),
+        accept=None,
+        ownership_checker=_Foreign(),
+        is_test=False,
+    )
     assert out.blocked is True
     assert out.block_status == "skipped"
     assert out.ownership == "foreign"
+    assert out.existing_qid == "Q50"
 
 
 def test_apply_existence_allows_own(monkeypatch):
@@ -161,8 +184,9 @@ def test_apply_existence_foreign_accept_ignored_on_test(monkeypatch):
         ownership_checker=_Foreign(),
         is_test=True,
     )
-    assert out.blocked is True
-    assert out.block_status == "skipped"
+    assert out.blocked is False
+    assert out.existing_qid is None
+    assert not out.allow_foreign_modify
 
 
 def test_apply_existence_blocks_missing_qid(monkeypatch):

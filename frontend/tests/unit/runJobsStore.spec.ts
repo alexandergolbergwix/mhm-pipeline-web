@@ -69,4 +69,18 @@ describe("useRunJobs.refresh", () => {
     await useRunJobs.getState().refresh();
     expect(useRunJobs.getState().jobs.j1?.progress).toEqual({processed: 200, total: 7822});
   });
+
+  it("keeps terminal job snapshots when the active poll returns empty", async () => {
+    useRunJobs.getState().upsertJob(job({
+      id: "upload-1",
+      kind: "wikidata_upload",
+      status: "cancelled",
+      params: {upload_target: "test"},
+      progress: {processed: 201, total: 233, upload_target: "test"},
+    }));
+    vi.spyOn(RunJobs, "listMine").mockResolvedValueOnce({jobs: []});
+    await useRunJobs.getState().refresh();
+    expect(useRunJobs.getState().jobs["upload-1"]?.params?.upload_target).toBe("test");
+    expect(useRunJobs.getState().jobs["upload-1"]?.status).toBe("cancelled");
+  });
 });

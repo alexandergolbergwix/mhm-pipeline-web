@@ -31,8 +31,9 @@ Rule W-185) and classifies ownership with the curator token: **own → UPDATE**,
 **foreign without accept → skip**, **foreign with QID-bound `accept_foreign_modify` → UPDATE (audited)**, **unknown →
 block**. Upload jobs prefetch all native `existing_qid`s once into an
 existence cache before the write loop. `None` from the Action API is retried
-before fail-closed block; on test, confirmed-missing QIDs still clear to CREATE
-(Rule W-181). `POST /reconcile` is a **preview only** — the authoritative reconcile
+before fail-closed block; on test, confirmed-missing **and foreign-but-alive**
+QIDs still clear to CREATE (Rule W-181) — never UPDATE a community test
+Q-number (Rules W-183 / W-184). `POST /reconcile` is a **preview only** — the authoritative reconcile
 always re-runs inside `upload_items`. Contract: `docs/wikidata-data-access.md`
 (Rule W-99).
 
@@ -57,13 +58,14 @@ an HMO-only rebuild. `_build_native_items` runs
 `prepare_wikidata_upload_native_items` (recover accepted VIAF/NLI, omit
 identifierless persons, rollup work P2093 — Rule W-185 / W-154). On
 `upload_target=test`, QIDs missing on
-test.wikidata.org and WDQS outages clear to CREATE rather than block
+test.wikidata.org, foreign-but-alive Q-numbers, and WDQS outages clear to CREATE rather than block
 (live stays fail-closed). Test writes **remap** live P/Q to labeled test properties and class stubs
-(search + optional CREATE). After remap, leftover snaks whose datatype or
+(exact-label search + optional CREATE, adopt-on-conflict; session maps warmed once per job).
+After remap, leftover snaks whose datatype or
 target still cannot exist on test.wikidata.org **refuse the item**
 (`blocked`) — they are not stripped so a partial CREATE can succeed
 (Rule W-186). Labels still go out only when the full remapped claim set
-is writable (Rules W-182 / W-183 / W-186). It optionally filters to
+is writable (Rules W-182 / W-183 / W-186 / W-187). It optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
 loads per-item foreign accepts from `WikidataItemOverride`, and calls
@@ -75,8 +77,9 @@ the uploader independently re-enforces via `allow_live` / env
 modification guards stay intact (`_is_our_item`, `_assert_modifiable` in
 `_build_wbi_item`, `_would_create_identity_conflict` per statement, pre-write
 `_assert_modifiable`); foreign accept on **live only** via
-`register_foreign_accept` (never cache priming; test ignores accept). Test Q
-remap reuses only bot-owned items or session stubs (Rule W-184).
+`register_foreign_accept` (never cache priming; test ignores accept and CREATEs
+instead of UPDATEing foreign-alive QIDs). Test Q remap reuses bot-owned items,
+session stubs, or MHM stub descriptions (Rules W-184 / W-187).
 The default source is the durable HMO Wikibase read-back. `native_items_from_hmo`
 adapts normalized HMO labels, descriptions, aliases, accepted authority
 evidence, and explicitly mapped Wikidata claims into the shared native item

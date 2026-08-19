@@ -48,6 +48,7 @@ PROPERTY_LABELS: dict[str, str] = {
     "P279": "subclass of",
     # Terms / titles
     "P1476": "title",
+    "P1680": "subtitle",
     "P1448": "official name",
     "P1559": "name in native language",
     "P2093": "author name string",
@@ -138,6 +139,19 @@ PROPERTY_LABELS: dict[str, str] = {
     "P1001": "applies to jurisdiction",
     # WikiProject
     "P5008": "on focus list of Wikimedia project",
+    "P3342": "significant person",
+    "P1891": "signatory",
+    "P958":  "section, verse, paragraph, or clause",
+    "P11811": "beforehand owned by",
+    "P11812": "afterward owned by",
+    "P1922": "first line",
+    "P3132": "last line",
+    "P478":  "volume",
+    "P5102": "nature of statement",
+    "P518":  "applies to part",
+    "P3680": "statement is subject of",
+    "P2241": "reason for deprecated rank",
+    "P585":  "point in time",
 }
 
 

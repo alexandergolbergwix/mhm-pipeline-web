@@ -126,7 +126,25 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
     })
 
     if await is_cancel_requested(job_id):
-        await finish_job(job_id, status=JOB_STATUS_CANCELLED)
+        await finish_job(
+            job_id,
+            status=JOB_STATUS_CANCELLED,
+            result={
+                "outcomes": [],
+                "processed": 0,
+                "dry_run": mode.dry_run,
+                "upload_target": mode.target,
+                "moratorium_lifted": mode.moratorium_lifted,
+                "test_mode": mode.test_mode,
+            },
+            progress={
+                "phase": "cancelled",
+                "processed": 0,
+                "total": total,
+                "message": "Cancelled by user",
+                "upload_target": mode.target,
+            },
+        )
         return
 
     if not mode.dry_run and not token:
@@ -193,12 +211,21 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 await finish_job(
                     job_id,
                     status=JOB_STATUS_CANCELLED,
-                    result={"outcomes": [o.__dict__ for o in outcomes], "processed": idx},
+                    result={
+                        "outcomes": [o.__dict__ for o in outcomes],
+                        "processed": idx,
+                        "dry_run": mode.dry_run,
+                        "upload_target": mode.target,
+                        "moratorium_lifted": mode.moratorium_lifted,
+                        "test_mode": mode.test_mode,
+                    },
                     progress={
                         "phase": "cancelled",
                         "processed": idx,
                         "total": total,
                         "message": "Cancelled by user",
+                        "upload_target": mode.target,
+                        "processing_local_id": None,
                     },
                 )
                 return

@@ -9,6 +9,7 @@ so a degraded CREATE can succeed. Live uploads must not call this module.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
@@ -62,6 +63,73 @@ def item_target_qid(value: object) -> str | None:
 
 
 # Short unit tokens and live Wikidata unit Q-ids used in manuscript claims.
+MHM_STUB_DESC_PREFIX = "MHM test stub for live "
+
+_CONFLICT_ID_RE = re.compile(
+    r"\[\[(?:Property:)?(P\d+|Q\d+)\|(?:Property:)?(P\d+|Q\d+)\]\]",
+)
+
+
+def mhm_test_stub_description(live_qid: str) -> str:
+    return f"{MHM_STUB_DESC_PREFIX}{live_qid.strip()}"
+
+
+def description_is_mhm_stub_for(description: str, live_qid: str) -> bool:
+    return (description or "").strip() == mhm_test_stub_description(live_qid)
+
+
+def pid_map_key(live_pid: str, value_type: str) -> str:
+    return f"{live_pid}|{(value_type or '').strip().lower()}"
+
+
+def pid_map_lookup(
+    pid_map: Mapping[str, str],
+    live_pid: str,
+    value_type: str,
+) -> str | None:
+    return pid_map.get(pid_map_key(live_pid, value_type))
+
+
+def pid_map_store(
+    pid_map: dict[str, str],
+    live_pid: str,
+    value_type: str,
+    test_pid: str,
+) -> None:
+    pid_map[pid_map_key(live_pid, value_type)] = test_pid
+
+
+def parse_wbeditentity_conflict_id(body: object) -> str | None:
+    """Return an existing P/Q id from a Wikibase label-conflict error body."""
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if not isinstance(error, dict):
+        return None
+    messages = error.get("messages") or []
+    if isinstance(messages, list):
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            params = msg.get("parameters") or []
+            if isinstance(params, list):
+                for param in params:
+                    text = str(param or "").strip()
+                    if re.fullmatch(r"[PQ]\d+", text):
+                        return text
+            html = msg.get("html")
+            if isinstance(html, dict):
+                blob = str(html.get("*") or "")
+                match = _CONFLICT_ID_RE.search(blob)
+                if match:
+                    return match.group(1)
+    info = str(error.get("info") or "")
+    match = _CONFLICT_ID_RE.search(info)
+    if match:
+        return match.group(1)
+    return None
+
+
 QUANTITY_UNIT_ALIASES: dict[str, str] = {
     "mm": "Q174789",
     "cm": "Q174728",
@@ -182,7 +250,7 @@ def choose_test_property(
     search_hits: Sequence[Mapping[str, str]] | None = None,
 ) -> str | None:
     """Pick a test P-id for a live property, or None if create/skip is needed."""
-    cached = pid_map.get(live_pid)
+    cached = pid_map_lookup(pid_map, live_pid, value_type)
     if cached:
         return cached
     expected = expected_wikibase_datatype(value_type)
@@ -194,19 +262,20 @@ def choose_test_property(
     target_label = property_label.strip().lower()
     if not target_label:
         return None
-    candidates: list[tuple[int, int, str]] = []
+    candidates: list[tuple[int, str]] = []
     for hit in search_hits or ():
         hit_pid = str(hit.get("id") or "").strip()
         hit_dt = str(hit.get("datatype") or "").strip()
         hit_label = str(hit.get("label") or "").strip().lower()
         if not hit_pid.startswith("P") or hit_dt != expected:
             continue
-        exact_rank = 0 if hit_label == target_label else 1
-        candidates.append((exact_rank, _entity_numeric_id(hit_pid), hit_pid))
+        if hit_label != target_label:
+            continue
+        candidates.append((_entity_numeric_id(hit_pid), hit_pid))
     if not candidates:
         return None
     candidates.sort()
-    return candidates[0][2]
+    return candidates[0][1]
 
 
 def choose_test_item(
@@ -243,8 +312,9 @@ def rewrite_item_with_maps(
 ) -> WikidataItem:
     """Rewrite statement P/Q ids using session maps (pure)."""
 
-    def map_pid(pid: str) -> str:
-        return pid_map.get(pid, pid)
+    def map_pid(pid: str, vtype: str) -> str:
+        mapped = pid_map_lookup(pid_map, pid, vtype)
+        return mapped if mapped else pid
 
     def map_qid_value(value: object) -> object:
         qid = item_target_qid(value)
@@ -261,7 +331,7 @@ def rewrite_item_with_maps(
         new: dict[str, object] = dict(snak)
         pid = _snak_pid(snak)
         vtype = _snak_value_type(snak)
-        new_pid = map_pid(pid)
+        new_pid = map_pid(pid, vtype)
         if new_pid != pid:
             new["property"] = new_pid
             if "property_id" in new:
@@ -285,7 +355,7 @@ def rewrite_item_with_maps(
         kept.append(
             replace(
                 stmt,
-                property_id=map_pid(stmt.property_id),
+                property_id=map_pid(stmt.property_id, stmt.value_type),
                 value=map_value(stmt.value_type, stmt.value),
                 unit=unit if isinstance(unit, str) else stmt.unit,
                 qualifiers=[rewrite_snak(q) for q in (stmt.qualifiers or [])],

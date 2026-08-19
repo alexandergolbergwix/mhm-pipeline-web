@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo} from "react";
+import {useCallback, useEffect, useMemo, useRef} from "react";
 
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import type {UploadOutcome, WikidataUploadTarget} from "@/api/wikidataStudio";
@@ -19,28 +19,40 @@ export interface WikidataUploadProgressModalProps {
   onClose: () => void;
 }
 
-function resolveUploadTarget(job: RunJobSnapshot | null | undefined): WikidataUploadTarget | "dry_run" {
-  const fromProgress = job?.progress?.upload_target;
-  if (typeof fromProgress === "string" && fromProgress) {
-    return fromProgress as WikidataUploadTarget;
+const KNOWN_TARGETS = new Set(["dry_run", "test", "live"]);
+
+/** Resolve upload target without inventing ``live`` when evidence is missing. */
+export function resolveUploadTarget(
+  job: RunJobSnapshot | null | undefined,
+  sticky?: WikidataUploadTarget | "dry_run" | null,
+): WikidataUploadTarget | "dry_run" {
+  const candidates = [
+    job?.params?.upload_target,
+    job?.progress?.upload_target,
+    job?.result?.upload_target,
+  ];
+  for (const raw of candidates) {
+    if (typeof raw === "string" && KNOWN_TARGETS.has(raw)) {
+      return raw as WikidataUploadTarget;
+    }
   }
-  const fromParams = job?.params?.upload_target;
-  if (typeof fromParams === "string" && fromParams) {
-    return fromParams as WikidataUploadTarget;
-  }
-  const fromResult = job?.result?.upload_target;
-  if (typeof fromResult === "string" && fromResult) {
-    return fromResult as WikidataUploadTarget;
-  }
-  if (job?.params?.dry_run) return "dry_run";
-  if (job?.result?.test_mode) return "test";
-  return "live";
+  if (job?.params?.dry_run || job?.result?.dry_run) return "dry_run";
+  if (job?.result?.test_mode || job?.params?.test_mode) return "test";
+  if (sticky && KNOWN_TARGETS.has(sticky)) return sticky;
+  // Safest default while the snapshot is loading — never imply live writes.
+  return "dry_run";
 }
 
 const TARGET_BADGE: Record<string, string> = {
   dry_run: "Dry-run",
   test: "Test Wikidata",
   live: "Live Wikidata",
+};
+
+const TITLE_BY_TARGET: Record<string, string> = {
+  dry_run: "Dry-run upload progress",
+  test: "Test upload progress",
+  live: "Live upload progress",
 };
 
 export function WikidataUploadProgressModal({
@@ -52,6 +64,7 @@ export function WikidataUploadProgressModal({
   const upsertJob = useRunJobs((s) => s.upsertJob);
   const cancelJob = useRunJobs((s) => s.cancelJob);
   const ensurePolling = useRunJobs((s) => s.ensurePolling);
+  const stickyTargetRef = useRef<WikidataUploadTarget | "dry_run" | null>(null);
 
   useEffect(() => {
     ensurePolling();
@@ -62,6 +75,13 @@ export function WikidataUploadProgressModal({
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [runId, jobId, job?.run_id, job?.id, upsertJob, ensurePolling]);
+
+  const uploadTarget = resolveUploadTarget(job, stickyTargetRef.current);
+  useEffect(() => {
+    if (KNOWN_TARGETS.has(uploadTarget)) {
+      stickyTargetRef.current = uploadTarget;
+    }
+  }, [uploadTarget]);
 
   const terminal = job != null && !isJobActive(job.status);
   const terminalOutcomes = (job?.result?.outcomes as UploadOutcome[] | undefined) ?? undefined;
@@ -77,7 +97,6 @@ export function WikidataUploadProgressModal({
     return tallyWikidataUploadOutcomeCounts([]);
   }, [job?.progress, terminalOutcomes]);
 
-  const uploadTarget = resolveUploadTarget(job);
   const dryRun = uploadTarget === "dry_run";
 
   const handleCancel = useCallback(async () => {
@@ -98,8 +117,11 @@ export function WikidataUploadProgressModal({
           <div>
             <div className="kicker">Wikidata upload</div>
             <h3 className="text-xl font-semibold flex flex-wrap items-center gap-2">
-              Live upload progress
-              <GlassPill className="px-2 py-0.5 text-[10px]">
+              {TITLE_BY_TARGET[uploadTarget] ?? "Upload progress"}
+              <GlassPill
+                className="px-2 py-0.5 text-[10px]"
+                data-testid="wikidata-upload-progress-target-pill"
+              >
                 {TARGET_BADGE[uploadTarget] ?? uploadTarget}
               </GlassPill>
             </h3>
