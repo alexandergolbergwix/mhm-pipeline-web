@@ -62,6 +62,11 @@ Rules W-188 / W-185 / W-154). On
 test.wikidata.org, foreign-but-alive Q-numbers, and WDQS outages clear to CREATE rather than block
 (live stays fail-closed). Test writes **remap** live P/Q to labeled test properties and class stubs
 (exact-label search + optional CREATE, adopt-on-conflict; session maps warmed once per job).
+Holder and runtime QIDs that are missing from `QID_LABELS` still stub
+(institution table, live English label, or `MHM live {qid}`); a property
+whose live English label already exists with the wrong datatype CREATEs
+`{label} (MHM {datatype})`. Item CREATE label conflicts UPDATE our test Q
+or uniquify the English description (Rule W-189).
 After remap, leftover snaks whose datatype or
 target still cannot exist on test.wikidata.org **refuse the item**
 (`blocked`) — they are not stripped so a partial CREATE can succeed

@@ -15,13 +15,18 @@ from converter.wikidata.test_wiki_compat import (
     expected_wikibase_datatype,
     filter_item_for_test_wiki,
     format_test_wiki_outcome_note,
+    gloss_for_test_stub,
     item_target_qid,
+    mhm_disambiguated_property_label,
+    mhm_live_qid_gloss,
     mhm_test_stub_description,
+    parse_label_conflict_id,
     parse_wbeditentity_conflict_id,
     pid_map_key,
     pid_map_lookup,
     pid_map_store,
     rewrite_item_with_maps,
+    uniquify_test_item_en_description,
 )
 from converter.wikidata.uploader import WikidataUploader
 
@@ -1028,3 +1033,247 @@ def test_upload_all_wires_skipped_foreign_qid_on_live(monkeypatch) -> None:
     )
     up.upload_all([person, ms])
     assert written == ["Q209579"]
+
+
+def test_gloss_for_holder_qid_uses_institution_table() -> None:
+    assert gloss_for_test_stub("Q107722626") == (
+        "Jewish Theological Seminary Library"
+    )
+    assert gloss_for_test_stub("Q87167") == "manuscript"
+    assert mhm_live_qid_gloss("Q160544") == "MHM live Q160544"
+    assert mhm_disambiguated_property_label("subtitle", "monolingualtext") == (
+        "subtitle (MHM monolingualtext)"
+    )
+
+
+def test_parse_label_conflict_id_from_exception_string() -> None:
+    err = (
+        'Item [[Q248005|Q248005]] already has label '
+        '"National Library of Israel, Ms. Heb. 8729=4" associated with '
+        "language code en, using the same description text."
+    )
+    assert parse_label_conflict_id(err) == "Q248005"
+    assert uniquify_test_item_en_description(
+        WikidataItem(
+            local_id="QDraft_MS_1",
+            descriptions={"en": "hebrew manuscript"},
+        ),
+    ).descriptions["en"] == "hebrew manuscript (MHM QDraft_MS_1)"
+
+
+def test_holder_qid_stubs_without_qid_labels(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    created: list[tuple[str, str]] = []
+
+    def _create_stub(label: str, live_qid: str) -> str:
+        created.append((label, live_qid))
+        up._test_fresh_creates.add("Q8001")
+        return "Q8001"
+
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_login", SimpleNamespace())
+    monkeypatch.setattr(up, "_wbsearchentities", lambda *_a, **_k: [])
+    monkeypatch.setattr(up, "_create_test_property", lambda *_a, **_k: None)
+    monkeypatch.setattr(up, "_create_test_item_stub", _create_stub)
+    monkeypatch.setattr(up, "_item_usable_as_test_reference", lambda *_a, **_k: True)
+    monkeypatch.setattr(up, "_fetch_live_english_labels", lambda _qids: {})
+    monkeypatch.setattr(up, "_ensure_test_property_datatypes", lambda _pids: None)
+    up._ensure_test_maps_for_item(
+        WikidataItem(
+            statements=[
+                WikidataStatement(
+                    property_id="P195", value="Q107722626", value_type="item",
+                ),
+            ],
+        ),
+    )
+    assert created == [("Jewish Theological Seminary Library", "Q107722626")]
+    assert up._test_qid_map["Q107722626"] == "Q8001"
+
+
+def test_unglossed_qid_uses_live_fetch_then_fallback(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    created: list[tuple[str, str]] = []
+
+    def _create_stub(label: str, live_qid: str) -> str:
+        created.append((label, live_qid))
+        up._test_fresh_creates.add("Q8002")
+        return "Q8002"
+
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_login", SimpleNamespace())
+    monkeypatch.setattr(up, "_wbsearchentities", lambda *_a, **_k: [])
+    monkeypatch.setattr(up, "_create_test_property", lambda *_a, **_k: None)
+    monkeypatch.setattr(up, "_create_test_item_stub", _create_stub)
+    monkeypatch.setattr(up, "_item_usable_as_test_reference", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        up, "_fetch_live_english_labels", lambda _qids: {"Q160544": "Sana'a"},
+    )
+    monkeypatch.setattr(up, "_ensure_test_property_datatypes", lambda _pids: None)
+    up._ensure_test_maps_for_item(
+        WikidataItem(
+            statements=[
+                WikidataStatement(
+                    property_id="P1071", value="Q160544", value_type="item",
+                ),
+            ],
+        ),
+    )
+    assert created == [("Sana'a", "Q160544")]
+    assert up._test_qid_map["Q160544"] == "Q8002"
+
+
+def test_p1680_creates_disambiguated_label_when_subtitle_wrong_type(
+    monkeypatch,
+) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    created: list[tuple[str, str]] = []
+
+    def _create(label: str, datatype: str) -> str:
+        created.append((label, datatype))
+        if "MHM" in label:
+            up._test_property_datatypes["P9002"] = datatype
+            return "P9002"
+        up._test_property_datatypes["P1680"] = "globe-coordinate"
+        return "P1680"
+
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_login", SimpleNamespace())
+    monkeypatch.setattr(up, "_create_test_property", _create)
+    monkeypatch.setattr(up, "_ensure_test_property_datatypes", lambda _pids: None)
+    monkeypatch.setattr(
+        up,
+        "_wbsearchentities",
+        lambda search, *, entity_type, limit=8: (
+            [{"id": "P1680", "label": "subtitle", "datatype": "globe-coordinate"}]
+            if entity_type == "property" and search == "subtitle"
+            else []
+        ),
+    )
+    up._test_property_datatypes["P1680"] = "globe-coordinate"
+    stats = up._ensure_test_maps_for_item(
+        WikidataItem(
+            statements=[
+                WikidataStatement(
+                    property_id="P1680", value="ותרגום", value_type="monolingualtext",
+                ),
+            ],
+        ),
+    )
+    assert pid_map_lookup(up._test_pid_map, "P1680", "monolingualtext") == "P9002"
+    assert ("subtitle (MHM monolingualtext)", "monolingualtext") in created
+    assert stats.properties_created == 1
+
+
+def test_upload_item_adopts_own_label_conflict(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    captured: list[str | None] = []
+
+    class _FakeWbiItem:
+        def __init__(self, qid: str | None) -> None:
+            self.id = qid
+
+        def write(self, **kwargs):  # noqa: ANN003
+            if self.id is None:
+                raise RuntimeError(
+                    'Item [[Q248005|Q248005]] already has label '
+                    '"National Library of Israel, Ms. Heb. 8729=4" associated '
+                    "with language code en, using the same description text."
+                )
+            return self
+
+    def _build(_item: WikidataItem):
+        captured.append(_item.existing_qid)
+        return _FakeWbiItem(_item.existing_qid), 1, ["P31"]
+
+    def _adapt(_item: WikidataItem):
+        return _item, WikiTestAdaptResult(skipped=[])
+
+    monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_rate_limit", lambda: None)
+    monkeypatch.setattr(up, "_build_wbi_item", _build)
+    monkeypatch.setattr(up, "_assert_modifiable", lambda *_a, **_k: None)
+    monkeypatch.setattr(up, "_adapt_item_for_test_wiki", _adapt)
+    monkeypatch.setattr(up, "_bot_excluded", lambda _qid: False)
+    monkeypatch.setattr(up, "_is_our_item", lambda qid: qid == "Q248005")
+
+    result = up.upload_item(
+        WikidataItem(
+            local_id="QDraft_MS_conflict_retry",
+            entity_type="manuscript",
+            labels={"en": "National Library of Israel, Ms. Heb. 8729=4"},
+            descriptions={"en": "hebrew manuscript"},
+            statements=[
+                WikidataStatement(property_id="P31", value="Q87167", value_type="item"),
+            ],
+        ),
+    )
+    assert result.status == "updated"
+    assert result.qid == "Q248005"
+    assert captured == [None, "Q248005"]
+
+
+def test_upload_item_uniquifies_foreign_label_conflict(monkeypatch) -> None:
+    up = WikidataUploader(
+        token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
+        is_test=True,
+    )
+    captured: list[str] = []
+
+    class _FakeWbiItem:
+        id = "Q9"
+
+        def __init__(self, item: WikidataItem) -> None:
+            self._item = item
+
+        def write(self, **kwargs):  # noqa: ANN003
+            en = str((self._item.descriptions or {}).get("en") or "")
+            if "(MHM QDraft_Person_conflict_retry)" not in en:
+                raise RuntimeError(
+                    'Item [[Q248095|Q248095]] already has label "Mordecai Bassani" '
+                    "associated with language code en, using the same description text."
+                )
+            return self
+
+    def _build(_item: WikidataItem):
+        captured.append(str((_item.descriptions or {}).get("en") or ""))
+        return _FakeWbiItem(_item), 1, ["P31"]
+
+    def _adapt(_item: WikidataItem):
+        return _item, WikiTestAdaptResult(skipped=[])
+
+    monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_rate_limit", lambda: None)
+    monkeypatch.setattr(up, "_build_wbi_item", _build)
+    monkeypatch.setattr(up, "_assert_modifiable", lambda *_a, **_k: None)
+    monkeypatch.setattr(up, "_adapt_item_for_test_wiki", _adapt)
+    monkeypatch.setattr(up, "_is_our_item", lambda _qid: False)
+
+    result = up.upload_item(
+        WikidataItem(
+            local_id="QDraft_Person_conflict_retry",
+            entity_type="person",
+            labels={"en": "Mordecai Bassani"},
+            descriptions={"en": "Italian rabbi"},
+            statements=[
+                WikidataStatement(property_id="P31", value="Q5", value_type="item"),
+            ],
+        ),
+    )
+    assert result.status == "success"
+    assert captured[0] == "Italian rabbi"
+    assert captured[1] == "Italian rabbi (MHM QDraft_Person_conflict_retry)"

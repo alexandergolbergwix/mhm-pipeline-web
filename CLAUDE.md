@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-188)
+## Architectural rules (W-1…W-189)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -139,6 +139,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-186** — Test uploads MUST write the full remapped claim set or refuse the item
 - **W-187** — Test stub CREATE conflict MUST adopt; MHM stub descriptions MAY be claim-value targets
 - **W-188** — Recover trusted VIAF/NLI/QID before the W-154 omit gate; read HMO and legacy evidence shapes
+- **W-189** — Test remap MUST stub every live Q and typed P; item-write label conflicts adopt or uniquify
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

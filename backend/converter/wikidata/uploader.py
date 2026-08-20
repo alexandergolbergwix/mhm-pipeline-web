@@ -140,6 +140,7 @@ class WikidataUploader:
         self._test_stubs_we_created: set[str] = set()
         self._test_fresh_creates: set[str] = set()
         self._test_item_descriptions: dict[str, str] = {}
+        self._live_qid_labels: dict[str, str] = {}
         self._foreign_accept_qids: set[str] = set()
         self._test_can_create_properties: bool | None = None
         self._enforce_moratorium()
@@ -1332,6 +1333,12 @@ class WikidataUploader:
             )
 
             conflict_id = parse_wbeditentity_conflict_id(body)
+            if not conflict_id:
+                from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+                    parse_label_conflict_id,
+                )
+
+                conflict_id = parse_label_conflict_id(body)
             if conflict_id:
                 logger.info(
                     "wbeditentity new=%s adopted existing %s from label conflict",
@@ -1350,6 +1357,13 @@ class WikidataUploader:
             logger.warning("wbeditentity new=%s failed: %s", new, body)
         except Exception as exc:  # noqa: BLE001
             logger.warning("wbeditentity new=%s error: %s", new, exc)
+            from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+                parse_label_conflict_id,
+            )
+
+            conflict_id = parse_label_conflict_id(exc)
+            if conflict_id:
+                return conflict_id
             adopted = self._adopt_by_exact_label_from_new_data(new=new, data=data)
             if adopted:
                 return adopted
@@ -1420,6 +1434,48 @@ class WikidataUploader:
         }
         return self._wbeditentity_new(new="property", data=data)
 
+    def _fetch_live_english_labels(self, qids: list[str]) -> dict[str, str]:
+        """Read English labels from live wikidata.org (test uploads still need them)."""
+        import requests  # noqa: PLC0415
+
+        out: dict[str, str] = {}
+        missing = [q for q in qids if q and q not in self._live_qid_labels]
+        if not missing:
+            return {q: self._live_qid_labels[q] for q in qids if q in self._live_qid_labels}
+        headers = {"User-Agent": "MHMPipeline/1.0 (shvedbook@gmail.com)"}
+        try:
+            for i in range(0, len(missing), 50):
+                chunk = missing[i : i + 50]
+                resp = requests.get(
+                    _WIKIDATA_API,
+                    params={
+                        "action": "wbgetentities",
+                        "ids": "|".join(chunk),
+                        "props": "labels",
+                        "languages": "en",
+                        "format": "json",
+                    },
+                    headers=headers,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                entities = resp.json().get("entities") or {}
+                if not isinstance(entities, dict):
+                    continue
+                for qid in chunk:
+                    ent = entities.get(qid)
+                    if not isinstance(ent, dict) or "missing" in ent:
+                        continue
+                    labels = ent.get("labels") or {}
+                    en = labels.get("en") if isinstance(labels, dict) else None
+                    val = str((en or {}).get("value") or "").strip()
+                    if val:
+                        out[qid] = val
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("live wikidata.org label fetch failed: %s", exc)
+        self._live_qid_labels.update(out)
+        return {q: self._live_qid_labels[q] for q in qids if q in self._live_qid_labels}
+
     def _create_test_item_stub(self, label: str, live_qid: str) -> str | None:
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
             mhm_test_stub_description,
@@ -1489,24 +1545,24 @@ class WikidataUploader:
             stats.properties_remapped += 1
         return True
 
-    def _resolve_test_property_for_snak(
+    def _try_map_property_from_search(
         self,
         live_pid: str,
         value_type: str,
+        label: str,
         stats: object,
-    ) -> None:
-        from converter.wikidata.property_labels import PROPERTY_LABELS  # noqa: PLC0415
+    ) -> bool:
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
             choose_test_property,
-            expected_wikibase_datatype,
             pid_map_lookup,
         )
 
         if pid_map_lookup(self._test_pid_map, live_pid, value_type):
-            return
-        label = PROPERTY_LABELS.get(live_pid, "")
-        expected = expected_wikibase_datatype(value_type)
-        hits = self._wbsearchentities(label, entity_type="property") if label else []
+            return True
+        target = (label or "").strip()
+        if not target:
+            return False
+        hits = self._wbsearchentities(target, entity_type="property")
         hit_pids = [
             str(hit.get("id") or "")
             for hit in hits
@@ -1521,7 +1577,7 @@ class WikidataUploader:
         test_pid = choose_test_property(
             live_pid,
             value_type,
-            property_label=label,
+            property_label=target,
             property_datatypes=self._test_property_datatypes,
             pid_map=self._test_pid_map,
             search_hits=hits,
@@ -1529,6 +1585,27 @@ class WikidataUploader:
         if test_pid and self._store_test_property_map(
             live_pid, value_type, test_pid, stats, created=False,
         ):
+            return True
+        return False
+
+    def _resolve_test_property_for_snak(
+        self,
+        live_pid: str,
+        value_type: str,
+        stats: object,
+    ) -> None:
+        from converter.wikidata.property_labels import PROPERTY_LABELS  # noqa: PLC0415
+        from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+            expected_wikibase_datatype,
+            mhm_disambiguated_property_label,
+            pid_map_lookup,
+        )
+
+        if pid_map_lookup(self._test_pid_map, live_pid, value_type):
+            return
+        label = PROPERTY_LABELS.get(live_pid, "")
+        expected = expected_wikibase_datatype(value_type)
+        if self._try_map_property_from_search(live_pid, value_type, label, stats):
             return
         if label and expected:
             created = self._create_test_property(label, expected)
@@ -1536,28 +1613,31 @@ class WikidataUploader:
                 live_pid, value_type, created, stats, created=True,
             ):
                 return
-            retry_hits = self._wbsearchentities(label, entity_type="property")
-            test_pid = choose_test_property(
-                live_pid,
-                value_type,
-                property_label=label,
-                property_datatypes=self._test_property_datatypes,
-                pid_map=self._test_pid_map,
-                search_hits=retry_hits,
-            )
-            if test_pid and self._store_test_property_map(
-                live_pid, value_type, test_pid, stats, created=False,
+            if self._try_map_property_from_search(
+                live_pid, value_type, label, stats,
             ):
                 return
+            alt = mhm_disambiguated_property_label(label, expected)
+            if self._try_map_property_from_search(
+                live_pid, value_type, alt, stats,
+            ):
+                return
+            created = self._create_test_property(alt, expected)
+            if created and self._store_test_property_map(
+                live_pid, value_type, created, stats, created=True,
+            ):
+                return
+            self._try_map_property_from_search(live_pid, value_type, alt, stats)
 
     def _ensure_test_maps_for_item(self, item: WikidataItem) -> object:
         """Resolve live P/Q ids to test wiki ids (search, then stub CREATE)."""
-        from converter.wikidata.property_labels import QID_LABELS  # noqa: PLC0415
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
             WikiTestAdaptStats,
             choose_test_item,
             collect_live_pids_with_types,
             collect_live_qids,
+            gloss_for_test_stub,
+            mhm_live_qid_gloss,
         )
 
         stats = WikiTestAdaptStats()
@@ -1568,12 +1648,21 @@ class WikidataUploader:
         for live_pid, value_type in live_pids:
             self._resolve_test_property_for_snak(live_pid, value_type, stats)
 
+        missing_gloss = [
+            qid for qid in live_qids
+            if qid not in self._test_qid_map
+            and not gloss_for_test_stub(qid, extra=self._live_qid_labels)
+        ]
+        if missing_gloss:
+            self._live_qid_labels.update(self._fetch_live_english_labels(missing_gloss))
+
         for live_qid in live_qids:
             if live_qid in self._test_qid_map:
                 continue
-            gloss = QID_LABELS.get(live_qid, "")
-            if not gloss:
-                continue
+            gloss = (
+                gloss_for_test_stub(live_qid, extra=self._live_qid_labels)
+                or mhm_live_qid_gloss(live_qid)
+            )
             hits = self._wbsearchentities(gloss, entity_type="item")
             test_qid = choose_test_item(
                 live_qid,
@@ -1610,11 +1699,27 @@ class WikidataUploader:
         return stats
 
     def warm_test_maps_for_items(self, items: list[WikidataItem]) -> None:
-        """Resolve session P/Q maps once per test-upload job (Rule W-187)."""
+        """Resolve session P/Q maps once per test-upload job (Rules W-187 / W-189)."""
+        from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+            collect_live_qids,
+            gloss_for_test_stub,
+        )
+
         if not self._is_test:
             return
         if self._login is None:
             self._init_wbi()
+        pending: list[str] = []
+        seen: set[str] = set()
+        for item in items:
+            for qid in collect_live_qids(item):
+                if qid in seen:
+                    continue
+                seen.add(qid)
+                if not gloss_for_test_stub(qid, extra=self._live_qid_labels):
+                    pending.append(qid)
+        if pending:
+            self._live_qid_labels.update(self._fetch_live_english_labels(pending))
         for item in items:
             self._ensure_test_maps_for_item(item)
 
@@ -1934,6 +2039,41 @@ class WikidataUploader:
                             f"Detail: {last_error[:160]}"
                         ),
                     )
+                if (
+                    self._is_test
+                    and not item.existing_qid
+                    and attempt < _MAX_RETRIES
+                ):
+                    from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+                        parse_label_conflict_id,
+                        uniquify_test_item_en_description,
+                    )
+
+                    conflict_id = parse_label_conflict_id(last_error)
+                    is_label_conflict = (
+                        "already has label" in err_lower
+                        or "label-with-description-conflict" in err_lower
+                        or bool(conflict_id)
+                    )
+                    if is_label_conflict:
+                        if (
+                            conflict_id
+                            and conflict_id.startswith("Q")
+                            and self._is_our_item(conflict_id)
+                        ):
+                            logger.info(
+                                "test CREATE adopted existing %s for %s",
+                                conflict_id,
+                                item.local_id,
+                            )
+                            item = replace(item, existing_qid=conflict_id)
+                            continue
+                        item = uniquify_test_item_en_description(item)
+                        logger.info(
+                            "test CREATE uniquified EN description for %s",
+                            item.local_id,
+                        )
+                        continue
                 if attempt < _MAX_RETRIES:
                     # Shorter backoff for conflicts (someone is actively
                     # editing this item, so a quick retry is more likely

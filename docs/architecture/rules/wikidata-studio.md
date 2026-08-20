@@ -2181,3 +2181,39 @@ identifier extraction could stamp the wrong PID from a combined row.
 Tests: `backend/tests/unit/test_wikidata_canonical_enrichment.py`,
 `backend/tests/unit/test_hmo_canonical_wikidata.py`,
 `backend/tests/unit/test_authority_evidence.py`.
+
+### Rule W-189 — Test remap MUST stub every live Q and typed P, and adopt item-write label conflicts (added 2026-08-20)
+
+Job `fbe9ad8c` on run `48ba6c13` (`upload_target=test`) left **43 blocked**
+and **2 failed**. The blocks were W-186 leftovers: holder/place QIDs such as
+`Q107722626` (JTS Library) were skipped by `warm_test_maps_for_items`
+because they are not in `QID_LABELS`, and live P1680/P136/P1684 were kept by
+number after exact-label CREATE collided with a test property of the wrong
+datatype (Wikibase allows only one English property label). The two failures
+were manuscript/person CREATE hitting
+`already has label … using the same description text` on items from a prior
+test upload; adopt-on-conflict lived only on `_wbeditentity_new` (stubs), not
+on `Item.write()`.
+
+**Invariants:**
+
+1. Every live Q used as an item value or quantity unit MUST get a test stub.
+   Gloss order: `QID_LABELS`, audited `institution_label`, live
+   wikidata.org English label, then `MHM live {qid}`. Never skip stub CREATE
+   because the static table has no row.
+2. When exact-label property search/CREATE yields the wrong datatype, CREATE
+   `{label} (MHM {datatype})` and map that. Never keep a live P-id whose test
+   counterpart has a different datatype.
+3. On test item CREATE, a label-with-description conflict MUST parse the
+   existing Q. If `_is_our_item`, UPDATE it. Otherwise uniquify the English
+   description with `(MHM {local_id})` and CREATE. Foreign UPDATE remains
+   forbidden (W-184).
+4. Rule W-186 is unchanged: leftovers still `blocked`. Name-only persons
+   still omit (W-154 / W-185 / W-188).
+
+Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`
+(`test_holder_qid_stubs_without_qid_labels`,
+`test_unglossed_qid_uses_live_fetch_then_fallback`,
+`test_p1680_creates_disambiguated_label_when_subtitle_wrong_type`,
+`test_upload_item_adopts_own_label_conflict`,
+`test_upload_item_uniquifies_foreign_label_conflict`).

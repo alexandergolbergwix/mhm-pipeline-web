@@ -676,3 +676,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     Regression: `test_wikidata_canonical_enrichment.py`,
     `test_hmo_canonical_wikidata.py`, `test_authority_evidence.py`.
     *Why:* test upload skipped people who already had VIAF/NLI in evidence.*
+91. **R91 — Test remap stubs every live Q and typed P; item CREATE adopts (Rule W-189).**
+    Holder/runtime QIDs use `institution_label` then live English labels then
+    `MHM live {qid}` — never skip stub CREATE. Wrong-datatype label collisions
+    CREATE `{label} (MHM {datatype})`. Item-write label conflicts UPDATE our
+    test Q or uniquify the EN description. Regression:
+    `test_wikidata_test_wiki_compat.py`.
+    *Why:* job fbe9ad8c — 43 leftover blocks (JTS/P1680) and 2 CREATE fails.*

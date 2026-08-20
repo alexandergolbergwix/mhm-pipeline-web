@@ -1,4 +1,4 @@
-"""Remap helpers for test.wikidata.org claim writes (Rules W-182 / W-183 / W-186).
+"""Remap helpers for test.wikidata.org claim writes (Rules W-182 / W-183 / W-186 / W-189).
 
 test.wikidata.org reuses production P/Q numbers for unrelated properties, so a
 WikiProject Manuscripts claim set cannot be written unchanged. On test uploads
@@ -64,6 +64,7 @@ def item_target_qid(value: object) -> str | None:
 
 # Short unit tokens and live Wikidata unit Q-ids used in manuscript claims.
 MHM_STUB_DESC_PREFIX = "MHM test stub for live "
+MHM_LIVE_GLOSS_PREFIX = "MHM live "
 
 _CONFLICT_ID_RE = re.compile(
     r"\[\[(?:Property:)?(P\d+|Q\d+)\|(?:Property:)?(P\d+|Q\d+)\]\]",
@@ -72,6 +73,47 @@ _CONFLICT_ID_RE = re.compile(
 
 def mhm_test_stub_description(live_qid: str) -> str:
     return f"{MHM_STUB_DESC_PREFIX}{live_qid.strip()}"
+
+
+def mhm_live_qid_gloss(live_qid: str) -> str:
+    """Fallback stub label when no English gloss is known yet (Rule W-189)."""
+    return f"{MHM_LIVE_GLOSS_PREFIX}{live_qid.strip()}"
+
+
+def mhm_disambiguated_property_label(label: str, datatype: str) -> str:
+    """Unique test-wiki property label when the live English label is taken."""
+    return f"{label.strip()} (MHM {datatype.strip()})"
+
+
+def gloss_for_test_stub(
+    live_qid: str,
+    *,
+    extra: Mapping[str, str] | None = None,
+) -> str:
+    """English gloss for a live Q-id used as a test-wiki stub label.
+
+    Static ``QID_LABELS`` first, then the audited holder table, then any
+    extra map (live ``wbgetentities``). Empty means the caller should fetch
+    or fall back to ``mhm_live_qid_gloss`` — never skip stub CREATE.
+    """
+    qid = (live_qid or "").strip()
+    if not qid:
+        return ""
+    if extra:
+        hit = str(extra.get(qid) or "").strip()
+        if hit:
+            return hit
+    from converter.wikidata.property_labels import QID_LABELS  # noqa: PLC0415
+
+    hit = str(QID_LABELS.get(qid) or "").strip()
+    if hit:
+        return hit
+    from converter.wikidata.holding_institutions import (  # noqa: PLC0415
+        institution_label,
+    )
+
+    inst = institution_label(qid)
+    return str(inst or "").strip()
 
 
 def description_is_mhm_stub_for(description: str, live_qid: str) -> bool:
@@ -128,6 +170,29 @@ def parse_wbeditentity_conflict_id(body: object) -> str | None:
     if match:
         return match.group(1)
     return None
+
+
+def parse_label_conflict_id(blob: object) -> str | None:
+    """Parse a conflicting P/Q id from a Wikibase body or exception string."""
+    if isinstance(blob, dict):
+        parsed = parse_wbeditentity_conflict_id(blob)
+        if parsed:
+            return parsed
+    match = _CONFLICT_ID_RE.search(str(blob or ""))
+    if match:
+        return match.group(1)
+    return None
+
+
+def uniquify_test_item_en_description(item: WikidataItem) -> WikidataItem:
+    """Append the local_id to the English description so a CREATE can proceed."""
+    marker = f"(MHM {item.local_id})"
+    descs = dict(item.descriptions or {})
+    en = str(descs.get("en") or "").strip()
+    if marker in en:
+        return item
+    descs["en"] = f"{en} {marker}".strip() if en else marker
+    return replace(item, descriptions=descs)
 
 
 QUANTITY_UNIT_ALIASES: dict[str, str] = {

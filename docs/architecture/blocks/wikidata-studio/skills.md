@@ -49,8 +49,11 @@
    WikiProject Manuscripts claim set. Leftover snaks **block** the item
    (Rule W-186) — they are not stripped. Quantity units must remap to a
    test-local millimetre/leaf/page entity. CREATE conflicts adopt the
-   existing test Q/P (W-187); property maps are keyed by
-   `(live_pid, value_type)`; prior MHM stub items are reusable claim
+   existing test Q/P (W-187); item-write label conflicts UPDATE our Q or
+   uniquify the EN description (W-189). Every live claim Q gets a stub
+   (holder table / live English label / `MHM live {qid}`); wrong-datatype
+   property labels CREATE `{label} (MHM {datatype})`. Property maps are
+   keyed by `(live_pid, value_type)`; prior MHM stub items are reusable claim
    values. Foreign-but-alive reconciled QIDs on test clear for CREATE
    (W-181) — never UPDATE community items (W-184). Session P/Q maps are
    warmed once per test upload job.
@@ -64,7 +67,9 @@
    modal. Progress rows come from `recent_item_outcomes` / `outcome_counts`; the
    review table still patches via `onUploadOutcomes` (Rule W-110). Title + badge
    follow `upload_target` (test/live/dry-run) and stay sticky after cancel/finish
-   (frontend R19) — they MUST NOT flicker to Live when the active poll drops the job.
+   (frontend R19) — they MUST NOT flicker to Live when the active poll drops the
+   job or when a terminal result omits `upload_target` (panel must not invent
+   live; modal title is never hardcoded “Live”).
 3. **Close** dismisses the modal without cancelling; **Cancel upload** calls
    `POST …/jobs/{id}/cancel` while the job is still active. Cancel progress/result
    still carries `upload_target`.
@@ -119,6 +124,10 @@
    P214/P8189 before omit. Remaining skips are name-only — approve a real
    Mazal/VIAF/QID in Authority Enrichment, then rebuild. Never CREATE a
    name-only person (W-154 / W-185).
+5. **Test leftover blocked** (`Refusing test.wikidata.org write` / W-186):
+   missing holder/place stubs or a live P kept with the wrong test datatype.
+   After W-189, re-run `upload_target=test` — do not strip leftovers. Item
+   CREATE `already has label` should adopt our prior test Q or uniquify.
 
 ### Skill: load all items in the modern review panel
 
