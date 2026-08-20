@@ -55,8 +55,9 @@ unless `WIKIDATA_MARK_AS_BOT` / `mark_as_bot=True` (Rule W-181) — accounts
 without the MediaWiki bot right hard-fail if `is_bot=True`. Upload natives
 come from the **Studio cache** (same public set as the review table), not
 an HMO-only rebuild. `_build_native_items` runs
-`prepare_wikidata_upload_native_items` (recover accepted VIAF/NLI, omit
-identifierless persons, rollup work P2093 — Rule W-185 / W-154). On
+`prepare_wikidata_upload_native_items` (recover trusted VIAF/NLI from HMO
+and legacy evidence shapes, omit identifierless persons, rollup work P2093 —
+Rules W-188 / W-185 / W-154). On
 `upload_target=test`, QIDs missing on
 test.wikidata.org, foreign-but-alive Q-numbers, and WDQS outages clear to CREATE rather than block
 (live stays fail-closed). Test writes **remap** live P/Q to labeled test properties and class stubs

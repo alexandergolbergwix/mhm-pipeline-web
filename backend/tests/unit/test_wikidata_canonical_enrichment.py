@@ -114,22 +114,22 @@ def test_merge_matches_works_by_title_and_adds_author() -> None:
 
 def test_merge_drops_identifierless_person_items() -> None:
     """Canonical enrichment must never reintroduce a non-notable person."""
-    invalid = _person("mazal:987007257211705171", label="Aaron")
-    valid = _person("mazal:987007257436505171", label="Aaron ben David")
+    invalid = _person("person:identifierless", label="Aaron")
+    valid = _person("person:with-mazal", label="Aaron ben David")
     valid.statements.append(
         WikidataStatement(
             property_id="P8189",
-            value="987007257436505171",
+            value="987000000000000002",
             value_type="string",
         ),
     )
 
     assert merge_legacy_into_canonical([], [invalid]) == []
     assert [item.local_id for item in merge_legacy_into_canonical([], [valid])] == [
-        "mazal:987007257436505171",
+        "person:with-mazal",
     ]
     assert [item.local_id for item in merge_legacy_into_canonical([invalid], [valid])] == [
-        "mazal:987007257436505171",
+        "person:with-mazal",
     ]
 
     assert merge_legacy_into_canonical([invalid], []) == []
@@ -194,3 +194,87 @@ def test_prepare_upload_omits_identifierless_and_rollups_p2093() -> None:
         s.property_id == "P2093" and s.value == "Anonymous Scribe"
         for s in work.statements
     )
+
+
+def test_recover_legacy_viaf_uri_without_kind_or_accepted() -> None:
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        is_publishable_person_item,
+        recover_person_identifiers_from_evidence,
+    )
+
+    person = _person("legacy-shape", label="Author")
+    person.authority_evidence = [{
+        "source": "viaf",
+        "viaf_uri": "https://viaf.org/viaf/123456789",
+        "name_type": "Personal",
+    }]
+    assert recover_person_identifiers_from_evidence(person) is True
+    assert is_publishable_person_item(person)
+    assert any(s.property_id == "P214" and s.value == "123456789" for s in person.statements)
+
+
+def test_recover_combined_legacy_row_stamps_each_kind() -> None:
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        recover_person_identifiers_from_evidence,
+    )
+
+    person = _person("combined", label="Author")
+    person.authority_evidence = [{
+        "viaf_uri": "https://viaf.org/viaf/111222333",
+        "mazal_id": "987000000000000003",
+        "wikidata_qid": "Q1218",
+        "name_type": "Personal",
+    }]
+    assert recover_person_identifiers_from_evidence(person) is True
+    assert person.existing_qid == "Q1218"
+    assert any(s.property_id == "P214" and s.value == "111222333" for s in person.statements)
+    assert any(
+        s.property_id == "P8189" and s.value == "987000000000000003"
+        for s in person.statements
+    )
+
+
+def test_recover_skips_explicit_rejected_evidence() -> None:
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        is_publishable_person_item,
+        recover_person_identifiers_from_evidence,
+    )
+
+    person = _person("rejected", label="Author")
+    person.authority_evidence = [{
+        "kind": "viaf",
+        "viaf_id": "123456789",
+        "accepted": False,
+        "name_type": "Personal",
+    }]
+    assert recover_person_identifiers_from_evidence(person) is False
+    assert not is_publishable_person_item(person)
+
+
+def test_merge_recovers_legacy_viaf_uri_before_omit() -> None:
+    canonical = _person("HMO_Person_viaf_uri", label="Author")
+    canonical.authority_evidence = [{
+        "viaf_uri": "https://viaf.org/viaf/123456789",
+        "name_type": "Personal",
+    }]
+    merged = merge_legacy_into_canonical([canonical], [])
+    assert [item.local_id for item in merged] == ["HMO_Person_viaf_uri"]
+    assert any(
+        s.property_id == "P214" and s.value == "123456789"
+        for s in merged[0].statements
+    )
+
+
+def test_prepare_upload_recovers_legacy_viaf_uri() -> None:
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        prepare_wikidata_upload_native_items,
+    )
+
+    person = _person("person:viaf", label="Named Author")
+    person.authority_evidence = [{
+        "viaf_uri": "https://viaf.org/viaf/123456789",
+        "name_type": "Personal",
+    }]
+    kept = prepare_wikidata_upload_native_items([person])
+    assert [item.local_id for item in kept] == ["person:viaf"]
+    assert any(s.property_id == "P214" and s.value == "123456789" for s in kept[0].statements)

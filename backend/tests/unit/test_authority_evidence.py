@@ -1,6 +1,7 @@
 from converter.authority.evidence import (
     AuthorityEvidence,
     evidence_from_values,
+    evidence_row_ids,
     gate_candidates,
     normalize_viaf_id,
     normalize_wikidata_qid,
@@ -57,3 +58,21 @@ def test_numeric_literals_without_authority_predicate_are_ignored() -> None:
     assert evidence_from_values(
         [("latitude", "42"), ("date", "987007414776605171"), ("external_uri_nli", "123456")]
     ) == []
+
+
+def test_evidence_row_ids_reads_hmo_and_legacy_shapes() -> None:
+    assert evidence_row_ids({
+        "kind": "viaf",
+        "identifier": "123456789",
+        "accepted": True,
+    }) == {"viaf": "123456789"}
+    assert evidence_row_ids({
+        "viaf_uri": "https://viaf.org/viaf/123456789",
+        "mazal_id": "987000000000000004",
+        "wikidata_qid": "Q1218",
+    }) == {
+        "viaf": "https://viaf.org/viaf/123456789",
+        "mazal": "987000000000000004",
+        "wikidata": "Q1218",
+    }
+    assert evidence_row_ids({"kind": "viaf", "viaf_id": "123456789"}) == {"viaf": "123456789"}

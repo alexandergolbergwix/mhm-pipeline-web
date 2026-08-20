@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-187)
+## Architectural rules (W-1…W-188)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -138,6 +138,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-185** — Test upload batches existence, remaps quantity units, omits identifierless persons; aborts on session death
 - **W-186** — Test uploads MUST write the full remapped claim set or refuse the item
 - **W-187** — Test stub CREATE conflict MUST adopt; MHM stub descriptions MAY be claim-value targets
+- **W-188** — Recover trusted VIAF/NLI/QID before the W-154 omit gate; read HMO and legacy evidence shapes
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 
@@ -187,7 +188,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-151** — Wikidata verdict reads MUST reuse the persist-slim projection before stable-key validation.
 - **W-152** — Wikidata stable verdict keys MUST ignore subset-derived `__LOCAL:` display labels.
 - **W-153** — Identifierless Wikidata Studio person cache rows MUST be stale and rebuilt.
-- **W-154** — Canonical Wikidata Studio merges MUST omit person items without a publishable external identifier.
+- **W-154** — Canonical Wikidata Studio merges MUST omit person items without a publishable external identifier (recover trusted IDs first — W-188).
 - **W-155** — Canonical Wikidata Studio finalization MUST be post-filter and source-scoped.
 
 ### [authority-marc.md](docs/architecture/rules/authority-marc.md) — Authority matching + MARC ingest

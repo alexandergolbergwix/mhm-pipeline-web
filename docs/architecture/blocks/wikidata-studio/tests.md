@@ -118,11 +118,11 @@ Any new external-write path or reconcile change MUST extend
   `NO_IDENTIFIER` rows are stale while identifier-bearing person rows remain
   current (Rule W-153 / R69).
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — canonical merge
-  drops identifierless persons after matching and before cache persistence
-  (Rule W-154 / R70).
+  recovers trusted VIAF/NLI before omit, then drops remaining identifierless
+  persons (Rules W-154 / W-188 / R70 / R90).
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — final canonical
-  assembly drops identifierless persons before validation/cache persistence
-  (Rule W-154 / R70).
+  assembly recovers evidence IDs before the W-154 drop; name-only people
+  still omitted (Rules W-154 / W-188 / R70 / R90).
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical HMO claim filtering, fingerprints, and native Wikidata projection.
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — post-filter local-reference resolution, authority-date conflict omission, `(MS …)` person-label cleanup, broad-subject removal, and work-evidence source-record provenance (Rule W-155).
 - `backend/tests/unit/test_wikidata_verdict_cache.py` — slim-persist ↔ full-item fingerprint parity, evidence-free verdict survival, and subset-verify evidence drift retention (Rules W-136 / R64).

@@ -15,7 +15,12 @@ from app.pipeline.marc_verify_context import (
     canonical_control_number,
     primary_control_number_for,
 )
-from converter.authority.evidence import normalize_authority_id, normalize_viaf_id, normalize_wikidata_qid
+from converter.authority.evidence import (
+    evidence_row_ids,
+    normalize_authority_id,
+    normalize_viaf_id,
+    normalize_wikidata_qid,
+)
 from converter.wikidata.hmo_wikidata_pq_mapper import (
     HMO_CLASS_TO_WIKIDATA_QID,
     map_hmo_claim_to_wikidata,
@@ -420,20 +425,19 @@ def native_wikidata_claims(
     for evidence in entity.authority_evidence:
         if evidence.get("accepted") is not True:
             continue
-        kind = str(evidence.get("kind") or "").lower()
-        identifier = _evidence_identifier(evidence)
-        if not identifier:
-            continue
-        if kind == "viaf":
-            key = ("P214", identifier)
+        ids = evidence_row_ids(evidence)
+        viaf = normalize_viaf_id(ids.get("viaf") or "")
+        if viaf:
+            key = ("P214", viaf)
             if key not in seen:
                 seen.add(key)
-                native.append({"property": "P214", "value": identifier})
-        elif kind == "mazal" and identifier.startswith("9870"):
-            key = ("P8189", identifier)
+                native.append({"property": "P214", "value": viaf})
+        mazal = normalize_authority_id(ids.get("mazal") or "") or str(ids.get("mazal") or "")
+        if mazal.startswith("9870"):
+            key = ("P8189", mazal)
             if key not in seen:
                 seen.add(key)
-                native.append({"property": "P8189", "value": identifier})
+                native.append({"property": "P8189", "value": mazal})
 
     instance_qid = _default_instance_qid(wd_type)
     if instance_qid:
@@ -559,6 +563,9 @@ def build_canonical_studio_result(
             if outcome.existing_qid and not item.existing_qid:
                 item.existing_qid = outcome.existing_qid
 
+    for item in native_items:
+        recover_person_identifiers_from_evidence(item)
+
     dropped_person_ids = [
         item.local_id
         for item in native_items
@@ -591,10 +598,6 @@ def build_canonical_studio_result(
             item for item in native_items
             if item.local_id not in set(conflicted_person_ids)
         ]
-
-    for item in native_items:
-        if str(item.entity_type or "").strip().lower() == "person":
-            recover_person_identifiers_from_evidence(item)
 
     unconfirmed_ids = _suppress_unconfirmed_person_identity(native_items, context)
     if unconfirmed_ids:
@@ -1285,21 +1288,12 @@ def _claim_scalar_value(claim: dict[str, Any]) -> str:
     return str(value or claim.get("wikidata_value") or claim.get("target_qid") or "").strip()
 
 
-def _evidence_identifier(evidence: dict[str, Any]) -> str:
-    for key in ("identifier", "value", "wikidata_qid"):
-        text = str(evidence.get(key) or "").strip()
-        if text:
-            return text
-    return ""
-
-
 def _accepted_wikidata_qid(entity: CanonicalHmoEntity) -> str | None:
     accepted_qids = {
         qid for qid in (
-            normalize_wikidata_qid(_evidence_identifier(evidence))
+            normalize_wikidata_qid(evidence_row_ids(evidence).get("wikidata") or "")
             for evidence in entity.authority_evidence
             if evidence.get("accepted") is True
-            and str(evidence.get("kind") or "").lower() == "wikidata"
         )
         if qid
     }
@@ -1315,11 +1309,11 @@ def _person_has_upload_identifier(entity: CanonicalHmoEntity) -> bool:
     for evidence in entity.authority_evidence:
         if evidence.get("accepted") is not True:
             continue
-        kind = str(evidence.get("kind") or "").lower()
-        identifier = _evidence_identifier(evidence)
-        if kind == "viaf" and normalize_viaf_id(identifier):
+        ids = evidence_row_ids(evidence)
+        if normalize_viaf_id(ids.get("viaf") or ""):
             return True
-        if kind == "mazal" and identifier.startswith("9870"):
+        mazal = str(ids.get("mazal") or "")
+        if mazal.startswith("9870"):
             return True
     for claim in entity.claims:
         property_name = _property_local_name(str(claim.get("property_uri") or ""))
@@ -2441,18 +2435,16 @@ def _authority_match_for_entity(
     for evidence in entity.authority_evidence:
         if evidence.get("accepted") is not True:
             continue
-        kind = str(evidence.get("kind") or "").lower()
-        identifier = _evidence_identifier(evidence)
-        if kind == "wikidata":
-            qid = normalize_wikidata_qid(identifier)
-            if qid and qid in context.matches_by_qid:
-                return context.matches_by_qid[qid]
-        if kind == "viaf":
-            viaf = normalize_viaf_id(identifier)
-            if viaf and viaf in context.matches_by_viaf:
-                return context.matches_by_viaf[viaf]
-        if kind == "mazal" and identifier in context.matches_by_mazal:
-            return context.matches_by_mazal[identifier]
+        ids = evidence_row_ids(evidence)
+        qid = normalize_wikidata_qid(ids.get("wikidata") or "")
+        if qid and qid in context.matches_by_qid:
+            return context.matches_by_qid[qid]
+        viaf = normalize_viaf_id(ids.get("viaf") or "")
+        if viaf and viaf in context.matches_by_viaf:
+            return context.matches_by_viaf[viaf]
+        mazal = str(ids.get("mazal") or "")
+        if mazal and mazal in context.matches_by_mazal:
+            return context.matches_by_mazal[mazal]
     for claim in entity.claims:
         property_name = _property_local_name(str(claim.get("property_uri") or ""))
         value = _claim_scalar_value(claim)

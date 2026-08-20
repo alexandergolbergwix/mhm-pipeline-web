@@ -482,14 +482,16 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     the unchanged cache fingerprint kept the bad row reviewable.*
 
 70. **R70 — Canonical merges MUST not emit identifierless persons.** After
-    canonical HMO items and the fresh legacy enrichment are matched, every
-    person retained in the merged Wikidata Studio result MUST have an
-    existing QID or a non-empty P214/P8189/P244/P227/P213/P268 statement.
-    Identifierless canonical or unmatched legacy persons are omitted by the
-    merge and by the final canonical assembly after overrides/reconciliation,
-    before cache persistence and validation. *Why:* the rebuild job still
-    persisted an old `mazal:*` person after the legacy notability gate had
-    skipped it; its only P8189 was buried in a reference snak.*
+    canonical HMO items and the fresh legacy enrichment are matched, recover
+    trusted VIAF/NLI/QID from HMO and legacy evidence shapes (Rule W-188),
+    then every person retained MUST have an existing QID or a non-empty
+    P214/P8189/P244/P227/P213/P268 statement. Identifierless canonical or
+    unmatched legacy persons are omitted by the merge and by the final
+    canonical assembly after overrides/reconciliation, before cache
+    persistence and validation. Never CREATE a name-only person.
+    *Why:* the rebuild job still persisted an old `mazal:*` person after
+    the legacy notability gate had skipped it; its only P8189 was buried
+    in a reference snak.*
 
 71. **R71 — Canonical public claims MUST be finalized after filtering and remain source-scoped.**
     Apply overrides, remove identifierless or authority-date-conflicted people,
@@ -647,7 +649,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 87. **R87 — Test upload reliability (Rule W-185).**
     Batch/throttled existence prefetch; quantity unit alias → wiki-local URI
     (never dimensionless when a unit was projected — W-186); upload rehydrate
-    omits identifierless persons (skipped, not blocked) with P2093 rollup;
+    recovers trusted IDs then omits identifierless persons (skipped, not
+    blocked) with P2093 rollup (W-188);
     session-death aborts job. Regression:
     `test_wikidata_existence.py`, `test_wikidata_upload_guards.py`,
     `test_wikidata_test_wiki_compat.py`, `test_wikidata_canonical_enrichment.py`,
@@ -666,3 +669,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `test_wikidata_test_wiki_compat.py`, `test_wikidata_existence.py`,
     `test_wikidata_upload_guards.py`.
     *Why:* job 5ea88249 — 179 W-186 blocks from CREATE races and wrong-type P reuse.*
+90. **R90 — Recover trusted person identifiers before the omit gate (Rule W-188).**
+    Stamp P214/P8189/existing_qid from HMO and legacy evidence *before*
+    W-154 drop (assembler and merge keep). `accepted is False` and W-166
+    untrusted flags still forbid recovery; name-only people stay omitted.
+    Regression: `test_wikidata_canonical_enrichment.py`,
+    `test_hmo_canonical_wikidata.py`, `test_authority_evidence.py`.
+    *Why:* test upload skipped people who already had VIAF/NLI in evidence.*

@@ -106,16 +106,14 @@ def person_identity_untrusted_for_recovery(item: WikidataItem) -> bool:
     return bool(flags & (_HARD_REJECT_AUTHORITY_FLAGS | _SOFT_REJECT_AUTHORITY_FLAGS))
 
 
-def _evidence_identifier(evidence: dict[str, object]) -> str:
-    for key in ("identifier", "value", "wikidata_qid", "viaf_id", "viaf_uri", "mazal_id"):
-        text = str(evidence.get(key) or "").strip()
-        if text:
-            return text
-    return ""
-
-
 def recover_person_identifiers_from_evidence(item: WikidataItem) -> bool:
-    """Stamp P214/P8189/existing_qid from accepted evidence when W-166 allows."""
+    """Stamp P214/P8189/existing_qid from trusted evidence when W-166 allows.
+
+    Runs before the W-154 omit gate (Rule W-188). ``accepted is False`` is
+    never recovered. Missing ``accepted`` is usable only when the item is
+    not W-166-untrusted. Legacy ``viaf_uri``/``mazal_id``/``wikidata_qid``
+    rows are stamped per kind, not first-wins across mixed fields.
+    """
     if str(item.entity_type or "").strip().lower() != "person":
         return False
     if person_identity_untrusted_for_recovery(item):
@@ -124,6 +122,7 @@ def recover_person_identifiers_from_evidence(item: WikidataItem) -> bool:
         return False
 
     from converter.authority.evidence import (  # noqa: PLC0415
+        evidence_row_ids,
         normalize_authority_id,
         normalize_viaf_id,
         normalize_wikidata_qid,
@@ -136,37 +135,34 @@ def recover_person_identifiers_from_evidence(item: WikidataItem) -> bool:
     }
 
     for row in getattr(item, "authority_evidence", None) or []:
-        if not isinstance(row, dict) or row.get("accepted") is not True:
+        if not isinstance(row, dict) or row.get("accepted") is False:
             continue
-        kind = str(row.get("kind") or "").lower()
-        identifier = _evidence_identifier(row)
-        if not identifier:
+        ids = evidence_row_ids(row)
+        if not ids:
             continue
-        if kind == "wikidata":
-            qid = normalize_wikidata_qid(identifier)
-            if qid and not item.existing_qid:
-                item.existing_qid = qid
-                changed = True
-            continue
-        if kind == "viaf" and "P214" not in seen_pids:
+        qid = normalize_wikidata_qid(ids.get("wikidata") or "")
+        if qid and not item.existing_qid:
+            item.existing_qid = qid
+            changed = True
+        if "P214" not in seen_pids and ids.get("viaf"):
             name_type = str(row.get("name_type") or "")
             if name_type and name_type != "Personal":
-                continue
-            viaf = normalize_viaf_id(identifier)
-            if viaf:
-                item.statements = list(item.statements or [])
-                item.statements.append(
-                    WikidataStatement(
-                        property_id="P214",
-                        value=viaf,
-                        value_type="external-id",
-                    ),
-                )
-                seen_pids.add("P214")
-                changed = True
-            continue
-        if kind == "mazal" and "P8189" not in seen_pids:
-            mazal = normalize_authority_id(identifier) or identifier
+                pass
+            else:
+                viaf = normalize_viaf_id(ids["viaf"])
+                if viaf:
+                    item.statements = list(item.statements or [])
+                    item.statements.append(
+                        WikidataStatement(
+                            property_id="P214",
+                            value=viaf,
+                            value_type="external-id",
+                        ),
+                    )
+                    seen_pids.add("P214")
+                    changed = True
+        if "P8189" not in seen_pids and ids.get("mazal"):
+            mazal = normalize_authority_id(ids["mazal"]) or ids["mazal"]
             if mazal.startswith("9870"):
                 item.statements = list(item.statements or [])
                 item.statements.append(
@@ -262,10 +258,10 @@ def prepare_wikidata_upload_native_items(items: list[WikidataItem]) -> list[Wiki
 
 
 def _keep_merged_item(item: WikidataItem) -> bool:
-    return (
-        str(item.entity_type or "").strip().lower() != "person"
-        or is_publishable_person_item(item)
-    )
+    if str(item.entity_type or "").strip().lower() != "person":
+        return True
+    recover_person_identifiers_from_evidence(item)
+    return is_publishable_person_item(item)
 
 
 def merge_legacy_into_canonical(

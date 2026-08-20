@@ -66,6 +66,46 @@ def normalize_authority_id(value: object) -> str | None:
     return text if _AUTHORITY_ID_RE.fullmatch(text) else None
 
 
+def evidence_row_ids(row: object) -> dict[str, str]:
+    """Collect viaf/mazal/wikidata ids from HMO or legacy person evidence.
+
+    HMO rows use ``kind`` + ``identifier``/``value``. Legacy
+    ``person_projection`` rows use ``viaf_uri``/``mazal_id``/``wikidata_qid``
+    without ``kind``. A combined row may yield more than one kind.
+    """
+    if not isinstance(row, dict):
+        return {}
+    kind = str(row.get("kind") or "").strip().lower()
+    out: dict[str, str] = {}
+
+    def _first(*keys: str) -> str:
+        for key in keys:
+            text = str(row.get(key) or "").strip()
+            if text:
+                return text
+        return ""
+
+    wiki = _first("wikidata_qid")
+    if kind == "wikidata":
+        wiki = wiki or _first("identifier", "value")
+    if wiki:
+        out["wikidata"] = wiki
+
+    viaf = _first("viaf_id", "viaf_uri")
+    if kind == "viaf":
+        viaf = viaf or _first("identifier", "value")
+    if viaf:
+        out["viaf"] = viaf
+
+    mazal = _first("mazal_id")
+    if kind == "mazal":
+        mazal = mazal or _first("identifier", "value")
+    if mazal:
+        out["mazal"] = mazal
+
+    return out
+
+
 def gate_candidates(candidates: Iterable[AuthorityEvidence]) -> list[AuthorityEvidence]:
     """Mark only unambiguous candidates as accepted.
 

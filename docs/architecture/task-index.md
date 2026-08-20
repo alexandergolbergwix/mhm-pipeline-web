@@ -10,6 +10,7 @@
 | Change ontology output or graph build | [rdf-graph](blocks/rdf-graph/README.md) |
 | Touch anything that writes to Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) — read its `rules.md` **before** coding |
 | Enrich canonical Studio with full MARC/authority claims (W-125) | [wikidata-studio build](blocks/wikidata-studio/build-and-cache.md) + `wikidata_canonical_enrichment.py` |
+| Recover VIAF/NLI onto identifierless Studio persons (W-188) | [wikidata-studio build](blocks/wikidata-studio/build-and-cache.md) + Rule W-188; never CREATE name-only people (W-154 / W-185) |
 | Debug incomplete AI verify (judged ≪ scope, false “eval-agent error”) | [eval-agent](blocks/eval-agent/README.md) R30–R31 + Rules W-126/W-127 + `verify_outcome.py` |
 | Fix verify stalling ~50 items on DeepSeek / no runner.exit | [eval-agent](blocks/eval-agent/README.md) R31 + [job-service](blocks/job-service/README.md) R20 + Rule W-127 |
 | Fix verify modal stuck RUNNING / VERDICTS (0) after R14/H12 | [job-service](blocks/job-service/README.md) R20 + Rule W-128 + reopen modal |

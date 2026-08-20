@@ -17,7 +17,9 @@ rebuilds RDF + upserts `RdfArtifact` so refreshed matches are not trapped
 behind a stale TTL.
 
 The pure helpers in `backend/converter/authority/evidence.py` are intentionally
-network-free.
+network-free. `evidence_row_ids` reads both HMO (`kind`+`identifier`) and
+legacy `person_projection` (`viaf_uri`/`mazal_id`/`wikidata_qid`) shapes so
+Wikidata Studio can recover P214/P8189 before the W-154 omit gate (Rule W-188).
 
 `HmoWikibaseExporter` stores the normalized list on every draft and resolved
 entity as `authority_evidence`; the build cache and review API therefore expose

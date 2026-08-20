@@ -93,7 +93,7 @@ def test_canonical_final_gate_drops_identifierless_person() -> None:
     from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
     invalid = WikidataItem(
-        local_id="mazal:987007257211705171",
+        local_id="person:identifierless",
         entity_type="person",
         labels={"en": "Aaron"},
         statements=[
@@ -111,6 +111,49 @@ def test_canonical_final_gate_drops_identifierless_person() -> None:
         result = build_canonical_studio_result([], reconcile=False)
     assert result["items"] == []
     assert result["summary"]["total_items"] == 0
+
+
+def test_canonical_final_gate_recovers_viaf_evidence_before_drop() -> None:
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    recoverable = WikidataItem(
+        local_id="Person_viaf_evidence",
+        entity_type="person",
+        labels={"en": "Author"},
+        statements=[
+            WikidataStatement(
+                property_id="P1559",
+                value="מחבר",
+                value_type="monolingualtext",
+            ),
+        ],
+        authority_evidence=[{
+            "viaf_uri": "https://viaf.org/viaf/123456789",
+            "name_type": "Personal",
+        }],
+    )
+    with patch(
+        "app.pipeline.hmo_canonical_wikidata.native_items_from_hmo",
+        return_value=[recoverable],
+    ):
+        result = build_canonical_studio_result([], reconcile=False)
+    assert len(result["items"]) == 1
+    pids = {
+        stmt.get("property") or stmt.get("property_id")
+        for stmt in result["items"][0]["statements"]
+    }
+    assert "P214" in pids
+
+
+def test_native_claims_stamp_viaf_from_viaf_id_field() -> None:
+    person = _person_entity(
+        authority_evidence=[{"kind": "viaf", "viaf_id": "123456789", "accepted": True}],
+    )
+    claims = native_wikidata_claims(person)
+    assert {"property": "P214", "value": "123456789"} in claims
+    items = native_items_from_hmo([person])
+    assert len(items) == 1
+    assert any(s.property_id == "P214" and s.value == "123456789" for s in items[0].statements)
 
 
 def test_canonical_summary_reports_soft_reject_identity_strip() -> None:

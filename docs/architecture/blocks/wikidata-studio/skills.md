@@ -114,6 +114,11 @@
    account): default policy forbids community UPDATE. Either leave the item,
    or use the drawer foreign-accept checkbox bound to that QID (Rule W-99),
    then re-dry-run. Never CREATE a duplicate.
+4. **Identifierless skipped persons** (not blocked): if they already have
+   VIAF/NLI/QID in authority evidence, force-rebuild so W-188 can stamp
+   P214/P8189 before omit. Remaining skips are name-only — approve a real
+   Mazal/VIAF/QID in Authority Enrichment, then rebuild. Never CREATE a
+   name-only person (W-154 / W-185).
 
 ### Skill: load all items in the modern review panel
 

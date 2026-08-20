@@ -1243,9 +1243,10 @@ unmatched legacy person to survive the final merge and cache write.
 `merge_legacy_into_canonical` and the final canonical assembler now apply the
 same publishability boundary after matching, overrides, and reconciliation,
 before cache persistence: a person must have an existing QID or a non-empty
-P214/P8189/P244/P227/P213/P268 statement. Otherwise it is omitted, so the
-Studio corpus cannot contain a person that the final validator marks
-`NO_IDENTIFIER` (R70).
+P214/P8189/P244/P227/P213/P268 statement. Trusted VIAF/NLI/QID on authority
+evidence MUST be stamped first (Rule W-188); otherwise the person is omitted,
+so the Studio corpus cannot contain a person that the final validator marks
+`NO_IDENTIFIER` (R70). Name-only people are never CREATE targets.
 
 ### Rule W-155 — Canonical Wikidata Studio finalization MUST be post-filter and source-scoped (added 2026-08-04)
 
@@ -2073,10 +2074,13 @@ should never be CREATE targets.
    `http://{wiki_host}/entity/{qid}` on the active wiki. Unmapped test units
    refuse the item (Rule W-186) — never dimensionless `"1"` when a unit was
    projected. `Illegal value: http://www.wikidata.org/entity/` is non-retryable.
-3. **Publishability:** accepted authority evidence may stamp P214/P8189/QID
-   when W-166 soft/hard reject flags do not forbid it. Identifierless persons
-   are omitted at upload rehydrate (`prepare_wikidata_upload_native_items`) and
-   skipped in `_prepare_for_upload` — never CREATE. Remaining work `P50
+3. **Publishability:** trusted authority evidence may stamp P214/P8189/QID
+   when W-166 soft/hard reject flags do not forbid it. Recovery MUST run
+   before the omit gate and MUST read both HMO (`kind`+`identifier`) and
+   legacy (`viaf_uri`/`mazal_id`/`wikidata_qid`) shapes (Rule W-188).
+   Identifierless persons are omitted at upload rehydrate
+   (`prepare_wikidata_upload_native_items`) and skipped in
+   `_prepare_for_upload` — never CREATE. Remaining work `P50
    __LOCAL:` edges rollup to P2093 name strings.
 4. **Session death:** `permissiondenied`, logged-out, and global-block errors
    abort the upload job remainder (Rule W-179 extension) — no per-item retries.
@@ -2149,3 +2153,31 @@ Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`
 `test_choose_test_property_rejects_fuzzy_label`,
 `test_p1680_remaps_via_subtitle_gloss`,
 `test_warm_test_maps_for_items_fills_session_maps`).
+
+### Rule W-188 — Recover trusted identifiers before the W-154 omit gate, on both evidence shapes (added 2026-08-19)
+
+Test uploads on run `48ba6c13` skipped persons who already had VIAF/NLI in
+authority evidence. Three bugs stacked: `build_canonical_studio_result`
+dropped identifierless people *before* `recover_person_identifiers_from_evidence`,
+so recovery was a no-op; recover required `accepted is True` and
+`kind in {viaf,mazal,wikidata}`, while legacy `person_projection` evidence
+uses `viaf_uri`/`mazal_id`/`wikidata_qid` without those fields; first-wins
+identifier extraction could stamp the wrong PID from a combined row.
+
+**Invariants:**
+
+1. Canonical assembly recovers trusted identifiers after merge, overrides,
+   and reconcile, and **before** the first W-154 drop. Merge
+   `_keep_merged_item` recovers before the publishability test. Upload
+   `prepare_wikidata_upload_native_items` already recovered-then-omitted.
+2. `accepted is False` is never recovered. Missing `accepted` is usable
+   only when `person_identity_untrusted_for_recovery` is false (W-166).
+3. When `kind` is empty, recover infers viaf/mazal/wikidata from named
+   fields and may stamp more than one identifier from one combined row.
+   Name-only people are still omitted — never CREATE (W-154 / W-185).
+4. After unconfirmed-identity strip, persons left identifierless are still
+   dropped (W-154 / W-170). Recovery does not run after that strip.
+
+Tests: `backend/tests/unit/test_wikidata_canonical_enrichment.py`,
+`backend/tests/unit/test_hmo_canonical_wikidata.py`,
+`backend/tests/unit/test_authority_evidence.py`.
