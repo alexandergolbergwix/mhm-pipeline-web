@@ -42,6 +42,24 @@ def test_resolve_local_statement_refs_rewrites_and_reports_leftovers() -> None:
     assert leftover == ["__LOCAL:person:missing"]
 
 
+def test_build_claim_accepts_wikibase_item_value_type() -> None:
+    from converter.wikidata.uploader import WikidataUploader
+
+    up = WikidataUploader(
+        token="user@bot:xxxxxxxxxxxxxxxx",
+        is_test=True,
+        allow_live=False,
+    )
+    stmt = WikidataStatement(
+        property_id="P15",
+        value="Q248937",
+        value_type="wikibase-item",
+    )
+    claim = up._build_claim(stmt)
+    assert claim is not None
+    assert claim.mainsnak.datavalue["value"]["id"] == "Q248937"
+
+
 def test_upload_item_blocks_unresolved_local(monkeypatch) -> None:
     from converter.wikidata.uploader import WikidataUploader
 

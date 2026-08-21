@@ -691,5 +691,6 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 93. **R93 — Writes land every native statement (Rule W-191).**
     Session `created_qids`, works→persons→manuscripts, refuse unbuilt
     snaks and unresolved `__LOCAL:`; test `exists` only if claim-complete.
-    Regression: `test_wikidata_upload_claim_complete_w191.py`.
+    `_build_claim` accepts canonical `wikibase-item`. Regression:
+    `test_wikidata_upload_claim_complete_w191.py`.
     *Why:* one-item job loop dropped `__LOCAL:` and thin `exists` rows.*

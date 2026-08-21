@@ -54,7 +54,7 @@
 - `backend/tests/unit/test_studio_dict_to_native.py` — Studio-cache dict → native item (W-181 / R84).
 - `backend/tests/unit/test_audit_test_wikidata_upload.py` — claim-count / live-URI / `__LOCAL:` / identity-clash helpers for the test-upload live-readiness audit (W-190 / W-191).
 - `backend/tests/unit/test_wikidata_person_identity_w190.py` — leftover-token refuse (Savoy/Sultan/Kostlitz), Monson/Curiel/Briel cover, upload-prepare clear vs own-block (W-190).
-- `backend/tests/unit/test_wikidata_upload_claim_complete_w191.py` — upload sort order, `__LOCAL:` resolve, unresolved LOCAL blocked (W-191).
+- `backend/tests/unit/test_wikidata_upload_claim_complete_w191.py` — upload sort order, `__LOCAL:` resolve, unresolved LOCAL blocked, `wikibase-item` P31 builds (W-191).
 - `backend/tests/unit/test_wikidata_test_wiki_compat.py` — test.wikidata.org remap + leftover **refuse** (not drop) + ownership on test Q refs + ownership-before-adapt + SPARQL fallback + skipped-foreign `__LOCAL:` wiring + unmapped live Q leftover + quantity unit remap + illegal live-entity no-retry + no live strip + no `Bad value type` retry + adopt-on-conflict + datatype-keyed P map + MHM stub reuse + foreign-alive CREATE + holder/live gloss stubs + disambiguated P CREATE + item-write label-conflict adopt (W-182 / W-183 / W-184 / W-185 / W-186 / W-187 / W-189 / R85–R91).
 - `backend/tests/unit/test_wikidata_existence.py` — batched `wbgetentities`, 429 retry, existence cache, alive parse, ownership classify, QID-bound foreign accept gate (W-185).
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — identifier recovery from evidence, upload omit + P2093 rollup (W-185).

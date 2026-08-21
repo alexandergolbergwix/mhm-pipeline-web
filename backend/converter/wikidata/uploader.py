@@ -40,6 +40,19 @@ _EDIT_DELAY_SECONDS = 1.5  # ~40 edits/minute (safe for OAuth with 5000 req/hr)
 
 _UPLOAD_TYPE_ORDER = {"work": 0, "person": 1, "manuscript": 2}
 
+_WBI_VALUE_TYPE_ALIASES = {
+    "wikibase-item": "item",
+    "wikibase-entityid": "item",
+    "wikibase-property": "item",
+    "externalid": "external-id",
+    "commonsmedia": "string",
+}
+
+
+def _normalize_wbi_value_type(value_type: object) -> str:
+    key = str(value_type or "").strip().lower()
+    return _WBI_VALUE_TYPE_ALIASES.get(key, key)
+
 
 @dataclass
 class UploadResult:
@@ -605,7 +618,10 @@ class WikidataUploader:
                 continue
             claim = self._build_claim(stmt)
             if claim is None:
-                failures.append(f"{stmt.property_id}={stmt.value} build-failed")
+                failures.append(
+                    f"{stmt.property_id}={stmt.value} build-failed "
+                    f"(value_type={stmt.value_type!r})"
+                )
                 continue
             built += 1
             count_before = len(wbi_item.claims)
@@ -731,12 +747,13 @@ class WikidataUploader:
             "deprecated": WikibaseRank.DEPRECATED,
         }
         rank_enum = rank_map.get(stmt.rank, WikibaseRank.NORMAL)
+        vtype = _normalize_wbi_value_type(stmt.value_type)
 
         try:
             # Rule 42: somevalue/novalue map to WBI's snaktype field rather
             # than a concrete datavalue. We build a stub Item claim and
             # override its mainsnak.
-            if stmt.value_type in ("somevalue", "novalue"):
+            if vtype in ("somevalue", "novalue"):
                 stub = datatypes.Item(
                     prop_nr=stmt.property_id,
                     references=refs,
@@ -746,7 +763,7 @@ class WikidataUploader:
                 stub.mainsnak.snaktype = stmt.value_type
                 stub.mainsnak.datavalue = {}
                 return stub
-            if stmt.value_type == "item":
+            if vtype == "item":
                 return datatypes.Item(
                     prop_nr=stmt.property_id,
                     value=str(value),
@@ -754,7 +771,7 @@ class WikidataUploader:
                     qualifiers=qualifiers,
                     rank=rank_enum,
                 )
-            if stmt.value_type == "string":
+            if vtype == "string":
                 return datatypes.String(
                     prop_nr=stmt.property_id,
                     value=str(value),
@@ -762,7 +779,7 @@ class WikidataUploader:
                     qualifiers=qualifiers,
                     rank=rank_enum,
                 )
-            if stmt.value_type == "external-id":
+            if vtype == "external-id":
                 return datatypes.ExternalID(
                     prop_nr=stmt.property_id,
                     value=str(value),
@@ -770,7 +787,7 @@ class WikidataUploader:
                     qualifiers=qualifiers,
                     rank=rank_enum,
                 )
-            if stmt.value_type == "time":
+            if vtype == "time":
                 return datatypes.Time(
                     prop_nr=stmt.property_id,
                     time=str(value),
@@ -779,7 +796,7 @@ class WikidataUploader:
                     qualifiers=qualifiers,
                     rank=rank_enum,
                 )
-            if stmt.value_type == "quantity":
+            if vtype == "quantity":
                 unit_val = self._quantity_unit_uri(stmt.unit)
                 return datatypes.Quantity(
                     prop_nr=stmt.property_id,
@@ -789,7 +806,7 @@ class WikidataUploader:
                     qualifiers=qualifiers,
                     rank=rank_enum,
                 )
-            if stmt.value_type == "url":
+            if vtype == "url":
                 return datatypes.URL(
                     prop_nr=stmt.property_id,
                     value=str(value),
@@ -797,7 +814,7 @@ class WikidataUploader:
                     qualifiers=qualifiers,
                     rank=rank_enum,
                 )
-            if stmt.value_type == "monolingualtext":
+            if vtype == "monolingualtext":
                 return datatypes.MonolingualText(
                     prop_nr=stmt.property_id,
                     text=str(value),
@@ -815,15 +832,23 @@ class WikidataUploader:
             )
             return None
 
+        logger.warning(
+            "Unknown claim value_type %r for %s=%s",
+            stmt.value_type,
+            stmt.property_id,
+            value,
+        )
         return None
 
     def _build_reference_snak(self, ref_snak: dict[str, str]) -> object | None:
         """Build a reference snak for WikibaseIntegrator."""
         from wikibaseintegrator import datatypes  # noqa: PLC0415
 
-        prop = ref_snak.get("property", "")
+        prop = ref_snak.get("property", "") or ref_snak.get("property_id", "")
         value = ref_snak.get("value", "")
-        snak_type = ref_snak.get("type", "string")
+        snak_type = _normalize_wbi_value_type(
+            ref_snak.get("value_type") or ref_snak.get("type") or "string",
+        )
 
         try:
             if snak_type == "item":

@@ -2260,6 +2260,8 @@ P1559 / P1476).
    claim build; remaining `__LOCAL:` → `blocked`.
 2. `_build_claim` None / unknown type / exception / identity-conflict skip
    → `blocked`, no write. CREATE `new_claims` is the actually built count.
+   Canonical `wikibase-item` / `wikibase-entityid` MUST build as WBI Item
+   (job `2eb32938` blocked every work on remapped P31).
 3. Test `exists` only when every remapped native statement is already on
    the wiki item. Thinner wiki → UPDATE (if ours) or `blocked`.
 4. W-186 leftovers still refuse the whole item.
