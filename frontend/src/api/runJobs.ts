@@ -36,6 +36,20 @@ export interface RunJobProgress {
   sub_total?: number;
   sub_unit?: string;
   sub_message?: string;
+  /** Remaining seconds for the current upload step (null until enough samples). */
+  eta_seconds?: number | null;
+  elapsed_seconds?: number;
+  current_label?: string;
+  steps?: Array<{
+    id?: string;
+    label?: string;
+    status?: string;
+    processed?: number;
+    total?: number;
+    unit?: string;
+    eta_seconds?: number | null;
+    current_label?: string;
+  }>;
   current_entity?: string;
   current_control_number?: string;
   current_source?: string | null;

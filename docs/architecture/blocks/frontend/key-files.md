@@ -30,6 +30,8 @@
 | `frontend/src/components/glass/` | Design system: `Glass`, `GlassPill`, `LiquidGlassCanvas`, `LiquidGlassSurface`, `liquidGlassMath`, `glassMapCache` |
 | `frontend/src/components/extraction/`, `authority/`, `wikidata/`, `hmo/` | Feature component families (Rule W-16 / W-31 review surfaces) |
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Studio item drawer: overrides, foreign-modify accept (W-99), push/reconcile, HMO Wikibase Item:Q link (W-122) |
+| `frontend/src/components/wikidata/WikidataUploadSteps.tsx` | Two-step Wikidata upload bars (Now + ETA; Rule W-192) |
+| `frontend/src/utils/formatJobEta.ts` | Shared remaining/elapsed time labels for job progress |
 | `frontend/src/api/wikidataStudio.ts` | Typed Wikidata Studio client incl. `accept_foreign_modify` override fields |
 | `frontend/src/components/hmo/HmoPublishConfirmationDialog.tsx` | Shared accessible confirmation gate before a single HMO entry is published or updated |
 | `frontend/e2e/fixtures/*.ts` | Deterministic `page.route()` backend mocks per feature |

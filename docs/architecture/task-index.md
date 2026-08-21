@@ -27,6 +27,7 @@
 | Add an AI-verify surface | [eval-agent](blocks/eval-agent/README.md) |
 | Debug a missing P407/extent/shelfmark on a TSV-ingested run | [Wikidata Studio R60](blocks/wikidata-studio/rules.md) + Rule W-138 + `marc_ingest._unwrap_marc_value` |
 | Debug an unresolved `__LOCAL:` target or duplicate work title | [Wikidata Studio R60](blocks/wikidata-studio/rules.md) + Rule W-138 + `wikidata_local_refs.py` |
+| Upload Wikidata items whose connections point at not-yet-written drafts | [Wikidata Studio R94](blocks/wikidata-studio/rules.md) + Rule W-192 + `partition_unresolved_local` / two-pass `wikidata_upload_job` |
 | Check whether a CREATE candidate already exists on Wikidata | [Wikidata Studio R61](blocks/wikidata-studio/rules.md) + Rule W-139 + `wikidata_duplicate_probe.py` |
 | Fix `unsupported by MARC` verdicts on evidenced claims | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `marc_verify_context.RAW_TAG_FALLBACK` |
 | Debug manuscripts sharing a label/shelfmark or emitting several P3959 | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `identity_control_number` |

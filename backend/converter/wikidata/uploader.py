@@ -10,6 +10,7 @@ Supports both production wikidata.org and test.wikidata.org.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import time
@@ -106,6 +107,76 @@ def resolve_local_statement_refs(
             if isinstance(snak, dict) and "value" in snak:
                 snak["value"] = resolve_value(snak["value"])
     return remaining
+
+
+def _is_unresolved_local_value(value: Any, created_qids: dict[str, str]) -> bool:
+    if not isinstance(value, str) or not value.startswith("__LOCAL:"):
+        return False
+    ref = value[len("__LOCAL:"):]
+    return ref not in created_qids
+
+
+def statement_has_unresolved_local(
+    stmt: WikidataStatement,
+    created_qids: dict[str, str],
+) -> bool:
+    if _is_unresolved_local_value(stmt.value, created_qids):
+        return True
+    for snak in list(stmt.qualifiers or []) + list(stmt.references or []):
+        if isinstance(snak, dict) and _is_unresolved_local_value(
+            snak.get("value"), created_qids,
+        ):
+            return True
+    return False
+
+
+def clone_statement(stmt: WikidataStatement) -> WikidataStatement:
+    return replace(
+        stmt,
+        qualifiers=copy.deepcopy(list(stmt.qualifiers or [])),
+        references=copy.deepcopy(list(stmt.references or [])),
+    )
+
+
+def first_local_target(stmt: WikidataStatement) -> str:
+    if isinstance(stmt.value, str) and stmt.value.startswith("__LOCAL:"):
+        return stmt.value[len("__LOCAL:"):]
+    for snak in list(stmt.qualifiers or []) + list(stmt.references or []):
+        if not isinstance(snak, dict):
+            continue
+        value = snak.get("value")
+        if isinstance(value, str) and value.startswith("__LOCAL:"):
+            return value[len("__LOCAL:"):]
+    return ""
+
+
+def partition_unresolved_local(
+    item: WikidataItem,
+    created_qids: dict[str, str],
+) -> tuple[WikidataItem, list[WikidataStatement]]:
+    """Split statements that still need another item's QID (Rule W-192).
+
+    Deferred statements keep their original ``__LOCAL:`` values. The write
+    clone is independent so ``upload_item`` can mutate resolved snaks.
+    """
+    keep: list[WikidataStatement] = []
+    deferred: list[WikidataStatement] = []
+    for stmt in item.statements or []:
+        if statement_has_unresolved_local(stmt, created_qids):
+            deferred.append(clone_statement(stmt))
+        else:
+            keep.append(clone_statement(stmt))
+    return replace(item, statements=keep), deferred
+
+
+def resolve_statement_locals(
+    stmt: WikidataStatement,
+    created_qids: dict[str, str],
+) -> tuple[WikidataStatement, list[str]]:
+    """Rewrite one statement's ``__LOCAL:`` snaks. Return leftovers."""
+    probe = WikidataItem(local_id="probe", statements=[clone_statement(stmt)])
+    leftover = resolve_local_statement_refs(probe, created_qids)
+    return probe.statements[0], leftover
 
 
 class UnauthorisedModificationError(RuntimeError):

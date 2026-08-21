@@ -694,3 +694,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `_build_claim` accepts canonical `wikibase-item`. Regression:
     `test_wikidata_upload_claim_complete_w191.py`.
     *Why:* one-item job loop dropped `__LOCAL:` and thin `exists` rows.*
+94. **R94 — Deferred `__LOCAL:` connections write on pass 2 (Rule W-192).**
+    Pass 1 omits unresolved local snaks; pass 2 MERGE-UPDATEs them once
+    both QIDs exist. Uncreated targets stay `unresolved`. The upload modal
+    shows both steps with bars, Now, and ETA. Regression:
+    `test_wikidata_upload_deferred_links.py`,
+    `wikidataUploadProgressModal.spec.ts`.
+    *Why:* works-first order blocked every work on P50 `__LOCAL:`.*

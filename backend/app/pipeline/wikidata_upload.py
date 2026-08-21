@@ -146,6 +146,16 @@ class UploadOutcome:
 
 
 @dataclass
+class DeferredLinkOutcome:
+    source_local_id: str
+    property_id: str
+    target_local_id: str
+    status: str
+    message: str
+    qid: str | None = None
+
+
+@dataclass
 class ReconcileOutcome:
     local_id: str
     label: str
@@ -966,6 +976,31 @@ def _upload_sync(
                 # (Rule W-179). Callers that share an uploader should abort the job.
                 break
     return out
+
+
+_SESSION_QID_STATUSES = frozenset({
+    "created", "updated", "adopted", "exists", "success",
+    "would_create", "would_update", "would_adopt",
+})
+
+
+def remember_created_qid(
+    session_qids: dict[str, str],
+    local_id: str,
+    qid: str | None,
+    status: str,
+    *,
+    dry_run: bool = False,
+) -> None:
+    """Record a written (or dry-run) QID so later ``__LOCAL:`` snaks can resolve."""
+    if not local_id:
+        return
+    if status not in _SESSION_QID_STATUSES:
+        return
+    if qid:
+        session_qids[local_id] = str(qid)
+    elif dry_run:
+        session_qids[local_id] = f"dry:{local_id}"
 
 
 def _is_auth_failure_message(message: str) -> bool:

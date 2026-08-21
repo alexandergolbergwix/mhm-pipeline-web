@@ -282,6 +282,10 @@ Invariant:
 Tests: `backend/tests/unit/test_hmo_item_build_progress.py`,
 `backend/tests/unit/test_authority_re_enrich_progress.py`.
 
+Wikidata Studio **upload** uses the same outer/inner contract: `1/2` then
+`2/2` `steps` (write items, add connections) with `sub_unit=items|links`,
+plus `eta_seconds` / `steps[]` for the upload modal only (Rule W-192).
+
 ### Rule W-129 — Run jobs MUST pass admission control before claim (added 2026-07-27)
 
 Capacity review for 50 parallel curators found the real queue already

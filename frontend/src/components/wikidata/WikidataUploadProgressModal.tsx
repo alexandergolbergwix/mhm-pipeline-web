@@ -3,7 +3,7 @@ import {useCallback, useEffect, useMemo, useRef} from "react";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import type {UploadOutcome, WikidataUploadTarget} from "@/api/wikidataStudio";
 import {Glass, GlassPill} from "@/components/glass";
-import {JobProgressInline} from "@/components/jobs/JobProgressInline";
+import {WikidataUploadSteps} from "@/components/wikidata/WikidataUploadSteps";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import {
   liveUploadOutcomeRows,
@@ -132,15 +132,7 @@ export function WikidataUploadProgressModal({
         </div>
 
         {job ? (
-          <JobProgressInline
-            job={job}
-            labels={{
-              running: "Uploading to Wikidata…",
-              succeeded: "Upload complete:",
-              failed: "Upload failed:",
-              cancelled: "Upload cancelled:",
-            }}
-          />
+          <WikidataUploadSteps progress={job.progress ?? {}} />
         ) : (
           <p className="muted text-sm">Loading job…</p>
         )}

@@ -39,8 +39,15 @@ always re-runs inside `upload_items`. Contract: `docs/wikidata-data-access.md`
 
 ### Upload job, moratorium, QS download
 
-`POST /upload` (or the `wikidata_upload` run-job, which uploads item-by-item
-with progress + cancel) builds native items fresh via `_build_native_items`,
+`POST /upload` (or the `wikidata_upload` run-job) is a **two-pass** write
+(Rule W-192). Pass 1 `partition_unresolved_local` creates/updates each item
+without dangling `__LOCAL:` connections. Pass 2 MERGE-UPDATEs those edges
+once both QIDs exist (`link_outcomes`; unresolved targets stay visible).
+Progress is `Step N of 2` with nested item/link counters, `steps[]` for the
+modal, and `eta_seconds` after three samples. Cancel skips remaining pass-1
+items and does not run pass 2.
+
+The job uploads item-by-item with progress + cancel, builds native items fresh via `_build_native_items`,
 then stamps Studio-cache / probe-adopted `existing_qid`s
 (`_apply_cached_qid_adoption_to_native`, Rule W-177) so identifier-matched
 UPDATEs do not fall back to SPARQL CREATE. Before each write the job emits

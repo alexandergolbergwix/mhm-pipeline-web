@@ -69,7 +69,9 @@
    follow `upload_target` (test/live/dry-run) and stay sticky after cancel/finish
    (frontend R19) — they MUST NOT flicker to Live when the active poll drops the
    job or when a terminal result omits `upload_target` (panel must not invent
-   live; modal title is never hardcoded “Live”).
+   live; modal title is never hardcoded “Live”). The modal shows **Step 1 —
+   Write items** and **Step 2 — Add connections**, each with its own bar,
+   current item, and ETA (Rule W-192).
 3. **Close** dismisses the modal without cancelling; **Cancel upload** calls
    `POST …/jobs/{id}/cancel` while the job is still active. Cancel progress/result
    still carries `upload_target`.

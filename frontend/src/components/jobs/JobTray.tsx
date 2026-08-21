@@ -8,6 +8,7 @@ import {
 } from "@/api/runJobs";
 import {Glass, GlassPill} from "@/components/glass";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {formatJobEtaShort} from "@/utils/formatJobEta";
 
 const notifiedRef = {current: new Set<string>()};
 
@@ -48,6 +49,11 @@ function progressLabel(job: RunJobSnapshot): string {
   return msg || job.status;
 }
 
+function trayEtaSuffix(job: RunJobSnapshot): string {
+  const short = formatJobEtaShort(job.progress?.eta_seconds);
+  return short ? ` · ${short}` : "";
+}
+
 export function JobTray() {
   const jobsRecord = useRunJobs((s) => s.jobs);
   const jobs = useMemo(
@@ -78,7 +84,7 @@ export function JobTray() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{label}</p>
-                <p className="text-xs muted truncate">{progressLabel(job)}</p>
+                <p className="text-xs muted truncate">{progressLabel(job)}{trayEtaSuffix(job)}</p>
               </div>
               <GlassPill className="px-2 py-0.5 text-[10px] uppercase tracking-wide shrink-0">
                 {job.status}

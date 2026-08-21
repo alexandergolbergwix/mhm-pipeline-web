@@ -68,7 +68,7 @@ already-judged items.
 | `ner_verify` / `wikidata_verify` / `hmo_item_verify` | `verify_job.py` | Opens the corresponding eval-agent event stream, tracks unique candidate IDs (never aggregate stats or replayed events), mid-run **counters-only** progress (Rule W-128) and slim `session_snapshot` in `result` |
 | `rdf_build` | `rdf_build_job.py` | Builds the TTL, write-throughs `RdfArtifact`, invalidates on-disk graph caches |
 | `wikidata_studio_build` | `wikidata_studio_build_job.py` | Delegates to `execute_studio_build` (fingerprint cache per Rule W-26) |
-| `wikidata_upload` | `wikidata_upload_job.py` | Item-by-item dry-run/live upload through the fail-closed `wikidata_upload.upload_items` gate (Rule W-30) |
+| `wikidata_upload` | `wikidata_upload_job.py` | Two-pass dry-run/live upload through `wikidata_upload.upload_items` (W-30 / W-192) |
 | `hmo_coverage` | `hmo_coverage_job.py` | 9-14 min coverage report; write-throughs `HmoCoverageCache` (Rule W-39) |
 | `hmo_schema_bootstrap` | `hmo_schema_bootstrap_job.py` | Sequential `wbeditentity` per missing ontology class/property on Wikibase Cloud |
 | `hmo_item_upload` | `hmo_item_upload_job.py` | Live per-item Wikibase Cloud writes + deferred links, with audit context |

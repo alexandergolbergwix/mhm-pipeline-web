@@ -2268,3 +2268,27 @@ P1559 / P1476).
 
 Tests: `backend/tests/unit/test_wikidata_upload_claim_complete_w191.py`,
 `backend/tests/unit/test_audit_test_wikidata_upload.py`.
+
+### Rule W-192 — Wikidata upload MUST defer unresolved `__LOCAL:` to a second UPDATE pass (added 2026-08-21)
+
+Works upload before persons, so work P50 `__LOCAL:person:…` is almost
+always unresolved at write time. W-191 then blocked the **whole item**
+instead of creating it without the edge. HMO already two-passes deferred
+links; Wikidata did not.
+
+**Invariants:**
+
+1. Pass 1 `partition_unresolved_local` writes items without dangling
+   `__LOCAL:` snaks. Those statements are **not** dropped from the job.
+2. Pass 2 MERGE-UPDATEs resolved connections onto the pass-1 QID. A
+   target that never received a QID is `unresolved`, never a silent omit,
+   and never deletes the pass-1 item.
+3. W-186 leftover refuse still blocks the **item** on the pass that
+   writes it. Test remap maps stay on the shared uploader.
+4. Progress is `1/2` then `2/2` `steps` (W-112) with nested items/links
+   (W-113). The upload modal always shows both steps, current work, and
+   `eta_seconds` after three samples. Cancel skips remaining pass-1 items
+   **and** pass 2.
+
+Tests: `backend/tests/unit/test_wikidata_upload_deferred_links.py`,
+`frontend/tests/unit/wikidataUploadProgressModal.spec.ts`.

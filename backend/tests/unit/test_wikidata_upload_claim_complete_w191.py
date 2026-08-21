@@ -5,6 +5,7 @@ from __future__ import annotations
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from converter.wikidata.uploader import (
     ClaimBuildError,
+    partition_unresolved_local,
     resolve_local_statement_refs,
     sort_items_for_upload,
 )
@@ -60,7 +61,7 @@ def test_build_claim_accepts_wikibase_item_value_type() -> None:
     assert claim.mainsnak.datavalue["value"]["id"] == "Q248937"
 
 
-def test_upload_item_blocks_unresolved_local(monkeypatch) -> None:
+def test_upload_item_blocks_unresolved_local_when_not_partitioned(monkeypatch) -> None:
     from converter.wikidata.uploader import WikidataUploader
 
     up = WikidataUploader(
@@ -116,3 +117,20 @@ def test_upload_item_blocks_claim_build_error(monkeypatch) -> None:
 
     err = ClaimBuildError(["P1559=x build-failed"])
     assert "P1559" in str(err)
+
+
+def test_partitioned_write_item_has_no_local_leftover() -> None:
+    item = WikidataItem(
+        local_id="w1",
+        entity_type="work",
+        statements=[
+            WikidataStatement(property_id="P31", value="Q47461344", value_type="item"),
+            WikidataStatement(
+                property_id="P50", value="__LOCAL:person:gone", value_type="item",
+            ),
+        ],
+    )
+    write, deferred = partition_unresolved_local(item, {})
+    leftover = resolve_local_statement_refs(write, {})
+    assert leftover == []
+    assert deferred[0].value == "__LOCAL:person:gone"

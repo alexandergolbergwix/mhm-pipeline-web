@@ -17,7 +17,7 @@
 | `backend/app/pipeline/verify_job.py` | `ner_verify` / `wikidata_verify` / `hmo_item_verify` worker (shared); `authority_verify` is retired compatibility code |
 | `backend/app/pipeline/rdf_build_job.py` | `rdf_build` worker |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | `wikidata_studio_build` worker |
-| `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker (dry-run + live); live progress includes `label` / `entity_type` / `outcome_counts` for tray View modal (W-141) |
+| `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker; two-pass deferred links; `steps` / `eta_seconds` for tray View modal (W-141 / W-192) |
 | `backend/app/pipeline/hmo_coverage_job.py` | `hmo_coverage` worker |
 | `backend/app/pipeline/hmo_schema_bootstrap_job.py` | `hmo_schema_bootstrap` worker |
 | `backend/app/pipeline/hmo_item_upload_job.py` | `hmo_item_upload` worker |
