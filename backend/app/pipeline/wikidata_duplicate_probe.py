@@ -1431,7 +1431,7 @@ _HE_GIVEN_LATIN: dict[str, frozenset[str]] = {
     "מאוריציו": frozenset({"maurizio", "mauricio"}),
     "ויטוריו": frozenset({"vittorio", "victor"}),
     "אמדיאו": frozenset({"amadeus", "amedeo"}),
-    "סולל": frozenset({"sultan", "soll", "solel"}),
+    "סולל": frozenset({"soll", "solel"}),
     "סולטן": frozenset({"sultan"}),
     "מונסון": frozenset({"monson"}),
     "פנצירי": frozenset({"pantsiri", "panciri"}),
@@ -1446,6 +1446,15 @@ _HE_GIVEN_LATIN: dict[str, frozenset[str]] = {
 _LATIN_NOISE_TOKENS = frozenset({
     "ben", "bar", "ibn", "de", "di", "da", "del", "della", "von", "van",
     "of", "the", "ii", "iii", "iv", "jr", "sr",
+})
+
+_HE_NOISE_TOKENS = frozenset({
+    "בן", "בר", "אבן", "די", "דה", "ו", "ה", "איש",
+})
+
+# Extra given-name Latin forms allowed as EN leftovers (catalog omitted them).
+_EN_EXTRA_GIVEN_OK = frozenset({
+    "meir", "meyer", "meier", "mordecai", "mordechai", "hezekiah",
 })
 
 
@@ -1489,17 +1498,24 @@ def _forms_hit_norms(forms: set[str], en_norms: set[str]) -> bool:
     )
 
 
-def _cross_script_names_compatible(he_label: str, en_label: str) -> bool:
-    """True when HE and EN labels plausibly name the same person.
+def _all_given_latin_forms() -> set[str]:
+    out: set[str] = set(_EN_EXTRA_GIVEN_OK)
+    for forms in _HE_GIVEN_LATIN.values():
+        out.update(_latin_token_norm(f) for f in forms if _latin_token_norm(f))
+    return out
 
-    Requires the Hebrew given name to map onto an English token. When both sides
-    have ≥2 tokens, also require a surname *or* another mapped HE token on the
-    EN side (יהודה שאול ↔ Yehuda Ben-Shaul). A single-token Hebrew label against
-    a multi-token English label is refused (Maurizio→Kagel).
+
+def _cross_script_names_compatible(he_label: str, en_label: str) -> bool:
+    """True when HE and EN labels plausibly name the same person (Rule W-190).
+
+    Given name must map onto an English token. Every mapped Hebrew token must
+    hit EN. Every leftover EN token must be a known given-name form (catalog
+    omitted it) — toponyms like Savoy refuse. A single-token Hebrew label
+    against a multi-token English label is refused (Maurizio→Kagel).
     """
     from converter.authority.heading_fidelity import _name_tokens  # noqa: PLC0415
 
-    he_tokens = _name_tokens(he_label)
+    he_tokens = [t for t in _name_tokens(he_label) if t not in _HE_NOISE_TOKENS]
     en_tokens = _name_tokens(en_label)
     if not he_tokens or not en_tokens:
         return False
@@ -1511,13 +1527,20 @@ def _cross_script_names_compatible(he_label: str, en_label: str) -> bool:
     given_forms = _hebrew_token_latin_forms(he_tokens[0])
     if not given_forms or not _forms_hit_norms(given_forms, en_norms):
         return False
-    if len(he_tokens) >= 2 and len(en_tokens) >= 2:
-        if _forms_hit_norms(_hebrew_token_latin_forms(he_tokens[-1]), en_norms):
-            return True
-        # Secondary mapped tokens (שאול in Yehuda Ben-Shaul) without a surname hit.
-        for token in he_tokens[1:]:
-            if _forms_hit_norms(_hebrew_token_latin_forms(token), en_norms):
-                return True
+    covered_en: set[str] = set()
+    for token in he_tokens:
+        forms = _hebrew_token_latin_forms(token)
+        if not forms:
+            continue
+        if not _forms_hit_norms(forms, en_norms):
+            return False
+        for en in en_norms:
+            if _forms_hit_norms(forms, {en}):
+                covered_en.add(en)
+    given_ok = _all_given_latin_forms()
+    for en in en_norms:
+        if en in covered_en or en in given_ok:
+            continue
         return False
     return True
 
@@ -1599,16 +1622,33 @@ def _candidate_label_conflicts(item: Any, existence: dict[str, Any], qid: str) -
     comparable = [lab for lab in item_labels if _same_script_family(lab, candidate_label)]
     if comparable:
         return not any(heading_matches(label, candidate_label) for label in comparable)
+    he_labels = [lab for lab in item_labels if _has_hebrew_script(lab)]
+    if he_labels and not _has_hebrew_script(candidate_label):
+        # preferred_name_lat must not bypass leftover Hebrew tokens (W-190).
+        return not any(
+            _cross_script_names_compatible(lab, candidate_label) for lab in he_labels
+        )
     latin_forms = _item_latin_identity_forms(item)
     if latin_forms and any(heading_matches(form, candidate_label) for form in latin_forms):
         return False
-    he_labels = [lab for lab in item_labels if _has_hebrew_script(lab)]
-    if he_labels and not _has_hebrew_script(candidate_label):
-        if any(_cross_script_names_compatible(lab, candidate_label) for lab in he_labels):
-            return False
-        return True
     # No bridge — refuse.
     return True
+
+
+def person_heading_conflicts_live_label(
+    item: Any, *, live_en: str = "", live_he: str = "",
+) -> bool:
+    """True when a live item's labels clash with this Studio person (W-190)."""
+    if _item_entity_type(item) != "person":
+        return False
+    candidate = str(live_en or live_he or "").strip()
+    if not candidate:
+        return True
+    return _candidate_label_conflicts(
+        item,
+        {"candidates": [{"qid": "_live", "label": candidate}]},
+        "_live",
+    )
 
 
 def _strip_probe_matched_identifiers(item: Any, existence: dict[str, Any], qid: str) -> str:

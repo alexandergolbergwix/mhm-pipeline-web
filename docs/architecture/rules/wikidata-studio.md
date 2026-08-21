@@ -2217,3 +2217,52 @@ Tests: `backend/tests/unit/test_wikidata_test_wiki_compat.py`
 `test_p1680_creates_disambiguated_label_when_subtitle_wrong_type`,
 `test_upload_item_adopts_own_label_conflict`,
 `test_upload_item_uniquifies_foreign_label_conflict`).
+
+### Rule W-190 — Person live-identity MUST be bidirectional leftover-token coverage (added 2026-08-21)
+
+Test job `2b922f2c` on run `48ba6c13` wrote 233 items with 0 blocked, but
+Studio `existing_qid` values were false matches: `ויטוריו אמדיאו` → Q209579
+(Victor Amadeus II of Savoy; leftover `savoy`), `דוד סולל` → Q1176777
+(`סולל` mapped to `sultan`), `יהודה שאול בן דוד איש קוסטליץ` → Q6645488
+via `preferred_name_lat`. Authority-stamped QIDs skip the probe
+(`already_linked`). On live, W-184 then skipped those foreign UPDATEs and
+also refused CREATE, so the catalog person never landed.
+
+**Invariants:**
+
+1. `_cross_script_names_compatible` keeps the given-name map fail-closed.
+   Every mapped Hebrew token MUST hit the English label. Every leftover
+   English token MUST be a known given-name form (catalog omitted it).
+   Toponyms such as Savoy refuse. `סולל` MUST NOT map to `sultan`.
+2. `preferred_name_lat` MUST NOT bypass leftover Hebrew tokens
+   (`קוסטליץ`, `דוד` vs Yehuda Ben-Shaul).
+3. The same helper runs at upload prepare on a live/test person QID.
+   Clash + foreign/absent → clear QID and CREATE. Clash + own → `blocked`
+   (do not UPDATE a wrong item we already wrote). Manuscripts and known-work
+   QIDs (Tikkun Chatzot Q2740944) stay W-184.
+
+Tests: `backend/tests/unit/test_wikidata_person_identity_w190.py`,
+`backend/tests/unit/test_wikidata_nonpassing_buckets.py`.
+
+### Rule W-191 — Successful writes MUST land every native statement (added 2026-08-21)
+
+The upload job called `upload_item` one native at a time and never
+`upload_all`, so `__LOCAL:` never resolved; `_build_claim` returned `None`
+for leftovers and exceptions; `existing_qid && new_claims==0` returned
+`exists` without rewriting. W-186 leftover refuse never saw those drops.
+Created/updated/adopted rows were thinner than natives (typical miss:
+P1559 / P1476).
+
+**Invariants:**
+
+1. Sort natives works → persons → manuscripts. Pass a session
+   `created_qids` map into every `upload_item`. Resolve `__LOCAL:` before
+   claim build; remaining `__LOCAL:` → `blocked`.
+2. `_build_claim` None / unknown type / exception / identity-conflict skip
+   → `blocked`, no write. CREATE `new_claims` is the actually built count.
+3. Test `exists` only when every remapped native statement is already on
+   the wiki item. Thinner wiki → UPDATE (if ours) or `blocked`.
+4. W-186 leftovers still refuse the whole item.
+
+Tests: `backend/tests/unit/test_wikidata_upload_claim_complete_w191.py`,
+`backend/tests/unit/test_audit_test_wikidata_upload.py`.

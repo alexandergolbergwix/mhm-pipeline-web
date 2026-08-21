@@ -457,6 +457,9 @@ def snak_compatible_with_test(
     if expected == "wikibase-item" and (value_type or "").strip().lower() not in {
         "somevalue", "novalue",
     }:
+        raw = str(value or "")
+        if raw.startswith("__LOCAL:"):
+            return f"{pid} unresolved {raw}"
         qid = item_target_qid(value)
         if qid:
             allowed = allowed_item_ids or set()

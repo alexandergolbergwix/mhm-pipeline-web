@@ -169,8 +169,8 @@ class TestAdoptionBlocksConflation:
         assert adopt_identifier_matched_duplicates([item])
         assert item["existing_qid"] == "Q132798378"
 
-    def test_he_en_label_difference_does_not_block_identifier_adoption(self) -> None:
-        """Trusted HE preferred + matching preferred_lat may adopt an EN WD label."""
+    def test_he_en_label_leftover_tokens_block_identifier_adoption(self) -> None:
+        """preferred_lat must not adopt a live person missing catalog tokens (W-190)."""
         from app.pipeline.wikidata_duplicate_probe import adopt_identifier_matched_duplicates
 
         item = {
@@ -190,8 +190,9 @@ class TestAdoptionBlocksConflation:
                 }],
             },
         }
-        assert adopt_identifier_matched_duplicates([item])
-        assert item["existing_qid"] == "Q6645488"
+        assert adopt_identifier_matched_duplicates([item]) == []
+        assert "existing_qid" not in item
+        assert item["_wikidata_existence"]["status"] == "absent"
 
     def test_he_only_without_trusted_latin_refuses_cross_script_adoption(self) -> None:
         """Maurizio→Kagel: HE-only label must not adopt an EN candidate by ID alone."""
@@ -222,7 +223,7 @@ class TestAdoptionBlocksConflation:
         )
 
     def test_he_en_map_adopts_without_preferred_lat(self) -> None:
-        """Abraham Monson / Yehuda Ben-Shaul: mapped HE↔EN tokens adopt fail-closed."""
+        """Abraham Monson adopts; Kostlitz leftover refuses Ben-Shaul (W-190)."""
         from app.pipeline.wikidata_duplicate_probe import adopt_identifier_matched_duplicates
 
         monson = {
@@ -253,7 +254,8 @@ class TestAdoptionBlocksConflation:
         }
         assert adopt_identifier_matched_duplicates([monson, benshaul])
         assert monson["existing_qid"] == "Q114038729"
-        assert benshaul["existing_qid"] == "Q6645488"
+        assert "existing_qid" not in benshaul
+        assert benshaul["_wikidata_existence"]["status"] == "absent"
 
     def test_family_bynam_mismatch_does_not_strip_passing_identity(self) -> None:
         """Toponymic / family-heading disagreements must not drop full-passing P8189."""

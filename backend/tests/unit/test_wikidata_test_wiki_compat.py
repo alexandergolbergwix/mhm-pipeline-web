@@ -966,7 +966,7 @@ def test_upload_all_does_not_wire_skipped_foreign_qid_on_test(monkeypatch) -> No
     )
     written: list[str] = []
 
-    def _upload(item: WikidataItem):
+    def _upload(item: WikidataItem, **kwargs):
         person_val = next(
             (s.value for s in item.statements if s.property_id == "P50"),
             None,
@@ -1005,7 +1005,7 @@ def test_upload_all_wires_skipped_foreign_qid_on_live(monkeypatch) -> None:
     )
     written: list[str] = []
 
-    def _upload(item: WikidataItem):
+    def _upload(item: WikidataItem, **kwargs):
         person_val = next(
             (s.value for s in item.statements if s.property_id == "P50"),
             None,

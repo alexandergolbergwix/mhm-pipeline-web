@@ -33,6 +33,7 @@
 | Debug AI verdicts persisted but showing `—` / unknown in the review table | [Wikidata Studio R64–R68 / R72](blocks/wikidata-studio/rules.md) + Rules W-136/W-148/W-149/W-150/W-151/W-152/W-169 + `wikidata_item_views.py` / `wikidata_verdict_cache.py` |
 | Analyze partial/fail AI verdicts with Codex | [eval-agent](blocks/eval-agent/README.md) + [Wikidata Studio R25](blocks/wikidata-studio/rules.md) for item/QID evidence |
 | Audit Wikidata export quality/failure counts | [wikidata-studio](blocks/wikidata-studio/README.md) — run `check_wikidata_export_quality.py` |
+| Audit a test.wikidata.org upload for live readiness | [wikidata-studio skills](blocks/wikidata-studio/skills.md) — `audit_test_wikidata_upload.py` (natives + test wiki entities + live identity clash; do not copy test Q/P) |
 | Add caching or an external API call | [caching](blocks/caching/README.md) |
 | Add a curator-mutable field | [versioning-export](blocks/versioning-export/README.md) |
 | Add an endpoint (esp. unauthenticated) | [platform-security](blocks/platform-security/README.md) |

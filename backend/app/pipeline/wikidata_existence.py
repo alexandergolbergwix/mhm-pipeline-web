@@ -164,6 +164,56 @@ def confirm_qids_alive(
     return out
 
 
+def fetch_entity_labels(
+    qids: list[str],
+    *,
+    is_test: bool = False,
+) -> dict[str, dict[str, str]]:
+    """Batch ``wbgetentities`` labels (en/he). Missing QIDs are omitted."""
+    out: dict[str, dict[str, str]] = {}
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in qids:
+        qid = _normalize_qid(raw)
+        if not qid or qid in seen:
+            continue
+        seen.add(qid)
+        normalized.append(qid)
+    api = _api_base(is_test=is_test)
+    for i in range(0, len(normalized), _WBGETENTITIES_BATCH):
+        chunk = normalized[i:i + _WBGETENTITIES_BATCH]
+        params = urllib.parse.urlencode({
+            "action": "wbgetentities",
+            "ids": "|".join(chunk),
+            "props": "labels",
+            "languages": "en|he",
+            "format": "json",
+        })
+        try:
+            payload = _fetch_json_throttled(f"{api}?{params}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("wbgetentities labels failed (%d ids): %s", len(chunk), exc)
+            continue
+        entities = payload.get("entities") or {}
+        if not isinstance(entities, dict):
+            continue
+        for qid, ent in entities.items():
+            if not isinstance(ent, dict) or ent.get("missing") is not None:
+                continue
+            labels = ent.get("labels") or {}
+            row: dict[str, str] = {}
+            if isinstance(labels, dict):
+                for lang in ("en", "he"):
+                    cell = labels.get(lang) or {}
+                    val = cell.get("value") if isinstance(cell, dict) else cell
+                    text = str(val or "").strip()
+                    if text:
+                        row[lang] = text
+            if row:
+                out[str(qid)] = row
+    return out
+
+
 def confirm_qid_alive(
     qid: str,
     *,

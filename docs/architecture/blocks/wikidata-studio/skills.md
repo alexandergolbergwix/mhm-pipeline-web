@@ -128,6 +128,12 @@
    missing holder/place stubs or a live P kept with the wrong test datatype.
    After W-189, re-run `upload_target=test` — do not strip leftovers. Item
    CREATE `already has label` should adopt our prior test Q or uniquify.
+6. **Identity clash** (W-190): a person QID whose live English label has
+   leftover tokens (`Savoy`) or misses mapped Hebrew tokens (`קוסטליץ`)
+   must clear for CREATE, not skip-foreign on live. Known-work QIDs stay
+   W-184 until curator accept.
+7. **Thin test writes** (W-191): re-run `upload_target=test` after the
+   `created_qids` job wiring; `exists` must not hide a thinner claim set.
 
 ### Skill: load all items in the modern review panel
 
@@ -154,6 +160,19 @@
 2. Only `confidence: "high"` fixes are merged (`merge_ai_fixes`) into an
    override PATCH via `POST …/items/{local_id}/apply-ai-fixes`; everything else
    stays a suggestion. Rebuild to see the applied state.
+### Skill: audit a test.wikidata.org upload for live readiness
+
+1. Read-only. Fetches each written test Q and runs `validate_item` on the
+   Studio native (the payload live would write — never copy test Q/P ids).
+   `cd backend && DATABASE_URL=$(heroku config:get DATABASE_URL -a mhm-pipeline-web) \
+   .venv/bin/python -m scripts.audit_test_wikidata_upload \
+   --run-id 48ba6c13-115c-4763-bff1-c08b9031b518 --json-out /tmp/test-upload-audit.json`.
+2. Pass when `all_written_ready` is true and `blocked`/`failed` are 0.
+   Inspect `not_ready_examples` / `blocker_totals` first. `identity_clash`
+   is a hard fail (W-190). Created/updated/adopted `test_claims_lt_native`
+   is a hard fail (W-191).
+3. Identifierless person `skipped` is expected (W-154 / W-185), not a live CREATE.
+
 ### Skill: audit a downloaded Wikidata export
 
 1. Run the read-only checker against JSON or CSV; it never touches Postgres,

@@ -182,6 +182,75 @@ class PreparedItem:
     allow_foreign_modify: bool = False
 
 
+def _clear_qid_for_create(prepared: PreparedItem, *, suffix: str) -> PreparedItem:
+    qid = prepared.existing_qid
+    prepared.existing_qid = None
+    try:
+        prepared.item.existing_qid = None
+    except Exception:  # noqa: BLE001
+        pass
+    prepared.method = f"{prepared.method}+{suffix}"
+    prepared.ownership = "absent"
+    prepared.adopt_candidate = False
+    prepared.blocked = False
+    prepared.block_status = ""
+    prepared.block_message = ""
+    logger.info(
+        "Cleared QID %s for CREATE (%s, local_id=%s)",
+        qid, suffix, prepared.local_id,
+    )
+    return prepared
+
+
+def _apply_person_identity_gate(
+    prepared: PreparedItem,
+    *,
+    qid: str,
+    is_test: bool,
+    ownership_checker: Any | None,
+) -> PreparedItem:
+    """Refuse UPDATE of a live person whose labels clash with the Studio heading (W-190)."""
+    from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+        person_heading_conflicts_live_label,
+    )
+    from app.pipeline.wikidata_existence import (  # noqa: PLC0415
+        classify_ownership_with_uploader,
+        fetch_entity_labels,
+    )
+
+    labels = fetch_entity_labels([qid], is_test=is_test).get(qid) or {}
+    live_en = str(labels.get("en") or "")
+    live_he = str(labels.get("he") or "")
+    if not live_en and not live_he:
+        prepared.blocked = True
+        prepared.block_status = "blocked"
+        prepared.block_message = (
+            f"Could not read labels for person QID {qid}; refusing UPDATE "
+            "(Rule W-190)."
+        )
+        prepared.ownership = "unknown"
+        return prepared
+    if not person_heading_conflicts_live_label(
+        prepared.item, live_en=live_en, live_he=live_he,
+    ):
+        return prepared
+
+    ownership = "unknown"
+    if ownership_checker is not None:
+        ownership = classify_ownership_with_uploader(ownership_checker, qid)
+    prepared.ownership = ownership
+    if ownership == "own":
+        prepared.blocked = True
+        prepared.block_status = "blocked"
+        prepared.block_message = (
+            f"Person QID {qid} ({live_en or live_he}) clashes with the Studio "
+            "heading. Refusing UPDATE of an item we already wrote — unlink the "
+            "QID before CREATE (Rule W-190)."
+        )
+        return prepared
+    return _clear_qid_for_create(prepared, suffix="cleared_identity_clash")
+
+
 def _apply_existence_and_ownership(
     prepared: PreparedItem,
     *,
@@ -253,6 +322,16 @@ def _apply_existence_and_ownership(
         )
         prepared.ownership = "unknown"
         return prepared
+
+    if str(prepared.entity_type or "").lower() == "person":
+        prepared = _apply_person_identity_gate(
+            prepared,
+            qid=clean_qid,
+            is_test=is_test,
+            ownership_checker=ownership_checker,
+        )
+        if prepared.blocked or not prepared.existing_qid:
+            return prepared
 
     acc = accept or ForeignAccept()
     if (
@@ -666,6 +745,7 @@ async def upload_items(
     mode: UploadMode | None = None,
     uploader: Any | None = None,
     existence_cache: dict[str, bool | None] | None = None,
+    created_qids: dict[str, str] | None = None,
 ) -> list[UploadOutcome]:
     resolved = mode or resolve_upload_mode(upload_target, dry_run=dry_run)
     if ledger is None and db is not None:
@@ -685,6 +765,7 @@ async def upload_items(
         resolved.allow_live,
         uploader,
         existence_cache,
+        created_qids,
     )
     if db is not None and audit_ctx is not None and not resolved.dry_run:
         for outcome in outcomes:
@@ -739,10 +820,12 @@ def _upload_sync(
     allow_live: bool = False,
     uploader: Any | None = None,
     existence_cache: dict[str, bool | None] | None = None,
+    created_qids: dict[str, str] | None = None,
 ) -> list[UploadOutcome]:
     from converter.wikidata.uploader import (  # noqa: PLC0415
         UnauthorisedModificationError,
         WikidataUploader,
+        sort_items_for_upload,
     )
 
     if is_test is None:
@@ -750,6 +833,8 @@ def _upload_sync(
     if not allow_live:
         allow_live = os.environ.get("MORATORIUM_LIFTED", "").lower() == "true"
     accepts = accept_by_local_id or {}
+    items = sort_items_for_upload(list(items))
+    session_qids = created_qids if created_qids is not None else {}
 
     # Prefer a shared uploader (Rule W-179) so batch jobs log in once.
     ownership_checker: Any | None = uploader
@@ -829,12 +914,25 @@ def _upload_sync(
         try:
             if p.allow_foreign_modify and p.existing_qid and not is_test:
                 write_uploader.register_foreign_accept(p.existing_qid)
-            result = write_uploader.upload_item(p.item)
+            result = write_uploader.upload_item(
+                p.item, created_qids=session_qids,
+            )
             status = result.status
             if p.adopt_candidate and status == "updated":
                 status = "adopted"
             elif status == "success":
                 status = "created"
+            if (
+                result.qid
+                and status in {"created", "updated", "adopted", "exists"}
+            ):
+                session_qids[p.local_id] = result.qid
+            elif (
+                result.qid
+                and status == "skipped"
+                and not is_test
+            ):
+                session_qids[p.local_id] = result.qid
             out.append(
                 UploadOutcome(
                     local_id=p.local_id, label=p.label, entity_type=p.entity_type,

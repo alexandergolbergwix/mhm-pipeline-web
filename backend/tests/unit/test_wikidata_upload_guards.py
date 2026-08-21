@@ -247,7 +247,7 @@ def test_upload_sync_wdqs_outage_creates_on_test(monkeypatch):
         def _is_our_item(self, qid: str) -> bool:
             return True
 
-        def upload_item(self, item):
+        def upload_item(self, item, **kwargs):
             written.append(item)
             qid = getattr(item, "existing_qid", None) or "Qnew"
             status = "updated" if getattr(item, "existing_qid", None) else "success"
@@ -290,7 +290,7 @@ def test_upload_sync_wdqs_outage_blocks_on_live(monkeypatch):
         def _is_our_item(self, qid: str) -> bool:
             return True
 
-        def upload_item(self, item):
+        def upload_item(self, item, **kwargs):
             written.append(item)
             return _FakeResult(qid="Q1", status="success", message="ok")
 
@@ -463,7 +463,7 @@ def test_foreign_accept_ignored_on_test_upload(monkeypatch):
         def _is_our_item(self, qid: str) -> bool:
             return False
 
-        def upload_item(self, item):
+        def upload_item(self, item, **kwargs):
             assert item.existing_qid is None
             return SimpleNamespace(
                 local_id=item.local_id,
@@ -590,7 +590,7 @@ async def test_live_upload_records_audit_rows(db_session, sample_run, monkeypatc
         def _is_our_item(self, qid: str) -> bool:
             return True
 
-        def upload_item(self, item):
+        def upload_item(self, item, **kwargs):
             return _FakeResult(qid="Q1", status="updated", message="Updated Q1")
 
     monkeypatch.setattr("converter.wikidata.uploader.WikidataUploader", _FakeUploader)
@@ -689,7 +689,7 @@ def test_ui_live_target_bypasses_env_moratorium(monkeypatch):
             assert kwargs.get("allow_live") is True
             self._is_our_item_cache = {}
 
-        def upload_item(self, item):
+        def upload_item(self, item, **kwargs):
             written.append(item)
             return _FakeResult(qid="Q77", status="success", message="Created Q77")
 
@@ -723,7 +723,7 @@ def test_upload_sync_aborts_on_permissiondenied(monkeypatch):
         def _is_our_item(self, qid: str) -> bool:
             return True
 
-        def upload_item(self, item):
+        def upload_item(self, item, **kwargs):
             calls["n"] += 1
             return _FakeResult(
                 qid=None,

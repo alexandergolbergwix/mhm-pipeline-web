@@ -38,6 +38,8 @@ _MAX_RETRIES = 3
 _RETRY_DELAY_SECONDS = 5.0
 _EDIT_DELAY_SECONDS = 1.5  # ~40 edits/minute (safe for OAuth with 5000 req/hr)
 
+_UPLOAD_TYPE_ORDER = {"work": 0, "person": 1, "manuscript": 2}
+
 
 @dataclass
 class UploadResult:
@@ -48,6 +50,49 @@ class UploadResult:
     status: str = "pending"  # "success" | "updated" | "exists" | "failed" | "skipped" | "blocked"
     message: str = ""
     added_properties: list[str] = field(default_factory=list)
+
+
+class ClaimBuildError(Exception):
+    """A native statement could not be turned into a Wikibase claim (W-191)."""
+
+    def __init__(self, reasons: list[str]) -> None:
+        self.reasons = list(reasons)
+        Exception.__init__(self, "; ".join(self.reasons))
+
+
+def sort_items_for_upload(items: list[Any]) -> list[Any]:
+    """Works then persons then manuscripts so ``__LOCAL:`` can resolve (W-191)."""
+    return sorted(
+        items,
+        key=lambda it: (
+            _UPLOAD_TYPE_ORDER.get(str(getattr(it, "entity_type", "") or "").lower(), 9),
+            str(getattr(it, "local_id", "") or ""),
+        ),
+    )
+
+
+def resolve_local_statement_refs(
+    item: WikidataItem,
+    created_qids: dict[str, str],
+) -> list[str]:
+    """Rewrite ``__LOCAL:`` snaks from previously written QIDs. Return leftovers."""
+    remaining: list[str] = []
+
+    def resolve_value(value: Any) -> Any:
+        if isinstance(value, str) and value.startswith("__LOCAL:"):
+            ref = value[len("__LOCAL:"):]
+            qid = created_qids.get(ref)
+            if qid:
+                return qid
+            remaining.append(value)
+        return value
+
+    for stmt in item.statements or []:
+        stmt.value = resolve_value(stmt.value)
+        for snak in list(stmt.qualifiers or []) + list(stmt.references or []):
+            if isinstance(snak, dict) and "value" in snak:
+                snak["value"] = resolve_value(snak["value"])
+    return remaining
 
 
 class UnauthorisedModificationError(RuntimeError):
@@ -547,25 +592,31 @@ class WikidataUploader:
         )
 
         added_properties: list[str] = []
+        built = 0
+        failures: list[str] = []
         for stmt in item.statements:
             # SAFETY: never add an identity-property value that conflicts with
             # an existing one on a pre-existing item.
             if item.existing_qid and self._would_create_identity_conflict(wbi_item, stmt):
-                logger.warning(
-                    "SAFETY: Refusing to add %s=%s to %s (existing item has different value — would create conflict)",
-                    stmt.property_id,
-                    stmt.value,
-                    item.existing_qid,
+                failures.append(
+                    f"{stmt.property_id}={stmt.value} identity-conflict on "
+                    f"{item.existing_qid}"
                 )
                 continue
             claim = self._build_claim(stmt)
-            if claim:
-                count_before = len(wbi_item.claims)
-                wbi_item.claims.add(claim, action_if_exists=action)
-                if len(wbi_item.claims) > count_before:
-                    added_properties.append(stmt.property_id)
+            if claim is None:
+                failures.append(f"{stmt.property_id}={stmt.value} build-failed")
+                continue
+            built += 1
+            count_before = len(wbi_item.claims)
+            wbi_item.claims.add(claim, action_if_exists=action)
+            if len(wbi_item.claims) > count_before:
+                added_properties.append(stmt.property_id)
 
-        new_claims = len(added_properties) if item.existing_qid else len(item.statements)
+        if failures:
+            raise ClaimBuildError(failures)
+
+        new_claims = len(added_properties) if item.existing_qid else built
         return wbi_item, new_claims, added_properties
 
     def _claim_exists(self, wbi_item: object, stmt: WikidataStatement) -> bool:
@@ -659,7 +710,6 @@ class WikidataUploader:
             refs.add(ref)
 
         value = stmt.value
-        # Skip local references (unresolved persons)
         if isinstance(value, str) and value.startswith("__LOCAL:"):
             return None
 
@@ -1765,7 +1815,12 @@ class WikidataUploader:
             )
         return filtered, WikiTestAdaptResult(stats=stats, skipped=skipped)
 
-    def upload_item(self, item: WikidataItem) -> UploadResult:
+    def upload_item(
+        self,
+        item: WikidataItem,
+        *,
+        created_qids: dict[str, str] | None = None,
+    ) -> UploadResult:
         """Upload a single item to Wikidata with retry logic and smart diffing.
 
         For existing items: fetches current claims, compares with new claims,
@@ -1779,6 +1834,22 @@ class WikidataUploader:
             UploadResult with QID and status.
         """
         self._check_moratorium_for_live()
+        leftover_local = resolve_local_statement_refs(item, created_qids or {})
+        if leftover_local:
+            shown = "; ".join(leftover_local[:12])
+            extra = (
+                f" (+{len(leftover_local) - 12} more)"
+                if len(leftover_local) > 12
+                else ""
+            )
+            return UploadResult(
+                local_id=item.local_id,
+                status="blocked",
+                message=(
+                    "Refusing write: unresolved __LOCAL: references "
+                    f"(Rule W-191). {shown}{extra}"
+                ),
+            )
         self._init_wbi()
 
         test_adapt_result = None
@@ -1854,8 +1925,28 @@ class WikidataUploader:
             try:
                 wbi_item, new_claims, added_props = self._build_wbi_item(item)
 
-                # Skip write if existing item has no new claims
                 if item.existing_qid and new_claims == 0:
+                    missing = [
+                        f"{s.property_id}={s.value}"
+                        for s in item.statements
+                        if not self._claim_exists(wbi_item, s)
+                    ]
+                    if missing:
+                        shown = "; ".join(missing[:12])
+                        extra = (
+                            f" (+{len(missing) - 12} more)"
+                            if len(missing) > 12
+                            else ""
+                        )
+                        return UploadResult(
+                            local_id=item.local_id,
+                            qid=item.existing_qid,
+                            status="blocked",
+                            message=(
+                                "Refusing exists: the wiki item is missing native "
+                                f"claims (Rule W-191). {shown}{extra}"
+                            ),
+                        )
                     return UploadResult(
                         local_id=item.local_id,
                         qid=item.existing_qid,
@@ -1921,6 +2012,16 @@ class WikidataUploader:
                     status="success",
                     message=f"Created {qid} ({new_claims} claims){skip_note}",
                     added_properties=added_props,
+                )
+            except ClaimBuildError as exc:
+                return UploadResult(
+                    local_id=item.local_id,
+                    qid=item.existing_qid,
+                    status="blocked",
+                    message=(
+                        "Refusing write: native claims could not be built "
+                        f"(Rule W-191). {exc}"
+                    ),
                 )
             except UnauthorisedModificationError as exc:
                 # Rule 38 tripwire — any defense-in-depth guard fired.
@@ -2103,6 +2204,7 @@ class WikidataUploader:
             List of UploadResult instances.
         """
         results: list[UploadResult] = []
+        items = sort_items_for_upload(list(items))
         total = len(items)
         if self._is_test:
             self.warm_test_maps_for_items(items)
@@ -2118,15 +2220,8 @@ class WikidataUploader:
             if entity_cb:
                 entity_cb(item.local_id, "uploading", None, f"Uploading {item.entity_type}...")
 
-            # Resolve __LOCAL: references to QIDs of previously uploaded items
-            for stmt in item.statements:
-                if isinstance(stmt.value, str) and stmt.value.startswith("__LOCAL:"):
-                    local_ref = stmt.value[len("__LOCAL:") :]
-                    resolved_qid = created_qids.get(local_ref)
-                    if resolved_qid:
-                        stmt.value = resolved_qid
-
-            result = self.upload_item(item)
+            resolve_local_statement_refs(item, created_qids)
+            result = self.upload_item(item, created_qids=created_qids)
             results.append(result)
             batch_count += 1
 

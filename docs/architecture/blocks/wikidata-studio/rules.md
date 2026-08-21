@@ -683,3 +683,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     test Q or uniquify the EN description. Regression:
     `test_wikidata_test_wiki_compat.py`.
     *Why:* job fbe9ad8c — 43 leftover blocks (JTS/P1680) and 2 CREATE fails.*
+92. **R92 — Person live-identity is bidirectional leftover-token coverage (Rule W-190).**
+    Keep a person `existing_qid` only when HE and EN cover each other.
+    Clash at upload prepare: foreign/absent → CREATE; own → `blocked`.
+    Regression: `test_wikidata_person_identity_w190.py`.
+    *Why:* catalog people adopted Savoy/Sultan/Ben-Shaul live QIDs.*
+93. **R93 — Writes land every native statement (Rule W-191).**
+    Session `created_qids`, works→persons→manuscripts, refuse unbuilt
+    snaks and unresolved `__LOCAL:`; test `exists` only if claim-complete.
+    Regression: `test_wikidata_upload_claim_complete_w191.py`.
+    *Why:* one-item job loop dropped `__LOCAL:` and thin `exists` rows.*

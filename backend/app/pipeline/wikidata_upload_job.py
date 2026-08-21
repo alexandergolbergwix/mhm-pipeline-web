@@ -111,6 +111,11 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             db, is_test=mode.is_test,
         )
 
+    from converter.wikidata.uploader import sort_items_for_upload  # noqa: PLC0415
+
+    native = sort_items_for_upload(list(native))
+    created_qids: dict[str, str] = {}
+
     total = len(native)
     label = {
         wikidata_upload.UPLOAD_TARGET_DRY_RUN: "Dry-run",
@@ -276,6 +281,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     run_id=run_id,
                     uploader=shared_uploader,
                     existence_cache=existence_cache,
+                    created_qids=created_qids,
                 )
             outcomes.extend(batch_outcomes)
             item_outcome = None

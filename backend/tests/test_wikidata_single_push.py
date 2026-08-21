@@ -47,7 +47,7 @@ async def test_push_single_item_records_audit(db_session, sample_run, monkeypatc
         def _is_our_item(self, qid: str) -> bool:
             return True
 
-        def upload_item(self, item):
+        def upload_item(self, item, **kwargs):
             return _FakeResult(qid="Q1", status="success", message="created")
 
     class _Rec:
