@@ -78,7 +78,10 @@ After remap, leftover snaks whose datatype or
 target still cannot exist on test.wikidata.org **refuse the item**
 (`blocked`) — they are not stripped so a partial CREATE can succeed
 (Rule W-186). Labels still go out only when the full remapped claim set
-is writable (Rules W-182 / W-183 / W-186 / W-187). It optionally filters to
+is writable (Rules W-182 / W-183 / W-186 / W-187). Re-upload `exists`
+compares quantity amounts numerically and repaired Wikibase times (Rule
+W-193) — wiki `+11` vs native `11` is not a missing claim. The job
+optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
 loads per-item foreign accepts from `WikidataItemOverride`, and calls

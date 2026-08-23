@@ -57,6 +57,8 @@ from converter.wikidata.item_builder import (
     _marc_entry_label,
     _normalise_label,
     date_to_wikidata,
+    format_wikidata_time,
+    wikidata_time_year,
     extract_wikidata_qid,
     hmo_wikibase_entity_url,
     hmo_wikibase_page_url,
@@ -426,7 +428,7 @@ class ManuscriptProjectionMixin:
                 qualifiers.append(
                     {
                         "property": P_EARLIEST_DATE,
-                        "value": f"+{earliest_year:04d}-00-00T00:00:00Z",
+                        "value": format_wikidata_time(earliest_year),
                         "type": "time",
                         "precision": PRECISION_YEAR,
                     }
@@ -434,7 +436,7 @@ class ManuscriptProjectionMixin:
                 qualifiers.append(
                     {
                         "property": P_LATEST_DATE,
-                        "value": f"+{latest_year:04d}-00-00T00:00:00Z",
+                        "value": format_wikidata_time(latest_year),
                         "type": "time",
                         "precision": PRECISION_YEAR,
                     }
@@ -474,7 +476,7 @@ class ManuscriptProjectionMixin:
                     and earliest_year <= audited_year <= latest_year
                 )
                 if precision == PRECISION_CENTURY and in_range:
-                    time_value = f"+{audited_year:04d}-00-00T00:00:00Z"
+                    time_value = format_wikidata_time(audited_year)
                     precision = PRECISION_YEAR
                     # The century bounds stay as P1319/P1326 qualifiers: the catalogue
                     # only committed to a century, and that remains true.
@@ -492,15 +494,11 @@ class ManuscriptProjectionMixin:
                 elif precision == PRECISION_YEAR:
                     # Prefer the audited bibliographic year over a century-encoded
                     # midpoint that leaked into ``dates.year`` / ``year_start``.
-                    current = None
-                    try:
-                        current = int(str(time_value).lstrip("+")[:4])
-                    except ValueError:
-                        current = None
+                    current = wikidata_time_year(str(time_value))
                     if current != audited_year and (
                         in_range or earliest_year is None
                     ):
-                        time_value = f"+{audited_year:04d}-00-00T00:00:00Z"
+                        time_value = format_wikidata_time(audited_year)
 
             item.statements.append(
                 WikidataStatement(
@@ -671,7 +669,7 @@ class ManuscriptProjectionMixin:
                         qualifiers=[
                             {
                                 "property": "P585",
-                                "value": f"+{y}-{m}-{d}T00:00:00Z",
+                                "value": format_wikidata_time(int(y), int(m), int(d)),
                                 "type": "time",
                             }
                         ],

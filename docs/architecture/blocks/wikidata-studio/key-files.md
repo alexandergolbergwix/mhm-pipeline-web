@@ -6,7 +6,7 @@
 |---|---|
 | `backend/app/pipeline/wikidata_studio.py` | Glue: DB rows → desktop builder input; fingerprint; override application; item serialisation + label enrichment; `local_id_for_item` |
 | `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188) |
-| `backend/converter/wikidata/property_mapping.py` | `resolve_hmo_bridge_url` / `is_browseable_hmo_wikibase_url` — fail-closed HMO Wikibase link helpers (W-122); known-work / Esther aliases (W-171) |
+| `backend/converter/wikidata/property_mapping.py` | `resolve_hmo_bridge_url` / `is_browseable_hmo_wikibase_url` — fail-closed HMO Wikibase link helpers (W-122); known-work / Esther aliases (W-171); `format_wikidata_time` ±YYYY padding (W-193) |
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow + scholarly catalog notes that must never become P1684 / P1922 (W-72 / W-122 / W-171 / W-172) |
 | `backend/converter/wikidata/isbd_title.py` | ISBD `245` title/subtitle split (Rule W-171) |
 | `backend/converter/wikidata/work_link_specificity.py` | P1574 specificity ladder — megillah vs Bible/Tanakh; RELATED_WORKS alias must not defeat piyyut block (W-171 / W-173) |
@@ -31,7 +31,7 @@
 | `backend/scripts/audit_test_wikidata_upload.py` | Per-entity test.wikidata.org write vs Studio native live-readiness (validator ERROR, claim count, live URI leak, W-190 identity clash) |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | Background build job (`wikidata_studio_build` kind) — `reconcile=False`, threadpool canonical build (W-119) |
 | `backend/app/pipeline/wikidata_upload.py` | `resolve_upload_mode` / `upload_target`, `_prepare_for_upload`, person identity gate (W-190), foreign-accept map, `UploadOutcome` |
-| `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189) |
+| `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); quantity/time exists-match (W-193); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189) |
 | `backend/converter/wikidata/test_wiki_compat.py` | Remap live P/Q to test entities by label+datatype; `(live_pid, value_type)` map keys; conflict-id parse; holder/live gloss; leftover list for W-186 refuse (W-189) |
 | `backend/app/routers/wikidata_studio.py` (`_build_native_items`, `studio_dict_to_native_item`) | Upload natives from Studio cache (W-181); cache-miss rebuild fallback |
 | `backend/app/pipeline/wikidata_existence.py` | Action API `wbgetentities` alive check + labels + ownership classify + QID-bound foreign accept |

@@ -2292,3 +2292,24 @@ links; Wikidata did not.
 
 Tests: `backend/tests/unit/test_wikidata_upload_deferred_links.py`,
 `frontend/tests/unit/wikidataUploadProgressModal.spec.ts`.
+
+### Rule W-193 — Exists-check MUST treat Wikibase quantity amounts and repaired times as equal to natives (added 2026-08-23)
+
+Test job `248a8ecf` wrote 11 CREATE / 162 EXISTS / 60 blocked manuscripts.
+59 were `Refusing exists: missing native claims` (W-191) for folio/height/width
+already on the test item: wiki `+11` / `+95` vs native `11` / `95.0`. WBI MERGE
+added 0 claims; `_claim_exists` used raw string equality. One manuscript
+(Cambridge F 18702, Q248032) failed `_build_claim` on `+-199-00-00T00:00:00Z`
+because `f"+{year:04d}"` concatenates `+` onto a negative year.
+
+**Invariants:**
+
+1. `_claim_exists` compares quantity amounts numerically (`11` = `+11` =
+   `11.0`) and time values after Wikibase ±YYYY padding. `11` vs `+1` still
+   misses.
+2. `format_wikidata_time` emits `+YYYY` / `-YYYY` with abs-year padding.
+   `date_to_wikidata` and manuscript/person date emitters use it.
+   `_build_claim` repairs leftover `+-N` times.
+3. W-191 still blocks when the wiki item is actually thinner.
+
+Tests: `backend/tests/unit/test_wikidata_upload_claim_exists_w193.py`.

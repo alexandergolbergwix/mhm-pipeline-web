@@ -683,7 +683,9 @@ def _parse_time_value(value: Any) -> dict[str, Any] | None:
     full = _FULL_DATE_RE.match(text)
     if full:
         year, month, day = full.groups()
-        return {"time": f"+{int(year):04d}-{month}-{day}T00:00:00Z", "precision": 11}
+        year_i = int(year)
+        sign = "-" if year_i < 0 else "+"
+        return {"time": f"{sign}{abs(year_i):04d}-{month}-{day}T00:00:00Z", "precision": 11}
     year_only = _YEAR_RE.search(text)
     if year_only:
         year = int(year_only.group(1))

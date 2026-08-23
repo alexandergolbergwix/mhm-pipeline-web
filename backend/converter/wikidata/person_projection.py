@@ -28,6 +28,7 @@ from converter.wikidata.item_builder import (
     _strip_person_name_qualifiers,
     _to_natural_name_order,
     extract_viaf_id,
+    format_wikidata_time,
     logger,
     nli_authority_reference,
     nli_reference,
@@ -438,7 +439,7 @@ class PersonProjectionMixin:
             person.statements.append(
                 WikidataStatement(
                     property_id=P_DATE_OF_BIRTH,
-                    value=f"+{int(birth_year):04d}-00-00T00:00:00Z",
+                    value=format_wikidata_time(int(birth_year)),
                     value_type="time",
                     precision=PRECISION_YEAR,
                 )
@@ -447,7 +448,7 @@ class PersonProjectionMixin:
             person.statements.append(
                 WikidataStatement(
                     property_id=P_DATE_OF_DEATH,
-                    value=f"+{int(death_year):04d}-00-00T00:00:00Z",
+                    value=format_wikidata_time(int(death_year)),
                     value_type="time",
                     precision=PRECISION_YEAR,
                 )

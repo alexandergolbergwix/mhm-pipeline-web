@@ -48,7 +48,9 @@
    (search or stub CREATE) so test.wikidata.org can accept the **same**
    WikiProject Manuscripts claim set. Leftover snaks **block** the item
    (Rule W-186) — they are not stripped. Quantity units must remap to a
-   test-local millimetre/leaf/page entity. CREATE conflicts adopt the
+   test-local millimetre/leaf/page entity. Re-upload `exists` matches wiki
+   `+11` to native `11` / `95.0` (Rule W-193); `+-199` times must be
+   repaired, not blocked. CREATE conflicts adopt the
    existing test Q/P (W-187); item-write label conflicts UPDATE our Q or
    uniquify the EN description (W-189). Every live claim Q gets a stub
    (holder table / live English label / `MHM live {qid}`); wrong-datatype

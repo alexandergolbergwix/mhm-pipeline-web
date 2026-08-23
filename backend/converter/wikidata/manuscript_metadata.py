@@ -37,6 +37,7 @@ from converter.wikidata.property_mapping import (
     DISCOURAGED_MANUSCRIPT_P31,
     FRAGMENT_CONDITION_KEYWORDS,
     Q_MANUSCRIPT_FRAGMENT,
+    format_wikidata_time,
     materials_in_text,
 )
 
@@ -573,7 +574,7 @@ class ManuscriptMetadataMixin:
                         y = int(str(year)[:4])
                         qualifiers.append({
                             "property": P_START_TIME,
-                            "value": f"+{y:04d}-00-00T00:00:00Z",
+                            "value": format_wikidata_time(y),
                             "type": "time",
                         })
                     except ValueError:
@@ -620,7 +621,7 @@ class ManuscriptMetadataMixin:
                 date_qualifiers.append(
                     {
                         "property": P_START_TIME,
-                        "value": f"+{year:04d}-00-00T00:00:00Z",
+                        "value": format_wikidata_time(year),
                         "type": "time",
                     }
                 )

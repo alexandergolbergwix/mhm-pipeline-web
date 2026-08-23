@@ -16,10 +16,12 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 from converter.wikidata.item_builder import WikidataItem, WikidataStatement
+from converter.wikidata.property_mapping import repair_wikidata_time
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,46 @@ _WBI_VALUE_TYPE_ALIASES = {
 def _normalize_wbi_value_type(value_type: object) -> str:
     key = str(value_type or "").strip().lower()
     return _WBI_VALUE_TYPE_ALIASES.get(key, key)
+
+
+def quantity_amounts_equal(left: object, right: object) -> bool:
+    """True when Wikibase `+11` and a native `11` / `11.0` are the same amount."""
+    def parse(raw: object) -> Decimal | None:
+        text = str(raw if raw is not None else "").strip().lstrip("+")
+        if not text:
+            return None
+        try:
+            return Decimal(text)
+        except InvalidOperation:
+            return None
+
+    a = parse(left)
+    b = parse(right)
+    if a is None or b is None:
+        return str(left) == str(right)
+    return a == b
+
+
+def time_values_equal(left: object, right: object) -> bool:
+    """True when two Wikibase time strings name the same instant after repair."""
+    a = repair_wikidata_time(str(left or ""))
+    b = repair_wikidata_time(str(right or ""))
+    if a and b and a == b:
+        return True
+    return str(left or "") == str(right or "")
+
+
+def native_value_matches_wiki(stmt: WikidataStatement, wiki_value: str) -> bool:
+    """Compare a native statement to a value extracted from a live WBI claim."""
+    new_value = str(stmt.value)
+    if wiki_value == new_value:
+        return True
+    vtype = _normalize_wbi_value_type(stmt.value_type)
+    if vtype == "quantity":
+        return quantity_amounts_equal(new_value, wiki_value)
+    if vtype == "time":
+        return time_values_equal(new_value, wiki_value)
+    return False
 
 
 @dataclass
@@ -713,11 +755,9 @@ class WikidataUploader:
             if not existing_claims:
                 return False
 
-            new_value = str(stmt.value)
-
             for existing in existing_claims:
                 existing_value = self._extract_claim_value(existing)
-                if existing_value == new_value:
+                if native_value_matches_wiki(stmt, existing_value):
                     return True
         except Exception:
             pass  # If comparison fails, assume claim doesn't exist → add it
@@ -861,7 +901,7 @@ class WikidataUploader:
             if vtype == "time":
                 return datatypes.Time(
                     prop_nr=stmt.property_id,
-                    time=str(value),
+                    time=repair_wikidata_time(str(value)),
                     precision=stmt.precision,
                     references=refs,
                     qualifiers=qualifiers,
@@ -928,7 +968,11 @@ class WikidataUploader:
                 return datatypes.URL(prop_nr=prop, value=value)
             if snak_type == "time":
                 precision = ref_snak.get("precision", 11)
-                return datatypes.Time(prop_nr=prop, time=str(value), precision=int(precision))
+                return datatypes.Time(
+                    prop_nr=prop,
+                    time=repair_wikidata_time(str(value)),
+                    precision=int(precision),
+                )
             return datatypes.String(prop_nr=prop, value=value)
         except Exception as exc:
             logger.warning("Failed to build reference snak %s: %s", prop, exc)

@@ -701,3 +701,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `test_wikidata_upload_deferred_links.py`,
     `wikidataUploadProgressModal.spec.ts`.
     *Why:* works-first order blocked every work on P50 `__LOCAL:`.*
+95. **R95 — Exists-check matches Wikibase quantity amounts and repaired times (Rule W-193).**
+    `11` = `+11` = `11.0`; `format_wikidata_time` / `_build_claim` never
+    emit `+-199`. Regression: `test_wikidata_upload_claim_exists_w193.py`.
+    *Why:* job 248a8ecf blocked 59 manuscripts that already had folios/mm.*

@@ -983,8 +983,9 @@ def _parse_hebrew_century(text: str) -> int | None:
 # Calendar model URIs for Wikidata time values.
 # Fix 2026-04-15 third audit Fix #13: all pre-1583 dates should use the
 # proleptic Julian calendar (Help:Dates). Default was Gregorian for everything.
-GREGORIAN_CALENDAR = "http://www.wikidata.org/entity/Q1985727"
-JULIAN_CALENDAR = "http://www.wikidata.org/entity/Q1985786"
+_WD_ENTITY = "http://www.wikidata.org/entity/"
+GREGORIAN_CALENDAR = f"{_WD_ENTITY}Q1985727"
+JULIAN_CALENDAR = f"{_WD_ENTITY}Q1985786"
 
 
 def _calendar_for_year(year: int | None) -> str:
@@ -996,6 +997,59 @@ def _calendar_for_year(year: int | None) -> str:
     if year is not None and year < 1583:
         return JULIAN_CALENDAR
     return GREGORIAN_CALENDAR
+
+
+_WIKIDATA_TIME_RE = re.compile(
+    r"^([+-])?(\d{1,16})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$"
+)
+
+
+def format_wikidata_time(
+    year: int,
+    month: int = 0,
+    day: int = 0,
+    *,
+    hour: int = 0,
+    minute: int = 0,
+    second: int = 0,
+) -> str:
+    """Wikibase time: ±YYYY-MM-DDThh:mm:ssZ with the year padded to ≥4 digits."""
+    year_i = int(year)
+    sign = "-" if year_i < 0 else "+"
+    return (
+        f"{sign}{abs(year_i):04d}-{int(month):02d}-{int(day):02d}"
+        f"T{int(hour):02d}:{int(minute):02d}:{int(second):02d}Z"
+    )
+
+
+def repair_wikidata_time(raw: str) -> str:
+    """Rewrite `+-199-…` and unpadded years into a Wikibase time string."""
+    text = str(raw or "").strip()
+    if not text:
+        return text
+    if text.startswith("+-"):
+        text = text[1:]
+    match = _WIKIDATA_TIME_RE.match(text)
+    if not match:
+        return str(raw).strip()
+    sign, year, month, day, hour, minute, second = match.groups()
+    year_i = int(year)
+    if sign == "-":
+        year_i = -year_i
+    return format_wikidata_time(
+        year_i, int(month), int(day),
+        hour=int(hour), minute=int(minute), second=int(second),
+    )
+
+
+def wikidata_time_year(raw: str) -> int | None:
+    """Year from a Wikibase time string, or None if it cannot be parsed."""
+    repaired = repair_wikidata_time(raw)
+    match = re.match(r"^([+-])(\d+)-", repaired)
+    if not match:
+        return None
+    year = int(match.group(2))
+    return -year if match.group(1) == "-" else year
 
 
 # DateResult: (ISO time string, precision int, calendarmodel URI,
@@ -1027,8 +1081,8 @@ def date_to_wikidata(dates_dict: dict[str, object]) -> DateResult | None:
         year_int = int(year)
         calendar = _calendar_for_year(year_int)
         if date_format == "FullDate":
-            return f"+{year_int:04d}-01-01T00:00:00Z", PRECISION_YEAR, calendar, None, None
-        return f"+{year_int:04d}-00-00T00:00:00Z", PRECISION_YEAR, calendar, None, None
+            return format_wikidata_time(year_int, 1, 1), PRECISION_YEAR, calendar, None, None
+        return format_wikidata_time(year_int), PRECISION_YEAR, calendar, None, None
 
     # No structured year — try to parse from original string
     original = str(dates_dict.get("original_string", "")).replace('""', '"')
@@ -1046,7 +1100,7 @@ def date_to_wikidata(dates_dict: dict[str, object]) -> DateResult | None:
         start_year = (century - 1) * 100 + 1
         end_year = century * 100
         return (
-            f"+{start_year:04d}-00-00T00:00:00Z",
+            format_wikidata_time(start_year),
             PRECISION_CENTURY,
             _calendar_for_year(start_year),
             start_year,
@@ -1071,7 +1125,7 @@ def date_to_wikidata(dates_dict: dict[str, object]) -> DateResult | None:
             start_year = (earlier - 1) * 100 + 1
             end_year = later * 100
             return (
-                f"+{start_year:04d}-00-00T00:00:00Z",
+                format_wikidata_time(start_year),
                 PRECISION_CENTURY,
                 _calendar_for_year(start_year),
                 start_year,
@@ -1084,7 +1138,7 @@ def date_to_wikidata(dates_dict: dict[str, object]) -> DateResult | None:
         start_year = (heb_century - 1) * 100 + 1
         end_year = heb_century * 100
         return (
-            f"+{start_year:04d}-00-00T00:00:00Z",
+            format_wikidata_time(start_year),
             PRECISION_CENTURY,
             _calendar_for_year(start_year),
             start_year,
@@ -1096,7 +1150,7 @@ def date_to_wikidata(dates_dict: dict[str, object]) -> DateResult | None:
     if year_match:
         year_int = int(year_match.group(1))
         return (
-            f"+{year_int:04d}-00-00T00:00:00Z",
+            format_wikidata_time(year_int),
             PRECISION_YEAR,
             _calendar_for_year(year_int),
             None,
