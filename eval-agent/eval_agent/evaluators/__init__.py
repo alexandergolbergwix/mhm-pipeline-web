@@ -15,6 +15,7 @@ from eval_agent.evaluators.person_ner import PersonNERevaluator
 from eval_agent.evaluators.provenance_ner import ProvenanceNERevaluator
 from eval_agent.evaluators.wikidata_autofix import WikidataAutofixEvaluator
 from eval_agent.evaluators.wikidata_item import WikidataItemEvaluator
+from eval_agent.evaluators.wikidata_test_live_ready import WikidataTestLiveReadyEvaluator
 
 # ``marc500_colophon`` was removed 2026-05-23 after the conf>=0.90
 # eval-agent run showed 76% of its high-confidence predictions failing
@@ -33,6 +34,7 @@ REGISTRY: dict[str, type[Evaluator]] = {
     # Wikidata Studio item projection. Reads wikidata_items.json.
     "wikidata_item": WikidataItemEvaluator,
     "wikidata_autofix": WikidataAutofixEvaluator,
+    "wikidata_test_live_ready": WikidataTestLiveReadyEvaluator,
     # HMO Wikibase Studio schema bootstrap. Reads hmo_wikibase_schema.json.
     "hmo_wikibase_schema": HmoWikibaseSchemaEvaluator,
     "hmo_wikibase_item": HmoWikibaseItemEvaluator,
@@ -43,7 +45,9 @@ REGISTRY: dict[str, type[Evaluator]] = {
 AUTHORITY_EVALUATORS: frozenset[str] = frozenset({"authority"})
 
 # Evaluators that read wikidata_items.json instead of ner_results.json.
-WIKIDATA_ITEM_EVALUATORS: frozenset[str] = frozenset({"wikidata_item", "wikidata_autofix"})
+WIKIDATA_ITEM_EVALUATORS: frozenset[str] = frozenset({
+    "wikidata_item", "wikidata_autofix", "wikidata_test_live_ready",
+})
 
 # Evaluators that read hmo_wikibase_schema.json instead of ner_results.json.
 HMO_WIKIBASE_SCHEMA_EVALUATORS: frozenset[str] = frozenset({"hmo_wikibase_schema"})

@@ -34,6 +34,8 @@ def test_kimi_is_openai_compat_without_agentic() -> None:
     assert spec.supports_agentic is False
     assert spec.base_url is not None
     assert spec.api_key_env == "QUBRID_API_KEY"
+    assert isinstance(spec.extra_body, dict)
+    assert spec.extra_body.get("thinking") == {"type": "disabled"}
 
 
 def test_deepseek_v4_flash_is_openai_compat_without_agentic() -> None:

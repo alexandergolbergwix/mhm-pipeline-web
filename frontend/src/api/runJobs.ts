@@ -40,6 +40,7 @@ export interface RunJobProgress {
   eta_seconds?: number | null;
   elapsed_seconds?: number;
   current_label?: string;
+  upload_target?: string;
   steps?: Array<{
     id?: string;
     label?: string;

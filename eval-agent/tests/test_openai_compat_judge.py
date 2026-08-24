@@ -40,3 +40,29 @@ def test_judge_parses_json_verdict() -> None:
     assert resp.verdict["overall"] == "full"
     assert resp.input_tokens == 10
     assert resp.output_tokens == 20
+
+
+def test_extra_body_thinking_is_json_object() -> None:
+    captured: dict = {}
+
+    def fake_post(payload, *, timeout):  # noqa: ARG001
+        captured.update(payload)
+        return {
+            "choices": [{"message": {"content": '{"overall": "full"}'}}],
+            "usage": {},
+        }
+
+    judge = OpenAICompatJudge(
+        model="moonshotai/Kimi-K2.5",
+        api_key="test-key",
+        base_url="https://platform.qubrid.com/v1",
+        rate_limiter=RateLimiter(60),
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+    with patch.object(judge, "_post", side_effect=fake_post):
+        judge.judge(
+            prompt="decide this",
+            schema={"type": "object"},
+        )
+    assert captured["thinking"] == {"type": "disabled"}
+    assert isinstance(captured["thinking"], dict)

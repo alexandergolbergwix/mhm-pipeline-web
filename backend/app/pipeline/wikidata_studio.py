@@ -314,6 +314,11 @@ def _build_sync(
     local_ref_stats = resolve_local_references(items)
     drop_orphan_significant_person_claims(items)
     drop_redundant_unknown_text_exemplars(items)
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        sanitize_studio_items_for_live,
+    )
+
+    sanitize_studio_items_for_live(items)
 
     # Validate every built item, log issues, and collect them per item so
     # the UI can surface inline validation pills without a second round-trip.

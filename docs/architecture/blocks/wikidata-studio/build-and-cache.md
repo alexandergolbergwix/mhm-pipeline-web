@@ -73,7 +73,12 @@ publishability filtering (Rule W-155). Hard-rejected authority matches cannot
 reintroduce biographical dates or a public person item; broad `P921` values
 and `P195` values without a verified current-holder match are removed. Only
 after that pass does the builder resolve `__LOCAL:` targets, so no surviving
-statement points at a person or work that the public item set omitted. Accepted
+statement points at a person or work that the public item set omitted. Then
+`sanitize_studio_items_for_live` clears false live `existing_qid` stamps
+(W-190 persons; liturgy/concept work QIDs) and rewrites in-corpus `__LOCAL:`
+to any remaining identity-safe live Q (Rule W-194). Judge/audit apply the
+same sanitizer with live `wbgetentities` labels because a stale cache can
+still hold pre-gate QIDs. Accepted
 work evidence carries its source MARC control number for AI verification.
 
 **Canonical rollup (Rule W-117):** only `manuscript` / `person` / `work` become

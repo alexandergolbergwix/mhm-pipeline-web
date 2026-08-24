@@ -16,7 +16,7 @@
 | `backend/app/pipeline/run_job_params.py` | Validates verify job params; resolves tier-1 credentials before spawn |
 | `backend/app/pipeline/judge_models.py` | Reads `eval-agent/config/tier1_models.yaml`; model list + availability |
 | `backend/app/pipeline/ai_verifier.py` | `GEMINI_MODEL` (default tier-1), `unwrap_user_gemini_key`, legacy single-match LLM/heuristic verdict |
-| `eval-agent/config/tier1_models.yaml` | Registry: `gemini-3.5-flash`, `moonshotai/Kimi-K2.5`, `deepseek-ai/DeepSeek-V4-Flash` (Qubrid OpenAI-compat) |
+| `eval-agent/config/tier1_models.yaml` | Registry: `gemini-3.5-flash`, `moonshotai/Kimi-K2.5` (`thinking: {type: disabled}`), `deepseek-ai/DeepSeek-V4-Flash` (Qubrid OpenAI-compat) |
 | `eval-agent/eval_agent/judge_models.py` | Eval-agent-side registry loader |
 | `eval-agent/eval_agent/client/openai_compat_client.py` | `OpenAICompatJudge` — `/chat/completions` + JSON object parsing |
 | `backend/app/routers/ai_verify.py` | Authority channel: `/runs/{id}/ai-verify/*` + `_persist_ai_verdicts_to_matches` |
@@ -33,7 +33,8 @@
 | `backend/app/pipeline/agent_actions.py` | Prefab action registry (authority); siblings: `extraction_actions.py`, `wikidata_actions.py`, `hmo_item_actions.py`, `hmo_schema_actions.py` |
 | `eval-agent/eval_agent/cli.py` | Vendored CLI: `run` subcommand, `--state-dir` monkey-patches session module paths |
 | `eval-agent/eval_agent/orchestration/session.py` | Judging loop; emits `[TRACE] agent.verdict` per candidate for live UI (`_emit_verdict_trace`) |
-| `eval-agent/config/rubrics/*.md` | Per-evaluator judging rubrics (authority, person_ner, contents_ner, provenance_ner, genre_classifier, wikidata_item(+autofix), hmo_wikibase_item(+autofix), hmo_wikibase_schema) |
+| `eval-agent/config/rubrics/*.md` | Per-evaluator judging rubrics (authority, person_ner, contents_ner, provenance_ner, genre_classifier, wikidata_item(+autofix), wikidata_test_live_ready, hmo_wikibase_item(+autofix), hmo_wikibase_schema) |
+| `eval-agent/eval_agent/evaluators/wikidata_test_live_ready.py` | Test-upload live-readiness judge: Studio native + test.wikidata.org snapshot; never copy test Q/P; identifierless skip is not live CREATE (W-195) |
 | `eval-agent/config/skills/wikidata_manuscripts/` | WikiProject Manuscripts skill pack (`skill.json` + `SOURCES.md`) for Studio judges (Rules W-104 / W-124) |
 | `eval-agent/eval_agent/skills/wikidata_manuscripts.py` | Entity/claim-aware skill context builder injected into Wikidata + HMO item prompts |
 | `eval-agent/config/schemas/verdict.v2.json` | Verdict JSON Schema validated by `eval-agent verify` |

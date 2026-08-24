@@ -17,7 +17,7 @@
 | `backend/app/pipeline/verify_job.py` | `ner_verify` / `wikidata_verify` / `hmo_item_verify` worker (shared); `authority_verify` is retired compatibility code |
 | `backend/app/pipeline/rdf_build_job.py` | `rdf_build` worker |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | `wikidata_studio_build` worker |
-| `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker; two-pass deferred links; `steps` / `eta_seconds` for tray View modal (W-141 / W-192) |
+| `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker; two-pass deferred links; `steps` / `eta_seconds` for tray View modal (W-141 / W-192); dry-run/test/live all render `WikidataUploadSteps` |
 | `backend/app/pipeline/hmo_coverage_job.py` | `hmo_coverage` worker |
 | `backend/app/pipeline/hmo_schema_bootstrap_job.py` | `hmo_schema_bootstrap` worker |
 | `backend/app/pipeline/hmo_item_upload_job.py` | `hmo_item_upload` worker |
@@ -28,4 +28,5 @@
 | `frontend/src/hooks/useVerifyJob.ts` | Verify job lifecycle (three live verify kinds; Authority verify is retired): poll/attach, upserts into `useRunJobs` for the global tray, hydrate from `progress.session_snapshot`, and roll back optimistic state when an enqueue request rejects |
 | `frontend/src/utils/fetchVerifySession.ts` | `jobVerifySessionSnapshot`, `fetchVerifySessionWithJobFallback` — multi-dyno session hydration |
 | `frontend/src/utils/waitForRunJob.ts`, `frontend/src/components/jobs/JobProgressInline.tsx` | Await-terminal helper + inline progress widget |
+| `frontend/src/components/jobs/JobTray.tsx` | Global tray; `wikidata_upload` uses `WikidataUploadSteps` for every `upload_target` |
 | `backend/tests/unit/test_run_job_recovery.py` | Pins claiming, heartbeat, maintenance tick, and the create-race contract |

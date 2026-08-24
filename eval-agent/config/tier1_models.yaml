@@ -18,7 +18,8 @@ models:
     base_url: https://platform.qubrid.com/v1
     supports_agentic: false
     extra_body:
-      thinking: false
+      thinking:
+        type: disabled
 
   deepseek-ai/DeepSeek-V4-Flash:
     label: DeepSeek V4 Flash (Qubrid)

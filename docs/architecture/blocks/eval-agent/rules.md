@@ -90,8 +90,9 @@
   credentials. Non-Gemini models force linear judging (`supports_agentic: false`).
   Qubrid OpenAI-compat entries today: `moonshotai/Kimi-K2.5`,
   `deepseek-ai/DeepSeek-V4-Flash` (shared `QUBRID_API_KEY`).
+  Kimi `extra_body.thinking` is `{"type": "disabled"}`, never a boolean.
   *Why:* Qubrid models have no Gemini tool-loop; cache keys already include
-  `judge_model` (R7) (Rule W-46).
+  `judge_model` (R7) (Rule W-46). Qubrid 400s `thinking: false`.
 - **R17 — HMO schema verify prompts MUST include full ontology context.** The
   `hmo_wikibase_schema` evaluator passes `description`, `aliases`, `property_kind`,
   and `range_uri` into the judge prompt; `filter_schema_entries` enriches rows from
@@ -154,3 +155,5 @@
 - **R34 — Verify collected events and fixtures MUST stay compact (Rule W-131).** `verify_job` stores compact `agent.verdict` rows; Wikidata fixtures scope MARC + evaluator fields only; cached verdict events omit full Studio item blobs. *Why:* fat TRACE payloads + full item candidates R14'd mid-verify on Basic.
 - **R35 — MARC slices MUST fall back to raw collapsed tags; evidenced claims are supported (Rule W-137).** `marc_extract.project()` fills any missing slice name from `RAW_TAG_FALLBACK` (`008`, `300$a`, `540$a`, `852$j`, …) — a byte-mirror of the backend map — and the `wikidata_item` prompt/rubric receive `verify_evidence.claim_sources` (PID → source-field text) plus `value_labels`. A PID listed with evidence must not be reported as unsourced; a sparse catalog record is not a defect. *Why:* collapsed-key runs showed the judge four MARC keys, so P571/P1104/P217/P6216 read as unsupported on every manuscript.
 - **R36 — Claim provenance is channel-aware; absent claims are not defects (Rule W-138).** `verify_evidence.claim_sources[PID].channels` names the channel behind each claim (`marc.<slice>`, `authority.*`, `hmo_wikibase`, `work_candidate_evidence`) or marks it `structural` (P31/P3959). The rubric forbids reporting a channel-backed or structural claim as unsourced, requires identifier-backed authority rows before accepting person dates, and treats `P1574 → Q234460` + `P1932` as correct modelling for an unidentified text. *Why:* 246 items carried a P2888 and 122 a P214 with no provenance row, so nearly every person read as unsupported.
+- **R37 — Test-wiki live-ready judging MUST NOT fail in-batch `__LOCAL:` or copy test ids (Rule W-194).** `wikidata_test_live_ready` treats remapped test P/Q numbers as expected and in-corpus `__LOCAL:` CREATE leftovers as W-192 pass 2. The CLI judge `judge_test_wikidata_live_ready` defaults to `deepseek-ai/DeepSeek-V4-Flash` and sanitizes natives before scoring. *Why:* Kimi scored remap + in-batch `__LOCAL:` as not live-ready while the cache still held W-190 clashes.
+- **R38 — Live-ready MUST skip clash-cleared identifierless persons, not score them as CREATE (Rule W-195).** Audit sets `skip_for_live` for identifierless persons; `merge_live_ready` gates `skipped_for_live` and drops them from the written denominator. Identifierless CREATE remains a live fail if it were still a write candidate. Never copy test Q/P. *Why:* clash-cleared Savoy/Sultan/Kostlitz/Shor were still counted as live CREATE.

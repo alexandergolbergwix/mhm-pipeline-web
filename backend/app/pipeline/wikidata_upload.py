@@ -38,7 +38,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi.concurrency import run_in_threadpool
@@ -143,6 +143,7 @@ class UploadOutcome:
     status: str
     message: str
     added_properties: list[str]
+    ownership: str = ""
 
 
 @dataclass
@@ -190,6 +191,46 @@ class PreparedItem:
     adopt_candidate: bool = False
     ownership: str = "absent"  # own | foreign | unknown | absent
     allow_foreign_modify: bool = False
+
+
+PASS2_CREATE_STATUSES = frozenset({"created", "would_create", "success"})
+PASS2_OWN_UPDATE_STATUSES = frozenset({
+    "updated", "would_update", "adopted", "would_adopt", "exists",
+})
+
+
+def pass2_may_update_source(outcome: UploadOutcome | None) -> bool:
+    """Pass 2 MERGE UPDATE is allowed only on items we created or already own."""
+    if outcome is None:
+        return False
+    if outcome.status in PASS2_CREATE_STATUSES:
+        return True
+    if (
+        outcome.status in PASS2_OWN_UPDATE_STATUSES
+        and outcome.ownership == "own"
+    ):
+        return True
+    return False
+
+
+def _skip_if_person_unpublishable(prepared: PreparedItem) -> PreparedItem:
+    """After a clash strip, omit identifierless persons instead of CREATE (W-154)."""
+    if str(prepared.entity_type or "").lower() != "person":
+        return prepared
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        _UPLOAD_SKIP_MESSAGE,
+    )
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        person_has_publishable_identity,
+    )
+
+    if person_has_publishable_identity(prepared.item):
+        return prepared
+    prepared.blocked = False
+    prepared.block_status = "skipped"
+    prepared.block_message = _UPLOAD_SKIP_MESSAGE
+    prepared.method = f"{prepared.method}+skipped_unpublishable"
+    return prepared
 
 
 def _clear_qid_for_create(prepared: PreparedItem, *, suffix: str) -> PreparedItem:
@@ -258,7 +299,160 @@ def _apply_person_identity_gate(
             "QID before CREATE (Rule W-190)."
         )
         return prepared
-    return _clear_qid_for_create(prepared, suffix="cleared_identity_clash")
+    from app.pipeline.wikidata_live_native_hygiene import strip_identity_pids
+
+    strip_identity_pids(prepared.item)
+    prepared = _clear_qid_for_create(prepared, suffix="cleared_identity_clash")
+    return _skip_if_person_unpublishable(prepared)
+
+
+def _item_has_identity_pid(item: Any) -> bool:
+    from app.pipeline.wikidata_live_native_hygiene import item_has_identity_pid  # noqa: PLC0415
+
+    return item_has_identity_pid(item)
+
+
+def _match_needs_duplicate_confirm(prepared: PreparedItem) -> bool:
+    if not prepared.existing_qid:
+        return False
+    et = str(prepared.entity_type or "").lower()
+    if et not in {"person", "work"}:
+        return False
+    method = str(prepared.method or "").lower()
+    if "identifier" in method:
+        return False
+    return not _item_has_identity_pid(prepared.item)
+
+
+def _skip_uncertain_duplicate(prepared: PreparedItem, *, reason: str) -> PreparedItem:
+    prepared.blocked = False
+    prepared.block_status = "skipped"
+    prepared.block_message = (
+        f"Uncertain live duplicate ({reason}); refusing CREATE/UPDATE "
+        "(Rule W-195)."
+    )
+    prepared.method = f"{prepared.method}+skipped_uncertain_duplicate"
+    prepared.existing_qid = None
+    try:
+        prepared.item.existing_qid = None
+    except Exception:  # noqa: BLE001
+        pass
+    prepared.ownership = "absent"
+    prepared.adopt_candidate = False
+    return prepared
+
+
+def _apply_uncertain_duplicate_confirm(
+    prepared: PreparedItem, *, is_test: bool,
+) -> PreparedItem:
+    from app.pipeline.wikidata_duplicate_confirm import (  # noqa: PLC0415
+        DIFFERENT_ITEM,
+        SAME_ITEM,
+        confirm_uncertain_duplicate,
+    )
+    from app.pipeline.wikidata_existence import fetch_entity_labels  # noqa: PLC0415
+
+    qid = str(prepared.existing_qid or "").strip()
+    labels = fetch_entity_labels([qid], is_test=is_test).get(qid) or {}
+    has_id = _item_has_identity_pid(prepared.item)
+    verdict = confirm_uncertain_duplicate(
+        local_id=prepared.local_id,
+        entity_type=prepared.entity_type,
+        heading=prepared.label,
+        candidate_qid=qid,
+        method=prepared.method,
+        has_trusted_identifier=has_id,
+        live_en=str(labels.get("en") or ""),
+        live_he=str(labels.get("he") or ""),
+    )
+    if verdict == SAME_ITEM:
+        if not has_id and "identifier" not in str(prepared.method or "").lower():
+            return _skip_uncertain_duplicate(
+                prepared, reason="same_item without shared identifier",
+            )
+        prepared.method = f"{prepared.method}+confirmed_same"
+        return prepared
+    if verdict == DIFFERENT_ITEM:
+        prepared = _clear_qid_for_create(prepared, suffix="confirmed_different")
+        return _skip_if_person_unpublishable(prepared)
+    return _skip_uncertain_duplicate(prepared, reason=f"verdict={verdict}")
+
+
+def rewrite_author_link_to_name_string(stmt: Any, name: str) -> Any:
+    """Turn a deferred P50 `__LOCAL:` author into a P2093 name string."""
+    from converter.wikidata.item_models import WikidataStatement  # noqa: PLC0415
+    from converter.wikidata.property_mapping import P_AUTHOR_NAME_STRING  # noqa: PLC0415
+
+    if isinstance(stmt, WikidataStatement):
+        return replace(
+            stmt,
+            property_id=P_AUTHOR_NAME_STRING,
+            value=name,
+            value_type="string",
+        )
+    try:
+        return replace(
+            stmt,
+            property_id=P_AUTHOR_NAME_STRING,
+            value=name,
+            value_type="string",
+        )
+    except TypeError:
+        return WikidataStatement(
+            property_id=P_AUTHOR_NAME_STRING,
+            value=name,
+            value_type="string",
+        )
+
+
+def _rollup_skipped_person_refs(prepared: list[PreparedItem]) -> None:
+    skipped = {
+        p.local_id: (p.label or "").strip()
+        for p in prepared
+        if str(p.entity_type or "").lower() == "person"
+        and p.block_status == "skipped"
+        and not p.blocked
+        and p.local_id
+    }
+    if not skipped:
+        return
+    for p in prepared:
+        if p.local_id in skipped:
+            continue
+        item = p.item
+        stmts = list(getattr(item, "statements", None) or [])
+        if not stmts:
+            continue
+        kept: list[Any] = []
+        changed = False
+        for stmt in stmts:
+            pid = str(
+                getattr(stmt, "property_id", "")
+                or getattr(stmt, "property", "")
+                or ""
+            )
+            value = str(getattr(stmt, "value", "") or "")
+            if pid != "P50" or not value.startswith("__LOCAL:"):
+                kept.append(stmt)
+                continue
+            local_id = value.removeprefix("__LOCAL:")
+            name = skipped.get(local_id, "").strip()
+            if not name:
+                kept.append(stmt)
+                continue
+            kept.append(rewrite_author_link_to_name_string(stmt, name))
+            changed = True
+        if changed:
+            item.statements = kept
+
+
+def _apply_work_identity_gate(prepared: PreparedItem, *, qid: str) -> PreparedItem:
+    """Refuse UPDATE of a liturgy/concept QID that is not this catalog work (W-194)."""
+    from converter.wikidata.property_mapping import work_item_forbidden_update_qids
+
+    if qid not in work_item_forbidden_update_qids():
+        return prepared
+    return _clear_qid_for_create(prepared, suffix="cleared_work_identity_clash")
 
 
 def _apply_existence_and_ownership(
@@ -341,6 +535,19 @@ def _apply_existence_and_ownership(
             ownership_checker=ownership_checker,
         )
         if prepared.blocked or not prepared.existing_qid:
+            return prepared
+    if str(prepared.entity_type or "").lower() == "work":
+        prepared = _apply_work_identity_gate(prepared, qid=clean_qid)
+        if prepared.blocked or not prepared.existing_qid:
+            return prepared
+
+    if _match_needs_duplicate_confirm(prepared):
+        prepared = _apply_uncertain_duplicate_confirm(prepared, is_test=is_test)
+        if (
+            prepared.blocked
+            or prepared.block_status == "skipped"
+            or not prepared.existing_qid
+        ):
             return prepared
 
     acc = accept or ForeignAccept()
@@ -450,13 +657,13 @@ def _reconcile_for_upload(
     if entity_type == "work":
         labels = getattr(item, "labels", {}) or {}
         title = labels.get("he") or labels.get("en") or ""
-        author_qid = _find_statement_value(item, "P50")
+        p50 = _find_statement_value(item, "P50")
         if title:
             has_hebrew = any("\u0590" <= c <= "\u05ff" for c in str(title))
             qid = reconciler.reconcile_work_by_label_and_author(
                 str(title),
                 lang="he" if has_hebrew else "en",
-                author_qid=str(author_qid) if author_qid else None,
+                author_qid=str(p50) if p50 else None,
             )
             return (qid, "label+author" if qid else "none")
         return (None, "none")
@@ -590,6 +797,7 @@ def _prepare_for_upload(
                 existence_cache=existence_cache,
             )
         prepared.append(row)
+    _rollup_skipped_person_refs(prepared)
     return prepared
 
 
@@ -912,6 +1120,7 @@ def _upload_sync(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
                 qid=p.existing_qid, status="skipped",
                 message=p.block_message, added_properties=[],
+                ownership=p.ownership,
             ))
             continue
         if p.blocked:
@@ -919,6 +1128,7 @@ def _upload_sync(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
                 qid=p.existing_qid, status=p.block_status or "blocked",
                 message=p.block_message, added_properties=[],
+                ownership=p.ownership,
             ))
             continue
         try:
@@ -948,6 +1158,7 @@ def _upload_sync(
                     local_id=p.local_id, label=p.label, entity_type=p.entity_type,
                     qid=result.qid, status=status, message=result.message,
                     added_properties=list(result.added_properties or []),
+                    ownership=p.ownership,
                 ),
             )
             if status == "failed" and _is_auth_failure_message(result.message):
@@ -960,6 +1171,7 @@ def _upload_sync(
                     message=f"Rule-38 guard fired ({exc.stage}): refusing to "
                             f"modify {exc.qid} (not authored by us)",
                     added_properties=[],
+                    ownership="foreign",
                 ),
             )
         except Exception as exc:  # noqa: BLE001
@@ -969,6 +1181,7 @@ def _upload_sync(
                     local_id=p.local_id, label=p.label, entity_type=p.entity_type,
                     qid=p.existing_qid,
                     status="failed", message=str(exc), added_properties=[],
+                    ownership=p.ownership,
                 ),
             )
             if _is_auth_failure_message(str(exc)):
@@ -1051,6 +1264,7 @@ def _dry_run(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
                 qid=p.existing_qid, status="skipped",
                 message=p.block_message, added_properties=[],
+                ownership=p.ownership,
             ))
             continue
         if p.blocked:
@@ -1059,6 +1273,7 @@ def _dry_run(
                 qid=p.existing_qid, status=p.block_status or "blocked",
                 message=f"Dry-run: would be {p.block_status or 'BLOCKED'} — {p.block_message}",
                 added_properties=[],
+                ownership=p.ownership,
             ))
             continue
         if p.ownership == "own" and p.existing_qid:
@@ -1101,6 +1316,7 @@ def _dry_run(
                     getattr(s, "property", None) or getattr(s, "property_id", None) or ""
                     for s in stmts
                 ],
+                ownership=p.ownership,
             ),
         )
     return out

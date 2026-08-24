@@ -85,7 +85,14 @@ optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
 loads per-item foreign accepts from `WikidataItemOverride`, and calls
-`wikidata_upload.upload_items`. The curator picks `upload_target` in the UI
+`wikidata_upload.upload_items`. Live prepare (Rule W-195): after a W-190
+heading clash, identity PIDs are stripped and the QID cleared; an
+identifierless person is **skipped**, not CREATE. Uncertain remaining QIDs
+(no identity PID, method not identifier) are confirmed with DeepSeek
+fail-closed; heading clash never reaches the LLM. Pass 2 MERGE UPDATE only
+onto QIDs we created or own; leftover P50 to a skipped person becomes P2093
+on our work. Never UPDATE Savoy Q209579 / Sultan / Kostlitz / Tikkun
+Q2740944 / Shor Q6580025. The curator picks `upload_target` in the UI
 (`dry_run` default | `test` | `live`). Live mode without `upload_target=live`
 (and without legacy `MORATORIUM_LIFTED=true`) returns every item as `skipped`;
 the uploader independently re-enforces via `allow_live` / env

@@ -1638,17 +1638,30 @@ def _candidate_label_conflicts(item: Any, existence: dict[str, Any], qid: str) -
 def person_heading_conflicts_live_label(
     item: Any, *, live_en: str = "", live_he: str = "",
 ) -> bool:
-    """True when a live item's labels clash with this Studio person (W-190)."""
+    """True when a live item's labels clash with this Studio person (W-190).
+
+    English and Hebrew are checked independently. A Latin gloss that shares
+    a given name/surname must not hide a Hebrew heading clash (W-194).
+    """
     if _item_entity_type(item) != "person":
         return False
-    candidate = str(live_en or live_he or "").strip()
-    if not candidate:
+    en = str(live_en or "").strip()
+    he = str(live_he or "").strip()
+    if not en and not he:
         return True
-    return _candidate_label_conflicts(
+    if en and _candidate_label_conflicts(
         item,
-        {"candidates": [{"qid": "_live", "label": candidate}]},
-        "_live",
-    )
+        {"candidates": [{"qid": "_live_en", "label": en}]},
+        "_live_en",
+    ):
+        return True
+    if he and _candidate_label_conflicts(
+        item,
+        {"candidates": [{"qid": "_live_he", "label": he}]},
+        "_live_he",
+    ):
+        return True
+    return False
 
 
 def _strip_probe_matched_identifiers(item: Any, existence: dict[str, Any], qid: str) -> str:

@@ -7,6 +7,7 @@ import {
   type RunJobSnapshot,
 } from "@/api/runJobs";
 import {Glass, GlassPill} from "@/components/glass";
+import {WikidataUploadSteps} from "@/components/wikidata/WikidataUploadSteps";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import {formatJobEtaShort} from "@/utils/formatJobEta";
 
@@ -90,21 +91,27 @@ export function JobTray() {
                 {job.status}
               </GlassPill>
             </div>
-            {total > 0 && (
-              <div className="h-1.5 rounded-full bg-black/10 overflow-hidden" aria-hidden>
-                <div
-                  className="h-full bg-[var(--accent)] transition-all duration-300"
-                  style={{width: `${pct}%`}}
-                />
-              </div>
-            )}
-            {subTotal > 0 && (
-              <div className="h-1 rounded-full bg-black/10 overflow-hidden" aria-hidden>
-                <div
-                  className="h-full bg-[var(--accent)]/70 transition-all duration-300"
-                  style={{width: `${Math.max(2, subPct)}%`}}
-                />
-              </div>
+            {job.kind === "wikidata_upload" ? (
+              <WikidataUploadSteps progress={job.progress ?? {}} />
+            ) : (
+              <>
+                {total > 0 && (
+                  <div className="h-1.5 rounded-full bg-black/10 overflow-hidden" aria-hidden>
+                    <div
+                      className="h-full bg-[var(--accent)] transition-all duration-300"
+                      style={{width: `${pct}%`}}
+                    />
+                  </div>
+                )}
+                {subTotal > 0 && (
+                  <div className="h-1 rounded-full bg-black/10 overflow-hidden" aria-hidden>
+                    <div
+                      className="h-full bg-[var(--accent)]/70 transition-all duration-300"
+                      style={{width: `${Math.max(2, subPct)}%`}}
+                    />
+                  </div>
+                )}
+              </>
             )}
             <div className="flex items-center gap-2 justify-end">
               <Link to={jobRunHref(job)} className="button-ghost text-xs !py-1">

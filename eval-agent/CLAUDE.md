@@ -128,8 +128,11 @@ evaluator that consumes `authority_enriched.json` rather than
 now accepts **`authority_enriched.json`** as an alternative to
 `ner_results.json` when locating a pipeline run on disk.
 
-Also registered: **`wikidata_item`** / **`wikidata_autofix`** (Wikidata
-Studio, read `wikidata_items.json`) and **`hmo_wikibase_schema`** (HMO
+Also registered: **`wikidata_item`** / **`wikidata_autofix`** /
+**`wikidata_test_live_ready`** (Wikidata Studio, read `wikidata_items.json`;
+the live-ready evaluator adds a test.wikidata.org snapshot and must never
+recommend copying test Q/P ids; clash-cleared identifierless persons are
+`skip_for_live`, not live CREATE) and **`hmo_wikibase_schema`** (HMO
 Wikibase Studio's schema bootstrap, reads `hmo_wikibase_schema.json` —
 one entry per ontology class/property the bootstrap created or would
 create; entries have no MARC correlation, so `marc_record` is always

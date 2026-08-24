@@ -317,4 +317,133 @@ test.describe("Wikidata upload panel", () => {
     expect(params.upload_target).toBe("test");
     expect(params.dry_run).toBe(false);
   });
+
+  test("live upload shows the same two-step progress UI as test", async ({page}) => {
+    const twoStepProgress = {
+      phase: "uploading",
+      processed: 1,
+      total: 2,
+      unit: "steps",
+      message: "Writing items",
+      upload_target: "live",
+      sub_processed: 3,
+      sub_total: 10,
+      sub_unit: "items",
+      current_label: "work · MS Alpha",
+      elapsed_seconds: 12,
+      eta_seconds: 240,
+      steps: [
+        {
+          id: "write_items",
+          label: "Step 1 — Write items",
+          status: "running",
+          processed: 3,
+          total: 10,
+          unit: "items",
+          eta_seconds: 240,
+          current_label: "work · MS Alpha",
+        },
+        {
+          id: "add_connections",
+          label: "Step 2 — Add connections",
+          status: "pending",
+          processed: 0,
+          total: 4,
+          unit: "links",
+          eta_seconds: null,
+          current_label: "Waiting for step 1",
+        },
+      ],
+    };
+    const runningJob = {
+      id: "job-wd-upload-live-progress",
+      project_id: TEST_PROJECT_ID,
+      run_id: TEST_RUN_ID,
+      kind: "wikidata_upload",
+      status: "running",
+      progress: twoStepProgress,
+      params: {upload_target: "live", dry_run: false},
+      result: null,
+      error: null,
+      created_by: null,
+      started_at: null,
+      finished_at: null,
+      cancel_requested_at: null,
+      created_at: null,
+      updated_at: null,
+    };
+
+    await page.addInitScript(() => {
+      window.confirm = () => true;
+    });
+
+    let jobBody: Record<string, unknown> | null = null;
+    const runningPayload = () => ({
+      ...runningJob,
+      params: jobBody ?? runningJob.params,
+    });
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs**`, async (route) => {
+      const url = route.request().url();
+      if (url.includes("job-wd-upload-live-progress")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(runningPayload()),
+        });
+        return;
+      }
+      if (route.request().method() === "POST") {
+        jobBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({...runningJob, params: jobBody}),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({jobs: jobBody ? [runningPayload()] : []}),
+      });
+    });
+    await page.route(
+      `**/api/runs/${TEST_RUN_ID}/jobs/job-wd-upload-live-progress`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(runningPayload()),
+        });
+      },
+    );
+    await page.route("**/api/jobs/mine**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({jobs: jobBody ? [runningPayload()] : []}),
+      });
+    });
+
+    await gotoModernStudio(page);
+    await page.getByTestId("wikidata-upload-target-live").check();
+    await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("LIVE");
+    await page.getByTestId("wikidata-upload-submit").click();
+
+    await expect.poll(() => jobBody).not.toBeNull();
+    const params = jobBody?.params as Record<string, unknown>;
+    expect(params.upload_target).toBe("live");
+
+    const modal = page.getByTestId("wikidata-upload-progress-modal");
+    await expect(modal).toBeVisible({timeout: 10_000});
+    await expect(page.getByTestId("wikidata-upload-progress-target-pill")).toContainText("Live");
+    await expect(modal.getByTestId("wikidata-upload-steps")).toBeVisible();
+    await expect(modal.getByText("Step 1 — Write items")).toBeVisible();
+    await expect(modal.getByText("Step 2 — Add connections")).toBeVisible();
+    await expect(modal.getByText("MS Alpha")).toBeVisible();
+
+    const tray = page.getByTestId("job-tray");
+    await expect(tray.getByText("Step 1 — Write items")).toBeVisible();
+    await expect(tray.getByText("Step 2 — Add connections")).toBeVisible();
+  });
 });

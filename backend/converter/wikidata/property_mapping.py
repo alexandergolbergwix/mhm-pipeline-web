@@ -497,6 +497,30 @@ def known_work_qid_for_title(title: str) -> str | None:
         return KNOWN_WORK_TITLE_ALIASES["פירוש המשנה לרמבם"]
     return None
 
+
+# Liturgy / ritual concepts that manuscripts may exemplify (P1574) but that
+# must not be the UPDATE target of a catalog work *item*.
+WORK_ITEM_FORBIDDEN_UPDATE_QIDS = frozenset({
+    "Q2740944",  # Tikkun Chatzot — Jewish midnight liturgy, not a catalog work
+})
+
+
+def work_item_forbidden_update_qids() -> frozenset[str]:
+    return WORK_ITEM_FORBIDDEN_UPDATE_QIDS
+
+
+def work_item_existing_qid_for_title(title: str) -> str | None:
+    """Known-work QID usable as a work-item ``existing_qid`` (UPDATE).
+
+    Manuscript P1574 still uses ``known_work_qid_for_title`` so a codex can
+    exemplify Tikkun Chatzot. The work *item* for that catalog heading must
+    CREATE rather than UPDATE the ritual concept (Rule W-194).
+    """
+    qid = known_work_qid_for_title(title)
+    if qid in WORK_ITEM_FORBIDDEN_UPDATE_QIDS:
+        return None
+    return qid
+
 # Bible books → Wikidata QIDs (for P921 main subject from canonical_references)
 #
 # CORRECTED 2026-08-05. Ten of the thirteen QIDs here were wrong, and they were

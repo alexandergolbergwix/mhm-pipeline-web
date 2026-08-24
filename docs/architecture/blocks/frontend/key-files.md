@@ -16,7 +16,7 @@
 | `frontend/src/hooks/useApprovalStore.ts` | Polling entity store for AI Extraction (fast/slow poll + ETag + `mhm.entities.refreshed` listener) |
 | `frontend/src/hooks/useRunJobAttachment.ts` | Attach a page to an in-flight background job (attach-on-mount, fingerprint-guarded sync) |
 | `frontend/src/components/jobs/JobProgressInline.tsx` | Outer + nested progress bars for build/verify/upload jobs (Rules W-106 / W-113) |
-| `frontend/src/components/jobs/JobTray.tsx` | Global tray; shows nested sub-bar when `sub_total > 0` (Rule W-113) |
+| `frontend/src/components/jobs/JobTray.tsx` | Global tray; nested sub-bar when `sub_total > 0` (W-113); `wikidata_upload` uses `WikidataUploadSteps` for every target |
 | `frontend/src/hooks/useVerifyJob.ts` | Verify-job lifecycle: attach/poll/session hydration, global-tray upsert, rollback on enqueue reject, and Continue from resumable interrupt (W-130) |
 | `frontend/src/utils/verifyResume.ts` | `resumeOfferFromJob` / Continue button label (Rule W-130) |
 | `frontend/src/api/judgeModels.ts` | `GET /api/judge-models` — tier-1 judge list for verify modals |

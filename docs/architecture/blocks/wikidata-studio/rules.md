@@ -685,7 +685,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     *Why:* job fbe9ad8c — 43 leftover blocks (JTS/P1680) and 2 CREATE fails.*
 92. **R92 — Person live-identity is bidirectional leftover-token coverage (Rule W-190).**
     Keep a person `existing_qid` only when HE and EN cover each other.
-    Clash at upload prepare: foreign/absent → CREATE; own → `blocked`.
+    Clash at upload prepare: own → `blocked`; foreign/absent identity
+    PIDs are stripped and the QID cleared — then **skip** if the person
+    is still identifierless (W-195), never CREATE.
     Regression: `test_wikidata_person_identity_w190.py`.
     *Why:* catalog people adopted Savoy/Sultan/Ben-Shaul live QIDs.*
 93. **R93 — Writes land every native statement (Rule W-191).**
@@ -705,3 +707,35 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `11` = `+11` = `11.0`; `format_wikidata_time` / `_build_claim` never
     emit `+-199`. Regression: `test_wikidata_upload_claim_exists_w193.py`.
     *Why:* job 248a8ecf blocked 59 manuscripts that already had folios/mm.*
+96. **R96 — Live natives must be identity-safe and `__LOCAL:`-resolved before judge/upload (Rule W-194).**
+    `sanitize_studio_items_for_live` runs at Studio build and again in
+    `audit_test_wikidata_upload` / `judge_test_wikidata_live_ready` with live
+    labels. Person clashes (W-190) and forbidden work UPDATE QIDs (Tikkun
+    Chatzot Q2740944) clear `existing_qid`. In-corpus `__LOCAL:` rewrites to
+    the target's remaining live Q; dangling P1574 degrades to Q234460;
+    in-batch CREATE leftovers stay for W-192. The live-ready rubric must not
+    fail those leftovers, and the CLI judge defaults to
+    `deepseek-ai/DeepSeek-V4-Flash`. Regression:
+    `test_wikidata_live_native_hygiene.py`.
+    *Why:* cache still stamped Savoy/Sultan/Kostlitz/Tikkun/Shor live QIDs;
+    Kimi scored in-batch `__LOCAL:` as not live-ready.*
+97. **R97 — Clash-cleared identifierless persons skip live writes; uncertain duplicates confirm fail-closed; pass 2 UPDATE is own-only (Rule W-195).**
+    After a W-190 strip, identifierless persons are `skipped` (W-154 / W-185),
+    not CREATE. DeepSeek confirms only non-identifier matches that survived
+    identity gates; clash never reaches the LLM; unsure / fail / `same_item`
+    without a shared id skip. Pass 2 MERGE UPDATE only created/own QIDs;
+    leftover P50 to a skipped person becomes P2093 on our work. Live-ready
+    `skip_for_live` drops them from the written denominator. Never copy test
+    Q/P; never UPDATE Savoy Q209579 / Sultan / Kostlitz / Tikkun Q2740944 /
+    Shor Q6580025. Regression: `test_wikidata_duplicate_confirm.py`,
+    `test_wikidata_person_identity_w190.py`,
+    `test_judge_test_wikidata_live_ready.py`.
+    *Why:* live-ready still treated clash-cleared name-only people as CREATE
+    and pass 2 could MERGE onto foreign live QIDs.*
+98. **R98 — Live, test, and dry-run upload progress share one two-step widget.**
+    `WikidataUploadSteps` (Step 1 Write items / Step 2 Add connections, Now,
+    ETA) MUST render in the progress modal, the upload panel, and the job
+    tray for every `upload_target`, including live. Title and badge still
+    follow frontend R19 (do not invent live). *Why:* live www.wikidata.org
+    writes showed only the generic `JobProgressInline` bar while
+    test.wikidata.org opened the two-step Now/ETA UI.

@@ -525,6 +525,10 @@ def test_known_work_title_aliases_are_exact_and_not_fuzzy() -> None:
     assert known_work_qid_for_title("Passover Haggadah") == "Q623354"
     assert known_work_qid_for_title("תיקון חצות") == "Q2740944"
     assert known_work_qid_for_title("Tikkun Chatzot") == "Q2740944"
+    from converter.wikidata.property_mapping import work_item_existing_qid_for_title
+
+    assert work_item_existing_qid_for_title("תיקון חצות") is None
+    assert work_item_existing_qid_for_title("Tikkun Chatzot") is None
 
 
 @pytest.mark.asyncio

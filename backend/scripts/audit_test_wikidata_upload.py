@@ -323,6 +323,7 @@ def audit_one(
     validator_warnings: list[str] = []
     native_stmt_n = 0
     local_refs: list[str] = []
+    skip_for_live = False
     if native is not None:
         native_stmt_n = len(native.statements or [])
         issues = validate_item(native)
@@ -336,7 +337,13 @@ def audit_one(
         if local_refs and status in WRITTEN:
             warnings.append("studio_cache_has__LOCAL")
         et = str(native.entity_type or "")
-        if et == "person" and status in WRITTEN and not native_identifier_pids(native):
+        skip_for_live = et == "person" and not native_identifier_pids(native)
+        if (
+            not skip_for_live
+            and et == "person"
+            and status in WRITTEN
+            and not native_identifier_pids(native)
+        ):
             blockers.append("person_no_identifier")
         if et == "person" and native.existing_qid:
             from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
@@ -396,7 +403,8 @@ def audit_one(
         "unresolved_local_refs": local_refs,
         "blockers": blockers,
         "warnings": warnings,
-        "ready_for_live": ready and status in WRITTEN,
+        "skip_for_live": skip_for_live,
+        "ready_for_live": ready and status in WRITTEN and not skip_for_live,
         "test_url": (
             f"https://test.wikidata.org/wiki/{test_qid}" if test_qid else None
         ),
@@ -471,11 +479,17 @@ def main() -> int:
         if str(o.get("status") or "").lower() in WRITTEN
     ]
     test_entities = fetch_entities(_TEST_API, test_qids)
-    live_qids = [
-        str((studio_by_id.get(str(o.get("local_id") or "")) or {}).get("existing_qid") or "").strip()
-        for o in outcomes
-    ]
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        existing_qid_of,
+        sanitize_studio_items_for_live,
+    )
+
+    live_qids = [existing_qid_of(item) for item in studio_by_id.values()]
     live_entities = fetch_entities(_LIVE_API, [q for q in live_qids if q])
+    hygiene = sanitize_studio_items_for_live(
+        list(studio_by_id.values()), live_entities=live_entities,
+    )
+    print(f"[hygiene] {hygiene}", file=sys.stderr)
 
     rows = []
     for o in outcomes:

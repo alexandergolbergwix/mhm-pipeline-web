@@ -12,8 +12,8 @@ import {WikidataVerify, type AgentEvent} from "@/api/wikidataVerify";
 import {AgentFlowDiagram, makeInitialFlowState, type FlowState} from "@/components/AgentFlowDiagram";
 import {VerdictsTable} from "@/components/VerdictsTable";
 import {Glass, GlassPill} from "@/components/glass";
-import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
+import {WikidataUploadSteps} from "@/components/wikidata/WikidataUploadSteps";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
@@ -473,15 +473,26 @@ export function WikidataUploadPanel({
       )}
 
       {liveJob && (
-        <JobProgressInline
-          job={liveJob}
-          labels={{
-            running: "Uploading…",
-            succeeded: "Upload complete:",
-            failed: "Upload failed:",
-            cancelled: "Upload cancelled:",
-          }}
-        />
+        <div
+          className="border-t border-white/5 pt-3 space-y-2"
+          data-testid="wikidata-upload-inline-progress"
+        >
+          <p className="text-sm">
+            <span className="muted">
+              {liveJob.status === "succeeded" ? "Upload complete:"
+                : liveJob.status === "failed" ? "Upload failed:"
+                  : liveJob.status === "cancelled" ? "Upload cancelled:"
+                    : "Uploading…"}
+            </span>
+            {liveJob.progress?.message ? (
+              <> <span className="text-ink">{String(liveJob.progress.message)}</span></>
+            ) : null}
+          </p>
+          <WikidataUploadSteps progress={liveJob.progress ?? {}} />
+          {liveJob.status === "failed" && liveJob.error ? (
+            <p className="text-xs text-danger whitespace-pre-wrap">{liveJob.error}</p>
+          ) : null}
+        </div>
       )}
 
       {result && <UploadResultSummary result={result} />}

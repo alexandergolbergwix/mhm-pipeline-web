@@ -95,4 +95,38 @@ describe("WikidataUploadSteps", () => {
     expect(screen.getByTestId("wikidata-upload-step-2-now")).toHaveTextContent("Waiting for step 1");
     expect(screen.getByTestId("wikidata-upload-step-2-eta")).toHaveTextContent("Time: —");
   });
+
+  it("renders the same two step bars for a live-target progress blob", () => {
+    render(createElement(WikidataUploadSteps, {progress: {
+      upload_target: "live",
+      processed: 1,
+      total: 2,
+      unit: "steps",
+      current_label: "work · MS Alpha",
+      steps: [
+        {
+          id: "write_items",
+          label: "Step 1 — Write items",
+          status: "running",
+          processed: 2,
+          total: 8,
+          unit: "items",
+          current_label: "work · MS Alpha",
+        },
+        {
+          id: "add_connections",
+          label: "Step 2 — Add connections",
+          status: "pending",
+          processed: 0,
+          total: 3,
+          unit: "links",
+          current_label: "Waiting for step 1",
+        },
+      ],
+    }}));
+    expect(screen.getByTestId("wikidata-upload-steps")).toBeInTheDocument();
+    expect(screen.getByTestId("wikidata-upload-step-1")).toHaveAttribute("data-status", "running");
+    expect(screen.getByTestId("wikidata-upload-step-2")).toHaveAttribute("data-status", "pending");
+    expect(screen.getByTestId("wikidata-upload-step-1-now")).toHaveTextContent("work · MS Alpha");
+  });
 });

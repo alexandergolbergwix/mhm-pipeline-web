@@ -71,9 +71,11 @@
    follow `upload_target` (test/live/dry-run) and stay sticky after cancel/finish
    (frontend R19) — they MUST NOT flicker to Live when the active poll drops the
    job or when a terminal result omits `upload_target` (panel must not invent
-   live; modal title is never hardcoded “Live”). The modal shows **Step 1 —
-   Write items** and **Step 2 — Add connections**, each with its own bar,
-   current item, and ETA (Rule W-192).
+   live; modal title is never hardcoded “Live”). **Live, test, and dry-run
+   use the same progress widget:** `WikidataUploadSteps` (Step 1 — Write
+   items / Step 2 — Add connections, Now, ETA; Rule W-192) in the modal,
+   the upload panel, and the job tray. Title + badge still follow the
+   chosen `upload_target`.
 3. **Close** dismisses the modal without cancelling; **Cancel upload** calls
    `POST …/jobs/{id}/cancel` while the job is still active. Cancel progress/result
    still carries `upload_target`.
@@ -132,10 +134,11 @@
    missing holder/place stubs or a live P kept with the wrong test datatype.
    After W-189, re-run `upload_target=test` — do not strip leftovers. Item
    CREATE `already has label` should adopt our prior test Q or uniquify.
-6. **Identity clash** (W-190): a person QID whose live English label has
-   leftover tokens (`Savoy`) or misses mapped Hebrew tokens (`קוסטליץ`)
-   must clear for CREATE, not skip-foreign on live. Known-work QIDs stay
-   W-184 until curator accept.
+6. **Identity clash** (W-190 / W-195): a person QID whose live English
+   label has leftover tokens (`Savoy`) or misses mapped Hebrew tokens
+   (`קוסטליץ`) must clear the QID — then **skip** if still identifierless,
+   never CREATE and never UPDATE Savoy/Sultan/Kostlitz/Shor. Own clash
+   stays `blocked`. Known-work QIDs stay W-184 until curator accept.
 7. **Thin test writes** (W-191): re-run `upload_target=test` after the
    `created_qids` job wiring; `exists` must not hide a thinner claim set.
 
@@ -175,7 +178,26 @@
    Inspect `not_ready_examples` / `blocker_totals` first. `identity_clash`
    is a hard fail (W-190). Created/updated/adopted `test_claims_lt_native`
    is a hard fail (W-191).
-3. Identifierless person `skipped` is expected (W-154 / W-185), not a live CREATE.
+3. Identifierless person `skipped` / `skip_for_live` is expected (W-154 / W-185 / W-195), not a live CREATE — exclude from the written live-ready denominator.
+
+### Skill: LLM-judge a test.wikidata.org upload before www.wikidata.org
+
+1. Read-only. Deterministic `audit_one` is the hard gate; eval-agent
+   `wikidata_test_live_ready` then judges each **Studio native** (live P/Q)
+   with the test.wikidata.org snapshot as landing evidence only. Test Q/P
+   ids are never a live payload (W-182 / W-183). Remapped test P/Q numbers
+   (e.g. test `P15` vs live `P31`) are expected, not a live fail.
+   `cd backend && DATABASE_URL=$(heroku config:get DATABASE_URL -a mhm-pipeline-web) \
+   .venv/bin/python -m scripts.judge_test_wikidata_live_ready \
+   --run-id 48ba6c13-115c-4763-bff1-c08b9031b518 \
+   --json-out /tmp/test-live-ready.json`.
+   Default `--tier-model` is `deepseek-ai/DeepSeek-V4-Flash` (not Kimi).
+   Hygiene (W-194) runs before `audit_one` so stale cache QIDs are not scored.
+2. Pass when `all_written_live_ready` is true. Inspect `gate_totals` then
+   `not_ready_examples`. `deterministic_blockers` wins over an LLM `full`.
+   In-batch `__LOCAL:` to a CREATE target is W-192, not a fail.
+3. Pilot first: `--limit 5`. `--skip-llm` is the audit-only path.
+   Identifierless person `skipped` stays out of the live write set.
 
 ### Skill: audit a downloaded Wikidata export
 

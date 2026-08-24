@@ -123,7 +123,9 @@ instead of always defaulting to `gemini-3.5-flash`:
 - **Eval-agent:** `OpenAICompatJudge` in
   `eval_agent/client/openai_compat_client.py`; `session.py::_build_judge`
   routes by provider. Non-agentic models force `mode=linear` in
-  `SessionConfig.from_args`.
+  `SessionConfig.from_args`. Kimi `extra_body.thinking` MUST be a JSON
+  object (`{"type": "disabled"}`); a boolean `false` is HTTP 400
+  (`'thinking' must be json_object`) on Qubrid.
 - **Credentials:** Gemini — user Settings key or `GEMINI_API_KEY`;
   Qubrid — server `QUBRID_API_KEY` only (injected into subprocess env,
   never argv). `prepare_job_params` fails fast with a clear 400 when the

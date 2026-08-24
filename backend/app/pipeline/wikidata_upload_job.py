@@ -615,6 +615,15 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             return True
         return any(first_local_target(s) in scope for s in stmts)
 
+    outcome_by_id = {o.local_id: o for o in outcomes}
+    skipped_person_names = {
+        o.local_id: (o.label or "").strip()
+        for o in outcomes
+        if o.status == "skipped"
+        and str(o.entity_type or "").lower() == "person"
+        and (o.label or "").strip()
+    }
+
     try:
         for source_id, stmts in deferred_by_local_id.items():
             if await is_cancel_requested(job_id):
@@ -694,12 +703,39 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     link_done += 1
                 continue
 
+            if not wikidata_upload.pass2_may_update_source(outcome_by_id.get(source_id)):
+                for stmt in stmts:
+                    target = first_local_target(stmt)
+                    link_outcomes.append(wikidata_upload.DeferredLinkOutcome(
+                        source_local_id=source_id,
+                        property_id=stmt.property_id,
+                        target_local_id=target,
+                        status="skipped_foreign",
+                        message=(
+                            f"Pass 2 UPDATE refused for {source_id}: not an "
+                            "item we created or own (Rule W-195)"
+                        ),
+                        qid=source_qid if str(source_qid).startswith("Q") else None,
+                    ))
+                    link_done += 1
+                continue
+
             resolved: list[Any] = []
             resolved_targets: list[str] = []
             for stmt in stmts:
                 target = first_local_target(stmt)
                 rewritten, leftover = resolve_statement_locals(stmt, created_qids)
                 if leftover:
+                    name = skipped_person_names.get(target or "")
+                    pid = str(getattr(stmt, "property_id", "") or "")
+                    if name and pid == "P50":
+                        resolved.append(
+                            wikidata_upload.rewrite_author_link_to_name_string(
+                                stmt, name,
+                            )
+                        )
+                        resolved_targets.append(target)
+                        continue
                     link_outcomes.append(wikidata_upload.DeferredLinkOutcome(
                         source_local_id=source_id,
                         property_id=stmt.property_id,

@@ -53,7 +53,11 @@
 - `frontend/tests/unit/studioUploadProgress.spec.ts` — processing → terminal status replace; Wikidata/HMO row patches.
 - `backend/tests/unit/test_studio_dict_to_native.py` — Studio-cache dict → native item (W-181 / R84).
 - `backend/tests/unit/test_audit_test_wikidata_upload.py` — claim-count / live-URI / `__LOCAL:` / identity-clash helpers for the test-upload live-readiness audit (W-190 / W-191).
-- `backend/tests/unit/test_wikidata_person_identity_w190.py` — leftover-token refuse (Savoy/Sultan/Kostlitz), Monson/Curiel/Briel cover, upload-prepare clear vs own-block (W-190).
+- `backend/tests/unit/test_judge_test_wikidata_live_ready.py` — compact test-wiki snapshot + merge (deterministic blockers beat LLM `full`; skipped ≠ live-ready; `skip_for_live` excluded from written live-ready).
+- `backend/tests/unit/test_wikidata_duplicate_confirm.py` — W-195: garbage/`same_item` without id/`unsure` skip; clash never calls confirm; pass 2 created/own vs foreign; P50 `__LOCAL:` → P2093.
+- `backend/tests/unit/test_wikidata_live_native_hygiene.py` — W-194: Savoy/Shor QID clear, Tikkun work-item denylist, `__LOCAL:` rewrite/degrade/in-batch keep; judge defaults to DeepSeek-V4-Flash.
+- `eval-agent/tests/test_wikidata_test_live_ready.py` — evaluator pack includes test snapshot; prompt forbids copying test Q/P.
+- `backend/tests/unit/test_wikidata_person_identity_w190.py` — leftover-token refuse (Savoy/Sultan/Kostlitz), Monson/Curiel/Briel cover, upload-prepare foreign clash → skip (not CREATE), own clash → blocked (W-190 / W-195).
 - `backend/tests/unit/test_wikidata_upload_claim_complete_w191.py` — upload sort order, `__LOCAL:` resolve, unpartitioned leftover still blocked, `wikibase-item` P31 builds (W-191).
 - `backend/tests/unit/test_wikidata_upload_claim_exists_w193.py` — quantity `+11`/`11.0` exists-match, BCE `format_wikidata_time` / `+-199` repair (W-193).
 - `backend/tests/unit/test_wikidata_upload_deferred_links.py` — partition defers P50, pass-2 progress `1/2`→`2/2` steps, ETA hidden until 3 samples (W-192).
@@ -73,7 +77,7 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `frontend/e2e/wikidata-item-table.spec.ts` — review table columns, data status, search, approval PATCH, upload-outcome filter (incl. skip vs create), last-upload remap/skip popovers, real filter counts, Approve all visible (`wikidata_item_bulk_approve` job).
 - `backend/tests/test_studio_item_bulk_approve.py` — bulk-approve params + worker for HMO/Wikidata override rows.
 - `frontend/e2e/wikidata-item-drawer.spec.ts` — drawer apply-fix, push, reconcile API shapes.
-- `frontend/e2e/wikidata-upload-panel.spec.ts` — upload target radios (default dry-run), test full-claim remap hint (W-186), `upload_target=test` job params, pill, pre-verify fail confirm gate, live **processing…** pill while a row is under write.
+- `frontend/e2e/wikidata-upload-panel.spec.ts` — upload target radios (default dry-run), test full-claim remap hint (W-186), `upload_target=test` job params, pill, pre-verify fail confirm gate, live **processing…** pill while a row is under write, live two-step progress UI (modal + job tray `WikidataUploadSteps`).
 - `frontend/tests/unit/runJobsHref.spec.ts` — modal job kinds append `?job=` (verify + upload, Rule W-141).
 - `frontend/tests/unit/wikidataUploadOutcomes.spec.ts` — upload outcome tally + terminal row selection for the progress modal.
 - `backend/tests/test_run_job_params_wikidata_verify.py` — enqueue skips scope

@@ -135,12 +135,14 @@ python backend/scripts/analyze_wikidata_verdicts.py \
 - `backend/tests/test_run_job_params_wikidata_verify.py` — fast Studio enqueue,
   worker-side empty-scope errors, and provider-aware Kimi credentials.
 - `backend/tests/test_analyze_wikidata_verdicts.py` — partial/fail CSV/JSON filtering and compact prompt context.
+- `eval-agent/tests/test_wikidata_test_live_ready.py` — test.wikidata.org live-readiness evaluator: snapshot pack, no-copy-test-ids prompt, in-batch `__LOCAL:` is W-192; clash-cleared identifierless persons are not live CREATE (W-195).
 - `eval-agent/tests/test_hmo_wikibase_items.py` — HMO `control_number()` from
   embedded URI ids (Rule W-45); `enrich_control_numbers()` via deferred links
   (Rule W-48); `SYSTEM-LABELED EVENT` grounding for Production / TextTradition
   (Rule W-52).
 - `eval-agent/tests/test_judge_models.py`, `test_openai_compat_judge.py` —
-  tier-1 registry + Qubrid OpenAI-compat judge (Rule W-46).
+  tier-1 registry + Qubrid OpenAI-compat judge; Kimi `thinking` is a JSON
+  object (Rule W-46).
 - `backend/tests/test_judge_models_router.py`,
   `test_run_job_params_tier_model.py` — `GET /api/judge-models`, credential gates.
 - `backend/tests/unit/test_agent_runner_subprocess_timeout.py` —

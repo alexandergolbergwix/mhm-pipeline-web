@@ -2313,3 +2313,65 @@ because `f"+{year:04d}"` concatenates `+` onto a negative year.
 3. W-191 still blocks when the wiki item is actually thinner.
 
 Tests: `backend/tests/unit/test_wikidata_upload_claim_exists_w193.py`.
+
+### Rule W-194 — Studio natives judged or uploaded MUST drop false live identities and rewrite or degrade leftover `__LOCAL:` (added 2026-08-23)
+
+Test upload job `28bfd2be` on run `48ba6c13` wrote 233 items. The live-ready
+judge still saw five W-190 person clashes (including Savoy Q209579), work
+item `QDraft_Work_85` stamped on ritual Q2740944, Hayim-ben-Naphtali stamped
+on Avraham Hayim Shor Q6580025, and manuscript P1574 leftovers as `__LOCAL:`.
+Upload prepare already cleared foreign clashes; the judge read the raw cache.
+
+**Invariants:**
+
+1. `sanitize_studio_items_for_live` runs at Studio build (denylist + local
+   rewrite) and again in audit/judge with live `wbgetentities` labels.
+2. Person `existing_qid` that fails W-190 leftover-token coverage, in either
+   English or Hebrew independently, is cleared and identity PIDs stripped.
+3. Work-item UPDATE must not target `work_item_forbidden_update_qids()`
+   (Tikkun Chatzot Q2740944). Manuscript P1574 may still use
+   `known_work_qid_for_title`.
+4. `__LOCAL:` to an in-corpus target that still has a safe live Q rewrites
+   to that Q. Dangling P1574 degrades to Q234460. In-batch CREATE leftovers
+   remain for W-192 and are not a live-ready fail.
+5. Never copy test.wikidata.org Q/P onto live natives. The live-ready CLI
+   defaults to `deepseek-ai/DeepSeek-V4-Flash`.
+
+Tests: `backend/tests/unit/test_wikidata_live_native_hygiene.py`,
+`backend/tests/unit/test_wikidata_person_identity_w190.py`.
+
+### Rule W-195 — Clash-cleared identifierless persons MUST skip live writes; uncertain duplicates confirm fail-closed; pass 2 UPDATE is own-only (added 2026-08-24)
+
+Live-ready judging of test job `28bfd2be` on run `48ba6c13` still treated
+identifierless W-190 clash-cleared persons (Savoy Q209579, Sultan, Kostlitz,
+Shor Q6580025) as CREATE-ready, and pass 2 could MERGE onto foreign live
+QIDs. A heading clash is not a CREATE license. Uncertain label+author
+matches must not UPDATE community items. Test.wikidata.org Q/P must never
+be copied live.
+
+**Invariants:**
+
+1. After W-190 identity-PID strip + QID clear, a person with no remaining
+   publishable identity (no QID and no VIAF/NLI/etc. PID) is **skipped**
+   (W-154 / W-185), not CREATE. Own clash stays `blocked`. Those persons
+   never enter pass 1.
+2. `confirm_uncertain_duplicate` (`deepseek-ai/DeepSeek-V4-Flash` via the
+   Qubrid OpenAI-compat path) runs only when a live QID survived identity
+   gates but the match is not identifier-certain. Heading clash never
+   reaches the LLM. `same_item` without a shared trusted identifier,
+   `unsure`, and HTTP failure all skip.
+3. `different_item` clears the QID then applies the same unpublishable
+   skip. Identifier-certain **own** matches UPDATE; **foreign** stays skip
+   (never pass 2).
+4. Pass 1 still omits unresolved `__LOCAL:` (W-192). Pass 2 MERGE UPDATE
+   only onto QIDs we created or own (`pass2_may_update_source`). Leftover
+   P50 to a skipped person becomes P2093 on **our** work.
+5. Live-ready audit/judge: identifierless persons are `skip_for_live` and
+   drop out of the written denominator. Identifierless CREATE remains a
+   live fail if it were still a write candidate. Never copy test wiki ids.
+   Never UPDATE Savoy Q209579, Sultan, Kostlitz, ritual Tikkun Q2740944,
+   or Avraham Hayim Shor Q6580025.
+
+Tests: `backend/tests/unit/test_wikidata_person_identity_w190.py`,
+`backend/tests/unit/test_wikidata_duplicate_confirm.py`,
+`backend/tests/unit/test_judge_test_wikidata_live_ready.py`.
