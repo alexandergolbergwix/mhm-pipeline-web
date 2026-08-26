@@ -757,8 +757,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 
 101. **R101 — Reused work items MUST retain source-backed author links (Rule W-198).**
     A work lookup can find an existing work before the builder sees its author
-    evidence. The reuse path MUST attach an exact approved `P50` claim, or a
-    safe local target or `P2093` fallback, when the work has no author claim.
+    evidence. The reuse path and the approved work-QID path MUST attach an exact
+    approved `P50` claim, or a safe local target or `P2093` fallback, when the
+    work has no author claim.
     The new claim MUST carry the source record reference. The builder MUST NOT
     add a second `P50` or `P2093` claim.
 

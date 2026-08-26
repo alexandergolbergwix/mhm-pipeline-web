@@ -72,6 +72,7 @@ known-QID linking (Bible/Tanakh/Haggadah/Tikkun Chatzot) without evidence-less
 CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - The same work test also checks that a later source record adds a source-backed
   `P50` claim to a reused work when the first source had no author.
+- It also checks that an approved work QID does not bypass that author recovery.
 - `backend/tests/unit/test_wikidata_studio_control_number_join.py` — quoted/whitespace control numbers join records to approved authority and NER evidence before item projection.
 - `backend/tests/unit/test_wikidata_autofix_apply.py`, `test_wikidata_entity_compare.py` — AI-fix merge + live compare.
 - `backend/tests/test_hmo_instance_qids_for_run.py` — HMO QID injection into the fingerprint/build, including quoted control-number normalisation.

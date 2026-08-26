@@ -23,6 +23,7 @@ from converter.wikidata.item_builder import (
     _is_noise_work_title,
     _person_key,
     _split_work_title_author,
+    _work_key,
     known_work_qid_for_title,
 )
 from converter.wikidata.work_candidates import assess_work_candidate
@@ -30,7 +31,6 @@ from converter.wikidata.work_link_specificity import (
     refine_exemplar_work_qid,
     should_emit_unknown_text_exemplar,
 )
-
 
 _QID_RE = re.compile(r"^Q\d+$")
 _BROAD_MAIN_SUBJECT_TERMS = {"jews"}
@@ -72,6 +72,20 @@ def _entry_author(entry: dict[str, object]) -> str | None:
         value = entry.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
+    return None
+
+
+def _record_author(record: dict[str, object]) -> str | None:
+    """Read the primary author from the MARC record when content lacks one."""
+    for author in record.get("authors") or []:
+        if not isinstance(author, dict):
+            continue
+        role = str(author.get("role") or "author").strip().casefold()
+        if role not in {"author", "attributed author", "presumed author"}:
+            continue
+        name = str(author.get("name") or "").strip()
+        if name:
+            return name
     return None
 
 
@@ -152,7 +166,7 @@ class ContentProjectionMixin:
             entry = content if isinstance(content, dict) else {"title": str(content)}
             raw_title = str(entry.get("title") or "").strip()
             candidate_title, embedded_author = _split_work_title_author(raw_title)
-            embedded_author = embedded_author or _entry_author(entry)
+            embedded_author = embedded_author or _entry_author(entry) or _record_author(record)
             cleaned = _clean_work_title(candidate_title)
             work_key = _work_title_key(cleaned)
             work_qid = (
@@ -185,6 +199,9 @@ class ContentProjectionMixin:
 
             named_as = work_title or cleaned or raw_title
             if work_qid:
+                local_work = self._work_items.get(_work_key(work_title))
+                if local_work is not None:
+                    self._ensure_work_author(local_work, embedded_author, record)
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_EXEMPLAR_OF,
@@ -287,8 +304,12 @@ class ContentProjectionMixin:
                     folio_range = str(folio.get("text") or "").strip(":")
                     break
 
+            author_name = embedded_author or _record_author(record)
             named_as = decision.title or work_title or raw
             if work_qid:
+                local_work = self._work_items.get(_work_key(decision.title))
+                if local_work is not None:
+                    self._ensure_work_author(local_work, author_name, record)
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_EXEMPLAR_OF,
@@ -303,7 +324,6 @@ class ContentProjectionMixin:
                 )
                 continue
 
-            author_name = embedded_author
             work_authors = [
                 entity for entity in cont_entities if entity.get("type") == "WORK_AUTHOR"
             ]

@@ -555,6 +555,57 @@ async def test_reused_work_gains_author_claim_from_later_source() -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_approved_work_qid_keeps_author_on_existing_local_work() -> None:
+    title = "מנחת יהודה : פרוש על שמואל, מלכים וישעיהו"
+    first = {
+        **_fake_marc_record(control_number="1"),
+        "contents": [{
+            "title": title,
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    second = {
+        **_fake_marc_record(control_number="2"),
+        "authors": [{"name": "חנין, יהודה בן יעקב", "role": "author"}],
+        "contents": [{
+            "title": title,
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[first, second],
+        approved_matches=[
+            {
+                "control_number": "2",
+                "entity_text": "חנין, יהודה בן יעקב",
+                "entity_kind": "person",
+                "role": "author",
+                "wikidata_qid": "Q118186113",
+                "approved": True,
+            },
+            {
+                "control_number": "2",
+                "entity_text": title,
+                "entity_kind": "work",
+                "role": "contained work",
+                "wikidata_qid": "Q141175558",
+                "approved": True,
+            },
+        ],
+        entities_by_cn={},
+        return_native=False,
+    )
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    author = next(
+        stmt for stmt in work["statements"]
+        if stmt["property_id"] == "P50"
+    )
+    assert author["value"] == "Q118186113"
+
+
 def test_known_work_title_aliases_are_exact_and_not_fuzzy() -> None:
     from converter.wikidata.property_mapping import known_work_qid_for_title
 

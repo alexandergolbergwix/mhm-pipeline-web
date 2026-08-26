@@ -2445,10 +2445,12 @@ evidence in MARC 100/245 but no `P50` or `P2093` claim.
 
 **Invariants:**
 
-1. When a reused work has no `P50` or `P2093`, the builder MUST apply the later
-   source record's exact approved author QID as `P50`.
-2. The builder MUST use a safe local target or `P2093` when no safe QID exists.
-3. A new author claim MUST carry the source record's NLI reference when one
+1. When a reused work or an approved work-QID path has no `P50` or `P2093`, the
+   builder MUST apply the source record's exact approved author QID as `P50`.
+2. The builder MUST recover the primary MARC author when the contents entry has
+   no author value.
+3. The builder MUST use a safe local target or `P2093` when no safe QID exists.
+4. A new author claim MUST carry the source record's NLI reference when one
    exists. The builder MUST NOT duplicate an existing author claim.
 
 Regression: `backend/tests/unit/test_wikidata_studio_works.py`.
