@@ -8,6 +8,7 @@ unchecked. These tests pin the gate to the build path itself, not to the export.
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -21,6 +22,19 @@ _CN = "990000403370205171"
 
 def _marc_row(cn: str = _CN) -> SimpleNamespace:
     return SimpleNamespace(control_number=cn, marc={"control_number": cn, "title": "t"})
+
+
+class _ExpiringMarcRow:
+    def __init__(self, cn: str = _CN) -> None:
+        self.control_number = cn
+        self.expired = False
+        self._marc = {"control_number": cn, "title": "t"}
+
+    @property
+    def marc(self) -> dict[str, str]:
+        if self.expired:
+            raise AssertionError("the build accessed an expired ORM MARC field")
+        return self._marc
 
 
 @pytest.fixture
@@ -137,3 +151,80 @@ async def test_a_blocking_finding_stops_the_canonical_build(_build_env) -> None:
         )
 
     _build_env.upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_canonical_build_keeps_marc_snapshot_after_transliteration(_build_env) -> None:
+    """The build must not lazy-load ORM MARC data after cache work commits."""
+    record = _ExpiringMarcRow()
+
+    async def _expire_after_snapshot(*_args: object, **_kwargs: object) -> dict[str, str | None]:
+        record.expired = True
+        return {}
+
+    with (
+        patch.object(
+            router, "_load_studio_build_rows",
+            new=AsyncMock(return_value=([record], [], [], [])),
+        ),
+        patch.object(
+            router, "_prewarm_transliterations",
+            new=AsyncMock(side_effect=_expire_after_snapshot),
+        ),
+        patch.object(router, "assert_wikidata_export_quality"),
+    ):
+        await router.execute_studio_build(
+            AsyncMock(), run_id=uuid.uuid4(), approved_only=True, source="canonical",
+            force_rebuild=True, run_user_id=None, reconcile=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_transliteration_prewarm_uses_bulk_cache_sessions(monkeypatch) -> None:
+    sessions: list[object] = []
+    writes: list[tuple[object, list[tuple[dict[str, str], str]]]] = []
+
+    @asynccontextmanager
+    async def _session_scope():
+        session = object()
+        sessions.append(session)
+        yield session
+
+    monkeypatch.setattr(router, "session_scope", _session_scope)
+    monkeypatch.setattr(
+        router, "_collect_hebrew_label_candidates", lambda _records: ["אב", "גד"],
+    )
+
+    async def _read(db, *, kind, query_summaries):
+        assert db is sessions[0]
+        assert kind == "translit.label"
+        return {router.canonical_hash(query_summaries[0]): "Av"}
+
+    async def _write(db, *, kind, entries, user_id):
+        assert db is sessions[1]
+        assert kind == "translit.label"
+        assert user_id is None
+        writes.append((db, entries))
+
+    monkeypatch.setattr(router, "read_many_from_inference_cache", _read)
+    monkeypatch.setattr(router, "write_many_to_inference_cache", _write)
+    monkeypatch.setattr(
+        "converter.wikidata.hebrew_translit.english_label_for_hebrew",
+        lambda raw, _qid, *, allow_algorithmic: f"EN-{raw}" if allow_algorithmic is False else None,
+    )
+
+    labels = await router._prewarm_transliterations(marc_records=[], user_id=None, concurrency=2)
+
+    assert labels == {"אב": "Av", "גד": "EN-גד"}
+    assert len(sessions) == 2
+    assert writes == [
+        (
+            sessions[1],
+            [
+                (
+                    {"backend": "waterfall", "text": "גד"},
+                    "EN-גד",
+                ),
+            ],
+        ),
+    ]

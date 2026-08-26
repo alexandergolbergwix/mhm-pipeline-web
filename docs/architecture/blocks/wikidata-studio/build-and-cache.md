@@ -41,8 +41,11 @@ and reconciliation, immediately before validation and cache persistence.
 The cache is source-scoped (`legacy` or `canonical`). Every cache lookup and upsert includes the source, and the source is included in the `wikidata_studio_build` job parameters, so a forced canonical rebuild cannot silently return or overwrite the legacy row; old cache rows with a null source are treated as legacy for compatibility.
 
 `execute_studio_build` (`wikidata_studio.py:448`, also called by the job)
-prewarms Hebrew transliterations (network disabled inside the sync builder),
-runs `build_items_for_run` in a threadpool, applies curator overrides *before*
+snapshots the MARC dictionaries before later database work. It prewarms Hebrew
+transliterations with one short-lived bulk cache session for reads and another
+for writes. The concurrent external calls do not share the build session or
+hold a cache transaction. The build then runs `build_items_for_run` in a
+threadpool, applies curator overrides *before*
 validation (`_build_sync`, `pipeline/wikidata_studio.py:223`), validates every
 item, exports QuickStatements, stamps `local_id` + `approved` per item, and
 upserts the cache row. `?force_rebuild=true` bypasses the fingerprint check

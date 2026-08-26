@@ -101,6 +101,8 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
   non-public entity types (W-118).
 - `backend/tests/unit/test_wikidata_studio_build_job.py` — build worker passes
   `reconcile=False` (W-119 / R46).
+- `backend/tests/unit/test_wikidata_studio_build_gate.py` — the build snapshots
+  MARC before transliteration cache work and uses bulk cache sessions (W-197).
 - `backend/tests/unit/test_wikidata_studio_list_view.py` — `list_view` trim,
   lean fixture + compact cached-verdict candidates (W-131).
 - `backend/tests/unit/test_wikidata_verify_heap.py` — scoped MARC + heap release (W-132).

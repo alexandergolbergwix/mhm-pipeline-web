@@ -12,7 +12,6 @@ workflow's unit of truth (see Rule 54 in the desktop CLAUDE.md).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import uuid
@@ -28,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
-from app.db import get_session
+from app.db import get_session, session_scope
 from app.export.formatters import csv_stream, json_stream
 from app.models.event import (
     ENTITY_TYPE_WIKIDATA_OVERRIDE,
@@ -37,6 +36,7 @@ from app.models.event import (
     ProjectEvent,
 )
 from app.models.extraction_approval import ExtractionApproval
+from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import (
@@ -46,18 +46,7 @@ from app.models.run_job import (
 )
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
 from app.models.wikidata_studio_cache import WikidataStudioCache
-from app.models.hmo_canonical_entity import HmoCanonicalEntity
-from app.settings import get_settings
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
-from app.pipeline.hmo_canonical import normalize_live_entity
-from app.pipeline.hmo_canonical_wikidata import (
-    filter_public_wikidata_items,
-    studio_cache_has_non_public_items,
-    build_canonical_studio_result,
-    canonical_studio_context,
-    canonical_wikidata_fingerprint,
-    native_items_from_hmo,
-)
 from app.pipeline.agent_runner import (
     AgentEvent,
     list_verify_sessions,
@@ -71,13 +60,28 @@ from app.pipeline.agent_runner import (
     spawn_eval_agent_run,
     sse_stream,
 )
-from app.pipeline.inference_cache import read_from_inference_cache, write_to_inference_cache
+from app.pipeline.hmo_canonical import normalize_live_entity
+from app.pipeline.hmo_canonical_wikidata import (
+    build_canonical_studio_result,
+    canonical_studio_context,
+    canonical_wikidata_fingerprint,
+    filter_public_wikidata_items,
+    native_items_from_hmo,
+    studio_cache_has_non_public_items,
+)
+from app.pipeline.inference_cache import (
+    canonical_hash,
+    read_from_inference_cache,
+    read_many_from_inference_cache,
+    write_many_to_inference_cache,
+    write_to_inference_cache,
+)
+from app.pipeline.verify_session_store import load_verify_session
+from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
 from app.pipeline.wikidata_item_merge import (
     apply_wikidata_item_override,
     override_row_to_dict,
 )
-from app.pipeline.verify_session_store import load_verify_session
-from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
 from app.pipeline.wikidata_item_views import (
     StudioBuildMissingError,
     fetch_merged_wikidata_item,
@@ -94,13 +98,14 @@ from app.pipeline.wikidata_verdict_cache import (
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
 )
-from app.pipeline.wikidata_verify_scope import partition_wikidata_verify_cache
 from app.pipeline.wikidata_verify_fixture import (
     compact_wikidata_verdict_candidate,
     write_wikidata_verify_fixture,
 )
+from app.pipeline.wikidata_verify_scope import partition_wikidata_verify_cache
 from app.routers.runs import _lookup_run_with_access  # noqa: PLF401 — module-internal
 from app.services.wikibase_audit import WikibaseAuditContext
+from app.settings import get_settings
 from app.versioning import apply_event
 
 logger = logging.getLogger(__name__)
@@ -408,25 +413,21 @@ def _collect_hebrew_label_candidates(
 
 
 async def _prewarm_transliterations(
-    db: AsyncSession,
     *,
     marc_records: list[dict[str, Any]],
-    user_id: Any,
+    user_id: uuid.UUID | None,
     concurrency: int = 12,
 ) -> dict[str, str | None]:
     """Concurrently compute every Hebrew→Latin label the build needs.
 
-    Each computation runs the full waterfall in a worker thread (so the
-    blocking SPARQL/Modal HTTP calls run in parallel) and is wrapped in the
-    inference cache (kind=``translit.label``) so the work is incremental
-    across retries: a build that times out still persists the labels it
-    finished, and the next attempt resumes from the cache.
+    The cache reads and writes use separate sessions from the build session.
+    The external waterfall calls run without an open database transaction.
+    Bulk cache operations prevent concurrent tasks from sharing one session.
 
     Returns a ``{raw_hebrew: latin_or_None}`` mapping.
     """
     import asyncio  # noqa: PLC0415
 
-    from app.pipeline.inference_cache import cache_lookup_or_call  # noqa: PLC0415
     from converter.wikidata.hebrew_translit import (  # noqa: PLC0415
         english_label_for_hebrew,
     )
@@ -435,29 +436,67 @@ async def _prewarm_transliterations(
     if not candidates:
         return {}
 
+    summaries = [
+        {"backend": "waterfall", "text": raw}
+        for raw in candidates
+    ]
+    cached_by_hash: dict[str, Any] = {}
+    try:
+        async with session_scope() as cache_db:
+            cached_by_hash = await read_many_from_inference_cache(
+                cache_db,
+                kind="translit.label",
+                query_summaries=summaries,
+            )
+    except Exception as exc:  # noqa: BLE001 — cache failure must not break a build
+        logger.warning("transliteration cache read failed: %s", exc)
+
+    labels: dict[str, str | None] = {}
+    missing: list[str] = []
+    for raw, summary in zip(candidates, summaries, strict=True):
+        query_hash = canonical_hash(summary)
+        if query_hash in cached_by_hash:
+            cached_label = cached_by_hash[query_hash]
+            if isinstance(cached_label, str):
+                labels[raw] = cached_label
+                continue
+        missing.append(raw)
+
+    if not missing:
+        return labels
+
     sem = asyncio.Semaphore(concurrency)
 
     async def _one(raw: str) -> tuple[str, str | None]:
-        async def _fetch() -> str | None:
-            return await asyncio.to_thread(
-                english_label_for_hebrew, raw, None, allow_algorithmic=False,
-            )
-
         async with sem:
             try:
-                label = await cache_lookup_or_call(
-                    db,
-                    kind="translit.label",
-                    query_summary={"backend": "waterfall", "text": raw},
-                    fetch=_fetch,
-                    user_id=user_id,
+                label = await asyncio.to_thread(
+                    english_label_for_hebrew, raw, None, allow_algorithmic=False,
                 )
             except Exception:  # noqa: BLE001 — never let one string break the build
                 label = None
         return raw, label
 
-    results = await asyncio.gather(*(_one(c) for c in candidates))
-    return dict(results)
+    results = dict(await asyncio.gather(*(_one(raw) for raw in missing)))
+    labels.update(results)
+
+    entries = [
+        (summary, labels[raw])
+        for raw, summary in zip(candidates, summaries, strict=True)
+        if raw in results and labels[raw] is not None
+    ]
+    if entries:
+        try:
+            async with session_scope() as cache_db:
+                await write_many_to_inference_cache(
+                    cache_db,
+                    kind="translit.label",
+                    entries=entries,
+                    user_id=user_id,
+                )
+        except Exception as exc:  # noqa: BLE001 — cache failure must not break a build
+            logger.warning("transliteration cache write failed: %s", exc)
+    return labels
 
 
 async def _load_studio_build_rows(
@@ -537,6 +576,7 @@ async def execute_studio_build(
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
         db, run_id,
     )
+    marc_records = [dict(r.marc) for r in records]
     hmo_instance_qids = await wikidata_studio.hmo_instance_qids_for_run(
         db, run_id, [r.control_number for r in records],
     )
@@ -612,23 +652,24 @@ async def execute_studio_build(
             for m in (m for m in all_matches if m.approved)
         ]
         context = canonical_studio_context(
-            marc_records=[dict(r.marc) for r in records],
+            marc_records=marc_records,
             approved_matches=approved_matches,
         )
         entities_by_cn = _group_entity_rows(entity_rows, approved_only=True)
-        from converter.wikidata import hebrew_translit  # noqa: PLC0415
         from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+        from converter.wikidata import hebrew_translit  # noqa: PLC0415
 
         phase("preparing transliterations")
         prewarmed = await _prewarm_transliterations(
-            db, marc_records=[dict(r.marc) for r in records], user_id=run_user_id,
+            marc_records=marc_records, user_id=run_user_id,
         )
         phase("building items")
         hebrew_translit.set_prewarmed_labels(prewarmed)
         hebrew_translit.set_sync_network_disabled(True)
         try:
             legacy_result = await wikidata_studio.build_items_for_run(
-                marc_records=[dict(r.marc) for r in records],
+                marc_records=marc_records,
                 approved_matches=approved_matches,
                 entities_by_cn=entities_by_cn,
                 overrides=overrides,
@@ -665,7 +706,7 @@ async def execute_studio_build(
         assert_wikidata_export_quality(
             result["native_items"] or [],
             serialised_items=items,
-            marc_records=[dict(r.marc) for r in records],
+            marc_records=marc_records,
         )
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=result["quickstatements"], summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
         row = await _get_studio_cache_row(db, run_id, approved_only, source)
@@ -677,7 +718,6 @@ async def execute_studio_build(
     pending_count = len(all_matches) - approved_count
     matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
 
-    marc_records = [dict(r.marc) for r in records]
     approved_matches = [
         {
             "id": str(m.id),
@@ -716,7 +756,7 @@ async def execute_studio_build(
 
     phase("preparing transliterations")
     prewarmed = await _prewarm_transliterations(
-        db, marc_records=marc_records, user_id=run_user_id,
+        marc_records=marc_records, user_id=run_user_id,
     )
     phase("building items")
     hebrew_translit.set_prewarmed_labels(prewarmed)

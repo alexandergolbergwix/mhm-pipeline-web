@@ -87,5 +87,5 @@ Shared by all five stages; understand these first:
 - [End-to-end data flow](data-flow.md) — MARC upload → published linked data.
 - [Task index](task-index.md) — "you are asked to X → read Y first".
 
-The incident-annotated rule history (W-1…W-196) lives in the repo root
+The incident-annotated rule history (W-1…W-197) lives in the repo root
 [CLAUDE.md](../../CLAUDE.md); block docs restate the ones that matter locally.

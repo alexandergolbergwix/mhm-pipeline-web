@@ -2409,6 +2409,27 @@ ritual QIDs and upload CREATEd a second item (Q141175480).
 Never merge or delete already-created MHM items such as Q141175480 from
 this rule. Never copy test.wikidata.org Q/P onto www.wikidata.org.
 
+### Rule W-197 — Wikidata Studio transliteration prewarm MUST isolate cache sessions and snapshot MARC before asynchronous work (added 2026-08-26)
+
+The live build for run `48ba6c13-115c-4763-bff1-c08b9031b518` failed twice at
+item construction with `MissingGreenlet`. The stack showed that
+`RunRecord.marc` was expired after transliteration cache work. The builder then
+tried to lazy-load that field from an async ORM session outside its greenlet.
+
+**Invariants:**
+
+1. `execute_studio_build` MUST copy every `RunRecord.marc` dictionary before
+   later database queries, cache work, or threadpool work.
+2. Transliteration prewarm MUST use one short-lived bulk session for cache
+   reads and another short-lived bulk session for cache writes. Concurrent
+   external label calls MUST NOT share the build `AsyncSession`.
+3. The external label calls MUST run after the cache-read session closes, so
+   prewarm MUST NOT hold a database transaction across the slow waterfall.
+4. Cache read or write failures MUST log and return the available labels. A
+   cache failure MUST NOT fail a Wikidata Studio build.
+
+Tests: `backend/tests/unit/test_wikidata_studio_build_gate.py`.
+
 Tests: `backend/tests/unit/test_wikidata_work_link_w196.py`,
 `backend/tests/unit/test_hmo_wikidata_pq_mapper.py`,
 `backend/tests/unit/test_wikidata_wave2_projection.py`,

@@ -112,6 +112,8 @@
    `wikidata_studio_cache` so the next normal GET is fast.
 3. If you see `cache_stale: true` on a normal GET, inputs changed since the
    last build — a plain Rebuild (no force) suffices.
+4. If the job fails at `preparing transliterations` with `MissingGreenlet`,
+   deploy the W-197 fix before you retry. Do not upload the stale export.
 
 ### Skill: resolve blocked items
 
