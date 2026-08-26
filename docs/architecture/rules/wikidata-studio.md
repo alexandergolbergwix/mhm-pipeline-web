@@ -2435,3 +2435,38 @@ Tests: `backend/tests/unit/test_wikidata_work_link_w196.py`,
 `backend/tests/unit/test_wikidata_wave2_projection.py`,
 `backend/tests/unit/test_wikidata_live_native_hygiene.py`,
 `backend/tests/unit/test_wikidata_duplicate_confirm.py`.
+
+### Rule W-198 — Reused work items MUST retain source-backed author links (added 2026-08-26)
+
+The work projection keyed works by normalized title. It returned a reused work
+before it attached author evidence from a later source record. Run
+`48ba6c13-115c-4763-bff1-c08b9031b518` produced work `Q141175558` with author
+evidence in MARC 100/245 but no `P50` or `P2093` claim.
+
+**Invariants:**
+
+1. When a reused work has no `P50` or `P2093`, the builder MUST apply the later
+   source record's exact approved author QID as `P50`.
+2. The builder MUST use a safe local target or `P2093` when no safe QID exists.
+3. A new author claim MUST carry the source record's NLI reference when one
+   exists. The builder MUST NOT duplicate an existing author claim.
+
+Regression: `backend/tests/unit/test_wikidata_studio_works.py`.
+
+### Rule W-199 — Linked QIDs MUST not trigger CREATE duplicate blockers (added 2026-08-26)
+
+Export `(45)` marked person `QDraft_Person_82` with `existing_qid=Q118186113`
+but retained a stale `candidates_found` verdict with no candidates. The quality
+audit reported a CREATE duplicate blocker even though the item already linked to
+Wikidata. The upload still needs identity and ownership checks for any update.
+
+**Invariants:**
+
+1. When `existing_qid` exists, `stamp_duplicate_check` MUST publish
+   `already_linked` and MUST not let a stale stored warning override it.
+2. The export quality audit MUST report a CREATE duplicate only when no
+   `existing_qid` exists and duplicate evidence has candidates.
+3. Upload identity and ownership checks MUST remain active for linked QIDs.
+
+Regression: `backend/tests/unit/test_wikidata_duplicate_probe.py` and
+`backend/tests/test_wikidata_export_quality_checker.py`.

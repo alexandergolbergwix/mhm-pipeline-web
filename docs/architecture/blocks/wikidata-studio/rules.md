@@ -754,3 +754,16 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     run concurrently without a shared `AsyncSession`. *Why:* concurrent cache
     commits and rollbacks expired `RunRecord.marc`; the next ORM access raised
     `MissingGreenlet` and failed the build before item construction.
+
+101. **R101 — Reused work items MUST retain source-backed author links (Rule W-198).**
+    A work lookup can find an existing work before the builder sees its author
+    evidence. The reuse path MUST attach an exact approved `P50` claim, or a
+    safe local target or `P2093` fallback, when the work has no author claim.
+    The new claim MUST carry the source record reference. The builder MUST NOT
+    add a second `P50` or `P2093` claim.
+
+102. **R102 — Linked QIDs MUST not trigger CREATE duplicate blockers (Rule W-199).**
+    An `existing_qid` marks an item as a link or update candidate. Duplicate
+    evidence and the export audit MUST classify that item as `already_linked`,
+    even when a stored verdict contains stale `candidates_found` data. Upload
+    identity and ownership checks still apply before an update.

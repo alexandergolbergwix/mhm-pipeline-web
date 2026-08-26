@@ -17,7 +17,7 @@
 | `backend/app/pipeline/wikidata_verify_fixture.py` | Lean eval-agent fixture + `release_wikidata_verify_heap` (W-131/W-132) |
 | `backend/app/pipeline/wikidata_item_merge.py` | Apply curator overrides onto serialised item dicts (carries `ai_verdict` for sticky-full, W-171) |
 | `backend/app/pipeline/wikidata_item_verify.py` | Persist AI verdicts to `WikidataItemOverride` after verify streams |
-| `backend/app/pipeline/wikidata_duplicate_probe.py` | Batched Action-API duplicate check; work `inlabel`+P31 allowlist probe (W-139 / W-190 / W-196) |
+| `backend/app/pipeline/wikidata_duplicate_probe.py` | Batched Action-API duplicate check; linked-QID classification; work `inlabel`+P31 allowlist probe (W-139 / W-190 / W-196 / W-199) |
 | `backend/app/pipeline/wikidata_duplicate_confirm.py` | Fail-closed DeepSeek confirm (W-195); work allowlisted P31 may keep `same_item` for skip+`link_qid` (W-196) |
 | `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets; drops orphan bare-QID P3342; drops redundant Q234460 (Rules W-138 / W-170 / W-171) |
 | `backend/app/pipeline/wikidata_live_native_hygiene.py` | W-194 / W-196: clear false live QIDs; coerce monolingualtext; omit implausible P2048/P2049; rewrite `__LOCAL:` |
@@ -29,7 +29,7 @@
 | `backend/app/pipeline/wikidata_export_quality_gate.py` | Build-time ERROR-only export quality gate before cache upsert |
 | `backend/converter/transformer/extent.py` | Single MARC 300$a extent parser — sums leaf sequences, reads page/gematria units, fails closed (Rule W-140) |
 | `backend/app/pipeline/marc_llm_extract.py` | Span-grounded tier-1 extraction of owner/place/material from MARC provenance prose; proposals only (Rule W-140) |
-| `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, and export-field failures |
+| `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, linked-QID handling, and export-field failures (W-199) |
 | `backend/scripts/audit_test_wikidata_upload.py` | Per-entity test.wikidata.org write vs Studio native live-readiness (validator ERROR, claim count, live URI leak, W-190 identity clash); identifierless persons `skip_for_live` (W-195) |
 | `backend/scripts/judge_test_wikidata_live_ready.py` | LLM live-readiness judge: deterministic audit + eval-agent `wikidata_test_live_ready` on natives (never copy test Q/P); `skip_for_live` excluded from written denominator (W-195) |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | Background build job (`wikidata_studio_build` kind) — `reconcile=False`, threadpool canonical build (W-119) |
@@ -51,7 +51,7 @@
 | `backend/converter/wikidata/manuscript_metadata.py` | Labels, instance types, language, physical description, and provenance projection |
 | `backend/converter/wikidata/content_projection.py` | Contents, genre, and canonical-subject projection |
 | `backend/converter/wikidata/person_linking.py`, `person_projection.py`, `role_normalize.py` | Role-safe manuscript links (paren/quote MARC relators), authority-backed person construction |
-| `backend/converter/wikidata/work_projection.py` | Work creation, labels, deduplication, and author links |
+| `backend/converter/wikidata/work_projection.py` | Work creation, labels, deduplication, and source-backed author links for new or reused works (W-198) |
 | `backend/converter/wikidata/work_candidates.py` | Source-aware MARC 500/505/NER eligibility decisions and compact evidence |
 | `backend/converter/wikidata/property_mapping.py` | P/Q constants, WPM role map, discouraged P31 set, condition/fragment vocabulary, verified KNOWN_WORK_QIDS (Rules W-26/W-71/W-98/W-114) |
 | `docs/wikidata-manuscripts-data-model.md` | Code contract from WikiProject Manuscripts + DS paper |

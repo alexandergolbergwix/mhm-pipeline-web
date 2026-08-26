@@ -510,6 +510,51 @@ async def test_work_uses_exact_approved_author_qid_before_person_pass() -> None:
     assert not any(stmt["property_id"] == "P2093" for stmt in work["statements"])
 
 
+@pytest.mark.asyncio
+async def test_reused_work_gains_author_claim_from_later_source() -> None:
+    title = "מנחת יהודה : פרוש על שמואל, מלכים וישעיהו"
+    first = {
+        **_fake_marc_record(control_number="1"),
+        "contents": [{
+            "title": title,
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    second = {
+        **_fake_marc_record(control_number="2"),
+        "contents": [{
+            "title": title,
+            "author": "חנין, יהודה בן יעקב",
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[first, second],
+        approved_matches=[{
+            "control_number": "2",
+            "entity_text": "חנין, יהודה בן יעקב",
+            "entity_kind": "person",
+            "role": "author",
+            "wikidata_qid": "Q118186113",
+            "approved": True,
+        }],
+        entities_by_cn={},
+        return_native=False,
+    )
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    author = next(
+        stmt for stmt in work["statements"]
+        if stmt["property_id"] == "P50"
+    )
+    assert author["value"] == "Q118186113"
+    assert any(
+        ref["property_id"] == "P3959" and ref["value"] == "2"
+        for ref in author["references"]
+    )
+
+
 def test_known_work_title_aliases_are_exact_and_not_fuzzy() -> None:
     from converter.wikidata.property_mapping import known_work_qid_for_title
 

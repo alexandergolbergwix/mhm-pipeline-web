@@ -148,6 +148,11 @@
    without rebuild. Width 5180 mm is omitted.
 8. **Thin test writes** (W-191): re-run `upload_target=test` after the
    `created_qids` job wiring; `exists` must not hide a thinner claim set.
+9. **Stale duplicate warning on a linked item** (W-199): if an item has an
+   `existing_qid`, treat it as `already_linked` and do not flag CREATE risk.
+   Refresh verify when the note says `recorded on the stored verdict`.
+   Use the drawer foreign-accept checkbox only when the upload must modify that
+   foreign QID. Never create a second item for the linked QID.
 
 ### Skill: load all items in the modern review panel
 

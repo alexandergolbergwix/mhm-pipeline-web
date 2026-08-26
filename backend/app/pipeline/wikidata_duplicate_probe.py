@@ -180,33 +180,40 @@ def stamp_duplicate_check(item: dict[str, Any]) -> dict[str, Any]:
     answer stops the cached-probe reader from ever running (see
     ``has_duplicate_answer``).
     """
-    existence = item.get("_wikidata_existence")
-    warning = _recorded_warning_status(item)
-    if warning and (
-        not isinstance(existence, dict)
-        or existence.get("status") not in CONCLUSIVE_STATUSES
-    ):
-        # A verdict that recorded `candidates_found` / `already_linked` must not be
-        # masked by a cold probe cache: the probe cache lives 7 days, the verdict 90.
-        # Only WARNINGS are carried forward — a stale `absent` may never suppress
-        # one (Rule W-144's whole point).
-        existence = {
-            "status": warning,
-            "candidates": [],
-            "note": (
-                "recorded on the stored verdict; the probe cache no longer has this "
-                "key — re-run verify to refresh"
-            ),
-        }
+    direct_answer = decide_without_network(item)
+    if direct_answer and direct_answer.get("status") == STATUS_HAS_QID:
+        # The current QID is authoritative for CREATE risk. A stale warning must
+        # not classify a linked item as a new duplicate candidate (Rule W-199).
+        existence = direct_answer
         item["_wikidata_existence"] = existence
-    elif not isinstance(existence, dict) or not existence:
-        existence = duplicate_check_fallback()
-    elif existence.get("status") == STATUS_NOT_RUN:
-        # Keep the placeholder out of `_wikidata_existence` even if a caller put
-        # one there, so the item stays eligible for the cached answer.
-        item.pop("_wikidata_existence", None)
     else:
-        item["_wikidata_existence"] = existence
+        existence = item.get("_wikidata_existence")
+        warning = _recorded_warning_status(item)
+        if warning and (
+            not isinstance(existence, dict)
+            or existence.get("status") not in CONCLUSIVE_STATUSES
+        ):
+            # A verdict that recorded `candidates_found` / `already_linked` must
+            # not be masked by a cold probe cache: the probe cache lives 7 days,
+            # the verdict 90. Only WARNINGS are carried forward — a stale
+            # `absent` may never suppress one (Rule W-144's whole point).
+            existence = {
+                "status": warning,
+                "candidates": [],
+                "note": (
+                    "recorded on the stored verdict; the probe cache no longer has "
+                    "this key — re-run verify to refresh"
+                ),
+            }
+            item["_wikidata_existence"] = existence
+        elif not isinstance(existence, dict) or not existence:
+            existence = duplicate_check_fallback()
+        elif existence.get("status") == STATUS_NOT_RUN:
+            # Keep the placeholder out of `_wikidata_existence` even if a caller
+            # put one there, so the item stays eligible for the cached answer.
+            item.pop("_wikidata_existence", None)
+        else:
+            item["_wikidata_existence"] = existence
     pack = item.get("verify_evidence")
     if isinstance(pack, dict):
         existing = pack.get("wikidata_existing")

@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-197)
+## Architectural rules (W-1…W-199)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -148,6 +148,8 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-195** — Clash-cleared identifierless persons MUST skip live writes; uncertain duplicates confirm fail-closed; pass 2 UPDATE is own-only
 - **W-196** — Catalog works MUST skip CREATE when an allowlisted live title exists; coerce P1476/P1680/P1684 to monolingualtext; omit implausible codex millimetres
 - **W-197** — Wikidata Studio transliteration prewarm MUST snapshot MARC and isolate cache sessions from the build session after a production `MissingGreenlet` failure
+- **W-198** — Reused work items MUST retain source-backed author links from later source records
+- **W-199** — Linked Wikidata QIDs MUST not trigger CREATE duplicate blockers from stale verdicts
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

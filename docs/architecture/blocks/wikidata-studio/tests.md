@@ -70,6 +70,8 @@
 approved work-QID reuse so enrichment metadata cannot be dropped; related_works
 known-QID linking (Bible/Tanakh/Haggadah/Tikkun Chatzot) without evidence-less
 CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
+- The same work test also checks that a later source record adds a source-backed
+  `P50` claim to a reused work when the first source had no author.
 - `backend/tests/unit/test_wikidata_studio_control_number_join.py` — quoted/whitespace control numbers join records to approved authority and NER evidence before item projection.
 - `backend/tests/unit/test_wikidata_autofix_apply.py`, `test_wikidata_entity_compare.py` — AI-fix merge + live compare.
 - `backend/tests/test_hmo_instance_qids_for_run.py` — HMO QID injection into the fingerprint/build, including quoted control-number normalisation.
@@ -143,13 +145,13 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_evidence_and_identity.py` — raw-tag evidence slice, per-claim provenance, manuscript identity scoping, claim dedup, identity gates (Rule W-137).
 - `backend/tests/unit/test_wikidata_description_hygiene.py` — generated manuscript descriptions, catalog-note rejection, description language routing (Rule W-137).
 - `backend/tests/unit/test_wikidata_wave2_projection.py` — MARC unwrapping, dimension parsing, channel-aware provenance, work-title identity, local-reference resolution, generic subjects, verified holders (Rule W-138). Hygiene omits P2048/P2049 above 1000 mm (W-196).
-- `backend/tests/unit/test_wikidata_duplicate_probe.py` — identifier probes, batch attribution, throttle/fail-closed statuses, evidence-pack exposure (Rule W-139).
+- `backend/tests/unit/test_wikidata_duplicate_probe.py` — identifier probes, batch attribution, throttle/fail-closed statuses, evidence-pack exposure, and linked-QID priority over stale duplicate warnings (Rules W-139 / W-199).
 - `backend/tests/unit/test_marc_extent_and_digital_access.py` — extent summation, gematria/page units, fail-closed cases, 856$u → P953, closed-vocabulary material, Hebrew description language agreement (Rule W-140).
 - `backend/tests/unit/test_marc_llm_extract.py` — span grounding (a hallucinated span cannot pass), closed material vocabulary, unavailable-vs-empty, budget reporting, advisory-only surfacing, Qubrid request shape (Rule W-140).
 - `backend/tests/unit/test_wikidata_projection_recovery.py` — contained-work relinking, multi-valued P973, facsimile typing, Hebrew label holder/language (Rule W-142).
 - `backend/tests/unit/test_wikidata_studio_build_job.py` — `TestMiningReadsMarcProse`: the mining phase loads run MARC for the manuscripts in the build and never loads it for other entity types (Rule W-140).
 - `backend/tests/unit/test_marc_llm_extract.py` — `TestPromptNamesEachProperty` (every PID is explained; a language is not a place) and `TestNoSourceIsReported` (a prose-free manuscript reports `no_source`, not silence) (Rule W-140).
 - `backend/tests/unit/test_wikidata_phase1_projection.py` — `TestAuditedHolderTable`: a table institution resolves to its verified QID, the table beats an unverified authority QID, an ambiguous institution abstains (Rule W-143).
-- `backend/tests/unit/test_wikidata_duplicate_probe.py` — `TestHolderPlusShelfmarkKey` (AND not OR; abstained holder and two shelfmarks yield no key), `TestWorkTitleProbe` (title+class, curator confirmation required, manuscripts excluded), `TestAbsentMeansEveryKeyAnswered`, `TestCachedAnswerIsVisibleWithoutProbing` (Rules W-144 / W-145).
+- `backend/tests/unit/test_wikidata_duplicate_probe.py` — `TestHolderPlusShelfmarkKey` (AND not OR; abstained holder and two shelfmarks yield no key), `TestWorkTitleProbe` (title+class, curator confirmation required, manuscripts excluded), `TestAbsentMeansEveryKeyAnswered`, `TestCachedAnswerIsVisibleWithoutProbing`, and linked-QID priority over stale duplicate warnings (Rules W-144 / W-145 / W-199).
 - `backend/tests/unit/test_wikidata_lod_linking.py` — approved former-owner / signatory / mentioned rows become edges; a former owner is never a current `P127`; seller and censor stay refused; no item is created for the sake of an edge; the canonical context stamps `marc_authority_matches` in the desktop shape (Rule W-146).
-- `backend/tests/test_wikidata_export_quality_checker.py` — `TestDuplicateCoverageChecks`: unprobed work, missing holder+shelfmark probe, top-level candidate blocks, and `P2093` flagged only when an author item exists (Rules W-144 / W-145 / W-146).
+- `backend/tests/test_wikidata_export_quality_checker.py` — `TestDuplicateCoverageChecks`: unprobed work, missing holder+shelfmark probe, top-level candidate blocks, linked QIDs do not create duplicate blockers, and `P2093` flagged only when an author item exists (Rules W-144 / W-145 / W-146 / W-199).

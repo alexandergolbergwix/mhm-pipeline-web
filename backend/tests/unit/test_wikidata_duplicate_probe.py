@@ -969,6 +969,24 @@ class TestThePlaceholderIsNotAnAnswer:
         enrich_items_with_verify_evidence([item], [])
         assert stamp_duplicate_check(item)["status"] == STATUS_ABSENT
 
+    def test_an_existing_qid_beats_a_stale_duplicate_warning(self) -> None:
+        item = self._manuscript()
+        item["existing_qid"] = "Q118186113"
+        item["ai_verdict"] = {
+            "overall": "partial",
+            "duplicate_status": STATUS_CANDIDATES,
+        }
+        enrich_items_with_verify_evidence([item], [])
+
+        answer = stamp_duplicate_check(item)
+
+        assert answer["status"] == STATUS_HAS_QID
+        assert answer["existing_qid"] == "Q118186113"
+        assert (
+            item["verify_evidence"]["wikidata_existing"]["duplicate_check"]["status"]
+            == STATUS_HAS_QID
+        )
+
     def test_a_verdicts_recorded_status_survives_the_probe_cache_expiring(self) -> None:
         """The probe cache lives 7 days; a verdict lives 90 (Rule W-157)."""
         item = self._manuscript()

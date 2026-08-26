@@ -202,20 +202,25 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
             # old blocking check rather than guess which one it was.
             checks.append("claim_without_evidence")
 
+    existing_qid = str(row.get("existing_qid") or "").strip()
+
     # Rule W-139 — a CREATE candidate that already exists on Wikidata.
     duplicate_check = ((evidence_pack.get("wikidata_existing") or {}).get("duplicate_check")
                        if isinstance(evidence_pack.get("wikidata_existing"), dict) else None)
-    if isinstance(duplicate_check, dict) and duplicate_check.get("status") == "candidates_found":
+    if (
+        not existing_qid
+        and isinstance(duplicate_check, dict)
+        and duplicate_check.get("status") == "candidates_found"
+    ):
         checks.append("create_would_duplicate_existing_item")
 
     # The export now carries the cached answer at the top level (Rule W-144).
     top_level_check = row.get("duplicate_check")
-    if isinstance(top_level_check, dict):
+    if isinstance(top_level_check, dict) and not existing_qid:
         if top_level_check.get("status") == "candidates_found":
             checks.append("create_would_duplicate_existing_item")
         duplicate_check = duplicate_check or top_level_check
 
-    existing_qid = str(row.get("existing_qid") or "").strip()
     if not existing_qid:
         status = (duplicate_check or {}).get("status")
         # Rule W-144 — a manuscript whose holder resolved MUST also be probed on

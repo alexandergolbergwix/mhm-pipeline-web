@@ -169,6 +169,22 @@ class TestDuplicateCoverageChecks:
         })
         assert "create_would_duplicate_existing_item" in (row or {}).get("checks", [])
 
+    def test_a_linked_item_is_not_a_create_duplicate(self) -> None:
+        from scripts.check_wikidata_export_quality import _check_row
+
+        row = _check_row({
+            "entity_type": "person",
+            "existing_qid": "Q118186113",
+            "approved": True,
+            "ai_verdict": {"overall": "partial"},
+            "duplicate_check": {
+                "status": "candidates_found",
+                "candidates": [],
+                "note": "recorded on the stored verdict",
+            },
+        })
+        assert "create_would_duplicate_existing_item" not in (row or {}).get("checks", [])
+
     def test_p2093_beside_a_real_author_item_is_a_defect(self) -> None:
         from scripts.check_wikidata_export_quality import _check_row
 
