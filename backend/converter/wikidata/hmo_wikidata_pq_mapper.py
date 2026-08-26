@@ -58,6 +58,7 @@ from converter.wikidata.property_mapping import (
     P_OWNED_BY,
     P_SCRIPT_STYLE,
     P_START_TIME,
+    P_SUBTITLE,
     P_TITLE,
     P_TRANSCRIBED_BY,
     P_VIAF_ID,
@@ -210,11 +211,15 @@ MANUSCRIPT_ONLY_WIKIDATA_PIDS = frozenset({
 })
 
 
+_MONOLINGUALTEXT_PIDS = frozenset({P_TITLE, P_SUBTITLE, P_INSCRIPTION})
+
+
 @dataclass(frozen=True)
 class MappedWikidataClaim:
     property_id: str
     value: str
     value_type: str  # "wikibase-item" | "string" | "url" | "quantity" | …
+    language: str = ""
 
 
 def ontology_local_name(uri_or_name: str) -> str:
@@ -463,4 +468,18 @@ def map_hmo_claim_to_wikidata(
     if qid and property_id == P_EXACT_MATCH:
         return MappedWikidataClaim(property_id=property_id, value=qid, value_type="wikibase-item")
 
+    if property_id in _MONOLINGUALTEXT_PIDS:
+        return MappedWikidataClaim(
+            property_id=property_id,
+            value=text,
+            value_type="monolingualtext",
+            language=_monolingual_language(text),
+        )
+
     return MappedWikidataClaim(property_id=property_id, value=text, value_type="string")
+
+
+def _monolingual_language(text: str) -> str:
+    if any("\u0590" <= char <= "\u05ff" for char in str(text or "")):
+        return "he"
+    return "en"

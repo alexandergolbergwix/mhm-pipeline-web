@@ -51,6 +51,9 @@ curator review context; they are not silently rewritten as stronger claims.
   tokens and fails closed to the ordinary year parser for mixed century/year
   catalogue prose. A malformed date token MUST NOT abort normalization of the
   entire record.
+- Codex height/width above 1000 mm is omitted at emit and live hygiene
+  unless a later parse proves millimetres. `29 x 518 cm` must not land as
+  5180 mm on Wikidata.
 
 ## Source and module boundary
 

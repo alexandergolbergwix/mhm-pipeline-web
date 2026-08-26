@@ -145,3 +145,31 @@ def test_inscription_forbidden_on_person() -> None:
         entity_type="person",
     )
     assert mapped is None
+
+
+def test_has_title_is_monolingualtext() -> None:
+    mapped = map_hmo_claim_to_wikidata(
+        {
+            "property_uri": "https://w3id.org/mhm/ontology#has_title",
+            "value": "אב הרחמים",
+        },
+        entity_type="work",
+    )
+    assert mapped is not None
+    assert mapped.property_id == "P1476"
+    assert mapped.value_type == "monolingualtext"
+    assert mapped.language == "he"
+
+
+def test_colophon_inscription_is_monolingualtext() -> None:
+    mapped = map_hmo_claim_to_wikidata(
+        {
+            "property_uri": "https://w3id.org/mhm/ontology#colophon_text",
+            "value": "נשלם העתק זה",
+        },
+        entity_type="manuscript",
+    )
+    assert mapped is not None
+    assert mapped.property_id == "P1684"
+    assert mapped.value_type == "monolingualtext"
+    assert mapped.language == "he"

@@ -37,7 +37,7 @@
 - `backend/tests/test_wikidata_export_quality_checker.py` — compact JSON/CSV audit reports only actionable failures, distinguishes authority-approved-only from diagnostic exports, and treats Hebrew gershayim in a title claim as content rather than wrapper noise (Rule W-76).
 - `backend/tests/test_section_export_router.py` — section CSV retains item approval, verdict JSON, source records, validation, authority, and work-candidate evidence.
 - `backend/tests/test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`, and `unit/test_wikidata_verdict_cache.py` pin build `records` ↔ verify `record_ids`, MARC/local-target fingerprint parity, prompt-visible statement/work evidence, and safe stale-key display; `unit/test_marc_subject_resolve.py` and `test_marc_650_655_lod.py` pin verified static QIDs/labels and broad-P921 omission.
-- `backend/tests/unit/test_hmo_wikidata_pq_mapper.py` — ontology/local-PID → public P/Q allowlist; bare project QID rejected; MS P50 forbidden.
+- `backend/tests/unit/test_hmo_wikidata_pq_mapper.py` — ontology/local-PID → public P/Q allowlist; bare project QID rejected; MS P50 forbidden; P1476/P1684 monolingualtext (W-196).
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical claim mapping uses the PQ mapper; control numbers; no local-Q leak; summarized Production/CU rollup; P2888/P973 bridge; rollup summary counts; `filter_public_wikidata_items` / stale-cache shape (Rules W-117 / W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID recovery (W-121); ontology-IRI P2888 rewrite (W-122).
 - `backend/tests/unit/test_wikidata_work_candidates.py` — includes `245` / `100/245` accept reasons (W-121).
 - `backend/tests/unit/test_property_mapping_hmo_links.py` / `test_item_builder_hmo_links.py` / `test_hmo_wikidata_pq_mapper.py` — browseable Item:Q only (W-122).
@@ -54,8 +54,9 @@
 - `backend/tests/unit/test_studio_dict_to_native.py` — Studio-cache dict → native item (W-181 / R84).
 - `backend/tests/unit/test_audit_test_wikidata_upload.py` — claim-count / live-URI / `__LOCAL:` / identity-clash helpers for the test-upload live-readiness audit (W-190 / W-191).
 - `backend/tests/unit/test_judge_test_wikidata_live_ready.py` — compact test-wiki snapshot + merge (deterministic blockers beat LLM `full`; skipped ≠ live-ready; `skip_for_live` excluded from written live-ready).
-- `backend/tests/unit/test_wikidata_duplicate_confirm.py` — W-195: garbage/`same_item` without id/`unsure` skip; clash never calls confirm; pass 2 created/own vs foreign; P50 `__LOCAL:` → P2093.
-- `backend/tests/unit/test_wikidata_live_native_hygiene.py` — W-194: Savoy/Shor QID clear, Tikkun work-item denylist, `__LOCAL:` rewrite/degrade/in-batch keep; judge defaults to DeepSeek-V4-Flash.
+- `backend/tests/unit/test_wikidata_duplicate_confirm.py` — W-195: garbage/`same_item` without id/`unsure` skip; clash never calls confirm; pass 2 created/own vs foreign; P50 `__LOCAL:` → P2093. W-196: work allowlisted P31 may keep `same_item`.
+- `backend/tests/unit/test_wikidata_work_link_w196.py` — W-196: unique prayer probe, crossword reject, ambiguous pair, Tikkun skip+`link_qid`, skipped-work session QID.
+- `backend/tests/unit/test_wikidata_live_native_hygiene.py` — W-194: Savoy/Shor QID clear, Tikkun work-item denylist, `__LOCAL:` rewrite/degrade/in-batch keep; W-196: string title coerce, 5180 mm omit.
 - `eval-agent/tests/test_wikidata_test_live_ready.py` — evaluator pack includes test snapshot; prompt forbids copying test Q/P.
 - `backend/tests/unit/test_wikidata_person_identity_w190.py` — leftover-token refuse (Savoy/Sultan/Kostlitz), Monson/Curiel/Briel cover, upload-prepare foreign clash → skip (not CREATE), own clash → blocked (W-190 / W-195).
 - `backend/tests/unit/test_wikidata_upload_claim_complete_w191.py` — upload sort order, `__LOCAL:` resolve, unpartitioned leftover still blocked, `wikibase-item` P31 builds (W-191).
@@ -139,7 +140,7 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/test_wikidata_item_views.py` — merged view validates verdicts against the retained pre-derived override projection (R66); applies the persist-slim projection before stable-key validation (R67); retains subset verdicts when local-target labels differ by scope (R68); retains verdicts after probe QID adoption and live value-label gloss parity with verify (R72 / W-169).
 - `backend/tests/unit/test_wikidata_evidence_and_identity.py` — raw-tag evidence slice, per-claim provenance, manuscript identity scoping, claim dedup, identity gates (Rule W-137).
 - `backend/tests/unit/test_wikidata_description_hygiene.py` — generated manuscript descriptions, catalog-note rejection, description language routing (Rule W-137).
-- `backend/tests/unit/test_wikidata_wave2_projection.py` — MARC unwrapping, dimension parsing, channel-aware provenance, work-title identity, local-reference resolution, generic subjects, verified holders (Rule W-138).
+- `backend/tests/unit/test_wikidata_wave2_projection.py` — MARC unwrapping, dimension parsing, channel-aware provenance, work-title identity, local-reference resolution, generic subjects, verified holders (Rule W-138). Hygiene omits P2048/P2049 above 1000 mm (W-196).
 - `backend/tests/unit/test_wikidata_duplicate_probe.py` — identifier probes, batch attribution, throttle/fail-closed statuses, evidence-pack exposure (Rule W-139).
 - `backend/tests/unit/test_marc_extent_and_digital_access.py` — extent summation, gematria/page units, fail-closed cases, 856$u → P953, closed-vocabulary material, Hebrew description language agreement (Rule W-140).
 - `backend/tests/unit/test_marc_llm_extract.py` — span grounding (a hallucinated span cannot pass), closed material vocabulary, unavailable-vs-empty, budget reporting, advisory-only surfacing, Qubrid request shape (Rule W-140).

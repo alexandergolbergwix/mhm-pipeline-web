@@ -22,7 +22,7 @@ def test_native_claim_mapping_requires_explicit_property_and_value() -> None:
         {"wikidata_property": "P217", "value_type": "string", "value": "F 1"},
     ])
     assert native_wikidata_claims(entity) == [
-        {"property": "P217", "value": "F 1"},
+        {"property": "P217", "value": "F 1", "value_type": "string"},
         {"property": "P3959", "value": "990001"},
         {"property": "P31", "value": "Q87167"},
     ]
@@ -47,7 +47,7 @@ def test_person_keeps_its_authority_identifier_claims() -> None:
         "claims": [{"wikidata_property": "P214", "value": "123"}],
     })
     assert native_wikidata_claims(entity) == [
-        {"property": "P214", "value": "123"},
+        {"property": "P214", "value": "123", "value_type": "string"},
         {"property": "P31", "value": "Q5"},
     ]
 

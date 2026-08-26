@@ -653,6 +653,57 @@ def probe_title(
     return out
 
 
+def probe_work_title_allowlisted(
+    title: str,
+    *,
+    fetch: Any = None,
+    timeout: float | None = None,
+) -> str | None:
+    """Return the unique live QID whose title match has an allowlisted P31.
+
+    Crossword, museum, and other non-allowlisted hits are ignored. Zero or two
+    or more allowlisted hits return None so upload does not guess (Rule W-196).
+    """
+    caller = fetch or _fetch_json
+    text = str(title or "").strip()
+    if not text:
+        return None
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        WORK_LINK_P31,
+        live_p31_from_entity,
+    )
+
+    wait = timeout or _timeout()
+    payload = caller(_search_url(f'inlabel:"{text}"', limit=10), timeout=wait)
+    results = ((payload or {}).get("query") or {}).get("search") or []
+    qids: list[str] = []
+    seen: set[str] = set()
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        qid = str(row.get("title") or "")
+        if not qid.startswith("Q") or qid in seen:
+            continue
+        seen.add(qid)
+        qids.append(qid)
+    if not qids:
+        return None
+    entities_payload = caller(_entities_url(qids[:10]), timeout=wait)
+    entities = (entities_payload or {}).get("entities") or {}
+    if not isinstance(entities, dict):
+        return None
+    allowlisted: list[str] = []
+    for qid in qids[:10]:
+        ent = entities.get(qid) or {}
+        if not isinstance(ent, dict):
+            continue
+        if set(live_p31_from_entity(ent)) & WORK_LINK_P31:
+            allowlisted.append(qid)
+    if len(allowlisted) == 1:
+        return allowlisted[0]
+    return None
+
+
 def probe_composite(
     pid: str,
     value: str,

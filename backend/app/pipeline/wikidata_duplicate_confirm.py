@@ -35,6 +35,7 @@ def confirm_uncertain_duplicate(
     has_trusted_identifier: bool,
     live_en: str = "",
     live_he: str = "",
+    live_p31: list[str] | None = None,
     complete: CompleteFn | None = None,
 ) -> str:
     """Return ``same_item`` / ``different_item`` / ``unsure``. Fail-closed."""
@@ -48,6 +49,7 @@ def confirm_uncertain_duplicate(
             has_trusted_identifier=has_trusted_identifier,
             live_en=live_en,
             live_he=live_he,
+            live_p31=live_p31 or [],
         ))
         verdict = _parse_verdict(raw)
     except Exception:
@@ -59,6 +61,15 @@ def confirm_uncertain_duplicate(
     if verdict not in _ALLOWED:
         return UNSURE
     if verdict == SAME_ITEM and not has_trusted_identifier:
+        from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+            work_p31_allows_link_only,
+        )
+
+        if (
+            str(entity_type or "").lower() == "work"
+            and work_p31_allows_link_only(live_p31 or [])
+        ):
+            return SAME_ITEM
         return UNSURE
     return verdict
 
@@ -73,6 +84,7 @@ def _build_prompt(
     has_trusted_identifier: bool,
     live_en: str,
     live_he: str,
+    live_p31: list[str],
 ) -> str:
     return (
         "You confirm whether a catalog entity is the same Wikidata item.\n"
@@ -87,6 +99,7 @@ def _build_prompt(
         f"has_trusted_identifier: {has_trusted_identifier}\n"
         f"live_label_en: {live_en}\n"
         f"live_label_he: {live_he}\n"
+        f"live_p31: {','.join(live_p31)}\n"
     )
 
 

@@ -191,6 +191,7 @@ class PreparedItem:
     adopt_candidate: bool = False
     ownership: str = "absent"  # own | foreign | unknown | absent
     allow_foreign_modify: bool = False
+    link_qid: str | None = None
 
 
 PASS2_CREATE_STATUSES = frozenset({"created", "would_create", "success"})
@@ -342,6 +343,29 @@ def _skip_uncertain_duplicate(prepared: PreparedItem, *, reason: str) -> Prepare
     return prepared
 
 
+def _skip_work_link_only(
+    prepared: PreparedItem, *, qid: str, reason: str,
+) -> PreparedItem:
+    """Skip CREATE/UPDATE but keep the live QID for manuscript P1574 (W-196)."""
+    clean = str(qid or "").strip()
+    prepared.link_qid = clean or None
+    prepared.blocked = False
+    prepared.block_status = "skipped"
+    prepared.block_message = (
+        f"Catalog work already exists as {clean} ({reason}); "
+        "refusing CREATE/UPDATE (Rule W-196). Manuscripts may P1574 that QID."
+    )
+    prepared.method = f"{prepared.method}+link_only"
+    prepared.existing_qid = None
+    try:
+        prepared.item.existing_qid = None
+    except Exception:  # noqa: BLE001
+        pass
+    prepared.ownership = "absent"
+    prepared.adopt_candidate = False
+    return prepared
+
+
 def _apply_uncertain_duplicate_confirm(
     prepared: PreparedItem, *, is_test: bool,
 ) -> PreparedItem:
@@ -350,10 +374,14 @@ def _apply_uncertain_duplicate_confirm(
         SAME_ITEM,
         confirm_uncertain_duplicate,
     )
-    from app.pipeline.wikidata_existence import fetch_entity_labels  # noqa: PLC0415
+    from app.pipeline.wikidata_existence import (  # noqa: PLC0415
+        fetch_entity_labels,
+        fetch_entity_p31,
+    )
 
     qid = str(prepared.existing_qid or "").strip()
     labels = fetch_entity_labels([qid], is_test=is_test).get(qid) or {}
+    p31 = fetch_entity_p31([qid], is_test=is_test).get(qid) or []
     has_id = _item_has_identity_pid(prepared.item)
     verdict = confirm_uncertain_duplicate(
         local_id=prepared.local_id,
@@ -364,9 +392,21 @@ def _apply_uncertain_duplicate_confirm(
         has_trusted_identifier=has_id,
         live_en=str(labels.get("en") or ""),
         live_he=str(labels.get("he") or ""),
+        live_p31=p31,
     )
     if verdict == SAME_ITEM:
         if not has_id and "identifier" not in str(prepared.method or "").lower():
+            if str(prepared.entity_type or "").lower() == "work":
+                from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+                    work_p31_allows_link_only,
+                )
+
+                if work_p31_allows_link_only(p31):
+                    return _skip_work_link_only(
+                        prepared,
+                        qid=qid,
+                        reason="same_item without shared identifier",
+                    )
             return _skip_uncertain_duplicate(
                 prepared, reason="same_item without shared identifier",
             )
@@ -446,13 +486,23 @@ def _rollup_skipped_person_refs(prepared: list[PreparedItem]) -> None:
             item.statements = kept
 
 
-def _apply_work_identity_gate(prepared: PreparedItem, *, qid: str) -> PreparedItem:
-    """Refuse UPDATE of a liturgy/concept QID that is not this catalog work (W-194)."""
-    from converter.wikidata.property_mapping import work_item_forbidden_update_qids
+def _apply_work_identity_gate(
+    prepared: PreparedItem, *, qid: str, is_test: bool = False,
+) -> PreparedItem:
+    """Refuse UPDATE of a liturgy/concept QID; skip CREATE and keep link_qid (W-196)."""
+    from app.pipeline.wikidata_existence import fetch_entity_p31  # noqa: PLC0415
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        work_qid_refuses_update,
+    )
 
-    if qid not in work_item_forbidden_update_qids():
+    p31 = fetch_entity_p31([qid], is_test=is_test).get(qid) or []
+    if not work_qid_refuses_update(qid, p31):
         return prepared
-    return _clear_qid_for_create(prepared, suffix="cleared_work_identity_clash")
+    return _skip_work_link_only(
+        prepared,
+        qid=qid,
+        reason="ritual/concept or forbidden work QID",
+    )
 
 
 def _apply_existence_and_ownership(
@@ -537,7 +587,9 @@ def _apply_existence_and_ownership(
         if prepared.blocked or not prepared.existing_qid:
             return prepared
     if str(prepared.entity_type or "").lower() == "work":
-        prepared = _apply_work_identity_gate(prepared, qid=clean_qid)
+        prepared = _apply_work_identity_gate(
+            prepared, qid=clean_qid, is_test=is_test,
+        )
         if prepared.blocked or not prepared.existing_qid:
             return prepared
 
@@ -665,7 +717,16 @@ def _reconcile_for_upload(
                 lang="he" if has_hebrew else "en",
                 author_qid=str(p50) if p50 else None,
             )
-            return (qid, "label+author" if qid else "none")
+            if qid:
+                return (qid, "label+author")
+            from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+                probe_work_title_allowlisted,
+            )
+
+            probed = probe_work_title_allowlisted(str(title))
+            if probed:
+                return (probed, "title+p31")
+            return (None, "none")
         return (None, "none")
 
     return (None, "none")
@@ -687,6 +748,13 @@ def _prepare_for_upload(
     from converter.wikidata.reconciler import (  # noqa: PLC0415
         ReconciliationUnavailableError,
     )
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        coerce_monolingual_text_statements,
+        omit_implausible_codex_dimensions,
+    )
+
+    coerce_monolingual_text_statements(items)
+    omit_implausible_codex_dimensions(items)
 
     ns = ledger_ns or ledger_namespace()
     accepts = accept_by_local_id or {}
@@ -1118,7 +1186,7 @@ def _upload_sync(
         if p.block_status == "skipped" and not p.blocked:
             out.append(UploadOutcome(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
-                qid=p.existing_qid, status="skipped",
+                qid=p.link_qid or p.existing_qid, status="skipped",
                 message=p.block_message, added_properties=[],
                 ownership=p.ownership,
             ))
@@ -1204,9 +1272,17 @@ def remember_created_qid(
     status: str,
     *,
     dry_run: bool = False,
+    entity_type: str = "",
 ) -> None:
     """Record a written (or dry-run) QID so later ``__LOCAL:`` snaks can resolve."""
     if not local_id:
+        return
+    if (
+        status == "skipped"
+        and qid
+        and str(entity_type or "").lower() == "work"
+    ):
+        session_qids[local_id] = str(qid)
         return
     if status not in _SESSION_QID_STATUSES:
         return
@@ -1262,7 +1338,7 @@ def _dry_run(
         if p.block_status == "skipped" and not p.blocked:
             out.append(UploadOutcome(
                 local_id=p.local_id, label=p.label, entity_type=p.entity_type,
-                qid=p.existing_qid, status="skipped",
+                qid=p.link_qid or p.existing_qid, status="skipped",
                 message=p.block_message, added_properties=[],
                 ownership=p.ownership,
             ))

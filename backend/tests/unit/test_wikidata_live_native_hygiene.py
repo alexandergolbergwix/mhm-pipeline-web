@@ -121,3 +121,31 @@ def test_hayim_shor_heading_clears_avraham_hayim_shor() -> None:
 
 def test_live_ready_judge_defaults_to_deepseek_v4_flash() -> None:
     assert DEFAULT_TIER_MODEL == "deepseek-ai/DeepSeek-V4-Flash"
+
+
+def test_string_title_coerces_to_monolingualtext() -> None:
+    work = {
+        "local_id": "QDraft_Work_title",
+        "entity_type": "work",
+        "statements": [
+            {"property_id": "P1476", "value": "אב הרחמים", "value_type": "string"},
+        ],
+    }
+    stats = sanitize_studio_items_for_live([work])
+    assert stats["coerced_monolingualtext"] == 1
+    assert work["statements"][0]["value_type"] == "monolingualtext"
+
+
+def test_implausible_width_is_omitted() -> None:
+    manuscript = {
+        "local_id": "QDraft_MS_wide",
+        "entity_type": "manuscript",
+        "statements": [
+            {"property_id": "P2048", "value": 290, "value_type": "quantity"},
+            {"property_id": "P2049", "value": 5180, "value_type": "quantity"},
+        ],
+    }
+    stats = sanitize_studio_items_for_live([manuscript])
+    assert stats["omitted_implausible_dimensions"] == 1
+    pids = {row["property_id"] for row in manuscript["statements"]}
+    assert pids == {"P2048"}

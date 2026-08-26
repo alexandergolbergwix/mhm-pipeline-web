@@ -38,6 +38,7 @@
 | Audit a test.wikidata.org upload for live readiness | [wikidata-studio skills](blocks/wikidata-studio/skills.md) — `audit_test_wikidata_upload.py` (natives + test wiki entities + live identity clash; do not copy test Q/P) |
 | LLM-judge a test.wikidata.org upload before www.wikidata.org | [wikidata-studio skills](blocks/wikidata-studio/skills.md) — `judge_test_wikidata_live_ready.py` + eval-agent `wikidata_test_live_ready` (natives only; test Q/P never copied; `skip_for_live` excluded from written live-ready, W-195) |
 | Live write after a person heading clash / uncertain duplicate | [Wikidata Studio R97](blocks/wikidata-studio/rules.md) + Rule W-195 — identifierless clash-cleared persons skip, never CREATE; DeepSeek confirms only non-identifier matches fail-closed; pass 2 UPDATE own/created only; never copy test Q/P |
+| Live write of a catalog work that already exists as prayer/literary title | [Wikidata Studio R99](blocks/wikidata-studio/rules.md) + Rule W-196 — skip CREATE/UPDATE; store `link_qid`; manuscripts may P1574; never merge community QIDs |
 | Add caching or an external API call | [caching](blocks/caching/README.md) |
 | Add a curator-mutable field | [versioning-export](blocks/versioning-export/README.md) |
 | Add an endpoint (esp. unauthenticated) | [platform-security](blocks/platform-security/README.md) |

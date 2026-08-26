@@ -214,6 +214,50 @@ def fetch_entity_labels(
     return out
 
 
+def fetch_entity_p31(
+    qids: list[str],
+    *,
+    is_test: bool = False,
+) -> dict[str, list[str]]:
+    """Batch ``wbgetentities`` P31 values. Missing QIDs are omitted."""
+    out: dict[str, list[str]] = {}
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in qids:
+        qid = _normalize_qid(raw)
+        if not qid or qid in seen:
+            continue
+        seen.add(qid)
+        normalized.append(qid)
+    api = _api_base(is_test=is_test)
+    for i in range(0, len(normalized), _WBGETENTITIES_BATCH):
+        chunk = normalized[i:i + _WBGETENTITIES_BATCH]
+        params = urllib.parse.urlencode({
+            "action": "wbgetentities",
+            "ids": "|".join(chunk),
+            "props": "claims",
+            "format": "json",
+        })
+        try:
+            payload = _fetch_json_throttled(f"{api}?{params}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("wbgetentities P31 failed (%d ids): %s", len(chunk), exc)
+            continue
+        entities = payload.get("entities") or {}
+        if not isinstance(entities, dict):
+            continue
+        from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+            live_p31_from_entity,
+        )
+        for qid, ent in entities.items():
+            if not isinstance(ent, dict) or ent.get("missing") is not None:
+                continue
+            p31 = live_p31_from_entity(ent)
+            if p31:
+                out[str(qid)] = p31
+    return out
+
+
 def confirm_qid_alive(
     qid: str,
     *,

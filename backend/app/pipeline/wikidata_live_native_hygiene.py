@@ -31,6 +31,10 @@ RITUAL_OR_CONCEPT_P31 = frozenset({
     "Q3077454",  # Jewish prayer
     "Q16502",    # religious practice
 })
+WORK_LINK_P31 = WRITTEN_WORK_P31 | RITUAL_OR_CONCEPT_P31
+_MONOLINGUALTEXT_PIDS = frozenset({"P1476", "P1680", "P1684"})
+_DIMENSION_PIDS = frozenset({"P2048", "P2049"})
+_MAX_CODEX_DIMENSION_MM = 1000
 
 
 def existing_qid_of(item: Any) -> str:
@@ -87,6 +91,8 @@ def sanitize_studio_items_for_live(
     local_stats = rewrite_local_to_live_qids(items)
     local_stats["cleared_person_qids"] = cleared_persons
     local_stats["cleared_work_qids"] = cleared_works
+    local_stats["coerced_monolingualtext"] = coerce_monolingual_text_statements(items)
+    local_stats["omitted_implausible_dimensions"] = omit_implausible_codex_dimensions(items)
     return local_stats
 
 
@@ -206,6 +212,61 @@ def _work_qid_conflicts(qid: str, live: dict[str, Any]) -> bool:
     return bool(p31 & RITUAL_OR_CONCEPT_P31)
 
 
+def work_qid_refuses_update(qid: str, p31: list[str]) -> bool:
+    """True when this live QID is a liturgy/concept, not a catalog work UPDATE."""
+    if qid in work_item_forbidden_update_qids():
+        return True
+    p31s = set(p31)
+    if p31s & WRITTEN_WORK_P31:
+        return False
+    return bool(p31s & RITUAL_OR_CONCEPT_P31)
+
+
+def work_p31_allows_link_only(p31: list[str]) -> bool:
+    """True when live P31 is a written work or an allowlisted ritual/concept."""
+    return bool(set(p31) & WORK_LINK_P31)
+
+
+def coerce_monolingual_text_statements(items: list[Any]) -> int:
+    """P1476 / P1680 / P1684 must be monolingualtext (Rule W-196)."""
+    coerced = 0
+    for item in items:
+        for stmt in _statements_of(item):
+            if _stmt_pid(stmt) not in _MONOLINGUALTEXT_PIDS:
+                continue
+            current = _stmt_value_type(stmt)
+            if current in {"", "string"}:
+                _set_stmt_value_type(stmt, "monolingualtext")
+                coerced += 1
+    return coerced
+
+
+def omit_implausible_codex_dimensions(items: list[Any]) -> int:
+    """Drop P2048/P2049 amounts above 1000 mm (retry path; Rule W-196)."""
+    omitted = 0
+    for item in items:
+        statements = _statements_of(item)
+        kept: list[Any] = []
+        dropped_here = 0
+        for stmt in statements:
+            if _stmt_pid(stmt) not in _DIMENSION_PIDS:
+                kept.append(stmt)
+                continue
+            try:
+                amount = float(_stmt_value(stmt))
+            except (TypeError, ValueError):
+                kept.append(stmt)
+                continue
+            if amount > _MAX_CODEX_DIMENSION_MM:
+                omitted += 1
+                dropped_here += 1
+                continue
+            kept.append(stmt)
+        if dropped_here:
+            _set_statements(item, kept)
+    return omitted
+
+
 def _local_target(value: Any) -> str:
     text = str(value or "")
     if not text.startswith(LOCAL_PREFIX):
@@ -236,6 +297,19 @@ def _stmt_value(stmt: Any) -> Any:
     if isinstance(stmt, dict):
         return stmt.get("value")
     return getattr(stmt, "value", None)
+
+
+def _stmt_value_type(stmt: Any) -> str:
+    if isinstance(stmt, dict):
+        return str(stmt.get("value_type") or "").strip()
+    return str(getattr(stmt, "value_type", "") or "").strip()
+
+
+def _set_stmt_value_type(stmt: Any, value_type: str) -> None:
+    if isinstance(stmt, dict):
+        stmt["value_type"] = value_type
+        return
+    stmt.value_type = value_type
 
 
 def _set_stmt_value(stmt: Any, value: Any) -> None:

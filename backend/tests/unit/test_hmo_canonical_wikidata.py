@@ -210,7 +210,7 @@ def test_native_claims_map_hmo_properties_and_control_numbers() -> None:
     )
     claims = native_wikidata_claims(manuscript)
     assert {"property": "P3959", "value": "990001"} in claims
-    assert {"property": "P217", "value": "Heb. 4"} in claims
+    assert {"property": "P217", "value": "Heb. 4", "value_type": "string"} in claims
     assert {"property": "P31", "value": "Q87167"} in claims
     # Manuscript must never emit P50; bare project QIDs must never leak.
     assert not any(c["property"] == "P50" for c in claims)
@@ -227,7 +227,7 @@ def test_native_claims_map_project_pid_via_ontology_ledger() -> None:
             "P7": "https://w3id.org/mhm/ontology#shelfmark",
         },
     )
-    assert {"property": "P217", "value": "Ms. Or. 12"} in claims
+    assert {"property": "P217", "value": "Ms. Or. 12", "value_type": "string"} in claims
 
 
 def test_existing_qid_reads_identifier_field_from_evidence() -> None:
@@ -286,9 +286,9 @@ def test_summarized_production_rolls_onto_manuscript_claims() -> None:
         ],
     })
     claims = native_wikidata_claims(manuscript, rollup_sources=[production])
-    assert {"property": "P571", "value": "1600"} in claims
-    assert {"property": "P1071", "value": "Q1218"} in claims
-    assert {"property": "P11603", "value": "Q42"} in claims
+    assert {"property": "P571", "value": "1600", "value_type": "string"} in claims
+    assert {"property": "P1071", "value": "Q1218", "value_type": "wikibase-item"} in claims
+    assert {"property": "P11603", "value": "Q42", "value_type": "wikibase-item"} in claims
     assert not any(c["property"] == "P50" for c in claims)
 
 
@@ -762,5 +762,5 @@ def test_full_canonical_chain_has_no_legacy_authority_dependency() -> None:
     candidates = wikidata_candidates_from_hmo([entity])
     assert len(graph) > 0
     assert candidates[0]["hmo_wikibase_id"] == "Q1252"
-    assert {"property": "P31", "value": "Q515"} in native_wikidata_claims(entity)
+    assert {"property": "P31", "value": "Q515", "value_type": "wikibase-item"} in native_wikidata_claims(entity)
     assert 'LAST\tP31\t"Q515"' in quickstatements_from_canonical([entity])

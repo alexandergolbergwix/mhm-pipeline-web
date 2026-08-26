@@ -92,7 +92,10 @@ identifierless person is **skipped**, not CREATE. Uncertain remaining QIDs
 fail-closed; heading clash never reaches the LLM. Pass 2 MERGE UPDATE only
 onto QIDs we created or own; leftover P50 to a skipped person becomes P2093
 on our work. Never UPDATE Savoy Q209579 / Sultan / Kostlitz / Tikkun
-Q2740944 / Shor Q6580025. The curator picks `upload_target` in the UI
+Q2740944 / Shor Q6580025. Live prepare (Rule W-196): P1476/P1680/P1684
+coerce to monolingualtext; P2048/P2049 above 1000 mm omit; a unique
+allowlisted title+P31 match skips CREATE/UPDATE and stores `link_qid` so
+pass 2 can P1574 the live work. The curator picks `upload_target` in the UI
 (`dry_run` default | `test` | `live`). Live mode without `upload_target=live`
 (and without legacy `MORATORIUM_LIFTED=true`) returns every item as `skipped`;
 the uploader independently re-enforces via `allow_live` / env

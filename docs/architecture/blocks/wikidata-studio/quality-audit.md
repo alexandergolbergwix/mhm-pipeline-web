@@ -85,3 +85,8 @@ gershayim, validator errors/warnings, and whether item approval/verdict fields
 are present. A section export may legitimately report
 `authority-approved-only`: that flag is not item approval and does not mean AI
 verification passed.
+
+A 2026-08-25 live CREATE audit lives in
+[docs/audits/live-wikidata-created-defects-2026-08-25.md](../../../audits/live-wikidata-created-defects-2026-08-25.md).
+Projection and upload now close those defects under Rule W-196 (skip+link,
+not merge of community QIDs).

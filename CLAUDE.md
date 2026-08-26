@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-195)
+## Architectural rules (W-1…W-196)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -146,6 +146,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-193** — Exists-check MUST treat Wikibase quantity amounts and repaired time strings as equal to natives
 - **W-194** — Studio natives judged/uploaded MUST drop false live identities and rewrite or degrade leftover `__LOCAL:`
 - **W-195** — Clash-cleared identifierless persons MUST skip live writes; uncertain duplicates confirm fail-closed; pass 2 UPDATE is own-only
+- **W-196** — Catalog works MUST skip CREATE when an allowlisted live title exists; coerce P1476/P1680/P1684 to monolingualtext; omit implausible codex millimetres
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

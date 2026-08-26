@@ -43,6 +43,19 @@ def test_confirm_same_item_without_identifier_is_unsure() -> None:
     ) == UNSURE
 
 
+def test_confirm_same_item_work_with_allowlisted_p31() -> None:
+    assert confirm_uncertain_duplicate(
+        local_id="w1",
+        entity_type="work",
+        heading="אב הרחמים",
+        candidate_qid="Q2873224",
+        method="title+p31",
+        has_trusted_identifier=False,
+        live_p31=["Q1344"],
+        complete=lambda prompt: '{"verdict": "same_item"}',
+    ) == SAME_ITEM
+
+
 def test_confirm_same_item_with_identifier() -> None:
     assert confirm_uncertain_duplicate(
         local_id="p1",
@@ -78,6 +91,10 @@ def test_uncertain_work_unsure_skips(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.fetch_entity_labels",
         lambda qids, *, is_test=False: {"Q1": {"en": "Haggadah", "he": "הגדה"}},
+    )
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.fetch_entity_p31",
+        lambda qids, *, is_test=False: {"Q1": ["Q47461344"]},
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_duplicate_confirm.confirm_uncertain_duplicate",

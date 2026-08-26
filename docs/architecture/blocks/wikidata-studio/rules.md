@@ -739,3 +739,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     follow frontend R19 (do not invent live). *Why:* live www.wikidata.org
     writes showed only the generic `JobProgressInline` bar while
     test.wikidata.org opened the two-step Now/ETA UI.
+99. **R99 — Catalog work CREATE skips to a unique allowlisted live title; titles are monolingualtext; implausible millimetres are omitted (Rule W-196).**
+    P1476/P1680/P1684 coerce to `monolingualtext` in the mapper and live
+    hygiene. Codex P2048/P2049 above 1000 mm omit at emit and hygiene.
+    After SPARQL miss, `inlabel` + P31 allowlist may yield one QID.
+    Upload skips CREATE/UPDATE and stores `link_qid` for manuscript P1574.
+    Persons without an identity PID stay `unsure`. Never UPDATE Q2873224 /
+    Q2740944. *Why:* live job `8dbc4090` failed 23 string titles, wrote
+    5180 mm, and CREATEd Av HaRachamim beside Q2873224.

@@ -2375,3 +2375,42 @@ be copied live.
 Tests: `backend/tests/unit/test_wikidata_person_identity_w190.py`,
 `backend/tests/unit/test_wikidata_duplicate_confirm.py`,
 `backend/tests/unit/test_judge_test_wikidata_live_ready.py`.
+
+### Rule W-196 — Catalog works MUST skip CREATE when an allowlisted live title exists; P1476/P1680/P1684 MUST be monolingualtext; implausible codex millimetres MUST be omitted (added 2026-08-26)
+
+Live job `8dbc4090` on run `48ba6c13` created 177 items. Twenty-three works
+failed because HMO-mapped P1476 was `string` while live Wikidata requires
+`monolingualtext`. Three manuscripts failed the same way on P1684. The
+parser treated `29 x 518 cm` as 290×5180 mm and wrote P2049=5180 on
+Q141175899. SPARQL work reconcile only matches `P31/P279* wd:Q47461344`,
+so prayers such as Av HaRachamim missed Q2873224; hygiene then cleared
+ritual QIDs and upload CREATEd a second item (Q141175480).
+
+**Invariants:**
+
+1. Mapper and live hygiene coerce P1476, P1680, and P1684 from `string` to
+   `monolingualtext` so a retry does not need a rebuild.
+2. Height/width above 1000 mm is omitted at emit and live hygiene.
+   `9.5X14.5 cm` stays 95×145. A 5180 mm width from `29 x 518 cm` does
+   not land.
+3. After SPARQL miss, Action API `inlabel` plus `wbgetentities` P31 may
+   yield exactly one QID whose class is in `WRITTEN_WORK_P31` ∪
+   `RITUAL_OR_CONCEPT_P31`. Crossword, museum, and other hits are ignored.
+   Zero or two-or-more allowlisted hits do not pick a QID.
+4. A catalog work MUST NOT CREATE when that unique allowlisted title match
+   exists, and MUST NOT UPDATE the foreign item. Upload skips and stores
+   `link_qid`. Manuscripts may P1574 that QID in pass 2.
+5. `same_item` without a shared identity PID stays `unsure` for persons.
+   For works with allowlisted live P31 it stays `same_item` and takes the
+   skip+`link_qid` path, not UPDATE.
+6. `remember_created_qid` records skipped **work** `link_qid` values.
+   Skipped persons stay out of the session map.
+
+Never merge or delete already-created MHM items such as Q141175480 from
+this rule. Never copy test.wikidata.org Q/P onto www.wikidata.org.
+
+Tests: `backend/tests/unit/test_wikidata_work_link_w196.py`,
+`backend/tests/unit/test_hmo_wikidata_pq_mapper.py`,
+`backend/tests/unit/test_wikidata_wave2_projection.py`,
+`backend/tests/unit/test_wikidata_live_native_hygiene.py`,
+`backend/tests/unit/test_wikidata_duplicate_confirm.py`.

@@ -139,7 +139,12 @@
    (`קוסטליץ`) must clear the QID — then **skip** if still identifierless,
    never CREATE and never UPDATE Savoy/Sultan/Kostlitz/Shor. Own clash
    stays `blocked`. Known-work QIDs stay W-184 until curator accept.
-7. **Thin test writes** (W-191): re-run `upload_target=test` after the
+7. **Duplicate catalog work CREATE** (W-196): live title already exists as
+   prayer/literary work (Av HaRachamim Q2873224). Rebuild skip-cache, then
+   re-upload. Upload skips CREATE/UPDATE and stores `link_qid`. Manuscripts
+   may P1574 that QID. Do not merge community items. String P1476 retries
+   without rebuild. Width 5180 mm is omitted.
+8. **Thin test writes** (W-191): re-run `upload_target=test` after the
    `created_qids` job wiring; `exists` must not hide a thinner claim set.
 
 ### Skill: load all items in the modern review panel

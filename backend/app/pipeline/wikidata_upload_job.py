@@ -494,6 +494,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 wikidata_upload.remember_created_qid(
                     created_qids, local_id, last.qid, last.status,
                     dry_run=mode.dry_run,
+                    entity_type=last.entity_type,
                 )
                 if (
                     last.status in {"failed", "skipped"}

@@ -97,6 +97,11 @@ def test_remember_created_qid_dry_run_placeholder() -> None:
     assert session["QDraft_Work"] == "dry:QDraft_Work"
     remember_created_qid(session, "person:x", "Q12", "created", dry_run=False)
     assert session["person:x"] == "Q12"
+    remember_created_qid(
+        session, "QDraft_Skipped_Work", "Q2873224", "skipped",
+        entity_type="work",
+    )
+    assert session["QDraft_Skipped_Work"] == "Q2873224"
 
 
 def test_estimate_remaining_seconds_hidden_until_three_samples() -> None:

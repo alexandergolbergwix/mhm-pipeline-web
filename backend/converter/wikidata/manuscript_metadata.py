@@ -41,6 +41,16 @@ from converter.wikidata.property_mapping import (
     materials_in_text,
 )
 
+_MAX_CODEX_DIMENSION_MM = 1000
+
+
+def _plausible_codex_mm(value: object) -> bool:
+    try:
+        amount = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return 0 < amount <= _MAX_CODEX_DIMENSION_MM
+
 
 def _work_titles_for_record(record: dict[str, object]) -> set[str]:
     """Normalised titles of contained / related works for this record only."""
@@ -452,7 +462,7 @@ class ManuscriptMetadataMixin:
                 )
             )
         height = record.get("height_mm")
-        if height and float(height) > 0:
+        if height and _plausible_codex_mm(height):
             item.statements.append(
                 WikidataStatement(
                     property_id=P_HEIGHT,
@@ -463,7 +473,7 @@ class ManuscriptMetadataMixin:
                 )
             )
         width = record.get("width_mm")
-        if width and float(width) > 0:
+        if width and _plausible_codex_mm(width):
             item.statements.append(
                 WikidataStatement(
                     property_id=P_WIDTH,

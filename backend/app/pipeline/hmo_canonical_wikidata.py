@@ -388,7 +388,12 @@ def native_wikidata_claims(
                 property_id = P_NLI_CATALOG_ID
             else:
                 continue
-        _append_mapped({"property": property_id, "value": str(raw)})
+        row: dict[str, str] = {"property": property_id, "value": str(raw)}
+        if mapped.value_type:
+            row["value_type"] = mapped.value_type
+        if mapped.language:
+            row["language"] = mapped.language
+        _append_mapped(row)
 
     for source in rollup_sources or ():
         allowed_pids = _allowed_rollup_pids(source)
@@ -410,7 +415,12 @@ def native_wikidata_claims(
                     property_id = P_NLI_CATALOG_ID
                 else:
                     continue
-            _append_mapped({"property": property_id, "value": str(raw)})
+            row: dict[str, str] = {"property": property_id, "value": str(raw)}
+            if mapped.value_type:
+                row["value_type"] = mapped.value_type
+            if mapped.language:
+                row["language"] = mapped.language
+            _append_mapped(row)
 
     # One catalog id per manuscript — its own. Emitting a P3959 per linked CN
     # put 4–5 NNL ids on every item and claimed other manuscripts' records
@@ -476,7 +486,15 @@ def native_items_from_hmo(
             WikidataStatement(
                 property_id=claim["property"],
                 value=_claim_value_for(claim["property"], claim["value"]),
-                value_type="wikibase-item" if _QID.fullmatch(claim["value"]) else "string",
+                value_type=(
+                    claim.get("value_type")
+                    or (
+                        "wikibase-item"
+                        if _QID.fullmatch(claim["value"])
+                        else "string"
+                    )
+                ),
+                language=claim.get("language") or "he",
             )
             for claim in native_wikidata_claims(entity, rollup_sources=rollup_sources)
         ]
