@@ -648,6 +648,39 @@ def test_canonical_main_245_work_recovered_with_marc_title_evidence() -> None:
     }
 
 
+def test_canonical_work_carries_approved_marc_author_claim() -> None:
+    work = normalize_live_entity({
+        "local_id": "Work_author",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_author",
+        "wikibase_id": "Q6104",
+        "entity_type": "F1_Work",
+        "labels": {"he": "מנחת יהודה"},
+        "control_numbers": ["990001238980205171"],
+    })
+    context = canonical_studio_context(
+        marc_records=[{
+            "_control_number": "990001238980205171",
+            "title": "מנחת יהודה : פרוש על שמואל, מלכים וישעיהו",
+        }],
+        approved_matches=[{
+            "control_number": "990001238980205171",
+            "entity_text": "חנין, יהודה בן יעקב",
+            "entity_kind": "person",
+            "role": "author",
+            "approved": True,
+        }],
+    )
+    items = native_items_from_hmo([work], context=context)
+    author_claims = [
+        statement for statement in items[0].statements
+        if statement.property_id in {"P50", "P2093"}
+    ]
+    assert [(claim.property_id, claim.value) for claim in author_claims] == [
+        ("P2093", "חנין, יהודה בן יעקב"),
+    ]
+    assert author_claims[0].references
+
+
 def test_canonical_work_ms_scope_suffix_still_matches_245() -> None:
     work = normalize_live_entity({
         "local_id": "Work_scope",

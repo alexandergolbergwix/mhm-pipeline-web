@@ -774,3 +774,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     without a local CREATE. Equal titles with different authors MUST use
     separate local work candidates. A source-backed work MUST carry `P50` or
     `P2093`, or the build quality gate MUST reject the export.
+
+104. **R104 — Canonical works MUST retain approved anchor-record authors (Rule W-201).**
+    The canonical HMO adapter MUST copy the approved author from the work's
+    anchor MARC record into `P50` or `P2093`. The claim MUST carry the NLI
+    reference. A legacy merge MUST not be required for author recovery.

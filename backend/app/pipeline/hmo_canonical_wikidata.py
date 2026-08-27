@@ -30,6 +30,8 @@ from converter.wikidata.hmo_wikidata_pq_mapper import (
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from converter.wikidata.projection_coverage import STRATEGY_BY_LOCAL_NAME, ProjectionStrategy
 from converter.wikidata.property_mapping import (
+    P_AUTHOR,
+    P_AUTHOR_NAME_STRING,
     P_DESCRIBED_AT_URL,
     P_EXACT_MATCH,
     P_INSTANCE_OF,
@@ -38,6 +40,7 @@ from converter.wikidata.property_mapping import (
     Q_MANUSCRIPT,
     Q_WRITTEN_WORK,
     is_browseable_hmo_wikibase_url,
+    nli_reference,
     resolve_hmo_bridge_url,
 )
 
@@ -498,6 +501,8 @@ def native_items_from_hmo(
             )
             for claim in native_wikidata_claims(entity, rollup_sources=rollup_sources)
         ]
+        if wd_type == "work" and context is not None:
+            _append_context_work_author(entity, context, statements)
         _append_manuscript_bridge_statements(entity, wd_type, statements)
         labels, aliases = _wikidata_labels_and_aliases(entity, wd_type, context=context)
         work_evidence = (
@@ -535,6 +540,59 @@ def native_items_from_hmo(
             work_candidate_evidence=work_evidence,
         ))
     return items
+
+
+def _append_context_work_author(
+    entity: CanonicalHmoEntity,
+    context: CanonicalStudioContext,
+    statements: list[WikidataStatement],
+) -> None:
+    """Carry an approved anchor-record author onto a canonical work (W-201)."""
+    if any(
+        statement.property_id in {P_AUTHOR, P_AUTHOR_NAME_STRING}
+        for statement in statements
+    ):
+        return
+
+    control_number = identity_control_number(entity)
+    record = context.marc_by_cn.get(control_number)
+    if not record:
+        return
+    candidates = [
+        match for match in record.get("marc_authority_matches") or []
+        if isinstance(match, dict)
+        and match.get("approved") is not False
+        and str(match.get("role") or "").strip().casefold()
+        in {"author", "attributed author", "presumed author"}
+        and str(match.get("entity_kind") or "person").strip().casefold() == "person"
+    ]
+    if not candidates:
+        candidates = [
+            author for author in record.get("authors") or []
+            if isinstance(author, dict)
+            and str(author.get("name") or "").strip()
+            and str(author.get("role") or "author").strip().casefold()
+            in {"author", "attributed author", "presumed author"}
+        ]
+    for candidate in candidates:
+        name = str(
+            candidate.get("name")
+            or candidate.get("entity_text")
+            or candidate.get("matched_name")
+            or "",
+        ).strip()
+        if not name:
+            continue
+        qid = normalize_wikidata_qid(candidate.get("wikidata_qid"))
+        statements.append(
+            WikidataStatement(
+                property_id=P_AUTHOR if qid else P_AUTHOR_NAME_STRING,
+                value=qid or name,
+                value_type="item" if qid else "string",
+                references=nli_reference(control_number),
+            ),
+        )
+        return
 
 
 def build_canonical_studio_result(

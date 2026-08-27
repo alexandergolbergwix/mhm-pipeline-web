@@ -2490,3 +2490,19 @@ different authors and dropped the later author.
 
 Regression: `backend/tests/unit/test_wikidata_studio_works.py` and
 `backend/tests/test_wikidata_export_quality.py`.
+
+### Rule W-201 — Canonical works MUST retain approved anchor-record authors (added 2026-08-27)
+
+Export `(49)` retained approved author evidence for record
+`990001238980205171`, but the canonical HMO work item lost the author claim
+when the legacy work merge did not match the canonical item.
+
+**Invariants:**
+
+1. The canonical adapter MUST read the approved author from the work's anchor
+   MARC record.
+2. The adapter MUST emit `P50` for a safe author QID, or `P2093` for a safe
+   author name when no QID exists.
+3. The author claim MUST carry the NLI record reference.
+
+Regression: `backend/tests/unit/test_hmo_canonical_wikidata.py`.
