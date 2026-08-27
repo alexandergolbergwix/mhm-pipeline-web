@@ -193,3 +193,8 @@ control-number allowlists. Verify scope partitioning
 matches (sticky-full), so a payload-neutral schema bump does not re-judge
 unchanged fulls. Override merge carries `ai_verdict` for that fallback;
 `override_cache`, claim edits, and duplicate-class transitions still re-judge.
+Work candidate consolidation happens before upload. The content projection
+reuses an exact structured or approved work QID for related-work rows. The work
+projection scopes a duplicate title by its resolved author when two source
+records name different authors. The build quality gate blocks a source-backed
+work that has no `P50` or `P2093` claim.

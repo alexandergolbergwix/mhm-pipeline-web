@@ -23,7 +23,6 @@ from converter.wikidata.item_builder import (
     _is_noise_work_title,
     _person_key,
     _split_work_title_author,
-    _work_key,
     known_work_qid_for_title,
 )
 from converter.wikidata.work_candidates import assess_work_candidate
@@ -97,6 +96,37 @@ def _entry_work_qid(entry: dict[str, object]) -> str | None:
     return None
 
 
+def _work_qid_for_record_title(
+    record: dict[str, object],
+    title: str,
+) -> str | None:
+    """Find an exact approved or structured work QID for a record title."""
+    target = _work_title_key(title)
+    for content in record.get("contents") or []:
+        entry = content if isinstance(content, dict) else {"title": str(content)}
+        candidate, _author = _split_work_title_author(str(entry.get("title") or ""))
+        if _work_title_key(candidate) == target:
+            qid = _entry_work_qid(entry)
+            if qid:
+                return qid
+    for match in record.get("marc_authority_matches") or []:
+        if not isinstance(match, dict) or match.get("approved") is False:
+            continue
+        role = str(match.get("role") or "").strip().casefold().replace("_", " ")
+        if role not in {"contained work", "work", "exemplar of", "related work"}:
+            continue
+        match_title = match.get("name") or match.get("matched_name") or ""
+        if _work_title_key(match_title) != target:
+            continue
+        payload = match.get("payload")
+        qid = _safe_work_qid(
+            match.get("wikidata_qid")
+            or (payload.get("wikidata_qid") if isinstance(payload, dict) else ""),
+        )
+        if qid:
+            return qid
+    return known_work_qid_for_title(title)
+
 def _exemplar_qualifiers(
     *,
     catalog_title: str,
@@ -125,6 +155,44 @@ def _exemplar_qualifiers(
 
 
 class ContentProjectionMixin:
+    def _work_qid_for_record_title(
+        self,
+        record: dict[str, object],
+        title: str,
+    ) -> str | None:
+        return _work_qid_for_record_title(record, title)
+
+    def _work_author_for_record_title(
+        self,
+        record: dict[str, object],
+        title: str,
+    ) -> str | None:
+        """Find an author attached to the exact work title in the record."""
+        target = _work_title_key(title)
+        for content in record.get("contents") or []:
+            entry = content if isinstance(content, dict) else {"title": str(content)}
+            candidate, embedded_author = _split_work_title_author(
+                str(entry.get("title") or ""),
+            )
+            if _work_title_key(candidate) == target:
+                return embedded_author or _entry_author(entry) or _record_author(record)
+
+        entities = [
+            entity for entity in record.get("entities") or []
+            if isinstance(entity, dict) and entity.get("source") == "contents_ner"
+        ]
+        for work in (entity for entity in entities if entity.get("type") == "WORK"):
+            candidate, embedded_author = _split_work_title_author(
+                str(work.get("text") or ""),
+            )
+            if _work_title_key(candidate) != target:
+                continue
+            for author in (entity for entity in entities if entity.get("type") == "WORK_AUTHOR"):
+                if abs(int(author.get("start") or 0) - int(work.get("end") or 0)) < 20:
+                    return str(author.get("text") or "").strip() or embedded_author
+            return embedded_author
+        return None
+
     def _add_contents(
         self,
         item: WikidataItem,
@@ -199,7 +267,7 @@ class ContentProjectionMixin:
 
             named_as = work_title or cleaned or raw_title
             if work_qid:
-                local_work = self._work_items.get(_work_key(work_title))
+                local_work = self._find_work_for_title(work_title, embedded_author, record)
                 if local_work is not None:
                     self._ensure_work_author(local_work, embedded_author, record)
                 item.statements.append(
@@ -272,7 +340,7 @@ class ContentProjectionMixin:
             work_title, embedded_author = _split_work_title_author(raw)
             work_title = _clean_work_title(work_title)
             work_qid = (
-                known_work_qid_for_title(work_title)
+                self._work_qid_for_record_title(record, work_title)
                 or approved_work_qids.get(_work_title_key(work_title))
             )
             work_qid = refine_exemplar_work_qid(
@@ -307,7 +375,7 @@ class ContentProjectionMixin:
             author_name = embedded_author or _record_author(record)
             named_as = decision.title or work_title or raw
             if work_qid:
-                local_work = self._work_items.get(_work_key(decision.title))
+                local_work = self._find_work_for_title(decision.title, author_name, record)
                 if local_work is not None:
                     self._ensure_work_author(local_work, author_name, record)
                 item.statements.append(

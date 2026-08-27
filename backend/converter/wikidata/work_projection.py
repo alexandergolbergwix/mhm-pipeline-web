@@ -89,6 +89,81 @@ def _work_description_with_attestation(
 
 
 class WorkProjectionMixin:
+    def _author_identity(
+        self,
+        author_name: str | None,
+        source_record: dict[str, object],
+    ) -> str:
+        """Return the strongest stable identity available for a work author."""
+        if not author_name or not author_name.strip():
+            return ""
+        author_key = _person_key(author_name, None, None)
+        person = self._person_items.get(author_key)
+        resolved_qid = self._person_qids.get(author_key)
+        if person is not None:
+            resolved_qid = resolved_qid or person.existing_qid
+        if resolved_qid and re.fullmatch(r"Q\d+", str(resolved_qid)):
+            return f"qid:{resolved_qid}"
+        match = _find_work_author_match(author_name, source_record)
+        if match:
+            payload = match.get("payload")
+            payload_qid = payload.get("wikidata_qid") if isinstance(payload, dict) else ""
+            direct_qid = str(
+                match.get("wikidata_qid") or payload_qid or ""
+            ).strip()
+            if re.fullmatch(r"Q\d+", direct_qid):
+                return f"qid:{direct_qid}"
+        return f"name:{_match_text(author_name)}"
+
+    def _work_has_conflicting_author(
+        self,
+        work: WikidataItem,
+        author_name: str | None,
+        source_record: dict[str, object],
+    ) -> bool:
+        """Return whether a title-only work already names another author."""
+        if not author_name or not author_name.strip():
+            return False
+        existing: set[str] = set()
+        for statement in work.statements:
+            if statement.property_id == P_AUTHOR:
+                value = str(statement.value or "").strip()
+                if value:
+                    existing.add(f"qid:{value}" if re.fullmatch(r"Q\d+", value) else value)
+            elif statement.property_id == P_AUTHOR_NAME_STRING:
+                value = _match_text(statement.value)
+                if value:
+                    existing.add(f"name:{value}")
+        if not existing:
+            return False
+        return self._author_identity(author_name, source_record) not in existing
+
+    def _find_work_for_title(
+        self,
+        title: str,
+        author_name: str | None,
+        source_record: dict[str, object],
+    ) -> WikidataItem | None:
+        """Find a title-compatible work, including author-scoped collision keys."""
+        base = _work_key(_strip_name_quotes(title).rstrip(" .,;:/-"))
+        for key, work in self._work_items.items():
+            if key != base and not key.startswith(f"{base}:author:"):
+                continue
+            if not self._work_has_conflicting_author(work, author_name, source_record):
+                return work
+        return None
+
+    def _author_scoped_work_key(
+        self,
+        title: str,
+        author_name: str,
+        source_record: dict[str, object],
+    ) -> str:
+        base = _work_key(title)
+        identity = self._author_identity(author_name, source_record)
+        safe_identity = re.sub(r"[^a-zA-Z0-9\u0590-\u05ff]+", "_", identity).strip("_")
+        return f"{base}:author:{safe_identity or 'unknown'}"
+
     def _ensure_work_author(
         self,
         work: WikidataItem,
@@ -193,6 +268,17 @@ class WorkProjectionMixin:
         # P1476 with spurious surrounding quotes.
         title = _strip_name_quotes(title).rstrip(" .,;:/-")
         key = _work_key(title)
+        work = self._find_work_for_title(title, author_name, source_record)
+        if work is not None:
+            _associate_item_with_source_record(work, source_record)
+            self._ensure_work_author(work, author_name, source_record)
+            return work
+
+        key = _work_key(title)
+        if key in self._work_items and author_name and self._work_has_conflicting_author(
+            self._work_items[key], author_name, source_record,
+        ):
+            key = self._author_scoped_work_key(title, author_name, source_record)
         if key in self._work_items:
             work = self._work_items[key]
             _associate_item_with_source_record(work, source_record)

@@ -59,3 +59,22 @@ def test_clean_item_passes() -> None:
             ],
         ),
     ]) is None
+
+
+def test_source_backed_work_without_author_claim_raises() -> None:
+    item = _Item(
+        entity_type="work",
+        labels={"he": "מנחת יהודה"},
+        statements=[_Stmt("P1476", "מנחת יהודה")],
+        local_id="work:מנחת_יהודה",
+    )
+    item.records = ["1"]
+    with pytest.raises(ValueError, match="WORK_MISSING_AUTHOR_CLAIM"):
+        assert_wikidata_export_quality(
+            [item],
+            marc_records=[{
+                "_control_number": "1",
+                "title": "מנחת יהודה",
+                "authors": [{"name": "מחבר"}],
+            }],
+        )

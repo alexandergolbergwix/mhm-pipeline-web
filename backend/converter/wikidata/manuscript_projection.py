@@ -62,7 +62,6 @@ from converter.wikidata.item_builder import (
     extract_wikidata_qid,
     hmo_wikibase_entity_url,
     hmo_wikibase_page_url,
-    known_work_qid_for_title,
     nli_j9u_id,
     nli_reference,
 )
@@ -975,7 +974,7 @@ class ManuscriptProjectionMixin:
             ).strip()
             if not _QID_RE.match(explicit_qid):
                 explicit_qid = ""
-            rw_qid = explicit_qid or known_work_qid_for_title(rw_title)
+            rw_qid = explicit_qid or self._work_qid_for_record_title(record, rw_title)
             # RELATED_WORKS often carries bare "Bible"/"תנ״ך" on piyyut MSS —
             # run the same specificity ladder as contents (export-34 / W-173).
             rw_qid = refine_exemplar_work_qid(
@@ -1007,7 +1006,15 @@ class ManuscriptProjectionMixin:
                 continue
             # Accepted without a known QID only when curator-approved on the
             # related-work row — still stamp evidence on the local work.
-            rw_item = self._get_or_create_work(decision.title, None, record)
+            rw_author = next(
+                (
+                    str(rw_dict.get(key) or "").strip()
+                    for key in ("author", "author_name", "work_author")
+                    if str(rw_dict.get(key) or "").strip()
+                ),
+                None,
+            ) or self._work_author_for_record_title(record, decision.title)
+            rw_item = self._get_or_create_work(decision.title, rw_author, record)
             if evidence not in rw_item.work_candidate_evidence:
                 rw_item.work_candidate_evidence.append(evidence)
             item.statements.append(

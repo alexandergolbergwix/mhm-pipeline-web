@@ -124,6 +124,72 @@ def _work_title_errors(items: list[Any]) -> list[str]:
     return errors
 
 
+def _work_missing_author_claim_errors(
+    items: list[Any],
+    marc_records: list[dict[str, Any]],
+) -> list[str]:
+    """Block source-backed works that lose the record author (Rules W-69/W-200)."""
+    from app.pipeline.marc_verify_context import (  # noqa: PLC0415
+        canonical_control_number,
+        index_marc_records,
+    )
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _clean_work_title,
+        _split_work_title_author,
+    )
+
+    def title_key(value: object) -> str:
+        title, _author = _split_work_title_author(str(value or ""))
+        return _clean_work_title(title).casefold()
+
+    def record_has_author(record: dict[str, Any]) -> bool:
+        for author in record.get("authors") or []:
+            if isinstance(author, dict):
+                if str(author.get("name") or author.get("heading") or "").strip():
+                    return True
+            elif str(author).strip():
+                return True
+        return False
+
+    by_cn = index_marc_records(marc_records)
+    errors: list[str] = []
+    for item in items:
+        if str(getattr(item, "entity_type", "") or "").strip().lower() != "work":
+            continue
+        author_claims = _statement_values(item, "P50") + _statement_values(item, "P2093")
+        if author_claims:
+            continue
+        work_titles = {
+            title_key(value)
+            for value in _statement_values(item, "P1476")
+            + [_label_text(item)]
+            + [
+                e.get("title")
+                for e in getattr(item, "work_candidate_evidence", [])
+                if isinstance(e, dict)
+            ]
+            if title_key(value)
+        }
+        for control_number in getattr(item, "records", None) or []:
+            record = by_cn.get(canonical_control_number(control_number) or "")
+            if not record or not record_has_author(record):
+                continue
+            record_titles = {
+                title_key(record.get("title")),
+                *(
+                    title_key(content.get("title") if isinstance(content, dict) else content)
+                    for content in record.get("contents") or []
+                ),
+            }
+            if work_titles & record_titles:
+                errors.append(
+                    f"WORK_MISSING_AUTHOR_CLAIM {getattr(item, 'local_id', '')}: "
+                    "the source record has an author, but the work has no P50 or P2093",
+                )
+                break
+    return errors
+
+
 _NLI_LABEL_RE = re.compile(r"\bJerusalem,\s*NLI\b", re.IGNORECASE)
 _QID_VALUE_RE = re.compile(r"Q\d+")
 
@@ -482,6 +548,7 @@ def wikidata_export_quality_report(
             blocking.append(f"{issue.code} {local_id}: {issue.message}")
 
     if marc_records is not None:
+        blocking.extend(_work_missing_author_claim_errors(items, marc_records))
         holder_blocking, holder_informational = _holder_findings(items, marc_records)
         blocking.extend(holder_blocking)
         informational.extend(holder_informational)

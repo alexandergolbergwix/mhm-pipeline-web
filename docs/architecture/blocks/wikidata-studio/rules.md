@@ -768,3 +768,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     evidence and the export audit MUST classify that item as `already_linked`,
     even when a stored verdict contains stale `candidates_found` data. Upload
     identity and ownership checks still apply before an update.
+
+103. **R103 — Work candidates MUST preserve exact links and author identity (Rule W-200).**
+    A structured work QID on the same record MUST satisfy related-work rows
+    without a local CREATE. Equal titles with different authors MUST use
+    separate local work candidates. A source-backed work MUST carry `P50` or
+    `P2093`, or the build quality gate MUST reject the export.

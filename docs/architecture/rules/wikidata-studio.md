@@ -2472,3 +2472,21 @@ Wikidata. The upload still needs identity and ownership checks for any update.
 
 Regression: `backend/tests/unit/test_wikidata_duplicate_probe.py` and
 `backend/tests/test_wikidata_export_quality_checker.py`.
+
+### Rule W-200 — Work candidates MUST preserve exact links and author identity (added 2026-08-27)
+
+Run `48ba6c13-115c-4763-bff1-c08b9031b518` exposed two unsafe paths. A related
+work row created an authorless local copy when the same record already carried
+the exact work QID. The title-only registry also merged equal titles with
+different authors and dropped the later author.
+
+**Invariants:**
+
+1. An exact structured or approved work QID MUST satisfy the related-work link
+   before local work creation.
+2. Work reuse MUST compare the resolved author identity when a candidate has an
+   author. Different authors MUST receive separate local work candidates.
+3. A source-backed work MUST contain `P50` or `P2093` before the build passes.
+
+Regression: `backend/tests/unit/test_wikidata_studio_works.py` and
+`backend/tests/test_wikidata_export_quality.py`.

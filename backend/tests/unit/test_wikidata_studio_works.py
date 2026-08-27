@@ -146,6 +146,55 @@ class TestEntitiesByCnDrivesWorkCreation:
         )
         assert result["summary"]["works"] == 0
 
+    @pytest.mark.asyncio
+    async def test_known_content_qid_does_not_create_authorless_related_work(self) -> None:
+        title = "מנחת יהודה : פרוש על שמואל מלכים וישעיהו"
+        record = {
+            **_fake_marc_record(),
+            "authors": [{"name": "חנין, יהודה בן יעקב"}],
+            "contents": [{"title": title, "wikidata_qid": "Q141175558"}],
+            "related_works": [{"title": title, "approved": True}],
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[record], approved_matches=[], entities_by_cn=None, return_native=True,
+        )
+        works = [item for item in result["native_items"] if item.entity_type == "work"]
+        manuscripts = [item for item in result["native_items"] if item.entity_type == "manuscript"]
+        assert works == []
+        assert any(
+            statement.property_id == "P1574" and statement.value == "Q141175558"
+            for statement in manuscripts[0].statements
+        )
+
+    @pytest.mark.asyncio
+    async def test_same_title_with_different_authors_stays_separate(self) -> None:
+        title = "אותו חיבור"
+        records = [
+            {**_fake_marc_record("1"), "contents": [{"title": title}],
+             "authors": [{"name": "מחבר ראשון"}]},
+            {**_fake_marc_record("2"), "contents": [{"title": title}],
+             "authors": [{"name": "מחבר שני"}]},
+        ]
+        matches = [
+            {
+                "control_number": "1", "entity_text": "מחבר ראשון",
+                "role": "author", "approved": True, "wikidata_qid": "Q101",
+            },
+            {
+                "control_number": "2", "entity_text": "מחבר שני",
+                "role": "author", "approved": True, "wikidata_qid": "Q102",
+            },
+        ]
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=records, approved_matches=matches, entities_by_cn=None, return_native=True,
+        )
+        works = [item for item in result["native_items"] if item.entity_type == "work"]
+        assert len(works) == 2
+        assert {
+            next(statement.value for statement in item.statements if statement.property_id == "P50")
+            for item in works
+        } == {"Q101", "Q102"}
+
 
 class TestMarcDictEntriesDoNotCrashBuild:
     """Regression: dict-shaped related_places / related_works must not
