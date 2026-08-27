@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -16,12 +16,34 @@ from app.models.wikibase_cloud_write import (
 )
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.models.wikidata_studio_cache import WikidataStudioCache
-from app.pipeline.wikidata_item_views import fetch_merged_wikidata_item, fetch_merged_wikidata_items
+from app.pipeline.wikidata_item_views import (
+    _mirror_adopted_qids,
+    fetch_merged_wikidata_item,
+    fetch_merged_wikidata_items,
+)
 from app.pipeline.wikidata_verdict_cache import (
     attach_local_reference_targets,
     wikidata_verdict_stable_input_fingerprint,
 )
 from app.pipeline.wikidata_verify_fixture import slim_item_for_verdict_persist
+
+
+def test_mirror_adopted_qids_ignores_ledger_qids() -> None:
+    items = [
+        {"local_id": "ledger-item", "existing_qid": "Q10"},
+        {"local_id": "probe-item", "existing_qid": "Q20"},
+    ]
+    stable_rows = [
+        {"local_id": "ledger-item"},
+        {"local_id": "probe-item"},
+    ]
+
+    _mirror_adopted_qids(items, stable_rows, {"probe-item"})
+
+    assert stable_rows == [
+        {"local_id": "ledger-item"},
+        {"local_id": "probe-item", "existing_qid": "Q20"},
+    ]
 
 
 @pytest.mark.asyncio
@@ -67,7 +89,7 @@ async def test_merged_view_joins_upload_audit_and_ledger(db_session) -> None:
             target_key="990001234",
             wikibase_id="Q99",
             outcome_message="created",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
     )
     db_session.add(

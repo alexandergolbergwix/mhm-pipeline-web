@@ -107,8 +107,10 @@ async def fetch_merged_wikidata_items(
     # until the next rebuild, and list reads never glossed QIDs — so every
     # subset-verify verdict landed in overrides and then vanished as "unknown"
     # (Rule W-169).
-    await _adopt_cached_duplicate_qids(items)
-    _mirror_adopted_qids(items, stable_rows)
+    # Ledger QIDs are presentation data. Only probe adoptions belong in the
+    # stable projection used to validate a stored verdict (Rule W-205).
+    adopted_local_ids = await _adopt_cached_duplicate_qids(items) or set()
+    _mirror_adopted_qids(items, stable_rows, adopted_local_ids)
     if verdict_rows:
         await _attach_live_labels_for_verdict_keys(items, stable_rows)
     stable_items = {
@@ -119,10 +121,10 @@ async def fetch_merged_wikidata_items(
     return items
 
 
-async def _adopt_cached_duplicate_qids(items: list[dict[str, Any]]) -> None:
+async def _adopt_cached_duplicate_qids(items: list[dict[str, Any]]) -> set[str]:
     """Apply Rule W-168 adoption from the probe cache onto review-table rows."""
     if not items:
-        return
+        return set()
     from app.db import session_scope  # noqa: PLC0415
     from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
         adopt_identifier_matched_duplicates,
@@ -131,21 +133,28 @@ async def _adopt_cached_duplicate_qids(items: list[dict[str, Any]]) -> None:
 
     try:
         await attach_cached_duplicate_evidence(session_scope, items)
-        adopt_identifier_matched_duplicates(items)
+        adopted = adopt_identifier_matched_duplicates(items)
     except Exception:  # noqa: BLE001 — never fail a list read over an optimisation
         logger.exception(
             "duplicate-QID adoption on Studio merge failed; leaving items as CREATE",
         )
+        return set()
     finally:
         for item in items:
             item.pop("_wikidata_existence", None)
+    return {
+        str(row.get("local_id") or "")
+        for row in adopted
+        if isinstance(row, dict) and str(row.get("local_id") or "")
+    }
 
 
 def _mirror_adopted_qids(
     items: list[dict[str, Any]],
     stable_rows: list[dict[str, Any]],
+    adopted_local_ids: set[str],
 ) -> None:
-    """Copy probe-adopted ``existing_qid`` onto the pre-derived fingerprint rows."""
+    """Copy probe-adopted QIDs onto the pre-derived fingerprint rows."""
     by_id = {
         str(item.get("local_id") or ""): item
         for item in items
@@ -153,6 +162,8 @@ def _mirror_adopted_qids(
     }
     for row in stable_rows:
         local_id = str(row.get("local_id") or "")
+        if local_id not in adopted_local_ids:
+            continue
         src = by_id.get(local_id)
         if src is None:
             continue

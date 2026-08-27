@@ -40,6 +40,11 @@ and reconciliation, immediately before validation and cache persistence.
 
 The cache is source-scoped (`legacy` or `canonical`). Every cache lookup and upsert includes the source, and the source is included in the `wikidata_studio_build` job parameters, so a forced canonical rebuild cannot silently return or overwrite the legacy row; old cache rows with a null source are treated as legacy for compatibility.
 
+The merged read model keeps ledger QIDs in the display row, but it does not add
+those QIDs to the stable verdict projection. Only local IDs returned by the
+cached duplicate probe adoption enter that projection. This keeps a QID created
+by an earlier upload from invalidating a valid stored AI verdict (Rule W-205).
+
 `execute_studio_build` (`wikidata_studio.py:448`, also called by the job)
 snapshots the MARC dictionaries before later database work. It prewarms Hebrew
 transliterations with one short-lived bulk cache session for reads and another

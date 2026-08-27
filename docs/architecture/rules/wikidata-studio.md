@@ -2565,3 +2565,24 @@ Regression: `backend/tests/unit/test_wikidata_canonical_enrichment.py` covers
 safe local `P50`, metadata preservation, and unresolved `P50` fallback. The
 canonical and legacy build paths call the same normalizer. Build schema changes
 force a fresh cache result.
+
+### Rule W-205 — Ledger QID hydration MUST not invalidate stored verdicts (added 2026-08-27)
+
+Run `48ba6c13-115c-4763-bff1-c08b9031b518` stored 236 AI verdicts after a
+successful verify job. The merged read path copied 177 QIDs from the upload
+ledger into the stable projection, although the verify job had not judged those
+ledger QIDs. Stable-key sanitisation then rejected the valid verdicts, and the
+review table displayed `177 unknown` after every refresh.
+
+**Invariants:**
+
+1. The merged read model MUST keep ledger QIDs in the display rows.
+2. `_adopt_cached_duplicate_qids` MUST return the local IDs that
+   `adopt_identifier_matched_duplicates` adopted.
+3. `_mirror_adopted_qids` MUST mirror only those returned local IDs into the
+   stable projection.
+4. QIDs from the upload ledger or upload audit MUST not change the stable
+   verdict input by themselves.
+
+Regression: `backend/tests/test_wikidata_item_views.py` checks that a ledger QID
+does not enter the stable projection, while a probe-adopted QID does.

@@ -797,3 +797,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `P50` MUST yield to `P2093` so the work keeps its source-backed author signal.
     *Why:* Export `(53)` preserved canonical `P50` and legacy `P2093` together,
     which created a blocking author-claim defect.
+
+108. **R108 — Ledger QID hydration MUST not invalidate stored verdicts (Rule W-205).**
+    The merged read model MUST keep upload-ledger QIDs in display rows, but it
+    MUST mirror only QIDs returned by the current cached duplicate adoption into
+    the stable verdict projection. *Why:* Run `48ba6c13` stored 236 verdicts,
+    but ledger QIDs changed 177 stable inputs after verification and the table
+    rendered those verdicts as `unknown`.
