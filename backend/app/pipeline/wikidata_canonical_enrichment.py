@@ -340,6 +340,7 @@ def merge_legacy_into_canonical(
             "Rewrote %d merged local references to canonical item IDs (Rule W-203)",
             rewritten,
         )
+    normalize_work_author_claims(merged)
     return _with_deduped_statements(merged)
 
 
@@ -535,6 +536,95 @@ def _with_deduped_statements(items: list[WikidataItem]) -> list[WikidataItem]:
         _with_scoped_records(item)
         _with_canonical_titles(item)
     return list(items)
+
+
+def _is_safe_work_author_item(
+    statement: WikidataStatement,
+    person_local_ids: set[str],
+) -> bool:
+    """Return whether a work P50 target can replace a P2093 fallback."""
+    value = str(statement.value or "").strip()
+    if _QID_RE.fullmatch(value):
+        return True
+    return value.startswith(_LOCAL_REFERENCE_PREFIX) and (
+        value.removeprefix(_LOCAL_REFERENCE_PREFIX) in person_local_ids
+    )
+
+
+def _merge_statement_metadata(
+    retained: WikidataStatement,
+    removed: WikidataStatement,
+) -> None:
+    """Keep source metadata when one representation of an author disappears."""
+    for attribute in ("qualifiers", "references"):
+        current = list(getattr(retained, attribute) or [])
+        for value in getattr(removed, attribute) or []:
+            if value not in current:
+                current.append(value)
+        setattr(retained, attribute, current)
+
+
+def normalize_work_author_claims(items: list[WikidataItem]) -> int:
+    """Keep one safe author representation per work (Rule W-204).
+
+    Canonical and legacy projections can describe the same author as P50 and
+    P2093. A safe P50 wins. An unresolved P50 yields to P2093 so the work keeps
+    its source-backed author signal instead of losing it during local resolution.
+    """
+    person_local_ids = {
+        str(item.local_id or "")
+        for item in items
+        if str(item.entity_type or "").strip().lower() == "person"
+        and str(item.local_id or "").strip()
+    }
+    changed = 0
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "work":
+            continue
+        p50 = [
+            statement for statement in item.statements or []
+            if str(statement.property_id or "") == "P50"
+        ]
+        p2093 = [
+            statement for statement in item.statements or []
+            if str(statement.property_id or "") == "P2093"
+        ]
+        if not p50 or not p2093:
+            continue
+
+        safe_p50 = [
+            statement
+            for statement in p50
+            if _is_safe_work_author_item(statement, person_local_ids)
+        ]
+        if safe_p50:
+            retained = safe_p50[0]
+            for removed in p2093:
+                _merge_statement_metadata(retained, removed)
+            item.statements = [
+                statement
+                for statement in item.statements
+                if str(statement.property_id or "") != "P2093"
+            ]
+            changed += len(p2093)
+            continue
+
+        retained = p2093[0]
+        for removed in p50:
+            _merge_statement_metadata(retained, removed)
+        item.statements = [
+            statement
+            for statement in item.statements
+            if str(statement.property_id or "") != "P50"
+        ]
+        changed += len(p50)
+
+    if changed:
+        logger.info(
+            "Normalized %d duplicate work author claims; safe P50 wins (Rule W-204)",
+            changed,
+        )
+    return changed
 
 
 def dedupe_statements(statements: list[WikidataStatement]) -> list[WikidataStatement]:

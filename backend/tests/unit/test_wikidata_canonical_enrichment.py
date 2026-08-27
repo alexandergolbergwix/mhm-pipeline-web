@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import converter.wikidata.item_builder  # noqa: F401  (import order)
-from app.pipeline.wikidata_canonical_enrichment import merge_legacy_into_canonical
+from app.pipeline.wikidata_canonical_enrichment import (
+    merge_legacy_into_canonical,
+    normalize_work_author_claims,
+)
 from app.pipeline.wikidata_local_refs import resolve_local_references
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
@@ -200,6 +203,94 @@ def test_merge_rewrites_local_references_to_canonical_person_id() -> None:
     assert claim.qualifiers[0]["value"] == "__LOCAL:QDraft_Person_82"
     assert claim.references[0]["value"] == "__LOCAL:QDraft_Person_82"
     assert stats["dropped"] == 0
+
+
+def test_merge_prefers_safe_p50_over_legacy_p2093() -> None:
+    person = _person("person:author", viaf="123", label="שמעון אבן חביב")
+    canonical_work = WikidataItem(
+        local_id="work:canonical",
+        entity_type="work",
+        labels={"he": "פסק דין"},
+        statements=[
+            WikidataStatement(
+                property_id="P50",
+                value="__LOCAL:person:author",
+                value_type="item",
+                references=[{"property": "P248", "value": "canonical"}],
+            ),
+        ],
+    )
+    legacy_work = WikidataItem(
+        local_id="work:legacy",
+        entity_type="work",
+        labels={"he": "פסק דין"},
+        statements=[
+            WikidataStatement(
+                property_id="P2093",
+                value="חביב, שמעון אבן",
+                value_type="string",
+                references=[{"property": "P248", "value": "legacy"}],
+            ),
+        ],
+    )
+
+    merged = merge_legacy_into_canonical([person, canonical_work], [legacy_work])
+    work = next(item for item in merged if item.entity_type == "work")
+    author_claims = [
+        statement for statement in work.statements
+        if statement.property_id in {"P50", "P2093"}
+    ]
+
+    assert [(claim.property_id, claim.value) for claim in author_claims] == [
+        ("P50", "__LOCAL:person:author"),
+    ]
+    assert {reference["value"] for reference in author_claims[0].references} == {
+        "canonical", "legacy",
+    }
+
+
+def test_unresolved_p50_falls_back_to_p2093() -> None:
+    work = WikidataItem(
+        local_id="work:unresolved-author",
+        entity_type="work",
+        statements=[
+            WikidataStatement(
+                property_id="P50",
+                value="__LOCAL:missing-person",
+                value_type="item",
+            ),
+            WikidataStatement(
+                property_id="P2093",
+                value="מחבר לא מזוהה",
+                value_type="string",
+            ),
+        ],
+    )
+
+    assert normalize_work_author_claims([work]) == 1
+    assert [(statement.property_id, statement.value) for statement in work.statements] == [
+        ("P2093", "מחבר לא מזוהה"),
+    ]
+
+
+def test_qid_p50_replaces_p2093_fallback() -> None:
+    work = WikidataItem(
+        local_id="work:qid-author",
+        entity_type="work",
+        statements=[
+            WikidataStatement(property_id="P50", value="Q42", value_type="item"),
+            WikidataStatement(
+                property_id="P2093",
+                value="Douglas Adams",
+                value_type="string",
+            ),
+        ],
+    )
+
+    assert normalize_work_author_claims([work]) == 1
+    assert [(statement.property_id, statement.value) for statement in work.statements] == [
+        ("P50", "Q42"),
+    ]
 
 
 def test_merge_drops_identifierless_person_items() -> None:

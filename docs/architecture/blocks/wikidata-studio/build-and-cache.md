@@ -66,7 +66,7 @@ also runs the legacy MARC/authority builder (`build_items_for_run`,
 `wikidata_canonical_enrichment.merge_legacy_into_canonical`. Canonical
 `local_id`, P2888/P973 bridges, and `existing_qid` win; research claims
 (P571/P1071/P407/P1574/P217/P195/…, person dates/VIAF/Mazal, work P50)
-are unioned. Build fingerprint salt `hmo-wikidata-v9` includes the MARC/
+are unioned. Build fingerprint salt `hmo-wikidata-v13` includes the MARC/
 authority enrichment fingerprint so either input invalidates the cache.
 Summary flag: `legacy_enriched`; `projection_source` becomes
 `hmo_wikibase+marc` when enrichment applied.
@@ -76,6 +76,11 @@ legacy-to-canonical alias and rewrites every `__LOCAL:` value in statements,
 qualifiers, and reference metadata before final resolution (Rule W-203).
 This preserves links such as a work `P50` claim when the person item changes
 from a legacy Mazal ID to the canonical HMO ID.
+
+The finalizer also normalizes work author claims (Rule W-204). A safe `P50`
+target wins over a duplicate `P2093` fallback, and the retained claim receives
+the removed claim's references and qualifiers. An unresolved `P50` yields to
+`P2093` so the work keeps its source-backed author signal.
 
 Final canonicalization is source-scoped and runs after overrides and person
 publishability filtering (Rule W-155). Hard-rejected authority matches cannot

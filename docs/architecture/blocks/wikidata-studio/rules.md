@@ -791,3 +791,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     metadata MUST point to the canonical `local_id` before final local-reference
     resolution. *Why:* Run `(52)` dropped a valid work `P50` claim after a
     legacy Mazal person merged into its canonical HMO person.
+107. **R107 — Work author claims MUST use one safe representation (Rule W-204).**
+    A safe `P50` target MUST replace a duplicate `P2093` fallback. The retained
+    claim MUST keep the removed claim's references and qualifiers. An unresolved
+    `P50` MUST yield to `P2093` so the work keeps its source-backed author signal.
+    *Why:* Export `(53)` preserved canonical `P50` and legacy `P2093` together,
+    which created a blocking author-claim defect.

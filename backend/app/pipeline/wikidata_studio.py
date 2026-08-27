@@ -46,7 +46,8 @@ logger = logging.getLogger(__name__)
 # person as an upload candidate (the current builder omits those rows).
 # v6: designation labels, audited holders, anchored works, corrected P/Q constants
 # (Rules W-161 … W-166) — every cached Studio row predates them.
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v6"
+# v7: canonical and legacy work author claims use one safe representation (W-204).
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v7"
 
 
 def studio_cache_has_stale_validation(
@@ -307,6 +308,12 @@ def _build_sync(
             ov = overrides.get(_local_id_for(it))
             if ov:
                 _apply_override(it, ov)
+
+    from app.pipeline.wikidata_canonical_enrichment import (
+        normalize_work_author_claims,
+    )
+
+    normalize_work_author_claims(items)
 
     # Every ``__LOCAL:`` target must name an item this build produced — works
     # dropped by the thin-title / evidence gates otherwise leave the referring

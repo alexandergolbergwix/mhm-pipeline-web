@@ -333,7 +333,7 @@ def canonical_wikidata_fingerprint(
     # manuscript, generated descriptions, deduped claims).
     # v11 — Rule W-138 (unwrapped MARC values, one work title, evidence-gated
     # person dates, resolved local references).
-    salt = "hmo-wikidata-v12:"  # Rules W-161 … W-166
+    salt = "hmo-wikidata-v13:"  # Rules W-161 … W-166 and W-204
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -614,6 +614,7 @@ def build_canonical_studio_result(
     from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
         is_publishable_person_item,
         merge_legacy_into_canonical,
+        normalize_work_author_claims,
         recover_person_identifiers_from_evidence,
     )
     from app.pipeline.wikidata_upload import _reconcile_sync  # noqa: PLC0415
@@ -709,6 +710,7 @@ def build_canonical_studio_result(
     _sanitize_canonical_claims(native_items, context)
     _align_person_p1559_to_hebrew_label(native_items)
     _scrub_person_aliases(native_items)
+    normalize_work_author_claims(native_items)
 
     # Apply overrides before resolving placeholders. A curator statement edit
     # may itself add a __LOCAL target, and the resolver must see the final item
@@ -1029,16 +1031,16 @@ def _patronymic_father_id_with_dates(item: WikidataItem, prefs: list[str]) -> bo
                 continue
             if hebrew_label_matches(label_given, [pref_given], max_distance=1):
                 continue
-            label_tokens = _name_tokens(label)
-            pref_tokens = _name_tokens(preferred)
+            label_parts = _name_tokens(label)
+            preferred_parts = _name_tokens(preferred)
             if any(
                 hebrew_label_matches(token, [pref_given], max_distance=1)
-                for token in label_tokens[1:]
+                for token in label_parts[1:]
             ):
                 return True
             if any(
                 hebrew_label_matches(token, [label_given], max_distance=1)
-                for token in pref_tokens[1:]
+                for token in preferred_parts[1:]
             ):
                 return True
     return False
@@ -1989,13 +1991,17 @@ def _work_candidate_evidence_for(
                 and not _is_placeholder_title(marc_title)
                 and any(_titles_match(t, marc_title) for t in titles)
             ):
-                has_authors = bool(record.get("authors") or record.get("author"))
-                source_field = "100/245" if has_authors else "245"
+                has_catalog_creators = bool(
+                    record.get("authors") or record.get("author")
+                )
+                source_field = "100/245" if has_catalog_creators else "245"
                 hit = _try_assess(
                     marc_title,
                     source_field=source_field,
                     candidate_kind=(
-                        "marc_title_author" if has_authors else "marc_245_title"
+                            "marc_title_author"
+                            if has_catalog_creators
+                            else "marc_245_title"
                     ),
                     source_text=marc_title,
                     source_record_id=canonical_control_number(str(raw_cn)),

@@ -5,7 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/wikidata_studio.py` | Glue: DB rows → desktop builder input; fingerprint; override application; item serialisation + label enrichment; `local_id_for_item` |
-| `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188) |
+| `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); safe single-representation work author normalization (W-204); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188) |
 | `backend/converter/wikidata/property_mapping.py` | `resolve_hmo_bridge_url` / `is_browseable_hmo_wikibase_url` — fail-closed HMO Wikibase link helpers (W-122); known-work / Esther aliases (W-171); `format_wikidata_time` ±YYYY padding (W-193) |
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow + scholarly catalog notes that must never become P1684 / P1922 (W-72 / W-122 / W-171 / W-172) |
 | `backend/converter/wikidata/isbd_title.py` | ISBD `245` title/subtitle split (Rule W-171) |
@@ -24,9 +24,9 @@
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-source evidence packs: MARC slice, per-claim `claim_sources` provenance, offline `value_labels`, VIAF/Mazal/HMO channels |
 | `backend/app/pipeline/wikidata_verdict_cache.py` | Verdict fingerprints, claims-fingerprint sticky-full helpers, schema `w175_v1` (W-171…W-175) |
 | `backend/app/pipeline/wikidata_verify_scope.py` | Shared verify cache partitioner + sticky-full (W-167 / W-171) |
-| `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125); recover trusted person IDs before the W-154 omit gate (W-188); rewrite merged local references to canonical IDs (W-203) |
+| `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125); recover trusted person IDs before the W-154 omit gate (W-188); rewrite merged local references to canonical IDs (W-203); normalize duplicate work author claims (W-204) |
 | `backend/app/pipeline/wikidata_qid_ledger.py` | Global `wikibase_entity_mappings` ledger (`wikidata:` keys) — adopt + idempotent upload |
-| `backend/app/pipeline/wikidata_export_quality_gate.py` | Build-time ERROR-only export quality gate before cache upsert; source-backed works must retain P50 or P2093 |
+| `backend/app/pipeline/wikidata_export_quality_gate.py` | Build-time ERROR-only export quality gate before cache upsert; source-backed works must retain one safe P50 or P2093 representation |
 | `backend/converter/transformer/extent.py` | Single MARC 300$a extent parser — sums leaf sequences, reads page/gematria units, fails closed (Rule W-140) |
 | `backend/app/pipeline/marc_llm_extract.py` | Span-grounded tier-1 extraction of owner/place/material from MARC provenance prose; proposals only (Rule W-140) |
 | `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, linked-QID handling, and export-field failures (W-199) |

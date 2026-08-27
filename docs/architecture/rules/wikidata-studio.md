@@ -2542,3 +2542,26 @@ the work claim. The final local-reference resolver therefore dropped `P50`.
 
 Regression: `backend/tests/unit/test_wikidata_canonical_enrichment.py` and the
 read-only full-run reproduction for run `48ba6c13-115c-4763-bff1-c08b9031b518`.
+
+### Rule W-204 — Work items MUST keep one safe author representation (added 2026-08-27)
+
+Export `(53)` exposed a merge defect on `Q141175512`. The canonical projection
+provided `P50 = __LOCAL:QDraft_Person_206`, while the legacy projection provided
+`P2093 = חביב, שמעון אבן`. The merge union kept both properties, although the
+name string is only the fallback form for an author without a safe person item.
+
+**Invariants:**
+
+1. The final work projection MUST keep one safe author representation per author.
+2. A `P50` QID or in-build person target MUST replace a duplicate `P2093` claim.
+3. The retained claim MUST preserve references and qualifiers from the removed
+   representation.
+4. An unresolved `P50` MUST yield to `P2093` instead of losing the source-backed
+   author signal during local-reference resolution.
+5. The normalizer MUST run after canonical/legacy merge and before validation,
+   QuickStatements export, and local-reference resolution.
+
+Regression: `backend/tests/unit/test_wikidata_canonical_enrichment.py` covers
+safe local `P50`, metadata preservation, and unresolved `P50` fallback. The
+canonical and legacy build paths call the same normalizer. Build schema changes
+force a fresh cache result.
