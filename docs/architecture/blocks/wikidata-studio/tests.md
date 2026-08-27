@@ -159,4 +159,5 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_studio_works.py` — exact known work QIDs do not create authorless local works; equal titles with different verified authors stay separate (W-200).
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical works carry an approved MARC author as `P50` or `P2093` (W-201).
 - `backend/tests/unit/test_wikidata_studio_works.py` — approved MARC author matches recover the main work author when the raw author list is empty (W-202).
+- `backend/tests/unit/test_wikidata_canonical_enrichment.py` — matched legacy person IDs are rewritten in work claims and metadata before local-reference resolution (W-203).
 - `backend/tests/test_wikidata_export_quality.py` — source-backed works without `P50` or `P2093` fail the build gate (W-200).

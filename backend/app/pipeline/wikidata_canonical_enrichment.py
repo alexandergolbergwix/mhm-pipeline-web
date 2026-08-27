@@ -38,15 +38,16 @@ _CANONICAL_PREFERRED_PIDS = frozenset({
 _MULTI_VALUE_CANONICAL_PIDS = frozenset({"P973"})
 
 _QID_RE = re.compile(r"^Q\d+$", re.IGNORECASE)
+_LOCAL_REFERENCE_PREFIX = "__LOCAL:"
 
 
 def _legacy_catalogue_p973_ok(canonical: WikidataItem, stmt: WikidataStatement) -> bool:
     """Drop cross-record catalogue P973 whose embedded ref ≠ P217 (W-174)."""
-    from converter.wikidata.property_mapping import (  # noqa: PLC0415
-        is_browseable_hmo_wikibase_url,
-    )
     from converter.wikidata.manuscript_projection import (  # noqa: PLC0415
         catalogue_url_agrees_with_shelfmark,
+    )
+    from converter.wikidata.property_mapping import (  # noqa: PLC0415
+        is_browseable_hmo_wikibase_url,
     )
 
     url = str(stmt.value or "")
@@ -288,6 +289,7 @@ def merge_legacy_into_canonical(
     legacy_persons = _index_persons(legacy_items)
     legacy_works = _index_works(legacy_items)
     used_legacy_ids: set[str] = set()
+    local_id_aliases: dict[str, str] = {}
 
     merged: list[WikidataItem] = []
     for item in canonical_items:
@@ -302,6 +304,14 @@ def merge_legacy_into_canonical(
         if legacy is not None:
             used_legacy_ids.add(legacy.local_id or id(legacy).__repr__())
             candidate = _merge_pair(item, legacy)
+            legacy_local_id = str(legacy.local_id or "")
+            canonical_local_id = str(candidate.local_id or "")
+            if (
+                legacy_local_id
+                and canonical_local_id
+                and legacy_local_id != canonical_local_id
+            ):
+                local_id_aliases[legacy_local_id] = canonical_local_id
             if _keep_merged_item(candidate):
                 merged.append(candidate)
         else:
@@ -324,7 +334,76 @@ def merge_legacy_into_canonical(
             candidate = _with_canonical_titles(legacy)
             if _keep_merged_item(candidate):
                 merged.append(candidate)
-    return merged
+    rewritten = _rewrite_local_reference_aliases(merged, local_id_aliases)
+    if rewritten:
+        logger.info(
+            "Rewrote %d merged local references to canonical item IDs (Rule W-203)",
+            rewritten,
+        )
+    return _with_deduped_statements(merged)
+
+
+def _resolve_local_alias(local_id: str, aliases: dict[str, str]) -> str:
+    """Follow merged local IDs until the canonical ID is reached."""
+    resolved = local_id
+    seen: set[str] = set()
+    while resolved in aliases and resolved not in seen:
+        seen.add(resolved)
+        next_id = str(aliases[resolved] or "")
+        if not next_id:
+            break
+        resolved = next_id
+    return resolved
+
+
+def _rewrite_local_reference_value(
+    value: Any,
+    aliases: dict[str, str],
+) -> tuple[Any, int]:
+    """Rewrite local IDs inside statement metadata after an item merge."""
+    if isinstance(value, str) and value.startswith(_LOCAL_REFERENCE_PREFIX):
+        local_id = value.removeprefix(_LOCAL_REFERENCE_PREFIX)
+        resolved = _resolve_local_alias(local_id, aliases)
+        if resolved != local_id:
+            return f"{_LOCAL_REFERENCE_PREFIX}{resolved}", 1
+        return value, 0
+    if isinstance(value, dict):
+        rewritten = 0
+        for key, nested in value.items():
+            replacement, count = _rewrite_local_reference_value(nested, aliases)
+            value[key] = replacement
+            rewritten += count
+        return value, rewritten
+    if isinstance(value, list):
+        rewritten = 0
+        for index, nested in enumerate(value):
+            replacement, count = _rewrite_local_reference_value(nested, aliases)
+            value[index] = replacement
+            rewritten += count
+        return value, rewritten
+    return value, 0
+
+
+def _rewrite_local_reference_aliases(
+    items: list[WikidataItem],
+    aliases: dict[str, str],
+) -> int:
+    """Point merged claims and metadata at the canonical item IDs (Rule W-203)."""
+    if not aliases:
+        return 0
+    rewritten = 0
+    for item in items:
+        for statement in item.statements or []:
+            replacement, count = _rewrite_local_reference_value(
+                statement.value,
+                aliases,
+            )
+            statement.value = replacement
+            rewritten += count
+            for metadata in (statement.qualifiers, statement.references):
+                _, count = _rewrite_local_reference_value(metadata, aliases)
+                rewritten += count
+    return rewritten
 
 
 def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
@@ -341,8 +420,10 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
         semantic_type=canonical.semantic_type or legacy.semantic_type,
         local_id=canonical.local_id,
         records=_merged_records(canonical, legacy),
-        authority_evidence=_union_evidence(
-            canonical.authority_evidence, legacy.authority_evidence,
+        authority_evidence=(
+            _union_evidence(
+                canonical.authority_evidence, legacy.authority_evidence,
+            )
         ),
         work_candidate_evidence=_union_work_evidence(
             canonical.work_candidate_evidence, legacy.work_candidate_evidence,

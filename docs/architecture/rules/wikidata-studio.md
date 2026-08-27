@@ -2523,3 +2523,22 @@ passed no author to the existing work path.
 3. An unapproved match MUST not create a work author claim.
 
 Regression: `backend/tests/unit/test_wikidata_studio_works.py`.
+
+### Rule W-203 — Canonical merges MUST rewrite local references after an ID change (added 2026-08-27)
+
+Export `(52)` still had one blocking missing-author finding after Rules W-201
+and W-202. The legacy work carried `P50 = __LOCAL:mazal:987007595556205171`.
+The canonical merge correctly kept `QDraft_Person_82`, but it did not rewrite
+the work claim. The final local-reference resolver therefore dropped `P50`.
+
+**Invariants:**
+
+1. The canonical merge MUST record an alias when a matched legacy item has a
+   different local ID.
+2. The merge MUST rewrite `__LOCAL:` values in statements, qualifiers, and
+   reference metadata through the alias map.
+3. Final local-reference resolution MUST see canonical targets, and the export
+   quality gate MUST reject any remaining dangling local reference.
+
+Regression: `backend/tests/unit/test_wikidata_canonical_enrichment.py` and the
+read-only full-run reproduction for run `48ba6c13-115c-4763-bff1-c08b9031b518`.

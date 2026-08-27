@@ -71,6 +71,12 @@ authority enrichment fingerprint so either input invalidates the cache.
 Summary flag: `legacy_enriched`; `projection_source` becomes
 `hmo_wikibase+marc` when enrichment applied.
 
+When a matched legacy item uses a different local ID, the merge records the
+legacy-to-canonical alias and rewrites every `__LOCAL:` value in statements,
+qualifiers, and reference metadata before final resolution (Rule W-203).
+This preserves links such as a work `P50` claim when the person item changes
+from a legacy Mazal ID to the canonical HMO ID.
+
 Final canonicalization is source-scoped and runs after overrides and person
 publishability filtering (Rule W-155). Hard-rejected authority matches cannot
 reintroduce biographical dates or a public person item; broad `P921` values

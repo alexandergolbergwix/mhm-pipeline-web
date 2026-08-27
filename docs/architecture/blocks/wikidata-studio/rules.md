@@ -784,3 +784,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     When the normalized author list is empty, the legacy content projection MUST
     use an approved author match from the same MARC record. An unapproved match
     MUST not create an author claim.
+
+106. **R106 — Canonical merges MUST rewrite local references after an ID change (Rule W-203).**
+    When a canonical and legacy item merge, the canonical `local_id` wins.
+    Every `__LOCAL:<legacy_id>` in statements, qualifiers, and reference
+    metadata MUST point to the canonical `local_id` before final local-reference
+    resolution. *Why:* Run `(52)` dropped a valid work `P50` claim after a
+    legacy Mazal person merged into its canonical HMO person.

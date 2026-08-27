@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from converter.wikidata.item_models import WikidataItem, WikidataStatement
+import converter.wikidata.item_builder  # noqa: F401  (import order)
 from app.pipeline.wikidata_canonical_enrichment import merge_legacy_into_canonical
+from app.pipeline.wikidata_local_refs import resolve_local_references
+from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
 
 def _hmo_item_url(qid: str) -> str:
@@ -110,6 +112,94 @@ def test_merge_matches_works_by_title_and_adds_author() -> None:
     assert len(merged) == 1
     assert any(s.property_id == "P50" and s.value == "Q1" for s in merged[0].statements)
     assert merged[0].work_candidate_evidence
+
+
+def test_merge_rewrites_local_references_to_canonical_person_id() -> None:
+    canonical_person = _person(
+        "QDraft_Person_82",
+        label="יהודה בן יעקב חנין",
+    )
+    canonical_person.statements.append(
+        WikidataStatement(
+            property_id="P8189",
+            value="987007595556205171",
+            value_type="external-id",
+        ),
+    )
+    legacy_person = _person(
+        "mazal:987007595556205171",
+        label="יהודה בן יעקב חנין",
+    )
+    legacy_person.statements.append(
+        WikidataStatement(
+            property_id="P8189",
+            value="987007595556205171",
+            value_type="external-id",
+        ),
+    )
+    canonical_work = WikidataItem(
+        local_id="work:מנחת_יהודה",
+        entity_type="work",
+        labels={"he": "מנחת יהודה"},
+        records=["990001238980205171"],
+        statements=[
+            WikidataStatement(
+                property_id="P31",
+                value="Q47461344",
+                value_type="item",
+            ),
+            WikidataStatement(
+                property_id="P1476",
+                value="מנחת יהודה",
+                value_type="monolingualtext",
+            ),
+        ],
+    )
+    legacy_work = WikidataItem(
+        local_id="legacy-work:מנחת_יהודה",
+        entity_type="work",
+        labels={"he": "מנחת יהודה"},
+        records=["990001238980205171"],
+        statements=[
+            WikidataStatement(
+                property_id="P1476",
+                value="מנחת יהודה",
+                value_type="monolingualtext",
+            ),
+            WikidataStatement(
+                property_id="P50",
+                value="__LOCAL:mazal:987007595556205171",
+                value_type="item",
+                qualifiers=[
+                    {
+                        "property": "P580",
+                        "value": "__LOCAL:mazal:987007595556205171",
+                        "value_type": "item",
+                    },
+                ],
+                references=[
+                    {
+                        "property": "P248",
+                        "value": "__LOCAL:mazal:987007595556205171",
+                        "value_type": "item",
+                    },
+                ],
+            ),
+        ],
+    )
+
+    merged = merge_legacy_into_canonical(
+        [canonical_person, canonical_work],
+        [legacy_person, legacy_work],
+    )
+    stats = resolve_local_references(merged)
+
+    work = next(item for item in merged if item.entity_type == "work")
+    claim = next(statement for statement in work.statements if statement.property_id == "P50")
+    assert claim.value == "__LOCAL:QDraft_Person_82"
+    assert claim.qualifiers[0]["value"] == "__LOCAL:QDraft_Person_82"
+    assert claim.references[0]["value"] == "__LOCAL:QDraft_Person_82"
+    assert stats["dropped"] == 0
 
 
 def test_merge_drops_identifierless_person_items() -> None:
