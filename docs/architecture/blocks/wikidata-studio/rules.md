@@ -779,3 +779,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     The canonical HMO adapter MUST copy the approved author from the work's
     anchor MARC record into `P50` or `P2093`. The claim MUST carry the NLI
     reference. A legacy merge MUST not be required for author recovery.
+
+105. **R105 — Legacy work projection MUST use approved MARC author matches (Rule W-202).**
+    When the normalized author list is empty, the legacy content projection MUST
+    use an approved author match from the same MARC record. An unapproved match
+    MUST not create an author claim.

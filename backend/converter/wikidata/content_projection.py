@@ -75,7 +75,7 @@ def _entry_author(entry: dict[str, object]) -> str | None:
 
 
 def _record_author(record: dict[str, object]) -> str | None:
-    """Read the primary author from the MARC record when content lacks one."""
+    """Read the approved primary author when content lacks one."""
     for author in record.get("authors") or []:
         if not isinstance(author, dict):
             continue
@@ -83,6 +83,20 @@ def _record_author(record: dict[str, object]) -> str | None:
         if role not in {"author", "attributed author", "presumed author"}:
             continue
         name = str(author.get("name") or "").strip()
+        if name:
+            return name
+    for match in record.get("marc_authority_matches") or []:
+        if not isinstance(match, dict) or match.get("approved") is False:
+            continue
+        role = str(match.get("role") or "").strip().casefold()
+        if role not in {"author", "attributed author", "presumed author"}:
+            continue
+        name = str(
+            match.get("name")
+            or match.get("entity_text")
+            or match.get("matched_name")
+            or "",
+        ).strip()
         if name:
             return name
     return None

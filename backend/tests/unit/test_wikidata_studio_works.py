@@ -167,6 +167,34 @@ class TestEntitiesByCnDrivesWorkCreation:
         )
 
     @pytest.mark.asyncio
+    async def test_approved_author_match_recovers_main_work_author(self) -> None:
+        title = "מנחת יהודה : פרוש על שמואל, מלכים וישעיהו"
+        record = {
+            **_fake_marc_record(),
+            "title": title,
+            "authors": [],
+            "contents": [{"title": title}],
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[record],
+            approved_matches=[{
+                "control_number": "1",
+                "entity_text": "חנין, יהודה בן יעקב",
+                "role": "author",
+                "approved": True,
+            }],
+            entities_by_cn=None,
+            return_native=True,
+        )
+        works = [item for item in result["native_items"] if item.entity_type == "work"]
+        assert len(works) == 1
+        assert any(
+            statement.property_id == "P2093"
+            and statement.value == "חנין, יהודה בן יעקב"
+            for statement in works[0].statements
+        )
+
+    @pytest.mark.asyncio
     async def test_same_title_with_different_authors_stays_separate(self) -> None:
         title = "אותו חיבור"
         records = [
@@ -312,8 +340,19 @@ class TestSourceRecordAssociation:
         assert persons["אברהם שני"]["records"] == [second["_control_number"]]
 
         works = [item for item in items if item["entity_type"] == "work"]
-        assert len(works) == 1
-        assert works[0]["records"] == [first["_control_number"], second["_control_number"]]
+        assert len(works) == 2
+        work_records = {
+            tuple(item["records"]): {
+                statement["value"]
+                for statement in item["statements"]
+                if statement["property_id"] in {"P50", "P2093"}
+            }
+            for item in works
+        }
+        assert work_records == {
+            (first["_control_number"],): {"__LOCAL:mazal:987000000000000001"},
+            (second["_control_number"],): {"__LOCAL:mazal:987000000000000002"},
+        }
 
 
 class TestProjectionQuality:

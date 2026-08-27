@@ -158,4 +158,5 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/test_wikidata_export_quality_checker.py` — `TestDuplicateCoverageChecks`: unprobed work, missing holder+shelfmark probe, top-level candidate blocks, linked QIDs do not create duplicate blockers, and `P2093` flagged only when an author item exists (Rules W-144 / W-145 / W-146 / W-199).
 - `backend/tests/unit/test_wikidata_studio_works.py` — exact known work QIDs do not create authorless local works; equal titles with different verified authors stay separate (W-200).
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical works carry an approved MARC author as `P50` or `P2093` (W-201).
+- `backend/tests/unit/test_wikidata_studio_works.py` — approved MARC author matches recover the main work author when the raw author list is empty (W-202).
 - `backend/tests/test_wikidata_export_quality.py` — source-backed works without `P50` or `P2093` fail the build gate (W-200).

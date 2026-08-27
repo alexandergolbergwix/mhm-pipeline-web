@@ -2506,3 +2506,20 @@ when the legacy work merge did not match the canonical item.
 3. The author claim MUST carry the NLI record reference.
 
 Regression: `backend/tests/unit/test_hmo_canonical_wikidata.py`.
+
+### Rule W-202 — Legacy work projection MUST use approved MARC author matches (added 2026-08-27)
+
+Export `(50)` still omitted the author for record `990001238980205171` after
+canonical recovery was added. The legacy record had an approved author match,
+but its normalized `authors` list was empty. The content projection therefore
+passed no author to the existing work path.
+
+**Invariants:**
+
+1. The legacy resolver MUST use an approved author match when the normalized
+   author list has no usable author.
+2. The resolver MUST accept only author, attributed-author, or presumed-author
+   roles from the same record.
+3. An unapproved match MUST not create a work author claim.
+
+Regression: `backend/tests/unit/test_wikidata_studio_works.py`.
