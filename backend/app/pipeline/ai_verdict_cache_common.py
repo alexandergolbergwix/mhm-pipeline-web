@@ -91,12 +91,28 @@ JUDGE_FAILURE_OVERALL = "verification_failed"
 _SUBSTANTIVE_OVERALLS = frozenset({"full", "pass", "partial", "fail"})
 
 
+def normalise_public_verdict(verdict: dict[str, Any]) -> dict[str, Any]:
+    """Expose judge failures as unknown while retaining diagnostic metadata."""
+    if str(verdict.get("overall") or "").strip().lower() != JUDGE_FAILURE_OVERALL:
+        return verdict
+    error = str(
+        verdict.get("verification_error") or verdict.get("error") or ""
+    ).strip()
+    return {
+        **verdict,
+        "overall": "unknown",
+        "judge_failure": True,
+        "verification_error": error or None,
+    }
+
+
 def normalise_verdict_body(verdict: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
     """Split a raw eval-agent verdict envelope into a body and a judge error.
 
     Returns ``(body, judge_error)``. When the judge did not actually answer, the
-    body reports ``overall="verification_failed"`` with ``unknown`` axes instead
-    of the substantive ``fail / no / no`` the eval-agent dataclass defaults to.
+    body reports ``overall="unknown"`` with ``judge_failure`` and
+    ``verification_error`` instead of the substantive ``fail / no / no`` the
+    eval-agent dataclass defaults to.
 
     One manuscript in run 48ba6c13 was persisted as `overall="fail",
     name_ok="no", type_ok="no"` with an empty ``reasoning``: a transport failure
@@ -123,10 +139,12 @@ def normalise_verdict_body(verdict: dict[str, Any]) -> tuple[dict[str, Any], str
 
     return {
         **body,
-        "overall": JUDGE_FAILURE_OVERALL,
+        "overall": "unknown",
         "name_ok": "unknown",
         "type_ok": "unknown",
         "role_ok": body.get("role_ok") or "n/a",
+        "judge_failure": True,
+        "verification_error": reason,
         "reasoning": (
             f"Judge failure: {reason}. This is NOT an assessment of the item — "
             "the check did not complete and must be re-run."
@@ -138,5 +156,8 @@ def normalise_verdict_body(verdict: dict[str, Any]) -> tuple[dict[str, Any], str
 def is_judge_failure(body: Any) -> bool:
     return (
         isinstance(body, dict)
-        and str(body.get("overall") or "") == JUDGE_FAILURE_OVERALL
+        and (
+            bool(body.get("judge_failure"))
+            or str(body.get("overall") or "") == JUDGE_FAILURE_OVERALL
+        )
     )

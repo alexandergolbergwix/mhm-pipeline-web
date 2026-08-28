@@ -48,7 +48,10 @@ from app.pipeline.agent_runner import (
     spawn_eval_agent_run,
     sse_stream,
 )
-from app.pipeline.ai_verdict_cache_common import normalise_verdict_body
+from app.pipeline.ai_verdict_cache_common import (
+    normalise_public_verdict,
+    normalise_verdict_body,
+)
 from app.pipeline.authority_verdict_cache import (
     authority_verdict_input_fingerprint,
     authority_verdict_query_summary,
@@ -604,7 +607,7 @@ async def list_run_verdicts_endpoint(
     ),
     overall: str | None = Query(
         default=None,
-        pattern=r"^(pass|full|partial|fail|abstain)$",
+        pattern=r"^(pass|full|partial|fail|abstain|unknown)$",
         description="Filter by verdict overall value.",
     ),
     limit: int = Query(default=200, ge=1, le=2000),
@@ -630,7 +633,7 @@ async def list_run_verdicts_endpoint(
           "verdicts": [<AgentEvent>, ...],  // page
           "counts": {               // over the whole filtered set
             "pass": 0, "partial": 0, "fail": 0, "abstain": 0,
-            "verification_failed": 0, "unknown": 0
+            "unknown": 0
           }
         }
     """
@@ -662,7 +665,7 @@ async def export_run_verdicts(
     format: str = Query(default="json", pattern="^(json|csv)$"),
     q: str | None = Query(default=None, max_length=256),
     overall: str | None = Query(
-        default=None, pattern=r"^(pass|full|partial|fail|abstain)$",
+        default=None, pattern=r"^(pass|full|partial|fail|abstain|unknown)$",
     ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
@@ -964,7 +967,17 @@ def _collect_run_verdicts(run_id: str) -> list[dict[str, Any]]:
     serialised as SSE events only, not written to disk by this path).
     """
     state_dir = resolve_verify_state_dir("ai-verify-sessions", run_id)
-    return read_run_verdicts(state_dir)
+    verdicts = read_run_verdicts(state_dir)
+    out: list[dict[str, Any]] = []
+    for event in verdicts:
+        if not isinstance(event, dict):
+            continue
+        verdict = event.get("verdict")
+        if not isinstance(verdict, dict):
+            out.append(event)
+            continue
+        out.append({**event, "verdict": normalise_public_verdict(verdict)})
+    return out
 
 
 def _filter_verdicts(
@@ -1008,9 +1021,8 @@ def _filter_verdicts(
 def _count_by_overall(verdicts: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {
         "pass": 0, "partial": 0, "fail": 0, "abstain": 0,
-        # A judge that did not answer is its own bucket, never a `fail`
-        # (Rule W-158).
-        "verification_failed": 0, "unknown": 0,
+        # A judge that did not answer is unknown, never a `fail` (Rule W-158).
+        "unknown": 0,
     }
     for ev in verdicts:
         if not isinstance(ev, dict):
@@ -1019,8 +1031,10 @@ def _count_by_overall(verdicts: list[dict[str, Any]]) -> dict[str, int]:
         raw = str(v.get("overall") or "").lower() if isinstance(v, dict) else ""
         if raw in ("pass", "full"):
             counts["pass"] += 1
-        elif raw in ("partial", "fail", "abstain", "verification_failed"):
+        elif raw in ("partial", "fail", "abstain"):
             counts[raw] += 1
+        elif raw == "verification_failed":
+            counts["unknown"] += 1
         else:
             counts["unknown"] += 1
     return counts

@@ -924,24 +924,48 @@ reasoned-looking fail with no reason.
 
 Invariant:
 
-1. **`verification_failed`, not `fail`.** A judge that did not answer reports
-   `overall="verification_failed"` with `unknown` axes and a reasoning that says
-   it is not an assessment. A substantive `overall` with blank `reasoning` is the
+1. **`unknown`, not `fail`.** A judge that did not answer reports
+   `overall="unknown"` with `unknown` axes, `judge_failure=true`, and a
+   `verification_error`. A substantive `overall` with blank `reasoning` is the
    same thing — reachable because the agentic tool-loop cannot send a
-   `responseSchema`.
+   `responseSchema`. The legacy `verification_failed` value is accepted only
+   for read-time conversion to this public shape.
 2. **The failure MUST carry its reason.** The stored-row schema requires a
-   non-empty `reasoning` for a substantive `overall` and a non-empty `error` for
-   `verification_failed`. `_load_schema` strips those conditionals and the
+   non-empty `reasoning` for a substantive `overall` and a non-empty
+   `verification_error` for an unknown judge failure. `_load_schema` strips those conditionals and the
    harness-only enum values before the schema becomes a `responseSchema`: the
    model is never offered a way to declare its own check failed.
 3. **NEVER cache a judge failure** (amends Rule W-51). The `ai_verdict` cache has a
    90-day TTL, so a transport hiccup would warm-hit for three months and the item
    would never be judged again. The override row is still written, so the curator
-   sees "check failed" rather than nothing.
+   sees `unknown` and can inspect the retained error before a retry.
 4. **A run that produced one is `partial`, not `complete`.** A
-   `verification_failed` row carries a stable candidate id so it still advances
+   judge-failure row carries a stable candidate id so it still advances
    progress (Rule W-64), but the run did not judge its whole scope.
 5. **Every `overall` the backend can emit MUST be in the frontend allowlists**
    (Rule W-110.5) — `WikidataItemsPanel`'s streamed-verdict set and
    `VerdictsTable`'s `Overall` union and filter chips. An unlisted value is
    silently dropped.
+
+### Rule W-207 — Judge failures MUST render as unknown and preserve diagnostics (added 2026-08-28)
+
+Run `48ba6c13` retained nine provider failures after a force rebuild. The
+failures were four malformed DeepSeek responses and five HTTP 400 content-policy
+responses. The per-item stable fingerprints still matched, so the read path
+correctly retained the records but exposed the internal `verification_failed`
+bucket to curators.
+
+**Invariants:**
+
+1. New judge failures MUST persist with `overall="unknown"`,
+   `judge_failure=true`, and `verification_error`.
+2. The read path MUST convert legacy `verification_failed` records to the same
+   public shape without dropping the original error.
+3. A provider failure MUST remain absent from the shared inference cache, and
+   the verify job MUST remain `partial` when one occurs.
+4. The per-item stable fingerprint MUST invalidate a verdict only when the
+   item state in its fingerprint projection changes. A whole-run build SHA
+   MUST NOT invalidate unchanged items.
+
+Regression: `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` and
+`backend/tests/unit/test_wikidata_verdict_cache.py` cover new and legacy rows.

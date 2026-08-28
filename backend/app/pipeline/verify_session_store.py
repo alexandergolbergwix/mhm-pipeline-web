@@ -128,6 +128,8 @@ def snapshot_from_collected_events(
 
 def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
     """Keep VerdictsTable fields; drop MARC/evidence megabytes (Rule W-128)."""
+    from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
+
     cand_in = row.get("candidate") if isinstance(row.get("candidate"), dict) else {}
     verd_in = row.get("verdict") if isinstance(row.get("verdict"), dict) else {}
     if not verd_in and row.get("overall") is not None:
@@ -142,6 +144,8 @@ def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
             "confidence": row.get("confidence"),
         }
     judge_error = str(row.get("error") or verd_in.get("error") or "").strip()
+    if str(verd_in.get("overall") or "").lower() == "verification_failed":
+        verd_in = normalise_public_verdict({**verd_in, "error": judge_error})
     reasoning = str(verd_in.get("reasoning") or "")
     if not reasoning and judge_error:
         # Dropping a falsy reasoning while keeping the axes is what made a judge
@@ -163,6 +167,7 @@ def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
         for k in (
             "overall", "name_ok", "type_ok", "role_ok", "confidence",
             "model", "judged_at", "evaluator",
+            "judge_failure", "verification_error",
         )
         if verd_in.get(k) not in (None, "")
     }

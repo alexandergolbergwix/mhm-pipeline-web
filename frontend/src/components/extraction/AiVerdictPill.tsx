@@ -48,7 +48,7 @@ export interface AiVerdictPillProps {
 }
 
 
-type Bucket = "pass" | "partial" | "fail" | "abstain" | "verification_failed" | "unknown" | "judging";
+type Bucket = "pass" | "partial" | "fail" | "abstain" | "unknown" | "judging";
 
 
 /** Map ``verdict.overall`` onto one of the five visual buckets.
@@ -66,7 +66,6 @@ function bucketFor(verdict: AiVerdict | null | undefined, judging?: boolean): Bu
   if (o === "partial") return "partial";
   if (o === "fail")    return "fail";
   if (o === "abstain") return "abstain";
-  if (o === "verification_failed") return "verification_failed";
   return "unknown";
 }
 
@@ -80,8 +79,6 @@ const _PALETTE: Record<Bucket, { bg: string; border: string; fg: string; label: 
                          fg: "#fca5a5", label: "wrong",             glyph: "✗" },
   abstain:             { bg: "rgba(255, 255, 255, 0.06)", border: "rgba(255, 255, 255, 0.20)",
                          fg: "var(--muted)", label: "unsure",       glyph: "?" },
-  verification_failed: { bg: "rgba(253, 186, 116, 0.16)", border: "rgba(253, 186, 116, 0.45)",
-                         fg: "#fb923c", label: "check failed",      glyph: "⚠" },
   judging:             { bg: "rgba(127, 196, 255, 0.10)", border: "rgba(127, 196, 255, 0.30)",
                          fg: "#77cce5", label: "judging…",          glyph: "…" },
   unknown:             { bg: "transparent",                border: "rgba(255, 255, 255, 0.12)",

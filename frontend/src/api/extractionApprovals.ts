@@ -56,9 +56,7 @@ export type AiVerdictOverall =
   | "partial"
   | "fail"
   | "abstain"
-  /** The judge did not answer — a transport, parse or budget failure, NOT an
-   *  assessment of the item (Rule W-158). Renders as "check failed". */
-  | "verification_failed"
+  /** The judge did not answer, so the item has no assessment (Rule W-158). */
   | "unknown";
 
 /** v2 extension: AI-suggested corrected entity text.
@@ -82,6 +80,8 @@ export interface AiVerdict {
   cache_key?: string | null;
   session_id?: string | null;
   evaluator?: string | null;
+  judge_failure?: boolean;
+  verification_error?: string | null;
   novel?: boolean;
   /** v2: Gemini-proposed corrected entity text, or null when no fix applies. */
   suggested_fix?: AiSuggestedFix | null;

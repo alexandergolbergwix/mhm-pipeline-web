@@ -30,9 +30,11 @@ class TestNormaliseVerdictBody:
                 "role_ok": "n/a", "reasoning": "",
             },
         })
-        assert body["overall"] == JUDGE_FAILURE_OVERALL
+        assert body["overall"] == "unknown"
         assert body["name_ok"] == "unknown"
         assert body["type_ok"] == "unknown"
+        assert body["judge_failure"] is True
+        assert body["verification_error"] == "no verdict (judge failure)"
         assert error == "no verdict (judge failure)"
         assert "NOT an assessment" in body["reasoning"]
 
@@ -41,12 +43,14 @@ class TestNormaliseVerdictBody:
         body, error = normalise_verdict_body({
             "verdict": {"overall": "fail", "name_ok": "no", "reasoning": "   "},
         })
-        assert body["overall"] == JUDGE_FAILURE_OVERALL
+        assert body["overall"] == "unknown"
+        assert body["judge_failure"] is True
         assert error == "judge returned no reasoning"
 
     def test_a_missing_overall_is_a_judge_failure(self) -> None:
         body, error = normalise_verdict_body({"verdict": {"reasoning": "hmm"}})
-        assert body["overall"] == JUDGE_FAILURE_OVERALL
+        assert body["overall"] == "unknown"
+        assert body["judge_failure"] is True
         assert error
 
     def test_a_substantive_verdict_is_passed_through_untouched(self) -> None:
@@ -83,6 +87,8 @@ class TestJobSnapshotKeepsTheReason:
             },
             "error": "no verdict (judge failure)",
         })
+        assert row["verdict"]["overall"] == "unknown"
+        assert row["verdict"]["judge_failure"] is True
         assert row["verdict"]["error"] == "no verdict (judge failure)"
         assert "Judge failure" in row["verdict"]["reasoning"]
 
@@ -102,6 +108,12 @@ class TestRunOutcome:
             judge_failure_count=1,
         )
         assert outcome == "partial"
+
+    def test_unknown_judge_failure_is_counted_as_a_judge_failure(self) -> None:
+        assert count_judge_failures([
+            {"verdict": {"overall": "unknown", "judge_failure": True}},
+            {"verdict": {"overall": "unknown"}},
+        ]) == 1
 
     def test_a_clean_run_still_reports_complete(self) -> None:
         outcome = resolve_verify_session_outcome(

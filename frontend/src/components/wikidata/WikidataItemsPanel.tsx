@@ -196,14 +196,15 @@ export function WikidataItemsPanel({
       // A verdict the table cannot render is worse than none — keep the row as
       // it was rather than showing an unknown badge.
       const known = new Set<AiVerdictOverall>([
-        "pass", "full", "partial", "fail", "abstain", "verification_failed", "unknown",
+        "pass", "full", "partial", "fail", "abstain", "unknown",
       ]);
       setBuild((prev) => {
         if (!prev?.items?.length) return prev;
         let changed = false;
         const items = prev.items.map((item) => {
           const localId = item.local_id ?? "";
-          const streamed = overallByItemId[localId]?.toLowerCase() as AiVerdictOverall;
+          const rawStreamed = overallByItemId[localId]?.toLowerCase();
+          const streamed = (rawStreamed === "verification_failed" ? "unknown" : rawStreamed) as AiVerdictOverall;
           if (!streamed || !known.has(streamed)) return item;
           if (item.ai_verdict?.overall === streamed) return item;
           changed = true;

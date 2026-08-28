@@ -7,6 +7,9 @@
 - `backend/tests/unit/test_wikidata_verdict_cache.py` — sticky-full sanitise
   across schema bumps, gloss-agnostic cache keys, fixture keeps value_label
   (Rule W-175).
+- `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` — provider and
+  parse failures render as `unknown`, retain diagnostics, and keep verify jobs
+  `partial` (Rule W-207).
 - `backend/tests/unit/test_wikidata_export35_w174.py` — Rule W-174:
   catalogue P973 shelfmark gate, Hebrew bracket expansion, Leeds holder
   gloss via `qid_label`, work-title alias elaboration strip.

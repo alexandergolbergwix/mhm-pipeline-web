@@ -91,6 +91,33 @@ def test_sanitise_stale_wikidata_verdict_keeps_matching_key() -> None:
     assert kept["cache_key"] == fp
 
 
+def test_sanitise_legacy_judge_failure_as_unknown() -> None:
+    item = {
+        "local_id": "manuscript_1",
+        "entity_type": "manuscript",
+        "labels": {"en": "MS 1"},
+        "statements": [],
+    }
+    stored = {
+        "overall": "verification_failed",
+        "error": "PARSE_ERROR",
+        "reasoning": "Judge failure: PARSE_ERROR",
+        "model": "deepseek-ai/DeepSeek-V4-Flash",
+        "evaluator": "wikidata_item",
+        "stable_cache_key": wikidata_verdict_stable_input_fingerprint(
+            item, "deepseek-ai/DeepSeek-V4-Flash",
+        ),
+        "cache_key_version": "records_marc_v6",
+    }
+
+    kept = sanitise_stale_wikidata_verdict(item, stored)
+
+    assert kept is not None
+    assert kept["overall"] == "unknown"
+    assert kept["judge_failure"] is True
+    assert kept["verification_error"] == "PARSE_ERROR"
+
+
 
 def test_record_ids_recover_from_nli_reference_when_legacy_item_lacks_records() -> None:
     item = {

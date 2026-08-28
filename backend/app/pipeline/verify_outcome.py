@@ -67,7 +67,7 @@ def resolve_verify_session_outcome(
     if uncached_count > 0 and not saw_runner_exit:
         return "partial"
     if int(judge_failure_count) > 0:
-        # A `verification_failed` row carries a stable candidate id, so it still
+        # A judge-failure row carries a stable candidate id, so it still
         # advances progress (Rule W-64) — but a run that produced them did not
         # judge its whole scope, and must not read as a clean pass (Rule W-158).
         return "partial"
@@ -88,7 +88,11 @@ def count_judge_failures(verdicts: list[dict[str, Any]]) -> int:
         if not isinstance(verdict, dict):
             continue
         body = verdict.get("verdict") if isinstance(verdict.get("verdict"), dict) else verdict
-        if str(body.get("overall") or "") == JUDGE_FAILURE_OVERALL or verdict.get("error"):
+        if (
+            str(body.get("overall") or "") == JUDGE_FAILURE_OVERALL
+            or body.get("judge_failure") is True
+            or verdict.get("error")
+        ):
             total += 1
     return total
 

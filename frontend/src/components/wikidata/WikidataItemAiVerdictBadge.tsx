@@ -6,13 +6,13 @@ import {AiVerdictPill} from "@/components/extraction/AiVerdictPill";
 
 type WikidataAiVerdict = AiVerdict & {suggested_fixes?: Array<Record<string, unknown>>};
 
-function verdictTitle(overall: string | undefined): string {
+function verdictTitle(overall: string | undefined, judgeFailure = false): string {
   const o = String(overall ?? "").toLowerCase();
+  if (judgeFailure) return "AI verification did not complete";
   if (o === "fail") return "Why AI flagged this as wrong";
   if (o === "abstain") return "Why AI is unsure";
   if (o === "partial") return "Why AI marked this as partly correct";
   if (o === "full" || o === "pass") return "Why AI thinks this looks right";
-  if (o === "verification_failed") return "AI verification failed";
   return "AI verdict details";
 }
 
@@ -65,7 +65,7 @@ export function WikidataItemAiVerdictBadge({verdict, localId, judging = false}: 
         <ClickDetailPopover
           x={popover.x}
           y={popover.y}
-          title={verdictTitle(v.overall)}
+          title={verdictTitle(v.overall, v.judge_failure)}
           testId={localId ? `wikidata-item-ai-verdict-detail-${localId}` : undefined}
           panelClassName="w-[min(420px,calc(100vw-1.5rem))] max-h-[min(420px,70vh)]"
           onClose={() => setPopover(null)}

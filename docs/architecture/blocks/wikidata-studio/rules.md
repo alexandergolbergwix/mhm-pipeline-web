@@ -812,3 +812,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     attribution, and a primary MARC author MUST outrank an `(מיוחס לו)` author.
     *Why:* Run `48ba6c13` created one fuzzy scribe QID, one manuscript-language
     P1412 claim, one compiler-as-author claim, and one attributed-author merge.
+110. **R110 — Judge failures MUST render as unknown and retain their error (Rule W-207).**
+    The item read model MUST expose provider and parse failures as
+    `ai_verdict.overall="unknown"` with `judge_failure=true` and a retained
+    `verification_error`. Legacy `verification_failed` rows MUST normalize on
+    read and in the migration. A changed per-item stable fingerprint MUST drop
+    the old verdict; a whole-run build fingerprint MUST not invalidate unchanged
+    items. *Why:* Run `48ba6c13` showed nine provider failures after a force
+    rebuild even though the items had no validation issues.

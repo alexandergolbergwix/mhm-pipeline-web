@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.pipeline.ai_verdict_cache_common import (
+    normalise_public_verdict,
     normalise_shacl_issues,
     sanitise_stored_verdict,
 )
@@ -248,7 +249,9 @@ def attach_local_reference_targets(
                     "entity_type": target.get("entity_type"),
                     "semantic_type": target.get("semantic_type") or "",
                     "labels": labels if isinstance(labels, dict) else {},
-                    "descriptions": target_descriptions if isinstance(target_descriptions, dict) else {},
+                    "descriptions": (
+                        target_descriptions if isinstance(target_descriptions, dict) else {}
+                    ),
                     "aliases": target_aliases if isinstance(target_aliases, dict) else {},
                     "records": target.get("records") or target.get("record_ids") or [],
                     "existing_qid": target.get("existing_qid"),
@@ -406,6 +409,7 @@ def sanitise_stale_wikidata_verdict(
 ) -> dict[str, Any] | None:
     if not isinstance(stored, dict) or not stored:
         return None
+    stored = normalise_public_verdict(stored)
     model = judge_model or wikidata_verdict_judge_model(stored)
     eval_id = str(stored.get("evaluator") or evaluator)
     stable_source = stable_item or item

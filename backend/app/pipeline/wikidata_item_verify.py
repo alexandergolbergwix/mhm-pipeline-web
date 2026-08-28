@@ -88,6 +88,8 @@ async def _persist_wikidata_verdicts_to_overrides(
                 "cache_key_version": WIKIDATA_VERDICT_KEY_VERSION,
                 "session_id": None,
                 "evaluator": evaluator_id,
+                "judge_failure": bool(judge_error),
+                "verification_error": judge_error,
                 # Recorded, never keyed (Rule W-157): a verdict judged while the
                 # probe was inconclusive must be re-judged once it answers, and
                 # the fingerprint cannot carry that without going stale everywhere.

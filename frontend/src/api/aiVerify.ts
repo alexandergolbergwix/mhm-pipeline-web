@@ -143,15 +143,13 @@ export interface VerdictsPage {
     partial: number;
     fail: number;
     abstain: number;
-    /** The judge did not answer — not an assessment of the row (Rule W-158). */
-    verification_failed: number;
     unknown: number;
   };
 }
 
 export interface VerdictsParams {
   q?: string;
-  overall?: "pass" | "partial" | "fail" | "abstain" | "verification_failed";
+  overall?: "pass" | "partial" | "fail" | "abstain" | "unknown";
   limit?: number;
   offset?: number;
 }
