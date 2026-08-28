@@ -40,3 +40,7 @@
     do not change when labels, MARC, claims, or match payloads change —
     stale pills would survive rebuilds. `override_cache` is for unchanged-input
     re-judge only; input changes must auto-miss via `sanitise_stale_*` on reads.
+11. **R11 — Content fingerprints MUST exclude volatile metadata (Rule W-208).**
+    Shared fingerprint projections MUST remove nested transport timestamps,
+    request IDs, and fetch times. They MUST retain semantic date values. *Why:*
+    metadata changed cache keys for unchanged content.

@@ -969,3 +969,24 @@ bucket to curators.
 
 Regression: `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` and
 `backend/tests/unit/test_wikidata_verdict_cache.py` cover new and legacy rows.
+
+### Rule W-208 — Fingerprints MUST exclude volatile metadata but retain semantic dates (added 2026-08-28)
+
+The Studio output carries transport and audit metadata beside item data. Nested
+authority evidence can include `fetched_at`, and MARC records can carry
+`created_at` or `updated_at`. Those fields changed the SHA even when the item
+data stayed the same.
+
+**Invariants:**
+
+1. Build, canonical-entity, and AI-verdict fingerprints MUST remove volatile
+   metadata such as timestamps, request IDs, and fetch times at every nesting
+   level.
+2. Fingerprints MUST retain semantic dates, times, and date ranges that belong
+   to the manuscript or a Wikidata claim.
+3. The fingerprint projection MUST use explicit item data fields. Fields such
+   as `ai_verdict_at`, `upload_at`, and `revision_id` MUST NOT affect it.
+
+Regression tests: `backend/tests/unit/test_wikidata_studio_fingerprint.py`,
+`backend/tests/unit/test_wikidata_verdict_cache.py`, and
+`backend/tests/unit/test_hmo_canonical.py`.

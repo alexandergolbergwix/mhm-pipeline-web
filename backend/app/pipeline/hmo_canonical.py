@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Iterable
-from collections.abc import Mapping
+
+from app.pipeline.ai_verdict_cache_common import strip_volatile_metadata
 
 
 @dataclass(frozen=True)
@@ -64,7 +66,10 @@ def canonical_entity_fingerprint(entity: dict[str, Any]) -> str:
         key: str(entity.get(key) or "") for key in _FINGERPRINT_SCALARS
     }
     stable.update({key: dict(entity.get(key) or {}) for key in _FINGERPRINT_MAPPINGS})
-    stable.update({key: list(entity.get(key) or []) for key in _FINGERPRINT_SEQUENCES})
+    stable.update({
+        key: strip_volatile_metadata(list(entity.get(key) or []))
+        for key in _FINGERPRINT_SEQUENCES
+    })
     return hashlib.sha256(
         json.dumps(stable, ensure_ascii=False, sort_keys=True, default=str).encode()
     ).hexdigest()
@@ -106,11 +111,11 @@ def assert_canonical_entities(entities: Iterable[CanonicalHmoEntity]) -> None:
     """Reject duplicate local IDs, source URIs, or Wikibase IDs."""
     seen: dict[str, set[str]] = {"local_id": set(), "source_uri": set(), "wikibase_id": set()}
     for entity in entities:
-        for field in seen:
-            value = getattr(entity, field)
-            if value in seen[field]:
-                raise ValueError(f"duplicate canonical HMO {field}: {value}")
-            seen[field].add(value)
+        for identity_field in seen:
+            value = getattr(entity, identity_field)
+            if value in seen[identity_field]:
+                raise ValueError(f"duplicate canonical HMO {identity_field}: {value}")
+            seen[identity_field].add(value)
 
 
 def _language_values(raw: Any) -> dict[str, str]:

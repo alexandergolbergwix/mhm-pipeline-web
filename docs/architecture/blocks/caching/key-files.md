@@ -5,6 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/inference_cache.py` | `cache_lookup_or_call`, `cache_http_call`, `canonical_hash`, `KIND_TTL`, `_REDIS_TTL_SECONDS`, direct read/write helpers |
+| `backend/app/pipeline/ai_verdict_cache_common.py` | Shared normalization and volatile-metadata stripping for content fingerprints (Rule W-208) |
 | `backend/app/cache/redis_client.py` | `get_redis()` lazy singleton (returns `None` without `REDIS_URL`), `close_redis()` |
 | `backend/app/cache/scoped_cache.py` | Tier-2 scoped cache: `scoped_cache_lookup_or_call`, `invalidate_scope`, key prefixes `ic:/pm:/rm:/u:` |
 | `backend/app/cache/cache_policy.py` | TTL registry for scoped kinds (`extraction.entities`, `dashboard.projects`, `wikidata.studio`) |

@@ -292,3 +292,8 @@ form before hashing: an absent `control_numbers` and an empty one are the same
 state and must hash the same, otherwise fingerprinting a raw read-back snapshot
 and re-fingerprinting it after `normalize_live_entity` disagree and the readiness
 gate (R-W-94) reports a stale fingerprint for an unchanged item.
+
+Canonical entity fingerprints also remove nested transport metadata such as
+`fetched_at` and `updated_at`. They retain semantic date values in claims.
+This keeps a read-back fingerprint stable when only fetch metadata changes
+(Rule W-208).

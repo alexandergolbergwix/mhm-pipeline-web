@@ -7,8 +7,8 @@ from app.pipeline.wikidata_verdict_cache import (
     attach_local_reference_targets,
     sanitise_stale_wikidata_verdict,
     wikidata_verdict_input_fingerprint,
-    wikidata_verdict_stable_input_fingerprint,
     wikidata_verdict_query_summary,
+    wikidata_verdict_stable_input_fingerprint,
 )
 
 
@@ -173,6 +173,43 @@ def test_query_summary_ignores_presentation_value_label_changes() -> None:
     before = wikidata_verdict_input_fingerprint(item)
     item["statements"][0]["value_label"] = "incorrect label"
     assert wikidata_verdict_input_fingerprint(item) == before
+
+
+def test_query_summary_ignores_nested_transport_metadata() -> None:
+    item = {
+        "_local_id": "person:1",
+        "entity_type": "person",
+        "labels": {"en": "Jane Doe"},
+        "authority_evidence": [{
+            "source": "VIAF",
+            "authority_id": "123",
+            "fetched_at": "2026-08-27T00:00:00Z",
+        }],
+        "verify_evidence": {
+            "authority": {
+                "authority_id": "123",
+                "checked_at": "2026-08-27T00:00:00Z",
+            },
+        },
+        "statements": [],
+    }
+    before = wikidata_verdict_input_fingerprint(item)
+    item["authority_evidence"][0]["fetched_at"] = "2026-08-28T00:00:00Z"
+    item["verify_evidence"]["authority"]["checked_at"] = "2026-08-28T00:00:00Z"
+    assert wikidata_verdict_input_fingerprint(item) == before
+
+
+def test_query_summary_keeps_semantic_date_data() -> None:
+    item = {
+        "_local_id": "manuscript:1",
+        "entity_type": "manuscript",
+        "labels": {"en": "MS 1"},
+        "_marc_context": {"dates": "260$c: 1600"},
+        "statements": [],
+    }
+    before = wikidata_verdict_input_fingerprint(item)
+    item["_marc_context"]["dates"] = "260$c: 1700"
+    assert wikidata_verdict_input_fingerprint(item) != before
 
 
 def test_fixture_statements_keep_value_label() -> None:

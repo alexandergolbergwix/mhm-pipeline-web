@@ -4,6 +4,26 @@ from __future__ import annotations
 
 from typing import Any
 
+_VOLATILE_METADATA_KEYS = frozenset({
+    "timestamp", "timestamp_ms", "created_at", "updated_at", "judged_at",
+    "requested_at", "fetched_at", "retrieved_at", "checked_at", "uploaded_at",
+    "upload_at", "ai_verdict_at", "completed_at", "now", "nonce", "request_id",
+    "trace_id",
+})
+
+
+def strip_volatile_metadata(value: Any) -> Any:
+    """Remove transport timestamps without removing semantic date values."""
+    if isinstance(value, dict):
+        return {
+            key: strip_volatile_metadata(nested)
+            for key, nested in value.items()
+            if str(key).lower() not in _VOLATILE_METADATA_KEYS
+        }
+    if isinstance(value, list):
+        return [strip_volatile_metadata(entry) for entry in value]
+    return value
+
 
 def normalise_string_list(values: Any) -> list[str]:
     if not isinstance(values, list):

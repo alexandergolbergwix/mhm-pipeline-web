@@ -820,3 +820,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     the old verdict; a whole-run build fingerprint MUST not invalidate unchanged
     items. *Why:* Run `48ba6c13` showed nine provider failures after a force
     rebuild even though the items had no validation issues.
+111. **R111 — Fingerprints MUST omit volatile metadata and keep semantic dates (Rule W-208).**
+    Build and verdict SHA projections MUST remove nested transport timestamps,
+    fetch times, request IDs, and audit timestamps. They MUST keep manuscript
+    date data and Wikidata time claims. *Why:* rebuild metadata changed SHA
+    values for unchanged items and could hide valid verdicts.

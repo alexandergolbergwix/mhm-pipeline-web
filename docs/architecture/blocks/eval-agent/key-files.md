@@ -13,6 +13,7 @@
 | `eval-agent/eval_agent/client/step_heartbeat.py` | Mid-HTTP `[STEP]` keepalive thread so parent idle-kill does not fire during long judge calls (Rule W-127) |
 | `backend/app/pipeline/verify_session_store.py` | `load_verify_session`: disk trace OR job-row `session_snapshot` fallback (Heroku multi-dyno) |
 | `backend/app/pipeline/ner_verdict_cache.py` | NER `ai_verdict` cache keys, content fingerprints, `sanitise_stale_ai_verdict` |
+| `backend/app/pipeline/ai_verdict_cache_common.py` | Shared verdict normalization and volatile-metadata stripping for content fingerprints (Rule W-208) |
 | `backend/app/pipeline/run_job_params.py` | Validates verify job params; resolves tier-1 credentials before spawn |
 | `backend/app/pipeline/judge_models.py` | Reads `eval-agent/config/tier1_models.yaml`; model list + availability |
 | `backend/app/pipeline/ai_verifier.py` | `GEMINI_MODEL` (default tier-1), `unwrap_user_gemini_key`, legacy single-match LLM/heuristic verdict |

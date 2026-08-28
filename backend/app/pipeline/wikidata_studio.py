@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 
+from app.pipeline.ai_verdict_cache_common import strip_volatile_metadata
 from app.pipeline.marc_verify_context import canonical_control_number
 
 if TYPE_CHECKING:
@@ -151,7 +152,7 @@ def compute_build_fingerprint(
     """
     def _h(obj: Any) -> str:
         return hashlib.sha256(
-            json.dumps(obj, sort_keys=True, default=str).encode()
+            json.dumps(strip_volatile_metadata(obj), sort_keys=True, default=str).encode()
         ).hexdigest()[:16]
 
     parts = {

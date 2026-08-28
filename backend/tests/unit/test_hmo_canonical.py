@@ -29,6 +29,24 @@ def test_normalize_live_entity_is_deterministic() -> None:
     assert first.to_dict()["wikibase_id"] == "Q1252"
 
 
+def test_fingerprint_ignores_nested_transport_metadata() -> None:
+    first = normalize_live_entity(_raw(
+        authority_evidence=[{
+            "source": "VIAF",
+            "authority_id": "123",
+            "fetched_at": "2026-08-27T00:00:00Z",
+        }],
+    ))
+    second = normalize_live_entity(_raw(
+        authority_evidence=[{
+            "source": "VIAF",
+            "authority_id": "123",
+            "fetched_at": "2026-08-28T00:00:00Z",
+        }],
+    ))
+    assert first.source_fingerprint == second.source_fingerprint
+
+
 def test_normalize_requires_identity_fields() -> None:
     with pytest.raises(ValueError, match="source_uri"):
         normalize_live_entity(_raw(source_uri=""))

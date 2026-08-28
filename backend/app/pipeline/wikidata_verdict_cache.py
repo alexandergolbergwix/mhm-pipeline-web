@@ -8,6 +8,7 @@ from app.pipeline.ai_verdict_cache_common import (
     normalise_public_verdict,
     normalise_shacl_issues,
     sanitise_stored_verdict,
+    strip_volatile_metadata,
 )
 from app.pipeline.inference_cache import canonical_hash
 from app.pipeline.marc_verify_context import (
@@ -316,10 +317,18 @@ def wikidata_verdict_query_summary(
         ),
         "existing_qid": item.get("existing_qid"),
         "validation_issues": normalise_shacl_issues(item.get("validation_issues") or []),
-        "authority_evidence": item.get("authority_evidence") or [],
-        "work_candidate_evidence": item.get("work_candidate_evidence") or {},
-        "local_reference_targets": item.get("local_reference_targets") or {},
-        "verify_evidence": fingerprint_verify_evidence(item, drop=evidence_drop),
+        "authority_evidence": strip_volatile_metadata(
+            item.get("authority_evidence") or [],
+        ),
+        "work_candidate_evidence": strip_volatile_metadata(
+            item.get("work_candidate_evidence") or {},
+        ),
+        "local_reference_targets": strip_volatile_metadata(
+            item.get("local_reference_targets") or {},
+        ),
+        "verify_evidence": strip_volatile_metadata(
+            fingerprint_verify_evidence(item, drop=evidence_drop),
+        ),
         "hmo_wikibase_id": item.get("hmo_wikibase_id"),
         "source_uri": item.get("source_uri"),
         "marc_context": marc_slice,
