@@ -2612,3 +2612,26 @@ attribution on another work.
 Regression: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
 `backend/tests/unit/test_wikidata_studio_works.py`, and
 `backend/tests/unit/test_hmo_canonical_wikidata.py`.
+
+### Rule W-209 — Work author strings MUST use structured source evidence (added 2026-08-28)
+
+Run `48ba6c13-115c-4763-bff1-c08b9031b518` produced eight partial work
+verdicts. The legacy title parser treated Hebrew ל-preposition phrases such as
+`לראש השנה` as author names. Canonical sanitation did not remove those inherited
+`P2093` claims when the matched MARC record had no author evidence. Canonical
+context also omitted approved contents-NER `WORK_AUTHOR` rows, so it could not
+recover a supported author when one existed.
+
+**Invariants:**
+
+1. The title parser MUST require a genealogical marker or an explicit attribution
+   verb before it splits an author from a Hebrew work title.
+2. Canonical work context MUST include approved contents-NER rows for the same
+   MARC control number.
+3. Work author claims MUST use structured content-author, `WORK_AUTHOR`, MARC
+   author, or approved authority evidence from the matched source record.
+4. A matched source record with no author evidence MUST remove inherited `P2093`
+   claims rather than expose a title fragment as an author.
+
+Regression: `backend/tests/unit/test_hmo_canonical_wikidata.py` and
+`backend/tests/unit/test_wikidata_studio_works.py`.

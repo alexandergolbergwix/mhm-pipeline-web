@@ -621,6 +621,7 @@ async def execute_studio_build(
         return cached
 
     if source == "canonical":
+        entities_by_cn = _group_entity_rows(entity_rows, approved_only=True)
         overrides = {
             r.local_id: {
                 "labels":            r.labels,
@@ -654,8 +655,8 @@ async def execute_studio_build(
         context = canonical_studio_context(
             marc_records=marc_records,
             approved_matches=approved_matches,
+            entities_by_cn=entities_by_cn,
         )
-        entities_by_cn = _group_entity_rows(entity_rows, approved_only=True)
         from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
 
         from converter.wikidata import hebrew_translit  # noqa: PLC0415

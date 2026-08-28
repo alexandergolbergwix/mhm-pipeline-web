@@ -91,6 +91,11 @@ The projection applies one final role-specific author check (Rule W-206).
 Primary MARC authors outrank `(מיוחס לו)` attributions. A contained work uses
 its own catalogue attribution, not the manuscript compiler. Person QIDs require
 a heading match, and manuscript languages never become person P1412 claims.
+Canonical context also receives approved contents-NER rows before work-author
+sanitation. Structured `WORK_AUTHOR`, content-author, MARC-author, and approved
+authority evidence may create `P50` or `P2093`. A title fragment after the
+Hebrew ל-preposition never creates `P2093`. A work with a matched MARC record
+and no author evidence drops inherited `P2093` claims (Rule W-209).
 
 Final canonicalization is source-scoped and runs after overrides and person
 publishability filtering (Rule W-155). Hard-rejected authority matches cannot

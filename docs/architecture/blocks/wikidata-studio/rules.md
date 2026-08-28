@@ -825,3 +825,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     fetch times, request IDs, and audit timestamps. They MUST keep manuscript
     date data and Wikidata time claims. *Why:* rebuild metadata changed SHA
     values for unchanged items and could hide valid verdicts.
+
+112. **R112 — Work authors MUST come from structured source evidence (Rule W-209).**
+    Canonical context MUST include approved contents-NER rows before work-author
+    sanitation. `WORK_AUTHOR`, content-author, MARC-author, and approved authority
+    evidence may create `P50` or `P2093`. A title fragment after Hebrew ל MUST NOT
+    create `P2093`. A work with a matched source record and no author evidence MUST
+    drop inherited `P2093` claims. Regression: `test_hmo_canonical_wikidata.py`
+    and `test_wikidata_studio_works.py`.
+    *Why:* run `48ba6c13` produced eight partial works because title fragments became author strings.*

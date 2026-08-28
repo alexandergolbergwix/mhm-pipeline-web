@@ -216,7 +216,9 @@ class CanonicalStudioContext:
 def canonical_studio_context(
     marc_records: Iterable[Mapping[str, Any]] | None = None,
     approved_matches: Iterable[Mapping[str, Any]] | None = None,
+    entities_by_cn: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
 ) -> CanonicalStudioContext:
+    """Build MARC context and attach approved authority and NER evidence."""
     from app.pipeline.marc_ingest import prepare_record_for_pipeline  # noqa: PLC0415
     from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
 
@@ -254,6 +256,22 @@ def canonical_studio_context(
             )
     for cn, record in marc_by_cn.items():
         record["marc_authority_matches"] = matches_by_cn.get(cn, [])
+
+    if entities_by_cn:
+        from app.pipeline.rdf_enrichment import merge_approved_ner  # noqa: PLC0415
+
+        for raw_cn, entities in entities_by_cn.items():
+            cn = canonical_control_number(str(raw_cn))
+            record = marc_by_cn.get(cn) if cn else None
+            if record is None:
+                continue
+            approved_entities = [
+                dict(entity)
+                for entity in entities
+                if entity.get("approved", True) is not False
+            ]
+            if approved_entities:
+                merge_approved_ner(record, approved_entities)
 
     for raw in approved_matches or []:
         match = dict(raw)
@@ -624,12 +642,14 @@ def _context_work_author_evidence(
     item: WikidataItem,
     context: CanonicalStudioContext,
 ) -> tuple[set[str], set[str]]:
-    """Return explicit work-author names before parent-record authors."""
+    """Return structured work-author names before parent-record authors."""
+    from converter.rdf.rdf_helpers import parse_contents_entry  # noqa: PLC0415
     from converter.wikidata.item_builder import (
+        _PERSON_NAME_SIGNALS_RE,
         _normalise_label,
         _split_work_title_author,
         _strip_name_quotes,
-    )
+    )  # noqa: PLC0415
 
     def name_key(value: object) -> str:
         return _normalise_label(_strip_name_quotes(str(value or ""))).rstrip(
@@ -637,13 +657,64 @@ def _context_work_author_evidence(
         ).casefold()
 
     explicit_names: set[str] = set()
+
+    def add_name(value: object) -> None:
+        name = str(value or "").strip()
+        if name:
+            explicit_names.add(name_key(name))
+
+    def title_matches(value: object) -> bool:
+        candidate = str(value or "").strip()
+        return bool(candidate) and any(
+            _titles_match(title, candidate)
+            for title in _work_title_candidates_from_item(item)
+        )
+
+    for raw_cn in item.records or []:
+        record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)))
+        if not record:
+            continue
+        for content in record.get("contents") or []:
+            content_title, _folio, _sequence, source_text, _source_field = (
+                _contents_row_fields(content, parse_contents_entry)
+            )
+            if not title_matches(content_title):
+                continue
+            if isinstance(content, Mapping):
+                for key in ("author", "author_name", "work_author"):
+                    add_name(content.get(key))
+            _title, embedded_author = _split_work_title_author(source_text)
+            if embedded_author and _PERSON_NAME_SIGNALS_RE.search(embedded_author):
+                add_name(embedded_author)
+
+        entities = [
+            entity for entity in record.get("entities") or []
+            if isinstance(entity, Mapping) and entity.get("source") == "contents_ner"
+        ]
+        for work_entity in (
+            entity for entity in entities if entity.get("type") == "WORK"
+        ):
+            work_title, _embedded_author = _split_work_title_author(
+                str(work_entity.get("text") or "")
+            )
+            if not title_matches(work_title):
+                continue
+            for author_entity in (
+                entity for entity in entities if entity.get("type") == "WORK_AUTHOR"
+            ):
+                if abs(
+                    int(author_entity.get("start") or 0)
+                    - int(work_entity.get("end") or 0)
+                ) < 20:
+                    add_name(author_entity.get("text"))
+
     for evidence in item.work_candidate_evidence or []:
         if not isinstance(evidence, Mapping):
             continue
         raw_title = str(evidence.get("raw_title") or "").strip()
         _title, embedded_author = _split_work_title_author(raw_title)
-        if embedded_author:
-            explicit_names.add(name_key(embedded_author))
+        if embedded_author and _PERSON_NAME_SIGNALS_RE.search(embedded_author):
+            add_name(embedded_author)
             continue
         source_text = str(evidence.get("source_text") or "").strip()
         if "—" not in source_text:
@@ -691,6 +762,20 @@ def _context_work_author_evidence(
     return names, qids
 
 
+def _work_title_candidates_from_item(item: WikidataItem) -> list[str]:
+    """Return the label and title claims used to match record evidence."""
+    candidates: list[str] = []
+    for value in (item.labels or {}).values():
+        if value:
+            candidates.append(str(value))
+    for values in (item.aliases or {}).values():
+        candidates.extend(str(value) for value in values or [] if value)
+    for statement in item.statements or []:
+        if statement.property_id in {"P1476", "P1680"} and statement.value:
+            candidates.append(str(statement.value))
+    return candidates
+
+
 def _sanitize_work_authors_against_context(
     items: list[WikidataItem],
     context: CanonicalStudioContext | None,
@@ -709,8 +794,21 @@ def _sanitize_work_authors_against_context(
     for item in items:
         if str(item.entity_type or "").strip().lower() != "work":
             continue
+        has_context_record = any(
+            canonical_control_number(str(raw_cn)) in context.marc_by_cn
+            for raw_cn in item.records or []
+        )
+        if not has_context_record:
+            continue
         names, qids = _context_work_author_evidence(item, context)
         if not names and not qids:
+            kept = [
+                statement
+                for statement in item.statements or []
+                if statement.property_id != P_AUTHOR_NAME_STRING
+            ]
+            changed += len(item.statements or []) - len(kept)
+            item.statements = kept
             continue
 
         kept: list[WikidataStatement] = []

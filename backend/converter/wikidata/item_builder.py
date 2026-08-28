@@ -1181,7 +1181,7 @@ def _split_work_title_author(text: str) -> tuple[str, str | None]:
     """Split a catalog work title from a confident author attribution.
 
     Only splits when the candidate author segment contains a genealogical
-    marker (בן/ב"ר/ibn/bar) or a source attribution gives a personal name (W-206).
+    marker (בן/ב"ר/ibn/bar) or an explicit attribution verb gives a personal name (W-206).
     Returns (text, None) unchanged when no confident split is found.
 
     Examples:
@@ -1212,16 +1212,11 @@ def _split_work_title_author(text: str) -> tuple[str, str | None]:
             continue
         if _PERSON_NAME_SIGNALS_RE.search(author_part):
             return title_part, author_part
-        # Hebrew prepositions such as "לכל השנה" are part of a title, not an
-        # author introduction. Genealogical markers above remain authoritative
-        # even when a real name begins with one of these lexical forms.
-        if author_part.split()[0] in {"כל", "פי", "שנה", "שנים", "יום", "ימי"}:
-            continue
-        heb_tokens = [t for t in author_part.split() if re.search(r"[א-ת]{3,}", t)]
-        # Long prose after ל is normally part of the title (W-206). A short
-        # name suffix remains eligible when it has no genealogy marker.
-        if len(heb_tokens) <= 3 and len(heb_tokens) >= 2:
-            return title_part, author_part
+        # A Hebrew ל-preposition does not prove authorship. Title phrases such
+        # as "לראש השנה" and "ליהודה בריאל" otherwise become false P2093 claims.
+        # Structured WORK_AUTHOR, content author, MARC 100, or approved
+        # authority evidence supplies names without this unsafe inference.
+        continue
     return text, None
 
 

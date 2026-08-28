@@ -631,6 +631,26 @@ async def test_title_phrase_starting_lamed_is_not_misread_as_author() -> None:
 
 
 @pytest.mark.asyncio
+async def test_contents_lamed_title_phrase_does_not_create_p2093() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "contents": [{
+            "title": "סדור מנהג קרפנטרץ לראש השנה",
+            "source_field": "505",
+            "candidate_kind": "named_work",
+        }],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[],
+        entities_by_cn={},
+        return_native=False,
+    )
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert not any(statement["property_id"] == "P2093" for statement in work["statements"])
+
+
+@pytest.mark.asyncio
 async def test_work_uses_exact_approved_author_qid_before_person_pass() -> None:
     rec = {
         **_fake_marc_record(),

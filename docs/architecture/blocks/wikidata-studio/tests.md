@@ -171,6 +171,8 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/test_wikidata_export_quality_checker.py` — `TestDuplicateCoverageChecks`: unprobed work, missing holder+shelfmark probe, top-level candidate blocks, linked QIDs do not create duplicate blockers, and `P2093` flagged only when an author item exists (Rules W-144 / W-145 / W-146 / W-199).
 - `backend/tests/unit/test_wikidata_studio_works.py` — exact known work QIDs do not create authorless local works; equal titles with different verified authors stay separate (W-200).
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical works carry an approved MARC author as `P50` or `P2093` (W-201).
+- `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical work sanitation drops unsupported title-fragment `P2093` claims and recovers approved contents-NER authors (W-209).
+- `backend/tests/unit/test_wikidata_studio_works.py` — a Hebrew ל-preposition in a contents title does not create a `P2093` claim (W-209).
 - `backend/tests/unit/test_wikidata_studio_works.py` — approved MARC author matches recover the main work author when the raw author list is empty (W-202).
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — matched legacy person IDs are rewritten in work claims and metadata before local-reference resolution (W-203).
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — safe work `P50` claims replace duplicate `P2093` fallbacks, while unresolved `P50` claims preserve the `P2093` fallback (W-204).

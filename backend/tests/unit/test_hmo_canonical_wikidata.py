@@ -728,6 +728,96 @@ def test_canonical_work_replaces_attributed_author_with_primary_author() -> None
     ]
 
 
+def test_canonical_work_drops_title_fragment_when_record_has_no_author() -> None:
+    work = normalize_live_entity({
+        "local_id": "Work_title_fragment_author",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_title_fragment_author",
+        "wikibase_id": "Q6107",
+        "entity_type": "F1_Work",
+        "labels": {"he": "סדור מנהג קרפנטרץ לראש השנה"},
+        "control_numbers": ["990001830400205171"],
+        "claims": [{
+            "wikidata_property": "P2093",
+            "property_id": "P2093",
+            "value": "ראש השנה",
+            "datatype": "string",
+        }],
+    })
+    context = canonical_studio_context(
+        marc_records=[{
+            "_control_number": "990001830400205171",
+            "title": "סדור מנהג קרפנטרץ לראש השנה",
+            "authors": [],
+        }],
+    )
+
+    items = native_items_from_hmo([work], context=context)
+    result = build_canonical_studio_result(
+        [work], context=context, reconcile=False, legacy_native_items=items,
+    )
+
+    result_work = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert not any(
+        statement["property_id"] == "P2093"
+        for statement in result_work["statements"]
+    )
+
+
+def test_canonical_context_recovers_approved_contents_author() -> None:
+    work = normalize_live_entity({
+        "local_id": "Work_contents_author",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_contents_author",
+        "wikibase_id": "Q6108",
+        "entity_type": "F1_Work",
+        "labels": {"he": "פיוטים לפורים ולפסח"},
+        "control_numbers": ["990001830400205171"],
+        "claims": [{
+            "wikidata_property": "P2093",
+            "property_id": "P2093",
+            "value": "פורים ולפסח",
+            "datatype": "string",
+        }],
+    })
+    context = canonical_studio_context(
+        marc_records=[{
+            "_control_number": "990001830400205171",
+            "title": "קובץ פיוטים",
+        }],
+        entities_by_cn={
+            "990001830400205171": [
+                {
+                    "source": "contents_ner",
+                    "type": "WORK",
+                    "text": "פיוטים לפורים ולפסח",
+                    "start": 0,
+                    "end": 20,
+                    "approved": True,
+                },
+                {
+                    "source": "contents_ner",
+                    "type": "WORK_AUTHOR",
+                    "text": "יהודה הלוי",
+                    "start": 21,
+                    "end": 31,
+                    "approved": True,
+                },
+            ],
+        },
+    )
+
+    items = native_items_from_hmo([work], context=context)
+    result = build_canonical_studio_result(
+        [work], context=context, reconcile=False, legacy_native_items=items,
+    )
+
+    result_work = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert [
+        statement["value"]
+        for statement in result_work["statements"]
+        if statement["property_id"] == "P2093"
+    ] == ["יהודה הלוי"]
+
+
 def test_canonical_merge_removes_non_primary_work_author() -> None:
     from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
