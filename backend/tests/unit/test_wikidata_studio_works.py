@@ -785,6 +785,7 @@ async def test_related_works_known_qid_links_without_local_work() -> None:
 
     rec = {
         **_fake_marc_record(),
+        "notes": "Complete Bible and Tanakh",
         "related_works": [
             {"title": "Bible"},
             {"title": 'תנ"ך'},

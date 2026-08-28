@@ -84,7 +84,7 @@ class TestManuscriptDescriptions:
 
     def test_hebrew_slot_is_generated_not_a_note(self) -> None:
         out = _upload_descriptions(_entity({}), "manuscript", context=_context())
-        assert "F 46266" in out["he"]
+        assert out["he"] == "כתב יד עברי, 1662"
         assert "96b" not in out["he"]
 
     def test_no_marc_context_keeps_a_usable_fallback(self) -> None:

@@ -5,6 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/marc_ingest.py` | Upload parsing (all formats), `_collapse_marc_subfields` normalisation, colophon/work-mention/editorial extraction, provenance events, `extract_named_entities` + role-priority dedup |
+| `backend/converter/transformer/production_year.py` | Shared production-year contract for 260/264 dates, colophon narrowing, century precision, and negative BCE boundaries |
 | `backend/app/pipeline/extraction.py` | `extract_entities_stream` orchestrator: warm-up, per-record model loop, desktop post-filters, offset rebasing, `ner_results.json` writer |
 | `backend/app/pipeline/extraction_backend.py` | `InferenceBackend` Protocol, `resolve_mode()` (EXTRACTION_MODE), `build_backend()` factory |
 | `backend/app/pipeline/extraction_backend_modal.py` | `ModalInferenceBackend` — one HTTPS POST per record to the Modal `/extract` endpoint; wraps every call in the inference cache |

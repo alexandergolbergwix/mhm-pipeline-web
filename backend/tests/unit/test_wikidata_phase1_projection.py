@@ -82,9 +82,9 @@ def test_former_owner_and_censor_are_not_current_p127() -> None:
     assert _statements(item, "P127") == []
 
 
-def test_external_current_holder_uses_verified_p195_and_description() -> None:
-    # A holder absent from the audited table (Rule W-143) may still be resolved
-    # by an authority payload that carries its own QID.
+def test_external_current_holder_qid_is_not_trusted_without_table_entry() -> None:
+    # An authority payload QID has unknown provenance. Rule W-174 requires the
+    # audited holding table before the projection emits P195.
     item = WikidataItemBuilder().build_manuscript_item({
         "_control_number": "HOLDER-GUARD",
         "title": "כתב יד",
@@ -96,7 +96,7 @@ def test_external_current_holder_uses_verified_p195_and_description() -> None:
             "entity_kind": "organization",
         }],
     })
-    assert [statement.value for statement in _statements(item, "P195")] == ["Q182"]
+    assert _statements(item, "P195") == []
     assert "Provincial Archive of Nowhere" in item.descriptions["en"]
 
 

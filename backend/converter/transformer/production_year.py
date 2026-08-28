@@ -80,6 +80,17 @@ def _catalog_production_year(record: dict[str, Any]) -> int | None:
             embedded = _parse_year_scalar(dates.get("original_string"))
             if embedded is not None and _year_within_catalog_range(embedded, dates):
                 return embedded
+            # BCE century dates use astronomical negative years. The parser's
+            # `year` is the lower boundary, so retain it for the shared date
+            # contract. CE century starts such as 1501 remain imprecise and
+            # must stay out of the exact production-year field.
+            is_bce = (
+                dates.get("bce") is True
+                or str(dates.get("era") or "").casefold() == "bce"
+            )
+            boundary = _parse_year_scalar(dates.get("year"))
+            if is_bce and boundary is not None and boundary < 0:
+                return boundary
             return None
         year = _parse_year_scalar(dates.get("year"))
         if year is not None:

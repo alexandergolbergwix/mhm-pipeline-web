@@ -132,7 +132,7 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_work_candidates.py` — source-aware 500/505 decisions, catalogue-prose rejection, authority overrides, and sanitation.
 - `backend/tests/unit/test_wikidata_studio_fingerprint.py` — MARC JSON changes invalidate the durable Studio build cache.
 - `backend/tests/unit/test_wikidata_phase1_projection.py` — Phase 1 evidence gates for P136/P31, canonical-holder P195, verified Masorah P921, MARC-100 work chains, facsimile typing, P1684, P127, and descriptions.
-- `backend/tests/unit/test_hebrew_date_parse.py` — Hebrew geresh/gershayim century parsing and mixed century/year fallback; malformed date tokens must not abort a record.
+- `backend/tests/unit/test_hebrew_date_parse.py` — Hebrew geresh/gershayim century parsing, BCE production-year boundaries, and mixed century/year fallback; malformed date tokens must not abort a record.
 - `backend/tests/unit/test_item_validator.py` — legitimate internal Hebrew gershayim are not reported as LABEL_QUOTE_NOISE.
 - `backend/scripts/audit_marc_tsv_scale.py` — streaming full-corpus normalization plus bounded deterministic builder smoke test.
 
@@ -152,7 +152,7 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_verify_scope_cache.py` — verify scope uses curator override-merged items before fingerprinting (R65).
 - `backend/tests/test_wikidata_item_views.py` — merged view validates verdicts against the retained pre-derived override projection (R66); applies the persist-slim projection before stable-key validation (R67); retains subset verdicts when local-target labels differ by scope (R68); retains verdicts after probe QID adoption and live value-label gloss parity with verify (R72 / W-169).
 - `backend/tests/unit/test_wikidata_evidence_and_identity.py` — raw-tag evidence slice, per-claim provenance, manuscript identity scoping, claim dedup, identity gates (Rule W-137).
-- `backend/tests/unit/test_wikidata_description_hygiene.py` — generated manuscript descriptions, catalog-note rejection, description language routing (Rule W-137).
+- `backend/tests/unit/test_wikidata_description_hygiene.py` — generated manuscript descriptions, catalog-note rejection, description language routing, and Hebrew description separation from shelfmark labels (Rule W-137 / W-172).
 - `backend/tests/unit/test_wikidata_wave2_projection.py` — MARC unwrapping, dimension parsing, channel-aware provenance, work-title identity, local-reference resolution, generic subjects, verified holders (Rule W-138). Hygiene omits P2048/P2049 above 1000 mm (W-196).
 - `backend/tests/unit/test_wikidata_duplicate_probe.py` — identifier probes, batch attribution, throttle/fail-closed statuses, evidence-pack exposure, and linked-QID priority over stale duplicate warnings (Rules W-139 / W-199).
 - `backend/tests/unit/test_marc_extent_and_digital_access.py` — extent summation, gematria/page units, fail-closed cases, 856$u → P953, closed-vocabulary material, Hebrew description language agreement (Rule W-140).
@@ -160,7 +160,7 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_projection_recovery.py` — contained-work relinking, multi-valued P973, facsimile typing, Hebrew label holder/language (Rule W-142).
 - `backend/tests/unit/test_wikidata_studio_build_job.py` — `TestMiningReadsMarcProse`: the mining phase loads run MARC for the manuscripts in the build and never loads it for other entity types (Rule W-140).
 - `backend/tests/unit/test_marc_llm_extract.py` — `TestPromptNamesEachProperty` (every PID is explained; a language is not a place) and `TestNoSourceIsReported` (a prose-free manuscript reports `no_source`, not silence) (Rule W-140).
-- `backend/tests/unit/test_wikidata_phase1_projection.py` — `TestAuditedHolderTable`: a table institution resolves to its verified QID, the table beats an unverified authority QID, an ambiguous institution abstains (Rule W-143).
+- `backend/tests/unit/test_wikidata_phase1_projection.py` — `TestAuditedHolderTable`: a table institution resolves to its verified QID, the table beats an unverified authority QID, an external authority QID without a table entry abstains, and an ambiguous institution abstains (Rule W-143 / W-174).
 - `backend/tests/unit/test_wikidata_duplicate_probe.py` — `TestHolderPlusShelfmarkKey` (AND not OR; abstained holder and two shelfmarks yield no key), `TestWorkTitleProbe` (title+class, curator confirmation required, manuscripts excluded), `TestAbsentMeansEveryKeyAnswered`, `TestCachedAnswerIsVisibleWithoutProbing`, and linked-QID priority over stale duplicate warnings (Rules W-144 / W-145 / W-199).
 - `backend/tests/unit/test_wikidata_lod_linking.py` — approved former-owner / signatory / mentioned rows become edges; a former owner is never a current `P127`; seller and censor stay refused; no item is created for the sake of an edge; the canonical context stamps `marc_authority_matches` in the desktop shape (Rule W-146).
 - `backend/tests/test_wikidata_export_quality_checker.py` — `TestDuplicateCoverageChecks`: unprobed work, missing holder+shelfmark probe, top-level candidate blocks, linked QIDs do not create duplicate blockers, and `P2093` flagged only when an author item exists (Rules W-144 / W-145 / W-146 / W-199).

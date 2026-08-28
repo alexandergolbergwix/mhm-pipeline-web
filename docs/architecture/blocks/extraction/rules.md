@@ -26,9 +26,11 @@
    keys exist) before any NER input is built. *Why:* the 2026-06-02 smoking
    gun — empty `notes`/`provenance`/`contents` means Modal is called with
    empty strings → 0 entities → 0 work items downstream.
-7. **R7 — Production dates come from 260/264$c, NEVER 008.** *Why:* 008 is
-   catalog-entry metadata, not manuscript production date
-   (`marc_date_sources.py` contract).
+7. **R7 — Production dates come from 260/264$c, NEVER 008.** The shared date
+   contract keeps negative astronomical years from explicitly marked BCE
+   centuries as the lower boundary; positive century starts stay imprecise
+   until an exact source narrows them. *Why:* 008 is catalog-entry metadata,
+   not manuscript production date (`marc_date_sources.py` contract).
 8. **R8 — Entity dedup keys on `(normalize(text), kind)` with role-priority
    merge; different kinds MUST stay separate entities.** Replaced roles go to
    `alt_roles`. *Why:* Rule W-33 — a person named in 100 and 600 is one

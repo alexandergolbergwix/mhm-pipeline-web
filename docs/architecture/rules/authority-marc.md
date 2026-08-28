@@ -212,6 +212,10 @@ gematria, rejects values outside the century range, and falls through to the
 ordinary Hebrew-year parser for mixed catalogue prose. Tests: `test_hebrew_date_parse.py`;
 full-corpus scan: 123,621 records, zero normalization errors.
 
+Negative astronomical years from an explicitly marked BCE century remain the
+lower date boundary for the shared production-year contract. Positive century
+starts remain imprecise until a colophon or another exact year narrows the range.
+
 
 ### Rule W-81 — MARC coverage MUST be loss-aware (added 2026-07-16)
 
