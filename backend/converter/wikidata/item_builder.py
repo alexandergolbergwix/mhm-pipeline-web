@@ -1167,12 +1167,21 @@ _PERSON_NAME_SIGNALS_RE = re.compile(
     re.IGNORECASE,
 )
 
+_WORK_ATTRIBUTION_RE = re.compile(
+    r"\s+(?:חברו|חיברו|חיברוהו|מחברו)\s+",
+    re.IGNORECASE,
+)
+_WORK_AUTHOR_HONORIFICS_RE = re.compile(
+    r"^(?:(?:האלוף|הגאון|החכם|הרב|רבי|הר\"ר|"
+    r"כמה[\"״]?ר|כמוה[\"״]?ר|מהר[\"״]?ר|ר['׳])\s+)+",
+)
+
 
 def _split_work_title_author(text: str) -> tuple[str, str | None]:
-    """Split 'Title לAuthor' NLI citation format into (clean_title, author|None).
+    """Split a catalog work title from a confident author attribution.
 
     Only splits when the candidate author segment contains a genealogical
-    marker (בן/ב"ר/ibn/bar) or looks like a ≥2-token Hebrew personal name.
+    marker (בן/ב"ר/ibn/bar) or a source attribution gives a personal name (W-206).
     Returns (text, None) unchanged when no confident split is found.
 
     Examples:
@@ -1181,6 +1190,20 @@ def _split_work_title_author(text: str) -> tuple[str, str | None]:
       "צוואת יהודה החסיד מרגנשבורג ליהודה בן שמואל החסיד"
                                            → ("צוואת יהודה החסיד מרגנשבורג", "יהודה בן שמואל החסיד")
     """
+    attribution = _WORK_ATTRIBUTION_RE.search(text)
+    if attribution:
+        title_part = text[: attribution.start()].strip()
+        author_part = text[attribution.end() :].strip()
+        author_part = _WORK_AUTHOR_HONORIFICS_RE.sub("", author_part).strip()
+        heb_tokens = [
+            token for token in author_part.split()
+            if re.search(r"[א-ת]{2,}", token)
+        ]
+        if title_part and (
+            _PERSON_NAME_SIGNALS_RE.search(author_part) or len(heb_tokens) >= 2
+        ):
+            return title_part, author_part
+
     candidates = [m.start() for m in re.finditer(r" ל(?=[א-ת])", text)]
     for pos in reversed(candidates):
         author_part = text[pos + 2 :].strip()
@@ -1195,7 +1218,9 @@ def _split_work_title_author(text: str) -> tuple[str, str | None]:
         if author_part.split()[0] in {"כל", "פי", "שנה", "שנים", "יום", "ימי"}:
             continue
         heb_tokens = [t for t in author_part.split() if re.search(r"[א-ת]{3,}", t)]
-        if len(heb_tokens) >= 2:
+        # Long prose after ל is normally part of the title (W-206). A short
+        # name suffix remains eligible when it has no genealogy marker.
+        if len(heb_tokens) <= 3 and len(heb_tokens) >= 2:
             return title_part, author_part
     return text, None
 

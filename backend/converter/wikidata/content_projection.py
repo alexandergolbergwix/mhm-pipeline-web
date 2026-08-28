@@ -75,30 +75,32 @@ def _entry_author(entry: dict[str, object]) -> str | None:
 
 
 def _record_author(record: dict[str, object]) -> str | None:
-    """Read the approved primary author when content lacks one."""
-    for author in record.get("authors") or []:
-        if not isinstance(author, dict):
-            continue
-        role = str(author.get("role") or "author").strip().casefold()
-        if role not in {"author", "attributed author", "presumed author"}:
-            continue
-        name = str(author.get("name") or "").strip()
-        if name:
-            return name
-    for match in record.get("marc_authority_matches") or []:
-        if not isinstance(match, dict) or match.get("approved") is False:
-            continue
-        role = str(match.get("role") or "").strip().casefold()
-        if role not in {"author", "attributed author", "presumed author"}:
-            continue
-        name = str(
-            match.get("name")
-            or match.get("entity_text")
-            or match.get("matched_name")
-            or "",
-        ).strip()
-        if name:
-            return name
+    """Read a primary author before an attributed author (W-206)."""
+    allowed_roles = ("author", "presumed author", "attributed author")
+    for role_to_use in allowed_roles:
+        for author in record.get("authors") or []:
+            if not isinstance(author, dict):
+                continue
+            role = str(author.get("role") or "author").strip().casefold()
+            if role != role_to_use:
+                continue
+            name = str(author.get("name") or "").strip()
+            if name:
+                return name
+        for match in record.get("marc_authority_matches") or []:
+            if not isinstance(match, dict) or match.get("approved") is False:
+                continue
+            role = str(match.get("role") or "").strip().casefold()
+            if role != role_to_use:
+                continue
+            name = str(
+                match.get("name")
+                or match.get("entity_text")
+                or match.get("matched_name")
+                or "",
+            ).strip()
+            if name:
+                return name
     return None
 
 
@@ -437,17 +439,7 @@ class ContentProjectionMixin:
         # P1574 instead of placing P50 directly on the manuscript.
         if not seen_works and not list(record.get("contents") or []):
             title = _clean_work_title(str(record.get("title") or ""))
-            author_name = next(
-                (
-                    str(author.get("name") or "").strip()
-                    for author in (record.get("authors") or [])
-                    if isinstance(author, dict)
-                    and str(author.get("name") or "").strip()
-                    and str(author.get("role") or "author").casefold()
-                    in {"author", "attributed author", "presumed author"}
-                ),
-                "",
-            )
+            author_name = _record_author(record) or ""
             if title and author_name and not _is_noise_work_title(title):
                 decision = assess_work_candidate(
                     title,

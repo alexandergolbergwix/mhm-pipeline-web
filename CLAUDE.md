@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-205)
+## Architectural rules (W-1…W-206)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -156,6 +156,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-203** — Canonical merges MUST rewrite local references after an ID change
 - **W-204** — Work items MUST keep one safe author representation; a safe P50 MUST replace a duplicate P2093
 - **W-205** — Ledger QID hydration MUST not invalidate stored AI verdicts
+- **W-206** — Wikidata person and work claims MUST use role-specific, heading-matched source evidence
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

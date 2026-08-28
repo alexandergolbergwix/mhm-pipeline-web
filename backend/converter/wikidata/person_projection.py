@@ -185,6 +185,10 @@ class PersonProjectionMixin:
             if match_info or viaf_uri or mazal_id
             else []
         )
+        authority_rejected = bool(
+            set(match_info.get("guard_flags") or [])
+            & _DATE_SUPPRESSING_AUTHORITY_FLAGS
+        ) or bool(match_info.get("rejection_reason"))
         has_identifier = any(
             [
                 viaf_uri,
@@ -212,13 +216,9 @@ class PersonProjectionMixin:
             self._skipped_person_stubs[key] = person
             return person
 
-        # When a Wikidata QID is known from authority matching (direct QID
-        # lookup, not via VIAF/Mazal), pre-seed existing_qid so the manuscript
-        # claim uses the real Q-number and the person item gets UPDATE semantics
-        # in QuickStatements (not CREATE).
+        # Keep the authority QID until the heading comparison completes. A
+        # fuzzy Mazal match can return a real QID for a different person.
         pre_known_qid = str(match_info.get("wikidata_qid") or "")
-        if pre_known_qid and not person.existing_qid:
-            person.existing_qid = pre_known_qid
 
         # Label-based deduplication: search Wikidata for an existing human with
         # the same Hebrew/Latin label before creating a new item.  This catches
@@ -337,6 +337,14 @@ class PersonProjectionMixin:
         if heading_mismatch_note is not None:
             person.heading_mismatch = heading_mismatch_note
 
+        # A public QID needs an approved identity and a matching heading (W-206).
+        # Do not resolve a local claim to a fuzzy QID for another person.
+        if authority_heading_trusted and not authority_rejected:
+            if pre_known_qid and not person.existing_qid:
+                person.existing_qid = pre_known_qid
+        else:
+            person.existing_qid = None
+
         # P31 = human (or organization) — uses the shared institutional
         # keyword list (see _is_institutional_name above).
         is_org = is_corporate
@@ -387,10 +395,6 @@ class PersonProjectionMixin:
         # Authority hardening may retain a curator-visible match row while
         # explicitly rejecting its identity for the public projection. Do not
         # reintroduce the rejected biographical dates from that row.
-        authority_rejected = bool(
-            set(match_info.get("guard_flags") or [])
-            & _DATE_SUPPRESSING_AUTHORITY_FLAGS
-        ) or bool(match_info.get("rejection_reason"))
         if authority_rejected:
             birth_year = death_year = None
             dates_str = ""
@@ -540,19 +544,15 @@ class PersonProjectionMixin:
 
         # P1412 = languages spoken, written or signed.
         # Bug fix 2026-04-15 (web audit): previously hardcoded to Hebrew.
-        # Bug fix 2026-04-16 (deeper audit Fix #12): the manuscript's MARC
-        # 008/041 languages are MANUSCRIPT-level data, NOT person-level.
-        # A scribe who only copied a Hebrew manuscript may not have written
-        # Hebrew themselves; an owner mentioned in provenance may speak
-        # something else entirely. Only emit P1412 when the role is
-        # "author" — for that role the manuscript's language is a defensible
-        # proxy for the author's writing language. For all other roles
-        # (scribe, owner, mentioned-person), omit P1412 to avoid asserting
-        # something we cannot defend.
-        role_norm = role.strip().lower() if role else ""
-        if not is_org and role_norm == "author":
+        # MARC 008/041 languages describe the manuscript, not the person.
+        # Emit P1412 only when enrichment supplies explicit person_languages (W-206).
+        # Never use the manuscript language list as a proxy.
+        person_languages = source_record.get("person_languages") or []
+        if isinstance(person_languages, str):
+            person_languages = [person_languages]
+        if not is_org and person_languages:
             seen_lang_qids: set[str] = set()
-            for lang_code in source_record.get("languages") or []:
+            for lang_code in person_languages:
                 lang_qid = LANG_TO_QID.get(str(lang_code))
                 if lang_qid and lang_qid not in seen_lang_qids:
                     seen_lang_qids.add(lang_qid)

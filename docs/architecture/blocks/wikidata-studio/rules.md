@@ -804,3 +804,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     the stable verdict projection. *Why:* Run `48ba6c13` stored 236 verdicts,
     but ledger QIDs changed 177 stable inputs after verification and the table
     rendered those verdicts as `unknown`.
+
+109. **R109 — Person and work claims MUST use role-specific, heading-matched evidence (Rule W-206).**
+    A person QID MUST pass the authority-heading check before local references
+    resolve it. Manuscript languages MUST NOT become person P1412 claims without
+    explicit person-level evidence. A contained work MUST use its own catalogue
+    attribution, and a primary MARC author MUST outrank an `(מיוחס לו)` author.
+    *Why:* Run `48ba6c13` created one fuzzy scribe QID, one manuscript-language
+    P1412 claim, one compiler-as-author claim, and one attributed-author merge.

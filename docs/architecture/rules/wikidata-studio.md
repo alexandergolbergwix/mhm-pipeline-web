@@ -786,7 +786,7 @@ entities (a publishing organization and Yad Yitzhak Ben-Zvi) and therefore
 **abstains** (Rule W-84's reasoning).
 
 **Cache invalidation:** `WIKIDATA_VERDICT_SCHEMA` → `w138_v1`, Studio salt →
-`hmo-wikidata-v11`, `WIKIDATA_STUDIO_BUILD_SCHEMA` → `source-aware-works-v5`.
+`hmo-wikidata-v11`, `WIKIDATA_STUDIO_BUILD_SCHEMA` → `source-aware-works-v8`.
 
 **Offline gate before any judge run.**
 `backend/scripts/check_wikidata_export_quality.py` now reports
@@ -1225,7 +1225,7 @@ cleanly; the row was an older Postgres Studio cache payload, not a fresh
 authority projection. The build fingerprint had no code/schema version that
 invalidated this pre-notability row, so a normal page load kept it reviewable.
 
-The Studio build schema is now `source-aware-works-v5`. In addition,
+The Studio build schema is now `source-aware-works-v8`. In addition,
 `studio_cache_has_stale_validation` rejects any cached person carrying an
 ERROR-level `NO_IDENTIFIER`: cache-hit paths treat it as stale, GET exposes
 `cache_stale=true`, and the curator must force-rebuild before review or upload.
@@ -2586,3 +2586,29 @@ review table displayed `177 unknown` after every refresh.
 
 Regression: `backend/tests/test_wikidata_item_views.py` checks that a ledger QID
 does not enter the stable projection, while a probe-adopted QID does.
+
+### Rule W-206 — Wikidata person and work claims MUST use role-specific, heading-matched source evidence (added 2026-08-27)
+
+Run `48ba6c13-115c-4763-bff1-c08b9031b518` exposed four projection defects.
+A fuzzy Mazal match gave a scribe the QID of a different person. Manuscript
+languages became a person's P1412 claims. A manuscript compiler became the
+author of a contained work. A primary MARC author merged with an `(מיוחס לו)`
+attribution on another work.
+
+**Invariants:**
+
+1. `person_projection` MUST assign a known Wikidata QID only after the
+   authority heading matches the MARC heading and the authority row passes its
+   rejection flags. Local-reference resolution MUST never turn a rejected
+   fuzzy row into a public QID claim.
+2. `P1412` MUST use an explicit `person_languages` field. The builder MUST NOT
+   use manuscript `languages` as a person-language proxy.
+3. A contained work MUST derive its author from the work attribution when the
+   catalogue provides one. A manuscript compiler MUST NOT become that author.
+4. A primary MARC author MUST outrank an `(מיוחס לו)` attribution when both
+   names occur on the same work. Canonical and legacy merges MUST apply this
+   check before validation and local-reference resolution.
+
+Regression: `backend/tests/unit/test_wikidata_nonpassing_buckets.py`,
+`backend/tests/unit/test_wikidata_studio_works.py`, and
+`backend/tests/unit/test_hmo_canonical_wikidata.py`.

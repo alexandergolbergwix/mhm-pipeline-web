@@ -74,5 +74,5 @@
 | `backend/app/migrations/versions/0037_wikidata_accept_foreign.py` | Wikidata Studio override: `accept_foreign_modify` + `accepted_foreign_qid` (Rule W-99) |
 
 | `backend/app/pipeline/hmo_canonical.py` | Canonical entity contract plus raw Wikibase read-back normalization (labels, aliases, claims, ontology property URIs) |
-| `backend/app/pipeline/hmo_canonical_wikidata.py` | Canonical HMO → Wikidata Studio native items (uses PQ mapper) |
+| `backend/app/pipeline/hmo_canonical_wikidata.py` | Canonical HMO → Wikidata Studio native items (uses PQ mapper); role-specific work-author sanitation belongs to Wikidata Studio Rule W-206 |
 | `backend/converter/wikidata/hmo_wikidata_pq_mapper.py` | Project Wikibase / ontology → public Wikidata P/Q (Rule W-100); shared with Wikidata Studio |

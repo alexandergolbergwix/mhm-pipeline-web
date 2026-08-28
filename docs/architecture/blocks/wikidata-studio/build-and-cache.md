@@ -22,7 +22,7 @@ item instead of the static slug), then computes
 - **No cache row** → enqueue a `wikidata_studio_build` run-job and 409 with
   `{code: "studio_build_in_progress", job_id}`; the frontend attaches to the job.
 
-The build schema is part of the fingerprint. Schema `source-aware-works-v5`
+The build schema is part of the fingerprint. Schema `source-aware-works-v8`
 also treats a cached person carrying an ERROR-level `NO_IDENTIFIER` issue as
 stale (`wikidata_studio.py:50`). The current builder either emits an external
 identifier or omits the person, so this shape can only come from an older
@@ -86,6 +86,11 @@ The finalizer also normalizes work author claims (Rule W-204). A safe `P50`
 target wins over a duplicate `P2093` fallback, and the retained claim receives
 the removed claim's references and qualifiers. An unresolved `P50` yields to
 `P2093` so the work keeps its source-backed author signal.
+
+The projection applies one final role-specific author check (Rule W-206).
+Primary MARC authors outrank `(מיוחס לו)` attributions. A contained work uses
+its own catalogue attribution, not the manuscript compiler. Person QIDs require
+a heading match, and manuscript languages never become person P1412 claims.
 
 Final canonicalization is source-scoped and runs after overrides and person
 publishability filtering (Rule W-155). Hard-rejected authority matches cannot

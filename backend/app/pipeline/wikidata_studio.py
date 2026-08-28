@@ -46,8 +46,8 @@ logger = logging.getLogger(__name__)
 # person as an upload candidate (the current builder omits those rows).
 # v6: designation labels, audited holders, anchored works, corrected P/Q constants
 # (Rules W-161 … W-166) — every cached Studio row predates them.
-# v7: canonical and legacy work author claims use one safe representation (W-204).
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v7"
+# v8: source-specific work authors, person-language suppression, and fuzzy-QID guard.
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v8"
 
 
 def studio_cache_has_stale_validation(

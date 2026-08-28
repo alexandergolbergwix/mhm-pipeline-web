@@ -35,6 +35,30 @@ class TestPersonIdentifierFailClosed:
         person = next(i for i in items if i.entity_type == "person")
         assert _statements(person, "P8189") == []
 
+    def test_mismatched_known_qid_is_not_resolved_to_a_scribe_claim(self) -> None:
+        from app.pipeline.wikidata_local_refs import resolve_local_references
+
+        items = WikidataItemBuilder().build_all([{
+            "_control_number": "990001830400205171",
+            "title": "מחזור",
+            "shelfmark": "F 7265",
+            "marc_authority_matches": [{
+                "name": "דדיניאה, יהודה בן יצחק",
+                "role": "scribe",
+                "mazal_id": "987007270165205171",
+                "wikidata_qid": "Q118161349",
+                "preferred_name_heb": "יצחק בן יהודה",
+                "approved": True,
+            }],
+        }])
+
+        resolve_local_references(items)
+        manuscript = next(i for i in items if i.entity_type == "manuscript")
+        assert all(
+            statement.value != "Q118161349"
+            for statement in _statements(manuscript, "P11603")
+        )
+
     def test_crosscheck_fail_drops_p8189(self) -> None:
         items = WikidataItemBuilder().build_all([{
             "_control_number": "990001404380205171",
@@ -601,6 +625,22 @@ class TestP1559MatchesPublicLabel:
 
 
 class TestCanonicalLanguageAndDate:
+    def test_manuscript_languages_do_not_become_person_languages(self) -> None:
+        items = WikidataItemBuilder().build_all([{
+            "_control_number": "990000439040205171",
+            "title": "פסק דין",
+            "languages": ["heb", "lad"],
+            "marc_authority_matches": [{
+                "name": "חביב, שמעון אבן",
+                "role": "author",
+                "mazal_id": "987011546334905171",
+                "approved": True,
+            }],
+        }])
+
+        person = next(i for i in items if i.entity_type == "person")
+        assert _statements(person, "P1412") == []
+
     def test_german_record_label_is_not_hebrew(self) -> None:
         from converter.wikidata.item_builder import manuscript_record_label
 

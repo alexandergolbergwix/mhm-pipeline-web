@@ -547,23 +547,22 @@ def _append_context_work_author(
     context: CanonicalStudioContext,
     statements: list[WikidataStatement],
 ) -> None:
-    """Carry an approved anchor-record author onto a canonical work (W-201)."""
-    if any(
-        statement.property_id in {P_AUTHOR, P_AUTHOR_NAME_STRING}
-        for statement in statements
-    ):
-        return
-
+    """Carry an approved primary anchor-record author onto a canonical work (W-201/W-206)."""
     control_number = identity_control_number(entity)
     record = context.marc_by_cn.get(control_number)
     if not record:
         return
+    from converter.wikidata.item_builder import (  # noqa: PLC0415
+        _normalise_label,
+        _strip_name_quotes,
+    )
+
     candidates = [
         match for match in record.get("marc_authority_matches") or []
         if isinstance(match, dict)
         and match.get("approved") is not False
         and str(match.get("role") or "").strip().casefold()
-        in {"author", "attributed author", "presumed author"}
+        in {"author", "presumed author"}
         and str(match.get("entity_kind") or "person").strip().casefold() == "person"
     ]
     if not candidates:
@@ -584,6 +583,32 @@ def _append_context_work_author(
         if not name:
             continue
         qid = normalize_wikidata_qid(candidate.get("wikidata_qid"))
+        expected_name = _normalise_label(_strip_name_quotes(name)).rstrip(
+            " .,;:/-",
+        ).casefold()
+        kept: list[WikidataStatement] = []
+        for statement in statements:
+            if statement.property_id not in {P_AUTHOR, P_AUTHOR_NAME_STRING}:
+                kept.append(statement)
+                continue
+            value = str(statement.value or "").strip()
+            statement_name = _normalise_label(
+                _strip_name_quotes(value),
+            ).rstrip(" .,;:/-").casefold()
+            if (
+                (qid and value == qid)
+                or (
+                    statement.property_id == P_AUTHOR_NAME_STRING
+                    and statement_name == expected_name
+                )
+            ):
+                kept.append(statement)
+        statements[:] = kept
+        if any(
+            statement.property_id in {P_AUTHOR, P_AUTHOR_NAME_STRING}
+            for statement in statements
+        ):
+            return
         statements.append(
             WikidataStatement(
                 property_id=P_AUTHOR if qid else P_AUTHOR_NAME_STRING,
@@ -593,6 +618,147 @@ def _append_context_work_author(
             ),
         )
         return
+
+
+def _context_work_author_evidence(
+    item: WikidataItem,
+    context: CanonicalStudioContext,
+) -> tuple[set[str], set[str]]:
+    """Return explicit work-author names before parent-record authors."""
+    from converter.wikidata.item_builder import (
+        _normalise_label,
+        _split_work_title_author,
+        _strip_name_quotes,
+    )
+
+    def name_key(value: object) -> str:
+        return _normalise_label(_strip_name_quotes(str(value or ""))).rstrip(
+            " .,;:/-",
+        ).casefold()
+
+    explicit_names: set[str] = set()
+    for evidence in item.work_candidate_evidence or []:
+        if not isinstance(evidence, Mapping):
+            continue
+        raw_title = str(evidence.get("raw_title") or "").strip()
+        _title, embedded_author = _split_work_title_author(raw_title)
+        if embedded_author:
+            explicit_names.add(name_key(embedded_author))
+            continue
+        source_text = str(evidence.get("source_text") or "").strip()
+        if "—" not in source_text:
+            continue
+        _title, candidate = source_text.rsplit("—", 1)
+        candidate = candidate.strip().strip('"\'')
+        if len(candidate.split()) >= 2:
+            explicit_names.add(name_key(candidate))
+    if explicit_names:
+        return explicit_names, set()
+
+    names: set[str] = set()
+    qids: set[str] = set()
+    for raw_cn in item.records or []:
+        record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)))
+        if not record:
+            continue
+        candidates = [
+            match for match in record.get("marc_authority_matches") or []
+            if isinstance(match, Mapping)
+            and match.get("approved") is not False
+            and str(match.get("role") or "").strip().casefold()
+            in {"author", "presumed author"}
+        ]
+        if not candidates:
+            candidates = [
+                author for author in record.get("authors") or []
+                if isinstance(author, Mapping)
+                and str(author.get("name") or "").strip()
+                and str(author.get("role") or "author").strip().casefold()
+                in {"author", "presumed author"}
+            ]
+        for candidate in candidates:
+            name = str(
+                candidate.get("name")
+                or candidate.get("entity_text")
+                or candidate.get("matched_name")
+                or "",
+            ).strip()
+            if name:
+                names.add(name_key(name))
+            qid = normalize_wikidata_qid(candidate.get("wikidata_qid"))
+            if qid:
+                qids.add(qid)
+    return names, qids
+
+
+def _sanitize_work_authors_against_context(
+    items: list[WikidataItem],
+    context: CanonicalStudioContext | None,
+) -> int:
+    """Remove work-author claims that the work evidence does not support (W-206)."""
+    if context is None:
+        return 0
+    from converter.wikidata.item_builder import _normalise_label, _strip_name_quotes
+
+    def name_key(value: object) -> str:
+        return _normalise_label(_strip_name_quotes(str(value or ""))).rstrip(
+            " .,;:/-",
+        ).casefold()
+
+    changed = 0
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "work":
+            continue
+        names, qids = _context_work_author_evidence(item, context)
+        if not names and not qids:
+            continue
+
+        kept: list[WikidataStatement] = []
+        for statement in item.statements or []:
+            if statement.property_id == P_AUTHOR_NAME_STRING:
+                keep = name_key(statement.value) in names
+            elif statement.property_id == P_AUTHOR:
+                keep = str(statement.value or "").strip() in qids
+            else:
+                keep = True
+            if keep:
+                kept.append(statement)
+            else:
+                changed += 1
+        item.statements = kept
+
+        if any(
+            statement.property_id in {P_AUTHOR, P_AUTHOR_NAME_STRING}
+            for statement in kept
+        ):
+            continue
+        control_number = next(
+            (
+                canonical_control_number(str(raw_cn))
+                for raw_cn in item.records or []
+                if canonical_control_number(str(raw_cn))
+            ),
+            "",
+        )
+        if qids:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_AUTHOR,
+                    value=sorted(qids)[0],
+                    value_type="item",
+                    references=nli_reference(control_number),
+                ),
+            )
+        elif names:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_AUTHOR_NAME_STRING,
+                    value=sorted(names)[0],
+                    value_type="string",
+                    references=nli_reference(control_number),
+                ),
+            )
+    return changed
 
 
 def build_canonical_studio_result(
@@ -627,6 +793,7 @@ def build_canonical_studio_result(
     native_items = native_items_from_hmo(materialized, context=context)
     if legacy_native_items:
         native_items = merge_legacy_into_canonical(native_items, list(legacy_native_items))
+    _sanitize_work_authors_against_context(native_items, context)
     entities_by_local_id = {entity.local_id: entity for entity in materialized}
 
     if overrides:
@@ -987,6 +1154,25 @@ def _hebrew_preferred_heading_mismatch(item: WikidataItem, prefs: list[str]) -> 
         return False
     if any(heading_matches(label, preferred) for label in labels for preferred in prefs):
         return False
+    from converter.authority.heading_fidelity import _name_tokens  # noqa: PLC0415
+    from converter.authority.wikidata_crosscheck import hebrew_label_matches  # noqa: PLC0415
+
+    # A preferred form can omit a byname or use a different name order. Two
+    # shared meaningful tokens provide evidence for the same person, even when
+    # the full heading comparison does not pass.
+    for label in labels:
+        label_tokens = [token for token in _name_tokens(label) if token != "בן"]
+        for preferred in hebrew_prefs:
+            preferred_tokens = [
+                token for token in _name_tokens(preferred) if token != "בן"
+            ]
+            shared = sum(
+                hebrew_label_matches(left, [right], max_distance=1)
+                for left in label_tokens
+                for right in preferred_tokens
+            )
+            if shared >= 2:
+                return False
     return not any(
         heading_matches(label, preferred)
         for label in labels

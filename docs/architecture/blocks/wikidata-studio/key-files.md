@@ -5,7 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/wikidata_studio.py` | Glue: DB rows → desktop builder input; fingerprint; override application; item serialisation + label enrichment; `local_id_for_item` |
-| `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); safe single-representation work author normalization (W-204); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188) |
+| `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); safe single-representation work author normalization (W-204); role-specific work-author sanitation (W-206); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188) |
 | `backend/converter/wikidata/property_mapping.py` | `resolve_hmo_bridge_url` / `is_browseable_hmo_wikibase_url` — fail-closed HMO Wikibase link helpers (W-122); known-work / Esther aliases (W-171); `format_wikidata_time` ±YYYY padding (W-193) |
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow + scholarly catalog notes that must never become P1684 / P1922 (W-72 / W-122 / W-171 / W-172) |
 | `backend/converter/wikidata/isbd_title.py` | ISBD `245` title/subtitle split (Rule W-171) |
@@ -45,12 +45,12 @@
 | `backend/app/pipeline/wikidata_entity_compare.py` | Fetch live Wikidata entity + build Studio-vs-live diff rows |
 | `backend/app/pipeline/wikidata_live_enrich.py` | Attach `wikidata_live` compare snapshots to items that carry a QID (autofix input) |
 | `backend/app/pipeline/work_title_match.py` | Work-title normalization / variants for Mazal work matching |
-| `backend/converter/wikidata/item_builder.py` | Public compatibility facade: orchestration, reconciliation, and legacy exports only |
+| `backend/converter/wikidata/item_builder.py` | Public compatibility facade: orchestration, reconciliation, and legacy exports only; shared work-title attribution parsing (W-206) |
 | `backend/converter/wikidata/item_models.py` | Shared `WikidataItem` / `WikidataStatement` data structures |
 | `backend/converter/wikidata/manuscript_projection.py` | Manuscript identity, catalog, digital-access, note, and evidence-gated related_works → P1574 (Rule W-114) |
 | `backend/converter/wikidata/manuscript_metadata.py` | Labels, instance types, language, physical description, and provenance projection |
-| `backend/converter/wikidata/content_projection.py` | Contents, genre, canonical-subject projection, exact work-QID relinking, and approved author recovery from MARC matches (W-198 / W-200 / W-202) |
-| `backend/converter/wikidata/person_linking.py`, `person_projection.py`, `role_normalize.py` | Role-safe manuscript links (paren/quote MARC relators), authority-backed person construction |
+| `backend/converter/wikidata/content_projection.py` | Contents, genre, canonical-subject projection, exact work-QID relinking, approved author recovery from MARC matches, and primary-author precedence (W-198 / W-200 / W-202 / W-206) |
+| `backend/converter/wikidata/person_linking.py`, `person_projection.py`, `role_normalize.py` | Role-safe manuscript links (paren/quote MARC relators), authority-backed person construction, and explicit person-language claims (W-206) |
 | `backend/converter/wikidata/work_projection.py` | Work creation, author-aware deduplication, labels, and source-backed author links (W-198 / W-200) |
 | `backend/converter/wikidata/work_candidates.py` | Source-aware MARC 500/505/NER eligibility decisions and compact evidence |
 | `backend/converter/wikidata/property_mapping.py` | P/Q constants, WPM role map, discouraged P31 set, condition/fragment vocabulary, verified KNOWN_WORK_QIDS (Rules W-26/W-71/W-98/W-114) |

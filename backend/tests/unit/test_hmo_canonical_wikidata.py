@@ -681,6 +681,112 @@ def test_canonical_work_carries_approved_marc_author_claim() -> None:
     assert author_claims[0].references
 
 
+def test_canonical_work_replaces_attributed_author_with_primary_author() -> None:
+    work = normalize_live_entity({
+        "local_id": "Work_attributed",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_attributed",
+        "wikibase_id": "Q6105",
+        "entity_type": "F1_Work",
+        "labels": {"he": "חזוק אמונה"},
+        "control_numbers": ["990001379460205171"],
+        "claims": [{
+            "wikidata_property": "P2093",
+            "property_id": "P2093",
+            "value": "מולכו, שלמה",
+            "datatype": "string",
+        }],
+    })
+    context = canonical_studio_context(
+        marc_records=[{
+            "_control_number": "990001379460205171",
+            "title": "חזוק אמונה",
+            "authors": [{"name": "יצחק בן אברהם", "role": "author"}],
+        }],
+        approved_matches=[
+            {
+                "control_number": "990001379460205171",
+                "entity_text": "מולכו, שלמה",
+                "role": "attributed author",
+                "approved": True,
+            },
+            {
+                "control_number": "990001379460205171",
+                "entity_text": "יצחק בן אברהם",
+                "role": "author",
+                "approved": True,
+            },
+        ],
+    )
+
+    items = native_items_from_hmo([work], context=context)
+    author_claims = [
+        statement for statement in items[0].statements
+        if statement.property_id in {"P50", "P2093"}
+    ]
+    assert [(claim.property_id, claim.value) for claim in author_claims] == [
+        ("P2093", "יצחק בן אברהם"),
+    ]
+
+
+def test_canonical_merge_removes_non_primary_work_author() -> None:
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    work = normalize_live_entity({
+        "local_id": "Work_merged_author",
+        "source_uri": "https://w3id.org/mhm/ontology#Work_merged_author",
+        "wikibase_id": "Q6106",
+        "entity_type": "F1_Work",
+        "labels": {"he": "חזוק אמונה"},
+        "control_numbers": ["990001379460205171"],
+    })
+    legacy = WikidataItem(
+        local_id="legacy-work-merged-author",
+        entity_type="work",
+        records=["990001379460205171"],
+        labels={"he": "חזוק אמונה"},
+        statements=[
+            WikidataStatement(
+                property_id="P2093",
+                value="מולכו, שלמה",
+                value_type="string",
+            ),
+            WikidataStatement(
+                property_id="P2093",
+                value="יצחק בן אברהם",
+                value_type="string",
+            ),
+        ],
+    )
+    context = canonical_studio_context(
+        marc_records=[{
+            "_control_number": "990001379460205171",
+            "title": "חזוק אמונה",
+            "authors": [{"name": "יצחק בן אברהם", "role": "author"}],
+        }],
+        approved_matches=[{
+            "control_number": "990001379460205171",
+            "entity_text": "יצחק בן אברהם",
+            "role": "author",
+            "approved": True,
+        }],
+    )
+
+    result = build_canonical_studio_result(
+        [work],
+        context=context,
+        reconcile=False,
+        legacy_native_items=[legacy],
+    )
+    item = next(row for row in result["items"] if row["entity_type"] == "work")
+    author_claims = [
+        statement for statement in item["statements"]
+        if statement["property_id"] in {"P50", "P2093"}
+    ]
+    assert [(claim["property_id"], claim["value"]) for claim in author_claims] == [
+        ("P2093", "יצחק בן אברהם"),
+    ]
+
+
 def test_canonical_work_ms_scope_suffix_still_matches_245() -> None:
     work = normalize_live_entity({
         "local_id": "Work_scope",

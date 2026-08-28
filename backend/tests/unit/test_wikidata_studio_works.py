@@ -492,6 +492,69 @@ async def test_structured_505_author_suffix_is_not_part_of_work_label() -> None:
 
 
 @pytest.mark.asyncio
+async def test_structured_500_hibbur_attribution_is_work_author() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "authors": [{
+            "name": "קרפי, יהודה חיים בן שמואל גבריאל",
+            "role": "author",
+            "field": "100",
+        }],
+        "500$a": (
+            'כולל: "ויכוח לשחרית צ\"כ [=צום כפור] קודם ברכי נפשי '
+            'חברו האלוף כמה\"ר אברהם פרווינצאלי ממנטובה"'
+        ),
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[],
+        entities_by_cn={},
+        return_native=False,
+    )
+
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert work["labels"]["he"] == (
+        "ויכוח לשחרית צ\"כ קודם ברכי נפשי"
+    )
+    assert any(
+        statement["property_id"] == "P2093"
+        and statement["value"] == "אברהם פרווינצאלי ממנטובה"
+        for statement in work["statements"]
+    )
+    assert not any(
+        statement["property_id"] == "P2093"
+        and "קרפי" in statement["value"]
+        for statement in work["statements"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_primary_marc_author_outranks_attributed_author() -> None:
+    rec = {
+        **_fake_marc_record(),
+        "authors": [
+            {"name": "מולכו, שלמה", "role": "attributed author"},
+            {"name": "יצחק בן אברהם", "role": "author"},
+        ],
+        "contents": [{"title": "חזוק אמונה", "source_field": "505"}],
+    }
+    result = await wikidata_studio.build_items_for_run(
+        marc_records=[rec],
+        approved_matches=[],
+        entities_by_cn={},
+        return_native=False,
+    )
+
+    work = next(item for item in result["items"] if item["entity_type"] == "work")
+    author_values = [
+        statement["value"]
+        for statement in work["statements"]
+        if statement["property_id"] == "P2093"
+    ]
+    assert author_values == ["יצחק בן אברהם"]
+
+
+@pytest.mark.asyncio
 async def test_contents_author_field_becomes_p2093_and_stays_out_of_description() -> None:
     rec = {
         **_fake_marc_record(),
