@@ -12,6 +12,7 @@ from __future__ import annotations
 from app.pipeline.ai_verdict_cache_common import (
     JUDGE_FAILURE_OVERALL,
     is_judge_failure,
+    normalise_public_verdict,
     normalise_verdict_body,
 )
 from app.pipeline.verify_outcome import (
@@ -22,6 +23,15 @@ from app.pipeline.verify_session_store import _compact_verdict_for_job
 
 
 class TestNormaliseVerdictBody:
+    def test_public_judge_failure_uses_abstain_not_unknown(self) -> None:
+        public = normalise_public_verdict({
+            "overall": JUDGE_FAILURE_OVERALL,
+            "error": "HTTP 400: content policy",
+        })
+        assert public["overall"] == "abstain"
+        assert public["verification_status"] == "provider_error"
+        assert public["verification_error"] == "HTTP 400: content policy"
+
     def test_the_exact_bad_row_from_run_48ba6c13_is_not_a_fail(self) -> None:
         body, error = normalise_verdict_body({
             "error": "no verdict (judge failure)",
@@ -30,10 +40,11 @@ class TestNormaliseVerdictBody:
                 "role_ok": "n/a", "reasoning": "",
             },
         })
-        assert body["overall"] == "unknown"
+        assert body["overall"] == "abstain"
         assert body["name_ok"] == "unknown"
         assert body["type_ok"] == "unknown"
         assert body["judge_failure"] is True
+        assert body["verification_status"] == "provider_error"
         assert body["verification_error"] == "no verdict (judge failure)"
         assert error == "no verdict (judge failure)"
         assert "NOT an assessment" in body["reasoning"]
@@ -43,13 +54,13 @@ class TestNormaliseVerdictBody:
         body, error = normalise_verdict_body({
             "verdict": {"overall": "fail", "name_ok": "no", "reasoning": "   "},
         })
-        assert body["overall"] == "unknown"
+        assert body["overall"] == "abstain"
         assert body["judge_failure"] is True
         assert error == "judge returned no reasoning"
 
     def test_a_missing_overall_is_a_judge_failure(self) -> None:
         body, error = normalise_verdict_body({"verdict": {"reasoning": "hmm"}})
-        assert body["overall"] == "unknown"
+        assert body["overall"] == "abstain"
         assert body["judge_failure"] is True
         assert error
 
@@ -110,8 +121,9 @@ class TestJobSnapshotKeepsTheReason:
             },
             "error": "no verdict (judge failure)",
         })
-        assert row["verdict"]["overall"] == "unknown"
+        assert row["verdict"]["overall"] == "abstain"
         assert row["verdict"]["judge_failure"] is True
+        assert row["verdict"]["verification_status"] == "provider_error"
         assert row["verdict"]["error"] == "no verdict (judge failure)"
         assert "Judge failure" in row["verdict"]["reasoning"]
 

@@ -924,21 +924,24 @@ reasoned-looking fail with no reason.
 
 Invariant:
 
-1. **`unknown`, not `fail`.** A judge that did not answer reports
-   `overall="unknown"` with `unknown` axes, `judge_failure=true`, and a
-   `verification_error`. A substantive `overall` with blank `reasoning` is the
+1. **`abstain`, not `fail`.** A judge that did not answer reports
+   `overall="abstain"` with `unknown` axes, `judge_failure=true`,
+   `verification_status="provider_error"`, and a `verification_error`. A
+   substantive `overall` with blank `reasoning` is the
    same thing — reachable because the agentic tool-loop cannot send a
    `responseSchema`. The legacy `verification_failed` value is accepted only
    for read-time conversion to this public shape.
 2. **The failure MUST carry its reason.** The stored-row schema requires a
    non-empty `reasoning` for a substantive `overall` and a non-empty
-   `verification_error` for an unknown judge failure. `_load_schema` strips those conditionals and the
+   `verification_error` for a provider-error abstain. `_load_schema` strips
+   those conditionals and the
    harness-only enum values before the schema becomes a `responseSchema`: the
    model is never offered a way to declare its own check failed.
 3. **NEVER cache a judge failure** (amends Rule W-51). The `ai_verdict` cache has a
    90-day TTL, so a transport hiccup would warm-hit for three months and the item
    would never be judged again. The override row is still written, so the curator
-   sees `unknown` and can inspect the retained error before a retry.
+   sees `abstain` with provider-error status and can inspect the retained error
+   before a retry.
 4. **A run that produced one is `partial`, not `complete`.** A
    judge-failure row carries a stable candidate id so it still advances
    progress (Rule W-64), but the run did not judge its whole scope.
@@ -947,7 +950,7 @@ Invariant:
    `VerdictsTable`'s `Overall` union and filter chips. An unlisted value is
    silently dropped.
 
-### Rule W-207 — Judge failures MUST render as unknown and preserve diagnostics (added 2026-08-28)
+### Rule W-207 — Legacy judge failures MUST normalize to abstain and preserve diagnostics (updated 2026-08-30)
 
 Run `48ba6c13` retained nine provider failures after a force rebuild. The
 failures were four malformed DeepSeek responses and five HTTP 400 content-policy
@@ -955,12 +958,17 @@ responses. The per-item stable fingerprints still matched, so the read path
 correctly retained the records but exposed the internal `verification_failed`
 bucket to curators.
 
+The old read path exposed provider failures as `unknown`. That value mixed a
+missing verdict with a failed provider response and caused misleading review
+filters.
+
 **Invariants:**
 
-1. New judge failures MUST persist with `overall="unknown"`,
-   `judge_failure=true`, and `verification_error`.
-2. The read path MUST convert legacy `verification_failed` records to the same
-   public shape without dropping the original error.
+1. New judge failures MUST persist with `overall="abstain"`,
+   `verification_status="provider_error"`, `judge_failure=true`, and
+   `verification_error`.
+2. The read path MUST convert legacy `unknown` and `verification_failed` records
+   to the public `abstain` shape without dropping the original error.
 3. A provider failure MUST remain absent from the shared inference cache, and
    the verify job MUST remain `partial` when one occurs.
 4. The per-item stable fingerprint MUST invalidate a verdict only when the
@@ -1005,10 +1013,35 @@ Invariants:
 2. The frontend MUST read these fields from the envelope and use nested
    fallbacks for older snapshots.
 3. The eval-agent MUST retry transport, parse, and schema failures before it
-   returns the public `unknown` judge-failure state. The retry count is three
+   returns the public `abstain` provider-error state. The retry count is three
    by default and remains configurable with `EVAL_AGENT_JUDGE_RETRY`.
 4. The eval-agent MUST cache only a substantive verdict. It MUST NOT cache an
    invalid response or a judge failure.
 
 Regression tests: `backend/tests/unit/test_judge_failure_is_not_a_verdict.py`
 and `eval-agent/tests/test_gated_retry.py`.
+
+### Rule W-211 — Public AI verdicts MUST use a closed outcome set (added 2026-08-30)
+
+The live verification screen showed `unknown` rows after provider HTTP 400 and
+empty-response failures. Some rows also showed candidate confidence `1.0`, which
+looked like a confident judge result even though no judge answer existed.
+
+**Invariants:**
+
+1. Public `overall` values MUST be `full`, `pass`, `partial`, `fail`, or
+   `abstain`. The backend and frontend MUST reject or normalize every other
+   value before they expose it.
+2. A provider or parse failure MUST use `overall="abstain"` and
+   `verification_status="provider_error"`. It MUST retain `verification_error`
+   and MUST NOT enter the shared verdict cache.
+3. A missing verdict MUST remain `not verified` in item tables. It MUST NOT use
+   `unknown` as a display bucket.
+4. The live table MUST hide candidate confidence for provider-error rows and
+   show a retry instruction. Candidate confidence is not judge confidence.
+5. The 0039 migration MUST normalize stored legacy rows. Its downgrade MUST
+   change only rows that the migration marked.
+
+Regression tests: `backend/tests/unit/test_judge_failure_is_not_a_verdict.py`,
+`eval-agent/tests/test_judge_failure_verdicts.py`, and
+`eval-agent/tests/test_gated_retry.py`.

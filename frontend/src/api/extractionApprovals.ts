@@ -55,9 +55,9 @@ export type AiVerdictOverall =
   | "full"
   | "partial"
   | "fail"
-  | "abstain"
-  /** The judge did not answer, so the item has no assessment (Rule W-158). */
-  | "unknown";
+  | "abstain";
+
+export type AiVerificationStatus = "judged" | "provider_error";
 
 /** v2 extension: AI-suggested corrected entity text.
  *  Only present on NER entities (person_ner / provenance_ner / contents_ner).
@@ -82,6 +82,7 @@ export interface AiVerdict {
   evaluator?: string | null;
   judge_failure?: boolean;
   verification_error?: string | null;
+  verification_status?: AiVerificationStatus;
   novel?: boolean;
   /** v2: Gemini-proposed corrected entity text, or null when no fix applies. */
   suggested_fix?: AiSuggestedFix | null;

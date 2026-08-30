@@ -48,7 +48,7 @@ export interface AiVerdictPillProps {
 }
 
 
-type Bucket = "pass" | "partial" | "fail" | "abstain" | "unknown" | "judging";
+type Bucket = "pass" | "partial" | "fail" | "abstain" | "not_verified" | "judging";
 
 
 /** Map ``verdict.overall`` onto one of the five visual buckets.
@@ -60,13 +60,13 @@ type Bucket = "pass" | "partial" | "fail" | "abstain" | "unknown" | "judging";
  */
 function bucketFor(verdict: AiVerdict | null | undefined, judging?: boolean): Bucket {
   if (judging && !verdict) return "judging";
-  if (!verdict) return "unknown";
+  if (!verdict) return "not_verified";
   const o = String(verdict.overall ?? "").toLowerCase();
   if (o === "full" || o === "pass") return "pass";
   if (o === "partial") return "partial";
   if (o === "fail")    return "fail";
   if (o === "abstain") return "abstain";
-  return "unknown";
+  return "abstain";
 }
 
 
@@ -81,7 +81,7 @@ const _PALETTE: Record<Bucket, { bg: string; border: string; fg: string; label: 
                          fg: "var(--muted)", label: "unsure",       glyph: "?" },
   judging:             { bg: "rgba(127, 196, 255, 0.10)", border: "rgba(127, 196, 255, 0.30)",
                          fg: "#77cce5", label: "judging…",          glyph: "…" },
-  unknown:             { bg: "transparent",                border: "rgba(255, 255, 255, 0.12)",
+  not_verified:        { bg: "transparent",                border: "rgba(255, 255, 255, 0.12)",
                          fg: "var(--muted)", label: "—",            glyph: "—" },
 };
 
@@ -108,14 +108,16 @@ export function AiVerdictPill(props: AiVerdictPillProps) {
   const tooltip   = bucket === "judging"
     ? "AI is judging this item (cache hit skips a fresh LLM call)"
     : reasoning
-      ? `${tone.label}\n\n${reasoning}`
-      : tone.label;
+      ? `${verdict?.verification_status === "provider_error" ? "Provider error" : tone.label}\n\n${reasoning}`
+      : verdict?.verification_status === "provider_error"
+        ? "Provider error — run Verify with AI again"
+        : tone.label;
 
   const padY = size === "md" ? "py-1"   : "py-0.5";
   const padX = size === "md" ? "px-2.5" : "px-2";
   const text = size === "md" ? "text-[11px]" : "text-[10px]";
 
-  const isInteractive = !!onClick && bucket !== "unknown" && bucket !== "judging";
+  const isInteractive = !!onClick && bucket !== "not_verified" && bucket !== "judging";
 
   const inner = (
     <>

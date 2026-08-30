@@ -111,6 +111,7 @@ class Verdict:
     judge_id: str = ""
     cache_key: str = ""
     judged_at: str = ""
+    verification_status: str = "judged"
     # True when produced by the agentic tool-loop (vs the linear single-shot).
     # Lives outside the schema-constrained ``verdict`` sub-object so the
     # verdict schema is unaffected; self-verify uses it to keep its gate on
@@ -140,6 +141,7 @@ class Verdict:
             "agentic": self.agentic,
             "cache_key": self.cache_key,
             "judged_at": self.judged_at or datetime.now(timezone.utc).isoformat(),
+            "verification_status": self.verification_status,
             "error": self.error,
         }
 
@@ -174,19 +176,16 @@ class Evaluator(ABC):
         {"person_ner", "provenance_ner", "contents_ner"}
     )
 
-    # A judge that did not answer is NOT a judgement (Rule W-158). The dataclass
-    # defaults are `fail / no / no / n-a / ""` because that is the safe
-    # pre-parse construction shape, but returning them unchanged made a transport
-    # error indistinguishable from a substantive rejection: one manuscript in
-    # run 48ba6c13 shipped `overall="fail", name_ok="no", type_ok="no"` with an
-    # empty `reasoning`, and nothing downstream could tell that the judge had
-    # simply never spoken.
+    # A provider failure uses `abstain` as the only public no-decision value.
+    # `verification_failed` remains an input-only compatibility value for old
+    # snapshots; new sessions never emit it (Rule W-211).
     JUDGE_FAILURE_OVERALL = "verification_failed"
-    _SUBSTANTIVE_OVERALLS = frozenset({"full", "pass", "partial", "fail"})
+    _PUBLIC_OVERALLS = frozenset({"full", "pass", "partial", "fail", "abstain"})
 
     def _as_judge_failure(self, v: Verdict, reason: str) -> Verdict:
         v.error = reason
-        v.overall = self.JUDGE_FAILURE_OVERALL
+        v.overall = "abstain"
+        v.verification_status = "provider_error"
         v.name_ok = "unknown"
         v.type_ok = "unknown"
         v.role_ok = "n/a"
@@ -210,9 +209,17 @@ class Evaluator(ABC):
         v.name_ok = str(raw.get("name_ok", "no"))
         v.type_ok = str(raw.get("type_ok", "no"))
         v.role_ok = str(raw.get("role_ok", "n/a"))
-        v.overall = str(raw.get("overall", "fail"))
+        raw_overall = str(raw.get("overall") or "").strip().lower()
+        if raw_overall not in self._PUBLIC_OVERALLS:
+            return self._as_judge_failure(
+                v,
+                "judge returned no valid overall verdict"
+                if not raw_overall
+                else f"judge returned invalid overall {raw_overall!r}",
+            )
+        v.overall = raw_overall
         v.reasoning = str(raw.get("reasoning", ""))
-        if v.overall in self._SUBSTANTIVE_OVERALLS and not v.reasoning.strip():
+        if v.overall != "abstain" and not v.reasoning.strip():
             # The agentic tool-loop cannot send a responseSchema, so a reply can
             # carry the axes and silently omit `reasoning`. An unexplained verdict
             # is not actionable by a curator, so it reads as a failure to judge.

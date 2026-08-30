@@ -108,7 +108,7 @@ async def _persist_hmo_item_verdicts(
                 evaluator=evaluator_id,
             )
             summary = {
-                "overall": verdict_body.get("overall") or "unknown",
+                "overall": verdict_body.get("overall") or "abstain",
                 "name_ok": verdict_body.get("name_ok"),
                 "type_ok": verdict_body.get("type_ok"),
                 "role_ok": verdict_body.get("role_ok"),
@@ -118,6 +118,10 @@ async def _persist_hmo_item_verdicts(
                 "cache_key": fingerprint,
                 "session_id": None,
                 "evaluator": evaluator_id,
+                "judge_failure": bool(judge_error),
+                "verification_status": (
+                    "provider_error" if judge_error else "judged"
+                ),
             }
             if judge_error:
                 summary["error"] = judge_error

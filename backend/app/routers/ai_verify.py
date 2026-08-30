@@ -546,6 +546,8 @@ async def _persist_ai_verdicts_to_matches(
             "session_id":     session_id,
             "evaluator":      v.get("evaluator_id") or v.get("evaluator"),
             "_judge_model":   _jm,
+            "judge_failure": bool(judge_error),
+            "verification_status": "provider_error" if judge_error else "judged",
             # A judge that did not answer must not read as a substantive
             # rejection of the authority match (Rule W-158).
             **({"error": judge_error} if judge_error else {}),
@@ -607,7 +609,7 @@ async def list_run_verdicts_endpoint(
     ),
     overall: str | None = Query(
         default=None,
-        pattern=r"^(pass|full|partial|fail|abstain|unknown)$",
+        pattern=r"^(pass|full|partial|fail|abstain)$",
         description="Filter by verdict overall value.",
     ),
     limit: int = Query(default=200, ge=1, le=2000),
@@ -631,9 +633,8 @@ async def list_run_verdicts_endpoint(
           "offset": <int>,
           "limit": <int>,
           "verdicts": [<AgentEvent>, ...],  // page
-          "counts": {               // over the whole filtered set
-            "pass": 0, "partial": 0, "fail": 0, "abstain": 0,
-            "unknown": 0
+        "counts": {               // over the whole filtered set
+            "pass": 0, "partial": 0, "fail": 0, "abstain": 0
           }
         }
     """
@@ -665,7 +666,7 @@ async def export_run_verdicts(
     format: str = Query(default="json", pattern="^(json|csv)$"),
     q: str | None = Query(default=None, max_length=256),
     overall: str | None = Query(
-        default=None, pattern=r"^(pass|full|partial|fail|abstain|unknown)$",
+        default=None, pattern=r"^(pass|full|partial|fail|abstain)$",
     ),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
@@ -974,7 +975,10 @@ def _collect_run_verdicts(run_id: str) -> list[dict[str, Any]]:
             continue
         verdict = event.get("verdict")
         if not isinstance(verdict, dict):
-            out.append(event)
+            if any(key in event for key in ("overall", "judge_failure", "verification_status")):
+                out.append(normalise_public_verdict(event))
+            else:
+                out.append(event)
             continue
         out.append({**event, "verdict": normalise_public_verdict(verdict)})
     return out
@@ -1021,8 +1025,6 @@ def _filter_verdicts(
 def _count_by_overall(verdicts: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {
         "pass": 0, "partial": 0, "fail": 0, "abstain": 0,
-        # A judge that did not answer is unknown, never a `fail` (Rule W-158).
-        "unknown": 0,
     }
     for ev in verdicts:
         if not isinstance(ev, dict):
@@ -1033,8 +1035,8 @@ def _count_by_overall(verdicts: list[dict[str, Any]]) -> dict[str, int]:
             counts["pass"] += 1
         elif raw in ("partial", "fail", "abstain"):
             counts[raw] += 1
-        elif raw == "verification_failed":
-            counts["unknown"] += 1
+        elif raw in {"verification_failed", "unknown", ""}:
+            counts["abstain"] += 1
         else:
-            counts["unknown"] += 1
+            counts["abstain"] += 1
     return counts

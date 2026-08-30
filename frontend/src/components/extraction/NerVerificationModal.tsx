@@ -124,7 +124,7 @@ export function NerVerificationModal(props: NerVerificationModalProps) {
             text:           String(cand.text ?? ""),
             type:           String(cand.type ?? "OTHER") as Entity["type"],
             role:           String(cand.role ?? "") as Entity["role"],
-            ai_verdict:     {overall: "unknown", model: String(ev.judge_id ?? ev.model ?? "")},
+            ai_verdict:     {overall: "abstain", model: String(ev.judge_id ?? ev.model ?? "")},
           });
           setAiVerdictCache(userId, runId, fp, ev);
         } catch {
@@ -446,7 +446,7 @@ function stepLogLine(ev: AgentEvent): string {
     case "agent.verdict": {
       const c = (ev.candidate ?? {}) as Record<string, unknown>;
       const v = (ev.verdict ?? {}) as Record<string, unknown>;
-      return `${c.name ?? c.text ?? ""} → ${v.overall ?? "?"}`;
+      return `${c.name ?? c.text ?? ""} → ${v.overall ?? "abstain"}`;
     }
     case "session.end":    return `outcome=${ev.outcome} · scope=${ev.scope_size}`;
     case "runner.exit":    return `exit=${ev.return_code}`;

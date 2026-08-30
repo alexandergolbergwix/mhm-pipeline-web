@@ -47,8 +47,9 @@ CACHE_PATH/PROGRESS_PATH`, and `EVAL_AGENT_STATE_DIR` env covers older bundles.
 Summary written to DB rows (parity across channels):
 `{overall, name_ok, type_ok, role_ok, reasoning, suggested_fix?, model,
 judged_at, cache_key, session_id, evaluator}` — `overall` ∈
-pass/full · partial · fail · abstain (frontend buckets full→pass; pill adds
-`unknown`).
+pass/full · partial · fail · abstain (frontend buckets full→pass; missing rows
+use `not verified`). Provider failures add
+`verification_status="provider_error"` and retain `verification_error`.
 
 Three cache tiers, coarsest to finest:
 1. **eval-agent state-dir cache** (`cache/verdict_cache.jsonl`, per run+channel,

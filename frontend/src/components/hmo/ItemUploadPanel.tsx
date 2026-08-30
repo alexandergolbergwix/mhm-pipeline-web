@@ -46,7 +46,7 @@ interface ItemUploadPanelProps {
 
 function verdictOverall(ev: AgentEvent): string {
   const v = (ev.verdict ?? {}) as Record<string, unknown>;
-  return String(v.overall ?? "unknown").toLowerCase();
+  return String(v.overall ?? "not verified").toLowerCase();
 }
 
 function verdictLocalId(row: Record<string, unknown>): string {

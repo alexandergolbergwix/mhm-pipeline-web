@@ -144,8 +144,7 @@ def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
             "confidence": row.get("confidence"),
         }
     judge_error = str(row.get("error") or verd_in.get("error") or "").strip()
-    if str(verd_in.get("overall") or "").lower() == "verification_failed":
-        verd_in = normalise_public_verdict({**verd_in, "error": judge_error})
+    verd_in = normalise_public_verdict({**verd_in, "error": judge_error})
     reasoning = str(verd_in.get("reasoning") or "")
     if not reasoning and judge_error:
         # Dropping a falsy reasoning while keeping the axes is what made a judge
@@ -168,6 +167,7 @@ def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
             "overall", "name_ok", "type_ok", "role_ok", "confidence",
             "model", "judged_at", "evaluator",
             "judge_failure", "verification_error",
+            "verification_status",
         )
         if verd_in.get(k) not in (None, "")
     }
@@ -187,6 +187,7 @@ def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
         "schema_version", "judge_id", "evaluator_id", "evaluator",
         "sub_type", "record_id", "control_number", "confidence",
         "cache_key", "judged_at", "agentic",
+        "verification_status",
     ):
         if row.get(k) not in (None, ""):
             out[k] = row[k]

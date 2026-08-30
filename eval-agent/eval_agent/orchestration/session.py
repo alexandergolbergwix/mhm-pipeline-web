@@ -113,6 +113,7 @@ class SessionConfig:
     judge_model: str
     evaluators: list[str]
     api_key: str
+    fallback_model: str = ""
     dry_run: bool = False
     no_cache: bool = False  # skip cache reads (still appends new verdicts)
     # ── Agentic mode (Rule 52 follow-on) ──────────────────────────────
@@ -195,6 +196,17 @@ class SessionConfig:
             parallel = 1
 
         escalate_on = tuple(ag_cfg.get("escalate_on", ["abstain", "partial"]))
+        fallback_model = str(
+            os.environ.get("EVAL_AGENT_FALLBACK_JUDGE")
+            or judge_cfg.get("fallback_model")
+            or "moonshotai/Kimi-K2.5"
+        ).strip()
+        if fallback_model == judge_model:
+            fallback_model = (
+                "deepseek-ai/DeepSeek-V4-Flash"
+                if judge_model == "moonshotai/Kimi-K2.5"
+                else "moonshotai/Kimi-K2.5"
+            )
         auth_cfg = ag_cfg.get("authority", {})
         return cls(
             pipeline_output=Path(args.pipeline_output).expanduser().resolve(),
@@ -204,6 +216,7 @@ class SessionConfig:
             judge_model=judge_model,
             evaluators=evaluators,
             api_key=args.api_key or "",
+            fallback_model=fallback_model,
             dry_run=bool(args.dry_run),
             no_cache=bool(getattr(args, "no_cache", False)),
             mode=mode,
@@ -289,6 +302,8 @@ class Session:
         self._progress_path = progress_path if progress_path is not None else PROGRESS_PATH
         self._schema = _load_schema()
         self._judge: Judge | None = judge  # built lazily in execute() if None
+        self._fallback_judge: Judge | None = None
+        self._fallback_attempted = False
 
         # Agentic loop + per-candidate indexes, built in execute() once the
         # pipeline JSON is loaded. None in linear mode or until execute runs.
@@ -307,6 +322,8 @@ class Session:
         is_pro = _looks_like_pro_model(self.config.judge_model)
         judge_label = f"{self.config.judge_model}" + ("  (Pro tier)" if is_pro else "")
         ui.kv("judge", judge_label)
+        if self.config.fallback_model:
+            ui.kv("fallback judge", self.config.fallback_model)
         ui.kv("threshold", self.config.threshold)
         rpm_label = f"{self.config.rpm} / {self.config.parallel}"
         if is_pro:
@@ -618,18 +635,22 @@ class Session:
                 v = evaluator.parse_verdict(cached, candidate)
                 v.judge_id = self._judge.id
                 v.cache_key = key
-                return v
+                if self._verdict_is_usable(v):
+                    return v
 
         if self.config.mode == "linear":
             return self._judge_linear(evaluator, candidate, prompt, cache_id, key)
         if self.config.mode == "agentic_all":
-            return self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
+            verdict = self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
+            if self._verdict_is_usable(verdict):
+                return verdict
+            return self._judge_fallback(evaluator, candidate, prompt) or verdict
 
         # default gated: cheap tier-1 single-shot, escalate only hard cases.
         response, v1 = self._judge_with_retries(evaluator, candidate, prompt)
         if str(v1.overall).lower() in self.config.escalate_on and self._agent is not None:
             v2 = self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
-            if not v2.error:
+            if self._verdict_is_usable(v2):
                 return v2
             # Tier-2 (agentic) failed — a transport / parse / budget error,
             # NOT a confident "fail" verdict. Rather than return the failed
@@ -649,9 +670,7 @@ class Session:
             )
             retry, v_retry = self._judge_with_retries(evaluator, candidate, enriched)
             if not self._usable_verdict(retry, v_retry):
-                # Both tiers failed — surface the tier-2 failure explicitly.
-                v2.overall = "verification_failed"
-                return v2
+                return self._judge_fallback(evaluator, candidate, prompt) or v2
             v_retry.judge_id = self._judge.id
             v_retry.cache_key = key
             # Cache under the ORIGINAL prompt key so a later run warm-hits
@@ -662,11 +681,14 @@ class Session:
         if self._usable_verdict(response, v1):
             assert response.verdict is not None
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
+            v1.judge_id = self._judge.id
+            v1.cache_key = key
+            return v1
         v1.judge_id = self._judge.id
         v1.cache_key = key
         if response.error:
             v1.error = response.error
-        return v1
+        return self._judge_fallback(evaluator, candidate, prompt) or v1
 
     def _judge_linear(self, evaluator, candidate, prompt, cache_id, key):  # noqa: ANN001
         assert self._judge is not None
@@ -678,17 +700,22 @@ class Session:
         v.cache_key = key
         if response.error:
             v.error = response.error
-        return v
+        if self._usable_verdict(response, v):
+            return v
+        return self._judge_fallback(evaluator, candidate, prompt) or v
 
     def _judge_with_retries(
         self,
         evaluator: Evaluator,
         candidate: Candidate,
         prompt: str,
+        *,
+        judge: Judge | None = None,
     ) -> tuple[JudgeResponse, Verdict]:
         """Retry transport, parse, and schema failures before a public failure."""
-        assert self._judge is not None
-        response = self._judge.judge(prompt=prompt, schema=self._schema)
+        active_judge = judge or self._judge
+        assert active_judge is not None
+        response = active_judge.judge(prompt=prompt, schema=self._schema)
         self._tally_tokens(response.input_tokens, response.output_tokens)
         verdict = evaluator.parse_verdict(response.verdict, candidate)
         for attempt in range(_judge_retries()):
@@ -699,19 +726,78 @@ class Session:
                 f"(attempt {attempt + 1})",
                 flush=True,
             )
-            response = self._judge.judge(prompt=prompt, schema=self._schema)
+            response = active_judge.judge(prompt=prompt, schema=self._schema)
             self._tally_tokens(response.input_tokens, response.output_tokens)
             verdict = evaluator.parse_verdict(response.verdict, candidate)
         return response, verdict
 
+    def _get_fallback_judge(self) -> Judge | None:
+        if self._fallback_attempted:
+            return self._fallback_judge
+        self._fallback_attempted = True
+        if not self.config.fallback_model:
+            return None
+        try:
+            self._fallback_judge = _build_judge_for_model(
+                self.config, self.config.fallback_model,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "fallback judge unavailable model=%s error=%s",
+                self.config.fallback_model, exc,
+            )
+        return self._fallback_judge
+
+    def _judge_fallback(
+        self,
+        evaluator: Evaluator,
+        candidate: Candidate,
+        prompt: str,
+    ) -> Verdict | None:
+        fallback = self._get_fallback_judge()
+        if fallback is None:
+            return None
+        cache_id = f"{fallback.id}::{self.config.mode}"
+        key = VerdictCache.key(judge_id=cache_id, prompt=prompt)
+        if not self.config.no_cache:
+            cached = self._cache.get(judge_id=cache_id, prompt=prompt)
+            if cached is not None:
+                verdict = evaluator.parse_verdict(cached, candidate)
+                verdict.judge_id = fallback.id
+                verdict.cache_key = key
+                if self._usable_verdict(
+                    JudgeResponse(
+                        verdict=cached, raw_text=None, error=None,
+                        judge_id=fallback.id,
+                    ),
+                    verdict,
+                ):
+                    return verdict
+        response, verdict = self._judge_with_retries(
+            evaluator, candidate, prompt, judge=fallback,
+        )
+        if not self._usable_verdict(response, verdict):
+            return None
+        assert response.verdict is not None
+        self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
+        verdict.judge_id = fallback.id
+        verdict.cache_key = key
+        return verdict
+
+    @staticmethod
+    def _verdict_is_usable(verdict: Verdict) -> bool:
+        return not verdict.error and str(verdict.overall).lower() in {
+            "full", "pass", "partial", "fail", "abstain",
+        }
+
     @staticmethod
     def _usable_verdict(response: JudgeResponse, verdict: Verdict) -> bool:
         """Return true only when the provider supplied a substantive verdict."""
-        if response.verdict is None or response.error or verdict.error:
-            return False
-        return str(verdict.overall).lower() in {
-            "full", "pass", "partial", "fail", "abstain",
-        }
+        return (
+            response.verdict is not None
+            and not response.error
+            and Session._verdict_is_usable(verdict)
+        )
 
     def _judge_agentic(self, evaluator, candidate, prompt, cache_id, key):  # noqa: ANN001
         assert self._agent is not None
@@ -729,7 +815,7 @@ class Session:
             # (null when the agentic loop proposed no text fix).
             "suggested_fix": verdict.suggested_fix.to_dict() if verdict.suggested_fix else None,
         }
-        if not verdict.error:
+        if self._verdict_is_usable(verdict):
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=verdict_dict)
         return verdict
 
@@ -822,7 +908,7 @@ def _load_schema() -> dict[str, Any]:
     """
     full = json.loads(VERDICT_SCHEMA_PATH.read_text(encoding="utf-8"))
     verdict = json.loads(json.dumps(full.get("properties", {}).get("verdict", full)))
-    # `verification_failed` and the `unknown` axis value are HARNESS-set, not
+    # `verification_failed` and the `unknown` axis value are harness-set, not
     # judge-emittable, so they are stripped before this becomes a responseSchema —
     # offering the model a way to declare its own check failed invites it
     # (Rule W-158). Ditto the two-way `pass`/`abstain` overalls, which belong to
@@ -835,17 +921,21 @@ def _load_schema() -> dict[str, Any]:
 
 
 def _build_judge(config: SessionConfig) -> Judge:
+    return _build_judge_for_model(config, config.judge_model)
+
+
+def _build_judge_for_model(config: SessionConfig, model: str) -> Judge:
     import os
 
     from eval_agent.client.openai_compat_client import OpenAICompatJudge  # noqa: PLC0415
     from eval_agent.judge_models import resolve_tier1_model  # noqa: PLC0415
 
-    spec = resolve_tier1_model(config.judge_model)
+    spec = resolve_tier1_model(model)
     defaults = _load_defaults().get("judge", {})
     rl = RateLimiter(config.rpm)
 
     if spec.provider == "openai_compat":
-        api_key = config.api_key or os.environ.get(spec.api_key_env, "")
+        api_key = os.environ.get(spec.api_key_env, "")
         if not api_key:
             raise RuntimeError(
                 f"{spec.label} API key required (env {spec.api_key_env})",

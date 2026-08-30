@@ -26,7 +26,7 @@ function cellFilterValues(item: StudioItem, col: ColKey): string[] {
     if (issues.some((i) => i.severity === "error")) return ["error"];
     return ["warn"];
   }
-  if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "unknown"];
+  if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "not verified"];
   if (col === "data_status") return [resolveWikidataItemDataStatus(item)];
   if (col === "upload_outcome") return [item.upload_outcome ?? "never tried"];
   if (col === "approved") {

@@ -73,7 +73,7 @@ async def _persist_wikidata_verdicts_to_overrides(
                 marc_context=marc_ctx if isinstance(marc_ctx, dict) else None,
             )
             summary: dict[str, Any] = {
-                "overall": verdict_body.get("overall") or "unknown",
+                "overall": verdict_body.get("overall") or "abstain",
                 "name_ok": verdict_body.get("name_ok"),
                 "type_ok": verdict_body.get("type_ok"),
                 "role_ok": verdict_body.get("role_ok"),
@@ -89,6 +89,9 @@ async def _persist_wikidata_verdicts_to_overrides(
                 "session_id": None,
                 "evaluator": evaluator_id,
                 "judge_failure": bool(judge_error),
+                "verification_status": (
+                    "provider_error" if judge_error else "judged"
+                ),
                 "verification_error": judge_error,
                 # Recorded, never keyed (Rule W-157): a verdict judged while the
                 # probe was inconclusive must be re-judged once it answers, and

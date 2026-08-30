@@ -53,7 +53,7 @@ function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
     const n = item.shacl_issues?.length ?? 0;
     return [n === 0 ? "ok" : (item.shacl_issues.some((i) => i.severity === "Violation" || i.severity === "Error") ? "error" : "warn")];
   }
-  if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "unknown"];
+  if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "not verified"];
   if (col === "data_status") return [resolveHmoItemDataStatus(item)];
   if (col === "upload_outcome") return [item.upload_outcome ?? "never"];
   if (col === "approved") {

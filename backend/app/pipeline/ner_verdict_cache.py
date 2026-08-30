@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.models.extraction_approval import ExtractionApproval
+from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
 from app.pipeline.inference_cache import canonical_hash
 
 
@@ -68,7 +69,7 @@ def sanitise_stale_ai_verdict(ent: dict[str, Any]) -> dict[str, Any] | None:
         return None
     stored = av.get("cache_key")
     if not stored:
-        return av
+        return normalise_public_verdict(av)
     if str(stored) == entity_dict_verdict_fingerprint(ent):
-        return av
+        return normalise_public_verdict(av)
     return None

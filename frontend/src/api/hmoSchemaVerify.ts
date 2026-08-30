@@ -131,7 +131,7 @@ export function verdictFromAgentEvent(
   );
   return {
     localId,
-    overall: String(verdict.overall ?? "unknown"),
+    overall: String(verdict.overall ?? "abstain"),
     reasoning: String(verdict.reasoning ?? verdict.summary ?? ""),
   };
 }

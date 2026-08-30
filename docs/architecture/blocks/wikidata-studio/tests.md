@@ -8,8 +8,8 @@
   across schema bumps, gloss-agnostic cache keys, fixture keeps value_label
   (Rule W-175).
 - `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` — provider and
-  parse failures render as `unknown`, retain diagnostics, and keep verify jobs
-  `partial` (Rule W-207).
+  parse failures render as `abstain` with provider-error status, retain
+  diagnostics, and keep verify jobs `partial` (Rule W-207 / W-211).
 - `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` and
   `eval-agent/tests/test_gated_retry.py` — live snapshot metadata and retries
   for invalid judge responses (Rule W-210).

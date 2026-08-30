@@ -12,6 +12,7 @@ judge:
   # The verdict cache key includes the judge id, so switching judges
   # invalidates the cache cleanly — no cross-judge contamination.
   id: "gemini-3.5-flash"
+  fallback_model: "moonshotai/Kimi-K2.5"
   endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
   thinking_level: "low"          # "low" | "high" — keep CoT brief for structured tasks
   max_output_tokens: 4096

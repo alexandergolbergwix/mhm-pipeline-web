@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://eval-agent.local/schemas/verdict.v2.json",
   "title": "Eval-agent verdict (v2)",
-  "description": "Verdict v2 extends v1 with an optional suggested_fix field inside the verdict object. Only NER evaluators (person_ner, provenance_ner, contents_ner) may return a non-null fix; genre_classifier always returns null.",
+  "description": "Verdict v2 extends v1 with an optional suggested_fix field and a provider status. Only NER evaluators (person_ner, provenance_ner, contents_ner) may return a non-null fix; genre_classifier always returns null.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -102,10 +102,9 @@
             "partial",
             "fail",
             "pass",
-            "abstain",
-            "verification_failed"
+            "abstain"
           ],
-          "description": "The judge may only emit full / partial / fail; `pass` and `abstain` come from evaluators that grade on a two-way axis, and `verification_failed` is set by the HARNESS when the judge did not answer (Rule W-158). _load_schema() narrows this enum to the judge-emittable values before it becomes a responseSchema, so the model is never offered the harness-only ones."
+      "description": "The public verdict values are full / partial / fail / pass / abstain. The harness uses abstain with verification_status=provider_error when the judge does not answer."
         },
         "reasoning": {
           "type": "string",
@@ -173,6 +172,14 @@
       ],
       "description": "If present, the verdict object is a placeholder and judging failed."
     },
+    "verification_status": {
+      "type": "string",
+      "enum": [
+        "judged",
+        "provider_error"
+      ],
+      "description": "Operational status. provider_error means the app used abstain because the judge did not return a valid assessment."
+    },
     "agentic": {
       "type": "boolean",
       "description": "True when produced by the agentic tool-loop; false or absent for linear single-shot."
@@ -180,7 +187,7 @@
   },
   "allOf": [
     {
-      "description": "A substantive verdict must explain itself. An unexplained fail is not actionable by a curator, and was how a judge failure used to be indistinguishable from a rejection (Rule W-158).",
+        "description": "A substantive verdict must explain itself. An unexplained fail is not actionable by a curator.",
       "if": {
         "properties": {
           "verdict": {

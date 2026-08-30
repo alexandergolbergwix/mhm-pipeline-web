@@ -90,7 +90,7 @@ export function verdictFromAgentEvent(ev: AgentEvent): {localId: string; overall
   if (!localId) return null;
   return {
     localId,
-    overall: String(verdict.overall ?? "unknown"),
+    overall: String(verdict.overall ?? "abstain"),
     reasoning: typeof verdict.reasoning === "string" ? verdict.reasoning : undefined,
   };
 }

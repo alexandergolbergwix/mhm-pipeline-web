@@ -143,6 +143,10 @@ python backend/scripts/analyze_wikidata_verdicts.py \
 - `eval-agent/tests/test_judge_models.py`, `test_openai_compat_judge.py` —
   tier-1 registry + Qubrid OpenAI-compat judge; Kimi `thinking` is a JSON
   object (Rule W-46).
+- `eval-agent/tests/test_judge_failure_verdicts.py` and
+  `eval-agent/tests/test_gated_retry.py` — provider and parse failures become
+  uncached `abstain` rows with `provider_error` status, and the fallback judge
+  receives exhausted primary failures (Rule W-207 / W-210 / W-211).
 - `backend/tests/test_judge_models_router.py`,
   `test_run_job_params_tier_model.py` — `GET /api/judge-models`, credential gates.
 - `backend/tests/unit/test_agent_runner_subprocess_timeout.py` —

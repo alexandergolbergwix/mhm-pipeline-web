@@ -41,9 +41,15 @@ def evaluator():
 
 
 class TestParseVerdictFailures:
-    def test_no_raw_verdict_is_verification_failed_not_fail(self, evaluator) -> None:
+    def test_provider_failure_uses_abstain_as_the_public_verdict(self, evaluator) -> None:
         v = evaluator.parse_verdict(None, _candidate())
-        assert v.overall == "verification_failed"
+        assert v.overall == "abstain"
+        assert v.verification_status == "provider_error"
+
+    def test_no_raw_verdict_is_abstain_not_fail(self, evaluator) -> None:
+        v = evaluator.parse_verdict(None, _candidate())
+        assert v.overall == "abstain"
+        assert v.verification_status == "provider_error"
         assert v.error == "no verdict (judge failure)"
 
     def test_no_raw_verdict_does_not_assert_the_axes(self, evaluator) -> None:
@@ -63,7 +69,7 @@ class TestParseVerdictFailures:
             {"overall": "fail", "name_ok": "no", "type_ok": "no", "reasoning": ""},
             _candidate(),
         )
-        assert v.overall == "verification_failed"
+        assert v.overall == "abstain"
         assert v.error == "verdict missing reasoning"
 
     def test_a_substantive_verdict_is_untouched(self, evaluator) -> None:
@@ -109,17 +115,20 @@ class TestSchemaRequiresAReason:
         })
         jsonschema.validate(record, _schema())
 
-    def test_verification_failed_requires_an_error(self) -> None:
+    def test_provider_error_uses_abstain_and_status(self) -> None:
+        record = self._record({
+            "name_ok": "unknown", "type_ok": "unknown", "role_ok": "n/a",
+            "overall": "abstain", "reasoning": "Judge failure: …",
+        }, verification_status="provider_error")
+        jsonschema.validate(record, _schema())
+
+    def test_legacy_verification_failed_is_not_a_public_schema_value(self) -> None:
         record = self._record({
             "name_ok": "unknown", "type_ok": "unknown", "role_ok": "n/a",
             "overall": "verification_failed", "reasoning": "Judge failure: …",
-        })
+        }, error="no verdict (judge failure)")
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(record, _schema())
-
-        jsonschema.validate(
-            {**record, "error": "no verdict (judge failure)"}, _schema(),
-        )
 
 
 class TestResponseSchemaStaysTight:

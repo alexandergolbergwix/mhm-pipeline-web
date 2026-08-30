@@ -141,9 +141,10 @@ just PATCHes `remove_statements` (Rule W-27). The drawer foreign-accept
 checkbox PATCHes the accept pair. `local_id_for_item` gives the
 stable handle: `item.local_id`/`id`, else `entity_type::<first external id or label>`.
 
-AI judge failures use `overall="unknown"`, `judge_failure=true`, and
-`verification_error`. The read model converts legacy `verification_failed`
-rows before stale-verdict checks. A force rebuild changes the whole-run build
+AI judge failures use `overall="abstain"`,
+`verification_status="provider_error"`, `judge_failure=true`, and
+`verification_error`. The read model converts legacy `unknown` and
+`verification_failed` rows before stale-verdict checks. A force rebuild changes the whole-run build
 cache only; it does not invalidate unchanged per-item verdicts. A changed
 per-item stable fingerprint removes the old verdict. Judge failures never enter
 the shared `ai_verdict` inference cache, so a later verify run can retry them.

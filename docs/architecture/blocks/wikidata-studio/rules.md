@@ -812,14 +812,15 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     attribution, and a primary MARC author MUST outrank an `(מיוחס לו)` author.
     *Why:* Run `48ba6c13` created one fuzzy scribe QID, one manuscript-language
     P1412 claim, one compiler-as-author claim, and one attributed-author merge.
-110. **R110 — Judge failures MUST render as unknown and retain their error (Rule W-207).**
+110. **R110 — Judge failures MUST render as abstain and retain their error (Rule W-207 / W-211).**
     The item read model MUST expose provider and parse failures as
-    `ai_verdict.overall="unknown"` with `judge_failure=true` and a retained
-    `verification_error`. Legacy `verification_failed` rows MUST normalize on
-    read and in the migration. A changed per-item stable fingerprint MUST drop
-    the old verdict; a whole-run build fingerprint MUST not invalidate unchanged
-    items. *Why:* Run `48ba6c13` showed nine provider failures after a force
-    rebuild even though the items had no validation issues.
+    `ai_verdict.overall="abstain"` with
+    `verification_status="provider_error"`, `judge_failure=true`, and a
+    retained `verification_error`. Legacy `unknown` and `verification_failed`
+    rows MUST normalize on read and in the migration. A changed per-item stable
+    fingerprint MUST drop the old verdict; a whole-run build fingerprint MUST
+    not invalidate unchanged items. *Why:* Run `48ba6c13` showed nine provider
+    failures after a force rebuild even though the items had no validation issues.
 111. **R111 — Fingerprints MUST omit volatile metadata and keep semantic dates (Rule W-208).**
     Build and verdict SHA projections MUST remove nested transport timestamps,
     fetch times, request IDs, and audit timestamps. They MUST keep manuscript
@@ -834,8 +835,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     drop inherited `P2093` claims. Regression: `test_hmo_canonical_wikidata.py`
     and `test_wikidata_studio_works.py`.
     *Why:* run `48ba6c13` produced eight partial works because title fragments became author strings.*
-113. **R113 — Wikidata verify rows MUST preserve judge metadata and retry invalid output (Rule W-210).**
+113. **R113 — Wikidata verify rows MUST preserve judge metadata and retry invalid output (Rule W-210 / W-211).**
     Live job snapshots MUST retain the envelope fields required by the review
     table. The judge MUST retry empty or malformed provider responses before it
-    exposes an `unknown` judge failure. *Why:* the live modal showed blank
+    exposes an `abstain` provider-error row. *Why:* the live modal showed blank
     metadata and transient provider failures as incomplete verdict rows.

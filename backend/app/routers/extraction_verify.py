@@ -541,6 +541,8 @@ async def _persist_ai_verdicts_to_entities(
             "cache_key":     cache_key,
             "session_id":    session_id,
             "evaluator":     v.get("evaluator_id") or v.get("evaluator"),
+            "judge_failure": bool(judge_error),
+            "verification_status": "provider_error" if judge_error else "judged",
         }
         if judge_error:
             # A judge that did not answer must not read as a substantive

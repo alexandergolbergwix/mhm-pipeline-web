@@ -106,22 +106,40 @@ def sanitise_stored_verdict(
     return None
 
 
-# A judge failure is not a verdict (Rule W-158).
+# A provider failure uses abstain as a public no-decision verdict. The old
+# value remains accepted so old rows can migrate safely (Rule W-211).
 JUDGE_FAILURE_OVERALL = "verification_failed"
-_SUBSTANTIVE_OVERALLS = frozenset({"full", "pass", "partial", "fail"})
+VERIFICATION_STATUS_JUDGED = "judged"
+VERIFICATION_STATUS_PROVIDER_ERROR = "provider_error"
+_PUBLIC_OVERALLS = frozenset({"full", "pass", "partial", "fail", "abstain"})
 
 
 def normalise_public_verdict(verdict: dict[str, Any]) -> dict[str, Any]:
-    """Expose judge failures as unknown while retaining diagnostic metadata."""
-    if str(verdict.get("overall") or "").strip().lower() != JUDGE_FAILURE_OVERALL:
-        return verdict
+    """Return a verdict with a public overall value and diagnostic status."""
+    public_verdict = {
+        key: value
+        for key, value in verdict.items()
+        if key != "public_verdict_migration"
+    }
+    overall = str(public_verdict.get("overall") or "").strip().lower()
+    is_failure = (
+        overall in {JUDGE_FAILURE_OVERALL, "unknown"}
+        or bool(public_verdict.get("judge_failure"))
+        or str(public_verdict.get("verification_status") or "").strip().lower()
+        == VERIFICATION_STATUS_PROVIDER_ERROR
+    )
+    if not is_failure and overall in _PUBLIC_OVERALLS:
+        return public_verdict
     error = str(
-        verdict.get("verification_error") or verdict.get("error") or ""
+        public_verdict.get("verification_error")
+        or public_verdict.get("error")
+        or ""
     ).strip()
     return {
-        **verdict,
-        "overall": "unknown",
+        **public_verdict,
+        "overall": "abstain",
         "judge_failure": True,
+        "verification_status": VERIFICATION_STATUS_PROVIDER_ERROR,
         "verification_error": error or None,
     }
 
@@ -130,7 +148,7 @@ def normalise_verdict_body(verdict: dict[str, Any]) -> tuple[dict[str, Any], str
     """Split a raw eval-agent verdict envelope into a body and a judge error.
 
     Returns ``(body, judge_error)``. When the judge did not actually answer, the
-    body reports ``overall="unknown"`` with ``judge_failure`` and
+    body reports ``overall="abstain"`` with ``judge_failure`` and
     ``verification_error`` instead of the substantive ``fail / no / no`` the
     eval-agent dataclass defaults to.
 
@@ -145,13 +163,23 @@ def normalise_verdict_body(verdict: dict[str, Any]) -> tuple[dict[str, Any], str
     envelope_error = str((verdict or {}).get("error") or "").strip()
     overall = str(body.get("overall") or "").strip()
     reasoning = str(body.get("reasoning") or "").strip()
+    status = str(
+        body.get("verification_status")
+        or (verdict or {}).get("verification_status")
+        or ""
+    ).strip().lower()
 
     reason = ""
     if envelope_error:
         reason = envelope_error
-    elif not overall or overall == "unknown":
+    elif body.get("judge_failure") or status == VERIFICATION_STATUS_PROVIDER_ERROR:
+        reason = str(
+            body.get("verification_error")
+            or "judge provider did not return a valid verdict"
+        ).strip()
+    elif not overall or overall in {"unknown", JUDGE_FAILURE_OVERALL}:
         reason = "judge returned no overall verdict"
-    elif overall in _SUBSTANTIVE_OVERALLS and not reasoning:
+    elif overall in _PUBLIC_OVERALLS - {"abstain"} and not reasoning:
         reason = "judge returned no reasoning"
 
     if not reason:
@@ -159,11 +187,12 @@ def normalise_verdict_body(verdict: dict[str, Any]) -> tuple[dict[str, Any], str
 
     return {
         **body,
-        "overall": "unknown",
+        "overall": "abstain",
         "name_ok": "unknown",
         "type_ok": "unknown",
         "role_ok": body.get("role_ok") or "n/a",
         "judge_failure": True,
+        "verification_status": VERIFICATION_STATUS_PROVIDER_ERROR,
         "verification_error": reason,
         "reasoning": (
             f"Judge failure: {reason}. This is NOT an assessment of the item — "
@@ -178,6 +207,9 @@ def is_judge_failure(body: Any) -> bool:
         isinstance(body, dict)
         and (
             bool(body.get("judge_failure"))
-            or str(body.get("overall") or "") == JUDGE_FAILURE_OVERALL
+            or str(body.get("overall") or "").strip().lower()
+            in {JUDGE_FAILURE_OVERALL, "unknown"}
+            or str(body.get("verification_status") or "").strip().lower()
+            == VERIFICATION_STATUS_PROVIDER_ERROR
         )
     )

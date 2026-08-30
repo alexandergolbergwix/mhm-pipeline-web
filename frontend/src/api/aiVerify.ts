@@ -143,13 +143,12 @@ export interface VerdictsPage {
     partial: number;
     fail: number;
     abstain: number;
-    unknown: number;
   };
 }
 
 export interface VerdictsParams {
   q?: string;
-  overall?: "pass" | "partial" | "fail" | "abstain" | "unknown";
+  overall?: "pass" | "full" | "partial" | "fail" | "abstain";
   limit?: number;
   offset?: number;
 }

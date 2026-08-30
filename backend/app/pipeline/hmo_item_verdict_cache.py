@@ -6,10 +6,10 @@ from typing import Any
 
 from app.pipeline.ai_verdict_cache_common import (
     normalise_claim_rows,
+    normalise_public_verdict,
     normalise_shacl_issues,
     sanitise_stored_verdict,
 )
-
 from app.pipeline.inference_cache import canonical_hash
 
 # Bumped to w124_v1 with Rule W-124 (shared WPM skill refresh). Prior: w104_v1.
@@ -107,7 +107,7 @@ def sanitise_stale_hmo_item_verdict(
     if not isinstance(av, dict) or not av:
         return None
     if not av.get("cache_key"):
-        return av
+        return normalise_public_verdict(av)
     model = judge_model or hmo_item_verdict_judge_model(av)
     eval_id = str(av.get("evaluator") or evaluator)
     expected = hmo_item_verdict_input_fingerprint(
@@ -116,4 +116,5 @@ def sanitise_stale_hmo_item_verdict(
         evaluator=eval_id,
         marc_context=marc_context,
     )
-    return sanitise_stored_verdict(av, expected_fingerprint=expected)
+    current = sanitise_stored_verdict(av, expected_fingerprint=expected)
+    return normalise_public_verdict(current) if current is not None else None

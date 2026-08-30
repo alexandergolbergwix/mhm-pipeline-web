@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-210)
+## Architectural rules (W-1…W-211)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -157,10 +157,11 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-204** — Work items MUST keep one safe author representation; a safe P50 MUST replace a duplicate P2093
 - **W-205** — Ledger QID hydration MUST not invalidate stored AI verdicts
 - **W-206** — Wikidata person and work claims MUST use role-specific, heading-matched source evidence
-- **W-207** — Judge failures MUST render as unknown and preserve diagnostics
+- **W-207** — Legacy judge failures MUST normalize to abstain and preserve diagnostics
 - **W-208** — Fingerprints MUST exclude volatile metadata but retain semantic dates
 - **W-209** — Work author strings MUST use structured source evidence
 - **W-210** — Live verdict rows MUST preserve metadata and retry invalid judge output
+- **W-211** — Public AI verdicts MUST use a closed outcome set; provider errors use abstain
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

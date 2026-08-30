@@ -5,7 +5,7 @@ When the agentic (tier-2) judge errors out (transport / parse / budget),
 block — the full MARC record (beyond the narrow per-evaluator projection)
 plus the record's other NER entities — instead of returning the failed
 verdict. If the enriched retry also fails, the verdict is marked
-``verification_failed``.
+``abstain`` with ``verification_status="provider_error"``.
 """
 from __future__ import annotations
 
@@ -134,6 +134,28 @@ class _RetryInvalidJudge:
         return _resp("full")
 
 
+class _FallbackJudge:
+    id = "fallback-test"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def judge(self, *, prompt: str, schema, timeout: int = 120) -> JudgeResponse:  # noqa: ANN001
+        self.calls += 1
+        return _resp("full")
+
+
+class _AlwaysFailJudge:
+    id = "primary-fail-test"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def judge(self, *, prompt: str, schema, timeout: int = 120) -> JudgeResponse:  # noqa: ANN001
+        self.calls += 1
+        return _resp("full", error="HTTP 400", verdict_present=False)
+
+
 def test_invalid_tier1_response_is_retried_before_failure(
     tmp_path: Path,
 ) -> None:
@@ -147,7 +169,24 @@ def test_invalid_tier1_response_is_retried_before_failure(
     assert judge.calls == 2
 
 
-def test_retry_also_failing_marks_verification_failed(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+def test_fallback_judge_replaces_exhausted_primary_failure(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("EVAL_AGENT_JUDGE_RETRY", "0")
+    primary = _AlwaysFailJudge()
+    fallback = _FallbackJudge()
+    s = _session(tmp_path, primary)
+    s.config.fallback_model = fallback.id
+    s._fallback_judge = fallback
+    s._fallback_attempted = True
+
+    verdict = s._judge_one(PersonNERevaluator(), _candidate())
+
+    assert verdict.overall == "full"
+    assert verdict.judge_id == "fallback-test"
+    assert primary.calls == 1
+    assert fallback.calls == 1
+
+
+def test_retry_also_failing_marks_provider_error(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.setenv("EVAL_AGENT_JUDGE_RETRY", "1")
     judge = _ScriptedJudge(_resp("full", error="retry transport error", verdict_present=False))
     s = _session(tmp_path, judge)
@@ -157,5 +196,6 @@ def test_retry_also_failing_marks_verification_failed(tmp_path: Path, monkeypatc
 
     verdict = s._judge_one(PersonNERevaluator(), _candidate())
 
-    assert verdict.overall == "verification_failed"
+    assert verdict.overall == "abstain"
+    assert verdict.verification_status == "provider_error"
     assert len(judge.prompts) == 3

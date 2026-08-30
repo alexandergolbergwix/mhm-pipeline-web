@@ -33,7 +33,7 @@
 | Check whether a CREATE candidate already exists on Wikidata | [Wikidata Studio R61](blocks/wikidata-studio/rules.md) + Rule W-139 + `wikidata_duplicate_probe.py` |
 | Fix `unsupported by MARC` verdicts on evidenced claims | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `marc_verify_context.RAW_TAG_FALLBACK` |
 | Debug manuscripts sharing a label/shelfmark or emitting several P3959 | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `identity_control_number` |
-| Debug AI verdicts persisted but showing `—` / unknown in the review table | [Wikidata Studio R64–R68 / R72](blocks/wikidata-studio/rules.md) + Rules W-136/W-148/W-149/W-150/W-151/W-152/W-169 + `wikidata_item_views.py` / `wikidata_verdict_cache.py` |
+| Debug AI verdicts persisted but showing `—` / not verified in the review table | [Wikidata Studio R64–R68 / R72 / R110 / R113](blocks/wikidata-studio/rules.md) + Rules W-136/W-148/W-149/W-150/W-151/W-152/W-169/W-207/W-210/W-211 + `wikidata_item_views.py` / `wikidata_verdict_cache.py` |
 | Analyze partial/fail AI verdicts with Codex | [eval-agent](blocks/eval-agent/README.md) + [Wikidata Studio R25](blocks/wikidata-studio/rules.md) for item/QID evidence |
 | Audit Wikidata export quality/failure counts | [wikidata-studio](blocks/wikidata-studio/README.md) — run `check_wikidata_export_quality.py` |
 | Audit a test.wikidata.org upload for live readiness | [wikidata-studio skills](blocks/wikidata-studio/skills.md) — `audit_test_wikidata_upload.py` (natives + test wiki entities + live identity clash; do not copy test Q/P) |

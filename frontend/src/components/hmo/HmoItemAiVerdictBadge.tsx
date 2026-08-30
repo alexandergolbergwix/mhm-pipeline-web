@@ -12,8 +12,12 @@ function verdictTitle(overall: string | undefined): string {
   if (o === "abstain") return "Why AI is unsure";
   if (o === "partial") return "Why AI marked this as partly correct";
   if (o === "full" || o === "pass") return "Why AI thinks this looks right";
-  if (o === "verification_failed") return "AI verification failed";
+  if (o === "verification_failed") return "AI provider error";
   return "AI verdict details";
+}
+
+function isProviderError(verdict: HmoAiVerdict): boolean {
+  return verdict.verification_status === "provider_error" || verdict.judge_failure === true;
 }
 
 function formatWhen(at: string | null | undefined): string | null {
@@ -46,7 +50,7 @@ export function HmoItemAiVerdictBadge({verdict, localId}: HmoItemAiVerdictBadgeP
       <button
         type="button"
         className="cursor-pointer text-left"
-        title="Click for full AI explanation"
+        title={isProviderError(v) ? "Provider error — click for details" : "Click for full AI explanation"}
         data-testid={localId ? `hmo-item-ai-verdict-${localId}` : undefined}
         onClick={(e) => {
           e.stopPropagation();
@@ -59,7 +63,7 @@ export function HmoItemAiVerdictBadge({verdict, localId}: HmoItemAiVerdictBadgeP
         <ClickDetailPopover
           x={popover.x}
           y={popover.y}
-          title={verdictTitle(v.overall)}
+          title={isProviderError(v) ? "AI provider error" : verdictTitle(v.overall)}
           testId={localId ? `hmo-item-ai-verdict-detail-${localId}` : undefined}
           panelClassName="w-[min(420px,calc(100vw-1.5rem))] max-h-[min(420px,70vh)]"
           onClose={() => setPopover(null)}

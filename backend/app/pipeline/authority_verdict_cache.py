@@ -6,6 +6,7 @@ from typing import Any
 
 from app.models.run import AuthorityMatch
 from app.pipeline.ai_verdict_cache_common import (
+    normalise_public_verdict,
     normalise_string_list,
     sanitise_stored_verdict,
 )
@@ -111,7 +112,8 @@ def sanitise_stale_authority_verdict(
         marc_context=marc_context,
         marc_record=marc_record,
     )
-    return sanitise_stored_verdict(stored, expected_fingerprint=expected)
+    current = sanitise_stored_verdict(stored, expected_fingerprint=expected)
+    return normalise_public_verdict(current) if current is not None else None
 
 
 def authority_payload_for_api(
@@ -129,5 +131,5 @@ def authority_payload_for_api(
     if cleaned is None:
         payload.pop("ai_verdict", None)
     else:
-        payload["ai_verdict"] = cleaned
+        payload["ai_verdict"] = normalise_public_verdict(cleaned)
     return payload

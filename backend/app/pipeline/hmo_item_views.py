@@ -12,6 +12,7 @@ from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.hmo_studio_item_override import HmoStudioItemOverride
 from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
 from app.pipeline.hmo_item_merge import apply_hmo_item_override, override_row_to_dict
 from app.pipeline.hmo_item_shacl import item_has_blocking_shacl
 from app.pipeline.hmo_item_verdict_cache import sanitise_stale_hmo_item_verdict
@@ -85,7 +86,11 @@ async def fetch_merged_hmo_items(
 
         last_write = latest_writes.get(source_uri)
 
-        ai_verdict = ov_row.ai_verdict if ov_row else None
+        ai_verdict = (
+            normalise_public_verdict(ov_row.ai_verdict)
+            if ov_row and isinstance(ov_row.ai_verdict, dict)
+            else None
+        )
         shacl_issues = shacl_report.get(local_id) or []
         row = {
             **merged,

@@ -12,6 +12,8 @@
 - `backend/tests/unit/test_extraction_auto_approve.py` — auto-approve predicate
 - `backend/tests/test_extraction_entities_cache.py`, `test_extraction_entity_cache_invalidation.py` — entities ETag + invalidation
 - `backend/tests/test_extraction_verify_router.py`, `test_extraction_verify_suggested_fix.py` — NER verify flow (Rules W-17/W-18)
+- `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` — shared
+  provider-error normalization for persisted NER verdicts (Rule W-211)
 - `frontend/e2e/extraction-review.spec.ts`, `extraction-cache.spec.ts`, `extraction-autofix.spec.ts` — click-path coverage of the review surface (Rule W-19)
 
 - `scripts.audit_mapping_coverage` is the scale check for the full MARC corpus:

@@ -91,6 +91,8 @@ def count_judge_failures(verdicts: list[dict[str, Any]]) -> int:
         if (
             str(body.get("overall") or "") == JUDGE_FAILURE_OVERALL
             or body.get("judge_failure") is True
+            or body.get("verification_status") == "provider_error"
+            or verdict.get("verification_status") == "provider_error"
             or verdict.get("error")
         ):
             total += 1

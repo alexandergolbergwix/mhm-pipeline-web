@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
+from app.cache.scoped_cache import scoped_cache_get, scoped_cache_lookup_or_call
 from app.crypto import secrets as secrets_mod
 from app.db import get_session
 from app.models.api_key import ApiKey
@@ -51,10 +52,8 @@ from app.models.event import (
 from app.models.extraction_approval import ExtractionApproval
 from app.models.run import RunRecord
 from app.pipeline.agent_runner import AgentEvent, sse_stream
+from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
 from app.pipeline.extraction import ExtractionEvent, extract_entities_stream
-from app.pipeline.marc_structured_index import MarcStructuredIndex
-from app.pipeline.ner_verdict_cache import sanitise_stale_ai_verdict
-from app.cache.scoped_cache import scoped_cache_get, scoped_cache_lookup_or_call
 from app.pipeline.extraction_entities_cache import (
     ENTITIES_CACHE_KIND,
     compute_entities_fingerprint,
@@ -62,6 +61,8 @@ from app.pipeline.extraction_entities_cache import (
     entities_etag,
     invalidate_entities_cache,
 )
+from app.pipeline.marc_structured_index import MarcStructuredIndex
+from app.pipeline.ner_verdict_cache import sanitise_stale_ai_verdict
 from app.routers.runs import _lookup_run_with_access
 from app.versioning import apply_event
 
@@ -503,14 +504,16 @@ def _entity_id(*,
     Used as both the on-disk content hash and the route-param id.
     Round-trips losslessly through ``_parse_entity_id``.
     """
-    import base64, json as _json   # noqa: PLC0415
+    import base64  # noqa: PLC0415
+    import json as _json
     payload = _json.dumps([control_number, source, text, int(start), int(end)],
                             ensure_ascii=False, separators=(",", ":"))
     return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
 
 
 def _parse_entity_id(eid: str) -> tuple[str, str, str, int, int]:
-    import base64, json as _json   # noqa: PLC0415
+    import base64  # noqa: PLC0415
+    import json as _json
     pad = "=" * (-len(eid) % 4)
     raw = base64.urlsafe_b64decode((eid + pad).encode("ascii")).decode("utf-8")
     parts = _json.loads(raw)
@@ -1208,7 +1211,10 @@ async def patch_entity(
         "effective_text": eff_text,
         "effective_type": eff_type,
         "effective_role": eff_role,
-        "ai_verdict":     row.ai_verdict,
+        "ai_verdict":     (
+            normalise_public_verdict(row.ai_verdict)
+            if isinstance(row.ai_verdict, dict) else None
+        ),
     }
 
 

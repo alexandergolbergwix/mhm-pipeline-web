@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.item_override import WikidataItemOverride
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD, TARGET_ITEM
 from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
 from app.pipeline.hmo_canonical_wikidata import filter_public_wikidata_items
 from app.pipeline.marc_verify_context import load_run_marc_records
 from app.pipeline.wikidata_item_merge import apply_wikidata_item_override, override_row_to_dict
@@ -265,6 +266,10 @@ def slim_ai_verdict_for_list(
         value = ai_verdict.get(key)
         if value not in (None, ""):
             slim[key] = value
+    for key in ("verification_status", "verification_error", "judge_failure"):
+        value = ai_verdict.get(key)
+        if value not in (None, ""):
+            slim[key] = value
     if isinstance(fixes, list) and fixes:
         slim["has_suggested_fixes"] = True
     return slim or None
@@ -278,8 +283,10 @@ def trim_studio_list_item(item: dict[str, Any]) -> dict[str, Any]:
         row["statement_count"] = len(statements)
     elif item.get("statement_count") is not None:
         row["statement_count"] = item.get("statement_count")
+    stored_verdict = item.get("ai_verdict")
     verdict = slim_ai_verdict_for_list(
-        item.get("ai_verdict") if isinstance(item.get("ai_verdict"), dict) else None,
+        normalise_public_verdict(stored_verdict)
+        if isinstance(stored_verdict, dict) else None,
     )
     if verdict is not None:
         row["ai_verdict"] = verdict
@@ -309,7 +316,11 @@ def _merge_one_wikidata_item(
     last_write = latest_writes.get(local_id)
     validation_issues = list(merged.get("validation_issues") or [])
 
-    ai_verdict = ov_row.ai_verdict if ov_row else None
+    ai_verdict = (
+        normalise_public_verdict(ov_row.ai_verdict)
+        if ov_row and isinstance(ov_row.ai_verdict, dict)
+        else None
+    )
     row: dict[str, Any] = {
         **merged,
         "local_id": local_id,

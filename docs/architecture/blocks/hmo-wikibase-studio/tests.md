@@ -73,6 +73,9 @@
   `test_wikibase_user_access.py` — writer, OAuth gate, audit, provisioning.
 - `backend/tests/unit/test_hmo_schema_verify.py` — cached-verdict filtering for
   the eval-agent fixture.
+- `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` — shared verify
+  contract: provider failures use `abstain` with `provider_error`, not
+  `unknown` (Rule W-211).
 - `frontend/e2e/hmo-wikibase-items.spec.ts` — items review UI click paths,
   incl. the merged single-page layout (lifecycle bar with rebuild/reupload
   controls always above the table, data status column),

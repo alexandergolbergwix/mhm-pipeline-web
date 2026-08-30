@@ -186,8 +186,10 @@ async def get_cached_schema_verdicts(
         if not local_id:
             continue
         verdict = hit.get("verdict") or {} if isinstance(hit, dict) else {}
+        from app.pipeline.ai_verdict_cache_common import normalise_public_verdict  # noqa: PLC0415
+        verdict = normalise_public_verdict(verdict)
         out[local_id] = {
-            "overall": verdict.get("overall") or "unknown",
+            "overall": verdict.get("overall") or "abstain",
             "name_ok": None,
             "type_ok": None,
             "role_ok": None,

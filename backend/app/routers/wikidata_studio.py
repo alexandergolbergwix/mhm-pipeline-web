@@ -1339,8 +1339,10 @@ async def get_cached_wikidata_item_verdicts(
         if hit is None:
             continue
         verdict = hit.get("verdict") or {} if isinstance(hit, dict) else {}
+        from app.pipeline.ai_verdict_cache_common import normalise_public_verdict  # noqa: PLC0415
+        verdict = normalise_public_verdict(verdict)
         out[local_id] = {
-            "overall": verdict.get("overall") or "unknown",
+            "overall": verdict.get("overall") or "abstain",
             "reasoning": verdict.get("reasoning"),
             "model": hit.get("judge_id") if isinstance(hit, dict) else None,
             "evaluator": (hit.get("evaluator") if isinstance(hit, dict) else None) or "wikidata_item",

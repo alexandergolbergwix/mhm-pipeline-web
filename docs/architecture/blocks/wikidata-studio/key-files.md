@@ -23,7 +23,8 @@
 | `backend/app/pipeline/wikidata_live_native_hygiene.py` | W-194 / W-196: clear false live QIDs; coerce monolingualtext; omit implausible P2048/P2049; rewrite `__LOCAL:` |
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-source evidence packs: MARC slice, per-claim `claim_sources` provenance, offline `value_labels`, VIAF/Mazal/HMO channels |
 | `backend/app/pipeline/wikidata_verdict_cache.py` | Verdict fingerprints, claims-fingerprint sticky-full helpers, volatile-metadata stripping, legacy judge-failure normalization, schema `w175_v1` (W-171…W-175 / W-207 / W-208) |
-| `backend/app/migrations/versions/0038_unknown_judge_failures.py` | Convert legacy provider-failure verdicts to public `unknown` rows while preserving diagnostics (W-207) |
+| `backend/app/migrations/versions/0038_unknown_judge_failures.py` | Historical migration that converted provider-failure verdicts to `unknown` rows (superseded by W-211) |
+| `backend/app/migrations/versions/0039_public_abstain_provider_errors.py` | Convert legacy `unknown` / `verification_failed` rows to `abstain` with provider-error status and a marked, reversible migration (W-211) |
 | `backend/app/pipeline/wikidata_verify_scope.py` | Shared verify cache partitioner + sticky-full (W-167 / W-171) |
 | `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125); recover trusted person IDs before the W-154 omit gate (W-188); rewrite merged local references to canonical IDs (W-203); normalize duplicate work author claims (W-204) |
 | `backend/app/pipeline/wikidata_qid_ledger.py` | Global `wikibase_entity_mappings` ledger (`wikidata:` keys) — adopt + idempotent upload |

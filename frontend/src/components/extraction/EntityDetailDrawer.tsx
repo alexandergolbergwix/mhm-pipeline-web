@@ -470,10 +470,9 @@ function AiVerdictCard({ entity }: { entity: Entity }) {
     partial:             { label: "Partly",       bg: "rgba(253,224,71,0.18)",  fg: "#fde047" },
     fail:                { label: "Wrong",        bg: "rgba(248,113,113,0.18)", fg: "#fca5a5" },
     abstain:             { label: "Unsure",       bg: "rgba(255,255,255,0.06)", fg: "var(--muted)" },
-    verification_failed: { label: "Check failed", bg: "rgba(253,186,116,0.18)", fg: "#fb923c" },
-    unknown:             { label: "—",            bg: "transparent",            fg: "var(--muted)" },
+    verification_failed: { label: "Provider error", bg: "rgba(253,186,116,0.18)", fg: "#fb923c" },
   };
-  const t = tone[overall] ?? tone.unknown;
+  const t = tone[overall] ?? tone.abstain;
   const sub = (label: string, val: unknown) => {
     const b = typeof val === "boolean" ? val : null;
     const glyph = b === true ? "✓" : b === false ? "✗" : "—";

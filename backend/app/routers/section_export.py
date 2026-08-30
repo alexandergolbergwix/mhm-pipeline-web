@@ -49,6 +49,7 @@ from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.pipeline import wikidata_studio as ws_pipeline
+from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
 from app.pipeline.rdf_build import rdf_output_path_for_run
 from app.routers.runs import _lookup_run_with_access
 
@@ -86,7 +87,10 @@ _EXTRACTION_CSV_FIELDS = _EXTRACTION_JSON_FIELDS
 
 
 def _extraction_row(r: ExtractionApproval) -> dict[str, Any]:
-    verdict = r.ai_verdict or {}
+    verdict = (
+        normalise_public_verdict(r.ai_verdict)
+        if isinstance(r.ai_verdict, dict) else {}
+    )
     return {
         "id": str(r.id),
         "control_number": r.control_number,
@@ -397,7 +401,10 @@ def _wikidata_csv_row(item: dict[str, Any]) -> dict[str, Any]:
     labels = item.get("labels") or {}
     descs = item.get("descriptions") or {}
     claims = item.get("claims") or item.get("statements") or []
-    verdict = item.get("ai_verdict") if isinstance(item.get("ai_verdict"), dict) else {}
+    verdict = (
+        normalise_public_verdict(item["ai_verdict"])
+        if isinstance(item.get("ai_verdict"), dict) else {}
+    )
     p31 = next(
         (c.get("value") or c.get("value_id") or "" for c in claims
          if (c.get("property") or c.get("property_id") or "").lstrip("P") == "31"),

@@ -87,8 +87,7 @@ export interface VerdictsTableProps {
 }
 
 
-/** An unknown verdict means the judge did not provide an assessment (Rule W-158). */
-type Overall = "pass" | "full" | "partial" | "fail" | "abstain" | "unknown";
+type Overall = "pass" | "full" | "partial" | "fail" | "abstain";
 
 type SortKey = "record" | "evaluator" | "entity" | "verdict" | "confidence";
 
@@ -204,8 +203,8 @@ export function VerdictsTable(props: VerdictsTableProps) {
     const params: Parameters<typeof AiVerify.results>[1] = { limit: 200, offset: 0 };
     if (debouncedSearch.trim()) params.q = debouncedSearch.trim();
     if (overallFilter !== "all") {
-      params.overall = overallFilter as
-        "pass" | "partial" | "fail" | "abstain" | "unknown";
+        params.overall = overallFilter as
+        "pass" | "partial" | "fail" | "abstain";
     }
     AiVerify.results(runId, params)
       .then((page) => {
@@ -232,7 +231,7 @@ export function VerdictsTable(props: VerdictsTableProps) {
   const counts = useMemo(() => {
     if (useServer && serverCounts) return serverCounts;
     const c: Record<string, number> = {
-      pass: 0, partial: 0, fail: 0, abstain: 0, unknown: 0,
+      pass: 0, partial: 0, fail: 0, abstain: 0,
     };
     for (const ev of rows) {
       const o = overall(ev);
@@ -532,6 +531,11 @@ function Row({
 }) {
   const cand = (ev.candidate ?? {}) as Record<string, unknown>;
   const v = (ev.verdict ?? {}) as Record<string, unknown>;
+  const providerError = (
+    ev.verification_status === "provider_error"
+    || v.verification_status === "provider_error"
+    || v.judge_failure === true
+  );
   const expandedColspan = hasFixColumn ? 10 : 9;
   return (
     <>
@@ -563,7 +567,9 @@ function Row({
             <span className="font-mono">{recordId(ev)}</span>
           )}
         </td>
-        <td className="py-2 pr-3"><VerdictPill overall={o} /></td>
+        <td className="py-2 pr-3">
+          <VerdictPill overall={o} providerError={providerError} />
+        </td>
         <td className="py-2 pr-3">
           <div className="flex gap-1">
             <SubPill label="name" value={String(v.name_ok ?? "")} />
@@ -572,7 +578,9 @@ function Row({
           </div>
         </td>
         <td className="py-2 pr-3 font-mono">
-          {fmtConf(ev.confidence ?? v.confidence)} <span className="muted">/ {fmtConf(cand.model_confidence)}</span>
+          {providerError ? "— / —" : <>
+            {fmtConf(ev.confidence ?? v.confidence)} <span className="muted">/ {fmtConf(cand.model_confidence)}</span>
+          </>}
         </td>
         <td className="py-2 pr-3 hidden md:table-cell muted font-mono text-[10px]">
           {String(ev.judge_id ?? v.judge_id ?? v.model ?? "")}
@@ -764,17 +772,16 @@ function FilterChip({
 }
 
 
-function VerdictPill({ overall: o }: { overall: Overall }) {
+function VerdictPill({ overall: o, providerError }: { overall: Overall; providerError?: boolean }) {
   const tone = overallTone(o);
   const glyph =
     o === "pass" || o === "full" ? "✓"
     : o === "partial" ? "~"
     : o === "fail" ? "✗"
-    : o === "abstain" ? "?"
-    : "—";
+    : "?";
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${tone}`}
-          title={o}>
+          title={providerError ? "Provider error — run Verify with AI again" : o}>
       {glyph} {o}
     </span>
   );
@@ -805,7 +812,7 @@ function overall(ev: AgentEvent): Overall {
   const o = String(v.overall ?? ev.overall ?? "").toLowerCase();
   if (o === "full" || o === "pass") return "pass";
   if (o === "partial" || o === "fail" || o === "abstain") return o as Overall;
-  return "unknown";
+  return "abstain";
 }
 
 
@@ -813,7 +820,6 @@ function overallTone(o: Overall): string {
   return o === "pass" || o === "full" ? "text-biu-sky"
        : o === "partial" ? "text-warn"
        : o === "fail"    ? "text-danger"
-       : o === "abstain" ? "muted"
        : "muted";
 }
 

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.pipeline.ai_verdict_cache_common import normalise_string_list, sanitise_stored_verdict
+from app.pipeline.ai_verdict_cache_common import (
+    normalise_public_verdict,
+    normalise_string_list,
+    sanitise_stored_verdict,
+)
 from app.pipeline.inference_cache import canonical_hash
 
 HMO_SCHEMA_VERDICT_SCHEMA = "w50_v1"
@@ -57,4 +61,5 @@ def sanitise_stale_schema_verdict(
     model = judge_model or str(stored.get("model") or "gemini-3.5-flash")
     eval_id = str(stored.get("evaluator") or evaluator)
     expected = schema_verdict_input_fingerprint(entry, model, evaluator=eval_id)
-    return sanitise_stored_verdict(stored, expected_fingerprint=expected)
+    current = sanitise_stored_verdict(stored, expected_fingerprint=expected)
+    return normalise_public_verdict(current) if current is not None else None

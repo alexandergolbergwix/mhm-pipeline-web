@@ -54,6 +54,7 @@ from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, Run, RunRecord
 from app.models.user import User
+from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
 
 router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
 
@@ -298,7 +299,10 @@ async def export_project(
                 "approved": r.approved,
                 "approved_by_email": email_map.get(r.approved_by) if r.approved_by else None,
                 "approved_at": r.approved_at,
-                "ai_verdict": r.ai_verdict,
+                "ai_verdict": (
+                    normalise_public_verdict(r.ai_verdict)
+                    if isinstance(r.ai_verdict, dict) else None
+                ),
                 "ai_verdict_at": r.ai_verdict_at,
                 "created_at": r.created_at,
                 "updated_at": r.updated_at,

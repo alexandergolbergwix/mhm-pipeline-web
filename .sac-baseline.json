@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "entries": [
+    {
+      "fingerprint": "sha256:050a1528886b07667204edf2bda7f537",
+      "path": "backend/app/pipeline/verify_session_store.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed job-kind identifier; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:5551a0b4cd318765079c6fa0f5a35e1e",
+      "path": "backend/app/routers/ai_verify.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:e28d4c6f60afe0501ea3294a8f04bef0",
+      "path": "backend/app/routers/ai_verify.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:3b4bbb368915d4068651d41b8b3099ed",
+      "path": "backend/app/routers/ai_verify.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:c8cc33e62cc265b707a04691bec099f3",
+      "path": "backend/app/routers/export.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:70d79fcdd59027f45faded91a039ebca",
+      "path": "backend/app/routers/extraction.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:0500bcc3f2b0efc87c4773942ec77fe4",
+      "path": "backend/app/routers/extraction.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:cf04f88a26b83d1108987207f5315e2a",
+      "path": "backend/app/routers/extraction_verify.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:e9f16e50f34080c6fe6855a5340f6281",
+      "path": "backend/app/routers/hmo_studio_items.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:92828da62f46311f1beffb8103555870",
+      "path": "backend/app/routers/hmo_studio_items.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:bd55861e5bfa74e4597ab0e41fd0d146",
+      "path": "backend/app/routers/hmo_wikibase_schema.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:40a5d4dcbc7b438ea63e10c66c054e49",
+      "path": "backend/app/routers/hmo_wikibase_schema.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:3e863acdf25c047ce43748acfe986762",
+      "path": "backend/app/routers/section_export.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:023dfb65265f3654e0383890f376ce52",
+      "path": "backend/app/routers/wikidata_studio.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:0bf185634bdde61e34e209846bc2a8d3",
+      "path": "backend/app/routers/wikidata_studio.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:b0501c1bf1aa41e4dd0a87fa699bf412",
+      "path": "backend/app/routers/wikidata_studio.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:0bc605d114f237f628d30ae5368d3634",
+      "path": "docs/architecture/blocks/deployment/key-files.md",
+      "rule_id": "database-url",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:e286b55a6524775f743b252257bd7990",
+      "path": "docs/architecture/blocks/deployment/key-files.md",
+      "rule_id": "database-url",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:162305dfb31503c4d3e47e9bc8f10483",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:1b01244c456380b7c5d4bf5618bb5a37",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:5ac0427119d2b70440c45739c612f7e7",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:72d6c38409ae2bd0b64c124198014e1c",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:81d4a1e31b3b1897a0169cf5adf29237",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:9e201542571f154fb6dbd95d67bbd5c5",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:c1b8cf92aea5b17c846ce422c0e86244",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:f6e6edc7f3d4b671ef127bfa68753004",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:f7000e3bb4b742572537ae613a80e37d",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:f7a4910e0b41cd469b5b0b90a4474d57",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:f844c1fee9e7eb0cea6d61a0d8a9e154",
+      "path": "eval-agent/eval_agent/orchestration/session.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:5caad6463c7bf4b49ec7e73c1db75a18",
+      "path": "frontend/src/components/wikidata/WikidataItemsPanel.tsx",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed source or documentation text; it is not a credential.",
+      "expires": "2026-09-06"
+    }
+  ]
+}

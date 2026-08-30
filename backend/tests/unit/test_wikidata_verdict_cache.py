@@ -91,7 +91,7 @@ def test_sanitise_stale_wikidata_verdict_keeps_matching_key() -> None:
     assert kept["cache_key"] == fp
 
 
-def test_sanitise_legacy_judge_failure_as_unknown() -> None:
+def test_sanitise_legacy_judge_failure_as_abstain() -> None:
     item = {
         "local_id": "manuscript_1",
         "entity_type": "manuscript",
@@ -113,8 +113,9 @@ def test_sanitise_legacy_judge_failure_as_unknown() -> None:
     kept = sanitise_stale_wikidata_verdict(item, stored)
 
     assert kept is not None
-    assert kept["overall"] == "unknown"
+    assert kept["overall"] == "abstain"
     assert kept["judge_failure"] is True
+    assert kept["verification_status"] == "provider_error"
     assert kept["verification_error"] == "PARSE_ERROR"
 
 
