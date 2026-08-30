@@ -5,7 +5,7 @@
 
 from alembic import op
 
-revision = "0039_public_abstain_provider_errors"
+revision = "0039_public_abstain_provider_err"
 down_revision = "0038_unknown_judge_failures"
 branch_labels = None
 depends_on = None
