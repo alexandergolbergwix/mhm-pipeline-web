@@ -37,7 +37,7 @@ import yaml
 
 from eval_agent.cache.verdict_cache import VerdictCache
 from eval_agent.client.gemini_client import GeminiJudge
-from eval_agent.client.judge_interface import Judge
+from eval_agent.client.judge_interface import Judge, JudgeResponse
 from eval_agent.client.rate_limiter import RateLimiter
 from eval_agent.evaluators import (
     AUTHORITY_EVALUATORS,
@@ -68,11 +68,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _judge_retries() -> int:
-    """Retries when the judge returns no verdict at all (Rule W-158)."""
+    """Return the retry count for transport, parse, and schema failures."""
     try:
-        return max(0, int(os.environ.get("EVAL_AGENT_JUDGE_RETRY", "1")))
+        return max(0, int(os.environ.get("EVAL_AGENT_JUDGE_RETRY", "3")))
     except ValueError:
-        return 1
+        return 3
 
 
 def _resolve_state_dir() -> Path:
@@ -626,9 +626,7 @@ class Session:
             return self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
 
         # default gated: cheap tier-1 single-shot, escalate only hard cases.
-        response = self._judge.judge(prompt=prompt, schema=self._schema)
-        self._tally_tokens(response.input_tokens, response.output_tokens)
-        v1 = evaluator.parse_verdict(response.verdict, candidate)
+        response, v1 = self._judge_with_retries(evaluator, candidate, prompt)
         if str(v1.overall).lower() in self.config.escalate_on and self._agent is not None:
             v2 = self._judge_agentic(evaluator, candidate, prompt, cache_id, key)
             if not v2.error:
@@ -649,20 +647,20 @@ class Session:
                 f"{prompt}\n\n{self._expanded_context_block(candidate)}"
                 "\n\nReturn only the JSON verdict."
             )
-            retry = self._judge.judge(prompt=enriched, schema=self._schema)
-            self._tally_tokens(retry.input_tokens, retry.output_tokens)
-            if retry.error or retry.verdict is None:
+            retry, v_retry = self._judge_with_retries(evaluator, candidate, enriched)
+            if not self._usable_verdict(retry, v_retry):
                 # Both tiers failed — surface the tier-2 failure explicitly.
                 v2.overall = "verification_failed"
                 return v2
-            v_retry = evaluator.parse_verdict(retry.verdict, candidate)
             v_retry.judge_id = self._judge.id
             v_retry.cache_key = key
             # Cache under the ORIGINAL prompt key so a later run warm-hits
             # this resolved verdict instead of re-escalating.
+            assert retry.verdict is not None
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=retry.verdict)
             return v_retry
-        if response.verdict is not None:
+        if self._usable_verdict(response, v1):
+            assert response.verdict is not None
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
         v1.judge_id = self._judge.id
         v1.cache_key = key
@@ -672,25 +670,48 @@ class Session:
 
     def _judge_linear(self, evaluator, candidate, prompt, cache_id, key):  # noqa: ANN001
         assert self._judge is not None
-        response = self._judge.judge(prompt=prompt, schema=self._schema)
-        self._tally_tokens(response.input_tokens, response.output_tokens)
-        if response.verdict is None and _judge_retries():
-            # One retry before giving up. A transport hiccup used to cost the item
-            # a whole verdict, and the curator saw a reasonless `fail` (Rule W-158).
-            for _ in range(_judge_retries()):
-                retry = self._judge.judge(prompt=prompt, schema=self._schema)
-                self._tally_tokens(retry.input_tokens, retry.output_tokens)
-                if retry.verdict is not None:
-                    response = retry
-                    break
-        if response.verdict is not None:
+        response, v = self._judge_with_retries(evaluator, candidate, prompt)
+        if self._usable_verdict(response, v):
+            assert response.verdict is not None
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
-        v = evaluator.parse_verdict(response.verdict, candidate)
         v.judge_id = self._judge.id
         v.cache_key = key
         if response.error:
             v.error = response.error
         return v
+
+    def _judge_with_retries(
+        self,
+        evaluator: Evaluator,
+        candidate: Candidate,
+        prompt: str,
+    ) -> tuple[JudgeResponse, Verdict]:
+        """Retry transport, parse, and schema failures before a public failure."""
+        assert self._judge is not None
+        response = self._judge.judge(prompt=prompt, schema=self._schema)
+        self._tally_tokens(response.input_tokens, response.output_tokens)
+        verdict = evaluator.parse_verdict(response.verdict, candidate)
+        for attempt in range(_judge_retries()):
+            if self._usable_verdict(response, verdict):
+                break
+            print(
+                f"[STEP] judge retry after invalid verdict "
+                f"(attempt {attempt + 1})",
+                flush=True,
+            )
+            response = self._judge.judge(prompt=prompt, schema=self._schema)
+            self._tally_tokens(response.input_tokens, response.output_tokens)
+            verdict = evaluator.parse_verdict(response.verdict, candidate)
+        return response, verdict
+
+    @staticmethod
+    def _usable_verdict(response: JudgeResponse, verdict: Verdict) -> bool:
+        """Return true only when the provider supplied a substantive verdict."""
+        if response.verdict is None or response.error or verdict.error:
+            return False
+        return str(verdict.overall).lower() in {
+            "full", "pass", "partial", "fail", "abstain",
+        }
 
     def _judge_agentic(self, evaluator, candidate, prompt, cache_id, key):  # noqa: ANN001
         assert self._agent is not None

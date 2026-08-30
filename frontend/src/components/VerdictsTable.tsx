@@ -572,14 +572,14 @@ function Row({
           </div>
         </td>
         <td className="py-2 pr-3 font-mono">
-          {fmtConf(ev.confidence)} <span className="muted">/ {fmtConf(cand.model_confidence)}</span>
+          {fmtConf(ev.confidence ?? v.confidence)} <span className="muted">/ {fmtConf(cand.model_confidence)}</span>
         </td>
         <td className="py-2 pr-3 hidden md:table-cell muted font-mono text-[10px]">
-          {String(ev.judge_id ?? "")}
+          {String(ev.judge_id ?? v.judge_id ?? v.model ?? "")}
         </td>
         <td className="py-2 pr-3 hidden md:table-cell muted font-mono text-[10px]"
-            title={String(ev.judged_at ?? "")}>
-          {fmtJudgedAt(ev.judged_at)}
+            title={String(ev.judged_at ?? v.judged_at ?? "")}>
+          {fmtJudgedAt(ev.judged_at ?? v.judged_at)}
         </td>
         {hasFixColumn && (
           <td className="py-2 pr-3" onClick={(e) => e.stopPropagation()}>
@@ -679,9 +679,10 @@ function AuthorityIdsBlock({ ev }: { ev: AgentEvent }) {
 
 
 function DeterminismBlock({ ev }: { ev: AgentEvent }) {
-  const ck = String(ev.cache_key ?? "");
-  const judge = String(ev.judge_id ?? "");
-  const at = String(ev.judged_at ?? "");
+  const v = (ev.verdict ?? {}) as Record<string, unknown>;
+  const ck = String(ev.cache_key ?? v.cache_key ?? "");
+  const judge = String(ev.judge_id ?? v.judge_id ?? v.model ?? "");
+  const at = String(ev.judged_at ?? v.judged_at ?? "");
   if (!ck && !judge && !at) return null;
   return (
     <div>
@@ -801,7 +802,7 @@ function SubPill({ label, value }: { label: string; value: string }) {
 
 function overall(ev: AgentEvent): Overall {
   const v = (ev.verdict ?? {}) as Record<string, unknown>;
-  const o = String(v.overall ?? "").toLowerCase();
+  const o = String(v.overall ?? ev.overall ?? "").toLowerCase();
   if (o === "full" || o === "pass") return "pass";
   if (o === "partial" || o === "fail" || o === "abstain") return o as Overall;
   return "unknown";
@@ -840,18 +841,20 @@ function recordId(ev: AgentEvent): string {
 
 
 function evaluatorId(ev: AgentEvent): string {
-  return String(ev.evaluator_id ?? "");
+  const v = (ev.verdict ?? {}) as Record<string, unknown>;
+  return String(ev.evaluator_id ?? ev.evaluator ?? v.evaluator_id ?? v.evaluator ?? "");
 }
 
 
 function subType(ev: AgentEvent): string {
-  return String(ev.sub_type ?? "");
+  const v = (ev.verdict ?? {}) as Record<string, unknown>;
+  return String(ev.sub_type ?? v.sub_type ?? "");
 }
 
 
 function reasoning(ev: AgentEvent): string {
   const v = (ev.verdict ?? {}) as Record<string, unknown>;
-  return String(v.reasoning ?? "");
+  return String(v.reasoning ?? ev.reasoning ?? "");
 }
 
 
@@ -913,7 +916,9 @@ function copyAsCsv(rows: AgentEvent[]) {
     const row = [
       recordId(ev), evaluatorId(ev), subType(ev), candidateName(ev),
       overall(ev), String(v.name_ok ?? ""), String(v.type_ok ?? ""), String(v.role_ok ?? ""),
-      String(ev.judge_id ?? ""), String(ev.judged_at ?? ""), String(ev.cache_key ?? ""),
+      String(ev.judge_id ?? v.judge_id ?? v.model ?? ""),
+      String(ev.judged_at ?? v.judged_at ?? ""),
+      String(ev.cache_key ?? v.cache_key ?? ""),
       reasoning(ev),
     ].map(_csvCell).join(",");
     lines.push(row);

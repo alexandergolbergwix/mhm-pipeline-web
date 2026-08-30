@@ -990,3 +990,25 @@ data stayed the same.
 Regression tests: `backend/tests/unit/test_wikidata_studio_fingerprint.py`,
 `backend/tests/unit/test_wikidata_verdict_cache.py`, and
 `backend/tests/unit/test_hmo_canonical.py`.
+
+### Rule W-210 — Live verdict rows MUST preserve metadata and retry invalid judge output (added 2026-08-29)
+
+The live verification screen received compact job snapshots from Postgres.
+Snapshot compaction kept the nested verdict but dropped the envelope fields
+that the table uses for the judge, time, confidence, and cache key. Invalid or
+empty provider responses could also reach the table after one session retry.
+
+Invariants:
+
+1. Job snapshots MUST preserve `judge_id`, `evaluator_id`, `record_id`,
+   `sub_type`, `confidence`, `cache_key`, `judged_at`, and `schema_version`.
+2. The frontend MUST read these fields from the envelope and use nested
+   fallbacks for older snapshots.
+3. The eval-agent MUST retry transport, parse, and schema failures before it
+   returns the public `unknown` judge-failure state. The retry count is three
+   by default and remains configurable with `EVAL_AGENT_JUDGE_RETRY`.
+4. The eval-agent MUST cache only a substantive verdict. It MUST NOT cache an
+   invalid response or a judge failure.
+
+Regression tests: `backend/tests/unit/test_judge_failure_is_not_a_verdict.py`
+and `eval-agent/tests/test_gated_retry.py`.

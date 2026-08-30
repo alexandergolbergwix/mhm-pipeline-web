@@ -10,6 +10,9 @@
 - `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` — provider and
   parse failures render as `unknown`, retain diagnostics, and keep verify jobs
   `partial` (Rule W-207).
+- `backend/tests/unit/test_judge_failure_is_not_a_verdict.py` and
+  `eval-agent/tests/test_gated_retry.py` — live snapshot metadata and retries
+  for invalid judge responses (Rule W-210).
 - `backend/tests/unit/test_wikidata_studio_fingerprint.py` — transport metadata
   does not change build SHA, while semantic MARC dates still change it (W-208).
 - `backend/tests/unit/test_wikidata_export35_w174.py` — Rule W-174:

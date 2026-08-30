@@ -121,7 +121,34 @@ def test_tier2_failure_retries_tier1_with_expanded_context(tmp_path: Path) -> No
     assert "ויניציאה" in enriched         # sibling NER entities were injected
 
 
-def test_retry_also_failing_marks_verification_failed(tmp_path: Path) -> None:
+class _RetryInvalidJudge:
+    id = "gemini-test"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def judge(self, *, prompt: str, schema, timeout: int = 120) -> JudgeResponse:  # noqa: ANN001
+        self.calls += 1
+        if self.calls == 1:
+            return _resp("fail", error="invalid JSON", verdict_present=False)
+        return _resp("full")
+
+
+def test_invalid_tier1_response_is_retried_before_failure(
+    tmp_path: Path,
+) -> None:
+    judge = _RetryInvalidJudge()
+    s = _session(tmp_path, judge)
+
+    verdict = s._judge_one(PersonNERevaluator(), _candidate())
+
+    assert verdict.overall == "full"
+    assert verdict.error is None
+    assert judge.calls == 2
+
+
+def test_retry_also_failing_marks_verification_failed(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setenv("EVAL_AGENT_JUDGE_RETRY", "1")
     judge = _ScriptedJudge(_resp("full", error="retry transport error", verdict_present=False))
     s = _session(tmp_path, judge)
     s._agent = _FailingAgent()
@@ -131,4 +158,4 @@ def test_retry_also_failing_marks_verification_failed(tmp_path: Path) -> None:
     verdict = s._judge_one(PersonNERevaluator(), _candidate())
 
     assert verdict.overall == "verification_failed"
-    assert len(judge.prompts) == 2
+    assert len(judge.prompts) == 3

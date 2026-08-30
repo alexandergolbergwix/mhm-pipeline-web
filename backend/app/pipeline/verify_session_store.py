@@ -180,7 +180,14 @@ def _compact_verdict_for_job(row: dict[str, Any]) -> dict[str, Any]:
         out["candidate"] = cand_out
     if verd_out:
         out["verdict"] = verd_out
-    for k in ("sub_type", "evaluator", "record_id", "control_number"):
+    # VerdictsTable reads these fields from the event envelope. Keep them at
+    # the envelope level when the job snapshot crosses a dyno boundary.
+    # The nested verdict remains the compact source for judge diagnostics.
+    for k in (
+        "schema_version", "judge_id", "evaluator_id", "evaluator",
+        "sub_type", "record_id", "control_number", "confidence",
+        "cache_key", "judged_at", "agentic",
+    ):
         if row.get(k) not in (None, ""):
             out[k] = row[k]
     return out or dict(row)

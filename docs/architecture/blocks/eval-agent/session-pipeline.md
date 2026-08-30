@@ -48,6 +48,12 @@ surfaces non-zero exits as `runner.error` with the stderr tail. If
 `runner.warning` and `outcome: "partial"` instead of a crash — cached verdicts
 still stream.
 
+The session judge retries transport, parse, and schema failures before it
+returns the public `unknown` judge-failure state. The default is three retries;
+`EVAL_AGENT_JUDGE_RETRY` can change that value. Job snapshots preserve the
+verdict envelope metadata that the live table displays, including the judge,
+evaluator, confidence, cache key, and judged time (Rule W-210).
+
 ## The five channels
 
 | Channel dir | Router / stream | Scope unit | Fixture files | Verdict persisted to | Background job kind |

@@ -78,6 +78,29 @@ class TestNormaliseVerdictBody:
 
 
 class TestJobSnapshotKeepsTheReason:
+    def test_job_snapshot_keeps_verdict_envelope_metadata(self) -> None:
+        row = _compact_verdict_for_job({
+            "schema_version": 2,
+            "judge_id": "deepseek-ai/DeepSeek-V4-Flash",
+            "evaluator_id": "wikidata_item",
+            "candidate": {"local_id": "QDraft_MS_1", "model_confidence": 0.91},
+            "record_id": "9900001",
+            "sub_type": "manuscript",
+            "confidence": 0.88,
+            "cache_key": "a" * 64,
+            "judged_at": "2026-08-29T19:00:00+00:00",
+            "verdict": {
+                "overall": "full", "name_ok": "yes", "type_ok": "yes",
+                "role_ok": "n/a", "reasoning": "all item claims match",
+            },
+        })
+
+        assert row["judge_id"] == "deepseek-ai/DeepSeek-V4-Flash"
+        assert row["evaluator_id"] == "wikidata_item"
+        assert row["confidence"] == 0.88
+        assert row["cache_key"] == "a" * 64
+        assert row["judged_at"] == "2026-08-29T19:00:00+00:00"
+
     def test_a_judge_failure_gets_a_reason_in_the_job_snapshot(self) -> None:
         row = _compact_verdict_for_job({
             "candidate": {"local_id": "QDraft_MS_1"},

@@ -834,3 +834,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     drop inherited `P2093` claims. Regression: `test_hmo_canonical_wikidata.py`
     and `test_wikidata_studio_works.py`.
     *Why:* run `48ba6c13` produced eight partial works because title fragments became author strings.*
+113. **R113 — Wikidata verify rows MUST preserve judge metadata and retry invalid output (Rule W-210).**
+    Live job snapshots MUST retain the envelope fields required by the review
+    table. The judge MUST retry empty or malformed provider responses before it
+    exposes an `unknown` judge failure. *Why:* the live modal showed blank
+    metadata and transient provider failures as incomplete verdict rows.
