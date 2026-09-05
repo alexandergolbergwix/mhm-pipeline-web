@@ -19,11 +19,11 @@
 5. **R5 — `validate_item` is a hard gate in the write path**, not just a build
    badge. Any ERROR-severity issue blocks create AND update, regardless of
    curator approval. *Why:* the moat closest to the write is the one that must never miss.
-6. **R6 — Live wikidata.org writes require an explicit curator `upload_target=live`**
-   (or legacy `MORATORIUM_LIFTED=true`). Default is `dry_run`. `upload_target=test`
-   writes to test.wikidata.org. Enforced in the web layer and `WikidataUploader`
-   (`allow_live`). *Why:* Rule W-103 — UI choice with dry-run default replaces
-   env-only moratorium while keeping fail-closed defaults.
+6. **R6 — Legacy Studio uploads support `dry_run` and `test` only.**
+   The direct live route and single-item live push return `410 Gone`.
+   A live wikidata.org write requires the sealed Publication workflow (R114).
+   *Why:* a mutable Studio cache cannot prove the reviewed corpus or recover
+   an uncertain remote write.
 7. **R7 — Never modify items we didn't create.** The uploader's four Rule-38
    guards (`_is_our_item` + three `_assert_modifiable`/conflict checks) MUST
    stay intact in `wikidata_upload.py`; `uploader.py` stays byte-identical to
@@ -840,3 +840,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     table. The judge MUST retry empty or malformed provider responses before it
     exposes an `abstain` provider-error row. *Why:* the live modal showed blank
     metadata and transient provider failures as incomplete verdict rows.
+114. **R114 — A production Wikidata write MUST use a sealed Publication Release (Rule W-212).**
+    The flow is Release → Approval Set → Plan → Dry-run Receipt → queued
+    Execution. Each transition binds the previous digest. The execution worker
+    records a Write Intent before every remote call and a Receipt after it.
+    The legacy live upload and single-item push routes MUST return `410 Gone`.
+    *Why:* a mutable Studio cache and a direct write route cannot prove the
+    reviewed content or safely recover an uncertain remote result.

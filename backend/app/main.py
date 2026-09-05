@@ -27,7 +27,7 @@ from app.routers import (
     access_request, admin, ai_verify, api_keys, auth, corpus, export, extraction,
     extraction_verify, health, history, hmo_studio, hmo_studio_items, hmo_wikibase_schema, invites,
     judge_models,
-    linked_data_explorer, onboarding, projects, rdf, research, research_evidence,
+    linked_data_explorer, onboarding, projects, publication, rdf, research, research_evidence,
     research_entity, research_export, research_pathfinding, research_provenance,
     run_jobs, runs, saved_queries, section_export, section_import, wikibase_writes,
     wikidata_labels, wikidata_studio, ws,
@@ -121,6 +121,7 @@ def create_app() -> FastAPI:
     app.include_router(wikibase_writes.router, prefix="/api")
     app.include_router(api_keys.router, prefix="/api")
     app.include_router(wikidata_studio.router, prefix="/api")
+    app.include_router(publication.router, prefix="/api")
     app.include_router(hmo_studio.router, prefix="/api")
     app.include_router(hmo_studio_items.router, prefix="/api")
     app.include_router(hmo_wikibase_schema.router, prefix="/api")

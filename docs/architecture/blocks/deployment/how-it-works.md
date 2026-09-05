@@ -18,7 +18,7 @@ job runs, `run_jobs.result.session_snapshot` at finish).
 **Release phase / migrations.** Every deploy runs `scripts/release.sh` before
 any new dyno boots: (1) fail fast if `locate_eval_agent()` can't find
 `eval_agent/cli.py`; (2) `alembic upgrade head`. Migrations are plain Alembic
-under `backend/app/migrations/versions/` (34 revisions to date). A failing
+under `backend/app/migrations/versions/` (40 revisions to date). A failing
 release script aborts the deploy — old dynos keep running.
 
 **Environment variables** — see [Environment variables](env-vars.md) for the

@@ -271,51 +271,11 @@ test.describe("Wikidata upload panel", () => {
     expect(pollN).toBeGreaterThanOrEqual(0);
   });
 
-  test("choosing test target posts upload_target=test and never live", async ({page}) => {
-    let jobBody: Record<string, unknown> | null = null;
-    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
-      jobBody = route.request().postDataJSON() as Record<string, unknown>;
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          id: "job-wd-upload-test",
-          project_id: TEST_PROJECT_ID,
-          run_id: TEST_RUN_ID,
-          kind: "wikidata_upload",
-          status: "succeeded",
-          progress: {phase: "done"},
-          params: jobBody,
-          result: {
-            dry_run: false,
-            upload_target: "test",
-            moratorium_lifted: false,
-            test_mode: true,
-            outcomes: [],
-          },
-          error: null,
-          created_by: null,
-          started_at: null,
-          finished_at: null,
-          cancel_requested_at: null,
-          created_at: null,
-          updated_at: null,
-        }),
-      });
-    });
-
+  test("the compatibility path cannot publish without the Publication service", async ({page}) => {
     await page.getByTestId("wikidata-upload-target-test").check();
     await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("TEST MODE");
-    await page.getByTestId("wikidata-upload-submit").click();
-    await expect.poll(() => jobBody).not.toBeNull();
-    expect(jobBody?.kind).toBe("wikidata_upload");
-    const params = jobBody?.params as Record<string, unknown>;
-    expect(params.upload_target).toBe("test");
-    expect(params.dry_run).toBe(false);
+    await expect(page.getByTestId("wikidata-upload-receipt-required")).toContainText("Prepare a Publication");
+    await expect(page.getByTestId("wikidata-upload-submit")).toBeDisabled();
   });
 
   test("live upload shows the same two-step progress UI as test", async ({page}) => {
@@ -373,38 +333,20 @@ test.describe("Wikidata upload panel", () => {
       updated_at: null,
     };
 
-    await page.addInitScript(() => {
-      window.confirm = () => true;
-    });
-
-    let jobBody: Record<string, unknown> | null = null;
-    const runningPayload = () => ({
-      ...runningJob,
-      params: jobBody ?? runningJob.params,
-    });
     await page.route(`**/api/runs/${TEST_RUN_ID}/jobs**`, async (route) => {
       const url = route.request().url();
       if (url.includes("job-wd-upload-live-progress")) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(runningPayload()),
-        });
-        return;
-      }
-      if (route.request().method() === "POST") {
-        jobBody = route.request().postDataJSON() as Record<string, unknown>;
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({...runningJob, params: jobBody}),
+          body: JSON.stringify(runningJob),
         });
         return;
       }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({jobs: jobBody ? [runningPayload()] : []}),
+        body: JSON.stringify({jobs: [runningJob]}),
       });
     });
     await page.route(
@@ -413,7 +355,7 @@ test.describe("Wikidata upload panel", () => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(runningPayload()),
+          body: JSON.stringify(runningJob),
         });
       },
     );
@@ -421,19 +363,11 @@ test.describe("Wikidata upload panel", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({jobs: jobBody ? [runningPayload()] : []}),
+        body: JSON.stringify({jobs: [runningJob]}),
       });
     });
 
     await gotoModernStudio(page);
-    await page.getByTestId("wikidata-upload-target-live").check();
-    await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("LIVE");
-    await page.getByTestId("wikidata-upload-submit").click();
-
-    await expect.poll(() => jobBody).not.toBeNull();
-    const params = jobBody?.params as Record<string, unknown>;
-    expect(params.upload_target).toBe("live");
-
     const modal = page.getByTestId("wikidata-upload-progress-modal");
     await expect(modal).toBeVisible({timeout: 10_000});
     await expect(page.getByTestId("wikidata-upload-progress-target-pill")).toContainText("Live");

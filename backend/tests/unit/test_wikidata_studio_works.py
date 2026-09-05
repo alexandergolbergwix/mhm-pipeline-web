@@ -463,13 +463,15 @@ class TestSourceAwareMarcWorks:
 
 
 @pytest.mark.asyncio
-async def test_structured_505_author_suffix_is_not_part_of_work_label() -> None:
+async def test_structured_505_responsibility_is_not_part_of_work_label() -> None:
     rec = {
         **_fake_marc_record(),
         "contents": [{
-            "title": "ספר היראה ליונה בן אברהם גרונדי",
+            "title": "ספר היראה",
+            "responsibility": "יונה בן אברהם גרונדי",
             "source_field": "505",
             "candidate_kind": "named_work",
+            "source_text": "ספר היראה ליונה בן אברהם גרונדי",
         }],
     }
     result = await wikidata_studio.build_items_for_run(

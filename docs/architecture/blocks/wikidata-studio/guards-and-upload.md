@@ -96,10 +96,9 @@ Q2740944 / Shor Q6580025. Live prepare (Rule W-196): P1476/P1680/P1684
 coerce to monolingualtext; P2048/P2049 above 1000 mm omit; a unique
 allowlisted title+P31 match skips CREATE/UPDATE and stores `link_qid` so
 pass 2 can P1574 the live work. The curator picks `upload_target` in the UI
-(`dry_run` default | `test` | `live`). Live mode without `upload_target=live`
-(and without legacy `MORATORIUM_LIFTED=true`) returns every item as `skipped`;
-the uploader independently re-enforces via `allow_live` / env
-(`uploader.py`). All four desktop Rule-38
+(`dry_run` default | `test`). The former direct `live` route returns `410 Gone`.
+The sealed Publication workflow owns live writes and credential resolution
+(Rule W-212). All four desktop Rule-38
 modification guards stay intact (`_is_our_item`, `_assert_modifiable` in
 `_build_wbi_item`, `_would_create_identity_conflict` per statement, pre-write
 `_assert_modifiable`); foreign accept on **live only** via

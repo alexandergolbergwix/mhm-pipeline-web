@@ -14,11 +14,49 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from converter.wikidata.item_validator import validate_item
+from converter.wikidata.semantic_policy import (
+    DEFAULT_SEMANTIC_POLICY,
+    SemanticQualityPolicy,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class FindingSeverity(StrEnum):
+    """The effect of a deterministic quality Finding."""
+
+    HARD = "hard"
+    INFORMATIONAL = "informational"
+
+
+@dataclass(frozen=True)
+class IdentityGroup:
+    """Publication entities that assert one strong external identity."""
+
+    property_id: str
+    external_id: str
+    entity_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Finding:
+    """A typed result from one deterministic publication rule."""
+
+    code: str
+    severity: FindingSeverity
+    message: str
+    entity_ids: tuple[str, ...] = ()
+    identity_group: IdentityGroup | None = None
+
+    def render(self) -> str:
+        return f"{self.code} {self.message}".strip()
+
 
 # A label ending in a library signature: "Jerusalem, NLI, F 12345".
 _LABEL_SHELFMARK_RE = re.compile(r"([A-Z]{1,3}\.?\s?\d[\d\-/. ]*)$")
@@ -133,16 +171,17 @@ def _work_missing_author_claim_errors(
         canonical_control_number,
         index_marc_records,
     )
+    from converter.wikidata.content_projection import (  # noqa: PLC0415
+        structured_work_attribution,
+    )
     from converter.wikidata.item_builder import (  # noqa: PLC0415
         _clean_work_title,
-        _split_work_title_author,
     )
 
     def title_key(value: object) -> str:
-        title, _author = _split_work_title_author(str(value or ""))
-        return _clean_work_title(title).casefold()
+        return _clean_work_title(str(value or "")).casefold()
 
-    def record_has_author(record: dict[str, Any]) -> bool:
+    def record_has_primary_author(record: dict[str, Any]) -> bool:
         for author in record.get("authors") or []:
             if isinstance(author, dict):
                 if str(author.get("name") or author.get("heading") or "").strip():
@@ -150,6 +189,23 @@ def _work_missing_author_claim_errors(
             elif str(author).strip():
                 return True
         return False
+
+    def record_has_author_for_title(
+        record: dict[str, Any],
+        wanted_title: str,
+    ) -> bool:
+        for content in record.get("contents") or []:
+            entry = content if isinstance(content, dict) else {"title": content}
+            attribution = structured_work_attribution(entry)
+            if (
+                title_key(attribution.title) == wanted_title
+                and bool(attribution.author_name)
+            ):
+                return True
+        return (
+            title_key(record.get("title")) == wanted_title
+            and record_has_primary_author(record)
+        )
 
     by_cn = index_marc_records(marc_records)
     errors: list[str] = []
@@ -172,21 +228,40 @@ def _work_missing_author_claim_errors(
         }
         for control_number in getattr(item, "records", None) or []:
             record = by_cn.get(canonical_control_number(control_number) or "")
-            if not record or not record_has_author(record):
+            if not record:
                 continue
-            record_titles = {
-                title_key(record.get("title")),
-                *(
-                    title_key(content.get("title") if isinstance(content, dict) else content)
-                    for content in record.get("contents") or []
-                ),
-            }
-            if work_titles & record_titles:
+            if any(
+                record_has_author_for_title(record, work_title)
+                for work_title in work_titles
+            ):
                 errors.append(
                     f"WORK_MISSING_AUTHOR_CLAIM {getattr(item, 'local_id', '')}: "
                     "the source record has an author, but the work has no P50 or P2093",
                 )
                 break
+    return errors
+
+
+def _work_evidence_missing_author_claim_errors(items: list[Any]) -> list[str]:
+    """Block a work that lost an author already retained in its evidence."""
+    errors: list[str] = []
+    for item in items:
+        if str(getattr(item, "entity_type", "") or "").strip().lower() != "work":
+            continue
+        if _statement_values(item, "P50") or _statement_values(item, "P2093"):
+            continue
+        has_author_evidence = any(
+            isinstance(row, dict)
+            and row.get("accepted") is not False
+            and str(row.get("author_name") or "").strip()
+            for row in getattr(item, "work_candidate_evidence", None) or []
+        )
+        if has_author_evidence:
+            errors.append(
+                f"WORK_MISSING_AUTHOR_CLAIM {getattr(item, 'local_id', '')}: "
+                "the structured work evidence has an author, but the work has "
+                "no P50 or P2093",
+            )
     return errors
 
 
@@ -512,7 +587,88 @@ def _person_heading_findings(items: list[Any]) -> list[str]:
     return findings
 
 
-def wikidata_export_quality_report(
+def strong_external_id_collision_findings(
+    items: Iterable[Any],
+    *,
+    property_ids: Iterable[str],
+) -> list[Finding]:
+    """Find one strong external identity on multiple publication entities."""
+    identity_properties = tuple(property_ids)
+    members_by_identity: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for index, item in enumerate(items):
+        entity_id = str(getattr(item, "local_id", "") or f"item-{index:04d}")
+        for property_id in identity_properties:
+            for external_id in set(_statement_values(item, property_id)):
+                members_by_identity[(property_id, external_id)].add(entity_id)
+
+    findings: list[Finding] = []
+    for (property_id, external_id), members in sorted(members_by_identity.items()):
+        entity_ids = tuple(sorted(members))
+        if len(entity_ids) < 2:
+            continue
+        group = IdentityGroup(
+            property_id=property_id,
+            external_id=external_id,
+            entity_ids=entity_ids,
+        )
+        findings.append(Finding(
+            code="STRONG_EXTERNAL_ID_COLLISION",
+            severity=FindingSeverity.HARD,
+            message=(
+                f"{property_id}={external_id!r} belongs to multiple publication "
+                f"entities: {', '.join(entity_ids)}"
+            ),
+            entity_ids=entity_ids,
+            identity_group=group,
+        ))
+    return findings
+
+
+def wikidata_export_quality_findings(
+    items: Iterable[Any],
+    *,
+    serialised_items: list[dict[str, Any]] | None = None,
+    marc_records: list[dict[str, Any]] | None = None,
+    policy: SemanticQualityPolicy = DEFAULT_SEMANTIC_POLICY,
+) -> list[Finding]:
+    """Return every deterministic gate result as a typed Finding."""
+    corpus = list(items)
+    findings = strong_external_id_collision_findings(
+        corpus, property_ids=policy.strong_external_id_properties,
+    )
+    report = _wikidata_export_quality_messages(
+        corpus,
+        serialised_items=serialised_items,
+        marc_records=marc_records,
+    )
+    known_entity_ids = {
+        str(getattr(item, "local_id", "") or "") for item in corpus
+        if str(getattr(item, "local_id", "") or "")
+    }
+    for severity, key in (
+        (FindingSeverity.HARD, "blocking"),
+        (FindingSeverity.INFORMATIONAL, "informational"),
+    ):
+        for rendered in report[key]:
+            code, _, message = rendered.partition(" ")
+            subject = message.partition(": ")[0].strip()
+            candidates = {
+                subject,
+                subject.split(" ", 1)[0],
+                subject.rsplit(" ", 1)[0],
+                *(part.strip() for part in subject.split(",")),
+            }
+            entity_ids = tuple(sorted(candidates & known_entity_ids))
+            findings.append(Finding(
+                code=code,
+                severity=severity,
+                message=message,
+                entity_ids=entity_ids,
+            ))
+    return findings
+
+
+def _wikidata_export_quality_messages(
     items: list[Any],
     *,
     serialised_items: list[dict[str, Any]] | None = None,
@@ -536,6 +692,7 @@ def wikidata_export_quality_report(
     )
     blocking.extend(_work_title_errors(items))
     blocking.extend(_work_identity_findings(items))
+    blocking.extend(_work_evidence_missing_author_claim_errors(items))
     blocking.extend(_identifier_shape_errors(items))
     informational.extend(_person_heading_findings(items))
     for item in items:
@@ -561,6 +718,34 @@ def wikidata_export_quality_report(
         informational.extend(claim_informational)
 
     return {"blocking": blocking, "informational": informational}
+
+
+def wikidata_export_quality_report(
+    items: list[Any],
+    *,
+    serialised_items: list[dict[str, Any]] | None = None,
+    marc_records: list[dict[str, Any]] | None = None,
+    policy: SemanticQualityPolicy = DEFAULT_SEMANTIC_POLICY,
+) -> dict[str, list[str]]:
+    """Render typed Findings for compatibility with existing callers."""
+    findings = wikidata_export_quality_findings(
+        items,
+        serialised_items=serialised_items,
+        marc_records=marc_records,
+        policy=policy,
+    )
+    return {
+        "blocking": [
+            finding.render()
+            for finding in findings
+            if finding.severity is FindingSeverity.HARD
+        ],
+        "informational": [
+            finding.render()
+            for finding in findings
+            if finding.severity is FindingSeverity.INFORMATIONAL
+        ],
+    }
 
 
 def assert_wikidata_export_quality(

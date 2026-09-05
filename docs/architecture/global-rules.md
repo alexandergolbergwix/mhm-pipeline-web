@@ -24,10 +24,10 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   idle-in-transaction timeout kills the connection mid-job (Rule W-40).
 - **G6 — External writes are fail-closed.** Wikidata/Wikibase uploads pass
   reconcile + validator gates inside the write path; lookup errors block,
-  never create. Live Wikidata writes additionally require curator
-  `upload_target=live` (or legacy `MORATORIUM_LIFTED=true`); default is dry-run
-  (Rule W-103). *Why:* the April mass-merge / June mass-duplicate
-  incidents.
+  never create. A live Wikidata write additionally requires a sealed
+  Publication Release, a current Dry-run Receipt, and a server-held
+  target-bound credential (Rule W-212). *Why:* the April mass-merge / June
+  mass-duplicate incidents.
 - **G7 — Curator mutations are events first.** `apply_event(...)` before the
   read-model update, for all versioned entity types. *Why:* the event log is
   the authoritative history; read-models are caches.
@@ -36,4 +36,4 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   behaviour extends its pinning test suite. *Why:* tests are the regression
   contract; docs describe, tests enforce.
 
-Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-211).
+Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-212).

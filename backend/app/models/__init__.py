@@ -11,10 +11,6 @@ from app.models.api_key import ApiKey
 from app.models.base import Base
 from app.models.email_throttle import EmailThrottle
 from app.models.entity_snapshot import EntitySnapshot
-from app.models.hmo_canonical_entity import HmoCanonicalEntity
-from app.models.hmo_coverage_cache import HmoCoverageCache
-from app.models.hmo_studio_item_cache import HmoStudioItemCache
-from app.models.hmo_studio_item_override import HmoStudioItemOverride
 from app.models.event import (
     ALL_ENTITY_TYPES,
     ALL_OPS,
@@ -32,6 +28,10 @@ from app.models.event import (
     ProjectSnapshot,
 )
 from app.models.extraction_approval import ExtractionApproval
+from app.models.hmo_canonical_entity import HmoCanonicalEntity
+from app.models.hmo_coverage_cache import HmoCoverageCache
+from app.models.hmo_studio_item_cache import HmoStudioItemCache
+from app.models.hmo_studio_item_override import HmoStudioItemOverride
 from app.models.inference_cache import InferenceCache
 from app.models.invitation import Invitation
 from app.models.item_override import WikidataItemOverride
@@ -43,6 +43,24 @@ from app.models.project import (
     PROJECT_ROLE_VIEWER,
     Membership,
     Project,
+)
+from app.models.publication import (
+    Publication,
+    PublicationApprovalDecision,
+    PublicationApprovalSet,
+    PublicationDryRunReceipt,
+    PublicationEntityReference,
+    PublicationEntityRow,
+    PublicationExecution,
+    PublicationExecutionAction,
+    PublicationFinding,
+    PublicationIdentityAssertion,
+    PublicationJournalEvent,
+    PublicationPlan,
+    PublicationPlanAction,
+    PublicationRelease,
+    PublicationWriteIntent,
+    PublicationWriteReceipt,
 )
 from app.models.rdf_artifact import RdfArtifact
 from app.models.run import (
@@ -58,13 +76,13 @@ from app.models.run_job import RunJob
 from app.models.saved_query import SavedQuery
 from app.models.session import Session
 from app.models.user import ROLE_ADMIN, ROLE_EDITOR, User
+from app.models.wikibase_cloud_write import WikibaseCloudWrite
 from app.models.wikibase_entity_mapping import (
     ENTITY_KIND_CLASS,
     ENTITY_KIND_INSTANCE,
     ENTITY_KIND_PROPERTY,
     WikibaseEntityMapping,
 )
-from app.models.wikibase_cloud_write import WikibaseCloudWrite
 from app.models.wikibase_user_access import WikibaseUserAccess
 from app.models.wikidata_studio_cache import WikidataStudioCache
 
@@ -106,6 +124,22 @@ __all__ = [
     "Project",
     "ProjectEvent",
     "ProjectSnapshot",
+    "Publication",
+    "PublicationApprovalDecision",
+    "PublicationApprovalSet",
+    "PublicationDryRunReceipt",
+    "PublicationEntityReference",
+    "PublicationEntityRow",
+    "PublicationExecution",
+    "PublicationExecutionAction",
+    "PublicationFinding",
+    "PublicationIdentityAssertion",
+    "PublicationJournalEvent",
+    "PublicationPlan",
+    "PublicationPlanAction",
+    "PublicationRelease",
+    "PublicationWriteIntent",
+    "PublicationWriteReceipt",
     "WikidataItemOverride",
     "WikidataStudioCache",
     "ROLE_ADMIN",

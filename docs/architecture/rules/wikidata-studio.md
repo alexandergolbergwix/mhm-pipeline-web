@@ -381,20 +381,19 @@ still forbid P50. Ontology `owl:equivalentProperty` lines match the
 runtime map. Tests: `test_hmo_wikidata_pq_mapper.py`,
 `test_hmo_canonical_wikidata.py`.
 
-### Rule W-103 — Wikidata upload target is curator-chosen; default dry-run (added 2026-07-25)
+### Rule W-103 — Legacy Wikidata upload target is curator-chosen; default dry-run (added 2026-07-25; live superseded by W-212)
 
 The production moratorium is no longer only an env flag. Wikidata Studio
-exposes three **upload targets** (job param `upload_target`):
+exposes legacy **upload targets** (job param `upload_target`):
 
 1. **`dry_run`** (default) — moratorium active; reconcile + validator preview only.
 2. **`test`** — write to `test.wikidata.org` (bypasses production moratorium).
-3. **`live`** — write to `wikidata.org` after an explicit UI confirm; sets
-   `allow_live` on `WikidataUploader` (same effect as legacy
-   `MORATORIUM_LIFTED=true` for that request).
+3. **`live`** — retired. The direct route and single-item push return `410 Gone`.
+   The sealed Publication workflow now owns live writes (W-212).
 
 Env `MORATORIUM_LIFTED` / `WIKIDATA_TEST_MODE` remain as legacy overrides when
-callers only pass `dry_run=false`. Single-item push accepts `test|live`
-(default `test`). Tests: `test_wikidata_upload_guards.py`
+callers only pass `dry_run=false`. Single-item push accepts `test` only.
+Tests: `test_wikidata_upload_guards.py`
 (`test_resolve_upload_mode_*`, `test_ui_live_target_bypasses_env_moratorium`);
 `frontend/e2e/wikidata-upload-panel.spec.ts`.
 
@@ -1867,7 +1866,7 @@ www.wikidata.org secret does not authenticate against
    `wikidata_test` (test.wikidata.org).
 2. `upload_target=test` / single-item push `test` unwraps `wikidata_test`
    only — never silently falls back to the live secret.
-3. `upload_target=live` unwraps `wikidata`.
+3. The sealed Publication execution resolves its target-bound server token.
 4. Missing secret → 400 with a target-specific Settings pointer.
 5. Format remains `Username@BotName:password` (or OAuth/JWT as already
    supported by `WikidataUploader`).
@@ -2635,3 +2634,26 @@ recover a supported author when one existed.
 
 Regression: `backend/tests/unit/test_hmo_canonical_wikidata.py` and
 `backend/tests/unit/test_wikidata_studio_works.py`.
+
+### Rule W-212 — A production Wikidata write MUST use a sealed Publication Release (added 2026-09-05)
+
+The Studio cache is a mutable projection. A direct upload could write a
+different corpus from the one a curator reviewed. It also had no durable
+record of a request that reached Wikidata but lost its response.
+
+**Invariants:**
+
+1. A production write MUST start from an immutable Release with a canonical digest.
+2. Review, Plan, and Dry-run Receipt MUST bind that Release digest.
+3. The HTTP publish command MUST create queued work and MUST NOT write remotely.
+4. The worker MUST commit a Write Intent before each remote request.
+5. The worker MUST store a Receipt after the remote result.
+6. An uncertain result MUST remain blocked from blind retry until recovery proves it.
+7. Cursor reads MUST remain bounded to 500 entities or fewer.
+8. A Release with a local entity reference MUST block until a two-phase edge executor exists.
+9. The legacy live upload and single-item push routes MUST return `410 Gone`.
+
+Regression: `backend/tests/unit/test_publication_module.py`,
+`backend/tests/test_publication_repository.py`,
+`backend/tests/test_publication_router.py`, and
+`frontend/e2e/wikidata-publication.spec.ts`.

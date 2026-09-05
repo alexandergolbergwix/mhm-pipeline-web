@@ -130,6 +130,17 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 Any new external-write path or reconcile change MUST extend
 `test_wikidata_upload_guards.py` (Rule W-30).
 
+- `backend/tests/unit/test_publication_module.py`,
+  `backend/tests/test_publication_repository.py`, and
+  `backend/tests/unit/test_wikidata_publication_gateway.py` — sealed Release
+  digests, execution leases, recovery, target credentials, revision checks,
+  and fail-closed gateway outcomes (Rule W-212).
+- `backend/tests/test_publication_router.py` and
+  `backend/tests/test_wikidata_publication_execution_job.py` — queued prepare
+  and execution jobs, access checks, no HTTP write, and secret-free job data.
+- `frontend/e2e/wikidata-publication.spec.ts` — Review → Dry-run → Publish
+  and bounded audit cursor flow.
+
 
 - `backend/tests/test_wikidata_items_export_import.py` — diagnostic CSV columns include authority evidence and local-reference target JSON.
 - `eval-agent/tests/test_wikidata_item.py` — evaluator payload/prompt carries authority, internal-reference, and contents/catalog context.

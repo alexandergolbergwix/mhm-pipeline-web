@@ -1,0 +1,499 @@
+"""HTTP contract tests for the run-scoped Wikidata Publication seam."""
+
+from __future__ import annotations
+
+import base64
+import uuid
+
+import pytest
+
+from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.publication.gateway import FakeWikidataGateway, TargetObservation
+
+
+def _canonical_item(local_id: str, label: str) -> dict[str, object]:
+    return {
+        "local_id": local_id,
+        "entity_type": "work",
+        "labels": {"en": label},
+        "descriptions": {"en": "A manuscript work"},
+        "aliases": {},
+        "statements": [
+            {
+                "property": "P31",
+                "value": "Q47461344",
+                "value_type": "item",
+            }
+        ],
+        "existing_qid": None,
+        "validation_issues": [],
+    }
+
+
+async def _add_canonical_cache(db_session, run_id, *, items=None) -> None:
+    cached_items = items or [
+        _canonical_item("work:2", "Work 2"),
+        _canonical_item("work:1", "Work 1"),
+    ]
+    db_session.add(
+        WikidataStudioCache(
+            run_id=run_id,
+            approved_only=True,
+            source="canonical",
+            input_fingerprint="a" * 64,
+            result_items=cached_items,
+            quickstatements="",
+            summary={
+                "total_items": len(cached_items),
+                "manuscripts": 0,
+                "persons": 0,
+                "works": len(cached_items),
+                "statements": len(cached_items),
+            },
+            approved_match_count=0,
+            pending_match_count=0,
+            used_match_count=0,
+            record_count=1,
+        )
+    )
+    await db_session.commit()
+
+
+async def _prepare_direct(db_session, run_id, actor_id, *, target: str):
+    from app.publication.credentials import configured_publication_gateway_factory
+    from app.publication.runtime import PublicationRuntime
+    from app.schemas.publication import PreparePublicationRequest
+
+    response = await PublicationRuntime(
+        session=db_session,
+        gateway_factory=configured_publication_gateway_factory,
+    ).prepare(
+        run_id=run_id,
+        actor_id=str(actor_id),
+        request=PreparePublicationRequest.model_validate(
+            {
+                "profile_id": "mhm-wikidata",
+                "profile_version": "1",
+                "target": target,
+                "source": {
+                    "kind": "run",
+                    "projection_source": "canonical",
+                    "approved_only": True,
+                },
+            }
+        ),
+    )
+    assert response.publication is not None
+    return response.publication
+
+
+async def _member_client(db_session, *, project_id, role):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.auth import password as password_module
+    from app.auth.session import COOKIE_NAME, create_session
+    from app.crypto import index as index_module
+    from app.crypto import kek as kek_module
+    from app.crypto import pii
+    from app.main import app
+    from app.models.project import Membership
+    from app.models.user import ROLE_EDITOR, User
+
+    email = f"publication-viewer-{uuid.uuid4().hex[:8]}@example.com"
+    password = "Correct-Horse-Battery-Staple-2!"  # noqa: S105
+    user = User(
+        email_index=index_module.blind_index(email),
+        email_encrypted=pii.encrypt_pii(email),
+        name_encrypted=pii.encrypt_pii("Publication Viewer"),
+        password_hash=password_module.hash_password(password),
+        kek_salt=pii.random_bytes(16),
+        role=ROLE_EDITOR,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    db_session.add(Membership(project_id=project_id, user_id=user.id, role=role))
+    await db_session.commit()
+    kek = kek_module.derive_kek(password, salt=user.kek_salt)
+    session_row, session_secret = await create_session(db_session, user=user, kek=kek)
+    await db_session.commit()
+    cookie_value = (
+        f"{session_row.id}."
+        f"{base64.urlsafe_b64encode(session_secret).decode('ascii').rstrip('=')}"
+    )
+    client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    client.cookies.set(COOKIE_NAME, cookie_value)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_prepare_and_read_expose_the_nested_publication_contract(
+    sample_run,
+    db_session,
+    monkeypatch,
+) -> None:
+    from app.models.run_job import RunJob
+    from app.pipeline.wikidata_publication_prepare_job import run_wikidata_publication_prepare_job
+
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda _job_id: None)
+
+    run_id = sample_run["run_id"]
+    await _add_canonical_cache(db_session, run_id)
+    prepared = await sample_run["client"].post(
+            f"/api/runs/{run_id}/wikidata-publications/prepare",
+            json={
+                "profile_id": "mhm-wikidata",
+                "profile_version": "1",
+                "target": "live",
+                "source": {
+                    "kind": "run",
+                    "projection_source": "canonical",
+                    "approved_only": True,
+                },
+            },
+        )
+
+    assert prepared.status_code == 200, prepared.text
+    assert prepared.json()["publication"] is None
+    prepare_job_id = prepared.json()["operation"]["operation_id"]
+    await run_wikidata_publication_prepare_job(uuid.UUID(prepare_job_id))
+    prepare_job = await db_session.get(RunJob, uuid.UUID(prepare_job_id))
+    assert prepare_job is not None
+    publication_id = str(prepare_job.result["publication_id"])
+    summary = await sample_run["client"].post(
+        f"/api/runs/{run_id}/wikidata-publications/{publication_id}/read",
+        json={"query": {"type": "summary"}},
+    )
+    assert summary.status_code == 200, summary.text
+    publication = summary.json()["publication"]
+    assert publication["run_id"] == str(run_id)
+    assert publication["target"] == "live"
+    assert publication["status"] == "ready_for_review"
+    assert publication["source_current"] is True
+    assert publication["current_release"]["entity_count"] == 2
+    assert publication["current_release"]["finding_counts"] == {
+        "error": 0,
+        "warning": 0,
+        "info": 0,
+    }
+
+    release = publication["current_release"]
+    page = await sample_run["client"].post(
+        f"/api/runs/{run_id}/wikidata-publications/{publication['publication_id']}/read",
+        json={
+            "query": {
+                "type": "entities",
+                "release_id": release["release_id"],
+                "cursor": None,
+                "limit": 1,
+            }
+        },
+    )
+
+    assert page.status_code == 200, page.text
+    assert page.json()["total"] == 2
+    assert page.json()["items"][0]["entity_id"] == "work:1"
+    assert page.json()["items"][0]["label"] == "Work 1"
+    assert page.json()["next_cursor"]
+
+
+@pytest.mark.asyncio
+async def test_advance_binds_review_and_dry_run_but_never_writes_in_the_route(
+    sample_run,
+    db_session,
+    monkeypatch,
+) -> None:
+    from sqlalchemy import select
+
+    from app.main import app
+    from app.models.publication import PublicationExecution
+    from app.models.run_job import RunJob
+    from app.publication.runtime import PublicationRuntime
+    from app.routers.publication import get_publication_gateway_factory
+    from app.schemas.publication import PreparePublicationRequest
+
+    monkeypatch.setattr(
+        "app.pipeline.run_job_service.spawn_job",
+        lambda _job_id: None,
+    )
+
+    run_id = sample_run["run_id"]
+    await _add_canonical_cache(db_session, run_id)
+    gateway = FakeWikidataGateway(
+        observations={
+            "work:1": TargetObservation.absent("work:1"),
+            "work:2": TargetObservation.absent("work:2"),
+        }
+    )
+
+    def gateway_factory(*, target, actor_id):
+        del target, actor_id
+        return gateway
+
+    app.dependency_overrides[get_publication_gateway_factory] = lambda: gateway_factory
+    try:
+        prepared = await PublicationRuntime(
+            session=db_session,
+            gateway_factory=gateway_factory,
+        ).prepare(
+            run_id=run_id,
+            actor_id=str(sample_run["user_id"]),
+            request=PreparePublicationRequest.model_validate(
+                {
+                    "profile_id": "mhm-wikidata",
+                    "profile_version": "1",
+                    "target": "test",
+                    "source": {
+                        "kind": "run",
+                        "projection_source": "canonical",
+                        "approved_only": True,
+                    },
+                }
+            ),
+        )
+        assert prepared.publication is not None
+        publication = prepared.publication.model_dump(mode="json")
+        release = publication["current_release"]
+        publication_url = (
+            f"/api/runs/{run_id}/wikidata-publications/"
+            f"{publication['publication_id']}"
+        )
+        reviewed = await sample_run["client"].post(
+            f"{publication_url}/advance",
+            json={
+                "command": {
+                    "type": "review",
+                    "release_id": release["release_id"],
+                    "expected_release_digest": release["release_digest"],
+                    "selection": {"mode": "eligible_release"},
+                    "decision": "approve",
+                    "reason": "The curator approves the eligible Release.",
+                }
+            },
+        )
+        assert reviewed.status_code == 200, reviewed.text
+        approval = reviewed.json()["publication"]["approval_set"]
+        assert approval["status"] == "approved"
+        assert approval["pending_count"] == 0
+        assert approval["approval_digest"]
+
+        dry_run = await sample_run["client"].post(
+            f"{publication_url}/advance",
+            json={
+                "command": {
+                    "type": "dry_run",
+                    "approval_set_id": approval["approval_set_id"],
+                    "expected_approval_digest": approval["approval_digest"],
+                }
+            },
+        )
+        assert dry_run.status_code == 200, dry_run.text
+        dry_run_publication = dry_run.json()["publication"]
+        assert dry_run_publication["plan"]["action_counts"]["create"] == 2
+        assert dry_run_publication["dry_run_receipt"]["status"] == "valid"
+
+        publish = await sample_run["client"].post(
+            f"{publication_url}/advance",
+            json={
+                "command": {
+                    "type": "publish",
+                    "plan_id": dry_run_publication["plan"]["plan_id"],
+                    "dry_run_receipt_id": (
+                        dry_run_publication["dry_run_receipt"]["dry_run_receipt_id"]
+                    ),
+                    "expected_receipt_digest": (
+                        dry_run_publication["dry_run_receipt"]["receipt_digest"]
+                    ),
+                }
+            },
+        )
+        assert publish.status_code == 200, publish.text
+        publish_body = publish.json()
+        operation = publish_body["operation"]
+        assert operation["command"] == "publish"
+        assert operation["status"] == "queued"
+        assert publish_body["publication"]["execution"]["status"] == "queued"
+        assert gateway.write_calls == ()
+
+        operation_read = await sample_run["client"].post(
+            f"{publication_url}/read",
+            json={
+                "query": {
+                    "type": "operation",
+                    "operation_id": operation["operation_id"],
+                }
+            },
+        )
+        assert operation_read.status_code == 200, operation_read.text
+        assert operation_read.json()["operation"]["status"] == "queued"
+
+        execution = (
+            await db_session.execute(
+                select(PublicationExecution).where(
+                    PublicationExecution.id == uuid.UUID(operation["operation_id"])
+                )
+            )
+        ).scalar_one()
+        execution.status = "paused"
+        await db_session.commit()
+        paused_operation = await sample_run["client"].post(
+            f"{publication_url}/read",
+            json={
+                "query": {
+                    "type": "operation",
+                    "operation_id": operation["operation_id"],
+                }
+            },
+        )
+        assert paused_operation.status_code == 200, paused_operation.text
+        assert paused_operation.json()["operation"]["status"] == "succeeded"
+        assert paused_operation.json()["operation"]["progress"]["status"] == "paused"
+
+        resumed = await sample_run["client"].post(
+            f"{publication_url}/advance",
+            json={
+                "command": {
+                    "type": "resume",
+                    "execution_id": operation["operation_id"],
+                }
+            },
+        )
+        assert resumed.status_code == 200, resumed.text
+        assert resumed.json()["operation"]["command"] == "resume"
+        assert resumed.json()["operation"]["status"] == "queued"
+        execution_jobs = (
+            await db_session.execute(
+                select(RunJob).where(
+                    RunJob.kind == "wikidata_publication_execution",
+                )
+            )
+        ).scalars().all()
+        assert len(execution_jobs) == 1
+        assert all(
+            job.params["execution_id"] == operation["operation_id"]
+            for job in execution_jobs
+        )
+        assert gateway.write_calls == ()
+
+        cancelled = await sample_run["client"].post(
+            f"{publication_url}/advance",
+            json={
+                "command": {
+                    "type": "cancel",
+                    "operation_id": operation["operation_id"],
+                    "reason": "The curator stops this Execution.",
+                }
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_publication_gateway_factory, None)
+
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["publication"]["status"] == "cancelled"
+    assert cancelled.json()["operation"]["status"] == "cancelled"
+    assert gateway.write_calls == ()
+
+
+@pytest.mark.asyncio
+async def test_live_prepare_requires_canonical_and_summary_uses_backend_currency(
+    sample_run,
+    db_session,
+) -> None:
+    from sqlalchemy import select
+
+    run_id = sample_run["run_id"]
+    client = sample_run["client"]
+    rejected = await client.post(
+        f"/api/runs/{run_id}/wikidata-publications/prepare",
+        json={
+            "profile_id": "mhm-wikidata",
+            "profile_version": "1",
+            "target": "live",
+            "source": {
+                "kind": "run",
+                "projection_source": "legacy",
+                "approved_only": True,
+            },
+        },
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"] == "Live publication requires the canonical source"
+
+    await _add_canonical_cache(db_session, run_id)
+    publication = await _prepare_direct(
+        db_session, run_id, sample_run["user_id"], target="live"
+    )
+    publication_id = publication.publication_id
+    cache = (
+        await db_session.execute(
+            select(WikidataStudioCache).where(
+                WikidataStudioCache.run_id == run_id,
+                WikidataStudioCache.source == "canonical",
+                WikidataStudioCache.approved_only.is_(True),
+            )
+        )
+    ).scalar_one()
+    cache.input_fingerprint = "b" * 64
+    await db_session.commit()
+
+    summary = await client.post(
+        f"/api/runs/{run_id}/wikidata-publications/{publication_id}/read",
+        json={"query": {"type": "summary"}},
+    )
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["publication"]["source_current"] is False
+
+
+@pytest.mark.asyncio
+async def test_viewers_can_read_but_only_editors_can_mutate(
+    sample_run,
+    db_session,
+) -> None:
+    from app.models.project import PROJECT_ROLE_VIEWER
+
+    run_id = sample_run["run_id"]
+    await _add_canonical_cache(db_session, run_id)
+    publication = (await _prepare_direct(
+        db_session, run_id, sample_run["user_id"], target="test"
+    )).model_dump(mode="json")
+    viewer = await _member_client(
+        db_session,
+        project_id=sample_run["project_id"],
+        role=PROJECT_ROLE_VIEWER,
+    )
+    try:
+        read = await viewer.post(
+            f"/api/runs/{run_id}/wikidata-publications/{publication['publication_id']}/read",
+            json={"query": {"type": "summary"}},
+        )
+        forbidden_prepare = await viewer.post(
+            f"/api/runs/{run_id}/wikidata-publications/prepare",
+            json={
+                "profile_id": "mhm-wikidata",
+                "profile_version": "1",
+                "target": "test",
+                "source": {
+                    "kind": "run",
+                    "projection_source": "canonical",
+                    "approved_only": True,
+                },
+            },
+        )
+        forbidden_advance = await viewer.post(
+            f"/api/runs/{run_id}/wikidata-publications/{publication['publication_id']}/advance",
+            json={
+                "command": {
+                    "type": "review",
+                    "release_id": publication["current_release"]["release_id"],
+                    "expected_release_digest": publication["current_release"]["release_digest"],
+                    "selection": {"mode": "eligible_release"},
+                    "decision": "approve",
+                    "reason": "A viewer cannot approve this Release.",
+                }
+            },
+        )
+    finally:
+        await viewer.aclose()
+
+    assert read.status_code == 200
+    assert forbidden_prepare.status_code == 403
+    assert forbidden_advance.status_code == 403

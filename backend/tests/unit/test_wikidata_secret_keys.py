@@ -86,3 +86,17 @@ async def test_prepare_job_params_rejects_test_upload_without_test_secret(
         )
     assert exc.value.status_code == 400
     assert "test" in str(exc.value.detail).lower()
+
+
+@pytest.mark.asyncio
+async def test_prepare_job_params_retires_legacy_live_upload() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await prepare_job_params(
+            object(),
+            SimpleNamespace(user=SimpleNamespace(id=uuid.uuid4()), kek=b"x" * 32),
+            run_id=uuid.uuid4(),
+            kind=JOB_KIND_WIKIDATA_UPLOAD,
+            params={"upload_target": "live"},
+        )
+    assert exc.value.status_code == 410
+    assert "versioned" in str(exc.value.detail).lower()

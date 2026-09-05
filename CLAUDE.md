@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-211)
+## Architectural rules (W-1…W-212)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -162,6 +162,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-209** — Work author strings MUST use structured source evidence
 - **W-210** — Live verdict rows MUST preserve metadata and retry invalid judge output
 - **W-211** — Public AI verdicts MUST use a closed outcome set; provider errors use abstain
+- **W-212** — A production Wikidata write MUST use a sealed Publication Release
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 
@@ -339,8 +340,8 @@ cd backend && DATABASE_URL=... MAZAL_DB_PATH=.../mazal_index.db \
 - Run the eval-agent orchestrator (planner) as a user-facing surface.
   The planner is internal research tooling; only the per-candidate
   `ai-verify` modal is exposed.
-- Live Wikidata writes without curator `upload_target=live` (or legacy
-  `MORATORIUM_LIFTED=true`) — default remains dry-run (Rule W-103 / Rule 25).
+- Direct live Wikidata writes — the legacy routes return `410 Gone`.
+  Production writes use a sealed Publication Release (Rule W-212).
 - Auto-approve AI verdicts (curator always confirms; verdicts surface
   as a `✨ AI says pass` pill).
 

@@ -22,6 +22,12 @@ re-wraps every DEK under the new KEK and invalidates all sessions
 password) so it deletes all `api_keys` rows and reports `api_keys_wiped`
 (`routers/onboarding.py:177`).
 
+**Publication credentials.** `routers/publication.py` accepts a credential
+reference only. Commands require project write access through
+`_lookup_run_with_access`, and reads require view access. The HTTP response and
+the run-job payload contain no bot credential. The execution worker resolves
+`WIKIDATA_PUBLICATION_*_TOKEN` only after it claims the queued execution.
+
 **PII.** Emails and names are stored as `AES-256-GCM(MASTER_KEY)` blobs plus a
 deterministic blind index for lookup (`crypto/index.py`). Access-request
 free-text fields get the same treatment; client IPs are stored as truncated

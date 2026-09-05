@@ -12,8 +12,9 @@
    *Why:* keeps the dyno slug small and the trust boundary explicit; Modal deploys independently.
 5. **R5 — In `modal_app.py`, `_bake_weights` MUST run before any `add_local_dir` layer.**
    *Why:* Modal rejects misordered chains and a code edit would otherwise invalidate the 3 GB weight layer.
-6. **R6 — Live wikidata.org writes MUST stay behind `MORATORIUM_LIFTED=true` (or `WIKIDATA_TEST_MODE`).**
-   *Why:* the April incident moratorium; the env var is the last-resort kill switch.
+6. **R6 — A live wikidata.org write MUST use the sealed Publication path and `WIKIDATA_PUBLICATION_LIVE_TOKEN`.**
+   Legacy upload routes cannot write live. An absent target-bound token MUST fail closed.
+   *Why:* the Publication Release binds the reviewed corpus, Dry-run Receipt, and write recovery evidence (Rule W-212).
 7. **R7 — Job state transitions to `running` MUST go through `_try_claim_job`'s atomic UPDATE; NEVER flip a `run_jobs` row manually (Rule W-38).**
    *Why:* row ownership (`claimed_by`) is the only thing making the runner multi-dyno safe without a broker.
 8. **R8 — New external inference/API call sites MUST use `cache_lookup_or_call` (Redis L1 + Postgres) — never call Modal/VIAF/Gemini/Wikidata directly (Rule W-25).**

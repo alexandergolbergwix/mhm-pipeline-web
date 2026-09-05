@@ -194,6 +194,86 @@ class PreparedItem:
     link_qid: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class UploadQualityDecision:
+    """The quality status for one entity in a checked upload corpus."""
+
+    eligible: bool
+    findings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class UploadCorpusQualityPreflight:
+    """One complete quality result that guards later per-item upload calls."""
+
+    decisions: dict[str, UploadQualityDecision]
+    execution_findings: tuple[str, ...] = ()
+
+
+def build_upload_corpus_quality_preflight(
+    items: list[Any],
+) -> UploadCorpusQualityPreflight:
+    """Map full-corpus hard Findings to entities before any item write."""
+    from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        is_publishable_person_item,
+        recover_person_identifiers_from_evidence,
+    )
+    from app.pipeline.wikidata_export_quality_gate import (  # noqa: PLC0415
+        FindingSeverity,
+        wikidata_export_quality_findings,
+    )
+
+    local_ids = [_local_id(item, index) for index, item in enumerate(items)]
+    known_ids = set(local_ids)
+    skipped_person_ids: set[str] = set()
+    for index, item in enumerate(items):
+        if str(getattr(item, "entity_type", "") or "").lower() != "person":
+            continue
+        recover_person_identifiers_from_evidence(item)
+        if not is_publishable_person_item(item):
+            skipped_person_ids.add(_local_id(item, index))
+    findings_by_id: dict[str, list[str]] = {local_id: [] for local_id in local_ids}
+    execution_findings: list[str] = []
+
+    for finding in wikidata_export_quality_findings(items):
+        target_ids = (
+            finding.identity_group.entity_ids
+            if finding.identity_group is not None
+            else finding.entity_ids
+        )
+        if target_ids:
+            target_ids = tuple(
+                target for target in target_ids
+                if target not in skipped_person_ids
+            )
+            if not target_ids:
+                continue
+        if finding.severity is FindingSeverity.INFORMATIONAL:
+            logger.warning(
+                "wikidata upload quality [informational] %s",
+                finding.render(),
+            )
+            continue
+        if not target_ids or any(target not in known_ids for target in target_ids):
+            execution_findings.append(finding.render())
+            continue
+        rendered = finding.render()
+        for target in target_ids:
+            findings_by_id[target].append(rendered)
+
+    decisions = {
+        local_id: UploadQualityDecision(
+            eligible=not entity_findings,
+            findings=tuple(entity_findings),
+        )
+        for local_id, entity_findings in findings_by_id.items()
+    }
+    return UploadCorpusQualityPreflight(
+        decisions=decisions,
+        execution_findings=tuple(execution_findings),
+    )
+
+
 PASS2_CREATE_STATUSES = frozenset({"created", "would_create", "success"})
 PASS2_OWN_UPDATE_STATUSES = frozenset({
     "updated", "would_update", "adopted", "would_adopt", "exists",
@@ -743,18 +823,93 @@ def _prepare_for_upload(
     is_test: bool = False,
     enforce_ownership: bool = False,
     existence_cache: dict[str, bool | None] | None = None,
+    marc_records: list[dict[str, Any]] | None = None,
+    quality_preflight: UploadCorpusQualityPreflight | None = None,
 ) -> list[PreparedItem]:
-    from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
-    from converter.wikidata.reconciler import (  # noqa: PLC0415
-        ReconciliationUnavailableError,
-    )
     from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
         coerce_monolingual_text_statements,
         omit_implausible_codex_dimensions,
     )
+    from converter.wikidata.reconciler import (  # noqa: PLC0415
+        ReconciliationUnavailableError,
+    )
 
     coerce_monolingual_text_statements(items)
     omit_implausible_codex_dimensions(items)
+
+    skipped_person_indexes: set[int] = set()
+    for index, item in enumerate(items):
+        if str(getattr(item, "entity_type", "") or "").lower() != "person":
+            continue
+        from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+            is_publishable_person_item,
+            recover_person_identifiers_from_evidence,
+        )
+
+        recover_person_identifiers_from_evidence(item)
+        if not is_publishable_person_item(item):
+            skipped_person_indexes.add(index)
+
+    quality_items = [
+        item for index, item in enumerate(items)
+        if index not in skipped_person_indexes
+    ]
+    from app.pipeline.wikidata_export_quality_gate import (  # noqa: PLC0415
+        FindingSeverity,
+        wikidata_export_quality_findings,
+    )
+
+    collision_findings = [] if quality_preflight is not None else [
+        finding.render()
+        for finding in wikidata_export_quality_findings(quality_items)
+        if finding.severity is FindingSeverity.HARD
+        and finding.code == "STRONG_EXTERNAL_ID_COLLISION"
+    ]
+    if collision_findings:
+        from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+            _UPLOAD_SKIP_MESSAGE,
+        )
+
+        sample = "; ".join(collision_findings[:3])
+        suffix = (
+            f" (+{len(collision_findings) - 3} more)"
+            if len(collision_findings) > 3 else ""
+        )
+        rows: list[PreparedItem] = []
+        for index, item in enumerate(items):
+            local_id = _local_id(item, index)
+            entity_type = getattr(item, "entity_type", "") or "other"
+            existing_qid = getattr(item, "existing_qid", None)
+            if index in skipped_person_indexes:
+                rows.append(PreparedItem(
+                    item=item,
+                    local_id=local_id,
+                    label=_label(item),
+                    entity_type=entity_type,
+                    existing_qid=existing_qid,
+                    method="prebuilt" if existing_qid else "none",
+                    blocked=False,
+                    block_status="skipped",
+                    block_message=_UPLOAD_SKIP_MESSAGE,
+                    had_builder_qid=bool(existing_qid),
+                ))
+                continue
+            rows.append(PreparedItem(
+                item=item,
+                local_id=local_id,
+                label=_label(item),
+                entity_type=entity_type,
+                existing_qid=existing_qid,
+                method="quality_gate",
+                blocked=True,
+                block_status="blocked",
+                block_message=(
+                    "Blocked by the full Wikidata quality gate before "
+                    f"reconciliation: {sample}{suffix}"
+                ),
+                had_builder_qid=bool(existing_qid),
+            ))
+        return rows
 
     ns = ledger_ns or ledger_namespace()
     accepts = accept_by_local_id or {}
@@ -767,6 +922,38 @@ def _prepare_for_upload(
         existing = getattr(item, "existing_qid", None)
         method = "prebuilt" if existing else "none"
         adopt_candidate = False
+
+        if quality_preflight is not None:
+            decision = quality_preflight.decisions.get(local_id)
+            preflight_findings = quality_preflight.execution_findings
+            if decision is None and not preflight_findings:
+                preflight_findings = (
+                    f"CORPUS_PREFLIGHT_MISSING {local_id}: the item was not "
+                    "present in the checked corpus",
+                )
+            elif decision is not None and not decision.eligible:
+                preflight_findings = decision.findings
+            if preflight_findings:
+                codes = ", ".join(sorted({
+                    finding.split(" ", 1)[0]
+                    for finding in preflight_findings
+                }))
+                prepared.append(PreparedItem(
+                    item=item,
+                    local_id=local_id,
+                    label=label,
+                    entity_type=et,
+                    existing_qid=existing,
+                    method="corpus_quality_preflight",
+                    blocked=True,
+                    block_status="blocked",
+                    block_message=(
+                        f"Blocked by the corpus quality preflight (ERROR: {codes}). "
+                        + "; ".join(preflight_findings[:3])
+                    ),
+                    had_builder_qid=had_builder_qid,
+                ))
+                continue
 
         if et == "person":
             from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
@@ -827,27 +1014,6 @@ def _prepare_for_upload(
                 adopt_candidate = not had_builder_qid
                 item.existing_qid = existing
 
-        errors = [
-            iss for iss in validate_item(item)
-            if getattr(iss, "severity", "") == "error"
-        ]
-        if errors:
-            codes = ", ".join(sorted({getattr(e, "code", "") for e in errors}))
-            row = PreparedItem(
-                item=item, local_id=local_id, label=label, entity_type=et,
-                existing_qid=existing, method=method, blocked=True,
-                block_status="blocked",
-                block_message=(
-                    f"Blocked by validator (ERROR: {codes}). Fix via item "
-                    "overrides and rebuild before uploading — error-severity "
-                    "items are never created or updated."
-                ),
-                had_builder_qid=had_builder_qid,
-                adopt_candidate=adopt_candidate,
-            )
-            prepared.append(row)
-            continue
-
         row = PreparedItem(
             item=item, local_id=local_id, label=label, entity_type=et,
             existing_qid=existing, method=method, blocked=False,
@@ -856,17 +1022,72 @@ def _prepare_for_upload(
             adopt_candidate=adopt_candidate,
             ownership="absent" if not existing else "unknown",
         )
+        prepared.append(row)
+    _rollup_skipped_person_refs(prepared)
+
+    if quality_preflight is None:
+        active_items = [
+            row.item
+            for row in prepared
+            if row.block_status != "skipped"
+        ]
+        findings = wikidata_export_quality_findings(
+            active_items,
+            marc_records=marc_records,
+        )
+        hard_findings = [
+            finding
+            for finding in findings
+            if finding.severity is FindingSeverity.HARD
+        ]
+        for finding in findings:
+            if finding.severity is FindingSeverity.INFORMATIONAL:
+                logger.warning(
+                    "wikidata upload quality [informational] %s",
+                    finding.render(),
+                )
+
+        for row in prepared:
+            if row.block_status == "skipped":
+                continue
+            row_findings = [
+                finding
+                for finding in hard_findings
+                if not finding.entity_ids or row.local_id in finding.entity_ids
+            ]
+            if row_findings and not row.blocked:
+                codes = ", ".join(sorted({finding.code for finding in row_findings}))
+                rendered = [finding.render() for finding in row_findings]
+                row.blocked = True
+                row.block_status = "blocked"
+                row.block_message = (
+                    f"Blocked by the full quality gate (ERROR: {codes}). Fix via item "
+                    "overrides and rebuild before uploading — error-severity "
+                    "items are never created or updated. "
+                    + "; ".join(rendered[:3])
+                )
+
+    for index, row in enumerate(prepared):
+        if row.block_status == "skipped":
+            continue
         if enforce_ownership:
-            row = _apply_existence_and_ownership(
+            prepared[index] = _apply_existence_and_ownership(
                 row,
-                accept=accepts.get(local_id),
+                accept=accepts.get(row.local_id),
                 ownership_checker=ownership_checker,
                 is_test=is_test,
                 existence_cache=existence_cache,
             )
-        prepared.append(row)
-    _rollup_skipped_person_refs(prepared)
     return prepared
+
+
+def prepare_items_for_upload(
+    items: list[Any],
+    reconciler: Any,
+    **options: Any,
+) -> list[PreparedItem]:
+    """Apply all upload preflight gates through one public seam."""
+    return _prepare_for_upload(items, reconciler, **options)
 
 
 async def reconcile_items(items: list[Any]) -> list[ReconcileOutcome]:
@@ -1032,6 +1253,7 @@ async def upload_items(
     uploader: Any | None = None,
     existence_cache: dict[str, bool | None] | None = None,
     created_qids: dict[str, str] | None = None,
+    quality_preflight: UploadCorpusQualityPreflight | None = None,
 ) -> list[UploadOutcome]:
     resolved = mode or resolve_upload_mode(upload_target, dry_run=dry_run)
     if ledger is None and db is not None:
@@ -1052,6 +1274,7 @@ async def upload_items(
         uploader,
         existence_cache,
         created_qids,
+        quality_preflight,
     )
     if db is not None and audit_ctx is not None and not resolved.dry_run:
         for outcome in outcomes:
@@ -1107,6 +1330,7 @@ def _upload_sync(
     uploader: Any | None = None,
     existence_cache: dict[str, bool | None] | None = None,
     created_qids: dict[str, str] | None = None,
+    quality_preflight: UploadCorpusQualityPreflight | None = None,
 ) -> list[UploadOutcome]:
     from converter.wikidata.uploader import (  # noqa: PLC0415
         UnauthorisedModificationError,
@@ -1143,6 +1367,7 @@ def _upload_sync(
             ownership_checker=ownership_checker,
             is_test=is_test,
             existence_cache=existence_cache,
+            quality_preflight=quality_preflight,
         )
 
     if not is_test and not allow_live:
@@ -1171,6 +1396,7 @@ def _upload_sync(
         is_test=is_test,
         enforce_ownership=True,
         existence_cache=existence_cache,
+        quality_preflight=quality_preflight,
     )
 
     write_uploader = ownership_checker or WikidataUploader(
@@ -1321,6 +1547,7 @@ def _dry_run(
     ownership_checker: Any | None = None,
     is_test: bool = False,
     existence_cache: dict[str, bool | None] | None = None,
+    quality_preflight: UploadCorpusQualityPreflight | None = None,
 ) -> list[UploadOutcome]:
     reconciler = _make_reconciler()
     prepared = _prepare_for_upload(
@@ -1330,6 +1557,7 @@ def _dry_run(
         is_test=is_test,
         enforce_ownership=True,
         existence_cache=existence_cache,
+        quality_preflight=quality_preflight,
     )
 
     out: list[UploadOutcome] = []

@@ -69,6 +69,8 @@ already-judged items.
 | `rdf_build` | `rdf_build_job.py` | Builds the TTL, write-throughs `RdfArtifact`, invalidates on-disk graph caches |
 | `wikidata_studio_build` | `wikidata_studio_build_job.py` | Delegates to `execute_studio_build` (fingerprint cache per Rule W-26) |
 | `wikidata_upload` | `wikidata_upload_job.py` | Two-pass dry-run/test/live upload through `wikidata_upload.upload_items` (W-30 / W-192); same two-step `steps` payload for every `upload_target` |
+| `wikidata_publication_prepare` | `wikidata_publication_prepare_job.py` | Streams the Studio source into a sealed immutable Release; the payload has request metadata and an actor ID but no credential secret |
+| `wikidata_publication_execution` | `wikidata_publication_execution_job.py` | Runs a queued, digest-bound Publication Execution and resolves its server credential only inside the worker |
 | `hmo_coverage` | `hmo_coverage_job.py` | 9-14 min coverage report; write-throughs `HmoCoverageCache` (Rule W-39) |
 | `hmo_schema_bootstrap` | `hmo_schema_bootstrap_job.py` | Sequential `wbeditentity` per missing ontology class/property on Wikibase Cloud |
 | `hmo_item_upload` | `hmo_item_upload_job.py` | Live per-item Wikibase Cloud writes + deferred links, with audit context |

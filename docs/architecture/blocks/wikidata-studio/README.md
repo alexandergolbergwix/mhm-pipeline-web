@@ -25,8 +25,9 @@ bulk-deletion request (~5,948 items). Its whole write path is therefore
 validator moat that blocks any ERROR-severity item, four modification guards
 inside the uploader, smart existence + own-or-accept modify (Rule W-99), and a
 production upload-target gate (default `dry_run`; curator may choose `test` or
-`live` — Rule W-103) that refuses live wikidata.org writes unless explicitly
-selected.
+`live` — Rule W-103). Legacy Studio upload supports dry-run and test only.
+The sealed Publication path is the only path for a live wikidata.org write
+(Rule W-212).
 
 ## Contents
 
@@ -36,7 +37,9 @@ selected.
 - [How it works: guards and upload](guards-and-upload.md) —
   reconcile-before-create, existence/ownership, upload job + moratorium + QS,
   AI review + autofix.
-- [Rules](rules.md) — the invariants (R1–R109) this block enforces.
+- [Production publication](production-publication.md) — immutable Release,
+  digest-bound Review, dry-run Plan, queued Execution, and recovery.
+- [Rules](rules.md) — the invariants (R1–R114) this block enforces.
 - [Phase 1 projection quality](projection-quality.md) — evidence gates for labels, notes, subjects, genres, roles, and current institutions.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
   dry-runs, force-rebuild, blocked items, local quality audit, AI autofixes,

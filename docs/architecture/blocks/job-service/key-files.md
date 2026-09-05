@@ -18,6 +18,8 @@
 | `backend/app/pipeline/rdf_build_job.py` | `rdf_build` worker |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | `wikidata_studio_build` worker |
 | `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker; two-pass deferred links; `steps` / `eta_seconds` for tray View modal (W-141 / W-192); dry-run/test/live all render `WikidataUploadSteps` |
+| `backend/app/pipeline/wikidata_publication_prepare_job.py` | Builds a sealed Publication Release as a build-class job; job parameters contain only source selection and actor ID |
+| `backend/app/pipeline/wikidata_publication_execution_job.py` | Resumes one queued Publication Execution as an upload-class job; credentials resolve in the worker from a reference |
 | `backend/app/pipeline/hmo_coverage_job.py` | `hmo_coverage` worker |
 | `backend/app/pipeline/hmo_schema_bootstrap_job.py` | `hmo_schema_bootstrap` worker |
 | `backend/app/pipeline/hmo_item_upload_job.py` | `hmo_item_upload` worker |

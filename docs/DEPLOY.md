@@ -52,7 +52,7 @@ heroku addons:create heroku-postgresql:essential-0 --app "$APP"
 
 ## 2. Generate + set the encryption keys
 
-These two values are the **only** server-held secrets. Set them ONCE
+These values are the core server-held encryption secrets. Set them ONCE
 per environment and **never rotate without re-encrypting** (see §5).
 
 ```bash
@@ -96,6 +96,8 @@ added for the public **request-access** flow (§2.2), is:
 | `WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET` | OAuth 2.0 consumer secret | yes (for HMO Studio live upload) |
 | `WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN` | Pre-issued JWT access token (optional if client id+secret suffice) | optional |
 | `WIKIBASE_CLOUD_BASE_URL` | Wikibase Cloud instance URL (default `https://mhm-hmo.wikibase.cloud`) | optional |
+| `WIKIDATA_PUBLICATION_LIVE_TOKEN` | Bot token for the sealed `www.wikidata.org` Publication worker | conditional |
+| `WIKIDATA_PUBLICATION_TEST_TOKEN` | Bot token for the sealed `test.wikidata.org` Publication worker | conditional |
 
 ### 2.1 — Extraction backend (Modal vs local vs HF)
 
@@ -151,6 +153,21 @@ suffice for WikibaseIntegrator login. After deploy, confirm
 `GET /api/hmo-wikibase-schema/status` returns `"wikibase_configured": true`.
 Every live write is attributed to the clicking curator in the
 `wikibase_cloud_writes` Postgres audit table (not in wiki edit summaries).
+
+### 2.1.2 — Wikidata Publication worker tokens
+
+The sealed Publication workflow is the only path for a live Wikidata write.
+Set a distinct target-bound bot token before a curator starts a Publication.
+Do not put either token in a user Settings record or a job payload.
+
+```bash
+heroku config:set --app "$APP" \
+    WIKIDATA_PUBLICATION_LIVE_TOKEN="..." \
+    WIKIDATA_PUBLICATION_TEST_TOKEN="..."
+```
+
+An unset token makes the execution worker fail closed. The deploy can succeed
+without a token. The worker will not write to the matching target.
 
 ### 2.2 — Spam protection setup (request-access flow)
 

@@ -315,7 +315,7 @@ export function WikidataUploadPanel({
   const liveJob = activeJob ?? job;
   const jobRunning = liveJob?.status === "queued" || liveJob?.status === "running";
   const preVerifyRunning = verifyPhase === "pre" && verifyRunning;
-  const canUpload = buildPresent;
+  const canUpload = buildPresent && dryRun;
 
   const pillTarget = result ? lastTarget : uploadTarget;
   const moratoriumPill = pillTarget === "dry_run"
@@ -390,6 +390,12 @@ export function WikidataUploadPanel({
         </button>
       </div>
 
+      {!dryRun && (
+        <p className="text-xs text-warn" data-testid="wikidata-upload-receipt-required">
+          Prepare a Publication and create a current Dry-run Receipt before publication.
+        </p>
+      )}
+
       <div className="flex flex-wrap items-end gap-4 text-xs muted">
         {(preVerify || postVerify) && (
           <Tier1ModelSelect
@@ -432,7 +438,7 @@ export function WikidataUploadPanel({
         <div className="rounded-lg border border-warn/40 bg-warn/5 p-3 text-sm space-y-2" data-testid="wikidata-upload-failconfirm">
           <p>
             <b className="text-warn">{failConfirm.failed}</b> of {failConfirm.total} items failed the
-            pre-upload AI audit. Review them, or proceed anyway — nothing is applied automatically.
+            pre-upload AI audit. Review the flagged items before publication. Nothing is applied automatically.
           </p>
           <div className="flex gap-2">
             <button
@@ -446,17 +452,6 @@ export function WikidataUploadPanel({
               data-testid="wikidata-upload-failconfirm-review"
             >
               Review flagged items
-            </button>
-            <button
-              type="button"
-              className="button-primary text-xs"
-              onClick={() => {
-                setFailConfirm(null);
-                void doUpload();
-              }}
-              data-testid="wikidata-upload-failconfirm-anyway"
-            >
-              Upload anyway
             </button>
           </div>
         </div>

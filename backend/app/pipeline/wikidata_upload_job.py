@@ -13,13 +13,13 @@ from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
 from app.db import session_scope
+from app.models.item_override import WikidataItemOverride
 from app.models.run_job import (
     JOB_STATUS_CANCELLED,
     JOB_STATUS_FAILED,
     JOB_STATUS_SUCCEEDED,
     RunJob,
 )
-from app.models.item_override import WikidataItemOverride
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
 from app.pipeline import wikidata_studio, wikidata_upload
 from app.pipeline.run_job_service import (
@@ -348,6 +348,50 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         )
         return
 
+    quality_preflight = await run_in_threadpool(
+        wikidata_upload.build_upload_corpus_quality_preflight,
+        native,
+    )
+    if quality_preflight.execution_findings:
+        sample = "; ".join(quality_preflight.execution_findings[:3])
+        suffix = (
+            f" (+{len(quality_preflight.execution_findings) - 3} more)"
+            if len(quality_preflight.execution_findings) > 3 else ""
+        )
+        error = (
+            "Wikidata corpus quality preflight blocked the full execution: "
+            f"{sample}{suffix}"
+        )
+        await finish_job(
+            job_id,
+            status=JOB_STATUS_FAILED,
+            error=error,
+            result={
+                "dry_run": mode.dry_run,
+                "upload_target": mode.target,
+                "moratorium_lifted": mode.moratorium_lifted,
+                "test_mode": mode.test_mode,
+                "outcomes": [],
+                "link_outcomes": [],
+                "quality_finding_count": len(quality_preflight.execution_findings),
+                "quality_findings": list(quality_preflight.execution_findings[:50]),
+            },
+            progress=build_upload_progress(
+                phase="failed",
+                message="Blocked by the corpus quality preflight",
+                upload_target=mode.target,
+                step=STEP_WRITE_ITEMS,
+                item_done=0,
+                item_total=item_total,
+                link_done=0,
+                link_total=0,
+                current_label="Quality preflight failed",
+                eta_seconds=None,
+                elapsed_seconds=0,
+            ),
+        )
+        return
+
     if not mode.dry_run and not token:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error="missing Wikidata token")
         return
@@ -487,6 +531,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     uploader=shared_uploader,
                     existence_cache=existence_cache,
                     created_qids=created_qids,
+                    quality_preflight=quality_preflight,
                 )
             outcomes.extend(batch_outcomes)
             if batch_outcomes:
@@ -813,6 +858,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     uploader=shared_uploader,
                     existence_cache=existence_cache,
                     created_qids=created_qids,
+                    quality_preflight=quality_preflight,
                 )
             last = batch_outcomes[-1] if batch_outcomes else None
             status = last.status if last else "failed"

@@ -1180,15 +1180,14 @@ _WORK_AUTHOR_HONORIFICS_RE = re.compile(
 def _split_work_title_author(text: str) -> tuple[str, str | None]:
     """Split a catalog work title from a confident author attribution.
 
-    Only splits when the candidate author segment contains a genealogical
-    marker (בן/ב"ר/ibn/bar) or an explicit attribution verb gives a personal name (W-206).
+    Only an explicit attribution verb can split a personal name from a title.
+    A Hebrew ל prefix never proves authorship (W-209).
     Returns (text, None) unchanged when no confident split is found.
 
     Examples:
-      "ספר היראה ליונה בן אברהם גרונדי"  → ("ספר היראה", "יונה בן אברהם גרונדי")
+      "ספר היראה חברו יונה בן אברהם"     → ("ספר היראה", "יונה בן אברהם")
       "סדור מנהג אשכנז לכל השנה"          → ("סדור מנהג אשכנז לכל השנה", None)
-      "צוואת יהודה החסיד מרגנשבורג ליהודה בן שמואל החסיד"
-                                           → ("צוואת יהודה החסיד מרגנשבורג", "יהודה בן שמואל החסיד")
+      "ספר היראה ליונה בן אברהם"          → (text, None)
     """
     attribution = _WORK_ATTRIBUTION_RE.search(text)
     if attribution:
@@ -1204,19 +1203,6 @@ def _split_work_title_author(text: str) -> tuple[str, str | None]:
         ):
             return title_part, author_part
 
-    candidates = [m.start() for m in re.finditer(r" ל(?=[א-ת])", text)]
-    for pos in reversed(candidates):
-        author_part = text[pos + 2 :].strip()
-        title_part = text[:pos].strip()
-        if not title_part:
-            continue
-        if _PERSON_NAME_SIGNALS_RE.search(author_part):
-            return title_part, author_part
-        # A Hebrew ל-preposition does not prove authorship. Title phrases such
-        # as "לראש השנה" and "ליהודה בריאל" otherwise become false P2093 claims.
-        # Structured WORK_AUTHOR, content author, MARC 100, or approved
-        # authority evidence supplies names without this unsafe inference.
-        continue
     return text, None
 
 
@@ -1373,6 +1359,11 @@ class WikidataItemBuilder(
             + list(self._person_items.values())
             + self._manuscript_items
         )
+        from converter.wikidata.work_author_claims import (  # noqa: PLC0415
+            promote_safe_work_author_claims,
+        )
+
+        promote_safe_work_author_claims(all_items)
         logger.info(
             "Built %d items: %d manuscripts + %d persons + %d works",
             len(all_items),

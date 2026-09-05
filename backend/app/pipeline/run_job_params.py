@@ -49,6 +49,12 @@ async def prepare_job_params(
             detail=f"unsupported job kind {kind!r}",
         )
 
+    if kind in {"wikidata_publication_prepare", "wikidata_publication_execution"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Wikidata Publication jobs start only through the Publication API.",
+        )
+
     merged = dict(params)
 
     if kind in (JOB_KIND_AUTHORITY_RE_ENRICH, JOB_KIND_AUTHORITY_VERIFY):
@@ -146,6 +152,14 @@ async def prepare_job_params(
             merged.get("upload_target"),
             dry_run=merged.get("dry_run"),
         )
+        if mode.target == "live":
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail=(
+                    "The legacy live upload job is retired. Use a versioned "
+                    "Wikidata Publication Release instead."
+                ),
+            )
         merged["dry_run"] = mode.dry_run
         merged["upload_target"] = mode.target
 

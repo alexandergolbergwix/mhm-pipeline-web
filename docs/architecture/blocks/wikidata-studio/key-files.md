@@ -29,6 +29,15 @@
 | `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125); recover trusted person IDs before the W-154 omit gate (W-188); rewrite merged local references to canonical IDs (W-203); normalize duplicate work author claims (W-204) |
 | `backend/app/pipeline/wikidata_qid_ledger.py` | Global `wikibase_entity_mappings` ledger (`wikidata:` keys) — adopt + idempotent upload |
 | `backend/app/pipeline/wikidata_export_quality_gate.py` | Build-time ERROR-only export quality gate before cache upsert; source-backed works must retain one safe P50 or P2093 representation |
+| `backend/app/publication/core.py` | Deep module with `prepare`, `advance`, and `read`; seals Release, Approval Set, Plan, Receipt, Execution, and write journal without a transaction across remote I/O |
+| `backend/app/publication/sql_repository.py` | Normalized persistence, keyset reads, collision Findings, and leased Execution Actions for Publication state |
+| `backend/app/publication/runtime.py` | Run-scoped Studio source adapter and HTTP view mapping; reports backend `source_current` |
+| `backend/app/publication/gateway.py` | The only Publication seam for reconciliation, mutation compilation, write, and ambiguous-result recovery |
+| `backend/app/publication/wikidata_gateway.py`, `credentials.py` | Production Action API gateway and the target-bound server credential factory. No HTTP route or job payload receives a plaintext token. |
+| `backend/app/publication/repository.py`, `types.py`, `digests.py`, `testing.py` | Publication repository protocol, immutable domain types, canonical digest helpers, and deterministic test seams |
+| `backend/app/models/publication.py` | ORM rows for immutable Releases, approvals, Plans, Execution Actions, Write Intents, Receipts, and audit journal |
+| `backend/app/migrations/versions/0040_publication_core.py` | Creates normalized durable Publication state; identity assertions remain non-unique so collisions become Findings |
+| `backend/app/schemas/publication.py`, `backend/app/routers/publication.py` | Typed run-scoped Publication HTTP commands and cursor reads; editor writes and viewer reads use run access checks |
 | `backend/converter/transformer/extent.py` | Single MARC 300$a extent parser — sums leaf sequences, reads page/gematria units, fails closed (Rule W-140) |
 | `backend/app/pipeline/marc_llm_extract.py` | Span-grounded tier-1 extraction of owner/place/material from MARC provenance prose; proposals only (Rule W-140) |
 | `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, linked-QID handling, and export-field failures (W-199) |
@@ -52,6 +61,7 @@
 | `backend/converter/wikidata/manuscript_projection.py` | Manuscript identity, catalog, digital-access, note, and evidence-gated related_works → P1574 (Rule W-114) |
 | `backend/converter/wikidata/manuscript_metadata.py` | Labels, instance types, language, physical description, and provenance projection |
 | `backend/converter/wikidata/content_projection.py` | Contents, genre, canonical-subject projection, exact work-QID relinking, approved author recovery from MARC matches, and primary-author precedence (W-198 / W-200 / W-202 / W-206) |
+| `backend/converter/wikidata/semantic_policy.py`, `work_author_claims.py` | Generic source-evidence policy and safe work-author claim selection before the export gate |
 | `backend/converter/wikidata/person_linking.py`, `person_projection.py`, `role_normalize.py` | Role-safe manuscript links (paren/quote MARC relators), authority-backed person construction, and explicit person-language claims (W-206) |
 | `backend/converter/wikidata/work_projection.py` | Work creation, author-aware deduplication, labels, and source-backed author links (W-198 / W-200) |
 | `backend/converter/wikidata/work_candidates.py` | Source-aware MARC 500/505/NER eligibility decisions and compact evidence |
@@ -77,4 +87,8 @@
 | `frontend/src/components/shared/UploadOutcomeBadge.tsx` | Shared upload-outcome pill (HMO + Wikidata) |
 | `frontend/src/components/wikidata/` | Also: `ItemValidatorBadge`, `ItemApprovalBadge`, `WikidataComparePanel`, `WikidataVerificationModal`, data-status + AI verdict badges |
 | `frontend/src/api/wikidataStudio.ts` | Typed API client; `STUDIO_MAX_PAGE_SIZE` (500); `fetchAllStudioItems` paginates bulk loads |
+| `frontend/src/api/publication.ts` | Typed client for Release prepare, commands, cursor reads, and audit |
+| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | Release controls and a 50-row Publication entity page; replaces direct production-upload intent |
+| `frontend/src/components/wikidata/WikidataPublicationControls.tsx` | Hard UI gates for Review, Dry-run Receipt, Publish, Resume, and Cancel |
+| `frontend/src/routes/WikidataPublicationAudit.tsx` | Cursor audit route for immutable Publication evidence |
 | `frontend/src/utils/wikidataItemDataStatus.ts` | `new` / `will_update` / `updated` posture helper |

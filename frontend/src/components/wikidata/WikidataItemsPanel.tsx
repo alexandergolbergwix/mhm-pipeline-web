@@ -6,7 +6,6 @@ import type {AiVerdictOverall} from "@/api/extractionApprovals";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {
   Studio,
-  fetchAllStudioItems,
   type StudioBuild,
   type StudioItem,
   type WikidataUploadTarget,
@@ -17,6 +16,7 @@ import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {LoadingOverlay} from "@/components/LoadingOverlay";
 import {WikidataItemDetailDrawer} from "@/components/wikidata/WikidataItemDetailDrawer";
 import {WikidataItemTable} from "@/components/wikidata/WikidataItemTable";
+import {WikidataPublicationPanel} from "@/components/wikidata/WikidataPublicationPanel";
 import {WikidataUploadPanel} from "@/components/wikidata/WikidataUploadPanel";
 import {WikidataUploadProgressModal} from "@/components/wikidata/WikidataUploadProgressModal";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
@@ -74,6 +74,7 @@ export function WikidataItemsPanel({
   const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
   const [approveFeedback, setApproveFeedback] = useState<string | null>(null);
   const [studioBuildJob, setStudioBuildJob] = useState<RunJobSnapshot | null>(null);
+  const [publicationActive, setPublicationActive] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const labelStore = useLabelStore();
   const upsertJob = useRunJobs((s) => s.upsertJob);
@@ -111,10 +112,13 @@ export function WikidataItemsPanel({
     }
     setError(null);
     try {
-      const fetchPage = () => fetchAllStudioItems(runId, {
+      const fetchPage = () => Studio.build(runId, {
         approvedOnly,
         source,
         forceRebuild: false,
+        listView: true,
+        page: 1,
+        pageSize: 100,
       });
       const result = await loadStudioBuild(runId, fetchPage, {
         onProgress: (message) => {
@@ -364,7 +368,6 @@ export function WikidataItemsPanel({
   }, [refresh, runId]);
 
   const buildPresent = (build?.summary.total_items ?? 0) > 0;
-
   return (
     <Glass as="section" className="p-6 space-y-4 relative" data-testid="wikidata-items-panel">
       {loading && (
@@ -528,25 +531,37 @@ export function WikidataItemsPanel({
         </a>
       </div>
 
-      <WikidataUploadPanel
-        runId={runId}
-        source={source}
-        approvedOnly={approvedOnly}
-        uploadApprovedOnly={uploadApprovedOnly}
-        buildPresent={buildPresent}
-        refreshToken={refreshToken}
-        compact
-        uploadTarget={uploadTarget}
-        onUploadTargetChange={setUploadTarget}
-        onUploaded={(meta) => {
-          setUploadTarget(meta.upload_target);
-          setMoratoriumLifted(meta.moratorium_lifted);
-          setTestMode(meta.test_mode);
-          void loadItems({silent: true});
-        }}
-        onUploadOutcomes={applyUploadOutcomes}
-        onUploadJobActive={openUploadModal}
-      />
+      {build && (
+        <WikidataPublicationPanel
+          runId={runId}
+          source={source}
+          approvedOnly={approvedOnly}
+          build={build}
+          onPublicationActiveChange={setPublicationActive}
+        />
+      )}
+
+      {!publicationActive && (
+        <WikidataUploadPanel
+          runId={runId}
+          source={source}
+          approvedOnly={approvedOnly}
+          uploadApprovedOnly={uploadApprovedOnly}
+          buildPresent={buildPresent}
+          refreshToken={refreshToken}
+          compact
+          uploadTarget={uploadTarget}
+          onUploadTargetChange={setUploadTarget}
+          onUploaded={(meta) => {
+            setUploadTarget(meta.upload_target);
+            setMoratoriumLifted(meta.moratorium_lifted);
+            setTestMode(meta.test_mode);
+            void loadItems({silent: true});
+          }}
+          onUploadOutcomes={applyUploadOutcomes}
+          onUploadJobActive={openUploadModal}
+        />
+      )}
 
       {error && <p className="text-danger text-sm">{error}</p>}
       {approveFeedback && <p className="text-sm text-biu-sky" role="status">{approveFeedback}</p>}

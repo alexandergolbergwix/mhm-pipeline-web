@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # compatibility mutations without a code deploy.
     legacy_authority_mutations_enabled: bool = Field(default=False)
 
+    # ── Public Wikidata Publication (server-held bot credentials) ─────
+    # These credentials are resolved only inside a publication worker. They
+    # never enter a run-job payload or an HTTP response.
+    wikidata_publication_live_token: str = Field(default="", repr=False)
+    wikidata_publication_test_token: str = Field(default="", repr=False)
+
     def canonical_first_for_run(self, run_id: UUID | str) -> bool:
         """Return whether this run is in the canonical-first rollout cohort."""
         if self.hmo_canonical_first:

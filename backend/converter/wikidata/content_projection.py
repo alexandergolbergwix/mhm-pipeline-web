@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from typing import Any
 
 from converter.wikidata.item_builder import (
     _QUOTE_CHARS,
@@ -39,6 +41,79 @@ _VERIFIED_PRIMARY_SUBJECT_TERMS = {"masorah"}
 _PRIMARY_SUBJECT_KEYS = ("primary", "is_primary", "main_subject", "is_main_subject")
 
 
+@dataclass(frozen=True, slots=True)
+class StructuredWorkAttribution:
+    """One title and its explicit author evidence from a MARC content entry."""
+
+    title: str
+    author_name: str | None
+    author_source: str | None
+
+
+_TITLE_RESPONSIBILITY_PATTERNS = (
+    re.compile(r"^(?P<title>.+?)\s+/\s*(?P<author>.+?)\s*$"),
+    re.compile(
+        r"^(?P<title>.+?)\s+[\-–—]\s+(?:by|מאת)\s+(?P<author>.+?)\s*$",
+        re.IGNORECASE,
+    ),
+)
+_RESPONSIBILITY_PREFIX_RE = re.compile(r"^(?:by|מאת)\s+", re.IGNORECASE)
+_EXPLICIT_COMPOSITION_MARKER_RE = re.compile(
+    r"\s+(?:חברו|חיברו|חיברוהו|מחברו)\s+",
+    re.IGNORECASE,
+)
+
+
+def _structured_text(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("name", "heading", "text", "label", "value"):
+            text = _structured_text(value.get(key))
+            if text:
+                return text
+    if isinstance(value, (list, tuple)):
+        for member in value:
+            text = _structured_text(member)
+            if text:
+                return text
+    return ""
+
+
+def structured_work_attribution(
+    entry: dict[str, Any],
+) -> StructuredWorkAttribution:
+    """Extract one title and author from a structured MARC content entry."""
+    raw_title = _structured_text(entry.get("title"))
+    title = raw_title
+    embedded_author: str | None = None
+    author_source: str | None = None
+    for pattern in _TITLE_RESPONSIBILITY_PATTERNS:
+        match = pattern.fullmatch(raw_title)
+        if match:
+            title = match.group("title").strip()
+            embedded_author = _RESPONSIBILITY_PREFIX_RE.sub(
+                "", match.group("author").strip(),
+            )
+            author_source = "title_responsibility_separator"
+            break
+    if embedded_author is None and _EXPLICIT_COMPOSITION_MARKER_RE.search(raw_title):
+        title, embedded_author = _split_work_title_author(raw_title)
+        author_source = "title" if embedded_author else None
+    for key in (
+        "author", "author_name", "work_author", "responsibility",
+        "statement_of_responsibility",
+    ):
+        author_name = _structured_text(entry.get(key))
+        if author_name:
+            return StructuredWorkAttribution(title, author_name, key)
+    return StructuredWorkAttribution(
+        title,
+        embedded_author,
+        author_source,
+    )
+
+
 def _is_primary_subject(subject: dict[str, object]) -> bool:
     """Require an explicit primary marker before promoting a 6XX topic to P921."""
     for key in _PRIMARY_SUBJECT_KEYS:
@@ -66,12 +141,8 @@ def _work_title_key(value: object) -> str:
 
 
 def _entry_author(entry: dict[str, object]) -> str | None:
-    """Read an author attached by the contents-NER enrichment pass."""
-    for key in ("author", "author_name", "work_author"):
-        value = entry.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
+    """Read an author from a structured MARC content entry."""
+    return structured_work_attribution(entry).author_name
 
 
 def _record_author(record: dict[str, object]) -> str | None:
@@ -104,6 +175,28 @@ def _record_author(record: dict[str, object]) -> str | None:
     return None
 
 
+def _content_author(
+    record: dict[str, object],
+    attribution: StructuredWorkAttribution,
+) -> str | None:
+    """Use a record author only when it identifies one unambiguous work."""
+    if attribution.author_name:
+        return attribution.author_name
+    content_entries = [
+        content if isinstance(content, dict) else {"title": content}
+        for content in record.get("contents") or []
+        if _structured_text(
+            content.get("title") if isinstance(content, dict) else content
+        )
+    ]
+    if len(content_entries) == 1 or (
+        _work_title_key(attribution.title)
+        and _work_title_key(attribution.title) == _work_title_key(record.get("title"))
+    ):
+        return _record_author(record)
+    return None
+
+
 def _entry_work_qid(entry: dict[str, object]) -> str | None:
     for key in ("wikidata_id", "wikidata_qid", "existing_qid"):
         qid = _safe_work_qid(entry.get(key))
@@ -120,8 +213,8 @@ def _work_qid_for_record_title(
     target = _work_title_key(title)
     for content in record.get("contents") or []:
         entry = content if isinstance(content, dict) else {"title": str(content)}
-        candidate, _author = _split_work_title_author(str(entry.get("title") or ""))
-        if _work_title_key(candidate) == target:
+        attribution = structured_work_attribution(entry)
+        if _work_title_key(attribution.title) == target:
             qid = _entry_work_qid(entry)
             if qid:
                 return qid
@@ -187,11 +280,9 @@ class ContentProjectionMixin:
         target = _work_title_key(title)
         for content in record.get("contents") or []:
             entry = content if isinstance(content, dict) else {"title": str(content)}
-            candidate, embedded_author = _split_work_title_author(
-                str(entry.get("title") or ""),
-            )
-            if _work_title_key(candidate) == target:
-                return embedded_author or _entry_author(entry) or _record_author(record)
+            attribution = structured_work_attribution(entry)
+            if _work_title_key(attribution.title) == target:
+                return _content_author(record, attribution)
 
         entities = [
             entity for entity in record.get("entities") or []
@@ -248,9 +339,10 @@ class ContentProjectionMixin:
 
         for content in record.get("contents") or []:
             entry = content if isinstance(content, dict) else {"title": str(content)}
-            raw_title = str(entry.get("title") or "").strip()
-            candidate_title, embedded_author = _split_work_title_author(raw_title)
-            embedded_author = embedded_author or _entry_author(entry) or _record_author(record)
+            raw_title = _structured_text(entry.get("title"))
+            attribution = structured_work_attribution(entry)
+            candidate_title = attribution.title
+            embedded_author = _content_author(record, attribution)
             cleaned = _clean_work_title(candidate_title)
             work_key = _work_title_key(cleaned)
             work_qid = (
@@ -274,6 +366,9 @@ class ContentProjectionMixin:
                 source_text=entry.get("source_text") or raw_title,
             )
             evidence = decision.evidence()
+            if attribution.author_name:
+                evidence["author_name"] = attribution.author_name
+                evidence["author_source"] = attribution.author_source
             remember_evidence(item, evidence)
             work_title = decision.title
             key = work_title.casefold()
