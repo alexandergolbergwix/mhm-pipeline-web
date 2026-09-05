@@ -3,7 +3,68 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.check_wikidata_export_quality import audit
+
+
+@pytest.mark.parametrize("evidence", ["legacy evidence", [], {"wikidata_existing": "unknown"}])
+def test_audit_reports_incomplete_probe_for_unstructured_evidence(tmp_path: Path, evidence: object) -> None:
+    source = tmp_path / "legacy-evidence.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "person:1", "entity_type": "person", "labels": {"en": "A person"},
+        "statements": [], "verify_evidence": evidence,
+    }]}))
+
+    assert audit(source)["publication_preflight"]["counts"]["duplicate_probe_incomplete"] == 1
+
+
+def test_audit_separates_publication_prerequisites_from_data_defects(tmp_path: Path) -> None:
+    source = tmp_path / "unreviewed.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "person:1", "entity_type": "person", "approved": None,
+        "ai_verdict": None, "labels": {"en": "A person"},
+        "statements": [], "duplicate_check": {"status": "not_probed"},
+    }]}))
+
+    readiness = audit(source)["publication_preflight"]
+
+    assert readiness["checks_passed"] is False
+    assert readiness["counts"] == {
+        "item_approval_pending": 1, "ai_verdict_missing": 1,
+        "duplicate_probe_incomplete": 1,
+    }
+    assert readiness["requires_sealed_release_dry_run"] is True
+
+
+def test_audit_blocks_a_mismatched_authority_even_after_a_full_ai_verdict(tmp_path: Path) -> None:
+    source = tmp_path / "false-identifier.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "person:1", "entity_type": "person", "approved": True,
+        "ai_verdict": {"overall": "full"},
+        "labels": {"he": "יוסף בן סעדיה בן יוסף בן דוד אבהר"},
+        "statements": [{"property_id": "P8189", "value": "987007300794605171"}],
+        "authority_evidence": [{
+            "mazal_id": "987007300794605171", "preferred_name_heb": "דנן, סעדיה בן יוסף",
+        }],
+    }]}))
+
+    assert audit(source)["blocking_counts"]["person_authority_given_name_conflict"] == 1
+
+
+def test_audit_accepts_a_matching_alternate_authority_heading(tmp_path: Path) -> None:
+    source = tmp_path / "alternate-heading.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "person:1", "entity_type": "person", "approved": True,
+        "ai_verdict": {"overall": "full"}, "labels": {"he": "חנניה בן אפרים"},
+        "statements": [{"property_id": "P8189", "value": "987007339380005171"}],
+        "authority_evidence": [{
+            "mazal_id": "987007339380005171", "preferred_name_heb": "בן אפרים, ח.",
+            "preferred_name_lat": "חנניה בן אפרים",
+        }],
+    }]}))
+
+    assert "person_authority_given_name_conflict" not in audit(source)["blocking_counts"]
 
 
 def test_audit_reports_compact_failures_from_approved_section_export(tmp_path: Path) -> None:

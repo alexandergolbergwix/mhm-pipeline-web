@@ -30,7 +30,11 @@ An uncertain remote result remains `outcome_unknown` until recovery proves it.
 - A Dry-run Receipt must pass and remain unexpired before publish.
 - A live target requires the canonical source.
 - A foreign QID blocks the Plan unless a matching, digest-bound consent exists.
-- A local entity reference blocks the Release until a two-phase edge executor exists.
+- The projector resolves local references to existing source QIDs before it seals the Release.
+- Profile `1` blocks unresolved local references, including qualifiers and references.
+- Profile `1-nodes` explicitly defers complete statements whose targets exist in the source.
+  The Release retains those statements for review. A later Release must add the connections.
+  See [upload readiness](upload-readiness.md).
 - The former Studio `live` upload and single-item push routes return `410 Gone`.
 - The Publication panel is the only default target selector. The compatibility
   upload panel appears only after the Publication API returns `404`, `405`, or

@@ -32,3 +32,8 @@
 - `frontend/tests/unit/clientCache.spec.ts`, `entityApi.test.ts`, `verifySession.spec.ts`, `waitForRunJob.spec.ts` — cache tiers, API mapping, job/session lifecycles.
 - `frontend/e2e/extraction-review.spec.ts`, `authority-*.spec.ts`, `wikidata-studio.spec.ts`, `hmo-wikibase-items.spec.ts`, `history-timeline.spec.ts`, `stage-rdf.spec.ts`, `access-request.spec.ts`, `admin-panel.spec.ts`, `linked-data-explorer.spec.ts`, `smoke.spec.ts` — the R8/R9 click-path layer.
 - `yarn typecheck` (strict tsc) gates every build.
+
+The Publication option and deferred-claim view use
+`tests/unit/wikidataPublicationPanel.spec.tsx` and
+`e2e/wikidata-publication.spec.ts` (W-214).
+The tests use HTTP substitutes and make no Wikidata writes.

@@ -59,7 +59,7 @@ async def _add_canonical_cache(db_session, run_id, *, items=None) -> None:
     await db_session.commit()
 
 
-async def _prepare_direct(db_session, run_id, actor_id, *, target: str):
+async def _prepare_direct(db_session, run_id, actor_id, *, target: str, profile_version="1"):
     from app.publication.credentials import configured_publication_gateway_factory
     from app.publication.runtime import PublicationRuntime
     from app.schemas.publication import PreparePublicationRequest
@@ -73,7 +73,7 @@ async def _prepare_direct(db_session, run_id, actor_id, *, target: str):
         request=PreparePublicationRequest.model_validate(
             {
                 "profile_id": "mhm-wikidata",
-                "profile_version": "1",
+                "profile_version": profile_version,
                 "target": target,
                 "source": {
                     "kind": "run",
@@ -85,6 +85,126 @@ async def _prepare_direct(db_session, run_id, actor_id, *, target: str):
     )
     assert response.publication is not None
     return response.publication
+
+
+@pytest.mark.asyncio
+async def test_release_resolves_local_connections_to_existing_targets(sample_run, db_session):
+    from app.publication import ProfileRef
+    from app.publication.runtime import StudioCacheProjectionSource
+
+    work = _canonical_item("work:1", "Work 1")
+    work["statements"].append({
+        "property": "P50", "value": "__LOCAL:person:1", "value_type": "item",
+    })
+    person = _canonical_item("person:1", "Person 1")
+    person["entity_type"] = "person"
+    person["existing_qid"] = "Q123"
+    await _add_canonical_cache(db_session, sample_run["run_id"], items=[work, person])
+    source = StudioCacheProjectionSource(db_session)
+    snapshot = await source.current_snapshot(
+        run_id=sample_run["run_id"], source="canonical", approved_only=True,
+    )
+
+    projected = [item async for page in source.project(
+        snapshot, ProfileRef(name="mhm-wikidata", version="1"),
+    ) for item in page]
+
+    result = next(item for item in projected if item.entity_key == "work:1")
+    assert result.document["statements"][-1]["value"] == "Q123"
+    assert result.local_references == ()
+
+
+@pytest.mark.asyncio
+async def test_release_refuses_false_identity_from_an_older_studio_cache(sample_run, db_session):
+    from app.publication import ProfileRef
+    from app.publication.runtime import PublicationSourceError, StudioCacheProjectionSource
+
+    person = _canonical_item("person:1", "A person")
+    person.update({
+        "entity_type": "person", "labels": {"he": "יוסף בן סעדיה בן יוסף בן דוד אבהר"},
+        "ai_verdict": {"overall": "full"},
+        "authority_evidence": [{
+            "mazal_id": "987007300794605171", "preferred_name_heb": "דנן, סעדיה בן יוסף",
+        }],
+    })
+    person["statements"].append({"property": "P8189", "value": "987007300794605171"})
+    await _add_canonical_cache(db_session, sample_run["run_id"], items=[person])
+    source = StudioCacheProjectionSource(db_session)
+    snapshot = await source.current_snapshot(
+        run_id=sample_run["run_id"], source="canonical", approved_only=True,
+    )
+
+    with pytest.raises(PublicationSourceError, match="blocking validation"):
+        _ = [page async for page in source.project(snapshot, ProfileRef("mhm-wikidata", "1"))]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("profile_version", ["1", "1-nodes"])
+async def test_release_tracks_unresolved_connections_inside_qualifiers(
+    sample_run, db_session, profile_version,
+):
+    from app.publication import ProfileRef
+    from app.publication.runtime import StudioCacheProjectionSource
+
+    work = _canonical_item("work:1", "Work 1")
+    work["statements"][0]["qualifiers"] = [{
+        "property": "P50", "value": "__LOCAL:person:new", "value_type": "item",
+    }]
+    await _add_canonical_cache(db_session, sample_run["run_id"], items=[work])
+    source = StudioCacheProjectionSource(db_session)
+    snapshot = await source.current_snapshot(
+        run_id=sample_run["run_id"], source="canonical", approved_only=True,
+    )
+
+    projected = [item async for page in source.project(
+        snapshot, ProfileRef(name="mhm-wikidata", version=profile_version),
+    ) for item in page]
+
+    assert projected[0].local_references == ("person:new",)
+
+
+@pytest.mark.asyncio
+async def test_node_release_preserves_deferred_claims_for_a_later_release(sample_run, db_session):
+    from app.publication import ProfileRef
+    from app.publication.runtime import StudioCacheProjectionSource
+
+    work = _canonical_item("work:1", "Work 1")
+    connection = {
+        "property": "P50", "value": "__LOCAL:person:new", "value_type": "item",
+        "references": [{"property": "P854", "value": "https://example.org/source"}],
+    }
+    work["statements"].append(connection)
+    person = _canonical_item("person:new", "Person 1")
+    person["entity_type"] = "person"
+    await _add_canonical_cache(db_session, sample_run["run_id"], items=[work, person])
+    source = StudioCacheProjectionSource(db_session)
+    snapshot = await source.current_snapshot(
+        run_id=sample_run["run_id"], source="canonical", approved_only=True,
+    )
+
+    projected = [item async for page in source.project(
+        snapshot, ProfileRef(name="mhm-wikidata", version="1-nodes"),
+    ) for item in page]
+
+    result = next(item for item in projected if item.entity_key == "work:1")
+    assert result.document["deferred_statements"] == [connection]
+    assert result.document["statements"] == work["statements"][:1]
+    assert result.local_references == ()
+
+    publication = await _prepare_direct(
+        db_session, sample_run["run_id"], sample_run["user_id"],
+        target="live", profile_version="1-nodes",
+    )
+    page = await sample_run["client"].post(
+        f"/api/runs/{sample_run['run_id']}/wikidata-publications/{publication.publication_id}/read",
+        json={"query": {
+            "type": "entities", "release_id": publication.current_release.release_id,
+            "cursor": None, "limit": 50,
+        }},
+    )
+    assert page.status_code == 200
+    row = next(item for item in page.json()["items"] if item["entity_id"] == "work:1")
+    assert row["deferred_statements"] == [connection]
 
 
 async def _member_client(db_session, *, project_id, role):

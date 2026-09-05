@@ -404,7 +404,8 @@ class InMemoryPublicationRepository:
             for target in entity.local_references
             if target not in entities
         )
-        count = identity_collisions + dangling_references
+        deferred_references = sum(len(entity.local_references) for entity in entities.values())
+        count = identity_collisions + dangling_references + deferred_references
         self._finding_counts[release_id] = count
         return count
 

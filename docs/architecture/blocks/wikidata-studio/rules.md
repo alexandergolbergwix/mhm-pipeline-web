@@ -856,3 +856,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     after the Publication API returns unavailable. *Why:* duplicated HMO person
     nodes with one Mazal ID blocked a build, while both target controls appeared
     in the same Studio page.
+
+116. **R116 — Upload readiness requires identity and connection checks (W-214).**
+    Shared ancestor names cannot validate a different person's identifier.
+    Publication resolves known local QIDs before it seals the Release.
+    Only the explicit `1-nodes` profile defers in-source connections.
+    The Release retains deferred claims for review and later publication.
+    See [upload readiness](upload-readiness.md).

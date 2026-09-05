@@ -17,6 +17,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from converter.authority.heading_fidelity import person_authority_given_name_conflict  # noqa: E402
+
 _HEBREW_RE = re.compile(r"[\u0590-\u05ff]")
 _GERSHAYIM_RE = re.compile(r'(?<=[\u0590-\u05ff])"(?=[\u0590-\u05ff])')
 
@@ -171,6 +175,8 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
     }
     if statements and not any(pids - {""}):
         checks.append("export_missing_property_ids")
+    if person_authority_given_name_conflict({**row, "statements": statements}):
+        checks.append("person_authority_given_name_conflict")
 
     evidence_pack = row.get("verify_evidence")
     if isinstance(evidence_pack, str):
@@ -455,6 +461,53 @@ def _shared_identity_findings(rows: list[dict[str, Any]]) -> list[dict[str, Any]
     ]
 
 
+def _publication_preflight(rows: list[dict[str, Any]], *, blocking_total: int) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+
+    def add(code: str, amount: int = 1) -> None:
+        counts[code] = counts.get(code, 0) + amount
+
+    def has_local(value: object) -> bool:
+        if isinstance(value, str):
+            return value.startswith("__LOCAL:")
+        if isinstance(value, list):
+            return any(has_local(entry) for entry in value)
+        if isinstance(value, dict):
+            return any(has_local(entry) for entry in value.values())
+        return False
+
+    for row in rows:
+        if row.get("approved") is not True:
+            add("item_approval_pending")
+        verdict = row.get("ai_verdict")
+        if not isinstance(verdict, dict) or not verdict:
+            add("ai_verdict_missing")
+        elif verdict.get("overall") != "full" or verdict.get("judge_failure"):
+            add("ai_verdict_not_full")
+        if not row.get("existing_qid"):
+            check = row.get("duplicate_check")
+            if not isinstance(check, dict):
+                evidence = row.get("verify_evidence")
+                existing = evidence.get("wikidata_existing") if isinstance(evidence, dict) else None
+                check = existing.get("duplicate_check") if isinstance(existing, dict) else None
+            status = check.get("status") if isinstance(check, dict) else None
+            if status == "candidates_found":
+                add("duplicate_candidates_require_review")
+            elif status != "absent":
+                add("duplicate_probe_incomplete")
+        local_count = sum(has_local(statement) for statement in _statements(row))
+        if local_count:
+            add("local_reference_statements", local_count)
+        deferred = row.get("deferred_statements")
+        if isinstance(deferred, list) and deferred:
+            add("deferred_connection_statements", len(deferred))
+    return {
+        "checks_passed": bool(rows) and blocking_total == 0 and not counts,
+        "counts": dict(sorted(counts.items())),
+        "requires_sealed_release_dry_run": True,
+    }
+
+
 def audit(path: Path) -> dict[str, Any]:
     rows, metadata = _items(path)
     findings = [
@@ -490,6 +543,7 @@ def audit(path: Path) -> dict[str, Any]:
         "finding_items": len(findings),
         "counts": dict(sorted(counts.items())),
         "findings": findings,
+        "publication_preflight": _publication_preflight(rows, blocking_total=sum(blocking.values())),
     }
 
 

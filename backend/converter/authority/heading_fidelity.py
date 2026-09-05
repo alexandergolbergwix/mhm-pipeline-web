@@ -15,6 +15,9 @@ of the pipeline agree on what "the same name" means.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
+
 # Hebrew patronymic connectors. "בן" in `גבאי, טוביה בן חיים יצחק` is structure,
 # not a name part, so it must not pad the token overlap.
 _PATRONYMIC_CONNECTORS = frozenset({"בן", "בת", "בר", "אבן", "ן׳", "ב״ר", "ben", "bar", "ibn"})
@@ -49,6 +52,47 @@ def _given_and_surname(name: str) -> tuple[str, str]:
     if not tokens:
         return "", ""
     return tokens[0], tokens[-1]
+
+
+def given_names_match(first_heading: str, second_heading: str) -> bool:
+    """Compare the person's own given name after catalogue name normalization."""
+    from converter.authority.wikidata_crosscheck import hebrew_label_matches  # noqa: PLC0415
+
+    first, _ = _given_and_surname(first_heading)
+    second, _ = _given_and_surname(second_heading)
+    return bool(first and second and hebrew_label_matches(first, [second], max_distance=1))
+
+
+def person_authority_given_name_conflict(item: Mapping[str, object]) -> bool:
+    """Check an emitted NLI identifier against its available authority headings."""
+    if item.get("entity_type") != "person":
+        return False
+    labels = item.get("labels")
+    label = str(labels.get("he") or "") if isinstance(labels, Mapping) else ""
+    label = label or str(item.get("label_he") or "")
+    statements = item.get("statements")
+    evidence = item.get("authority_evidence")
+    if not isinstance(statements, list) or not isinstance(evidence, list):
+        return False
+    identifiers = {
+        str(statement.get("value") or "")
+        for statement in statements if isinstance(statement, Mapping)
+        and (statement.get("property_id") or statement.get("property")) == "P8189"
+    }
+    for row in evidence:
+        if not isinstance(row, Mapping) or str(row.get("mazal_id") or "") not in identifiers:
+            continue
+        preferred = str(row.get("preferred_name_heb") or "")
+        if not re.search(r"[\u0590-\u05ff]", label) or not re.search(r"[\u0590-\u05ff]", preferred):
+            continue
+        if (
+            not heading_matches(label, preferred)
+            and not given_names_match(label, preferred)
+            and not any(heading_matches(label, str(row.get(key) or ""))
+                        for key in ("preferred_name_lat", "matched_name"))
+        ):
+            return True
+    return False
 
 
 def heading_matches(

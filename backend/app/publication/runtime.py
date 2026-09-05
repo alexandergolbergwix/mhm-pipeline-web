@@ -12,6 +12,8 @@ from typing import Protocol, cast
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from converter.authority.heading_fidelity import person_authority_given_name_conflict
+
 from app.models.publication import (
     Publication as PublicationRow,
 )
@@ -199,13 +201,30 @@ def _identity_assertions(item: Mapping[str, object]) -> tuple[str, ...]:
 
 
 def _local_references(item: Mapping[str, object]) -> tuple[str, ...]:
-    references = {
-        value.removeprefix("__LOCAL:")
-        for statement in _iter_statements(item)
-        if (value := _statement_value(statement)).startswith("__LOCAL:")
-        and value != "__LOCAL:"
-    }
+    references: set[str] = set()
+
+    def visit(value: object) -> None:
+        if isinstance(value, str) and value.startswith("__LOCAL:"):
+            references.add(value.removeprefix("__LOCAL:"))
+        elif isinstance(value, list):
+            for entry in value:
+                visit(entry)
+        elif isinstance(value, Mapping):
+            for entry in value.values():
+                visit(entry)
+
+    visit(item.get("statements"))
     return tuple(sorted(references))
+
+
+def _resolve_statement_references(value: object, qids: Mapping[str, str]) -> object:
+    if isinstance(value, str) and value.startswith("__LOCAL:"):
+        return qids.get(value.removeprefix("__LOCAL:"), value)
+    if isinstance(value, list):
+        return [_resolve_statement_references(entry, qids) for entry in value]
+    if isinstance(value, Mapping):
+        return {key: _resolve_statement_references(entry, qids) for key, entry in value.items()}
+    return value
 
 
 def _evidence_refs(item: Mapping[str, object]) -> tuple[str, ...]:
@@ -226,6 +245,8 @@ def _evidence_refs(item: Mapping[str, object]) -> tuple[str, ...]:
 
 
 def _has_blocking_item_issue(item: Mapping[str, object]) -> bool:
+    if person_authority_given_name_conflict(item):
+        return True
     issues = item.get("validation_issues")
     return isinstance(issues, list) and any(
         isinstance(issue, Mapping) and issue.get("severity") == "error"
@@ -263,12 +284,19 @@ class StudioCacheProjectionSource(ProjectionSource):
         source_snapshot: SourceSnapshotRef,
         profile: ProfileRef,
     ) -> AsyncIterator[tuple[PublicationEntityInput, ...]]:
-        if profile != ProfileRef(name="mhm-wikidata", version="1"):
+        if profile.name != "mhm-wikidata" or profile.version not in {"1", "1-nodes"}:
             raise PublicationSourceError("The requested publication profile is unsupported")
         run_id, source, approved_only = _snapshot_parts(source_snapshot.snapshot_id)
         metadata = await self._cache_metadata(run_id, source, approved_only)
         if metadata is None or metadata[0] != source_snapshot.digest:
             raise PublicationSourceError("The selected Studio source changed before preparation")
+        qids: dict[str, str] = {}
+        entity_keys: set[str] = set()
+        async for target in self._stream_items(run_id, source, approved_only, source_snapshot.digest):
+            entity_keys.add(_item_entity_key(target))
+            qid = str(target.get("existing_qid") or "").strip()
+            if _QID.fullmatch(qid) and not _has_blocking_item_issue(target):
+                qids[_item_entity_key(target)] = qid
         page: list[PublicationEntityInput] = []
         async for item in self._stream_items(
             run_id,
@@ -280,6 +308,19 @@ class StudioCacheProjectionSource(ProjectionSource):
                 raise PublicationSourceError(
                     "The selected Studio source contains blocking validation issues"
                 )
+            item = dict(item)
+            item["statements"] = _resolve_statement_references(item.get("statements", []), qids)
+            if profile.version == "1-nodes":
+                kept: list[Mapping[str, object]] = []
+                deferred = list(item.get("deferred_statements") or [])
+                for statement in _iter_statements(item):
+                    targets = _local_references({"statements": [statement]})
+                    if targets and set(targets) <= entity_keys:
+                        deferred.append(dict(statement))
+                    else:
+                        kept.append(statement)
+                item["statements"] = kept
+                item["deferred_statements"] = deferred
             page.append(
                 PublicationEntityInput(
                     entity_key=_item_entity_key(item),
@@ -415,7 +456,7 @@ class PublicationRuntime:
         request: PreparePublicationRequest,
         actor_id: str,
     ) -> PublicationMutationResponse:
-        if request.profile_id != "mhm-wikidata" or request.profile_version != "1":
+        if request.profile_id != "mhm-wikidata" or request.profile_version not in {"1", "1-nodes"}:
             raise PublicationSourceError("The requested publication profile is unsupported")
         if request.target == "live" and request.source.projection_source != "canonical":
             raise PublicationSourceError("Live publication requires the canonical source")
@@ -1049,6 +1090,7 @@ def _entity_view(
         review_status=cast("str", review_status),
         proposed_action="blocked" if blocked else "update" if target_qid else "create",
         findings=findings,
+        deferred_statements=item.get("deferred_statements") or [],
     )
 
 

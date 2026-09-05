@@ -243,6 +243,7 @@ class PublicationEntityFinding(PublicationSchema):
 
 
 class PublicationEntity(PublicationSchema):
+    deferred_statements: list[dict[str, object]] = Field(default_factory=list)
     entity_id: str
     entity_digest: str
     entity_kind: str

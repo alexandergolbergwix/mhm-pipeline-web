@@ -31,7 +31,7 @@
 | `backend/app/pipeline/wikidata_export_quality_gate.py` | Build-time ERROR-only export quality gate before cache upsert; source-backed works must retain one safe P50 or P2093 representation |
 | `backend/app/publication/core.py` | Deep module with `prepare`, `advance`, and `read`; seals Release, Approval Set, Plan, Receipt, Execution, and write journal without a transaction across remote I/O |
 | `backend/app/publication/sql_repository.py` | Normalized persistence, keyset reads, collision Findings, and leased Execution Actions for Publication state |
-| `backend/app/publication/runtime.py` | Run-scoped Studio source adapter and HTTP view mapping; reports backend `source_current` |
+| `backend/app/publication/runtime.py` | Studio source adapter; resolves known local targets, retains explicit deferred claims, and reports `source_current` |
 | `backend/app/publication/gateway.py` | The only Publication seam for reconciliation, mutation compilation, write, and ambiguous-result recovery |
 | `backend/app/publication/wikidata_gateway.py`, `credentials.py` | Production Action API gateway and the target-bound server credential factory. No HTTP route or job payload receives a plaintext token. |
 | `backend/app/publication/repository.py`, `types.py`, `digests.py`, `testing.py` | Publication repository protocol, immutable domain types, canonical digest helpers, and deterministic test seams |

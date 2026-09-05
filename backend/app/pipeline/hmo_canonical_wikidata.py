@@ -351,7 +351,7 @@ def canonical_wikidata_fingerprint(
     # manuscript, generated descriptions, deduped claims).
     # v11 — Rule W-138 (unwrapped MARC values, one work title, evidence-gated
     # person dates, resolved local references).
-    salt = "hmo-wikidata-v13:"  # Rules W-161 … W-166 and W-204
+    salt = "hmo-wikidata-v14:"  # W-214 rejects identifiers for a different given name.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -1256,18 +1256,19 @@ def _hebrew_preferred_heading_mismatch(item: WikidataItem, prefs: list[str]) -> 
         return False
     if any(heading_matches(label, preferred) for label in labels for preferred in prefs):
         return False
-    from converter.authority.heading_fidelity import _name_tokens  # noqa: PLC0415
+    from converter.authority.heading_fidelity import _name_tokens, given_names_match  # noqa: PLC0415
     from converter.authority.wikidata_crosscheck import hebrew_label_matches  # noqa: PLC0415
 
-    # A preferred form can omit a byname or use a different name order. Two
-    # shared meaningful tokens provide evidence for the same person, even when
-    # the full heading comparison does not pass.
+    # A byname can be absent, but shared ancestors cannot establish identity
+    # when the person's own given name differs.
     for label in labels:
         label_tokens = [token for token in _name_tokens(label) if token != "בן"]
         for preferred in hebrew_prefs:
             preferred_tokens = [
                 token for token in _name_tokens(preferred) if token != "בן"
             ]
+            if not given_names_match(label, preferred):
+                continue
             shared = sum(
                 hebrew_label_matches(left, [right], max_distance=1)
                 for left in label_tokens

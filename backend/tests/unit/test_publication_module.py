@@ -192,7 +192,7 @@ async def test_prepare_blocks_review_for_cross_entity_findings() -> None:
     operation = await module.prepare(_prepare_request())
     summary = await module.read(SummaryQuery(operation.publication_id))
 
-    assert summary.finding_count == 2
+    assert summary.finding_count == 3
     with pytest.raises(BlockingFindingsError):
         await module.advance(
             summary.publication_id,
@@ -206,6 +206,21 @@ async def test_prepare_blocks_review_for_cross_entity_findings() -> None:
                 idempotency_key="blocked-review",
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_complete_release_blocks_an_unexecuted_local_connection() -> None:
+    module = create_in_memory_publication_module(entities_by_snapshot={"snapshot-7": (
+        PublicationEntityInput(
+            entity_key="work:1", entity_type="work", document={},
+            local_references=("person:1",),
+        ),
+        PublicationEntityInput(entity_key="person:1", entity_type="person", document={}),
+    )})
+    prepared = await module.prepare(_prepare_request())
+    summary = await module.read(SummaryQuery(prepared.publication_id))
+
+    assert summary.finding_count == 1
 
 
 @pytest.mark.asyncio

@@ -115,6 +115,23 @@ async function installAuditShellMocks(page: import("@playwright/test").Page) {
   });
 }
 
+test("a curator can explicitly defer connections that need new QIDs", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  const requests: unknown[] = [];
+  await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/prepare`, async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({status: 200, contentType: "application/json",
+      body: JSON.stringify({publication: null, operation: null})});
+  });
+  await gotoModernStudio(page);
+  const defer = page.getByRole("checkbox", {name: "Defer connections that need new QIDs"});
+  await expect(defer).not.toBeChecked();
+  await defer.check();
+  await expect(page.getByText(/A later Release must add the deferred connections/)).toBeVisible();
+  await page.getByTestId("publication-prepare").click();
+  await expect.poll(() => requests).toContainEqual(expect.objectContaining({profile_version: "1-nodes"}));
+});
+
 test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", async ({page}) => {
   test.setTimeout(45_000);
   await installStudioMocks(page, makeBuildResponse());

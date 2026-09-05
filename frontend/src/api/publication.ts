@@ -115,6 +115,7 @@ export interface PublicationEntityFinding {
 }
 
 export interface PublicationEntity {
+  deferred_statements?: Array<Record<string, unknown>>;
   entity_id: string;
   entity_digest: string;
   entity_kind: string;

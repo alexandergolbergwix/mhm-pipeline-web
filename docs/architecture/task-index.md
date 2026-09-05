@@ -29,6 +29,7 @@
 | Debug a missing P407/extent/shelfmark on a TSV-ingested run | [Wikidata Studio R60](blocks/wikidata-studio/rules.md) + Rule W-138 + `marc_ingest._unwrap_marc_value` |
 | Debug an unresolved `__LOCAL:` target or duplicate work title | [Wikidata Studio R60](blocks/wikidata-studio/rules.md) + Rule W-138 + `wikidata_local_refs.py` |
 | Upload Wikidata items whose connections point at not-yet-written drafts | [Wikidata Studio R94](blocks/wikidata-studio/rules.md) + Rule W-192 + `partition_unresolved_local` / two-pass `wikidata_upload_job` |
+| Prepare a live Publication Release with unresolved connections | [Upload readiness](blocks/wikidata-studio/upload-readiness.md) + Rule W-214; explicit deferral and a later Release |
 | Debug test-upload `blocked/skipped` on manuscripts that already exist | [Wikidata Studio R95](blocks/wikidata-studio/rules.md) + Rule W-193 + `_claim_exists` quantity/time match |
 | Check whether a CREATE candidate already exists on Wikidata | [Wikidata Studio R61](blocks/wikidata-studio/rules.md) + Rule W-139 + `wikidata_duplicate_probe.py` |
 | Fix `unsupported by MARC` verdicts on evidenced claims | [Wikidata Studio R59](blocks/wikidata-studio/rules.md) + Rule W-137 + `marc_verify_context.RAW_TAG_FALLBACK` |

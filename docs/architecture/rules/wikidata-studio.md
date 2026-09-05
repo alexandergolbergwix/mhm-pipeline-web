@@ -2686,3 +2686,21 @@ Regression: `backend/tests/unit/test_wikidata_canonical_enrichment.py`,
 `backend/tests/unit/test_hmo_canonical_wikidata.py`,
 `frontend/e2e/wikidata-publication.spec.ts`, and
 `frontend/e2e/wikidata-upload-panel.spec.ts`.
+
+### Rule W-214 — Person given names and deferred connections govern upload readiness (2026-09-05)
+
+Export (58) attached P8189 `987007300794605171` to a person whose given name differed from the authority heading.
+The token-overlap rule accepted shared ancestor names as identity evidence.
+The Publication projector also left known local QIDs unresolved and missed local references inside qualifiers.
+
+The canonical build must require compatible given names before it accepts partial name overlap.
+It must omit a person when no publishable identity remains.
+The export audit must distinguish data defects from missing review evidence.
+Publication must resolve known source QIDs before it seals the Release.
+The default profile must block all unresolved local connections.
+The explicit `1-nodes` profile can defer complete statements whose targets exist in the source.
+The Release digest must cover those deferred statements, and the review API must expose them.
+A later Release must add the connections after the targets receive confirmed QIDs.
+The SQL and in-memory repositories must apply the same default reference gate.
+
+Tests and the operator procedure appear in [upload readiness](../blocks/wikidata-studio/upload-readiness.md).

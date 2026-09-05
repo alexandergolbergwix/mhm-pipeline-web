@@ -113,6 +113,26 @@ def test_canonical_final_gate_drops_identifierless_person() -> None:
     assert result["summary"]["total_items"] == 0
 
 
+def test_canonical_build_rejects_an_ancestor_identifier_despite_shared_names() -> None:
+    person = _person_entity(
+        local_id="QDraft_Person",
+        labels={"he": "יוסף בן סעדיה בן יוסף בן דוד אבהר"},
+        authority_evidence=[{
+            "source": "mazal",
+            "mazal_id": "987007300794605171",
+            "accepted": True,
+            "name_type": "Personal",
+            "preferred_name_heb": "דנן, סעדיה בן יוסף",
+            "preferred_name_lat": "Ibn Danan, Seʻadyah ben Yosef",
+            "role": "scribe",
+        }],
+    )
+
+    result = build_canonical_studio_result([person], reconcile=False)
+
+    assert result["items"] == []
+
+
 def test_canonical_build_coalesces_people_with_a_shared_strong_identity() -> None:
     from app.pipeline.wikidata_export_quality_gate import wikidata_export_quality_findings
     from converter.wikidata.item_models import WikidataItem, WikidataStatement

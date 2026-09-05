@@ -15,7 +15,6 @@ import {WikidataPublicationControls} from "@/components/wikidata/WikidataPublica
 import {usePublicationEntityPage} from "@/hooks/usePublicationEntityPage";
 
 const PROFILE_ID = "mhm-wikidata";
-const PROFILE_VERSION = "1";
 
 export interface WikidataPublicationPanelProps {
   runId: string;
@@ -71,6 +70,7 @@ export function WikidataPublicationPanel({
   onPublicationActiveChange,
 }: WikidataPublicationPanelProps) {
   const [target, setTarget] = useState<PublicationTarget>("test");
+  const [deferConnections, setDeferConnections] = useState(false);
   const [publication, setPublication] = useState<PublicationSummary | null>(null);
   const [operation, setOperation] = useState<PublicationOperation | null>(null);
   const [prepareJobId, setPrepareJobId] = useState<string | null>(null);
@@ -107,7 +107,7 @@ export function WikidataPublicationPanel({
     try {
       const response = await PublicationApi.prepare(runId, {
         profile_id: PROFILE_ID,
-        profile_version: PROFILE_VERSION,
+        profile_version: deferConnections ? "1-nodes" : "1",
         target,
         source: {
           kind: "run",
@@ -127,7 +127,7 @@ export function WikidataPublicationPanel({
     } finally {
       setBusyCommand(null);
     }
-  }, [approvedOnly, runId, source, target]);
+  }, [approvedOnly, deferConnections, runId, source, target]);
 
   useEffect(() => {
     if (!prepareJobId) return;
@@ -235,6 +235,15 @@ export function WikidataPublicationPanel({
               www.wikidata.org
             </label>
           </fieldset>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={deferConnections}
+              disabled={busyCommand !== null || prepareJobId !== null}
+              onChange={(event) => setDeferConnections(event.target.checked)} />
+            Defer connections that need new QIDs
+          </label>
+          {deferConnections && <p className="text-xs text-warn">
+            This Release retains deferred claims for review. A later Release must add the deferred connections after their targets receive QIDs.
+          </p>}
           <button
             type="button"
             className="button-primary text-sm"
@@ -258,6 +267,10 @@ export function WikidataPublicationPanel({
 
       {publication && release && (
         <>
+          {publication.profile_version === "1-nodes" && <p className="text-sm text-warn">
+            This Release defers connections that need new QIDs. Review the deferred claims below.
+            A later Release must add these connections after their targets receive QIDs.
+          </p>}
           {!publication.source_current && (
             <p className="rounded-lg border border-warn/30 bg-warn/5 p-3 text-sm text-warn" data-testid="publication-stale-release-notice">
               The backend reports a stale source. Prepare a new Release before review or publication.
@@ -305,10 +318,18 @@ export function WikidataPublicationPanel({
             <ul className="grid gap-2 md:grid-cols-2">
               {entityPage.items.map((entity) => (
                 <li key={entity.entity_id} className="flex items-start justify-between gap-2 rounded border border-white/5 p-2 text-xs">
-                  <span>
+                  <div className="min-w-0">
                     <span className="block text-ink">{entity.label}</span>
                     <span className="muted">{entity.entity_kind} · {entity.statement_count} statements</span>
-                  </span>
+                    {!!entity.deferred_statements?.length && <details className="mt-2 text-warn">
+                      <summary className="cursor-pointer">
+                        {entity.deferred_statements.length} deferred {entity.deferred_statements.length === 1 ? "connection" : "connections"}
+                      </summary>
+                      <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all text-ink">
+                        {JSON.stringify(entity.deferred_statements, null, 2)}
+                      </pre>
+                    </details>}
+                  </div>
                   <span className={entity.review_status === "approved" ? "text-success" : "text-warn"}>{entity.review_status}</span>
                 </li>
               ))}
