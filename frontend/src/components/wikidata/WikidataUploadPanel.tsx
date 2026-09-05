@@ -71,11 +71,6 @@ const TARGET_OPTIONS: Array<{
     label: "Wikidata test",
     hint: "Write to test.wikidata.org with the same claim set as live: remaps P/Q by English label, stub-creates missing classes/units, and blocks the item if any snak cannot be represented (Settings → Wikidata test bot).",
   },
-  {
-    value: "live",
-    label: "Live Wikidata",
-    hint: "Write to wikidata.org (uses Settings → Wikidata live bot)",
-  },
 ];
 
 export function WikidataUploadPanel({

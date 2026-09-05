@@ -113,6 +113,53 @@ def test_canonical_final_gate_drops_identifierless_person() -> None:
     assert result["summary"]["total_items"] == 0
 
 
+def test_canonical_build_coalesces_people_with_a_shared_strong_identity() -> None:
+    from app.pipeline.wikidata_export_quality_gate import wikidata_export_quality_findings
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    first = WikidataItem(
+        local_id="QDraft_Person_29",
+        entity_type="person",
+        labels={"en": "A person"},
+        statements=[
+            WikidataStatement(property_id="P31", value="Q5", value_type="item"),
+            WikidataStatement(
+                property_id="P8189",
+                value="987007507328605171",
+                value_type="external-id",
+            ),
+        ],
+    )
+    second = WikidataItem(
+        local_id="QDraft_Person_150",
+        entity_type="person",
+        labels={"en": "A person"},
+        statements=[
+            WikidataStatement(property_id="P31", value="Q5", value_type="item"),
+            WikidataStatement(
+                property_id="P8189",
+                value="987007507328605171",
+                value_type="external-id",
+            ),
+        ],
+    )
+    with patch(
+        "app.pipeline.hmo_canonical_wikidata.native_items_from_hmo",
+        return_value=[first, second],
+    ):
+        result = build_canonical_studio_result([], reconcile=False, return_native=True)
+
+    native_items = result["native_items"]
+    assert native_items is not None
+    assert [item.local_id for item in native_items] == ["QDraft_Person_150"]
+    assert result["summary"]["strong_identity_persons_coalesced"] == 1
+    assert not [
+        finding
+        for finding in wikidata_export_quality_findings(native_items)
+        if finding.code == "STRONG_EXTERNAL_ID_COLLISION"
+    ]
+
+
 def test_canonical_final_gate_recovers_viaf_evidence_before_drop() -> None:
     from converter.wikidata.item_models import WikidataItem, WikidataStatement
 

@@ -19,6 +19,10 @@ approval, preview, and public publication as separate steps; technical legacy
 projection remains available as an explicit alternate source. The item drawer
 exposes a QID-bound **accept foreign modify** checkbox when `existing_qid` is
 set (Rule W-99); uploads load those accepts from `WikidataItemOverride`.
+The Publication panel owns the test/live target choice. The compatibility
+upload panel is hidden by default. It appears only when the Publication API
+reports that the service is unavailable. The page never shows both target
+groups at the same time (Rule W-213).
 
 **API clients.** All HTTP goes through `api/client.ts:138`'s `api` object:
 same-origin `/api` prefix, `credentials: "include"` (HTTP-only session

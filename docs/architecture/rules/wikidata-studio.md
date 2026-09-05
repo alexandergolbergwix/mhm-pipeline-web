@@ -2657,3 +2657,32 @@ Regression: `backend/tests/unit/test_publication_module.py`,
 `backend/tests/test_publication_repository.py`,
 `backend/tests/test_publication_router.py`, and
 `frontend/e2e/wikidata-publication.spec.ts`.
+
+### Rule W-213 — Same-person canonical drafts MUST coalesce before export (added 2026-09-05)
+
+One authority person can occur in more than one HMO canonical node. The build
+must not export those nodes as separate public person drafts when they share a
+strong identifier. The export quality gate must keep its hard collision rule.
+
+**Invariants:**
+
+1. The canonical build and cached upload preparation MUST coalesce person
+   drafts that share P214, P8189, P244, P227, P213, or P268.
+2. The coalescer MUST merge connected identity components. It MUST union claims,
+   records, aliases, and authority evidence into one deterministic survivor.
+3. The coalescer MUST rewrite `__LOCAL:` values in statements, qualifiers, and
+   references before local-reference resolution.
+4. A component with two different nonempty `existing_qid` values MUST remain
+   separate. The hard export and Publication identity gates MUST block it.
+5. The Publication panel MUST be the only default test/live target selector.
+   The legacy upload panel MUST appear only after a `404`, `405`, or `410`
+   response from the Publication API.
+
+*Why:* run `48ba6c13` projected four `QDraft_Person_*` rows with the same Mazal
+P8189. The hard export gate correctly stopped the build. The Studio also showed
+two target groups, which made the supported production route unclear.
+
+Regression: `backend/tests/unit/test_wikidata_canonical_enrichment.py`,
+`backend/tests/unit/test_hmo_canonical_wikidata.py`,
+`frontend/e2e/wikidata-publication.spec.ts`, and
+`frontend/e2e/wikidata-upload-panel.spec.ts`.

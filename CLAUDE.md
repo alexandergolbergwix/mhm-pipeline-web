@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-212)
+## Architectural rules (W-1…W-213)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -163,6 +163,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-210** — Live verdict rows MUST preserve metadata and retry invalid judge output
 - **W-211** — Public AI verdicts MUST use a closed outcome set; provider errors use abstain
 - **W-212** — A production Wikidata write MUST use a sealed Publication Release
+- **W-213** — Same-person canonical drafts MUST coalesce before export
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 

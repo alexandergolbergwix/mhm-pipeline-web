@@ -93,8 +93,8 @@ export function WikidataPublicationPanel({
   });
 
   useEffect(() => {
-    onPublicationActiveChange?.(publication !== null);
-  }, [onPublicationActiveChange, publication]);
+    onPublicationActiveChange?.(!routeUnavailable);
+  }, [onPublicationActiveChange, routeUnavailable]);
 
   useEffect(() => {
     if (source !== "canonical" && target === "live") setTarget("test");
@@ -119,7 +119,7 @@ export function WikidataPublicationPanel({
       setOperation(response.operation ?? null);
       setPrepareJobId(response.publication ? null : response.operation?.operation_id ?? null);
     } catch (caught) {
-      if (caught instanceof ApiError && (caught.status === 404 || caught.status === 405)) {
+      if (caught instanceof ApiError && [404, 405, 410].includes(caught.status)) {
         setRouteUnavailable(true);
       } else {
         setError(caught instanceof ApiError ? caught.detail : String(caught));
@@ -209,7 +209,7 @@ export function WikidataPublicationPanel({
         )}
       </div>
 
-      {!publication && (
+      {!publication && !routeUnavailable && (
         <div className="space-y-3">
           <fieldset className="flex flex-wrap gap-4 text-sm" disabled={busyCommand !== null}>
             <legend className="mb-2 text-xs muted">Wikidata target</legend>

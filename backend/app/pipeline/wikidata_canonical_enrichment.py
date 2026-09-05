@@ -223,11 +223,127 @@ def rollup_dropped_person_local_refs(
     return rolled
 
 
+def _person_strong_identity_keys(item: WikidataItem) -> set[tuple[str, str]]:
+    """Return the strong authority IDs that can identify one person draft."""
+    from converter.authority.evidence import (  # noqa: PLC0415
+        normalize_authority_id,
+        normalize_viaf_id,
+    )
+
+    identities: set[tuple[str, str]] = set()
+    for statement in item.statements or []:
+        property_id = str(statement.property_id or "")
+        value = str(statement.value or "").strip()
+        if property_id not in _PERSON_IDENTIFIER_PIDS or not value:
+            continue
+        if property_id == "P214":
+            value = normalize_viaf_id(value) or value.rstrip("/").rsplit("/", 1)[-1]
+        elif property_id == "P8189":
+            value = normalize_authority_id(value) or value
+        identities.add((property_id, value))
+    return identities
+
+
+def coalesce_person_items_by_strong_identity(
+    items: list[WikidataItem],
+) -> tuple[list[WikidataItem], int]:
+    """Merge same-person drafts that share a strong ID (Rule W-213).
+
+    Different existing QIDs remain separate. The final collision gate then
+    blocks that unsafe corpus instead of silently choosing a public item.
+    """
+    people_by_local_id: dict[str, WikidataItem] = {}
+    members_by_identity: dict[tuple[str, str], set[str]] = {}
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "person":
+            continue
+        local_id = str(item.local_id or "").strip()
+        if not local_id or local_id in people_by_local_id:
+            continue
+        people_by_local_id[local_id] = item
+        for identity in _person_strong_identity_keys(item):
+            members_by_identity.setdefault(identity, set()).add(local_id)
+
+    adjacent: dict[str, set[str]] = {
+        local_id: set() for local_id in people_by_local_id
+    }
+    for member_ids in members_by_identity.values():
+        if len(member_ids) < 2:
+            continue
+        for local_id in member_ids:
+            adjacent[local_id].update(member_ids - {local_id})
+
+    replacements: dict[str, WikidataItem] = {}
+    aliases: dict[str, str] = {}
+    removed_ids: set[str] = set()
+    visited: set[str] = set()
+    for local_id in sorted(adjacent):
+        if local_id in visited:
+            continue
+        stack = [local_id]
+        component: set[str] = set()
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            component.add(current)
+            stack.extend(adjacent[current] - visited)
+        if len(component) < 2:
+            continue
+        existing_qids = {
+            str(people_by_local_id[member].existing_qid or "").strip()
+            for member in component
+            if str(people_by_local_id[member].existing_qid or "").strip()
+        }
+        if len(existing_qids) > 1:
+            logger.warning(
+                "Kept %d person drafts with shared strong IDs because they target "
+                "conflicting QIDs: %s",
+                len(component),
+                ", ".join(sorted(existing_qids)),
+            )
+            continue
+
+        survivor_id = min(
+            component,
+            key=lambda member: (
+                not bool(str(people_by_local_id[member].existing_qid or "").strip()),
+                member,
+            ),
+        )
+        merged = people_by_local_id[survivor_id]
+        for duplicate_id in sorted(component - {survivor_id}):
+            merged = _merge_pair(merged, people_by_local_id[duplicate_id])
+            aliases[duplicate_id] = survivor_id
+            removed_ids.add(duplicate_id)
+        replacements[survivor_id] = merged
+
+    if not removed_ids:
+        return items, 0
+
+    coalesced = [
+        replacements.get(str(item.local_id or ""), item)
+        for item in items
+        if str(item.local_id or "") not in removed_ids
+    ]
+    rewritten = _rewrite_local_reference_aliases(coalesced, aliases)
+    logger.info(
+        "Coalesced %d person drafts by shared strong identity and rewrote %d "
+        "local references (Rule W-213)",
+        len(removed_ids),
+        rewritten,
+    )
+    return _with_deduped_statements(coalesced), len(removed_ids)
+
+
 def prepare_wikidata_upload_native_items(items: list[WikidataItem]) -> list[WikidataItem]:
-    """Recover publishable IDs, omit identifierless persons, rollup P2093 (W-185)."""
+    """Recover IDs, coalesce people, omit identifierless persons, and rollup P2093."""
     for item in items:
         if str(item.entity_type or "").strip().lower() == "person":
             recover_person_identifiers_from_evidence(item)
+
+    items, _ = coalesce_person_items_by_strong_identity(items)
 
     dropped_ids: set[str] = set()
     names: dict[str, str] = {}

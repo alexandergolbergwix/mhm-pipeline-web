@@ -847,3 +847,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     The legacy live upload and single-item push routes MUST return `410 Gone`.
     *Why:* a mutable Studio cache and a direct write route cannot prove the
     reviewed content or safely recover an uncertain remote result.
+115. **R115 — Same-person canonical drafts MUST coalesce before export (Rule W-213).**
+    Person drafts that share a strong authority ID merge before item validation.
+    The merge unions records, claims, and authority evidence. It rewrites every
+    `__LOCAL:` reference to the survivor. A component with different existing
+    QIDs MUST remain separate, so the hard collision gate blocks it. The
+    Publication target controls are exclusive. The legacy controls appear only
+    after the Publication API returns unavailable. *Why:* duplicated HMO person
+    nodes with one Mazal ID blocked a build, while both target controls appeared
+    in the same Studio page.

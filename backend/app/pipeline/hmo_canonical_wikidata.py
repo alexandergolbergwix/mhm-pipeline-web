@@ -876,6 +876,7 @@ def build_canonical_studio_result(
     """
     from app.pipeline import wikidata_studio  # noqa: PLC0415
     from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
+        coalesce_person_items_by_strong_identity,
         is_publishable_person_item,
         merge_legacy_into_canonical,
         normalize_work_author_claims,
@@ -972,6 +973,8 @@ def build_canonical_studio_result(
             )
         ]
 
+    native_items, coalesced_persons = coalesce_person_items_by_strong_identity(native_items)
+
     _sanitize_canonical_claims(native_items, context)
     _align_person_p1559_to_hebrew_label(native_items)
     _scrub_person_aliases(native_items)
@@ -1041,6 +1044,7 @@ def build_canonical_studio_result(
             "conflicted_persons_dropped": len(conflicted_person_ids),
             "unconfirmed_person_identity_suppressed": len(unconfirmed_ids),
             "identifierless_after_soft_reject": len(after_strip_dropped),
+            "strong_identity_persons_coalesced": coalesced_persons,
         },
     }
 

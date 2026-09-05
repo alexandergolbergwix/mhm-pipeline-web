@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import converter.wikidata.item_builder  # noqa: F401  (import order)
 from app.pipeline.wikidata_canonical_enrichment import (
+    coalesce_person_items_by_strong_identity,
     merge_legacy_into_canonical,
     normalize_work_author_claims,
 )
+from app.pipeline.wikidata_export_quality_gate import wikidata_export_quality_findings
 from app.pipeline.wikidata_local_refs import resolve_local_references
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
@@ -38,6 +40,93 @@ def _person(local_id: str, *, viaf: str = "", label: str = "Name") -> WikidataIt
         statements=stmts,
         authority_evidence=[{"kind": "viaf", "viaf_uri": viaf, "accepted": True}] if viaf else [],
     )
+
+
+def test_coalesce_persons_with_same_strong_identity_rewrites_local_references() -> None:
+    primary = _person("QDraft_Person_29", label="Primary")
+    primary.records = ["record-29"]
+    primary.statements.append(
+        WikidataStatement(
+            property_id="P8189",
+            value="987007507328605171",
+            value_type="external-id",
+        ),
+    )
+    duplicate = _person("QDraft_Person_150", label="Duplicate")
+    duplicate.records = ["record-150"]
+    duplicate.statements.append(
+        WikidataStatement(
+            property_id="P8189",
+            value="987007507328605171",
+            value_type="external-id",
+        ),
+    )
+    work = WikidataItem(
+        local_id="QDraft_Work_1",
+        entity_type="work",
+        labels={"en": "A work"},
+        statements=[
+            WikidataStatement(
+                property_id="P50",
+                value="__LOCAL:QDraft_Person_150",
+                value_type="item",
+            ),
+        ],
+    )
+
+    coalesced, merged_count = coalesce_person_items_by_strong_identity([primary, duplicate, work])
+
+    assert merged_count == 1
+    people = [item for item in coalesced if item.entity_type == "person"]
+    assert [item.local_id for item in people] == ["QDraft_Person_150"]
+    assert people[0].records == ["record-150", "record-29"]
+    coalesced_work = next(item for item in coalesced if item.local_id == "QDraft_Work_1")
+    assert coalesced_work.statements[0].value == "__LOCAL:QDraft_Person_150"
+    assert not [
+        finding
+        for finding in wikidata_export_quality_findings(coalesced)
+        if finding.code == "STRONG_EXTERNAL_ID_COLLISION"
+    ]
+
+
+def test_coalesce_persons_keeps_conflicting_existing_qids_separate() -> None:
+    first = _person("QDraft_Person_29")
+    first.existing_qid = "Q29"
+    first.statements.append(
+        WikidataStatement(
+            property_id="P8189",
+            value="987007507328605171",
+            value_type="external-id",
+        ),
+    )
+    second = _person("QDraft_Person_150")
+    second.existing_qid = "Q150"
+    second.statements.append(
+        WikidataStatement(
+            property_id="P8189",
+            value="987007507328605171",
+            value_type="external-id",
+        ),
+    )
+
+    coalesced, merged_count = coalesce_person_items_by_strong_identity([first, second])
+
+    assert merged_count == 0
+    assert [item.local_id for item in coalesced] == ["QDraft_Person_29", "QDraft_Person_150"]
+    assert any(
+        finding.code == "STRONG_EXTERNAL_ID_COLLISION"
+        for finding in wikidata_export_quality_findings(coalesced)
+    )
+
+
+def test_coalesce_persons_normalizes_viaf_urls_before_identity_matching() -> None:
+    url_form = _person("QDraft_Person_url", viaf="https://viaf.org/viaf/123456789")
+    id_form = _person("QDraft_Person_id", viaf="123456789")
+
+    coalesced, merged_count = coalesce_person_items_by_strong_identity([url_form, id_form])
+
+    assert merged_count == 1
+    assert [item.local_id for item in coalesced] == ["QDraft_Person_id"]
 
 
 def test_merge_adds_legacy_manuscript_claims_keeps_canonical_bridge() -> None:

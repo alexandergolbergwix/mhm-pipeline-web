@@ -34,7 +34,7 @@
 | `frontend/src/utils/formatJobEta.ts` | Shared remaining/elapsed time labels for job progress |
 | `frontend/src/api/wikidataStudio.ts` | Typed Wikidata Studio client incl. `accept_foreign_modify` override fields |
 | `frontend/src/api/publication.ts` | Typed Publication commands and cursor reads; a prepare response can contain a queued job before it contains a Release |
-| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | Polls the prepare job, then exposes Release review and bounded Publication cursor pages |
+| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | Owns the default test/live target choice, polls the prepare job, then exposes Release review and bounded Publication cursor pages; enables compatibility controls only after API unavailability |
 | `frontend/src/components/hmo/HmoPublishConfirmationDialog.tsx` | Shared accessible confirmation gate before a single HMO entry is published or updated |
 | `frontend/e2e/fixtures/*.ts` | Deterministic `page.route()` backend mocks per feature |
 | `frontend/vite.config.ts` | `@` → `src/` alias; dev proxy `/api` → `localhost:8000` |

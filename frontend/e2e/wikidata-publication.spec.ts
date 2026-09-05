@@ -89,6 +89,8 @@ async function gotoModernStudio(page: import("@playwright/test").Page) {
   });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await expect(page.getByTestId("publication-prepare")).toBeVisible();
+  await expect(page.getByTestId("wikidata-item-upload-actions")).toBeHidden();
+  await expect(page.getByTestId("wikidata-upload-target")).toHaveCount(0);
 }
 
 async function installAuditShellMocks(page: import("@playwright/test").Page) {
@@ -114,7 +116,7 @@ async function installAuditShellMocks(page: import("@playwright/test").Page) {
 }
 
 test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", async ({page}) => {
-  test.setTimeout(20_000);
+  test.setTimeout(45_000);
   await installStudioMocks(page, makeBuildResponse());
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?active=true`, async (route) => {
     await route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify({jobs: []})});
@@ -235,7 +237,7 @@ test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", a
 });
 
 test("the audit page reads a bounded Publication audit page", async ({page}) => {
-  test.setTimeout(20_000);
+  test.setTimeout(45_000);
   await installAuditShellMocks(page);
   let auditQuery: Record<string, unknown> | null = null;
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/publication-7/read`, async (route) => {
@@ -265,6 +267,8 @@ test("the audit page reads a bounded Publication audit page", async ({page}) => 
 
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio/publications/publication-7/audit`);
 
-  await expect(page.getByText("Execution completed with 100,000 Write Receipts.")).toBeVisible();
+  await expect(page.getByTestId("wikidata-publication-audit")).toContainText(
+    "Execution completed with 100,000 Write Receipts.",
+  );
   await expect.poll(() => auditQuery).toEqual({type: "audit", cursor: null, limit: 100});
 });

@@ -13,12 +13,37 @@ async function gotoModernStudio(page: import("@playwright/test").Page) {
     localStorage.setItem("mhm.studio.reviewMode", "modern");
   });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
-  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("publication-prepare")).toBeVisible({timeout: 15_000});
+  await page.getByTestId("publication-prepare").click();
+  await expect(page.getByTestId("publication-compatibility-notice")).toBeVisible();
+  await expect(page.getByTestId("wikidata-item-upload-actions")).toBeVisible();
 }
 
 test.describe("Wikidata upload panel", () => {
   test.beforeEach(async ({page}) => {
     await installStudioMocks(page, makeBuildResponse());
+    await page.route(`**/api/runs/${TEST_RUN_ID}/jobs**`, async (route) => {
+      const url = new URL(route.request().url());
+      if (
+        route.request().method() === "GET"
+        && (url.searchParams.get("active") === "true" || url.searchParams.get("kind") === "wikidata_verify")
+      ) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({jobs: []}),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/prepare`, async (route) => {
+      await route.fulfill({
+        status: 410,
+        contentType: "application/json",
+        body: JSON.stringify({detail: "Publication service is unavailable"}),
+      });
+    });
     await gotoModernStudio(page);
   });
 
@@ -28,6 +53,7 @@ test.describe("Wikidata upload panel", () => {
     await expect(page.getByTestId("wikidata-upload-update-existing")).toBeVisible();
     await expect(page.getByTestId("wikidata-upload-submit")).toBeVisible();
     await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("moratorium active");
+    await expect(page.getByTestId("wikidata-upload-target-live")).toHaveCount(0);
   });
 
   test("pre/post-upload verify checkboxes are toggleable", async ({page}) => {
@@ -46,8 +72,6 @@ test.describe("Wikidata upload panel", () => {
   test("pill follows selected upload target", async ({page}) => {
     await page.getByTestId("wikidata-upload-target-test").check();
     await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("TEST MODE");
-    await page.getByTestId("wikidata-upload-target-live").check();
-    await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("LIVE");
   });
 
   test("pre-upload verify fail shows confirm gate", async ({page}) => {

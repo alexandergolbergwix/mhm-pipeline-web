@@ -5,7 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/wikidata_studio.py` | Glue: DB rows → desktop builder input; fingerprint; override application; item serialisation + label enrichment; `local_id_for_item` |
-| `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); safe single-representation work author normalization (W-204); role-specific work-author sanitation with approved NER context (W-206 / W-209); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188) |
+| `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); safe single-representation work author normalization (W-204); role-specific work-author sanitation with approved NER context (W-206 / W-209); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188); coalesce same-identity persons before export (W-213) |
 | `backend/converter/wikidata/property_mapping.py` | `resolve_hmo_bridge_url` / `is_browseable_hmo_wikibase_url` — fail-closed HMO Wikibase link helpers (W-122); known-work / Esther aliases (W-171); `format_wikidata_time` ±YYYY padding (W-193) |
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow + scholarly catalog notes that must never become P1684 / P1922 (W-72 / W-122 / W-171 / W-172) |
 | `backend/converter/wikidata/isbd_title.py` | ISBD `245` title/subtitle split (Rule W-171) |
@@ -26,7 +26,7 @@
 | `backend/app/migrations/versions/0038_unknown_judge_failures.py` | Historical migration that converted provider-failure verdicts to `unknown` rows (superseded by W-211) |
 | `backend/app/migrations/versions/0039_public_abstain_provider_errors.py` | Convert legacy `unknown` / `verification_failed` rows to `abstain` with provider-error status and a marked, reversible migration (W-211) |
 | `backend/app/pipeline/wikidata_verify_scope.py` | Shared verify cache partitioner + sticky-full (W-167 / W-171) |
-| `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125); recover trusted person IDs before the W-154 omit gate (W-188); rewrite merged local references to canonical IDs (W-203); normalize duplicate work author claims (W-204) |
+| `backend/app/pipeline/wikidata_canonical_enrichment.py` | Merge legacy MARC/authority claims onto canonical Studio items (Rule W-125); recover trusted person IDs before the W-154 omit gate (W-188); coalesce connected same-identity person drafts and rewrite local references (W-213); normalize duplicate work author claims (W-204) |
 | `backend/app/pipeline/wikidata_qid_ledger.py` | Global `wikibase_entity_mappings` ledger (`wikidata:` keys) — adopt + idempotent upload |
 | `backend/app/pipeline/wikidata_export_quality_gate.py` | Build-time ERROR-only export quality gate before cache upsert; source-backed works must retain one safe P50 or P2093 representation |
 | `backend/app/publication/core.py` | Deep module with `prepare`, `advance`, and `read`; seals Release, Approval Set, Plan, Receipt, Execution, and write journal without a transaction across remote I/O |
@@ -76,19 +76,19 @@
 | `backend/app/models/wikidata_studio_cache.py` | `WikidataStudioCache` — one row per `(run_id, approved_only)`, fingerprint-keyed build result |
 | `backend/app/models/item_override.py` | `WikidataItemOverride` — curator diff + `approved` + `ai_verdict`/`ai_verdict_at` |
 | `frontend/src/routes/WikidataStudio.tsx` | Studio page: modern review table (default) + legacy sidebar/table toggle; `useProjectEvents` → job-tray live progress |
-| `frontend/src/components/wikidata/WikidataItemsPanel.tsx` | Orchestrator: lifecycle bar, upload hub, review table, drawer, verify + upload progress modals; **Approve all visible** → `wikidata_item_bulk_approve` job |
+| `frontend/src/components/wikidata/WikidataItemsPanel.tsx` | Orchestrator: lifecycle bar, Publication-first target controls, compatibility upload hub after API unavailability, review table, drawer, verify + upload progress modals; **Approve all visible** → `wikidata_item_bulk_approve` job |
 | `backend/app/pipeline/studio_item_bulk_approve.py` | Shared HMO/Wikidata bulk-approve core (versioned overrides) |
 | `backend/app/pipeline/studio_item_bulk_approve_job.py` | Background worker for Studio bulk approve |
 | `frontend/src/components/wikidata/WikidataItemTable.tsx` | HMO-parity review table (filters, badges, pagination) |
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Per-item drawer: overrides, compare, reconcile, verify/autofix/push |
-| `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Upload hub: dry_run/test/live radios (default dry-run), pre/post AI verify; opens upload progress modal on start; inline two-step bars (same `WikidataUploadSteps` as test/live modal) |
+| `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Compatibility upload hub: dry-run/test radios only, pre/post AI verify; opens upload progress modal on start; inline two-step bars (same `WikidataUploadSteps` as test/live modal) |
 | `frontend/src/components/wikidata/WikidataUploadProgressModal.tsx` | Upload progress modal (tray View / Rule W-141): two-step bars + Now/ETA (W-192), target-aware title + sticky badge, counts strip, per-item table, cancel |
 | `frontend/src/utils/wikidataUploadOutcomes.tsx` | Shared upload outcome tally/table helpers (panel summary + progress modal) |
 | `frontend/src/components/shared/UploadOutcomeBadge.tsx` | Shared upload-outcome pill (HMO + Wikidata) |
 | `frontend/src/components/wikidata/` | Also: `ItemValidatorBadge`, `ItemApprovalBadge`, `WikidataComparePanel`, `WikidataVerificationModal`, data-status + AI verdict badges |
 | `frontend/src/api/wikidataStudio.ts` | Typed API client; `STUDIO_MAX_PAGE_SIZE` (500); `fetchAllStudioItems` paginates bulk loads |
 | `frontend/src/api/publication.ts` | Typed client for Release prepare, commands, cursor reads, and audit |
-| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | Release controls and a 50-row Publication entity page; replaces direct production-upload intent |
+| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | The only default target selector for test/live Release preparation, plus Release controls and a 50-row Publication entity page; enables the compatibility panel only after 404/405/410 |
 | `frontend/src/components/wikidata/WikidataPublicationControls.tsx` | Hard UI gates for Review, Dry-run Receipt, Publish, Resume, and Cancel |
 | `frontend/src/routes/WikidataPublicationAudit.tsx` | Cursor audit route for immutable Publication evidence |
 | `frontend/src/utils/wikidataItemDataStatus.ts` | `new` / `will_update` / `updated` posture helper |

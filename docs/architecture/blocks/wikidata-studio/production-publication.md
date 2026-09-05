@@ -32,6 +32,9 @@ An uncertain remote result remains `outcome_unknown` until recovery proves it.
 - A foreign QID blocks the Plan unless a matching, digest-bound consent exists.
 - A local entity reference blocks the Release until a two-phase edge executor exists.
 - The former Studio `live` upload and single-item push routes return `410 Gone`.
+- The Publication panel is the only default target selector. The compatibility
+  upload panel appears only after the Publication API returns `404`, `405`, or
+  `410`.
 
 ## Scale and recovery
 

@@ -74,7 +74,7 @@ export function WikidataItemsPanel({
   const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
   const [approveFeedback, setApproveFeedback] = useState<string | null>(null);
   const [studioBuildJob, setStudioBuildJob] = useState<RunJobSnapshot | null>(null);
-  const [publicationActive, setPublicationActive] = useState(false);
+  const [publicationActive, setPublicationActive] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
   const labelStore = useLabelStore();
   const upsertJob = useRunJobs((s) => s.upsertJob);

@@ -46,7 +46,7 @@
 - `backend/tests/test_section_export_router.py` — section CSV retains item approval, verdict JSON, source records, validation, authority, and work-candidate evidence.
 - `backend/tests/test_wikidata_item_views.py`, `test_wikidata_verdict_persistence.py`, and `unit/test_wikidata_verdict_cache.py` pin build `records` ↔ verify `record_ids`, MARC/local-target fingerprint parity, prompt-visible statement/work evidence, safe stale-key display, and separation of ledger QIDs from probe-adopted QIDs (W-205); `unit/test_marc_subject_resolve.py` and `test_marc_650_655_lod.py` pin verified static QIDs/labels and broad-P921 omission.
 - `backend/tests/unit/test_hmo_wikidata_pq_mapper.py` — ontology/local-PID → public P/Q allowlist; bare project QID rejected; MS P50 forbidden; P1476/P1684 monolingualtext (W-196).
-- `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical claim mapping uses the PQ mapper; control numbers; no local-Q leak; summarized Production/CU rollup; P2888/P973 bridge; rollup summary counts; `filter_public_wikidata_items` / stale-cache shape (Rules W-117 / W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID recovery (W-121); ontology-IRI P2888 rewrite (W-122).
+- `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical claim mapping uses the PQ mapper; control numbers; no local-Q leak; summarized Production/CU rollup; P2888/P973 bridge; rollup summary counts; `filter_public_wikidata_items` / stale-cache shape (Rules W-117 / W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID recovery (W-121); ontology-IRI P2888 rewrite (W-122); same-identity person coalescing before the export gate (W-213).
 - `backend/tests/unit/test_wikidata_work_candidates.py` — includes `245` / `100/245` accept reasons (W-121).
 - `backend/tests/unit/test_property_mapping_hmo_links.py` / `test_item_builder_hmo_links.py` / `test_hmo_wikidata_pq_mapper.py` — browseable Item:Q only (W-122).
 - `backend/tests/unit/test_wikidata_upload_guards.py` (~20+) — reconcile-before-create per type, fail-closed outage, validator hard gate, blocked-never-written, audit trail, ledger/adopt, dry-run truthfulness, foreign skip / accept-allow.
@@ -72,7 +72,7 @@
 - `backend/tests/unit/test_wikidata_upload_deferred_links.py` — partition defers P50, pass-2 progress `1/2`→`2/2` steps, ETA hidden until 3 samples (W-192).
 - `backend/tests/unit/test_wikidata_test_wiki_compat.py` — test.wikidata.org remap + leftover **refuse** (not drop) + ownership on test Q refs + ownership-before-adapt + SPARQL fallback + skipped-foreign `__LOCAL:` wiring + unmapped live Q leftover + quantity unit remap + illegal live-entity no-retry + no live strip + no `Bad value type` retry + adopt-on-conflict + datatype-keyed P map + MHM stub reuse + foreign-alive CREATE + holder/live gloss stubs + disambiguated P CREATE + item-write label-conflict adopt (W-182 / W-183 / W-184 / W-185 / W-186 / W-187 / W-189 / R85–R91).
 - `backend/tests/unit/test_wikidata_existence.py` — batched `wbgetentities`, 429 retry, existence cache, alive parse, ownership classify, QID-bound foreign accept gate (W-185).
-- `backend/tests/unit/test_wikidata_canonical_enrichment.py` — identifier recovery from evidence, upload omit + P2093 rollup (W-185).
+- `backend/tests/unit/test_wikidata_canonical_enrichment.py` — identifier recovery from evidence, upload omit + P2093 rollup (W-185), strong-ID person coalescing with local-reference rewrite, and conflicting existing-QID preservation (W-213).
 - `backend/tests/unit/test_rdf_build.py` — clean raw 505 and flat contents create evidence-backed works.
 - `backend/tests/unit/test_wikidata_studio_slicing.py`, `test_wikidata_studio_works.py`, `test_wikidata_manuscript_labels.py`, `test_wikidata_matcher_backfill.py` — build/serialisation behaviour. `test_wikidata_studio_works.py` also pins source evidence, folio qualifiers, embedded-author cleanup, Latin-heading rejection, non-inherited work P407, and exact per-item `records`; it also pins contents-level author fields and
 approved work-QID reuse so enrichment metadata cannot be dropped; related_works
@@ -97,7 +97,7 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `frontend/e2e/wikidata-item-table.spec.ts` — review table columns, data status, search, approval PATCH, upload-outcome filter (incl. skip vs create), last-upload remap/skip popovers, real filter counts, Approve all visible (`wikidata_item_bulk_approve` job).
 - `backend/tests/test_studio_item_bulk_approve.py` — bulk-approve params + worker for HMO/Wikidata override rows.
 - `frontend/e2e/wikidata-item-drawer.spec.ts` — drawer apply-fix, push, reconcile API shapes.
-- `frontend/e2e/wikidata-upload-panel.spec.ts` — upload target radios (default dry-run), test full-claim remap hint (W-186), `upload_target=test` job params, pill, pre-verify fail confirm gate, live **processing…** pill while a row is under write, live two-step progress UI (modal + job tray `WikidataUploadSteps`).
+- `frontend/e2e/wikidata-upload-panel.spec.ts` — compatibility-only dry-run/test radios, test full-claim remap hint (W-186), `upload_target=test` job params, pill, pre-verify fail confirm gate, live **processing…** pill while a historic row is under write, and live two-step progress UI (modal + job tray `WikidataUploadSteps`).
 - `frontend/tests/unit/runJobsHref.spec.ts` — modal job kinds append `?job=` (verify + upload, Rule W-141).
 - `frontend/tests/unit/wikidataUploadOutcomes.spec.ts` — upload outcome tally + terminal row selection for the progress modal.
 - `backend/tests/test_run_job_params_wikidata_verify.py` — enqueue skips scope
@@ -110,7 +110,8 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `backend/tests/unit/test_wikidata_verify_evidence.py` — multi-channel evidence
   pack partitioning (W-124).
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — legacy→canonical
-  claim merge for manuscripts/persons/works (W-125).
+  claim merge for manuscripts/persons/works and same-identity coalescing
+  before export (W-125 / W-213).
 - `backend/tests/unit/test_verify_outcome.py` — incomplete verify →
   `outcome=partial` + TRACE/checkpoint merge (W-126 / R52); missing
   `runner.exit` synthesize + throttle (W-127 / R53).
@@ -138,8 +139,9 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/test_publication_router.py` and
   `backend/tests/test_wikidata_publication_execution_job.py` — queued prepare
   and execution jobs, access checks, no HTTP write, and secret-free job data.
-- `frontend/e2e/wikidata-publication.spec.ts` — Review → Dry-run → Publish
-  and bounded audit cursor flow.
+- `frontend/e2e/wikidata-publication.spec.ts` — one default Publication target
+  selector, no concurrent legacy controls, Review → Dry-run → Publish, and
+  bounded audit cursor flow.
 
 
 - `backend/tests/test_wikidata_items_export_import.py` — diagnostic CSV columns include authority evidence and local-reference target JSON.
