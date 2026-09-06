@@ -15,7 +15,7 @@
 | `EVAL_AGENT_ROOT`, `EVAL_AGENT_STATE_DIR` | `agent_runner.py` | Bundle location + writable verify state dir |
 | `DYNO` | `agent_runner.py`, `run_job_service.py` | Heroku detection: `/tmp` state default + `WORKER_ID` prefix |
 | `MORATORIUM_LIFTED`, `WIKIDATA_TEST_MODE` | `wikidata_upload.py` (legacy), `uploader.py` | Legacy env overrides. Prefer curator `upload_target` in Wikidata Studio (Rule W-103): `dry_run` \| `test` \| `live` |
-| `WIKIDATA_PUBLICATION_LIVE_TOKEN`, `WIKIDATA_PUBLICATION_TEST_TOKEN` | `publication/credentials.py` via the execution worker | Server-held bot tokens for the sealed Publication path. The worker resolves a target-bound token only after it claims a queued execution. Unset tokens fail closed. |
+| `WIKIDATA_PUBLICATION_LIVE_TOKEN`, `WIKIDATA_PUBLICATION_TEST_TOKEN` | `publication/credentials.py` via the execution worker | Optional server-held fallback tokens when the account has no saved credential for the selected wiki (W-217). The worker resolves a target-bound token only after it claims a queued execution. Absent saved credentials and fallback tokens fail closed. |
 | `WEB_CONCURRENCY`, `PORT` | `start.sh` | uvicorn workers / bind port |
 | `RUN_JOB_MAX_RUNNING`, `RUN_JOB_MAX_VERIFY`, `RUN_JOB_MAX_BUILD`, `RUN_JOB_MAX_UPLOAD`, `RUN_JOB_MAX_LIGHT` | `run_job_service.py` | Per-dyno job admission caps (defaults 2 / 1 / 1 / 1 / 2); excess jobs stay `queued` until a slot frees (Rule W-129) |
 | `ENV`, `COOKIE_SECURE`, `FRONTEND_ORIGIN`, `SESSION_TTL_HOURS` | `settings.py` | Prod flags, cookie policy, link bases |

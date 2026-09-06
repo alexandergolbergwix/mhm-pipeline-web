@@ -20,7 +20,7 @@
 | `backend/app/routers/invites.py` | Admin invite CRUD; `create_invitation_for_email` shared with approve path |
 | `backend/app/routers/admin.py` | Admin stats/users/projects, role changes, session invalidation, project transfer |
 | `backend/app/routers/projects.py` | Project CRUD + memberships, gated by `require_viewer/editor/owner` |
-| `backend/app/routers/publication.py` | Project-scoped Publication commands and cursor reads; editor commands and viewer reads use run access checks. The worker resolves a server-held credential. |
+| `backend/app/routers/publication.py` | Project-scoped Publication commands and cursor reads; editor commands and viewer reads use run access checks. The request resolves the saved target-specific credential; the worker checks an encrypted execution grant (W-217). |
 | `backend/app/routers/api_keys.py` | `/me/api-keys` — write-only key store (gemini / wikidata / wikidata_test / huggingface); no plaintext read-back |
 | `backend/app/routers/health.py` | `/healthz` (no DB) and `/readyz` (SELECT 1); unauthenticated |
 | `backend/app/middleware/rate_limit.py` | slowapi limiter keyed by left-most `X-Forwarded-For`; Redis storage via `RATELIMIT_STORAGE_URI`/`REDIS_URL`, else `memory://` |

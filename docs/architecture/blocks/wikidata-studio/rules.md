@@ -872,3 +872,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 118. **R118 — PostgreSQL projection keys must use `COLLATE "C"` (W-216).**
     The database order must match Python string order before the release digest accumulator reads the stream.
     *Why:* locale-sensitive order made 236 unique IDs fail the canonical-key check.
+
+119. **R119 — Publication credentials must remain account-bound and target-bound (W-217).**
+    Use saved `wikidata` / `wikidata_test` credentials through the authenticated request.
+    Encrypt a bounded worker grant for Publish and Resume; reject expired or mismatched grants.
+    *Why:* the server-only resolver ignored existing saved bot credentials and blocked every dry-run.

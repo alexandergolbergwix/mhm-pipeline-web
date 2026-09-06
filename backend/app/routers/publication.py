@@ -21,7 +21,11 @@ from app.publication.core import (
     InvalidCursorError,
     StaleDigestError,
 )
-from app.publication.credentials import configured_publication_gateway_factory
+from app.publication.credentials import SavedPublicationCredentialResolver, seal_execution_credential
+from app.publication.wikidata_gateway import CurrentWikidataBoundaryFactory, WikidataGatewayAdapter
+from app.publication.types import TargetRef
+from app.publication.gateway import WikidataGateway
+from app.models.publication import Publication as PublicationRow
 from app.publication.repository import PublicationNotFoundError, ReleaseNotFoundError
 from app.publication.runtime import (
     PublicationGatewayFactory,
@@ -48,9 +52,20 @@ from app.schemas.publication import (
 router = APIRouter(prefix="/runs", tags=["wikidata-publications"])
 
 
-def get_publication_gateway_factory() -> PublicationGatewayFactory:
-    """Return the external gateway factory at one injectable boundary."""
-    return configured_publication_gateway_factory
+def get_publication_gateway_factory(
+    auth: Annotated[AuthContext, Depends(current_auth)],
+    db: Annotated[AsyncSession, Depends(get_session)],
+) -> PublicationGatewayFactory:
+    """Use the signed-in user's saved credential at the external boundary."""
+    resolver = SavedPublicationCredentialResolver(db, auth.user.id, auth.kek)
+
+    def factory(*, target: TargetRef, actor_id: str) -> WikidataGateway:
+        if actor_id != str(auth.user.id):
+            raise ValueError("The Publication credential belongs to another account")
+        return WikidataGatewayAdapter(credential_resolver=resolver,
+            boundary_factory=CurrentWikidataBoundaryFactory())
+
+    return factory
 
 
 CurrentAuth = Annotated[AuthContext, Depends(current_auth)]
@@ -149,6 +164,14 @@ async def advance_publication(
 ) -> PublicationMutationResponse:
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     try:
+        credential = None
+        if isinstance(payload.command, (PublishPublicationCommand, ResumePublicationCommand)):
+            row = await db.get(PublicationRow, uuid.UUID(publication_id))
+            if row is None or row.run_id != run_id:
+                raise PublicationNotFoundError("Publication not found")
+            credential = await SavedPublicationCredentialResolver(db, auth.user.id, auth.kek).resolve(
+                f"wikidata:{row.target_environment}:{auth.user.id}"
+            )
         response = await _runtime(db, gateway_factory).advance(
             run_id=run_id,
             publication_id=publication_id,
@@ -157,8 +180,8 @@ async def advance_publication(
         )
         if isinstance(payload.command, (PublishPublicationCommand, ResumePublicationCommand)):
             execution = response.publication.execution
-            if execution is None:
-                raise ValueError("The Publication command did not create an Execution")
+            if execution is None or credential is None:
+                raise ValueError("The Publication command did not create an authorized Execution")
             try:
                 await create_job(
                     db,
@@ -169,6 +192,10 @@ async def advance_publication(
                         "publication_id": publication_id,
                         "execution_id": execution.execution_id,
                         "actor_id": str(auth.user.id),
+                        "_publication_credential": seal_execution_credential(
+                            credential, publication_id=publication_id,
+                            execution_id=execution.execution_id,
+                        ),
                     },
                     created_by=auth.user.id,
                 )

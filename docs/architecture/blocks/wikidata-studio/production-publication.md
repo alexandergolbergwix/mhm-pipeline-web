@@ -64,9 +64,9 @@ The API returns `source_current` from the backend. The browser does not calculat
 
 ## Credentials
 
-The Publication API accepts only a credential reference. It does not accept a
-bot password. A job parameter must not expose a plaintext credential in its
-public payload. The gateway opens a server-held credential only inside the execution worker.
+The Publication API resolves the signed-in account's saved credential for the selected wiki.
+Publish and Resume issue an encrypted, expiring worker grant; no plaintext secret enters a job parameter.
+See [Publication credentials](publication-credentials.md) for account binding, target separation, fallback, and tests.
 
 ## Tests
 

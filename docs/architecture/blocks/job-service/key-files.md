@@ -32,3 +32,6 @@
 | `frontend/src/utils/waitForRunJob.ts`, `frontend/src/components/jobs/JobProgressInline.tsx` | Await-terminal helper + inline progress widget |
 | `frontend/src/components/jobs/JobTray.tsx` | Global tray; `wikidata_upload` uses `WikidataUploadSteps` for every `upload_target` |
 | `backend/tests/unit/test_run_job_recovery.py` | Pins claiming, heartbeat, maintenance tick, and the create-race contract |
+
+Publication execution jobs carry an encrypted `_publication_credential` grant (W-217).
+See [Publication credentials](../wikidata-studio/publication-credentials.md) for the scope, expiry, and API exclusion.

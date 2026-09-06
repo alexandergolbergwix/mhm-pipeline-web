@@ -2735,3 +2735,14 @@ SQLite tests alone cannot detect this PostgreSQL collation difference.
 It accepts distinct mixed-case and underscore keys and rejects actual duplicate keys.
 Use a disposable database with an English ICU locale through `PUBLICATION_TEST_POSTGRES_URL`.
 The test rolls back its isolated schema and does not write to Wikidata.
+
+### Rule W-217 — Publication must use saved credentials through a bounded worker grant (2026-09-06)
+
+Both bot credentials existed in encrypted account storage, but Publication checked only empty Heroku config variables.
+The signed-in request must resolve the exact saved credential for its account and target.
+Publish and Resume must issue an encrypted execution grant with a 24-hour expiry.
+The worker must enforce account, target, Publication, Execution, and expiry before authentication.
+Never persist the request KEK, cookie, or plaintext token in job parameters or audit records.
+Keep the original saved secret under the user's KEK.
+
+The procedure and regression tests appear in [Publication credentials](../blocks/wikidata-studio/publication-credentials.md).

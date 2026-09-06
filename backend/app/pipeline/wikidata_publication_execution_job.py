@@ -12,8 +12,11 @@ from app.models.run_job import (
     RunJob,
 )
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
-from app.publication.credentials import configured_publication_gateway_factory
+from app.publication.credentials import ExecutionCredentialResolver, configured_publication_gateway_factory
+from app.publication.wikidata_gateway import CurrentWikidataBoundaryFactory, WikidataGatewayAdapter
 from app.publication.runtime import PublicationRuntime
+from app.publication.types import TargetRef
+from app.publication.gateway import WikidataGateway
 
 
 def _required_param(job: RunJob, name: str) -> str:
@@ -55,10 +58,21 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                 progress={"phase": "cancelled", "message": "Publication Execution cancelled."},
             )
             return
-        runtime = PublicationRuntime(
-            session=db,
-            gateway_factory=configured_publication_gateway_factory,
-        )
+        envelope = (job.params or {}).get("_publication_credential")
+        gateway_factory = configured_publication_gateway_factory
+        if envelope is not None:
+            if not isinstance(envelope, str) or job.created_by != uuid.UUID(actor_id):
+                raise ValueError("The Publication execution credential account is invalid")
+            resolver = ExecutionCredentialResolver(envelope,
+                publication_id=publication_id, execution_id=execution_id, actor_id=actor_id)
+
+            def credential_gateway_factory(*, target: TargetRef, actor_id: str) -> WikidataGateway:
+                return WikidataGatewayAdapter(credential_resolver=resolver,
+                    boundary_factory=CurrentWikidataBoundaryFactory())
+
+            gateway_factory = credential_gateway_factory
+
+        runtime = PublicationRuntime(session=db, gateway_factory=gateway_factory)
         await update_job_progress(
             job_id,
             {

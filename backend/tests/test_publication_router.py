@@ -336,6 +336,9 @@ async def test_advance_binds_review_and_dry_run_but_never_writes_in_the_route(
         lambda _job_id: None,
     )
 
+    saved = await sample_run["client"].put("/api/me/api-keys/wikidata_test", json={"value": "Fixture@Test:publication-fixture"})
+    assert saved.status_code == 200
+
     run_id = sample_run["run_id"]
     await _add_canonical_cache(db_session, run_id)
     gateway = FakeWikidataGateway(
@@ -488,6 +491,19 @@ async def test_advance_binds_review_and_dry_run_but_never_writes_in_the_route(
             )
         ).scalars().all()
         assert len(execution_jobs) == 1
+        from app.publication.credentials import ExecutionCredentialResolver
+        job = execution_jobs[0]
+        envelope = job.params["_publication_credential"]
+        assert "publication-fixture" not in envelope
+        material = await ExecutionCredentialResolver(envelope,
+            publication_id=publication["publication_id"], execution_id=operation["operation_id"],
+            actor_id=str(sample_run["user_id"])).resolve(f"wikidata:test:{sample_run['user_id']}")
+        assert material.secret == "Fixture@Test:publication-fixture"
+        job_view = await sample_run["client"].get(f"/api/runs/{run_id}/jobs/{job.id}")
+        assert job_view.status_code == 200
+        assert "_publication_credential" not in job_view.json()["params"]
+        assert "publication-fixture" not in job_view.text
+
         assert all(
             job.params["execution_id"] == operation["operation_id"]
             for job in execution_jobs
@@ -617,3 +633,65 @@ async def test_viewers_can_read_but_only_editors_can_mutate(
     assert read.status_code == 200
     assert forbidden_prepare.status_code == 403
     assert forbidden_advance.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target,key_name,environment', [('live','wikidata','production'), ('test','wikidata_test','test')])
+async def test_saved_credentials_reach_dry_run_and_background_execution(sample_run, db_session, monkeypatch, target, key_name, environment):
+    from sqlalchemy import select
+    from app.models.run_job import RunJob
+    from app.pipeline.wikidata_publication_execution_job import run_wikidata_publication_execution_job
+    from app.publication.wikidata_gateway import MutationConfirmation
+
+    opened = []
+    writes = []
+
+    class Boundary:
+        async def reconcile_batch(self, entities):
+            return tuple(TargetObservation.absent(entity.entity_key) for entity in entities)
+
+        async def write_once(self, request):
+            writes.append(request)
+            return f'Q{9000 + len(writes)}'
+
+        async def confirm_mutation(self, mutation, *, qid):
+            return MutationConfirmation.applied(qid=qid, revision=1, fingerprint='confirmed')
+
+    async def open_boundary(self, material):
+        opened.append(material)
+        return Boundary()
+
+    monkeypatch.setattr('app.publication.wikidata_gateway.CurrentWikidataBoundaryFactory.open', open_boundary)
+    monkeypatch.setattr('app.pipeline.run_job_service.spawn_job', lambda job_id: None)
+    client = sample_run['client']
+    token = f'Fixture@{key_name}:saved-fixture'
+    assert (await client.put(f'/api/me/api-keys/{key_name}', json={'value': token})).status_code == 200
+    await _add_canonical_cache(db_session, sample_run['run_id'])
+    publication = await _prepare_direct(db_session, sample_run['run_id'], sample_run['user_id'], target=target)
+    url = f"/api/runs/{sample_run['run_id']}/wikidata-publications/{publication.publication_id}/advance"
+    release = publication.current_release
+    reviewed = await client.post(url, json={'command': {
+        'type':'review', 'release_id':release.release_id, 'expected_release_digest':release.release_digest,
+        'selection':{'mode':'eligible_release'}, 'decision':'approve', 'reason':'Reviewed fixture',
+    }})
+    assert reviewed.status_code == 200, reviewed.text
+    approval = reviewed.json()['publication']['approval_set']
+    dry = await client.post(url, json={'command': {'type':'dry_run',
+        'approval_set_id':approval['approval_set_id'], 'expected_approval_digest':approval['approval_digest']}})
+    assert dry.status_code == 200, dry.text
+    state = dry.json()['publication']
+    assert state['dry_run_receipt']['status'] == 'valid'
+    assert writes == []
+    assert opened[-1].secret == token
+    assert opened[-1].target.environment == environment
+    receipt = state['dry_run_receipt']
+    published = await client.post(url, json={'command': {'type':'publish', 'plan_id':state['plan']['plan_id'],
+        'dry_run_receipt_id':receipt['dry_run_receipt_id'], 'expected_receipt_digest':receipt['receipt_digest']}})
+    assert published.status_code == 200, published.text
+    assert writes == []
+    jobs = (await db_session.execute(select(RunJob).where(RunJob.kind=='wikidata_publication_execution'))).scalars().all()
+    assert len(jobs) == 1
+    assert token not in str(jobs[0].params)
+    await run_wikidata_publication_execution_job(jobs[0].id)
+    assert len(writes) == 2
+    assert all(material.secret == token and material.target.environment == environment for material in opened)
