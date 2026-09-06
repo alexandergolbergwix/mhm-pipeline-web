@@ -5,6 +5,7 @@ import {ApiError} from "@/api/client";
 import type {AiVerdictOverall} from "@/api/extractionApprovals";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {
+  fetchAllStudioItems,
   Studio,
   type StudioBuild,
   type StudioItem,
@@ -112,15 +113,13 @@ export function WikidataItemsPanel({
     }
     setError(null);
     try {
-      const fetchPage = () => Studio.build(runId, {
+      const fetchItems = () => fetchAllStudioItems(runId, {
         approvedOnly,
         source,
         forceRebuild: false,
         listView: true,
-        page: 1,
-        pageSize: 100,
       });
-      const result = await loadStudioBuild(runId, fetchPage, {
+      const result = await loadStudioBuild(runId, fetchItems, {
         onProgress: (message) => {
           if (!silent) setBuildProgress(message);
         },

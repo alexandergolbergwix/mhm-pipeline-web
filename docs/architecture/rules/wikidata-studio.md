@@ -2704,3 +2704,18 @@ A later Release must add the connections after the targets receive confirmed QID
 The SQL and in-memory repositories must apply the same default reference gate.
 
 Tests and the operator procedure appear in [upload readiness](../blocks/wikidata-studio/upload-readiness.md).
+
+### Rule W-215 — Review counts and action scopes must include all API pages (2026-09-06)
+
+The modern panel requested page 1 with 100 items for a 236-item export.
+The heading showed 236, but AI filters and verification used only the first 100 items.
+
+The panel must use `fetchAllStudioItems` before it supplies rows to the review table.
+Each request must retain `list_view=true` and respect `STUDIO_MAX_PAGE_SIZE`.
+Search, column counts, verification, and approval must use the complete loaded set.
+Active table filters still restrict action scopes.
+The table keeps its display pagination.
+The existing build-job wrapper still handles a cache miss.
+
+`frontend/e2e/wikidata-complete-scope.spec.ts` checks 236 items and a 736-item set across multiple API pages.
+The tests inspect AI filter counts, approval counts, and the verification request.

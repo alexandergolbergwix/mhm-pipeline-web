@@ -863,3 +863,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     Only the explicit `1-nodes` profile defers in-source connections.
     The Release retains deferred claims for review and later publication.
     See [upload readiness](upload-readiness.md).
+
+117. **R117 — The modern review panel must load every API page before it derives counts and action scopes (W-215).**
+    Use `fetchAllStudioItems` with compact list rows and the existing build-job wrapper.
+    Keep client display pagination and active filters.
+    *Why:* the 236-item export showed only 100 items in AI filters and bulk actions.

@@ -37,3 +37,7 @@ The Publication option and deferred-claim view use
 `tests/unit/wikidataPublicationPanel.spec.tsx` and
 `e2e/wikidata-publication.spec.ts` (W-214).
 The tests use HTTP substitutes and make no Wikidata writes.
+
+`frontend/e2e/wikidata-complete-scope.spec.ts` checks complete review scopes (W-215).
+It uses paginated HTTP fixtures with 236 and 736 items.
+It checks AI filter counts, approval counts, and the item IDs in verification requests.

@@ -92,3 +92,6 @@
 | `frontend/src/components/wikidata/WikidataPublicationControls.tsx` | Hard UI gates for Review, Dry-run Receipt, Publish, Resume, and Cancel |
 | `frontend/src/routes/WikidataPublicationAudit.tsx` | Cursor audit route for immutable Publication evidence |
 | `frontend/src/utils/wikidataItemDataStatus.ts` | `new` / `will_update` / `updated` posture helper |
+
+`WikidataItemsPanel.tsx` loads all compact API pages through `fetchAllStudioItems` (W-215).
+`frontend/e2e/wikidata-complete-scope.spec.ts` tests complete filter and action scopes.
