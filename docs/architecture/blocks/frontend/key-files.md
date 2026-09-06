@@ -41,3 +41,5 @@
 | `frontend/vitest.config.ts` | jsdom env, `tests/setup.ts` shims, excludes `e2e/**` |
 | `frontend/playwright.config.ts` | Chromium-only, auto-starts Vite dev server, 3 local / 2 CI workers |
 | `docs/testing.md` | Canonical three-layer test-pyramid documentation |
+
+- [Publication dry-run jobs](../wikidata-studio/publication-dry-run-job.md) — asynchronous checks, progress, cancellation, and receipt refresh (W-218).

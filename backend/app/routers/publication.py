@@ -13,6 +13,7 @@ from app.db import get_session
 from app.models.run_job import (
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
+    JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
 )
 from app.pipeline.run_job_service import ActiveJobError, create_job
 from app.publication.core import (
@@ -37,6 +38,7 @@ from app.publication.runtime import (
 from app.routers.runs import _lookup_run_with_access
 from app.schemas.publication import (
     AdvancePublicationRequest,
+    DryRunPublicationCommand,
     PreparePublicationRequest,
     PublicationAuditPage,
     PublicationEntityPage,
@@ -97,6 +99,7 @@ def _raise_http_error(error: Exception) -> NoReturn:
     if isinstance(
         error,
         (
+            ActiveJobError,
             BlockingFindingsError,
             EmptySelectionError,
             InvalidCursorError,
@@ -165,13 +168,35 @@ async def advance_publication(
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     try:
         credential = None
-        if isinstance(payload.command, (PublishPublicationCommand, ResumePublicationCommand)):
+        if isinstance(payload.command, (PublishPublicationCommand, ResumePublicationCommand, DryRunPublicationCommand)):
             row = await db.get(PublicationRow, uuid.UUID(publication_id))
             if row is None or row.run_id != run_id:
                 raise PublicationNotFoundError("Publication not found")
             credential = await SavedPublicationCredentialResolver(db, auth.user.id, auth.kek).resolve(
                 f"wikidata:{row.target_environment}:{auth.user.id}"
             )
+        if isinstance(payload.command, DryRunPublicationCommand):
+            if credential is None:
+                raise ValueError("The dry-run requires a Publication credential")
+            scope_id = f"dry-run:{uuid.uuid4()}"
+            job = await create_job(
+                db, project_id=run.project_id, run_id=run_id,
+                kind=JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
+                params={
+                    "publication_id": publication_id,
+                    "actor_id": str(auth.user.id),
+                    "credential_scope_id": scope_id,
+                    "request": payload.model_dump(mode="json"),
+                    "_publication_credential": seal_execution_credential(
+                        credential, publication_id=publication_id, execution_id=scope_id,
+                    ),
+                },
+                created_by=auth.user.id,
+            )
+            return PublicationMutationResponse(operation=PublicationOperation(
+                operation_id=str(job.id), command="dry_run", status="queued",
+                progress=None, error=None,
+            ))
         response = await _runtime(db, gateway_factory).advance(
             run_id=run_id,
             publication_id=publication_id,

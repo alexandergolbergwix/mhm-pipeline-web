@@ -877,3 +877,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     Use saved `wikidata` / `wikidata_test` credentials through the authenticated request.
     Encrypt a bounded worker grant for Publish and Resume; reject expired or mismatched grants.
     *Why:* the server-only resolver ignored existing saved bot credentials and blocked every dry-run.
+
+120. **R120 — Publication dry-runs must use `wikidata_publication_dry_run` (W-218).** The request enqueues. The worker reads Wikidata. The UI polls through completion and reads the receipt. *Why:* synchronous dry-runs caused H12 timeouts.

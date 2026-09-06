@@ -78,9 +78,9 @@
 21. **R21 — Queued jobs MUST pass admission before claim (Rule W-129).** `run_job_service` gates `_try_claim_queued_job` on global + per-class running counts (`verify` / `build` / `upload` / `light`); excess rows stay `queued` with `progress.phase=queued` and `message=Waiting for capacity…`. `finish_job` / `_fail_job` / `fail_stale_jobs` / the maintenance tick call `admit_waiting_jobs()` to re-spawn waiting rows. Never bypass admission by calling `_try_claim_job` on a fresh `queued` row. *Why:* unbounded parallel verify/build on one Basic dyno caused R14/H12 under load.
 
 22. **R22 — Interrupted verify jobs MUST auto-resume on the backend (Rule W-130 / W-134).** Incremental cache persist; `fail_stale_jobs` re-queues verify rows with judged>0 (`apply_verify_job_auto_resume`); startup runs `recover_interrupted_jobs` + `recover_resumable_verify_jobs`. UI **Continue** is fallback only. *Why:* partial verify after dyno restart/OOM should not require curator action when cache already holds verdicts.
-23. **R23 — Publication prepare and execution MUST be run jobs (Rule W-212).**
-    `wikidata_publication_prepare` streams and seals a Release. `wikidata_publication_execution`
-    resumes a queued Execution. Job parameters contain request metadata, references,
-    and actor IDs only. They contain no credential secret.
-    A server-held credential resolves only in the execution worker. *Why:* a
-    100k-item release and its writes cannot run within an HTTP request.
+23. **R23 — Publication prepare, dry-run, and execution must use run jobs (W-212, W-217, W-218).**
+    `wikidata_publication_prepare` seals a Release. `wikidata_publication_dry_run`
+    creates its plan and receipt. `wikidata_publication_execution` writes approved actions.
+    Private encrypted grants carry saved account credentials to dry-run and execution workers.
+    Public parameters contain no credential values. The generic job endpoint rejects all three kinds.
+    *Why:* a full Release and its remote checks cannot fit inside the HTTP timeout.

@@ -35,3 +35,5 @@
 
 Publication execution jobs carry an encrypted `_publication_credential` grant (W-217).
 See [Publication credentials](../wikidata-studio/publication-credentials.md) for the scope, expiry, and API exclusion.
+
+- [Publication dry-run jobs](../wikidata-studio/publication-dry-run-job.md) — asynchronous checks, progress, cancellation, and receipt refresh (W-218).

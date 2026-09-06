@@ -410,7 +410,12 @@ async def test_advance_binds_review_and_dry_run_but_never_writes_in_the_route(
             },
         )
         assert dry_run.status_code == 200, dry_run.text
-        dry_run_publication = dry_run.json()["publication"]
+        assert dry_run.json()["operation"]["status"] == "queued"
+        from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
+        monkeypatch.setattr("app.pipeline.wikidata_publication_dry_run_job.WikidataGatewayAdapter", lambda **kwargs: gateway)
+        await run_wikidata_publication_dry_run_job(uuid.UUID(dry_run.json()["operation"]["operation_id"]))
+        dry_summary = await sample_run["client"].post(f"{publication_url}/read", json={"query": {"type": "summary"}})
+        dry_run_publication = dry_summary.json()["publication"]
         assert dry_run_publication["plan"]["action_counts"]["create"] == 2
         assert dry_run_publication["dry_run_receipt"]["status"] == "valid"
 
@@ -637,7 +642,8 @@ async def test_viewers_can_read_but_only_editors_can_mutate(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('target,key_name,environment', [('live','wikidata','production'), ('test','wikidata_test','test')])
-async def test_saved_credentials_reach_dry_run_and_background_execution(sample_run, db_session, monkeypatch, target, key_name, environment):
+@pytest.mark.parametrize("outcome", ["success", "read_error", "blocked", "cancelled", "stale"])
+async def test_saved_credentials_reach_dry_run_and_background_execution(sample_run, db_session, monkeypatch, target, key_name, environment, outcome):
     from sqlalchemy import select
     from app.models.run_job import RunJob
     from app.pipeline.wikidata_publication_execution_job import run_wikidata_publication_execution_job
@@ -648,6 +654,10 @@ async def test_saved_credentials_reach_dry_run_and_background_execution(sample_r
 
     class Boundary:
         async def reconcile_batch(self, entities):
+            if outcome == "read_error":
+                raise RuntimeError("The Wikidata read did not return a result")
+            if outcome == "blocked":
+                return tuple(TargetObservation.unknown(entity.entity_key, "Lookup is inconclusive") for entity in entities)
             return tuple(TargetObservation.absent(entity.entity_key) for entity in entities)
 
         async def write_once(self, request):
@@ -677,9 +687,30 @@ async def test_saved_credentials_reach_dry_run_and_background_execution(sample_r
     assert reviewed.status_code == 200, reviewed.text
     approval = reviewed.json()['publication']['approval_set']
     dry = await client.post(url, json={'command': {'type':'dry_run',
-        'approval_set_id':approval['approval_set_id'], 'expected_approval_digest':approval['approval_digest']}})
+        'approval_set_id':approval['approval_set_id'], 'expected_approval_digest': '0' * 64 if outcome == 'stale' else approval['approval_digest']}})
     assert dry.status_code == 200, dry.text
-    state = dry.json()['publication']
+    assert dry.json()['operation']['status'] == 'queued'
+    assert opened == []
+    assert writes == []
+    from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
+    job_id = uuid.UUID(dry.json()['operation']['operation_id'])
+    if outcome == "cancelled":
+        cancelled = await client.post(f'/api/runs/{sample_run["run_id"]}/jobs/{job_id}/cancel', json={})
+        assert cancelled.status_code == 200
+    from app.pipeline.run_job_service import _execute_job
+    await _execute_job(job_id)
+    job_result = await client.get(f'/api/runs/{sample_run["run_id"]}/jobs/{job_id}')
+    if outcome != "success":
+        assert job_result.json()['status'] == ("cancelled" if outcome == "cancelled" else "failed"), job_result.text
+        assert writes == []
+        assert token not in job_result.text
+        if outcome == "read_error":
+            assert "The Wikidata read did not return a result" in job_result.json()['error']
+        return
+    assert job_result.json()['status'] == 'succeeded', job_result.text
+    assert token not in job_result.text
+    summary = await client.post(url.replace('/advance', '/read'), json={'query': {'type': 'summary'}})
+    state = summary.json()['publication']
     assert state['dry_run_receipt']['status'] == 'valid'
     assert writes == []
     assert opened[-1].secret == token
@@ -693,5 +724,8 @@ async def test_saved_credentials_reach_dry_run_and_background_execution(sample_r
     assert len(jobs) == 1
     assert token not in str(jobs[0].params)
     await run_wikidata_publication_execution_job(jobs[0].id)
+    await db_session.refresh(jobs[0])
+    audit = await client.post(url.replace("/advance", "/read"), json={"query": {"type": "audit", "limit": 50}})
+    assert jobs[0].status == "succeeded", audit.text
     assert len(writes) == 2
     assert all(material.secret == token and material.target.environment == environment for material in opened)

@@ -7,6 +7,12 @@ import {
   TEST_RUN_ID,
 } from "./fixtures/wikidata-fixtures";
 
+test.beforeEach(async ({page}) => {
+  await page.route("**/jobs?active=true&kind=wikidata_publication_dry_run&limit=1", async (route) => {
+    await route.fulfill({json: {jobs: []}});
+  });
+});
+
 const RELEASE = {
   release_id: "release-7",
   release_digest: "sha256:release-7",
@@ -132,7 +138,8 @@ test("a curator can explicitly defer connections that need new QIDs", async ({pa
   await expect.poll(() => requests).toContainEqual(expect.objectContaining({profile_version: "1-nodes"}));
 });
 
-test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", async ({page}) => {
+for (const dryOutcome of ["succeeded", "failed"] satisfies string[]) {
+test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async ({page}) => {
   test.setTimeout(45_000);
   await installStudioMocks(page, makeBuildResponse());
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?active=true`, async (route) => {
@@ -144,6 +151,16 @@ test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", a
   const commands: Array<Record<string, unknown>> = [];
   let prepareBody: Record<string, unknown> | null = null;
   let current = summary("review");
+  let dryPolls = 0;
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/dry-job`, async (route) => {
+    dryPolls += 1;
+    const done = dryPolls >= 3;
+    if (done && dryOutcome === "succeeded") current = summary("dry_run");
+    await route.fulfill({json: {id: "dry-job", run_id: TEST_RUN_ID, project_id: "p",
+      kind: "wikidata_publication_dry_run", status: done ? dryOutcome : "running",
+      params: {}, progress: {processed: done ? 2 : 1, total: 2, message: "Check Wikidata"},
+      result: done ? {publication_id: "publication-7"} : null, error: done && dryOutcome === "failed" ? "Wikidata read failed" : null}});
+  });
 
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/prepare`, async (route) => {
     prepareBody = route.request().postDataJSON();
@@ -155,6 +172,10 @@ test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", a
   });
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/publication-7/read`, async (route) => {
     const body: {query?: {type?: string}} = route.request().postDataJSON();
+    if (body.query?.type === "summary") {
+      await route.fulfill({json: {publication: current}});
+      return;
+    }
     if (body.query?.type === "entities") {
       await route.fulfill({
         status: 200,
@@ -200,7 +221,12 @@ test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", a
     const body: {command?: Record<string, unknown>} = route.request().postDataJSON();
     if (body.command) {
       commands.push(body.command);
-      if (body.command.type === "dry_run") current = summary("dry_run");
+      if (body.command.type === "dry_run") {
+        await route.fulfill({json: {publication: null, operation: {
+          operation_id: "dry-job", command: "dry_run", status: "queued", progress: null, error: null,
+        }}});
+        return;
+      }
       if (body.command.type === "publish") current = summary("publish");
       await route.fulfill({
         status: 200,
@@ -231,8 +257,16 @@ test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", a
   await expect(page.getByTestId("publication-approval-state")).toContainText("current");
   await expect(page.getByTestId("publication-dry-run")).toBeEnabled();
   await page.getByTestId("publication-dry-run").click({force: true});
-  await expect(page.getByTestId("publication-dry-run-receipt-state")).toContainText("current");
+  if (dryOutcome === "failed") {
+    await expect(page.getByRole("alert")).toContainText("Wikidata read failed", {timeout: 15000});
+    await expect(page.getByTestId("publication-publish")).toBeDisabled();
+    await expect(page.getByTestId("publication-dry-run")).toBeEnabled();
+    expect(dryPolls).toBeGreaterThanOrEqual(3);
+    return;
+  }
+  await expect(page.getByTestId("publication-dry-run-receipt-state")).toContainText("current", {timeout: 15000});
   await expect(page.getByTestId("publication-publish")).toBeEnabled();
+  expect(dryPolls).toBeGreaterThanOrEqual(3);
   await page.getByTestId("publication-publish").click({force: true});
 
   await expect(page.getByTestId("publication-execution-progress")).toContainText("25 of 100,000");
@@ -252,6 +286,8 @@ test("a curator reviews a Release, creates a Dry-run Receipt, then publishes", a
     expected_receipt_digest: "sha256:receipt-7",
   });
 });
+
+}
 
 test("the audit page reads a bounded Publication audit page", async ({page}) => {
   test.setTimeout(45_000);

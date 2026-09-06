@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import uuid
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import Awaitable, AsyncIterator, Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol, cast
@@ -110,11 +110,13 @@ class PublicationModule:
         repository: PublicationRepository,
         gateway: WikidataGateway,
         clock: Callable[[], datetime] | None = None,
+        dry_run_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> None:
         self._projection_source = projection_source
         self._repository = repository
         self._gateway = gateway
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._dry_run_progress = dry_run_progress
 
     async def prepare(self, request: PrepareRequest) -> OperationRef:
         prior = await self._repository.find_prepared(
@@ -451,6 +453,8 @@ class PublicationModule:
         if command.receipt_ttl_seconds < 1:
             raise ValueError("The dry-run receipt TTL must be positive")
 
+        if self._dry_run_progress is not None:
+            await self._dry_run_progress(0, release.entity_count)
         plan_id = str(uuid.uuid4())
         await self._repository.begin_plan(plan_id)
         await self._repository.checkpoint()
@@ -554,6 +558,9 @@ class PublicationModule:
                     }
                 )
             await self._repository.add_plan_actions(plan_id, tuple(actions))
+            if self._dry_run_progress is not None:
+                await self._repository.checkpoint()
+                await self._dry_run_progress(sum(counts.values()), release.entity_count)
             if not has_more:
                 break
             after = entities[-1].entity_key

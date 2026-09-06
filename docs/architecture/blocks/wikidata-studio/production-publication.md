@@ -13,7 +13,7 @@ It then requires Review, Dry-run, and Publish in that order.
 1. `prepare` creates a build job that reads the selected source and stores one normalized entity row per entity.
 2. The service seals the Release with a canonical digest and persistent Findings.
 3. `review` stores digest-bound Approval Decisions on the sealed Release.
-4. `dry_run` reconciles the approved set and seals a Plan plus a short-lived Receipt.
+4. `dry_run` queues `wikidata_publication_dry_run`. The worker reconciles the approved set and seals a Plan plus a short-lived Receipt.
 5. `publish` creates a queued Execution only.
 6. A worker resumes the Execution and writes one leased action at a time.
 
@@ -74,3 +74,5 @@ See [Publication credentials](publication-credentials.md) for account binding, t
 - `backend/tests/test_publication_repository.py` tests normalized persistence and action claims.
 - `backend/tests/test_publication_router.py` tests the HTTP contract and access gate.
 - `frontend/e2e/wikidata-publication.spec.ts` tests Review, Dry-run, Publish, audit, and bounded pages.
+
+See [the asynchronous dry-run flow](publication-dry-run-job.md) for job polls, progress, and cancellation.

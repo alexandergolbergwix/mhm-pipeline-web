@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 
 import {ApiError} from "@/api/client";
-import {RunJobs} from "@/api/runJobs";
+import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import {
   PublicationApi,
   type PublicationAdvanceCommand,
@@ -13,6 +13,9 @@ import {
 import type {StudioBuild, StudioItem} from "@/api/wikidataStudio";
 import {WikidataPublicationControls} from "@/components/wikidata/WikidataPublicationControls";
 import {usePublicationEntityPage} from "@/hooks/usePublicationEntityPage";
+
+import {useRunJobs} from "@/stores/runJobs";
+import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 
 const PROFILE_ID = "mhm-wikidata";
 
@@ -73,6 +76,7 @@ export function WikidataPublicationPanel({
   const [deferConnections, setDeferConnections] = useState(false);
   const [publication, setPublication] = useState<PublicationSummary | null>(null);
   const [operation, setOperation] = useState<PublicationOperation | null>(null);
+  const [jobSnapshot, setJobSnapshot] = useState<RunJobSnapshot | null>(null);
   const [prepareJobId, setPrepareJobId] = useState<string | null>(null);
   const [busyCommand, setBusyCommand] = useState<PublicationAdvanceCommand["type"] | "prepare" | null>(null);
   const [routeUnavailable, setRouteUnavailable] = useState(false);
@@ -99,6 +103,24 @@ export function WikidataPublicationPanel({
   useEffect(() => {
     if (source !== "canonical" && target === "live") setTarget("test");
   }, [source, target]);
+
+  useEffect(() => {
+    let stopped = false;
+    void RunJobs.listForRun(runId, true, {kind: "wikidata_publication_dry_run", limit: 1})
+      .then(async ({jobs}) => {
+        const job = jobs[0];
+        if (stopped || !job) return;
+        const publicationId = job.params.publication_id;
+        if (typeof publicationId !== "string") return;
+        const response = await PublicationApi.read(runId, publicationId, {type: "summary"});
+        if (stopped) return;
+        setPublication(response.publication);
+        setPrepareJobId(job.id);
+      }).catch((caught: unknown) => {
+        if (!stopped) setError(caught instanceof ApiError ? caught.detail : String(caught));
+      });
+    return () => { stopped = true; };
+  }, [runId]);
 
   const prepare = useCallback(async () => {
     setBusyCommand("prepare");
@@ -131,28 +153,39 @@ export function WikidataPublicationPanel({
 
   useEffect(() => {
     if (!prepareJobId) return;
-    const timer = window.setTimeout(() => {
-      void RunJobs.get(runId, prepareJobId).then(async (job) => {
-        if (job.status === "failed" || job.status === "cancelled") {
-          setError(job.error ?? "Publication preparation did not complete.");
-          setPrepareJobId(null);
+    let stopped = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const job = await RunJobs.get(runId, prepareJobId);
+        if (stopped) return;
+        setJobSnapshot(job);
+        useRunJobs.getState().upsertJob(job);
+        if (job.status === "queued" || job.status === "running") {
+          timer = window.setTimeout(() => { void poll(); }, 1000);
           return;
         }
         const publicationId = typeof job.result?.publication_id === "string"
-          ? job.result.publication_id
-          : null;
-        if (job.status === "succeeded" && publicationId) {
+          ? job.result.publication_id : null;
+        if (publicationId) {
           const response = await PublicationApi.read(runId, publicationId, {type: "summary"});
+          if (stopped) return;
           setPublication(response.publication);
-          setOperation(null);
-          setPrepareJobId(null);
         }
-      }).catch((caught: unknown) => {
-        setError(caught instanceof ApiError ? caught.detail : String(caught));
+        if (job.status !== "succeeded") setError(job.error ?? "The Publication job did not complete.");
+        setOperation(null);
+        setBusyCommand(null);
         setPrepareJobId(null);
-      });
-    }, 1000);
-    return () => window.clearTimeout(timer);
+      } catch (caught: unknown) {
+        if (stopped) return;
+        setError(caught instanceof ApiError ? caught.detail : String(caught));
+        setOperation(null);
+        setBusyCommand(null);
+        setPrepareJobId(null);
+      }
+    };
+    void poll();
+    return () => { stopped = true; window.clearTimeout(timer); };
   }, [prepareJobId, runId]);
 
   const advance = useCallback(async (command: PublicationAdvanceCommand) => {
@@ -161,8 +194,12 @@ export function WikidataPublicationPanel({
     setError(null);
     try {
       const response = await PublicationApi.advance(runId, publication.publication_id, command);
-      setPublication(response.publication);
+      if (response.publication) setPublication(response.publication);
       setOperation(response.operation ?? null);
+      if (command.type === "dry_run" && response.operation?.status === "queued") {
+        setJobSnapshot(null);
+        setPrepareJobId(response.operation.operation_id);
+      }
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.detail : String(caught));
     } finally {
@@ -171,7 +208,7 @@ export function WikidataPublicationPanel({
   }, [publication, runId]);
 
   useEffect(() => {
-    if (!publication || !operationActive(operation)) return;
+    if (prepareJobId || !publication || !operationActive(operation)) return;
     const timer = window.setTimeout(() => {
       void PublicationApi.read(runId, publication.publication_id, {
         type: "operation",
@@ -184,7 +221,7 @@ export function WikidataPublicationPanel({
       });
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [operation, publication, runId]);
+  }, [operation, publication, prepareJobId, runId]);
 
   return (
     <section className="rounded-xl border border-biu-sky/20 bg-biu-sky/[0.03] p-4 space-y-4" data-testid="wikidata-publication-panel">
@@ -280,7 +317,7 @@ export function WikidataPublicationPanel({
           <WikidataPublicationControls
             publication={publication}
             entities={entityPage.source === "publication" ? entityPage.items : []}
-            busyCommand={busyCommand === "prepare" ? null : busyCommand}
+            busyCommand={prepareJobId ? "dry_run" : busyCommand === "prepare" ? null : busyCommand}
             error={error}
             onAdvance={advance}
             auditHref={`/runs/${encodeURIComponent(runId)}/wikidata-studio/publications/${encodeURIComponent(publication.publication_id)}/audit`}
@@ -338,6 +375,12 @@ export function WikidataPublicationPanel({
         </>
       )}
 
+      {jobSnapshot && <JobProgressInline job={jobSnapshot} labels={{running: "Publication job:",
+        succeeded: "Complete:", failed: "Failed:", cancelled: "Cancelled:"}} />}
+      {prepareJobId && <button type="button" className="button-ghost text-sm"
+        onClick={() => { void RunJobs.cancel(runId, prepareJobId).catch((caught: unknown) => {
+          setError(caught instanceof ApiError ? caught.detail : String(caught));
+        }); }}>Cancel Publication job</button>}
       {!publication && error && <p className="text-sm text-danger" role="alert">{error}</p>}
     </section>
   );

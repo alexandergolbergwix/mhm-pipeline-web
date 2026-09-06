@@ -36,6 +36,7 @@ from app.models.run_job import (
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
+    JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
     JOB_KIND_WIKIDATA_VERIFY,
     JOB_STATUS_CANCELLED,
     JOB_STATUS_FAILED,
@@ -87,6 +88,7 @@ _BUILD_KINDS = frozenset({
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
+    JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
 })
 _UPLOAD_KINDS = frozenset({
     JOB_KIND_HMO_ITEM_UPLOAD,
@@ -757,6 +759,9 @@ async def _execute_job(job_id: uuid.UUID) -> None:
                 run_wikidata_publication_execution_job,
             )
             await run_wikidata_publication_execution_job(job_id)
+        elif kind == JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN:
+            from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
+            await run_wikidata_publication_dry_run_job(job_id)
         elif kind == JOB_KIND_WIKIDATA_PUBLICATION_PREPARE:
             from app.pipeline.wikidata_publication_prepare_job import (  # noqa: PLC0415
                 run_wikidata_publication_prepare_job,

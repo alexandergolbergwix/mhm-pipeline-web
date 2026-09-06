@@ -2746,3 +2746,15 @@ Never persist the request KEK, cookie, or plaintext token in job parameters or a
 Keep the original saved secret under the user's KEK.
 
 The procedure and regression tests appear in [Publication credentials](../blocks/wikidata-studio/publication-credentials.md).
+
+
+## Rule W-218 — Publication dry-runs use durable jobs
+
+The 236-entity production dry-run exceeded Heroku's 30-second request limit.
+The API must enqueue `wikidata_publication_dry_run` before any remote read.
+The worker checks the original Approval Set digest and source currency.
+The worker uses an encrypted credential grant scoped to its dry-run operation.
+It reports progress and checks cancellation between pages of at most 50 entities.
+The UI polls until a terminal status and then reads the Publication summary.
+Only a valid, current receipt permits Publish. Failed reads cannot permit Publish.
+See [the job flow](../blocks/wikidata-studio/publication-dry-run-job.md).

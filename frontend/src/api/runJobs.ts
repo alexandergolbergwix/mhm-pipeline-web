@@ -14,6 +14,7 @@ export type RunJobKind =
   | "rdf_build"
   | "wikidata_studio_build"
   | "wikidata_upload"
+  | "wikidata_publication_dry_run"
   | "wikidata_publication_prepare"
   | "wikidata_publication_execution"
   | "hmo_schema_bootstrap"
@@ -131,6 +132,7 @@ export const JOB_KIND_LABELS: Record<string, string> = {
   rdf_build:                "RDF build",
   wikidata_studio_build:    "Wikidata Studio build",
   wikidata_upload:          "Wikidata upload",
+  wikidata_publication_dry_run: "Wikidata Publication dry-run",
   wikidata_publication_prepare: "Wikidata Publication prepare",
   wikidata_publication_execution: "Wikidata Publication execution",
   hmo_schema_bootstrap:     "HMO schema bootstrap",
@@ -174,6 +176,7 @@ function jobRunPath(job: RunJobSnapshot): string {
     case "wikidata_studio_build":
     case "wikidata_verify":
     case "wikidata_upload":
+    case "wikidata_publication_dry_run":
     case "wikidata_publication_prepare":
     case "wikidata_publication_execution":
     case "wikidata_item_bulk_approve":

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import Awaitable, AsyncIterator, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Protocol, cast
 
@@ -443,10 +443,12 @@ class PublicationRuntime:
         session: AsyncSession,
         gateway_factory: PublicationGatewayFactory,
         clock: Callable[[], datetime] | None = None,
+        dry_run_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> None:
         self._session = session
         self._gateway_factory = gateway_factory
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._dry_run_progress = dry_run_progress
         self._projection_source = StudioCacheProjectionSource(session)
 
     async def prepare(
@@ -622,6 +624,7 @@ class PublicationRuntime:
             repository=SqlAlchemyPublicationRepository(self._session),
             gateway=self._gateway_factory(target=target, actor_id=actor_id),
             clock=self._clock,
+            dry_run_progress=self._dry_run_progress,
         )
 
     async def _publication_for_run(
