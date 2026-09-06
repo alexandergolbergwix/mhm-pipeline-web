@@ -39,3 +39,5 @@ See [Publication credentials](../wikidata-studio/publication-credentials.md) for
 - [Publication dry-run jobs](../wikidata-studio/publication-dry-run-job.md) — asynchronous checks, progress, cancellation, and receipt refresh (W-218).
 
 Publication restore (W-219) includes completed job progress and errors. The current plan can be reused; explicit cache override queues fresh checks.
+
+[Publication consent](../wikidata-studio/production-publication.md) requires an explicit checkbox per foreign QID and fresh worker checks (W-221).

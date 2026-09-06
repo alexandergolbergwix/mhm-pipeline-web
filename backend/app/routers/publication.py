@@ -140,7 +140,7 @@ async def latest_publication(
 async def _cached_dry_run(db: AsyncSession, gateway_factory: PublicationGatewayFactory,
     run_id: uuid.UUID, publication_id: str, auth: AuthContext,
     command: DryRunPublicationCommand) -> PublicationMutationResponse | None:
-    if command.force_refresh:
+    if command.force_refresh or command.foreign_qid_consents:
         return None
     response = await _runtime(db, gateway_factory).read(run_id=run_id,
         publication_id=publication_id, query=PublicationSummaryQuery(type="summary"), actor_id=str(auth.user.id))

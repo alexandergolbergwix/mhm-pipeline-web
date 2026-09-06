@@ -49,8 +49,16 @@ class ReviewPublicationCommand(PublicationSchema):
     reason: str = Field(min_length=1, max_length=2_000)
 
 
+class PublicationForeignQidConsent(PublicationSchema):
+    entity_key: str = Field(min_length=1, max_length=512)
+    qid: str = Field(pattern=r"^Q[1-9][0-9]*$")
+    remote_revision: int = Field(gt=0)
+    entity_digest: str = Field(min_length=1, max_length=128)
+
+
 class DryRunPublicationCommand(PublicationSchema):
     force_refresh: bool = False
+    foreign_qid_consents: list[PublicationForeignQidConsent] = Field(default_factory=list, max_length=500)
     type: Literal["dry_run"]
     approval_set_id: str = Field(min_length=1, max_length=128)
     expected_approval_digest: str = Field(min_length=1, max_length=128)
@@ -157,6 +165,7 @@ class BlockedPlanAction(PublicationSchema):
     entity_key: str
     target_qid: str | None
     reason: str
+    consent: PublicationForeignQidConsent | None = None
 
 
 class PlanSummary(PublicationSchema):

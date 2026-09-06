@@ -76,3 +76,14 @@ See [Publication credentials](publication-credentials.md) for account binding, t
 - `frontend/e2e/wikidata-publication.spec.ts` tests Review, Dry-run, Publish, audit, and bounded pages.
 
 See [the asynchronous dry-run flow](publication-dry-run-job.md) for job polls, progress, and cancellation.
+
+## Review statuses and foreign QID consent
+
+The entity read API maps stored `approve`/`reject` decisions to `approved`/`rejected` (W-220).
+A blocked action can expose `consent` with an entity key, QID, revision, and entity digest (W-221).
+The curator opens the QID link and selects its consent checkbox after review.
+`Create Dry-run Receipt` submits selected `foreign_qid_consents` and starts fresh checks.
+The worker accepts consent only when all four values match.
+The test target links to `test.wikidata.org`; the live target links to `www.wikidata.org`.
+Lookup timeouts have no consent option. Use cache override to repeat those checks.
+The user must select consent again after a request or a new Plan.

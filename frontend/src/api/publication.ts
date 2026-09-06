@@ -57,7 +57,7 @@ export interface ApprovalSetSummary {
 }
 
 export interface PlanSummary {
-  blocked_actions?: Array<{entity_key: string; target_qid: string | null; reason: string}>;
+  blocked_actions?: Array<{entity_key: string; target_qid: string | null; reason: string; consent?: PublicationForeignQidConsent | null}>;
   plan_id: string;
   plan_digest: string;
   release_id: string;
@@ -142,8 +142,16 @@ export interface ReviewCommand {
   reason: string;
 }
 
+export interface PublicationForeignQidConsent {
+  entity_key: string;
+  qid: string;
+  remote_revision: number;
+  entity_digest: string;
+}
+
 export interface DryRunCommand {
   force_refresh?: boolean;
+  foreign_qid_consents?: PublicationForeignQidConsent[];
   type: "dry_run";
   approval_set_id: string;
   expected_approval_digest: string;

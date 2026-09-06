@@ -881,3 +881,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 120. **R120 — Publication dry-runs must use `wikidata_publication_dry_run` (W-218).** The request enqueues. The worker reads Wikidata. The UI polls through completion and reads the receipt. *Why:* synchronous dry-runs caused H12 timeouts.
 
 121. **R121 — Restore completed Publication results after refresh (W-219).** Reuse requires current digests and an unexpired receipt. Explicit cache override queues fresh checks. Failed plans remain failed. *Why:* active-job-only restore hid completed progress and repeated slow checks.
+
+122. **R122 — Convert review decisions to entity statuses (W-220).** The read API maps `approve` to `approved` and `reject` to `rejected`. An absent decision returns `pending`. *Why:* raw decisions caused a schema error after approval.
+
+123. **R123 — Require explicit foreign QID consent (W-221).** Each consent binds the entity key, QID, remote revision, and entity digest. The worker checks these values again. *Why:* the HTTP command omitted the consent that the core requires.

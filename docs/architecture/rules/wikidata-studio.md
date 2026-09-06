@@ -2771,3 +2771,24 @@ A failed receipt remains failed when the API reuses it.
 Expired plans remain visible but cannot permit publication or cache reuse.
 The plan summary exposes at most 50 blocked actions with their reasons.
 The UI must distinguish a failed receipt from a stale receipt.
+
+
+## Rule W-220 — Convert review decisions at the HTTP boundary
+
+Stored Approval Decisions use `approve` and `reject`.
+The entity read API must return `approved` and `rejected`.
+An entity without a decision returns `pending`.
+The schema must not accept command values as display statuses.
+Tests must read entity pages after both review decisions.
+
+## Rule W-221 — Expose explicit foreign QID consent
+
+The blocked Plan exposes a consent option only for a foreign QID with a known revision.
+The UI requires a separate, unchecked checkbox for each QID.
+Each consent carries the entity key, QID, remote revision, and entity digest.
+The HTTP adapter must pass these values to the worker.
+A request with consent must perform fresh checks instead of reuse a cached Plan.
+The core must compare the consent with the new observation and the Release entity.
+A changed QID, revision, or digest must still block the action.
+An unknown lookup must not offer consent or permit a write.
+The UI clears the selection after a request and does not transfer it to another Plan.

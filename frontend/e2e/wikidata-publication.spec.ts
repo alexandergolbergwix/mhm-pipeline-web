@@ -178,7 +178,9 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
         current.dry_run_receipt.status = "failed";
         current.plan.status = "blocked";
         current.plan.action_counts = {blocked: 2};
-        current.plan.blocked_actions = [{entity_key: "work-1", target_qid: "Q123", reason: "Consent required"}];
+        current.plan.blocked_actions = [{entity_key: "work-1", target_qid: "Q123", reason: "Consent required",
+          consent: {entity_key: "work-1", qid: "Q123", remote_revision: 7, entity_digest: "entity-7"}},
+          {entity_key: "work-2", target_qid: null, reason: "Lookup timed out", consent: null}];
       }
     }
     await route.fulfill({json: {id: "dry-job", run_id: TEST_RUN_ID, project_id: "p",
@@ -292,6 +294,19 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
     await expect(page.getByRole("alert")).toContainText("Wikidata read failed", {timeout: 15000});
     await expect(page.getByTestId("publication-plan-results")).toContainText("Consent required");
     await expect(page.getByTestId("publication-job-counts")).toContainText("2 / 2");
+    await expect(page.getByTestId("publication-publish")).toBeDisabled();
+    const consent = page.getByRole("checkbox", {name: "I reviewed Q123 and permit this Release to update it."});
+    await expect(consent).not.toBeChecked();
+    await expect(page.getByRole("checkbox", {name: /I reviewed/})).toHaveCount(1);
+    await expect(page.getByRole("link", {name: "Review Q123"})).toHaveAttribute("href", "https://www.wikidata.org/wiki/Q123");
+    await consent.check();
+    await page.getByTestId("publication-dry-run").click();
+    await expect.poll(() => commands.filter((command) => command.type === "dry_run").length).toBe(2);
+    expect(commands[2].foreign_qid_consents).toEqual([
+      {entity_key: "work-1", qid: "Q123", remote_revision: 7, entity_digest: "entity-7"},
+    ]);
+    await expect(page.getByTestId("publication-dry-run")).toBeEnabled({timeout: 15000});
+    await expect(consent).not.toBeChecked();
     await expect(page.getByTestId("publication-publish")).toBeDisabled();
     return;
   }

@@ -7,7 +7,7 @@ import re
 import uuid
 from collections.abc import Awaitable, AsyncIterator, Callable, Mapping
 from datetime import UTC, datetime
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,6 +44,7 @@ from app.publication.types import (
     EntityPage,
     EntityPageQuery,
     EntitySelection,
+    ForeignQidConsent,
     PrepareRequest,
     ProfileRef,
     PublicationEntityInput,
@@ -66,6 +67,7 @@ from app.schemas.publication import (
     CancelPublicationCommand,
     DryRunPublicationCommand,
     BlockedPlanAction,
+    PublicationForeignQidConsent,
     DryRunReceiptSummary,
     EntityKeysSelection,
     ExecutionSummary,
@@ -756,7 +758,13 @@ class PublicationRuntime:
             ).order_by(PublicationPlanAction.entity_key).limit(50))).scalars().all()
             plan_view = PlanSummary(
                 blocked_actions=[BlockedPlanAction(entity_key=row.entity_key, target_qid=row.target_qid,
-                    reason=row.detail or "The target check did not pass.") for row in blocked_rows],
+                    reason=row.detail or "The target check did not pass.",
+                    consent=PublicationForeignQidConsent(
+                        entity_key=row.entity_key, qid=row.target_qid,
+                        remote_revision=row.target_revision, entity_digest=row.entity_digest,
+                    ) if row.observation_status == "present_foreign" and row.target_qid
+                        and row.target_revision is not None and row.target_revision > 0 else None,
+                ) for row in blocked_rows],
                 plan_id=str(plan.id),
                 plan_digest=summary.plan_digest,
                 release_id=str(plan.release_id),
@@ -897,7 +905,7 @@ class PublicationRuntime:
             items=[
                 _entity_view(
                     entity,
-                    decisions.get(entity.entity_key, "pending"),
+                    _review_status(decisions.get(entity.entity_key)),
                     findings_by_key.get(entity.entity_key, []),
                 )
                 for entity in page.items
@@ -992,6 +1000,10 @@ def _core_command(command, actor_id: str, credential_ref: str):
         )
     if isinstance(command, DryRunPublicationCommand):
         return DryRunCommand(
+            foreign_qid_consents=tuple(ForeignQidConsent(
+                entity_key=consent.entity_key, qid=consent.qid,
+                remote_revision=consent.remote_revision, entity_digest=consent.entity_digest,
+            ) for consent in command.foreign_qid_consents),
             approval_set_id=command.approval_set_id,
             expected_approval_digest=command.expected_approval_digest,
             credential_ref=credential_ref,
@@ -1073,9 +1085,19 @@ def _publication_status(
     }[summary.state]
 
 
+def _review_status(decision: str | None) -> Literal["pending", "approved", "rejected"]:
+    if decision is None:
+        return "pending"
+    if decision == "approve":
+        return "approved"
+    if decision == "reject":
+        return "rejected"
+    raise ValueError(f"Unsupported Publication review decision: {decision}")
+
+
 def _entity_view(
     entity: CorePublicationEntity,
-    review_status: str,
+    review_status: Literal["pending", "approved", "rejected", "stale"],
     findings: list[PublicationEntityFinding],
 ) -> PublicationEntity:
     document = thaw_json(entity.document)
@@ -1097,7 +1119,7 @@ def _entity_view(
         description=str(description_value) if description_value else None,
         target_qid=target_qid,
         statement_count=len(statements),
-        review_status=cast("str", review_status),
+        review_status=review_status,
         proposed_action="blocked" if blocked else "update" if target_qid else "create",
         findings=findings,
         deferred_statements=item.get("deferred_statements") or [],

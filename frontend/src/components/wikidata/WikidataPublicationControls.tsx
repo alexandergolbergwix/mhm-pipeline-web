@@ -37,6 +37,9 @@ export function WikidataPublicationControls({
   error = null,
 }: WikidataPublicationControlsProps) {
   const [forceRefresh, setForceRefresh] = useState(false);
+  const [consentSelection, setConsentSelection] = useState<{planDigest: string; entityKeys: string[]}>({
+    planDigest: "", entityKeys: [],
+  });
   const release = publication.current_release;
   const approval = publication.approval_set;
   const plan = publication.plan;
@@ -48,6 +51,9 @@ export function WikidataPublicationControls({
     .map((entity) => entity.entity_id);
   const busy = busyCommand !== null;
   const executionActive = execution?.status === "queued" || execution?.status === "running";
+  const selectedKeys = consentSelection.planDigest === plan?.plan_digest ? consentSelection.entityKeys : [];
+  const consents = (plan?.blocked_actions ?? []).flatMap((action) =>
+    action.consent && selectedKeys.includes(action.entity_key) ? [action.consent] : []);
 
   const reviewEligibleRelease = () => onAdvance({
     type: "review",
@@ -65,14 +71,16 @@ export function WikidataPublicationControls({
     decision: "approve",
     reason: "Curator approved the current entity page.",
   });
-  const dryRun = () => {
+  const dryRun = async () => {
     if (!approval) return;
-    return onAdvance({
+    await onAdvance({
       type: "dry_run",
       approval_set_id: approval.approval_set_id,
       expected_approval_digest: approval.approval_digest,
       ...(forceRefresh ? {force_refresh: true} : {}),
+      ...(consents.length ? {foreign_qid_consents: consents} : {}),
     });
+    setConsentSelection({planDigest: "", entityKeys: []});
   };
   const publish = () => {
     if (!plan || !receipt) return;
@@ -142,6 +150,22 @@ export function WikidataPublicationControls({
           <ul className="space-y-2 mt-2">{plan.blocked_actions.map((action) => <li key={action.entity_key} className="text-xs">
             <span className="font-semibold">{action.entity_key}{action.target_qid ? ` · ${action.target_qid}` : ""}</span>
             <p>{action.reason}</p>
+            {action.consent && <div className="mt-2 space-y-1">
+              <a href={`https://${publication.target === "live" ? "www" : "test"}.wikidata.org/wiki/${action.consent.qid}`}
+                target="_blank" rel="noopener noreferrer" className="text-accent underline">Review {action.consent.qid}</a>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={selectedKeys.includes(action.entity_key)}
+                  disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}
+                  onChange={(event) => {
+                    const entityKeys = event.target.checked
+                      ? [...selectedKeys, action.entity_key]
+                      : selectedKeys.filter((key) => key !== action.entity_key);
+                    setConsentSelection({planDigest: plan.plan_digest, entityKeys});
+                  }} />
+                I reviewed {action.consent.qid} and permit this Release to update it.
+              </label>
+              <p className="muted">Create a new Dry-run Receipt to check this consent. A changed item requires another review.</p>
+            </div>}
           </li>)}</ul>
         </details>}
       </div>}

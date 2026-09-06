@@ -193,3 +193,6 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — matched legacy person IDs are rewritten in work claims and metadata before local-reference resolution (W-203).
 - `backend/tests/unit/test_wikidata_canonical_enrichment.py` — safe work `P50` claims replace duplicate `P2093` fallbacks, while unresolved `P50` claims preserve the `P2093` fallback (W-204).
 - `backend/tests/test_wikidata_export_quality.py` — source-backed works without `P50` or `P2093` fail the build gate (W-200).
+
+- `backend/tests/test_publication_router.py` checks entity pages after approval and rejection, consent through the worker, and QID/revision/digest mismatches.
+- `frontend/e2e/wikidata-publication.spec.ts` checks explicit consent, the QID link, the submitted command, and selection reset.

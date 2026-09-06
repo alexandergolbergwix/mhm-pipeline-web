@@ -88,6 +88,90 @@ async def _prepare_direct(db_session, run_id, actor_id, *, target: str, profile_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("decision", "expected_status"), [("approve", "approved"), ("reject", "rejected")])
+async def test_entity_pages_show_review_status_after_review(sample_run, db_session, decision, expected_status):
+    run_id = sample_run["run_id"]
+    await _add_canonical_cache(db_session, run_id)
+    publication = await _prepare_direct(db_session, run_id, sample_run["user_id"], target="test")
+    release = publication.current_release
+    url = f"/api/runs/{run_id}/wikidata-publications/{publication.publication_id}"
+    query = {"type": "entities", "release_id": release.release_id, "limit": 1}
+    before = await sample_run["client"].post(f"{url}/read", json={"query": query})
+    assert before.status_code == 200, before.text
+    assert before.json()["items"][0]["review_status"] == "pending"
+
+    reviewed = await sample_run["client"].post(f"{url}/advance", json={"command": {
+        "type": "review", "release_id": release.release_id,
+        "expected_release_digest": release.release_digest,
+        "selection": {"mode": "eligible_release"}, "decision": decision,
+        "reason": "The curator reviewed the Release.",
+    }})
+    assert reviewed.status_code == 200, reviewed.text
+
+    for expected_id in ("work:1", "work:2"):
+        page = await sample_run["client"].post(f"{url}/read", json={"query": query})
+        assert page.status_code == 200, page.text
+        assert [(row["entity_id"], row["review_status"]) for row in page.json()["items"]] == [
+            (expected_id, expected_status)
+        ]
+        query["cursor"] = page.json()["next_cursor"]
+    assert query["cursor"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mismatch", [None, "qid", "remote_revision", "entity_digest"])
+async def test_foreign_consent_reaches_dry_run_worker(sample_run, db_session, monkeypatch, mismatch):
+    from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
+
+    gateway = FakeWikidataGateway(observations={
+        "work:1": TargetObservation.present_foreign("work:1", qid="Q123", remote_revision=7, fingerprint="remote"),
+        "work:2": TargetObservation.unknown("work:2", "Lookup timed out"),
+    })
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda _job_id: None)
+    monkeypatch.setattr("app.pipeline.wikidata_publication_dry_run_job.WikidataGatewayAdapter", lambda **kwargs: gateway)
+    client = sample_run["client"]
+    assert (await client.put("/api/me/api-keys/wikidata_test", json={"value": "Fixture@Test:publication-fixture"})).status_code == 200
+    run_id = sample_run["run_id"]
+    await _add_canonical_cache(db_session, run_id)
+    publication = await _prepare_direct(db_session, run_id, sample_run["user_id"], target="test")
+    url = f"/api/runs/{run_id}/wikidata-publications/{publication.publication_id}"
+    release = publication.current_release
+    reviewed = await client.post(f"{url}/advance", json={"command": {
+        "type": "review", "release_id": release.release_id, "expected_release_digest": release.release_digest,
+        "selection": {"mode": "eligible_release"}, "decision": "approve", "reason": "Reviewed fixture",
+    }})
+    assert reviewed.status_code == 200, reviewed.text
+    approval = reviewed.json()["publication"]["approval_set"]
+    command = {"type": "dry_run", "approval_set_id": approval["approval_set_id"],
+        "expected_approval_digest": approval["approval_digest"]}
+
+    async def run_check():
+        queued = await client.post(f"{url}/advance", json={"command": command})
+        assert queued.status_code == 200, queued.text
+        assert queued.json()["operation"] is not None
+        await run_wikidata_publication_dry_run_job(uuid.UUID(queued.json()["operation"]["operation_id"]))
+        response = await client.post(f"{url}/read", json={"query": {"type": "summary"}})
+        assert response.status_code == 200, response.text
+        return response.json()["publication"]
+
+    blocked = await run_check()
+    actions = blocked["plan"]["blocked_actions"]
+    assert actions[1]["consent"] is None
+    consent = actions[0]["consent"]
+    assert consent["entity_key"] == "work:1"
+    assert consent["qid"] == "Q123"
+    assert consent["remote_revision"] == 7
+    if mismatch:
+        consent[mismatch] = {"qid": "Q456", "remote_revision": 8, "entity_digest": "0" * 64}[mismatch]
+    command["foreign_qid_consents"] = [consent]
+    checked = await run_check()
+    assert checked["plan"]["plan_id"] != blocked["plan"]["plan_id"]
+    assert checked["plan"]["action_counts"]["update"] == (1 if mismatch is None else 0)
+    assert checked["plan"]["action_counts"]["blocked"] == (1 if mismatch is None else 2)
+    assert checked["dry_run_receipt"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
 async def test_release_resolves_local_connections_to_existing_targets(sample_run, db_session):
     from app.publication import ProfileRef
     from app.publication.runtime import StudioCacheProjectionSource
