@@ -84,3 +84,5 @@
     Private encrypted grants carry saved account credentials to dry-run and execution workers.
     Public parameters contain no credential values. The generic job endpoint rejects all three kinds.
     *Why:* a full Release and its remote checks cannot fit inside the HTTP timeout.
+
+24. **R24 — Publication AI review uses a private job route (W-222).** The generic job endpoint rejects this kind. Encrypted grants carry credentials. The worker saves progress and supports cancellation. *Why:* a report must survive refresh without a synchronous AI request.

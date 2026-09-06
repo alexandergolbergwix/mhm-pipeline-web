@@ -8,6 +8,7 @@ import {
 } from "./fixtures/wikidata-fixtures";
 
 test.beforeEach(async ({page}) => {
+  await page.route("**/ai-review", (route) => route.fulfill({json: {job_id: null, status: null, processed: 0, total: 0, report: null, error: null}}));
   await page.route("**/wikidata-publications/latest", async (route) => {
     await route.fulfill({json: {publication: null}});
   });
@@ -377,4 +378,63 @@ test("the audit page reads a bounded Publication audit page", async ({page}) => 
     "Execution completed with 100,000 Write Receipts.",
   );
   await expect.poll(() => auditQuery).toEqual({type: "audit", cursor: null, limit: 100});
+});
+
+
+test("AI report survives refresh and requires explicit approval before a fresh dry-run", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/judge-models**", (route) => route.fulfill({json: {
+    default: "gemini-3.5-flash", models: [{id: "gemini-3.5-flash", label: "Gemini", available: true, supports_agentic: true}],
+  }}));
+  const current = summary("dry_run");
+  if (!current.plan || !current.dry_run_receipt) throw new Error("Fixture requires a Plan");
+  current.plan.status = "blocked";
+  current.plan.action_counts = {blocked: 2};
+  current.dry_run_receipt.status = "failed";
+  const commands: Array<Record<string, unknown>> = [];
+  let started = false;
+  let polls = 0;
+  const consent = {entity_key: "work-1", qid: "Q123", remote_revision: 7, entity_digest: "entity-7"};
+  await page.route("**/wikidata-publications/latest", (route) => route.fulfill({json: {publication: current}}));
+  await page.route("**/wikidata-publications/publication-7/read", (route) => route.fulfill({json: {
+    release_id: RELEASE.release_id, release_digest: RELEASE.release_digest, items: [], total: 2, next_cursor: null,
+  }}));
+  await page.route("**/wikidata-publications/publication-7/ai-review", async (route) => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON();
+      expect(body.plan_digest).toBe("sha256:plan-7");
+      started = true;
+      polls = 0;
+    } else if (started) polls += 1;
+    const done = polls >= 2;
+    await route.fulfill({json: {
+      job_id: started ? "ai-job" : null, status: started ? done ? "succeeded" : "running" : null,
+      processed: done ? 2 : 0, total: 2, error: null,
+      report: done ? {publication_id: "publication-7", plan_id: "plan-7", plan_digest: "sha256:plan-7",
+        release_digest: RELEASE.release_digest, tier_model: "gemini-3.5-flash", created_at: "2026-09-06T10:00:00Z",
+        items: [{entity_key: "work-1", label: "Supported work", qid: "Q123", status: "recommended",
+          reason: "The source identifiers and claims agree.", consent},
+          {entity_key: "work-2", label: "Uncertain work", qid: "Q456", status: "review_required",
+            reason: "The source does not establish identity.", consent: null}]} : null,
+    }});
+  });
+  await page.route("**/jobs/ai-job", (route) => route.fulfill({json: {
+    id: "ai-job", run_id: TEST_RUN_ID, kind: "wikidata_publication_ai_review", status: "running", params: {}, progress: {},
+  }}));
+  await page.route("**/wikidata-publications/publication-7/advance", async (route) => {
+    commands.push(route.request().postDataJSON().command);
+    await route.fulfill({json: {publication: current}});
+  });
+  await page.addInitScript(() => localStorage.setItem("mhm.studio.reviewMode", "modern"));
+  await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
+  await page.getByRole("button", {name: "AI review blocked items"}).click();
+  await expect(page.getByTestId("publication-ai-report")).toContainText("Supported work", {timeout: 15000});
+  expect(commands).toEqual([]);
+  await page.reload();
+  await expect(page.getByTestId("publication-ai-report")).toContainText("The source does not establish identity.");
+  await expect(page.getByRole("link", {name: "Review Q123"})).toHaveAttribute("href", "https://www.wikidata.org/wiki/Q123");
+  await page.getByRole("button", {name: "Approve AI recommendations (1) and check again"}).click();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0]).toMatchObject({type: "dry_run", force_refresh: true, foreign_qid_consents: [consent]});
+  await expect(page.getByTestId("publication-publish")).toBeDisabled();
 });

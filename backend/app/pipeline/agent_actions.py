@@ -54,6 +54,13 @@ class AgentAction:
 
 
 _REGISTRY: dict[str, AgentAction] = {
+    "review_publication_blocked": AgentAction(
+        id="review_publication_blocked", label="AI review blocked items",
+        description="Compare proposed changes with existing Wikidata items before curator consent.",
+        scope_kinds=("selection",),
+        goal_template="Review {n_candidates} blocked Publication entities for identity and supported changes.",
+        evaluators=("wikidata_publication_review",),
+    ),
     "audit_match": AgentAction(
         id="audit_match",
         label="Audit this match",

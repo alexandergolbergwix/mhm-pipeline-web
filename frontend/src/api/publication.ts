@@ -326,3 +326,35 @@ export const PublicationApi = {
 
   read: readPublication,
 };
+
+export interface PublicationAiReviewState {
+  job_id: string | null;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | null;
+  processed: number;
+  total: number;
+  error: string | null;
+  report: {
+    publication_id: string;
+    plan_id: string;
+    plan_digest: string;
+    release_digest: string;
+    tier_model: string;
+    created_at: string;
+    items: Array<{
+      entity_key: string;
+      label: string;
+      qid: string | null;
+      status: "recommended" | "review_required" | "lookup_resolved" | "error";
+      reason: string;
+      consent: PublicationForeignQidConsent | null;
+    }>;
+  } | null;
+}
+
+export const PublicationAiReviewApi = {
+  read: (runId: string, publicationId: string) =>
+    api.get<PublicationAiReviewState>(`${publicationPath(runId, publicationId)}/ai-review`),
+  start: (runId: string, publicationId: string, request: {
+    plan_id: string; plan_digest: string; tier_model: string; force_refresh: boolean;
+  }) => api.post<PublicationAiReviewState>(`${publicationPath(runId, publicationId)}/ai-review`, request),
+};

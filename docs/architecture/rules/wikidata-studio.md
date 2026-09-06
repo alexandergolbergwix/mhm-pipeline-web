@@ -2792,3 +2792,19 @@ The core must compare the consent with the new observation and the Release entit
 A changed QID, revision, or digest must still block the action.
 An unknown lookup must not offer consent or permit a write.
 The UI clears the selection after a request and does not transfer it to another Plan.
+
+
+## Rule W-222 — AI review remains advisory
+
+The `wikidata_publication_ai_review` job compares a sealed proposal with a fresh remote item.
+The `wikidata_publication_review` evaluator runs only through the eval-agent subprocess.
+The worker never writes to Wikidata and never changes a Dry-run Receipt.
+It offers consent only for a complete `full` verdict with positive identity and type checks.
+A changed remote revision, absent evidence, or provider error cannot produce a recommendation.
+The report binds the Publication, Plan, Release digest, entity digest, QID, and revision.
+The curator must approve recommendations before the UI submits consent to a fresh dry-run.
+Unknown lookups receive bounded retries but never mean that an item is absent.
+Postgres stores partial and completed reports. Generic job messages omit the full report.
+The cache key includes the exact evidence, model, evaluator code, and rubric.
+An explicit override repeats the AI review. Rule changes invalidate report reuse.
+See [AI review of blocked items](../blocks/wikidata-studio/publication-ai-review.md).

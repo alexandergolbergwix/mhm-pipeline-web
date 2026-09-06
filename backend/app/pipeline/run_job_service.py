@@ -37,6 +37,7 @@ from app.models.run_job import (
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
+    JOB_KIND_WIKIDATA_PUBLICATION_AI_REVIEW,
     JOB_KIND_WIKIDATA_VERIFY,
     JOB_STATUS_CANCELLED,
     JOB_STATUS_FAILED,
@@ -74,6 +75,7 @@ SLOT_LIGHT = "light"
 SLOT_OTHER = "other"
 
 _VERIFY_KINDS = frozenset({
+    JOB_KIND_WIKIDATA_PUBLICATION_AI_REVIEW,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_AUTHORITY_VERIFY,
     JOB_KIND_WIKIDATA_VERIFY,
@@ -759,6 +761,9 @@ async def _execute_job(job_id: uuid.UUID) -> None:
                 run_wikidata_publication_execution_job,
             )
             await run_wikidata_publication_execution_job(job_id)
+        elif kind == JOB_KIND_WIKIDATA_PUBLICATION_AI_REVIEW:
+            from app.pipeline.wikidata_publication_ai_review_job import run_wikidata_publication_ai_review_job
+            await run_wikidata_publication_ai_review_job(job_id)
         elif kind == JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN:
             from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
             await run_wikidata_publication_dry_run_job(job_id)
@@ -939,6 +944,9 @@ def serialise_job(
     """
     progress = job.progress or {}
     result = job.result
+    if job.kind == JOB_KIND_WIKIDATA_PUBLICATION_AI_REVIEW:
+        progress = {key: value for key, value in progress.items() if key != "report"}
+        result = {key: value for key, value in result.items() if key != "report"} if isinstance(result, dict) else result
     # Never ship TRACE events on the wire — job polls H12'd at ~1.8 MB (W-128).
     if isinstance(result, dict) and isinstance(result.get("session_snapshot"), dict):
         if include_session_snapshot:

@@ -885,3 +885,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 122. **R122 — Convert review decisions to entity statuses (W-220).** The read API maps `approve` to `approved` and `reject` to `rejected`. An absent decision returns `pending`. *Why:* raw decisions caused a schema error after approval.
 
 123. **R123 — Require explicit foreign QID consent (W-221).** Each consent binds the entity key, QID, remote revision, and entity digest. The worker checks these values again. *Why:* the HTTP command omitted the consent that the core requires.
+
+124. **R124 — AI recommendations require explicit curator approval (W-222).** The report binds current evidence and the Plan. The worker performs no write. *Why:* an AI verdict must not become foreign QID consent without a curator decision.

@@ -55,3 +55,5 @@
 | Change duplicate detection (keys, batching, statuses) | [wikidata-studio](blocks/wikidata-studio/README.md) — `wikidata_duplicate_probe.py`, Rules W-144 / W-145; `absent` requires every key answered |
 | Add or change an internal entity link (person/work/manuscript roles) | [wikidata-studio](blocks/wikidata-studio/README.md) — `ROLE_TO_PID`, `person_linking.py`, Rule W-146; never create an item for the sake of an edge |
 | Change what a verify job reports before the first verdict | [job-service](blocks/job-service/README.md) — `verify_job._scope_progress`, `VERIFY_SCOPE_PHASES`, Rule W-147 |
+
+| Review foreign QIDs with AI before consent | [Publication AI review](blocks/wikidata-studio/publication-ai-review.md) + W-222 |

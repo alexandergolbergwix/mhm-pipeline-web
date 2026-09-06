@@ -39,7 +39,7 @@ The sealed Publication path is the only path for a live wikidata.org write
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R123) this block enforces.
+- [Rules](rules.md) — the invariants (R1–R124) this block enforces.
 - [Upload readiness](upload-readiness.md) — person identity, review prerequisites, and explicit deferred connections.
 - [Phase 1 projection quality](projection-quality.md) — evidence gates for labels, notes, subjects, genres, roles, and current institutions.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
@@ -61,3 +61,5 @@ The sealed Publication path is the only path for a live wikidata.org write
 - [Publication credentials](publication-credentials.md) — saved credentials and encrypted worker grants (W-217).
 
 - [Publication dry-run jobs](../wikidata-studio/publication-dry-run-job.md) — asynchronous checks, progress, cancellation, and receipt refresh (W-218).
+
+- [AI review of blocked items](publication-ai-review.md) — report, cache, and explicit approval.

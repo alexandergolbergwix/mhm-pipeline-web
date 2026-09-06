@@ -14,6 +14,7 @@ from eval_agent.evaluators.hmo_wikibase_schema import HmoWikibaseSchemaEvaluator
 from eval_agent.evaluators.person_ner import PersonNERevaluator
 from eval_agent.evaluators.provenance_ner import ProvenanceNERevaluator
 from eval_agent.evaluators.wikidata_autofix import WikidataAutofixEvaluator
+from eval_agent.evaluators.wikidata_publication_review import WikidataPublicationReviewEvaluator
 from eval_agent.evaluators.wikidata_item import WikidataItemEvaluator
 from eval_agent.evaluators.wikidata_test_live_ready import WikidataTestLiveReadyEvaluator
 
@@ -33,6 +34,7 @@ REGISTRY: dict[str, type[Evaluator]] = {
     "authority": AuthorityEvaluator,
     # Wikidata Studio item projection. Reads wikidata_items.json.
     "wikidata_item": WikidataItemEvaluator,
+    "wikidata_publication_review": WikidataPublicationReviewEvaluator,
     "wikidata_autofix": WikidataAutofixEvaluator,
     "wikidata_test_live_ready": WikidataTestLiveReadyEvaluator,
     # HMO Wikibase Studio schema bootstrap. Reads hmo_wikibase_schema.json.
@@ -46,7 +48,7 @@ AUTHORITY_EVALUATORS: frozenset[str] = frozenset({"authority"})
 
 # Evaluators that read wikidata_items.json instead of ner_results.json.
 WIKIDATA_ITEM_EVALUATORS: frozenset[str] = frozenset({
-    "wikidata_item", "wikidata_autofix", "wikidata_test_live_ready",
+    "wikidata_item", "wikidata_autofix", "wikidata_test_live_ready", "wikidata_publication_review",
 })
 
 # Evaluators that read hmo_wikibase_schema.json instead of ner_results.json.

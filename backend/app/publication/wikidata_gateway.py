@@ -96,6 +96,7 @@ class RemoteEntitySnapshot:
     qid: str
     revision: int
     fingerprint: str
+    document: Mapping[str, object] | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -427,6 +428,7 @@ class CurrentWikidataBoundary:
             qid=qid,
             revision=revision,
             fingerprint=canonical_digest(entity),
+            document=entity,
         )
 
     def _write_once_sync(self, request: GatewayWriteRequest) -> str:

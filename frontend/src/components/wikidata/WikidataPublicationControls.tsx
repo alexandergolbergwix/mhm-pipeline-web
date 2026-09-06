@@ -1,3 +1,4 @@
+import {WikidataPublicationAiReview} from "./WikidataPublicationAiReview";
 import {useState} from "react";
 import type {
   PublicationAdvanceCommand,
@@ -36,6 +37,7 @@ export function WikidataPublicationControls({
   busyCommand = null,
   error = null,
 }: WikidataPublicationControlsProps) {
+  const [aiActive, setAiActive] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
   const [consentSelection, setConsentSelection] = useState<{planDigest: string; entityKeys: string[]}>({
     planDigest: "", entityKeys: [],
@@ -49,7 +51,7 @@ export function WikidataPublicationControls({
   const pageEntityKeys = entities
     .filter((entity) => entity.review_status !== "approved")
     .map((entity) => entity.entity_id);
-  const busy = busyCommand !== null;
+  const busy = busyCommand !== null || aiActive;
   const executionActive = execution?.status === "queued" || execution?.status === "running";
   const selectedKeys = consentSelection.planDigest === plan?.plan_digest ? consentSelection.entityKeys : [];
   const consents = (plan?.blocked_actions ?? []).flatMap((action) =>
@@ -169,6 +171,9 @@ export function WikidataPublicationControls({
           </li>)}</ul>
         </details>}
       </div>}
+      {plan && (plan.action_counts.blocked ?? 0) > 0 && <WikidataPublicationAiReview
+        key={`${publication.publication_id}:${plan.plan_id}`} publication={publication}
+        busy={busyCommand !== null} onAdvance={onAdvance} onActiveChange={setAiActive} />}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"

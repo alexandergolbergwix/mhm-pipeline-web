@@ -90,3 +90,7 @@ Channel quirks:
   `ontology_schema_reader.schema_entry_metadata_by_uri()` before judging; cache
   keys in `schema_verdict_query_summary` include those fields so prompt/rubric
   fixes do not warm-hit stale verdicts (R17 / Rule W-47).
+
+Publication AI review is a separate durable report, not a Studio verdict channel.
+Its fixed registry action is `review_publication_blocked`; its evaluator is `wikidata_publication_review`.
+It supplies the full sealed proposal and fresh target document to each subprocess fixture.

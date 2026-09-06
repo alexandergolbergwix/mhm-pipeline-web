@@ -852,3 +852,127 @@ async def test_saved_credentials_reach_dry_run_and_background_execution(sample_r
     assert jobs[0].status == "succeeded", audit.text
     assert len(writes) == 2
     assert all(material.secret == token and material.target.environment == environment for material in opened)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["full", "partial", "error", "changed"])
+async def test_ai_review_report_is_durable_and_only_recommends_supported_consents(sample_run, db_session, monkeypatch, outcome):
+    import json
+    from app.pipeline.agent_runner import AgentEvent
+    from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
+    from app.publication.wikidata_gateway import RemoteEntitySnapshot
+
+    review_mode = False
+    judge_calls = []
+
+    class Boundary:
+        async def reconcile_batch(self, entities):
+            return tuple(
+                TargetObservation.present_foreign(e.entity_key, qid="Q123", remote_revision=7, fingerprint="remote")
+                if e.entity_key == "work:1" else TargetObservation.absent(e.entity_key) if review_mode
+                else TargetObservation.unknown(e.entity_key, "Lookup timeout") for e in entities
+            )
+
+        async def fetch_entity(self, qid):
+            return RemoteEntitySnapshot(qid=qid, revision=8 if outcome == "changed" else 7,
+                fingerprint="remote", document={"id": qid, "labels": {"en": {"value": "Work 1"}}, "claims": {}})
+
+        async def write_once(self, request):
+            pytest.fail("AI review must never write to Wikidata")
+
+    async def open_boundary(self, material):
+        return Boundary()
+
+    async def fake_subprocess(**kwargs):
+        rows = json.loads((kwargs["pipeline_output"] / "wikidata_items.json").read_text())
+        assert rows[0]["publication_review"]["remote_entity"]["id"] == "Q123"
+        assert rows[0]["publication_review"]["proposed_entity"]["statements"]
+        judge_calls.append(rows)
+        if outcome == "error":
+            raise RuntimeError("Judge unavailable")
+        root = kwargs["state_dir"] / "runs" / "fixture"
+        root.mkdir(parents=True)
+        (root / "results.jsonl").write_text(json.dumps({
+            "record_id": "work:1", "evaluator_id": "wikidata_publication_review", "error": None,
+            "verification_status": "judged", "verdict": {"overall": outcome,
+            "name_ok": "yes", "type_ok": "yes", "reasoning": "The identifiers and proposed claims agree."},
+        }) + "\n")
+        yield AgentEvent(type="runner.exit", payload={"return_code": 0})
+
+    monkeypatch.setenv("GEMINI_API_KEY", "fixture-ai-key")
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda _job_id: None)
+    monkeypatch.setattr("app.publication.wikidata_gateway.CurrentWikidataBoundaryFactory.open", open_boundary)
+    monkeypatch.setattr("app.pipeline.agent_runner.spawn_eval_agent_run", fake_subprocess)
+    client = sample_run["client"]
+    assert (await client.put("/api/me/api-keys/wikidata_test", json={"value": "Fixture@Test:publication-fixture"})).status_code == 200
+    run_id = sample_run["run_id"]
+    await _add_canonical_cache(db_session, run_id)
+    publication = await _prepare_direct(db_session, run_id, sample_run["user_id"], target="test")
+    url = f"/api/runs/{run_id}/wikidata-publications/{publication.publication_id}"
+    release = publication.current_release
+    reviewed = await client.post(f"{url}/advance", json={"command": {
+        "type": "review", "release_id": release.release_id, "expected_release_digest": release.release_digest,
+        "selection": {"mode": "eligible_release"}, "decision": "approve", "reason": "Reviewed fixture",
+    }})
+    approval = reviewed.json()["publication"]["approval_set"]
+    queued = await client.post(f"{url}/advance", json={"command": {"type": "dry_run",
+        "approval_set_id": approval["approval_set_id"], "expected_approval_digest": approval["approval_digest"]}})
+    await run_wikidata_publication_dry_run_job(uuid.UUID(queued.json()["operation"]["operation_id"]))
+    summary = (await client.post(f"{url}/read", json={"query": {"type": "summary"}})).json()["publication"]
+    plan = summary["plan"]
+    review_mode = True
+    request = {"plan_id": plan["plan_id"], "plan_digest": plan["plan_digest"], "tier_model": "gemini-3.5-flash"}
+    started = await client.post(f"{url}/ai-review", json=request)
+    assert started.status_code == 200, started.text
+    assert started.json()["status"] == "queued"
+    assert judge_calls == []
+    from app.pipeline.wikidata_publication_ai_review_job import run_wikidata_publication_ai_review_job
+    await run_wikidata_publication_ai_review_job(uuid.UUID(started.json()["job_id"]))
+    restored = await client.get(f"{url}/ai-review")
+    assert restored.status_code == 200, restored.text
+    report = restored.json()
+    assert report["status"] == "succeeded"
+    assert report["processed"] == report["total"] == 2
+    assert report["report"]["plan_digest"] == plan["plan_digest"]
+    items = report["report"]["items"]
+    assert items[0]["status"] == ("recommended" if outcome == "full" else "error" if outcome == "error" else "review_required")
+    assert (items[0]["consent"] is not None) == (outcome == "full")
+    assert items[1]["status"] == "lookup_resolved"
+    assert items[1]["consent"] is None
+    cached = await client.post(f"{url}/ai-review", json=request)
+    assert cached.json()["job_id"] == report["job_id"]
+    stale = await client.post(f"{url}/ai-review", json={**request, "plan_digest": "outdated"})
+    assert stale.status_code == 409
+    unchanged = (await client.post(f"{url}/read", json={"query": {"type": "summary"}})).json()["publication"]
+    assert unchanged["dry_run_receipt"]["status"] == "failed"
+    assert unchanged["execution"] is None
+    raw_job = await client.get(f"/api/runs/{run_id}/jobs/{report['job_id']}")
+    assert "fixture-ai-key" not in raw_job.text
+    assert "_ai_credential" not in raw_job.text
+    assert "report" not in (raw_job.json()["result"] or {})
+    # SQLite timestamps have one-second resolution; separate the two job dates.
+    import asyncio
+    await asyncio.sleep(1.05)
+    fresh = await client.post(f"{url}/ai-review", json={**request, "force_refresh": True})
+    assert fresh.json()["job_id"] != report["job_id"]
+    assert (await client.post(f"/api/runs/{run_id}/jobs/{fresh.json()['job_id']}/cancel")).status_code == 200
+    await run_wikidata_publication_ai_review_job(uuid.UUID(fresh.json()["job_id"]))
+    cancelled = await client.get(f"{url}/ai-review")
+    assert cancelled.json()["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_publication_ai_review_requires_editor_access(sample_run, db_session):
+    from app.models.project import PROJECT_ROLE_VIEWER
+    await _add_canonical_cache(db_session, sample_run['run_id'])
+    publication = await _prepare_direct(db_session, sample_run['run_id'], sample_run['user_id'], target='test')
+    viewer = await _member_client(db_session, project_id=sample_run['project_id'], role=PROJECT_ROLE_VIEWER)
+    url = f"/api/runs/{sample_run['run_id']}/wikidata-publications/{publication.publication_id}/ai-review"
+    try:
+        response = await viewer.post(url, json={'plan_id': 'plan', 'plan_digest': 'digest'})
+        assert response.status_code == 403
+        read = await viewer.get(url)
+        assert read.status_code == 200
+        assert read.json()['report'] is None
+    finally:
+        await viewer.aclose()

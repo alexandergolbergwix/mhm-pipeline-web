@@ -46,3 +46,5 @@
 | `frontend/src/components/extraction/NerVerificationModal.tsx`, `wikidata/WikidataVerificationModal.tsx`, `hmo/HmoItemVerificationModal.tsx`, `hmo/HmoSchemaVerificationModal.tsx` | Per-channel modals (NER + HMO items use `useVerifyJob`; schema still SSE) |
 | `frontend/src/components/AgentFlowDiagram.tsx`, `VerdictsTable.tsx` | Shared live flow diagram and verdict table (evaluator-agnostic); Authority-specific modal removed |
 | `frontend/src/api/aiVerify.ts` (+ `nerVerify.ts`, `wikidataVerify.ts`, `hmoItemVerify.ts`, `hmoSchemaVerify.ts`, `judgeModels.ts`) | SSE session clients + tier-1 model list; job-backed modals hydrate via `fetchVerifySessionWithJobFallback` |
+
+[AI review of blocked Publication items](../wikidata-studio/publication-ai-review.md) lists the route, job, evaluator, report component, and tests (W-222).
