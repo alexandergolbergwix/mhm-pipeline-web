@@ -2719,3 +2719,19 @@ The existing build-job wrapper still handles a cache miss.
 
 `frontend/e2e/wikidata-complete-scope.spec.ts` checks 236 items and a 736-item set across multiple API pages.
 The tests inspect AI filter counts, approval counts, and the verification request.
+
+### Rule W-216 — PostgreSQL projection order must match Python key order (2026-09-06)
+
+Release preparation rejected 236 unique source IDs as duplicate canonical keys.
+The production database returned 11 adjacent pairs in an order that Python rejected.
+Locale-sensitive PostgreSQL order treats case and underscores differently from Python string order.
+
+The PostgreSQL Studio projector must order entity keys with `COLLATE "C"`.
+This keeps the streamed source in the same order as the Python release digest accumulator.
+Do not remove the core uniqueness check or sort the full document corpus in memory.
+SQLite tests alone cannot detect this PostgreSQL collation difference.
+
+`backend/tests/test_publication_postgres_order.py` exercises the real PostgreSQL source through Publication preparation.
+It accepts distinct mixed-case and underscore keys and rejects actual duplicate keys.
+Use a disposable database with an English ICU locale through `PUBLICATION_TEST_POSTGRES_URL`.
+The test rolls back its isolated schema and does not write to Wikidata.

@@ -40,6 +40,9 @@ An uncertain remote result remains `outcome_unknown` until recovery proves it.
   upload panel appears only after the Publication API returns `404`, `405`, or
   `410`.
 
+The PostgreSQL source uses `COLLATE "C"` for canonical key order (W-216).
+Locale-sensitive order must not reach the release digest accumulator.
+
 ## Scale and recovery
 
 The service stores entities, identity assertions, references, Findings, Plan

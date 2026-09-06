@@ -397,7 +397,7 @@ class StudioCacheProjectionSource(ProjectionSource):
                 ORDER BY COALESCE(
                     expanded.item->>'local_id',
                     expanded.item->>'_local_id'
-                )
+                ) COLLATE "C"
                 """
             )
         else:

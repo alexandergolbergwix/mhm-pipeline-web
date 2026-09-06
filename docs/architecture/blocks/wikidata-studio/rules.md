@@ -868,3 +868,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     Use `fetchAllStudioItems` with compact list rows and the existing build-job wrapper.
     Keep client display pagination and active filters.
     *Why:* the 236-item export showed only 100 items in AI filters and bulk actions.
+
+118. **R118 — PostgreSQL projection keys must use `COLLATE "C"` (W-216).**
+    The database order must match Python string order before the release digest accumulator reads the stream.
+    *Why:* locale-sensitive order made 236 unique IDs fail the canonical-key check.

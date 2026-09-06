@@ -95,3 +95,5 @@
 
 `WikidataItemsPanel.tsx` loads all compact API pages through `fetchAllStudioItems` (W-215).
 `frontend/e2e/wikidata-complete-scope.spec.ts` tests complete filter and action scopes.
+
+`backend/tests/test_publication_postgres_order.py` checks PostgreSQL source order and duplicate rejection (W-216).

@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-215)
+## Architectural rules (W-1…W-216)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -166,6 +166,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-213** — Same-person canonical drafts MUST coalesce before export
 - **W-214** — Person given names and explicit deferred connections govern upload readiness
 - **W-215** — The modern review table must load all API pages before it derives filter counts and action scopes
+- **W-216** — PostgreSQL projection order must match Python canonical key order
 
 ### [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md) — HMO Wikibase Studio (build, upload, canonical read-back)
 
