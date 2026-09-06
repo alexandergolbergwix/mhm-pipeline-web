@@ -85,11 +85,10 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
 
   return <div className="rounded-lg border border-white/10 p-3 space-y-3" data-testid="publication-ai-review">
     <p className="text-sm">Choose an advisory review of blocked items or automatic resolution of the full Release.</p>
-    <Tier1ModelSelect tierModel={model.tierModel} onChange={model.setTierModel} list={model.list}
+    <Tier1ModelSelect label="Assessment model" tierModel={model.tierModel} onChange={model.setTierModel} list={model.list}
       loading={model.loading} disabled={busy || active || loading} />
     <p className="text-xs muted">Automatic mode assesses the full Release. It reuses verified QIDs without updates and defers unresolved items.</p>
-    <p className="text-xs">Verification model (independent second check)</p>
-    <Tier1ModelSelect tierModel={verificationModel || model.tierModel} onChange={setVerificationModel} list={model.list}
+    <Tier1ModelSelect label="Verification model (independent second check)" tierModel={verificationModel || model.tierModel} onChange={setVerificationModel} list={model.list}
       loading={model.loading} disabled={busy || active || loading} />
     <button type="button" className="button-primary text-sm" disabled={busy || active || loading || !current || !model.selected?.available}
       onClick={() => {void start(true);}}>Resolve Release automatically</button>

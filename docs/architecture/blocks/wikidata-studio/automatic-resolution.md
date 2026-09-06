@@ -32,6 +32,7 @@ External reads use the shared cache. Evidence records carry source IDs and diges
 Two independent prompts assess identity and each proposed statement.
 The verification model defaults to the selected model; the curator can select another model.
 The verifier does not receive the first decision.
+The model controls use distinct assessment and verification labels, each bound to a unique select ID.
 The evaluator exports optional `publication_decision` in the verdict schema and cache.
 The backend validates the structured decision and its cited primary evidence IDs.
 Invalid structured output never enters the verdict cache. The job retries a failed judge call once.

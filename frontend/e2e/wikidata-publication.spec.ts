@@ -493,6 +493,9 @@ test("automatic resolution shows deferred items and a prepared Release without a
   });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await page.getByTestId("publication-ai-review").waitFor();
+  const review = page.getByTestId("publication-ai-review");
+  await expect(review.getByRole("combobox", {name: "Assessment model", exact: true})).toHaveCount(1);
+  await expect(review.getByRole("combobox", {name: "Verification model (independent second check)", exact: true})).toHaveCount(1);
   await page.getByRole("button", {name: "Resolve Release automatically"}).click({timeout: 20000});
   expect(requests[0]).toMatchObject({automatic: true, plan_digest: "sha256:plan-7"});
   await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred");

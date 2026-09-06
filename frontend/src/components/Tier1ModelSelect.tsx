@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useEffect, useId, useState} from "react";
 
 import {JudgeModels, type Tier1ModelList} from "@/api/judgeModels";
 
@@ -41,6 +41,7 @@ export function useTier1Model(defaultFromList = true) {
 }
 
 interface Tier1ModelSelectProps {
+  label?: string;
   tierModel: string;
   onChange: (modelId: string) => void;
   disabled?: boolean;
@@ -49,20 +50,22 @@ interface Tier1ModelSelectProps {
 }
 
 export function Tier1ModelSelect({
+  label = "Tier-1 judge",
   tierModel,
   onChange,
   disabled,
   list,
   loading,
 }: Tier1ModelSelectProps) {
+  const selectId = useId();
   const models = list?.models ?? [];
   const selected = models.find((m) => m.id === tierModel);
 
   return (
     <div className="flex flex-col gap-1 text-xs">
-      <label className="muted" htmlFor="tier1-model-select">Tier-1 judge</label>
+      <label className="muted" htmlFor={selectId}>{label}</label>
       <select
-        id="tier1-model-select"
+        id={selectId}
         value={tierModel}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled || loading || models.length === 0}
