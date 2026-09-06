@@ -8,6 +8,12 @@ import {
 } from "./fixtures/wikidata-fixtures";
 
 test.beforeEach(async ({page}) => {
+  await page.route("**/wikidata-publications/latest", async (route) => {
+    await route.fulfill({json: {publication: null}});
+  });
+  await page.route("**/jobs?kind=wikidata_publication_dry_run&limit=1", async (route) => {
+    await route.fulfill({json: {jobs: []}});
+  });
   await page.route("**/jobs?active=true&kind=wikidata_publication_dry_run&limit=1", async (route) => {
     await route.fulfill({json: {jobs: []}});
   });
@@ -140,7 +146,7 @@ test("a curator can explicitly defer connections that need new QIDs", async ({pa
 
 for (const dryOutcome of ["succeeded", "failed"] satisfies string[]) {
 test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async ({page}) => {
-  test.setTimeout(45_000);
+  test.setTimeout(75_000);
   await installStudioMocks(page, makeBuildResponse());
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?active=true`, async (route) => {
     await route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify({jobs: []})});
@@ -152,10 +158,29 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
   let prepareBody: Record<string, unknown> | null = null;
   let current = summary("review");
   let dryPolls = 0;
+  let prepared = false;
+  await page.route("**/wikidata-publications/latest", async (route) => {
+    await route.fulfill({json: {publication: prepared ? current : null}});
+  });
+
+  await page.route("**/jobs?kind=wikidata_publication_dry_run&limit=1", async (route) => {
+    await route.fulfill({json: {jobs: dryPolls >= 3 ? [{id: "dry-job", run_id: TEST_RUN_ID,
+      kind: "wikidata_publication_dry_run", status: dryOutcome, params: {publication_id: "publication-7"},
+      progress: {processed: 2, total: 2, message: "Check complete"}, result: {publication_id: "publication-7"},
+      error: dryOutcome === "failed" ? "Wikidata read failed" : null}] : []}});
+  });
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/dry-job`, async (route) => {
     dryPolls += 1;
     const done = dryPolls >= 3;
-    if (done && dryOutcome === "succeeded") current = summary("dry_run");
+    if (done) {
+      current = summary("dry_run");
+      if (dryOutcome === "failed" && current.dry_run_receipt && current.plan) {
+        current.dry_run_receipt.status = "failed";
+        current.plan.status = "blocked";
+        current.plan.action_counts = {blocked: 2};
+        current.plan.blocked_actions = [{entity_key: "work-1", target_qid: "Q123", reason: "Consent required"}];
+      }
+    }
     await route.fulfill({json: {id: "dry-job", run_id: TEST_RUN_ID, project_id: "p",
       kind: "wikidata_publication_dry_run", status: done ? dryOutcome : "running",
       params: {}, progress: {processed: done ? 2 : 1, total: 2, message: "Check Wikidata"},
@@ -164,6 +189,7 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
 
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/prepare`, async (route) => {
     prepareBody = route.request().postDataJSON();
+    prepared = true;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -262,15 +288,27 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
     await expect(page.getByTestId("publication-publish")).toBeDisabled();
     await expect(page.getByTestId("publication-dry-run")).toBeEnabled();
     expect(dryPolls).toBeGreaterThanOrEqual(3);
+    await page.reload();
+    await expect(page.getByRole("alert")).toContainText("Wikidata read failed", {timeout: 15000});
+    await expect(page.getByTestId("publication-plan-results")).toContainText("Consent required");
+    await expect(page.getByTestId("publication-job-counts")).toContainText("2 / 2");
+    await expect(page.getByTestId("publication-publish")).toBeDisabled();
     return;
   }
   await expect(page.getByTestId("publication-dry-run-receipt-state")).toContainText("current", {timeout: 15000});
   await expect(page.getByTestId("publication-publish")).toBeEnabled();
   expect(dryPolls).toBeGreaterThanOrEqual(3);
+  await page.reload();
+  await expect(page.getByTestId("publication-dry-run-receipt-state")).toContainText("current", {timeout: 15000});
+  await page.getByLabel("Override cache (fresh Wikidata checks)").check();
+  await page.getByTestId("publication-dry-run").click();
+  await expect.poll(() => commands.filter((command) => command.type === "dry_run").length).toBe(2);
+  expect(commands[2].force_refresh).toBe(true);
+  await expect(page.getByTestId("publication-publish")).toBeEnabled({timeout: 15000});
   await page.getByTestId("publication-publish").click({force: true});
 
   await expect(page.getByTestId("publication-execution-progress")).toContainText("25 of 100,000");
-  expect(commands.map((command) => command.type)).toEqual(["review", "dry_run", "publish"]);
+  expect(commands.map((command) => command.type)).toEqual(["review", "dry_run", "dry_run", "publish"]);
   expect(commands[0]).toEqual({
     type: "review",
     release_id: RELEASE.release_id,
@@ -279,7 +317,7 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
     decision: "approve",
     reason: "Curator approved the eligible Release manifest.",
   });
-  expect(commands[2]).toEqual({
+  expect(commands[3]).toEqual({
     type: "publish",
     plan_id: "plan-7",
     dry_run_receipt_id: "receipt-7",
@@ -290,7 +328,7 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
 }
 
 test("the audit page reads a bounded Publication audit page", async ({page}) => {
-  test.setTimeout(45_000);
+  test.setTimeout(75_000);
   await installAuditShellMocks(page);
   let auditQuery: Record<string, unknown> | null = null;
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/publication-7/read`, async (route) => {

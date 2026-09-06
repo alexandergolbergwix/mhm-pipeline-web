@@ -2758,3 +2758,16 @@ It reports progress and checks cancellation between pages of at most 50 entities
 The UI polls until a terminal status and then reads the Publication summary.
 Only a valid, current receipt permits Publish. Failed reads cannot permit Publish.
 See [the job flow](../blocks/wikidata-studio/publication-dry-run-job.md).
+
+
+## Rule W-219 — Restore the last Publication and reuse current plans
+
+The UI must read the latest sealed Publication when the page opens.
+It must restore completed job progress and errors as well as active jobs.
+The API may reuse a completed dry-run only for the same account, Release,
+Approval Set, digest, and unexpired receipt. It must verify source currency.
+A failed receipt remains failed when the API reuses it.
+`force_refresh=true` always queues fresh remote checks.
+Expired plans remain visible but cannot permit publication or cache reuse.
+The plan summary exposes at most 50 blocked actions with their reasons.
+The UI must distinguish a failed receipt from a stale receipt.

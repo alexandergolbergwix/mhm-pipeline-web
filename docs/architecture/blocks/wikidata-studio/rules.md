@@ -879,3 +879,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     *Why:* the server-only resolver ignored existing saved bot credentials and blocked every dry-run.
 
 120. **R120 — Publication dry-runs must use `wikidata_publication_dry_run` (W-218).** The request enqueues. The worker reads Wikidata. The UI polls through completion and reads the receipt. *Why:* synchronous dry-runs caused H12 timeouts.
+
+121. **R121 — Restore completed Publication results after refresh (W-219).** Reuse requires current digests and an unexpired receipt. Explicit cache override queues fresh checks. Failed plans remain failed. *Why:* active-job-only restore hid completed progress and repeated slow checks.

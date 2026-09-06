@@ -50,6 +50,7 @@ class ReviewPublicationCommand(PublicationSchema):
 
 
 class DryRunPublicationCommand(PublicationSchema):
+    force_refresh: bool = False
     type: Literal["dry_run"]
     approval_set_id: str = Field(min_length=1, max_length=128)
     expected_approval_digest: str = Field(min_length=1, max_length=128)
@@ -152,7 +153,15 @@ class ApprovalSetSummary(PublicationSchema):
     created_at: datetime
 
 
+class BlockedPlanAction(PublicationSchema):
+    entity_key: str
+    target_qid: str | None
+    reason: str
+
+
 class PlanSummary(PublicationSchema):
+    blocked_actions: list[BlockedPlanAction] = Field(default_factory=list)
+
     plan_id: str
     plan_digest: str
     release_id: str

@@ -700,6 +700,45 @@ async def test_saved_credentials_reach_dry_run_and_background_execution(sample_r
     from app.pipeline.run_job_service import _execute_job
     await _execute_job(job_id)
     job_result = await client.get(f'/api/runs/{sample_run["run_id"]}/jobs/{job_id}')
+    if outcome in {"success", "blocked"}:
+        latest = await client.get(f'/api/runs/{sample_run["run_id"]}/wikidata-publications/latest')
+        assert latest.status_code == 200, latest.text
+        last_state = latest.json()['publication']
+        assert last_state['publication_id'] == publication.publication_id
+        assert last_state['dry_run_receipt'] is not None
+        opened_before = len(opened)
+        retry = await client.post(url, json={'command': {'type': 'dry_run',
+            'approval_set_id': approval['approval_set_id'],
+            'expected_approval_digest': approval['approval_digest']}})
+        assert retry.status_code == 200, retry.text
+        assert retry.json()['publication']['plan']['plan_id'] == last_state['plan']['plan_id']
+        assert retry.json()['operation'] is None
+        assert len(opened) == opened_before
+        if outcome == "blocked":
+            assert len(last_state['plan']['blocked_actions']) == 2
+        from datetime import datetime, timedelta
+        from app.routers import publication as publication_router
+
+        class FutureClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime.now(tz) + timedelta(hours=2)
+
+        with monkeypatch.context() as clock_patch:
+            clock_patch.setattr(publication_router, "datetime", FutureClock)
+            expired = await client.post(url, json={'command': {'type': 'dry_run',
+                'approval_set_id': approval['approval_set_id'],
+                'expected_approval_digest': approval['approval_digest']}})
+        assert expired.status_code == 200, expired.text
+        assert expired.json()['operation']['status'] == 'queued'
+        await _execute_job(uuid.UUID(expired.json()['operation']['operation_id']))
+        forced = await client.post(url, json={'command': {'type': 'dry_run',
+            'approval_set_id': approval['approval_set_id'],
+            'expected_approval_digest': approval['approval_digest'], 'force_refresh': True}})
+        assert forced.status_code == 200, forced.text
+        assert forced.json()['operation']['status'] == 'queued'
+        await _execute_job(uuid.UUID(forced.json()['operation']['operation_id']))
+        assert len(opened) > opened_before
     if outcome != "success":
         assert job_result.json()['status'] == ("cancelled" if outcome == "cancelled" else "failed"), job_result.text
         assert writes == []

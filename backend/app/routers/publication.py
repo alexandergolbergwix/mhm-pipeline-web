@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import select
 from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.run_job import (
+    RunJob,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
@@ -26,7 +30,7 @@ from app.publication.credentials import SavedPublicationCredentialResolver, seal
 from app.publication.wikidata_gateway import CurrentWikidataBoundaryFactory, WikidataGatewayAdapter
 from app.publication.types import TargetRef
 from app.publication.gateway import WikidataGateway
-from app.models.publication import Publication as PublicationRow
+from app.models.publication import Publication as PublicationRow, PublicationRelease
 from app.publication.repository import PublicationNotFoundError, ReleaseNotFoundError
 from app.publication.runtime import (
     PublicationGatewayFactory,
@@ -46,6 +50,7 @@ from app.schemas.publication import (
     PublicationOperation,
     PublicationOperationRead,
     PublicationSummaryRead,
+    PublicationSummaryQuery,
     PublishPublicationCommand,
     ReadPublicationRequest,
     ResumePublicationCommand,
@@ -116,6 +121,66 @@ def _raise_http_error(error: Exception) -> NoReturn:
     raise error
 
 
+@router.get("/{run_id}/wikidata-publications/latest", response_model=PublicationMutationResponse)
+async def latest_publication(
+    run_id: uuid.UUID, auth: CurrentAuth, db: DatabaseSession, gateway_factory: GatewayFactory,
+) -> PublicationMutationResponse:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    row = (await db.execute(select(PublicationRow).join(PublicationRelease,
+        PublicationRelease.id == PublicationRow.latest_release_id).where(
+            PublicationRow.run_id == run_id, PublicationRelease.status == "sealed"
+        ).order_by(PublicationRow.created_at.desc(), PublicationRow.id.desc()).limit(1))).scalar_one_or_none()
+    if row is None:
+        return PublicationMutationResponse()
+    response = await _runtime(db, gateway_factory).read(run_id=run_id,
+        publication_id=str(row.id), query=PublicationSummaryQuery(type="summary"), actor_id=str(auth.user.id))
+    return PublicationMutationResponse(publication=response.publication)
+
+
+async def _cached_dry_run(db: AsyncSession, gateway_factory: PublicationGatewayFactory,
+    run_id: uuid.UUID, publication_id: str, auth: AuthContext,
+    command: DryRunPublicationCommand) -> PublicationMutationResponse | None:
+    if command.force_refresh:
+        return None
+    response = await _runtime(db, gateway_factory).read(run_id=run_id,
+        publication_id=publication_id, query=PublicationSummaryQuery(type="summary"), actor_id=str(auth.user.id))
+    summary = response.publication
+    approval, plan, receipt = summary.approval_set, summary.plan, summary.dry_run_receipt
+    if (not summary.source_current or approval is None or plan is None or receipt is None
+        or summary.execution is not None
+        or approval.status != "approved" or approval.pending_count != 0
+        or approval.release_id != summary.current_release.release_id
+        or approval.release_digest != summary.current_release.release_digest
+        or receipt.plan_id != plan.plan_id or receipt.plan_digest != plan.plan_digest
+        or approval.approval_set_id != command.approval_set_id
+        or approval.approval_digest != command.expected_approval_digest
+        or plan.approval_set_id != approval.approval_set_id
+        or plan.release_digest != summary.current_release.release_digest
+        or receipt.expires_at <= datetime.now(UTC)):
+        return None
+    # Ownership checks depend on the account. Reuse only that account's last completed job.
+    job = (await db.execute(select(RunJob).where(RunJob.run_id == run_id,
+        RunJob.kind == JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN
+    ).order_by(RunJob.created_at.desc(), RunJob.id.desc()).limit(1))).scalar_one_or_none()
+    if (job is None or job.created_by != auth.user.id or job.status not in {"succeeded", "failed"}
+        or (job.params or {}).get("publication_id") != publication_id
+        ):
+        return None
+    stored_plan_id = (job.result or {}).get("plan_id")
+    if stored_plan_id != plan.plan_id:
+        # Older jobs lack plan_id. Their exact approval and completion window identify the receipt.
+        request = (job.params or {}).get("request") or {}
+        original = request.get("command") or {}
+        def aware(value: datetime) -> datetime:
+            return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+        if (stored_plan_id is not None or job.finished_at is None
+            or original.get("expected_approval_digest") != approval.approval_digest
+            or original.get("approval_set_id") != approval.approval_set_id
+            or not (aware(job.created_at) <= receipt.checked_at <= aware(job.finished_at))):
+            return None
+    return PublicationMutationResponse(publication=summary)
+
+
 @router.post(
     "/{run_id}/wikidata-publications/prepare",
     response_model=PublicationMutationResponse,
@@ -167,6 +232,10 @@ async def advance_publication(
 ) -> PublicationMutationResponse:
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     try:
+        if isinstance(payload.command, DryRunPublicationCommand):
+            cached = await _cached_dry_run(db, gateway_factory, run_id, publication_id, auth, payload.command)
+            if cached is not None:
+                return cached
         credential = None
         if isinstance(payload.command, (PublishPublicationCommand, ResumePublicationCommand, DryRunPublicationCommand)):
             row = await db.get(PublicationRow, uuid.UUID(publication_id))

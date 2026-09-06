@@ -72,6 +72,7 @@ export function WikidataPublicationPanel({
   build,
   onPublicationActiveChange,
 }: WikidataPublicationPanelProps) {
+  const [restoring, setRestoring] = useState(true);
   const [target, setTarget] = useState<PublicationTarget>("test");
   const [deferConnections, setDeferConnections] = useState(false);
   const [publication, setPublication] = useState<PublicationSummary | null>(null);
@@ -106,19 +107,22 @@ export function WikidataPublicationPanel({
 
   useEffect(() => {
     let stopped = false;
-    void RunJobs.listForRun(runId, true, {kind: "wikidata_publication_dry_run", limit: 1})
-      .then(async ({jobs}) => {
+    setRestoring(true);
+    void PublicationApi.latest(runId).then(async ({publication: saved}) => {
+        if (stopped || !saved) return;
+        setPublication(saved);
+        setTarget(saved.target);
+        setDeferConnections(saved.profile_version === "1-nodes");
+        const {jobs} = await RunJobs.listForRun(runId, false, {kind: "wikidata_publication_dry_run", limit: 1});
         const job = jobs[0];
-        if (stopped || !job) return;
-        const publicationId = job.params.publication_id;
-        if (typeof publicationId !== "string") return;
-        const response = await PublicationApi.read(runId, publicationId, {type: "summary"});
-        if (stopped) return;
-        setPublication(response.publication);
-        setPrepareJobId(job.id);
+        if (stopped || !job || job.params.publication_id !== saved.publication_id) return;
+        setJobSnapshot(job);
+        useRunJobs.getState().upsertJob(job);
+        if (job.status === "queued" || job.status === "running") setPrepareJobId(job.id);
+        else if (job.error) setError(job.error);
       }).catch((caught: unknown) => {
         if (!stopped) setError(caught instanceof ApiError ? caught.detail : String(caught));
-      });
+      }).finally(() => { if (!stopped) setRestoring(false); });
     return () => { stopped = true; };
   }, [runId]);
 
@@ -194,7 +198,12 @@ export function WikidataPublicationPanel({
     setError(null);
     try {
       const response = await PublicationApi.advance(runId, publication.publication_id, command);
-      if (response.publication) setPublication(response.publication);
+      if (response.publication) {
+        setPublication(response.publication);
+        if (command.type === "dry_run" && response.publication.dry_run_receipt?.status === "failed") {
+          setError("The saved dry-run has blocked actions. Review the plan below. Use Override cache for fresh checks.");
+        }
+      }
       setOperation(response.operation ?? null);
       if (command.type === "dry_run" && response.operation?.status === "queued") {
         setJobSnapshot(null);
@@ -237,7 +246,7 @@ export function WikidataPublicationPanel({
           <button
             type="button"
             className="button-ghost text-sm"
-            disabled={busyCommand !== null || operationActive(operation)}
+            disabled={restoring || busyCommand !== null || operationActive(operation)}
             onClick={() => { void prepare(); }}
             data-testid="publication-prepare-new-release"
           >
@@ -284,7 +293,7 @@ export function WikidataPublicationPanel({
           <button
             type="button"
             className="button-primary text-sm"
-            disabled={busyCommand !== null || prepareJobId !== null || build.total === 0}
+            disabled={restoring || busyCommand !== null || prepareJobId !== null || build.total === 0}
             onClick={() => { void prepare(); }}
             data-testid="publication-prepare"
           >
@@ -375,8 +384,10 @@ export function WikidataPublicationPanel({
         </>
       )}
 
-      {jobSnapshot && <JobProgressInline job={jobSnapshot} labels={{running: "Publication job:",
-        succeeded: "Complete:", failed: "Failed:", cancelled: "Cancelled:"}} />}
+      {jobSnapshot && <div>
+        <p className="text-xs muted" data-testid="publication-job-counts">{jobSnapshot.progress.processed ?? 0} / {jobSnapshot.progress.total ?? 0} entities</p>
+        <JobProgressInline job={jobSnapshot} labels={{running: "Publication job:",
+        succeeded: "Complete:", failed: "Failed:", cancelled: "Cancelled:"}} /></div>}
       {prepareJobId && <button type="button" className="button-ghost text-sm"
         onClick={() => { void RunJobs.cancel(runId, prepareJobId).catch((caught: unknown) => {
           setError(caught instanceof ApiError ? caught.detail : String(caught));

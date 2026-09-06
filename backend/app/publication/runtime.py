@@ -25,6 +25,7 @@ from app.models.publication import (
     PublicationFinding,
     PublicationJournalEvent,
     PublicationPlan,
+    PublicationPlanAction,
     PublicationRelease,
 )
 from app.models.wikidata_studio_cache import WikidataStudioCache
@@ -64,6 +65,7 @@ from app.schemas.publication import (
     ApprovalSetSummary,
     CancelPublicationCommand,
     DryRunPublicationCommand,
+    BlockedPlanAction,
     DryRunReceiptSummary,
     EntityKeysSelection,
     ExecutionSummary,
@@ -749,7 +751,12 @@ class PublicationRuntime:
                 plan_status = "blocked"
             elif expired:
                 plan_status = "expired"
+            blocked_rows = (await self._session.execute(select(PublicationPlanAction).where(
+                PublicationPlanAction.plan_id == plan.id, PublicationPlanAction.action == "block"
+            ).order_by(PublicationPlanAction.entity_key).limit(50))).scalars().all()
             plan_view = PlanSummary(
+                blocked_actions=[BlockedPlanAction(entity_key=row.entity_key, target_qid=row.target_qid,
+                    reason=row.detail or "The target check did not pass.") for row in blocked_rows],
                 plan_id=str(plan.id),
                 plan_digest=summary.plan_digest,
                 release_id=str(plan.release_id),

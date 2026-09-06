@@ -54,7 +54,8 @@ export function getPublicationReadiness(
   }
 
   let receiptReason = "Run the Plan without writes before publication.";
-  if (receipt && !receiptCurrent) receiptReason = "The Dry-run Receipt is stale.";
+  if (receipt?.status === "failed") receiptReason = "The dry-run has blocked actions. Review the plan below.";
+  else if (receipt && !receiptCurrent) receiptReason = "The Dry-run Receipt is stale.";
   else if (receiptCurrent) receiptReason = "The Dry-run Receipt is current.";
 
   return {

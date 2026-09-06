@@ -74,7 +74,7 @@ async def run_wikidata_publication_dry_run_job(job_id: uuid.UUID) -> None:
         await finish_job(
             job_id,
             status=JOB_STATUS_SUCCEEDED if passed else JOB_STATUS_FAILED,
-            result={"publication_id": publication_id},
+            result={"publication_id": publication_id, "plan_id": publication.plan.plan_id if publication and publication.plan else None},
             error=None
             if passed
             else "The dry-run has blocked actions. Review the Publication plan before a retry.",

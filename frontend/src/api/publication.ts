@@ -57,6 +57,7 @@ export interface ApprovalSetSummary {
 }
 
 export interface PlanSummary {
+  blocked_actions?: Array<{entity_key: string; target_qid: string | null; reason: string}>;
   plan_id: string;
   plan_digest: string;
   release_id: string;
@@ -142,6 +143,7 @@ export interface ReviewCommand {
 }
 
 export interface DryRunCommand {
+  force_refresh?: boolean;
   type: "dry_run";
   approval_set_id: string;
   expected_approval_digest: string;
@@ -301,6 +303,7 @@ function readPublication(
 }
 
 export const PublicationApi = {
+  latest: (runId: string) => api.get<PreparePublicationResponse>(`/runs/${encodeURIComponent(runId)}/wikidata-publications/latest`),
   prepare: (runId: string, request: PreparePublicationRequest) =>
     api.post<PreparePublicationResponse>(publicationPath(runId), request),
 

@@ -1,3 +1,4 @@
+import {useState} from "react";
 import type {
   PublicationAdvanceCommand,
   PublicationEntity,
@@ -35,6 +36,7 @@ export function WikidataPublicationControls({
   busyCommand = null,
   error = null,
 }: WikidataPublicationControlsProps) {
+  const [forceRefresh, setForceRefresh] = useState(false);
   const release = publication.current_release;
   const approval = publication.approval_set;
   const plan = publication.plan;
@@ -69,6 +71,7 @@ export function WikidataPublicationControls({
       type: "dry_run",
       approval_set_id: approval.approval_set_id,
       expected_approval_digest: approval.approval_digest,
+      ...(forceRefresh ? {force_refresh: true} : {}),
     });
   };
   const publish = () => {
@@ -118,13 +121,30 @@ export function WikidataPublicationControls({
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3" data-testid="publication-dry-run-receipt-state">
           <div className="kicker">Dry-run Receipt</div>
           <p className={readiness.receiptCurrent ? "mt-1 text-sm text-success" : "mt-1 text-sm text-warn"}>
-            {readiness.receiptCurrent ? "current" : receipt ? "stale" : "not created"}
+            {readiness.receiptCurrent ? "current" : receipt?.status === "failed" ? "failed" : receipt ? "stale" : "not created"}
           </p>
           <p className="mt-1 text-xs muted">{readiness.receiptReason}</p>
           {plan && <p className="mt-2 text-xs muted">Plan {shortDigest(plan.plan_digest)}</p>}
         </div>
       </div>
 
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={forceRefresh} disabled={busy || executionActive}
+          onChange={(event) => setForceRefresh(event.target.checked)} />
+        Override cache (fresh Wikidata checks)
+      </label>
+      <p className="text-xs muted">A normal dry-run reuses a current saved plan. Override cache checks every entity again.</p>
+      {plan && <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-plan-results">
+        <p>{plan.action_counts.create ?? 0} creates · {plan.action_counts.update ?? 0} updates · {plan.action_counts.blocked ?? 0} blocked</p>
+        <p className="text-xs muted">Saved results remain visible after refresh. Expired receipts require fresh checks before publication.</p>
+        {!!plan.blocked_actions?.length && <details open>
+          <summary>Blocked actions (first {plan.blocked_actions.length})</summary>
+          <ul className="space-y-2 mt-2">{plan.blocked_actions.map((action) => <li key={action.entity_key} className="text-xs">
+            <span className="font-semibold">{action.entity_key}{action.target_qid ? ` · ${action.target_qid}` : ""}</span>
+            <p>{action.reason}</p>
+          </li>)}</ul>
+        </details>}
+      </div>}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
