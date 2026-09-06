@@ -12,6 +12,7 @@ export interface WikidataPublicationControlsProps {
   entities: PublicationEntity[];
   onAdvance: (command: PublicationAdvanceCommand) => void | Promise<void>;
   auditHref: string;
+  onUseExisting?: (entityKeys: string[]) => void | Promise<void>;
   busyCommand?: PublicationAdvanceCommand["type"] | null;
   error?: string | null;
 }
@@ -34,6 +35,7 @@ export function WikidataPublicationControls({
   entities,
   onAdvance,
   auditHref,
+  onUseExisting,
   busyCommand = null,
   error = null,
 }: WikidataPublicationControlsProps) {
@@ -145,7 +147,7 @@ export function WikidataPublicationControls({
       </label>
       <p className="text-xs muted">A normal dry-run reuses a current saved plan. Override cache checks every entity again.</p>
       {plan && <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-plan-results">
-        <p>{plan.action_counts.create ?? 0} creates · {plan.action_counts.update ?? 0} updates · {plan.action_counts.blocked ?? 0} blocked</p>
+        <p>{plan.action_counts.create ?? 0} creates · {plan.action_counts.update ?? 0} updates · {plan.action_counts.blocked ?? 0} blocked · {plan.action_counts.skip ?? 0} existing items without updates</p>
         <p className="text-xs muted">Saved results remain visible after refresh. Expired receipts require fresh checks before publication.</p>
         {!!plan.blocked_actions?.length && <details open>
           <summary>Blocked actions (first {plan.blocked_actions.length})</summary>
@@ -166,12 +168,20 @@ export function WikidataPublicationControls({
                   }} />
                 I reviewed {action.consent.qid} and permit this Release to update it.
               </label>
+              {onUseExisting && <div className="space-y-1">
+                <p>Use this option only if both records describe the same item. A new Release requires approval and a fresh dry-run.</p>
+                <button type="button" className="button-ghost text-sm"
+                  disabled={busy || !!execution || !readiness.approvalCurrent || !publication.source_current}
+                  onClick={() => { void onUseExisting([action.entity_key]); }}>
+                  Use {action.consent.qid} without updates
+                </button>
+              </div>}
               <p className="muted">Create a new Dry-run Receipt to check this consent. A changed item requires another review.</p>
             </div>}
           </li>)}</ul>
         </details>}
       </div>}
-      {plan && (plan.action_counts.blocked ?? 0) > 0 && <WikidataPublicationAiReview
+      {plan && <WikidataPublicationAiReview
         key={`${publication.publication_id}:${plan.plan_id}`} publication={publication}
         busy={busyCommand !== null} onAdvance={onAdvance} onActiveChange={setAiActive} />}
       <div className="flex flex-wrap items-center gap-2">

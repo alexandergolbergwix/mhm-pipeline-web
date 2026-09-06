@@ -57,3 +57,7 @@
 | Change what a verify job reports before the first verdict | [job-service](blocks/job-service/README.md) — `verify_job._scope_progress`, `VERIFY_SCOPE_PHASES`, Rule W-147 |
 
 | Review foreign QIDs with AI before consent | [Publication AI review](blocks/wikidata-studio/publication-ai-review.md) + W-222 |
+
+| Use an existing QID without updates | [Reference-only use](blocks/wikidata-studio/reference-only.md) + W-223 |
+
+| Resolve a full Publication with AI and automatic deferral | [Automatic resolution](blocks/wikidata-studio/automatic-resolution.md) + W-224 |

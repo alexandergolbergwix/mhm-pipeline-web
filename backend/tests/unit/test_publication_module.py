@@ -621,3 +621,37 @@ async def test_worker_drains_more_than_one_claim_batch() -> None:
     assert completed.execution_status == "succeeded"
     assert completed.execution_succeeded_count == 51
     assert len(gateway.write_calls) == 51
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('observation', ['same', 'changed', 'absent'])
+async def test_reference_only_item_never_becomes_a_write(observation):
+    target = (TargetObservation.absent('work:1') if observation == 'absent' else
+        TargetObservation.present_foreign('work:1', qid='Q123', remote_revision=7 if observation == 'same' else 8))
+    gateway = FakeWikidataGateway(observations={'work:1': target, 'work:2': TargetObservation.absent('work:2')})
+    module = create_in_memory_publication_module(entities_by_snapshot={'snapshot-7': (
+        PublicationEntityInput(entity_key='work:1', entity_type='work', document={
+            'labels': {'en': 'Existing work'}, 'publication_reference_only': {'qid': 'Q123', 'remote_revision': 7}}),
+        PublicationEntityInput(entity_key='work:2', entity_type='work', document={'labels': {'en': 'New work'}}),
+    )}, gateway=gateway)
+    operation = await module.prepare(_prepare_request())
+    summary = await module.read(SummaryQuery(operation.publication_id))
+    await module.advance(operation.publication_id, ReviewCommand(release_id=summary.release_id,
+        expected_release_digest=summary.release_digest, selection=EntitySelection.all(), decision='approve',
+        actor_id='curator-1', reason='Reviewed identity and new work.', idempotency_key='review'))
+    summary = await module.read(SummaryQuery(operation.publication_id))
+    await module.advance(operation.publication_id, DryRunCommand(approval_set_id=summary.approval_set_id,
+        expected_approval_digest=summary.approval_digest, credential_ref='fixture', actor_id='curator-1', idempotency_key='check'))
+    summary = await module.read(SummaryQuery(operation.publication_id))
+    assert summary.plan_skip_count == (1 if observation == 'same' else 0)
+    assert summary.plan_blocked_count == (0 if observation == 'same' else 1)
+    assert summary.plan_create_count == 1
+    if observation == 'same':
+        operation = await module.advance(operation.publication_id, PublishCommand(plan_id=summary.plan_id,
+            dry_run_receipt_id=summary.dry_run_receipt_id, expected_receipt_digest=summary.dry_run_receipt_digest,
+            credential_ref='fixture', actor_id='curator-1', idempotency_key='publish'))
+        await module.advance(operation.publication_id, ResumeCommand(execution_id=operation.resource_id,
+            credential_ref='fixture', actor_id='curator-1', idempotency_key='resume'))
+        assert [call.mutation.entity_key for call in gateway.write_calls] == ['work:2']
+    else:
+        assert not gateway.write_calls

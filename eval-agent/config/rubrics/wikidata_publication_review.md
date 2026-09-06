@@ -19,3 +19,9 @@ Return `partial` or `abstain` for uncertainty or missing evidence.
 Return `fail` for contradictions or an identity mismatch.
 Explain the evidence and the comparison in `reasoning`.
 The report is advisory. A human must approve consent before a fresh dry-run.
+
+## Automatic mode
+
+When the evidence pack has `automatic: true`, return `publication_decision` as requested by the evaluator.
+Assess identity separately from changes. Cite supplied primary evidence IDs for each decision.
+Use unresolved when the original source does not settle identity. Do not infer consent from any model verdict.

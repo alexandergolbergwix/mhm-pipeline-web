@@ -48,3 +48,5 @@
 | `frontend/src/api/aiVerify.ts` (+ `nerVerify.ts`, `wikidataVerify.ts`, `hmoItemVerify.ts`, `hmoSchemaVerify.ts`, `judgeModels.ts`) | SSE session clients + tier-1 model list; job-backed modals hydrate via `fetchVerifySessionWithJobFallback` |
 
 [AI review of blocked Publication items](../wikidata-studio/publication-ai-review.md) lists the route, job, evaluator, report component, and tests (W-222).
+
+[Automatic resolution](../wikidata-studio/automatic-resolution.md) lists the worker, evidence cache, structured verdict, subset, and tests.

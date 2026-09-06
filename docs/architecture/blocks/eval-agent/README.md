@@ -20,7 +20,7 @@ verdict summaries back onto the owning DB row, and write-throughs the shared
 - [Key files](key-files.md) — runner core, per-channel routers/streams, vendored CLI, rubrics, frontend modals
 - [Session pipeline & channels](session-pipeline.md) — the shared SSE session pipeline and the five channels' quirks
 - [State, jobs & caching](state-and-caching.md) — background jobs + session snapshots, state-dir layout, verdict summary shape, cache tiers, frontend
-- [Rules](rules.md) — R1–R42 invariants (trust boundary, state dirs, cache keys, SSE, secrets, tier-1 registry, HMO item MARC scope, schema prompt context, provider-error verdicts)
+- [Rules](rules.md) — R1–R43 invariants (trust boundary, state dirs, cache keys, SSE, secrets, tier-1 registry, HMO item MARC scope, schema prompt context, provider-error verdicts)
 - [Skills & tests](skills-and-tests.md) — add a channel, debug/replay a session, inspect the cache, analyze non-passing exports with Codex; tests pinning this block
 
 ## Related blocks

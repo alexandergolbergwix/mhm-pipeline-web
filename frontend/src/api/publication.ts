@@ -22,7 +22,15 @@ export interface RunPublicationSource {
   approved_only: boolean;
 }
 
+export interface ReferenceOnlySelection {
+  publication_id: string;
+  plan_id: string;
+  plan_digest: string;
+  entity_keys: string[];
+}
+
 export interface PreparePublicationRequest {
+  reference_only?: ReferenceOnlySelection;
   profile_id: string;
   profile_version: string;
   target: PublicationTarget;
@@ -116,6 +124,9 @@ export interface PublicationEntityFinding {
 }
 
 export interface PublicationEntity {
+  reference_only?: boolean;
+  deferred?: boolean;
+  policy_reason?: string;
   deferred_statements?: Array<Record<string, unknown>>;
   entity_id: string;
   entity_digest: string;
@@ -328,6 +339,8 @@ export const PublicationApi = {
 };
 
 export interface PublicationAiReviewState {
+  phase?: string | null;
+  message?: string | null;
   job_id: string | null;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | null;
   processed: number;
@@ -340,12 +353,16 @@ export interface PublicationAiReviewState {
     release_digest: string;
     tier_model: string;
     created_at: string;
+    automatic?: boolean;
+    policy_version?: string;
+    result_publication_id?: string | null;
     items: Array<{
       entity_key: string;
       label: string;
       qid: string | null;
-      status: "recommended" | "review_required" | "lookup_resolved" | "error";
+      status: "recommended" | "review_required" | "lookup_resolved" | "error" | "reuse_existing" | "create" | "deferred";
       reason: string;
+      resolution?: {retryable?: boolean};
       consent: PublicationForeignQidConsent | null;
     }>;
   } | null;
@@ -356,5 +373,6 @@ export const PublicationAiReviewApi = {
     api.get<PublicationAiReviewState>(`${publicationPath(runId, publicationId)}/ai-review`),
   start: (runId: string, publicationId: string, request: {
     plan_id: string; plan_digest: string; tier_model: string; force_refresh: boolean;
+    automatic?: boolean; verification_model?: string;
   }) => api.post<PublicationAiReviewState>(`${publicationPath(runId, publicationId)}/ai-review`, request),
 };

@@ -69,3 +69,8 @@ An explicit override bypasses both report reuse and inference cache reads.
 - `backend/tests/unit/test_run_job_params_publication.py`: generic route denial.
 - `eval-agent/tests/test_wikidata_publication_review.py`: exact evidence and prompt contract.
 - `frontend/e2e/wikidata-publication.spec.ts`: report restore and explicit approval before dry-run.
+
+## Automatic mode
+
+The optional automatic mode assesses the full Plan and prepares a supported subset.
+It uses policy approval and never supplies foreign consent. See [automatic resolution](automatic-resolution.md).

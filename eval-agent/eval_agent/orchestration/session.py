@@ -814,6 +814,7 @@ class Session:
             # v2 requires suggested_fix in every cached verdict object
             # (null when the agentic loop proposed no text fix).
             "suggested_fix": verdict.suggested_fix.to_dict() if verdict.suggested_fix else None,
+            **({"publication_decision": verdict.publication_decision} if verdict.publication_decision is not None else {}),
         }
         if self._verdict_is_usable(verdict):
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=verdict_dict)

@@ -97,3 +97,7 @@
 `frontend/e2e/wikidata-complete-scope.spec.ts` tests complete filter and action scopes.
 
 `backend/tests/test_publication_postgres_order.py` checks PostgreSQL source order and duplicate rejection (W-216).
+
+[Existing items without updates](../wikidata-studio/reference-only.md) lists the prepare contract, projection, executor, UI, and tests.
+
+[Automatic resolution](../wikidata-studio/automatic-resolution.md) lists the worker, evidence cache, structured verdict, subset, and tests.

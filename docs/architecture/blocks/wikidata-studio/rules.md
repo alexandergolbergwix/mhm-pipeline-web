@@ -887,3 +887,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 123. **R123 — Require explicit foreign QID consent (W-221).** Each consent binds the entity key, QID, remote revision, and entity digest. The worker checks these values again. *Why:* the HTTP command omitted the consent that the core requires.
 
 124. **R124 — AI recommendations require explicit curator approval (W-222).** The report binds current evidence and the Plan. The worker performs no write. *Why:* an AI verdict must not become foreign QID consent without a curator decision.
+
+125. **R125 — Reference-only items require an explicit identity choice and never become writes.** *Why:* a connection to an existing item does not require an update to that item (W-223).
+
+126. **R126 — Automatic resolution separates identity from claims and excludes uncertainty from approval.** *Why:* a report with zero human-review requests must not hide unresolved identities (W-224).

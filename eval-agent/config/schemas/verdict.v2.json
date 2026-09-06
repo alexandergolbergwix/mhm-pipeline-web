@@ -104,7 +104,7 @@
             "pass",
             "abstain"
           ],
-      "description": "The public verdict values are full / partial / fail / pass / abstain. The harness uses abstain with verification_status=provider_error when the judge does not answer."
+          "description": "The public verdict values are full / partial / fail / pass / abstain. The harness uses abstain with verification_status=provider_error when the judge does not answer."
         },
         "reasoning": {
           "type": "string",
@@ -154,6 +154,73 @@
               }
             }
           ]
+        },
+        "publication_decision": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "identity",
+            "identity_evidence",
+            "labels_supported",
+            "claims",
+            "reason"
+          ],
+          "properties": {
+            "identity": {
+              "type": "string",
+              "enum": [
+                "same_entity",
+                "different_entity",
+                "unresolved",
+                "new_entity"
+              ]
+            },
+            "identity_evidence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "labels_supported": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "claims": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "index",
+                  "status",
+                  "evidence"
+                ],
+                "properties": {
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "supported",
+                      "unsupported",
+                      "conflicting",
+                      "already_present"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -187,7 +254,7 @@
   },
   "allOf": [
     {
-        "description": "A substantive verdict must explain itself. An unexplained fail is not actionable by a curator.",
+      "description": "A substantive verdict must explain itself. An unexplained fail is not actionable by a curator.",
       "if": {
         "properties": {
           "verdict": {

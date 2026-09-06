@@ -36,14 +36,21 @@ async def start_ai_review(run_id: uuid.UUID, publication_id: str, request: Start
     try:
         await checked_plan(db, run_id, publication_id, request.plan_id, request.plan_digest, str(auth.user.id))
         previous = await latest_job(db, run_id, publication_id, auth.user.id)
+        prior_report = ((previous.result or {}).get('report') or (previous.progress or {}).get('report') or {}) if previous else {}
+        retryable = any((item.get('resolution') or {}).get('retryable') for item in prior_report.get('items', []))
         spec = resolve_tier1_model(request.tier_model)
         if previous is not None and (previous.status in {'queued', 'running'} or (
             previous.status == 'succeeded' and not request.force_refresh
+            and not (request.automatic and retryable)
+            and bool(previous.params.get('automatic')) == request.automatic
+            and previous.params.get('verification_model') == request.verification_model
             and previous.params.get('tier_model') == spec.id
             and previous.params.get('review_version') == review_version())):
             return job_view(previous)
         key = await _resolve_gemini_key(db, auth)
         ensure_tier1_credentials(spec, gemini_key=key)
+        if request.verification_model:
+            ensure_tier1_credentials(resolve_tier1_model(request.verification_model), gemini_key=key)
         publication = await db.get(Publication, uuid.UUID(publication_id))
         credential = await SavedPublicationCredentialResolver(db, auth.user.id, auth.kek).resolve(
             f'wikidata:{publication.target_environment}:{auth.user.id}')
@@ -51,6 +58,8 @@ async def start_ai_review(run_id: uuid.UUID, publication_id: str, request: Start
         params = {**request.model_dump(mode='json'), 'tier_model': spec.id, 'review_version': review_version(),
             'publication_id': publication_id, 'actor_id': str(auth.user.id), 'credential_scope_id': scope,
             '_publication_credential': seal_execution_credential(credential, publication_id=publication_id, execution_id=scope)}
+        if request.automatic and previous is not None and previous.params.get('automatic'):
+            params['resume_from_job_id'] = str(previous.id)
         if key:
             params['_ai_credential'] = seal_execution_credential(CredentialMaterial(
                 credential_id=credential.credential_id, target=credential.target, secret=key),

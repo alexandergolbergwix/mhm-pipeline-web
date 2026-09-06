@@ -162,3 +162,5 @@
 - **R41 — Live verdict snapshots MUST keep envelope metadata and retry invalid judge output (Rule W-210 / W-211).** Job snapshot compaction preserves the fields used by `VerdictsTable` (`judge_id`, `evaluator_id`, `confidence`, `cache_key`, and `judged_at`) and nested fallbacks support older snapshots. The eval-agent retries transport, parse, and schema failures three times by default, then records an uncached `abstain` provider-error row only when the provider still does not return a usable verdict. *Why:* the live modal showed blank metadata and exposed transient DeepSeek responses as incomplete verdict rows.
 
 - **R42 — Publication review uses exact proposal and remote evidence (W-222).** `wikidata_publication_review` ignores rows without a Publication evidence pack. It supplies advice only. *Why:* ordinary Studio verdicts cannot establish permission for a foreign update.
+
+- **R43 — Automatic Publication decisions separate identity from each claim and cite primary evidence IDs.** The backend validates these fields before policy approval. *Why:* a model verdict must not fabricate human consent or permit an unsupported update (W-224).

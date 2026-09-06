@@ -438,3 +438,66 @@ test("AI report survives refresh and requires explicit approval before a fresh d
   expect(commands[0]).toMatchObject({type: "dry_run", force_refresh: true, foreign_qid_consents: [consent]});
   await expect(page.getByTestId("publication-publish")).toBeDisabled();
 });
+
+test("a curator can use an existing QID without updates in a new Release", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  const current = summary("dry_run");
+  if (!current.plan || !current.dry_run_receipt) throw new Error("Fixture requires a Plan");
+  current.plan.status = "blocked";
+  current.plan.action_counts = {blocked: 1};
+  current.dry_run_receipt.status = "failed";
+  current.plan.blocked_actions = [{entity_key: "work-1", target_qid: "Q123", reason: "Consent required",
+    consent: {entity_key: "work-1", qid: "Q123", remote_revision: 7, entity_digest: "entity-7"}}];
+  const requests: unknown[] = [];
+  await page.route("**/wikidata-publications/latest", (route) => route.fulfill({json: {publication: current}}));
+  await page.route("**/wikidata-publications/publication-7/read", (route) => route.fulfill({json: {
+    release_id: RELEASE.release_id, release_digest: RELEASE.release_digest, items: [], total: 0, next_cursor: null,
+  }}));
+  await page.route("**/wikidata-publications/prepare", (route) => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({json: {publication: summary("prepare")}});
+  });
+  await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
+  await page.getByRole("button", {name: "Use Q123 without updates"}).click();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({target: current.target, profile_version: current.profile_version,
+    reference_only: {publication_id: "publication-7", plan_id: "plan-7", plan_digest: "sha256:plan-7", entity_keys: ["work-1"]}});
+  await expect(page.getByTestId("publication-publish")).toBeDisabled();
+  await expect(page.getByTestId("publication-approval-state")).toContainText("not created");
+});
+
+test("automatic resolution shows deferred items and a prepared Release without a human approval request", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/judge-models**", (route) => route.fulfill({json: {
+    default: "gemini-3.5-flash", models: [{id: "gemini-3.5-flash", label: "Gemini", available: true, supports_agentic: true}],
+  }}));
+  const current = summary("dry_run");
+  if (!current.plan || !current.dry_run_receipt) throw new Error("Fixture requires a Plan");
+  current.plan.status = "blocked";
+  current.plan.action_counts = {blocked: 2};
+  current.dry_run_receipt.status = "failed";
+  const requests: unknown[] = [];
+  let ready = false;
+  await page.route("**/wikidata-publications/latest", (route) => route.fulfill({json: {publication: current}}));
+  await page.route("**/wikidata-publications/publication-7/read", (route) => route.fulfill({json: {
+    release_id: RELEASE.release_id, release_digest: RELEASE.release_digest, items: [], total: 0, next_cursor: null,
+  }}));
+  await page.route("**/wikidata-publications/publication-7/ai-review", (route) => {
+    if (route.request().method() === "POST") {requests.push(route.request().postDataJSON()); ready = true;}
+    return route.fulfill({json: {job_id: null, status: ready ? "succeeded" : null, processed: ready ? 2 : 0, total: 2,
+      error: null, report: ready ? {publication_id: "publication-7", plan_id: "plan-7", plan_digest: "sha256:plan-7",
+        release_digest: RELEASE.release_digest, tier_model: "gemini-3.5-flash", created_at: "2026-09-06T12:00:00Z",
+        automatic: true, policy_version: "reference-first-v1", result_publication_id: "automatic-release",
+        items: [{entity_key: "work-1", label: "Existing work", qid: "Q123", status: "reuse_existing", reason: "Sources agree", consent: null},
+          {entity_key: "work-2", label: "Uncertain work", qid: null, status: "deferred", reason: "No primary source", consent: null}]} : null}});
+  });
+  await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
+  await page.getByTestId("publication-ai-review").waitFor();
+  await page.getByRole("button", {name: "Resolve Release automatically"}).click({timeout: 20000});
+  expect(requests[0]).toMatchObject({automatic: true, plan_digest: "sha256:plan-7"});
+  await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred");
+  await expect(page.getByRole("link", {name: "Open prepared Release"})).toHaveAttribute("href", /publication=automatic-release/);
+  await expect(page.getByRole("button", {name: /Approve AI recommendations/})).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred");
+});

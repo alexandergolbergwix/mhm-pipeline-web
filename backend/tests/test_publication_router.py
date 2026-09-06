@@ -976,3 +976,202 @@ async def test_publication_ai_review_requires_editor_access(sample_run, db_sessi
         assert read.json()['report'] is None
     finally:
         await viewer.aclose()
+
+
+@pytest.mark.asyncio
+async def test_prepare_reference_only_resolves_connections_and_preserves_source(sample_run, db_session):
+    from app.publication.runtime import PublicationRuntime
+    from app.schemas.publication import PreparePublicationRequest, AdvancePublicationRequest, PublicationEntitiesQuery
+
+    work = _canonical_item('work:1', 'Work')
+    work['statements'].append({'property': 'P50', 'value': '__LOCAL:person:1', 'value_type': 'item'})
+    person = _canonical_item('person:1', 'Author')
+    person['entity_type'] = 'person'
+    await _add_canonical_cache(db_session, sample_run['run_id'], items=[work, person])
+    gateway = FakeWikidataGateway(observations={
+        'person:1': TargetObservation.present_foreign('person:1', qid='Q123', remote_revision=7),
+        'work:1': TargetObservation.absent('work:1'),
+    })
+    runtime = PublicationRuntime(session=db_session, gateway_factory=lambda **kw: gateway)
+    scope = {'run_id': sample_run['run_id'], 'actor_id': str(sample_run['user_id'])}
+    request = {'profile_id': 'mhm-wikidata', 'profile_version': '1-nodes', 'target': 'test',
+        'source': {'kind': 'run', 'projection_source': 'canonical', 'approved_only': True}}
+    original = (await runtime.prepare(**scope, request=PreparePublicationRequest.model_validate(request))).publication
+
+    async def check(publication):
+        release = publication.current_release
+        reviewed = (await runtime.advance(**scope, publication_id=publication.publication_id,
+            request=AdvancePublicationRequest.model_validate({'command': {'type': 'review',
+                'release_id': release.release_id, 'expected_release_digest': release.release_digest,
+                'selection': {'mode': 'eligible_release'}, 'decision': 'approve', 'reason': 'Reviewed identity'}}))).publication
+        approval = reviewed.approval_set
+        return (await runtime.advance(**scope, publication_id=publication.publication_id,
+            request=AdvancePublicationRequest.model_validate({'command': {'type': 'dry_run',
+                'approval_set_id': approval.approval_set_id, 'expected_approval_digest': approval.approval_digest}}))).publication
+
+    original = await check(original)
+    request['reference_only'] = {'publication_id': original.publication_id,
+        'plan_id': original.plan.plan_id, 'plan_digest': original.plan.plan_digest, 'entity_keys': ['person:1']}
+    replacement = (await runtime.prepare(**scope, request=PreparePublicationRequest.model_validate(request))).publication
+    assert replacement.current_release.release_digest != original.current_release.release_digest
+    assert replacement.approval_set is None
+    page = await runtime.read(**scope, publication_id=replacement.publication_id,
+        query=PublicationEntitiesQuery(type='entities', release_id=replacement.current_release.release_id))
+    author, work_row = page.items
+    assert author.reference_only is True
+    assert author.target_qid == 'Q123'
+    assert author.proposed_action == 'skip'
+    assert work_row.statement_count == 2
+    assert work_row.deferred_statements == []
+    replacement = await check(replacement)
+    assert replacement.plan.action_counts == {'create': 1, 'update': 0, 'skip': 1, 'blocked': 0}
+    assert replacement.dry_run_receipt.status == 'valid'
+    assert not gateway.write_calls
+    # A stale Plan cannot establish a new identity choice.
+    request['reference_only']['plan_digest'] = '0' * 64
+    with pytest.raises(ValueError, match='current Plan'):
+        await runtime.prepare(**scope, request=PreparePublicationRequest.model_validate(request))
+
+    request['reference_only']['plan_digest'] = original.plan.plan_digest
+    for keys in (['work:1'], ['missing'], ['person:1', 'person:1']):
+        request['reference_only']['entity_keys'] = keys
+        with pytest.raises(ValueError):
+            await runtime.prepare(**scope, request=PreparePublicationRequest.model_validate(request))
+    request['reference_only']['entity_keys'] = ['person:1']
+    request['target'] = 'live'
+    with pytest.raises(ValueError, match='current Plan'):
+        await runtime.prepare(**scope, request=PreparePublicationRequest.model_validate(request))
+
+    receipt = replacement.dry_run_receipt
+    queued = (await runtime.advance(**scope, publication_id=replacement.publication_id,
+        request=AdvancePublicationRequest.model_validate({'command': {'type': 'publish',
+            'plan_id': replacement.plan.plan_id, 'dry_run_receipt_id': receipt.dry_run_receipt_id,
+            'expected_receipt_digest': receipt.receipt_digest}}))).publication
+    completed = await runtime.execute(**scope, publication_id=replacement.publication_id,
+        execution_id=queued.execution.execution_id, worker_id='fixture-worker')
+    assert completed.execution.status == 'succeeded'
+    assert completed.execution.total == 1
+    assert [call.mutation.entity_key for call in gateway.write_calls] == ['work:1']
+    assert gateway.write_calls[0].mutation.document['statements'][-1]['value'] == 'Q123'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('alternative', [False, True])
+async def test_automatic_resolution_creates_an_approved_subset_without_writes(sample_run, db_session, monkeypatch, alternative):
+    import json
+    import httpx
+    from app.pipeline.agent_runner import AgentEvent
+    from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
+    from app.pipeline.wikidata_publication_ai_review_job import run_wikidata_publication_ai_review_job
+    from app.publication.wikidata_gateway import RemoteEntitySnapshot
+    calls = []
+    monkeypatch.setenv('GEMINI_API_KEY', 'fixture-ai-key')
+    class Boundary:
+        async def reconcile_batch(self, entities):
+            return tuple(TargetObservation.present_foreign(e.entity_key, qid='Q456' if e.document.get('existing_qid') == 'Q456' else 'Q123', remote_revision=7)
+                if e.entity_key == 'work:1' else TargetObservation.unknown(e.entity_key, 'Unavailable')
+                if e.entity_key == 'work:4' else TargetObservation.absent(e.entity_key) for e in entities)
+        async def fetch_entity(self, qid):
+            return RemoteEntitySnapshot(qid=qid, revision=7, fingerprint='remote', document={'id': qid,
+                'claims': {'P8189': [{'mainsnak': {'datavalue': {'value': '123'}}}]}})
+        async def write_once(self, request):
+            pytest.fail('Automatic resolution must not write to Wikidata')
+    async def open_boundary(self, credential):
+        return Boundary()
+    async def subprocess(**kwargs):
+        item = json.loads((kwargs['pipeline_output'] / 'wikidata_items.json').read_text())[0]
+        pack = item['publication_review']
+        assert pack['automatic'] is True
+        calls.append((item['local_id'], pack['check']))
+        decision = {'identity': 'same_entity' if pack['qid'] else 'new_entity',
+            'labels_supported': True, 'identity_evidence': [pack['evidence'][0]['id']],
+            'reason': 'Catalogue supports the subject.', 'claims': [
+                {'index': i, 'status': 'supported', 'evidence': [pack['evidence'][0]['id']]}
+                for i, _ in enumerate(pack['proposed_entity']['statements'])]}
+        if item['local_id'] == 'work:3': decision['identity'] = 'unresolved'
+        if alternative and item['local_id'] == 'work:1' and pack['qid'] == 'Q123':
+            decision['identity'] = 'different_entity'
+        root = kwargs['state_dir'] / 'runs' / 'fixture'
+        root.mkdir(parents=True)
+        (root / 'results.jsonl').write_text(json.dumps({'record_id': item['local_id'],
+            'evaluator_id': 'wikidata_publication_review', 'verification_status': 'judged', 'error': None,
+            'verdict': {'overall': 'partial', 'name_ok': 'yes', 'type_ok': 'yes', 'reasoning': 'Identity separate from claims.',
+                'publication_decision': None if len(calls) == 1 and not alternative else decision}}))
+        yield AgentEvent(type='runner.exit', payload={'return_code': 0})
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(**kwargs,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={'search': [{'id': 'Q456'}]})
+            if request.url.params.get('action') == 'wbsearchentities' else httpx.Response(200, text='Primary catalogue: identifier 123. Works and authors.'))))
+    monkeypatch.setattr('app.pipeline.run_job_service.spawn_job', lambda _job_id: None)
+    monkeypatch.setattr('app.publication.wikidata_gateway.CurrentWikidataBoundaryFactory.open', open_boundary)
+    monkeypatch.setattr('app.pipeline.agent_runner.spawn_eval_agent_run', subprocess)
+    items = [_canonical_item(f'work:{i}', f'Work {i}') for i in range(1, 5)]
+    for item in items:
+        item['statements'][0]['references'] = [{'property': 'P854', 'value': 'https://www.nli.org.il/fixture'}]
+    items[0]['statements'].append({'property': 'P8189', 'value': '123'})
+    items[1]['statements'].append({'property': 'P50', 'value': '__LOCAL:work:3'})
+    await _add_canonical_cache(db_session, sample_run['run_id'], items=items)
+    client, run_id = sample_run['client'], sample_run['run_id']
+    assert (await client.put('/api/me/api-keys/wikidata_test', json={'value': 'Fixture@Test:publication-fixture'})).status_code == 200
+    publication = await _prepare_direct(db_session, run_id, sample_run['user_id'], target='test', profile_version='1-nodes')
+    url = f'/api/runs/{run_id}/wikidata-publications/{publication.publication_id}'
+    reviewed = (await client.post(url + '/advance', json={'command': {'type': 'review',
+        'release_id': publication.current_release.release_id, 'expected_release_digest': publication.current_release.release_digest,
+        'selection': {'mode': 'eligible_release'}, 'decision': 'approve', 'reason': 'Initial fixture review'}})).json()['publication']
+    approval = reviewed['approval_set']
+    queued = await client.post(url + '/advance', json={'command': {'type': 'dry_run',
+        'approval_set_id': approval['approval_set_id'], 'expected_approval_digest': approval['approval_digest']}})
+    await run_wikidata_publication_dry_run_job(uuid.UUID(queued.json()['operation']['operation_id']))
+    current = (await client.post(url + '/read', json={'query': {'type': 'summary'}})).json()['publication']
+    started = await client.post(url + '/ai-review', json={'plan_id': current['plan']['plan_id'],
+        'plan_digest': current['plan']['plan_digest'], 'tier_model': 'gemini-3.5-flash', 'automatic': True})
+    assert started.status_code == 200, started.text
+    assert not calls
+    await run_wikidata_publication_ai_review_job(uuid.UUID(started.json()['job_id']))
+    saved = (await client.get(url + '/ai-review')).json()
+    assert saved['status'] == 'succeeded', saved
+    report = saved['report']
+    assert [row['status'] for row in report['items']] == ['reuse_existing', 'create', 'deferred', 'deferred']
+    assert all(row['consent'] is None for row in report['items'])
+    assert report['items'][0]['qid'] == ('Q456' if alternative else 'Q123')
+    assert len(calls) == (8 if alternative else 7)
+    new_url = f"/api/runs/{run_id}/wikidata-publications/{report['result_publication_id']}"
+    result = (await client.post(new_url + '/read', json={'query': {'type': 'summary'}})).json()['publication']
+    assert result['current_release']['entity_count'] == 2
+    assert result['approval_set']['approved_count'] == 2
+    assert result['plan']['action_counts'] == {'create': 1, 'update': 0, 'skip': 1, 'blocked': 0}
+    assert result['dry_run_receipt']['status'] == 'valid'
+    assert result['execution'] is None
+    page = (await client.post(new_url + '/read', json={'query': {'type': 'entities', 'release_id': result['current_release']['release_id']}})).json()
+    assert page['items'][1]['deferred_statements'][0]['value'] == '__LOCAL:work:3'
+
+    # Retry only the unavailable lookup; retain the six completed model checks.
+    import asyncio
+    await asyncio.sleep(1.05)
+    retry = await client.post(url + '/ai-review', json={'plan_id': current['plan']['plan_id'],
+        'plan_digest': current['plan']['plan_digest'], 'tier_model': 'gemini-3.5-flash', 'automatic': True})
+    assert retry.json()['job_id'] != started.json()['job_id']
+    await run_wikidata_publication_ai_review_job(uuid.UUID(retry.json()['job_id']))
+    restored = (await client.get(url + '/ai-review')).json()
+    assert restored['status'] == 'succeeded', restored
+    assert restored['processed'] == 4
+    assert len(calls) == (8 if alternative else 7)
+    await asyncio.sleep(1.05)
+    fresh = await client.post(url + '/ai-review', json={'plan_id': current['plan']['plan_id'],
+        'plan_digest': current['plan']['plan_digest'], 'tier_model': 'gemini-3.5-flash', 'automatic': True, 'force_refresh': True})
+    assert fresh.json()['job_id'] != retry.json()['job_id']
+    assert (await client.post(f"/api/runs/{run_id}/jobs/{fresh.json()['job_id']}/cancel")).status_code == 200
+    await run_wikidata_publication_ai_review_job(uuid.UUID(fresh.json()['job_id']))
+    assert (await client.get(url + '/ai-review')).json()['status'] == 'cancelled'
+    assert len(calls) == (8 if alternative else 7)
+
+
+@pytest.mark.asyncio
+async def test_automatic_evidence_uses_only_the_items_source_records(sample_run, db_session):
+    from app.publication.automatic_evidence import collect_evidence
+    own = await collect_evidence(db_session, {'record_ids': [sample_run['control_number']]},
+        sample_run['user_id'], run_id=sample_run['run_id'])
+    assert any(row['id'] == 'marc:' + sample_run['control_number'] for row in own)
+    unrelated = await collect_evidence(db_session, {'record_ids': ['missing-record']},
+        sample_run['user_id'], run_id=sample_run['run_id'])
+    assert unrelated == []

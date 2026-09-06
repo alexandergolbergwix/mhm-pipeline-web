@@ -480,7 +480,8 @@ class PublicationModule:
                 limit=50,
             )
             await self._repository.checkpoint()
-            observations = await session.reconcile_batch(entities)
+            active_entities = tuple(entity for entity in entities if not (isinstance(entity.document, Mapping) and entity.document.get("publication_deferred")))
+            observations = await session.reconcile_batch(active_entities) if active_entities else ()
             by_key = {observation.entity_key: observation for observation in observations}
             actions: list[PlanActionRecord] = []
             for entity in entities:
@@ -525,6 +526,23 @@ class PublicationModule:
                             "and entity digest"
                         )
                     )
+                reference = entity.document.get("publication_reference_only") if isinstance(entity.document, Mapping) else None
+                if reference is not None:
+                    matches = (isinstance(reference, Mapping) and observation is not None
+                        and observation.status in {"present_owned", "present_foreign"}
+                        and observation.qid == reference.get("qid")
+                        and observation.remote_revision == reference.get("remote_revision"))
+                    action_name = "skip" if matches else "block"
+                    allow_foreign_update = False
+                    detail = ("Use existing item without updates" if matches else
+                        "The reference-only target changed or is unavailable. Review its identity again.")
+                if isinstance(entity.document, Mapping) and entity.document.get("publication_deferred"):
+                    action_name = "skip"
+                    allow_foreign_update = False
+                    target_qid = None
+                    target_revision = None
+                    target_fingerprint = None
+                    detail = "Deferred by automatic policy: " + str(entity.document["publication_deferred"])
                 action = PlanActionRecord(
                     plan_id=plan_id,
                     entity_key=entity.entity_key,

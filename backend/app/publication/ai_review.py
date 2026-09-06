@@ -1,5 +1,6 @@
 """Plan checks and durable report views shared by the route and worker."""
 import uuid
+from pathlib import Path
 from sqlalchemy import select
 from app.models.publication import Publication, PublicationPlan
 from app.models.run_job import RunJob
@@ -16,6 +17,12 @@ def review_version():
     from app.publication.digests import canonical_digest
     root = locate_eval_agent()
     return canonical_digest({
+        'evidence_reader': Path(__file__).with_name('automatic_evidence.py').read_text(),
+        'judge_runner': Path(__file__).parent.parent.joinpath('pipeline/wikidata_publication_ai_review_job.py').read_text(),
+        'automatic_worker': Path(__file__).parent.parent.joinpath('pipeline/wikidata_publication_auto_job.py').read_text(),
+        'automatic_policy': Path(__file__).with_name('automatic_policy.py').read_text(),
+        'automatic_projection': Path(__file__).with_name('automatic_projection.py').read_text(),
+        'schema': (root / 'config/schemas/verdict.v2.json').read_text(),
         'rubric': (root / 'config/rubrics/wikidata_publication_review.md').read_text(),
         'evaluator': (root / 'eval_agent/evaluators/wikidata_publication_review.py').read_text(),
     })
@@ -55,5 +62,6 @@ def job_view(job):
         return PublicationAiReviewState(job_id=str(job.id), status='failed',
             error='The AI review rules changed. Start a fresh AI review.')
     return PublicationAiReviewState(job_id=str(job.id), status=job.status,
+        phase=progress.get('phase'), message=progress.get('message'),
         processed=progress.get('processed', 0), total=progress.get('total', 0),
         report=(job.result or {}).get('report') or progress.get('report'), error=job.error)

@@ -67,6 +67,9 @@ async def _judge(db, job_id, item, tier_model, api_key, force_refresh, actor_id)
             if (not isinstance(verdict, dict) or verdict.get('overall') not in {'full', 'partial', 'fail', 'abstain'}
                 or not isinstance(verdict.get('reasoning'), str) or not verdict['reasoning'].strip()):
                 raise ValueError('The AI judge returned an incomplete review.')
+            if item.get('publication_review', {}).get('automatic'):
+                from app.publication.automatic_policy import IdentityDecision
+                IdentityDecision.model_validate(verdict.get('publication_decision'))
             return verdict
 
     rubric = agent_runner.locate_eval_agent() / 'config' / 'rubrics' / f'{EVALUATOR}.md'
@@ -86,6 +89,13 @@ async def _judge(db, job_id, item, tier_model, api_key, force_refresh, actor_id)
 
 
 async def run_wikidata_publication_ai_review_job(job_id: uuid.UUID) -> None:
+    async with session_scope() as lookup:
+        row = await lookup.get(RunJob, job_id)
+        automatic = bool(row and (row.params or {}).get('automatic'))
+    if automatic:
+        from app.pipeline.wikidata_publication_auto_job import run_automatic_publication
+        await run_automatic_publication(job_id)
+        return
     report = None
     total = 0
     try:

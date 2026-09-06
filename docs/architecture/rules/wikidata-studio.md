@@ -2808,3 +2808,22 @@ Postgres stores partial and completed reports. Generic job messages omit the ful
 The cache key includes the exact evidence, model, evaluator code, and rubric.
 An explicit override repeats the AI review. Rule changes invalidate report reuse.
 See [AI review of blocked items](../blocks/wikidata-studio/publication-ai-review.md).
+
+## Rule W-223 — Reference-only targets never become writes
+
+The review of reference-only use exposed a SQL execution gap: the action insert admitted skip actions.
+The executor must admit only create and update actions.
+An explicit reference choice binds the current Plan, source, target, entity digest, QID, and revision.
+The projection resolves inbound connections and preserves the selected record for review.
+A fresh dry-run must block a changed or unavailable reference target.
+See [reference-only use](../blocks/wikidata-studio/reference-only.md).
+
+## Rule W-224 — Automatic resolution cannot convert uncertainty into approval
+
+The live AI report mixed identity concerns with unsupported optional claims.
+Automatic resolution must assess these questions separately and cite original source evidence.
+Two model decisions cannot override a deterministic identity or source failure.
+The policy reuses verified QIDs without updates and defers unresolved items and affected statements.
+It approves only the retained subset under an explicit policy actor, never a fabricated human consent.
+The job must preserve the full report and require a fresh passing dry-run before publication.
+See [automatic resolution](../blocks/wikidata-studio/automatic-resolution.md).

@@ -654,7 +654,7 @@ class SqlAlchemyPublicationRepository:
                     PlanActionRow.target_fingerprint,
                     PlanActionRow.target_revision,
                     PlanActionRow.allow_foreign_update,
-                ).where(PlanActionRow.plan_id == _uuid(execution.plan_id)),
+                ).where(PlanActionRow.plan_id == _uuid(execution.plan_id), PlanActionRow.action.in_(("create", "update"))),
             )
         )
         await self._session.commit()

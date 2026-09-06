@@ -23,3 +23,5 @@
 | `backend/app/pipeline/marc_verify_context.py` | Multi-CN MARC merge/project for verify cache fingerprints |
 | `backend/app/jobs/prune_inference_cache.py` | Deletes rows with `expires_at < now()`; NULL-TTL rows never touched |
 | `backend/scripts/run_prune_inference_cache.py` | Heroku Scheduler entrypoint, daily 02:05 UTC |
+
+[Automatic resolution](../wikidata-studio/automatic-resolution.md) lists the worker, evidence cache, structured verdict, subset, and tests.

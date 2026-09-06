@@ -9,6 +9,7 @@ import {
   type PublicationOperation,
   type PublicationSummary,
   type PublicationTarget,
+  type ReferenceOnlySelection,
 } from "@/api/publication";
 import type {StudioBuild, StudioItem} from "@/api/wikidataStudio";
 import {WikidataPublicationControls} from "@/components/wikidata/WikidataPublicationControls";
@@ -108,7 +109,11 @@ export function WikidataPublicationPanel({
   useEffect(() => {
     let stopped = false;
     setRestoring(true);
-    void PublicationApi.latest(runId).then(async ({publication: saved}) => {
+    const requestedPublication = new URLSearchParams(window.location.search).get("publication");
+    const restored = requestedPublication
+      ? PublicationApi.read(runId, requestedPublication, {type: "summary"})
+      : PublicationApi.latest(runId);
+    void restored.then(async ({publication: saved}) => {
         if (stopped || !saved) return;
         setPublication(saved);
         setTarget(saved.target);
@@ -126,15 +131,16 @@ export function WikidataPublicationPanel({
     return () => { stopped = true; };
   }, [runId]);
 
-  const prepare = useCallback(async () => {
+  const prepare = useCallback(async (referenceOnly?: ReferenceOnlySelection) => {
     setBusyCommand("prepare");
     setError(null);
     setRouteUnavailable(false);
     try {
       const response = await PublicationApi.prepare(runId, {
         profile_id: PROFILE_ID,
-        profile_version: deferConnections ? "1-nodes" : "1",
-        target,
+        profile_version: referenceOnly && publication ? publication.profile_version : deferConnections ? "1-nodes" : "1",
+        target: referenceOnly && publication ? publication.target : target,
+        ...(referenceOnly ? {reference_only: referenceOnly} : {}),
         source: {
           kind: "run",
           projection_source: source,
@@ -153,7 +159,7 @@ export function WikidataPublicationPanel({
     } finally {
       setBusyCommand(null);
     }
-  }, [approvedOnly, deferConnections, runId, source, target]);
+  }, [approvedOnly, deferConnections, runId, source, target, publication]);
 
   useEffect(() => {
     if (!prepareJobId) return;
@@ -329,6 +335,12 @@ export function WikidataPublicationPanel({
             busyCommand={prepareJobId ? "dry_run" : busyCommand === "prepare" ? null : busyCommand}
             error={error}
             onAdvance={advance}
+            onUseExisting={(entityKeys) => {
+              if (!publication.plan) return;
+              return prepare({publication_id: publication.publication_id,
+                plan_id: publication.plan.plan_id, plan_digest: publication.plan.plan_digest,
+                entity_keys: entityKeys});
+            }}
             auditHref={`/runs/${encodeURIComponent(runId)}/wikidata-studio/publications/${encodeURIComponent(publication.publication_id)}/audit`}
           />
 
@@ -367,6 +379,8 @@ export function WikidataPublicationPanel({
                   <div className="min-w-0">
                     <span className="block text-ink">{entity.label}</span>
                     <span className="muted">{entity.entity_kind} · {entity.statement_count} statements</span>
+                    {entity.policy_reason && <p className="mt-2 muted">Automatic policy: {entity.policy_reason}</p>}
+                    {entity.reference_only && <p className="mt-2 text-accent">Use {entity.target_qid} without updates. Connections use this QID.</p>}
                     {!!entity.deferred_statements?.length && <details className="mt-2 text-warn">
                       <summary className="cursor-pointer">
                         {entity.deferred_statements.length} deferred {entity.deferred_statements.length === 1 ? "connection" : "connections"}

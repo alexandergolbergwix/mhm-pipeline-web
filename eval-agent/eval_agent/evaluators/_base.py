@@ -120,6 +120,7 @@ class Verdict:
     # v2 extension: AI-suggested corrected entity text (text-only, high-confidence).
     # None when no fix is proposed or when the evaluator does not support fixes.
     suggested_fix: SuggestedFix | None = None
+    publication_decision: dict[str, object] | None = None
 
     def to_jsonl_record(self) -> dict[str, Any]:
         return {
@@ -137,6 +138,7 @@ class Verdict:
                 "overall":       self.overall,
                 "reasoning":     self.reasoning,
                 "suggested_fix": self.suggested_fix.to_dict() if self.suggested_fix else None,
+                **({"publication_decision": self.publication_decision} if self.publication_decision is not None else {}),
             },
             "agentic": self.agentic,
             "cache_key": self.cache_key,

@@ -18,7 +18,15 @@ class RunPublicationSource(PublicationSchema):
     approved_only: bool = True
 
 
+class ReferenceOnlySelection(PublicationSchema):
+    publication_id: str = Field(min_length=1, max_length=128)
+    plan_id: str = Field(min_length=1, max_length=128)
+    plan_digest: str = Field(min_length=1, max_length=128)
+    entity_keys: list[str] = Field(min_length=1, max_length=500)
+
+
 class PreparePublicationRequest(PublicationSchema):
+    reference_only: ReferenceOnlySelection | None = None
     profile_id: str = Field(min_length=1, max_length=128)
     profile_version: str = Field(min_length=1, max_length=64)
     target: Literal["test", "live"]
@@ -261,6 +269,9 @@ class PublicationEntityFinding(PublicationSchema):
 
 
 class PublicationEntity(PublicationSchema):
+    reference_only: bool = False
+    deferred: bool = False
+    policy_reason: str = ""
     deferred_statements: list[dict[str, object]] = Field(default_factory=list)
     entity_id: str
     entity_digest: str

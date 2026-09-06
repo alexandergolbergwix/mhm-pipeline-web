@@ -49,3 +49,7 @@ Publication restore (W-219) includes completed job progress and errors. The curr
 [Publication consent](../wikidata-studio/production-publication.md) requires an explicit checkbox per foreign QID and fresh worker checks (W-221).
 
 [AI review of blocked Publication items](../wikidata-studio/publication-ai-review.md) lists the route, job, evaluator, report component, and tests (W-222).
+
+[Existing items without updates](../wikidata-studio/reference-only.md) lists the prepare contract, projection, executor, UI, and tests.
+
+[Automatic resolution](../wikidata-studio/automatic-resolution.md) lists the worker, evidence cache, structured verdict, subset, and tests.

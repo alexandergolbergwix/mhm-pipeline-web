@@ -263,6 +263,8 @@ class StudioCacheProjectionSource(ProjectionSource):
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+        self.reference_only: dict[str, dict[str, object]] = {}
+        self.automatic_documents: dict[str, dict[str, object]] = {}
 
     async def current_snapshot(
         self,
@@ -297,10 +299,18 @@ class StudioCacheProjectionSource(ProjectionSource):
         qids: dict[str, str] = {}
         entity_keys: set[str] = set()
         async for target in self._stream_items(run_id, source, approved_only, source_snapshot.digest):
+            target = self.automatic_documents.get(_item_entity_key(target), target)
             entity_keys.add(_item_entity_key(target))
             qid = str(target.get("existing_qid") or "").strip()
             if _QID.fullmatch(qid) and not _has_blocking_item_issue(target):
                 qids[_item_entity_key(target)] = qid
+        if not set(self.reference_only) <= entity_keys:
+            raise PublicationSourceError("A reference-only item is absent from the current source")
+        for key, reference in self.reference_only.items():
+            qid = str(reference["qid"])
+            if key in qids and qids[key] != qid:
+                raise PublicationSourceError("The reference-only QID conflicts with the current source")
+            qids[key] = qid
         page: list[PublicationEntityInput] = []
         async for item in self._stream_items(
             run_id,
@@ -308,11 +318,22 @@ class StudioCacheProjectionSource(ProjectionSource):
             approved_only,
             source_snapshot.digest,
         ):
+            item = self.automatic_documents.get(_item_entity_key(item), item)
+            if self.automatic_documents and item.get("publication_deferred"):
+                continue
             if _has_blocking_item_issue(item):
                 raise PublicationSourceError(
                     "The selected Studio source contains blocking validation issues"
                 )
             item = dict(item)
+            if not self.automatic_documents:
+                item.pop("publication_reference_only", None)
+                item.pop("publication_deferred", None)
+                item.pop("publication_policy", None)
+            reference = self.reference_only.get(_item_entity_key(item))
+            if reference is not None:
+                item["publication_reference_only"] = reference
+                item["existing_qid"] = reference["qid"]
             item["statements"] = _resolve_statement_references(item.get("statements", []), qids)
             if profile.version == "1-nodes":
                 kept: list[Mapping[str, object]] = []
@@ -331,7 +352,7 @@ class StudioCacheProjectionSource(ProjectionSource):
                     entity_type=_item_entity_type(item),
                     document=cast("dict[str, object]", dict(item)),
                     evidence_refs=_evidence_refs(item),
-                    identity_assertions=_identity_assertions(item),
+                    identity_assertions=() if item.get("publication_deferred") else _identity_assertions(item),
                     local_references=_local_references(item),
                 )
             )
@@ -461,6 +482,8 @@ class PublicationRuntime:
         run_id: uuid.UUID,
         request: PreparePublicationRequest,
         actor_id: str,
+        automatic_documents: dict[str, dict[str, object]] | None = None,
+        idempotency_key: str | None = None,
     ) -> PublicationMutationResponse:
         if request.profile_id != "mhm-wikidata" or request.profile_version not in {"1", "1-nodes"}:
             raise PublicationSourceError("The requested publication profile is unsupported")
@@ -471,7 +494,11 @@ class PublicationRuntime:
             source=request.source.projection_source,
             approved_only=request.source.approved_only,
         )
+        self._projection_source.automatic_documents = automatic_documents or {}
         target = _target_ref(request.target)
+        from app.publication.reference_only import resolve_reference_selection
+        self._projection_source.reference_only = await resolve_reference_selection(
+            self._session, run_id, request, snapshot, target)
         module = self._module(target=target, actor_id=actor_id)
         operation = await module.prepare(
             PrepareRequest(
@@ -480,7 +507,7 @@ class PublicationRuntime:
                 profile=ProfileRef(name=request.profile_id, version=request.profile_version),
                 target=target,
                 actor_id=actor_id,
-                idempotency_key=str(uuid.uuid4()),
+                idempotency_key=idempotency_key or str(uuid.uuid4()),
             )
         )
         await self._session.commit()
@@ -1112,6 +1139,9 @@ def _entity_view(
     statements = item.get("statements") if isinstance(item.get("statements"), list) else []
     blocked = any(finding.gate for finding in findings)
     return PublicationEntity(
+        reference_only=bool(item.get("publication_reference_only")),
+        deferred=bool(item.get("publication_deferred")),
+        policy_reason=str(item.get("publication_deferred") or (item.get("publication_policy") or {}).get("reason") or ""),
         entity_id=entity.entity_key,
         entity_digest=entity.entity_digest,
         entity_kind=entity.entity_type,
@@ -1120,7 +1150,7 @@ def _entity_view(
         target_qid=target_qid,
         statement_count=len(statements),
         review_status=review_status,
-        proposed_action="blocked" if blocked else "update" if target_qid else "create",
+        proposed_action="blocked" if blocked else "skip" if item.get("publication_reference_only") or item.get("publication_deferred") else "update" if target_qid else "create",
         findings=findings,
         deferred_statements=item.get("deferred_statements") or [],
     )
