@@ -893,3 +893,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 126. **R126 — Automatic resolution separates identity from claims and excludes uncertainty from approval.** *Why:* a report with zero human-review requests must not hide unresolved identities (W-224).
 
 127. **R127 — Publication AI calls release transactions and isolate cache failures.** *Why:* a slow model response must not invalidate the Release session (W-225).
+
+128. **R128 — Parallel AI assessments use isolated sessions and durable completion checkpoints.** *Why:* speed must not weaken checks or leave orphan tasks (W-226).

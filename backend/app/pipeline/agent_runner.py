@@ -280,15 +280,16 @@ async def spawn_eval_agent_run(
     # any [STEP] line) was being silently discarded, surfacing to the UI as
     # an unexplained "0 verdicts". We keep the tail and emit it as a
     # runner.error on a non-zero exit.
-    stderr_chunks: list[str] = []
+    stderr_tail = bytearray()
 
     async def _drain_stderr() -> None:
         assert proc.stderr is not None
         while True:
-            chunk = await proc.stderr.readline()
+            chunk = await proc.stderr.read(16384)
             if not chunk:
                 return
-            stderr_chunks.append(chunk.decode("utf-8", errors="replace"))
+            stderr_tail.extend(chunk)
+            del stderr_tail[:-8192]
 
     stderr_task = asyncio.create_task(_drain_stderr())
     exit_emitted = False
@@ -348,7 +349,7 @@ async def spawn_eval_agent_run(
             if not stderr_task.done():
                 stderr_task.cancel()
         if rc != 0:
-            tail = "".join(stderr_chunks).strip()[-2000:]
+            tail = stderr_tail.decode("utf-8", errors="replace").strip()[-2000:]
             logger.error(
                 "eval-agent exited rc=%s stderr_tail=%s", rc, tail or "<empty>",
             )
@@ -394,6 +395,29 @@ async def spawn_eval_agent_run(
 _SUBPROCESS_IDLE_TIMEOUT_S = 180.0
 
 
+_MAX_AGENT_LINE_BYTES = 8 * 1024 * 1024
+
+
+async def _read_agent_lines(stdout: asyncio.StreamReader) -> AsyncIterator[bytes]:
+    buffer = bytearray()
+    while True:
+        chunk = await asyncio.wait_for(stdout.read(16384), timeout=_SUBPROCESS_IDLE_TIMEOUT_S)
+        if not chunk:
+            if buffer:
+                yield bytes(buffer)
+            return
+        buffer.extend(chunk)
+        while True:
+            newline = buffer.find(b"\n")
+            size = newline if newline >= 0 else len(buffer)
+            if size > _MAX_AGENT_LINE_BYTES:
+                raise ValueError("AI event exceeds the 8 MiB protocol limit")
+            if newline < 0:
+                break
+            yield bytes(buffer[:newline])
+            del buffer[:newline + 1]
+
+
 async def _read_subprocess_stream(
     stdout: asyncio.StreamReader,
 ) -> AsyncIterator[AgentEvent]:
@@ -402,15 +426,7 @@ async def _read_subprocess_stream(
     Raises ``TimeoutError`` if the subprocess goes fully silent for
     ``_SUBPROCESS_IDLE_TIMEOUT_S`` — see the caller's handling of that.
     """
-    while True:
-        try:
-            line_bytes = await asyncio.wait_for(
-                stdout.readline(), timeout=_SUBPROCESS_IDLE_TIMEOUT_S,
-            )
-        except asyncio.TimeoutError:
-            raise TimeoutError from None
-        if not line_bytes:
-            return
+    async for line_bytes in _read_agent_lines(stdout):
         line = line_bytes.decode("utf-8", errors="replace").rstrip("\n")
         if not line:
             continue

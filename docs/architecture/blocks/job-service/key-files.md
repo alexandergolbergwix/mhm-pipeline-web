@@ -47,3 +47,6 @@ Publication restore (W-219) includes completed job progress and errors. The curr
 [Existing items without updates](../wikidata-studio/reference-only.md) lists the prepare contract, projection, executor, UI, and tests.
 
 [Automatic resolution](../wikidata-studio/automatic-resolution.md) lists the worker, evidence cache, structured verdict, subset, and tests.
+
+The automatic Publication job uses three isolated assessments and one coordinator for durable report updates.
+`backend/tests/unit/test_publication_parallel_assessments.py` covers the task limit and cancellation.

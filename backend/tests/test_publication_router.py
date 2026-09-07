@@ -1066,7 +1066,8 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     from app.publication.wikidata_gateway import RemoteEntitySnapshot
     calls = []
     from app.pipeline.inference_cache import cache_lookup_or_call
-    cache_sessions = []
+    from contextvars import ContextVar
+    cache_session = ContextVar("publication_test_cache_session")
     from app.pipeline import inference_cache
     real_write = inference_cache._write
     cache_failures = []
@@ -1078,12 +1079,22 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
         return await real_write(db, **kwargs)
     monkeypatch.setattr(inference_cache, '_write', interrupted_write)
     async def tracked_cache(db, **kwargs):
-        cache_sessions.append(db)
+        cache_session.set(db)
         return await cache_lookup_or_call(db, **kwargs)
     monkeypatch.setattr('app.pipeline.wikidata_publication_ai_review_job.cache_lookup_or_call', tracked_cache)
     monkeypatch.setenv('GEMINI_API_KEY', 'fixture-ai-key')
+    import asyncio
+    parallel_review = False
+    second_started = asyncio.Event()
+
     class Boundary:
         async def reconcile_batch(self, entities):
+            if parallel_review and len(entities) == 1:
+                if entities[0].entity_key == 'work:2':
+                    second_started.set()
+                if entities[0].entity_key == 'work:1':
+                    await asyncio.wait_for(second_started.wait(), timeout=1)
+
             return tuple(TargetObservation.present_foreign(e.entity_key, qid='Q456' if e.document.get('existing_qid') == 'Q456' else 'Q123', remote_revision=7)
                 if e.entity_key == 'work:1' else TargetObservation.unknown(e.entity_key, 'Unavailable')
                 if e.entity_key == 'work:4' else TargetObservation.absent(e.entity_key) for e in entities)
@@ -1097,7 +1108,7 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     async def subprocess(**kwargs):
         item = json.loads((kwargs['pipeline_output'] / 'wikidata_items.json').read_text())[0]
         pack = item['publication_review']
-        assert not cache_sessions[-1].in_transaction(), 'AI must not hold a database transaction'
+        assert not cache_session.get().in_transaction(), 'AI must not hold a database transaction'
         assert pack['automatic'] is True
         calls.append((item['local_id'], pack['check']))
         decision = {'identity': 'same_entity' if pack['qid'] else 'new_entity',
@@ -1144,6 +1155,7 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
         'plan_digest': current['plan']['plan_digest'], 'tier_model': 'gemini-3.5-flash', 'automatic': True})
     assert started.status_code == 200, started.text
     assert not calls
+    parallel_review = True
     await run_wikidata_publication_ai_review_job(uuid.UUID(started.json()['job_id']))
     saved = (await client.get(url + '/ai-review')).json()
     assert saved['status'] == 'succeeded', saved

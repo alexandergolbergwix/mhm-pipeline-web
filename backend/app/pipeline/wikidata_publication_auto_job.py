@@ -1,4 +1,6 @@
 """Automatic evidence checks, conservative subset, policy approval, and dry-run."""
+import asyncio
+from contextlib import aclosing
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -21,6 +23,31 @@ from app.schemas.publication import PreparePublicationRequest, AdvancePublicatio
 from app.schemas.publication_ai_review import PublicationAiReport, PublicationAiReviewItem
 
 logger = logging.getLogger(__name__)
+
+
+ASSESSMENT_CONCURRENCY = 3
+
+
+async def _completed_assessments(items, assess):
+    remaining = iter(items)
+    pending = set()
+    try:
+        while True:
+            while len(pending) < ASSESSMENT_CONCURRENCY:
+                item = next(remaining, None)
+                if item is None:
+                    break
+                pending.add(asyncio.create_task(assess(item)))
+            if not pending:
+                return
+            completed, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in completed:
+                pending.remove(task)
+                yield await task
+    finally:
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def _automatic_judge(*args):
@@ -58,7 +85,6 @@ async def run_automatic_publication(job_id):
             api_key = None
             if params.get('_ai_credential'):
                 api_key = (await ExecutionCredentialResolver(params['_ai_credential'], **resolver_args).resolve(ref)).secret
-            boundary = await CurrentWikidataBoundaryFactory().open(credential)
             actions = (await db.execute(select(PublicationPlanAction).where(PublicationPlanAction.plan_id == plan.id)
                 .order_by(PublicationPlanAction.entity_key).limit(501))).scalars().all()
             if len(actions) > 500:
@@ -85,9 +111,10 @@ async def run_automatic_publication(job_id):
             async def save(phase='automatic_review'):
                 await update_job_progress(job_id, {'phase': phase, 'processed': len(report.items), 'total': len(actions),
                     'message': {'prepare_subset': 'Prepare the supported subset.', 'approve_subset': 'Record automatic policy approval.',
-                        'dry_run': 'Check the retained subset against Wikidata.'}.get(phase, 'Resolve identities and claims automatically.'),
+                        'dry_run': 'Check the retained subset against Wikidata.'}.get(phase, f'Automatic preparation: up to {ASSESSMENT_CONCURRENCY} items at once. {sum(row.status == "deferred" for row in report.items)} deferred; {len(report.items)} processed.'),
                     'report': report.model_dump(mode='json')})
             await db.commit()
+            work = []
             for action in actions:
                 await _cancel_check(job_id)
                 entity = await repository.get_release_entity(str(plan.release_id), action.entity_key)
@@ -98,88 +125,100 @@ async def run_automatic_publication(job_id):
                 documents[entity.entity_key] = document
                 if entity.entity_key in done:
                     continue
-                await db.commit()
-                evidence, decisions = [], []
-                qid, revision = action.target_qid, action.target_revision
-                resolution = {'action': 'defer', 'statement_indices': [], 'reason': 'The source or provider check did not complete.', 'retryable': True}
-                try:
-                    if _has_blocking_item_issue(document):
-                        resolution.update(reason='A deterministic source or identity check failed.', retryable=False)
-                        raise ValueError('The original source has a blocking finding.')
-                    observation = None
-                    for _ in range(2):
-                        await _cancel_check(job_id)
-                        observations = await boundary.reconcile_batch((entity,))
-                        observation = next((row for row in observations if row.entity_key == entity.entity_key), None)
-                        if observation is not None and observation.status != 'unknown':
-                            break
-                    status = observation.status if observation else 'unknown'
-                    qid = observation.qid if observation else None
-                    revision = observation.remote_revision if observation else None
-                    remote = None
-                    if status in {'present_owned', 'present_foreign'}:
-                        snapshot = await boundary.fetch_entity(qid)
-                        if snapshot is None or snapshot.qid != qid or snapshot.revision != revision or snapshot.document is None:
-                            raise ValueError('The target changed during evidence collection.')
-                        remote = dict(snapshot.document)
-                    evidence = await collect_evidence(db, document, uuid.UUID(actor), bool(params.get('force_refresh')), run_id=run_id)
-                    fixture = {**document, 'local_id': entity.entity_key, 'entity_type': entity.entity_type,
-                        'publication_review': {'automatic': True, 'target': credential.target.site,
-                            'qid': qid, 'revision': revision, 'entity_digest': entity.entity_digest,
-                            'observation': status, 'proposed_entity': document, 'remote_entity': remote, 'evidence': [{key: value for key, value in row.items() if key != 'retrieved_at'} for row in evidence]}}
-                    if status != 'unknown' and any(row.get('kind') == 'primary' for row in evidence):
-                        for check in ('assessment', 'independent_verification'):
+                work.append((entity, document, action.target_qid, action.target_revision))
+            await db.commit()
+
+            async def assess(work_item):
+                entity, document, target_qid, target_revision = work_item
+                await _cancel_check(job_id)
+                async with session_scope() as item_db:
+                    boundary = await CurrentWikidataBoundaryFactory().open(credential)
+                    evidence, decisions = [], []
+                    qid, revision = target_qid, target_revision
+                    resolution = {'action': 'defer', 'statement_indices': [], 'reason': 'The source or provider check did not complete.', 'retryable': True}
+                    try:
+                        if _has_blocking_item_issue(document):
+                            resolution.update(reason='A deterministic source or identity check failed.', retryable=False)
+                            raise ValueError('The original source has a blocking finding.')
+                        observation = None
+                        for _ in range(2):
                             await _cancel_check(job_id)
-                            fixture['publication_review']['check'] = check
-                            fixture['publication_review']['instruction'] = ('Test the identity and each claim against sources. Seek contradictions.'
-                                if check == 'independent_verification' else 'Assess the supplied sources.')
-                            model = (params.get('verification_model') or params['tier_model']) if check == 'independent_verification' else params['tier_model']
-                            verdict = await _automatic_judge(db, job_id, fixture, model, api_key, bool(params.get('force_refresh')), actor)
-                            decisions.append(verdict.get('publication_decision') or {})
-                        resolution = decide(document, remote, status, decisions[0], decisions[1], evidence)
-                        resolution['retryable'] = False
-                        if qid and all(value.get('identity') == 'different_entity' for value in decisions):
-                            rejected_qid = qid
-                            resolution.update(rejected_qid=qid, retryable=True)
-                            labels = document.get('labels') or {}
-                            candidates = await search_candidates(db, credential.target.site,
-                                str(labels.get('he') or labels.get('en') or ''), uuid.UUID(actor), bool(params.get('force_refresh')))
-                            for candidate_qid in candidates:
-                                if candidate_qid == rejected_qid:
-                                    continue
+                            observations = await boundary.reconcile_batch((entity,))
+                            observation = next((row for row in observations if row.entity_key == entity.entity_key), None)
+                            if observation is not None and observation.status != 'unknown':
+                                break
+                        status = observation.status if observation else 'unknown'
+                        qid = observation.qid if observation else None
+                        revision = observation.remote_revision if observation else None
+                        remote = None
+                        if status in {'present_owned', 'present_foreign'}:
+                            snapshot = await boundary.fetch_entity(qid)
+                            if snapshot is None or snapshot.qid != qid or snapshot.revision != revision or snapshot.document is None:
+                                raise ValueError('The target changed during evidence collection.')
+                            remote = dict(snapshot.document)
+                        evidence = await collect_evidence(item_db, document, uuid.UUID(actor), bool(params.get('force_refresh')), run_id=run_id)
+                        fixture = {**document, 'local_id': entity.entity_key, 'entity_type': entity.entity_type,
+                            'publication_review': {'automatic': True, 'target': credential.target.site,
+                                'qid': qid, 'revision': revision, 'entity_digest': entity.entity_digest,
+                                'observation': status, 'proposed_entity': document, 'remote_entity': remote, 'evidence': [{key: value for key, value in row.items() if key != 'retrieved_at'} for row in evidence]}}
+                        if status != 'unknown' and any(row.get('kind') == 'primary' for row in evidence):
+                            for check in ('assessment', 'independent_verification'):
                                 await _cancel_check(job_id)
-                                candidate = await boundary.fetch_entity(candidate_qid)
-                                if candidate is None or candidate.document is None:
-                                    continue
-                                pack = fixture['publication_review']
-                                pack.update(qid=candidate.qid, revision=candidate.revision,
-                                    remote_entity=dict(candidate.document), observation='present_foreign')
-                                checks = []
-                                for check in ('assessment', 'independent_verification'):
-                                    pack['check'] = check
-                                    model = (params.get('verification_model') or params['tier_model']) if check == 'independent_verification' else params['tier_model']
-                                    verdict = await _automatic_judge(db, job_id, fixture, model, api_key, bool(params.get('force_refresh')), actor)
-                                    checks.append(verdict.get('publication_decision') or {})
-                                alternative = decide(document, dict(candidate.document), 'present_foreign', checks[0], checks[1], evidence)
-                                if alternative['action'] == 'reuse_existing':
-                                    resolution, decisions = alternative, checks
-                                    qid, revision = candidate.qid, candidate.revision
-                                    resolution['rejected_qid'] = rejected_qid
-                                    break
+                                fixture['publication_review']['check'] = check
+                                fixture['publication_review']['instruction'] = ('Test the identity and each claim against sources. Seek contradictions.'
+                                    if check == 'independent_verification' else 'Assess the supplied sources.')
+                                model = (params.get('verification_model') or params['tier_model']) if check == 'independent_verification' else params['tier_model']
+                                verdict = await _automatic_judge(item_db, job_id, fixture, model, api_key, bool(params.get('force_refresh')), actor)
+                                decisions.append(verdict.get('publication_decision') or {})
+                            resolution = decide(document, remote, status, decisions[0], decisions[1], evidence)
                             resolution['retryable'] = False
-                    else:
-                        resolution['reason'] = 'The duplicate check or primary evidence is unavailable.'
-                except ReviewCancelled:
-                    raise
-                except Exception:
-                    logger.exception('Automatic Publication assessment deferred %s', entity.entity_key)
-                resolution.update(qid=qid, remote_revision=revision)
-                report.items.append(PublicationAiReviewItem(entity_key=entity.entity_key,
-                    label=str((document.get('labels') or {}).get('en') or (document.get('labels') or {}).get('he') or entity.entity_key),
-                    qid=qid, status='deferred' if resolution['action'] == 'defer' else resolution['action'],
-                    reason=resolution['reason'], resolution=resolution, decisions=decisions,
-                    evidence=[{**row, 'digest': canonical_digest(row), 'text': str(row.get('text') or '')[:1200]} for row in evidence]))
-                await save()
+                            if qid and all(value.get('identity') == 'different_entity' for value in decisions):
+                                rejected_qid = qid
+                                resolution.update(rejected_qid=qid, retryable=True)
+                                labels = document.get('labels') or {}
+                                candidates = await search_candidates(item_db, credential.target.site,
+                                    str(labels.get('he') or labels.get('en') or ''), uuid.UUID(actor), bool(params.get('force_refresh')))
+                                for candidate_qid in candidates:
+                                    if candidate_qid == rejected_qid:
+                                        continue
+                                    await _cancel_check(job_id)
+                                    candidate = await boundary.fetch_entity(candidate_qid)
+                                    if candidate is None or candidate.document is None:
+                                        continue
+                                    pack = fixture['publication_review']
+                                    pack.update(qid=candidate.qid, revision=candidate.revision,
+                                        remote_entity=dict(candidate.document), observation='present_foreign')
+                                    checks = []
+                                    for check in ('assessment', 'independent_verification'):
+                                        pack['check'] = check
+                                        model = (params.get('verification_model') or params['tier_model']) if check == 'independent_verification' else params['tier_model']
+                                        verdict = await _automatic_judge(item_db, job_id, fixture, model, api_key, bool(params.get('force_refresh')), actor)
+                                        checks.append(verdict.get('publication_decision') or {})
+                                    alternative = decide(document, dict(candidate.document), 'present_foreign', checks[0], checks[1], evidence)
+                                    if alternative['action'] == 'reuse_existing':
+                                        resolution, decisions = alternative, checks
+                                        qid, revision = candidate.qid, candidate.revision
+                                        resolution['rejected_qid'] = rejected_qid
+                                        break
+                                resolution['retryable'] = False
+                        else:
+                            resolution['reason'] = 'The duplicate check or primary evidence is unavailable.'
+                    except ReviewCancelled:
+                        raise
+                    except Exception:
+                        logger.exception('Automatic Publication assessment deferred %s', entity.entity_key)
+                    resolution.update(qid=qid, remote_revision=revision)
+                    return PublicationAiReviewItem(entity_key=entity.entity_key,
+                        label=str((document.get('labels') or {}).get('en') or (document.get('labels') or {}).get('he') or entity.entity_key),
+                        qid=qid, status='deferred' if resolution['action'] == 'defer' else resolution['action'],
+                        reason=resolution['reason'], resolution=resolution, decisions=decisions,
+                        evidence=[{**row, 'digest': canonical_digest(row), 'text': str(row.get('text') or '')[:1200]} for row in evidence])
+
+            async with aclosing(_completed_assessments(work, assess)) as results:
+                async for result in results:
+                    report.items.append(result)
+                    report.items.sort(key=lambda row: row.entity_key)
+                    await save()
             await _cancel_check(job_id)
             await db.rollback()
             await checked_plan(db, run_id, base_id, params['plan_id'], params['plan_digest'], actor)

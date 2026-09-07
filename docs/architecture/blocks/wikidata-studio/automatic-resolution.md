@@ -29,6 +29,10 @@ If every item is deferred, the job reports that no subset is ready.
 The existing AI endpoint accepts `automatic: true` and optional `verification_model`.
 The existing verify job slot runs `wikidata_publication_auto_job.py` for this mode.
 The job covers the full Plan, with a limit of 500 entities.
+It assesses at most three items at once, with a separate database session for each item.
+Each item retains its two sequential independent checks.
+The coordinator saves completed results immediately, even when an earlier item takes longer.
+Cancellation closes and awaits all active assessments.
 It repeats duplicate checks and reads the exact remote QID and revision.
 
 Primary evidence includes only the item's original imported MARC records, NLI authority rows,
@@ -94,6 +98,7 @@ A page refresh restores the report. The prepared Release link uses its exact Pub
 - `eval-agent/config/schemas/verdict.v2.json`: optional decision contract.
 - `eval-agent/eval_agent/evaluators/_base.py` and `orchestration/session.py`: decision serialization and cache preservation.
 - `frontend/src/components/wikidata/WikidataPublicationAiReview.tsx`: automatic controls and report.
+- `backend/tests/unit/test_publication_parallel_assessments.py`: concurrency limits, independent completion, and cancellation.
 - `backend/tests/unit/test_publication_automatic_policy.py`: identity, sources, claims, and fail-closed outcomes.
 - `backend/tests/unit/test_publication_automatic_projection.py`: qualifiers and unsafe dependencies.
 - `backend/tests/test_publication_router.py`: no-write subset, retry, cancellation, and source scope.

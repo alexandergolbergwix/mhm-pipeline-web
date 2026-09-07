@@ -2836,3 +2836,13 @@ The Publication judge commits the caller session before each assessment.
 A separate session owns the verdict cache and releases its transaction before the external call.
 A failed cache write cannot invalidate the Release session or discard a valid verdict.
 The integration test simulates a cache disconnect and verifies completion without Wikidata writes.
+
+## Rule W-226 — Large AI events must not cause repeated assessments
+
+The live job repeatedly stopped child processes because their output exceeded the default 64 KB line limit.
+The reader reconstructs lines from bounded chunks and preserves Unicode and final events without a newline.
+An event above 8 MiB fails explicitly. Stderr retains only an 8 KiB tail.
+The automatic worker runs at most three items at once, with separate database sessions and Wikidata boundaries.
+The coordinator saves each completed result and preserves a deterministic report order.
+Cancellation and failures cancel and await all outstanding tasks.
+Each item still requires both identity assessments and the same publication checks.

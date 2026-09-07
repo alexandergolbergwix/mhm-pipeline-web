@@ -50,3 +50,6 @@
 [AI review of blocked Publication items](../wikidata-studio/publication-ai-review.md) lists the route, job, evaluator, report component, and tests (W-222).
 
 [Automatic resolution](../wikidata-studio/automatic-resolution.md) lists the worker, evidence cache, structured verdict, subset, and tests.
+
+The agent runner reads stdout in chunks with an 8 MiB event limit and drains stderr into an 8 KiB tail.
+`backend/tests/unit/test_agent_runner_subprocess_timeout.py` covers large real subprocess output, Unicode, silence, and final events.
