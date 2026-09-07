@@ -37,7 +37,14 @@ async def _cancel_check(job_id):
 
 
 async def _judge(db, job_id, item, tier_model, api_key, force_refresh, actor_id):
+    await db.commit()
+    async with session_scope() as cache_db:
+        return await _judge_with_cache(cache_db, job_id, item, tier_model, api_key, force_refresh, actor_id)
+
+
+async def _judge_with_cache(db, job_id, item, tier_model, api_key, force_refresh, actor_id):
     async def fetch():
+        await db.commit()
         with tempfile.TemporaryDirectory(prefix='publication-ai-') as directory:
             root = Path(directory)
             fixture, state = root / 'fixture', root / 'state'

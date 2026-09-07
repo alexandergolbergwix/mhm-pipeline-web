@@ -1065,6 +1065,22 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     from app.pipeline.wikidata_publication_ai_review_job import run_wikidata_publication_ai_review_job
     from app.publication.wikidata_gateway import RemoteEntitySnapshot
     calls = []
+    from app.pipeline.inference_cache import cache_lookup_or_call
+    cache_sessions = []
+    from app.pipeline import inference_cache
+    real_write = inference_cache._write
+    cache_failures = []
+    async def interrupted_write(db, **kwargs):
+        if kwargs.get('kind') == 'ai_verdict' and not cache_failures:
+            cache_failures.append(True)
+            await db.invalidate()
+            raise ConnectionError('Fixture: verdict cache connection closed')
+        return await real_write(db, **kwargs)
+    monkeypatch.setattr(inference_cache, '_write', interrupted_write)
+    async def tracked_cache(db, **kwargs):
+        cache_sessions.append(db)
+        return await cache_lookup_or_call(db, **kwargs)
+    monkeypatch.setattr('app.pipeline.wikidata_publication_ai_review_job.cache_lookup_or_call', tracked_cache)
     monkeypatch.setenv('GEMINI_API_KEY', 'fixture-ai-key')
     class Boundary:
         async def reconcile_batch(self, entities):
@@ -1081,6 +1097,7 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     async def subprocess(**kwargs):
         item = json.loads((kwargs['pipeline_output'] / 'wikidata_items.json').read_text())[0]
         pack = item['publication_review']
+        assert not cache_sessions[-1].in_transaction(), 'AI must not hold a database transaction'
         assert pack['automatic'] is True
         calls.append((item['local_id'], pack['check']))
         decision = {'identity': 'same_entity' if pack['qid'] else 'new_entity',
@@ -1134,6 +1151,7 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     assert [row['status'] for row in report['items']] == ['reuse_existing', 'create', 'deferred', 'deferred']
     assert all(row['consent'] is None for row in report['items'])
     assert report['items'][0]['qid'] == ('Q456' if alternative else 'Q123')
+    assert cache_failures == [True]
     assert len(calls) == (8 if alternative else 7)
     new_url = f"/api/runs/{run_id}/wikidata-publications/{report['result_publication_id']}"
     result = (await client.post(new_url + '/read', json={'query': {'type': 'summary'}})).json()['publication']
@@ -1155,6 +1173,7 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     restored = (await client.get(url + '/ai-review')).json()
     assert restored['status'] == 'succeeded', restored
     assert restored['processed'] == 4
+    assert cache_failures == [True]
     assert len(calls) == (8 if alternative else 7)
     await asyncio.sleep(1.05)
     fresh = await client.post(url + '/ai-review', json={'plan_id': current['plan']['plan_id'],
@@ -1163,6 +1182,7 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     assert (await client.post(f"/api/runs/{run_id}/jobs/{fresh.json()['job_id']}/cancel")).status_code == 200
     await run_wikidata_publication_ai_review_job(uuid.UUID(fresh.json()['job_id']))
     assert (await client.get(url + '/ai-review')).json()['status'] == 'cancelled'
+    assert cache_failures == [True]
     assert len(calls) == (8 if alternative else 7)
 
 

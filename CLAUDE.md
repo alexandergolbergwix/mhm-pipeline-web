@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-224)
+## Architectural rules (W-1…W-225)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -169,6 +169,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-216** — PostgreSQL projection order must match Python canonical key order
 - **W-222** — AI reviews blocked Publication items through a durable advisory job; a curator supplies exact consent
 - **W-223** — Explicit reference-only choices bind an observed QID; Execution excludes skip actions
+- **W-225** — Publication AI calls release database transactions and isolate verdict cache failures
 - **W-224** — Automatic policy separates identity and claims, defers uncertainty, and never fabricates human consent
 - **W-220** — Map stored review decisions to entity statuses at the HTTP boundary
 - **W-221** — Expose explicit foreign QID consent with exact revision and entity digest

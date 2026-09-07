@@ -2827,3 +2827,12 @@ The policy reuses verified QIDs without updates and defers unresolved items and 
 It approves only the retained subset under an explicit policy actor, never a fabricated human consent.
 The job must preserve the full report and require a fresh passing dry-run before publication.
 See [automatic resolution](../blocks/wikidata-studio/automatic-resolution.md).
+
+## Rule W-225 — AI waits must not retain database transactions
+
+The automatic job failed after its first item when a cache connection closed during an AI call.
+The invalid transaction then prevented the worker from reading the next Release entity.
+The Publication judge commits the caller session before each assessment.
+A separate session owns the verdict cache and releases its transaction before the external call.
+A failed cache write cannot invalidate the Release session or discard a valid verdict.
+The integration test simulates a cache disconnect and verifies completion without Wikidata writes.

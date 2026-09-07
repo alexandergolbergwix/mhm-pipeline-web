@@ -891,3 +891,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 125. **R125 — Reference-only items require an explicit identity choice and never become writes.** *Why:* a connection to an existing item does not require an update to that item (W-223).
 
 126. **R126 — Automatic resolution separates identity from claims and excludes uncertainty from approval.** *Why:* a report with zero human-review requests must not hide unresolved identities (W-224).
+
+127. **R127 — Publication AI calls release transactions and isolate cache failures.** *Why:* a slow model response must not invalidate the Release session (W-225).

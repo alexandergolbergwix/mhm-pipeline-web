@@ -35,6 +35,8 @@ The verifier does not receive the first decision.
 The model controls use distinct assessment and verification labels, each bound to a unique select ID.
 The evaluator exports optional `publication_decision` in the verdict schema and cache.
 The backend validates the structured decision and its cited primary evidence IDs.
+The judge releases database transactions before each external AI call.
+A separate session isolates verdict cache failures from the Release session.
 Invalid structured output never enters the verdict cache. The job retries a failed judge call once.
 
 ## Conservative policy
