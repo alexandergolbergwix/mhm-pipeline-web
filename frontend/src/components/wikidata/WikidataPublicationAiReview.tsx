@@ -84,26 +84,32 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
   };
 
   return <div className="rounded-lg border border-white/10 p-3 space-y-3" data-testid="publication-ai-review">
-    <p className="text-sm">Choose an advisory review of blocked items or automatic resolution of the full Release.</p>
-    <Tier1ModelSelect label="Assessment model" tierModel={model.tierModel} onChange={model.setTierModel} list={model.list}
-      loading={model.loading} disabled={busy || active || loading} />
-    <p className="text-xs muted">Automatic mode assesses the full Release. It reuses verified QIDs without updates and defers unresolved items.</p>
-    <Tier1ModelSelect label="Verification model (independent second check)" tierModel={verificationModel || model.tierModel} onChange={setVerificationModel} list={model.list}
-      loading={model.loading} disabled={busy || active || loading} />
+    <p className="font-medium">Prepare with AI</p>
+    <p className="text-sm muted">AI checks the full Release, reuses verified QIDs, and defers unresolved items. It does not publish.</p>
     <button type="button" className="button-primary text-sm" disabled={busy || active || loading || !current || !model.selected?.available}
-      onClick={() => {void start(true);}}>Resolve Release automatically</button>
-    <p className="text-xs muted">The job prepares and approves a supported subset under an automatic policy, then runs fresh checks. It does not publish.</p>
-    <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={override}
-      disabled={busy || active || loading} onChange={(event) => setOverride(event.target.checked)} />
-      Override AI cache (fresh review)</label>
-    <button type="button" className="button-ghost text-sm" disabled={busy || active || loading || !current || !model.selected?.available}
-      onClick={() => {void start();}}>AI review blocked items</button>
+      onClick={() => {void start(true, report?.automatic === true && report.items.some(item => item.resolution?.retryable));}}>
+      {active ? "AI preparation in progress" : report?.automatic && report.items.some(item => item.resolution?.retryable) ? "Retry failed automatic checks" : "Resolve Release automatically"}
+    </button>
+    <details className="space-y-3">
+      <summary className="cursor-pointer text-sm muted">AI settings and advisory review</summary>
+      <Tier1ModelSelect label="Assessment model" tierModel={model.tierModel} onChange={model.setTierModel} list={model.list}
+        loading={model.loading} disabled={busy || active || loading} />
+      <Tier1ModelSelect label="Verification model (independent second check)" tierModel={verificationModel || model.tierModel} onChange={setVerificationModel} list={model.list}
+        loading={model.loading} disabled={busy || active || loading} />
+      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={override}
+        disabled={busy || active || loading} onChange={(event) => setOverride(event.target.checked)} />Override AI cache (fresh review)</label>
+      <p className="text-xs muted">Advisory review only reports recommendations. It does not prepare an automatic subset.</p>
+      <button type="button" className="button-ghost text-sm" disabled={busy || active || loading || !current || !model.selected?.available}
+        onClick={() => {void start();}}>AI review blocked items</button>
+    </details>
     {state?.job_id && <p className="text-xs">AI review: {state.status} · {state.processed} / {state.total} items</p>}
     {state?.message && <p className="text-xs muted">{state.message}</p>}
     {active && state?.job_id && <button type="button" className="button-ghost text-sm"
       onClick={() => {if (state.job_id) void RunJobs.cancel(runId, state.job_id).catch((caught: unknown) => setError(String(caught)));}}>Cancel AI review</button>}
     {(error || state?.error) && <p className="text-danger text-sm">{error || state?.error}</p>}
     {report && <div data-testid="publication-ai-report" className="space-y-2">
+      <p className="text-sm">Last result: {report.automatic ? "Automatic preparation" : "Advisory review only"}</p>
+      <details><summary className="cursor-pointer text-sm">Full AI report</summary>
       <p className="text-xs muted">Report: {report.tier_model} · {report.created_at}</p>
       {!reportCurrent && <p className="text-warn">This report does not match the current Release and Plan.</p>}
       <ul className="space-y-3">{report.items.map((item) => <li key={item.entity_key} className="text-sm">
@@ -113,9 +119,8 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
       </li>)}</ul>
       {!report.automatic && <button type="button" className="button-primary text-sm" disabled={busy || active || loading || recommended.length === 0}
         onClick={() => {void approve();}}>Approve AI recommendations ({recommended.length}) and check again</button>}
+      </details>
       {report.automatic && <div className="space-y-2">
-        {report.items.some((item) => item.resolution?.retryable) && <button type="button" className="button-ghost text-sm"
-          disabled={busy || active || loading || !current} onClick={() => {void start(true, true);}}>Retry failed automatic checks</button>}
         <p>{report.items.filter((item) => item.status === "reuse_existing").length} reused · {report.items.filter((item) => item.status === "create").length} create candidates · {report.items.filter((item) => item.status === "deferred").length} deferred</p>
         <p className="text-xs muted">Deferred items remain in this report and the Studio source. They are not approved or uploaded.</p>
         {state?.status === "succeeded" && (report.result_publication_id

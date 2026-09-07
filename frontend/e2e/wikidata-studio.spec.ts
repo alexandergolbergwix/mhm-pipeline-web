@@ -32,6 +32,10 @@ async function gotoStudio(page: import("@playwright/test").Page, mode: "modern" 
   }, mode);
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await page.waitForLoadState("networkidle");
+  if (mode === "modern") {
+    await page.getByText("Source settings and rebuild", {exact: true}).click();
+    if (!(await page.getByTestId("wikidata-item-table").isVisible())) await page.getByText("Browse and edit source items", {exact: true}).click();
+  }
 }
 
 // ── Page renders ─────────────────────────────────────────────────────────

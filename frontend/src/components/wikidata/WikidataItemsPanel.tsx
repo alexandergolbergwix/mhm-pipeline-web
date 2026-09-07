@@ -384,6 +384,7 @@ export function WikidataItemsPanel({
             Wikidata changes, then publish only when the result is ready.
           </p>
         </div>
+        <details className="space-y-3"><summary className="cursor-pointer text-sm">Source tools and exports</summary>
         <div className="flex flex-wrap items-center gap-2">
           <a
             href={Studio.exportItemsUrl(runId, "json")}
@@ -466,8 +467,10 @@ export function WikidataItemsPanel({
               : `Approve all visible (${pendingVisibleIds.length})`}
           </button>
         </div>
+        </details>
       </div>
 
+      <details><summary className="cursor-pointer text-sm">Source settings and rebuild</summary>
       <div className="flex flex-wrap gap-2 items-center border-b border-white/5 pb-4" data-testid="wikidata-item-lifecycle-bar">
         <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
           <button
@@ -530,6 +533,8 @@ export function WikidataItemsPanel({
         </a>
       </div>
 
+      </details>
+
       {build && (
         <WikidataPublicationPanel
           runId={runId}
@@ -587,6 +592,7 @@ export function WikidataItemsPanel({
         />
       )}
       {buildPresent && (Boolean(build?.items?.length) || !loading) && (
+        <details open={!publicationActive}><summary className="cursor-pointer text-sm">Browse and edit source items</summary>
         <WikidataItemTable
           items={build?.items ?? []}
           onFilteredChange={setFilteredIds}
@@ -594,6 +600,7 @@ export function WikidataItemsPanel({
           onToggleApproved={(item, next) => void handleToggleApproved(item, next)}
           judgingIds={judgingIds}
         />
+        </details>
       )}
       {!buildPresent && !loading && (
         <p className="muted text-sm">

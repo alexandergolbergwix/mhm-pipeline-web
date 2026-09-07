@@ -239,13 +239,13 @@ export function WikidataPublicationPanel({
   }, [operation, publication, prepareJobId, runId]);
 
   return (
-    <section className="rounded-xl border border-biu-sky/20 bg-biu-sky/[0.03] p-4 space-y-4" data-testid="wikidata-publication-panel">
+    <section className="rounded-xl border border-biu-sky/20 bg-slate-950 p-4 space-y-4" data-testid="wikidata-publication-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="kicker">Publication</div>
-          <h3 className="text-lg font-medium">Versioned Wikidata publication</h3>
+          <h3 className="text-lg font-medium">Publish to Wikidata</h3>
           <p className="mt-1 max-w-3xl text-sm muted">
-            Prepare an immutable Release. Review entity digests. Create a Dry-run Receipt before an Execution can write.
+            Prepare your items, review the result, then publish.
           </p>
         </div>
         {publication && (
@@ -349,7 +349,7 @@ export function WikidataPublicationPanel({
               <div>
                 <div className="kicker">Publication entities</div>
                 <p className="text-xs muted">
-                  {entityPage.total.toLocaleString()} entities · 50 or fewer per cursor page
+                  {entityPage.total.toLocaleString()} entities · up to 50 per page
                 </p>
               </div>
               <div className="flex gap-2">
@@ -373,12 +373,12 @@ export function WikidataPublicationPanel({
                 </button>
               </div>
             </div>
-            <ul className="grid gap-2 md:grid-cols-2">
+            <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-2">Name</th><th className="p-2">Type</th><th className="p-2">Planned action</th><th className="p-2">Review status</th></tr></thead><tbody>
               {entityPage.items.map((entity) => (
-                <li key={entity.entity_id} className="flex items-start justify-between gap-2 rounded border border-white/5 p-2 text-xs">
+                <tr key={entity.entity_id} className="border-t border-white/10 align-top"><td className="p-2">
                   <div className="min-w-0">
                     <span className="block text-ink">{entity.label}</span>
-                    <span className="muted">{entity.entity_kind} · {entity.statement_count} statements</span>
+                    <span className="muted text-xs">{entity.statement_count} statements</span>
                     {entity.policy_reason && <p className="mt-2 muted">Automatic policy: {entity.policy_reason}</p>}
                     {entity.reference_only && <p className="mt-2 text-accent">Use {entity.target_qid} without updates. Connections use this QID.</p>}
                     {!!entity.deferred_statements?.length && <details className="mt-2 text-warn">
@@ -390,10 +390,10 @@ export function WikidataPublicationPanel({
                       </pre>
                     </details>}
                   </div>
-                  <span className={entity.review_status === "approved" ? "text-success" : "text-warn"}>{entity.review_status}</span>
-                </li>
+                  </td><td className="p-2">{entity.entity_kind}</td><td className="p-2">{entity.reference_only ? "Reuse without updates" : entity.proposed_action}</td><td className="p-2"><span className={entity.review_status === "approved" ? "text-success" : "text-warn"}>{entity.review_status}</span>
+                </td></tr>
               ))}
-            </ul>
+            </tbody></table></div>
           </div>
         </>
       )}

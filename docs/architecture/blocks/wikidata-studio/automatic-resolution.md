@@ -4,6 +4,14 @@
 
 ## User flow
 
+The Studio shows Prepare, Review, and Publish as the main workflow.
+The next action follows the current Release, approval, and receipt state.
+Source tools, exports, model settings, and manual actions start collapsed.
+Full AI reports and per-item technical errors expand on request.
+The main Publication table separates planned actions from review status.
+A source editor remains available in a separate disclosure.
+The interface never treats approval as publication readiness.
+
 1. Open the current approved Release and its dry-run Plan.
 2. Select the assessment model and the verification model.
 3. Click **Resolve Release automatically**.

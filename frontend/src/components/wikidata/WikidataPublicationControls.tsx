@@ -98,6 +98,31 @@ export function WikidataPublicationControls({
 
   return (
     <div className="space-y-4" data-testid="wikidata-publication-controls">
+      <nav aria-label="Publication steps" className="flex gap-4 text-sm">
+        <span aria-current={!readiness.approvalCurrent ? "step" : undefined}>1. Prepare</span>
+        <span aria-current={!execution && readiness.approvalCurrent && !readiness.publishAllowed ? "step" : undefined}>2. Review</span>
+        <span aria-current={readiness.publishAllowed || execution ? "step" : undefined}>3. Publish</span>
+      </nav>
+      <div className="rounded-lg bg-white/5 p-4 space-y-3">
+        <p className="text-lg font-medium">{execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
+        <p className="text-sm muted">{release.entity_count} items in this Release · Target: {publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}</p>
+        {plan && <p className="text-sm">{plan.action_counts.create ?? 0} new · {plan.action_counts.update ?? 0} updates · {plan.action_counts.skip ?? 0} reused without updates · {plan.action_counts.blocked ?? 0} need attention</p>}
+        {!!plan?.blocked_actions?.length && <p className="text-sm text-warn">
+          {plan.blocked_actions.filter(action => action.consent).length} identity checks · {plan.blocked_actions.filter(action => !action.consent).length} other checks need attention. Open the details for individual reasons.
+        </p>}
+        {release.finding_counts.error > 0 && <p className="text-warn">{release.finding_counts.error} source errors require attention. Open the details below.</p>}
+        <p className="text-xs muted">Approval and publication readiness are separate. Deferred items and connections are not uploaded.</p>
+        {!execution && (!readiness.approvalCurrent || !plan || readiness.publishAllowed || !plan.action_counts.blocked) && <button type="button" className="button-primary"
+          disabled={busy || !publication.source_current || release.finding_counts.error > 0}
+          onClick={() => {void (readiness.publishAllowed ? publish() : !readiness.approvalCurrent ? reviewEligibleRelease() : dryRun());}}>
+          {busyCommand ? commandLabel(busyCommand) : readiness.publishAllowed ? "Publish to Wikidata" : !readiness.approvalCurrent ? "Approve Release for checks" : "Check before publish"}
+        </button>}
+      </div>
+      {plan && <details open={aiActive || (!readiness.publishAllowed && !execution && !!plan.action_counts.blocked)}><summary className="cursor-pointer text-sm">Automatic preparation</summary><WikidataPublicationAiReview
+        key={`${publication.publication_id}:${plan.plan_id}`} publication={publication}
+        busy={busyCommand !== null} onAdvance={onAdvance} onActiveChange={setAiActive} /></details>}
+      <details className="rounded-lg border border-white/10 p-3 space-y-3">
+        <summary className="cursor-pointer text-sm">Publication details and manual actions</summary>
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3" data-testid="publication-release-state">
           <div className="flex items-center justify-between gap-2">
@@ -149,11 +174,11 @@ export function WikidataPublicationControls({
       {plan && <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-plan-results">
         <p>{plan.action_counts.create ?? 0} creates · {plan.action_counts.update ?? 0} updates · {plan.action_counts.blocked ?? 0} blocked · {plan.action_counts.skip ?? 0} existing items without updates</p>
         <p className="text-xs muted">Saved results remain visible after refresh. Expired receipts require fresh checks before publication.</p>
-        {!!plan.blocked_actions?.length && <details open>
+        {!!plan.blocked_actions?.length && <details>
           <summary>Blocked actions (first {plan.blocked_actions.length})</summary>
           <ul className="space-y-2 mt-2">{plan.blocked_actions.map((action) => <li key={action.entity_key} className="text-xs">
             <span className="font-semibold">{action.entity_key}{action.target_qid ? ` · ${action.target_qid}` : ""}</span>
-            <p>{action.reason}</p>
+            <details><summary className="cursor-pointer">Technical reason</summary><p className="break-words">{action.reason}</p></details>
             {action.consent && <div className="mt-2 space-y-1">
               <a href={`https://${publication.target === "live" ? "www" : "test"}.wikidata.org/wiki/${action.consent.qid}`}
                 target="_blank" rel="noopener noreferrer" className="text-accent underline">Review {action.consent.qid}</a>
@@ -181,9 +206,6 @@ export function WikidataPublicationControls({
           </li>)}</ul>
         </details>}
       </div>}
-      {plan && <WikidataPublicationAiReview
-        key={`${publication.publication_id}:${plan.plan_id}`} publication={publication}
-        busy={busyCommand !== null} onAdvance={onAdvance} onActiveChange={setAiActive} />}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -223,6 +245,14 @@ export function WikidataPublicationControls({
         >
           {busyCommand === "publish" ? commandLabel("publish") : `Publish to ${publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}`}
         </button>
+        <a className="button-ghost text-sm ml-auto" href={auditHref} data-testid="publication-audit-link">
+          Open audit
+        </a>
+      </div>
+
+      </details>
+
+      <div className="flex gap-2">
         {execution?.status === "paused" && (
           <button
             type="button"
@@ -245,11 +275,7 @@ export function WikidataPublicationControls({
             {busyCommand === "cancel" ? commandLabel("cancel") : "Cancel Execution"}
           </button>
         )}
-        <a className="button-ghost text-sm ml-auto" href={auditHref} data-testid="publication-audit-link">
-          Open audit
-        </a>
       </div>
-
       {execution && (
         <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-execution-progress">
           <div className="flex flex-wrap items-center justify-between gap-2">

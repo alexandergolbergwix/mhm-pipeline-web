@@ -26,6 +26,8 @@ for (const total of [236, 736]) {
     });
     await page.addInitScript(() => localStorage.setItem("mhm.studio.reviewMode", "modern"));
     await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
+    await page.getByText("Source tools and exports", {exact: true}).click();
+    if (!(await page.getByTestId("wikidata-item-table").isVisible())) await page.getByText("Browse and edit source items", {exact: true}).click();
     await expect(page.getByTestId("wikidata-items-verify-ai")).toHaveText(`Verify visible (${total})`);
     await expect(page.getByRole("button", {name: `Approve all visible (${total})`, exact: true})).toBeVisible();
     await page.getByTestId("wikidata-item-col-ai_verdict").click();

@@ -14,6 +14,8 @@ async function gotoModernStudio(page: import("@playwright/test").Page) {
   });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await page.waitForLoadState("networkidle");
+  await page.getByText("Source tools and exports", {exact: true}).click();
+  if (!(await page.getByTestId("wikidata-item-table").isVisible())) await page.getByText("Browse and edit source items", {exact: true}).click();
 }
 
 test.describe("Wikidata item review table", () => {

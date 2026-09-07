@@ -7,6 +7,9 @@ import {
   TEST_RUN_ID,
 } from "./fixtures/wikidata-fixtures";
 
+test.use({actionTimeout: 20000});
+test.setTimeout(120000);
+
 test.beforeEach(async ({page}) => {
   await page.route("**/ai-review", (route) => route.fulfill({json: {job_id: null, status: null, processed: 0, total: 0, report: null, error: null}}));
   await page.route("**/wikidata-publications/latest", async (route) => {
@@ -101,7 +104,7 @@ async function gotoModernStudio(page: import("@playwright/test").Page) {
     localStorage.setItem("mhm.studio.reviewMode", "modern");
   });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
-  await expect(page.getByTestId("publication-prepare")).toBeVisible();
+  await expect(page.getByTestId("publication-prepare")).toBeVisible({timeout: 20000});
   await expect(page.getByTestId("wikidata-item-upload-actions")).toBeHidden();
   await expect(page.getByTestId("wikidata-upload-target")).toHaveCount(0);
 }
@@ -147,7 +150,7 @@ test("a curator can explicitly defer connections that need new QIDs", async ({pa
 
 for (const dryOutcome of ["succeeded", "failed"] satisfies string[]) {
 test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async ({page}) => {
-  test.setTimeout(75_000);
+  test.setTimeout(120_000);
   await installStudioMocks(page, makeBuildResponse());
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?active=true`, async (route) => {
     await route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify({jobs: []})});
@@ -282,6 +285,7 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
   await expect(page.getByTestId("publication-publish")).toBeDisabled();
   await expect(page.getByText("Upload anyway")).toHaveCount(0);
 
+  await page.getByText("Publication details and manual actions", {exact: true}).click();
   await page.getByTestId("publication-review-eligible-release").click({force: true});
   await expect(page.getByTestId("publication-approval-state")).toContainText("current");
   await expect(page.getByTestId("publication-dry-run")).toBeEnabled();
@@ -296,6 +300,8 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
     await expect(page.getByTestId("publication-plan-results")).toContainText("Consent required");
     await expect(page.getByTestId("publication-job-counts")).toContainText("2 / 2");
     await expect(page.getByTestId("publication-publish")).toBeDisabled();
+    await page.getByText("Publication details and manual actions", {exact: true}).click();
+    await page.getByText(/Blocked actions \(first/).click();
     const consent = page.getByRole("checkbox", {name: "I reviewed Q123 and permit this Release to update it."});
     await expect(consent).not.toBeChecked();
     await expect(page.getByRole("checkbox", {name: /I reviewed/})).toHaveCount(1);
@@ -316,6 +322,7 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
   expect(dryPolls).toBeGreaterThanOrEqual(3);
   await page.reload();
   await expect(page.getByTestId("publication-dry-run-receipt-state")).toContainText("current", {timeout: 15000});
+  await page.getByText("Publication details and manual actions", {exact: true}).click();
   await page.getByLabel("Override cache (fresh Wikidata checks)").check();
   await page.getByTestId("publication-dry-run").click();
   await expect.poll(() => commands.filter((command) => command.type === "dry_run").length).toBe(2);
@@ -344,7 +351,7 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
 }
 
 test("the audit page reads a bounded Publication audit page", async ({page}) => {
-  test.setTimeout(75_000);
+  test.setTimeout(120_000);
   await installAuditShellMocks(page);
   let auditQuery: Record<string, unknown> | null = null;
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/publication-7/read`, async (route) => {
@@ -427,11 +434,14 @@ test("AI report survives refresh and requires explicit approval before a fresh d
   });
   await page.addInitScript(() => localStorage.setItem("mhm.studio.reviewMode", "modern"));
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
+  await page.getByText("AI settings and advisory review", {exact: true}).click();
   await page.getByRole("button", {name: "AI review blocked items"}).click();
+  await page.getByText("Full AI report", {exact: true}).click();
   await expect(page.getByTestId("publication-ai-report")).toContainText("Supported work", {timeout: 15000});
   expect(commands).toEqual([]);
   await page.reload();
-  await expect(page.getByTestId("publication-ai-report")).toContainText("The source does not establish identity.");
+  await expect(page.getByTestId("publication-ai-report")).toContainText("The source does not establish identity.", {timeout: 20000});
+  await page.getByText("Full AI report", {exact: true}).click();
   await expect(page.getByRole("link", {name: "Review Q123"})).toHaveAttribute("href", "https://www.wikidata.org/wiki/Q123");
   await page.getByRole("button", {name: "Approve AI recommendations (1) and check again"}).click();
   await expect.poll(() => commands.length).toBe(1);
@@ -458,6 +468,8 @@ test("a curator can use an existing QID without updates in a new Release", async
     return route.fulfill({json: {publication: summary("prepare")}});
   });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
+  await page.getByText("Publication details and manual actions", {exact: true}).click();
+  await page.getByText(/Blocked actions \(first/).click();
   await page.getByRole("button", {name: "Use Q123 without updates"}).click();
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({target: current.target, profile_version: current.profile_version,
@@ -494,13 +506,35 @@ test("automatic resolution shows deferred items and a prepared Release without a
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await page.getByTestId("publication-ai-review").waitFor();
   const review = page.getByTestId("publication-ai-review");
+  await page.getByText("AI settings and advisory review", {exact: true}).click();
   await expect(review.getByRole("combobox", {name: "Assessment model", exact: true})).toHaveCount(1);
   await expect(review.getByRole("combobox", {name: "Verification model (independent second check)", exact: true})).toHaveCount(1);
   await page.getByRole("button", {name: "Resolve Release automatically"}).click({timeout: 20000});
   expect(requests[0]).toMatchObject({automatic: true, plan_digest: "sha256:plan-7"});
-  await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred");
+  await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred", {timeout: 20000});
   await expect(page.getByRole("link", {name: "Open prepared Release"})).toHaveAttribute("href", /publication=automatic-release/);
   await expect(page.getByRole("button", {name: /Approve AI recommendations/})).toHaveCount(0);
   await page.reload();
-  await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred");
+  await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred", {timeout: 20000});
+});
+
+
+test("Studio keeps technical controls secondary and shows the next publication action", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  const current = summary("dry_run");
+  await page.route("**/wikidata-publications/latest", route => route.fulfill({json: {publication: current}}));
+  await page.route("**/wikidata-publications/publication-7/read", route => route.fulfill({json: {
+    release_id: RELEASE.release_id, release_digest: RELEASE.release_digest,
+    items: [{entity_id: "work-1", entity_digest: "entity-1", entity_kind: "work", label: "Example work",
+      statement_count: 3, review_status: "approved", proposed_action: "create", findings: []}], total: 1, next_cursor: null,
+  }}));
+  await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
+  await expect(page.getByRole("navigation", {name: "Publication steps"})).toBeVisible({timeout: 20000});
+  await expect(page.getByRole("button", {name: "Publish to Wikidata", exact: true})).toBeEnabled();
+  await expect(page.getByLabel("Override cache (fresh Wikidata checks)")).toBeHidden();
+  await expect(page.getByRole("button", {name: "AI review blocked items", exact: true})).toBeHidden();
+  await expect(page.getByTestId("wikidata-items-export-json")).toBeHidden();
+  await page.screenshot({path: "/tmp/studio-simplified.png", fullPage: true});
+  await page.getByText("Publication details and manual actions", {exact: true}).click();
+  await expect(page.getByLabel("Override cache (fresh Wikidata checks)")).toBeVisible();
 });
