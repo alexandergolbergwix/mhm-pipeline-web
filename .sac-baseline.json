@@ -9,6 +9,34 @@
       "expires": "2026-09-06"
     },
     {
+      "fingerprint": "sha256:0b42301a8b7d61b132a52ff0ac3be56a",
+      "path": "backend/app/publication/wikidata_gateway.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed code identifier or test fixture; it is not a credential.",
+      "expires": "2027-01-01"
+    },
+    {
+      "fingerprint": "sha256:447a0e6917914dbf500c7e009a4cccc7",
+      "path": "backend/app/publication/wikidata_gateway.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed code identifier or test fixture; it is not a credential.",
+      "expires": "2027-01-01"
+    },
+    {
+      "fingerprint": "sha256:7f7686345ef805815cabcfd00d0e9a65",
+      "path": "backend/app/publication/wikidata_gateway.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed code identifier or test fixture; it is not a credential.",
+      "expires": "2027-01-01"
+    },
+    {
+      "fingerprint": "sha256:ea89bec32fa10d510824cf1e1ad87d34",
+      "path": "backend/app/publication/wikidata_gateway.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed code identifier or test fixture; it is not a credential.",
+      "expires": "2027-01-01"
+    },
+    {
       "fingerprint": "sha256:5551a0b4cd318765079c6fa0f5a35e1e",
       "path": "backend/app/routers/ai_verify.py",
       "rule_id": "generic-assigned-secret",

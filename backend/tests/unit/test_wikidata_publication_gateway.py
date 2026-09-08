@@ -6,16 +6,48 @@ from dataclasses import dataclass
 
 import pytest
 
-from app.publication.gateway import GatewayWriteRequest, TargetObservation
+from app.publication.gateway import GatewayMutation, GatewayWriteRequest, TargetObservation
 from app.publication.types import PublicationEntity, TargetRef
 from app.publication.wikidata_gateway import (
     CredentialMaterial,
     CredentialTargetMismatchError,
+    CurrentWikidataBoundary,
     MutationConfirmation,
     RemoteEntitySnapshot,
     WikidataGatewayAdapter,
     WikidataMaxlagError,
 )
+
+
+class _ReadbackUploader:
+    _mark_as_bot = True
+
+    def __init__(self) -> None:
+        self.guard_arguments: list[bool] = []
+
+    def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
+        del props
+        return {
+            qid: {
+                "id": qid,
+                "lastrevid": 18,
+                "labels": {"en": {"language": "en", "value": "Manuscript"}},
+                "claims": {},
+            }
+            for qid in ids
+        }
+
+    def _build_wbi_item(
+        self,
+        item: object,
+        *,
+        check_modifiable: bool = True,
+    ) -> tuple[object, int, list[str]]:
+        del item
+        self.guard_arguments.append(check_modifiable)
+        if check_modifiable:
+            raise RuntimeError("ownership check must not run during read-back")
+        return object(), 0, []
 
 
 @dataclass
@@ -104,6 +136,49 @@ def _gateway(boundary: _Boundary) -> WikidataGatewayAdapter:
         credential_resolver=_Resolver(material),
         boundary_factory=_BoundaryFactory(boundary, []),
     )
+
+
+@pytest.mark.asyncio
+async def test_create_readback_does_not_require_creator_guard() -> None:
+    uploader = _ReadbackUploader()
+    boundary = CurrentWikidataBoundary(uploader=uploader)
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="create",
+        target_qid=None,
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=("P217:shelf-1",),
+    )
+
+    confirmation = await boundary.confirm_mutation(mutation, qid="Q9001")
+
+    assert confirmation.status == "applied"
+    assert uploader.guard_arguments == [False]
+
+
+@pytest.mark.asyncio
+async def test_update_readback_keeps_creator_guard() -> None:
+    uploader = _ReadbackUploader()
+    boundary = CurrentWikidataBoundary(uploader=uploader)
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="update",
+        target_qid="Q9001",
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=("P217:shelf-1",),
+        expected_revision=17,
+    )
+
+    confirmation = await boundary.confirm_mutation(mutation, qid="Q9001")
+
+    assert confirmation.status == "unknown"
+    assert uploader.guard_arguments == [True]
 
 
 @pytest.mark.asyncio

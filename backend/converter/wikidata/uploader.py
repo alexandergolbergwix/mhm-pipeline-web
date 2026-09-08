@@ -647,7 +647,12 @@ class WikidataUploader:
                 return False
         return True  # existing has different value(s) — would conflict
 
-    def _build_wbi_item(self, item: WikidataItem) -> tuple[object, int, list[str]]:
+    def _build_wbi_item(
+        self,
+        item: WikidataItem,
+        *,
+        check_modifiable: bool = True,
+    ) -> tuple[object, int, list[str]]:
         """Convert a WikidataItem to a WikibaseIntegrator item object.
 
         For existing items, performs claim diffing to avoid duplicates AND
@@ -663,7 +668,8 @@ class WikidataUploader:
         # checks _is_our_item at entry, _build_wbi_item is called from
         # other code paths too (tests, scripts). Re-assert here so no
         # mutation can happen on someone else's item.
-        self._assert_modifiable(item.existing_qid or "", stage="_build_wbi_item")
+        if check_modifiable:
+            self._assert_modifiable(item.existing_qid or "", stage="_build_wbi_item")
 
         if item.existing_qid:
             wbi_item = wbi.item.get(item.existing_qid)

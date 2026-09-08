@@ -36,7 +36,12 @@ class _CurrentUploader(Protocol):
 
     def _check_moratorium_for_live(self) -> None: ...
 
-    def _build_wbi_item(self, item: object) -> tuple[_WritableItem, int, list[str]]: ...
+    def _build_wbi_item(
+        self,
+        item: object,
+        *,
+        check_modifiable: bool = True,
+    ) -> tuple[_WritableItem, int, list[str]]: ...
 
     def _assert_modifiable(self, qid: str, *, stage: str) -> None: ...
 
@@ -491,7 +496,18 @@ class CurrentWikidataBoundary:
             item = self._native_item_from_mutation(mutation, target_qid=resolved_qid)
             if mutation.allow_foreign_update:
                 self._uploader.register_foreign_accept(resolved_qid)
-            _, new_claims, _ = self._uploader._build_wbi_item(item)
+            # CREATE confirmation only reads the item that the preceding
+            # write returned. The creator checks can lag behind the write,
+            # especially while Wikidata updates its SPARQL index. Keep the
+            # guard on every mutation path, but do not require it for this
+            # read-only claim comparison.
+            if mutation.action == "create":
+                _, new_claims, _ = self._uploader._build_wbi_item(
+                    item,
+                    check_modifiable=False,
+                )
+            else:
+                _, new_claims, _ = self._uploader._build_wbi_item(item)
             if new_claims:
                 return MutationConfirmation.not_applied(
                     "The read-back still lacks claims from the planned mutation"
