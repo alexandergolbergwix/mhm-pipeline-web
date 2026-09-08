@@ -651,7 +651,7 @@ class WikidataUploader:
         self,
         item: WikidataItem,
         *,
-        check_modifiable: bool = True,
+        read_only: bool = False,
     ) -> tuple[object, int, list[str]]:
         """Convert a WikidataItem to a WikibaseIntegrator item object.
 
@@ -668,7 +668,7 @@ class WikidataUploader:
         # checks _is_our_item at entry, _build_wbi_item is called from
         # other code paths too (tests, scripts). Re-assert here so no
         # mutation can happen on someone else's item.
-        if check_modifiable:
+        if not read_only:
             self._assert_modifiable(item.existing_qid or "", stage="_build_wbi_item")
 
         if item.existing_qid:
@@ -729,7 +729,11 @@ class WikidataUploader:
         for stmt in item.statements:
             # SAFETY: never add an identity-property value that conflicts with
             # an existing one on a pre-existing item.
-            if item.existing_qid and self._would_create_identity_conflict(wbi_item, stmt):
+            if (
+                item.existing_qid
+                and not read_only
+                and self._would_create_identity_conflict(wbi_item, stmt)
+            ):
                 failures.append(
                     f"{stmt.property_id}={stmt.value} identity-conflict on "
                     f"{item.existing_qid}"

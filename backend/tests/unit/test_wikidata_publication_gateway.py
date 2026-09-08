@@ -23,7 +23,7 @@ class _ReadbackUploader:
     _mark_as_bot = True
 
     def __init__(self) -> None:
-        self.guard_arguments: list[bool] = []
+        self.read_only_arguments: list[bool] = []
 
     def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
         del props
@@ -41,12 +41,12 @@ class _ReadbackUploader:
         self,
         item: object,
         *,
-        check_modifiable: bool = True,
+        read_only: bool = False,
     ) -> tuple[object, int, list[str]]:
         del item
-        self.guard_arguments.append(check_modifiable)
-        if check_modifiable:
-            raise RuntimeError("ownership check must not run during read-back")
+        self.read_only_arguments.append(read_only)
+        if not read_only:
+            raise RuntimeError("mutation validation must not run during read-back")
         return object(), 0, []
 
 
@@ -156,7 +156,7 @@ async def test_create_readback_does_not_require_creator_guard() -> None:
     confirmation = await boundary.confirm_mutation(mutation, qid="Q9001")
 
     assert confirmation.status == "applied"
-    assert uploader.guard_arguments == [False]
+    assert uploader.read_only_arguments == [True]
 
 
 @pytest.mark.asyncio
@@ -178,7 +178,7 @@ async def test_update_readback_keeps_creator_guard() -> None:
     confirmation = await boundary.confirm_mutation(mutation, qid="Q9001")
 
     assert confirmation.status == "unknown"
-    assert uploader.guard_arguments == [True]
+    assert uploader.read_only_arguments == [False]
 
 
 @pytest.mark.asyncio

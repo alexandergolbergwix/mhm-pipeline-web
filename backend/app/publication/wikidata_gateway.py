@@ -40,7 +40,7 @@ class _CurrentUploader(Protocol):
         self,
         item: object,
         *,
-        check_modifiable: bool = True,
+        read_only: bool = False,
     ) -> tuple[_WritableItem, int, list[str]]: ...
 
     def _assert_modifiable(self, qid: str, *, stage: str) -> None: ...
@@ -502,10 +502,7 @@ class CurrentWikidataBoundary:
             # guard on every mutation path, but do not require it for this
             # read-only claim comparison.
             if mutation.action == "create":
-                _, new_claims, _ = self._uploader._build_wbi_item(
-                    item,
-                    check_modifiable=False,
-                )
+                _, new_claims, _ = self._uploader._build_wbi_item(item, read_only=True)
             else:
                 _, new_claims, _ = self._uploader._build_wbi_item(item)
             if new_claims:
