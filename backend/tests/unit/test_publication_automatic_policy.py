@@ -1,6 +1,6 @@
 """Policy outcomes require evidence, independent decisions, and duplicate checks."""
 import pytest
-from app.publication.automatic_policy import decide
+from app.publication.automatic_policy import decide, preserve_checked_plan_action
 
 
 def fixture():
@@ -68,3 +68,19 @@ def test_owned_item_updates_only_claims_supported_by_two_reviews():
         'statement_indices': [0],
         'reason': 'Both checks support identity and the retained claims for an owned item.',
     }
+
+
+def test_blocked_only_resolution_preserves_only_safe_checked_plan_actions():
+    assert preserve_checked_plan_action('create', 'absent', None, None, 2) == {
+        'action': 'create',
+        'statement_indices': [0, 1],
+        'reason': 'The checked Plan permits this new item.',
+    }
+    assert preserve_checked_plan_action('update', 'present_owned', 'Q42', 7, 1) == {
+        'action': 'update_existing',
+        'qid': 'Q42',
+        'remote_revision': 7,
+        'statement_indices': [0],
+        'reason': 'The checked Plan permits this owned-item update.',
+    }
+    assert preserve_checked_plan_action('update', 'present_foreign', 'Q42', 7, 1) is None

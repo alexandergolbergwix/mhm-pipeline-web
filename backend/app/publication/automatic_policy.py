@@ -3,7 +3,7 @@ from typing import Literal
 import unicodedata
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-POLICY_VERSION = 'reference-first-v2'
+POLICY_VERSION = 'reference-first-v3'
 STRONG_IDS = {'P214', 'P8189', 'P244', 'P227', 'P213', 'P268', 'P3959'}
 
 
@@ -21,6 +21,31 @@ class IdentityDecision(BaseModel):
     labels_supported: bool
     claims: list[ClaimDecision]
     reason: str = Field(min_length=1)
+
+
+def preserve_checked_plan_action(action, observation, qid, remote_revision, statement_count):
+    """Return a safe retained action from a current deterministic Plan."""
+    indices = list(range(statement_count))
+    if action == 'create' and observation == 'absent':
+        return {'action': 'create', 'statement_indices': indices,
+            'reason': 'The checked Plan permits this new item.'}
+    if (
+        action == 'update'
+        and observation == 'present_owned'
+        and qid
+        and remote_revision is not None
+    ):
+        return {
+            'action': 'update_existing',
+            'qid': qid,
+            'remote_revision': remote_revision,
+            'statement_indices': indices,
+            'reason': 'The checked Plan permits this owned-item update.',
+        }
+    if action == 'skip' and qid and remote_revision is not None:
+        return {'action': 'reuse_existing', 'qid': qid, 'remote_revision': remote_revision,
+            'statement_indices': [], 'reason': 'The checked Plan reuses this existing item.'}
+    return None
 
 
 def shared_identifiers(document, remote):

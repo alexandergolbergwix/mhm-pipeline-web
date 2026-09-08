@@ -23,6 +23,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
   const {run_id: runId, publication_id: publicationId, plan, approval_set: approval} = publication;
   const current = publication.source_current && getPublicationReadiness(publication).approvalCurrent && !publication.execution;
   const report = state?.report;
+  const blockedCount = plan?.action_counts.blocked ?? 0;
   const reportCurrent = current && report?.publication_id === publicationId && report?.plan_id === plan?.plan_id
     && report?.plan_digest === plan?.plan_digest && report?.release_digest === publication.current_release.release_digest;
   const recommended = reportCurrent && state?.status === "succeeded"
@@ -69,7 +70,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
     try {
       const next = await PublicationAiReviewApi.start(runId, publicationId, {
         plan_id: plan.plan_id, plan_digest: plan.plan_digest, tier_model: model.tierModel, force_refresh: override && !retryFailed,
-        ...(automatic ? {automatic: true, verification_model: verificationModel || model.tierModel} : {}),
+        ...(automatic ? {automatic: true, automatic_scope: "blocked" as const, verification_model: verificationModel || model.tierModel} : {}),
       });
       setState(next);
       if (next.job_id) useRunJobs.getState().upsertJob(await RunJobs.get(runId, next.job_id));
@@ -84,11 +85,11 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
   };
 
   return <div className="rounded-lg border border-white/10 p-3 space-y-3" data-testid="publication-ai-review">
-    <p className="font-medium">Prepare automatically</p>
-    <p className="text-sm muted">The system checks identities and sources, prepares supported records, and keeps uncertain records for later. It does not publish.</p>
+    <p className="font-medium">Resolve with AI</p>
+    <p className="text-sm muted">The system checks the {blockedCount} record{blockedCount === 1 ? "" : "s"} that need attention. It keeps the checked records and defers an uncertain record. It does not publish.</p>
     <button type="button" className="button-primary text-sm" disabled={busy || active || loading || !current || !model.selected?.available}
       onClick={() => {void start(true, report?.automatic === true && report.items.some(item => item.resolution?.retryable));}}>
-      {active ? "Preparation in progress" : report?.automatic && report.items.some(item => item.resolution?.retryable) ? "Retry unavailable sources" : "Prepare automatically"}
+      {active ? "AI checks in progress" : report?.automatic && report.items.some(item => item.resolution?.retryable) ? "Retry unavailable sources" : `Resolve ${blockedCount} item${blockedCount === 1 ? "" : "s"} with AI`}
     </button>
     <details className="space-y-3">
       <summary className="cursor-pointer text-sm muted">Advanced AI tools</summary>

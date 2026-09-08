@@ -374,6 +374,6 @@ export const PublicationAiReviewApi = {
     api.get<PublicationAiReviewState>(`${publicationPath(runId, publicationId)}/ai-review`),
   start: (runId: string, publicationId: string, request: {
     plan_id: string; plan_digest: string; tier_model: string; force_refresh: boolean;
-    automatic?: boolean; verification_model?: string;
+    automatic?: boolean; automatic_scope?: "blocked" | "full"; verification_model?: string;
   }) => api.post<PublicationAiReviewState>(`${publicationPath(runId, publicationId)}/ai-review`, request),
 };

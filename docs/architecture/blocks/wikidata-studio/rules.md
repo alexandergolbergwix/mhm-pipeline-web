@@ -902,3 +902,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    Resume action. Recovery never creates a new write intent automatically.
    *Why:* a missing production column stopped the worker before its first item,
    while the UI reported `running` forever (W-227).
+130. **R130 — Automatic resolution must assess blocked actions first.**
+   The job retains a current deterministic create, owned update, or reuse action.
+   It never retains a foreign update without consent.
+   It assesses only blocked actions with two independent AI checks.
+   *Why:* an AI review of every already-safe item delayed a small blocked-item decision.

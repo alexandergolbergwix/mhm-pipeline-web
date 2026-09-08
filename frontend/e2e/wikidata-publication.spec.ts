@@ -509,8 +509,8 @@ test("automatic resolution shows deferred items and a prepared Release without a
   await page.getByText("Advanced AI tools", {exact: true}).click();
   await expect(review.getByRole("combobox", {name: "Assessment model", exact: true})).toHaveCount(1);
   await expect(review.getByRole("combobox", {name: "Verification model (independent second check)", exact: true})).toHaveCount(1);
-  await page.getByRole("button", {name: "Prepare automatically"}).click({timeout: 20000});
-  expect(requests[0]).toMatchObject({automatic: true, plan_digest: "sha256:plan-7"});
+  await page.getByRole("button", {name: "Resolve 2 items with AI"}).click({timeout: 20000});
+  expect(requests[0]).toMatchObject({automatic: true, automatic_scope: "blocked", plan_digest: "sha256:plan-7"});
   await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred", {timeout: 20000});
   await expect(page.getByRole("link", {name: "Open prepared Release"})).toHaveAttribute("href", /publication=automatic-release/);
   await expect(page.getByRole("button", {name: /Approve AI recommendations/})).toHaveCount(0);

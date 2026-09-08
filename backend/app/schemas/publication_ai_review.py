@@ -11,6 +11,7 @@ class StartPublicationAiReview(PublicationSchema):
     tier_model: str | None = Field(default=None, max_length=128)
     force_refresh: bool = False
     automatic: bool = False
+    automatic_scope: Literal['blocked', 'full'] = 'full'
     verification_model: str | None = Field(default=None, max_length=128)
 
 

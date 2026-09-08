@@ -4,6 +4,7 @@
 
 - `backend/tests/unit/test_wikidata_export36_w176.py` — Rule W-176:
   under designation labels only the 245/P1476 title remains as an alias.
+- `backend/tests/unit/test_publication_automatic_policy.py` — blocked-only automatic resolution retains only checked creates, owned updates, and reused items; it sends foreign updates to AI review (R130).
 - `backend/tests/unit/test_wikidata_verdict_cache.py` — sticky-full sanitise
   across schema bumps, gloss-agnostic cache keys, fixture keeps value_label
   (Rule W-175).

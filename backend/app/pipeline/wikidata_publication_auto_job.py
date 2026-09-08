@@ -12,7 +12,7 @@ from app.pipeline.run_job_service import finish_job, update_job_progress
 from app.pipeline.wikidata_publication_ai_review_job import _judge, _cancel_check, ReviewCancelled
 from app.publication.ai_review import checked_plan, review_version
 from app.publication.automatic_evidence import collect_evidence, search_candidates
-from app.publication.automatic_policy import POLICY_VERSION, decide
+from app.publication.automatic_policy import POLICY_VERSION, decide, preserve_checked_plan_action
 from app.publication.automatic_projection import build_documents
 from app.publication.credentials import ExecutionCredentialResolver
 from app.publication.digests import thaw_json, canonical_digest
@@ -72,6 +72,7 @@ async def run_automatic_publication(job_id):
             params = dict(job.params or {})
             actor, run_id = str(params.get('actor_id')), job.run_id
             base_id, scope = params['publication_id'], params['credential_scope_id']
+            blocked_only = params.get('automatic_scope') == 'blocked'
             if job.created_by != uuid.UUID(actor) or not scope.startswith('ai-review:') or params.get('review_version') != review_version():
                 raise ValueError('The automatic review scope or policy changed.')
             await _cancel_check(job_id)
@@ -96,7 +97,9 @@ async def run_automatic_publication(job_id):
                     and previous.params.get('plan_digest') == params['plan_digest']
                     and previous.params.get('review_version') == params['review_version']
                     and previous.params.get('tier_model') == params['tier_model']
-                    and previous.params.get('verification_model') == params.get('verification_model')):
+                    and previous.params.get('verification_model')
+                    == params.get('verification_model')
+                    and previous.params.get('automatic_scope') == params.get('automatic_scope')):
                     saved = (previous.result or {}).get('report') or (previous.progress or {}).get('report')
             report = PublicationAiReport.model_validate(saved) if saved else PublicationAiReport(
                 publication_id=base_id, plan_id=str(plan.id), plan_digest=plan.plan_digest,
@@ -108,8 +111,14 @@ async def run_automatic_publication(job_id):
             done = {row.entity_key for row in report.items}
             repository = SqlAlchemyPublicationRepository(db)
             documents = {}
+            retained = {}
+            total = (
+                sum(action.action == 'block' for action in actions)
+                if blocked_only
+                else len(actions)
+            )
             async def save(phase='automatic_review'):
-                await update_job_progress(job_id, {'phase': phase, 'processed': len(report.items), 'total': len(actions),
+                await update_job_progress(job_id, {'phase': phase, 'processed': len(report.items), 'total': total,
                     'message': {'prepare_subset': 'Prepare the supported subset.', 'approve_subset': 'Record automatic policy approval.',
                         'dry_run': 'Check the retained subset against Wikidata.'}.get(phase, f'Automatic preparation: up to {ASSESSMENT_CONCURRENCY} items at once. {sum(row.status == "deferred" for row in report.items)} deferred; {len(report.items)} processed.'),
                     'report': report.model_dump(mode='json')})
@@ -120,9 +129,22 @@ async def run_automatic_publication(job_id):
                 entity = await repository.get_release_entity(str(plan.release_id), action.entity_key)
                 document = thaw_json(entity.document)
                 document['statements'] = document.get('policy_original_statements') or (
-                    list(document.get('statements') or []) + list(document.get('deferred_statements') or []))
+                    list(document.get('statements') or [])
+                    + list(document.get('deferred_statements') or [])
+                )
                 document['deferred_statements'] = []
                 documents[entity.entity_key] = document
+                if blocked_only:
+                    preserved = preserve_checked_plan_action(
+                        action.action,
+                        action.observation_status,
+                        action.target_qid,
+                        action.target_revision,
+                        len(document['statements']),
+                    )
+                    if preserved is not None:
+                        retained[entity.entity_key] = preserved
+                        continue
                 if entity.entity_key in done:
                     continue
                 work.append((entity, document, action.target_qid, action.target_revision))
@@ -234,7 +256,7 @@ async def run_automatic_publication(job_id):
             # A bounded retry excludes newly blocked actions instead of weakening a gate.
             for attempt in range(3):
                 await _cancel_check(job_id)
-                resolutions = {row.entity_key: row.resolution for row in report.items}
+                resolutions = {**retained, **{row.entity_key: row.resolution for row in report.items}}
                 projected = build_documents(documents, resolutions, job_id)
                 for row in report.items:
                     reason = projected[row.entity_key].get('publication_deferred')
@@ -268,6 +290,10 @@ async def run_automatic_publication(job_id):
                     break
                 blocked = (await db.execute(select(PublicationPlanAction.entity_key).where(
                     PublicationPlanAction.plan_id == uuid.UUID(checked.plan.plan_id), PublicationPlanAction.action == 'block'))).scalars().all()
+                for entity_key in blocked:
+                    if entity_key in retained:
+                        retained[entity_key] = {'action': 'defer', 'statement_indices': [],
+                            'reason': 'Fresh Wikidata checks blocked this action; the automatic policy deferred it.'}
                 for row in report.items:
                     if row.entity_key in blocked:
                         row.status = 'deferred'

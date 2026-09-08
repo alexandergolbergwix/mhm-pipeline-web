@@ -72,5 +72,6 @@ An explicit override bypasses both report reuse and inference cache reads.
 
 ## Automatic mode
 
-The optional automatic mode assesses the full Plan and prepares a supported subset.
+The default automatic mode assesses blocked actions and preserves safe current Plan actions.
+It prepares a supported subset without an AI call for each already-safe item.
 It uses policy approval and never supplies foreign consent. See [automatic resolution](automatic-resolution.md).

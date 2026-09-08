@@ -14,12 +14,14 @@ The interface never treats approval as publication readiness.
 
 1. Open the current approved Release and its dry-run Plan.
 2. Select the assessment model and the verification model.
-3. Click **Prepare automatically**.
+3. Click **Resolve N items with AI**.
 4. Open the prepared Release after the job completes.
 5. Inspect its receipt before the separate publication action.
 
 No item-by-item human approval is required in automatic mode.
-The policy approves only the retained subset and records `policy:reference-first-v2` as the actor.
+The default blocked-only mode retains each current safe Plan action.
+It assesses only the blocked actions with two independent AI checks.
+The policy approves only the retained subset and records `policy:reference-first-v3` as the actor.
 It never supplies foreign-QID consent or performs a Wikidata write.
 Deferred items remain in the source corpus and report, outside the approved subset.
 If every item is deferred, the job reports that no subset is ready.
@@ -28,7 +30,9 @@ If every item is deferred, the job reports that no subset is ready.
 
 The existing AI endpoint accepts `automatic: true` and optional `verification_model`.
 The existing verify job slot runs `wikidata_publication_auto_job.py` for this mode.
-The job covers the full Plan, with a limit of 500 entities.
+The default job covers blocked actions only, with a limit of 500 entities.
+It retains creates and owned-item updates from the current deterministic Plan.
+Legacy full-Plan mode remains available for a compatible retry.
 It assesses at most three items at once, with a separate database session for each item.
 Each item retains its two sequential independent checks.
 The coordinator saves completed results immediately, even when an earlier item takes longer.
@@ -88,7 +92,7 @@ A page refresh restores the report. The prepared Release link uses its exact Pub
 
 ## Files and tests
 
-- `backend/app/publication/automatic_policy.py`: typed decisions and deterministic action rules.
+- `backend/app/publication/automatic_policy.py`: typed decisions and deterministic retention rules.
 - `backend/app/publication/automatic_evidence.py`: original records and bounded external evidence.
 - `backend/app/publication/automatic_projection.py`: subset and dependency handling.
 - `backend/app/pipeline/wikidata_publication_auto_job.py`: durable assessment, subset, policy review, and dry-run.
