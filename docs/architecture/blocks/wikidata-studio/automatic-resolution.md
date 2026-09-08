@@ -14,7 +14,7 @@ The interface never treats approval as publication readiness.
 
 1. Open the current approved Release and its dry-run Plan.
 2. Select the assessment model and the verification model.
-3. Click **Resolve Release automatically**.
+3. Click **Prepare automatically**.
 4. Open the prepared Release after the job completes.
 5. Inspect its receipt before the separate publication action.
 

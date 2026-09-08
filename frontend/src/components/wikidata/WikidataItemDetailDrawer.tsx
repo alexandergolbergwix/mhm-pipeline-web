@@ -54,6 +54,11 @@ function labelOf(item: StudioItem): string {
   return l.en || l.he || Object.values(l)[0] || item.local_id || "";
 }
 
+function fieldId(localId: string | undefined, name: string): string {
+  const safeLocalId = (localId ?? "item").replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `wikidata-${safeLocalId}-${name}`;
+}
+
 export function WikidataItemDetailDrawer({
   runId,
   projectId,
@@ -73,7 +78,7 @@ export function WikidataItemDetailDrawer({
   const [pinned, setPinned] = useState(false);
   const [labels, setLabels] = useState({...(item.labels ?? {})});
   const [descriptions, setDescriptions] = useState({...(item.descriptions ?? {})});
-  const [aliasesHe, setAliasesHe] = useState((item.aliases?.he ?? []).join(" · "));
+  const [aliasesHe, setAliasesHe] = useState<string[]>(item.aliases?.he ?? []);
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
   const [excludeSaving, setExcludeSaving] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -102,7 +107,7 @@ export function WikidataItemDetailDrawer({
         setDetailItem(full);
         setLabels({...(full.labels ?? {})});
         setDescriptions({...(full.descriptions ?? {})});
-        setAliasesHe((full.aliases?.he ?? []).join(" · "));
+        setAliasesHe(full.aliases?.he ?? []);
         setAcceptForeign(Boolean(full.accept_foreign_modify));
         setExcluded(new Set());
       })
@@ -156,9 +161,7 @@ export function WikidataItemDetailDrawer({
     const payload: ItemOverridePayload = {
       labels,
       descriptions,
-      aliases: aliasesHe.trim()
-        ? {he: aliasesHe.split("·").map((s) => s.trim()).filter(Boolean)}
-        : undefined,
+      aliases: {he: aliasesHe.map((alias) => alias.trim()).filter(Boolean)},
     };
     await save(payload);
   }, [aliasesHe, descriptions, labels, save]);
@@ -401,39 +404,93 @@ export function WikidataItemDetailDrawer({
 
         <AiVerdictReasoningCard verdict={detailItem.ai_verdict} />
 
-        <section className="space-y-2">
-          <h4 className="text-sm font-medium">Labels</h4>
-          {(["en", "he"] as const).map((lang) => (
+        <section className="space-y-3" aria-labelledby={fieldId(detailItem.local_id, "labels-heading")}>
+          <h4 id={fieldId(detailItem.local_id, "labels-heading")} className="text-sm font-medium">Labels</h4>
+          <div className="space-y-1">
+            <label htmlFor={fieldId(detailItem.local_id, "label-en")} className="text-xs muted">English label</label>
             <input
-              key={lang}
-              value={labels[lang] ?? ""}
-              onChange={(e) => setLabels((prev) => ({...prev, [lang]: e.target.value}))}
-              placeholder={`Label (${lang})`}
+              id={fieldId(detailItem.local_id, "label-en")}
+              value={labels.en ?? ""}
+              onChange={(e) => setLabels((prev) => ({...prev, en: e.target.value}))}
+              lang="en"
+              dir="ltr"
               className="input-glass text-sm w-full"
             />
-          ))}
+          </div>
+          <div className="space-y-1">
+            <label htmlFor={fieldId(detailItem.local_id, "label-he")} className="text-xs muted">Hebrew label</label>
+            <input
+              id={fieldId(detailItem.local_id, "label-he")}
+              value={labels.he ?? ""}
+              onChange={(e) => setLabels((prev) => ({...prev, he: e.target.value}))}
+              lang="he"
+              dir="rtl"
+              className="input-glass text-sm w-full"
+            />
+          </div>
         </section>
 
-        <section className="space-y-2">
-          <h4 className="text-sm font-medium">Descriptions</h4>
-          {(["en", "he"] as const).map((lang) => (
+        <section className="space-y-3" aria-labelledby={fieldId(detailItem.local_id, "descriptions-heading")}>
+          <h4 id={fieldId(detailItem.local_id, "descriptions-heading")} className="text-sm font-medium">Descriptions</h4>
+          <div className="space-y-1">
+            <label htmlFor={fieldId(detailItem.local_id, "description-en")} className="text-xs muted">English description</label>
             <textarea
-              key={lang}
-              value={descriptions[lang] ?? ""}
-              onChange={(e) => setDescriptions((prev) => ({...prev, [lang]: e.target.value}))}
-              placeholder={`Description (${lang})`}
+              id={fieldId(detailItem.local_id, "description-en")}
+              value={descriptions.en ?? ""}
+              onChange={(e) => setDescriptions((prev) => ({...prev, en: e.target.value}))}
+              lang="en"
+              dir="ltr"
               className="input-glass text-sm w-full min-h-[60px]"
             />
-          ))}
+          </div>
+          <div className="space-y-1">
+            <label htmlFor={fieldId(detailItem.local_id, "description-he")} className="text-xs muted">Hebrew description</label>
+            <textarea
+              id={fieldId(detailItem.local_id, "description-he")}
+              value={descriptions.he ?? ""}
+              onChange={(e) => setDescriptions((prev) => ({...prev, he: e.target.value}))}
+              lang="he"
+              dir="rtl"
+              className="input-glass text-sm w-full min-h-[60px]"
+            />
+          </div>
         </section>
 
-        <section className="space-y-2">
-          <h4 className="text-sm font-medium">Aliases (Hebrew, · separated)</h4>
-          <input
-            value={aliasesHe}
-            onChange={(e) => setAliasesHe(e.target.value)}
-            className="input-glass text-sm w-full"
-          />
+        <section className="space-y-3" aria-labelledby={fieldId(detailItem.local_id, "aliases-heading")}>
+          <div>
+            <h4 id={fieldId(detailItem.local_id, "aliases-heading")} className="text-sm font-medium">Hebrew aliases</h4>
+            <p className="text-xs muted">Add one alias per row. Keep the catalogue spelling in the source record.</p>
+          </div>
+          {aliasesHe.length === 0 && <p className="text-xs muted">No Hebrew aliases added.</p>}
+          {aliasesHe.map((alias, index) => {
+            const aliasId = fieldId(detailItem.local_id, `alias-he-${index}`);
+            return (
+              <div key={aliasId} className="flex items-end gap-2">
+                <div className="space-y-1 flex-1">
+                  <label htmlFor={aliasId} className="text-xs muted">Hebrew alias {index + 1}</label>
+                  <input
+                    id={aliasId}
+                    value={alias}
+                    onChange={(e) => setAliasesHe((prev) => prev.map((value, valueIndex) => valueIndex === index ? e.target.value : value))}
+                    lang="he"
+                    dir="rtl"
+                    className="input-glass text-sm w-full"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="button-ghost text-xs"
+                  aria-label={`Remove Hebrew alias ${index + 1}`}
+                  onClick={() => setAliasesHe((prev) => prev.filter((_value, valueIndex) => valueIndex !== index))}
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+          <button type="button" className="button-ghost text-xs" onClick={() => setAliasesHe((prev) => [...prev, ""])}>
+            Add Hebrew alias
+          </button>
         </section>
 
         <section className="space-y-2 border-t border-white/5 pt-3">
@@ -457,7 +514,7 @@ export function WikidataItemDetailDrawer({
                     <span className="ml-auto shrink-0">
                       {isExcluded ? (
                         <button type="button" onClick={() => void toggleExclude(i)} className="text-[11px] text-biu-sky hover:underline">
-                          Undo
+                          Undo this change
                         </button>
                       ) : (
                         <button type="button" onClick={() => void toggleExclude(i)} className="text-[11px] muted hover:text-danger transition">
@@ -501,7 +558,7 @@ export function WikidataItemDetailDrawer({
 
         <div className="flex flex-wrap gap-2 pt-2">
           <button type="button" className="button-primary text-sm" disabled={saving} onClick={() => void handleSave()}>
-            {saving ? "Saving…" : "Save override"}
+            {saving ? "Saving…" : "Save changes"}
           </button>
           <button
             type="button"

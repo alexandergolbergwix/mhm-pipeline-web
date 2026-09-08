@@ -55,6 +55,14 @@ If a worker fails before the runtime records a pause, a summary read reconciles
 the failed execution job to `paused`. The browser shows the saved counts, the
 worker error, and a Resume action. This recovery never retries a remote write.
 
+The publication controls present the researcher workflow as Prepare, Review, and
+Publish. A result summary separates records prepared for the Plan from records
+that remain outside this publication. Omitted connections show a named property
+and target first; technical JSON remains inside a disclosure. The manual editor
+uses explicit English and Hebrew field labels, language direction metadata, and
+one Hebrew alias per row. These labels change the interface only; the digest,
+approval, and publication gates remain unchanged.
+
 ## API
 
 - `POST /api/runs/{runId}/wikidata-publications/prepare`
@@ -82,7 +90,9 @@ See [Publication credentials](publication-credentials.md) for account binding, t
   used by the worker repository.
 - `frontend/e2e/wikidata-publication.spec.ts` tests Review, Dry-run, Publish, audit, and bounded pages.
 - `frontend/tests/unit/wikidataPublicationControls.spec.tsx` tests saved paused
-  progress, the worker error, and the Resume action.
+  progress, the worker error, the Resume action, and included/omitted counts.
+- `frontend/e2e/wikidata-item-drawer.spec.ts` tests labelled multilingual fields
+  and the manual editor actions.
 
 See [the asynchronous dry-run flow](publication-dry-run-job.md) for job polls, progress, and cancellation.
 
@@ -91,8 +101,8 @@ See [the asynchronous dry-run flow](publication-dry-run-job.md) for job polls, p
 The entity read API maps stored `approve`/`reject` decisions to `approved`/`rejected` (W-220).
 A blocked action can expose `consent` with an entity key, QID, revision, and entity digest (W-221).
 The curator opens the QID link and selects its consent checkbox after review.
-`Create Dry-run Receipt` submits selected `foreign_qid_consents` and starts fresh checks.
+`Check before publication` submits selected `foreign_qid_consents` and starts fresh checks.
 The worker accepts consent only when all four values match.
 The test target links to `test.wikidata.org`; the live target links to `www.wikidata.org`.
-Lookup timeouts have no consent option. Use cache override to repeat those checks.
+Lookup timeouts have no consent option. Use **Check all records again** to repeat those checks.
 The user must select consent again after a request or a new Plan.

@@ -29,7 +29,8 @@
 | `frontend/src/cache/extractionCache.ts` | User-scoped SWR entity cache + `EXTRACTION_ENTITIES_REFRESH_EVENT = "mhm.entities.refreshed"` |
 | `frontend/src/components/glass/` | Design system: `Glass`, `GlassPill`, `LiquidGlassCanvas`, `LiquidGlassSurface`, `liquidGlassMath`, `glassMapCache` |
 | `frontend/src/components/extraction/`, `authority/`, `wikidata/`, `hmo/` | Feature component families (Rule W-16 / W-31 review surfaces) |
-| `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Studio item drawer: overrides, foreign-modify accept (W-99), push/reconcile, HMO Wikibase Item:Q link (W-122) |
+| `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Studio item drawer: labelled multilingual overrides, one-row Hebrew aliases, foreign-modify accept (W-99), push/reconcile, HMO Wikibase Item:Q link (W-122) |
+| `frontend/src/components/wikidata/WikidataItemTable.tsx` | Searchable result list with a labelled record search and direct item editor entry |
 | `frontend/src/components/wikidata/WikidataUploadSteps.tsx` | Two-step Wikidata upload bars (Now + ETA; Rule W-192) |
 | `frontend/src/utils/formatJobEta.ts` | Shared remaining/elapsed time labels for job progress |
 | `frontend/src/api/wikidataStudio.ts` | Typed Wikidata Studio client incl. `accept_foreign_modify` override fields |
@@ -54,5 +55,7 @@ Publication restore (W-219) includes completed job progress and errors. The curr
 
 [Automatic resolution](../wikidata-studio/automatic-resolution.md) lists the worker, evidence cache, structured verdict, subset, and tests.
 
-The Wikidata Publication controls show the next action and keep manual actions in a disclosure.
-The AI review panel labels automatic and advisory results separately.
+The Wikidata Publication controls show the next action, included/omitted result
+counts, and keep manual actions in a disclosure. The AI review panel labels
+automatic and advisory results separately. The item drawer keeps source wording
+separate from editable multilingual values and uses explicit field labels.

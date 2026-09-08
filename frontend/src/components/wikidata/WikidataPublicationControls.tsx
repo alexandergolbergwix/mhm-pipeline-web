@@ -22,6 +22,10 @@ function shortDigest(digest: string): string {
   return value.length > 12 ? `${value.slice(0, 12)}…` : value;
 }
 
+function actionCount(counts: Record<string, number>, key: string): number {
+  return counts[key] ?? 0;
+}
+
 function commandLabel(type: PublicationAdvanceCommand["type"]): string {
   if (type === "review") return "Saving review…";
   if (type === "dry_run") return "Checking Plan…";
@@ -58,6 +62,12 @@ export function WikidataPublicationControls({
   const selectedKeys = consentSelection.planDigest === plan?.plan_digest ? consentSelection.entityKeys : [];
   const consents = (plan?.blocked_actions ?? []).flatMap((action) =>
     action.consent && selectedKeys.includes(action.entity_key) ? [action.consent] : []);
+  const includedCount = plan
+    ? actionCount(plan.action_counts, "create")
+      + actionCount(plan.action_counts, "update")
+      + actionCount(plan.action_counts, "skip")
+    : 0;
+  const omittedCount = actionCount(plan?.action_counts ?? {}, "blocked");
 
   const reviewEligibleRelease = () => onAdvance({
     type: "review",
@@ -106,12 +116,18 @@ export function WikidataPublicationControls({
       <div className="rounded-lg bg-white/5 p-4 space-y-3">
         <p className="text-lg font-medium">{execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
         <p className="text-sm muted">{release.entity_count} items in this Release · Target: {publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}</p>
-        {plan && <p className="text-sm">{plan.action_counts.create ?? 0} new · {plan.action_counts.update ?? 0} updates · {plan.action_counts.skip ?? 0} reused without updates · {plan.action_counts.blocked ?? 0} need attention</p>}
+        {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · {actionCount(plan.action_counts, "skip")} reused without updates · {actionCount(plan.action_counts, "blocked")} need attention</p>}
+        {plan && <div className="rounded-md border border-white/10 bg-black/10 p-3" data-testid="publication-result-summary" aria-live="polite">
+          <p className="text-sm font-medium">{includedCount.toLocaleString()} of {release.entity_count.toLocaleString()} records prepared</p>
+          <p className="text-xs muted">
+            {omittedCount.toLocaleString()} record{omittedCount === 1 ? "" : "s"} not included in this publication.
+          </p>
+        </div>}
         {!!plan?.blocked_actions?.length && <p className="text-sm text-warn">
           {plan.blocked_actions.filter(action => action.consent).length} identity checks · {plan.blocked_actions.filter(action => !action.consent).length} other checks need attention. Open the details for individual reasons.
         </p>}
         {release.finding_counts.error > 0 && <p className="text-warn">{release.finding_counts.error} source errors require attention. Open the details below.</p>}
-        <p className="text-xs muted">Approval and publication readiness are separate. Deferred items and connections are not uploaded.</p>
+        <p className="text-xs muted">Approval and publication readiness are separate. Records and connections outside the plan remain available for later review.</p>
         {!execution && (!readiness.approvalCurrent || !plan || readiness.publishAllowed || !plan.action_counts.blocked) && <button type="button" className="button-primary"
           disabled={busy || !publication.source_current || release.finding_counts.error > 0}
           onClick={() => {void (readiness.publishAllowed ? publish() : !readiness.approvalCurrent ? reviewEligibleRelease() : dryRun());}}>
@@ -143,7 +159,7 @@ export function WikidataPublicationControls({
         </div>
 
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3" data-testid="publication-approval-state">
-          <div className="kicker">Approval Set</div>
+          <div className="kicker">Review</div>
           <p className={readiness.approvalCurrent ? "mt-1 text-sm text-success" : "mt-1 text-sm text-warn"}>
             {readiness.approvalCurrent ? "current" : approval ? "stale or incomplete" : "not created"}
           </p>
@@ -156,7 +172,7 @@ export function WikidataPublicationControls({
         </div>
 
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3" data-testid="publication-dry-run-receipt-state">
-          <div className="kicker">Dry-run Receipt</div>
+          <div className="kicker">Pre-publication check</div>
           <p className={readiness.receiptCurrent ? "mt-1 text-sm text-success" : "mt-1 text-sm text-warn"}>
             {readiness.receiptCurrent ? "current" : receipt?.status === "failed" ? "failed" : receipt ? "stale" : "not created"}
           </p>
@@ -168,42 +184,47 @@ export function WikidataPublicationControls({
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={forceRefresh} disabled={busy || executionActive}
           onChange={(event) => setForceRefresh(event.target.checked)} />
-        Override cache (fresh Wikidata checks)
+        Check all records again
       </label>
-      <p className="text-xs muted">A normal dry-run reuses a current saved plan. Override cache checks every entity again.</p>
+      <p className="text-xs muted">The normal check reuses saved results. Use this option when you need fresh Wikidata checks.</p>
       {plan && <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-plan-results">
-        <p>{plan.action_counts.create ?? 0} creates · {plan.action_counts.update ?? 0} updates · {plan.action_counts.blocked ?? 0} blocked · {plan.action_counts.skip ?? 0} existing items without updates</p>
+        <p>{actionCount(plan.action_counts, "create")} creates · {actionCount(plan.action_counts, "update")} updates · {actionCount(plan.action_counts, "blocked")} blocked · {actionCount(plan.action_counts, "skip")} existing items without updates</p>
         <p className="text-xs muted">Saved results remain visible after refresh. Expired receipts require fresh checks before publication.</p>
         {!!plan.blocked_actions?.length && <details>
           <summary>Blocked actions (first {plan.blocked_actions.length})</summary>
-          <ul className="space-y-2 mt-2">{plan.blocked_actions.map((action) => <li key={action.entity_key} className="text-xs">
-            <span className="font-semibold">{action.entity_key}{action.target_qid ? ` · ${action.target_qid}` : ""}</span>
-            <details><summary className="cursor-pointer">Technical reason</summary><p className="break-words">{action.reason}</p></details>
-            {action.consent && <div className="mt-2 space-y-1">
-              <a href={`https://${publication.target === "live" ? "www" : "test"}.wikidata.org/wiki/${action.consent.qid}`}
-                target="_blank" rel="noopener noreferrer" className="text-accent underline">Review {action.consent.qid}</a>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={selectedKeys.includes(action.entity_key)}
-                  disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}
-                  onChange={(event) => {
-                    const entityKeys = event.target.checked
-                      ? [...selectedKeys, action.entity_key]
-                      : selectedKeys.filter((key) => key !== action.entity_key);
-                    setConsentSelection({planDigest: plan.plan_digest, entityKeys});
-                  }} />
-                I reviewed {action.consent.qid} and permit this Release to update it.
-              </label>
-              {onUseExisting && <div className="space-y-1">
-                <p>Use this option only if both records describe the same item. A new Release requires approval and a fresh dry-run.</p>
-                <button type="button" className="button-ghost text-sm"
-                  disabled={busy || !!execution || !readiness.approvalCurrent || !publication.source_current}
-                  onClick={() => { void onUseExisting([action.entity_key]); }}>
-                  Use {action.consent.qid} without updates
-                </button>
+          <ul className="space-y-2 mt-2">
+            {plan.blocked_actions.map((action) => <li key={action.entity_key} className="text-xs">
+              <span className="font-semibold">{action.entity_key}{action.target_qid ? ` · ${action.target_qid}` : ""}</span>
+              <details>
+                <summary className="cursor-pointer">Why this record is not included</summary>
+                <p className="break-words">{action.reason}</p>
+              </details>
+              {action.consent && <div className="mt-2 space-y-1">
+                <a href={`https://${publication.target === "live" ? "www" : "test"}.wikidata.org/wiki/${action.consent.qid}`}
+                  target="_blank" rel="noopener noreferrer" className="text-accent underline">Review {action.consent.qid}</a>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={selectedKeys.includes(action.entity_key)}
+                    disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}
+                    onChange={(event) => {
+                      const entityKeys = event.target.checked
+                        ? [...selectedKeys, action.entity_key]
+                        : selectedKeys.filter((key) => key !== action.entity_key);
+                      setConsentSelection({planDigest: plan.plan_digest, entityKeys});
+                    }} />
+                  I reviewed {action.consent.qid} and permit this Release to update it.
+                </label>
+                {onUseExisting && <div className="space-y-1">
+                  <p>Use this option only if both records describe the same item. A new Release requires approval and a fresh dry-run.</p>
+                  <button type="button" className="button-ghost text-sm"
+                    disabled={busy || !!execution || !readiness.approvalCurrent || !publication.source_current}
+                    onClick={() => { void onUseExisting([action.entity_key]); }}>
+                    Use {action.consent.qid} without updates
+                  </button>
+                </div>}
+                <p className="muted">Check before publication after you review this item. A changed item requires another review.</p>
               </div>}
-              <p className="muted">Create a new Dry-run Receipt to check this consent. A changed item requires another review.</p>
-            </div>}
-          </li>)}</ul>
+            </li>)}
+          </ul>
         </details>}
       </div>}
       <div className="flex flex-wrap items-center gap-2">
@@ -214,7 +235,7 @@ export function WikidataPublicationControls({
           onClick={() => { void reviewEligibleRelease(); }}
           data-testid="publication-review-eligible-release"
         >
-          {busyCommand === "review" ? commandLabel("review") : `Approve eligible Release (${release.entity_count.toLocaleString()})`}
+          {busyCommand === "review" ? commandLabel("review") : `Review all records (${release.entity_count.toLocaleString()})`}
         </button>
         {pageEntityKeys.length > 0 && (
           <button
@@ -224,7 +245,7 @@ export function WikidataPublicationControls({
             onClick={() => { void reviewPage(); }}
             data-testid="publication-review-page"
           >
-            Approve this page ({pageEntityKeys.length})
+            Review visible records ({pageEntityKeys.length})
           </button>
         )}
         <button
@@ -234,7 +255,7 @@ export function WikidataPublicationControls({
           onClick={() => { void dryRun(); }}
           data-testid="publication-dry-run"
         >
-          {busyCommand === "dry_run" ? commandLabel("dry_run") : "Create Dry-run Receipt"}
+          {busyCommand === "dry_run" ? commandLabel("dry_run") : "Check before publication"}
         </button>
         <button
           type="button"
@@ -246,7 +267,7 @@ export function WikidataPublicationControls({
           {busyCommand === "publish" ? commandLabel("publish") : `Publish to ${publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}`}
         </button>
         <a className="button-ghost text-sm ml-auto" href={auditHref} data-testid="publication-audit-link">
-          Open audit
+          Publication history
         </a>
       </div>
 

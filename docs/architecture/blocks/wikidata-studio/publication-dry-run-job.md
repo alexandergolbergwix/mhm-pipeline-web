@@ -39,7 +39,7 @@ A normal dry-run request reuses a completed current plan for the same account.
 Reuse requires matching source, Release, Approval Set, and receipt digests.
 It also requires an unexpired receipt and no Execution.
 The response contains the saved Publication with no new operation.
-`Override cache (fresh Wikidata checks)` sets `force_refresh=true` and queues a new job.
+`Check all records again` sets `force_refresh=true` and queues a new job.
 Failed plans remain failed. The UI shows counts and up to 50 blocked actions.
 The cache stores completed plans; an interrupted dry-run requires a new check.
 

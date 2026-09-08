@@ -172,6 +172,21 @@ describe("WikidataPublicationControls", () => {
     });
   });
 
+  it("shows included and omitted record counts in the result summary", () => {
+    render(<WikidataPublicationControls
+      publication={publication({
+        approval_set: approval(),
+        plan: plan({action_counts: {create: 1, update: 0, skip: 0, blocked: 1}}),
+      })}
+      entities={[entity("work-1"), entity("work-2")]}
+      onAdvance={vi.fn()}
+      auditHref="/audit"
+    />);
+
+    expect(screen.getByTestId("publication-result-summary")).toHaveTextContent("1 of 2 records prepared");
+    expect(screen.getByTestId("publication-result-summary")).toHaveTextContent("1 record not included");
+  });
+
   it("fails closed when an Approval Set has another Release digest", () => {
     render(<WikidataPublicationControls
       publication={publication({approval_set: approval({release_digest: "sha256:old"})})}

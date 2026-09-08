@@ -141,13 +141,17 @@ export function WikidataItemTable({
 
   return (
     <div className="space-y-3">
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search label, local ID, entity type…"
-        className="input-glass text-sm w-full max-w-md"
-        data-testid="wikidata-item-search"
-      />
+      <div className="w-full max-w-md space-y-1">
+        <label htmlFor="wikidata-item-search" className="text-xs muted">Search records</label>
+        <input
+          id="wikidata-item-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search label, local ID, entity type…"
+          className="input-glass text-sm w-full"
+          data-testid="wikidata-item-search"
+        />
+      </div>
 
       <CuratorTableScroll data-testid="wikidata-item-table-scroll">
         <table className="w-full text-sm" data-testid="wikidata-item-table">

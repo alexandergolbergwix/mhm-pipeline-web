@@ -31,8 +31,26 @@ test.describe("Wikidata item detail drawer", () => {
 
     let pushCalled = false;
     let applyCalled = false;
+    let savePayload: unknown = null;
     await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, (route) => {
       const url = route.request().url();
+      if (route.request().method() === "PATCH") {
+        savePayload = route.request().postDataJSON();
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            run_id: TEST_RUN_ID,
+            local_id: "manuscript::Push Me",
+            labels: {en: "Push Me"},
+            descriptions: {en: "A manuscript"},
+            aliases: {he: ["דחוף"]},
+            add_statements: [],
+            remove_statements: [],
+            statement_edits: {},
+          }),
+        });
+      }
       if (route.request().method() === "POST" && url.includes("/push")) {
         pushCalled = true;
         return route.fulfill({
@@ -73,6 +91,13 @@ test.describe("Wikidata item detail drawer", () => {
 
     await page.getByTestId("wikidata-item-row-manuscript::Push Me").getByRole("button", {name: "Open"}).click();
     await expect(page.getByTestId("wikidata-item-detail-drawer")).toBeVisible();
+    await expect(page.getByLabel("English label")).toHaveValue("Push Me");
+    await expect(page.getByLabel("Hebrew label")).toHaveAttribute("dir", "rtl");
+    await expect(page.getByRole("button", {name: "Save changes"})).toBeVisible();
+    await page.getByRole("button", {name: "Add Hebrew alias"}).click();
+    await page.getByLabel("Hebrew alias 1").fill("דחוף");
+    await page.getByRole("button", {name: "Save changes"}).click();
+    await expect.poll(() => savePayload).toMatchObject({aliases: {he: ["דחוף"]}});
 
     await page.getByTestId("wikidata-item-apply-fix-btn").click();
     await expect.poll(() => applyCalled).toBe(true);

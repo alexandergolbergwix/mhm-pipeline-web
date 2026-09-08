@@ -84,21 +84,21 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
   };
 
   return <div className="rounded-lg border border-white/10 p-3 space-y-3" data-testid="publication-ai-review">
-    <p className="font-medium">Prepare with AI</p>
-    <p className="text-sm muted">AI checks the full Release, reuses verified QIDs, and defers unresolved items. It does not publish.</p>
+    <p className="font-medium">Prepare automatically</p>
+    <p className="text-sm muted">The system checks identities and sources, prepares supported records, and keeps uncertain records for later. It does not publish.</p>
     <button type="button" className="button-primary text-sm" disabled={busy || active || loading || !current || !model.selected?.available}
       onClick={() => {void start(true, report?.automatic === true && report.items.some(item => item.resolution?.retryable));}}>
-      {active ? "AI preparation in progress" : report?.automatic && report.items.some(item => item.resolution?.retryable) ? "Retry failed automatic checks" : "Resolve Release automatically"}
+      {active ? "Preparation in progress" : report?.automatic && report.items.some(item => item.resolution?.retryable) ? "Retry unavailable sources" : "Prepare automatically"}
     </button>
     <details className="space-y-3">
-      <summary className="cursor-pointer text-sm muted">AI settings and advisory review</summary>
+      <summary className="cursor-pointer text-sm muted">Advanced AI tools</summary>
       <Tier1ModelSelect label="Assessment model" tierModel={model.tierModel} onChange={model.setTierModel} list={model.list}
         loading={model.loading} disabled={busy || active || loading} />
       <Tier1ModelSelect label="Verification model (independent second check)" tierModel={verificationModel || model.tierModel} onChange={setVerificationModel} list={model.list}
         loading={model.loading} disabled={busy || active || loading} />
       <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={override}
-        disabled={busy || active || loading} onChange={(event) => setOverride(event.target.checked)} />Override AI cache (fresh review)</label>
-      <p className="text-xs muted">Advisory review only reports recommendations. It does not prepare an automatic subset.</p>
+        disabled={busy || active || loading} onChange={(event) => setOverride(event.target.checked)} />Check AI results again</label>
+      <p className="text-xs muted">The optional advisory review reports recommendations. It does not prepare or publish records.</p>
       <button type="button" className="button-ghost text-sm" disabled={busy || active || loading || !current || !model.selected?.available}
         onClick={() => {void start();}}>AI review blocked items</button>
     </details>

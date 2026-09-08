@@ -323,7 +323,7 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
   await page.reload();
   await expect(page.getByTestId("publication-dry-run-receipt-state")).toContainText("current", {timeout: 15000});
   await page.getByText("Publication details and manual actions", {exact: true}).click();
-  await page.getByLabel("Override cache (fresh Wikidata checks)").check();
+  await page.locator("details").filter({hasText: "Publication details and manual actions"}).getByLabel("Check all records again").check();
   await page.getByTestId("publication-dry-run").click();
   await expect.poll(() => commands.filter((command) => command.type === "dry_run").length).toBe(2);
   expect(commands[2].force_refresh).toBe(true);
@@ -434,7 +434,7 @@ test("AI report survives refresh and requires explicit approval before a fresh d
   });
   await page.addInitScript(() => localStorage.setItem("mhm.studio.reviewMode", "modern"));
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
-  await page.getByText("AI settings and advisory review", {exact: true}).click();
+  await page.getByText("Advanced AI tools", {exact: true}).click();
   await page.getByRole("button", {name: "AI review blocked items"}).click();
   await page.getByText("Full AI report", {exact: true}).click();
   await expect(page.getByTestId("publication-ai-report")).toContainText("Supported work", {timeout: 15000});
@@ -506,10 +506,10 @@ test("automatic resolution shows deferred items and a prepared Release without a
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await page.getByTestId("publication-ai-review").waitFor();
   const review = page.getByTestId("publication-ai-review");
-  await page.getByText("AI settings and advisory review", {exact: true}).click();
+  await page.getByText("Advanced AI tools", {exact: true}).click();
   await expect(review.getByRole("combobox", {name: "Assessment model", exact: true})).toHaveCount(1);
   await expect(review.getByRole("combobox", {name: "Verification model (independent second check)", exact: true})).toHaveCount(1);
-  await page.getByRole("button", {name: "Resolve Release automatically"}).click({timeout: 20000});
+  await page.getByRole("button", {name: "Prepare automatically"}).click({timeout: 20000});
   expect(requests[0]).toMatchObject({automatic: true, plan_digest: "sha256:plan-7"});
   await expect(page.getByTestId("publication-ai-report")).toContainText("Uncertain work · deferred", {timeout: 20000});
   await expect(page.getByRole("link", {name: "Open prepared Release"})).toHaveAttribute("href", /publication=automatic-release/);
@@ -531,10 +531,10 @@ test("Studio keeps technical controls secondary and shows the next publication a
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await expect(page.getByRole("navigation", {name: "Publication steps"})).toBeVisible({timeout: 20000});
   await expect(page.getByRole("button", {name: "Publish to Wikidata", exact: true})).toBeEnabled();
-  await expect(page.getByLabel("Override cache (fresh Wikidata checks)")).toBeHidden();
+  await expect(page.locator("details").filter({hasText: "Publication details and manual actions"}).getByLabel("Check all records again")).toBeHidden();
   await expect(page.getByRole("button", {name: "AI review blocked items", exact: true})).toBeHidden();
   await expect(page.getByTestId("wikidata-items-export-json")).toBeHidden();
   await page.screenshot({path: "/tmp/studio-simplified.png", fullPage: true});
   await page.getByText("Publication details and manual actions", {exact: true}).click();
-  await expect(page.getByLabel("Override cache (fresh Wikidata checks)")).toBeVisible();
+  await expect(page.locator("details").filter({hasText: "Publication details and manual actions"}).getByLabel("Check all records again")).toBeVisible();
 });

@@ -23,6 +23,13 @@ The Publication panel owns the test/live target choice. The compatibility
 upload panel is hidden by default. It appears only when the Publication API
 reports that the service is unavailable. The page never shows both target
 groups at the same time (Rule W-213).
+The result panel states how many records are prepared and how many remain outside
+the publication. Omitted connections show a readable property and target before
+the technical payload. The item editor labels each English and Hebrew field,
+sets `lang` and `dir` metadata, and edits Hebrew aliases one row at a time.
+The visible actions use researcher terms such as **Prepare automatically**,
+**Check before publication**, and **Save changes**. Internal Release, Plan, and
+Receipt names remain in the details view for audit work.
 
 **API clients.** All HTTP goes through `api/client.ts:138`'s `api` object:
 same-origin `/api` prefix, `credentials: "include"` (HTTP-only session

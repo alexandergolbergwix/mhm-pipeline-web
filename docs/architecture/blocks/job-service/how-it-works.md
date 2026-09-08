@@ -82,6 +82,8 @@ already-judged items.
 
 Dispatch is the `if/elif` chain in `run_job_service.py::_execute_job`;
 kinds are declared in `models/run_job.py` (`SUPPORTED_JOB_KINDS`).
+Publication execution failures leave the durable Execution paused. A later
+summary read repairs an older failed job that left the Execution running.
 
 ## Frontend attachment
 

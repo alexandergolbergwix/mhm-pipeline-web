@@ -79,8 +79,8 @@
 | `frontend/src/components/wikidata/WikidataItemsPanel.tsx` | Orchestrator: lifecycle bar, Publication-first target controls, compatibility upload hub after API unavailability, review table, drawer, verify + upload progress modals; **Approve all visible** → `wikidata_item_bulk_approve` job |
 | `backend/app/pipeline/studio_item_bulk_approve.py` | Shared HMO/Wikidata bulk-approve core (versioned overrides) |
 | `backend/app/pipeline/studio_item_bulk_approve_job.py` | Background worker for Studio bulk approve |
-| `frontend/src/components/wikidata/WikidataItemTable.tsx` | HMO-parity review table (filters, badges, pagination) |
-| `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Per-item drawer: overrides, compare, reconcile, verify/autofix/push |
+| `frontend/src/components/wikidata/WikidataItemTable.tsx` | HMO-parity review table with a labelled search field, filters, badges, pagination, and direct record editing |
+| `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Per-item drawer with labelled multilingual overrides, one-row Hebrew aliases, compare, reconcile, verify/autofix, and push |
 | `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Compatibility upload hub: dry-run/test radios only, pre/post AI verify; opens upload progress modal on start; inline two-step bars (same `WikidataUploadSteps` as test/live modal) |
 | `frontend/src/components/wikidata/WikidataUploadProgressModal.tsx` | Upload progress modal (tray View / Rule W-141): two-step bars + Now/ETA (W-192), target-aware title + sticky badge, counts strip, per-item table, cancel |
 | `frontend/src/utils/wikidataUploadOutcomes.tsx` | Shared upload outcome tally/table helpers (panel summary + progress modal) |
@@ -88,8 +88,8 @@
 | `frontend/src/components/wikidata/` | Also: `ItemValidatorBadge`, `ItemApprovalBadge`, `WikidataComparePanel`, `WikidataVerificationModal`, data-status + AI verdict badges |
 | `frontend/src/api/wikidataStudio.ts` | Typed API client; `STUDIO_MAX_PAGE_SIZE` (500); `fetchAllStudioItems` paginates bulk loads |
 | `frontend/src/api/publication.ts` | Typed client for Release prepare, commands, cursor reads, and audit |
-| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | The only default target selector for test/live Release preparation, plus Release controls and a 50-row Publication entity page; enables the compatibility panel only after 404/405/410 |
-| `frontend/src/components/wikidata/WikidataPublicationControls.tsx` | Hard UI gates for Review, Dry-run Receipt, Publish, Resume, and Cancel |
+| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | The only default target selector for test/live Release preparation, plus readable result actions, direct record editing, and a 50-row Publication entity page; enables the compatibility panel only after 404/405/410 |
+| `frontend/src/components/wikidata/WikidataPublicationControls.tsx` | Hard UI gates for Review, pre-publication checks, Publish, Resume, and Cancel, with included and omitted result counts |
 | `frontend/src/routes/WikidataPublicationAudit.tsx` | Cursor audit route for immutable Publication evidence |
 | `frontend/src/utils/wikidataItemDataStatus.ts` | `new` / `will_update` / `updated` posture helper |
 

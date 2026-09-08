@@ -55,7 +55,7 @@ it("shows the retained deferred claim before the curator approves the Release", 
     build={{...makeBuildResponse(), source: "canonical"}} />);
 
   await user.click(screen.getByRole("button", {name: "Prepare Release"}));
-  await user.click(await screen.findByText("1 deferred connection"));
+  await user.click(await screen.findByText("1 connection not included"));
 
-  expect(screen.getByText(/__LOCAL:person:new/)).toBeVisible();
+  expect(screen.getByText("P50 → __LOCAL:person:new")).toBeVisible();
 });

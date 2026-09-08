@@ -542,6 +542,10 @@ export function WikidataItemsPanel({
           approvedOnly={approvedOnly}
           build={build}
           onPublicationActiveChange={setPublicationActive}
+          onOpenSourceItem={(entityId) => {
+            const sourceItem = build.items.find((item) => item.local_id === entityId);
+            if (sourceItem) setOpenItem(sourceItem);
+          }}
         />
       )}
 

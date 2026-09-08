@@ -26,6 +26,7 @@ export interface WikidataPublicationPanelProps {
   approvedOnly: boolean;
   build: StudioBuild;
   onPublicationActiveChange?: (active: boolean) => void;
+  onOpenSourceItem?: (entityId: string) => void;
 }
 
 function labelOf(item: StudioItem): string {
@@ -34,6 +35,21 @@ function labelOf(item: StudioItem): string {
     ?? Object.values(item.labels ?? {})[0]
     ?? item.local_id
     ?? "Untitled entity";
+}
+
+function deferredConnectionText(statement: Record<string, unknown>): string {
+  const property = String(statement.property_label ?? statement.property ?? statement.property_id ?? "Connection");
+  const target = String(statement.value_label ?? statement.value_id ?? statement.value ?? "an unresolved target");
+  return `${property} → ${target}`;
+}
+
+function plannedActionText(entity: PublicationEntity): string {
+  if (entity.reference_only) return "Use existing item";
+  if (entity.proposed_action === "create") return "Create new item";
+  if (entity.proposed_action === "update") return "Update existing item";
+  if (entity.proposed_action === "skip") return "Keep existing item";
+  if (entity.proposed_action === "blocked") return "Keep for later";
+  return entity.proposed_action ?? "No action";
 }
 
 function compatibilityEntity(item: StudioItem, index: number): PublicationEntity {
@@ -72,6 +88,7 @@ export function WikidataPublicationPanel({
   approvedOnly,
   build,
   onPublicationActiveChange,
+  onOpenSourceItem,
 }: WikidataPublicationPanelProps) {
   const [restoring, setRestoring] = useState(true);
   const [target, setTarget] = useState<PublicationTarget>("test");
@@ -207,7 +224,7 @@ export function WikidataPublicationPanel({
       if (response.publication) {
         setPublication(response.publication);
         if (command.type === "dry_run" && response.publication.dry_run_receipt?.status === "failed") {
-          setError("The saved dry-run has blocked actions. Review the plan below. Use Override cache for fresh checks.");
+          setError("The saved check has blocked actions. Review the plan below. Use Check all records again for fresh checks.");
         }
       }
       setOperation(response.operation ?? null);
@@ -383,14 +400,31 @@ export function WikidataPublicationPanel({
                     {entity.reference_only && <p className="mt-2 text-accent">Use {entity.target_qid} without updates. Connections use this QID.</p>}
                     {!!entity.deferred_statements?.length && <details className="mt-2 text-warn">
                       <summary className="cursor-pointer">
-                        {entity.deferred_statements.length} deferred {entity.deferred_statements.length === 1 ? "connection" : "connections"}
+                        {entity.deferred_statements.length} connection{entity.deferred_statements.length === 1 ? "" : "s"} not included
                       </summary>
-                      <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all text-ink">
-                        {JSON.stringify(entity.deferred_statements, null, 2)}
-                      </pre>
+                      <ul className="mt-1 space-y-1 text-xs text-ink">
+                        {entity.deferred_statements.map((statement, statementIndex) => (
+                          <li key={`${entity.entity_id}-deferred-${statementIndex}`}>
+                            {deferredConnectionText(statement)}
+                          </li>
+                        ))}
+                      </ul>
+                      <details className="mt-2 text-xs">
+                        <summary className="cursor-pointer">Technical details</summary>
+                        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all text-ink">
+                          {JSON.stringify(entity.deferred_statements, null, 2)}
+                        </pre>
+                      </details>
                     </details>}
+                    {onOpenSourceItem && <button
+                      type="button"
+                      className="button-ghost mt-2 text-xs"
+                      onClick={() => onOpenSourceItem(entity.entity_id)}
+                    >
+                      Edit record
+                    </button>}
                   </div>
-                  </td><td className="p-2">{entity.entity_kind}</td><td className="p-2">{entity.reference_only ? "Reuse without updates" : entity.proposed_action}</td><td className="p-2"><span className={entity.review_status === "approved" ? "text-success" : "text-warn"}>{entity.review_status}</span>
+                  </td><td className="p-2">{entity.entity_kind}</td><td className="p-2">{plannedActionText(entity)}</td><td className="p-2"><span className={entity.review_status === "approved" ? "text-success" : "text-warn"}>{entity.review_status}</span>
                 </td></tr>
               ))}
             </tbody></table></div>
