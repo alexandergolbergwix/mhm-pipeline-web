@@ -17,11 +17,11 @@ def build_documents(documents, resolutions, job_id):
     unsafe = set()
     qids = {}
     for key, resolution in resolutions.items():
-        if resolution['action'] != 'reuse_existing':
+        if resolution['action'] not in {'reuse_existing', 'update_existing'}:
             unsafe.add('__LOCAL:' + key)
             if resolution.get('qid'):
                 unsafe.add(resolution['qid'])
-        elif resolution['action'] == 'reuse_existing':
+        else:
             qids['__LOCAL:' + key] = resolution['qid']
     def resolve(value):
         if isinstance(value, str):
@@ -45,6 +45,14 @@ def build_documents(documents, resolutions, job_id):
             item['existing_qid'] = resolution['qid']
             item['publication_reference_only'] = {'qid': resolution['qid'], 'remote_revision': resolution['remote_revision']}
             item['statements'] = []
+        elif resolution['action'] == 'update_existing':
+            item['existing_qid'] = resolution['qid']
+            item['statements'] = []
+            for index, statement in enumerate(statements):
+                if index not in resolution['statement_indices'] or contains_target(statement, unsafe):
+                    item['deferred_statements'].append(statement)
+                else:
+                    item['statements'].append(resolve(statement))
         elif resolution['action'] == 'defer':
             item['publication_deferred'] = resolution['reason']
             item['existing_qid'] = None

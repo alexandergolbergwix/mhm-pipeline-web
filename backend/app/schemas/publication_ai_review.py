@@ -18,7 +18,7 @@ class PublicationAiReviewItem(PublicationSchema):
     entity_key: str
     label: str
     qid: str | None = None
-    status: Literal['recommended', 'review_required', 'lookup_resolved', 'error', 'reuse_existing', 'create', 'deferred']
+    status: Literal['recommended', 'review_required', 'lookup_resolved', 'error', 'reuse_existing', 'update_existing', 'create', 'deferred']
     reason: str
     consent: PublicationForeignQidConsent | None = None
     resolution: dict[str, object] | None = None

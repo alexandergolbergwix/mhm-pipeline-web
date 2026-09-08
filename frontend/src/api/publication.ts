@@ -361,7 +361,7 @@ export interface PublicationAiReviewState {
       entity_key: string;
       label: string;
       qid: string | null;
-      status: "recommended" | "review_required" | "lookup_resolved" | "error" | "reuse_existing" | "create" | "deferred";
+      status: "recommended" | "review_required" | "lookup_resolved" | "error" | "reuse_existing" | "update_existing" | "create" | "deferred";
       reason: string;
       resolution?: {retryable?: boolean};
       consent: PublicationForeignQidConsent | null;

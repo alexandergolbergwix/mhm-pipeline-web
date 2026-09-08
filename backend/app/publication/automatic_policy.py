@@ -3,7 +3,7 @@ from typing import Literal
 import unicodedata
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-POLICY_VERSION = 'reference-first-v1'
+POLICY_VERSION = 'reference-first-v2'
 STRONG_IDS = {'P214', 'P8189', 'P244', 'P227', 'P213', 'P268', 'P3959'}
 
 
@@ -70,6 +70,22 @@ def decide(document, remote, observation, first, second, evidence):
         if not identifier_supported and not same_work_and_author(document, remote):
             return defer('The target lacks a shared identifier verified against primary evidence.')
         if all(review.identity == 'same_entity' for review in reviews):
+            if observation == 'present_owned':
+                statements = document.get('statements') or []
+                claim_sets = []
+                for review in reviews:
+                    indices = [claim.index for claim in review.claims]
+                    if sorted(indices) != list(range(len(statements))):
+                        return defer('Each proposed statement requires exactly one decision.')
+                    claim_sets.append({claim.index for claim in review.claims if claim.status == 'supported'
+                        and claim.evidence and set(claim.evidence) <= primary.keys()})
+                kept = sorted(claim_sets[0] & claim_sets[1])
+                if not kept:
+                    return defer('No proposed statement has independent source support.')
+                if not all(review.labels_supported for review in reviews):
+                    return defer('The labels lack independent source support.')
+                return {'action': 'update_existing', 'statement_indices': kept,
+                    'reason': 'Both checks support identity and the retained claims for an owned item.'}
             return {'action': 'reuse_existing', 'statement_indices': [],
                 'reason': 'Both checks support identity. The existing item receives no updates.'}
         return defer('The identity checks disagree or identify a different entity.')

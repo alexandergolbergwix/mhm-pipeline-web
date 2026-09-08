@@ -55,3 +55,16 @@ def test_work_identity_can_use_title_and_verified_author_with_primary_evidence()
     assert decide(doc, remote, 'present_foreign', review, review, evidence)['action'] == 'reuse_existing'
     remote['claims']['P50'][0]['mainsnak']['datavalue']['value']['id'] = 'Q123'
     assert decide(doc, remote, 'present_foreign', review, review, evidence)['action'] == 'defer'
+
+
+
+def test_owned_item_updates_only_claims_supported_by_two_reviews():
+    doc, remote, evidence, verdict = fixture()
+
+    result = decide(doc, remote, 'present_owned', verdict, verdict, evidence)
+
+    assert result == {
+        'action': 'update_existing',
+        'statement_indices': [0],
+        'reason': 'Both checks support identity and the retained claims for an owned item.',
+    }

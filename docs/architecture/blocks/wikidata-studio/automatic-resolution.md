@@ -19,7 +19,7 @@ The interface never treats approval as publication readiness.
 5. Inspect its receipt before the separate publication action.
 
 No item-by-item human approval is required in automatic mode.
-The policy approves only the retained subset and records `policy:reference-first-v1` as the actor.
+The policy approves only the retained subset and records `policy:reference-first-v2` as the actor.
 It never supplies foreign-QID consent or performs a Wikidata write.
 Deferred items remain in the source corpus and report, outside the approved subset.
 If every item is deferred, the job reports that no subset is ready.
@@ -55,7 +55,7 @@ Invalid structured output never enters the verdict cache. The job retries a fail
 
 - `reuse_existing`: both checks agree on identity with primary evidence and a shared strong identifier.
   A work can instead use an exact title and verified author QID. A title alone is insufficient.
-  The existing QID receives no updates, even when the proposed claims need changes.
+  A foreign QID receives no updates, even when the proposed claims need changes.
 - `create`: a complete duplicate check reports absence; both checks support labels and retained claims.
   The policy requires a supported P31. It removes unsupported statements.
 - `defer`: any other result, including a conflicting identity, unavailable source, or provider error.
@@ -64,7 +64,8 @@ Invalid structured output never enters the verdict cache. The job retries a fail
 If both checks reject a target, the job searches at most three replacement candidates on the same Wikidata site.
 Each candidate requires fresh evidence and two checks. An empty search never authorizes creation.
 The policy does not invent replacement identifiers, names, or bibliographical facts.
-It does not enable automatic updates of existing Wikidata items.
+- `update_existing`: both checks support an owned QID, its labels, and each retained claim. The projection keeps only jointly supported claims. The uploader adds only the semantic difference after a fresh revision check.
+Foreign QIDs remain reference-only unless the curator gives explicit consent.
 These limits can defer more items than a human curator would accept.
 The report shows the distinction; a lower review count is not proof of data quality.
 

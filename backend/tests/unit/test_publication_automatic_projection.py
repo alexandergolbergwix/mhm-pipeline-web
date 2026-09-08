@@ -22,3 +22,17 @@ def test_loss_of_required_type_defers_the_whole_item():
     decisions = {'a': {'action': 'create', 'statement_indices': [0, 1], 'reason': 'Source support'},
         'b': {'action': 'defer', 'reason': 'Unknown type'}}
     assert build_documents(docs, decisions, 'job')['a'].get('publication_deferred')
+
+
+
+def test_automatic_projection_keeps_only_supported_claims_for_an_owned_update():
+    docs = {'a': {'statements': [{'property': 'P31', 'value': 'Q5'}, {'property': 'P2888', 'value': 'https://example.invalid'}]}}
+    decisions = {'a': {'action': 'update_existing', 'statement_indices': [0], 'qid': 'Q42', 'remote_revision': 7, 'reason': 'Supported update'}}
+
+    result = build_documents(docs, decisions, 'job')['a']
+
+    assert result['existing_qid'] == 'Q42'
+    assert result['statements'] == [{'property': 'P31', 'value': 'Q5'}]
+    assert result['deferred_statements'] == [{'property': 'P2888', 'value': 'https://example.invalid'}]
+    assert 'publication_reference_only' not in result
+    assert 'publication_deferred' not in result

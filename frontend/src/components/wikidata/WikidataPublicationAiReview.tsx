@@ -121,7 +121,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
         onClick={() => {void approve();}}>Approve AI recommendations ({recommended.length}) and check again</button>}
       </details>
       {report.automatic && <div className="space-y-2">
-        <p>{report.items.filter((item) => item.status === "reuse_existing").length} reused · {report.items.filter((item) => item.status === "create").length} create candidates · {report.items.filter((item) => item.status === "deferred").length} deferred</p>
+        <p>{report.items.filter((item) => item.status === "reuse_existing").length} reused · {report.items.filter((item) => item.status === "update_existing").length} update candidates · {report.items.filter((item) => item.status === "create").length} create candidates · {report.items.filter((item) => item.status === "deferred").length} deferred</p>
         <p className="text-xs muted">Deferred items remain in this report and the Studio source. They are not approved or uploaded.</p>
         {state?.status === "succeeded" && (report.result_publication_id
           ? <a className="button-primary text-sm" href={`/runs/${encodeURIComponent(runId)}/wikidata-studio?publication=${encodeURIComponent(report.result_publication_id)}`}>Open prepared Release</a>

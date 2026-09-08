@@ -1077,7 +1077,8 @@ async def test_prepare_reference_only_resolves_connections_and_preserves_source(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('alternative', [False, True])
-async def test_automatic_resolution_creates_an_approved_subset_without_writes(sample_run, db_session, monkeypatch, alternative):
+@pytest.mark.parametrize('owned', [False, True])
+async def test_automatic_resolution_creates_an_approved_subset_without_writes(sample_run, db_session, monkeypatch, alternative, owned):
     import json
     import httpx
     from app.pipeline.agent_runner import AgentEvent
@@ -1115,7 +1116,8 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
                 if entities[0].entity_key == 'work:1':
                     await asyncio.wait_for(second_started.wait(), timeout=1)
 
-            return tuple(TargetObservation.present_foreign(e.entity_key, qid='Q456' if e.document.get('existing_qid') == 'Q456' else 'Q123', remote_revision=7)
+            return tuple((TargetObservation.present_owned if owned else TargetObservation.present_foreign)(
+                e.entity_key, qid='Q456' if e.document.get('existing_qid') == 'Q456' else 'Q123', remote_revision=7)
                 if e.entity_key == 'work:1' else TargetObservation.unknown(e.entity_key, 'Unavailable')
                 if e.entity_key == 'work:4' else TargetObservation.absent(e.entity_key) for e in entities)
         async def fetch_entity(self, qid):
@@ -1137,14 +1139,14 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
                 {'index': i, 'status': 'supported', 'evidence': [pack['evidence'][0]['id']]}
                 for i, _ in enumerate(pack['proposed_entity']['statements'])]}
         if item['local_id'] == 'work:3': decision['identity'] = 'unresolved'
-        if alternative and item['local_id'] == 'work:1' and pack['qid'] == 'Q123':
+        if alternative and not owned and item['local_id'] == 'work:1' and pack['qid'] == 'Q123':
             decision['identity'] = 'different_entity'
         root = kwargs['state_dir'] / 'runs' / 'fixture'
         root.mkdir(parents=True)
         (root / 'results.jsonl').write_text(json.dumps({'record_id': item['local_id'],
             'evaluator_id': 'wikidata_publication_review', 'verification_status': 'judged', 'error': None,
             'verdict': {'overall': 'partial', 'name_ok': 'yes', 'type_ok': 'yes', 'reasoning': 'Identity separate from claims.',
-                'publication_decision': None if len(calls) == 1 and not alternative else decision}}))
+                'publication_decision': None if len(calls) == 1 and (not alternative or owned) else decision}}))
         yield AgentEvent(type='runner.exit', payload={'return_code': 0})
     real_client = httpx.AsyncClient
     monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(**kwargs,
@@ -1180,16 +1182,16 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     saved = (await client.get(url + '/ai-review')).json()
     assert saved['status'] == 'succeeded', saved
     report = saved['report']
-    assert [row['status'] for row in report['items']] == ['reuse_existing', 'create', 'deferred', 'deferred']
+    assert [row['status'] for row in report['items']] == ['update_existing' if owned else 'reuse_existing', 'create', 'deferred', 'deferred']
     assert all(row['consent'] is None for row in report['items'])
-    assert report['items'][0]['qid'] == ('Q456' if alternative else 'Q123')
+    assert report['items'][0]['qid'] == ('Q456' if alternative and not owned else 'Q123')
     assert cache_failures == [True]
-    assert len(calls) == (8 if alternative else 7)
+    assert len(calls) == (8 if alternative and not owned else 7)
     new_url = f"/api/runs/{run_id}/wikidata-publications/{report['result_publication_id']}"
     result = (await client.post(new_url + '/read', json={'query': {'type': 'summary'}})).json()['publication']
     assert result['current_release']['entity_count'] == 2
     assert result['approval_set']['approved_count'] == 2
-    assert result['plan']['action_counts'] == {'create': 1, 'update': 0, 'skip': 1, 'blocked': 0}
+    assert result['plan']['action_counts'] == {'create': 1, 'update': int(owned), 'skip': int(not owned), 'blocked': 0}
     assert result['dry_run_receipt']['status'] == 'valid'
     assert result['execution'] is None
     page = (await client.post(new_url + '/read', json={'query': {'type': 'entities', 'release_id': result['current_release']['release_id']}})).json()
@@ -1206,7 +1208,7 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     assert restored['status'] == 'succeeded', restored
     assert restored['processed'] == 4
     assert cache_failures == [True]
-    assert len(calls) == (8 if alternative else 7)
+    assert len(calls) == (8 if alternative and not owned else 7)
     await asyncio.sleep(1.05)
     fresh = await client.post(url + '/ai-review', json={'plan_id': current['plan']['plan_id'],
         'plan_digest': current['plan']['plan_digest'], 'tier_model': 'gemini-3.5-flash', 'automatic': True, 'force_refresh': True})
@@ -1215,7 +1217,7 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     await run_wikidata_publication_ai_review_job(uuid.UUID(fresh.json()['job_id']))
     assert (await client.get(url + '/ai-review')).json()['status'] == 'cancelled'
     assert cache_failures == [True]
-    assert len(calls) == (8 if alternative else 7)
+    assert len(calls) == (8 if alternative and not owned else 7)
 
 
 @pytest.mark.asyncio
