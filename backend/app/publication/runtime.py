@@ -29,6 +29,7 @@ from app.models.publication import (
     PublicationRelease,
 )
 from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.models.run_job import JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION, RunJob
 from app.publication.core import ProjectionSource, PublicationModule
 from app.publication.digests import thaw_json
 from app.publication.gateway import WikidataGateway, WikidataGatewaySession
@@ -549,9 +550,12 @@ class PublicationRuntime:
         await self._session.commit()
         summary = await module.read(SummaryQuery(publication_id))
         publication_view = await self._summary_view(summary)
+        operation_view = _operation_view(command.type, operation_id, publication_view)
+        if isinstance(command, ResumePublicationCommand) and operation_view.status == "paused":
+            operation_view = operation_view.model_copy(update={"status": "queued", "error": None})
         return PublicationMutationResponse(
             publication=publication_view,
-            operation=_operation_view(command.type, operation_id, publication_view),
+            operation=operation_view,
         )
 
     async def read(
@@ -833,6 +837,26 @@ class PublicationRuntime:
                 summary.execution_succeeded_count + failed + summary.plan_skip_count,
             )
             terminal = execution.status in {"succeeded", "failed", "cancelled"}
+            execution_job = (
+                await self._session.execute(
+                    select(RunJob)
+                    .where(
+                        RunJob.kind == JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
+                        RunJob.params["execution_id"].as_string() == str(execution.id),
+                    )
+                    .order_by(RunJob.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if (
+                execution_job is not None
+                and execution_job.status == "failed"
+                and execution.status in {"queued", "running"}
+            ):
+                # A worker can fail outside the runtime before it records its
+                # normal pause. Reconcile that durable state during the read.
+                execution.status = "paused"
+                await self._session.commit()
             execution_view = ExecutionSummary(
                 execution_id=str(execution.id),
                 plan_id=str(execution.plan_id),
@@ -845,6 +869,7 @@ class PublicationRuntime:
                 current_entity_label=None,
                 started_at=_aware(execution.created_at),
                 finished_at=_aware(execution.updated_at) if terminal else None,
+                error=execution_job.error if execution_job is not None else None,
             )
         status = _publication_status(summary, execution)
         return PublicationSummary(
@@ -1075,8 +1100,6 @@ def _operation_view(
     execution = publication.execution
     if execution is not None and execution.execution_id == operation_id:
         status = execution.status
-        if status == "paused":
-            status = "succeeded"
         return PublicationOperation(
             operation_id=operation_id,
             command=cast("str", command),

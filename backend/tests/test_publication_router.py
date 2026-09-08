@@ -545,6 +545,26 @@ async def test_advance_binds_review_and_dry_run_but_never_writes_in_the_route(
                 )
             )
         ).scalar_one()
+
+        execution_job = (
+            await db_session.execute(
+                select(RunJob).where(RunJob.kind == "wikidata_publication_execution")
+            )
+        ).scalar_one()
+        execution.status = "running"
+        execution_job.status = "failed"
+        execution_job.error = "The worker stopped before the first item."
+        await db_session.commit()
+        recovered_operation = await sample_run["client"].post(
+            f"{publication_url}/read",
+            json={"query": {"type": "operation", "operation_id": operation["operation_id"]}},
+        )
+        assert recovered_operation.status_code == 200, recovered_operation.text
+        assert recovered_operation.json()["operation"]["status"] == "paused"
+        assert recovered_operation.json()["publication"]["execution"]["error"] == (
+            "The worker stopped before the first item."
+        )
+
         execution.status = "paused"
         await db_session.commit()
         paused_operation = await sample_run["client"].post(
@@ -557,7 +577,7 @@ async def test_advance_binds_review_and_dry_run_but_never_writes_in_the_route(
             },
         )
         assert paused_operation.status_code == 200, paused_operation.text
-        assert paused_operation.json()["operation"]["status"] == "succeeded"
+        assert paused_operation.json()["operation"]["status"] == "paused"
         assert paused_operation.json()["operation"]["progress"]["status"] == "paused"
 
         resumed = await sample_run["client"].post(
@@ -579,9 +599,9 @@ async def test_advance_binds_review_and_dry_run_but_never_writes_in_the_route(
                 )
             )
         ).scalars().all()
-        assert len(execution_jobs) == 1
+        assert len(execution_jobs) == 2
         from app.publication.credentials import ExecutionCredentialResolver
-        job = execution_jobs[0]
+        job = next(row for row in execution_jobs if row.status == "queued")
         envelope = job.params["_publication_credential"]
         assert "publication-fixture" not in envelope
         material = await ExecutionCredentialResolver(envelope,

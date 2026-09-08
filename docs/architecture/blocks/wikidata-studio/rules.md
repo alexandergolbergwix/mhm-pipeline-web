@@ -895,3 +895,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 127. **R127 — Publication AI calls release transactions and isolate cache failures.** *Why:* a slow model response must not invalidate the Release session (W-225).
 
 128. **R128 — Parallel AI assessments use isolated sessions and durable completion checkpoints.** *Why:* speed must not weaken checks or leave orphan tasks (W-226).
+129. **R129 — A failed Publication worker must leave a resumable execution.**
+   The execution worker marks a queued or running Execution as `paused` before
+   it reports a failure. The summary read reconciles an older failed worker job
+   that left the Execution running. The UI shows the saved progress, error, and
+   Resume action. Recovery never creates a new write intent automatically.
+   *Why:* a missing production column stopped the worker before its first item,
+   while the UI reported `running` forever (W-227).

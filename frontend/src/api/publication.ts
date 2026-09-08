@@ -14,7 +14,7 @@ export type PublicationStatus =
   | "failed";
 export type ReviewDecision = "approve" | "reject";
 export type ReviewStatus = "pending" | "approved" | "rejected" | "stale";
-export type OperationStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type OperationStatus = "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
 
 export interface RunPublicationSource {
   kind: "run";
@@ -98,6 +98,7 @@ export interface ExecutionSummary {
   current_entity_label: string | null;
   started_at: string | null;
   finished_at: string | null;
+  error?: string | null;
 }
 
 export interface PublicationSummary {

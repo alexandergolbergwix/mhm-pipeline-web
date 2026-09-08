@@ -11,6 +11,7 @@ from app.models.run_job import (
     JOB_STATUS_SUCCEEDED,
     RunJob,
 )
+from app.models.publication import PublicationExecution
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
 from app.publication.credentials import ExecutionCredentialResolver, configured_publication_gateway_factory
 from app.publication.wikidata_gateway import CurrentWikidataBoundaryFactory, WikidataGatewayAdapter
@@ -83,13 +84,22 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                 "message": "Publication Execution is starting.",
             },
         )
-        summary = await runtime.execute(
-            run_id=run_id,
-            publication_id=publication_id,
-            execution_id=execution_id,
-            actor_id=actor_id,
-            worker_id=f"publication-job:{job_id}",
-        )
+        try:
+            summary = await runtime.execute(
+                run_id=run_id,
+                publication_id=publication_id,
+                execution_id=execution_id,
+                actor_id=actor_id,
+                worker_id=f"publication-job:{job_id}",
+            )
+        except Exception:
+            # Keep the durable execution resumable when a worker fails before
+            # the runtime can persist its normal paused state.
+            execution = await db.get(PublicationExecution, uuid.UUID(execution_id))
+            if execution is not None and execution.status in {"queued", "running"}:
+                execution.status = "paused"
+                await db.commit()
+            raise
     execution = summary.execution
     if execution is None:
         await finish_job(

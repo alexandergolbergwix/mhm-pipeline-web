@@ -234,4 +234,39 @@ describe("WikidataPublicationControls", () => {
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("3 failed");
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("7 skipped");
   });
+
+  it("shows a recoverable worker failure and offers resume", async () => {
+    const onAdvance = vi.fn();
+    render(<WikidataPublicationControls
+      publication={publication({
+        status: "paused",
+        approval_set: approval(),
+        plan: plan(),
+        dry_run_receipt: receipt(),
+        execution: {
+          execution_id: "execution-1",
+          plan_id: "plan-1",
+          status: "paused",
+          processed: 0,
+          total: 49,
+          succeeded: 0,
+          failed: 0,
+          skipped: 0,
+          current_entity_label: null,
+          started_at: "2026-09-05T10:05:00Z",
+          finished_at: null,
+          error: "The worker stopped before the first item.",
+        },
+      })}
+      entities={[]}
+      onAdvance={onAdvance}
+      auditHref="/audit"
+    />);
+
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent(
+      "The worker stopped before the first item.",
+    );
+    await userEvent.click(screen.getByTestId("publication-resume"));
+    expect(onAdvance).toHaveBeenCalledWith({type: "resume", execution_id: "execution-1"});
+  });
 });

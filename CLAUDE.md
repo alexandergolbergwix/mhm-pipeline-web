@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-226)
+## Architectural rules (W-1…W-227)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -170,6 +170,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-222** — AI reviews blocked Publication items through a durable advisory job; a curator supplies exact consent
 - **W-223** — Explicit reference-only choices bind an observed QID; Execution excludes skip actions
 - **W-226** — AI event reads support large bounded lines; Publication assessments use isolated bounded workers
+- **W-227** — Failed Publication workers reconcile to paused resumable executions; the UI shows saved progress and a Resume action
 - **W-225** — Publication AI calls release database transactions and isolate verdict cache failures
 - **W-224** — Automatic policy separates identity and claims, defers uncertainty, and never fabricates human consent
 - **W-220** — Map stored review decisions to entity statuses at the HTTP boundary

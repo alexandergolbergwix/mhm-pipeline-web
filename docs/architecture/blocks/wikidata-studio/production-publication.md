@@ -51,6 +51,9 @@ The read API uses keyset cursors and limits every page to 500 entities.
 The planner reconciles batches of 50 entities.
 The projector and router do not load an entire corpus into a browser or request.
 Execution claims use a lease. A retry can repeat only a confirmed pre-send failure.
+If a worker fails before the runtime records a pause, a summary read reconciles
+the failed execution job to `paused`. The browser shows the saved counts, the
+worker error, and a Resume action. This recovery never retries a remote write.
 
 ## API
 
@@ -73,7 +76,13 @@ See [Publication credentials](publication-credentials.md) for account binding, t
 - `backend/tests/unit/test_publication_module.py` tests digests, gates, and recovery states.
 - `backend/tests/test_publication_repository.py` tests normalized persistence and action claims.
 - `backend/tests/test_publication_router.py` tests the HTTP contract and access gate.
+- `backend/tests/test_wikidata_publication_execution_job.py` tests worker failure
+  recovery and encrypted execution parameters.
+- `backend/tests/test_publication_migrations.py` tests the action-table schema
+  used by the worker repository.
 - `frontend/e2e/wikidata-publication.spec.ts` tests Review, Dry-run, Publish, audit, and bounded pages.
+- `frontend/tests/unit/wikidataPublicationControls.spec.tsx` tests saved paused
+  progress, the worker error, and the Resume action.
 
 See [the asynchronous dry-run flow](publication-dry-run-job.md) for job polls, progress, and cancellation.
 

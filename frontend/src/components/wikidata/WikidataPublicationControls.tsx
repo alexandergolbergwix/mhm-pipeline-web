@@ -277,16 +277,19 @@ export function WikidataPublicationControls({
         )}
       </div>
       {execution && (
-        <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-execution-progress">
+        <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-execution-progress" aria-live="polite">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="kicker">Execution</div>
+              <div className="kicker">Upload progress</div>
               <p className="text-sm text-ink">
                 {execution.processed.toLocaleString()} of {execution.total.toLocaleString()}
               </p>
             </div>
             <span className="rounded-full border border-white/10 px-2 py-1 text-xs muted">{execution.status}</span>
           </div>
+          {execution.status === "paused" && (
+            <p className="text-sm text-warn">The upload is paused. Resume it to continue from the saved state.</p>
+          )}
           <div className="h-2 overflow-hidden rounded-full bg-white/10" aria-label="Execution progress">
             <div
               className="h-full bg-biu-sky transition-[width]"
@@ -296,6 +299,9 @@ export function WikidataPublicationControls({
           <p className="text-xs muted">
             {execution.succeeded.toLocaleString()} succeeded · {execution.failed.toLocaleString()} failed · {execution.skipped.toLocaleString()} skipped
           </p>
+          {execution.error && (
+            <p className="text-sm text-danger" role="alert">{execution.error}</p>
+          )}
           {execution.current_entity_label && (
             <p className="text-xs muted">Current entity: <span className="text-ink">{execution.current_entity_label}</span></p>
           )}

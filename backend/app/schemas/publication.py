@@ -211,12 +211,13 @@ class ExecutionSummary(PublicationSchema):
     current_entity_label: str | None
     started_at: datetime | None
     finished_at: datetime | None
+    error: str | None = None
 
 
 class PublicationOperation(PublicationSchema):
     operation_id: str
     command: Literal["prepare", "review", "dry_run", "publish", "resume", "cancel"]
-    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    status: Literal["queued", "running", "paused", "succeeded", "failed", "cancelled"]
     progress: ExecutionSummary | None
     error: str | None
 
