@@ -12,6 +12,16 @@ interface Props {
   onActiveChange: (active: boolean) => void;
 }
 
+export function automaticProgressText(state: PublicationAiReviewState | null): string | null {
+  if (!state?.job_id) return null;
+  if (state.phase === "dry_run") {
+    return `Final Wikidata check: ${state.processed} / ${state.total} retained records`;
+  }
+  if (state.phase === "prepare_subset") return "Prepare the supported records";
+  if (state.phase === "approve_subset") return "Save the automatic review";
+  return `AI check: ${state.processed} / ${state.total} records`;
+}
+
 export function WikidataPublicationAiReview({publication, busy, onAdvance, onActiveChange}: Props) {
   const [state, setState] = useState<PublicationAiReviewState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,7 +113,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
       <button type="button" className="button-ghost text-sm" disabled={busy || active || loading || !current || !model.selected?.available}
         onClick={() => {void start();}}>AI review blocked items</button>
     </details>
-    {state?.job_id && <p className="text-xs">AI review: {state.status} · {state.processed} / {state.total} items</p>}
+    {automaticProgressText(state) && <p className="text-xs" aria-live="polite">{automaticProgressText(state)}</p>}
     {state?.message && <p className="text-xs muted">{state.message}</p>}
     {active && state?.job_id && <button type="button" className="button-ghost text-sm"
       onClick={() => {if (state.job_id) void RunJobs.cancel(runId, state.job_id).catch((caught: unknown) => setError(String(caught)));}}>Cancel AI review</button>}
