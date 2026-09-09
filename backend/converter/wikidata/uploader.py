@@ -14,7 +14,7 @@ import copy
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -57,6 +57,14 @@ def _normalize_wbi_value_type(value_type: object) -> str:
     return _WBI_VALUE_TYPE_ALIASES.get(key, key)
 
 
+def _item_qid(value: object) -> str:
+    if isinstance(value, Mapping):
+        item_id = value.get("id")
+        if isinstance(item_id, str):
+            return item_id
+    return str(value)
+
+
 def quantity_amounts_equal(left: object, right: object) -> bool:
     """True when Wikibase `+11` and a native `11` / `11.0` are the same amount."""
     def parse(raw: object) -> Decimal | None:
@@ -90,6 +98,8 @@ def native_value_matches_wiki(stmt: WikidataStatement, wiki_value: str) -> bool:
     if wiki_value == new_value:
         return True
     vtype = _normalize_wbi_value_type(stmt.value_type)
+    if vtype == "item":
+        return _item_qid(stmt.value) == wiki_value
     if vtype == "quantity":
         return quantity_amounts_equal(new_value, wiki_value)
     if vtype == "time":
@@ -608,7 +618,15 @@ class WikidataUploader:
             # to avoid the wrong-P31 incidents (e.g., manuscript-class on a
             # person item). Audit response 2026-05-17.
             if stmt.property_id == "P31":
-                new_value = str(stmt.value)
+                new_value = _item_qid(stmt.value)
+                try:
+                    existing_claims = wbi_item.claims.get("P31") or []
+                    for existing in existing_claims:
+                        existing_value = self._extract_claim_value(existing)
+                        if native_value_matches_wiki(stmt, existing_value):
+                            return False
+                except Exception:
+                    pass
                 if new_value not in self._MANUSCRIPT_P31_VALUES:
                     # Refuse to add a non-manuscript P31 via the pipeline.
                     # The pipeline only emits manuscript P31s; if a caller
@@ -887,7 +905,7 @@ class WikidataUploader:
             if vtype == "item":
                 return datatypes.Item(
                     prop_nr=stmt.property_id,
-                    value=str(value),
+                    value=_item_qid(value),
                     references=refs,
                     qualifiers=qualifiers,
                     rank=rank_enum,
@@ -973,7 +991,7 @@ class WikidataUploader:
 
         try:
             if snak_type == "item":
-                return datatypes.Item(prop_nr=prop, value=value)
+                return datatypes.Item(prop_nr=prop, value=_item_qid(value))
             if snak_type == "url":
                 return datatypes.URL(prop_nr=prop, value=value)
             if snak_type == "time":

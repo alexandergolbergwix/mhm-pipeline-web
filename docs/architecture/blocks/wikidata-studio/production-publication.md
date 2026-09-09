@@ -51,6 +51,8 @@ The read API uses keyset cursors and limits every page to 500 entities.
 The planner reconciles batches of 50 entities.
 The projector and router do not load an entire corpus into a browser or request.
 Execution claims use a lease. A retry can repeat only a confirmed pre-send failure.
+The uploader normalizes Wikibase item values before it compares or writes them.
+An existing `P31=Q5` and an item-valued local `P31=Q5` are the same claim.
 If a worker fails before the runtime records a pause, a summary read reconciles
 the failed execution job to `paused`. The browser shows the saved counts, the
 worker error, and a Resume action. This recovery never retries a remote write.

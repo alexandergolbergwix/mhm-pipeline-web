@@ -91,6 +91,49 @@ def test_native_value_matches_wiki_time_after_repair() -> None:
     assert native_value_matches_wiki(stmt, "-0199-00-00T00:00:00Z")
 
 
+def test_existing_person_instance_of_does_not_conflict_with_item_value() -> None:
+    from converter.wikidata.uploader import WikidataUploader
+
+    uploader = WikidataUploader(
+        token="user@bot:xxxxxxxxxxxxxxxx",
+        is_test=True,
+        allow_live=False,
+    )
+    existing = SimpleNamespace(
+        mainsnak=SimpleNamespace(datavalue={"value": {"id": "Q5"}}),
+    )
+    wbi_item = SimpleNamespace(
+        claims=SimpleNamespace(get=lambda property_id: [existing] if property_id == "P31" else []),
+    )
+    statement = WikidataStatement(
+        property_id="P31",
+        value={"id": "Q5"},
+        value_type="wikibase-entityid",
+    )
+
+    assert not uploader._would_create_identity_conflict(wbi_item, statement)
+
+
+def test_build_claim_uses_the_qid_from_a_wikibase_entity_value() -> None:
+    from converter.wikidata.uploader import WikidataUploader
+
+    uploader = WikidataUploader(
+        token="user@bot:xxxxxxxxxxxxxxxx",
+        is_test=True,
+        allow_live=False,
+    )
+    statement = WikidataStatement(
+        property_id="P31",
+        value={"id": "Q5"},
+        value_type="wikibase-entityid",
+    )
+
+    claim = uploader._build_claim(statement)
+
+    assert claim is not None
+    assert claim.mainsnak.datavalue["value"]["id"] == "Q5"
+
+
 def test_build_claim_accepts_concatenated_bce_time() -> None:
     from converter.wikidata.uploader import WikidataUploader
 
