@@ -1201,6 +1201,9 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     assert result['plan']['action_counts'] == {'create': 1, 'update': int(owned), 'skip': int(not owned), 'blocked': 0}
     assert result['dry_run_receipt']['status'] == 'valid'
     assert result['execution'] is None
+    prepared_review = (await client.get(new_url + '/ai-review')).json()
+    assert prepared_review['report']['result_publication_id'] == report['result_publication_id']
+    assert len(prepared_review['report']['items']) == 4
     assert any(event.get('phase') == 'dry_run' and event.get('processed') == 2 and event.get('total') == 2
         for event in progress_events)
     page = (await client.post(new_url + '/read', json={'query': {'type': 'entities', 'release_id': result['current_release']['release_id']}})).json()

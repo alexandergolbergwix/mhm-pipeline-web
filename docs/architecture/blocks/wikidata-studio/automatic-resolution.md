@@ -92,7 +92,9 @@ The UI calls this stage the final Wikidata check.
 It does not call this stage an AI review.
 A normal retry reuses completed decisions and repeats retryable failures.
 A cache override repeats the full assessment. Cache keys include evidence, model, schema, evaluator, and policy code.
-A page refresh restores the report. The prepared Release link uses its exact Publication ID.
+A page refresh restores the report. The prepared Release also shows the source report and deferred records.
+The prepared Release link uses its exact Publication ID.
+The report labels the prepared subset. It does not mark it as stale.
 
 ## Files and tests
 

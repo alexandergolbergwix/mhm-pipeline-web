@@ -36,6 +36,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
   const blockedCount = plan?.action_counts.blocked ?? 0;
   const reportCurrent = current && report?.publication_id === publicationId && report?.plan_id === plan?.plan_id
     && report?.plan_digest === plan?.plan_digest && report?.release_digest === publication.current_release.release_digest;
+  const reportPreparedThisRelease = report?.automatic === true && report.result_publication_id === publicationId;
   const recommended = reportCurrent && state?.status === "succeeded"
     ? (report?.items ?? []).flatMap((item) => item.status === "recommended" && item.consent ? [item.consent] : []) : [];
 
@@ -122,7 +123,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
       <p className="text-sm">Last result: {report.automatic ? "Automatic preparation" : "Advisory review only"}</p>
       <details><summary className="cursor-pointer text-sm">Full AI report</summary>
       <p className="text-xs muted">Report: {report.tier_model} · {report.created_at}</p>
-      {!reportCurrent && <p className="text-warn">This report does not match the current Release and Plan.</p>}
+      {!reportCurrent && !reportPreparedThisRelease && <p className="text-warn">This report does not match the current Release and Plan.</p>}
       <ul className="space-y-3">{report.items.map((item) => <li key={item.entity_key} className="text-sm">
         <p>{item.label} · {item.status.replaceAll("_", " ")}</p><p className="muted">{item.reason}</p>
         {item.qid && <a className="text-accent underline" target="_blank" rel="noopener noreferrer"
@@ -132,6 +133,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
         onClick={() => {void approve();}}>Approve AI recommendations ({recommended.length}) and check again</button>}
       </details>
       {report.automatic && <div className="space-y-2">
+        {reportPreparedThisRelease && <p className="text-xs muted">This Release uses the checked subset from this report.</p>}
         <p>{report.items.filter((item) => item.status === "reuse_existing").length} reused · {report.items.filter((item) => item.status === "update_existing").length} update candidates · {report.items.filter((item) => item.status === "create").length} create candidates · {report.items.filter((item) => item.status === "deferred").length} deferred</p>
         <p className="text-xs muted">Deferred items remain in this report and the Studio source. They are not approved or uploaded.</p>
         {state?.status === "succeeded" && (report.result_publication_id

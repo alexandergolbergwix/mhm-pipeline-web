@@ -47,10 +47,18 @@ async def latest_job(db, run_id, publication_id, actor_id):
     publication = await db.get(Publication, uuid.UUID(publication_id))
     if publication is None or publication.run_id != run_id:
         raise ValueError('Publication not found')
-    return (await db.execute(select(RunJob).where(
+    direct = (await db.execute(select(RunJob).where(
         RunJob.run_id == run_id, RunJob.kind == KIND, RunJob.created_by == actor_id,
         RunJob.params['publication_id'].as_string() == publication_id,
         RunJob.params['plan_id'].as_string() == str(publication.latest_plan_id),
+    ).order_by(RunJob.created_at.desc(), RunJob.id.desc()).limit(1))).scalar_one_or_none()
+    if direct is not None:
+        return direct
+    return (await db.execute(select(RunJob).where(
+        RunJob.run_id == run_id,
+        RunJob.kind == KIND,
+        RunJob.created_by == actor_id,
+        RunJob.result['report']['result_publication_id'].as_string() == publication_id,
     ).order_by(RunJob.created_at.desc(), RunJob.id.desc()).limit(1))).scalar_one_or_none()
 
 
