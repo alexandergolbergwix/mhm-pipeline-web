@@ -246,12 +246,7 @@ async def run_automatic_publication(job_id):
             await checked_plan(db, run_id, base_id, params['plan_id'], params['plan_digest'], actor)
             _, source, approved_only = _snapshot_parts(source_snapshot_id)
             target = 'live' if credential.target.site == 'www.wikidata.org' else 'test'
-            async def dry_run_progress(processed, total):
-                await _cancel_check(job_id)
-                await update_job_progress(job_id, {'phase': 'dry_run', 'processed': processed,
-                    'total': total, 'message': f'Fresh dry-run: {processed} / {total} retained items.',
-                    'report': report.model_dump(mode='json')})
-            runtime = PublicationRuntime(session=db, dry_run_progress=dry_run_progress, gateway_factory=lambda **kwargs: WikidataGatewayAdapter(
+            runtime = PublicationRuntime(session=db, gateway_factory=lambda **kwargs: WikidataGatewayAdapter(
                 credential_resolver=resolver, boundary_factory=CurrentWikidataBoundaryFactory()))
             # A bounded retry excludes newly blocked actions instead of weakening a gate.
             for attempt in range(3):
@@ -282,6 +277,14 @@ async def run_automatic_publication(job_id):
                         'reason': f'Automatic policy {POLICY_VERSION}; evidence report {job_id}. No human item review asserted.'}}))).publication
                 await _cancel_check(job_id)
                 await save('dry_run')
+                async def dry_run_progress(processed, total):
+                    await _cancel_check(job_id)
+                    await update_job_progress(job_id, {'phase': 'dry_run', 'processed': processed,
+                        'total': total,
+                        'message': f'Final Wikidata check {attempt + 1} of 3: {processed} / {total} retained records.',
+                        'report': report.model_dump(mode='json')})
+                runtime = PublicationRuntime(session=db, dry_run_progress=dry_run_progress, gateway_factory=lambda **kwargs: WikidataGatewayAdapter(
+                    credential_resolver=resolver, boundary_factory=CurrentWikidataBoundaryFactory()))
                 checked = (await runtime.advance(run_id=run_id, publication_id=prepared.publication_id, actor_id=actor,
                     request=AdvancePublicationRequest.model_validate({'command': {'type': 'dry_run', 'force_refresh': True,
                         'approval_set_id': reviewed.approval_set.approval_set_id,

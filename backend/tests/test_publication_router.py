@@ -1206,6 +1206,10 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     assert len(prepared_review['report']['items']) == 4
     assert any(event.get('phase') == 'dry_run' and event.get('processed') == 2 and event.get('total') == 2
         for event in progress_events)
+    assert any(event.get('message') == (
+        'Final Wikidata check 1 of 3: 2 / 2 retained records.'
+    )
+        for event in progress_events)
     page = (await client.post(new_url + '/read', json={'query': {'type': 'entities', 'release_id': result['current_release']['release_id']}})).json()
     assert page['items'][1]['deferred_statements'][0]['value'] == '__LOCAL:work:3'
 

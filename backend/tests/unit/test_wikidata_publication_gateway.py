@@ -256,7 +256,9 @@ async def test_reference_only_blocks_when_its_sealed_revision_changes(
     observations = await boundary.reconcile_batch((entity,))
 
     assert observations[0].status == "unknown"
-    assert observations[0].detail == "The reference-only target revision changed. Review its identity again."
+    assert observations[0].detail == (
+        "The reference-only target revision changed. Review its identity again."
+    )
 
 
 @pytest.mark.asyncio

@@ -90,6 +90,7 @@ A fresh dry-run stores its retained-record progress in the job state.
 A page refresh shows that progress instead of the completed AI assessment count.
 The UI calls this stage the final Wikidata check.
 It does not call this stage an AI review.
+The progress text shows the retry number and the retained record count.
 A normal retry reuses completed decisions and repeats retryable failures.
 A cache override repeats the full assessment. Cache keys include evidence, model, schema, evaluator, and policy code.
 A page refresh restores the report. The prepared Release also shows the source report and deferred records.
