@@ -377,23 +377,56 @@ class CurrentWikidataBoundary:
     ) -> tuple[TargetObservation, ...]:
         from app.pipeline.wikidata_upload import _reconcile_sync  # noqa: PLC0415
 
-        items = [self._native_item(entity) for entity in entities]
-        outcomes = _reconcile_sync(items)
-        observations: list[TargetObservation] = []
-        for entity, outcome in zip(entities, outcomes, strict=True):
+        observations: list[TargetObservation | None] = [None] * len(entities)
+        generic_entities: list[tuple[int, PublicationEntity]] = []
+        for index, entity in enumerate(entities):
+            reference = self._reference_only_target(entity)
+            if reference is None:
+                generic_entities.append((index, entity))
+                continue
+            if isinstance(reference, str):
+                observations[index] = TargetObservation.unknown(entity.entity_key, reference)
+                continue
+            qid, expected_revision = reference
+            snapshot = self._fetch_entity_sync(qid)
+            if snapshot is None:
+                observations[index] = TargetObservation.unknown(
+                    entity.entity_key,
+                    f"The reference-only target {qid} is absent",
+                )
+                continue
+            if snapshot.revision != expected_revision:
+                observations[index] = TargetObservation.unknown(
+                    entity.entity_key,
+                    "The reference-only target revision changed. Review its identity again.",
+                )
+                continue
+            constructor = (
+                TargetObservation.present_owned
+                if self._uploader._is_our_item(snapshot.qid)
+                else TargetObservation.present_foreign
+            )
+            observations[index] = constructor(
+                entity.entity_key,
+                qid=snapshot.qid,
+                fingerprint=snapshot.fingerprint,
+                remote_revision=snapshot.revision,
+            )
+
+        items = [self._native_item(entity) for _, entity in generic_entities]
+        outcomes = _reconcile_sync(items) if items else []
+        for (index, entity), outcome in zip(generic_entities, outcomes, strict=True):
             if outcome.method == "error":
-                observations.append(TargetObservation.unknown(entity.entity_key, outcome.message))
+                observations[index] = TargetObservation.unknown(entity.entity_key, outcome.message)
                 continue
             if not outcome.existing_qid:
-                observations.append(TargetObservation.absent(entity.entity_key))
+                observations[index] = TargetObservation.absent(entity.entity_key)
                 continue
             snapshot = self._fetch_entity_sync(outcome.existing_qid)
             if snapshot is None:
-                observations.append(
-                    TargetObservation.unknown(
-                        entity.entity_key,
-                        f"The reconciled target {outcome.existing_qid} is absent",
-                    )
+                observations[index] = TargetObservation.unknown(
+                    entity.entity_key,
+                    f"The reconciled target {outcome.existing_qid} is absent",
                 )
                 continue
             is_ours = self._uploader._is_our_item(snapshot.qid)
@@ -402,15 +435,35 @@ class CurrentWikidataBoundary:
                 if is_ours
                 else TargetObservation.present_foreign
             )
-            observations.append(
-                constructor(
-                    entity.entity_key,
-                    qid=snapshot.qid,
-                    fingerprint=snapshot.fingerprint,
-                    remote_revision=snapshot.revision,
-                )
+            observations[index] = constructor(
+                entity.entity_key,
+                qid=snapshot.qid,
+                fingerprint=snapshot.fingerprint,
+                remote_revision=snapshot.revision,
             )
-        return tuple(observations)
+        if any(observation is None for observation in observations):
+            raise RuntimeError("The Wikidata reconciliation did not return every observation")
+        return tuple(observation for observation in observations if observation is not None)
+
+    @staticmethod
+    def _reference_only_target(
+        entity: PublicationEntity,
+    ) -> tuple[str, int] | str | None:
+        document = entity.document
+        if not isinstance(document, Mapping):
+            return "The reference-only document is invalid"
+        reference = document.get("publication_reference_only")
+        if reference is None:
+            return None
+        if not isinstance(reference, Mapping):
+            return "The reference-only target is invalid"
+        qid = reference.get("qid")
+        revision = reference.get("remote_revision")
+        if not isinstance(qid, str) or not qid:
+            return "The reference-only target has no QID"
+        if not isinstance(revision, int):
+            return "The reference-only target has no remote revision"
+        return qid, revision
 
     def _fetch_entity_sync(self, qid: str) -> RemoteEntitySnapshot | None:
         payload = self._uploader._wbgetentities(

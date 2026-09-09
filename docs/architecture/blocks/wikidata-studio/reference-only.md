@@ -33,7 +33,8 @@ It removes untrusted reference-only markers from the Studio cache.
 The current source cannot override a selected QID with another QID.
 The entity API exposes `reference_only` and the `skip` proposed action.
 
-The dry-run checks each target again.
+The dry-run reads the sealed QID directly.
+It does not run a second generic identity search.
 Only the same existing QID and remote revision produce `skip`.
 A changed or unavailable target produces `block`, never `create` or `update`.
 The SQL executor admits only `create` and `update` actions.

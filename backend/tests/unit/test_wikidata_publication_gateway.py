@@ -25,6 +25,10 @@ class _ReadbackUploader:
     def __init__(self) -> None:
         self.read_only_arguments: list[bool] = []
 
+    def _is_our_item(self, qid: str) -> bool:
+        del qid
+        return False
+
     def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
         del props
         return {
@@ -179,6 +183,80 @@ async def test_update_readback_keeps_creator_guard() -> None:
 
     assert confirmation.status == "unknown"
     assert uploader.read_only_arguments == [False]
+
+
+@pytest.mark.asyncio
+async def test_reference_only_reuses_its_sealed_qid_without_generic_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.pipeline.wikidata_upload as wikidata_upload
+
+    def fail_generic_reconciliation(_: list[object]) -> list[object]:
+        raise AssertionError("reference-only entities must not use generic reconciliation")
+
+    monkeypatch.setattr(wikidata_upload, "_reconcile_sync", fail_generic_reconciliation)
+    boundary = CurrentWikidataBoundary(uploader=_ReadbackUploader())
+    entity = PublicationEntity(
+        release_id="release-1",
+        entity_key="person:1",
+        entity_type="person",
+        entity_digest="1" * 64,
+        document={
+            "labels": {"en": "Known person"},
+            "statements": [],
+            "publication_reference_only": {
+                "qid": "Q9001",
+                "remote_revision": 18,
+            },
+        },
+        evidence_refs=(),
+        identity_assertions=("P8189:authority-1",),
+        local_references=(),
+    )
+
+    observations = await boundary.reconcile_batch((entity,))
+
+    assert len(observations) == 1
+    observation = observations[0]
+    assert observation.status == "present_foreign"
+    assert observation.qid == "Q9001"
+    assert observation.remote_revision == 18
+
+
+@pytest.mark.asyncio
+async def test_reference_only_blocks_when_its_sealed_revision_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.pipeline.wikidata_upload as wikidata_upload
+
+    monkeypatch.setattr(
+        wikidata_upload,
+        "_reconcile_sync",
+        lambda _: (_ for _ in ()).throw(AssertionError("generic reconciliation ran")),
+    )
+    boundary = CurrentWikidataBoundary(uploader=_ReadbackUploader())
+    entity = PublicationEntity(
+        release_id="release-1",
+        entity_key="person:1",
+        entity_type="person",
+        entity_digest="1" * 64,
+        document={
+            "labels": {"en": "Known person"},
+            "statements": [],
+            "publication_reference_only": {
+                "qid": "Q9001",
+                "remote_revision": 17,
+            },
+        },
+        evidence_refs=(),
+        identity_assertions=("P8189:authority-1",),
+        local_references=(),
+    )
+
+    observations = await boundary.reconcile_batch((entity,))
+
+    assert observations[0].status == "unknown"
+    assert observations[0].detail == "The reference-only target revision changed. Review its identity again."
 
 
 @pytest.mark.asyncio
