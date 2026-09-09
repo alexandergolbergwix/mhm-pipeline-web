@@ -23,6 +23,12 @@ def test_role_map_has_annotator_and_commissioner() -> None:
     assert "compiler" not in ROLE_TO_PID
 
 
+def test_commentator_role_is_omitted_until_a_person_property_exists() -> None:
+    """P9046 is an external identifier, so a commentator QID is invalid."""
+    assert "commentator" not in ROLE_TO_PID
+    assert "COMMENTATOR" not in ROLE_TO_PID
+
+
 def test_anthology_uses_composite_not_codex() -> None:
     builder = WikidataItemBuilder()
     qids = builder._determine_instance_type({

@@ -741,10 +741,10 @@ ROLE_TO_PID: dict[str, str] = {
     "ILLUMINATOR": P_ILLUSTRATOR,
     # Censor identity is retained in source evidence; it is not ownership.
     # Fix 2026-04-15 third audit Fix #15: translators belong on P655, not P50
-    # (author). Commentators belong on P9046 (commentary by). Using P50 for
-    # these roles produces constraint violations and misleading author links.
+    # (author). Commentator links have no person-valued Wikidata property.
+    # P9046 is an external identifier, so a commentator QID would be invalid.
+    # Keep the role in source evidence and on the person's occupation item.
     "TRANSLATOR": "P655",  # translator
-    "COMMENTATOR": "P9046",  # commentary by
     # MARC roles (lowercase)
     "author": P_AUTHOR,
     "scribe": P_TRANSCRIBED_BY,
@@ -755,7 +755,6 @@ ROLE_TO_PID: dict[str, str] = {
     "commissioner": P_COMMISSIONED_BY,
     "patron": P_COMMISSIONED_BY,
     "translator": "P655",
-    "commentator": "P9046",
     # Hebrew role variants
     "סופר": P_TRANSCRIBED_BY,
     "מעתיק": P_TRANSCRIBED_BY,
