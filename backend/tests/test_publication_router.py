@@ -1084,8 +1084,15 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     from app.pipeline.agent_runner import AgentEvent
     from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
     from app.pipeline.wikidata_publication_ai_review_job import run_wikidata_publication_ai_review_job
+    from app.pipeline import wikidata_publication_auto_job
     from app.publication.wikidata_gateway import RemoteEntitySnapshot
     calls = []
+    progress_events = []
+    real_update_progress = wikidata_publication_auto_job.update_job_progress
+    async def capture_progress(job_id, progress):
+        progress_events.append(progress)
+        await real_update_progress(job_id, progress)
+    monkeypatch.setattr(wikidata_publication_auto_job, 'update_job_progress', capture_progress)
     from app.pipeline.inference_cache import cache_lookup_or_call
     from contextvars import ContextVar
     cache_session = ContextVar("publication_test_cache_session")
@@ -1194,6 +1201,8 @@ async def test_automatic_resolution_creates_an_approved_subset_without_writes(sa
     assert result['plan']['action_counts'] == {'create': 1, 'update': int(owned), 'skip': int(not owned), 'blocked': 0}
     assert result['dry_run_receipt']['status'] == 'valid'
     assert result['execution'] is None
+    assert any(event.get('phase') == 'dry_run' and event.get('processed') == 2 and event.get('total') == 2
+        for event in progress_events)
     page = (await client.post(new_url + '/read', json={'query': {'type': 'entities', 'release_id': result['current_release']['release_id']}})).json()
     assert page['items'][1]['deferred_statements'][0]['value'] == '__LOCAL:work:3'
 

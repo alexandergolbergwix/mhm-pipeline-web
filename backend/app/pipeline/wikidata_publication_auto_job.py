@@ -248,8 +248,8 @@ async def run_automatic_publication(job_id):
             target = 'live' if credential.target.site == 'www.wikidata.org' else 'test'
             async def dry_run_progress(processed, total):
                 await _cancel_check(job_id)
-                await update_job_progress(job_id, {'phase': 'dry_run', 'processed': len(report.items),
-                    'total': len(actions), 'message': f'Fresh dry-run: {processed} / {total} retained items.',
+                await update_job_progress(job_id, {'phase': 'dry_run', 'processed': processed,
+                    'total': total, 'message': f'Fresh dry-run: {processed} / {total} retained items.',
                     'report': report.model_dump(mode='json')})
             runtime = PublicationRuntime(session=db, dry_run_progress=dry_run_progress, gateway_factory=lambda **kwargs: WikidataGatewayAdapter(
                 credential_resolver=resolver, boundary_factory=CurrentWikidataBoundaryFactory()))

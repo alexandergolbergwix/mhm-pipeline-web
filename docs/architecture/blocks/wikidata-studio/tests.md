@@ -139,7 +139,7 @@ Any new external-write path or reconcile change MUST extend
   `backend/tests/unit/test_wikidata_publication_gateway.py` — sealed Release
   digests, execution leases, recovery, target credentials, revision checks,
   and fail-closed gateway outcomes (Rule W-212).
-- `backend/tests/test_publication_router.py` and
+- `backend/tests/test_publication_router.py` checks automatic-resolution dry-run progress against the retained Release count, and
   `backend/tests/test_wikidata_publication_execution_job.py` — queued prepare
   and execution jobs, access checks, no HTTP write, and secret-free job data.
 - `frontend/e2e/wikidata-publication.spec.ts` — one default Publication target
