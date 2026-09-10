@@ -452,6 +452,168 @@ async def test_publish_resumes_from_the_durable_write_journal() -> None:
 
 
 @pytest.mark.asyncio
+async def test_publish_continues_after_a_blocked_item_and_processes_later_batches() -> None:
+    entities = tuple(
+        PublicationEntityInput(
+            entity_key=f"manuscript:{index:03d}",
+            entity_type="manuscript",
+            document={"labels": {"en": f"Manuscript {index}"}},
+        )
+        for index in range(1, 52)
+    )
+    gateway = FakeWikidataGateway(
+        observations={
+            entity.entity_key: TargetObservation.absent(entity.entity_key)
+            for entity in entities
+        },
+        write_outcomes={
+            "manuscript:001": (
+                WriteOutcome.blocked("The target rejected this item."),
+            ),
+        },
+    )
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={"snapshot-7": entities},
+        gateway=gateway,
+        clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    prepared_operation = await module.prepare(_prepare_request())
+    prepared = await module.read(SummaryQuery(prepared_operation.publication_id))
+    await module.advance(
+        prepared.publication_id,
+        ReviewCommand(
+            release_id=prepared.release_id,
+            expected_release_digest=prepared.release_digest,
+            selection=EntitySelection.all(),
+            decision="approve",
+            actor_id="curator-1",
+            reason="Ready to publish.",
+            idempotency_key="blocked-batch-review",
+        ),
+    )
+    reviewed = await module.read(SummaryQuery(prepared.publication_id))
+    await module.advance(
+        prepared.publication_id,
+        DryRunCommand(
+            approval_set_id=reviewed.approval_set_id or "",
+            expected_approval_digest=reviewed.approval_digest or "",
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="curator-1",
+            idempotency_key="blocked-batch-dry-run",
+        ),
+    )
+    publishable = await module.read(SummaryQuery(prepared.publication_id))
+    published = await module.advance(
+        prepared.publication_id,
+        PublishCommand(
+            plan_id=publishable.plan_id or "",
+            dry_run_receipt_id=publishable.dry_run_receipt_id or "",
+            expected_receipt_digest=publishable.dry_run_receipt_digest or "",
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="curator-1",
+            idempotency_key="blocked-batch-publish",
+        ),
+    )
+
+    await module.advance(
+        prepared.publication_id,
+        ResumeCommand(
+            execution_id=published.resource_id,
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="publication-worker",
+            idempotency_key="blocked-batch-worker",
+        ),
+    )
+    completed = await module.read(SummaryQuery(prepared.publication_id))
+
+    assert completed.execution_status == "failed"
+    assert completed.execution_succeeded_count == 50
+    assert completed.execution_blocked_count == 1
+    assert len(gateway.write_calls) == 51
+
+
+@pytest.mark.asyncio
+async def test_publish_continues_after_an_unknown_item_and_pauses_only_after_other_batches() -> None:
+    entities = tuple(
+        PublicationEntityInput(
+            entity_key=f"manuscript:{index:03d}",
+            entity_type="manuscript",
+            document={"labels": {"en": f"Manuscript {index}"}},
+        )
+        for index in range(1, 52)
+    )
+    gateway = FakeWikidataGateway(
+        observations={
+            entity.entity_key: TargetObservation.absent(entity.entity_key)
+            for entity in entities
+        },
+        write_outcomes={
+            "manuscript:001": (
+                WriteOutcome.outcome_unknown("The connection closed after send."),
+            ),
+        },
+    )
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={"snapshot-7": entities},
+        gateway=gateway,
+        clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    prepared_operation = await module.prepare(_prepare_request())
+    prepared = await module.read(SummaryQuery(prepared_operation.publication_id))
+    await module.advance(
+        prepared.publication_id,
+        ReviewCommand(
+            release_id=prepared.release_id,
+            expected_release_digest=prepared.release_digest,
+            selection=EntitySelection.all(),
+            decision="approve",
+            actor_id="curator-1",
+            reason="Ready to publish.",
+            idempotency_key="unknown-batch-review",
+        ),
+    )
+    reviewed = await module.read(SummaryQuery(prepared.publication_id))
+    await module.advance(
+        prepared.publication_id,
+        DryRunCommand(
+            approval_set_id=reviewed.approval_set_id or "",
+            expected_approval_digest=reviewed.approval_digest or "",
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="curator-1",
+            idempotency_key="unknown-batch-dry-run",
+        ),
+    )
+    publishable = await module.read(SummaryQuery(prepared.publication_id))
+    published = await module.advance(
+        prepared.publication_id,
+        PublishCommand(
+            plan_id=publishable.plan_id or "",
+            dry_run_receipt_id=publishable.dry_run_receipt_id or "",
+            expected_receipt_digest=publishable.dry_run_receipt_digest or "",
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="curator-1",
+            idempotency_key="unknown-batch-publish",
+        ),
+    )
+
+    await module.advance(
+        prepared.publication_id,
+        ResumeCommand(
+            execution_id=published.resource_id,
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="publication-worker",
+            idempotency_key="unknown-batch-worker",
+        ),
+    )
+    paused = await module.read(SummaryQuery(prepared.publication_id))
+
+    assert paused.execution_status == "paused"
+    assert paused.execution_succeeded_count == 50
+    assert paused.execution_outcome_unknown_count == 1
+    assert len(gateway.write_calls) == 51
+
+
+@pytest.mark.asyncio
 async def test_cancel_stops_resume_before_gateway_recovery() -> None:
     gateway = FakeWikidataGateway(
         observations={"manuscript:1": TargetObservation.absent("manuscript:1")},

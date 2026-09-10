@@ -205,6 +205,28 @@ async def test_sql_repository_persists_the_publication_lifecycle(
     )
     await db_session.commit()
     now = datetime(2026, 9, 5, 9, 5, tzinfo=UTC)
+    excluded_claim = await repository.claim_execution_actions(
+        completed.execution_id,
+        worker_id="worker-excluded",
+        now=now,
+        lease_duration=timedelta(minutes=1),
+        limit=1,
+        exclude_entity_keys=("manuscript:1",),
+    )
+    assert len(excluded_claim) == 1
+    assert excluded_claim[0].entity_key == "work:2"
+    await db_session.execute(
+        update(PublicationExecutionAction)
+        .where(
+            PublicationExecutionAction.execution_id == uuid.UUID(completed.execution_id),
+        )
+        .values(
+            state="pending",
+            lease_owner=None,
+            lease_expires_at=None,
+        )
+    )
+    await db_session.commit()
     first_claim = await repository.claim_execution_actions(
         completed.execution_id,
         worker_id="worker-1",

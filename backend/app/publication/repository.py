@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal, Protocol
@@ -305,6 +306,7 @@ class PublicationRepository(Protocol):
         now: datetime,
         lease_duration: timedelta,
         limit: int,
+        exclude_entity_keys: Collection[str] = (),
     ) -> tuple[ExecutionActionRecord, ...]: ...
 
     async def latest_write_intent(
@@ -644,15 +646,22 @@ class InMemoryPublicationRepository:
         now: datetime,
         lease_duration: timedelta,
         limit: int,
+        exclude_entity_keys: Collection[str] = (),
     ) -> tuple[ExecutionActionRecord, ...]:
         execution = await self.get_execution(execution_id)
         if execution.status != "running":
             return ()
         claimed: list[ExecutionActionRecord] = []
         rows = self._execution_actions[execution_id]
+        excluded = set(exclude_entity_keys)
         for row in sorted(rows.values(), key=lambda item: item["record"].ordinal):
             if len(claimed) >= limit:
                 break
+            record = row["record"]
+            if not isinstance(record, ExecutionActionRecord):
+                continue
+            if record.entity_key in excluded:
+                continue
             if row["state"] not in {
                 "pending",
                 "pre_send_retryable",
@@ -665,7 +674,7 @@ class InMemoryPublicationRepository:
                 continue
             row["lease_owner"] = worker_id
             row["lease_expires_at"] = now + lease_duration
-            claimed.append(row["record"])
+            claimed.append(record)
         return tuple(claimed)
 
     async def latest_write_intent(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -673,6 +674,7 @@ class SqlAlchemyPublicationRepository:
         now: datetime,
         lease_duration: timedelta,
         limit: int,
+        exclude_entity_keys: Collection[str] = (),
     ) -> tuple[ExecutionActionRecord, ...]:
         execution_uuid = _uuid(execution_id)
         statement = (
@@ -697,6 +699,10 @@ class SqlAlchemyPublicationRepository:
             .order_by(ExecutionActionRow.phase, ExecutionActionRow.ordinal)
             .limit(limit)
         )
+        if exclude_entity_keys:
+            statement = statement.where(
+                ~ExecutionActionRow.entity_key.in_(exclude_entity_keys)
+            )
         bind = self._session.get_bind()
         if bind.dialect.name == "postgresql":
             statement = statement.with_for_update(

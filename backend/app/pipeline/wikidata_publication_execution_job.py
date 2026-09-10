@@ -5,19 +5,29 @@ from __future__ import annotations
 import uuid
 
 from app.db import session_scope
+from app.models.publication import PublicationExecution
 from app.models.run_job import (
     JOB_STATUS_CANCELLED,
     JOB_STATUS_FAILED,
     JOB_STATUS_SUCCEEDED,
     RunJob,
 )
-from app.models.publication import PublicationExecution
-from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
-from app.publication.credentials import ExecutionCredentialResolver, configured_publication_gateway_factory
-from app.publication.wikidata_gateway import CurrentWikidataBoundaryFactory, WikidataGatewayAdapter
+from app.pipeline.run_job_service import (
+    finish_job,
+    is_cancel_requested,
+    update_job_progress,
+)
+from app.publication.credentials import (
+    ExecutionCredentialResolver,
+    configured_publication_gateway_factory,
+)
+from app.publication.gateway import WikidataGateway
 from app.publication.runtime import PublicationRuntime
 from app.publication.types import TargetRef
-from app.publication.gateway import WikidataGateway
+from app.publication.wikidata_gateway import (
+    CurrentWikidataBoundaryFactory,
+    WikidataGatewayAdapter,
+)
 
 
 def _required_param(job: RunJob, name: str) -> str:
@@ -114,9 +124,22 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
         "cancelled": JOB_STATUS_CANCELLED,
         "failed": JOB_STATUS_FAILED,
     }.get(execution.status, JOB_STATUS_FAILED)
-    error = None if terminal != JOB_STATUS_FAILED else (
-        "The Publication Execution paused. Resolve the audit Finding, then resume it."
-    )
+    if execution.status == "paused":
+        error = (
+            "The Publication Execution processed all safe items and paused with "
+            f"{execution.failed} "
+            f"{('item' if execution.failed == 1 else 'items')} unresolved. "
+            "Resume it to retry the unresolved items."
+        )
+    elif execution.status == "failed":
+        error = (
+            f"The Publication Execution finished with {execution.failed} "
+            f"{('item' if execution.failed == 1 else 'items')} that "
+            f"{('needs' if execution.failed == 1 else 'need')} attention. "
+            "Review the audit before starting a new Release."
+        )
+    else:
+        error = None
     await finish_job(
         job_id,
         status=terminal,

@@ -322,4 +322,68 @@ describe("WikidataPublicationControls", () => {
     await userEvent.click(screen.getByTestId("publication-start-new-release"));
     expect(onPrepareNewRelease).toHaveBeenCalledOnce();
   });
+
+  it("reports a completed upload with item failures", () => {
+    render(<WikidataPublicationControls
+      publication={publication({
+        status: "failed",
+        approval_set: approval(),
+        plan: plan(),
+        dry_run_receipt: receipt(),
+        execution: {
+          execution_id: "execution-1",
+          plan_id: "plan-1",
+          status: "failed",
+          processed: 2,
+          total: 2,
+          succeeded: 1,
+          failed: 1,
+          skipped: 0,
+          current_entity_label: null,
+          started_at: "2026-09-05T10:05:00Z",
+          finished_at: "2026-09-05T10:12:00Z",
+          error: "The Publication Execution completed with 1 item that needs attention.",
+        },
+      })}
+      entities={[]}
+      onAdvance={vi.fn()}
+      onPrepareNewRelease={vi.fn()}
+      auditHref="/audit"
+    />);
+
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("Upload finished with errors");
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("1 item failed");
+  });
+
+  it("explains that a paused upload needs a retry after safe items finish", () => {
+    render(<WikidataPublicationControls
+      publication={publication({
+        status: "paused",
+        approval_set: approval(),
+        plan: plan(),
+        dry_run_receipt: receipt(),
+        execution: {
+          execution_id: "execution-1",
+          plan_id: "plan-1",
+          status: "paused",
+          processed: 2,
+          total: 2,
+          succeeded: 1,
+          failed: 1,
+          skipped: 0,
+          current_entity_label: null,
+          started_at: "2026-09-05T10:05:00Z",
+          finished_at: null,
+          error: "The Publication Execution processed all safe items and paused with 1 item unresolved.",
+        },
+      })}
+      entities={[]}
+      onAdvance={vi.fn()}
+      auditHref="/audit"
+    />);
+
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent(
+      "All safe items finished. Resume to retry the unresolved items.",
+    );
+  });
 });

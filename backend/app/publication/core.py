@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import uuid
-from collections.abc import Awaitable, AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol, cast
@@ -774,6 +774,7 @@ class PublicationModule:
     ) -> None:
         plan = await self._repository.get_plan(execution.plan_id)
         session = None
+        deferred_entity_keys: set[str] = set()
         while True:
             current = await self._repository.get_execution(execution.execution_id)
             if current.status == "cancelled":
@@ -784,6 +785,7 @@ class PublicationModule:
                 now=self._clock(),
                 lease_duration=timedelta(minutes=5),
                 limit=50,
+                exclude_entity_keys=deferred_entity_keys,
             )
             if not actions:
                 break
@@ -802,16 +804,15 @@ class PublicationModule:
                 plan=plan,
                 actions=actions,
                 session=session,
+                deferred_entity_keys=deferred_entity_keys,
             )
             counts = await self._repository.summarize_write_intents(execution.execution_id)
             if (
-                counts["blocked"]
-                or counts["pre_send_retryable"]
+                counts["pre_send_retryable"]
                 or counts["outcome_unknown"]
                 or counts["in_flight"]
             ):
-                await self._finish_execution_from_counts(publication, execution, counts)
-                return
+                continue
         counts = await self._repository.summarize_write_intents(execution.execution_id)
         await self._finish_execution_from_counts(publication, execution, counts)
 
@@ -822,6 +823,7 @@ class PublicationModule:
         plan: PlanRecord,
         actions: tuple[ExecutionActionRecord, ...],
         session: WikidataGatewaySession,
+        deferred_entity_keys: set[str],
     ) -> None:
         entities = await self._repository.get_release_entities(
             plan.release_id,
@@ -846,6 +848,7 @@ class PublicationModule:
             )
             await self._repository.checkpoint()
             if latest is not None and latest.state == "succeeded":
+                deferred_entity_keys.discard(action.entity_key)
                 continue
             if latest is not None and latest.state in {
                 "in_flight",
@@ -867,8 +870,13 @@ class PublicationModule:
                     await self._repository.update_write_intent(latest)
                 else:
                     await self._record_write_outcome(latest, recovery)
+                    if recovery.status in {"pre_send_retryable", "outcome_unknown"}:
+                        deferred_entity_keys.add(action.entity_key)
+                    else:
+                        deferred_entity_keys.discard(action.entity_key)
                     continue
             if latest is not None and latest.state == "blocked":
+                deferred_entity_keys.discard(action.entity_key)
                 continue
 
             attempt = (latest.attempt + 1) if latest is not None else 1
@@ -896,6 +904,10 @@ class PublicationModule:
             except Exception as exc:  # noqa: BLE001
                 outcome = WriteOutcome.outcome_unknown(str(exc))
             await self._record_write_outcome(intent, outcome)
+            if outcome.status in {"pre_send_retryable", "outcome_unknown"}:
+                deferred_entity_keys.add(action.entity_key)
+            else:
+                deferred_entity_keys.discard(action.entity_key)
 
     async def _finish_execution_from_counts(
         self,
