@@ -352,6 +352,7 @@ export function WikidataPublicationPanel({
             busyCommand={prepareJobId ? "dry_run" : busyCommand === "prepare" ? null : busyCommand}
             error={error}
             onAdvance={advance}
+            onPrepareNewRelease={prepare}
             onUseExisting={(entityKeys) => {
               if (!publication.plan) return;
               return prepare({publication_id: publication.publication_id,

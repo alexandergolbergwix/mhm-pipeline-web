@@ -12,6 +12,7 @@ export interface WikidataPublicationControlsProps {
   entities: PublicationEntity[];
   onAdvance: (command: PublicationAdvanceCommand) => void | Promise<void>;
   auditHref: string;
+  onPrepareNewRelease?: () => void | Promise<void>;
   onUseExisting?: (entityKeys: string[]) => void | Promise<void>;
   busyCommand?: PublicationAdvanceCommand["type"] | null;
   error?: string | null;
@@ -39,6 +40,7 @@ export function WikidataPublicationControls({
   entities,
   onAdvance,
   auditHref,
+  onPrepareNewRelease,
   onUseExisting,
   busyCommand = null,
   error = null,
@@ -59,6 +61,7 @@ export function WikidataPublicationControls({
     .map((entity) => entity.entity_id);
   const busy = busyCommand !== null || aiActive;
   const executionActive = execution?.status === "queued" || execution?.status === "running";
+  const executionFailed = execution?.status === "failed";
   const selectedKeys = consentSelection.planDigest === plan?.plan_digest ? consentSelection.entityKeys : [];
   const consents = (plan?.blocked_actions ?? []).flatMap((action) =>
     action.consent && selectedKeys.includes(action.entity_key) ? [action.consent] : []);
@@ -114,7 +117,7 @@ export function WikidataPublicationControls({
         <span aria-current={readiness.publishAllowed || execution ? "step" : undefined}>3. Publish</span>
       </nav>
       <div className="rounded-lg bg-white/5 p-4 space-y-3">
-        <p className="text-lg font-medium">{execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
+        <p className="text-lg font-medium">{executionFailed ? "Upload stopped" : execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
         <p className="text-sm muted">{release.entity_count} items in this Release · Target: {publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}</p>
         {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · {actionCount(plan.action_counts, "skip")} reused without updates · {actionCount(plan.action_counts, "blocked")} need attention</p>}
         {plan && <div className="rounded-md border border-white/10 bg-black/10 p-3" data-testid="publication-result-summary" aria-live="polite">
@@ -301,7 +304,7 @@ export function WikidataPublicationControls({
         <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-execution-progress" aria-live="polite">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="kicker">Upload progress</div>
+              <div className="kicker">{executionFailed ? "Upload stopped" : "Upload progress"}</div>
               <p className="text-sm text-ink">
                 {execution.processed.toLocaleString()} of {execution.total.toLocaleString()}
               </p>
@@ -320,6 +323,26 @@ export function WikidataPublicationControls({
           <p className="text-xs muted">
             {execution.succeeded.toLocaleString()} succeeded · {execution.failed.toLocaleString()} failed · {execution.skipped.toLocaleString()} skipped
           </p>
+          {executionFailed && (
+            <div className="rounded-md border border-danger/30 bg-danger/5 p-3 space-y-2" data-testid="publication-failed-recovery" role="status">
+              <p className="text-sm text-danger">
+                This upload stopped after {execution.failed.toLocaleString()} {execution.failed === 1 ? "item failed" : "items failed"}.
+                {execution.succeeded > 0 && ` ${execution.succeeded.toLocaleString()} items succeeded.`}
+              </p>
+              <p className="text-xs muted">Start a new Release to use the latest fixes and try the upload again.</p>
+              {onPrepareNewRelease && (
+                <button
+                  type="button"
+                  className="button-primary text-sm"
+                  disabled={busy}
+                  onClick={() => { void onPrepareNewRelease(); }}
+                  data-testid="publication-start-new-release"
+                >
+                  Start a new Release
+                </button>
+              )}
+            </div>
+          )}
           {execution.error && (
             <p className="text-sm text-danger" role="alert">{execution.error}</p>
           )}

@@ -284,4 +284,42 @@ describe("WikidataPublicationControls", () => {
     await userEvent.click(screen.getByTestId("publication-resume"));
     expect(onAdvance).toHaveBeenCalledWith({type: "resume", execution_id: "execution-1"});
   });
+
+  it("explains a failed execution and offers a new Release", async () => {
+    const onPrepareNewRelease = vi.fn();
+    render(<WikidataPublicationControls
+      publication={publication({
+        status: "failed",
+        approval_set: approval(),
+        plan: plan(),
+        dry_run_receipt: receipt(),
+        execution: {
+          execution_id: "execution-1",
+          plan_id: "plan-1",
+          status: "failed",
+          processed: 105,
+          total: 221,
+          succeeded: 96,
+          failed: 3,
+          skipped: 6,
+          current_entity_label: null,
+          started_at: "2026-09-05T10:05:00Z",
+          finished_at: "2026-09-05T10:12:00Z",
+          error: "The Publication Execution stopped after an audit finding.",
+        },
+      })}
+      entities={[]}
+      onAdvance={vi.fn()}
+      onPrepareNewRelease={onPrepareNewRelease}
+      auditHref="/audit"
+    />);
+
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("Upload stopped");
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("3 items failed");
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("Start a new Release");
+    expect(screen.queryByTestId("publication-resume")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("publication-start-new-release"));
+    expect(onPrepareNewRelease).toHaveBeenCalledOnce();
+  });
 });
