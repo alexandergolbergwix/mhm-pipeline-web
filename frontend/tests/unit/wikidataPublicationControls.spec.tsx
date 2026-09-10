@@ -245,9 +245,9 @@ describe("WikidataPublicationControls", () => {
     />);
 
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("4,200 of 100,000");
-    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("4,190 succeeded");
-    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("3 failed");
-    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("7 skipped");
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("4,190 items uploaded");
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("3 items need attention");
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("7 existing items reused without updates");
   });
 
   it("shows a recoverable worker failure and offers resume", async () => {
@@ -385,5 +385,9 @@ describe("WikidataPublicationControls", () => {
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent(
       "All safe items finished. Resume to retry the unresolved items.",
     );
+    expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent(
+      "1 item needs attention",
+    );
+    expect(screen.getByTestId("publication-resume")).toHaveTextContent("Retry unresolved items");
   });
 });

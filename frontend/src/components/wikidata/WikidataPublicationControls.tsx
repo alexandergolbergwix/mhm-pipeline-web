@@ -35,6 +35,14 @@ function commandLabel(type: PublicationAdvanceCommand["type"]): string {
   return "Cancelling…";
 }
 
+function countPhrase(count: number, singular: string, plural: string): string {
+  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
+}
+
+function attentionPhrase(count: number): string {
+  return `${countPhrase(count, "item", "items")} ${count === 1 ? "needs" : "need"} attention`;
+}
+
 export function WikidataPublicationControls({
   publication,
   entities,
@@ -64,9 +72,12 @@ export function WikidataPublicationControls({
   const executionFailed = execution?.status === "failed";
   const executionFinishedWithErrors = execution?.status === "failed"
     && execution.processed >= execution.total;
-  const executionWaitingForReview = execution?.status === "paused"
+  const executionActionsComplete = execution != null
     && execution.total > 0
     && execution.processed >= execution.total;
+  const executionWaitingForReview = execution?.status === "paused"
+    && executionActionsComplete;
+  const executionFinishedSuccessfully = execution?.status === "succeeded";
   const selectedKeys = consentSelection.planDigest === plan?.plan_digest ? consentSelection.entityKeys : [];
   const consents = (plan?.blocked_actions ?? []).flatMap((action) =>
     action.consent && selectedKeys.includes(action.entity_key) ? [action.consent] : []);
@@ -122,7 +133,7 @@ export function WikidataPublicationControls({
         <span aria-current={readiness.publishAllowed || execution ? "step" : undefined}>3. Publish</span>
       </nav>
       <div className="rounded-lg bg-white/5 p-4 space-y-3">
-        <p className="text-lg font-medium">{executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
+        <p className="text-lg font-medium">{executionWaitingForReview ? "Upload actions complete" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
         <p className="text-sm muted">{release.entity_count} items in this Release · Target: {publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}</p>
         {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · {actionCount(plan.action_counts, "skip")} reused without updates · {actionCount(plan.action_counts, "blocked")} need attention</p>}
         {plan && <div className="rounded-md border border-white/10 bg-black/10 p-3" data-testid="publication-result-summary" aria-live="polite">
@@ -281,7 +292,7 @@ export function WikidataPublicationControls({
 
       </details>
 
-      <div className="flex gap-2">
+          <div className="flex gap-2">
         {execution?.status === "paused" && (
           <button
             type="button"
@@ -290,7 +301,7 @@ export function WikidataPublicationControls({
             onClick={() => { void onAdvance({type: "resume", execution_id: execution.execution_id}); }}
             data-testid="publication-resume"
           >
-            {busyCommand === "resume" ? commandLabel("resume") : "Resume Execution"}
+            {busyCommand === "resume" ? commandLabel("resume") : executionWaitingForReview ? "Retry unresolved items" : "Resume Execution"}
           </button>
         )}
         {executionActive && (
@@ -309,12 +320,12 @@ export function WikidataPublicationControls({
         <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-execution-progress" aria-live="polite">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="kicker">{executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : "Upload progress"}</div>
+              <div className="kicker">{executionWaitingForReview ? "Upload actions complete" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : "Upload progress"}</div>
               <p className="text-sm text-ink">
-                {execution.processed.toLocaleString()} of {execution.total.toLocaleString()}
+                {execution.processed.toLocaleString()} of {execution.total.toLocaleString()} upload actions complete
               </p>
             </div>
-            <span className="rounded-full border border-white/10 px-2 py-1 text-xs muted">{execution.status}</span>
+            <span className="rounded-full border border-white/10 px-2 py-1 text-xs muted">{executionWaitingForReview ? "needs retry" : execution.status}</span>
           </div>
           {execution.status === "paused" && (
             <p className="text-sm text-warn">{executionWaitingForReview
@@ -327,8 +338,8 @@ export function WikidataPublicationControls({
               style={{width: `${execution.total > 0 ? Math.min(100, execution.processed / execution.total * 100) : 0}%`}}
             />
           </div>
-          <p className="text-xs muted">
-            {execution.succeeded.toLocaleString()} succeeded · {execution.failed.toLocaleString()} failed · {execution.skipped.toLocaleString()} skipped
+          <p className="text-xs muted" data-testid="publication-execution-outcome">
+            {countPhrase(execution.succeeded, "item", "items")} uploaded · {attentionPhrase(execution.failed)} · {countPhrase(execution.skipped, "existing item", "existing items")} reused without updates
           </p>
           {executionFailed && (
             <div className="rounded-md border border-danger/30 bg-danger/5 p-3 space-y-2" data-testid="publication-failed-recovery" role="status">
