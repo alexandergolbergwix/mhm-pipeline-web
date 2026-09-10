@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 
@@ -52,6 +53,44 @@ class _ReadbackUploader:
         if not read_only:
             raise RuntimeError("mutation validation must not run during read-back")
         return object(), 0, []
+
+
+class _CsrfRetryUploader:
+    _mark_as_bot = True
+
+    def __init__(self) -> None:
+        self.refresh_count = 0
+        self.item = _CsrfRetryItem()
+
+    def _build_wbi_item(
+        self,
+        item: object,
+        *,
+        read_only: bool = False,
+    ) -> tuple[object, int, list[str]]:
+        del item, read_only
+        return self.item, 0, []
+
+    def _assert_modifiable(self, qid: str, *, stage: str) -> None:
+        del qid, stage
+
+    def _check_moratorium_for_live(self) -> None:
+        return
+
+    def _refresh_edit_token(self) -> None:
+        self.refresh_count += 1
+
+
+class _CsrfRetryItem:
+    def __init__(self) -> None:
+        self.write_count = 0
+
+    def write(self, **kwargs: object) -> object:
+        del kwargs
+        self.write_count += 1
+        if self.write_count == 1:
+            raise RuntimeError("Invalid CSRF token.")
+        return SimpleNamespace(id="Q9001")
 
 
 @dataclass
@@ -311,6 +350,35 @@ async def test_gateway_checks_remote_revision_and_reads_back_after_write() -> No
     assert stale.status == "blocked"
     assert "revision" in (stale.detail or "").lower()
     assert len(boundary.write_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_refreshes_expired_csrf_token_before_retry() -> None:
+    uploader = _CsrfRetryUploader()
+    boundary = CurrentWikidataBoundary(uploader=uploader)
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="update",
+        target_qid="Q9001",
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=("P217:shelf-1",),
+        expected_revision=17,
+    )
+
+    qid = await boundary.write_once(
+        GatewayWriteRequest(
+            intent_id="intent-1",
+            request_key="execution-1:manuscript-1:1",
+            mutation=mutation,
+        )
+    )
+
+    assert qid == "Q9001"
+    assert uploader.refresh_count == 1
+    assert uploader.item.write_count == 2
 
 
 @pytest.mark.asyncio

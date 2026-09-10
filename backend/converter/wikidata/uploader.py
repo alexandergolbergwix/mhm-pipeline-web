@@ -1507,6 +1507,20 @@ class WikidataUploader:
             logger.warning("csrf token fetch failed: %s", exc)
             return None
 
+    def _refresh_edit_token(self) -> None:
+        """Refresh the WikibaseIntegrator edit token after a CSRF rejection."""
+        self._init_wbi()
+        login = self._login
+        if login is None:
+            raise RuntimeError("The Wikidata login is not initialized")
+        try:
+            login.edit_token = None
+            if not login.get_edit_token():
+                raise RuntimeError("The Wikidata API returned an empty edit token")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("csrf token refresh failed: %s", exc)
+            raise
+
     def _can_create_test_properties(self) -> bool:
         if self._test_can_create_properties is not None:
             return self._test_can_create_properties

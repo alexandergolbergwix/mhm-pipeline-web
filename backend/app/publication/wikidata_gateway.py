@@ -45,6 +45,8 @@ class _CurrentUploader(Protocol):
 
     def _assert_modifiable(self, qid: str, *, stage: str) -> None: ...
 
+    def _refresh_edit_token(self) -> None: ...
+
 
 class CredentialTargetMismatchError(ValueError):
     """The credential belongs to a different Wikidata target."""
@@ -71,6 +73,10 @@ class WikidataRateLimitError(WikidataPreSendRetryableError):
             f"Wikidata rejected the request for rate limits; retry after "
             f"{retry_after_seconds:g} seconds"
         )
+
+
+class WikidataCsrfError(WikidataPreSendRetryableError):
+    """The edit token expired before MediaWiki accepted the request."""
 
 
 class WikidataOutcomeUnknownError(WikidataGatewayError):
@@ -510,7 +516,17 @@ class CurrentWikidataBoundary:
             }
             if mutation.expected_revision is not None:
                 kwargs["baserevid"] = mutation.expected_revision
-            result = wbi_item.write(**kwargs)
+            result: object | None = None
+            for write_attempt in range(2):
+                try:
+                    result = wbi_item.write(**kwargs)
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    classified = _classify_write_exception(exc)
+                    if isinstance(classified, WikidataCsrfError) and write_attempt == 0:
+                        self._uploader._refresh_edit_token()
+                        continue
+                    raise classified from exc
             qid = str(getattr(result, "id", "") or mutation.target_qid or "")
             if not qid:
                 raise WikidataOutcomeUnknownError(
@@ -682,6 +698,12 @@ def _classify_write_exception(exc: Exception) -> WikidataGatewayError:
         return WikidataRateLimitError(retry_after_seconds=retry_after)
     if code == "editconflict" or "editconflict" in lowered:
         return WikidataRevisionConflictError(message)
+    if (
+        code in {"badtoken", "invalidcsrf", "invalid_csrf"}
+        or "invalid csrf" in lowered
+        or "csrf token" in lowered
+    ):
+        return WikidataCsrfError(message)
     if code in {"badtoken", "notloggedin", "assertuserfailed", "permissiondenied"}:
         return WikidataAuthenticationError(message)
     return WikidataOutcomeUnknownError(message)
