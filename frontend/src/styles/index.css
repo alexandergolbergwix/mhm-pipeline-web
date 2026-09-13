@@ -106,7 +106,7 @@
     radial-gradient(circle at 50% 110%, rgba(119, 204, 229, 0.1), transparent 32%),
     linear-gradient(160deg, #fdfefd 0%, #fafdfb 42%, #f5faf7 72%, #f0f6f2 100%);
   --grid-line: rgba(0, 64, 39, 0.05);
-  --canvas-ambient-opacity: 0.24;
+  --canvas-ambient-opacity: 0.18;
 }
 
 html, body, #root { height: 100%; }
