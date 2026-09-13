@@ -2,6 +2,41 @@
   "schema": 1,
   "entries": [
     {
+      "fingerprint": "sha256:1aa53cc37c1c35eb07c390370852e808",
+      "path": "backend/app/pipeline/research_aggregate.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "entity key list variable, not a credential",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:563e5f424914e30a2bd0df6f4a44ee9e",
+      "path": "backend/app/pipeline/research_aggregate.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "FastAPI list-typed parameter, not a credential",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:8a2b5c60a6375c36e7a2c7cbf4ce5c8a",
+      "path": "backend/app/pipeline/research_aggregate.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "public HTTPS endpoint URL constant, not a credential",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:a650fe46761f4f1cc2fc0ac2bfb5d41e",
+      "path": "backend/app/pipeline/research_aggregate.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "URI string variable, not a credential",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:c8becf2cb703608a979c9c9a24025811",
+      "path": "backend/app/pipeline/research_aggregate.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "label string variable, not a credential",
+      "expires": "2027-09-13"
+    },
+    {
       "fingerprint": "sha256:050a1528886b07667204edf2bda7f537",
       "path": "backend/app/pipeline/verify_session_store.py",
       "rule_id": "generic-assigned-secret",
@@ -112,6 +147,20 @@
       "rule_id": "relation-linked-secret",
       "reason": "Reviewed source or documentation text; it is not a credential.",
       "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:82765c2e9e49418ef1fd7f85dddcb4a5",
+      "path": "backend/app/routers/linked_data_explorer.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "FastAPI Depends(current_auth) parameter, not a credential",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:6120ea36a58a884c80e0e830b979fd82",
+      "path": "backend/app/routers/linked_data_explorer.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "FastAPI auth Depends parameter, not a credential",
+      "expires": "2027-09-13"
     },
     {
       "fingerprint": "sha256:3e863acdf25c047ce43748acfe986762",

@@ -6,6 +6,7 @@ structures.  All queries are SELECT-only; nothing is written to the graph.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any
 
 import rdflib
@@ -13,6 +14,28 @@ from rdflib import Namespace, URIRef
 from rdflib.namespace import RDF, RDFS
 
 logger = logging.getLogger(__name__)
+
+# rdflib SPARQL parsing is not thread-safe with pyparsing 3.3.x: concurrent
+# graph.query() calls race in pyparsing's parse-action arity probing and fail
+# with "Param.postParse2() missing 1 required positional argument" or
+# "<lambda>() missing 1 required positional argument: 'x'". Serialize every
+# rdflib query in the process through this lock (Rule W-232).
+RDFLIB_QUERY_LOCK = threading.Lock()
+
+
+def query_graph(
+    graph: rdflib.Graph,
+    query: str,
+    *,
+    init_ns: dict[str, Any] | None = None,
+) -> list[Any]:
+    """Run one SPARQL query under the process-global rdflib lock.
+
+    Returns a materialised list so callers never iterate a lazily-evaluated
+    Result outside the lock.
+    """
+    with RDFLIB_QUERY_LOCK:
+        return list(graph.query(query, initNs=init_ns or _INIT_NS))
 
 HM    = Namespace("https://w3id.org/mhm/ontology#")
 HM_LEGACY = Namespace("http://www.ontology.org.il/HebrewManuscripts/2025-12-06#")
@@ -105,7 +128,7 @@ def _label_map(graph: rdflib.Graph) -> dict[str, str]:
     """Build a URI→label lookup for the whole graph (single query, fast)."""
     labels: dict[str, str] = {}
     try:
-        for row in graph.query(_LABEL_QUERY, initNs=_INIT_NS):
+        for row in query_graph(graph, _LABEL_QUERY):
             uri = str(row.s)
             label = str(row.label)
             if uri not in labels or len(label) > len(labels[uri]):
@@ -144,7 +167,7 @@ def query_co_occurrence(
     try:
         labels = _label_map(graph)
         ms_works: dict[str, list[str]] = {}
-        for row in graph.query(_CO_OCCUR_Q, initNs=_INIT_NS):
+        for row in query_graph(graph, _CO_OCCUR_Q):
             ms = str(row.ms)
             work = str(row.work)
             ms_works.setdefault(ms, []).append(work)
@@ -257,7 +280,7 @@ def query_people_network(
         # ms → list of persons
         ms_persons: dict[str, list[str]] = {}
 
-        for row in graph.query(_PERSON_MS_Q, initNs=_INIT_NS):
+        for row in query_graph(graph, _PERSON_MS_Q):
             pid  = str(row.person)
             ms   = str(row.ms)
             role = str(row.role)
@@ -346,7 +369,7 @@ def query_ownership_chains(graph: rdflib.Graph) -> list[dict[str, Any]]:
     try:
         labels = _label_map(graph)
         ms_owners: dict[str, list[str]] = {}
-        for row in graph.query(_OWNERSHIP_Q, initNs=_INIT_NS):
+        for row in query_graph(graph, _OWNERSHIP_Q):
             ms    = str(row.ms)
             owner = str(row.owner)
             ms_owners.setdefault(ms, []).append(owner)
@@ -420,7 +443,7 @@ def query_geography(graph: rdflib.Graph) -> list[dict[str, Any]]:
         # Pre-build coords map
         coords: dict[str, tuple[float, float]] = {}
         try:
-            for row in graph.query(_COORDS_Q, initNs=_INIT_NS):
+            for row in query_graph(graph, _COORDS_Q):
                 try:
                     coords[str(row.place)] = (float(str(row.lat)), float(str(row.lon)))
                 except (ValueError, TypeError):
@@ -435,7 +458,7 @@ def query_geography(graph: rdflib.Graph) -> list[dict[str, Any]]:
         def _short_place(uri: str) -> str:
             return uri.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
 
-        for row in graph.query(_GEO_Q, initNs=_INIT_NS):
+        for row in query_graph(graph, _GEO_Q):
             ms    = str(row.ms)
             place = str(row.place)
             ptype = str(row.type)
@@ -500,7 +523,7 @@ def query_geography_heatmap(graph: rdflib.Graph) -> list[dict[str, Any]]:
         # Build coords map
         coords: dict[str, tuple[float, float]] = {}
         try:
-            for row in graph.query(_COORDS_Q, initNs=_INIT_NS):
+            for row in query_graph(graph, _COORDS_Q):
                 try:
                     coords[str(row.place)] = (float(str(row.lat)), float(str(row.lon)))
                 except (ValueError, TypeError):
@@ -512,7 +535,7 @@ def query_geography_heatmap(graph: rdflib.Graph) -> list[dict[str, Any]]:
         place_map: dict[str, dict[str, Any]] = {}
         seen: set[tuple[str, str]] = set()
 
-        for row in graph.query(_GEO_Q, initNs=_INIT_NS):
+        for row in query_graph(graph, _GEO_Q):
             ms    = str(row.ms)
             place = str(row.place)
             ptype = str(row.type)
@@ -578,7 +601,7 @@ _AUTHOR_Q  = (
 
 def _count(graph: rdflib.Graph, sparql: str) -> int:
     try:
-        for row in graph.query(sparql, initNs=_INIT_NS):
+        for row in query_graph(graph, sparql):
             return int(str(row.n))
     except Exception:
         pass
@@ -642,7 +665,7 @@ def query_provenance(
     # Production event
     try:
         date_q = _PROV_DATE_Q.replace("{ms}", ms_uri)
-        for row in graph.query(date_q, initNs=_INIT_NS):
+        for row in query_graph(graph, date_q):
             cert   = _year(row.certDate)  if row.certDate  else None
             early  = _year(row.earliest)  if row.earliest  else None
             late   = _year(row.latest)    if row.latest    else None
@@ -663,7 +686,7 @@ def query_provenance(
     # Ownership events
     try:
         owners_q = _PROV_OWNERS_Q.replace("{ms}", ms_uri)
-        for row in graph.query(owners_q, initNs=_INIT_NS):
+        for row in query_graph(graph, owners_q):
             owner_uri = str(row.owner)
             events.append({
                 "type":          "ownership",

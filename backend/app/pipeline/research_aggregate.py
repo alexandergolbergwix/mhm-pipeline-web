@@ -38,6 +38,7 @@ from app.pipeline.research_queries import (
     _count,
     _label_map,
     entity_select_sparql,
+    query_graph,
 )
 
 logger = logging.getLogger(__name__)
@@ -242,7 +243,7 @@ def rdf_provider(graph: rdflib.Graph) -> list[ProviderEntity]:
     out: list[ProviderEntity] = []
     for entity_type in ENTITY_TYPES:
         try:
-            rows = list(graph.query(_local_select(entity_type), initNs=_INIT_NS))
+            rows = query_graph(graph, _local_select(entity_type))
         except Exception as exc:
             logger.warning("rdf_provider query failed for %s: %s", entity_type, exc)
             continue
@@ -306,7 +307,7 @@ def _rdf_role_entities(graph: rdflib.Graph, query: str) -> list[ProviderEntity]:
         return []
     labels = _label_map(graph)
     try:
-        rows = list(graph.query(query, initNs=_INIT_NS))
+        rows = query_graph(graph, query)
     except Exception as exc:
         logger.warning("rdf role query failed: %s", exc)
         return []

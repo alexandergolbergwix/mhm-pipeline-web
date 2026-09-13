@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
+from app.pipeline.research_queries import RDFLIB_QUERY_LOCK
 from app.models.project import Membership
 from app.models.rdf_artifact import RdfArtifact
 from app.models.run import Run
@@ -143,7 +144,8 @@ def _execute_rdflib_query(graph, query: str) -> SparqlResponse:
         "wgs84": WGS84, "rdf": RDF, "rdfs": RDFS,
     }
 
-    result = graph.query(query, initNs=init_ns)
+    with RDFLIB_QUERY_LOCK:
+        result = graph.query(query, initNs=init_ns)
 
     # CONSTRUCT returns a graph, not rows
     if isinstance(result.graph, rdflib.Graph):

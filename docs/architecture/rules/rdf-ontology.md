@@ -212,3 +212,30 @@ so Redis cannot keep the 68/0/2/0 row. A graph with ≥1000 triples,
 manuscripts > 0, and works = 0 is incoherent. Tests:
 `tests/unit/test_research_summary_vocab.py`,
 `tests/test_research_summary_cache.py`, `tests/test_research_aggregate.py`.
+
+
+### Rule W-232 — Every rdflib graph.query() MUST run under the process-global query lock (added 2026-09-13)
+
+The Research Assistant chat returned `network error` and Heroku logged bursts
+of `HMO SPARQL query failed: Param.postParse2() missing 1 required positional
+argument: 'tokenList'` plus `<lambda>() missing 1 required positional
+argument: 'x'`. The same queries passed single-threaded on the identical
+rdflib 7.6.0 + pyparsing 3.3.2 build. Reproduction: 8 threads running
+`graph.query()` on one shared graph produced ~90% failures.
+
+Root cause: rdflib registers pyparsing parse actions
+(`Param.postParse2`, `lambda x:` IRIREF/INTEGER actions) whose
+call-arity probing mutates shared state on the module-level parser
+elements. Concurrent SPARQL parses in `asyncio.to_thread` workers —
+the research summary fires entity/role providers in parallel and the
+agent fires parallel tool calls — race the probe and call actions with
+zero arguments.
+
+Invariant: all rdflib SPARQL execution goes through
+`query_graph(graph, query)` in `research_queries.py` or takes
+`RDFLIB_QUERY_LOCK` directly. Every `graph.query(` call site must
+appear under one of those two forms. The lock is process-global;
+materialise results inside the lock. If rdflib fixes pyparsing
+thread-safety upstream, keep the lock — it is cheap next to query cost.
+Tests: `tests/test_research_aggregate.py` (lock covered by shared
+helper import).

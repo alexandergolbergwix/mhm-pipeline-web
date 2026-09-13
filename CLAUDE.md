@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-231)
+## Architectural rules (W-1…W-232)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -251,6 +251,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-87** — HMO RDF literals MUST be export-safe
 - **W-88** — GraphBuilder MUST emit only ontology-declared properties
 - **W-230** — Research summary MUST UNION work/person/place vocab the same way manuscripts UNION F4 + Bibliographic_Unit
+- **W-232** - Every rdflib `graph.query()` MUST run under the process-global `RDFLIB_QUERY_LOCK` (`query_graph` helper)
 
 ### [platform-infra.md](docs/architecture/rules/platform-infra.md) — Platform, caching, Heroku, external calls
 
