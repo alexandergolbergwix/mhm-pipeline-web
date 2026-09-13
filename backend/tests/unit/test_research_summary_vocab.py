@@ -57,11 +57,12 @@ class TestSummaryCountsRealConverterVocab:
         summary = query_summary(g)
         assert summary["total_manuscripts"] == 2, summary
 
-    def test_persons_and_works_counted_from_real_output(self) -> None:
+    def test_persons_works_and_places_counted_from_real_output(self) -> None:
         g = _build_real_graph(_records())
         summary = query_summary(g)
         assert summary["total_persons"] > 0, summary
         assert summary["total_works"] > 0, summary
+        assert summary["total_places"] > 0, summary
 
     def test_triples_present_but_no_legacy_manuscript_class(self) -> None:
         """The graph has triples and NONE of them use the legacy hm:Manuscript_Object."""
@@ -70,3 +71,84 @@ class TestSummaryCountsRealConverterVocab:
         hm = rdflib.Namespace("https://w3id.org/mhm/ontology#")
         legacy = list(g.triples((None, rdflib.RDF.type, hm.Manuscript_Object)))
         assert legacy == [], "converter unexpectedly emits the legacy class"
+
+
+def _parse_ttl(ttl: str) -> rdflib.Graph:
+    g = rdflib.Graph()
+    g.parse(data=ttl, format="turtle")
+    return g
+
+
+class TestSummaryCountsSurviveVocabDrift:
+    """A production graph can lack ``hm:has_work`` / slash-CIDOC types and
+    still carry F1 works, role links, and places. The header must count them.
+    """
+
+    def test_f1_work_without_has_work(self) -> None:
+        g = _parse_ttl("""
+        @prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+        @prefix hm: <https://w3id.org/mhm/ontology#> .
+        <https://w3id.org/mhm/ontology#MS_1> a lrmoo:F4_Manifestation_Singleton .
+        <https://w3id.org/mhm/ontology#W1> a lrmoo:F1_Work .
+        """)
+        summary = query_summary(g)
+        assert summary["total_manuscripts"] == 1, summary
+        assert summary["total_works"] == 1, summary
+
+    def test_person_via_hmo_class_and_role_link(self) -> None:
+        g = _parse_ttl("""
+        @prefix hm: <https://w3id.org/mhm/ontology#> .
+        @prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+        <https://w3id.org/mhm/ontology#MS_1> a lrmoo:F4_Manifestation_Singleton ;
+            hm:has_scribe <https://w3id.org/mhm/ontology#P1> .
+        <https://w3id.org/mhm/ontology#P1> a hm:E21_Person .
+        """)
+        summary = query_summary(g)
+        assert summary["total_persons"] == 1, summary
+
+    def test_place_via_production_link_without_e53(self) -> None:
+        g = _parse_ttl("""
+        @prefix hm: <https://w3id.org/mhm/ontology#> .
+        @prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+        <https://w3id.org/mhm/ontology#MS_1> a lrmoo:F4_Manifestation_Singleton ;
+            hm:has_production_place <https://w3id.org/mhm/ontology#Place_cairo> .
+        """)
+        summary = query_summary(g)
+        assert summary["total_places"] == 1, summary
+
+    def test_legacy_ontology_namespace_and_cidoc_hash(self) -> None:
+        g = _parse_ttl("""
+        @prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+        @prefix old: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#> .
+        @prefix crm: <http://www.cidoc-crm.org/cidoc-crm#> .
+        <https://w3id.org/mhm/ontology#MS_1> a lrmoo:F4_Manifestation_Singleton ;
+            old:has_work <https://w3id.org/mhm/ontology#W1> ;
+            old:has_scribe <https://w3id.org/mhm/ontology#P1> ;
+            old:has_production_place <https://w3id.org/mhm/ontology#Pl1> .
+        <https://w3id.org/mhm/ontology#W1> a lrmoo:F1_Work .
+        <https://w3id.org/mhm/ontology#P1> a crm:E21_Person .
+        <https://w3id.org/mhm/ontology#Pl1> a crm:E53_Place .
+        """)
+        summary = query_summary(g)
+        assert summary["total_works"] == 1, summary
+        assert summary["total_persons"] == 1, summary
+        assert summary["total_places"] == 1, summary
+
+    def test_aggregate_matches_query_summary_on_drift_graph(self) -> None:
+        from app.pipeline.research_aggregate import compute_aggregated_summary
+
+        g = _parse_ttl("""
+        @prefix lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/> .
+        @prefix hm: <https://w3id.org/mhm/ontology#> .
+        <https://w3id.org/mhm/ontology#MS_1> a lrmoo:F4_Manifestation_Singleton ;
+            hm:has_scribe <https://w3id.org/mhm/ontology#P1> ;
+            hm:has_production_place <https://w3id.org/mhm/ontology#Pl1> .
+        <https://w3id.org/mhm/ontology#W1> a lrmoo:F1_Work .
+        <https://w3id.org/mhm/ontology#P1> a hm:E21_Person .
+        """)
+        summary = query_summary(g)
+        agg = compute_aggregated_summary(g, [], [], wikibase_configured=False)
+        assert agg["total_manuscripts"] == summary["total_manuscripts"] == 1
+        assert agg["total_works"] == summary["total_works"] == 1
+        assert agg["total_persons"] == summary["total_persons"] == 1
+        assert agg["total_places"] == summary["total_places"] == 1

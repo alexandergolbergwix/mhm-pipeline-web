@@ -186,3 +186,29 @@ The production migration found that anthology records still emitted the removed
 bootstrap could not resolve the generated HMO claims. Anthology manuscripts now
 receive the declared `hm:AnthologyStructure` type and per-expression anthology
 positions; removed predicates are not minted. Test: `test_graph_builder_codicological_labels.py`.
+
+
+### Rule W-230 — Research summary MUST UNION work/person/place vocab (added 2026-09-13)
+
+The Research Assistant header showed **68 manuscripts · 0 works · 2 persons ·
+0 places** on a 15,176-triple graph. Manuscripts already UNION
+`lrmoo:F4_Manifestation_Singleton` + `hm:Bibliographic_Unit` (the converter
+never emits `hm:Manuscript_Object`). Works still required `hm:has_work`,
+persons `cidoc:E21_Person` (slash CIDOC), and places `cidoc:E53_Place`. A
+stored TTL that types `lrmoo:F1_Work`, `hm:E21_Person`, role links, or the
+pre-w3id ontology namespace therefore counted manuscripts and missed
+everything else. Wikidata Studio then contributed the two persons that
+already have a live QID, which the coherence gate treated as a healthy
+summary and cached.
+
+`ENTITY_WHERE` in `research_queries.py` is the single WHERE clause for
+`query_summary`, `rdf_provider`, and Wikibase SPARQL. Works UNION
+`hm:has_work` / legacy `has_work` / `lrmoo:F1_Work` / `hm:F1_Work` /
+`lrmoo:R3i_realises`. Persons UNION slash and hash CIDOC `E21_Person`,
+`hm:E21_Person`, `hm:Person`, and scribe/owner/author links. Places UNION
+slash and hash `E53_Place`, `hm:Place`, `has_production_place`, and
+`mentions_place`. `_SUMMARY_ALGORITHM_VERSION` is `linked-data-overview-v3`
+so Redis cannot keep the 68/0/2/0 row. A graph with ≥1000 triples,
+manuscripts > 0, and works = 0 is incoherent. Tests:
+`tests/unit/test_research_summary_vocab.py`,
+`tests/test_research_summary_cache.py`, `tests/test_research_aggregate.py`.

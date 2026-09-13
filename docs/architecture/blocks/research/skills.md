@@ -60,7 +60,10 @@
    `rdf_artifacts` row exists for any run.
 2. Summary shows zeros but maps work → the coherence gate should
    self-heal; if not, the cached row predates `_SUMMARY_ALGORITHM_VERSION` —
-   bump it in `research.py:50` to force a global key rotation.
+   bump it in `research.py` to force a global key rotation. Works / persons /
+   places still 0 beside a real manuscript count → `ENTITY_WHERE` missed a
+   class or namespace (Rule W-230); extend the UNION, keep rdf_provider in
+   lockstep, and bump the algorithm version.
 3. Geography empty → places lack `wgs84:lat/long` in the TTL; rebuild RDF so
    KIMA coords flow through (Rule W-32 note: DB-plane maps benefit
    immediately, the RDF-plane Geography tool needs a rebuild).

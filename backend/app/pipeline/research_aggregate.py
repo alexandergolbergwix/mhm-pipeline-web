@@ -29,12 +29,15 @@ import rdflib
 from converter.config.vocabularies import ROLE_MAPPINGS
 
 from app.pipeline.research_queries import (
+    ENTITY_WHERE,
+    SPARQL_PREFIXES,
     _AUTHOR_Q,
     _INIT_NS,
     _OWNER_Q,
     _SCRIBE_Q,
     _count,
     _label_map,
+    entity_select_sparql,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,33 +59,14 @@ _VIAF_PID = "P214"   # VIAF id (persons)
 _J9U_PID = "P8189"   # National Library of Israel J9U authority id
 _NNL_PID = "P3959"   # NLI / NNL manuscript catalogue id
 
-_PREFIXES = (
-    "PREFIX hm: <https://w3id.org/mhm/ontology#>\n"
-    "PREFIX cidoc: <http://www.cidoc-crm.org/cidoc-crm/>\n"
-    "PREFIX lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/>\n"
-    "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n"
-)
-
-# WHERE patterns binding ``?uri`` to an entity of each type. Reused verbatim
-# against the local rdflib graph (with initNs) and the remote Wikibase
-# endpoint (with a PREFIX preamble), so both sources are typed identically.
-_BODIES: dict[str, str] = {
-    "manuscript": "{ ?uri a lrmoo:F4_Manifestation_Singleton . } "
-                  "UNION { ?uri a hm:Bibliographic_Unit . }",
-    "work":       "?ms hm:has_work ?uri .",
-    "person":     "?uri a cidoc:E21_Person .",
-    "place":      "?uri a cidoc:E53_Place .",
-}
-
-
 def _local_select(entity_type: str) -> str:
-    return f"SELECT DISTINCT ?uri WHERE {{ {_BODIES[entity_type]} }}"
+    return entity_select_sparql(entity_type)
 
 
 def _remote_select(entity_type: str) -> str:
     return (
-        f"{_PREFIXES}\nSELECT DISTINCT ?uri ?label WHERE {{ "
-        f"{_BODIES[entity_type]} OPTIONAL {{ ?uri rdfs:label ?label }} }}"
+        f"{SPARQL_PREFIXES}\nSELECT DISTINCT ?uri ?label WHERE {{ "
+        f"{ENTITY_WHERE[entity_type]} OPTIONAL {{ ?uri rdfs:label ?label }} }}"
     )
 
 
@@ -300,23 +284,19 @@ def rdf_persons_by_role(graph: rdflib.Graph) -> dict[str, int]:
 
 _SCRIBE_PERSON_Q = """
 SELECT DISTINCT ?p WHERE {
-  ?ms hm:has_scribe ?p .
-  ?p rdf:type cidoc:E21_Person .
+  { ?ms hm:has_scribe ?p . } UNION { ?ms hmlegacy:has_scribe ?p . }
 }
 """
 
 _OWNER_PERSON_Q = """
 SELECT DISTINCT ?p WHERE {
-  ?ms hm:has_owner ?p .
-  ?p rdf:type cidoc:E21_Person .
+  { ?ms hm:has_owner ?p . } UNION { ?ms hmlegacy:has_owner ?p . }
 }
 """
 
 _AUTHOR_PERSON_Q = """
 SELECT DISTINCT ?p WHERE {
-  ?work hm:has_author ?p .
-  ?ms hm:has_work ?work .
-  ?p rdf:type cidoc:E21_Person .
+  { ?work hm:has_author ?p . } UNION { ?work hmlegacy:has_author ?p . }
 }
 """
 
@@ -376,7 +356,12 @@ def aggregated_persons_by_role(
     return {role: len(merge_entities(entities)) for role, entities in role_entities.items()}
 
 
-_STUDIO_TO_ENTITY_TYPE = {"manuscript": "manuscript", "person": "person", "work": "work"}
+_STUDIO_TO_ENTITY_TYPE = {
+    "manuscript": "manuscript",
+    "person": "person",
+    "work": "work",
+    "place": "place",
+}
 
 _ROLE_SCRIBE = {"scribe", "transcriber", "copyist", "editor"}
 _ROLE_AUTHOR = {"author", "translator", "commentator"}

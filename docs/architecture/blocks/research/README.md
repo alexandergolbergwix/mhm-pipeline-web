@@ -37,7 +37,7 @@ one deduplicated entity count (`research_aggregate.py`).
 - [Key files](key-files.md) — pipeline builders, routers, and frontend map of the surface
 - [How it works](how-it-works.md) — graph loading, summary coherence gate, dedup, maps, pathfinding, SPARQL console, geo-enrichment
 - [Research Assistant](agent.md) — chat + canvas, Modal AG-UI, JWT tools, domain rails (Rule W-228)
-- [Rules](rules.md) — invariants R1–R19 (read-only SPARQL, never fabricate coords, fail-closed geo, cache discipline, agent rails)
+- [Rules](rules.md) — invariants R1–R20 (read-only SPARQL, never fabricate coords, fail-closed geo, cache discipline, agent rails, summary vocab UNION)
 - [Skills](skills.md) — add stop kinds / analytics queries / SPARQL backends, debug maps, extend agent tools
 - [Tests](tests.md) — test suites pinning this block
 

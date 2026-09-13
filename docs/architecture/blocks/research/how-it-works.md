@@ -13,10 +13,19 @@ run in `asyncio.to_thread` since rdflib is synchronous.
 **Summary caching + coherence gate.** `/research/summary` caches its result in
 the two-tier inference cache under `kind="research.summary"`. The cache key
 folds in each run's `RdfArtifact.built_at` + triple count, each run's Wikidata
-Studio fingerprint, and the Wikibase URL, so a rebuild or a new approval
-invalidates (`research.py:77`). `_is_coherent_summary` refuses to serve or
-write "triples > 0 but zero entities" (the bad-window read); on an incoherent
-live graph it force-reseeds TTLs from Postgres and recomputes once.
+Studio fingerprint, the Wikibase URL, and `_SUMMARY_ALGORITHM_VERSION`
+(`linked-data-overview-v3`). `_is_coherent_summary` refuses "triples > 0 but
+zero entities", zero manuscripts, or a large graph (≥1000 triples) with
+manuscripts but zero works (Rule W-230). On an incoherent live graph it
+force-reseeds TTLs from Postgres and recomputes once.
+
+**Entity count SPARQL.** `ENTITY_WHERE` in `research_queries.py` is the single
+WHERE clause for `query_summary`, `rdf_provider`, and Wikibase SPARQL.
+Manuscripts UNION `lrmoo:F4` + `hm:Bibliographic_Unit`. Works UNION
+`hm:has_work` / legacy `has_work` / `lrmoo:F1_Work` / `hm:F1_Work` /
+`R3i_realises`. Persons UNION slash and hash CIDOC `E21_Person`, HMO person
+classes, and scribe/owner/author links. Places UNION `E53_Place`, `hm:Place`,
+and production/mention links.
 
 **Cross-source dedup.** `research_aggregate.merge_entities` union-finds
 provider entities by identity keys with precedence

@@ -47,7 +47,7 @@ from app.settings import get_settings
 router = APIRouter(tags=["research"])
 logger = logging.getLogger(__name__)
 
-_SUMMARY_ALGORITHM_VERSION = "linked-data-overview-v2"
+_SUMMARY_ALGORITHM_VERSION = "linked-data-overview-v3"
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -121,9 +121,15 @@ def _is_coherent_summary(summary: dict[str, Any]) -> bool:
         + (summary.get("total_persons") or 0)
         + (summary.get("total_places") or 0)
     )
+    manuscripts = summary.get("total_manuscripts") or 0
+    works = summary.get("total_works") or 0
     if triples > 0 and entities == 0:
         return False
-    if triples > 0 and (summary.get("total_manuscripts") or 0) == 0:
+    if triples > 0 and manuscripts == 0:
+        return False
+    # A large HMO graph always materialises F1 works. Zero works beside
+    # manuscripts is the same vocab-miss as zero manuscripts (Rule W-230).
+    if triples >= 1000 and manuscripts > 0 and works == 0:
         return False
     by_type = summary.get("by_type")
     if isinstance(by_type, dict):
@@ -192,16 +198,16 @@ async def research_summary(
     """Aggregate statistics: total manuscripts, works, persons, places.
 
     Cached in Redis/Postgres (kind=research.summary) so a good result
-    survives dyno restarts. Two safeguards (added 2026-06-14) stop the
-    recurring 0/0/0/0-with-N-triples bug:
+    survives dyno restarts. Safeguards stop both the 0/0/0/0-with-N-triples
+    bug and the 68/0/2/0 vocab-miss (Rule W-230):
 
     * the cache key folds in each run's ``RdfArtifact.built_at`` + triple
-      count, so an RDF *rebuild* invalidates it (run-id set alone did not);
-    * an incoherent summary (triples > 0 but every entity count 0 — the
-      signature of a bad-window read) is never served from cache nor
-      written to it. On a stale-incoherent hit we recompute from the live
-      graph (which the other research tabs read directly and prove healthy)
-      and overwrite the cache with the good value.
+      count and ``_SUMMARY_ALGORITHM_VERSION``, so an RDF rebuild or a
+      count-query change invalidates it;
+    * an incoherent summary (triples > 0 but no manuscripts, or a large
+      graph with manuscripts but zero works) is never served from cache
+      nor written to it. On a stale-incoherent hit we recompute from the
+      live graph and overwrite the cache with the good value.
     """
     await _require_viewer(project_id, auth, db)
     run_ids = await _run_ids_for_project(project_id, db)

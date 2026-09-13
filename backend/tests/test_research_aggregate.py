@@ -113,6 +113,14 @@ class TestWikidataProvider:
         ])
         assert ents[0].control_number == "990123"
 
+    def test_counts_place_items_with_qid(self):
+        ents = wikidata_provider([
+            {"entity_type": "place", "existing_qid": "Q90", "labels": {"en": "Paris"}},
+        ])
+        assert len(ents) == 1
+        assert ents[0].entity_type == "place"
+        assert ents[0].qid == "Q90"
+
 
 class TestWikibaseProvider:
     def test_returns_empty_when_unconfigured(self):

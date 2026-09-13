@@ -5,7 +5,7 @@
 | File | Purpose |
 |---|---|
 | `backend/app/pipeline/research_graph.py` | Merge per-run TTLs into one cached rdflib graph (LRU of 4, mtime+size fingerprint; `invalidate_cache(run_id)` after RDF rebuild) |
-| `backend/app/pipeline/research_queries.py` | Pre-defined SELECT-only SPARQL analytics: co-occurrence, people network (server-side networkx spring layout), ownership chains, geography (+heatmap), per-MS provenance events, summary counts |
+| `backend/app/pipeline/research_queries.py` | Pre-defined SELECT-only SPARQL analytics: co-occurrence, people network, ownership chains, geography, provenance events, summary counts. `ENTITY_WHERE` is the shared work/person/place UNION (Rule W-230) |
 | `backend/app/pipeline/research_aggregate.py` | Cross-source Overview: union-find entity dedup across rdf / wikidata / wikibase, keyed QID > control-number > VIAF > NLI > label |
 | `backend/app/pipeline/research_graph_ops.py` | rdflib → undirected networkx graph over 8 HMO predicates; `get_neighbors`, `find_shortest_path` (max_depth 6) |
 | `backend/app/pipeline/research_provenance_map.py` | Pure builder for the single-MS movement map: stops, edges, dropped list, integrity guards A1–A7/D2 |

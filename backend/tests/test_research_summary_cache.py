@@ -74,16 +74,24 @@ class TestIsCoherentSummary:
              "total_places": 0, "triples": 100}
         ) is True
 
+    def test_large_graph_zero_works_is_incoherent(self) -> None:
+        assert _is_coherent_summary(
+            {"total_manuscripts": 68, "total_works": 0, "total_persons": 2,
+             "total_places": 0, "triples": 15176}
+        ) is False
+
     def test_non_dict_is_incoherent(self) -> None:
         assert _is_coherent_summary(None) is False  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
 async def test_summary_fingerprint_includes_algorithm_version(db_session) -> None:
+    from app.routers.research import _SUMMARY_ALGORITHM_VERSION
+
     fp = await _summary_fingerprint(
         [str(uuid.uuid4())], db_session, studio_fps={}, wikibase_url="",
     )
-    assert "summary:linked-data-overview-v2" in fp
+    assert f"summary:{_SUMMARY_ALGORITHM_VERSION}" in fp
 
 
 # ── integration: poisoned cache is rejected, recomputed, overwritten ──────

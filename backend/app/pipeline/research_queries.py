@@ -15,18 +15,83 @@ from rdflib.namespace import RDF, RDFS
 logger = logging.getLogger(__name__)
 
 HM    = Namespace("https://w3id.org/mhm/ontology#")
+HM_LEGACY = Namespace("http://www.ontology.org.il/HebrewManuscripts/2025-12-06#")
 CIDOC = Namespace("http://www.cidoc-crm.org/cidoc-crm/")
+CIDOC_HASH = Namespace("http://www.cidoc-crm.org/cidoc-crm#")
 LRMOO = Namespace("http://iflastandards.info/ns/lrm/lrmoo/")
 WGS84 = Namespace("http://www.w3.org/2003/01/geo/wgs84_pos#")
 
 _INIT_NS = {
-    "hm":        HM,
-    "cidoc":     CIDOC,
-    "lrmoo":     LRMOO,
-    "wgs84":     WGS84,
-    "rdf":       RDF,
-    "rdfs":      RDFS,
+    "hm":         HM,
+    "hmlegacy":   HM_LEGACY,
+    "cidoc":      CIDOC,
+    "cidoc_hash": CIDOC_HASH,
+    "lrmoo":      LRMOO,
+    "wgs84":      WGS84,
+    "rdf":        RDF,
+    "rdfs":       RDFS,
 }
+
+# PREFIX preamble for the remote Wikibase SPARQL endpoint. Must stay in
+# lockstep with ``_INIT_NS`` so local rdflib and live Wikibase type alike.
+SPARQL_PREFIXES = (
+    "PREFIX hm: <https://w3id.org/mhm/ontology#>\n"
+    "PREFIX hmlegacy: <http://www.ontology.org.il/HebrewManuscripts/2025-12-06#>\n"
+    "PREFIX cidoc: <http://www.cidoc-crm.org/cidoc-crm/>\n"
+    "PREFIX cidoc_hash: <http://www.cidoc-crm.org/cidoc-crm#>\n"
+    "PREFIX lrmoo: <http://iflastandards.info/ns/lrm/lrmoo/>\n"
+    "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n"
+)
+
+# WHERE patterns binding ``?uri`` to an entity of each type. Manuscripts
+# already UNION LRMoo + HMO classes so vocab drift cannot zero the count.
+# Works / persons / places use the same UNION shape (Rule W-230).
+ENTITY_WHERE: dict[str, str] = {
+    "manuscript": (
+        "{ ?uri a lrmoo:F4_Manifestation_Singleton . } "
+        "UNION { ?uri a hm:Bibliographic_Unit . }"
+    ),
+    "work": (
+        "{ ?ms hm:has_work ?uri . } "
+        "UNION { ?ms hmlegacy:has_work ?uri . } "
+        "UNION { ?uri a lrmoo:F1_Work . } "
+        "UNION { ?uri a hm:F1_Work . } "
+        "UNION { ?expr lrmoo:R3i_realises ?uri . }"
+    ),
+    "person": (
+        "{ ?uri a cidoc:E21_Person . } "
+        "UNION { ?uri a cidoc_hash:E21_Person . } "
+        "UNION { ?uri a hm:E21_Person . } "
+        "UNION { ?uri a hm:Person . } "
+        "UNION { ?ms hm:has_scribe ?uri . } "
+        "UNION { ?ms hm:has_owner ?uri . } "
+        "UNION { ?w hm:has_author ?uri . } "
+        "UNION { ?ms hmlegacy:has_scribe ?uri . } "
+        "UNION { ?ms hmlegacy:has_owner ?uri . } "
+        "UNION { ?w hmlegacy:has_author ?uri . }"
+    ),
+    "place": (
+        "{ ?uri a cidoc:E53_Place . } "
+        "UNION { ?uri a cidoc_hash:E53_Place . } "
+        "UNION { ?uri a hm:Place . } "
+        "UNION { ?ms hm:has_production_place ?uri . } "
+        "UNION { ?ms hm:mentions_place ?uri . } "
+        "UNION { ?ms hmlegacy:has_production_place ?uri . } "
+        "UNION { ?ms hmlegacy:mentions_place ?uri . }"
+    ),
+}
+
+
+def entity_select_sparql(entity_type: str) -> str:
+    return f"SELECT DISTINCT ?uri WHERE {{ {ENTITY_WHERE[entity_type]} }}"
+
+
+def entity_count_sparql(entity_type: str) -> str:
+    return (
+        f"SELECT (COUNT(DISTINCT ?uri) AS ?n) WHERE {{ "
+        f"{ENTITY_WHERE[entity_type]} }}"
+    )
+
 
 _LABEL_QUERY = """
 SELECT ?s ?label WHERE {
@@ -489,20 +554,26 @@ def query_geography_heatmap(graph: rdflib.Graph) -> list[dict[str, Any]]:
 
 # ── Summary ────────────────────────────────────────────────────────────
 
-# The mapper types a manuscript as lrmoo:F4_Manifestation_Singleton (the physical
-# item) and hm:Bibliographic_Unit on the same URI — it never emits hm:Manuscript_Object.
-# Count the distinct URI carrying either class so the total survives vocab drift.
-_MS_COUNT_Q     = (
-    "SELECT (COUNT(DISTINCT ?ms) AS ?n) WHERE { "
-    "{ ?ms rdf:type lrmoo:F4_Manifestation_Singleton . } "
-    "UNION { ?ms rdf:type hm:Bibliographic_Unit . } }"
+# Count DISTINCT ``?uri`` from ENTITY_WHERE so rdf_provider and query_summary
+# cannot drift apart. Manuscripts UNION F4 + Bibliographic_Unit; works /
+# persons / places UNION LRMoo/CIDOC classes, HMO classes, role links, and
+# the pre-w3id ontology namespace (Rule W-230).
+_MS_COUNT_Q     = entity_count_sparql("manuscript")
+_WORK_COUNT_Q   = entity_count_sparql("work")
+_PERSON_COUNT_Q = entity_count_sparql("person")
+_PLACE_COUNT_Q  = entity_count_sparql("place")
+_SCRIBE_Q  = (
+    "SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { "
+    "{ ?ms hm:has_scribe ?p . } UNION { ?ms hmlegacy:has_scribe ?p . } }"
 )
-_WORK_COUNT_Q   = "SELECT (COUNT(DISTINCT ?w)  AS ?n) WHERE { ?ms hm:has_work ?w . }"
-_PERSON_COUNT_Q = "SELECT (COUNT(DISTINCT ?p)  AS ?n) WHERE { ?p rdf:type cidoc:E21_Person . }"
-_PLACE_COUNT_Q  = "SELECT (COUNT(DISTINCT ?pl) AS ?n) WHERE { ?pl rdf:type cidoc:E53_Place . }"
-_SCRIBE_Q  = "SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { ?ms hm:has_scribe ?p . }"
-_OWNER_Q   = "SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { ?ms hm:has_owner  ?p . }"
-_AUTHOR_Q  = "SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { ?w  hm:has_author ?p . }"
+_OWNER_Q   = (
+    "SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { "
+    "{ ?ms hm:has_owner ?p . } UNION { ?ms hmlegacy:has_owner ?p . } }"
+)
+_AUTHOR_Q  = (
+    "SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { "
+    "{ ?w hm:has_author ?p . } UNION { ?w hmlegacy:has_author ?p . } }"
+)
 
 
 def _count(graph: rdflib.Graph, sparql: str) -> int:
