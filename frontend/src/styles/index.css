@@ -63,11 +63,11 @@
   --biu-black: #000000;
   --biu-green: #004027;
   --biu-sky: #0d5f75;
-  --ink: #001008;
-  --muted: #1f4d3f;
-  --ink-subtle: #163d32;
-  --ink-faint: #2a5246;
-  --ink-disabled: #4a6b60;
+  --ink: #0b3d26;
+  --muted: #35704f;
+  --ink-subtle: #1d553a;
+  --ink-faint: #35704f;
+  --ink-disabled: #5c8672;
   --warn: #92400e;
   --success: #047857;
   --danger: #b91c1c;
@@ -101,12 +101,12 @@
     rgba(119, 204, 229, 0.28) 100%
   );
   --body-bg:
-    radial-gradient(circle at 12% 18%, rgba(119, 204, 229, 0.28), transparent 22%),
-    radial-gradient(circle at 88% 12%, rgba(0, 64, 39, 0.08), transparent 24%),
-    radial-gradient(circle at 50% 110%, rgba(119, 204, 229, 0.14), transparent 32%),
-    linear-gradient(160deg, #f4faf7 0%, #eef6f2 42%, #e8f2ec 72%, #e2ede8 100%);
-  --grid-line: rgba(0, 64, 39, 0.06);
-  --canvas-ambient-opacity: 0.42;
+    radial-gradient(circle at 12% 18%, rgba(119, 204, 229, 0.14), transparent 22%),
+    radial-gradient(circle at 88% 12%, rgba(0, 64, 39, 0.05), transparent 24%),
+    radial-gradient(circle at 50% 110%, rgba(119, 204, 229, 0.1), transparent 32%),
+    linear-gradient(160deg, #fdfefd 0%, #fafdfb 42%, #f5faf7 72%, #f0f6f2 100%);
+  --grid-line: rgba(0, 64, 39, 0.05);
+  --canvas-ambient-opacity: 0.24;
 }
 
 html, body, #root { height: 100%; }

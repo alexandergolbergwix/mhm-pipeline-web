@@ -47,6 +47,11 @@ const ORBS: OrbSpec[] = [
     sx: 0.14, sy: 0.20, sz: 0.05, ax: 0.4,  ay: 0.7, az: 0.5,  phase: 4.2  },
 ];
 
+// Light mode renders the canvas with mixBlendMode:"multiply", so dark orb
+// colors would paint near-black blobs over the white background. Use pale
+// tints there instead — multiply then only adds a soft ambient wash.
+const LIGHT_ORB_COLORS = ["#bfe6d4", "#8fd0c0", "#ffffff", "#a9d8e6"];
+
 
 export function LiquidGlassCanvas() {
   const colorScheme = useTheme((s) => s.colorScheme);
@@ -98,7 +103,13 @@ export function LiquidGlassCanvas() {
         <ambientLight intensity={0.4} />
         <directionalLight position={[3, 4, 5]} intensity={0.7} />
         <Suspense fallback={null}>
-          {ORBS.map((o, i) => <Orb key={i} {...o} />)}
+          {ORBS.map((o, i) => (
+            <Orb
+              key={i}
+              {...o}
+              color={colorScheme === "light" ? LIGHT_ORB_COLORS[i] : o.color}
+            />
+          ))}
         </Suspense>
       </Canvas>
     </div>
