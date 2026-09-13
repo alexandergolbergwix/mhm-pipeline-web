@@ -44,6 +44,30 @@ class ResearchAgentThread(Base, TimestampMixin):
     canvas_state: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class ResearchAgentReplyCache(Base, TimestampMixin):
+    """Cached planner answers, keyed by (project, normalized question).
+
+    Identical questions inside one project reuse the stored answer instead
+    of spending another planner call. Only successful chat runs are cached.
+    """
+    __tablename__ = "research_agent_reply_cache"
+    __table_args__ = (
+        UniqueConstraint("project_id", "text_hash", name="uq_reply_cache_project_hash"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=_new_uuid,
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    answer_text: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class ResearchAgentArtifact(Base, TimestampMixin):
     __tablename__ = "research_agent_artifacts"
     __table_args__ = (

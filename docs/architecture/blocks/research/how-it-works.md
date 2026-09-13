@@ -85,3 +85,23 @@ AG-UI stub) plans; Heroku executes tools. Domain restriction is structural
 retries invalid tool or output JSON three times and answers in plain text.
 The chat maps pydantic-ai retry exceptions to a curator sentence (Rule
 W-231).
+
+**Thread persistence + history.** The browser stores the live thread id in
+`localStorage["mhm-research-thread:<runId>"]` and reloads it on mount, so a
+refresh resumes the same chat. After every completed turn the frontend PATCHes
+the full transcript to `PATCH /research-agent/threads/{id}` (`messages` is the
+stored source of truth — `applyAguiEvent` output, not the Modal server).
+`GET /research-agent/threads?project_id=&run_id=` lists the curator's threads
+(newest first, 50 max) for the history dropdown; `new_thread: true` on
+`POST /research-agent/sessions` forces a fresh thread ("New chat"); the
+thread title is inline-editable via the same PATCH (`title`).
+
+**Reply cache + AI titles.** After a successful planner run (saw
+`RUN_FINISHED`, no `RUN_ERROR`, non-empty text) the Modal wrapper stores the
+answer in Postgres via grant-protected `POST /research-agent/reply-cache`
+keyed `(project_id, sha256 of whitespace-normalized question)`; the next
+identical question streams the cached answer and skips the planner (Rule
+R23). `POST /research-agent/threads/{id}/auto-title` generates a 3–6 word AI
+title from the first user message via Qubrid `glm-5.3-flash`
+(`title.py`), falls back to the truncated message, and memoizes identical
+texts in-process. A title is cosmetic — every failure degrades silently.

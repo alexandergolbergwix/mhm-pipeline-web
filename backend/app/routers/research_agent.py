@@ -24,6 +24,7 @@ from app.models.project import Membership
 from app.models.research_agent import (
     ResearchAgentArtifact,
     ResearchAgentGrant,
+    ResearchAgentReplyCache,
     ResearchAgentThread,
 )
 from app.models.run import Run
@@ -53,6 +54,13 @@ class SessionRequest(BaseModel):
     run_id: uuid.UUID
     thread_id: uuid.UUID | None = None
     title: str = "Research session"
+    # Force a fresh thread even when an earlier thread exists for this run.
+    new_thread: bool = False
+
+
+class ThreadPatchRequest(BaseModel):
+    title: str | None = None
+    messages: list[Any] | None = None
 
 
 class SessionResponse(BaseModel):
@@ -150,7 +158,7 @@ async def create_or_resume_session(
         thread = await db.get(ResearchAgentThread, body.thread_id)
         if thread is None or thread.user_id != auth.user.id or thread.project_id != run.project_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found.")
-    if thread is None:
+    if thread is None and not body.new_thread:
         existing = await db.execute(
             select(ResearchAgentThread).where(
                 ResearchAgentThread.user_id == auth.user.id,
@@ -254,6 +262,84 @@ async def get_thread(
             for row in sorted(latest.values(), key=lambda r: r.artifact_key)
         ],
     }
+
+
+@router.get("/threads")
+async def list_threads(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID | None = Query(default=None),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    await _require_membership(project_id, auth, db)
+    stmt = (
+        select(ResearchAgentThread)
+        .where(
+            ResearchAgentThread.user_id == auth.user.id,
+            ResearchAgentThread.project_id == project_id,
+        )
+        .order_by(ResearchAgentThread.updated_at.desc())
+        .limit(50)
+    )
+    if run_id is not None:
+        stmt = stmt.where(ResearchAgentThread.run_id == run_id)
+    threads = (await db.execute(stmt)).scalars().all()
+    return [
+        {
+            "id": str(t.id),
+            "run_id": str(t.run_id) if t.run_id else None,
+            "title": t.title,
+            "message_count": len(t.messages or []),
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+        }
+        for t in threads
+    ]
+
+
+@router.patch("/threads/{thread_id}")
+async def patch_thread(
+    thread_id: uuid.UUID,
+    body: ThreadPatchRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Persist the conversation transcript and/or rename the thread."""
+    thread = await db.get(ResearchAgentThread, thread_id)
+    if thread is None or thread.user_id != auth.user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found.")
+    await _require_membership(thread.project_id, auth, db)
+    if body.title is not None:
+        thread.title = body.title.strip()[:200] or thread.title
+    if body.messages is not None:
+        thread.messages = body.messages
+    await db.commit()
+    return {"id": str(thread.id), "title": thread.title, "message_count": len(thread.messages or [])}
+
+
+@router.post("/threads/{thread_id}/auto-title")
+async def auto_title_thread(
+    thread_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Set an AI title from the first user message (Qubrid, fail-closed)."""
+    from app.services.research_agent.title import fallback_title, generate_thread_title
+
+    thread = await db.get(ResearchAgentThread, thread_id)
+    if thread is None or thread.user_id != auth.user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found.")
+    await _require_membership(thread.project_id, auth, db)
+    first_user = ""
+    for msg in thread.messages or []:
+        if isinstance(msg, dict) and str(msg.get("role") or "") in ("user", "human"):
+            first_user = str(msg.get("content") or "")
+            break
+    title = await generate_thread_title(first_user)
+    if title is None:
+        title = fallback_title(first_user)
+    thread.title = title[:200]
+    await db.commit()
+    return {"id": str(thread.id), "title": thread.title}
 
 
 @router.put("/threads/{thread_id}/artifacts/{artifact_key}")
@@ -370,6 +456,17 @@ async def export_session(
     )
 
 
+class ReplyCacheRequest(BaseModel):
+    project_id: uuid.UUID
+    text_hash: str
+    answer: str
+
+
+class ReplyCacheLookupRequest(BaseModel):
+    project_id: uuid.UUID
+    text_hash: str
+
+
 async def _grant_from_request(request: Request, db: AsyncSession) -> tuple[GrantClaims, ResearchAgentGrant, str | None]:
     header = request.headers.get("authorization") or ""
     if not header.lower().startswith("bearer "):
@@ -409,6 +506,63 @@ async def invoke_tool(
         logger.warning("research agent tool %s failed: %s", body.name, exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"ok": True, "name": body.name, "result": result}
+
+
+@router.get("/reply-cache")
+@limiter.limit("120/minute")
+async def lookup_reply_cache(
+    request: Request,
+    project_id: uuid.UUID,
+    text_hash: str = Query(min_length=64, max_length=64),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Return the cached answer for (project, question hash) — grant-protected."""
+    claims, _grant, _wiki = await _grant_from_request(request, db)
+    if claims.project_id != project_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Grant is scoped to another project.")
+    row = (
+        await db.execute(
+            select(ResearchAgentReplyCache).where(
+                ResearchAgentReplyCache.project_id == project_id,
+                ResearchAgentReplyCache.text_hash == text_hash,
+            )
+        )
+    ).scalars().first()
+    return {"answer": row.answer_text if row else None}
+
+
+@router.post("/reply-cache")
+@limiter.limit("60/minute")
+async def store_reply_cache(
+    body: ReplyCacheRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Store a successful planner answer for (project, question hash)."""
+    claims, _grant, _wiki = await _grant_from_request(request, db)
+    if claims.project_id != body.project_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Grant is scoped to another project.")
+    if not body.answer.strip():
+        return {"ok": False, "reason": "empty answer"}
+    row = (
+        await db.execute(
+            select(ResearchAgentReplyCache).where(
+                ResearchAgentReplyCache.project_id == body.project_id,
+                ResearchAgentReplyCache.text_hash == body.text_hash,
+            )
+        )
+    ).scalars().first()
+    if row is None:
+        row = ResearchAgentReplyCache(
+            project_id=body.project_id,
+            text_hash=body.text_hash,
+            answer_text=body.answer[:10000],
+        )
+        db.add(row)
+    else:
+        row.answer_text = body.answer[:10000]
+    await db.commit()
+    return {"ok": True}
 
 
 @router.post("/agui")

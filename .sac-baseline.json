@@ -163,6 +163,34 @@
       "expires": "2027-09-13"
     },
     {
+      "fingerprint": "sha256:70adc1a28a219f63810aa93e6cfb1fbf",
+      "path": "backend/app/routers/research_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "unwraps wiki token into variable at runtime; ciphertext lives in DB, key in env",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:713f08dbf467ee88a04018e9b06470c0",
+      "path": "backend/app/routers/research_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "FastAPI Depends(current_auth) parameter, not a credential",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:79ae5ca96d47839ff4e4c9975665a8ab",
+      "path": "backend/app/routers/research_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "assigns grant row fetched by id; not a credential literal",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:969cff40e8ddb5dd3edf9ad328972f65",
+      "path": "backend/app/routers/research_agent.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "assigns token from request header; runtime value, no literal",
+      "expires": "2027-09-13"
+    },
+    {
       "fingerprint": "sha256:3e863acdf25c047ce43748acfe986762",
       "path": "backend/app/routers/section_export.py",
       "rule_id": "generic-assigned-secret",
@@ -189,6 +217,20 @@
       "rule_id": "relation-linked-secret",
       "reason": "Reviewed source or documentation text; it is not a credential.",
       "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:f9dfb9016fb0630d73766feed77f4312",
+      "path": "backend/app/services/research_agent/title.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "reads api key from settings into variable; no secret literal",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:9c0aafed239f15a7206affe23d54767a",
+      "path": "backend/app/settings.py",
+      "rule_id": "database-url",
+      "reason": "pre-existing DATABASE_URL scheme normalizer; connection string comes from Heroku env at runtime",
+      "expires": "2027-09-13"
     },
     {
       "fingerprint": "sha256:0bc605d114f237f628d30ae5368d3634",

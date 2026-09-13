@@ -5,7 +5,7 @@
  * Replaces the tabbed Linked Data Explorer. The agent runs on Modal
  * (or the local AG-UI stub). Heroku holds wiki credentials and tools.
  */
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {Link, useParams} from "react-router-dom";
 import {Layout} from "@/components/Layout";
 import {Runs, type RunDetail} from "@/api/runs";
@@ -18,6 +18,7 @@ import {
 import {ResearchChat} from "@/components/research/ResearchChat";
 import {ResearchCanvas} from "@/components/research/ResearchCanvas";
 import {ProvenanceHeader} from "@/components/research/ProvenanceHeader";
+import {ResearchThreadBar} from "@/components/research/ResearchThreadBar";
 import {
   applyAguiEvent,
   humanizeAgentError,
@@ -25,10 +26,15 @@ import {
   type AssistantUiState,
 } from "@/lib/canvasState";
 
+const DEFAULT_TITLE = "Research session";
+const threadStorageKey = (runId: string) => `mhm-research-thread:${runId}`;
+
 export default function ResearchAssistant() {
   const {runId} = useParams<{runId: string}>();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [threadTitle, setThreadTitle] = useState<string | null>(null);
+  const [historyKey, setHistoryKey] = useState(0);
   const [agentUrl, setAgentUrl] = useState("/api/research-agent/agui");
   const [toolGrant, setToolGrant] = useState("");
   const [ui, setUi] = useState<AssistantUiState>({
@@ -39,6 +45,23 @@ export default function ResearchAssistant() {
     busy: false,
     error: null,
   });
+  const autoTitledRef = useRef(false);
+
+  const applyThreadDetail = useCallback(
+    (detail: {title: string; messages: AguiMessage[]; canvas_state: AssistantUiState["canvas"]; artifacts: ResearchArtifact[]}) => {
+      const artifacts: Record<string, ResearchArtifact> = {};
+      for (const art of detail.artifacts) artifacts[art.artifact_key] = art;
+      setThreadTitle(detail.title);
+      autoTitledRef.current = detail.title !== DEFAULT_TITLE;
+      setUi((prev) => ({
+        ...prev,
+        messages: detail.messages,
+        canvas: detail.canvas_state?.artifacts ? detail.canvas_state : emptyCanvas,
+        artifacts,
+      }));
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!runId) return;
@@ -50,26 +73,25 @@ export default function ResearchAssistant() {
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
-    ResearchAgent.startSession(runId)
-      .then(async (session) => {
+    const stored = localStorage.getItem(threadStorageKey(runId));
+    const boot = async (threadId?: string, retryOnMissing = false) => {
+      try {
+        const session = await ResearchAgent.startSession(runId, {threadId});
         if (cancelled) return;
         setThreadId(session.thread_id);
         setAgentUrl(session.agent_url);
         setToolGrant(session.tool_grant);
+        localStorage.setItem(threadStorageKey(runId), session.thread_id);
         const detail = await ResearchAgent.getThread(session.thread_id);
         if (cancelled) return;
-        const artifacts: Record<string, ResearchArtifact> = {};
-        for (const art of detail.artifacts) artifacts[art.artifact_key] = art;
-        setUi((prev) => ({
-          ...prev,
-          messages: detail.messages.length ? detail.messages : prev.messages,
-          canvas: detail.canvas_state?.artifacts
-            ? detail.canvas_state
-            : session.canvas_state || emptyCanvas,
-          artifacts,
-        }));
-      })
-      .catch((err: unknown) => {
+        applyThreadDetail(detail);
+      } catch (err) {
+        // A stored thread may have been deleted — fall back to resume/latest.
+        if (retryOnMissing) {
+          localStorage.removeItem(threadStorageKey(runId));
+          await boot(undefined);
+          return;
+        }
         if (!cancelled) {
           setUi((prev) => ({
             ...prev,
@@ -78,9 +100,34 @@ export default function ResearchAssistant() {
             ),
           }));
         }
-      });
+      }
+    };
+    void boot(stored ?? undefined, Boolean(stored));
     return () => { cancelled = true; };
-  }, [runId]);
+  }, [runId, applyThreadDetail]);
+
+  const saveTranscript = useCallback(async (
+    threadId: string,
+    messages: AguiMessage[],
+  ) => {
+    try {
+      await ResearchAgent.patchThread(threadId, {messages});
+      const detail = await ResearchAgent.getThread(threadId);
+      setThreadTitle(detail.title);
+      if (!autoTitledRef.current && messages.some((m) => m.role === "user")) {
+        autoTitledRef.current = true;
+        try {
+          const {title} = await ResearchAgent.autoTitle(threadId);
+          setThreadTitle(title);
+        } catch {
+          /* keep the fallback title */
+        }
+      }
+      setHistoryKey((k) => k + 1);
+    } catch {
+      /* transcript save is best-effort */
+    }
+  }, []);
 
   const send = useCallback(async (text: string) => {
     if (!threadId || !toolGrant) return;
@@ -94,6 +141,7 @@ export default function ResearchAssistant() {
       streamingText: "",
     }));
     try {
+      let finalMessages = nextMessages;
       await streamAgui({
         agentUrl,
         toolGrant,
@@ -101,7 +149,11 @@ export default function ResearchAssistant() {
         messages: nextMessages,
         state: ui.canvas,
         onEvent: (event) => {
-          setUi((prev) => applyAguiEvent(prev, event));
+          setUi((prev) => {
+            const next = applyAguiEvent(prev, event);
+            if (next.messages.length) finalMessages = next.messages;
+            return next;
+          });
         },
       });
       const detail = await ResearchAgent.getThread(threadId);
@@ -113,6 +165,7 @@ export default function ResearchAssistant() {
         canvas: detail.canvas_state || prev.canvas,
         busy: false,
       }));
+      void saveTranscript(threadId, finalMessages);
     } catch (err) {
       setUi((prev) => ({
         ...prev,
@@ -122,7 +175,67 @@ export default function ResearchAssistant() {
         ),
       }));
     }
-  }, [agentUrl, threadId, toolGrant, ui.canvas, ui.messages]);
+  }, [agentUrl, threadId, toolGrant, runId, saveTranscript, ui.canvas, ui.messages]);
+
+  const newChat = useCallback(async () => {
+    if (!runId) return;
+    try {
+      const session = await ResearchAgent.startSession(runId, {newThread: true});
+      setThreadId(session.thread_id);
+      setAgentUrl(session.agent_url);
+      setToolGrant(session.tool_grant);
+      localStorage.setItem(threadStorageKey(runId), session.thread_id);
+      setThreadTitle(DEFAULT_TITLE);
+      autoTitledRef.current = false;
+      setUi({
+        messages: [],
+        canvas: emptyCanvas,
+        artifacts: {},
+        streamingText: "",
+        busy: false,
+        error: null,
+      });
+      setHistoryKey((k) => k + 1);
+    } catch (err) {
+      setUi((prev) => ({
+        ...prev,
+        error: humanizeAgentError(
+          err instanceof Error ? err.message : "Could not start a new chat.",
+        ),
+      }));
+    }
+  }, [runId]);
+
+  const selectThread = useCallback(async (id: string) => {
+    if (!runId) return;
+    try {
+      const session = await ResearchAgent.startSession(runId, {threadId: id});
+      setThreadId(session.thread_id);
+      setAgentUrl(session.agent_url);
+      setToolGrant(session.tool_grant);
+      localStorage.setItem(threadStorageKey(runId), session.thread_id);
+      const detail = await ResearchAgent.getThread(session.thread_id);
+      applyThreadDetail(detail);
+    } catch (err) {
+      setUi((prev) => ({
+        ...prev,
+        error: humanizeAgentError(
+          err instanceof Error ? err.message : "Could not open that chat.",
+        ),
+      }));
+    }
+  }, [runId, applyThreadDetail]);
+
+  const renameThread = useCallback(async (title: string) => {
+    if (!threadId) return;
+    setThreadTitle(title);
+    try {
+      await ResearchAgent.patchThread(threadId, {title});
+      setHistoryKey((k) => k + 1);
+    } catch {
+      /* rename is best-effort; local title already updated */
+    }
+  }, [threadId]);
 
   if (!runId) return null;
   const projectId = run?.project_id ?? "";
@@ -150,6 +263,18 @@ export default function ResearchAssistant() {
         {projectId ? (
           <ProvenanceHeader projectId={projectId} runId={runId} />
         ) : null}
+
+        <ResearchThreadBar
+          projectId={projectId}
+          runId={runId}
+          threadId={threadId}
+          title={threadTitle}
+          busy={ui.busy}
+          refreshKey={historyKey}
+          onSelectThread={(id) => { void selectThread(id); }}
+          onNewChat={() => { void newChat(); }}
+          onRename={(title) => { void renameThread(title); }}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           <ResearchChat

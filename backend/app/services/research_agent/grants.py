@@ -25,6 +25,15 @@ _JWT_AUD = "research-agent-tools"
 _NONCE_BYTES = 12
 
 
+def normalize_reply_text(text: str) -> str:
+    """Canonical form for reply-cache keys: collapse whitespace, strip."""
+    return " ".join((text or "").split())
+
+
+def reply_text_hash(text: str) -> str:
+    return hashlib.sha256(normalize_reply_text(text).encode("utf-8")).hexdigest()
+
+
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 

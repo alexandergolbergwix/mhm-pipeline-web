@@ -52,15 +52,43 @@ export interface ThreadDetail {
   artifacts: ResearchArtifact[];
 }
 
+export interface ThreadSummary {
+  id: string;
+  run_id: string | null;
+  title: string;
+  message_count: number;
+  updated_at: string | null;
+}
+
+export interface ThreadPatch {
+  title?: string;
+  messages?: AguiMessage[];
+}
+
 export const ResearchAgent = {
-  startSession: (runId: string, threadId?: string) =>
+  startSession: (runId: string, options?: {threadId?: string; newThread?: boolean}) =>
     api.post<ResearchAgentSession>("/research-agent/sessions", {
       run_id: runId,
-      thread_id: threadId ?? null,
+      thread_id: options?.threadId ?? null,
+      new_thread: options?.newThread ?? false,
     }),
 
   getThread: (threadId: string) =>
     api.get<ThreadDetail>(`/research-agent/threads/${threadId}`),
+
+  listThreads: (projectId: string, runId?: string) =>
+    api.get<ThreadSummary[]>(
+      `/research-agent/threads?project_id=${projectId}${runId ? `&run_id=${runId}` : ""}`,
+    ),
+
+  patchThread: (threadId: string, body: ThreadPatch) =>
+    api.patch<{id: string; title: string; message_count: number}>(
+      `/research-agent/threads/${threadId}`,
+      body,
+    ),
+
+  autoTitle: (threadId: string) =>
+    api.post<{id: string; title: string}>(`/research-agent/threads/${threadId}/auto-title`, {}),
 
   saveArtifact: (
     threadId: string,

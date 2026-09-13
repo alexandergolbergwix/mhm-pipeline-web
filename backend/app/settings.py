@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # Modal AG-UI base URL (no trailing slash). Empty → local stub stream.
     research_agent_modal_url: str = Field(default="")
     research_agent_enabled: bool = Field(default=True)
+    # Qubrid Chat Completions — used for research-thread AI titles.
+    qubrid_api_key: str = Field(default="")
+    qubrid_base_url: str = Field(default="https://platform.qubrid.com/v1")
+    research_agent_title_model: str = Field(default="glm-5.3-flash")
 
     # ── HMO Wikibase Cloud (server-held OAuth 2.0) ────────────────────
     wikibase_cloud_base_url: str = Field(default="https://mhm-hmo.wikibase.cloud")

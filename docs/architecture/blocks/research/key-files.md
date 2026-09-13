@@ -21,11 +21,12 @@
 | `backend/app/routers/linked_data_explorer.py` | SPARQL console backends: local HMO graph, Wikibase proxy, Wikidata proxy; owns `_validate_query`, `_load_graph_or_404`, `run_wikibase_sparql` |
 | `backend/app/routers/saved_queries.py` | Saved-SPARQL CRUD (`saved_queries` table; viewer reads, editor writes) |
 | `backend/app/routers/corpus.py` | `POST /research/corpus/sparql` — cross-project federation over all memberships, `_source_project` column added |
-| `backend/app/routers/research_agent.py` | Sessions, JWT tools, canvas CRUD/download/export, local AG-UI stub |
-| `backend/app/services/research_agent/` | Grants, tool wrappers, wiki reads, `scope`/`sanitize`/`sparql_templates`, local AG-UI |
-| `backend/app/models/research_agent.py` | `ResearchAgentThread`, `ResearchAgentArtifact`, `ResearchAgentGrant` |
+| `backend/app/routers/research_agent.py` | Sessions, JWT tools, canvas CRUD/download/export, thread list/patch, reply cache, local AG-UI stub |
+| `backend/app/services/research_agent/` | Grants, tool wrappers, wiki reads, `scope`/`sanitize`/`sparql_templates`/`title`, local AG-UI |
+| `backend/app/models/research_agent.py` | `ResearchAgentThread`, `ResearchAgentArtifact`, `ResearchAgentGrant`, `ResearchAgentReplyCache` |
 | `backend/app/migrations/versions/0042_research_agent.py` | Thread / artifact / grant tables |
-| `modal/modal_research_agent.py` | Pydantic AI + AG-UI deploy target (never imported; Rules W-15 / W-228 / W-231; `retries=3`) |
+| `backend/app/migrations/versions/0043_research_reply_cache.py` | Reply cache table |
+| `modal/modal_research_agent.py` | Pydantic AI + AG-UI deploy target (never imported; Rules W-15 / W-228 / W-231; `retries=3`; reply-cache lookup/store + Qubrid Chat Completions) |
 | `frontend/src/routes/ResearchAssistant.tsx` | Chat + canvas split at `/runs/:runId/linked-data-explorer` |
 | `frontend/src/routes/LinkedDataExplorer.tsx` | Compatibility re-export of `ResearchAssistant` |
 | `frontend/src/components/research/ResearchChat.tsx` | Chat log + quick actions; bouncing wait dots while the agent is busy with no stream text (frontend R22) |
