@@ -95,6 +95,8 @@ export function buildAguiRunBody(options: {
   runId: string;
   messages: {id: string; role: string; content: string}[];
   state: CanvasState;
+  tools: [];
+  context: [];
   forwardedProps: {tool_grant: string};
 } {
   return {
@@ -106,6 +108,8 @@ export function buildAguiRunBody(options: {
       content: aguiMessageText(msg),
     })),
     state: options.state,
+    tools: [],
+    context: [],
     forwardedProps: {tool_grant: options.toolGrant},
   };
 }

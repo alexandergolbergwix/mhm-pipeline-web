@@ -279,5 +279,6 @@ MUST:
    Do not use postponed annotations around that nested route.
 2. Call `AGUIAdapter.dispatch_request(request, agent=agent)`.
 3. Install `pydantic-ai[ag-ui]` so `AGUIAdapter` and `ag-ui-protocol` load.
-4. Browser AG-UI messages MUST include a string `id` (protocol required).
+4. Browser AG-UI messages MUST include a string `id`, plus empty
+   `tools` and `context` arrays (ag-ui-protocol `RunAgentInput`).
 

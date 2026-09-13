@@ -56,7 +56,8 @@ Qubrid `zai-org/GLM-5.3-Flash` (`RESEARCH_AGENT_MODEL`).
 
 Modal `/agui` MUST bind FastAPI `Request` (no postponed annotations around
 that nested route) and call `AGUIAdapter.dispatch_request(request,
-agent=agent)` (Rule W-229). Browser messages MUST include a string `id`.
+agent=agent)` (Rule W-229). Browser messages MUST include a string `id`
+plus `tools: []` and `context: []`.
 
 Canvas artifacts version on save. User text after Save is source of truth.
 Download / export are curator artifacts, not wiki writes.

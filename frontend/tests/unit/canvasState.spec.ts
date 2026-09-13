@@ -56,5 +56,7 @@ describe("buildAguiRunBody", () => {
     expect(body.messages[0]?.id).toBeTruthy();
     expect(body.messages[0]?.content).toBe("how many links");
     expect(body.forwardedProps.tool_grant).toBe("grant");
+    expect(body.tools).toEqual([]);
+    expect(body.context).toEqual([]);
   });
 });
