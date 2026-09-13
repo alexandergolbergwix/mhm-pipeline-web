@@ -21,5 +21,5 @@
 | `backend/scripts/backfill_versioning.py` | One-shot idempotent event-log backfill (`heroku run`) |
 | `backend/scripts/run_hmo_production_e2e.py` | Read-only production migration/E2E gate before canonical rollout |
 | `modal/modal_app.py` + `modal/README.md` | Modal NER+genre app (deploy target, never imported by backend); economics + cold-start docs |
-| `modal/modal_research_agent.py` | Research Assistant AG-UI (Pydantic AI); HTTPS-only; tools call Heroku with a JWT grant (Rule W-228) |
+| `modal/modal_research_agent.py` | Research Assistant AG-UI (Pydantic AI); HTTPS-only; tools call Heroku with a JWT grant (Rules W-228 / W-229) |
 | `docs/DEPLOY.md` | Long-form deploy runbook (Scheduler add-on setup §6.6–6.7) |

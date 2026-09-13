@@ -38,7 +38,7 @@ export function ResearchChat({
   }, [busy, draft, onSend]);
 
   return (
-    <Glass className="flex flex-col h-full min-h-[32rem] p-3 gap-3">
+    <Glass className="flex flex-col h-full min-h-[32rem] gap-3">
       <div className="flex flex-wrap gap-1">
         {QUICK_ACTIONS.map((action) => (
           <button

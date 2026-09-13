@@ -23,6 +23,7 @@ import {
 
 import {getGlassMaps} from "@/components/glass/glassMapCache";
 import {
+  glassContentLayout,
   supportsSvgBackdropFilter,
   type GlassMaps,
 } from "@/components/glass/liquidGlassMath";
@@ -125,12 +126,12 @@ function LiquidGlassSurface({
       };
 
   const isFlexColumn = /\bflex-col\b/.test(className);
+  const layout = glassContentLayout(className, contentClassName, borderRadius, bezelWidth);
   const innerBase = isFlexColumn
     ? "absolute inset-0 z-10 flex flex-col min-h-0 overflow-hidden"
     : "relative z-10";
-  const innerClass = contentClassName
-    ? `${innerBase} ${contentClassName}`.trim()
-    : innerBase;
+  const innerClass = [innerBase, layout.gapClass, contentClassName].filter(Boolean).join(" ");
+  const innerStyle: CSSProperties = {padding: layout.inset};
 
   const isPositioned = /\b(absolute|fixed|sticky)\b/.test(className);
   const rootPosition = isPositioned ? "" : "relative";
@@ -214,7 +215,7 @@ function LiquidGlassSurface({
         }}
       />
 
-      <div className={innerClass}>
+      <div className={innerClass} style={innerStyle}>
         {children}
       </div>
     </Component>

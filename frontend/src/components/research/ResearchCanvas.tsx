@@ -25,7 +25,7 @@ export function ResearchCanvas({
   const active = artifacts.find((a) => a.artifact_key === activeKey) ?? artifacts.at(-1) ?? null;
 
   return (
-    <Glass className="flex flex-col h-full min-h-[32rem] p-3 gap-3">
+    <Glass className="flex flex-col h-full min-h-[32rem] gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
           {artifacts.length === 0 ? (

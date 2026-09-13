@@ -11,6 +11,6 @@
 - `backend/tests/unit/test_graph_index.py` — catalog/viewport budgeting
 - `backend/tests/test_provenance_events_ingest.py`, `test_provenance_events_rdf.py` — Rule W-32 event channel feeding the maps
 - `backend/tests/test_research_agent_grants.py`, `test_research_agent_tools.py`, `test_research_agent_agui.py`, `test_research_agent_scope.py` — JWT grant, tool RBAC, AG-UI refuse/stream, scope + quarantine + SPARQL templates (Rule W-228)
-- `frontend/tests/unit/canvasState.spec.ts` — AG-UI canvas reducer
-- `frontend/e2e/linked-data-explorer.spec.ts` — Research Assistant chat + canvas (mocked backend)
+- `frontend/tests/unit/canvasState.spec.ts` — AG-UI canvas reducer + `buildAguiRunBody` message ids (Rule W-229)
+- `frontend/e2e/linked-data-explorer.spec.ts` — Research Assistant chat + canvas (mocked backend); Overview POST includes message `id`
 - `frontend/e2e/provenance-map.spec.ts` — Movement map quick action + picker / `prov-map`

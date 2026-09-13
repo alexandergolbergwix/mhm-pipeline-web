@@ -36,7 +36,7 @@ import {Glass, GlassPill} from "@/components/glass";
 <Glass variant="modal" role="dialog" aria-modal="true">…</Glass>
 <GlassPill className="px-3 py-1 text-xs">42 approved</GlassPill>
 ```
-Variants set radius/bezel/thickness presets (`Glass.tsx:52`); override per-prop only when a preset genuinely doesn't fit. Form inputs keep `input-glass` (plain CSS). Pass `refraction={false}` to skip the SVG displacement map on perf-sensitive lists.
+Variants set radius/bezel/thickness presets (`Glass.tsx:52`); override per-prop only when a preset genuinely doesn't fit. The inner layer gets `glassSafeInset` so text stays inside the curve (R21). Use `p-0` on the shell only for flush drawers. Form inputs keep `input-glass` (plain CSS). Pass `refraction={false}` to skip the SVG displacement map on perf-sensitive lists.
 
 ### Skill: add a fast/slow-poll entity surface
 Follow `useApprovalStore`: content fingerprint before `setState`, ETag/If-None-Match revalidation, `active ? 2000 : 30000` interval via chained `setTimeout` (not `setInterval`), an `inFlight` ref for backpressure, and a `window.addEventListener` on the feature's refresh CustomEvent.

@@ -117,7 +117,9 @@ modal deploy modal_authority.py
 
 Pydantic AI + AG-UI loop. The browser streams from this app. Tools call
 Heroku `POST /api/research-agent/tools` with a short-lived JWT. User wiki
-passwords never enter this container (Rule W-228).
+passwords never enter this container (Rule W-228). `/agui` must bind
+FastAPI `Request` without postponed annotations and call
+`AGUIAdapter.dispatch_request(request, agent=agent)` (Rule W-229).
 
 Production uses the server Qubrid key as an OpenAI-compatible client
 (`OPENAI_BASE_URL=https://platform.qubrid.com/v1`, default model

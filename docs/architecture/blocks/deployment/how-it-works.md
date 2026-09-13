@@ -51,7 +51,8 @@ workloads. The legacy `modal_authority.py` backend is superseded by
 `AUTHORITY_MODE=postgres`. A third app, `modal_research_agent.py`, hosts
 the Research Assistant AG-UI loop (timeout 150 s). It calls
 `POST /api/research-agent/tools` with a short-lived JWT. Wiki passwords
-never enter that container (Rule W-228).
+never enter that container (Rule W-228). `/agui` must bind FastAPI
+`Request` and call `dispatch_request(request, agent=agent)` (Rule W-229).
 
 **One-time data imports.** Mazal (~2.5 M authorities → ~600 MB Postgres) and
 KIMA (48 K places) are imported from local SQLite into Heroku Postgres by

@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {applyAguiEvent, emptyCanvas, type AssistantUiState} from "@/lib/canvasState";
-import {parseSseChunk} from "@/api/researchAgent";
+import {buildAguiRunBody, parseSseChunk} from "@/api/researchAgent";
 
 function base(): AssistantUiState {
   return {
@@ -39,5 +39,22 @@ describe("parseSseChunk", () => {
   it("parses a data line", () => {
     const event = parseSseChunk('data: {"type":"RUN_STARTED"}');
     expect(event?.type).toBe("RUN_STARTED");
+  });
+});
+
+describe("buildAguiRunBody", () => {
+  it("gives every message a string id and string content", () => {
+    const body = buildAguiRunBody({
+      threadId: "thread-1",
+      toolGrant: "grant",
+      runId: "run-1",
+      state: emptyCanvas,
+      messages: [
+        {role: "user", content: [{type: "text", text: "how many links"}]},
+      ],
+    });
+    expect(body.messages[0]?.id).toBeTruthy();
+    expect(body.messages[0]?.content).toBe("how many links");
+    expect(body.forwardedProps.tool_grant).toBe("grant");
   });
 });

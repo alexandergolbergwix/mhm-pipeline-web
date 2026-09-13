@@ -260,3 +260,24 @@ Tests: `backend/tests/test_research_agent_*.py`,
 `frontend/tests/unit/canvasState.spec.ts`,
 `frontend/e2e/linked-data-explorer.spec.ts`.
 
+### Rule W-229 — Modal AG-UI must bind Starlette Request and keyword `agent`
+
+Incident (2026-09-13): the Research Assistant showed `Agent stream failed (422)`
+on every chat turn. `POST /agui` returned
+`{"detail":[{"loc":["query","request"],"msg":"Field required"}]}`. The
+agent never ran.
+
+`modal/modal_research_agent.py` used `from __future__ import annotations`
+and imported FastAPI `Request` inside `web()`. FastAPI then treated the
+`/agui` parameter `request` as a required **query** field. A second bug
+called `AGUIAdapter.dispatch_request(agent, request)` instead of
+`dispatch_request(request, agent=agent)`.
+
+MUST:
+
+1. Keep the real `Request` type visible to FastAPI at route registration.
+   Do not use postponed annotations around that nested route.
+2. Call `AGUIAdapter.dispatch_request(request, agent=agent)`.
+3. Install `pydantic-ai[ag-ui]` so `AGUIAdapter` and `ag-ui-protocol` load.
+4. Browser AG-UI messages MUST include a string `id` (protocol required).
+

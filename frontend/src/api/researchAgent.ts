@@ -79,6 +79,59 @@ export const ResearchAgent = {
     `/api/research-agent/threads/${threadId}/export`,
 };
 
+export function aguiMessageText(msg: AguiMessage): string {
+  if (typeof msg.content === "string") return msg.content;
+  return msg.content.map((part) => part.text || "").join("");
+}
+
+export function buildAguiRunBody(options: {
+  threadId: string;
+  messages: AguiMessage[];
+  state: CanvasState;
+  toolGrant: string;
+  runId?: string;
+}): {
+  threadId: string;
+  runId: string;
+  messages: {id: string; role: string; content: string}[];
+  state: CanvasState;
+  forwardedProps: {tool_grant: string};
+} {
+  return {
+    threadId: options.threadId,
+    runId: options.runId ?? crypto.randomUUID(),
+    messages: options.messages.map((msg, index) => ({
+      id: msg.id || `user-${options.threadId}-${index}`,
+      role: msg.role,
+      content: aguiMessageText(msg),
+    })),
+    state: options.state,
+    forwardedProps: {tool_grant: options.toolGrant},
+  };
+}
+
+export async function aguiHttpError(res: Response): Promise<string> {
+  const text = await res.text().catch(() => "");
+  let detail = text.slice(0, 240).trim();
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && "detail" in parsed) {
+      const raw = parsed.detail;
+      if (typeof raw === "string") {
+        detail = raw;
+      } else if (Array.isArray(raw) && raw[0] && typeof raw[0] === "object" && "msg" in raw[0]) {
+        const msg = raw[0].msg;
+        if (typeof msg === "string") detail = msg;
+      }
+    }
+  } catch {
+    /* keep the raw body */
+  }
+  return detail
+    ? `Agent stream failed (${res.status}): ${detail}`
+    : `Agent stream failed (${res.status})`;
+}
+
 export async function streamAgui(options: {
   agentUrl: string;
   toolGrant: string;
@@ -103,16 +156,10 @@ export async function streamAgui(options: {
     cache: "no-store",
     headers,
     signal: options.signal,
-    body: JSON.stringify({
-      threadId: options.threadId,
-      runId: crypto.randomUUID(),
-      messages: options.messages,
-      state: options.state,
-      forwardedProps: {tool_grant: options.toolGrant},
-    }),
+    body: JSON.stringify(buildAguiRunBody(options)),
   });
   if (!res.ok || !res.body) {
-    throw new Error(`Agent stream failed (${res.status})`);
+    throw new Error(await aguiHttpError(res));
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();

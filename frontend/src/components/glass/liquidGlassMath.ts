@@ -44,6 +44,40 @@ function surfaceDerivative(f: (t: number) => number, t: number): number {
   return (f(t + delta) - f(t - delta)) / (2 * delta);
 }
 
+/**
+ * Inner padding so labels stay inside the rounded clip and out of the
+ * refractive bezel. Pass flush true when the caller set `p-0`.
+ */
+export function glassSafeInset(
+  radius: number,
+  bezelWidth: number,
+  opts?: {flush?: boolean; pill?: boolean},
+): number {
+  if (opts?.flush) return 0;
+  if (opts?.pill || radius >= 80) {
+    return Math.max(8, Math.min(12, Math.round(bezelWidth * 0.5)));
+  }
+  const corner = Math.ceil(radius * (1 - 1 / Math.SQRT2));
+  const bezel = Math.ceil(Math.min(bezelWidth, 40) * 0.65);
+  return Math.max(16, corner, bezel);
+}
+
+export function glassContentLayout(
+  className: string,
+  contentClassName: string,
+  borderRadius: number,
+  bezelWidth: number,
+): {inset: number; gapClass: string} {
+  const combined = `${className} ${contentClassName}`;
+  const flush = /\bp-0\b/.test(combined);
+  const pill = borderRadius >= 80 || /\bglass-shell-pill\b/.test(combined);
+  const gapMatch = className.match(/\bgap-\S+/);
+  return {
+    inset: glassSafeInset(borderRadius, bezelWidth, {flush, pill}),
+    gapClass: gapMatch ? gapMatch[0] : "",
+  };
+}
+
 /** Signed distance to rounded-rect boundary (negative inside). */
 export function sdfRoundedRect(
   x: number,

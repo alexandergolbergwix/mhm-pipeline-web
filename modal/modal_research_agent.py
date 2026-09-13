@@ -1,7 +1,7 @@
 """Modal research agent — Pydantic AI + AG-UI over HTTPS.
 
-Deploy target only (Rule W-15 / W-228). The backend never imports this
-file. Tools call Heroku with a short-lived tool grant. User wiki
+Deploy target only (Rule W-15 / W-228 / W-229). The backend never imports
+this file. Tools call Heroku with a short-lived tool grant. User wiki
 passwords never enter this container.
 
     cd modal && modal deploy modal_research_agent.py
@@ -10,9 +10,10 @@ Set on Heroku:
 
     heroku config:set RESEARCH_AGENT_ENABLED=true \\
       RESEARCH_AGENT_MODAL_URL=https://<workspace>--mhm-research-agent-web.modal.run
-"""
-from __future__ import annotations
 
+Do not add ``from __future__ import annotations`` here. FastAPI must see
+the real Request type on the /agui route (Rule W-229).
+"""
 import os
 from typing import Any
 
@@ -23,7 +24,7 @@ image = (
     .pip_install(
         "fastapi>=0.115",
         "httpx>=0.27",
-        "pydantic-ai>=0.7",
+        "pydantic-ai[ag-ui]>=0.7",
         "pydantic>=2.10",
     )
 )
@@ -234,6 +235,6 @@ class ResearchAgent:
                 return await call("wikibase_entity", {"qid": qid})
 
             del heroku  # used only to fail closed when unset inside _call_tool
-            return await AGUIAdapter.dispatch_request(agent, request)
+            return await AGUIAdapter.dispatch_request(request, agent=agent)
 
         return api

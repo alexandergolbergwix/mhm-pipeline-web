@@ -99,9 +99,11 @@ or `?glass=off`. Every frosted surface is `<Glass>` (variants `panel` |
 `drawer` | `modal` | `compact` | `pill` — `Glass.tsx:52`) or `<GlassPill>`,
 both thin wrappers over `LiquidGlassSurface`, which does SVG
 `feDisplacementMap` backdrop refraction on Chromium and falls back to CSS
-frosted glass on Safari/Firefox. Displacement maps are memoised in
-`glassMapCache.ts`. Raw `className="glass"` / `glass-pill` are deprecated
-legacy aliases; form fields keep the plain-CSS `input-glass`.
+frosted glass on Safari/Firefox. The inner layer uses `glassSafeInset`
+(`liquidGlassMath.ts`) so labels are not clipped by the curve (R21).
+Displacement maps are memoised in `glassMapCache.ts`. Raw
+`className="glass"` / `glass-pill` are deprecated legacy aliases; form
+fields keep the plain-CSS `input-glass`.
 
 **Build tooling.** Vite 5 + `@vitejs/plugin-react`; `@` aliases `src/`;
 dev server proxies `/api` to the FastAPI backend on :8000 (production

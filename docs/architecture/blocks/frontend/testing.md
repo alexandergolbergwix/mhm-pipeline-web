@@ -23,13 +23,13 @@
 
 ## Tests pinning this block
 
-- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts`, `canvasState.spec.ts` — R1–R4, R11, R13–R19 plus Research Assistant AG-UI canvas reducer.
+- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts`, `canvasState.spec.ts` — R1–R4, R11, R13–R21 plus Research Assistant AG-UI canvas reducer.
 - `frontend/e2e/wikidata-upload-panel.spec.ts` — compatibility dry-run/test
   radios and historic live two-step progress modal + job tray.
 - `frontend/e2e/wikidata-publication.spec.ts` — default Publication target
   controls do not render beside compatibility upload controls. It also checks
   that **Resolve N items with AI** requests blocked-only automatic resolution.
-- `frontend/tests/unit/liquidGlassMath.spec.ts`, `glassMapCache.spec.ts` — glass math + map memoisation.
+- `frontend/tests/unit/liquidGlassMath.spec.ts`, `glassMapCache.spec.ts` — glass math, `glassSafeInset` (R21), map memoisation.
 - `frontend/tests/unit/clientCache.spec.ts`, `entityApi.test.ts`, `verifySession.spec.ts`, `waitForRunJob.spec.ts` — cache tiers, API mapping, job/session lifecycles.
 - `frontend/e2e/extraction-review.spec.ts`, `authority-*.spec.ts`, `wikidata-studio.spec.ts`, `hmo-wikibase-items.spec.ts`, `history-timeline.spec.ts`, `stage-rdf.spec.ts`, `access-request.spec.ts`, `admin-panel.spec.ts`, `linked-data-explorer.spec.ts`, `smoke.spec.ts` — the R8/R9 click-path layer.
 - `yarn typecheck` (strict tsc) gates every build.

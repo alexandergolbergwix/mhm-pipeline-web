@@ -81,7 +81,7 @@ export default function ResearchAssistant() {
 
   const send = useCallback(async (text: string) => {
     if (!threadId || !toolGrant) return;
-    const userMsg: AguiMessage = {role: "user", content: text};
+    const userMsg: AguiMessage = {id: crypto.randomUUID(), role: "user", content: text};
     const nextMessages = [...ui.messages, userMsg];
     setUi((prev) => ({
       ...prev,
