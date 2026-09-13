@@ -15,7 +15,7 @@ export function applyColorScheme(scheme: ColorScheme): void {
   document.documentElement.setAttribute("data-theme", scheme);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
-    meta.setAttribute("content", scheme === "light" ? "#eef6f2" : "#00190d");
+    meta.setAttribute("content", scheme === "light" ? "#fdfefd" : "#00190d");
   }
 }
 

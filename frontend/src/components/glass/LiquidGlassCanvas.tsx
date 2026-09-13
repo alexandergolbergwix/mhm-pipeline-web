@@ -47,6 +47,11 @@ const ORBS: OrbSpec[] = [
     sx: 0.14, sy: 0.20, sz: 0.05, ax: 0.4,  ay: 0.7, az: 0.5,  phase: 4.2  },
 ];
 
+// Light mode composites the canvas with plain alpha at low opacity
+// (var(--canvas-ambient-opacity)). Pale tints keep the ambient wash subtle
+// and never darken the white background.
+const LIGHT_ORB_COLORS = ["#bfe6d4", "#8fd0c0", "#ffffff", "#a9d8e6"];
+
 
 export function LiquidGlassCanvas() {
   const colorScheme = useTheme((s) => s.colorScheme);
@@ -82,7 +87,11 @@ export function LiquidGlassCanvas() {
         // viewport (incl. the nav bar) even though this wrapper sets `none`.
         position: "fixed", inset: 0, pointerEvents: "none",
         zIndex: -1,
-        mixBlendMode: colorScheme === "light" ? "multiply" : "screen",
+        // Light mode must never darken the page: the transmission material
+        // renders mid-grey pixels, and "multiply" turns them into large grey
+        // blobs under every panel. Plain alpha compositing at low opacity
+        // keeps only a soft ambient wash.
+        mixBlendMode: colorScheme === "light" ? "normal" : "screen",
         opacity: colorScheme === "light" ? "var(--canvas-ambient-opacity)" : 1,
       }}
     >
@@ -98,7 +107,13 @@ export function LiquidGlassCanvas() {
         <ambientLight intensity={0.4} />
         <directionalLight position={[3, 4, 5]} intensity={0.7} />
         <Suspense fallback={null}>
-          {ORBS.map((o, i) => <Orb key={i} {...o} />)}
+          {ORBS.map((o, i) => (
+            <Orb
+              key={i}
+              {...o}
+              color={colorScheme === "light" ? LIGHT_ORB_COLORS[i] : o.color}
+            />
+          ))}
         </Suspense>
       </Canvas>
     </div>
