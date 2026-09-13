@@ -226,6 +226,20 @@
       "expires": "2027-09-13"
     },
     {
+      "fingerprint": "sha256:3d764e5333c1301523d3acee4fccd4a1",
+      "path": "backend/app/services/research_agent/tools.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "ToolContext field holding the runtime wiki token reference; no secret literal in code",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:ce2b22da8cad5ea56c9d36e135bd9a9e",
+      "path": "backend/app/services/research_agent/tools.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "ToolContext dataclass field holding an AuthContext object, not a credential",
+      "expires": "2027-09-13"
+    },
+    {
       "fingerprint": "sha256:9c0aafed239f15a7206affe23d54767a",
       "path": "backend/app/settings.py",
       "rule_id": "database-url",

@@ -22,7 +22,7 @@
 | `backend/app/routers/saved_queries.py` | Saved-SPARQL CRUD (`saved_queries` table; viewer reads, editor writes) |
 | `backend/app/routers/corpus.py` | `POST /research/corpus/sparql` — cross-project federation over all memberships, `_source_project` column added |
 | `backend/app/routers/research_agent.py` | Sessions, JWT tools, canvas CRUD/download/export, thread list/patch, reply cache, local AG-UI stub |
-| `backend/app/services/research_agent/` | Grants, tool wrappers, wiki reads, `scope`/`sanitize`/`sparql_templates`/`title`, local AG-UI |
+| `backend/app/services/research_agent/` | Grants, tool wrappers, wiki reads, `scope`/`sanitize`/`sparql_templates`/`title`, data skills (`data_info/select/distinct/search/agg`), local AG-UI |
 | `backend/app/models/research_agent.py` | `ResearchAgentThread`, `ResearchAgentArtifact`, `ResearchAgentGrant`, `ResearchAgentReplyCache` |
 | `backend/app/migrations/versions/0042_research_agent.py` | Thread / artifact / grant tables |
 | `backend/app/migrations/versions/0043_research_reply_cache.py` | Reply cache table |

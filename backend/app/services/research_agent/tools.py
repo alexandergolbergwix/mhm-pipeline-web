@@ -42,6 +42,11 @@ TOOL_NAMES = (
     "research_entity",
     "research_evidence",
     "fetch_rdf_ttl",
+    "data_info",
+    "data_select",
+    "data_distinct",
+    "data_search",
+    "data_agg",
     "canvas_upsert_artifact",
     "canvas_list_versions",
     "create_download_link",
@@ -50,6 +55,13 @@ TOOL_NAMES = (
 )
 
 _SLIM_LIST_CAP = 40
+# Data-skill output caps: keep every answer small enough for the planner
+# context — extraction happens server-side, the planner sees slices only.
+_DATASET_PREVIEW_ROWS = 5
+_DATASET_ROW_LIMIT_DEFAULT = 20
+_DATASET_ROW_LIMIT_MAX = 50
+_DATASET_CELL_LIMIT = 200
+_SPARQL_DIGEST_ROWS = 8
 
 
 @dataclass
@@ -121,7 +133,7 @@ async def dispatch_tool(ctx: ToolContext, name: str, arguments: dict[str, Any] |
     result = await handler(ctx, arguments)
     if name in ("canvas_upsert_artifact", "canvas_list_versions", "create_download_link"):
         return result if isinstance(result, dict) else {"result": result}
-    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl"):
+    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg"):
         return result if isinstance(result, dict) else {"result": result}
     slimmed = slim_result(result)
     return slimmed if isinstance(slimmed, dict) else {"result": slimmed}
@@ -238,7 +250,43 @@ async def _tool_sparql(ctx: ToolContext, args: dict[str, Any]) -> Any:
     dumped = result.model_dump() if hasattr(result, "model_dump") else result
     dumped["source"] = source
     dumped["query"] = query
+
+    # Always persist the raw result as a dataset artifact; the planner gets
+    # a digest only and extracts facts with the data_* skills (Rule R24).
+    rows = dumped.get("rows") or []
+    columns = dumped.get("columns") or []
+    if rows:
+        key = "sparql-results"
+        await upsert_artifact(
+            ctx.db, ctx.thread,
+            artifact_key=key,
+            kind="sparql",
+            title=f"SPARQL results ({source})",
+            content={"columns": columns, "rows": rows, "truncated": dumped.get("truncated"), "query": query, "source": source},
+            created_by="agent",
+        )
+        await ctx.db.commit()
+    if len(rows) > _SPARQL_DIGEST_ROWS:
+        return {
+            "artifact_key": "sparql-results",
+            "columns": columns,
+            "row_count": len(rows),
+            "truncated": dumped.get("truncated"),
+            "preview_rows": [
+                [_cell_str(v) for v in row] for row in rows[:_SPARQL_DIGEST_ROWS]
+            ],
+            "note": (
+                "Full result saved as dataset artifact 'sparql-results'. "
+                "Use data_info / data_select / data_distinct / data_search / "
+                "data_agg with this artifact_key instead of re-running SPARQL."
+            ),
+        }
     return dumped
+
+
+def _cell_str(value: Any, limit: int = _DATASET_CELL_LIMIT) -> str | None:
+    text = "" if value is None else str(value)
+    return text[:limit]
 
 
 async def _tool_entity(ctx: ToolContext, args: dict[str, Any]) -> Any:
@@ -423,6 +471,166 @@ async def _tool_wikibase(ctx: ToolContext, args: dict[str, Any]) -> Any:
     return entity
 
 
+# ── Data skills: extract facts from stored dataset artifacts ────────────
+# SPARQL (and other bulky) results are saved as dataset artifacts; these
+# skills query them server-side so the planner only ever sees small slices.
+
+async def _dataset_rows(
+    ctx: ToolContext, args: dict[str, Any],
+) -> tuple[str, list[str], list[list[Any]]]:
+    key = str(args.get("artifact_key") or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="artifact_key is required.")
+    row = (
+        await ctx.db.execute(
+            select(ResearchAgentArtifact)
+            .where(
+                ResearchAgentArtifact.thread_id == ctx.thread.id,
+                ResearchAgentArtifact.artifact_key == key,
+            )
+            .order_by(ResearchAgentArtifact.version.desc())
+            .limit(1)
+        )
+    ).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No dataset artifact '{key}' on this thread.")
+    content = row.content if isinstance(row.content, dict) else {}
+    columns = [str(c) for c in (content.get("columns") or [])]
+    rows = content.get("rows")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=400, detail=f"Artifact '{key}' holds no dataset rows.")
+    return key, columns, rows
+
+
+def _cap_rows(rows: list[list[Any]], limit: Any) -> list[list[str | None]]:
+    try:
+        n = max(1, min(int(limit), _DATASET_ROW_LIMIT_MAX))
+    except (TypeError, ValueError):
+        n = _DATASET_ROW_LIMIT_DEFAULT
+    return [
+        [_cell_str(v) for v in row]
+        for row in rows[:n]
+    ]
+
+
+def _parse_limit(raw: Any) -> int:
+    try:
+        return max(1, min(int(raw), _DATASET_ROW_LIMIT_MAX))
+    except (TypeError, ValueError):
+        return _DATASET_ROW_LIMIT_DEFAULT
+
+
+async def _tool_data_info(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    key, columns, rows = await _dataset_rows(ctx, args)
+    return {
+        "artifact_key": key,
+        "columns": columns,
+        "row_count": len(rows),
+        "sample": _cap_rows(rows, _DATASET_PREVIEW_ROWS),
+    }
+
+
+async def _tool_data_select(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    key, columns, rows = await _dataset_rows(ctx, args)
+    column = str(args.get("column") or "")
+    op = str(args.get("op") or "eq")
+    value = args.get("value")
+    if not column:
+        raise HTTPException(status_code=400, detail="column is required.")
+    needle = _cell_str(value)
+    values = [_cell_str(v) for v in value] if isinstance(value, list) else None
+    out: list[list[Any]] = []
+    col_idx = columns.index(column) if column in columns else -1
+    for row in rows:
+        cell = row[col_idx] if 0 <= col_idx < len(row) else None
+        cell_text = _cell_str(cell)
+        match = (
+            (op == "eq" and cell_text == needle)
+            or (op == "contains" and needle.lower() in (cell_text or "").lower())
+            or (op == "in" and values is not None and cell_text in values)
+        )
+        if match:
+            out.append(row)
+    return {
+        "artifact_key": key,
+        "column": column,
+        "op": op,
+        "match_count": len(out),
+        "rows": _cap_rows(out, args.get("limit")),
+    }
+
+
+async def _tool_data_distinct(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    key, columns, rows = await _dataset_rows(ctx, args)
+    column = str(args.get("column") or "")
+    if not column:
+        raise HTTPException(status_code=400, detail="column is required.")
+    col_idx = columns.index(column) if column in columns else -1
+    counts: dict[str, int] = {}
+    for row in rows:
+        cell = _cell_str(row[col_idx]) if 0 <= col_idx < len(row) else None
+        counts[cell or ""] = counts.get(cell or "", 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:25]
+    return {
+        "artifact_key": key,
+        "column": column,
+        "distinct_count": len(counts),
+        "values": [{"value": v, "count": c} for v, c in ranked],
+    }
+
+
+async def _tool_data_search(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    key, _columns, rows = await _dataset_rows(ctx, args)
+    needle = _cell_str(args.get("needle") or "").lower()
+    if not needle:
+        raise HTTPException(status_code=400, detail="needle is required.")
+    out = [
+        row for row in rows
+        if any(needle in (_cell_str(cell) or "").lower() for cell in row)
+    ]
+    return {
+        "artifact_key": key,
+        "needle": needle,
+        "match_count": len(out),
+        "rows": _cap_rows(out, args.get("limit")),
+    }
+
+
+async def _tool_data_agg(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    key, columns, rows = await _dataset_rows(ctx, args)
+    column = str(args.get("column") or "")
+    fn = str(args.get("fn") or "count")
+    if not column:
+        raise HTTPException(status_code=400, detail="column is required.")
+    if fn not in ("count", "min", "max", "sum", "avg"):
+        raise HTTPException(status_code=400, detail="fn must be count, min, max, sum, or avg.")
+    col_idx = columns.index(column) if column in columns else -1
+    cells = [
+        _cell_str(row[col_idx]) for row in rows
+        if 0 <= col_idx < len(row) and row[col_idx] is not None
+    ]
+    if fn == "count":
+        return {"artifact_key": key, "column": column, "fn": fn, "result": len(cells)}
+    numbers: list[float] = []
+    for cell in cells:
+        try:
+            numbers.append(float(str(cell).replace(",", "")))
+        except ValueError:
+            continue
+    if not numbers:
+        return {"artifact_key": key, "column": column, "fn": fn, "result": None}
+    result: float | None
+    if fn == "min":
+        result = min(numbers)
+    elif fn == "max":
+        result = max(numbers)
+    elif fn == "sum":
+        result = sum(numbers)
+    else:
+        result = sum(numbers) / len(numbers)
+    return {"artifact_key": key, "column": column, "fn": fn, "numeric_cells": len(numbers), "result": result}
+
+
 TOOL_HANDLERS = {
     "research_summary": _tool_summary,
     "research_cooccurrence": _tool_cooccurrence,
@@ -438,6 +646,11 @@ TOOL_HANDLERS = {
     "research_entity": _tool_entity,
     "research_evidence": _tool_evidence,
     "fetch_rdf_ttl": _tool_fetch_ttl,
+    "data_info": _tool_data_info,
+    "data_select": _tool_data_select,
+    "data_distinct": _tool_data_distinct,
+    "data_search": _tool_data_search,
+    "data_agg": _tool_data_agg,
     "canvas_upsert_artifact": _tool_canvas_upsert,
     "canvas_list_versions": _tool_canvas_list,
     "create_download_link": _tool_download_link,

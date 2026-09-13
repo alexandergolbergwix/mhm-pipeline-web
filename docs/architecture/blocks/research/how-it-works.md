@@ -105,3 +105,11 @@ R23). `POST /research-agent/threads/{id}/auto-title` generates a 3–6 word AI
 title from the first user message via Qubrid `glm-5.3-flash`
 (`title.py`), falls back to the truncated message, and memoizes identical
 texts in-process. A title is cosmetic — every failure degrades silently.
+
+**Data skills (Rule R24).** `_tool_sparql` always upserts its raw result as
+the `sparql-results` dataset artifact (versioned like any canvas artifact)
+and returns the planner a digest when it exceeds 8 rows. The planner's
+context stays small: `data_info` / `data_select` / `data_distinct` /
+`data_search` / `data_agg` read the artifact server-side and return capped
+slices (≤50 rows, 200-char cells), so follow-up questions cost tokens
+proportional to the answer, not the result size.

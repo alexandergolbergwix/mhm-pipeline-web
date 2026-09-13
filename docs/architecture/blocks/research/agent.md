@@ -55,8 +55,12 @@ not send `thinking: disabled`.
 |---|---|---|
 | POST | `/api/research-agent/sessions` | cookie |
 | GET | `/api/research-agent/threads/{id}` | cookie |
+| GET | `/api/research-agent/threads?project_id=&run_id=` | cookie |
+| PATCH | `/api/research-agent/threads/{id}` (title, messages) | cookie |
+| POST | `/api/research-agent/threads/{id}/auto-title` | cookie |
 | PUT | `/api/research-agent/threads/{id}/artifacts/{key}` | cookie |
 | GET | `…/download`, `…/export` | cookie |
+| GET/POST | `/api/research-agent/reply-cache` | Bearer JWT |
 | POST | `/api/research-agent/tools` | Bearer JWT |
 | POST | `/api/research-agent/agui` | cookie (local stub) |
 
@@ -73,3 +77,12 @@ and tool calls can stay silent for tens of seconds.
 
 Canvas artifacts version on save. User text after Save is source of truth.
 Download / export are curator artifacts, not wiki writes.
+
+**Data skills (Rule R24).** `research_sparql` always saves its raw result as
+the `sparql-results` dataset artifact and returns the planner a digest when
+the result exceeds 8 rows: columns, row count, and ≤8 preview rows. The
+planner extracts facts with `data_info` (columns + sample), `data_select`
+(eq / contains / in, ≤50 rows), `data_distinct` (top-25 value counts),
+`data_search` (substring across cells), and `data_agg`
+(count / min / max / sum / avg) — all reading the artifact server-side with
+200-char cells, so the planner context never carries raw row dumps.

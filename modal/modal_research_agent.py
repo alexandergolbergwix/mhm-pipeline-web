@@ -43,6 +43,15 @@ After tools, reply in plain text. Do not invent tool names.
 When the user asks about connections or relations, call research_network
 or research_cooccurrence first. Call research_neighbors or
 research_shortest_path only when the user supplies URIs.
+
+Data usage: large SPARQL results are saved as the dataset artifact
+'sparql-results' and you only receive a digest (columns, row count, preview).
+Never ask the user to re-run SPARQL for details. Instead call the data
+skills against that artifact_key: data_info (columns + sample),
+data_select (filter a column by eq/contains/in), data_distinct (value
+counts), data_search (substring across all columns), data_agg
+(count/min/max/sum/avg). Keep queries to the smallest skill that answers
+the question, then summarize the facts in prose.
 """
 
 PLANNER_RETRIES = 3
@@ -359,6 +368,36 @@ class ResearchAgent:
             @agent.tool_plain
             async def wikibase_entity(qid: str) -> dict[str, Any]:
                 return await call("wikibase_entity", {"qid": qid})
+
+            @agent.tool_plain
+            async def data_info(artifact_key: str) -> dict[str, Any]:
+                """Columns, row count, and a small sample of a saved dataset."""
+                return await call("data_info", {"artifact_key": artifact_key})
+
+            @agent.tool_plain
+            async def data_select(
+                artifact_key: str, column: str, op: str = "eq", value: str | list[str] | None = None, limit: int = 20
+            ) -> dict[str, Any]:
+                """Filter saved dataset rows: op is eq, contains, or in (value: str or list)."""
+                args: dict[str, Any] = {"artifact_key": artifact_key, "column": column, "op": op, "limit": limit}
+                if value is not None:
+                    args["value"] = value
+                return await call("data_select", args)
+
+            @agent.tool_plain
+            async def data_distinct(artifact_key: str, column: str) -> dict[str, Any]:
+                """Distinct values of a column with counts (top 25)."""
+                return await call("data_distinct", {"artifact_key": artifact_key, "column": column})
+
+            @agent.tool_plain
+            async def data_search(artifact_key: str, needle: str, limit: int = 20) -> dict[str, Any]:
+                """Rows where any cell contains the substring (case-insensitive)."""
+                return await call("data_search", {"artifact_key": artifact_key, "needle": needle, "limit": limit})
+
+            @agent.tool_plain
+            async def data_agg(artifact_key: str, column: str, fn: str = "count") -> dict[str, Any]:
+                """Aggregate a column: count, min, max, sum, or avg (numeric cells)."""
+                return await call("data_agg", {"artifact_key": artifact_key, "column": column, "fn": fn})
 
             del heroku  # used only to fail closed when unset inside _call_tool
 
