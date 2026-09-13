@@ -59,7 +59,12 @@ def curator_run_error(message: str) -> str:
     return text
 
 
-DEFAULT_MODEL = "openai:zai-org/GLM-5.3-Flash"
+DEFAULT_MODEL = "glm-5.3-flash"
+# Qubrid serves the OpenAI Chat Completions wire format only (see
+# eval-agent/config/tier1_models.yaml). The bare `openai:` prefix would
+# select pydantic-ai's Responses API and Qubrid answers
+# "Invalid request sent to the model" — always use OpenAIChatModel here.
+QUBRID_BASE_URL = "https://platform.qubrid.com/v1"
 SANDBOX_EGRESS_ALLOWLIST = (
     "query.wikidata.org",
     "www.wikidata.org",
@@ -153,7 +158,16 @@ class ResearchAgent:
             async def call(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
                 return await self._call_tool(token, name, arguments or {})
 
-            model = os.environ.get("RESEARCH_AGENT_MODEL") or DEFAULT_MODEL
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            model = OpenAIChatModel(
+                os.environ.get("RESEARCH_AGENT_MODEL") or DEFAULT_MODEL,
+                provider=OpenAIProvider(
+                    base_url=(os.environ.get("QUBRID_BASE_URL") or QUBRID_BASE_URL).rstrip("/"),
+                    api_key=os.environ.get("QUBRID_API_KEY") or "",
+                ),
+            )
             agent_kwargs: dict[str, Any] = {
                 "system_prompt": _SYSTEM,
                 "retries": PLANNER_RETRIES,

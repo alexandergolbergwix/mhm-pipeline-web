@@ -238,6 +238,27 @@
       "rule_id": "generic-assigned-secret",
       "reason": "Reviewed source or documentation text; it is not a credential.",
       "expires": "2026-09-06"
+    },
+    {
+      "fingerprint": "sha256:60010bc21c188e6299e8c3850956aadd",
+      "path": "modal/modal_research_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "assigns the forwarded request grant token, not a literal credential",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:755c737129a38fca909e11d49bcef21a",
+      "path": "modal/modal_research_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "modal.Secret.from_name reference: secret values live in the Modal secret store, not in code",
+      "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:8e3de04d9cd92378f3ee239ac4eacfd8",
+      "path": "modal/modal_research_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "reads QUBRID_API_KEY from env into provider config; no secret literal in code",
+      "expires": "2027-09-13"
     }
   ]
 }

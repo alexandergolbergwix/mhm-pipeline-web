@@ -25,7 +25,13 @@ imports it. Empty `RESEARCH_AGENT_MODAL_URL` uses the local keyword stub.
 Wiki passwords unwrap with the user KEK at session mint, then re-wrap with
 `MASTER_KEY` onto `research_agent_grants`. The JWT carries **grant ids
 only**. Modal never receives wiki credentials. The Modal planner default is
-Qubrid `zai-org/GLM-5.3-Flash` (`RESEARCH_AGENT_MODEL`).
+Qubrid `glm-5.3-flash` (`RESEARCH_AGENT_MODEL`) over the Chat
+Completions API (`https://platform.qubrid.com/v1`, key `QUBRID_API_KEY`).
+Qubrid does not serve the OpenAI Responses API — `modal_research_agent.py`
+must build the agent with `OpenAIChatModel` + `OpenAIProvider`, never the
+bare `openai:` prefix (which selects `OpenAIResponsesModel` and fails with
+`Invalid request sent to the model`). `glm-5.3-flash` always thinks; do
+not send `thinking: disabled`.
 
 ## Structural rails (not the system prompt)
 

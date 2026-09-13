@@ -40,10 +40,15 @@ then ask the user for push permission. See **Rule W-49** in `CLAUDE.md`.
 2. `cd modal && modal deploy modal_app.py` (or the `/deploy-modal` skill); note the printed URL.
 3. If the URL changed: `heroku config:set MODAL_NER_URL=https://...modal.run` (with `EXTRACTION_MODE=modal`).
 4. Debug cold starts with `modal app logs mhm-ner`.
-5. Research Assistant: `modal secret create mhm-research-agent …` then
+5. Research Assistant: `modal secret create --force mhm-research-agent
+   HEROKU_TOOL_BASE_URL=<heroku app url> QUBRID_API_KEY=<from heroku config>
+   RESEARCH_AGENT_MODEL=glm-5.3-flash` then
    `cd modal && modal deploy modal_research_agent.py`. Set
    `RESEARCH_AGENT_MODAL_URL` on Heroku. Tail with
-   `modal app logs mhm-research-agent`. Planner changes (retries, tools,
+   `modal app logs mhm-research-agent`. The planner uses Qubrid Chat
+   Completions via `OpenAIChatModel` + `OpenAIProvider` — the bare
+   `openai:` prefix selects the Responses API, which Qubrid rejects with
+   `Invalid request sent to the model`. Planner changes (retries, tools,
    system prompt) need this Modal deploy; a Heroku-only deploy does not
    change them (Rule W-231).
 
