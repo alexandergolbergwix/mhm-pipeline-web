@@ -24,6 +24,8 @@
 | `backend/app/routers/api_keys.py` | `/me/api-keys` — write-only key store (gemini / wikidata / wikidata_test / huggingface); no plaintext read-back |
 | `backend/app/routers/health.py` | `/healthz` (no DB) and `/readyz` (SELECT 1); unauthenticated |
 | `backend/app/middleware/rate_limit.py` | slowapi limiter keyed by left-most `X-Forwarded-For`; Redis storage via `RATELIMIT_STORAGE_URI`/`REDIS_URL`, else `memory://` |
+| `backend/app/middleware/csrf.py` | Double-submit CSRF; cookie-exempt prefix `/api/research-agent/tools` is JWT-only (Rule W-228) |
+| `backend/app/services/research_agent/grants.py` | Short-lived HS256 tool JWT; wiki tokens re-wrapped under `MASTER_KEY` |
 | `backend/app/services/email.py` | `EmailSender` (Resend wrapper): throttled, log-only without `RESEND_API_KEY`, never raises |
 | `backend/app/services/email_throttle.py` + `models/email_throttle.py` | Per-recipient 1/60 s + 5/day Postgres throttle, `SELECT … FOR UPDATE`, blind-indexed recipient |
 | `backend/app/services/turnstile.py` | Cloudflare Turnstile siteverify; fail-closed on network/JSON errors, bypass when secret unset (dev) |

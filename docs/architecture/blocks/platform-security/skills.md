@@ -36,3 +36,4 @@
 - `backend/tests/test_wikibase_user_access.py` — login/invite provision budget + failed no-retry (Rule W-123)
 - `frontend/e2e/access-request.spec.ts` — form click paths (~8)
 - Route suites under `backend/tests/` exercising 401/403 on projects, invites, admin
+- `backend/tests/test_research_agent_grants.py`, `test_research_agent_tools.py` — tool JWT 401 without Bearer; wiki wrap stays on Heroku (Rule W-228)

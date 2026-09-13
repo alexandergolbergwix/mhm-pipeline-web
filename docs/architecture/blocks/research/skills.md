@@ -24,8 +24,9 @@
 2. Add a `GET /projects/{id}/research/<name>` endpoint in `research.py`
    calling it via `_load_or_404` + `asyncio.to_thread`.
 3. Add the typed client function in `frontend/src/api/research.ts`, a lazy
-   panel in `frontend/src/components/research/`, and a tab in
-   `LinkedDataExplorer.tsx`.
+   panel in `frontend/src/components/research/`, a `ResearchCanvas` kind
+   embed, and a `ResearchChat` quick action when the query is a common
+   curator starting point.
 4. If it is expensive, cache per R10 with a content fingerprint (see
    `_summary_fingerprint`).
 
@@ -53,13 +54,23 @@
    includes the mutated field; the Redis-cached corpus items only invalidate
    when the fingerprint changes.
 
-### Skill: debug a wrong/empty research tab
+### Skill: debug a wrong/empty research canvas
 
-1. Confirm the TTL exists: the tab 404s with "build the graph first" when no
+1. Confirm the TTL exists: RDF-plane tools 404 with "build the graph first" when no
    `rdf_artifacts` row exists for any run.
-2. Summary shows zeros but other tabs work → the coherence gate should
+2. Summary shows zeros but maps work → the coherence gate should
    self-heal; if not, the cached row predates `_SUMMARY_ALGORITHM_VERSION` —
    bump it in `research.py:50` to force a global key rotation.
 3. Geography empty → places lack `wgs84:lat/long` in the TTL; rebuild RDF so
    KIMA coords flow through (Rule W-32 note: DB-plane maps benefit
-   immediately, the RDF-plane Geography tab needs a rebuild).
+   immediately, the RDF-plane Geography tool needs a rebuild).
+
+### Skill: add a research-agent tool
+
+1. Wrap an existing research router in `services/research_agent/tools.py`
+   (do not copy SPARQL or map builders). Register the name in `TOOL_NAMES`.
+2. Keep wiki reads in `wiki.py` on Heroku. Quarantine retrieved text.
+3. Prefer a SPARQL template in `sparql_templates.py` over raw query args.
+4. Seed `ALLOWED_UTTERANCES` in `scope.py` so the router allows the new intent.
+5. Add a pytest in `test_research_agent_tools.py` and a canvas kind in
+   `ResearchCanvas.tsx` when the result is a lasting artifact.

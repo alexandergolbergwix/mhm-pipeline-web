@@ -95,6 +95,12 @@ GET  /api/runs/{id}/wikidata-studio/quickstatements.txt  (existing; ?approved_on
 
 POST /api/runs/{id}/ai-verify/start-stream        (existing)
 GET  /api/runs/{id}/ai-verify/sessions            (existing)
+
+POST /api/research-agent/sessions                 (Research Assistant; cookie)
+GET  /api/research-agent/threads/{id}
+PUT  /api/research-agent/threads/{id}/artifacts/{key}
+POST /api/research-agent/tools                    (Bearer JWT from Modal)
+POST /api/research-agent/agui                     (local stub when Modal URL empty)
 ```
 
 ## Frontend routes
@@ -107,6 +113,7 @@ GET  /api/runs/{id}/ai-verify/sessions            (existing)
 /runs/:runId/rdf                                  StageRdf
 /runs/:runId/hmo-studio                           HmoStudio
 /runs/:runId/wikidata-studio                      WikidataStudio (existing)
+/runs/:runId/linked-data-explorer                 ResearchAssistant (chat + canvas)
 ```
 
 ## Build order

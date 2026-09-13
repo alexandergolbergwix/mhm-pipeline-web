@@ -63,6 +63,11 @@ from app.models.publication import (
     PublicationWriteReceipt,
 )
 from app.models.rdf_artifact import RdfArtifact
+from app.models.research_agent import (
+    ResearchAgentArtifact,
+    ResearchAgentGrant,
+    ResearchAgentThread,
+)
 from app.models.run import (
     RUN_STATUS_FAILED,
     RUN_STATUS_PENDING,
@@ -151,6 +156,9 @@ __all__ = [
     "Run",
     "RunJob",
     "RdfArtifact",
+    "ResearchAgentArtifact",
+    "ResearchAgentGrant",
+    "ResearchAgentThread",
     "RunRecord",
     "SavedQuery",
     "STATUS_APPROVED",

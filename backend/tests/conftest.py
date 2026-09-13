@@ -43,7 +43,7 @@ import pytest_asyncio
 def _seed_test_env() -> None:
     os.environ.setdefault("MASTER_KEY", secrets.token_urlsafe(32))
     os.environ.setdefault("EMAIL_HMAC_KEY", secrets.token_urlsafe(32))
-    os.environ.setdefault("ENV", "test")
+    os.environ["ENV"] = "test"
     # Point the app at a file-backed temp SQLite. NOT ``:memory:`` — the
     # StaticPool below shares one connection across every session, and a
     # background task (e.g. a spawned run job) racing a test on that

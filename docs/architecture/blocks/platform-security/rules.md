@@ -31,3 +31,5 @@
     and hard-timeout the remote call (≤5 s). `/me` never provisions.
     *Why:* Cloud retries exhausted the Heroku 30 s budget → H12 on
     `POST /api/auth/login` while the password was already valid.
+14. **R14 — `/api/research-agent/tools` MAY skip CSRF only because it authenticates a Bearer tool grant.** Sessions and AG-UI MUST keep cookie + CSRF. The JWT MUST NOT carry wiki passwords (Rule W-228).
+    *Why:* Modal cannot present the curator cookie; widening the CSRF exemption would let a cross-site caller mint tools.

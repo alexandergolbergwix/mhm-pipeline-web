@@ -69,3 +69,7 @@ rejects NaN / out-of-range / (0,0)). `institution_place` is the mirror for
 collections/libraries (`P159 → P276 → P131`), abstaining when the entity IS a
 human. Both are wrapped in the two-tier inference cache under
 `kind="wikidata.person_place"` and honour `MHM_NO_NETWORK`.
+
+**Research Assistant.** Chat + canvas at the same URL. Modal (or the local
+AG-UI stub) plans; Heroku executes tools. Domain restriction is structural
+— see [Research Assistant](agent.md) and Rule W-228.

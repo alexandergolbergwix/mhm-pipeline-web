@@ -11,6 +11,7 @@
 | `RATELIMIT_STORAGE_URI` | `middleware/rate_limit.py:70` | Explicit slowapi store (shares Heroku Redis Mini) |
 | `MASTER_KEY`, `EMAIL_HMAC_KEY` | `crypto/keys.py` | 32-byte PII / blind-index keys; app refuses to encrypt without them |
 | `EXTRACTION_MODE`, `MODAL_NER_URL` | `pipeline/extraction.py` | `modal` → POST `<MODAL_NER_URL>/extract`; HTTPS is the only backend↔Modal channel (Rule W-15) |
+| `RESEARCH_AGENT_MODAL_URL`, `RESEARCH_AGENT_ENABLED` | `settings.py`, `routers/research_agent.py` | Modal AG-UI base URL (no trailing slash). Empty URL → local AG-UI stub. Wiki credentials never go to Modal (Rule W-228). Planner model is a Modal secret (`RESEARCH_AGENT_MODEL`, default Qubrid `openai:zai-org/GLM-5.3-Flash`) |
 | `AUTHORITY_MODE` | `pipeline/authority_backend.py` (10 sites) | `postgres` (production, Rule W-28) / `local` SQLite / `modal` legacy |
 | `EVAL_AGENT_ROOT`, `EVAL_AGENT_STATE_DIR` | `agent_runner.py` | Bundle location + writable verify state dir |
 | `DYNO` | `agent_runner.py`, `run_job_service.py` | Heroku detection: `/tmp` state default + `WORKER_ID` prefix |

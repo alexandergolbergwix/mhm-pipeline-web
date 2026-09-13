@@ -4,16 +4,18 @@
 
 ## What this block does
 
-The Research surface (frontend route `/runs/:runId/linked-data-explorer`, "Linked
-Data Explorer") answers scholarly questions over an already-built corpus: which
-works travel together in the same manuscripts (co-occurrence), which scribes /
-authors / owners are socially connected (people network), who owned each
-manuscript (ownership chains), where manuscripts were produced and mentioned
+The Research surface (frontend route `/runs/:runId/linked-data-explorer`,
+"Research Assistant") answers scholarly questions over an already-built
+corpus through a **chat + editable canvas**. The agent wraps the same
+analytics as the retired tabbed Linked Data Explorer: which works travel
+together in the same manuscripts (co-occurrence), which scribes / authors /
+owners are socially connected (people network), who owned each manuscript
+(ownership chains), where manuscripts were produced and mentioned
 (geography + heatmap), how a single manuscript moved through space and time
 (provenance timeline + movement map), how the whole corpus moved
 (corpus-movement map with facets), how any two entities are connected
-(neighbors / shortest path), and anything else via a read-only SPARQL console
-with saved queries and citation-format export.
+(neighbors / shortest path), and anything else via a read-only SPARQL
+console with saved queries and citation-format export.
 
 It reads from **two data planes**:
 
@@ -34,13 +36,16 @@ one deduplicated entity count (`research_aggregate.py`).
 
 - [Key files](key-files.md) — pipeline builders, routers, and frontend map of the surface
 - [How it works](how-it-works.md) — graph loading, summary coherence gate, dedup, maps, pathfinding, SPARQL console, geo-enrichment
-- [Rules](rules.md) — invariants R1–R13 (read-only SPARQL, never fabricate coords, fail-closed geo, cache discipline)
-- [Skills](skills.md) — add stop kinds / analytics queries / SPARQL backends, debug maps and tabs
+- [Research Assistant](agent.md) — chat + canvas, Modal AG-UI, JWT tools, domain rails (Rule W-228)
+- [Rules](rules.md) — invariants R1–R19 (read-only SPARQL, never fabricate coords, fail-closed geo, cache discipline, agent rails)
+- [Skills](skills.md) — add stop kinds / analytics queries / SPARQL backends, debug maps, extend agent tools
 - [Tests](tests.md) — test suites pinning this block
 
 ## Related blocks
 
 - [rdf-graph](../rdf-graph/README.md) — builds the per-run TTL + graph index this surface reads
 - [authority](../authority/README.md) — produces the `authority_matches` payloads (KIMA coords, QIDs, approval) the maps consume
-- [frontend](../frontend/README.md) — panel/tab conventions, glass components, Zustand rules
+- [frontend](../frontend/README.md) — chat/canvas shell, glass components, Zustand rules
 - [caching](../caching/README.md) — the two-tier inference cache every research cache key lives in
+- [deployment](../deployment/README.md) — `RESEARCH_AGENT_MODAL_URL`, third Modal app
+- [platform-security](../platform-security/README.md) — JWT tool grant, CSRF exemption for `/tools`

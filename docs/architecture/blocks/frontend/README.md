@@ -6,8 +6,8 @@
 
 The React 18 + TypeScript SPA under `frontend/` is the curator-facing UI for
 every pipeline surface: projects, runs, AI Extraction review, historical
-Authority provenance, RDF, HMO Wikibase Studio, Wikidata Studio, and the Linked Data
-Explorer. It is built with Vite, styled with Tailwind + the in-house
+Authority provenance, RDF, HMO Wikibase Studio, Wikidata Studio, and the
+Research Assistant (chat + canvas at the former Linked Data Explorer URL). It is built with Vite, styled with Tailwind + the in-house
 liquid-glass design system, holds client state in three small Zustand stores
 plus per-feature hooks, and talks to the FastAPI backend exclusively through
 a tiny cookie-authenticated fetch wrapper. Testing is a three-layer pyramid:
@@ -29,7 +29,7 @@ specs with fully mocked backends ("every click is a test").
 - [authority](../authority/README.md) — read-only historical Authority provenance (the mutation surface is retired; Rule W-31).
 - [wikidata-studio](../wikidata-studio/README.md) — Studio build/override/upload UI.
 - [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — HMO items review + upload UI.
-- [research](../research/README.md) — maps, SPARQL console, Linked Data Explorer panels.
+- [research](../research/README.md) — Research Assistant chat+canvas, maps, SPARQL console.
 
 
 The legacy `/runs/:runId` Authority route now redirects to HMO Studio. Authority mutation/review is no longer a standalone frontend surface.

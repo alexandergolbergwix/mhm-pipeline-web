@@ -205,8 +205,8 @@ export default function RunOverview() {
           <StageTile
             to={`/runs/${runId}/linked-data-explorer`}
             kicker="LOD"
-            title="Linked Data Explorer"
-            description="Explore relationships across the manuscript catalogue and linked sources."
+            title="Research Assistant"
+            description="Chat and canvas over the manuscript catalogue, SPARQL, Wikidata, and Wikibase."
             statePill={<Pill tone="muted">explore</Pill>}
             stats="For research and discovery; it does not change the catalogue."
           />

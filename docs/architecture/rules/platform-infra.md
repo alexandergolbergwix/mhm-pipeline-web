@@ -223,3 +223,40 @@ Invariant:
    without H12'ing the auth response. App authorization still succeeds.
 
 Tests: `backend/tests/test_wikibase_user_access.py`.
+
+### Rule W-228 — Research agent is domain-restricted; Modal never holds wiki credentials
+
+The Research Assistant at `/runs/:runId/linked-data-explorer` is a chat +
+editable canvas. Domain restriction is **structural**, not prompt-only,
+following *Architecting Secure, Domain-Restricted Agentic Systems for
+Bibliographic and Semantic Web Research*.
+
+1. **Privilege separation.** `modal/modal_research_agent.py` is a deploy
+   target (Rule W-15). FastAPI never imports it. The browser talks to Modal
+   AG-UI over HTTPS (or the local `/api/research-agent/agui` stub when
+   `RESEARCH_AGENT_MODAL_URL` is empty). Modal tools `POST
+   /api/research-agent/tools` with a short-lived JWT (`tool_grant`).
+2. **Identity delegation.** Curator Wikidata / Wikibase passwords unwrap
+   with the user KEK at session mint, then re-wrap with `MASTER_KEY` onto
+   `research_agent_grants`. The JWT carries grant ids only. Modal never
+   receives wiki passwords or session cookies.
+3. **Pre-inference semantic router.** `scope.classify_scope` ALLOW vs
+   REJECT utterances and jailbreak regex **before** privileged tools.
+   Academic manuscript context (war, medicine, persecution in catalogue
+   notes) MUST NOT over-refuse.
+4. **Dual-LLM quarantine.** Retrieved MARC / Wikidata text is typed,
+   length-capped, and instruction-stripped (`sanitize.quarantine_text`).
+   The privileged planner never sees raw untrusted strings inline.
+5. **Parameterized SPARQL.** The planner emits `template_id` + typed
+   params (`sparql_templates.py`). Raw SPARQL still `_validate_query`
+   (SELECT/CONSTRUCT only) and a mandatory LIMIT.
+6. **Rails.** CSRF: only `/api/research-agent/tools` is cookie-exempt
+   (JWT). Sessions and AG-UI keep cookie + CSRF. Rate limits:
+   sessions/agui `30/minute`, tools `60/minute`. Modal web timeout is
+   150 s. Optional sandbox egress allowlist is `query.wikidata.org` and
+   `www.wikidata.org`. Wiki reads stay on Heroku.
+
+Tests: `backend/tests/test_research_agent_*.py`,
+`frontend/tests/unit/canvasState.spec.ts`,
+`frontend/e2e/linked-data-explorer.spec.ts`.
+

@@ -14,6 +14,7 @@ Exempt:
 - safe methods (``GET``, ``HEAD``, ``OPTIONS``, ``TRACE``)
 - ``/api/access-request`` and ``/api/auth/login`` — both intentionally
   open-public; Turnstile + slowapi already gate them
+- ``/api/research-agent/tools`` — Modal JWT grant, no session cookie
 - anything under ``/static``
 """
 
@@ -35,7 +36,7 @@ CSRF_COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
 
 _EXEMPT_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 _EXEMPT_PATHS: frozenset[str] = frozenset({"/api/access-request", "/api/auth/login"})
-_EXEMPT_PREFIXES: tuple[str, ...] = ("/static",)
+_EXEMPT_PREFIXES: tuple[str, ...] = ("/static", "/api/research-agent/tools")
 
 
 def _is_exempt_path(path: str) -> bool:

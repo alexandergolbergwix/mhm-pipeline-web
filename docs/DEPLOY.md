@@ -132,6 +132,10 @@ cd modal && modal deploy modal_app.py
 The deploy prints the URL to set as `MODAL_NER_URL`. See
 `modal/README.md` and `.claude/commands/deploy-modal.md` for details.
 
+The Research Assistant is a separate Modal app (`modal_research_agent.py`).
+Set `RESEARCH_AGENT_MODAL_URL` after deploy. Wiki passwords stay on Heroku
+(Rule W-228). Empty URL uses the local AG-UI stub.
+
 ### 2.1.1 — Wikibase Cloud OAuth (HMO Studio live writes)
 
 HMO Studio manifest/item uploads and the global schema bootstrap write

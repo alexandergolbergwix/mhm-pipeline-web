@@ -74,3 +74,8 @@ connections left "idle in transaction" by handlers hanging on non-DB work, so
 a handful of leaks can't starve the 5+10 connection pool. Rule W-40's real fix
 is behavioral: commit/rollback *before* any slow external call (see
 `hmo_item_reconcile.py`); the timeout is not a scheduling mechanism.
+
+**Research-agent CSRF.** `POST /api/research-agent/tools` is cookie-exempt
+because Modal presents a Bearer JWT, not a session cookie. Session mint and
+local AG-UI keep cookie + CSRF. Wiki passwords never ride that JWT
+(Rule W-228).

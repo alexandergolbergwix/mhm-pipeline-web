@@ -40,6 +40,10 @@ then ask the user for push permission. See **Rule W-49** in `CLAUDE.md`.
 2. `cd modal && modal deploy modal_app.py` (or the `/deploy-modal` skill); note the printed URL.
 3. If the URL changed: `heroku config:set MODAL_NER_URL=https://...modal.run` (with `EXTRACTION_MODE=modal`).
 4. Debug cold starts with `modal app logs mhm-ner`.
+5. Research Assistant: `modal secret create mhm-research-agent …` then
+   `cd modal && modal deploy modal_research_agent.py`. Set
+   `RESEARCH_AGENT_MODAL_URL` on Heroku. Tail with
+   `modal app logs mhm-research-agent`.
 
 ### Skill: rebuild authority data in production
 1. Ensure `AUTHORITY_MODE=postgres` is set.

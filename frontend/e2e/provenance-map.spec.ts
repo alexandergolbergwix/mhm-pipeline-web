@@ -1,6 +1,6 @@
 /**
- * E2E suite for the Movement tab (provenance movement map) in the Linked
- * Data Explorer. Backend is fully mocked (Rule W-19).
+ * E2E suite for the Movement map canvas on the Research Assistant.
+ * Backend is fully mocked (Rule W-19).
  *
  * Covers: tab renders; manuscript picker populated; selecting a manuscript
  * draws the map; inferred owner appears with badge; dropped owners listed;
@@ -84,6 +84,55 @@ async function installMocks(page: Page) {
         }),
       }),
   );
+
+  const threadId = "55555555-5555-5555-5555-555555555555";
+  await page.route("**/api/research-agent/sessions", (route) =>
+    route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        thread_id: threadId,
+        tool_grant: "test.grant.token",
+        grant_expires_at: "2099-01-01T00:00:00Z",
+        agent_url: "/api/research-agent/agui",
+        agent_mode: "local",
+        canvas_state: {artifacts: [], active_key: null},
+        messages: [],
+        tools: [],
+      }),
+    }),
+  );
+  await page.route(`**/api/research-agent/threads/${threadId}`, (route) =>
+    route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        id: threadId,
+        project_id: TEST_PROJECT_ID,
+        run_id: TEST_RUN_ID,
+        title: "Research session",
+        messages: [],
+        canvas_state: {
+          artifacts: [{key: "movement-map", kind: "map", title: "Movement map", version: 1}],
+          active_key: "movement-map",
+        },
+        artifacts: [{
+          id: "map1",
+          artifact_key: "movement-map",
+          kind: "map",
+          title: "Movement map",
+          version: 1,
+          content: {},
+          created_by: "agent",
+        }],
+      }),
+    }),
+  );
+  await page.route("**/api/research-agent/agui", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: `data: {"type":"RUN_STARTED"}\n\ndata: {"type":"STATE_SNAPSHOT","snapshot":{"artifacts":[{"key":"movement-map","kind":"map","title":"Movement map","version":1}],"active_key":"movement-map"}}\n\ndata: {"type":"RUN_FINISHED"}\n\n`,
+    }),
+  );
 }
 
 async function setSession(page: Page) {
@@ -95,23 +144,23 @@ async function setSession(page: Page) {
 test.describe.configure({mode: "parallel"});
 
 test.describe("Provenance Movement map", () => {
-  test("Movement tab is present and selectable", async ({page}) => {
+  test("Movement map action is present and selectable", async ({page}) => {
     await installMocks(page);
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
-    const tab = page.getByRole("button", {name: /movement/i});
-    await expect(tab).toBeVisible({timeout: 8000});
-    await tab.click();
-    await expect(page.getByLabel(/select a manuscript/i)).toBeVisible({timeout: 8000});
+    const action = page.getByRole("button", {name: /movement map/i});
+    await expect(action).toBeVisible({timeout: 8000});
+    await action.click();
+    await expect(page.getByLabel(/select manuscript/i)).toBeVisible({timeout: 8000});
   });
 
   test("selecting a manuscript renders the map and timeline", async ({page}) => {
     await installMocks(page);
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
-    await page.getByRole("button", {name: /movement/i}).click();
+    await page.getByRole("button", {name: /movement map/i}).click();
 
-    await page.getByLabel(/select a manuscript/i).selectOption(CN);
+    await page.getByLabel(/select manuscript/i).selectOption(CN);
 
     // The Leaflet map container renders.
     await expect(page.getByTestId("prov-map")).toBeVisible({timeout: 8000});
@@ -124,8 +173,8 @@ test.describe("Provenance Movement map", () => {
     await installMocks(page);
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
-    await page.getByRole("button", {name: /movement/i}).click();
-    await page.getByLabel(/select a manuscript/i).selectOption(CN);
+    await page.getByRole("button", {name: /movement map/i}).click();
+    await page.getByLabel(/select manuscript/i).selectOption(CN);
 
     await expect(page.getByText("Owner One")).toBeVisible({timeout: 8000});
     await expect(page.getByText(/inferred/i).first()).toBeVisible();
@@ -135,8 +184,8 @@ test.describe("Provenance Movement map", () => {
     await installMocks(page);
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
-    await page.getByRole("button", {name: /movement/i}).click();
-    await page.getByLabel(/select a manuscript/i).selectOption(CN);
+    await page.getByRole("button", {name: /movement map/i}).click();
+    await page.getByLabel(/select manuscript/i).selectOption(CN);
 
     await expect(page.getByText(/not mapped/i)).toBeVisible({timeout: 8000});
     await expect(page.getByText("Anon Patron")).toBeVisible();
@@ -146,8 +195,8 @@ test.describe("Provenance Movement map", () => {
     await installMocks(page);
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
-    await page.getByRole("button", {name: /movement/i}).click();
-    await page.getByLabel(/select a manuscript/i).selectOption(CN);
+    await page.getByRole("button", {name: /movement map/i}).click();
+    await page.getByLabel(/select manuscript/i).selectOption(CN);
 
     await expect(page.getByLabel("Year")).toBeVisible({timeout: 8000});
     await expect(page.getByRole("button", {name: /play/i})).toBeVisible();

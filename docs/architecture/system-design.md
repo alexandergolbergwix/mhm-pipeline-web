@@ -37,7 +37,7 @@ FastAPI on Heroku dynos (multi-dyno; slug FS read-only, /tmp writable)
    ├─ Heroku Postgres  — source of truth: read-models, event log, caches,
    │                     Mazal/KIMA authority tables, run_jobs
    ├─ Heroku Redis     — L1 inference cache + slowapi rate-limit storage
-   ├─ Modal (HTTPS)    — 4 NER models + genre classifier (never imported)
+   ├─ Modal (HTTPS)    — NER/genre + research agent (never imported; W-15 / W-228)
    ├─ eval-agent       — tier-1 LLM judge subprocess (Gemini / Qubrid Kimi; never imported)
    ├─ External APIs    — VIAF SRU, Wikidata SPARQL/API, Wikibase Cloud, Resend
    └─ Heroku Scheduler — snapshots, event prune, cache prune
@@ -72,7 +72,7 @@ Shared by all five stages; understand these first:
 | AI Extraction | [blocks/extraction/](blocks/extraction/README.md) | MARC ingest, NER backends (Modal/local/HF), review surface, approvals |
 | Authority Enrichment | [blocks/authority/](blocks/authority/README.md) | Matcher routing, guards, homonym abstain, Mazal/KIMA in Postgres |
 | RDF Graph | [blocks/rdf-graph/](blocks/rdf-graph/README.md) | HMO-ontology graph build, enrichment merge, coverage, durable TTL |
-| Research surface | [blocks/research/](blocks/research/README.md) | Corpus analytics, provenance/movement maps, pathfinding, saved queries |
+| Research surface | [blocks/research/](blocks/research/README.md) | Corpus analytics, chat+canvas Research Assistant, maps, SPARQL |
 | HMO Wikibase Studio | [blocks/hmo-wikibase-studio/](blocks/hmo-wikibase-studio/README.md) | Schema bootstrap, item build/reconcile/upload to Wikibase Cloud |
 | Wikidata Studio | [blocks/wikidata-studio/](blocks/wikidata-studio/README.md) | Fail-closed Wikidata writes: validator moat, reconcile-before-create |
 | Caching | [blocks/caching/](blocks/caching/README.md) | Redis L1 + Postgres inference cache + fingerprinted durable build caches |
@@ -87,5 +87,5 @@ Shared by all five stages; understand these first:
 - [End-to-end data flow](data-flow.md) — MARC upload → published linked data.
 - [Task index](task-index.md) — "you are asked to X → read Y first".
 
-The incident-annotated rule history (W-1…W-213) lives in the repo root
+The incident-annotated rule history (W-1…W-228) lives in the repo root
 [CLAUDE.md](../../CLAUDE.md); block docs restate the ones that matter locally.

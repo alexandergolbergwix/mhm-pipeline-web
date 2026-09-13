@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-227)
+## Architectural rules (W-1…W-228)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -258,6 +258,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-39** — Every on-disk build cache needs a durable Postgres counterpart
 - **W-40** — Never hold an open DB transaction across a slow/retrying external write
 - **W-123** — Login MUST NOT wait on Wikibase Cloud account provisioning
+- **W-228** — Research agent Modal HTTPS-only; user wiki creds never on Modal; scope router + Dual-LLM quarantine + parameterized SPARQL
 
 ### [frontend-ui.md](docs/architecture/rules/frontend-ui.md) — Frontend curator surfaces
 
@@ -293,14 +294,16 @@ line here, and bump the `W-1…W-N` pointer in this heading plus
 | `backend/app/auth/` | Session cookies + RBAC |
 | `backend/converter/` | Byte-identical mirror of desktop converter tree |
 | `backend/ontology/` | hebrew-manuscripts.ttl + shacl-shapes.ttl (HMO ontology) |
-| `frontend/src/routes/` | One page per route (RunDetail compatibility redirect, StageExtraction, StageRdf, HmoStudio, WikidataStudio, …) |
+| `frontend/src/routes/` | One page per route (RunDetail compatibility redirect, StageExtraction, StageRdf, HmoStudio, WikidataStudio, ResearchAssistant, …) |
 | `frontend/src/components/` | Shared widgets (AgentFlowDiagram, SelectAllVisible, …) |
 | `frontend/src/components/wikidata/` | Studio-specific components: `ItemValidatorBadge`, `ItemApprovalBadge` |
+| `frontend/src/components/research/` | Research Assistant chat/canvas + map/SPARQL/network panels |
 | `frontend/src/api/` | Per-resource API clients |
 | `frontend/tests/` | Vitest unit tests |
 | `frontend/e2e/` | Playwright browser tests |
 | `backend/tests/` | pytest + httpx route tests |
 | `modal/modal_app.py` | Modal app for the four NER + genre models (deployed; not imported by backend) |
+| `modal/modal_research_agent.py` | Research Assistant AG-UI (deployed; not imported by backend; Rule W-228) |
 | `modal/README.md` | Modal deploy + economics |
 | `docs/project-hierarchy-plan.md` | Authoritative plan reference |
 | `docs/testing.md` | Three-layer test pyramid documentation |
@@ -331,6 +334,10 @@ cd backend && .venv/bin/python -c "from app.main import app; print(len(app.route
 
 # Modal — deploy the NER app (after editing modal/modal_app.py)
 cd modal && modal deploy modal_app.py
+
+# Modal — deploy the Research Assistant (after editing modal_research_agent.py)
+cd modal && modal deploy modal_research_agent.py
+# then: heroku config:set RESEARCH_AGENT_MODAL_URL=https://<workspace>--mhm-research-agent-web.modal.run
 
 # Modal — tail container logs (for cold-start debugging)
 modal app logs mhm-ner

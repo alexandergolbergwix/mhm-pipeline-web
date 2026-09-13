@@ -7,7 +7,7 @@
 | `Procfile` | `release: bash scripts/release.sh` · `web: bash scripts/start.sh` |
 | `scripts/start.sh` | Web entrypoint: exports `EVAL_AGENT_ROOT`/`EVAL_AGENT_STATE_DIR`, `cd backend`, `uvicorn app.main:app` with `--proxy-headers --forwarded-allow-ips='*'`, `$PORT`, `WEB_CONCURRENCY` workers |
 | `scripts/release.sh` | Release phase: fail-fast eval-agent bundle check (`locate_eval_agent()`), then `alembic upgrade head` |
-| `backend/alembic.ini` + `backend/app/migrations/` | Alembic config (`script_location = app/migrations`); versions `0001`…`0040_publication_core` |
+| `backend/alembic.ini` + `backend/app/migrations/` | Alembic config (`script_location = app/migrations`); versions `0001`…`0042_research_agent` |
 | `backend/app/settings.py` | Pydantic settings, canonical-first cohort/percentage rollout, and Heroku `postgres://` normalization |
 | `backend/app/db.py` | Engine: forced SSL on managed Postgres, `pool_size=5 + max_overflow=10`, 120 s `idle_in_transaction_session_timeout` |
 | `backend/app/main.py` | Lifespan starts `run_job_maintenance_loop()` task, tears down `close_redis()` |
@@ -21,4 +21,5 @@
 | `backend/scripts/backfill_versioning.py` | One-shot idempotent event-log backfill (`heroku run`) |
 | `backend/scripts/run_hmo_production_e2e.py` | Read-only production migration/E2E gate before canonical rollout |
 | `modal/modal_app.py` + `modal/README.md` | Modal NER+genre app (deploy target, never imported by backend); economics + cold-start docs |
+| `modal/modal_research_agent.py` | Research Assistant AG-UI (Pydantic AI); HTTPS-only; tools call Heroku with a JWT grant (Rule W-228) |
 | `docs/DEPLOY.md` | Long-form deploy runbook (Scheduler add-on setup §6.6–6.7) |

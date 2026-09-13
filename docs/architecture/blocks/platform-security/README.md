@@ -15,7 +15,7 @@ double opt-in, email throttling, timing parity, non-enumeration).
 
 - [Key files](key-files.md) — every auth/crypto/router/service file and its purpose
 - [How it works](how-it-works.md) — key hierarchy, secrets, PII, RBAC, defense stack, email, DB hygiene
-- [Rules](rules.md) — the 12 invariants (R1–R12)
+- [Rules](rules.md) — the invariants (R1–R14)
 - [Skills & tests](skills.md) — playbooks (protected/public endpoints, key rotation, login debugging) and the pinning test suites
 
 ## Related blocks

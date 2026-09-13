@@ -6,7 +6,8 @@
 config, no lazy-loading indirection. Public pages (`/login`,
 `/request-access`, `/privacy`, …) are bare; everything else is wrapped in
 `<ProtectedRoute>` which gates on `useAuth`. Run-scoped pages live under
-`/runs/:runId/{overview,extraction,rdf,wikidata-studio,hmo-studio,linked-data-explorer}`;
+`/runs/:runId/{overview,extraction,rdf,wikidata-studio,hmo-studio,linked-data-explorer}`
+(`linked-data-explorer` is the Research Assistant chat + canvas).
 Bare `/runs/:runId` immediately redirects to `hmo-studio` (retired Authority
 bookmark compatibility). Project pages under `/projects/:projectId{,/history,/entity}`; admin under
 `/admin/*`. Adding a page = one file in `src/routes/` + one line in `App.tsx`.

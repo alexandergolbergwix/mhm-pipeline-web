@@ -23,7 +23,7 @@
 
 ## Tests pinning this block
 
-- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts` — R1–R4, R11, R13–R19 (including rejected-enqueue recovery, terminal job fingerprints, mid-run row patches, silent reload throttle, incomplete-verify messaging, Continue-from-interrupt, terminal-job retention / upload-target sticky resolve, and two-step upload Now/ETA for test and live).
+- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts`, `canvasState.spec.ts` — R1–R4, R11, R13–R19 plus Research Assistant AG-UI canvas reducer.
 - `frontend/e2e/wikidata-upload-panel.spec.ts` — compatibility dry-run/test
   radios and historic live two-step progress modal + job tray.
 - `frontend/e2e/wikidata-publication.spec.ts` — default Publication target

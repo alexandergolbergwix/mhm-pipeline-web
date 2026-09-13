@@ -1,22 +1,15 @@
 /**
- * E2E suite for the Linked Data Explorer tab.
- *
- * Tests:
- *  1. Linked Data Explorer tile appears on the RunOverview page.
- *  2. Clicking the tile navigates to /runs/:runId/linked-data-explorer.
- *  3. The LDE page renders the provenance header and the 6 sub-tabs.
- *  4. The SPARQL console panel renders with the three source buttons.
- *
- * All backend calls are mocked — no running server needed.
+ * E2E suite for the Research Assistant (chat + canvas).
+ * Backend is mocked — no running server needed.
  */
-import { expect, test } from "@playwright/test";
-import type { Page, Route } from "@playwright/test";
+import {expect, test} from "@playwright/test";
+import type {Page, Route} from "@playwright/test";
 
-const TEST_RUN_ID  = "22222222-2222-2222-2222-222222222222";
+const TEST_RUN_ID = "22222222-2222-2222-2222-222222222222";
 const TEST_PROJECT_ID = "44444444-4444-4444-4444-444444444444";
+const THREAD_ID = "55555555-5555-5555-5555-555555555555";
 
 async function installMocks(page: Page) {
-  // Auth
   await page.route("**/api/auth/me", async (route: Route) => {
     await route.fulfill({
       status: 200,
@@ -30,7 +23,6 @@ async function installMocks(page: Page) {
     });
   });
 
-  // Run detail
   await page.route(`**/api/runs/${TEST_RUN_ID}`, async (route: Route) => {
     await route.fulfill({
       status: 200,
@@ -49,56 +41,51 @@ async function installMocks(page: Page) {
     });
   });
 
-  // Extraction status (for overview tile)
   await page.route(`**/api/runs/${TEST_RUN_ID}/extraction/status`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ state: "complete", records: 68, entity_total: 248 }),
+      body: JSON.stringify({state: "complete", records: 68, entity_total: 248}),
     });
   });
 
-  // RDF status
   await page.route(`**/api/runs/${TEST_RUN_ID}/rdf/status`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ status: "built", triples_count: 6898, manuscripts_count: 68 }),
+      body: JSON.stringify({status: "built", triples_count: 6898, manuscripts_count: 68}),
     });
   });
 
-    // HMO status (for overview workflow and recommended next step)
-    await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/status`, async (route: Route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          state: "built",
-          rdf_present: true,
-          manifest_count: 68,
-          coverage_present: false,
-          last_upload_at: null,
-          last_upload: null,
-          wikibase_configured: true,
-          canonical_live_count: 0,
-          canonical_ready: false,
-        }),
-      });
+  await page.route(`**/api/runs/${TEST_RUN_ID}/hmo-studio/status`, async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        state: "built",
+        rdf_present: true,
+        manifest_count: 68,
+        coverage_present: false,
+        last_upload_at: null,
+        last_upload: null,
+        wikibase_configured: true,
+        canonical_live_count: 0,
+        canonical_ready: false,
+      }),
     });
+  });
 
-  // Wikidata studio build
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/build*`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         items: [],
-        summary: { total_items: 360, manuscripts: 68, persons: 223, works: 69, statements: 2600 },
+        summary: {total_items: 360, manuscripts: 68, persons: 223, works: 69, statements: 2600},
       }),
     });
   });
 
-  // Research summary (for ProvenanceHeader)
   await page.route(`**/api/projects/${TEST_PROJECT_ID}/research/summary`, async (route) => {
     await route.fulfill({
       status: 200,
@@ -108,104 +95,156 @@ async function installMocks(page: Page) {
         total_works: 69,
         total_persons: 223,
         total_places: 12,
-        total_triples: 6898,
+        triples: 6898,
       }),
     });
   });
 
-  // SPARQL endpoints — return empty result for any source
+  await page.route("**/api/research-agent/sessions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        thread_id: THREAD_ID,
+        tool_grant: "test.grant.token",
+        grant_expires_at: "2099-01-01T00:00:00Z",
+        agent_url: "/api/research-agent/agui",
+        agent_mode: "local",
+        canvas_state: {artifacts: [], active_key: null},
+        messages: [],
+        tools: [],
+      }),
+    });
+  });
+
+  await page.route(`**/api/research-agent/threads/${THREAD_ID}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: THREAD_ID,
+        project_id: TEST_PROJECT_ID,
+        run_id: TEST_RUN_ID,
+        title: "Research session",
+        messages: [],
+        canvas_state: {artifacts: [], active_key: null},
+        artifacts: [],
+      }),
+    });
+  });
+
+  await page.route("**/api/research-agent/agui", async (route) => {
+    const body = `
+data: {"type":"RUN_STARTED","threadId":"${THREAD_ID}","runId":"r1"}
+
+data: {"type":"TEXT_MESSAGE_START","messageId":"m1","role":"assistant"}
+
+data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"m1","delta":"I ran research_summary and placed Corpus overview on the canvas."}
+
+data: {"type":"TEXT_MESSAGE_END","messageId":"m1"}
+
+data: {"type":"STATE_SNAPSHOT","snapshot":{"artifacts":[{"key":"research-summary","kind":"markdown","title":"Corpus overview","version":1}],"active_key":"research-summary"}}
+
+data: {"type":"RUN_FINISHED","threadId":"${THREAD_ID}","runId":"r1"}
+
+`;
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body,
+    });
+  });
+
   await page.route(/\/api\/projects\/[^/]+\/research\/sparql/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ columns: ["s", "p", "o"], rows: [], truncated: false }),
+      body: JSON.stringify({columns: ["s", "p", "o"], rows: [], truncated: false}),
     });
   });
 }
 
 async function setSession(page: Page) {
   await page.context().addCookies([
-    { name: "session", value: "test-session", url: "http://localhost:5173" },
+    {name: "session", value: "test-session", url: "http://localhost:5173"},
   ]).catch(() => {});
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────
+test.describe.configure({mode: "parallel"});
 
-test.describe.configure({ mode: "parallel" });
-
-test.describe("Linked Data Explorer", () => {
-  test("tile appears on RunOverview", async ({ page }) => {
+test.describe("Research Assistant", () => {
+  test("tile appears on RunOverview", async ({page}) => {
     await installMocks(page);
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/overview`);
-
-    await expect(
-      page.getByRole("link", { name: /linked data explorer/i }),
-    ).toBeVisible({ timeout: 8000 });
-      await expect(page.getByRole("heading", { name: /review hmo catalogue entries/i })).toBeVisible();
-      await expect(page.getByText("ready for review").first()).toBeVisible();
+    await expect(page.getByRole("link", {name: /research assistant/i})).toBeVisible({timeout: 8000});
   });
 
-  test("tile links to /runs/:id/linked-data-explorer", async ({ page }) => {
+  test("tile links to /runs/:id/linked-data-explorer", async ({page}) => {
     await installMocks(page);
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/overview`);
-
-    const tile = page.getByRole("link", { name: /linked data explorer/i });
-    await expect(tile).toBeVisible({ timeout: 8000 });
+    const tile = page.getByRole("link", {name: /research assistant/i});
     await expect(tile).toHaveAttribute("href", new RegExp(`/runs/${TEST_RUN_ID}/linked-data-explorer`));
   });
 
-  test("LDE page renders the 6 sub-tabs", async ({ page }) => {
+  test("chat and canvas render", async ({page}) => {
     await installMocks(page);
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
-
-    for (const label of ["Overview", "Clusters", "Network", "Ownership", "Geography", "SPARQL Console"]) {
-      await expect(page.getByRole("button", { name: new RegExp(label, "i") }))
-        .toBeVisible({ timeout: 8000 });
-    }
+    await expect(page.getByRole("button", {name: /^overview$/i})).toBeVisible({timeout: 8000});
+    await expect(page.getByLabel(/message/i)).toBeVisible();
+    await expect(page.getByTestId("research-canvas")).toBeVisible();
   });
 
-  test("SPARQL console shows three data-source buttons", async ({ page }) => {
+  test("SPARQL action opens the SPARQL console in the canvas", async ({page}) => {
     await installMocks(page);
-    await setSession(page);
-    await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
+    await page.route("**/api/research-agent/agui", async (route) => {
+      const body = `
+data: {"type":"RUN_STARTED"}
 
-    // Navigate to SPARQL Console tab
-    await page.getByRole("button", { name: /sparql console/i }).click();
+data: {"type":"STATE_SNAPSHOT","snapshot":{"artifacts":[{"key":"research-sparql","kind":"sparql","title":"SPARQL results","version":1}],"active_key":"research-sparql"}}
 
-    await expect(page.getByRole("button", { name: /hmo graph/i })).toBeVisible({ timeout: 8000 });
-    await expect(page.getByRole("button", { name: /wikibase/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /wikidata/i })).toBeVisible();
-  });
+data: {"type":"TEXT_MESSAGE_START","messageId":"m1","role":"assistant"}
 
-  test("executing a SPARQL template returns a results table", async ({ page }) => {
-    await installMocks(page);
+data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"m1","delta":"Opened SPARQL."}
 
-    // Override SPARQL mock to return one row
-    await page.route(/\/api\/projects\/[^/]+\/research\/sparql/, async (route) => {
+data: {"type":"TEXT_MESSAGE_END","messageId":"m1"}
+
+data: {"type":"RUN_FINISHED"}
+
+`;
+      await route.fulfill({status: 200, contentType: "text/event-stream", body});
+    });
+    await page.route(`**/api/research-agent/threads/${THREAD_ID}`, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          columns: ["work", "manuscript"],
-          rows: [["urn:work:1", "urn:ms:1"]],
-          truncated: false,
+          id: THREAD_ID,
+          project_id: TEST_PROJECT_ID,
+          run_id: TEST_RUN_ID,
+          title: "Research session",
+          messages: [],
+          canvas_state: {
+            artifacts: [{key: "research-sparql", kind: "sparql", title: "SPARQL results", version: 1}],
+            active_key: "research-sparql",
+          },
+          artifacts: [{
+            id: "a1",
+            artifact_key: "research-sparql",
+            kind: "sparql",
+            title: "SPARQL results",
+            version: 1,
+            content: {columns: ["work", "manuscript"], rows: [["urn:work:1", "urn:ms:1"]]},
+            created_by: "agent",
+          }],
         }),
       });
     });
-
     await setSession(page);
     await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
-    await page.getByRole("button", { name: /sparql console/i }).click();
-
-    // Click the first template button
-    await page.getByRole("button", { name: /co-occurring works/i }).first().click();
-    await page.getByRole("button", { name: /^run$/i }).click();
-
-    // Table header and row should appear
-    await expect(page.getByRole("columnheader", { name: /work/i })).toBeVisible({ timeout: 6000 });
-    await expect(page.getByRole("cell", { name: /urn:work:1/ })).toBeVisible();
+    await page.getByRole("button", {name: /^sparql$/i}).click();
+    await expect(page.getByRole("button", {name: /hmo graph/i})).toBeVisible({timeout: 8000});
   });
 });

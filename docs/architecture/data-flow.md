@@ -10,7 +10,7 @@ MARC upload (.mrc / TSV / JSON)
   └─ authority job → Mazal/KIMA/VIAF/WD → authority_matches  [authority]
        └─ guards / homonym picker / auto-approve       [authority]
   └─ RDF build job → TTL + coverage (durable)          [rdf-graph]
-       ├─ Research maps / graphs / queries             [research]
+       ├─ Research Assistant chat + canvas (agent tools)  [research]
        ├─ HMO Studio items → Wikibase Cloud            [hmo-wikibase-studio]
        └─ Wikidata Studio (PQ mapper + own/accept) → guarded upload  [wikidata-studio]
   every curator mutation → project_events              [versioning-export]

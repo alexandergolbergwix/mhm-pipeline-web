@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** — it indexes every architectural
-rule (Rules W-1…W-227) and points at the topic file under
+rule (Rules W-1…W-228) and points at the topic file under
 [docs/architecture/rules/](docs/architecture/rules/) that holds its full
 text. Read the topic file for the area you are touching; each rule records a
 real production incident plus the invariant that closes it — check it before touching RDF
@@ -60,7 +60,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-227) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
+(W-1…W-228) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -248,9 +248,12 @@ Hard rules: Hebrew notes = spoken teleprompter (read aloud); preserve **RTL +
 Arial** via `edit_pptx_deck.py` / `set_slide_notes` / `--fix-notes` — never raw
 `python-pptx` `notes_text_frame.text`.
 
-## Linked Data Explorer
+## Research Assistant
 
-The Linked Data Explorer Overview tab must aggregate linked-data entities
-across the local RDF Graph, Wikidata Studio/Wikidata reconciliation data, and
-the project Wikibase when a Wikibase endpoint is configured. Do not treat the
-Overview counts as RDF-only counts.
+The Research Assistant (`/runs/:runId/linked-data-explorer`) is a chat +
+editable canvas. Overview counts still aggregate linked-data entities
+across the local RDF Graph, Wikidata Studio/Wikidata reconciliation data,
+and the project Wikibase when a Wikibase endpoint is configured. Do not
+treat those counts as RDF-only counts. Domain restriction is structural
+(Rule W-228): scope router, Dual-LLM quarantine, parameterized SPARQL;
+Modal never receives curator wiki passwords.

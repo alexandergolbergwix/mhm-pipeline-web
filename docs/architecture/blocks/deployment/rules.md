@@ -8,7 +8,7 @@
    *Why:* the 9–14 min HMO coverage rebuild kept re-running because its cache lived only on dyno disk.
 3. **R3 — Verify-channel state MUST go through `resolve_verify_state_dir()`; NEVER hardcode paths under the slug.**
    *Why:* the slug is read-only on dynos; only `EVAL_AGENT_STATE_DIR`/`/tmp` is writable (Rule W-33).
-4. **R4 — The backend MUST NOT import `modal/` code; backend↔Modal is HTTPS-only via `MODAL_NER_URL` (Rule W-15).**
+4. **R4 — The backend MUST NOT import `modal/` code; backend↔Modal is HTTPS-only via `MODAL_NER_URL` and `RESEARCH_AGENT_MODAL_URL` (Rules W-15 / W-228).**
    *Why:* keeps the dyno slug small and the trust boundary explicit; Modal deploys independently.
 5. **R5 — In `modal_app.py`, `_bake_weights` MUST run before any `add_local_dir` layer.**
    *Why:* Modal rejects misordered chains and a code edit would otherwise invalidate the 3 GB weight layer.

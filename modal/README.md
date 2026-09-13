@@ -1,7 +1,8 @@
 # MHM Modal Apps
 
-Two Modal apps serve the MHM Pipeline: one for AI extraction (NER + genre)
-and one for authority enrichment (Mazal person lookup + KIMA place lookup).
+Three Modal apps serve the MHM Pipeline: AI extraction (NER + genre),
+authority enrichment (legacy Mazal/KIMA lookup), and the Research Assistant
+(AG-UI loop). The FastAPI backend never imports these files (Rule W-15).
 
 ---
 
@@ -109,3 +110,35 @@ to the source `.db` file requires a `modal deploy` to take effect.
 # After updating mazal_index.db or kima_index.db:
 modal deploy modal_authority.py
 ```
+
+---
+
+## Research Assistant (`modal_research_agent.py`)
+
+Pydantic AI + AG-UI loop. The browser streams from this app. Tools call
+Heroku `POST /api/research-agent/tools` with a short-lived JWT. User wiki
+passwords never enter this container (Rule W-228).
+
+Production uses the server Qubrid key as an OpenAI-compatible client
+(`OPENAI_BASE_URL=https://platform.qubrid.com/v1`, default model
+`openai:zai-org/GLM-5.3-Flash`). `HEROKU_TOOL_BASE_URL` is
+`https://mhm-pipeline.org`.
+
+```bash
+modal secret create mhm-research-agent \
+  HEROKU_TOOL_BASE_URL=https://mhm-pipeline-web.herokuapp.com \
+  OPENAI_API_KEY=sk-...
+
+cd modal && modal deploy modal_research_agent.py
+```
+
+Then on Heroku:
+
+```bash
+heroku config:set --app mhm-pipeline-web RESEARCH_AGENT_ENABLED=true \
+  RESEARCH_AGENT_MODAL_URL=https://<workspace>--mhm-research-agent-web.modal.run
+```
+
+Web timeout is 150 s. Optional sandbox egress allowlist:
+`query.wikidata.org`, `www.wikidata.org`. Wiki reads stay on Heroku.
+Empty `RESEARCH_AGENT_MODAL_URL` uses the local AG-UI stub for tests/dev.

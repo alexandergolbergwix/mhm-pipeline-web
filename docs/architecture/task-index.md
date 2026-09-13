@@ -61,4 +61,5 @@
 | Use an existing QID without updates | [Reference-only use](blocks/wikidata-studio/reference-only.md) + W-223 |
 
 | Resolve a full Publication with AI and automatic deferral | [Automatic resolution](blocks/wikidata-studio/automatic-resolution.md) + W-224 |
+| Change corpus maps, SPARQL console, or Research Assistant tools | [research](blocks/research/README.md) + [agent.md](blocks/research/agent.md) + Rule W-228 |
 | Recover a Publication upload that stays running after a worker failure | [Publication](blocks/wikidata-studio/production-publication.md) + W-227; inspect the execution job and resume the paused Execution |

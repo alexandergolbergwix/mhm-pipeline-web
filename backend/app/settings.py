@@ -45,10 +45,13 @@ class Settings(BaseSettings):
     master_key: str = Field(default="")
     email_hmac_key: str = Field(default="")
 
-    # ── Linked Data Explorer ──────────────────────────────────────────
+    # ── Linked Data Explorer / Research Assistant ─────────────────────
     # Optional: SPARQL endpoint for the project's local Wikibase instance.
     # Leave empty to disable the Wikibase data source in the explorer UI.
     wikibase_sparql_url: str = Field(default="")
+    # Modal AG-UI base URL (no trailing slash). Empty → local stub stream.
+    research_agent_modal_url: str = Field(default="")
+    research_agent_enabled: bool = Field(default=True)
 
     # ── HMO Wikibase Cloud (server-held OAuth 2.0) ────────────────────
     wikibase_cloud_base_url: str = Field(default="https://mhm-hmo.wikibase.cloud")

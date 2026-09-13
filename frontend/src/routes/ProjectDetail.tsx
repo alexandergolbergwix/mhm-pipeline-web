@@ -307,7 +307,7 @@ function RunsPanel({ projectId, canUpload }: { projectId: string; canUpload: boo
                 <StageTile to={`/runs/${r.id}/rdf`}                    label="RDF Graph"            hint="HMO ontology" />
                 <StageTile to={`/runs/${r.id}/hmo-studio`}             label="HMO Wikibase"         hint="IIIF + crosswalk" />
                 <StageTile to={`/runs/${r.id}/wikidata-studio`}        label="Wikidata Studio"      hint="QuickStatements" />
-                <StageTile to={`/runs/${r.id}/linked-data-explorer`}   label="Linked Data"          hint="SPARQL · LOD research" />
+                <StageTile to={`/runs/${r.id}/linked-data-explorer`}   label="Research Assistant"  hint="Chat · canvas · SPARQL" />
               </div>
             </li>
           ))}
