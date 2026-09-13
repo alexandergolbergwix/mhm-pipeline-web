@@ -57,7 +57,13 @@ Qubrid `zai-org/GLM-5.3-Flash` (`RESEARCH_AGENT_MODEL`).
 Modal `/agui` MUST bind FastAPI `Request` (no postponed annotations around
 that nested route) and call `AGUIAdapter.dispatch_request(request,
 agent=agent)` (Rule W-229). Browser messages MUST include a string `id`
-plus `tools: []` and `context: []`.
+plus `tools: []` and `context: []`. The planner uses `retries=3` and
+`output_type=str`. Chat maps pydantic-ai retry exceptions to a curator
+sentence (Rule W-231). A Heroku-only deploy does not change the planner.
+
+The chat MUST show bouncing wait dots (`research-chat-waiting`) while `busy`
+is true and no stream token has arrived yet (frontend R22). Modal cold start
+and tool calls can stay silent for tens of seconds.
 
 Canvas artifacts version on save. User text after Save is source of truth.
 Download / export are curator artifacts, not wiki writes.

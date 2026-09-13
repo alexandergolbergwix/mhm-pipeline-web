@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-230)
+## Architectural rules (W-1…W-231)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -261,6 +261,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-123** — Login MUST NOT wait on Wikibase Cloud account provisioning
 - **W-228** — Research agent Modal HTTPS-only; user wiki creds never on Modal; scope router + Dual-LLM quarantine + parameterized SPARQL
 - **W-229** — Modal AG-UI binds Starlette Request (no query-param 422) and calls `dispatch_request(request, agent=agent)`
+- **W-231** — Research AG-UI retries planner output (≥3) and hides pydantic-ai retry strings from the chat
 
 ### [frontend-ui.md](docs/architecture/rules/frontend-ui.md) — Frontend curator surfaces
 

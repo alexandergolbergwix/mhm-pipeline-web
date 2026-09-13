@@ -20,6 +20,7 @@ import {ResearchCanvas} from "@/components/research/ResearchCanvas";
 import {ProvenanceHeader} from "@/components/research/ProvenanceHeader";
 import {
   applyAguiEvent,
+  humanizeAgentError,
   emptyCanvas,
   type AssistantUiState,
 } from "@/lib/canvasState";
@@ -72,7 +73,9 @@ export default function ResearchAssistant() {
         if (!cancelled) {
           setUi((prev) => ({
             ...prev,
-            error: err instanceof Error ? err.message : "Could not start the research session.",
+            error: humanizeAgentError(
+              err instanceof Error ? err.message : "Could not start the research session.",
+            ),
           }));
         }
       });
@@ -114,7 +117,9 @@ export default function ResearchAssistant() {
       setUi((prev) => ({
         ...prev,
         busy: false,
-        error: err instanceof Error ? err.message : "The agent stream failed.",
+        error: humanizeAgentError(
+          err instanceof Error ? err.message : "The agent stream failed.",
+        ),
       }));
     }
   }, [agentUrl, threadId, toolGrant, ui.canvas, ui.messages]);

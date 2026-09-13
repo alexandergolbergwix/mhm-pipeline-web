@@ -23,7 +23,7 @@
 
 ## Tests pinning this block
 
-- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts`, `canvasState.spec.ts` — R1–R4, R11, R13–R21 plus Research Assistant AG-UI canvas reducer.
+- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts`, `canvasState.spec.ts`, `ResearchChat.spec.tsx` — R1–R4, R11, R13–R23 plus Research Assistant AG-UI canvas reducer, chat wait dots, and pydantic-ai retry humanize.
 - `frontend/e2e/wikidata-upload-panel.spec.ts` — compatibility dry-run/test
   radios and historic live two-step progress modal + job tray.
 - `frontend/e2e/wikidata-publication.spec.ts` — default Publication target

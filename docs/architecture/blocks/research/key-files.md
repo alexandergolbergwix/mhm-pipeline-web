@@ -25,12 +25,12 @@
 | `backend/app/services/research_agent/` | Grants, tool wrappers, wiki reads, `scope`/`sanitize`/`sparql_templates`, local AG-UI |
 | `backend/app/models/research_agent.py` | `ResearchAgentThread`, `ResearchAgentArtifact`, `ResearchAgentGrant` |
 | `backend/app/migrations/versions/0042_research_agent.py` | Thread / artifact / grant tables |
-| `modal/modal_research_agent.py` | Pydantic AI + AG-UI deploy target (never imported; Rule W-15 / W-228) |
+| `modal/modal_research_agent.py` | Pydantic AI + AG-UI deploy target (never imported; Rules W-15 / W-228 / W-231; `retries=3`) |
 | `frontend/src/routes/ResearchAssistant.tsx` | Chat + canvas split at `/runs/:runId/linked-data-explorer` |
 | `frontend/src/routes/LinkedDataExplorer.tsx` | Compatibility re-export of `ResearchAssistant` |
-| `frontend/src/components/research/ResearchChat.tsx` | Chat log + quick actions (Overview, Clusters, Network, Movement map, SPARQL) |
+| `frontend/src/components/research/ResearchChat.tsx` | Chat log + quick actions; bouncing wait dots while the agent is busy with no stream text (frontend R22) |
 | `frontend/src/components/research/ResearchCanvas.tsx` | Artifact tabs, markdown editor, map/SPARQL/network/cluster embeds |
 | `frontend/src/api/researchAgent.ts` | Session + SSE AG-UI client |
-| `frontend/src/lib/canvasState.ts` | AG-UI event reducer for canvas + messages |
+| `frontend/src/lib/canvasState.ts` | AG-UI event reducer for canvas + messages; `humanizeAgentError` (Rule W-231) |
 | `frontend/src/components/research/ProvenanceMapPanel.tsx` | Leaflet map, `KIND_COLOR`/`KIND_LABEL` per stop kind, animated arcs, single-MS + corpus modes |
 | `frontend/src/api/research.ts` | Typed client: `MapStopKind`, `MapStop`, `CorpusManuscript`, `CorpusEventPlace`, `PathResult`, … |

@@ -43,7 +43,9 @@ then ask the user for push permission. See **Rule W-49** in `CLAUDE.md`.
 5. Research Assistant: `modal secret create mhm-research-agent …` then
    `cd modal && modal deploy modal_research_agent.py`. Set
    `RESEARCH_AGENT_MODAL_URL` on Heroku. Tail with
-   `modal app logs mhm-research-agent`.
+   `modal app logs mhm-research-agent`. Planner changes (retries, tools,
+   system prompt) need this Modal deploy; a Heroku-only deploy does not
+   change them (Rule W-231).
 
 ### Skill: rebuild authority data in production
 1. Ensure `AUTHORITY_MODE=postgres` is set.

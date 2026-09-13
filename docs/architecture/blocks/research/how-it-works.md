@@ -81,4 +81,7 @@ human. Both are wrapped in the two-tier inference cache under
 
 **Research Assistant.** Chat + canvas at the same URL. Modal (or the local
 AG-UI stub) plans; Heroku executes tools. Domain restriction is structural
-— see [Research Assistant](agent.md) and Rule W-228.
+— see [Research Assistant](agent.md) and Rule W-228. The Modal planner
+retries invalid tool or output JSON three times and answers in plain text.
+The chat maps pydantic-ai retry exceptions to a curator sentence (Rule
+W-231).

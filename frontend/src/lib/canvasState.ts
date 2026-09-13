@@ -11,6 +11,17 @@ export interface AssistantUiState {
 
 export const emptyCanvas: CanvasState = {artifacts: [], active_key: null};
 
+export function humanizeAgentError(message: string): string {
+  const raw = message.trim() || "The assistant could not finish that answer.";
+  if (/maximum output retries/i.test(raw) || /exceeded maximum retries/i.test(raw)) {
+    return (
+      "The assistant could not finish that answer. " +
+      "Send the question again, or name a manuscript, work, or URI."
+    );
+  }
+  return raw;
+}
+
 export function applyAguiEvent(
   state: AssistantUiState,
   event: Record<string, unknown>,
@@ -44,7 +55,11 @@ export function applyAguiEvent(
     return {...state, busy: false};
   }
   if (type === "RUN_ERROR") {
-    return {...state, busy: false, error: String(event.message || "Agent run failed.")};
+    return {
+      ...state,
+      busy: false,
+      error: humanizeAgentError(String(event.message || "Agent run failed.")),
+    };
   }
   return state;
 }

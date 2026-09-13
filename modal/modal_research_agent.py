@@ -1,8 +1,8 @@
 """Modal research agent — Pydantic AI + AG-UI over HTTPS.
 
-Deploy target only (Rule W-15 / W-228 / W-229). The backend never imports
-this file. Tools call Heroku with a short-lived tool grant. User wiki
-passwords never enter this container.
+Deploy target only (Rule W-15 / W-228 / W-229 / W-231). The backend never
+imports this file. Tools call Heroku with a short-lived tool grant. User
+wiki passwords never enter this container.
 
     cd modal && modal deploy modal_research_agent.py
 
@@ -14,6 +14,7 @@ Set on Heroku:
 Do not add ``from __future__ import annotations`` here. FastAPI must see
 the real Request type on the /agui route (Rule W-229).
 """
+import json
 import os
 from typing import Any
 
@@ -38,7 +39,25 @@ Cite control numbers, QIDs, and URIs. Never echo secrets.
 Follow WikiProject Manuscripts: a manuscript is a physical object; a work is
 the intellectual content.
 Put lasting answers on the canvas via canvas_upsert_artifact.
+After tools, reply in plain text. Do not invent tool names.
+When the user asks about connections or relations, call research_network
+or research_cooccurrence first. Call research_neighbors or
+research_shortest_path only when the user supplies URIs.
 """
+
+PLANNER_RETRIES = 3
+
+
+def curator_run_error(message: str) -> str:
+    text = (message or "").strip() or "The assistant could not finish that answer."
+    lowered = text.lower()
+    if "maximum output retries" in lowered or "exceeded maximum retries" in lowered:
+        return (
+            "The assistant could not finish that answer. "
+            "Send the question again, or name a manuscript, work, or URI."
+        )
+    return text
+
 
 DEFAULT_MODEL = "openai:zai-org/GLM-5.3-Flash"
 SANDBOX_EGRESS_ALLOWLIST = (
@@ -134,11 +153,15 @@ class ResearchAgent:
             async def call(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
                 return await self._call_tool(token, name, arguments or {})
 
-            agent = Agent(
-                os.environ.get("RESEARCH_AGENT_MODEL") or DEFAULT_MODEL,
-                system_prompt=_SYSTEM,
-                retries=1,
-            )
+            model = os.environ.get("RESEARCH_AGENT_MODEL") or DEFAULT_MODEL
+            agent_kwargs: dict[str, Any] = {
+                "system_prompt": _SYSTEM,
+                "retries": PLANNER_RETRIES,
+            }
+            try:
+                agent = Agent(model, output_type=str, **agent_kwargs)
+            except TypeError:
+                agent = Agent(model, **agent_kwargs)
 
             @agent.tool_plain
             async def research_summary() -> dict[str, Any]:
@@ -235,6 +258,16 @@ class ResearchAgent:
                 return await call("wikibase_entity", {"qid": qid})
 
             del heroku  # used only to fail closed when unset inside _call_tool
-            return await AGUIAdapter.dispatch_request(request, agent=agent)
+            try:
+                return await AGUIAdapter.dispatch_request(request, agent=agent)
+            except Exception as exc:
+                payload = json.dumps(
+                    {"type": "RUN_ERROR", "message": curator_run_error(str(exc))}
+                )
+
+                async def fail():
+                    yield f"data: {payload}\n\n"
+
+                return StreamingResponse(fail(), media_type="text/event-stream")
 
         return api

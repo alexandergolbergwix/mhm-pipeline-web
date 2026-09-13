@@ -293,4 +293,38 @@ data: {"type":"RUN_FINISHED"}
     expect(firstId).toBeTruthy();
     expect(firstContent).toMatch(/corpus overview/i);
   });
+
+  test("shows a wait animation until the agent stream starts", async ({page}) => {
+    await installMocks(page);
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/research-agent/agui", async (route) => {
+      await gate;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: `
+data: {"type":"RUN_STARTED"}
+
+data: {"type":"TEXT_MESSAGE_START","messageId":"m1","role":"assistant"}
+
+data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"m1","delta":"Overview ready."}
+
+data: {"type":"TEXT_MESSAGE_END","messageId":"m1"}
+
+data: {"type":"RUN_FINISHED"}
+
+`,
+      });
+    });
+    await setSession(page);
+    await page.goto(`/runs/${TEST_RUN_ID}/linked-data-explorer`);
+    await page.getByRole("button", {name: /^overview$/i}).click();
+    await expect(page.getByTestId("research-chat-waiting")).toBeVisible({timeout: 8000});
+    release?.();
+    await expect(page.getByText("Overview ready.")).toBeVisible({timeout: 8000});
+    await expect(page.getByTestId("research-chat-waiting")).toHaveCount(0);
+  });
 });

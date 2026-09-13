@@ -68,6 +68,15 @@
    KIMA coords flow through (Rule W-32 note: DB-plane maps benefit
    immediately, the RDF-plane Geography tool needs a rebuild).
 
+### Skill: debug AG-UI "Exceeded maximum output retries"
+
+1. The brown warn text is a pydantic-ai `RUN_ERROR`, not a missing spinner.
+2. GLM emitted invalid tool JSON or failed the AG-UI output tool. `retries=1`
+   made that fatal (Rule W-231).
+3. A Heroku-only deploy does not change the planner. Redeploy
+   `modal/modal_research_agent.py`.
+4. Confirm the chat shows the curator sentence, not the pydantic string.
+
 ### Skill: add a research-agent tool
 
 1. Wrap an existing research router in `services/research_agent/tools.py`

@@ -8,6 +8,7 @@
 | `frontend/src/App.tsx` | Flat route table — public routes + `<ProtectedRoute>`-wrapped authenticated routes; calls `useAuth((s) => s.bootstrap)` on mount |
 | `frontend/src/routes/` | One page component per route (`RunDetail` immediate redirect to HMO Studio, `StageExtraction`, `StageRdf`, `HmoStudio`, `WikidataStudio`, `ResearchAssistant`, `admin/*`, …) |
 | `frontend/src/routes/ResearchAssistant.tsx` | Chat + canvas Research Assistant at `/runs/:runId/linked-data-explorer` (Rule W-228) |
+| `frontend/src/lib/canvasState.ts` | AG-UI reducer + `humanizeAgentError` (Rule W-231) |
 | `frontend/src/routes/LinkedDataExplorer.tsx` | Compatibility re-export of `ResearchAssistant` |
 | `frontend/src/routes/RunOverview.tsx` | Professor-facing run landing page: truthful stage status, recommended next step, workflow grouping, and separate research tools |
 | `frontend/src/api/client.ts` | The only fetch wrapper: `api.get/post/put/patch/del`, `ApiError`, CSRF double-submit header, HTML-fallback → login redirect |

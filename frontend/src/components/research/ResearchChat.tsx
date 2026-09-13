@@ -27,8 +27,8 @@ export function ResearchChat({
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({block: "end"});
-  }, [messages, streamingText]);
+    endRef.current?.scrollIntoView?.({block: "end"});
+  }, [busy, messages, streamingText]);
 
   const submit = useCallback(() => {
     const text = draft.trim();
@@ -52,7 +52,11 @@ export function ResearchChat({
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto space-y-3 text-sm" data-testid="research-chat-log">
+      <div
+        className="flex-1 overflow-y-auto space-y-3 text-sm"
+        data-testid="research-chat-log"
+        aria-busy={busy}
+      >
         {messages.map((msg, idx) => (
           <div
             key={idx}
@@ -68,6 +72,7 @@ export function ResearchChat({
             <p className="whitespace-pre-wrap">{streamingText}</p>
           </div>
         ) : null}
+        {busy && !streamingText ? <WaitingDots /> : null}
         <div ref={endRef} />
       </div>
       {error ? <p className="text-xs text-warn">{error}</p> : null}
@@ -92,14 +97,14 @@ export function ResearchChat({
           rows={3}
           disabled={busy}
           placeholder="Ask about this corpus, SPARQL, Wikidata, or provenance…"
-          className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-ink"
+          className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-ink disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={busy}
-          className="self-end px-3 py-2 rounded-lg bg-biu-sky/20 text-biu-sky text-sm"
+          className="self-end px-3 py-2 rounded-lg bg-biu-sky/20 text-biu-sky text-sm disabled:opacity-50"
         >
-          Send
+          {busy ? "…" : "Send"}
         </button>
       </form>
     </Glass>
@@ -109,4 +114,22 @@ export function ResearchChat({
 function messageText(msg: AguiMessage): string {
   if (typeof msg.content === "string") return msg.content;
   return msg.content.map((part) => part.text || "").join("");
+}
+
+function WaitingDots() {
+  return (
+    <div
+      className="text-muted"
+      data-testid="research-chat-waiting"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="kicker mb-0.5">Assistant</div>
+      <div className="flex items-center gap-1.5 h-5" aria-label="The assistant is working">
+        <span className="h-2 w-2 rounded-full bg-biu-sky animate-bounce" style={{animationDelay: "0ms"}} />
+        <span className="h-2 w-2 rounded-full bg-biu-sky animate-bounce" style={{animationDelay: "150ms"}} />
+        <span className="h-2 w-2 rounded-full bg-biu-sky animate-bounce" style={{animationDelay: "300ms"}} />
+      </div>
+    </div>
+  );
 }

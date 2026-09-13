@@ -282,3 +282,24 @@ MUST:
 4. Browser AG-UI messages MUST include a string `id`, plus empty
    `tools` and `context` arrays (ag-ui-protocol `RunAgentInput`).
 
+### Rule W-231 — Research AG-UI MUST retry planner output and hide pydantic-ai internals
+
+Incident (2026-09-13): the Research Assistant showed
+`Exceeded maximum output retries (1)` after a curator asked about
+connections between uploaded entities. `modal/modal_research_agent.py`
+built `Agent(..., retries=1)`. GLM-5.3-Flash on Qubrid emitted invalid
+tool or output-tool JSON. Pydantic AI exhausted the budget and AG-UI
+streamed that string as `RUN_ERROR`.
+
+MUST:
+
+1. Build the Modal planner with `retries=3` (tool and output budget) and
+   `output_type=str` so the final answer is text, not a structured output
+   tool.
+2. Map `RUN_ERROR` / `UnexpectedModelBehavior` text to a curator sentence.
+   Do not show pydantic-ai retry internals in the chat.
+3. A Heroku-only deploy does not change the planner. After this file
+   changes, run `modal deploy modal_research_agent.py`.
+
+Tests: `frontend/tests/unit/canvasState.spec.ts`.
+
