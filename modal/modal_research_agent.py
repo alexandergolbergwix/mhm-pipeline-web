@@ -112,6 +112,48 @@ class ResearchAgent:
                 return {"error": resp.text, "status": resp.status_code}
             return resp.json()
 
+    async def reply_cache_lookup(self, grant: str, project_id: str, text_hash: str) -> str | None:
+        """Cached answer for (project, question hash) — None on miss or error."""
+        import httpx
+
+        if not self.heroku_base:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    f"{self.heroku_base}/api/research-agent/reply-cache",
+                    params={"project_id": project_id, "text_hash": text_hash},
+                    headers={"Authorization": f"Bearer {grant}"},
+                )
+                if resp.status_code >= 400:
+                    return None
+                answer = resp.json().get("answer")
+                return str(answer) if answer else None
+        except Exception:
+            return None
+
+    async def reply_cache_store(
+        self, grant: str, project_id: str, text_hash: str, answer: str
+    ) -> None:
+        """Persist a successful answer — best effort, never raises."""
+        import httpx
+
+        if not self.heroku_base or not answer.strip():
+            return
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"{self.heroku_base}/api/research-agent/reply-cache",
+                    headers=_tool_headers(grant),
+                    json={
+                        "project_id": project_id,
+                        "text_hash": text_hash,
+                        "answer": answer,
+                    },
+                )
+        except Exception:
+            pass
+
     @modal.asgi_app()
     def web(self):
         from fastapi import FastAPI, Request
@@ -154,6 +196,53 @@ class ResearchAgent:
 
             heroku = self.heroku_base
             token = grant
+
+            def last_user_text() -> str:
+                for msg in reversed(body.get("messages") or []):
+                    if not isinstance(msg, dict):
+                        continue
+                    if str(msg.get("role") or "") not in ("user", "human"):
+                        continue
+                    content = msg.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
+                return ""
+
+            def project_id_from_grant() -> str:
+                # Unverified base64 decode — cache routing only. Heroku
+                # re-verifies the grant and enforces scope on every
+                # reply-cache call.
+                try:
+                    import base64
+
+                    payload_part = token.split(".", 2)[1]
+                    payload_part += "=" * (-len(payload_part) % 4)
+                    payload = json.loads(base64.urlsafe_b64decode(payload_part))
+                    return str(payload.get("project_id") or "")
+                except Exception:
+                    return ""
+
+            import hashlib
+
+            question = last_user_text()
+            text_hash = (
+                hashlib.sha256(" ".join(question.split()).encode("utf-8")).hexdigest()
+                if question
+                else ""
+            )
+            project_id = project_id_from_grant()
+
+            if heroku and question and text_hash and project_id:
+                cached = await self.reply_cache_lookup(token, project_id, text_hash)
+                if cached:
+                    def cache_events():
+                        yield "data: " + json.dumps({"type": "RUN_STARTED"}) + "\n\n"
+                        yield "data: " + json.dumps({"type": "TEXT_MESSAGE_START", "role": "assistant"}) + "\n\n"
+                        yield "data: " + json.dumps({"type": "TEXT_MESSAGE_CONTENT", "delta": cached}) + "\n\n"
+                        yield "data: " + json.dumps({"type": "TEXT_MESSAGE_END"}) + "\n\n"
+                        yield "data: " + json.dumps({"type": "RUN_FINISHED"}) + "\n\n"
+
+                    return StreamingResponse(cache_events(), media_type="text/event-stream")
 
             async def call(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
                 return await self._call_tool(token, name, arguments or {})
@@ -272,8 +361,52 @@ class ResearchAgent:
                 return await call("wikibase_entity", {"qid": qid})
 
             del heroku  # used only to fail closed when unset inside _call_tool
+
+            def wrap_cache_capture(response: StreamingResponse) -> StreamingResponse:
+                """Re-yield the AG-UI stream; store the answer on success."""
+                async def relay():
+                    chunks: list[str] = []
+                    finished = False
+                    error = False
+                    try:
+                        async for chunk in response.body_iterator:
+                            data = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+                            for line in data.splitlines():
+                                if not line.startswith("data:"):
+                                    continue
+                                raw = line[5:].strip()
+                                if not raw:
+                                    continue
+                                try:
+                                    event = json.loads(raw)
+                                except Exception:
+                                    continue
+                                kind = event.get("type")
+                                if kind == "TEXT_MESSAGE_CONTENT":
+                                    chunks.append(str(event.get("delta") or ""))
+                                elif kind == "RUN_FINISHED":
+                                    finished = True
+                                elif kind == "RUN_ERROR":
+                                    error = True
+                            yield chunk
+                    finally:
+                        if finished and not error and chunks and question and text_hash and project_id:
+                            await self.reply_cache_store(
+                                token, project_id, text_hash, "".join(chunks),
+                            )
+
+                return StreamingResponse(
+                    relay(),
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type,
+                )
+
             try:
-                return await AGUIAdapter.dispatch_request(request, agent=agent)
+                response = await AGUIAdapter.dispatch_request(request, agent=agent)
+                if isinstance(response, StreamingResponse):
+                    return wrap_cache_capture(response)
+                return response
             except Exception as exc:
                 payload = json.dumps(
                     {"type": "RUN_ERROR", "message": curator_run_error(str(exc))}
