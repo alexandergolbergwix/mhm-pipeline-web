@@ -29,9 +29,12 @@ logger = logging.getLogger(__name__)
 _STREAM_MAXLEN = 20_000
 _TTL_S = 6 * 3600
 _XREAD_BLOCK_MS = 15_000
-# Watchdog: a run may stream for at most 20 minutes before the bridge
-# gives up (the planner itself is bounded by the Modal function timeout).
-_MAX_STREAM_S = 20 * 60
+# Watchdogs: the bridge dies only on SILENCE (no events for 10 min) or an
+# absolute cap of 60 min. A run that keeps producing events is alive, no
+# matter how long it takes — the old fixed 20-min wall clock killed
+# healthy long runs ("timed out before finishing", production 2026-09-14).
+_MAX_IDLE_S = 10 * 60
+_MAX_TOTAL_S = 60 * 60
 
 
 def _stream_key(thread_id: uuid.UUID | str, run_id: str) -> str:
@@ -126,7 +129,8 @@ async def iter_stream(
     poll, and a final ``RUN_ERROR`` event if the watchdog deadline passes
     without an end marker. Closes after ``__END__``.
     """
-    deadline = time.monotonic() + _MAX_STREAM_S
+    deadline = time.monotonic() + _MAX_TOTAL_S
+    idle_deadline = time.monotonic() + _MAX_IDLE_S
     redis = await get_redis()
     key = _stream_key(thread_id, run_id)
     if redis is not None:
@@ -155,8 +159,12 @@ async def iter_stream(
                     yield {"type": "RUN_ERROR", "message": "The agent event stream was interrupted."}
                     return
                 if not resp:
+                    if time.monotonic() > idle_deadline:
+                        yield {"type": "RUN_ERROR", "message": "The agent run stopped responding before finishing."}
+                        return
                     yield None
                     continue
+                idle_deadline = time.monotonic() + _MAX_IDLE_S
                 for _stream, entries in resp:
                     for entry_id, fields in entries:
                         cursor = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
@@ -168,7 +176,7 @@ async def iter_stream(
                             yield json.loads(payload)
                         except (ValueError, TypeError):
                             continue
-            yield {"type": "RUN_ERROR", "message": "The agent run timed out before finishing."}
+            yield {"type": "RUN_ERROR", "message": "The agent run exceeded its total time budget."}
         finally:
             try:
                 await client.aclose()
@@ -177,6 +185,7 @@ async def iter_stream(
         return
     run = _memory_run(run_id)
     index = 0
+    idle_deadline = time.monotonic() + _MAX_IDLE_S
     while time.monotonic() < deadline:
         while index < len(run.events):
             marker_id, event = run.events[index]
@@ -185,9 +194,13 @@ async def iter_stream(
                 return
             if last_id not in ("0", "$") and marker_id <= last_id:
                 continue
+            idle_deadline = time.monotonic() + _MAX_IDLE_S
             yield event
         if run.done:
             return
+        if time.monotonic() > idle_deadline:
+            yield {"type": "RUN_ERROR", "message": "The agent run stopped responding before finishing."}
+            return
         await asyncio.sleep(0.3)
         yield None
-    yield {"type": "RUN_ERROR", "message": "The agent run timed out before finishing."}
+    yield {"type": "RUN_ERROR", "message": "The agent run exceeded its total time budget."}

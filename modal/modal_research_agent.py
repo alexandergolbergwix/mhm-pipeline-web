@@ -561,7 +561,11 @@ async def post_events(grant: str, callback_url: str, run_id: str, events: list[d
     pydantic-ai emits one TEXT_MESSAGE_CONTENT event per token; merging
     adjacent deltas keeps the webhook far below its rate limit (the
     frontend concatenates deltas anyway, so the stream is identical).
+    Retries transient failures — a dropped final batch would lose
+    RUN_FINISHED and strand the browser in the watchdog timeout.
     """
+    import asyncio
+
     import httpx
 
     coalesced: list[dict[str, Any]] = []
@@ -578,16 +582,24 @@ async def post_events(grant: str, callback_url: str, run_id: str, events: list[d
     base = _heroku_base()
     if not base or not callback_url:
         return False
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                callback_url,
-                headers=_tool_headers(grant),
-                json={"run_id": run_id, "events": coalesced},
-            )
-            return resp.status_code < 400
-    except Exception:
-        return False
+    delay = 1.0
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    callback_url,
+                    headers=_tool_headers(grant),
+                    json={"run_id": run_id, "events": coalesced},
+                )
+            if resp.status_code < 400:
+                return True
+            if resp.status_code < 500 and resp.status_code != 429:
+                return False  # auth/validation won't heal with retries
+        except Exception:
+            pass
+        await asyncio.sleep(delay)
+        delay *= 2
+    return False
 
 
 @app.function(
