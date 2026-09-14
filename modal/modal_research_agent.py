@@ -512,6 +512,7 @@ async def relay_agui_events_to_webhook(
     pending: list[dict[str, Any]] = []
     last_flush = 0.0
     outcome = "died"
+    type_counts: dict[str, int] = {}
     try:
         async for chunk in response.body_iterator:
             data = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
@@ -526,6 +527,7 @@ async def relay_agui_events_to_webhook(
                 except Exception:
                     continue
                 kind = event.get("type")
+                type_counts[str(kind)] = type_counts.get(str(kind), 0) + 1
                 if kind == "TEXT_MESSAGE_CONTENT":
                     chunks.append(str(event.get("delta") or ""))
                 elif kind == "RUN_FINISHED":
@@ -541,6 +543,7 @@ async def relay_agui_events_to_webhook(
                 await post_events(grant, callback_url, run_id, pending)
                 pending = []
                 last_flush = now
+        print(f"[agui-async] relay outcome={outcome} event_types={json.dumps(type_counts, sort_keys=True)}")
         return outcome
     finally:
         if pending:
