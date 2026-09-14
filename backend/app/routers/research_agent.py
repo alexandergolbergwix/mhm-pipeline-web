@@ -684,8 +684,30 @@ async def start_async_agui(
     run_id = str(body.runId or uuid.uuid4())
     await async_run.register_run(claims.thread_id, run_id)
 
+    # Strict AG-UI message shape: RunAgentInput validation (422) rejects
+    # anything but {id, role, content-string} dicts. Coerce here so the
+    # planner never refuses an odd transcript shape.
+    import json  # noqa: PLC0415
+
+    safe_messages: list[dict[str, str]] = []
+    for index, msg in enumerate(body.messages or []):
+        if not isinstance(msg, dict):
+            continue
+        role = str(msg.get("role") or "")
+        if role not in ("user", "assistant", "system"):
+            continue
+        content = msg.get("content")
+        if not isinstance(content, str):
+            content = json.dumps(content, ensure_ascii=False, default=str) if content is not None else ""
+        safe_messages.append({
+            "id": str(msg.get("id") or f"m-{index}")[:200],
+            "role": role,
+            "content": content[:20_000],
+        })
+
     dispatch_body = dict(body.model_dump())
     dispatch_body["runId"] = run_id
+    dispatch_body["messages"] = safe_messages
     merged_forwarded = dict(forwarded)
     merged_forwarded["callback_url"] = (
         f"{_public_base_url(request)}/api/research-agent/agui-events"

@@ -621,10 +621,18 @@ async def run_agui_detached(body: dict[str, Any]) -> dict[str, Any]:
     try:
         response = await AGUIAdapter.dispatch_request(request, agent=agent)
         if not hasattr(response, "body_iterator"):
+            # Validation 422 (or similar) — relay the real reason so the
+            # curator sees why the run refused, not a generic failure.
+            body_bytes = getattr(response, "body", b"") or b""
+            try:
+                detail = body_bytes.decode("utf-8", "replace")[:600]
+            except Exception:  # noqa: BLE001
+                detail = "<unreadable body>"
+            print(f"[agui-async] non-stream response {getattr(response, 'status_code', '?')}: {detail}")
             await post_events(grant, callback_url, run_id, [
-                {"type": "RUN_ERROR", "message": "Planner returned a non-stream response."}
+                {"type": "RUN_ERROR", "message": f"Planner rejected the run input ({getattr(response, 'status_code', '?')}): {detail}"}
             ])
-            return {"ok": False, "error": "non-stream response"}
+            return {"ok": False, "error": detail}
         outcome = await relay_agui_events_to_webhook(
             grant, callback_url, run_id, response,
             question=question, text_hash=text_hash, project_id=project_id,
