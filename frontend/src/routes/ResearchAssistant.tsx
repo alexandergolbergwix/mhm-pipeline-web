@@ -188,6 +188,23 @@ export default function ResearchAssistant() {
           err instanceof Error ? err.message : "The agent stream failed.",
         ),
       }));
+    } finally {
+      // Tool upserts happen server-side and survive stream failures —
+      // refresh the canvas even when the stream errors (production
+      // incident 2026-09-14: an H18 cut hid a freshly placed map).
+      try {
+        const detail = await ResearchAgent.getThread(threadId);
+        const artifacts: Record<string, ResearchArtifact> = {};
+        for (const art of detail.artifacts) artifacts[art.artifact_key] = art;
+        setUi((prev) => ({
+          ...prev,
+          artifacts,
+          canvas: detail.canvas_state || prev.canvas,
+          busy: false,
+        }));
+      } catch {
+        /* best-effort refresh */
+      }
     }
   }, [agentUrl, agentMode, threadId, toolGrant, runId, saveTranscript, ui.canvas, ui.messages]);
 
