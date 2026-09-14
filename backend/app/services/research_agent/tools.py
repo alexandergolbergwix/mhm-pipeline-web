@@ -1134,8 +1134,14 @@ async def _tool_show_wikidata_places(ctx: ToolContext, args: dict[str, Any]) -> 
     # Location-semantics properties only. Without this filter, ANY claim
     # whose target happens to carry P625 matches (e.g. P407 language of
     # work → an entity with stray coordinates) and pollutes the map
-    # (production feedback 2026-09-14: "Modern Greek" dots).
-    _PLACE_PROPS = {"P17", "P131", "P159", "P189", "P276", "P706", "P1071", "P495", "P5566"}
+    # (production feedback 2026-09-14: "Modern Greek" dots). P195
+    # (collection) stays in: holding institutions are the dominant real
+    # "location" lens in the manuscript claims — dropping it collapsed
+    # the map to 2 dots.
+    _PLACE_PROPS = {
+        "P17", "P131", "P159", "P189", "P276", "P706", "P1071", "P495", "P5566",
+        "P195",
+    }
     points: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for binding in data.get("results", {}).get("bindings", []):

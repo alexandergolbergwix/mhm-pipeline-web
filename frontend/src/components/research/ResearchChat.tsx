@@ -10,6 +10,37 @@ const QUICK_ACTIONS: {label: string; prompt: string}[] = [
   {label: "SPARQL", prompt: "Run a sample SPARQL query on the HMO graph"},
 ];
 
+/** Escape HTML, then apply the small markdown subset the planner uses
+ * (bold, italic, inline code, links). No raw HTML ever passes through. */
+export function renderChatMarkdown(text: string): string {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return escaped
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+    .replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+      '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
+    )
+    .replace(
+      /(^|[\s(])((?:https?:\/\/)[^\s<)]+)/g,
+      '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>',
+    );
+}
+
+function ChatMarkdown({text}: {text: string}) {
+  const html = text
+    .split(/\n{2,}/)
+    .map((para) =>
+      `<p>${para.split("\n").map((line) => renderChatMarkdown(line)).join("<br/>")}</p>`,
+    )
+    .join("");
+  return <div className="space-y-2" dangerouslySetInnerHTML={{__html: html}} />;
+}
+
 export function ResearchChat({
   messages,
   streamingText,
@@ -63,13 +94,17 @@ export function ResearchChat({
             className={msg.role === "user" ? "text-ink" : "text-muted"}
           >
             <div className="kicker mb-0.5">{msg.role === "user" ? "You" : "Assistant"}</div>
-            <p className="whitespace-pre-wrap">{messageText(msg)}</p>
+            {msg.role === "user" ? (
+              <p className="whitespace-pre-wrap">{messageText(msg)}</p>
+            ) : (
+              <ChatMarkdown text={messageText(msg)} />
+            )}
           </div>
         ))}
         {streamingText ? (
           <div className="text-muted">
             <div className="kicker mb-0.5">Assistant</div>
-            <p className="whitespace-pre-wrap">{streamingText}</p>
+            <ChatMarkdown text={streamingText} />
           </div>
         ) : null}
         {busy && !streamingText ? <WaitingDots /> : null}
