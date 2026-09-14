@@ -1,6 +1,48 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 import {Glass} from "@/components/glass";
 import type {AguiMessage} from "@/api/researchAgent";
+import type {AssistantUiState} from "@/lib/canvasState";
+
+function argSummary(args: string): string {
+  const trimmed = args.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const parts = Object.entries(parsed)
+      .filter(([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+      .slice(0, 3)
+      .map(([k, v]) => `${k}=${String(v).slice(0, 40)}`);
+    return parts.join(", ");
+  } catch {
+    return trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
+  }
+}
+
+function ActivityTrack({ui}: {ui: Pick<AssistantUiState, "activity" | "thinking">}) {
+  const thinking = ui.thinking.at(-1);
+  return (
+    <div className="space-y-1">
+      {thinking ? (
+        <div className="text-xs italic text-muted/70 border-l-2 border-white/10 pl-2 max-h-24 overflow-hidden">
+          <span className="kicker">thinking </span>
+          <span className="whitespace-pre-wrap">{thinking.text}</span>
+          {thinking.done ? null : <span className="animate-pulse"> …</span>}
+        </div>
+      ) : null}
+      {ui.activity.map((a) => (
+        <div key={a.id} className="text-xs text-muted flex items-center gap-1.5">
+          {a.done ? (
+            <span aria-hidden>✓</span>
+          ) : (
+            <span aria-hidden className="animate-pulse">◌</span>
+          )}
+          <span className="font-medium">{a.name}</span>
+          {argSummary(a.args) ? <span className="truncate opacity-70">{argSummary(a.args)}</span> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const QUICK_ACTIONS: {label: string; prompt: string}[] = [
   {label: "Overview", prompt: "Give me a corpus overview of the manuscripts"},
@@ -46,12 +88,16 @@ export function ResearchChat({
   streamingText,
   busy,
   error,
+  activity,
+  thinking,
   onSend,
 }: {
   messages: AguiMessage[];
   streamingText: string;
   busy: boolean;
   error: string | null;
+  activity: AssistantUiState["activity"];
+  thinking: AssistantUiState["thinking"];
   onSend: (text: string) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -59,7 +105,7 @@ export function ResearchChat({
 
   useEffect(() => {
     endRef.current?.scrollIntoView?.({block: "end"});
-  }, [busy, messages, streamingText]);
+  }, [busy, messages, streamingText, activity]);
 
   const submit = useCallback(() => {
     const text = draft.trim();
@@ -101,6 +147,7 @@ export function ResearchChat({
             )}
           </div>
         ))}
+        {busy ? <ActivityTrack ui={{activity, thinking}} /> : null}
         {streamingText ? (
           <div className="text-muted">
             <div className="kicker mb-0.5">Assistant</div>

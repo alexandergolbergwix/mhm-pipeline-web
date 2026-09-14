@@ -10,6 +10,8 @@ it("shows bouncing dots while busy with no stream text", () => {
       streamingText=""
       busy
       error={null}
+      activity={[]}
+      thinking={[]}
       onSend={() => undefined}
     />,
   );
@@ -24,6 +26,8 @@ it("hides the wait dots once stream text arrives", () => {
       streamingText="The graph has"
       busy
       error={null}
+      activity={[]}
+      thinking={[]}
       onSend={() => undefined}
     />,
   );

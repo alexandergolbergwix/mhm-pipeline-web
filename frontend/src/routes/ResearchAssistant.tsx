@@ -46,6 +46,8 @@ export default function ResearchAssistant() {
     streamingText: "",
     busy: false,
     error: null,
+    activity: [],
+    thinking: [],
   });
   const autoTitledRef = useRef(false);
 
@@ -240,6 +242,8 @@ export default function ResearchAssistant() {
         streamingText: "",
         busy: false,
         error: null,
+        activity: [],
+        thinking: [],
       });
       setHistoryKey((k) => k + 1);
     } catch (err) {
@@ -329,6 +333,8 @@ export default function ResearchAssistant() {
             streamingText={ui.streamingText}
             busy={ui.busy}
             error={ui.error}
+            activity={ui.activity}
+            thinking={ui.thinking}
             onSend={(text) => { void send(text); }}
           />
           {threadId && projectId ? (

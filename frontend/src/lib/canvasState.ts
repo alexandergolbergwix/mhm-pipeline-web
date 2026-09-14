@@ -1,5 +1,18 @@
 import type {AguiMessage, CanvasState, ResearchArtifact} from "@/api/researchAgent";
 
+export interface ToolActivity {
+  id: string;
+  name: string;
+  args: string;
+  done: boolean;
+}
+
+export interface ThinkingTrack {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export interface AssistantUiState {
   messages: AguiMessage[];
   canvas: CanvasState;
@@ -7,7 +20,12 @@ export interface AssistantUiState {
   streamingText: string;
   busy: boolean;
   error: string | null;
+  activity: ToolActivity[];
+  thinking: ThinkingTrack[];
 }
+
+const ACTIVITY_CAP = 20;
+const THINKING_TEXT_CAP = 2000;
 
 export const emptyCanvas: CanvasState = {artifacts: [], active_key: null};
 
@@ -27,6 +45,52 @@ export function applyAguiEvent(
   event: Record<string, unknown>,
 ): AssistantUiState {
   const type = String(event.type || "");
+  if (type === "RUN_STARTED") {
+    return {...state, activity: [], thinking: [], busy: true};
+  }
+  if (type === "TOOL_CALL_START") {
+    const entry: ToolActivity = {
+      id: String(event.toolCallId || event.tool_call_id || `t${state.activity.length}`),
+      name: String(event.toolCallName || event.tool_call_name || "tool"),
+      args: "",
+      done: false,
+    };
+    const activity = [...state.activity, entry].slice(-ACTIVITY_CAP);
+    return {...state, activity, busy: true};
+  }
+  if (type === "TOOL_CALL_ARGS") {
+    const id = String(event.toolCallId || event.tool_call_id || "");
+    const delta = String(event.delta || "");
+    const activity = state.activity.map((a) =>
+      a.id === id ? {...a, args: (a.args + delta).slice(-400)} : a,
+    );
+    return {...state, activity};
+  }
+  if (type === "TOOL_CALL_END" || type === "TOOL_CALL_RESULT") {
+    const id = String(event.toolCallId || event.tool_call_id || "");
+    const activity = state.activity.map((a) =>
+      a.id === id ? {...a, done: true} : a,
+    );
+    return {...state, activity};
+  }
+  if (
+    type === "THINKING_START" ||
+    type === "THINKING_CONTENT" ||
+    type === "THINKING_DELTA" ||
+    type === "THINKING_END"
+  ) {
+    const id = String(event.id || event.messageId || event.message_id || "thinking");
+    const delta =
+      type === "THINKING_END"
+        ? ""
+        : String(event.delta || event.content || "");
+    const existing = state.thinking.find((t) => t.id === id);
+    const entry: ThinkingTrack = existing
+      ? {...existing, text: (existing.text + delta).slice(-THINKING_TEXT_CAP), done: type === "THINKING_END"}
+      : {id, text: delta.slice(-THINKING_TEXT_CAP), done: type === "THINKING_END"};
+    const thinking = [...state.thinking.filter((t) => t.id !== id), entry].slice(-3);
+    return {...state, thinking, busy: true};
+  }
   if (type === "TEXT_MESSAGE_START") {
     return {...state, streamingText: "", busy: true, error: null};
   }
