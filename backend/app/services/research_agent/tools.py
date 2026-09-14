@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.session import AuthContext
 from app.models.project import Membership
 from app.models.research_agent import ResearchAgentArtifact, ResearchAgentThread
+from app.models.run import Run
 from app.models.session import Session as SessionRow
 from app.models.user import User
 from app.pipeline.rdf_build import rdf_output_path_for_run
@@ -750,28 +751,99 @@ _WIKIDATA_ITEMS_KEY = "wikidata-items"
 
 
 async def _tool_wikidata_uploaded_items(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]:
-    """Save every uploaded Wikidata item (Studio cache QIDs) as a dataset."""
-    from app.routers.linked_data_explorer import _run_ids_for_project
+    """Save every uploaded Wikidata item as a dataset.
+
+    Sources, in order of authority: (1) succeeded publication execution
+    actions (what actually reached Wikidata), then (2) the project's
+    Studio caches — both `legacy` and `canonical`, any approval flag —
+    for items carrying `existing_qid`. Reading only one cache source
+    misses uploads (that exact bug returned 0 for a project with 231
+    live QIDs), so all three are merged here (Rule R26).
+    """
+    from app.models.publication import (
+        Publication,
+        PublicationExecution,
+        PublicationExecutionAction,
+    )
     from app.routers.wikidata_studio import studio_items_for_project
 
-    run_ids = await _run_ids_for_project(ctx.claims.project_id, ctx.db)
-    items = await studio_items_for_project(run_ids, ctx.db, approved_only=False)
+    qid_row: dict[str, dict[str, Any]] = {}
+
+    run_rows = (
+        await ctx.db.execute(
+            select(Run.id).where(Run.project_id == ctx.claims.project_id)
+        )
+    ).scalars().all()
+    project_run_ids = list(run_rows)
+
+    if project_run_ids:
+        succeeded = (
+            await ctx.db.execute(
+                select(
+                    PublicationExecutionAction.result_qid,
+                    PublicationExecutionAction.entity_key,
+                    PublicationExecutionAction.action,
+                )
+                .join(PublicationExecution, PublicationExecution.id == PublicationExecutionAction.execution_id)
+                .join(Publication, Publication.id == PublicationExecution.publication_id)
+                .join(Run, Run.id == Publication.run_id)
+                .where(
+                    Run.project_id == ctx.claims.project_id,
+                    PublicationExecutionAction.state == "succeeded",
+                    PublicationExecutionAction.result_qid.is_not(None),
+                )
+            )
+        ).all()
+        for qid, entity_key, action in succeeded:
+            qid_row.setdefault(str(qid), {
+                "qid": str(qid),
+                "local_id": _cell_str(entity_key, 120),
+                "entity_type": None,
+                "label": None,
+                "sources": {f"publication:{action}"},
+            })
+
+    for source in ("legacy", "canonical"):
+        if not project_run_ids:
+            break
+        from app.routers.wikidata_studio import studio_items_for_project as _items
+
+        items = await _items(project_run_ids, ctx.db, approved_only=False, source=source)
+        for it in items:
+            qid = str(it.get("existing_qid") or "").strip()
+            if not qid:
+                continue
+            labels = it.get("labels") or {}
+            entry = qid_row.setdefault(str(qid), {
+                "qid": qid,
+                "local_id": _cell_str(it.get("local_id"), 120),
+                "entity_type": _cell_str(it.get("entity_type"), 40),
+                "label": _cell_str((labels.get("en") or labels.get("he") or ""), 160),
+                "statements": len(it.get("statements") or []),
+                "sources": set(),
+            })
+            entry.setdefault("sources", set())
+            if isinstance(entry.get("sources"), set):
+                entry["sources"].add(f"studio:{source}")
+
     rows: list[list[str | None]] = []
-    for it in items:
-        qid = str(it.get("existing_qid") or "").strip()
-        if not qid:
-            continue
-        labels = it.get("labels") or {}
-        label = labels.get("en") or labels.get("he") or ""
-        statements = it.get("statements") or []
-        rows.append([qid, _cell_str(it.get("local_id"), 120), _cell_str(it.get("entity_type"), 40), _cell_str(label, 160), len(statements)])
+    for entry in sorted(qid_row.values(), key=lambda e: e["qid"]):
+        sources = entry.get("sources") or {"publication"}
+        source_text = "+".join(sorted(s for s in sources if s)) or "publication"
+        statements = entry.get("statements")
+        rows.append([
+            entry["qid"], entry.get("local_id"), entry.get("entity_type"),
+            entry.get("label"), statements if statements is not None else None,
+            _cell_str(source_text, 60),
+        ])
+
     await upsert_artifact(
         ctx.db, ctx.thread,
         artifact_key=_WIKIDATA_UPLOADS_KEY,
         kind="sparql",
         title="Uploaded to Wikidata",
         content={
-            "columns": ["qid", "local_id", "entity_type", "label", "statements"],
+            "columns": ["qid", "local_id", "entity_type", "label", "statements", "source"],
             "rows": rows,
         },
         created_by="agent",

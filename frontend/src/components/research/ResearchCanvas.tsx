@@ -3,7 +3,6 @@ import {Glass} from "@/components/glass";
 import {ResearchAgent, type ResearchArtifact} from "@/api/researchAgent";
 
 const ProvenanceMapPanel = lazy(() => import("@/components/research/ProvenanceMapPanel"));
-const SparqlConsolePanel = lazy(() => import("@/components/research/SparqlConsolePanel"));
 const PeopleNetworkPanel = lazy(() => import("@/components/research/PeopleNetworkPanel"));
 const CoOccurrencePanel = lazy(() => import("@/components/research/CoOccurrencePanel"));
 
@@ -23,6 +22,27 @@ export function ResearchCanvas({
   onSaved: (artifact: ResearchArtifact) => void;
 }) {
   const active = artifacts.find((a) => a.artifact_key === activeKey) ?? artifacts.at(-1) ?? null;
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (!active) setExpanded(false);
+  }, [active?.artifact_key]);
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
+  const body = active ? (
+    <ArtifactBody
+      projectId={projectId}
+      threadId={threadId}
+      artifact={active}
+      onSaved={onSaved}
+    />
+  ) : null;
 
   return (
     <Glass className="flex flex-col h-full min-h-[32rem] gap-3">
@@ -56,19 +76,59 @@ export function ResearchCanvas({
             <a className="text-biu-sky hover:underline" href={ResearchAgent.exportUrl(threadId)}>
               Export session
             </a>
+            <button
+              type="button"
+              className="text-biu-sky hover:underline"
+              onClick={() => setExpanded(true)}
+              title="Expand to full screen"
+              aria-label="Expand canvas"
+            >
+              ⛶ Expand
+            </button>
           </div>
         ) : null}
       </div>
       <div className="flex-1 overflow-auto" data-testid="research-canvas">
-        {!active ? null : (
-          <ArtifactBody
-            projectId={projectId}
-            threadId={threadId}
-            artifact={active}
-            onSaved={onSaved}
-          />
-        )}
+        {body}
       </div>
+      {expanded && active ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col gap-3 p-4 overflow-hidden"
+          style={{background: "var(--body-bg)"}}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium text-ink truncate">
+              {active.title || active.artifact_key}
+            </span>
+            <div className="flex gap-3 text-xs">
+              <a
+                className="text-biu-sky hover:underline"
+                href={ResearchAgent.downloadUrl(threadId, active.artifact_key, downloadFormat(active.kind))}
+              >
+                Download
+              </a>
+              <button
+                type="button"
+                className="text-biu-sky hover:underline"
+                onClick={() => setExpanded(false)}
+                aria-label="Close full screen"
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto" data-testid="research-canvas-expanded">
+            <ArtifactBody
+              projectId={projectId}
+              threadId={threadId}
+              artifact={active}
+              onSaved={onSaved}
+            />
+          </div>
+        </div>
+      ) : null}
     </Glass>
   );
 }
@@ -98,10 +158,18 @@ function ArtifactBody({
     );
   }
   if (artifact.kind === "sparql") {
+    if (hasTabular(artifact.content)) {
+      return <TableView content={artifact.content} />;
+    }
     return (
-      <Suspense fallback={<p className="muted text-sm">Loading SPARQL…</p>}>
-        <SparqlConsolePanel projectId={projectId} />
-      </Suspense>
+      <div className="space-y-2">
+        <p className="muted text-sm">
+          {String(artifact.content?.text ?? "Query result stored. Ask the assistant for a table or chart.")}
+        </p>
+        {String(artifact.content?.query ?? "") ? (
+          <pre className="text-xs rounded-lg bg-[var(--surface-inset)] border border-white/10 px-3 py-2 overflow-auto">{String(artifact.content.query)}</pre>
+        ) : null}
+      </div>
     );
   }
   if (artifact.kind === "json" && artifact.artifact_key.includes("network")) {

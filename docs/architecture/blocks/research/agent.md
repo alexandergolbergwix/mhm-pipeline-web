@@ -4,8 +4,9 @@
 
 The curator surface at `/runs/:runId/linked-data-explorer` is a **chat +
 editable canvas**. The old 9-tab Linked Data Explorer is gone. Panels
-(maps, SPARQL, network, clusters) still exist as canvas embeds. Analytics
-routers are unchanged; the agent wraps them.
+(maps, network, clusters) still exist as canvas embeds; tabular SPARQL
+artifacts render as a table, and the canvas has a full-screen expand view.
+Analytics routers are unchanged; the agent wraps them.
 
 Architecture name (code + docs, not a prompt-only policy):
 **Architecting Secure, Domain-Restricted Agentic Systems for Bibliographic
@@ -100,9 +101,11 @@ and the artifact download route accept `format=pdf`.
 
 **Wikidata upload skills (Rule R26).** Questions about what links the
 uploaded Wikidata items have follow the DB → API → dataset flow:
-`wikidata_uploaded_items` reads `studio_items_for_project` (the publication
-DB) and saves each item carrying `existing_qid` as the `wikidata-uploads`
-dataset (qid, local_id, entity_type, label, statements).
+`wikidata_uploaded_items` merges (1) succeeded `publication_execution_actions`
+rows — the ground truth of what reached Wikidata — with (2) both Studio cache
+sources (`legacy` and `canonical`, `approved_only=False`) for items carrying
+`existing_qid`, and saves the union as the `wikidata-uploads`
+dataset (qid, local_id, entity_type, label, statements, source).
 `wikidata_fetch_items` batches those QIDs through `wbgetentities`
 (`wiki.fetch_wikidata_entities_batch`, 50 ids/call, ≤300 QIDs) and saves one
 row per claim property as the `wikidata-items` dataset. Both prompts (Modal

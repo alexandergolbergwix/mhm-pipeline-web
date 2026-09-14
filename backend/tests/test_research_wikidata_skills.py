@@ -1,6 +1,7 @@
 """Wikidata upload skills: DB → 'wikidata-uploads', API → 'wikidata-items'."""
 from __future__ import annotations
 
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -112,3 +113,75 @@ async def test_uploaded_items_without_studio_cache_is_empty(sample_run):
     ):
         result = await _call(sample_run, minted["headers"], "wikidata_uploaded_items", {})
     assert result["uploaded_count"] == 0
+
+
+async def test_uploaded_items_includes_publication_execution_qids(sample_run, db_session):
+    """Succeeded publication execution actions are the upload ground truth
+    (Rule R26) — their QIDs surface even with an empty Studio cache."""
+    from app.models.publication import (
+        Publication,
+        PublicationExecution,
+        PublicationExecutionAction,
+    )
+
+    publication = Publication(
+        run_id=sample_run["run_id"],
+        source_snapshot_id="snap-1",
+        source_revision="rev-1",
+        source_digest="d" * 64,
+        profile_name="default",
+        profile_version="1",
+        target_site="https://www.wikidata.org",
+        target_environment="live",
+        state="executed",
+        idempotency_key="uploads-test-1",
+        latest_release_id=uuid.uuid4(),
+    )
+    db_session.add(publication)
+    await db_session.flush()
+    execution = PublicationExecution(
+        id=uuid.uuid4(),
+        publication_id=publication.id,
+        plan_id=uuid.uuid4(),
+        receipt_id=uuid.uuid4(),
+        receipt_digest="r" * 64,
+        actor_id=str(sample_run["user_id"]),
+        idempotency_key="uploads-test-1-exec",
+        status="succeeded",
+        total_count=2,
+        succeeded_count=1,
+    )
+    db_session.add(execution)
+    db_session.add(PublicationExecutionAction(
+        execution_id=execution.id,
+        action_key="a-1",
+        entity_key="ms-1",
+        ordinal=0,
+        phase="send",
+        state="succeeded",
+        action="create",
+        result_qid="Q2222",
+    ))
+    db_session.add(PublicationExecutionAction(  # failed → never surfaces
+        execution_id=execution.id,
+        action_key="a-2",
+        entity_key="p-1",
+        ordinal=1,
+        phase="send",
+        state="failed",
+        action="create",
+    ))
+    await db_session.commit()
+
+    minted = await _mint(sample_run)
+    with patch(
+        "app.routers.wikidata_studio.studio_items_for_project",
+        new=AsyncMock(return_value=[]),
+    ):
+        result = await _call(sample_run, minted["headers"], "wikidata_uploaded_items", {})
+    assert result["uploaded_count"] == 1
+    assert result["by_type"] == {"unknown": 1}
+    info = await _call(sample_run, minted["headers"], "data_info", {"artifact_key": "wikidata-uploads"})
+    assert info["row_count"] == 1
+    row = (info.get("sample") or [[None] * 6])[0]
+    assert row[0] == "Q2222" and row[5] == "publication:create"
