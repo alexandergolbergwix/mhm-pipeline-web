@@ -172,6 +172,9 @@ function ArtifactBody({
       </div>
     );
   }
+  if (artifact.kind === "chart") {
+    return <ChartView content={artifact.content} />;
+  }
   if (artifact.kind === "json" && artifact.artifact_key.includes("network")) {
     return (
       <Suspense fallback={<p className="muted text-sm">Loading network…</p>}>
@@ -200,6 +203,39 @@ function ArtifactBody({
 
 function hasTabular(content: Record<string, unknown>): boolean {
   return Array.isArray(content.columns) && Array.isArray(content.rows);
+}
+
+type ChartGroup = {name: string; items: Array<{label: string; count: number}>};
+
+function ChartView({content}: {content: Record<string, unknown>}) {
+  const groups = (Array.isArray(content.groups) ? content.groups : []) as ChartGroup[];
+  const max = Math.max(1, ...groups.flatMap((g) => g.items.map((i) => i.count || 0)));
+  const total = Number(content.total_claims) || groups.reduce((s, g) => s + g.items.reduce((a, i) => a + (i.count || 0), 0), 0);
+  return (
+    <div className="space-y-4">
+      <div className="text-xs muted">
+        {total.toLocaleString()} claims · {String(content.distinct_properties ?? "")} distinct properties
+        {content.items_counted ? ` · ${Number(content.items_counted).toLocaleString()} items` : ""}
+      </div>
+      {groups.map((group) => (
+        <div key={group.name} className="space-y-1.5">
+          <div className="text-sm font-medium text-ink">{group.name}</div>
+          {group.items.map((item) => (
+            <div key={item.label} className="flex items-center gap-2">
+              <div className="w-56 shrink-0 truncate text-xs" title={item.label}>{item.label}</div>
+              <div className="flex-1 h-4 rounded bg-[var(--surface-inset)] overflow-hidden">
+                <div
+                  className="h-full rounded bg-[var(--accent, #4c8dff)]"
+                  style={{width: `${Math.max(2, Math.round((item.count / max) * 100))}%`}}
+                />
+              </div>
+              <div className="w-14 text-right text-xs tabular-nums">{item.count.toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function TableView({content}: {content: Record<string, unknown>}) {

@@ -184,6 +184,13 @@
       "expires": "2027-09-13"
     },
     {
+      "fingerprint": "sha256:bc1a1f4792c1bb4c58e0b1e5463149e3",
+      "path": "backend/app/routers/research_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Logger warning prints only the secret key NAME, never the token value; reviewed false positive",
+      "expires": "2027-09-14"
+    },
+    {
       "fingerprint": "sha256:969cff40e8ddb5dd3edf9ad328972f65",
       "path": "backend/app/routers/research_agent.py",
       "rule_id": "relation-linked-secret",

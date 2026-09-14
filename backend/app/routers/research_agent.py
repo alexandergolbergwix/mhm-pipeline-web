@@ -127,6 +127,11 @@ def _agent_target() -> tuple[str, str]:
     return "/api/research-agent/agui", "local"
 
 
+def _is_bot_password(token: str | None) -> bool:
+    """MediaWiki bot passwords are ``Username@BotName:password``."""
+    return bool(token) and "@" in token and ":" in token
+
+
 async def _wiki_token_for_grant(db: AsyncSession, auth: AuthContext) -> tuple[str | None, str | None]:
     for name in ("wikidata", "wikidata_test"):
         try:
@@ -134,8 +139,23 @@ async def _wiki_token_for_grant(db: AsyncSession, auth: AuthContext) -> tuple[st
         except Exception:
             logger.warning("Wiki key unwrap failed for %s", name)
             token = None
-        if token:
+        if _is_bot_password(token):
             return token, name
+        if token:
+            logger.warning(
+                "Saved wiki secret %s is not a Username@BotName:password bot "
+                "password; ignoring it for research-agent reads", name,
+            )
+    # Publication ran against the server-held bot credential (it uploaded
+    # the project's items); use the same server-side token for agent reads.
+    # It never leaves this backend process (Rule W-228).
+    settings = get_settings()
+    for name, value in (
+        ("server_live", settings.wikidata_publication_live_token),
+        ("server_test", settings.wikidata_publication_test_token),
+    ):
+        if _is_bot_password(value and value.strip()):
+            return value.strip(), name
     return None, None
 
 

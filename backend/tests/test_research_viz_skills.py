@@ -58,6 +58,71 @@ async def test_show_movement_map_unknown_cn_is_404(sample_run):
     assert resp.status_code == 404
 
 
+async def test_show_link_types_groups_properties(sample_run):
+    body, headers = await _headers(sample_run)
+    seed = await sample_run["client"].put(
+        f"/api/research-agent/threads/{body['thread_id']}/artifacts/wikidata-items",
+        json={
+            "kind": "sparql",
+            "title": "Wikidata items (live claims)",
+            "content": {
+                "columns": ["qid", "label", "property", "value"],
+                "rows": [
+                    ["Q1111", "Ms", "P31", "manuscript"],
+                    ["Q1111", "Ms", "P1476", "title"],
+                    ["Q2222", "Work", "P50", "author"],
+                    ["Q3333", "Tradition", "lrmoo:R4_embodies", "work"],
+                    ["Q3333", "Tradition", "https://w3id.org/mhm/ontology#witnesses", "ms"],
+                    ["Q4444", "Ms2", "cidoc:P72_has_language", "hebrew"],
+                ],
+            },
+        },
+    )
+    assert seed.status_code == 200, seed.text
+    resp = await sample_run["client"].post(
+        "/api/research-agent/tools",
+        headers=headers,
+        json={"name": "show_link_types", "arguments": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    result = resp.json()["result"]
+    assert result["artifact_key"] == "link-types"
+    assert result["claim_rows"] == 6
+    assert result["distinct_properties"] == 6
+    assert result["items_counted"] == 4
+    group_names = {g["name"] for g in result["groups"]}
+    assert {"Wikidata properties", "FRBRoo / LRMoo (IFLA)", "MHM ontology", "CIDOC CRM"} <= group_names
+    top = {d["label"] for d in result["top_links"]}
+    assert "P31 — instance of" in top and "mhm:witnesses" in top
+
+    # The chart artifact was persisted on the thread.
+    versions = await sample_run["client"].post(
+        "/api/research-agent/tools",
+        headers=headers,
+        json={"name": "canvas_list_versions", "arguments": {"artifact_key": "link-types"}},
+    )
+    assert versions.status_code == 200, versions.text
+
+
+async def test_show_link_types_without_property_column_is_404(sample_run):
+    body, headers = await _headers(sample_run)
+    seed = await sample_run["client"].put(
+        f"/api/research-agent/threads/{body['thread_id']}/artifacts/wikidata-items",
+        json={
+            "kind": "sparql",
+            "title": "other",
+            "content": {"columns": ["a"], "rows": [["x"]]},
+        },
+    )
+    assert seed.status_code == 200, seed.text
+    resp = await sample_run["client"].post(
+        "/api/research-agent/tools",
+        headers=headers,
+        json={"name": "show_link_types", "arguments": {}},
+    )
+    assert resp.status_code == 404
+
+
 async def test_export_pdf_and_download(sample_run):
     body, headers = await _headers(sample_run)
     put = await sample_run["client"].put(

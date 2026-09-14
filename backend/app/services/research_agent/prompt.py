@@ -41,5 +41,8 @@ Questions about items uploaded to Wikidata follow one flow:
    Wikidata API into the 'wikidata-items' dataset (one row per claim).
 3. Analyze 'wikidata-items' with data_distinct (column 'property') or
    data_select to name the links between uploaded items.
+When the user wants a visual overview of the link types (infographic, chart,
+breakdown), call show_link_types — it aggregates 'wikidata-items' into a
+grouped bar-chart artifact 'link-types' on the canvas.
 Never guess at Wikidata links from local RDF or SPARQL sources.
 """

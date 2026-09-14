@@ -51,6 +51,7 @@ TOOL_NAMES = (
     "wikidata_uploaded_items",
     "wikidata_fetch_items",
     "show_movement_map",
+    "show_link_types",
     "export_pdf",
     "canvas_upsert_artifact",
     "canvas_list_versions",
@@ -138,7 +139,7 @@ async def dispatch_tool(ctx: ToolContext, name: str, arguments: dict[str, Any] |
     result = await handler(ctx, arguments)
     if name in ("canvas_upsert_artifact", "canvas_list_versions", "create_download_link"):
         return result if isinstance(result, dict) else {"result": result}
-    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "export_pdf"):
+    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "show_link_types", "export_pdf"):
         return result if isinstance(result, dict) else {"result": result}
     slimmed = slim_result(result)
     return slimmed if isinstance(slimmed, dict) else {"result": slimmed}
@@ -927,6 +928,131 @@ async def _tool_wikidata_fetch_items(ctx: ToolContext, args: dict[str, Any]) -> 
     }
 
 
+async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Aggregate the 'wikidata-items' claim dataset into a link-type chart.
+
+    Reads the saved claim rows server-side, groups every distinct property
+    into a family (Wikidata P-properties, MHM ontology, FRBRoo/LRMoo,
+    CIDOC CRM, RDF/RDFS, other) and places a bar-chart artifact on the
+    canvas (Rule R25 — the planner receives only a digest).
+    """
+    key = str(args.get("artifact_key") or _WIKIDATA_ITEMS_KEY).strip()
+    _, columns, rows = await _dataset_rows(ctx, {"artifact_key": key})
+    prop_col = "property" if "property" in columns else ("p" if "p" in columns else None)
+    if prop_col is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Dataset '{key}' has no property column. Run "
+                "wikidata_fetch_items first (or research_sparql against the "
+                "wikidata source) to save claim properties."
+            ),
+        )
+    p_idx = columns.index(prop_col)
+    q_idx = columns.index("qid") if "qid" in columns else None
+    counts: dict[str, int] = {}
+    qids: set[str] = set()
+    for row in rows:
+        prop = _cell_str(row[p_idx]) if 0 <= p_idx < len(row) else None
+        if not prop:
+            continue
+        counts[prop] = counts.get(prop, 0) + 1
+        if q_idx is not None and 0 <= q_idx < len(row):
+            qids.add(_cell_str(row[q_idx]) or "")
+    qids.discard("")
+    if not counts:
+        raise HTTPException(status_code=404, detail=f"Dataset '{key}' has no claim rows.")
+
+    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:30]
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for prop, count in top:
+        groups.setdefault(_link_family(prop), []).append({
+            "label": _link_label(prop),
+            "count": count,
+        })
+    content = {
+        "chart": "bar",
+        "title": str(args.get("title") or "Types of links on our uploaded Wikidata items")[:120],
+        "total_claims": sum(counts.values()),
+        "distinct_properties": len(counts),
+        "items_counted": len(qids),
+        "groups": [
+            {"name": name, "items": items}
+            for name, items in sorted(groups.items(), key=lambda kv: -sum(i["count"] for i in kv[1]))
+        ],
+    }
+    await upsert_artifact(
+        ctx.db, ctx.thread,
+        artifact_key="link-types",
+        kind="chart",
+        title=content["title"],
+        content=content,
+        created_by="agent",
+    )
+    await ctx.db.commit()
+    digest = [
+        {"label": item["label"], "count": item["count"]}
+        for group in content["groups"] for item in group["items"][:8]
+    ]
+    return {
+        "artifact_key": "link-types",
+        "claim_rows": content["total_claims"],
+        "distinct_properties": content["distinct_properties"],
+        "items_counted": content["items_counted"],
+        "groups": [
+            {"name": g["name"], "properties": len(g["items"]), "claims": sum(i["count"] for i in g["items"])}
+            for g in content["groups"]
+        ],
+        "top_links": digest,
+        "note": "Placed the link-type chart on the canvas as 'link-types'. Use data_* skills on '" + key + "' for details.",
+    }
+
+
+_COMMON_PROP_LABELS = {
+    "P31": "instance of",
+    "P50": "author",
+    "P569": "date of birth",
+    "P570": "date of death",
+    "P17": "country",
+    "P1476": "title",
+    "P921": "main subject",
+    "P170": "creator",
+    "P123": "publisher",
+    "P577": "publication date",
+}
+
+
+def _link_family(prop: str) -> str:
+    p = prop.strip()
+    if p.startswith("P") and p[1:].isdigit():
+        return "Wikidata properties"
+    if "lrmoo" in p or "frbroo" in p:
+        return "FRBRoo / LRMoo (IFLA)"
+    if "cidoc" in p:
+        return "CIDOC CRM"
+    if "rdf-syntax" in p or p.startswith("rdf:") or p.startswith("rdfs:"):
+        return "RDF / RDFS"
+    if "w3id.org/mhm/ontology" in p or p.startswith("mhm:"):
+        return "MHM ontology"
+    return "Other"
+
+
+def _link_label(prop: str) -> str:
+    p = prop.strip()
+    if p.startswith("P") and p[1:].isdigit():
+        meaning = _COMMON_PROP_LABELS.get(p)
+        return f"{p} — {meaning}" if meaning else p
+    if "w3id.org/mhm/ontology#" in p:
+        return f"mhm:{p.rsplit('#', 1)[-1]}"
+    for prefix, marker in (
+        ("lrmoo", "lrmoo"), ("cidoc", "cidoc"), ("rdfs", "rdf-syntax"),
+    ):
+        if marker in p:
+            sep = "#" if "#" in p else "/"
+            return f"{prefix}:{p.rsplit(sep, 1)[-1]}"
+    return p.rsplit("/", 1)[-1] if p.startswith("http") else p
+
+
 TOOL_HANDLERS = {
     "research_summary": _tool_summary,
     "research_cooccurrence": _tool_cooccurrence,
@@ -950,6 +1076,7 @@ TOOL_HANDLERS = {
     "wikidata_uploaded_items": _tool_wikidata_uploaded_items,
     "wikidata_fetch_items": _tool_wikidata_fetch_items,
     "show_movement_map": _tool_show_movement_map,
+    "show_link_types": _tool_show_link_types,
     "export_pdf": _tool_export_pdf,
     "canvas_upsert_artifact": _tool_canvas_upsert,
     "canvas_list_versions": _tool_canvas_list,

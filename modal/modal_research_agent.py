@@ -68,6 +68,9 @@ live entities for those QIDs from the Wikidata API and saves one row per
 claim as 'wikidata-items'; (3) analyze that dataset with data_distinct
 (column 'property') or data_select to answer what links exist between
 the uploaded items. Summarize property IDs with their meaning in prose.
+When the user wants a visual overview of the link types (infographic,
+chart, breakdown), call show_link_types — it aggregates 'wikidata-items'
+into a grouped bar chart artifact 'link-types' on the canvas.
 """
 
 PLANNER_RETRIES = 3
@@ -420,6 +423,11 @@ class ResearchAgent:
                 """Place the provenance movement map on the canvas; cn = control number for one manuscript, omit for the corpus."""
                 args = {"cn": cn} if cn else {}
                 return await call("show_movement_map", args)
+
+            @agent.tool_plain
+            async def show_link_types(artifact_key: str = "wikidata-items") -> dict[str, Any]:
+                """Aggregate saved claim rows into a link-type chart on the canvas (families of properties with counts)."""
+                return await call("show_link_types", {"artifact_key": artifact_key})
 
             @agent.tool_plain
             async def export_pdf(artifact_key: str) -> dict[str, Any]:

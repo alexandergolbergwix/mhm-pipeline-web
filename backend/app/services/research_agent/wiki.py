@@ -122,6 +122,8 @@ async def fetch_wikidata_entities_batch(
     """GET wbgetentities for up to 50 QIDs per call; returns id → slim entity.
 
     Public data — no login required; the bot token is only used when given.
+    A broken or malformed token degrades to an anonymous read instead of
+    failing the fetch (reads never need credentials on www.wikidata.org).
     Missing entities are reported under their id with ``missing: True``.
     """
     if not qids:
@@ -130,7 +132,10 @@ async def fetch_wikidata_entities_batch(
     headers = {"User-Agent": _USER_AGENT}
     async with httpx.AsyncClient(timeout=_TIMEOUT_S, headers=headers, follow_redirects=True) as client:
         if bot_token:
-            await _login(client, _WIKIDATA_API, bot_token)
+            try:
+                await _login(client, _WIKIDATA_API, bot_token)
+            except (ValueError, RuntimeError) as exc:
+                logger.warning("Wikidata batch fetch login failed; reading anonymously: %s", exc)
         for start in range(0, len(qids), 50):
             batch = qids[start:start + 50]
             resp = await client.get(_WIKIDATA_API, params={

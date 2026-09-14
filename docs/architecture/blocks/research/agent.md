@@ -93,7 +93,10 @@ optional — one manuscript or the whole corpus) upserts the `movement-map`
 canvas artifact (kind `map`, rendered by `ProvenanceMapPanel`) and returns a
 digest: ms label, stop count, place names (≤40), manuscript count. It
 queries the existing `get_provenance_map` / `list_manuscripts` routers — no
-duplicated geo logic (R14). `export_pdf` renders any saved artifact as a
+duplicated geo logic (R14). `show_link_types` aggregates the `wikidata-items`
+claim dataset into the `link-types` canvas artifact (kind `chart`, rendered
+by the canvas `ChartView`: grouped bars per property family) and returns a
+top-links digest. `export_pdf` renders any saved artifact as a
 PDF server-side (`research_agent/pdf.py`, fpdf2 + DejaVu Sans with Hebrew
 coverage; core-font fallback replaces non-Latin-1 chars) and returns a
 `download_path` — the planner never touches PDF bytes. `create_download_link`
@@ -108,6 +111,9 @@ sources (`legacy` and `canonical`, `approved_only=False`) for items carrying
 dataset (qid, local_id, entity_type, label, statements, source).
 `wikidata_fetch_items` batches those QIDs through `wbgetentities`
 (`wiki.fetch_wikidata_entities_batch`, 50 ids/call, ≤300 QIDs) and saves one
-row per claim property as the `wikidata-items` dataset. Both prompts (Modal
+row per claim property as the `wikidata-items` dataset. The session wiki
+token comes from the curator's Settings bot password when valid, else the
+server-held publication credential (Rule R18); a failed login degrades to
+an anonymous read (Rule R27). Both prompts (Modal
 `_SYSTEM` and `prompt.SYSTEM_PROMPT`) hard-wire this flow and forbid
 guessing links from local RDF or SPARQL.
