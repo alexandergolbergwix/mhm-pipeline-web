@@ -1131,9 +1131,17 @@ async def _tool_show_wikidata_places(ctx: ToolContext, args: dict[str, Any]) -> 
     )
     data = await _wikidata_sparql_query(query)
     coord_re = re.compile(r"Point\(([-\d.]+) ([-\d.]+)\)")
+    # Location-semantics properties only. Without this filter, ANY claim
+    # whose target happens to carry P625 matches (e.g. P407 language of
+    # work → an entity with stray coordinates) and pollutes the map
+    # (production feedback 2026-09-14: "Modern Greek" dots).
+    _PLACE_PROPS = {"P17", "P131", "P159", "P189", "P276", "P706", "P1071", "P495", "P5566"}
     points: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for binding in data.get("results", {}).get("bindings", []):
+        prop = str(binding.get("prop", {}).get("value") or "").rsplit("/", 1)[-1]
+        if prop not in _PLACE_PROPS:
+            continue
         coord = str(binding.get("coord", {}).get("value") or "")
         match = coord_re.search(coord)
         if not match:

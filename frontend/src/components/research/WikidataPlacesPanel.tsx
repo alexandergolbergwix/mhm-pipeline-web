@@ -64,18 +64,16 @@ export default function WikidataPlacesPanel({points}: {points: WikidataPlacePoin
             >
               <Popup>
                 <div className="text-xs space-y-1">
-                  <div className="font-semibold">{p.place_label}</div>
-                  <div>
-                    <a href={WD_URL(p.place_qid)} target="_blank" rel="noreferrer">
-                      {p.place_qid}
-                    </a>
-                    {" · "}
-                    {p.property_label || p.property}
-                  </div>
-                  <div>
-                    on{" "}
+                  <div className="font-semibold">
                     <a href={WD_URL(p.item_qid)} target="_blank" rel="noreferrer">
                       {p.item_label} ({p.item_qid})
+                    </a>
+                  </div>
+                  <div>
+                    {p.property_label || p.property}
+                    {" → "}
+                    <a href={WD_URL(p.place_qid)} target="_blank" rel="noreferrer">
+                      {p.place_label} ({p.place_qid})
                     </a>
                   </div>
                 </div>
