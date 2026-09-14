@@ -226,6 +226,13 @@
       "expires": "2027-09-13"
     },
     {
+      "fingerprint": "sha256:b5c91e87c458d683056c9356fda2193b",
+      "path": "backend/app/services/research_agent/tools.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "ctx.wiki_token runtime reference passed to fetch; no secret literal",
+      "expires": "2027-09-14"
+    },
+    {
       "fingerprint": "sha256:3d764e5333c1301523d3acee4fccd4a1",
       "path": "backend/app/services/research_agent/tools.py",
       "rule_id": "relation-linked-secret",
@@ -238,6 +245,27 @@
       "rule_id": "relation-linked-secret",
       "reason": "ToolContext dataclass field holding an AuthContext object, not a credential",
       "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:233015020114a43a1f429452be259828",
+      "path": "backend/app/services/research_agent/wiki.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "bot_token function parameter; supplied at runtime, never hardcoded",
+      "expires": "2027-09-14"
+    },
+    {
+      "fingerprint": "sha256:7e9b40d8d185bcd4c462482768d08021",
+      "path": "backend/app/services/research_agent/wiki.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "login response token extraction; runtime value from MediaWiki API, no literal",
+      "expires": "2027-09-14"
+    },
+    {
+      "fingerprint": "sha256:499b6d951d3b44f0687997bae68dfe97",
+      "path": "backend/app/services/research_agent/wiki.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "bot_token function parameter; credential supplied at runtime, never hardcoded",
+      "expires": "2027-09-14"
     },
     {
       "fingerprint": "sha256:9c0aafed239f15a7206affe23d54767a",

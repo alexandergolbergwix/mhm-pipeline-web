@@ -97,3 +97,14 @@ PDF server-side (`research_agent/pdf.py`, fpdf2 + DejaVu Sans with Hebrew
 coverage; core-font fallback replaces non-Latin-1 chars) and returns a
 `download_path` — the planner never touches PDF bytes. `create_download_link`
 and the artifact download route accept `format=pdf`.
+
+**Wikidata upload skills (Rule R26).** Questions about what links the
+uploaded Wikidata items have follow the DB → API → dataset flow:
+`wikidata_uploaded_items` reads `studio_items_for_project` (the publication
+DB) and saves each item carrying `existing_qid` as the `wikidata-uploads`
+dataset (qid, local_id, entity_type, label, statements).
+`wikidata_fetch_items` batches those QIDs through `wbgetentities`
+(`wiki.fetch_wikidata_entities_batch`, 50 ids/call, ≤300 QIDs) and saves one
+row per claim property as the `wikidata-items` dataset. Both prompts (Modal
+`_SYSTEM` and `prompt.SYSTEM_PROMPT`) hard-wire this flow and forbid
+guessing links from local RDF or SPARQL.

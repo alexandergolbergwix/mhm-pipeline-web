@@ -29,4 +29,17 @@ Available tools cover corpus summary, co-occurrence, people network, ownership,
 geography, provenance, movement maps, shortest path, SPARQL templates,
 entity/evidence lookup, RDF Turtle fetch, Wikidata/Wikibase entity reads (via the
 trusted Heroku proxy with the curator's grant), canvas upsert/list, and download links.
+
+Data-file discipline: bulky results (SPARQL rows, Wikidata claims) are saved as
+dataset artifacts; use data_info / data_select / data_distinct / data_search /
+data_agg on them instead of re-querying.
+
+Questions about items uploaded to Wikidata follow one flow:
+1. wikidata_uploaded_items — read the project's published-item records from the
+   DB into the 'wikidata-uploads' dataset.
+2. wikidata_fetch_items — pull the live entities for those QIDs from the
+   Wikidata API into the 'wikidata-items' dataset (one row per claim).
+3. Analyze 'wikidata-items' with data_distinct (column 'property') or
+   data_select to name the links between uploaded items.
+Never guess at Wikidata links from local RDF or SPARQL sources.
 """

@@ -116,6 +116,41 @@ async def wikidata_entity(qid: str, bot_token: str | None) -> dict[str, Any]:
     return await fetch_wikibase_entity(entity_id=qid, api_url=_WIKIDATA_API, bot_token=bot_token)
 
 
+async def fetch_wikidata_entities_batch(
+    qids: list[str], *, bot_token: str | None,
+) -> dict[str, dict[str, Any]]:
+    """GET wbgetentities for up to 50 QIDs per call; returns id → slim entity.
+
+    Public data — no login required; the bot token is only used when given.
+    Missing entities are reported under their id with ``missing: True``.
+    """
+    if not qids:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    headers = {"User-Agent": _USER_AGENT}
+    async with httpx.AsyncClient(timeout=_TIMEOUT_S, headers=headers, follow_redirects=True) as client:
+        if bot_token:
+            await _login(client, _WIKIDATA_API, bot_token)
+        for start in range(0, len(qids), 50):
+            batch = qids[start:start + 50]
+            resp = await client.get(_WIKIDATA_API, params={
+                "action": "wbgetentities",
+                "ids": "|".join(batch),
+                "format": "json",
+                "props": "labels|descriptions|claims",
+            })
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("error"):
+                raise RuntimeError(str(data["error"]))
+            for qid, entity in (data.get("entities") or {}).items():
+                if entity.get("missing") is not None:
+                    out[qid] = {"id": qid, "missing": True}
+                else:
+                    out[qid] = _slim_entity(entity)
+    return out
+
+
 async def project_wikibase_entity(qid: str, bot_token: str | None) -> dict[str, Any]:
     api_url = _wikibase_api_url()
     if not api_url:

@@ -59,6 +59,15 @@ a control number) — it places the movement map on the canvas and returns
 a small digest. To hand the user a PDF, call export_pdf with the
 artifact_key (e.g. after canvas_upsert_artifact) and give them the
 download_path. Never invent download links.
+
+Uploaded-to-Wikidata questions: NEVER answer from SPARQL guesses. The
+correct flow is: (1) call wikidata_uploaded_items — it reads this
+project's DB records of published items and saves them as the
+'wikidata-uploads' dataset; (2) call wikidata_fetch_items — it pulls the
+live entities for those QIDs from the Wikidata API and saves one row per
+claim as 'wikidata-items'; (3) analyze that dataset with data_distinct
+(column 'property') or data_select to answer what links exist between
+the uploaded items. Summarize property IDs with their meaning in prose.
 """
 
 PLANNER_RETRIES = 3
@@ -416,6 +425,16 @@ class ResearchAgent:
             async def export_pdf(artifact_key: str) -> dict[str, Any]:
                 """Render a saved artifact as a PDF and return its download_path."""
                 return await call("export_pdf", {"artifact_key": artifact_key})
+
+            @agent.tool_plain
+            async def wikidata_uploaded_items() -> dict[str, Any]:
+                """Save this project's uploaded Wikidata items (from the DB) as 'wikidata-uploads'."""
+                return await call("wikidata_uploaded_items", {})
+
+            @agent.tool_plain
+            async def wikidata_fetch_items(artifact_key: str = "wikidata-uploads") -> dict[str, Any]:
+                """Fetch live claims for the stored QIDs from the Wikidata API into 'wikidata-items'."""
+                return await call("wikidata_fetch_items", {"artifact_key": artifact_key})
 
             del heroku  # used only to fail closed when unset inside _call_tool
 

@@ -47,6 +47,8 @@ TOOL_NAMES = (
     "data_distinct",
     "data_search",
     "data_agg",
+    "wikidata_uploaded_items",
+    "wikidata_fetch_items",
     "show_movement_map",
     "export_pdf",
     "canvas_upsert_artifact",
@@ -135,7 +137,7 @@ async def dispatch_tool(ctx: ToolContext, name: str, arguments: dict[str, Any] |
     result = await handler(ctx, arguments)
     if name in ("canvas_upsert_artifact", "canvas_list_versions", "create_download_link"):
         return result if isinstance(result, dict) else {"result": result}
-    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg"):
+    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "export_pdf"):
         return result if isinstance(result, dict) else {"result": result}
     slimmed = slim_result(result)
     return slimmed if isinstance(slimmed, dict) else {"result": slimmed}
@@ -738,6 +740,119 @@ async def _tool_data_agg(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
     return {"artifact_key": key, "column": column, "fn": fn, "numeric_cells": len(numbers), "result": result}
 
 
+# ── Wikidata upload skills (Rule R26) ────────────────────────────────────
+# Questions about "items uploaded to Wikidata" MUST come from the DB
+# publication/Studio records, then live Wikidata API — never from guessing
+# at SPARQL sources.
+
+_WIKIDATA_UPLOADS_KEY = "wikidata-uploads"
+_WIKIDATA_ITEMS_KEY = "wikidata-items"
+
+
+async def _tool_wikidata_uploaded_items(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]:
+    """Save every uploaded Wikidata item (Studio cache QIDs) as a dataset."""
+    from app.routers.linked_data_explorer import _run_ids_for_project
+    from app.routers.wikidata_studio import studio_items_for_project
+
+    run_ids = await _run_ids_for_project(ctx.claims.project_id, ctx.db)
+    items = await studio_items_for_project(run_ids, ctx.db, approved_only=False)
+    rows: list[list[str | None]] = []
+    for it in items:
+        qid = str(it.get("existing_qid") or "").strip()
+        if not qid:
+            continue
+        labels = it.get("labels") or {}
+        label = labels.get("en") or labels.get("he") or ""
+        statements = it.get("statements") or []
+        rows.append([qid, _cell_str(it.get("local_id"), 120), _cell_str(it.get("entity_type"), 40), _cell_str(label, 160), len(statements)])
+    await upsert_artifact(
+        ctx.db, ctx.thread,
+        artifact_key=_WIKIDATA_UPLOADS_KEY,
+        kind="sparql",
+        title="Uploaded to Wikidata",
+        content={
+            "columns": ["qid", "local_id", "entity_type", "label", "statements"],
+            "rows": rows,
+        },
+        created_by="agent",
+    )
+    await ctx.db.commit()
+    by_type: dict[str, int] = {}
+    for row in rows:
+        t = row[2] or "unknown"
+        by_type[t] = by_type.get(t, 0) + 1
+    return {
+        "artifact_key": _WIKIDATA_UPLOADS_KEY,
+        "uploaded_count": len(rows),
+        "by_type": by_type,
+        "preview": _cap_rows(rows, _SPARQL_DIGEST_ROWS),
+        "note": (
+            "Saved as dataset artifact 'wikidata-uploads'. Use "
+            "wikidata_fetch_items to pull live claims, then the data_* "
+            "skills on 'wikidata-items' to analyze links."
+        ),
+    }
+
+
+async def _tool_wikidata_fetch_items(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Fetch live Wikidata entities for the uploaded QIDs; save one row per claim."""
+    from app.services.research_agent.wiki import fetch_wikidata_entities_batch
+
+    key = str(args.get("artifact_key") or _WIKIDATA_UPLOADS_KEY).strip()
+    _, columns, rows = await _dataset_rows(ctx, {"artifact_key": key})
+    if "qid" not in columns:
+        raise HTTPException(status_code=400, detail=f"Artifact '{key}' has no qid column.")
+    qcol = columns.index("qid")
+    qids: list[str] = []
+    for row in rows:
+        qid = _cell_str(row[qcol]) if 0 <= qcol < len(row) else None
+        if qid and qid not in qids:
+            qids.append(qid)
+    qids = qids[:300]
+    if not qids:
+        raise HTTPException(status_code=404, detail=f"No QIDs stored in '{key}'. Run wikidata_uploaded_items first.")
+
+    entities = await fetch_wikidata_entities_batch(qids, bot_token=ctx.wiki_token)
+    out: list[list[str | None]] = []
+    for qid in qids:
+        entity = entities.get(qid) or {}
+        label = (entity.get("labels") or {}).get("en") or (entity.get("labels") or {}).get("he") or ""
+        props = entity.get("claim_properties") or []
+        if entity.get("missing") or not props:
+            out.append([qid, _cell_str(label, 160), None, "missing or no claims"])
+            continue
+        for prop in props:
+            out.append([qid, _cell_str(label, 160), _cell_str(prop, 24), "claim"])
+    await upsert_artifact(
+        ctx.db, ctx.thread,
+        artifact_key=_WIKIDATA_ITEMS_KEY,
+        kind="sparql",
+        title="Wikidata items (live claims)",
+        content={
+            "columns": ["qid", "label", "property", "value"],
+            "rows": out,
+        },
+        created_by="agent",
+    )
+    await ctx.db.commit()
+    prop_counts: dict[str, int] = {}
+    for row in out:
+        if row[2]:
+            prop_counts[str(row[2])] = prop_counts.get(str(row[2]), 0) + 1
+    top = sorted(prop_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:20]
+    return {
+        "artifact_key": _WIKIDATA_ITEMS_KEY,
+        "fetched": len(qids),
+        "claim_rows": len(out),
+        "distinct_properties": len(prop_counts),
+        "top_properties": top,
+        "note": (
+            "Live Wikidata claims saved as dataset artifact 'wikidata-items'. "
+            "Analyze with data_distinct / data_select / data_search."
+        ),
+    }
+
+
 TOOL_HANDLERS = {
     "research_summary": _tool_summary,
     "research_cooccurrence": _tool_cooccurrence,
@@ -758,6 +873,8 @@ TOOL_HANDLERS = {
     "data_distinct": _tool_data_distinct,
     "data_search": _tool_data_search,
     "data_agg": _tool_data_agg,
+    "wikidata_uploaded_items": _tool_wikidata_uploaded_items,
+    "wikidata_fetch_items": _tool_wikidata_fetch_items,
     "show_movement_map": _tool_show_movement_map,
     "export_pdf": _tool_export_pdf,
     "canvas_upsert_artifact": _tool_canvas_upsert,
