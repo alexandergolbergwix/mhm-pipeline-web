@@ -36,7 +36,11 @@ CSRF_COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
 
 _EXEMPT_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 _EXEMPT_PATHS: frozenset[str] = frozenset({"/api/access-request", "/api/auth/login"})
-_EXEMPT_PREFIXES: tuple[str, ...] = ("/static", "/api/research-agent/tools")
+_EXEMPT_PREFIXES: tuple[str, ...] = (
+    "/static",
+    "/api/research-agent/tools",
+    "/api/research-agent/agui-events",
+)
 
 
 def _is_exempt_path(path: str) -> bool:

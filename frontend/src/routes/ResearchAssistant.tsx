@@ -12,6 +12,7 @@ import {Runs, type RunDetail} from "@/api/runs";
 import {
   ResearchAgent,
   streamAgui,
+  startAguiAsync,
   type AguiMessage,
   type ResearchArtifact,
 } from "@/api/researchAgent";
@@ -36,6 +37,7 @@ export default function ResearchAssistant() {
   const [threadTitle, setThreadTitle] = useState<string | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
   const [agentUrl, setAgentUrl] = useState("/api/research-agent/agui");
+  const [agentMode, setAgentMode] = useState("local");
   const [toolGrant, setToolGrant] = useState("");
   const [ui, setUi] = useState<AssistantUiState>({
     messages: [],
@@ -80,6 +82,7 @@ export default function ResearchAssistant() {
         if (cancelled) return;
         setThreadId(session.thread_id);
         setAgentUrl(session.agent_url);
+      setAgentMode(session.agent_mode);
         setToolGrant(session.tool_grant);
         localStorage.setItem(threadStorageKey(runId), session.thread_id);
         const detail = await ResearchAgent.getThread(session.thread_id);
@@ -142,20 +145,31 @@ export default function ResearchAssistant() {
     }));
     try {
       let finalMessages = nextMessages;
-      await streamAgui({
-        agentUrl,
-        toolGrant,
-        threadId,
-        messages: nextMessages,
-        state: ui.canvas,
-        onEvent: (event) => {
-          setUi((prev) => {
-            const next = applyAguiEvent(prev, event);
-            if (next.messages.length) finalMessages = next.messages;
-            return next;
-          });
-        },
-      });
+      const onEvent = (event: Record<string, unknown>) => {
+        setUi((prev) => {
+          const next = applyAguiEvent(prev, event);
+          if (next.messages.length) finalMessages = next.messages;
+          return next;
+        });
+      };
+      if (agentMode === "modal") {
+        await startAguiAsync({
+          toolGrant,
+          threadId,
+          messages: nextMessages,
+          state: ui.canvas,
+          onEvent,
+        });
+      } else {
+        await streamAgui({
+          agentUrl,
+          toolGrant,
+          threadId,
+          messages: nextMessages,
+          state: ui.canvas,
+          onEvent,
+        });
+      }
       const detail = await ResearchAgent.getThread(threadId);
       const artifacts: Record<string, ResearchArtifact> = {};
       for (const art of detail.artifacts) artifacts[art.artifact_key] = art;
@@ -175,7 +189,7 @@ export default function ResearchAssistant() {
         ),
       }));
     }
-  }, [agentUrl, threadId, toolGrant, runId, saveTranscript, ui.canvas, ui.messages]);
+  }, [agentUrl, agentMode, threadId, toolGrant, runId, saveTranscript, ui.canvas, ui.messages]);
 
   const newChat = useCallback(async () => {
     if (!runId) return;
@@ -183,6 +197,7 @@ export default function ResearchAssistant() {
       const session = await ResearchAgent.startSession(runId, {newThread: true});
       setThreadId(session.thread_id);
       setAgentUrl(session.agent_url);
+      setAgentMode(session.agent_mode);
       setToolGrant(session.tool_grant);
       localStorage.setItem(threadStorageKey(runId), session.thread_id);
       setThreadTitle(DEFAULT_TITLE);
@@ -212,6 +227,7 @@ export default function ResearchAssistant() {
       const session = await ResearchAgent.startSession(runId, {threadId: id});
       setThreadId(session.thread_id);
       setAgentUrl(session.agent_url);
+      setAgentMode(session.agent_mode);
       setToolGrant(session.tool_grant);
       localStorage.setItem(threadStorageKey(runId), session.thread_id);
       const detail = await ResearchAgent.getThread(session.thread_id);

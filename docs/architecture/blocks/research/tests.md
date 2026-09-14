@@ -12,6 +12,7 @@
 - `backend/tests/test_provenance_events_ingest.py`, `test_provenance_events_rdf.py` — Rule W-32 event channel feeding the maps
 - `backend/tests/test_research_agent_grants.py`, `test_research_agent_tools.py`, `test_research_agent_agui.py`, `test_research_agent_scope.py` — JWT grant, tool RBAC, AG-UI refuse/stream, scope + quarantine + SPARQL templates (Rule W-228)
 - `backend/tests/test_research_data_skills.py`, `test_research_viz_skills.py`, `test_research_wikidata_skills.py` — dataset/viz skills; upload ground truth = succeeded publication execution actions merged with both Studio cache sources (Rule R26)
+- `backend/tests/test_research_async_run.py` — async run relay: webhook grant auth, unknown-run 404, Redis-Stream (in-memory fallback) SSE bridge with end marker, fail-closed without Modal (Rule R28)
 - `frontend/tests/unit/canvasState.spec.ts` — AG-UI canvas reducer, `buildAguiRunBody` message ids (Rule W-229), pydantic-ai retry humanize (Rule W-231)
 - `frontend/tests/unit/ResearchChat.spec.tsx` — wait dots while busy with no stream text (frontend R22)
 - `frontend/e2e/linked-data-explorer.spec.ts` — Research Assistant chat + canvas (mocked backend); Overview POST includes message `id`; wait animation until the AG-UI stream starts

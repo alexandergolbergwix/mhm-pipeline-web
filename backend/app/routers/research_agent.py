@@ -627,3 +627,156 @@ async def local_agui(
             yield sse_pack(event)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _public_base_url(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    return f"{proto}://{host}"
+
+
+async def _grant_for_token(db: AsyncSession, token: str) -> tuple[GrantClaims, Any]:
+    claims = GrantClaims.from_payload(verify_tool_jwt(token))
+    grant = await db.get(ResearchAgentGrant, claims.grant_id)
+    if grant is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown tool grant.")
+    return claims, grant
+
+
+@router.post("/agui-async")
+@limiter.limit("30/minute")
+async def start_async_agui(
+    body: AguiRunRequest,
+    request: Request,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Start a detached Modal planner run; the browser then reads
+    ``/agui-stream`` (Redis-Stream relay). Long turns survive Heroku's
+    router idle timeout and Modal's HTTP timeout (Rule R28)."""
+    from app.services.research_agent import async_run  # noqa: PLC0415
+
+    settings = get_settings()
+    if not settings.research_agent_enabled:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Research agent is disabled.")
+    modal_url = (settings.research_agent_modal_url or "").rstrip("/")
+    if not modal_url:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Async agent runs need Modal.")
+
+    forwarded = body.forwardedProps or {}
+    token = str(forwarded.get("tool_grant") or "")
+    if not token:
+        header = request.headers.get("authorization") or ""
+        if header.lower().startswith("bearer "):
+            token = header.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="tool_grant is required.")
+    claims, grant = await _grant_for_token(db, token)
+    thread = await db.get(ResearchAgentThread, claims.thread_id)
+    if thread is None or thread.project_id != claims.project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found.")
+    await _require_membership(claims.project_id, auth, db)
+
+    run_id = str(body.runId or uuid.uuid4())
+    await async_run.register_run(claims.thread_id, run_id)
+
+    dispatch_body = dict(body.model_dump())
+    dispatch_body["runId"] = run_id
+    merged_forwarded = dict(forwarded)
+    merged_forwarded["callback_url"] = (
+        f"{_public_base_url(request)}/api/research-agent/agui-events"
+    )
+    merged_forwarded["run_id"] = run_id
+    dispatch_body["forwardedProps"] = merged_forwarded
+
+    import httpx  # noqa: PLC0415
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{modal_url}/agui-async",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json=dispatch_body,
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Modal dispatch failed: {exc}") from exc
+    if resp.status_code != 202:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Modal dispatch rejected: {resp.text[:300]}")
+    return {
+        "run_id": run_id,
+        "stream_url": f"/api/research-agent/agui-stream?run_id={run_id}",
+        "agent_mode": "modal-async",
+    }
+
+
+class AguiEventsRequest(BaseModel):
+    run_id: str
+    events: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/agui-events")
+@limiter.limit("120/minute")
+async def agui_events(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, int]:
+    """Modal webhook: append AG-UI events for one detached run.
+
+    Authenticated with the run's tool grant (same trust surface as
+    ``/tools``); the run id must belong to the grant's thread.
+    """
+    from app.services.research_agent import async_run  # noqa: PLC0415
+
+    header = request.headers.get("authorization") or ""
+    if not header.lower().startswith("bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer tool grant is required.")
+    token = header.split(" ", 1)[1].strip()
+    claims, _grant = await _grant_for_token(db, token)
+
+    try:
+        payload = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body.") from exc
+    body = AguiEventsRequest.model_validate(payload)
+    bound = await async_run.run_thread_id(body.run_id)
+    if bound is None or bound != str(claims.thread_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown run for this grant.")
+    stored = await async_run.append_events(claims.thread_id, body.run_id, body.events)
+    return {"stored": stored}
+
+
+@router.get("/agui-stream")
+@limiter.limit("30/minute")
+async def agui_stream(
+    request: Request,
+    run_id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """SSE bridge over the run's Redis Stream, with heartbeats."""
+    from app.services.research_agent import async_run  # noqa: PLC0415
+
+    bound = await async_run.run_thread_id(run_id)
+    if bound is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown run.")
+    thread = await db.get(ResearchAgentThread, uuid.UUID(bound))
+    if thread is None or thread.user_id != auth.user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown run.")
+    last_id = request.query_params.get("last_id") or "0"
+
+    async def event_stream():
+        async for event in async_run.iter_stream(bound, run_id, last_id=last_id):
+            if event is None:
+                yield ": ping\n\n"
+                continue
+            yield sse_pack(event)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

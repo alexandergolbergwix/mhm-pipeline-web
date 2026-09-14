@@ -193,7 +193,56 @@ export async function streamAgui(options: {
   if (!res.ok || !res.body) {
     throw new Error(await aguiHttpError(res));
   }
-  const reader = res.body.getReader();
+  await readSseBody(res, options.onEvent);
+}
+
+/**
+ * Async AG-UI run (Rule R28): start a detached planner run on Heroku,
+ * then read the run's Redis-Stream-backed SSE bridge. Long turns survive
+ * Heroku's router idle timeout and Modal's HTTP timeout.
+ */
+export async function startAguiAsync(options: {
+  toolGrant: string;
+  threadId: string;
+  messages: AguiMessage[];
+  state: CanvasState;
+  onEvent: (event: Record<string, unknown>) => void;
+  signal?: AbortSignal;
+}): Promise<void> {
+  const start = await fetch("/api/research-agent/agui-async", {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...csrfHeaders("POST"),
+    },
+    signal: options.signal,
+    body: JSON.stringify(buildAguiRunBody(options)),
+  });
+  if (!start.ok) {
+    throw new Error(await aguiHttpError(start));
+  }
+  const started = (await start.json()) as {stream_url?: string};
+  const streamUrl = started.stream_url || "/api/research-agent/agui-stream";
+  const res = await fetch(streamUrl, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+    headers: {Accept: "text/event-stream"},
+    signal: options.signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(await aguiHttpError(res));
+  }
+  await readSseBody(res, options.onEvent);
+}
+
+async function readSseBody(
+  res: Response,
+  onEvent: (event: Record<string, unknown>) => void,
+): Promise<void> {
+  const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   while (true) {
@@ -204,12 +253,12 @@ export async function streamAgui(options: {
     buffer = chunks.pop() ?? "";
     for (const chunk of chunks) {
       const event = parseSseChunk(chunk);
-      if (event) options.onEvent(event);
+      if (event) onEvent(event);
     }
   }
   if (buffer.trim()) {
     const event = parseSseChunk(buffer);
-    if (event) options.onEvent(event);
+    if (event) onEvent(event);
   }
 }
 

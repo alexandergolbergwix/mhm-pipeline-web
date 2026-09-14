@@ -2,6 +2,13 @@
   "schema": 1,
   "entries": [
     {
+      "fingerprint": "sha256:c787ccb0dbfa75b4645faa76526c8953",
+      "path": "backend/app/middleware/csrf.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "secrets.token_urlsafe generates a CSRF token at runtime, not a credential value; pre-existing pattern",
+      "expires": "2027-09-14"
+    },
+    {
       "fingerprint": "sha256:1aa53cc37c1c35eb07c390370852e808",
       "path": "backend/app/pipeline/research_aggregate.py",
       "rule_id": "generic-assigned-secret",
@@ -191,11 +198,25 @@
       "expires": "2027-09-14"
     },
     {
+      "fingerprint": "sha256:578207754ff0d8e26ec83d1278bee8ff",
+      "path": "backend/app/routers/research_agent.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "FastAPI Depends(current_auth) dependency injection; no credential value",
+      "expires": "2027-09-14"
+    },
+    {
       "fingerprint": "sha256:969cff40e8ddb5dd3edf9ad328972f65",
       "path": "backend/app/routers/research_agent.py",
       "rule_id": "relation-linked-secret",
       "reason": "assigns token from request header; runtime value, no literal",
       "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:e45f2854d288eb8fa0224e41f9daaaac",
+      "path": "backend/app/routers/research_agent.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "Parses the runtime Authorization header into a local variable; not a stored secret",
+      "expires": "2027-09-14"
     },
     {
       "fingerprint": "sha256:3e863acdf25c047ce43748acfe986762",
@@ -399,6 +420,13 @@
       "rule_id": "generic-assigned-secret",
       "reason": "reads QUBRID_API_KEY from env into provider config; no secret literal in code",
       "expires": "2027-09-13"
+    },
+    {
+      "fingerprint": "sha256:aefa5aaf2ec4ad768186a26c25efef90",
+      "path": "modal/modal_research_agent.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "modal.Secret.from_name references a secret by name; the value stays in the Modal secret store",
+      "expires": "2027-09-14"
     }
   ]
 }
