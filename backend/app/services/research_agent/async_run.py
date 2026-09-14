@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
-from app.cache.redis_client import get_redis
+from app.cache.redis_client import get_redis, open_redis
+
+logger = logging.getLogger(__name__)
 
 _STREAM_MAXLEN = 20_000
 _TTL_S = 6 * 3600
@@ -127,24 +130,42 @@ async def iter_stream(
     redis = await get_redis()
     key = _stream_key(thread_id, run_id)
     if redis is not None:
+        # Dedicated connection: a cancelled blocking XREAD corrupts the
+        # shared pool's connection (production incident 2026-09-14).
+        client = await open_redis()
+        if client is None:  # pragma: no cover — get_redis succeeded above
+            return
         cursor = last_id
-        while time.monotonic() < deadline:
-            resp = await redis.xread({key: cursor}, block=_XREAD_BLOCK_MS, count=200)
-            if not resp:
-                yield None
-                continue
-            for _stream, entries in resp:
-                for entry_id, fields in entries:
-                    cursor = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
-                    raw = fields.get(b"data") or fields.get("data")
-                    payload = raw.decode() if isinstance(raw, bytes) else str(raw or "")
-                    if payload == "__END__":
-                        return
-                    try:
-                        yield json.loads(payload)
-                    except (ValueError, TypeError):
-                        continue
-        yield {"type": "RUN_ERROR", "message": "The agent run timed out before finishing."}
+        try:
+            while time.monotonic() < deadline:
+                try:
+                    resp = await client.xread({key: cursor}, block=_XREAD_BLOCK_MS, count=200)
+                except asyncio.CancelledError:
+                    raise
+                except (TimeoutError, ConnectionError) as exc:  # noqa: PERF203
+                    logger.warning("agui stream xread failed for %s: %s", run_id, exc)
+                    yield {"type": "RUN_ERROR", "message": "The agent event stream was interrupted."}
+                    return
+                if not resp:
+                    yield None
+                    continue
+                for _stream, entries in resp:
+                    for entry_id, fields in entries:
+                        cursor = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
+                        raw = fields.get(b"data") or fields.get("data")
+                        payload = raw.decode() if isinstance(raw, bytes) else str(raw or "")
+                        if payload == "__END__":
+                            return
+                        try:
+                            yield json.loads(payload)
+                        except (ValueError, TypeError):
+                            continue
+            yield {"type": "RUN_ERROR", "message": "The agent run timed out before finishing."}
+        finally:
+            try:
+                await client.aclose()
+            except Exception:  # noqa: BLE001
+                pass
         return
     run = _memory_run(run_id)
     index = 0

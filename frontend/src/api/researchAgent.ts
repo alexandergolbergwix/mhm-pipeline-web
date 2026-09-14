@@ -235,16 +235,23 @@ export async function startAguiAsync(options: {
   if (!res.ok || !res.body) {
     throw new Error(await aguiHttpError(res));
   }
-  await readSseBody(res, options.onEvent);
+  const finished = await readSseBody(res, options.onEvent);
+  if (!finished) {
+    throw new Error(
+      "The agent stream closed before finishing. Send the question again.",
+    );
+  }
 }
 
+/** Reads an SSE body; returns true when a RUN_FINISHED/RUN_ERROR arrived. */
 async function readSseBody(
   res: Response,
   onEvent: (event: Record<string, unknown>) => void,
-): Promise<void> {
+): Promise<boolean> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let terminal = false;
   while (true) {
     const {done, value} = await reader.read();
     if (done) break;
@@ -253,13 +260,24 @@ async function readSseBody(
     buffer = chunks.pop() ?? "";
     for (const chunk of chunks) {
       const event = parseSseChunk(chunk);
-      if (event) onEvent(event);
+      if (event) {
+        if (event.type === "RUN_FINISHED" || event.type === "RUN_ERROR") {
+          terminal = true;
+        }
+        onEvent(event);
+      }
     }
   }
   if (buffer.trim()) {
     const event = parseSseChunk(buffer);
-    if (event) onEvent(event);
+    if (event) {
+      if (event.type === "RUN_FINISHED" || event.type === "RUN_ERROR") {
+        terminal = true;
+      }
+      onEvent(event);
+    }
   }
+  return terminal;
 }
 
 export function parseSseChunk(chunk: string): Record<string, unknown> | null {

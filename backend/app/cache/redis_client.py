@@ -43,3 +43,22 @@ async def close_redis() -> None:
     if _client is not None:
         await _client.aclose()
         _client = None
+
+
+async def open_redis() -> Any:
+    """Open a DEDICATED connection (not the shared singleton).
+
+    Use for blocking commands (XREAD BLOCK). Cancelling a blocking read
+    on the shared pool corrupts its connection and takes every other
+    Redis user down with it ("Connection lost").
+    """
+    url = os.environ.get("REDIS_URL", "").strip()
+    if not url:
+        from app.settings import get_settings  # noqa: PLC0415
+
+        url = get_settings().redis_url.strip()
+    if not url:
+        return None
+    import redis.asyncio as aioredis  # noqa: PLC0415
+
+    return aioredis.from_url(url, decode_responses=False, ssl_cert_reqs=None)
