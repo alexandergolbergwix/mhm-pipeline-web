@@ -93,6 +93,11 @@ class AguiRunRequest(BaseModel):
     state: dict[str, Any] | None = None
     forwardedProps: dict[str, Any] | None = None
     tools: list[Any] | None = None
+    # RunAgentInput requires `context`; dropping it 422s the detached run
+    # (production incident 2026-09-14 — the legacy raw-body path always
+    # passed the frontend's context through, so this only surfaced in
+    # async mode).
+    context: list[Any] = Field(default_factory=list)
 
 
 async def _require_membership(
