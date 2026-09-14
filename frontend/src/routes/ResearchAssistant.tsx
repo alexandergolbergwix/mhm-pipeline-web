@@ -143,6 +143,20 @@ export default function ResearchAssistant() {
       error: null,
       streamingText: "",
     }));
+    // Re-mint the grant on every send — grants are short-lived, and a
+    // stale one turns every tool call and webhook post into 401s
+    // (production incident 2026-09-14).
+    let freshGrant = toolGrant;
+    try {
+      const session = await ResearchAgent.startSession(runId!, {threadId});
+      freshGrant = session.tool_grant;
+      setToolGrant(freshGrant);
+      setThreadId(session.thread_id);
+      setAgentUrl(session.agent_url);
+      setAgentMode(session.agent_mode);
+    } catch {
+      /* keep the existing grant */
+    }
     try {
       let finalMessages = nextMessages;
       const onEvent = (event: Record<string, unknown>) => {
@@ -154,7 +168,7 @@ export default function ResearchAssistant() {
       };
       if (agentMode === "modal") {
         await startAguiAsync({
-          toolGrant,
+          toolGrant: freshGrant,
           threadId,
           messages: nextMessages,
           state: ui.canvas,
@@ -163,7 +177,7 @@ export default function ResearchAssistant() {
       } else {
         await streamAgui({
           agentUrl,
-          toolGrant,
+          toolGrant: freshGrant,
           threadId,
           messages: nextMessages,
           state: ui.canvas,

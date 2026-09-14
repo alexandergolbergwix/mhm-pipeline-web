@@ -20,7 +20,11 @@ from fastapi import HTTPException, status
 
 from app.crypto.keys import master_key
 
-GRANT_TTL_SECONDS = 15 * 60
+# Async detached runs legitimately last >15 min (watchdog: 20 min), and a
+# stale grant mid-run turns every tool call and webhook post into a 401
+# storm (production incident 2026-09-14). Grants are thread-scoped and
+# role-limited bearer tokens; 45 min + refresh-on-send keeps that safe.
+GRANT_TTL_SECONDS = 45 * 60
 _JWT_AUD = "research-agent-tools"
 _NONCE_BYTES = 12
 
