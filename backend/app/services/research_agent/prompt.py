@@ -51,5 +51,8 @@ grouped bar-chart artifact 'link-types' on the canvas. For places or
 locations mentioned in the uploaded items' Wikidata entities, call
 show_wikidata_places — it plots place-valued claims (P625 coordinates) on
 an interactive map whose popups link to the Wikidata entities.
+For a full visual refresh in ONE step call wikidata_pack — it refreshes
+claims and places both the link-type chart and the place-mentions map
+on the canvas.
 Never guess at Wikidata links from local RDF or SPARQL sources.
 """

@@ -53,6 +53,7 @@ TOOL_NAMES = (
     "show_movement_map",
     "show_link_types",
     "show_wikidata_places",
+    "wikidata_pack",
     "export_pdf",
     "canvas_upsert_artifact",
     "canvas_list_versions",
@@ -140,7 +141,7 @@ async def dispatch_tool(ctx: ToolContext, name: str, arguments: dict[str, Any] |
     result = await handler(ctx, arguments)
     if name in ("canvas_upsert_artifact", "canvas_list_versions", "create_download_link"):
         return result if isinstance(result, dict) else {"result": result}
-    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "show_link_types", "show_wikidata_places", "export_pdf"):
+    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "show_link_types", "show_wikidata_places", "wikidata_pack", "export_pdf"):
         return result if isinstance(result, dict) else {"result": result}
     slimmed = slim_result(result)
     return slimmed if isinstance(slimmed, dict) else {"result": slimmed}
@@ -1047,6 +1048,50 @@ async def _wikidata_sparql_query(query: str) -> dict[str, Any]:
     return resp.json()
 
 
+_PACK_DIGEST_SKIP = {"preview", "sample", "rows", "values"}
+
+
+async def _tool_wikidata_pack(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """One round-trip: refresh the claim dataset, then place the link-type
+    chart AND the place-mentions map.
+
+    The planner would otherwise spend three tool turns (fetch → chart →
+    map) and pay a model round-trip between each; the pack runs the same
+    three handlers server-side and returns compact digests (Rule R25).
+    Steps that fail are reported per step — a missing dataset 404s only
+    that step, not the pack.
+    """
+    steps: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    plan = (
+        ("wikidata_fetch_items", {"artifact_key": str(args.get("artifact_key") or "wikidata-uploads")}),
+        ("show_link_types", {}),
+        ("show_wikidata_places", {}),
+    )
+    for name, tool_args in plan:
+        handler = TOOL_HANDLERS[name]
+        try:
+            result = await handler(ctx, tool_args)
+            steps[name] = {
+                k: v for k, v in result.items()
+                if k not in _PACK_DIGEST_SKIP and not isinstance(v, (list, dict))
+            }
+        except HTTPException as exc:
+            errors[name] = str(exc.detail)
+    if not steps and errors:
+        raise HTTPException(status_code=400, detail="; ".join(f"{k}: {v}" for k, v in errors.items()))
+    return {
+        "pack": "wikidata",
+        "steps": steps,
+        "errors": errors,
+        "note": (
+            "Refreshed claims and placed both the link-type chart "
+            "('link-types') and the place-mentions map ('wikidata-places') "
+            "on the canvas. Per-step errors appear under 'errors'."
+        ),
+    }
+
+
 async def _tool_show_wikidata_places(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     """Plot every place-valued claim on our uploaded items on an interactive map.
 
@@ -1219,6 +1264,7 @@ TOOL_HANDLERS = {
     "show_movement_map": _tool_show_movement_map,
     "show_link_types": _tool_show_link_types,
     "show_wikidata_places": _tool_show_wikidata_places,
+    "wikidata_pack": _tool_wikidata_pack,
     "export_pdf": _tool_export_pdf,
     "canvas_upsert_artifact": _tool_canvas_upsert,
     "canvas_list_versions": _tool_canvas_list,

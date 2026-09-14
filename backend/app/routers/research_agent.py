@@ -746,7 +746,7 @@ class AguiEventsRequest(BaseModel):
 
 
 @router.post("/agui-events")
-@limiter.limit("120/minute")
+@limiter.limit("600/minute")
 async def agui_events(
     request: Request,
     db: AsyncSession = Depends(get_session),

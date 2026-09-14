@@ -195,6 +195,53 @@ async def test_show_wikidata_places_maps_place_claims(sample_run):
     assert "P625" in result["note"]
 
 
+async def test_wikidata_pack_runs_all_steps_and_reports_errors(sample_run):
+    body, headers = await _headers(sample_run)
+    seed = await sample_run["client"].put(
+        f"/api/research-agent/threads/{body['thread_id']}/artifacts/wikidata-items",
+        json={
+            "kind": "sparql",
+            "title": "Wikidata items (live claims)",
+            "content": {
+                "columns": ["qid", "label", "property", "value", "target_is_ours"],
+                "rows": [["Q141175480", "אב הרחמים", "P17", "Q801", ""]],
+            },
+        },
+    )
+    assert seed.status_code == 200, seed.text
+
+    wdqs = {
+        "results": {"bindings": [{
+            "item": {"type": "uri", "value": "http://www.wikidata.org/entity/Q141175480"},
+            "itemLabel": {"value": "אב הרחמים"},
+            "prop": {"type": "uri", "value": "http://www.wikidata.org/prop/direct/P17"},
+            "propLabel": {"value": "country"},
+            "place": {"type": "uri", "value": "http://www.wikidata.org/entity/Q801"},
+            "placeLabel": {"value": "Israel"},
+            "coord": {"type": "literal", "value": "Point(34.9 31.5)"},
+        }]},
+    }
+
+    from unittest.mock import AsyncMock, patch
+
+    import app.services.research_agent.tools as tools_module
+
+    with patch.object(tools_module, "_wikidata_sparql_query", new=AsyncMock(return_value=wdqs)):
+        resp = await sample_run["client"].post(
+            "/api/research-agent/tools",
+            headers=headers,
+            json={"name": "wikidata_pack", "arguments": {}},
+        )
+    assert resp.status_code == 200, resp.text
+    result = resp.json()["result"]
+    assert result["pack"] == "wikidata"
+    # fetch 404s (no 'wikidata-uploads' artifact in this fresh thread) but
+    # the pack still delivers the chart + map steps.
+    assert "wikidata_fetch_items" in result["errors"]
+    assert "show_link_types" in result["steps"]
+    assert "show_wikidata_places" in result["steps"]
+
+
 async def test_export_pdf_and_download(sample_run):
     body, headers = await _headers(sample_run)
     put = await sample_run["client"].put(

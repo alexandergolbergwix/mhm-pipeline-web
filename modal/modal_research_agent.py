@@ -26,6 +26,7 @@ the real Request type on the /agui route (Rule W-229).
 """
 import json
 import os
+import time
 from typing import Any
 
 import modal
@@ -90,7 +91,9 @@ live entities for those QIDs from the Wikidata API and saves one row per
 claim (real datavalues) as 'wikidata-items'; (3) analyze that dataset
 with data_distinct (column 'property') or data_select to answer what
 links exist between the uploaded items. Summarize property IDs with
-their meaning in prose.
+their meaning in prose. For a full visual refresh in ONE step call
+wikidata_pack — it refreshes claims and places both the link-type chart
+and the place-mentions map on the canvas.
 """
 
 PLANNER_RETRIES = 3
@@ -418,6 +421,11 @@ def build_agent(grant: str):
         return await call("show_wikidata_places", {"artifact_key": artifact_key})
 
     @agent.tool_plain
+    async def wikidata_pack(artifact_key: str = "wikidata-uploads") -> dict[str, Any]:
+        """One round-trip: refresh live claims, then place BOTH the link-type chart and the place-mentions map on the canvas."""
+        return await call("wikidata_pack", {"artifact_key": artifact_key})
+
+    @agent.tool_plain
     async def export_pdf(artifact_key: str) -> dict[str, Any]:
         """Render a saved artifact as a PDF and return its download_path."""
         return await call("export_pdf", {"artifact_key": artifact_key})
@@ -502,6 +510,7 @@ async def relay_agui_events_to_webhook(
     "error", or "died"."""
     chunks: list[str] = []
     pending: list[dict[str, Any]] = []
+    last_flush = 0.0
     outcome = "died"
     try:
         async for chunk in response.body_iterator:
@@ -524,9 +533,14 @@ async def relay_agui_events_to_webhook(
                 elif kind == "RUN_ERROR":
                     outcome = "error"
                 pending.append(event)
-            if pending:
+            # Flush in batches: one webhook POST per token would trip the
+            # event limiter (production incident 2026-09-14 — 429s dropped
+            # every event past 120/minute and truncated the answer).
+            now = time.monotonic()
+            if pending and (len(pending) >= 20 or now - last_flush >= 1.0):
                 await post_events(grant, callback_url, run_id, pending)
                 pending = []
+                last_flush = now
         return outcome
     finally:
         if pending:
@@ -539,7 +553,24 @@ async def relay_agui_events_to_webhook(
 
 
 async def post_events(grant: str, callback_url: str, run_id: str, events: list[dict[str, Any]]) -> bool:
+    """POST events to the webhook after coalescing adjacent text deltas.
+
+    pydantic-ai emits one TEXT_MESSAGE_CONTENT event per token; merging
+    adjacent deltas keeps the webhook far below its rate limit (the
+    frontend concatenates deltas anyway, so the stream is identical).
+    """
     import httpx
+
+    coalesced: list[dict[str, Any]] = []
+    for event in events:
+        if (
+            event.get("type") == "TEXT_MESSAGE_CONTENT"
+            and coalesced
+            and coalesced[-1].get("type") == "TEXT_MESSAGE_CONTENT"
+        ):
+            coalesced[-1]["delta"] = coalesced[-1].get("delta", "") + event.get("delta", "")
+        else:
+            coalesced.append(event)
 
     base = _heroku_base()
     if not base or not callback_url:
@@ -549,7 +580,7 @@ async def post_events(grant: str, callback_url: str, run_id: str, events: list[d
             resp = await client.post(
                 callback_url,
                 headers=_tool_headers(grant),
-                json={"run_id": run_id, "events": events},
+                json={"run_id": run_id, "events": coalesced},
             )
             return resp.status_code < 400
     except Exception:
